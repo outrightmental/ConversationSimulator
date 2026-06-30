@@ -119,21 +119,29 @@ def _call_configure_logging_isolated(log_dir: str, debug: bool = False) -> None:
     capture handler between fixture setup and the test function.  Restores all
     original handlers and any new ones after the call, leaving global state
     intact for the remainder of the test.
+
+    Also tracks new handlers added to the runtimes sub-logger (rt_fh) so the
+    autouse cleanup fixture can close and remove them; without this they would
+    accumulate across tests and leak open file handles.
     """
     root = logging.getLogger()
-    original = root.handlers[:]
+    rt = logging.getLogger("convsim_core.runtimes")
+    original_root = root.handlers[:]
+    original_rt = rt.handlers[:]
     root.handlers.clear()
     try:
         configure_logging(log_dir, debug=debug)
     finally:
         # Keep the newly added file handlers so the test can assert on files,
         # but also restore any original handlers that were removed.
-        new_handlers = [h for h in root.handlers if h not in original]
-        for h in original:
+        new_root_handlers = [h for h in root.handlers if h not in original_root]
+        new_rt_handlers = [h for h in rt.handlers if h not in original_rt]
+        for h in original_root:
             if h not in root.handlers:
                 root.addHandler(h)
         # Register cleanup: close and remove file handlers after the test.
-        _handlers_to_close.extend(new_handlers)
+        _handlers_to_close.extend(new_root_handlers)
+        _handlers_to_close.extend(new_rt_handlers)
 
 
 _handlers_to_close: list[logging.Handler] = []
