@@ -1,0 +1,8 @@
+{
+  "name": "@convsim/shared-types",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "echo 'Shared types package not yet implemented.' && exit 0"
+  }
+}

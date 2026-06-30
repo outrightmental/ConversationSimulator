@@ -1,0 +1,61 @@
+# SPDX-License-Identifier: Apache-2.0
+# Conversation Simulator model registry
+# Models are not bundled. The app shows license and size before any download.
+# URLs and checksums are placeholders to be filled when Milestone 1 is implemented.
+
+schema_version: "0.1"
+
+models:
+  - id: qwen3-8b-instruct-q4_k_m
+    name: "Qwen3 8B Instruct Q4_K_M"
+    family: qwen3
+    role: default-demo
+    format: gguf
+    license: Apache-2.0
+    min_vram_gb_target: 6
+    recommended_vram_gb_target: 8
+    download:
+      provider: huggingface
+      url: "<placeholder — to be confirmed at Milestone 1>"
+      sha256: "<placeholder>"
+    runtime:
+      llama_cpp:
+        context_length: 8192
+        temperature_default: 0.75
+        top_p_default: 0.9
+
+  - id: qwen3-14b-instruct-q4_k_m
+    name: "Qwen3 14B Instruct Q4_K_M"
+    family: qwen3
+    role: standard
+    format: gguf
+    license: Apache-2.0
+    min_vram_gb_target: 10
+    recommended_vram_gb_target: 12
+    download:
+      provider: huggingface
+      url: "<placeholder>"
+      sha256: "<placeholder>"
+    runtime:
+      llama_cpp:
+        context_length: 8192
+        temperature_default: 0.75
+        top_p_default: 0.9
+
+  - id: mistral-small-3.1-24b-instruct-q4_k_m
+    name: "Mistral Small 3.1 24B Instruct Q4_K_M"
+    family: mistral
+    role: high-quality
+    format: gguf
+    license: Apache-2.0
+    min_vram_gb_target: 16
+    recommended_vram_gb_target: 24
+    download:
+      provider: huggingface
+      url: "<placeholder>"
+      sha256: "<placeholder>"
+    runtime:
+      llama_cpp:
+        context_length: 32768
+        temperature_default: 0.75
+        top_p_default: 0.9
