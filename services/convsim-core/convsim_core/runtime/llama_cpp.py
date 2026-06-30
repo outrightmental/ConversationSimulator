@@ -129,7 +129,7 @@ class LlamaCppRuntime(ChatRuntime):
             "model": model_id,
             "messages": messages,
             "stream": True,
-            "temperature": self._temperature,
+            "temperature": request.temperature,
             "max_tokens": request.max_tokens,
             "top_p": self._top_p,
             "repeat_penalty": self._repeat_penalty,
