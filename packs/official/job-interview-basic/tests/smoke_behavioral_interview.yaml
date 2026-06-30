@@ -1,7 +1,5 @@
 # SPDX-License-Identifier: CC-BY-4.0
-# Smoke test fixture for the behavioral_interview scenario.
-# Intended for the future pack test runner (not yet implemented in schema v0.1).
-# Documents a minimal passing session for manual and automated verification.
+schema_version: "0.1"
 fixture_id: smoke_behavioral_interview
 scenario_id: behavioral_interview
 description: >-

@@ -1,0 +1,37 @@
+{
+  "schema_version": "0.1",
+  "fixture_id": "smoke_hello_world",
+  "scenario_id": "hello_world",
+  "description": "Minimal smoke test for the hello_world scenario. Verifies the scenario loads, produces a non-empty opening, and that a clear self-introduction advances the session without a safety stop.",
+  "seed": 1,
+  "input_mode": "text",
+  "difficulty": "normal",
+  "turns": [
+    {
+      "turn": 1,
+      "player_input": "Hi, I'm Jamie Park. I have a 10 o'clock meeting with the product team.",
+      "expect": {
+        "state_delta_contains": ["clarity"],
+        "session_control": "continue_session",
+        "safety_status": "ok"
+      }
+    }
+  ],
+  "static_assertions": [
+    {
+      "description": "Scenario opening line is non-empty",
+      "path": "opening.npc_says",
+      "check": "non_empty_string"
+    },
+    {
+      "description": "NPC is marked fictional",
+      "path": "npc.fictional",
+      "check": "equals true"
+    },
+    {
+      "description": "Safety policy blocks nsfw_sexual content",
+      "path": "safety.content_categories.nsfw_sexual",
+      "check": "equals block"
+    }
+  ]
+}

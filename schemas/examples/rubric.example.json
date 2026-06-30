@@ -1,0 +1,29 @@
+{
+  "schema_version": "0.1",
+  "rubric_id": "basic_rubric",
+  "title": "Basic Interaction Rubric",
+  "dimensions": [
+    {
+      "id": "clarity",
+      "name": "Clarity",
+      "description": "Whether the player communicates their purpose clearly and concisely.",
+      "scoring": {
+        "low": "The player's message is vague or confusing. The greeter cannot determine the purpose of the visit.",
+        "medium": "The player provides a purpose but it is imprecisely stated or requires follow-up to understand.",
+        "high": "The player clearly states their name and purpose in one or two focused sentences."
+      },
+      "weight": 0.6
+    },
+    {
+      "id": "politeness",
+      "name": "Politeness",
+      "description": "Whether the player is respectful and courteous throughout the interaction.",
+      "scoring": {
+        "low": "The player is curt, dismissive, or rude.",
+        "medium": "The player is neutral in tone — not rude but not particularly warm.",
+        "high": "The player is genuinely warm and respectful, and the greeter feels valued."
+      },
+      "weight": 0.4
+    }
+  ]
+}
