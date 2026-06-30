@@ -1,3 +1,4 @@
+import React from 'react';
 import type { FieldError } from '@convsim/scenario-schema';
 import { FieldWrapper, errorFor, str } from './shared.js';
 
@@ -14,6 +15,7 @@ interface NpcFormProps {
  * voice (tone, pace, formality), boundaries, and hidden agenda.
  */
 export function NpcForm({ values, errors, onChange }: NpcFormProps) {
+  const uid = React.useId();
   const persona =
     values['persona'] && typeof values['persona'] === 'object'
       ? (values['persona'] as Record<string, unknown>)
@@ -62,13 +64,13 @@ export function NpcForm({ values, errors, onChange }: NpcFormProps) {
   return (
     <div className="npc-form" role="form" aria-label="NPC editor">
       <FieldWrapper
-        id="npc-name"
+        id={`${uid}-npc-name`}
         label="Character name"
         hint="The name shown to players during the conversation."
         error={errorFor(errors, 'name')}
       >
         <input
-          id="npc-name"
+          id={`${uid}-npc-name`}
           type="text"
           className="form-field__input"
           value={str(values['name'])}
@@ -79,13 +81,13 @@ export function NpcForm({ values, errors, onChange }: NpcFormProps) {
       </FieldWrapper>
 
       <FieldWrapper
-        id="npc-role"
+        id={`${uid}-npc-role`}
         label="Role"
         hint='The character occupational role in the scenario context (e.g. "Senior Engineering Manager").'
         error={errorFor(errors, 'role')}
       >
         <input
-          id="npc-role"
+          id={`${uid}-npc-role`}
           type="text"
           className="form-field__input"
           value={str(values['role'])}
@@ -99,13 +101,13 @@ export function NpcForm({ values, errors, onChange }: NpcFormProps) {
         <legend className="form-fieldset__legend">Persona</legend>
 
         <FieldWrapper
-          id="npc-background"
+          id={`${uid}-npc-background`}
           label="Background"
           hint="Brief backstory provided to the AI model — not shown directly to the player."
           error={errorFor(errors, 'persona.background')}
         >
           <textarea
-            id="npc-background"
+            id={`${uid}-npc-background`}
             className="form-field__textarea"
             value={str(persona['background'])}
             onChange={(e) => handlePersonaChange('background', e.target.value)}
@@ -116,13 +118,13 @@ export function NpcForm({ values, errors, onChange }: NpcFormProps) {
         </FieldWrapper>
 
         <FieldWrapper
-          id="npc-speaking-style"
+          id={`${uid}-npc-speaking-style`}
           label="How this character speaks"
           hint="Describe their tone, vocabulary, and communication habits. This directly shapes every NPC response."
           error={errorFor(errors, 'persona.speaking_style')}
         >
           <textarea
-            id="npc-speaking-style"
+            id={`${uid}-npc-speaking-style`}
             className="form-field__textarea"
             value={str(persona['speaking_style'])}
             onChange={(e) => handlePersonaChange('speaking_style', e.target.value)}
@@ -180,13 +182,13 @@ export function NpcForm({ values, errors, onChange }: NpcFormProps) {
         <legend className="form-fieldset__legend">Voice</legend>
 
         <FieldWrapper
-          id="npc-voice-tone"
+          id={`${uid}-npc-voice-tone`}
           label="Overall tone"
           hint="Sets the social register for this character's responses."
           error={errorFor(errors, 'voice.tone')}
         >
           <select
-            id="npc-voice-tone"
+            id={`${uid}-npc-voice-tone`}
             className="form-field__select"
             value={str(voice['tone'])}
             onChange={(e) => handleVoiceChange('tone', e.target.value)}
@@ -199,13 +201,13 @@ export function NpcForm({ values, errors, onChange }: NpcFormProps) {
         </FieldWrapper>
 
         <FieldWrapper
-          id="npc-voice-pace"
+          id={`${uid}-npc-voice-pace`}
           label="Response pace"
           hint="Controls how much the NPC says per turn."
           error={errorFor(errors, 'voice.pace')}
         >
           <select
-            id="npc-voice-pace"
+            id={`${uid}-npc-voice-pace`}
             className="form-field__select"
             value={str(voice['pace'])}
             onChange={(e) => handleVoiceChange('pace', e.target.value)}
@@ -218,13 +220,13 @@ export function NpcForm({ values, errors, onChange }: NpcFormProps) {
         </FieldWrapper>
 
         <FieldWrapper
-          id="npc-voice-formality"
+          id={`${uid}-npc-voice-formality`}
           label="Formality descriptor"
           hint='Additional label used in prompting (e.g. "business-casual", "academic", "street").'
           error={errorFor(errors, 'voice.formality')}
         >
           <input
-            id="npc-voice-formality"
+            id={`${uid}-npc-voice-formality`}
             type="text"
             className="form-field__input"
             value={str(voice['formality'])}
@@ -280,13 +282,13 @@ export function NpcForm({ values, errors, onChange }: NpcFormProps) {
       </fieldset>
 
       <FieldWrapper
-        id="npc-hidden-agenda"
+        id={`${uid}-npc-hidden-agenda`}
         label="Hidden motivation"
         hint="What this character secretly values or wants. Embedded in the AI prompt — never shown to the player."
         error={errorFor(errors, 'hidden_agenda')}
       >
         <textarea
-          id="npc-hidden-agenda"
+          id={`${uid}-npc-hidden-agenda`}
           className="form-field__textarea"
           value={str(values['hidden_agenda'])}
           onChange={(e) => onChange('hidden_agenda', e.target.value)}

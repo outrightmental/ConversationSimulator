@@ -1,3 +1,4 @@
+import React from 'react';
 import type { FieldError } from '@convsim/scenario-schema';
 import { FieldWrapper, errorFor, str } from './shared.js';
 
@@ -14,6 +15,7 @@ interface ManifestFormProps {
  * schema_version is not editable (set by the pack tools, not the creator).
  */
 export function ManifestForm({ values, errors, onChange }: ManifestFormProps) {
+  const uid = React.useId();
   const tags = Array.isArray(values['tags']) ? (values['tags'] as string[]) : [];
 
   function handleTagAdd() {
@@ -32,13 +34,13 @@ export function ManifestForm({ values, errors, onChange }: ManifestFormProps) {
   return (
     <div className="manifest-form" role="form" aria-label="Pack manifest editor">
       <FieldWrapper
-        id="manifest-id"
+        id={`${uid}-manifest-id`}
         label="Pack ID"
         hint="Unique kebab-case identifier for this pack (e.g. job-interview-basic). Cannot be changed after publishing."
         error={errorFor(errors, 'id')}
       >
         <input
-          id="manifest-id"
+          id={`${uid}-manifest-id`}
           type="text"
           className="form-field__input"
           value={str(values['id'])}
@@ -50,13 +52,13 @@ export function ManifestForm({ values, errors, onChange }: ManifestFormProps) {
       </FieldWrapper>
 
       <FieldWrapper
-        id="manifest-name"
+        id={`${uid}-manifest-name`}
         label="Pack name"
         hint="Display name shown in the library (e.g. Job Interview Practice)."
         error={errorFor(errors, 'name')}
       >
         <input
-          id="manifest-name"
+          id={`${uid}-manifest-name`}
           type="text"
           className="form-field__input"
           value={str(values['name'])}
@@ -67,13 +69,13 @@ export function ManifestForm({ values, errors, onChange }: ManifestFormProps) {
       </FieldWrapper>
 
       <FieldWrapper
-        id="manifest-version"
+        id={`${uid}-manifest-version`}
         label="Version"
         hint="Semantic version (e.g. 1.0.0). Increment when publishing updates."
         error={errorFor(errors, 'version')}
       >
         <input
-          id="manifest-version"
+          id={`${uid}-manifest-version`}
           type="text"
           className="form-field__input"
           value={str(values['version'])}
@@ -83,13 +85,13 @@ export function ManifestForm({ values, errors, onChange }: ManifestFormProps) {
       </FieldWrapper>
 
       <FieldWrapper
-        id="manifest-description"
+        id={`${uid}-manifest-description`}
         label="Description"
         hint="Short summary shown in the library before players start. Up to 500 characters."
         error={errorFor(errors, 'description')}
       >
         <textarea
-          id="manifest-description"
+          id={`${uid}-manifest-description`}
           className="form-field__textarea"
           value={str(values['description'])}
           onChange={(e) => onChange('description', e.target.value)}
@@ -100,13 +102,13 @@ export function ManifestForm({ values, errors, onChange }: ManifestFormProps) {
       </FieldWrapper>
 
       <FieldWrapper
-        id="manifest-author"
+        id={`${uid}-manifest-author`}
         label="Author"
         hint="Your name or organization."
         error={errorFor(errors, 'author')}
       >
         <input
-          id="manifest-author"
+          id={`${uid}-manifest-author`}
           type="text"
           className="form-field__input"
           value={str(values['author'])}
@@ -117,13 +119,13 @@ export function ManifestForm({ values, errors, onChange }: ManifestFormProps) {
       </FieldWrapper>
 
       <FieldWrapper
-        id="manifest-license"
+        id={`${uid}-manifest-license`}
         label="License"
         hint="SPDX license identifier (e.g. Apache-2.0, MIT, CC-BY-4.0)."
         error={errorFor(errors, 'license')}
       >
         <input
-          id="manifest-license"
+          id={`${uid}-manifest-license`}
           type="text"
           className="form-field__input"
           value={str(values['license'])}

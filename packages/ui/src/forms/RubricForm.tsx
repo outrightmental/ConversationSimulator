@@ -1,3 +1,4 @@
+import React from 'react';
 import type { FieldError } from '@convsim/scenario-schema';
 import { FieldWrapper, errorFor, str, num } from './shared.js';
 
@@ -14,6 +15,7 @@ interface RubricFormProps {
  * (id, label, description, weight, max_score).
  */
 export function RubricForm({ values, errors, onChange }: RubricFormProps) {
+  const uid = React.useId();
   const dimensions = Array.isArray(values['dimensions'])
     ? (values['dimensions'] as Array<Record<string, unknown>>)
     : [];
@@ -37,13 +39,13 @@ export function RubricForm({ values, errors, onChange }: RubricFormProps) {
   return (
     <div className="rubric-form" role="form" aria-label="Rubric editor">
       <FieldWrapper
-        id="rubric-title"
+        id={`${uid}-rubric-title`}
         label="Rubric title"
         hint="Displayed on the debrief screen after the conversation ends."
         error={errorFor(errors, 'title')}
       >
         <input
-          id="rubric-title"
+          id={`${uid}-rubric-title`}
           type="text"
           className="form-field__input"
           value={str(values['title'])}
@@ -82,13 +84,13 @@ export function RubricForm({ values, errors, onChange }: RubricFormProps) {
             </div>
 
             <FieldWrapper
-              id={`dim-${i}-id`}
+              id={`${uid}-dim-${i}-id`}
               label="Dimension ID"
               hint='Internal kebab-case identifier (e.g. "communication-clarity"). Must be unique within the rubric.'
               error={errorFor(errors, `dimensions.${i}.id`)}
             >
               <input
-                id={`dim-${i}-id`}
+                id={`${uid}-dim-${i}-id`}
                 type="text"
                 className="form-field__input"
                 value={str(dim['id'])}
@@ -100,13 +102,13 @@ export function RubricForm({ values, errors, onChange }: RubricFormProps) {
             </FieldWrapper>
 
             <FieldWrapper
-              id={`dim-${i}-label`}
+              id={`${uid}-dim-${i}-label`}
               label="Dimension name"
               hint='Player-visible label on the debrief screen (e.g. "Communication Clarity").'
               error={errorFor(errors, `dimensions.${i}.label`)}
             >
               <input
-                id={`dim-${i}-label`}
+                id={`${uid}-dim-${i}-label`}
                 type="text"
                 className="form-field__input"
                 value={str(dim['label'])}
@@ -117,13 +119,13 @@ export function RubricForm({ values, errors, onChange }: RubricFormProps) {
             </FieldWrapper>
 
             <FieldWrapper
-              id={`dim-${i}-description`}
+              id={`${uid}-dim-${i}-description`}
               label="What to look for"
               hint="Instructions for the AI — what player behaviour earns points in this dimension."
               error={errorFor(errors, `dimensions.${i}.description`)}
             >
               <textarea
-                id={`dim-${i}-description`}
+                id={`${uid}-dim-${i}-description`}
                 className="form-field__textarea"
                 value={str(dim['description'])}
                 onChange={(e) => handleDimChange(i, 'description', e.target.value)}
@@ -135,13 +137,13 @@ export function RubricForm({ values, errors, onChange }: RubricFormProps) {
 
             <div className="form-row">
               <FieldWrapper
-                id={`dim-${i}-weight`}
+                id={`${uid}-dim-${i}-weight`}
                 label="Weight"
                 hint="Relative importance (0.1–5.0)."
                 error={errorFor(errors, `dimensions.${i}.weight`)}
               >
                 <input
-                  id={`dim-${i}-weight`}
+                  id={`${uid}-dim-${i}-weight`}
                   type="number"
                   className="form-field__input form-field__input--short"
                   value={num(dim['weight'], 1)}
@@ -153,13 +155,13 @@ export function RubricForm({ values, errors, onChange }: RubricFormProps) {
               </FieldWrapper>
 
               <FieldWrapper
-                id={`dim-${i}-max-score`}
+                id={`${uid}-dim-${i}-max-score`}
                 label="Max points"
                 hint="Highest score possible (1–10)."
                 error={errorFor(errors, `dimensions.${i}.max_score`)}
               >
                 <input
-                  id={`dim-${i}-max-score`}
+                  id={`${uid}-dim-${i}-max-score`}
                   type="number"
                   className="form-field__input form-field__input--short"
                   value={num(dim['max_score'], 5)}

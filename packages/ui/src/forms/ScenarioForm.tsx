@@ -1,3 +1,4 @@
+import React from 'react';
 import type { FieldError } from '@convsim/scenario-schema';
 import { FieldWrapper, errorFor, str, num } from './shared.js';
 
@@ -21,6 +22,7 @@ const STATE_VARS: Array<{ key: string; label: string; hint: string }> = [
 ];
 
 function StateSlider({
+  uid,
   varKey,
   label,
   hint,
@@ -28,6 +30,7 @@ function StateSlider({
   error,
   onChange,
 }: {
+  uid: string;
   varKey: string;
   label: string;
   hint: string;
@@ -35,7 +38,7 @@ function StateSlider({
   error?: string;
   onChange: (v: number) => void;
 }) {
-  const id = `state-${varKey}`;
+  const id = `${uid}-state-${varKey}`;
   return (
     <div className="form-field" data-invalid={!!error}>
       <label htmlFor={id} className="form-field__label">
@@ -70,6 +73,7 @@ function StateSlider({
  * opening context, starting state variables, and endings.
  */
 export function ScenarioForm({ values, errors, onChange }: ScenarioFormProps) {
+  const uid = React.useId();
   const goals = Array.isArray(values['goals']) ? (values['goals'] as string[]) : [];
   const stateDefaults =
     values['state_defaults'] && typeof values['state_defaults'] === 'object'
@@ -103,13 +107,13 @@ export function ScenarioForm({ values, errors, onChange }: ScenarioFormProps) {
   return (
     <div className="scenario-form" role="form" aria-label="Scenario editor">
       <FieldWrapper
-        id="scenario-title"
+        id={`${uid}-scenario-title`}
         label="Scenario title"
         hint='Shown in the scenario list (e.g. "Behavioral Interview").'
         error={errorFor(errors, 'title')}
       >
         <input
-          id="scenario-title"
+          id={`${uid}-scenario-title`}
           type="text"
           className="form-field__input"
           value={str(values['title'])}
@@ -120,13 +124,13 @@ export function ScenarioForm({ values, errors, onChange }: ScenarioFormProps) {
       </FieldWrapper>
 
       <FieldWrapper
-        id="scenario-description"
+        id={`${uid}-scenario-description`}
         label="Description"
         hint="Short summary shown before the player starts."
         error={errorFor(errors, 'description')}
       >
         <textarea
-          id="scenario-description"
+          id={`${uid}-scenario-description`}
           className="form-field__textarea"
           value={str(values['description'])}
           onChange={(e) => onChange('description', e.target.value)}
@@ -136,13 +140,13 @@ export function ScenarioForm({ values, errors, onChange }: ScenarioFormProps) {
       </FieldWrapper>
 
       <FieldWrapper
-        id="scenario-player-role"
+        id={`${uid}-scenario-player-role`}
         label="Player role"
         hint='Tells the player who they are in this scenario (e.g. "You are interviewing for a software engineering position").'
         error={errorFor(errors, 'player_role')}
       >
         <textarea
-          id="scenario-player-role"
+          id={`${uid}-scenario-player-role`}
           className="form-field__textarea"
           value={str(values['player_role'])}
           onChange={(e) => onChange('player_role', e.target.value)}
@@ -195,13 +199,13 @@ export function ScenarioForm({ values, errors, onChange }: ScenarioFormProps) {
       </fieldset>
 
       <FieldWrapper
-        id="scenario-difficulty"
+        id={`${uid}-scenario-difficulty`}
         label="Difficulty"
         hint="Controls how challenging the NPC will be during the conversation."
         error={errorFor(errors, 'difficulty')}
       >
         <select
-          id="scenario-difficulty"
+          id={`${uid}-scenario-difficulty`}
           className="form-field__select"
           value={str(values['difficulty'])}
           onChange={(e) => onChange('difficulty', e.target.value)}
@@ -214,13 +218,13 @@ export function ScenarioForm({ values, errors, onChange }: ScenarioFormProps) {
       </FieldWrapper>
 
       <FieldWrapper
-        id="scenario-duration"
+        id={`${uid}-scenario-duration`}
         label="Suggested duration (minutes)"
         hint="Approximate play time shown to players. Between 5 and 120 minutes."
         error={errorFor(errors, 'duration_minutes')}
       >
         <input
-          id="scenario-duration"
+          id={`${uid}-scenario-duration`}
           type="number"
           className="form-field__input form-field__input--short"
           value={num(values['duration_minutes'], 20)}
@@ -231,13 +235,13 @@ export function ScenarioForm({ values, errors, onChange }: ScenarioFormProps) {
       </FieldWrapper>
 
       <FieldWrapper
-        id="scenario-opening"
+        id={`${uid}-scenario-opening`}
         label="Opening context"
         hint="Scene-setting text shown to the player just before the first NPC turn."
         error={errorFor(errors, 'opening_context')}
       >
         <textarea
-          id="scenario-opening"
+          id={`${uid}-scenario-opening`}
           className="form-field__textarea"
           value={str(values['opening_context'])}
           onChange={(e) => onChange('opening_context', e.target.value)}
@@ -255,6 +259,7 @@ export function ScenarioForm({ values, errors, onChange }: ScenarioFormProps) {
         {STATE_VARS.map(({ key, label, hint }) => (
           <StateSlider
             key={key}
+            uid={uid}
             varKey={key}
             label={label}
             hint={hint}
@@ -293,13 +298,13 @@ export function ScenarioForm({ values, errors, onChange }: ScenarioFormProps) {
               </button>
             </div>
             <FieldWrapper
-              id={`ending-${i}-id`}
+              id={`${uid}-ending-${i}-id`}
               label="Ending ID"
               hint='Internal kebab-case or snake_case identifier (e.g. "offer-extended").'
               error={errorFor(errors, `endings.${i}.id`)}
             >
               <input
-                id={`ending-${i}-id`}
+                id={`${uid}-ending-${i}-id`}
                 type="text"
                 className="form-field__input"
                 value={str(ending['id'])}
@@ -310,13 +315,13 @@ export function ScenarioForm({ values, errors, onChange }: ScenarioFormProps) {
               />
             </FieldWrapper>
             <FieldWrapper
-              id={`ending-${i}-label`}
+              id={`${uid}-ending-${i}-label`}
               label="Label"
               hint='Shown on the debrief screen (e.g. "Offer Extended").'
               error={errorFor(errors, `endings.${i}.label`)}
             >
               <input
-                id={`ending-${i}-label`}
+                id={`${uid}-ending-${i}-label`}
                 type="text"
                 className="form-field__input"
                 value={str(ending['label'])}
@@ -325,13 +330,13 @@ export function ScenarioForm({ values, errors, onChange }: ScenarioFormProps) {
               />
             </FieldWrapper>
             <FieldWrapper
-              id={`ending-${i}-condition`}
+              id={`${uid}-ending-${i}-condition`}
               label="Condition"
               hint='Expression evaluated at session end (e.g. objective_progress >= 75).'
               error={errorFor(errors, `endings.${i}.condition`)}
             >
               <input
-                id={`ending-${i}-condition`}
+                id={`${uid}-ending-${i}-condition`}
                 type="text"
                 className="form-field__input"
                 value={str(ending['condition'])}
@@ -340,13 +345,13 @@ export function ScenarioForm({ values, errors, onChange }: ScenarioFormProps) {
               />
             </FieldWrapper>
             <FieldWrapper
-              id={`ending-${i}-reaction`}
+              id={`${uid}-ending-${i}-reaction`}
               label="NPC reaction"
               hint="What the NPC says when this ending triggers."
               error={errorFor(errors, `endings.${i}.npc_reaction`)}
             >
               <textarea
-                id={`ending-${i}-reaction`}
+                id={`${uid}-ending-${i}-reaction`}
                 className="form-field__textarea"
                 value={str(ending['npc_reaction'])}
                 onChange={(e) => handleEndingChange(i, 'npc_reaction', e.target.value)}
