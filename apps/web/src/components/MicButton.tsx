@@ -7,6 +7,7 @@ interface MicButtonProps {
   isRecording: boolean
   recordingSeconds: number
   isSubmitting: boolean
+  disabled?: boolean
   onRequestPermission: () => void
   onRecordStart: () => void
   onRecordStop: () => void
@@ -35,6 +36,7 @@ export default function MicButton({
   isRecording,
   recordingSeconds,
   isSubmitting,
+  disabled = false,
   onRequestPermission,
   onRecordStart,
   onRecordStop,
@@ -81,6 +83,7 @@ export default function MicButton({
         type="button"
         aria-label={label}
         aria-pressed={isRecording}
+        disabled={disabled}
         onPointerDown={onRecordStart}
         onPointerUp={onRecordStop}
         onPointerLeave={onRecordStop}

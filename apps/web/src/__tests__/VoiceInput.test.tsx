@@ -303,4 +303,48 @@ describe('VoiceInput — audio upload flow', () => {
 
     expect(screen.getByRole('alert')).toHaveTextContent(/failed to process audio/i)
   })
+
+  it('does not call onSubmit with transcript when disabled', async () => {
+    const onSubmit = vi.fn()
+    let capturedOnAudioReady: ((blob: Blob) => void) | undefined
+    vi.mocked(useMicCapture).mockImplementation((cb) => {
+      capturedOnAudioReady = cb
+      return makeMicState()
+    })
+    vi.mocked(apiClient.uploadAudio).mockResolvedValueOnce({ transcript: 'hello world', status: 'received' })
+
+    render(<VoiceInput onSubmit={onSubmit} disabled />)
+
+    await act(async () => {
+      capturedOnAudioReady?.(new Blob(['audio'], { type: 'audio/webm' }))
+    })
+
+    expect(onSubmit).not.toHaveBeenCalled()
+  })
+})
+
+describe('VoiceInput — disabled prop', () => {
+  it('does not call startRecording on Space keydown when disabled', () => {
+    const startRecording = vi.fn()
+    vi.mocked(useMicCapture).mockReturnValue(makeMicState({ startRecording }))
+
+    render(<VoiceInput disabled />)
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+
+    fireEvent.keyDown(document, { code: 'Space' })
+
+    expect(startRecording).not.toHaveBeenCalled()
+  })
+
+  it('does not call stopRecording on Space keyup when disabled', () => {
+    const stopRecording = vi.fn()
+    vi.mocked(useMicCapture).mockReturnValue(makeMicState({ stopRecording }))
+
+    render(<VoiceInput disabled />)
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+
+    fireEvent.keyUp(document, { code: 'Space' })
+
+    expect(stopRecording).not.toHaveBeenCalled()
+  })
 })

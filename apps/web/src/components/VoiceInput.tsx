@@ -26,7 +26,7 @@ export default function VoiceInput({ onSubmit, disabled = false }: VoiceInputPro
       setUploadError(null)
       try {
         const result = await apiClient.uploadAudio(blob)
-        if (result.transcript) {
+        if (result.transcript && !disabled) {
           onSubmit?.(result.transcript)
         }
       } catch (err) {
@@ -36,19 +36,19 @@ export default function VoiceInput({ onSubmit, disabled = false }: VoiceInputPro
         setIsSubmitting(false)
       }
     },
-    [onSubmit],
+    [onSubmit, disabled],
   )
 
   const { permission, isRecording, recordingSeconds, error, requestPermission, startRecording, stopRecording } =
     useMicCapture(handleAudioReady)
 
   // Global Space hotkey for PTT — skips when any interactive element is focused, mic is
-  // unavailable, or a prior recording is still being uploaded.
+  // unavailable, a prior recording is still being uploaded, or the component is disabled.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.code !== 'Space' || e.repeat) return
       if (isInteractiveElement(document.activeElement)) return
-      if (permission !== 'granted' || isSubmitting) return
+      if (permission !== 'granted' || isSubmitting || disabled) return
       e.preventDefault()
       startRecording()
     }
@@ -56,7 +56,7 @@ export default function VoiceInput({ onSubmit, disabled = false }: VoiceInputPro
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.code !== 'Space') return
       if (isInteractiveElement(document.activeElement)) return
-      if (permission !== 'granted' || isSubmitting) return
+      if (permission !== 'granted' || isSubmitting || disabled) return
       stopRecording()
     }
 
@@ -66,7 +66,7 @@ export default function VoiceInput({ onSubmit, disabled = false }: VoiceInputPro
       document.removeEventListener('keydown', handleKeyDown)
       document.removeEventListener('keyup', handleKeyUp)
     }
-  }, [startRecording, stopRecording, permission, isSubmitting])
+  }, [startRecording, stopRecording, permission, isSubmitting, disabled])
 
   const handleTextSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -109,6 +109,7 @@ export default function VoiceInput({ onSubmit, disabled = false }: VoiceInputPro
           isRecording={isRecording}
           recordingSeconds={recordingSeconds}
           isSubmitting={isSubmitting}
+          disabled={disabled}
           onRequestPermission={requestPermission}
           onRecordStart={startRecording}
           onRecordStop={stopRecording}
