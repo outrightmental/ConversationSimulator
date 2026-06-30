@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 [build-system]
 requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.backends.legacy:build"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "convsim-core"
