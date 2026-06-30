@@ -18,10 +18,12 @@ function isInteractiveElement(el: Element | null): boolean {
 export default function VoiceInput({ onSubmit, disabled = false }: VoiceInputProps) {
   const [textValue, setTextValue] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
 
   const handleAudioReady = useCallback(
     async (blob: Blob) => {
       setIsSubmitting(true)
+      setUploadError(null)
       try {
         const result = await apiClient.uploadAudio(blob)
         if (result.transcript) {
@@ -29,6 +31,7 @@ export default function VoiceInput({ onSubmit, disabled = false }: VoiceInputPro
         }
       } catch (err) {
         console.error('STT upload failed:', err)
+        setUploadError('Failed to process audio. Please try again or type your response.')
       } finally {
         setIsSubmitting(false)
       }
@@ -89,6 +92,11 @@ export default function VoiceInput({ onSubmit, disabled = false }: VoiceInputPro
       {error && !showDeniedNotice && (
         <p role="alert" style={{ ...noticeStyle, color: '#f87171' }}>
           {error}
+        </p>
+      )}
+      {uploadError && (
+        <p role="alert" style={{ ...noticeStyle, color: '#f87171' }}>
+          {uploadError}
         </p>
       )}
 

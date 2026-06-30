@@ -218,4 +218,21 @@ describe('VoiceInput — audio upload flow', () => {
 
     expect(onSubmit).not.toHaveBeenCalled()
   })
+
+  it('shows an upload error alert when uploadAudio rejects', async () => {
+    let capturedOnAudioReady: ((blob: Blob) => void) | undefined
+    vi.mocked(useMicCapture).mockImplementation((cb) => {
+      capturedOnAudioReady = cb
+      return makeMicState()
+    })
+    vi.mocked(apiClient.uploadAudio).mockRejectedValueOnce(new Error('Network error'))
+
+    render(<VoiceInput />)
+
+    await act(async () => {
+      capturedOnAudioReady?.(new Blob(['audio'], { type: 'audio/webm' }))
+    })
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/failed to process audio/i)
+  })
 })
