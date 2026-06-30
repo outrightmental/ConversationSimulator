@@ -15,7 +15,6 @@ import pytest
 
 from convsim_core.scenario_state import (
     BASELINE_VARIABLES,
-    DeltaResult,
     ScenarioEvent,
     ScenarioVariableDef,
     VariableVisibility,
@@ -29,27 +28,6 @@ from convsim_core.scenario_state import (
     serialize_state_change_event,
     serialize_triggered_events,
 )
-
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-
-def _make_defs(**overrides) -> dict:
-    """Return baseline variable defs with optional field overrides per variable name."""
-    defs = build_variable_defs()
-    for name, kwargs in overrides.items():
-        old = defs[name]
-        defs[name] = ScenarioVariableDef(
-            name=name,
-            min=kwargs.get("min", old.min),
-            max=kwargs.get("max", old.max),
-            default=kwargs.get("default", old.default),
-            visibility=kwargs.get("visibility", old.visibility),
-            max_delta_per_turn=kwargs.get("max_delta_per_turn", old.max_delta_per_turn),
-        )
-    return defs
 
 
 # ---------------------------------------------------------------------------
