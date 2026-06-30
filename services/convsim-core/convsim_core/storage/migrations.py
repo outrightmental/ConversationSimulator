@@ -139,9 +139,20 @@ ALTER TABLE model_registry ADD COLUMN recommended_vram_gb REAL;
 ALTER TABLE model_registry ADD COLUMN context_length INTEGER;
 """
 
+_EXTEND_PACK_ASSETS_SQL = """
+ALTER TABLE packs ADD COLUMN license TEXT;
+ALTER TABLE packs ADD COLUMN tags_json TEXT;
+ALTER TABLE asset_index ADD COLUMN relative_path TEXT;
+ALTER TABLE asset_index ADD COLUMN media_type TEXT;
+ALTER TABLE asset_index ADD COLUMN license TEXT;
+ALTER TABLE asset_index ADD COLUMN pack_id INTEGER;
+ALTER TABLE asset_index ADD COLUMN scenario_id INTEGER;
+"""
+
 MIGRATIONS: list[tuple[str, str]] = [
     ("0001_initial_schema", _INITIAL_SCHEMA_SQL),
     ("0002_model_registry_v2", _MODEL_REGISTRY_V2_SQL),
+    ("0003_extend_pack_assets", _EXTEND_PACK_ASSETS_SQL),
 ]
 
 
