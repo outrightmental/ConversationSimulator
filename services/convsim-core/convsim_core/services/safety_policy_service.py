@@ -97,11 +97,6 @@ def validate_safety_policy(
         ) from exc
 
 
-def _parse_action(raw: str) -> RouteAction:
-    """Convert a raw YAML action string to a RouteAction."""
-    return _LEGACY_ACTION_MAP.get(raw, RouteAction(_LEGACY_ACTION_MAP.get(raw, raw)))
-
-
 def build_safety_policy_config(
     data: Dict[str, Any],
 ) -> SafetyPolicyConfig:

@@ -60,10 +60,6 @@ DEFAULT_REDIRECT_MESSAGE = (
     "Let's refocus on our conversation."
 )
 
-DEFAULT_REFUSE_MESSAGE = (
-    "I can't engage with that request. Let's continue with the current scenario."
-)
-
 
 # ---------------------------------------------------------------------------
 # Route actions and decision type
