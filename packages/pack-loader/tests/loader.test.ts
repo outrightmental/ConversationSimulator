@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, afterEach } from 'vitest';
 import { loadPack, resolveBundle, loadPacksFromRoots } from '../src/loader.js';
 import { PackLoaderError } from '../src/types.js';
 import {
@@ -16,13 +16,22 @@ import {
   VALID_SCENE_YAML,
 } from './fixtures.js';
 
+const _tempDirs: string[] = [];
+afterEach(() => {
+  _tempDirs.splice(0).forEach((d) => rmSync(d, { recursive: true, force: true }));
+});
+function track(dir: string): string {
+  _tempDirs.push(dir);
+  return dir;
+}
+
 // ---------------------------------------------------------------------------
 // Happy-path: valid pack
 // ---------------------------------------------------------------------------
 
 describe('loadPack — valid pack', () => {
   it('loads a minimal pack without errors', () => {
-    const dir = makeTempPackDir();
+    const dir = track(makeTempPackDir());
     const pack = loadPack(dir, 'official');
     expect(pack.manifest.pack_id).toBe('test.minimal_pack');
     expect(pack.manifest.version).toBe('0.1.0');
@@ -30,14 +39,14 @@ describe('loadPack — valid pack', () => {
   });
 
   it('loads the scenario list', () => {
-    const dir = makeTempPackDir();
+    const dir = track(makeTempPackDir());
     const pack = loadPack(dir);
     expect(pack.scenarios).toHaveLength(1);
     expect(pack.scenarios[0]?.data.scenario_id).toBe('test_scenario');
   });
 
   it('loads the NPC referenced by the scenario', () => {
-    const dir = makeTempPackDir();
+    const dir = track(makeTempPackDir());
     const pack = loadPack(dir);
     expect(pack.npcs.size).toBe(1);
     const [npc] = [...pack.npcs.values()];
@@ -46,7 +55,7 @@ describe('loadPack — valid pack', () => {
   });
 
   it('loads the rubric referenced by the scenario', () => {
-    const dir = makeTempPackDir();
+    const dir = track(makeTempPackDir());
     const pack = loadPack(dir);
     expect(pack.rubrics.size).toBe(1);
     const [rubric] = [...pack.rubrics.values()];
@@ -54,17 +63,17 @@ describe('loadPack — valid pack', () => {
   });
 
   it('resolves the safety policy', () => {
-    const dir = makeTempPackDir();
+    const dir = track(makeTempPackDir());
     const pack = loadPack(dir);
     expect(pack.safety.policy_id).toBe('test_safety');
     expect(pack.safety.content_rating_cap).toBe('PG');
   });
 
   it('resolves an optional scene ref', () => {
-    const dir = makeTempPackDir({
+    const dir = track(makeTempPackDir({
       sceneYaml: VALID_SCENE_YAML,
       scenarioYamls: { 'scenario_with_scene.yaml': VALID_SCENARIO_WITH_SCENE_YAML },
-    });
+    }));
     const pack = loadPack(dir);
     expect(pack.scenes.size).toBe(1);
     const [scene] = [...pack.scenes.values()];
@@ -76,12 +85,12 @@ describe('loadPack — valid pack', () => {
       .replace('scenario_id: test_scenario', 'scenario_id: test_scenario_two')
       .replace('title: Test Scenario', 'title: Test Scenario Two');
 
-    const dir = makeTempPackDir({
+    const dir = track(makeTempPackDir({
       scenarioYamls: {
         'test_scenario.yaml': VALID_SCENARIO_YAML,
         'test_scenario_two.yaml': SECOND_SCENARIO,
       },
-    });
+    }));
     const pack = loadPack(dir);
     expect(pack.scenarios).toHaveLength(2);
   });
@@ -93,10 +102,10 @@ describe('loadPack — valid pack', () => {
 
 describe('resolveBundle', () => {
   it('returns a fully resolved bundle for a valid scenario', () => {
-    const dir = makeTempPackDir({
+    const dir = track(makeTempPackDir({
       sceneYaml: VALID_SCENE_YAML,
       scenarioYamls: { 'scenario.yaml': VALID_SCENARIO_WITH_SCENE_YAML },
-    });
+    }));
     const pack = loadPack(dir);
     const bundle = resolveBundle(pack, 'test_scenario_scene');
     expect(bundle.scenarioId).toBe('test_scenario_scene');
@@ -108,14 +117,14 @@ describe('resolveBundle', () => {
   });
 
   it('returns scene=null when the scenario has no scene ref', () => {
-    const dir = makeTempPackDir();
+    const dir = track(makeTempPackDir());
     const pack = loadPack(dir);
     const bundle = resolveBundle(pack, 'test_scenario');
     expect(bundle.scene).toBeNull();
   });
 
   it('throws MISSING_FILE for an unknown scenario_id', () => {
-    const dir = makeTempPackDir();
+    const dir = track(makeTempPackDir());
     const pack = loadPack(dir);
     expect(() => resolveBundle(pack, 'nonexistent')).toThrow(PackLoaderError);
     try {
@@ -132,7 +141,7 @@ describe('resolveBundle', () => {
 
 describe('loadPack — error cases', () => {
   it('throws MISSING_FILE when manifest.yaml is absent', () => {
-    const emptyDir = mkdtempSync(join(tmpdir(), 'convsim-empty-'));
+    const emptyDir = track(mkdtempSync(join(tmpdir(), 'convsim-empty-')));
     mkdirSync(join(emptyDir, 'scenarios'));
 
     expect(() => loadPack(emptyDir)).toThrowError(PackLoaderError);
@@ -144,14 +153,14 @@ describe('loadPack — error cases', () => {
   });
 
   it('throws MISSING_FILE when the referenced NPC file is absent', () => {
-    const dir = makeTempPackDir({
+    const dir = track(makeTempPackDir({
       scenarioYamls: {
         'test_scenario.yaml': VALID_SCENARIO_YAML.replace(
           'ref: ../npcs/test_npc.yaml',
           'ref: ../npcs/nonexistent_npc.yaml',
         ),
       },
-    });
+    }));
     expect(() => loadPack(dir)).toThrowError(PackLoaderError);
     try {
       loadPack(dir);
@@ -161,12 +170,12 @@ describe('loadPack — error cases', () => {
   });
 
   it('throws MISSING_FILE when the safety policy file is absent', () => {
-    const dir = makeTempPackDir({
+    const dir = track(makeTempPackDir({
       manifestYaml: VALID_MANIFEST_YAML.replace(
         'policy: safety/policy.yaml',
         'policy: safety/nonexistent.yaml',
       ),
-    });
+    }));
     expect(() => loadPack(dir)).toThrowError(PackLoaderError);
     try {
       loadPack(dir);
@@ -176,14 +185,14 @@ describe('loadPack — error cases', () => {
   });
 
   it('throws PATH_TRAVERSAL when a ref tries to escape the pack root', () => {
-    const dir = makeTempPackDir({
+    const dir = track(makeTempPackDir({
       scenarioYamls: {
         'test_scenario.yaml': VALID_SCENARIO_YAML.replace(
           'ref: ../npcs/test_npc.yaml',
           'ref: ../../outside/npc.yaml',
         ),
       },
-    });
+    }));
     expect(() => loadPack(dir)).toThrowError(PackLoaderError);
     try {
       loadPack(dir);
@@ -193,12 +202,34 @@ describe('loadPack — error cases', () => {
   });
 
   it('throws DUPLICATE_ID when two scenarios share the same scenario_id', () => {
-    const dir = makeTempPackDir({
+    const dir = track(makeTempPackDir({
       scenarioYamls: {
         'test_scenario.yaml': VALID_SCENARIO_YAML,
         'test_scenario_copy.yaml': VALID_SCENARIO_YAML,
       },
-    });
+    }));
+    expect(() => loadPack(dir)).toThrowError(PackLoaderError);
+    try {
+      loadPack(dir);
+    } catch (e) {
+      expect((e as PackLoaderError).code).toBe('DUPLICATE_ID');
+    }
+  });
+
+  it('throws DUPLICATE_ID when two NPC files share the same npc_id', () => {
+    const scenario2 = VALID_SCENARIO_YAML
+      .replace('scenario_id: test_scenario', 'scenario_id: test_scenario_two')
+      .replace('title: Test Scenario', 'title: Test Scenario Two')
+      .replace('ref: ../npcs/test_npc.yaml', 'ref: ../npcs/test_npc2.yaml');
+    const dir = track(makeTempPackDir({
+      scenarioYamls: {
+        'test_scenario.yaml': VALID_SCENARIO_YAML,
+        'test_scenario_two.yaml': scenario2,
+      },
+      extraFiles: {
+        'npcs/test_npc2.yaml': VALID_NPC_YAML, // same npc_id: test_npc
+      },
+    }));
     expect(() => loadPack(dir)).toThrowError(PackLoaderError);
     try {
       loadPack(dir);
@@ -208,9 +239,9 @@ describe('loadPack — error cases', () => {
   });
 
   it('throws UNSUPPORTED_VERSION when schema_version is not "0.1"', () => {
-    const dir = makeTempPackDir({
+    const dir = track(makeTempPackDir({
       manifestYaml: VALID_MANIFEST_YAML.replace('schema_version: "0.1"', 'schema_version: "9.9"'),
-    });
+    }));
     expect(() => loadPack(dir)).toThrowError(PackLoaderError);
     try {
       loadPack(dir);
@@ -221,7 +252,7 @@ describe('loadPack — error cases', () => {
 
   it('throws SCHEMA_VALIDATION when the manifest is missing a required field', () => {
     const invalidManifest = VALID_MANIFEST_YAML.replace(/^content_rating:.*\n/m, '');
-    const dir = makeTempPackDir({ manifestYaml: invalidManifest });
+    const dir = track(makeTempPackDir({ manifestYaml: invalidManifest }));
     expect(() => loadPack(dir)).toThrowError(PackLoaderError);
     try {
       loadPack(dir);
@@ -243,7 +274,7 @@ public_persona:
   demeanor: Neutral
 private_persona: {}
 `;
-    const dir = makeTempPackDir({ npcYaml: badNpc });
+    const dir = track(makeTempPackDir({ npcYaml: badNpc }));
     expect(() => loadPack(dir)).toThrowError(PackLoaderError);
     try {
       loadPack(dir);
@@ -253,7 +284,7 @@ private_persona: {}
   });
 
   it('throws INVALID_YAML when a file contains invalid YAML syntax', () => {
-    const dir = makeTempPackDir({ manifestYaml: ': broken: yaml:' });
+    const dir = track(makeTempPackDir({ manifestYaml: ': broken: yaml:' }));
     expect(() => loadPack(dir)).toThrowError(PackLoaderError);
     try {
       loadPack(dir);
@@ -264,9 +295,9 @@ private_persona: {}
   });
 
   it('throws PATH_TRAVERSAL when an NPC portrait path escapes the pack root', () => {
-    const dir = makeTempPackDir({
+    const dir = track(makeTempPackDir({
       npcYaml: VALID_NPC_YAML + 'portrait: ../../outside.png\n',
-    });
+    }));
     expect(() => loadPack(dir)).toThrowError(PackLoaderError);
     try {
       loadPack(dir);
@@ -276,10 +307,10 @@ private_persona: {}
   });
 
   it('throws PATH_TRAVERSAL when a scene background path escapes the pack root', () => {
-    const dir = makeTempPackDir({
+    const dir = track(makeTempPackDir({
       sceneYaml: VALID_SCENE_YAML + 'background: ../../outside.png\n',
       scenarioYamls: { 'scenario_with_scene.yaml': VALID_SCENARIO_WITH_SCENE_YAML },
-    });
+    }));
     expect(() => loadPack(dir)).toThrowError(PackLoaderError);
     try {
       loadPack(dir);
@@ -314,7 +345,7 @@ function makePackSubdir(parentDir: string, manifestYaml: string = VALID_MANIFEST
 
 describe('loadPacksFromRoots', () => {
   it('loads packs from an official root', () => {
-    const officialRoot = mkdtempSync(join(tmpdir(), 'convsim-official-root-'));
+    const officialRoot = track(mkdtempSync(join(tmpdir(), 'convsim-official-root-')));
     const manifestA = VALID_MANIFEST_YAML.replace('pack_id: test.minimal_pack', 'pack_id: official.pack_a');
     const manifestB = VALID_MANIFEST_YAML.replace('pack_id: test.minimal_pack', 'pack_id: official.pack_b');
     makePackSubdir(officialRoot, manifestA);
@@ -330,7 +361,7 @@ describe('loadPacksFromRoots', () => {
   });
 
   it('collects errors for invalid packs without throwing', () => {
-    const localDevRoot = mkdtempSync(join(tmpdir(), 'convsim-local-root-'));
+    const localDevRoot = track(mkdtempSync(join(tmpdir(), 'convsim-local-root-')));
     makePackSubdir(localDevRoot);
     mkdirSync(join(localDevRoot, 'broken-pack'), { recursive: true }); // empty dir, no manifest
 
@@ -351,8 +382,8 @@ describe('loadPacksFromRoots', () => {
   });
 
   it('loads from multiple roots and tags packs with their root kind', () => {
-    const officialRoot = mkdtempSync(join(tmpdir(), 'convsim-multi-official-'));
-    const communityRoot = mkdtempSync(join(tmpdir(), 'convsim-multi-community-'));
+    const officialRoot = track(mkdtempSync(join(tmpdir(), 'convsim-multi-official-')));
+    const communityRoot = track(mkdtempSync(join(tmpdir(), 'convsim-multi-community-')));
     makePackSubdir(officialRoot, VALID_MANIFEST_YAML.replace('pack_id: test.minimal_pack', 'pack_id: official.one'));
     makePackSubdir(communityRoot, VALID_MANIFEST_YAML.replace('pack_id: test.minimal_pack', 'pack_id: community.one'));
 

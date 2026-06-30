@@ -10,17 +10,26 @@ import { makeTempPackDir, VALID_MANIFEST_YAML, VALID_SCENARIO_YAML } from './fix
 let workDir: string;
 let dbPath: string;
 let index: PackIndex;
+let packDirs: string[] = [];
 
 beforeEach(() => {
   workDir = mkdtempSync(join(tmpdir(), 'convsim-db-test-'));
   dbPath = join(workDir, 'packs.db');
   index = PackIndex.open(dbPath);
+  packDirs = [];
 });
 
 afterEach(() => {
   index.close();
   rmSync(workDir, { recursive: true, force: true });
+  packDirs.forEach((d) => rmSync(d, { recursive: true, force: true }));
 });
+
+function tempPackDir(options?: Parameters<typeof makeTempPackDir>[0]): string {
+  const dir = makeTempPackDir(options ?? {});
+  packDirs.push(dir);
+  return dir;
+}
 
 // ---------------------------------------------------------------------------
 // Import
@@ -28,7 +37,7 @@ afterEach(() => {
 
 describe('PackIndex.importPack', () => {
   it('adds the pack to the index', () => {
-    const packDir = makeTempPackDir();
+    const packDir = tempPackDir();
     const pack = loadPack(packDir, 'official');
     index.importPack(pack);
 
@@ -41,7 +50,7 @@ describe('PackIndex.importPack', () => {
   });
 
   it('records the correct scenario count', () => {
-    const packDir = makeTempPackDir();
+    const packDir = tempPackDir();
     const pack = loadPack(packDir);
     index.importPack(pack);
 
@@ -50,7 +59,7 @@ describe('PackIndex.importPack', () => {
   });
 
   it('indexes scenarios', () => {
-    const packDir = makeTempPackDir();
+    const packDir = tempPackDir();
     const pack = loadPack(packDir);
     index.importPack(pack);
 
@@ -66,7 +75,7 @@ describe('PackIndex.importPack', () => {
       .replace('scenario_id: test_scenario', 'scenario_id: test_scenario_two')
       .replace('title: Test Scenario', 'title: Test Scenario Two');
 
-    const packDir = makeTempPackDir({
+    const packDir = tempPackDir({
       scenarioYamls: {
         'test_scenario.yaml': VALID_SCENARIO_YAML,
         'test_scenario_two.yaml': secondScenario,
@@ -89,14 +98,14 @@ describe('PackIndex.importPack', () => {
 
 describe('PackIndex.importPack — replace', () => {
   it('updates existing pack metadata on re-import', () => {
-    const v1Dir = makeTempPackDir();
+    const v1Dir = tempPackDir();
     const v1Pack = loadPack(v1Dir, 'official');
     index.importPack(v1Pack);
 
     const updatedManifest = VALID_MANIFEST_YAML
       .replace('version: 0.1.0', 'version: 0.2.0')
       .replace('name: Minimal Test Pack', 'name: Updated Test Pack');
-    const v2Dir = makeTempPackDir({ manifestYaml: updatedManifest });
+    const v2Dir = tempPackDir({ manifestYaml: updatedManifest });
     const v2Pack = loadPack(v2Dir, 'official');
     index.importPack(v2Pack);
 
@@ -107,14 +116,14 @@ describe('PackIndex.importPack — replace', () => {
   });
 
   it('replaces the scenario list when pack is updated', () => {
-    const v1Dir = makeTempPackDir();
+    const v1Dir = tempPackDir();
     index.importPack(loadPack(v1Dir));
 
     const newScenario = VALID_SCENARIO_YAML
       .replace('scenario_id: test_scenario', 'scenario_id: replacement_scenario')
       .replace('title: Test Scenario', 'title: Replacement Scenario');
 
-    const v2Dir = makeTempPackDir({
+    const v2Dir = tempPackDir({
       scenarioYamls: { 'replacement.yaml': newScenario },
     });
     index.importPack(loadPack(v2Dir));
@@ -125,13 +134,13 @@ describe('PackIndex.importPack — replace', () => {
   });
 
   it('search index updates when pack is replaced', () => {
-    const v1Dir = makeTempPackDir();
+    const v1Dir = tempPackDir();
     index.importPack(loadPack(v1Dir));
 
     const secondScenario = VALID_SCENARIO_YAML
       .replace('scenario_id: test_scenario', 'scenario_id: extra_scenario')
       .replace('title: Test Scenario', 'title: Extra Scenario');
-    const v2Dir = makeTempPackDir({
+    const v2Dir = tempPackDir({
       scenarioYamls: {
         'test_scenario.yaml': VALID_SCENARIO_YAML,
         'extra_scenario.yaml': secondScenario,
@@ -150,7 +159,7 @@ describe('PackIndex.importPack — replace', () => {
 
 describe('PackIndex.removePack', () => {
   it('removes the pack from the index', () => {
-    const packDir = makeTempPackDir();
+    const packDir = tempPackDir();
     index.importPack(loadPack(packDir));
     expect(index.listPacks()).toHaveLength(1);
 
@@ -160,7 +169,7 @@ describe('PackIndex.removePack', () => {
   });
 
   it('cascades removal to indexed scenarios', () => {
-    const packDir = makeTempPackDir();
+    const packDir = tempPackDir();
     index.importPack(loadPack(packDir));
     expect(index.listScenarios('test.minimal_pack')).toHaveLength(1);
 
@@ -185,8 +194,8 @@ describe('PackIndex.listScenarios', () => {
     const scenarioB = VALID_SCENARIO_YAML
       .replace('scenario_id: test_scenario', 'scenario_id: scenario_b');
 
-    index.importPack(loadPack(makeTempPackDir({ manifestYaml: packAManifest })));
-    index.importPack(loadPack(makeTempPackDir({
+    index.importPack(loadPack(tempPackDir({ manifestYaml: packAManifest })));
+    index.importPack(loadPack(tempPackDir({
       manifestYaml: packBManifest,
       scenarioYamls: { 'scenario_b.yaml': scenarioB },
     })));
