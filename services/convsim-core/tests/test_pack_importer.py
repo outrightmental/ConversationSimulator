@@ -52,6 +52,20 @@ def test_zip_absolute_path_rejected(tmp_path):
     assert exc.value.code == "ZIP_SLIP"
 
 
+def test_zip_symlink_external_attr_rejected(tmp_path):
+    """Zip entries with Unix symlink external_attr must be rejected."""
+    import stat as _stat
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        info = zipfile.ZipInfo("pack/evil_link")
+        info.external_attr = (_stat.S_IFLNK | 0o777) << 16
+        zf.writestr(info, "/tmp/outside")
+    dest = tmp_path / "out"
+    dest.mkdir()
+    exc = pytest.raises(ConvsimError, safe_extract_zip, buf.getvalue(), dest)
+    assert exc.value.code == "ZIP_SLIP"
+
+
 def test_valid_zip_extracts_normally(tmp_path):
     pack_dir = make_pack_dir(tmp_path / "src")
     zip_bytes = make_pack_zip(tmp_path / "src")

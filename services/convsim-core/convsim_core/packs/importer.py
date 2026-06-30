@@ -4,6 +4,7 @@ import io
 import logging
 import shutil
 import sqlite3
+import stat
 import tempfile
 import zipfile
 from pathlib import Path
@@ -48,6 +49,13 @@ def safe_extract_zip(zip_bytes: bytes, dest: Path) -> None:
                 raise ConvsimError(
                     "ZIP_SLIP",
                     f"Absolute path in archive: {member.filename!r}",
+                    status_code=422,
+                )
+            unix_mode = member.external_attr >> 16
+            if unix_mode and stat.S_ISLNK(unix_mode):
+                raise ConvsimError(
+                    "ZIP_SLIP",
+                    f"Symlinks are not permitted in pack archives: {member.filename!r}",
                     status_code=422,
                 )
             try:
