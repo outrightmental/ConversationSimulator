@@ -1,8 +1,12 @@
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { healthRoutes } from './routes/health.js';
 import { scenarioRoutes } from './routes/scenarios.js';
 import { sessionRoutes } from './routes/sessions.js';
+import { initDb } from './db.js';
 
 export async function buildApp() {
   const app = Fastify({ logger: true });
@@ -29,6 +33,11 @@ export async function buildApp() {
 }
 
 if (process.argv[1] === new URL(import.meta.url).pathname) {
+  const dbPath =
+    process.env['SESSION_DB_PATH'] ??
+    path.join(os.homedir(), '.convsim', 'db', 'sessions.db');
+  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+  initDb(dbPath);
   const app = await buildApp();
   await app.listen({ port: 7355, host: '127.0.0.1' });
 }

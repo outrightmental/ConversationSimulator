@@ -68,16 +68,14 @@ function insertEvent(
 ): EventRow {
   const db = getDb();
   const now = new Date().toISOString();
-  db
+  const result = db
     .prepare(
       'INSERT INTO session_events (session_id, event_type, payload_json, created_at) VALUES (?, ?, ?, ?)',
     )
     .run(session_id, event_type, JSON.stringify(payload), now);
   return db
-    .prepare<[string], EventRow>(
-      'SELECT * FROM session_events WHERE session_id = ? ORDER BY event_id DESC LIMIT 1',
-    )
-    .get(session_id)!;
+    .prepare<[number], EventRow>('SELECT * FROM session_events WHERE event_id = ?')
+    .get(Number(result.lastInsertRowid))!;
 }
 
 function rejectTransition(reply: { status: (code: number) => void }, state: SessionState, msg: string): never {
