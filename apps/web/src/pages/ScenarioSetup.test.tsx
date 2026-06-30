@@ -113,6 +113,19 @@ describe('ScenarioSetupPage', () => {
         expect(screen.getByText(/failed to load scenario/i)).toBeInTheDocument(),
       );
     });
+
+    it('renders the form in text-only mode when health endpoint fails', async () => {
+      mockApi.getScenario.mockResolvedValue(mockScenario);
+      mockApi.health.mockRejectedValue(new Error('Health unavailable'));
+      renderSetup();
+      await waitFor(() =>
+        expect(screen.getByText('Behavioral Interview')).toBeInTheDocument(),
+      );
+      const textOnlyRadio = screen.getByRole('radio', { name: /text only/i });
+      expect(textOnlyRadio).toBeChecked();
+      const ttsCheckbox = screen.getByRole('checkbox', { name: /npc voice/i });
+      expect(ttsCheckbox).toBeDisabled();
+    });
   });
 
   describe('defaults', () => {

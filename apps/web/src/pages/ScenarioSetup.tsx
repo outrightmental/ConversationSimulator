@@ -61,18 +61,29 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
   useEffect(() => {
     let cancelled = false;
 
-    Promise.all([api.getScenario(scenarioId), api.health()]).then(
-      ([scenarioData, health]) => {
+    Promise.all([
+      api.getScenario(scenarioId),
+      api.health().catch(() => null),
+    ]).then(
+      ([scenarioData, healthResult]) => {
         if (cancelled) return;
         setScenario(scenarioData);
-        setRuntime(health.runtime);
+        const rt = healthResult?.runtime ?? {
+          llm_ready: false,
+          llm_model_name: null,
+          stt_ready: false,
+          tts_ready: false,
+          tts_voice_name: null,
+          network_required: false,
+        };
+        setRuntime(rt);
         setForm((prev) => ({
           ...prev,
           difficulty: scenarioData.difficulty.default,
           player_role_name: scenarioData.player_role.label,
           language: scenarioData.supported_languages[0] ?? 'en',
-          tts_enabled: health.runtime.tts_ready,
-          input_mode: health.runtime.stt_ready ? 'push-to-talk' : 'text-only',
+          tts_enabled: rt.tts_ready,
+          input_mode: rt.stt_ready ? 'push-to-talk' : 'text-only',
         }));
       },
       (err: unknown) => {
