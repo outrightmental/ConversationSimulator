@@ -10,7 +10,7 @@ import pytest
 from convsim_core.errors import ConvsimError
 from convsim_core.packs.importer import (
     PackConflictError,
-    _safe_extract_zip,
+    safe_extract_zip,
     import_from_folder,
     import_from_zip,
 )
@@ -38,7 +38,7 @@ def test_zip_slip_dotdot_rejected(tmp_path):
     dest = tmp_path / "out"
     dest.mkdir()
     slip_zip = _make_zip_slip_zip("../evil")
-    exc = pytest.raises(ConvsimError, _safe_extract_zip, slip_zip, dest)
+    exc = pytest.raises(ConvsimError, safe_extract_zip, slip_zip, dest)
     assert exc.value.code == "ZIP_SLIP"
 
 
@@ -48,7 +48,7 @@ def test_zip_absolute_path_rejected(tmp_path):
         zf.writestr("/etc/passwd", "root:x:0:0")
     dest = tmp_path / "out"
     dest.mkdir()
-    exc = pytest.raises(ConvsimError, _safe_extract_zip, buf.getvalue(), dest)
+    exc = pytest.raises(ConvsimError, safe_extract_zip, buf.getvalue(), dest)
     assert exc.value.code == "ZIP_SLIP"
 
 
@@ -57,7 +57,7 @@ def test_valid_zip_extracts_normally(tmp_path):
     zip_bytes = make_pack_zip(tmp_path / "src")
     dest = tmp_path / "out"
     dest.mkdir()
-    _safe_extract_zip(zip_bytes, dest)
+    safe_extract_zip(zip_bytes, dest)
     assert (dest / "pack" / "pack.json").exists()
 
 
@@ -181,4 +181,35 @@ def test_import_asset_index_has_relative_path(tmp_path):
     rows = db.connection().execute("SELECT relative_path, media_type FROM asset_index").fetchall()
     rel_paths = [r["relative_path"] for r in rows]
     assert any("scenarios/intro.yaml" in (p or "") for p in rel_paths)
+    db.close()
+
+
+def test_import_asset_index_file_paths_point_to_installed_location(tmp_path):
+    """file_path in asset_index must reflect the final install path, not the staging dir."""
+    db = _open_db(tmp_path)
+    zip_bytes = make_pack_zip(tmp_path / "src")
+    packs_dir = tmp_path / "packs"
+    packs_dir.mkdir()
+
+    import_from_zip(zip_bytes, packs_dir, db.connection())
+
+    rows = db.connection().execute("SELECT file_path FROM asset_index").fetchall()
+    assert len(rows) > 0
+    for row in rows:
+        assert Path(row["file_path"]).exists(), f"Stale file_path in asset_index: {row['file_path']!r}"
+    db.close()
+
+
+def test_import_different_version_same_id_raises_conflict(tmp_path):
+    """A new version of an already-installed pack id must be rejected (same dir, would overwrite)."""
+    db = _open_db(tmp_path)
+    pack_dir = make_pack_dir(tmp_path / "src")
+    packs_dir = tmp_path / "packs"
+    packs_dir.mkdir()
+
+    import_from_folder(pack_dir, packs_dir, db.connection())
+
+    pack_dir_v2 = make_pack_dir(tmp_path / "src2", manifest={"version": "2.0.0"})
+    with pytest.raises(PackConflictError):
+        import_from_folder(pack_dir_v2, packs_dir, db.connection())
     db.close()

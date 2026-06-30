@@ -18,22 +18,22 @@ logger = logging.getLogger(__name__)
 
 
 class PackConflictError(ConvsimError):
-    """Raised when a pack with the same id and version is already installed."""
+    """Raised when a pack with the same id is already installed."""
 
-    def __init__(self, pack_id: str, version: str) -> None:
+    def __init__(self, pack_id: str, installed_version: str) -> None:
         super().__init__(
             "PACK_CONFLICT",
-            f"Pack '{pack_id}' version '{version}' is already installed.",
+            f"Pack '{pack_id}' (version '{installed_version}') is already installed.",
             status_code=409,
         )
 
 
-def _safe_extract_zip(zip_bytes: bytes, dest: Path) -> None:
+def safe_extract_zip(zip_bytes: bytes, dest: Path) -> None:
     """
     Extract zip_bytes into dest, rejecting any member whose resolved path would
     land outside dest (zip-slip attack prevention).
     """
-    dest_resolved = str(dest.resolve())
+    dest_resolved = dest.resolve()
     with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
         for member in zf.infolist():
             name = member.filename.replace("\\", "/")
@@ -50,8 +50,9 @@ def _safe_extract_zip(zip_bytes: bytes, dest: Path) -> None:
                     f"Absolute path in archive: {member.filename!r}",
                     status_code=422,
                 )
-            member_resolved = str((dest / name).resolve())
-            if not member_resolved.startswith(dest_resolved):
+            try:
+                (dest / name).resolve().relative_to(dest_resolved)
+            except ValueError:
                 raise ConvsimError(
                     "ZIP_SLIP",
                     f"Path escape detected in archive member: {member.filename!r}",
@@ -112,17 +113,20 @@ def _install_from_dir(
     # Safety: ensure the computed install path stays within packs_base_dir.
     safe_name = manifest.pack_id.replace("/", "_").replace("\\", "_")
     pack_dest = packs_base_dir / safe_name
-    if not str(pack_dest.resolve()).startswith(str(packs_base_dir.resolve())):
+    try:
+        pack_dest.resolve().relative_to(packs_base_dir.resolve())
+    except ValueError:
         raise ConvsimError(
             "PATH_ESCAPE",
             f"Pack id would install outside packs directory: {manifest.pack_id!r}",
             status_code=422,
         )
 
-    # Duplicate check: same id AND same version is a hard conflict.
+    # Conflict: any existing pack with the same id blocks import regardless of version.
+    # A pack directory is keyed by id, so a different version would silently overwrite it.
     existing = get_pack_by_slug(conn, manifest.pack_id)
-    if existing is not None and existing.version == manifest.version:
-        raise PackConflictError(manifest.pack_id, manifest.version)
+    if existing is not None:
+        raise PackConflictError(manifest.pack_id, existing.version)
 
     tmp_dest = packs_base_dir / f"._tmp_{safe_name}"
     if tmp_dest.exists():
@@ -137,13 +141,14 @@ def _install_from_dir(
         for slug, name in scenarios:
             insert_scenario(conn, pack_db_id, slug, name)
 
-        assets_count = index_pack_assets(conn, tmp_dest, pack_db_id, manifest.license)
-
-        # Move staging copy to final destination before committing.
+        # Move staging copy to final destination before indexing so that
+        # absolute file_path values stored in asset_index reflect the real location.
         if pack_dest.exists():
             shutil.rmtree(pack_dest)
         pack_dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(tmp_dest), str(pack_dest))
+
+        assets_count = index_pack_assets(conn, pack_dest, pack_db_id, manifest.license)
 
         conn.commit()
         logger.info(
@@ -199,7 +204,7 @@ def import_from_zip(
         extract_dir = Path(tmp_root) / "extracted"
         extract_dir.mkdir()
 
-        _safe_extract_zip(zip_bytes, extract_dir)
+        safe_extract_zip(zip_bytes, extract_dir)
 
         top_level = list(extract_dir.iterdir())
         pack_source = top_level[0] if len(top_level) == 1 and top_level[0].is_dir() else extract_dir

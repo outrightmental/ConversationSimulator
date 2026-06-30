@@ -12,7 +12,7 @@ from pydantic import BaseModel
 
 from convsim_core.errors import ConvsimError
 from convsim_core.packs.exporter import export_to_zip
-from convsim_core.packs.importer import _safe_extract_zip, import_from_folder, import_from_zip
+from convsim_core.packs.importer import safe_extract_zip, import_from_folder, import_from_zip
 from convsim_core.packs.models import ImportResult, PackSummary, ValidationResult
 from convsim_core.packs.validator import validate_pack_dir
 from convsim_core.storage.repositories.pack_repo import list_packs
@@ -76,7 +76,7 @@ async def validate_pack(
         extract_dir.mkdir()
 
         try:
-            _safe_extract_zip(zip_bytes, extract_dir)
+            safe_extract_zip(zip_bytes, extract_dir)
         except ConvsimError as exc:
             return ValidationResult(valid=False, errors=[exc.message])
 
