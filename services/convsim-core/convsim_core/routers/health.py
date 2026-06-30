@@ -18,21 +18,36 @@ class _DatabaseStatus(BaseModel):
     message: Optional[str] = None
 
 
+class _RuntimeReadiness(BaseModel):
+    llm_ready: bool = False
+    stt_ready: bool = False
+    tts_ready: bool = False
+
+
+class _PrivacyPosture(BaseModel):
+    """Current privacy-relevant settings, safe to expose publicly."""
+
+    telemetry_enabled: bool
+    save_transcripts: bool
+    save_raw_audio: bool
+    crash_logging_enabled: bool
+
+
 class HealthResponse(BaseModel):
     status: str
     version: str
     pid: int
     config_path: str
     database: _DatabaseStatus
-    runtime: RuntimeHealth
+    runtime: _RuntimeReadiness
+    privacy: _PrivacyPosture
 
 
 @router.get("/api/health", response_model=HealthResponse)
 async def health(request: Request) -> HealthResponse:
     config = request.app.state.service_config
     db = request.app.state.db
-    runtime = request.app.state.runtime
-    runtime_health = await runtime.health()
+    app_settings = request.app.state.app_settings
     return HealthResponse(
         status="ok",
         version=__version__,
@@ -43,5 +58,11 @@ async def health(request: Request) -> HealthResponse:
             path=db.path,
             migrations_applied=db.migrations_applied,
         ),
-        runtime=runtime_health,
+        runtime=_RuntimeReadiness(),
+        privacy=_PrivacyPosture(
+            telemetry_enabled=app_settings.telemetry_enabled,
+            save_transcripts=app_settings.save_transcripts,
+            save_raw_audio=app_settings.save_raw_audio,
+            crash_logging_enabled=app_settings.crash_logging_enabled,
+        ),
     )
