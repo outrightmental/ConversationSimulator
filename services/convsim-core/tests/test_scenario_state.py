@@ -484,6 +484,23 @@ class TestEndingConditions:
         )
         assert result == "player_exit"
 
+    def test_player_exit_takes_priority_over_failure(self):
+        state = {"patience": 5}
+        conditions = {
+            "failure": {"type": "variable_below", "variable": "patience", "threshold": 10}
+        }
+        result = evaluate_ending_condition(
+            state, turn_number=5, max_turns=20,
+            ending_conditions=conditions, player_exited=True
+        )
+        assert result == "player_exit"
+
+    def test_player_exit_takes_priority_over_implicit_timeout(self):
+        result = evaluate_ending_condition(
+            {}, turn_number=10, max_turns=10, player_exited=True
+        )
+        assert result == "player_exit"
+
     def test_safety_stop_takes_priority_over_player_exit(self):
         result = evaluate_ending_condition(
             {}, turn_number=1, max_turns=20,
