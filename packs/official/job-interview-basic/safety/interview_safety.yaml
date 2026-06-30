@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+policy_id: interview_safety
+description: >-
+  Safety policy for the Job Interview Basics pack. Maintains a professional
+  workplace context and prohibits any content incompatible with a realistic
+  hiring scenario, including illegal interview questions, romantic or sexual
+  content, and impersonation of real people.
+content_categories:
+  nsfw_sexual: block
+  violence_graphic: block
+  real_person_impersonation: block
+  instructional_criminal: block
+  medical_professional_advice: redirect
+  crisis_content: redirect
+redirect_message: >-
+  That's outside the scope of what I can discuss here. If you'd like to continue,
+  let's refocus on your professional experience and your interest in the role.
+allow_profanity: false
+content_rating_cap: PG
