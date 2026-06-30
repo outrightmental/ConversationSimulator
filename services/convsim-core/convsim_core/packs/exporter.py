@@ -52,7 +52,8 @@ def export_to_zip(pack_slug: str, conn: sqlite3.Connection) -> tuple[bytes, str]
                 arcname = f"{safe_slug}/{rel}"
                 zf.write(file_path, arcname)
 
-    # Strip characters that would break a quoted Content-Disposition filename.
-    safe_version = "".join(c for c in pack.version if c not in ('"', "\\", "\r", "\n"))
+    # Strip characters that would break a quoted Content-Disposition filename or
+    # make the filename look like a path (forward slash).
+    safe_version = "".join(c for c in pack.version if c not in ('"', "\\", "/", "\r", "\n"))
     filename = f"{safe_slug}-{safe_version}.zip"
     return buf.getvalue(), filename

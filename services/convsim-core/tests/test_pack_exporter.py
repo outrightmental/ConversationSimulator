@@ -79,6 +79,27 @@ def test_export_filename_strips_header_injection_chars(tmp_path):
     db.close()
 
 
+def test_export_filename_strips_forward_slash_from_version(tmp_path):
+    """Version containing '/' must not produce a path-separator in the suggested filename."""
+    db = _open_db(tmp_path)
+    zip_bytes = make_pack_zip(tmp_path / "src")
+    packs_dir = tmp_path / "packs"
+    packs_dir.mkdir()
+
+    import_from_zip(zip_bytes, packs_dir, db.connection())
+
+    db.connection().execute(
+        "UPDATE packs SET version = ? WHERE slug = 'test.sample_pack'",
+        ("1.0/rc1",),
+    )
+    db.connection().commit()
+
+    _, filename = export_to_zip("test.sample_pack", db.connection())
+    assert "/" not in filename, f"Filename must not contain '/': {filename!r}"
+    assert filename.endswith(".zip")
+    db.close()
+
+
 def test_exported_zip_revalidates_successfully(tmp_path):
     """Round-trip: import → export → extract → validate must pass."""
     db = _open_db(tmp_path)
