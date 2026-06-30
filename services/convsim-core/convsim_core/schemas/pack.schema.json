@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.convsim.dev/v0.1/pack.schema.json",
+  "title": "ConvSim Pack Manifest",
+  "description": "Validates a scenario pack manifest.yaml. Packs are declarative data — no executable code.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "pack_id",
+    "name",
+    "version",
+    "description",
+    "author",
+    "license"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "description": "Schema version this manifest was authored against.",
+      "enum": ["0.1"]
+    },
+    "pack_id": {
+      "type": "string",
+      "description": "Globally unique reverse-domain identifier, e.g. 'official.job_interview_basic'.",
+      "pattern": "^[a-z0-9_]+(\\.[a-z0-9_]+)*$"
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable pack name.",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "version": {
+      "type": "string",
+      "description": "Semantic version string.",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "description": {
+      "type": "string",
+      "description": "Short pack description shown in the scenario browser.",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "author": {
+      "type": "string",
+      "minLength": 1
+    },
+    "license": {
+      "type": "string",
+      "description": "SPDX license identifier.",
+      "minLength": 1
+    },
+    "content_rating": {
+      "type": "string",
+      "enum": ["G", "PG", "PG-13"],
+      "description": "Maximum content rating for any scenario in this pack. NSFW is not permitted."
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z0-9_-]+$" },
+      "uniqueItems": true
+    },
+    "supported_languages": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z]{2,3}$" },
+      "minItems": 1
+    },
+    "requirements": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "min_app_version": {
+          "type": "string",
+          "pattern": "^\\d+\\.\\d+\\.\\d+$"
+        },
+        "recommended_llm": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "entry_scenarios": {
+      "type": "array",
+      "description": "Relative paths to scenario YAML files shown on the pack card.",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "assets": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "allow_external_urls": {
+          "type": "boolean",
+          "description": "Must be false for offline-first packs.",
+          "const": false
+        }
+      }
+    },
+    "safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "policy": {
+          "type": "string",
+          "description": "Relative path to the safety policy YAML file."
+        }
+      }
+    }
+  },
+  "not": {
+    "description": "Packs must not declare any executable code fields.",
+    "required": ["scripts"]
+  }
+}

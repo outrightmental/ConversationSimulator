@@ -2,7 +2,21 @@
   "name": "@convsim/scenario-schema",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
   "scripts": {
-    "build": "echo 'Scenario schema package not yet implemented.' && exit 0"
+    "build": "tsc",
+    "check": "tsc --noEmit",
+    "test": "node tests/load-schemas.js"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.0"
   }
 }
