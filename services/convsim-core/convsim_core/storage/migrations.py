@@ -124,19 +124,24 @@ CREATE VIRTUAL TABLE pack_readme_fts USING fts5(
 );
 """
 
-_EXTEND_PACK_ASSETS_SQL = """
-ALTER TABLE packs ADD COLUMN license TEXT;
-ALTER TABLE packs ADD COLUMN tags_json TEXT;
-ALTER TABLE asset_index ADD COLUMN relative_path TEXT;
-ALTER TABLE asset_index ADD COLUMN media_type TEXT;
-ALTER TABLE asset_index ADD COLUMN license TEXT;
-ALTER TABLE asset_index ADD COLUMN pack_id INTEGER;
-ALTER TABLE asset_index ADD COLUMN scenario_id INTEGER;
+_MODEL_REGISTRY_V2_SQL = """
+ALTER TABLE model_registry ADD COLUMN family TEXT;
+ALTER TABLE model_registry ADD COLUMN role TEXT;
+ALTER TABLE model_registry ADD COLUMN format TEXT;
+ALTER TABLE model_registry ADD COLUMN license_spdx TEXT;
+ALTER TABLE model_registry ADD COLUMN license_url TEXT;
+ALTER TABLE model_registry ADD COLUMN source_type TEXT;
+ALTER TABLE model_registry ADD COLUMN download_url TEXT;
+ALTER TABLE model_registry ADD COLUMN sha256 TEXT;
+ALTER TABLE model_registry ADD COLUMN size_gb REAL;
+ALTER TABLE model_registry ADD COLUMN min_vram_gb REAL;
+ALTER TABLE model_registry ADD COLUMN recommended_vram_gb REAL;
+ALTER TABLE model_registry ADD COLUMN context_length INTEGER;
 """
 
 MIGRATIONS: list[tuple[str, str]] = [
     ("0001_initial_schema", _INITIAL_SCHEMA_SQL),
-    ("0002_extend_pack_assets", _EXTEND_PACK_ASSETS_SQL),
+    ("0002_model_registry_v2", _MODEL_REGISTRY_V2_SQL),
 ]
 
 
