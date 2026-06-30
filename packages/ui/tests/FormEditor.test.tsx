@@ -1,0 +1,400 @@
+import { render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import React from 'react';
+import { describe, expect, it, vi } from 'vitest';
+import { FormEditor } from '../src/FormEditor.js';
+
+// ---------------------------------------------------------------------------
+// Fixtures
+// ---------------------------------------------------------------------------
+
+const MANIFEST_YAML = `\
+schema_version: "1.0"
+fictional: true
+id: test-pack
+name: "Test Pack"
+version: "1.0.0"
+description: "A test pack for unit tests."
+author: "Tester"
+license: "Apache-2.0"
+tags:
+  - test
+scenarios:
+  - scenarios/s.yaml
+`;
+
+const SCENARIO_YAML = `\
+schema_version: "1.0"
+id: test-scenario
+title: "Test Scenario"
+description: "A scenario for testing."
+player_role: "You are a tester."
+goals:
+  - "Complete the test"
+difficulty: medium
+duration_minutes: 10
+npc_ref: test-npc
+opening_context: "The test begins."
+state_defaults:
+  trust: 50
+  patience: 80
+  pressure: 20
+  rapport: 30
+  openness: 60
+  objective_progress: 0
+endings:
+  - id: pass
+    label: "Passed"
+    condition: "objective_progress >= 50"
+    npc_reaction: "Well done!"
+  - id: fail
+    label: "Failed"
+    condition: "objective_progress < 50"
+    npc_reaction: "Try again."
+`;
+
+const NPC_YAML = `\
+schema_version: "1.0"
+id: test-npc
+name: "Alex Smith"
+role: "Test Evaluator"
+persona:
+  background: "10 years testing software."
+  speaking_style: "Crisp and to the point."
+  personality_traits:
+    - methodical
+    - patient
+voice:
+  tone: professional
+  pace: moderate
+  formality: "business-casual"
+boundaries:
+  - "Does not discuss off-topic subjects."
+hidden_agenda: "Wants the tester to succeed."
+`;
+
+const RUBRIC_YAML = `\
+schema_version: "1.0"
+id: test-rubric
+title: "Test Rubric"
+dimensions:
+  - id: accuracy
+    label: "Accuracy"
+    description: "Does the tester find real bugs?"
+    weight: 1.5
+    max_score: 5
+  - id: clarity
+    label: "Clarity"
+    description: "Are bug reports clear?"
+    weight: 1.0
+    max_score: 5
+`;
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Get the textarea from the YAML pane (may be hidden but still in DOM). */
+function getYamlTextarea() {
+  return screen.getByLabelText('YAML editor') as HTMLTextAreaElement;
+}
+
+// ---------------------------------------------------------------------------
+// FormEditor — basic rendering
+// ---------------------------------------------------------------------------
+
+describe('FormEditor', () => {
+  it('renders the form tab by default', () => {
+    render(<FormEditor fileType="manifest" initialYaml={MANIFEST_YAML} />);
+    expect(screen.getByRole('tab', { name: 'Form' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'YAML' })).toHaveAttribute('aria-selected', 'false');
+  });
+
+  it('renders the title for each file type', () => {
+    const { rerender } = render(<FormEditor fileType="manifest" initialYaml={MANIFEST_YAML} />);
+    expect(screen.getByText('Pack manifest')).toBeInTheDocument();
+
+    rerender(<FormEditor fileType="scenario" initialYaml={SCENARIO_YAML} />);
+    expect(screen.getByText('Scenario')).toBeInTheDocument();
+
+    rerender(<FormEditor fileType="npc" initialYaml={NPC_YAML} />);
+    expect(screen.getByText('Character (NPC)')).toBeInTheDocument();
+
+    rerender(<FormEditor fileType="rubric" initialYaml={RUBRIC_YAML} />);
+    expect(screen.getByText('Rubric')).toBeInTheDocument();
+  });
+
+  it('switches to YAML tab when the YAML button is clicked', async () => {
+    const user = userEvent.setup();
+    render(<FormEditor fileType="manifest" initialYaml={MANIFEST_YAML} />);
+
+    await user.click(screen.getByRole('tab', { name: 'YAML' }));
+
+    expect(screen.getByRole('tab', { name: 'YAML' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByLabelText('YAML editor')).toBeInTheDocument();
+  });
+
+  it('YAML pane contains the initial YAML content', async () => {
+    const user = userEvent.setup();
+    render(<FormEditor fileType="manifest" initialYaml={MANIFEST_YAML} />);
+
+    await user.click(screen.getByRole('tab', { name: 'YAML' }));
+
+    const textarea = getYamlTextarea();
+    expect(textarea.value).toContain('test-pack');
+    expect(textarea.value).toContain('Test Pack');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Manifest form
+// ---------------------------------------------------------------------------
+
+describe('FormEditor — manifest form', () => {
+  it('renders manifest fields with correct initial values', () => {
+    render(<FormEditor fileType="manifest" initialYaml={MANIFEST_YAML} />);
+    expect(screen.getByLabelText('Pack name')).toHaveValue('Test Pack');
+    expect(screen.getByLabelText('Author')).toHaveValue('Tester');
+    expect(screen.getByLabelText('License')).toHaveValue('Apache-2.0');
+  });
+
+  it('updates YAML when pack name is changed', async () => {
+    const user = userEvent.setup();
+    render(<FormEditor fileType="manifest" initialYaml={MANIFEST_YAML} />);
+
+    const nameInput = screen.getByLabelText('Pack name');
+    await user.clear(nameInput);
+    await user.type(nameInput, 'Updated Pack');
+
+    // YAML pane is always rendered (just hidden); check its value directly
+    expect(getYamlTextarea().value).toContain('Updated Pack');
+  });
+
+  it('shows validation error for empty pack name', async () => {
+    const user = userEvent.setup();
+    render(<FormEditor fileType="manifest" initialYaml={MANIFEST_YAML} />);
+
+    const nameInput = screen.getByLabelText('Pack name');
+    await user.clear(nameInput);
+
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(/required/i);
+  });
+
+  it('shows fictional field as read-only (not editable)', () => {
+    render(<FormEditor fileType="manifest" initialYaml={MANIFEST_YAML} />);
+    // There's no editable input for the fictional field in the form panel
+    expect(screen.queryByLabelText(/fictional/i)).toBeNull();
+    // The form panel contains the read-only notice
+    const formPanel = document.getElementById('form-editor-form-panel')!;
+    expect(within(formPanel).getByText(/fictional: true/)).toBeInTheDocument();
+  });
+
+  it('calls onChange when a field changes', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(<FormEditor fileType="manifest" initialYaml={MANIFEST_YAML} onChange={onChange} />);
+
+    const authorInput = screen.getByLabelText('Author');
+    await user.clear(authorInput);
+    await user.type(authorInput, 'New Author');
+
+    expect(onChange).toHaveBeenCalled();
+    const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
+    expect(lastCall).toContain('New Author');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Scenario form
+// ---------------------------------------------------------------------------
+
+describe('FormEditor — scenario form', () => {
+  it('renders scenario fields with correct initial values', () => {
+    render(<FormEditor fileType="scenario" initialYaml={SCENARIO_YAML} />);
+    expect(screen.getByLabelText('Scenario title')).toHaveValue('Test Scenario');
+    expect(screen.getByLabelText('Player role')).toHaveValue('You are a tester.');
+  });
+
+  it('updates YAML when title is changed', async () => {
+    const user = userEvent.setup();
+    render(<FormEditor fileType="scenario" initialYaml={SCENARIO_YAML} />);
+
+    const titleInput = screen.getByLabelText('Scenario title');
+    await user.clear(titleInput);
+    await user.type(titleInput, 'New Title');
+
+    expect(getYamlTextarea().value).toContain('New Title');
+  });
+
+  it('renders difficulty select with current value', () => {
+    render(<FormEditor fileType="scenario" initialYaml={SCENARIO_YAML} />);
+    const select = screen.getByLabelText('Difficulty');
+    expect(select).toHaveValue('medium');
+  });
+
+  it('updates difficulty via dropdown', async () => {
+    const user = userEvent.setup();
+    render(<FormEditor fileType="scenario" initialYaml={SCENARIO_YAML} />);
+
+    await user.selectOptions(screen.getByLabelText('Difficulty'), 'hard');
+
+    expect(getYamlTextarea().value).toContain('hard');
+  });
+
+  it('renders state variable sliders', () => {
+    render(<FormEditor fileType="scenario" initialYaml={SCENARIO_YAML} />);
+    expect(screen.getByLabelText(/Trust: 50/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Patience: 80/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Starting progress: 0/)).toBeInTheDocument();
+  });
+
+  it('updates player_role and syncs to YAML', async () => {
+    const user = userEvent.setup();
+    render(<FormEditor fileType="scenario" initialYaml={SCENARIO_YAML} />);
+
+    const roleInput = screen.getByLabelText('Player role');
+    await user.clear(roleInput);
+    await user.type(roleInput, 'You are a senior engineer.');
+
+    expect(getYamlTextarea().value).toContain('You are a senior engineer.');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// NPC form
+// ---------------------------------------------------------------------------
+
+describe('FormEditor — NPC form', () => {
+  it('renders NPC fields with correct initial values', () => {
+    render(<FormEditor fileType="npc" initialYaml={NPC_YAML} />);
+    expect(screen.getByLabelText('Character name')).toHaveValue('Alex Smith');
+    expect(screen.getByLabelText('Role')).toHaveValue('Test Evaluator');
+    expect(screen.getByLabelText('How this character speaks')).toHaveValue('Crisp and to the point.');
+  });
+
+  it('renders voice tone select with correct value', () => {
+    render(<FormEditor fileType="npc" initialYaml={NPC_YAML} />);
+    expect(screen.getByLabelText('Overall tone')).toHaveValue('professional');
+  });
+
+  it('updates speaking style and syncs to YAML', async () => {
+    const user = userEvent.setup();
+    render(<FormEditor fileType="npc" initialYaml={NPC_YAML} />);
+
+    const styleInput = screen.getByLabelText('How this character speaks');
+    await user.clear(styleInput);
+    await user.type(styleInput, 'Warm and encouraging.');
+
+    expect(getYamlTextarea().value).toContain('Warm and encouraging.');
+  });
+
+  it('updates voice tone and syncs to YAML', async () => {
+    const user = userEvent.setup();
+    render(<FormEditor fileType="npc" initialYaml={NPC_YAML} />);
+
+    await user.selectOptions(screen.getByLabelText('Overall tone'), 'casual');
+
+    expect(getYamlTextarea().value).toContain('casual');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Rubric form
+// ---------------------------------------------------------------------------
+
+describe('FormEditor — rubric form', () => {
+  it('renders rubric fields with correct initial values', () => {
+    render(<FormEditor fileType="rubric" initialYaml={RUBRIC_YAML} />);
+    expect(screen.getByLabelText('Rubric title')).toHaveValue('Test Rubric');
+  });
+
+  it('renders all dimension labels', () => {
+    render(<FormEditor fileType="rubric" initialYaml={RUBRIC_YAML} />);
+    const dimLabelInputs = screen.getAllByLabelText('Dimension name');
+    expect(dimLabelInputs).toHaveLength(2);
+    expect(dimLabelInputs[0]).toHaveValue('Accuracy');
+    expect(dimLabelInputs[1]).toHaveValue('Clarity');
+  });
+
+  it('updates dimension label and syncs to YAML', async () => {
+    const user = userEvent.setup();
+    render(<FormEditor fileType="rubric" initialYaml={RUBRIC_YAML} />);
+
+    const labelInputs = screen.getAllByLabelText('Dimension name');
+    await user.clear(labelInputs[0]);
+    await user.type(labelInputs[0], 'Bug Detection');
+
+    expect(getYamlTextarea().value).toContain('Bug Detection');
+  });
+
+  it('updates rubric title and syncs to YAML', async () => {
+    const user = userEvent.setup();
+    render(<FormEditor fileType="rubric" initialYaml={RUBRIC_YAML} />);
+
+    const titleInput = screen.getByLabelText('Rubric title');
+    await user.clear(titleInput);
+    await user.type(titleInput, 'Updated Rubric');
+
+    expect(getYamlTextarea().value).toContain('Updated Rubric');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// YAML → Form sync
+// ---------------------------------------------------------------------------
+
+describe('FormEditor — YAML to form sync', () => {
+  it('updates form fields when YAML is edited directly', async () => {
+    const user = userEvent.setup();
+    render(<FormEditor fileType="manifest" initialYaml={MANIFEST_YAML} />);
+
+    // Switch to YAML tab and edit
+    await user.click(screen.getByRole('tab', { name: 'YAML' }));
+    const textarea = getYamlTextarea();
+    await user.clear(textarea);
+    const newYaml = MANIFEST_YAML.replace('name: "Test Pack"', 'name: "YAML Edited Pack"');
+    await user.type(textarea, newYaml);
+
+    // Switch back to form tab and check
+    await user.click(screen.getByRole('tab', { name: 'Form' }));
+    expect(screen.getByLabelText('Pack name')).toHaveValue('YAML Edited Pack');
+  });
+
+  it('shows validation error badge when YAML has invalid content', async () => {
+    const user = userEvent.setup();
+    render(<FormEditor fileType="manifest" initialYaml={MANIFEST_YAML} />);
+
+    await user.click(screen.getByRole('tab', { name: 'YAML' }));
+    const textarea = getYamlTextarea();
+    await user.clear(textarea);
+    // Write YAML with fictional: false (invalid)
+    await user.type(
+      textarea,
+      'schema_version: "1.0"\nfictional: false\nid: x\nname: x\nversion: "1.0.0"\ndescription: x\nauthor: x\nlicense: x',
+    );
+
+    const badges = await screen.findAllByLabelText(/validation errors/i);
+    expect(badges.length).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Unknown-field preservation
+// ---------------------------------------------------------------------------
+
+describe('FormEditor — unknown field preservation', () => {
+  it('preserves unknown YAML fields across form edits', async () => {
+    const user = userEvent.setup();
+    const yamlWithExtra = MANIFEST_YAML + 'internal_notes: "do not publish"\n';
+    render(<FormEditor fileType="manifest" initialYaml={yamlWithExtra} />);
+
+    // Edit a form field
+    const nameInput = screen.getByLabelText('Pack name');
+    await user.clear(nameInput);
+    await user.type(nameInput, 'Changed Name');
+
+    // YAML should still contain the unknown field
+    expect(getYamlTextarea().value).toContain('internal_notes');
+  });
+});
