@@ -11,7 +11,7 @@ Responsibilities:
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -239,10 +239,6 @@ def evaluate_event_triggers(
 # ---------------------------------------------------------------------------
 # Ending condition evaluation
 # ---------------------------------------------------------------------------
-
-# Priority order: safety_stop and player_exit override scenario conditions.
-_ENDING_PRIORITY = ["safety_stop", "player_exit", "success", "failure", "timeout"]
-
 
 def evaluate_ending_condition(
     state: Dict[str, int],

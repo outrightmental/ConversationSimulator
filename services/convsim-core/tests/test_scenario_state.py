@@ -515,6 +515,24 @@ class TestEndingConditions:
         result = evaluate_ending_condition(state, turn_number=5, max_turns=20, ending_conditions=conditions)
         assert result == "failure"
 
+    def test_success_takes_priority_over_implicit_timeout_at_max_turns(self):
+        # When success fires on the final turn, success wins over implicit timeout.
+        state = {"objective_progress": 90}
+        conditions = {
+            "success": {"type": "variable_above", "variable": "objective_progress", "threshold": 80}
+        }
+        result = evaluate_ending_condition(state, turn_number=10, max_turns=10, ending_conditions=conditions)
+        assert result == "success"
+
+    def test_failure_takes_priority_over_implicit_timeout_at_max_turns(self):
+        # When failure fires on the final turn, failure wins over implicit timeout.
+        state = {"patience": 5}
+        conditions = {
+            "failure": {"type": "variable_below", "variable": "patience", "threshold": 10}
+        }
+        result = evaluate_ending_condition(state, turn_number=10, max_turns=10, ending_conditions=conditions)
+        assert result == "failure"
+
     def test_empty_ending_conditions_does_not_crash(self):
         state = {"trust": 50}
         result = evaluate_ending_condition(state, turn_number=3, max_turns=10, ending_conditions={})
