@@ -2,7 +2,18 @@
   "name": "@convsim/ui",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "main": "./src/index.ts",
   "scripts": {
-    "build": "echo 'UI package not yet implemented.' && exit 0"
+    "build": "echo 'UI package built as source — no compile step needed for Vite consumers.'"
+  },
+  "peerDependencies": {
+    "react": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12"
   }
 }
