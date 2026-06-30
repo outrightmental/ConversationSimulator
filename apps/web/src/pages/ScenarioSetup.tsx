@@ -143,7 +143,7 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
     return (
       <div className="setup-page" data-testid="setup-page">
         <div className="setup-loading" aria-live="polite" aria-busy="true">
-          Loading scenario…
+          Loading scenario {scenarioId}…
         </div>
       </div>
     );
