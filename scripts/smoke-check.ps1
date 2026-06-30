@@ -1,0 +1,116 @@
+# SPDX-License-Identifier: Apache-2.0
+# Verify that all expected monorepo paths exist after a fresh clone (Windows PowerShell).
+# Exit 0 when every path is present; exit 1 and list what is missing otherwise.
+
+$RepoRoot = Split-Path -Parent $PSScriptRoot
+$Errors = 0
+
+function Check-Dir {
+    param([string]$RelPath)
+    $full = Join-Path $RepoRoot $RelPath
+    if (Test-Path -PathType Container $full) {
+        Write-Host "  OK  $RelPath/"
+    } else {
+        Write-Host "  MISSING  $RelPath/" -ForegroundColor Red
+        $script:Errors++
+    }
+}
+
+function Check-File {
+    param([string]$RelPath)
+    $full = Join-Path $RepoRoot $RelPath
+    if (Test-Path -PathType Leaf $full) {
+        Write-Host "  OK  $RelPath"
+    } else {
+        Write-Host "  MISSING  $RelPath" -ForegroundColor Red
+        $script:Errors++
+    }
+}
+
+Write-Host ""
+Write-Host "Conversation Simulator — smoke check"
+Write-Host "======================================"
+Write-Host ""
+Write-Host "Checking expected monorepo paths..."
+Write-Host ""
+
+# Top-level workspace directories
+Check-Dir "apps"
+Check-Dir "packages"
+Check-Dir "services"
+Check-Dir "runtimes"
+Check-Dir "packs"
+Check-Dir "schemas"
+Check-Dir "model-registry"
+Check-Dir "docs"
+Check-Dir "scripts"
+
+Write-Host ""
+
+# Application workspaces
+Check-Dir "apps\web"
+Check-Dir "apps\desktop"
+Check-File "apps\web\package.json"
+Check-File "apps\desktop\package.json"
+
+Write-Host ""
+
+# Package workspaces
+Check-Dir "packages\ui"
+Check-Dir "packages\scenario-schema"
+Check-Dir "packages\shared-types"
+Check-File "packages\ui\package.json"
+Check-File "packages\scenario-schema\package.json"
+Check-File "packages\shared-types\package.json"
+
+Write-Host ""
+
+# Backend service
+Check-Dir "services\convsim-core"
+Check-File "services\convsim-core\pyproject.toml"
+
+Write-Host ""
+
+# Runtime adapters
+Check-Dir "runtimes\llama_cpp"
+Check-Dir "runtimes\whisper_cpp"
+
+Write-Host ""
+
+# Scenario packs
+Check-Dir "packs\official"
+Check-Dir "packs\official\job-interview-basic"
+Check-Dir "packs\official\everyday-negotiation"
+Check-Dir "packs\official\language-cafe"
+Check-Dir "packs\official\difficult-conversations"
+
+Write-Host ""
+
+# Root files
+Check-File "README.md"
+Check-File "LICENSE"
+Check-File "NOTICE"
+Check-File "package.json"
+Check-File ".editorconfig"
+Check-File ".gitignore"
+Check-File ".prettierrc"
+
+Write-Host ""
+
+# Developer scripts (all four variants required)
+Check-File "scripts\setup.sh"
+Check-File "scripts\dev.sh"
+Check-File "scripts\setup.ps1"
+Check-File "scripts\dev.ps1"
+
+Write-Host ""
+
+if ($Errors -gt 0) {
+    Write-Host "FAIL: $Errors expected path(s) are missing." -ForegroundColor Red
+    Write-Host ""
+    exit 1
+}
+
+Write-Host "All expected paths are present."
+Write-Host ""
+exit 0
