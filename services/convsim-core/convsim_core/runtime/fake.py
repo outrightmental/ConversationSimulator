@@ -65,9 +65,10 @@ class FakeChatRuntime(ChatRuntime):
     async def list_models(self) -> list[ModelInfo]:
         return list(_MODELS)
 
-    async def chat_stream(
-        self, request: ChatRequest
-    ) -> AsyncGenerator[ChatToken | ChatFinal, None]:
+    def chat_stream(self, request: ChatRequest) -> AsyncGenerator[ChatToken | ChatFinal, None]:
+        return self._stream(request)
+
+    async def _stream(self, request: ChatRequest) -> AsyncGenerator[ChatToken | ChatFinal, None]:
         if request.json_schema is not None:
             response_text = json.dumps(_STRUCTURED_RESPONSE)
             structured = _STRUCTURED_RESPONSE
