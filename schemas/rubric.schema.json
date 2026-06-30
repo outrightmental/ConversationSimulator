@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.convsim.dev/v0.1/rubric.schema.json",
+  "title": "ConvSim Rubric",
+  "description": "Validates a rubric definition file used to score player performance.",
+  "type": "object",
+  "required": ["schema_version", "rubric_id", "title", "dimensions"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["0.1"]
+    },
+    "rubric_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "dimensions": {
+      "type": "array",
+      "description": "Scoring dimensions evaluated during the conversation.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "description", "scoring"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9_]+$"
+          },
+          "name": { "type": "string" },
+          "description": { "type": "string" },
+          "scoring": {
+            "type": "object",
+            "required": ["low", "medium", "high"],
+            "additionalProperties": false,
+            "properties": {
+              "low": { "type": "string" },
+              "medium": { "type": "string" },
+              "high": { "type": "string" }
+            }
+          },
+          "weight": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Optional relative weight for final score calculation."
+          }
+        }
+      }
+    }
+  }
+}

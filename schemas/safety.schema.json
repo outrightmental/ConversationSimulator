@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.convsim.dev/v0.1/safety.schema.json",
+  "title": "ConvSim Safety Policy",
+  "description": "Validates a safety policy file that governs content boundaries for a scenario.",
+  "type": "object",
+  "required": ["schema_version", "policy_id", "content_categories"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["0.1"]
+    },
+    "policy_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$"
+    },
+    "description": {
+      "type": "string"
+    },
+    "content_categories": {
+      "type": "object",
+      "description": "Explicit allow/block rules per content category.",
+      "additionalProperties": false,
+      "properties": {
+        "nsfw_sexual": {
+          "type": "string",
+          "enum": ["block"],
+          "description": "NSFW sexual content must always be blocked."
+        },
+        "violence_graphic": {
+          "type": "string",
+          "enum": ["block", "redirect"]
+        },
+        "real_person_impersonation": {
+          "type": "string",
+          "enum": ["block"],
+          "description": "Real-person impersonation must always be blocked."
+        },
+        "instructional_criminal": {
+          "type": "string",
+          "enum": ["block"],
+          "description": "Instructional criminal content must always be blocked."
+        },
+        "medical_professional_advice": {
+          "type": "string",
+          "enum": ["block", "redirect"]
+        },
+        "crisis_content": {
+          "type": "string",
+          "enum": ["redirect"],
+          "description": "Crisis content must be redirected to real resources, not simulated."
+        }
+      }
+    },
+    "redirect_message": {
+      "type": "string",
+      "description": "What the NPC says when redirecting away from blocked content."
+    },
+    "allow_profanity": {
+      "type": "boolean",
+      "description": "Whether mild profanity is allowed in the NPC's dialogue."
+    },
+    "content_rating_cap": {
+      "type": "string",
+      "enum": ["G", "PG", "PG-13"],
+      "description": "Maximum content rating this policy permits."
+    }
+  }
+}
