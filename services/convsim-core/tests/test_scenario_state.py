@@ -533,6 +533,23 @@ class TestEndingConditions:
         result = evaluate_ending_condition(state, turn_number=10, max_turns=10, ending_conditions=conditions)
         assert result == "failure"
 
+    def test_explicit_timeout_condition_fires_before_max_turns(self):
+        # Explicit variable-based timeout fires before max_turns is reached.
+        state = {"pressure": 90}
+        conditions = {
+            "timeout": {"type": "variable_above", "variable": "pressure", "threshold": 80}
+        }
+        result = evaluate_ending_condition(state, turn_number=3, max_turns=20, ending_conditions=conditions)
+        assert result == "timeout"
+
+    def test_explicit_timeout_condition_does_not_fire_when_not_met(self):
+        state = {"pressure": 50}
+        conditions = {
+            "timeout": {"type": "variable_above", "variable": "pressure", "threshold": 80}
+        }
+        result = evaluate_ending_condition(state, turn_number=3, max_turns=20, ending_conditions=conditions)
+        assert result is None
+
     def test_empty_ending_conditions_does_not_crash(self):
         state = {"trust": 50}
         result = evaluate_ending_condition(state, turn_number=3, max_turns=10, ending_conditions={})

@@ -307,7 +307,37 @@
           ]
         },
         "timeout": {
-          "type": "object",
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["type", "variable", "threshold"],
+              "additionalProperties": false,
+              "properties": {
+                "type": { "type": "string", "enum": ["variable_above"] },
+                "variable": { "type": "string" },
+                "threshold": { "type": "integer" }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["type", "variable", "threshold"],
+              "additionalProperties": false,
+              "properties": {
+                "type": { "type": "string", "enum": ["variable_below"] },
+                "variable": { "type": "string" },
+                "threshold": { "type": "integer" }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["type", "value"],
+              "additionalProperties": false,
+              "properties": {
+                "type": { "type": "string", "enum": ["max_turns"] },
+                "value": { "type": "integer", "minimum": 1 }
+              }
+            }
+          ],
           "description": "Optional explicit timeout condition (turn-count-based timeout is always enforced via duration.max_turns)."
         }
       }
