@@ -1,5 +1,6 @@
 import React from 'react';
 import type { FieldError } from '@convsim/scenario-schema';
+import { FieldWrapper, errorFor } from './shared.js';
 
 interface ScenarioFormProps {
   values: Record<string, unknown>;
@@ -13,39 +14,6 @@ function str(v: unknown): string {
 
 function num(v: unknown, fallback = 0): number {
   return typeof v === 'number' ? v : fallback;
-}
-
-function FieldWrapper({
-  id,
-  label,
-  hint,
-  error,
-  children,
-}: {
-  id: string;
-  label: string;
-  hint?: string;
-  error?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="form-field" data-invalid={!!error}>
-      <label htmlFor={id} className="form-field__label">
-        {label}
-      </label>
-      {hint && <p className="form-field__hint">{hint}</p>}
-      {children}
-      {error && (
-        <p className="form-field__error" role="alert">
-          {error}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function errorFor(errors: FieldError[], path: string): string | undefined {
-  return errors.find((e) => e.path === path)?.message;
 }
 
 const STATE_VARS: Array<{ key: string; label: string; hint: string }> = [
