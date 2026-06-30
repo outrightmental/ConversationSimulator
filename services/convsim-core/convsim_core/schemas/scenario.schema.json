@@ -236,6 +236,34 @@
         }
       }
     },
+    "replay_seed": {
+      "type": "integer",
+      "description": "Optional integer seed for deterministic replay. When set, the runtime uses this seed to reproduce the same LLM-sampled sequence across replays.",
+      "minimum": 0
+    },
+    "response_style": {
+      "type": "object",
+      "description": "Optional hints controlling NPC response length and register.",
+      "additionalProperties": false,
+      "properties": {
+        "max_words": {
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 500,
+          "description": "Soft target for maximum NPC utterance length in words."
+        },
+        "verbosity": {
+          "type": "string",
+          "enum": ["terse", "moderate", "verbose"],
+          "description": "How much detail the NPC typically provides unprompted."
+        },
+        "formality": {
+          "type": "string",
+          "enum": ["casual", "professional", "formal"],
+          "description": "Language register the NPC should maintain."
+        }
+      }
+    },
     "ending_conditions": {
       "type": "object",
       "additionalProperties": false,

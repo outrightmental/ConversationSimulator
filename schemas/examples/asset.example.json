@@ -1,0 +1,9 @@
+{
+  "schema_version": "0.1",
+  "asset_id": "greeter_portrait",
+  "type": "portrait",
+  "file": "assets/portraits/greeter_placeholder.png",
+  "license": "CC0-1.0",
+  "width_px": 512,
+  "height_px": 512
+}

@@ -1,0 +1,16 @@
+{
+  "schema_version": "0.1",
+  "policy_id": "default_safety",
+  "description": "Default safety policy for example packs. Maintains a safe, professional context suitable for all ages.",
+  "content_categories": {
+    "nsfw_sexual": "block",
+    "violence_graphic": "block",
+    "real_person_impersonation": "block",
+    "instructional_criminal": "block",
+    "medical_professional_advice": "redirect",
+    "crisis_content": "redirect"
+  },
+  "redirect_message": "That topic is outside the scope of this conversation. Let's refocus on the interaction.",
+  "allow_profanity": false,
+  "content_rating_cap": "G"
+}

@@ -93,28 +93,43 @@ jobs:
           pnpm --filter @convsim/web test
 
   schemas:
-    name: Schema load tests
+    name: Schema validation tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
       - name: Run schema load tests
         run: |
           echo "Local: node packages/scenario-schema/tests/load-schemas.js"
           node packages/scenario-schema/tests/load-schemas.js
+      - name: Run schema validation tests
+        run: |
+          echo "Local: node packages/scenario-schema/tests/validate-schemas.js"
+          node packages/scenario-schema/tests/validate-schemas.js
 
   pack-validation:
-    name: Pack validation (placeholder)
+    name: Pack validation
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Validate packs
-        # No pack validator exists yet. When one is implemented, replace the
-        # echo below with the validator invocation.
-        # Local: <pack-validator-command> packs/official
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Validate official packs
         run: |
-          echo "Pack validation placeholder — no pack validator installed yet."
-          echo "Future quality gate: validate all scenario packs under packs/official/"
-          echo "Local: <pack-validator-command> packs/official"
+          echo "Local: node packages/scenario-schema/tests/validate-packs.js packs/official"
+          node packages/scenario-schema/tests/validate-packs.js packs/official
