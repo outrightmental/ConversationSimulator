@@ -1,0 +1,50 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+rubric_id: interview_rubric
+title: Behavioral Interview Rubric
+dimensions:
+  - id: clarity
+    name: Clarity
+    description: >-
+      How clearly and concisely the player communicates. Does each answer have a
+      recognizable structure? Is the key point easy to identify?
+    scoring:
+      low: Answers are disorganized or jump between topics, leaving the listener unclear about the main point.
+      medium: Answers are generally understandable but could be more focused; the key point is present but buried.
+      high: Answers are crisp and well-organized; the listener immediately grasps the point and can follow the narrative from start to finish.
+    weight: 0.25
+
+  - id: specificity
+    name: Specificity
+    description: >-
+      Whether the player uses real, concrete examples rather than vague
+      generalizations. Does the answer name a specific situation, describe
+      concrete actions taken, and report a measurable or observable result?
+    scoring:
+      low: Answer is mostly abstract ("I always try to communicate clearly") with no concrete situation described.
+      medium: A real situation is mentioned but lacks specific personal actions or a clear, observable result.
+      high: Answer names a specific situation, details the concrete actions the player personally took, and states a clear and measurable result.
+    weight: 0.30
+
+  - id: rapport
+    name: Rapport
+    description: >-
+      How well the player builds a genuine human connection with Dana. Does the
+      player listen actively, show interest in the role, and engage warmly
+      without being obsequious?
+    scoring:
+      low: Player ignores follow-ups, shows little interest in the company, or comes across as flat, cold, or dismissive.
+      medium: Player is polite and responsive but does not engage with Dana as a person or express genuine enthusiasm for the role.
+      high: Player picks up on conversational cues, expresses authentic curiosity about the team or work, and feels like a warm and engaged collaborator.
+    weight: 0.20
+
+  - id: self_awareness
+    name: Self-Awareness
+    description: >-
+      Whether the player can honestly reflect on their own limitations, mistakes,
+      and growth areas without becoming defensive or overly self-critical.
+    scoring:
+      low: Player deflects blame, claims to have no meaningful weaknesses, or becomes visibly uncomfortable when asked about failures.
+      medium: Player acknowledges a past challenge but frames it in a generic or rehearsed way without real personal reflection.
+      high: Player openly describes a real mistake or limitation, explains what they learned from it, and articulates how they have since improved.
+    weight: 0.25

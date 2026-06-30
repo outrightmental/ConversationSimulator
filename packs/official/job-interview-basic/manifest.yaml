@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+pack_id: official.job_interview_basic
+name: Job Interview Basics
+version: 0.1.0
+description: >-
+  Practice realistic behavioral job interviews with a professional hiring manager.
+  Build confidence answering structured questions about your past experience,
+  handling pressure, and communicating clearly.
+author: Outright Mental
+license: CC-BY-4.0
+content_rating: PG
+tags:
+  - interview
+  - professional
+  - behavioral
+  - career
+supported_languages:
+  - en
+entry_scenarios:
+  - scenarios/behavioral_interview.yaml
+assets:
+  allow_external_urls: false
+safety:
+  policy: safety/interview_safety.yaml
