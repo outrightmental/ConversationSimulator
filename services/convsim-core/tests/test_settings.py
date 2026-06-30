@@ -1,11 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
-import json
-from pathlib import Path
-
 import pytest
 from pydantic import ValidationError
 
 from convsim_core.config import ServiceConfig
+from convsim_core.storage.database import Database
+from convsim_core.storage.repositories.settings_repo import load_settings
 
 
 def test_get_settings_returns_200(client):
@@ -54,23 +53,25 @@ def test_put_settings_missing_required_field_returns_structured_error(client):
     assert body["error"]["code"] == "VALIDATION_ERROR"
 
 
-def test_put_settings_persists_to_config_data_dir(client, tmp_config, tmp_path):
-    """Settings file must land in config.data_dir regardless of the data_dir field in the body."""
-    other_data_dir = str(tmp_path / "other_data")
+def test_put_settings_persists_to_database(client, tmp_config):
+    """Settings must be persisted to the SQLite database, not a JSON file."""
     payload = {
-        "data_dir": other_data_dir,
-        "log_dir": str(tmp_path / "logs"),
+        "data_dir": tmp_config.data_dir,
+        "log_dir": tmp_config.log_dir,
         "save_transcripts": True,
         "tts_cache_enabled": False,
     }
     resp = client.put("/api/settings", json=payload)
     assert resp.status_code == 200
 
-    settings_at_config = Path(tmp_config.data_dir) / "settings.json"
-    settings_at_payload = Path(other_data_dir) / "settings.json"
-    assert settings_at_config.exists(), "settings.json must be written to config.data_dir"
-    assert not settings_at_payload.exists(), "settings.json must NOT be written to body.data_dir"
-    assert json.loads(settings_at_config.read_text())["save_transcripts"] is True
+    # Verify by reading directly from the database
+    fresh_db = Database.open(tmp_config.db_dir)
+    try:
+        settings = load_settings(fresh_db.connection(), tmp_config.data_dir, tmp_config.log_dir)
+        assert settings.save_transcripts is True
+        assert settings.tts_cache_enabled is False
+    finally:
+        fresh_db.close()
 
 
 def test_host_config_rejects_0_0_0_0():

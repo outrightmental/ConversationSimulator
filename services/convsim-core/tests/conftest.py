@@ -13,6 +13,7 @@ def tmp_config(tmp_path):
         port=7355,
         data_dir=str(tmp_path / "data"),
         log_dir=str(tmp_path / "logs"),
+        db_dir=str(tmp_path / "db"),
     )
 
 

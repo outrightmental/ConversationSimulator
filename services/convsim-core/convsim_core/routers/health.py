@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import os
+from typing import Optional
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
@@ -10,8 +11,10 @@ router = APIRouter()
 
 
 class _DatabaseStatus(BaseModel):
-    status: str = "unavailable"
-    message: str = "Database not yet initialized"
+    status: str
+    path: Optional[str] = None
+    migrations_applied: Optional[int] = None
+    message: Optional[str] = None
 
 
 class _RuntimeReadiness(BaseModel):
@@ -32,11 +35,16 @@ class HealthResponse(BaseModel):
 @router.get("/api/health", response_model=HealthResponse)
 async def health(request: Request) -> HealthResponse:
     config = request.app.state.service_config
+    db = request.app.state.db
     return HealthResponse(
         status="ok",
         version=__version__,
         pid=os.getpid(),
         config_path=config.config_path,
-        database=_DatabaseStatus(),
+        database=_DatabaseStatus(
+            status="ok",
+            path=db.path,
+            migrations_applied=db.migrations_applied,
+        ),
         runtime=_RuntimeReadiness(),
     )
