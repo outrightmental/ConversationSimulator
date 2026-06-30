@@ -139,7 +139,7 @@ def build_recent_transcript_layer(
     entries: List[TranscriptEntry],
     max_turns: int = 6,
 ) -> str:
-    recent = entries[-max_turns:] if len(entries) > max_turns else entries
+    recent = entries[-max_turns:] if max_turns > 0 else []
     lines = [_tag("RECENT_TRANSCRIPT")]
     if not recent:
         lines.append("(No previous turns)")

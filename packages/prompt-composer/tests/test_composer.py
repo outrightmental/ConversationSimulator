@@ -386,6 +386,18 @@ class TestPromptBudget:
         assert "LAYER:SAFETY_POLICY" in bundle.system_prompt
         assert "LAYER:OUTPUT_SCHEMA" in bundle.system_prompt
 
+    def test_zero_max_turns_yields_empty_transcript(self):
+        """max_transcript_turns=0 must produce an empty transcript section, not all entries."""
+        transcript = [
+            TranscriptEntry(speaker="npc", text="Tell me about yourself.", turn_number=0),
+            TranscriptEntry(speaker="player", text="I have five years in product.", turn_number=0),
+        ]
+        inp = make_interview_input(transcript=transcript)
+        inp.max_transcript_turns = 0
+        bundle = compose_turn_prompt(inp)
+        assert "Tell me about yourself" not in bundle.system_prompt
+        assert "No previous turns" in bundle.system_prompt
+
 
 # ---------------------------------------------------------------------------
 # Dev inspection

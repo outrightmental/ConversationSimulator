@@ -5,8 +5,6 @@ import os
 # Allow running tests from the package root without installing the package.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
-import pytest
-
 from convsim_prompt import (
     DifficultySettings,
     NpcData,
