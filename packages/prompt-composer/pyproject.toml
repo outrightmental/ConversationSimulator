@@ -6,7 +6,7 @@ build-backend = "setuptools.backends.legacy:build"
 name = "convsim-prompt"
 version = "0.1.0"
 description = "Layered prompt composer for Conversation Simulator NPC turns"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
 dependencies = []
 
