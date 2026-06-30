@@ -137,3 +137,28 @@ describe('VoiceInput — denied / unsupported notices', () => {
     expect(screen.getByRole('textbox')).toBeInTheDocument()
   })
 })
+
+describe('VoiceInput — hotkey hint', () => {
+  it('shows Space hotkey hint when mic is granted and not recording', () => {
+    vi.mocked(useMicCapture).mockReturnValue(makeMicState({ permission: 'granted', isRecording: false }))
+    render(<VoiceInput />)
+
+    expect(screen.getByText(/press/i)).toBeInTheDocument()
+    expect(screen.getByText(/space/i)).toBeInTheDocument()
+    expect(screen.getByText(/max 60s/i)).toBeInTheDocument()
+  })
+
+  it('hides Space hotkey hint while recording', () => {
+    vi.mocked(useMicCapture).mockReturnValue(makeMicState({ permission: 'granted', isRecording: true }))
+    render(<VoiceInput />)
+
+    expect(screen.queryByText(/max 60s/i)).not.toBeInTheDocument()
+  })
+
+  it('hides Space hotkey hint when mic is not yet enabled', () => {
+    vi.mocked(useMicCapture).mockReturnValue(makeMicState({ permission: 'idle' }))
+    render(<VoiceInput />)
+
+    expect(screen.queryByText(/max 60s/i)).not.toBeInTheDocument()
+  })
+})

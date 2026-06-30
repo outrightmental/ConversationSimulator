@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { apiClient } from '../api/client'
-import { useMicCapture } from '../hooks/useMicCapture'
+import { useMicCapture, MAX_RECORDING_SECONDS } from '../hooks/useMicCapture'
 import MicButton from './MicButton'
 
 interface VoiceInputProps {
@@ -133,7 +133,7 @@ export default function VoiceInput({ onSubmit, disabled = false }: VoiceInputPro
       {permission === 'granted' && !isRecording && (
         <p style={hintStyle}>
           Press <kbd style={kbdStyle}>Space</kbd> to record when not typing, or hold the mic
-          button. Max {60}s.
+          button. Max {MAX_RECORDING_SECONDS}s.
         </p>
       )}
     </div>
