@@ -8,11 +8,12 @@ set -euo pipefail
 REQUIRED_PYTHON_MAJOR=3
 REQUIRED_PYTHON_MINOR=10
 REQUIRED_NODE_MAJOR=18
+PKG_MANAGER=""
 
 fail() {
-    echo ""
-    echo "ERROR: $1"
-    echo ""
+    echo "" >&2
+    echo "ERROR: $1" >&2
+    echo "" >&2
     exit 1
 }
 

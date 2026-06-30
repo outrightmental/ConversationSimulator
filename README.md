@@ -58,6 +58,8 @@ cd ConversationSimulator
 The setup script checks your environment and prints the next step to take.
 It does **not** modify global state or download model files.
 
+On Windows (PowerShell), use `scripts\setup.ps1` instead.
+
 ### Start local dev
 
 ```bash
@@ -75,7 +77,7 @@ exits cleanly. It will launch live services once Milestone 1 is complete.
 | convsim-stt   | http://127.0.0.1:7357 | Speech-to-text worker       |
 | convsim-tts   | http://127.0.0.1:7358 | Text-to-speech worker       |
 
-On Windows, use `scripts\dev.ps1` instead.
+On Windows (PowerShell), use `scripts\dev.ps1` instead.
 
 ---
 
