@@ -1,15 +1,24 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# Check that all required developer dependencies are present.
-# Prints the next dependency to install, or confirms the environment is ready.
+# Set up the Conversation Simulator development environment.
+# Checks dependencies, installs frontend packages, creates a Python virtual
+# environment for convsim-core, and creates local data directories.
 # Does not modify global state or download model files.
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+CORE_DIR="$REPO_ROOT/services/convsim-core"
 
 REQUIRED_PYTHON_MAJOR=3
 REQUIRED_PYTHON_MINOR=10
 REQUIRED_NODE_MAJOR=18
 PKG_MANAGER=""
 PY_CMD=""
+
+LOG_DIR="${CONVSIM_LOG_DIR:-$HOME/.convsim/logs}"
+DATA_DIR="${CONVSIM_DATA_DIR:-$HOME/.convsim/data}"
+DB_DIR="${CONVSIM_DB_DIR:-$HOME/.convsim/db}"
 
 fail() {
     echo "" >&2
@@ -75,8 +84,8 @@ check_package_manager() {
 }
 
 echo ""
-echo "Conversation Simulator — environment check"
-echo "==========================================="
+echo "Conversation Simulator — setup"
+echo "================================"
 echo ""
 echo "Checking required dependencies..."
 echo ""
@@ -85,22 +94,45 @@ check_python
 check_node
 check_package_manager
 
+# --- Frontend dependencies ---
 echo ""
-echo "All required dependencies found."
+echo "Installing frontend dependencies..."
 echo ""
-echo "Next steps:"
+cd "$REPO_ROOT"
+$PKG_MANAGER install
 echo ""
-echo "  1. Install frontend packages:"
-echo "       $PKG_MANAGER install"
+echo "  Frontend dependencies installed."
+
+# --- Python virtual environment ---
 echo ""
-echo "  2. Install Python packages (once convsim-core is implemented):"
-echo "       cd services/convsim-core"
-echo "       $PY_CMD -m venv .venv"
-echo "       source .venv/bin/activate"
-echo "       pip install -e '.[dev]'"
+echo "Setting up Python environment (services/convsim-core)..."
 echo ""
-echo "  3. Start local dev:"
-echo "       ./scripts/dev.sh"
+if [[ ! -d "$CORE_DIR/.venv" ]]; then
+    echo "  Creating virtual environment..."
+    "$PY_CMD" -m venv "$CORE_DIR/.venv"
+fi
+"$CORE_DIR/.venv/bin/pip" install -q --upgrade pip
+"$CORE_DIR/.venv/bin/pip" install -q -e "${CORE_DIR}[dev]"
+echo "  Python packages installed."
+
+# --- Local data directories ---
+echo ""
+echo "Creating local data directories..."
+echo ""
+mkdir -p "$LOG_DIR"
+mkdir -p "$DATA_DIR"
+mkdir -p "$DB_DIR"
+echo "  $LOG_DIR"
+echo "  $DATA_DIR"
+echo "  $DB_DIR"
+
+echo ""
+echo "Setup complete."
+echo ""
+echo "Start local dev with:"
+echo ""
+echo "  ./scripts/dev.sh       (macOS / Linux)"
+echo "  .\\scripts\\dev.ps1      (Windows PowerShell)"
 echo ""
 echo "NOTE: No model files are downloaded by this script."
 echo "      The app will prompt you to install a model on first run."
