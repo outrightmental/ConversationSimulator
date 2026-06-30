@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/outrightmental/ConversationSimulator/raw/main/schemas/rubric.schema.json",
+  "title": "Rubric Definition",
+  "description": "Defines evaluation dimensions the LLM tracks during a conversation session.",
+  "type": "object",
+  "required": ["schema_version", "id", "title", "dimensions"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["1.0"]
+    },
+    "id": {
+      "type": "string",
+      "description": "Unique kebab-case identifier referenced by scenario rubric_ref.",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "minLength": 2,
+      "maxLength": 64
+    },
+    "title": {
+      "type": "string",
+      "description": "Display title shown on the debrief screen.",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "dimensions": {
+      "type": "array",
+      "description": "Evaluation criteria that the LLM tracks turn-by-turn.",
+      "items": {
+        "type": "object",
+        "required": ["id", "label", "description", "weight", "max_score"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Machine-readable identifier for this dimension (referenced in rubric_observations).",
+            "pattern": "^[a-z][a-z0-9_-]*$",
+            "maxLength": 32
+          },
+          "label": {
+            "type": "string",
+            "description": "Creator-friendly label shown on the debrief screen.",
+            "minLength": 1,
+            "maxLength": 60
+          },
+          "description": {
+            "type": "string",
+            "description": "What the LLM should look for when scoring this dimension.",
+            "minLength": 1,
+            "maxLength": 300
+          },
+          "weight": {
+            "type": "number",
+            "description": "Relative importance when computing the total score (higher = more important).",
+            "minimum": 0.1,
+            "maximum": 5.0
+          },
+          "max_score": {
+            "type": "integer",
+            "description": "Maximum points possible for this dimension per session.",
+            "minimum": 1,
+            "maximum": 10
+          }
+        }
+      },
+      "minItems": 1,
+      "maxItems": 15
+    }
+  },
+  "examples": [
+    {
+      "schema_version": "1.0",
+      "id": "interview-quality",
+      "title": "Interview Performance",
+      "dimensions": [
+        {
+          "id": "clarity",
+          "label": "Communication Clarity",
+          "description": "Does the player communicate ideas clearly and concisely without rambling?",
+          "weight": 1.0,
+          "max_score": 5
+        },
+        {
+          "id": "star-method",
+          "label": "STAR Structure",
+          "description": "Does the player structure behavioral answers with Situation, Task, Action, Result?",
+          "weight": 1.5,
+          "max_score": 5
+        },
+        {
+          "id": "enthusiasm",
+          "label": "Genuine Enthusiasm",
+          "description": "Does the player show authentic interest in the role and company?",
+          "weight": 0.5,
+          "max_score": 5
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,201 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/outrightmental/ConversationSimulator/raw/main/schemas/scenario.schema.json",
+  "title": "Scenario",
+  "description": "An individual scenario definition file. Describes one conversation practice session.",
+  "type": "object",
+  "required": [
+    "schema_version", "id", "title", "description", "player_role",
+    "goals", "difficulty", "duration_minutes", "npc_ref",
+    "opening_context", "state_defaults", "endings"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["1.0"]
+    },
+    "id": {
+      "type": "string",
+      "description": "Unique kebab-case identifier within the pack.",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "minLength": 2,
+      "maxLength": 64
+    },
+    "title": {
+      "type": "string",
+      "description": "Display title shown in the scenario list and header.",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "description": {
+      "type": "string",
+      "description": "Short description shown in the library before the player starts.",
+      "minLength": 1,
+      "maxLength": 1000
+    },
+    "player_role": {
+      "type": "string",
+      "description": "Explains who the player is in this scenario (shown in the setup screen).",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "goals": {
+      "type": "array",
+      "description": "Player-visible objectives for this scenario.",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "minItems": 1,
+      "maxItems": 10
+    },
+    "difficulty": {
+      "type": "string",
+      "description": "How challenging the NPC will be.",
+      "enum": ["easy", "medium", "hard"]
+    },
+    "duration_minutes": {
+      "type": "integer",
+      "description": "Suggested play time in minutes shown to the player.",
+      "minimum": 5,
+      "maximum": 120
+    },
+    "npc_ref": {
+      "type": "string",
+      "description": "ID of the NPC file to use for this scenario (must match an npc.id in the pack)."
+    },
+    "rubric_ref": {
+      "type": "string",
+      "description": "ID of the rubric to use for evaluation. Optional — omit to disable structured scoring."
+    },
+    "opening_context": {
+      "type": "string",
+      "description": "Scene-setting text shown to the player before the first NPC turn.",
+      "minLength": 1,
+      "maxLength": 1000
+    },
+    "state_defaults": {
+      "type": "object",
+      "description": "Starting values (0–100) for all conversation state variables.",
+      "required": ["trust", "patience", "pressure", "rapport", "openness", "objective_progress"],
+      "additionalProperties": false,
+      "properties": {
+        "trust": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "How much the NPC trusts the player at the start."
+        },
+        "patience": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "How patient the NPC is at the start."
+        },
+        "pressure": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "How much situational pressure the NPC feels at the start."
+        },
+        "rapport": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Level of positive connection between NPC and player at the start."
+        },
+        "openness": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "How open the NPC is to the player's ideas at the start."
+        },
+        "objective_progress": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "How much of the player's goal has been achieved. Usually starts at 0."
+        }
+      }
+    },
+    "endings": {
+      "type": "array",
+      "description": "Possible outcomes when the session ends.",
+      "items": {
+        "type": "object",
+        "required": ["id", "label", "condition", "npc_reaction"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Machine-readable ending identifier.",
+            "pattern": "^[a-z][a-z0-9_-]*$",
+            "maxLength": 32
+          },
+          "label": {
+            "type": "string",
+            "description": "Human-readable label shown on the debrief screen.",
+            "minLength": 1,
+            "maxLength": 60
+          },
+          "condition": {
+            "type": "string",
+            "description": "Simple expression evaluated against state variables at session end (e.g. 'objective_progress >= 75').",
+            "minLength": 1
+          },
+          "npc_reaction": {
+            "type": "string",
+            "description": "What the NPC says when this ending is triggered.",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        }
+      },
+      "minItems": 1,
+      "maxItems": 10
+    }
+  },
+  "examples": [
+    {
+      "schema_version": "1.0",
+      "id": "behavioral-questions",
+      "title": "Behavioral Interview",
+      "description": "Practice STAR-method behavioral questions with a fictional hiring manager.",
+      "player_role": "You are interviewing for a software engineering position at a mid-sized tech company.",
+      "goals": [
+        "Demonstrate relevant past experience",
+        "Answer with the STAR method (Situation, Task, Action, Result)",
+        "Ask at least one thoughtful question"
+      ],
+      "difficulty": "medium",
+      "duration_minutes": 20,
+      "npc_ref": "hiring-manager",
+      "rubric_ref": "interview-quality",
+      "opening_context": "You've arrived for your interview. Jordan greets you and gestures to a chair across the desk.",
+      "state_defaults": {
+        "trust": 50,
+        "patience": 80,
+        "pressure": 20,
+        "rapport": 30,
+        "openness": 60,
+        "objective_progress": 0
+      },
+      "endings": [
+        {
+          "id": "offer",
+          "label": "Offer Extended",
+          "condition": "objective_progress >= 75",
+          "npc_reaction": "I was genuinely impressed. We'd like to move you to the next round."
+        },
+        {
+          "id": "no-offer",
+          "label": "No Offer",
+          "condition": "objective_progress < 75",
+          "npc_reaction": "Thanks for coming in. We'll be in touch if there's a fit."
+        }
+      ]
+    }
+  ]
+}

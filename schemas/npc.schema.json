@@ -1,0 +1,129 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/outrightmental/ConversationSimulator/raw/main/schemas/npc.schema.json",
+  "title": "NPC Definition",
+  "description": "Defines a fictional non-player character for use in Conversation Simulator scenarios.",
+  "type": "object",
+  "required": ["schema_version", "id", "name", "role", "persona", "voice", "boundaries"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["1.0"]
+    },
+    "id": {
+      "type": "string",
+      "description": "Unique kebab-case identifier referenced by scenario npc_ref.",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "minLength": 2,
+      "maxLength": 64
+    },
+    "name": {
+      "type": "string",
+      "description": "The character's display name shown to the player.",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "role": {
+      "type": "string",
+      "description": "The character's occupation or role in the scenario context.",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "persona": {
+      "type": "object",
+      "description": "Describes how the character thinks, speaks, and behaves.",
+      "required": ["background", "speaking_style", "personality_traits"],
+      "additionalProperties": true,
+      "properties": {
+        "background": {
+          "type": "string",
+          "description": "Brief backstory provided to the LLM. Not shown directly to the player.",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "speaking_style": {
+          "type": "string",
+          "description": "How the character communicates — tone, vocabulary, patterns, habits.",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "personality_traits": {
+          "type": "array",
+          "description": "Short descriptors that shape the character's behavior.",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 50
+          },
+          "minItems": 1,
+          "maxItems": 10
+        }
+      }
+    },
+    "voice": {
+      "type": "object",
+      "description": "Controls response style and formality level.",
+      "required": ["tone", "pace", "formality"],
+      "additionalProperties": true,
+      "properties": {
+        "tone": {
+          "type": "string",
+          "description": "Overall social register of the character's speech.",
+          "enum": ["casual", "professional", "formal"]
+        },
+        "pace": {
+          "type": "string",
+          "description": "How much the character says per turn.",
+          "enum": ["slow", "moderate", "fast"]
+        },
+        "formality": {
+          "type": "string",
+          "description": "Additional formality descriptor used in prompting (e.g. business-casual, academic).",
+          "minLength": 1,
+          "maxLength": 100
+        }
+      }
+    },
+    "boundaries": {
+      "type": "array",
+      "description": "Hard behavioral limits the NPC will not cross regardless of player input.",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 300
+      },
+      "minItems": 1,
+      "maxItems": 20
+    },
+    "hidden_agenda": {
+      "type": "string",
+      "description": "What the NPC secretly values or wants — embedded in the private persona layer, never shown to the player.",
+      "maxLength": 1000
+    }
+  },
+  "examples": [
+    {
+      "schema_version": "1.0",
+      "id": "hiring-manager",
+      "name": "Jordan Lee",
+      "role": "Senior Engineering Manager at a mid-sized tech company",
+      "persona": {
+        "background": "10 years of software engineering, now manages a team of 8. Values concrete examples over abstract claims.",
+        "speaking_style": "Direct and concise. Uses technical vocabulary naturally. Asks follow-up questions when answers feel vague.",
+        "personality_traits": ["analytical", "fair", "time-conscious", "detail-oriented"]
+      },
+      "voice": {
+        "tone": "professional",
+        "pace": "moderate",
+        "formality": "business-casual"
+      },
+      "boundaries": [
+        "Does not ask illegal or protected-class interview questions.",
+        "Does not discuss salary details until a formal offer stage.",
+        "Will not make promises outside their authority."
+      ],
+      "hidden_agenda": "Is particularly impressed by candidates who ask about team dynamics and growth opportunities rather than only compensation."
+    }
+  ]
+}

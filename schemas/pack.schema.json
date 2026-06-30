@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/outrightmental/ConversationSimulator/raw/main/schemas/pack.schema.json",
+  "title": "Pack Manifest",
+  "description": "Root manifest file for a Conversation Simulator scenario pack (manifest.yaml). All characters and situations must be entirely fictional.",
+  "type": "object",
+  "required": ["schema_version", "fictional", "id", "name", "version", "description", "author", "license"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "description": "Schema version this manifest targets.",
+      "enum": ["1.0"]
+    },
+    "fictional": {
+      "type": "boolean",
+      "description": "Must be true. Confirms all characters and situations are entirely fictional and no real person is impersonated.",
+      "const": true
+    },
+    "id": {
+      "type": "string",
+      "description": "Unique kebab-case identifier for this pack (e.g. job-interview-basic).",
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "minLength": 2,
+      "maxLength": 64
+    },
+    "name": {
+      "type": "string",
+      "description": "Human-readable display name shown in the pack library.",
+      "minLength": 1,
+      "maxLength": 80
+    },
+    "version": {
+      "type": "string",
+      "description": "Semantic version string (e.g. 1.0.0).",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "description": {
+      "type": "string",
+      "description": "Brief summary shown to players in the library.",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "author": {
+      "type": "string",
+      "description": "Author or organization name.",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "license": {
+      "type": "string",
+      "description": "SPDX license identifier (e.g. Apache-2.0, MIT, CC-BY-4.0).",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "tags": {
+      "type": "array",
+      "description": "Descriptive tags for filtering in the library. Must be lowercase kebab-case.",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]*$",
+        "maxLength": 32
+      },
+      "maxItems": 20,
+      "uniqueItems": true
+    },
+    "scenarios": {
+      "type": "array",
+      "description": "Relative paths to scenario YAML files included in this pack.",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "npcs": {
+      "type": "array",
+      "description": "Relative paths to NPC definition YAML files.",
+      "items": { "type": "string" }
+    },
+    "rubrics": {
+      "type": "array",
+      "description": "Relative paths to rubric YAML files.",
+      "items": { "type": "string" }
+    }
+  },
+  "examples": [
+    {
+      "schema_version": "1.0",
+      "fictional": true,
+      "id": "job-interview-basic",
+      "name": "Job Interview Practice",
+      "version": "1.0.0",
+      "description": "Practice common job interview scenarios with a fictional hiring manager.",
+      "author": "Conversation Simulator Contributors",
+      "license": "Apache-2.0",
+      "tags": ["interview", "professional", "career"],
+      "scenarios": ["scenarios/behavioral-questions.yaml"],
+      "npcs": ["npcs/hiring-manager.yaml"],
+      "rubrics": ["rubrics/interview-quality.yaml"]
+    }
+  ]
+}
