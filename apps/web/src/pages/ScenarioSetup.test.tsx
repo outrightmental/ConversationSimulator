@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { ScenarioSetupPage } from './ScenarioSetup';
 import type { ScenarioInfo, HealthResponse, SessionCreateResponse } from '@convsim/shared';
 
@@ -387,12 +387,14 @@ describe('ScenarioSetupPage', () => {
         expect(screen.getByRole('button', { name: /starting/i })).toBeDisabled(),
       );
 
-      resolveSession({
-        session_id: 'sess-789',
-        scenario_id: 'behavioral_interview',
-        state: 'NotStarted',
-        created_at: '2026-06-30T00:00:00Z',
-        setup: {} as SessionCreateResponse['setup'],
+      await act(async () => {
+        resolveSession({
+          session_id: 'sess-789',
+          scenario_id: 'behavioral_interview',
+          state: 'NotStarted',
+          created_at: '2026-06-30T00:00:00Z',
+          setup: {} as SessionCreateResponse['setup'],
+        });
       });
     });
   });

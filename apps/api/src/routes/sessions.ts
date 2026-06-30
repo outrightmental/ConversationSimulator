@@ -63,6 +63,11 @@ export async function sessionRoutes(app: FastifyInstance) {
     async (req, reply): Promise<SessionCreateResponse> => {
       const body = req.body;
 
+      if (!body.player_role_name.trim()) {
+        reply.status(400);
+        throw new Error('player_role_name cannot be blank');
+      }
+
       if (!SCENARIOS[body.scenario_id]) {
         reply.status(400);
         throw new Error(`Unknown scenario_id: ${body.scenario_id}`);

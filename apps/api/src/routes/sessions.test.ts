@@ -126,6 +126,15 @@ describe('POST /api/sessions', () => {
     expect(res.statusCode).toBe(400);
   });
 
+  it('returns 400 when player_role_name is whitespace-only', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/sessions',
+      payload: { ...validRequest, player_role_name: '   ' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
   it('returns 400 for invalid input_mode value', async () => {
     const res = await app.inject({
       method: 'POST',
