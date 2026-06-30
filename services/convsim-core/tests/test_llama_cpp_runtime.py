@@ -316,6 +316,43 @@ async def test_chat_stream_no_structured_without_schema(runtime):
     assert final.structured is None
 
 
+@pytest.mark.asyncio
+async def test_chat_stream_sends_response_format_hint_when_schema_provided(runtime):
+    schema = {"type": "object", "properties": {"answer": {"type": "integer"}}}
+    lines = _sse_lines(_token_chunk('{"answer": 1}'), _final_chunk())
+    stream = _MockStreamResponse(lines)
+    client = _mock_client(stream_response=stream)
+    request = ChatRequest(
+        messages=[ChatMessage(role="user", content="go")],
+        json_schema=schema,
+    )
+
+    with patch("convsim_core.runtime.llama_cpp.httpx.AsyncClient", return_value=client):
+        async for _ in runtime.chat_stream(request):
+            pass
+
+    sent_payload = client.stream.call_args.kwargs["json"]
+    assert "response_format" in sent_payload
+    rf = sent_payload["response_format"]
+    assert rf["type"] == "json_schema"
+    assert rf["json_schema"]["schema"] == schema
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_omits_response_format_when_no_schema(runtime):
+    lines = _sse_lines(_token_chunk("ok"), _final_chunk())
+    stream = _MockStreamResponse(lines)
+    client = _mock_client(stream_response=stream)
+    request = ChatRequest(messages=[ChatMessage(role="user", content="hi")])
+
+    with patch("convsim_core.runtime.llama_cpp.httpx.AsyncClient", return_value=client):
+        async for _ in runtime.chat_stream(request):
+            pass
+
+    sent_payload = client.stream.call_args.kwargs["json"]
+    assert "response_format" not in sent_payload
+
+
 # ---------------------------------------------------------------------------
 # chat_stream — malformed / edge-case stream input
 # ---------------------------------------------------------------------------
