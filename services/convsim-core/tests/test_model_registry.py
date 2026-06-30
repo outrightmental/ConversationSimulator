@@ -448,14 +448,14 @@ def test_get_models_returns_200(client):
 
 def test_get_models_empty_database_returns_empty_list(client):
     body = client.get("/api/models").json()
-    assert body["models"] == []
+    assert body["registry"] == []
     assert body["total"] == 0
 
 
 def test_get_models_after_registry_load_returns_sorted_entries(client):
     load_and_persist_registry(client.app.state.db.connection(), _REGISTRY_PATH)
     body = client.get("/api/models").json()
-    models = body["models"]
+    models = body["registry"]
     assert body["total"] == len(models)
     assert body["total"] > 0
     roles = [m["role"] for m in models]
@@ -466,7 +466,7 @@ def test_get_models_after_registry_load_returns_sorted_entries(client):
 def test_get_models_entry_shape(client):
     load_and_persist_registry(client.app.state.db.connection(), _REGISTRY_PATH)
     body = client.get("/api/models").json()
-    entry = next(m for m in body["models"] if m["role"] == "starter")
+    entry = next(m for m in body["registry"] if m["role"] == "starter")
     assert entry["license_spdx"] == "Apache-2.0"
     assert entry["source_type"] == "registry"
     assert entry["sha256"] == "PENDING"
@@ -477,7 +477,7 @@ def test_get_models_entry_shape(client):
 def test_get_models_user_supplied_entry(client):
     load_and_persist_registry(client.app.state.db.connection(), _REGISTRY_PATH)
     body = client.get("/api/models").json()
-    entry = next(m for m in body["models"] if m["id"] == "user-supplied-gguf")
+    entry = next(m for m in body["registry"] if m["id"] == "user-supplied-gguf")
     assert entry["source_type"] == "user-supplied"
     assert entry["license_spdx"] == "unknown-user-supplied"
     assert entry["sha256"] is None
