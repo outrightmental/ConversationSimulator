@@ -62,10 +62,10 @@ cleanup() {
     _CLEANING_UP=1
     echo ""
     echo "Stopping services..."
-    for pid in "${PIDS[@]:-}"; do
+    for pid in "${PIDS[@]+"${PIDS[@]}"}"; do
         kill "$pid" 2>/dev/null || true
     done
-    for pid in "${PIDS[@]:-}"; do
+    for pid in "${PIDS[@]+"${PIDS[@]}"}"; do
         wait "$pid" 2>/dev/null || true
     done
     echo "Done."
