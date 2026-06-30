@@ -40,11 +40,12 @@ def test_health_database_migrations_applied(client):
     assert body["database"]["migrations_applied"] >= 1
 
 
-def test_health_runtime_readiness_fields_exist(client):
+def test_health_runtime_fields_exist(client):
     rt = client.get("/api/health").json()["runtime"]
-    assert rt["llm_ready"] is False
-    assert rt["stt_ready"] is False
-    assert rt["tts_ready"] is False
+    assert rt["runtime_id"] == "fake"
+    assert rt["runtime_name"] == "Fake (deterministic)"
+    assert rt["status"] == "ready"
+    assert "checked_at" in rt
 
 
 def test_health_config_path_present(client):
