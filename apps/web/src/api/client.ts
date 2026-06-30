@@ -8,9 +8,19 @@ import type {
 
 const BASE = '/api'
 
+export interface SttHealthInfo {
+  worker_id: string
+  worker_name: string
+  status: 'unavailable' | 'starting' | 'ready' | 'degraded' | 'error'
+  model_path?: string | null
+  message?: string | null
+  checked_at: string
+}
+
 export interface HealthResponse {
   status: 'ok' | 'degraded' | 'unavailable'
   version?: string
+  stt?: SttHealthInfo
 }
 
 export interface SttUploadResponse {

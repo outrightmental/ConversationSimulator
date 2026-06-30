@@ -11,16 +11,18 @@ def test_stt_upload_returns_200(client):
     assert resp.status_code == 200
 
 
-def test_stt_upload_status_received(client):
+def test_stt_upload_status_unavailable_when_no_runtime(client):
+    # Default config uses whisper_cpp worker; in the test environment no binary
+    # is installed, so the worker returns status='unavailable' rather than failing.
     audio = io.BytesIO(b"\x00" * 100)
     body = client.post(
         "/api/stt/upload",
         files={"audio": ("recording.webm", audio, "audio/webm")},
     ).json()
-    assert body["status"] == "received"
+    assert body["status"] == "unavailable"
 
 
-def test_stt_upload_transcript_is_null(client):
+def test_stt_upload_transcript_is_null_when_unavailable(client):
     audio = io.BytesIO(b"\x00" * 100)
     body = client.post(
         "/api/stt/upload",
@@ -88,3 +90,31 @@ def test_stt_upload_accepts_empty_content_type(client):
 def test_stt_upload_requires_audio_field(client):
     resp = client.post("/api/stt/upload")
     assert resp.status_code == 422
+
+
+def test_stt_upload_response_has_status_field(client):
+    audio = io.BytesIO(b"\x00" * 100)
+    body = client.post(
+        "/api/stt/upload",
+        files={"audio": ("recording.webm", audio, "audio/webm")},
+    ).json()
+    assert "status" in body
+
+
+def test_stt_upload_accepts_language_form_field(client):
+    audio = io.BytesIO(b"\x00" * 100)
+    resp = client.post(
+        "/api/stt/upload",
+        files={"audio": ("recording.webm", audio, "audio/webm")},
+        data={"language": "fr"},
+    )
+    assert resp.status_code == 200
+
+
+def test_stt_upload_language_field_is_optional(client):
+    audio = io.BytesIO(b"\x00" * 100)
+    resp = client.post(
+        "/api/stt/upload",
+        files={"audio": ("recording.webm", audio, "audio/webm")},
+    )
+    assert resp.status_code == 200

@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from convsim_core import __version__
 from convsim_core.runtime.types import RuntimeHealth
+from convsim_core.stt.types import SttHealth
 
 router = APIRouter()
 
@@ -34,6 +35,7 @@ class HealthResponse(BaseModel):
     config_path: str
     database: _DatabaseStatus
     runtime: RuntimeHealth
+    stt: SttHealth
     privacy: _PrivacyPosture
 
 
@@ -53,6 +55,7 @@ async def health(request: Request) -> HealthResponse:
             migrations_applied=db.migrations_applied,
         ),
         runtime=await request.app.state.runtime.health(),
+        stt=await request.app.state.stt_worker.health(),
         privacy=_PrivacyPosture(
             telemetry_enabled=app_settings.telemetry_enabled,
             save_transcripts=app_settings.save_transcripts,

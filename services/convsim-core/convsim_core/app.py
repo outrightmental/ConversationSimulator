@@ -14,6 +14,7 @@ from convsim_core.errors import (
 from convsim_core.logging_setup import configure_logging
 from convsim_core.routers import diag as diag_router, health, models as models_router, settings as settings_router, stt as stt_router
 from convsim_core.runtime import build_runtime
+from convsim_core.stt import build_stt_worker
 from convsim_core.storage.database import Database
 from convsim_core.storage.repositories.settings_repo import load_settings
 
@@ -32,6 +33,7 @@ def create_app(config: ServiceConfig | None = None) -> FastAPI:
         app.state.db = db
         app.state.app_settings = load_settings(db.connection(), config.data_dir, config.log_dir)
         app.state.runtime = build_runtime(config.runtime_id)
+        app.state.stt_worker = build_stt_worker(config.stt_worker_id)
         yield
         db.close()
 
