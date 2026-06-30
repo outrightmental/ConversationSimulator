@@ -135,6 +135,16 @@ describe('POST /api/sessions', () => {
     expect(res.statusCode).toBe(400);
   });
 
+  it('returns 400 when seed is omitted', async () => {
+    const { seed: _omitted, ...rest } = validRequest;
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/sessions',
+      payload: rest,
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
   it('text-only input mode is always accepted', async () => {
     const res = await app.inject({
       method: 'POST',

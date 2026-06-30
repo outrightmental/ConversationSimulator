@@ -41,6 +41,7 @@ export async function sessionRoutes(app: FastifyInstance) {
             'tts_enabled',
             'show_state_meters',
             'save_transcript',
+            'seed',
           ],
           properties: {
             scenario_id: { type: 'string' },
