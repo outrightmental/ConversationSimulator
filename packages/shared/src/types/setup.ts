@@ -58,7 +58,7 @@ export function validateSetup(
   }
 
   if (values.seed !== null && (!Number.isInteger(values.seed) || values.seed < 0 || values.seed > 2147483647)) {
-    errors.push({ field: 'seed', message: 'Seed must be between 0 and 2,147,483,647.' });
+    errors.push({ field: 'seed', message: 'Seed must be a whole number between 0 and 2,147,483,647.' });
   }
 
   return { valid: errors.length === 0, errors };

@@ -321,7 +321,7 @@ describe('ScenarioSetupPage', () => {
       });
       fireEvent.change(seedInput, { target: { value: '3000000000' } });
       await waitFor(() =>
-        expect(screen.getByText(/seed must be between/i)).toBeInTheDocument(),
+        expect(screen.getByText(/seed must be a whole number between/i)).toBeInTheDocument(),
       );
       expect(screen.getByRole('button', { name: /start scenario/i })).toBeDisabled();
     });
@@ -334,7 +334,7 @@ describe('ScenarioSetupPage', () => {
       });
       fireEvent.change(seedInput, { target: { value: '1.5' } });
       await waitFor(() =>
-        expect(screen.getByText(/seed must be between/i)).toBeInTheDocument(),
+        expect(screen.getByText(/seed must be a whole number between/i)).toBeInTheDocument(),
       );
       expect(screen.getByRole('button', { name: /start scenario/i })).toBeDisabled();
     });
