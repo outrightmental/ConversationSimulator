@@ -32,8 +32,8 @@ def load_settings_from_disk(data_dir: str, log_dir: str) -> AppSettings:
     return AppSettings(data_dir=data_dir, log_dir=log_dir)
 
 
-def _persist(settings: AppSettings) -> None:
-    path = _settings_file(settings.data_dir)
+def _persist(settings: AppSettings, data_dir: str) -> None:
+    path = _settings_file(data_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(settings.model_dump_json(indent=2), encoding="utf-8")
 
@@ -45,6 +45,7 @@ async def get_settings(request: Request) -> AppSettings:
 
 @router.put("/api/settings", response_model=AppSettings)
 async def put_settings(body: AppSettings, request: Request) -> AppSettings:
-    _persist(body)
+    config = request.app.state.service_config
+    _persist(body, config.data_dir)
     request.app.state.app_settings = body
     return body

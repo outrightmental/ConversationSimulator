@@ -1,4 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
+import json
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -45,6 +48,25 @@ def test_put_settings_missing_required_field_returns_structured_error(client):
     assert resp.status_code == 422
     body = resp.json()
     assert body["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_put_settings_persists_to_config_data_dir(client, tmp_config, tmp_path):
+    """Settings file must land in config.data_dir regardless of the data_dir field in the body."""
+    other_data_dir = str(tmp_path / "other_data")
+    payload = {
+        "data_dir": other_data_dir,
+        "log_dir": str(tmp_path / "logs"),
+        "save_transcripts": True,
+        "tts_cache_enabled": False,
+    }
+    resp = client.put("/api/settings", json=payload)
+    assert resp.status_code == 200
+
+    settings_at_config = Path(tmp_config.data_dir) / "settings.json"
+    settings_at_payload = Path(other_data_dir) / "settings.json"
+    assert settings_at_config.exists(), "settings.json must be written to config.data_dir"
+    assert not settings_at_payload.exists(), "settings.json must NOT be written to body.data_dir"
+    assert json.loads(settings_at_config.read_text())["save_transcripts"] is True
 
 
 def test_host_config_rejects_0_0_0_0():
