@@ -32,8 +32,11 @@ class RegistryValidationError(Exception):
 
 def load_registry_yaml(path: Path) -> dict[str, Any]:
     """Parse and return the registry YAML file."""
-    with open(path, encoding="utf-8") as f:
-        data = yaml.safe_load(f)
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+    except yaml.YAMLError as exc:
+        raise RegistryValidationError(f"Registry file is not valid YAML: {path}: {exc}") from exc
     if not isinstance(data, dict):
         raise RegistryValidationError(f"Registry file is not a YAML mapping: {path}")
     return data  # type: ignore[return-value]

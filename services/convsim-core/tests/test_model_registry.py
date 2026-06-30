@@ -425,6 +425,19 @@ def test_invalid_registry_raises_registry_validation_error(tmp_path):
         db.close()
 
 
+def test_malformed_yaml_raises_registry_validation_error(tmp_path):
+    """A registry file with a YAML syntax error raises RegistryValidationError."""
+    bad_path = tmp_path / "malformed.yaml"
+    bad_path.write_text("key: [unclosed bracket\n", encoding="utf-8")
+
+    db = Database.open(str(tmp_path / "db"))
+    try:
+        with pytest.raises(RegistryValidationError, match="not valid YAML"):
+            load_and_persist_registry(db.connection(), bad_path)
+    finally:
+        db.close()
+
+
 # ── GET /api/models endpoint tests ───────────────────────────────────────────
 
 
