@@ -143,30 +143,28 @@ mustReject("safety", () => {
 
 mustReject("safety", () => {
   const d = loadExample("safety.example.json");
-  delete d.redirect_message;
+  delete d.schema_version;
   return d;
-}, "safety missing redirect_message");
+}, "safety missing schema_version");
 
 mustReject("safety", () => {
   const d = loadExample("safety.example.json");
-  delete d.content_categories.nsfw_sexual;
+  delete d.policy_id;
   return d;
-}, "safety missing required nsfw_sexual category");
+}, "safety missing policy_id");
+
+mustReject("safety", () => {
+  return { ...loadExample("safety.example.json"), unknown_top_level_field: true };
+}, "safety with unknown top-level field (additionalProperties: false)");
 
 mustReject("safety", () => {
   const d = loadExample("safety.example.json");
-  delete d.content_categories.real_person_impersonation;
+  d.content_categories.nsfw_sexual_content = "block";
   return d;
-}, "safety missing required real_person_impersonation category");
+}, "safety nsfw_sexual_content set to invalid action 'block'");
 
 mustReject("safety", () => {
   const d = loadExample("safety.example.json");
-  delete d.content_categories.instructional_criminal;
+  d.content_categories.made_up_category = "stop";
   return d;
-}, "safety missing required instructional_criminal category");
-
-mustReject("safety", () => {
-  const d = loadExample("safety.example.json");
-  delete d.content_categories.crisis_content;
-  return d;
-}, "safety missing required crisis_content category");
+}, "safety with unknown content category (additionalProperties: false)");
