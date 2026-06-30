@@ -9,6 +9,7 @@
   "main": "./src/index.ts",
   "scripts": {
     "build": "echo 'UI package built as source — no compile step needed for Vite consumers.'",
+    "check": "tsc --noEmit",
     "test": "vitest run"
   },
   "dependencies": {
