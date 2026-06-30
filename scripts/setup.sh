@@ -9,6 +9,7 @@ REQUIRED_PYTHON_MAJOR=3
 REQUIRED_PYTHON_MINOR=10
 REQUIRED_NODE_MAJOR=18
 PKG_MANAGER=""
+PY_CMD=""
 
 fail() {
     echo "" >&2
@@ -18,14 +19,18 @@ fail() {
 }
 
 check_python() {
-    if ! command -v python3 &>/dev/null; then
+    if command -v python3 &>/dev/null; then
+        PY_CMD="python3"
+    elif command -v python &>/dev/null; then
+        PY_CMD="python"
+    else
         fail "Python ${REQUIRED_PYTHON_MAJOR}.${REQUIRED_PYTHON_MINOR}+ is required but not found.
        Install it from https://www.python.org/downloads/
        (version ${REQUIRED_PYTHON_MAJOR}.${REQUIRED_PYTHON_MINOR} or newer)"
     fi
 
     local version major minor
-    version=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+    version=$("$PY_CMD" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
     major=$(echo "$version" | cut -d. -f1)
     minor=$(echo "$version" | cut -d. -f2)
 
@@ -35,7 +40,7 @@ check_python() {
        Install a newer version from https://www.python.org/downloads/"
     fi
 
-    echo "  python3 $version ... OK"
+    echo "  $PY_CMD $version ... OK"
 }
 
 check_node() {
@@ -90,7 +95,7 @@ echo "       $PKG_MANAGER install"
 echo ""
 echo "  2. Install Python packages (once convsim-core is implemented):"
 echo "       cd services/convsim-core"
-echo "       python3 -m venv .venv"
+echo "       $PY_CMD -m venv .venv"
 echo "       source .venv/bin/activate"
 echo "       pip install -e '.[dev]'"
 echo ""
