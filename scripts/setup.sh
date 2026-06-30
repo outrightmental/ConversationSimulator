@@ -30,7 +30,7 @@ check_python() {
     fi
 
     local version major minor
-    version=$("$PY_CMD" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+    version=$("$PY_CMD" -c "import sys; print('%d.%d' % (sys.version_info.major, sys.version_info.minor))")
     major=$(echo "$version" | cut -d. -f1)
     minor=$(echo "$version" | cut -d. -f2)
 

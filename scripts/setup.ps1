@@ -29,7 +29,7 @@ if (-not $pythonCmd) {
     Fail "Python ${RequiredPythonMajor}.${RequiredPythonMinor}+ is required but not found.`n       Install it from https://www.python.org/downloads/"
 }
 
-$pythonVersion = & $pythonCmd.Source -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>$null
+$pythonVersion = & $pythonCmd.Source -c "import sys; print('%d.%d' % (sys.version_info.major, sys.version_info.minor))" 2>$null
 $parts = $pythonVersion -split '\.'
 $pyMajor = [int]$parts[0]
 $pyMinor = [int]$parts[1]
