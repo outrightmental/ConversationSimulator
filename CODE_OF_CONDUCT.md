@@ -17,9 +17,9 @@ everyone who contributes to or interacts with this project.
 
 ## Reporting issues
 
-If you experience or witness unacceptable behavior, please open a private
-[GitHub Issue](https://github.com/outrightmental/ConversationSimulator/issues)
-or contact the maintainers directly.
+If you experience or witness unacceptable behavior, please contact the
+maintainers directly. Do **not** use public GitHub Issues for CoC reports,
+as they are visible to everyone and require confidential handling.
 
 A more detailed Code of Conduct based on the
 [Contributor Covenant](https://www.contributor-covenant.org/) will be adopted
