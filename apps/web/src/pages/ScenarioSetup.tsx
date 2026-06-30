@@ -292,7 +292,7 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
                 checked={form.tts_enabled}
                 disabled={!runtime.tts_ready}
                 onChange={(e) => setField('tts_enabled', e.target.checked)}
-                aria-describedby="tts-status"
+                aria-describedby={!runtime.tts_ready ? 'tts-status' : undefined}
               />
               <span className="setup-toggle-text">
                 NPC voice (TTS)
@@ -305,12 +305,12 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
               </span>
             </label>
             {validationErrorMap['tts_enabled'] && (
-              <span className="setup-field-error" role="alert" id="tts-status">
+              <span className="setup-field-error" role="alert">
                 {validationErrorMap['tts_enabled']}
               </span>
             )}
             {!runtime.tts_ready && (
-              <p className="setup-fallback-note" id={form.tts_enabled ? 'tts-status' : undefined}>
+              <p className="setup-fallback-note" id="tts-status">
                 Text-only is always available. Install a TTS model to enable voice output.
               </p>
             )}

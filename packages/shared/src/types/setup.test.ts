@@ -122,6 +122,37 @@ describe('validateSetup', () => {
     );
     expect(result.errors.length).toBeGreaterThanOrEqual(2);
   });
+
+  it('fails when seed exceeds 2147483647', () => {
+    const result = validateSetup(
+      { ...validForm, seed: 2147483648 },
+      runtimeReady,
+      false,
+    );
+    expect(result.valid).toBe(false);
+    const seedError = result.errors.find((e) => e.field === 'seed');
+    expect(seedError).toBeDefined();
+    expect(seedError!.message).toMatch(/seed/i);
+  });
+
+  it('fails when seed is negative', () => {
+    const result = validateSetup(
+      { ...validForm, seed: -1 },
+      runtimeReady,
+      false,
+    );
+    expect(result.valid).toBe(false);
+    expect(result.errors.find((e) => e.field === 'seed')).toBeDefined();
+  });
+
+  it('passes when seed is exactly at the upper bound', () => {
+    const result = validateSetup(
+      { ...validForm, seed: 2147483647 },
+      runtimeReady,
+      false,
+    );
+    expect(result.valid).toBe(true);
+  });
 });
 
 describe('randomSeed', () => {
