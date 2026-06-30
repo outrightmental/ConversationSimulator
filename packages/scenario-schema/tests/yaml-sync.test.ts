@@ -44,6 +44,30 @@ describe('setByPath', () => {
     const result = setByPath(obj, 'state_defaults.trust', 75);
     expect((result.state_defaults as Record<string, unknown>)['trust']).toBe(75);
   });
+
+  it('sets an array element by numeric index', () => {
+    const obj = { goals: ['first', 'second'] };
+    const result = setByPath(obj as Record<string, unknown>, 'goals.0', 'updated');
+    expect((result.goals as string[])[0]).toBe('updated');
+    expect((result.goals as string[])[1]).toBe('second');
+    expect(obj.goals[0]).toBe('first'); // original unchanged
+  });
+
+  it('sets a nested field inside an array element', () => {
+    const obj = { endings: [{ id: 'offer', label: 'Offer' }, { id: 'fail', label: 'Fail' }] };
+    const result = setByPath(obj as Record<string, unknown>, 'endings.1.label', 'No Offer');
+    const endings = result.endings as Array<Record<string, unknown>>;
+    expect(endings[0].label).toBe('Offer');
+    expect(endings[1].label).toBe('No Offer');
+    expect(endings[1].id).toBe('fail'); // sibling field preserved
+  });
+
+  it('does not mutate the original array when setting an element', () => {
+    const original = ['a', 'b', 'c'];
+    const obj = { tags: original };
+    setByPath(obj as Record<string, unknown>, 'tags.1', 'z');
+    expect(original[1]).toBe('b');
+  });
 });
 
 describe('getByPath', () => {

@@ -212,6 +212,7 @@ export function mergeToYaml(
 
 /**
  * Set a value at a dot-separated path in a nested object.
+ * Numeric path segments (e.g. "goals.0") index into arrays, mirroring getByPath.
  * Returns a new object (does not mutate the input).
  */
 export function setByPath(
@@ -224,7 +225,21 @@ export function setByPath(
     return { ...obj, [path]: value };
   }
   const [head, ...rest] = parts as [string, ...string[]];
-  const nested = isPlainObject(obj[head]) ? (obj[head] as Record<string, unknown>) : {};
+  const existing = obj[head];
+  if (Array.isArray(existing)) {
+    const index = Number(rest[0]);
+    if (Number.isInteger(index) && index >= 0) {
+      const arr = [...existing];
+      if (rest.length === 1) {
+        arr[index] = value;
+      } else {
+        const elem = isPlainObject(arr[index]) ? (arr[index] as Record<string, unknown>) : {};
+        arr[index] = setByPath(elem, rest.slice(1).join('.'), value);
+      }
+      return { ...obj, [head]: arr };
+    }
+  }
+  const nested = isPlainObject(existing) ? (existing as Record<string, unknown>) : {};
   return { ...obj, [head]: setByPath(nested, rest.join('.'), value) };
 }
 
