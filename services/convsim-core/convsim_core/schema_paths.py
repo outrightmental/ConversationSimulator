@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import json
 from importlib.resources import files
-from pathlib import Path
 from typing import Any
 
 _SCHEMAS_PKG = files("convsim_core") / "schemas"
