@@ -197,6 +197,22 @@ class TestUntrustedContentBoundaries:
         schema_pos = _layer_pos(sp, "OUTPUT_SCHEMA")
         assert end_pos < schema_pos
 
+    def test_untrusted_begin_marker_after_safety_policy(self):
+        """Trusted SAFETY_POLICY must precede the untrusted bracket; BEGIN sentinel must come after it."""
+        bundle = compose_turn_prompt(make_interview_input())
+        sp = bundle.system_prompt
+        safety_pos = _layer_pos(sp, "SAFETY_POLICY")
+        begin_pos = sp.index("BEGIN UNTRUSTED CONTENT")
+        assert safety_pos < begin_pos
+
+    def test_untrusted_end_marker_after_response_style(self):
+        """RESPONSE_STYLE is the last untrusted layer; END sentinel must follow it inside the bracket."""
+        bundle = compose_turn_prompt(make_interview_input())
+        sp = bundle.system_prompt
+        style_pos = _layer_pos(sp, "RESPONSE_STYLE")
+        end_pos = sp.index("END UNTRUSTED CONTENT")
+        assert style_pos < end_pos
+
     def test_player_utterance_marked_untrusted(self):
         bundle = compose_turn_prompt(make_interview_input())
         assert "UNTRUSTED PLAYER INPUT" in bundle.user_prompt
