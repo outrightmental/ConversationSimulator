@@ -19,6 +19,13 @@ class ConvsimError(Exception):
 
 
 async def convsim_error_handler(request: Request, exc: ConvsimError) -> JSONResponse:
+    logger.warning(
+        "Application error for %s %s: code=%s status=%d",
+        request.method,
+        request.url.path,
+        exc.code,
+        exc.status_code,
+    )
     return JSONResponse(
         status_code=exc.status_code,
         content={"error": {"code": exc.code, "message": exc.message}},
