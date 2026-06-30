@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import os
+from pathlib import Path
 
 from convsim_core import __version__
 
@@ -21,9 +22,22 @@ def test_health_pid(client):
     assert client.get("/api/health").json()["pid"] == os.getpid()
 
 
-def test_health_database_placeholder(client):
+def test_health_database_status_ok(client):
     body = client.get("/api/health").json()
-    assert body["database"]["status"] == "unavailable"
+    assert body["database"]["status"] == "ok"
+
+
+def test_health_database_path_present(client, tmp_config):
+    body = client.get("/api/health").json()
+    db_path = body["database"]["path"]
+    assert db_path is not None
+    assert Path(db_path).exists()
+    assert db_path.endswith("convsim.sqlite")
+
+
+def test_health_database_migrations_applied(client):
+    body = client.get("/api/health").json()
+    assert body["database"]["migrations_applied"] >= 1
 
 
 def test_health_runtime_readiness_fields_exist(client):
