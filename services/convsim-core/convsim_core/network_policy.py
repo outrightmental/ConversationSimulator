@@ -19,7 +19,10 @@ Example::
     policy.require_network(NetworkMode.PLAY)  # raises NetworkBlockedError
 """
 
+import logging
 from enum import Enum
+
+_logger = logging.getLogger(__name__)
 
 
 class NetworkMode(str, Enum):
@@ -63,3 +66,5 @@ def require_network(mode: NetworkMode) -> None:
     """
     if LOCAL_MODE and mode == NetworkMode.PLAY:
         raise NetworkBlockedError(mode)
+    if mode == NetworkMode.EXPLICIT_DOWNLOAD:
+        _logger.info("network: explicit download permitted (mode=%r)", mode.value)

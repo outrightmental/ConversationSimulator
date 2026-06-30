@@ -86,6 +86,15 @@ def test_explicit_download_allowed_when_local_mode_disabled():
     policy.require_network(NetworkMode.EXPLICIT_DOWNLOAD)  # must not raise
 
 
+def test_explicit_download_logs_permitted_message(caplog):
+    import logging
+
+    policy.LOCAL_MODE = False
+    with caplog.at_level(logging.INFO, logger="convsim_core.network_policy"):
+        policy.require_network(NetworkMode.EXPLICIT_DOWNLOAD)
+    assert any("explicit_download" in r.message for r in caplog.records)
+
+
 # ---------------------------------------------------------------------------
 # Offline smoke test: play-mode guard fires in test environments
 # ---------------------------------------------------------------------------
