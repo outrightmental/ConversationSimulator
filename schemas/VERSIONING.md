@@ -88,6 +88,6 @@ Schema files must not define fields that accept executable code. Specifically:
 - No `scripts` object at any nesting level in pack manifests.
 - No `eval`, `exec`, or `code` fields.
 - No URLs that are loaded at runtime without user action.
-- Asset URLs must be local-relative paths (the `allow_external_urls: false` rule in `pack.schema.json` enforces this).
+- When a pack manifest declares an `assets` block, `allow_external_urls` must be `false` (enforced via `const: false` in `pack.schema.json`). Packs that omit the `assets` block are not constrained at the schema level; URL policy for those packs is enforced by the pack-loader at runtime.
 
 Violations are treated as security issues. Report them via `SECURITY.md`.
