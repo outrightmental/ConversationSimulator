@@ -1,7 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 """Tests for the model registry schema, service layer, and SQLite persistence."""
 
-import json
 from pathlib import Path
 
 import jsonschema
