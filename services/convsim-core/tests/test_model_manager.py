@@ -261,9 +261,9 @@ def test_install_rejects_model_without_license(client):
         """
         INSERT INTO model_registry
             (id, name, provider, license_spdx, sha256, source_type)
-        VALUES ('test-no-license', 'Test No License', 'test', NULL,
-                'a' * 64, 'registry')
-        """
+        VALUES (?, ?, ?, NULL, ?, ?)
+        """,
+        ("test-no-license", "Test No License", "test", "a" * 64, "registry"),
     )
     conn.commit()
     resp = client.post("/api/models/install", json={"registry_id": "test-no-license"})

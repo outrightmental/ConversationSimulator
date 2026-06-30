@@ -85,13 +85,12 @@ export interface InstallModelRequest {
 export interface InstallModelResponse {
   install_id: number;
   registry_id: string;
-  status: 'pending' | 'queued' | 'rejected';
+  status: 'pending';
   message: string | null;
 }
 
 export interface BenchmarkRequest {
   model_id?: string | null;
-  runtime_id?: string | null;
 }
 
 export interface BenchmarkResponse {

@@ -116,7 +116,6 @@ class InstallModelResponse(BaseModel):
 
 class BenchmarkRequest(BaseModel):
     model_id: Optional[str] = None
-    runtime_id: Optional[str] = None
 
 
 class BenchmarkResponse(BaseModel):
