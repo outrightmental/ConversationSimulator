@@ -1,45 +1,29 @@
-import { useState } from 'react';
-import type { SessionCreateResponse } from '@convsim/shared';
-import { ScenarioSetupPage } from './pages/ScenarioSetup';
+// SPDX-License-Identifier: Apache-2.0
+import { Routes, Route } from 'react-router-dom'
+import AppLayout from './layout/AppLayout'
+import ErrorBoundary from './components/ErrorBoundary'
+import Home from './screens/Home'
+import ScenarioLibrary from './screens/ScenarioLibrary'
+import ScenarioSetup from './screens/ScenarioSetup'
+import Conversation from './screens/Conversation'
+import Debrief from './screens/Debrief'
+import CreatorWorkbench from './screens/CreatorWorkbench'
+import Settings from './screens/Settings'
 
-type Page =
-  | { name: 'home' }
-  | { name: 'setup'; scenarioId: string }
-  | { name: 'conversation'; session: SessionCreateResponse };
-
-export function App() {
-  const [page, setPage] = useState<Page>({ name: 'home' });
-
-  if (page.name === 'setup') {
-    return (
-      <ScenarioSetupPage
-        scenarioId={page.scenarioId}
-        onSessionCreated={(session) => setPage({ name: 'conversation', session })}
-        onBack={() => setPage({ name: 'home' })}
-      />
-    );
-  }
-
-  if (page.name === 'conversation') {
-    return (
-      <div data-testid="conversation-page">
-        <p>Session {page.session.session_id} started.</p>
-        <button onClick={() => setPage({ name: 'home' })}>End session</button>
-      </div>
-    );
-  }
-
+export default function App() {
   return (
-    <div data-testid="home-page">
-      <h1>Conversation Simulator</h1>
-      <p>Flight Simulator for conversations.</p>
-      <button
-        onClick={() =>
-          setPage({ name: 'setup', scenarioId: 'behavioral_interview' })
-        }
-      >
-        Start a scenario
-      </button>
-    </div>
-  );
+    <ErrorBoundary>
+      <Routes>
+        <Route element={<AppLayout />}>
+          <Route path="/" element={<Home />} />
+          <Route path="/library" element={<ScenarioLibrary />} />
+          <Route path="/setup/:scenarioId" element={<ScenarioSetup />} />
+          <Route path="/conversation/:sessionId" element={<Conversation />} />
+          <Route path="/debrief/:sessionId" element={<Debrief />} />
+          <Route path="/workbench" element={<CreatorWorkbench />} />
+          <Route path="/settings" element={<Settings />} />
+        </Route>
+      </Routes>
+    </ErrorBoundary>
+  )
 }

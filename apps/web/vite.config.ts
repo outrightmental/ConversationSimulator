@@ -1,23 +1,26 @@
-import { defineConfig } from 'vite';
-import react from '@vitejs/plugin-react';
-import path from 'path';
+// SPDX-License-Identifier: Apache-2.0
+import { defineConfig } from 'vitest/config'
+import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
-  resolve: {
-    alias: {
-      '@convsim/shared': path.resolve(__dirname, '../../packages/shared/src/index.ts'),
-    },
-  },
   server: {
+    host: '127.0.0.1',
     port: 7354,
     proxy: {
-      '/api': 'http://127.0.0.1:7355',
+      '/api': {
+        target: 'http://127.0.0.1:7355',
+        changeOrigin: true,
+      },
+      '/ws': {
+        target: 'ws://127.0.0.1:7355',
+        ws: true,
+      },
     },
   },
   test: {
-    globals: true,
     environment: 'jsdom',
-    setupFiles: ['./src/test-setup.ts'],
+    setupFiles: ['./src/setupTests.ts'],
+    globals: true,
   },
-});
+})

@@ -1,34 +1,22 @@
-import type {
-  HealthResponse,
-  ScenarioInfo,
-  SessionCreateRequest,
-  SessionCreateResponse,
-} from '@convsim/shared';
+// SPDX-License-Identifier: Apache-2.0
 
-const BASE = '/api';
+const BASE = '/api'
 
-async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json', ...init?.headers },
-    ...init,
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`API ${res.status}: ${body}`);
-  }
-  return res.json() as Promise<T>;
+export interface HealthResponse {
+  status: 'ok' | 'degraded' | 'unavailable'
+  version?: string
 }
 
-export const api = {
+async function get<T>(path: string): Promise<T> {
+  const res = await fetch(`${BASE}${path}`)
+  if (!res.ok) {
+    throw new Error(`${res.status} ${res.statusText}`)
+  }
+  return res.json() as Promise<T>
+}
+
+export const apiClient = {
   health(): Promise<HealthResponse> {
-    return apiFetch('/health');
+    return get<HealthResponse>('/health')
   },
-
-  getScenario(scenarioId: string): Promise<ScenarioInfo> {
-    return apiFetch(`/scenarios/${encodeURIComponent(scenarioId)}`);
-  },
-
-  createSession(req: SessionCreateRequest): Promise<SessionCreateResponse> {
-    return apiFetch('/sessions', { method: 'POST', body: JSON.stringify(req) });
-  },
-};
+}
