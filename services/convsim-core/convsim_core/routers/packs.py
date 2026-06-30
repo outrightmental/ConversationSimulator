@@ -24,6 +24,15 @@ class _FolderImportBody(BaseModel):
     path: str
 
 
+def _is_within(path: Path, base: Path) -> bool:
+    """Return True if path is equal to or a descendant of base."""
+    try:
+        path.relative_to(base)
+        return True
+    except ValueError:
+        return False
+
+
 @router.get("", response_model=list[PackSummary])
 async def get_packs(request: Request) -> list[PackSummary]:
     """List all installed packs."""
@@ -58,7 +67,23 @@ async def import_pack_from_folder(
     packs_dir = Path(config.packs_dir)
     packs_dir.mkdir(parents=True, exist_ok=True)
 
-    return import_from_folder(Path(body.path), packs_dir, db.connection())
+    # Restrict the source path to configured allowed directories so that this
+    # unauthenticated endpoint cannot be used to read arbitrary server filesystem
+    # paths over the network.  Add CONVSIM_LOCAL_DEV_PACKS_DIR to extend the set.
+    folder_path = Path(body.path).resolve()
+    allowed_dirs = [packs_dir.resolve()]
+    if config.local_dev_packs_dir:
+        allowed_dirs.append(Path(config.local_dev_packs_dir).resolve())
+
+    if not any(_is_within(folder_path, d) for d in allowed_dirs):
+        raise ConvsimError(
+            "FORBIDDEN_PATH",
+            "Import source path is outside all allowed directories. "
+            "Set CONVSIM_LOCAL_DEV_PACKS_DIR to allow imports from a development directory.",
+            status_code=403,
+        )
+
+    return import_from_folder(folder_path, packs_dir, db.connection())
 
 
 @router.post("/validate", response_model=ValidationResult)

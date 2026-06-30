@@ -170,3 +170,14 @@ def test_import_folder_missing_path_returns_error(client, tmp_path):
         json={"path": str(tmp_path / "does_not_exist")},
     )
     assert resp.status_code == 404
+
+
+def test_import_folder_path_outside_allowed_dirs_rejected(client, tmp_path):
+    """Source paths outside packs_dir and local_dev_packs_dir must be rejected."""
+    resp = client.post(
+        "/api/packs/import/folder",
+        # tmp_path.parent is guaranteed to be outside tmp_path (the local_dev_packs_dir)
+        json={"path": str(tmp_path.parent)},
+    )
+    assert resp.status_code == 403
+    assert resp.json()["error"]["code"] == "FORBIDDEN_PATH"
