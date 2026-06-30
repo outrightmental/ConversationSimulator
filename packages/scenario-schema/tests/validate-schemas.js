@@ -167,13 +167,13 @@ mustReject("safety", () => {
   const d = loadExample("safety.example.json");
   d.content_categories.made_up_category = "stop";
   return d;
-}, "safety missing required instructional_criminal category");
+}, "safety with unknown category in content_categories (additionalProperties: false)");
 
 mustReject("safety", () => {
   const d = loadExample("safety.example.json");
-  delete d.content_categories.crisis_content;
+  d.content_categories.self_harm_crisis = "redirect";
   return d;
-}, "safety missing required crisis_content category");
+}, "safety self_harm_crisis set to invalid action 'redirect' (only stop_with_resource_message allowed)");
 
 // Rubric: stable dimension ids and required fields
 mustReject("rubric", () => {
