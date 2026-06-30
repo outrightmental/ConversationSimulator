@@ -13,6 +13,7 @@ Design rules:
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -40,7 +41,7 @@ def redact_prompt(text: str) -> str:
 
 def redact_path(path: str) -> str:
     """Replace the home-directory prefix with ~ to avoid leaking the OS username."""
-    if _HOME_PREFIX and path.startswith(_HOME_PREFIX):
+    if _HOME_PREFIX and (path == _HOME_PREFIX or path.startswith(_HOME_PREFIX + os.sep)):
         return "~" + path[len(_HOME_PREFIX):]
     return path
 

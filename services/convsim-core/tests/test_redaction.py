@@ -89,6 +89,20 @@ def test_redact_path_empty_string():
     assert redact_path("") == ""
 
 
+def test_redact_path_does_not_match_sibling_with_shared_prefix():
+    # Regression: startswith(_HOME_PREFIX) used to match paths whose name
+    # merely begins with the home username (e.g. home=/home/nick would
+    # wrongly match /home/nickname/foo).
+    home = str(Path.home())
+    sibling = home + "extra"  # same prefix, but NOT a child of home
+    assert redact_path(sibling) == sibling
+
+
+def test_redact_path_matches_home_directory_itself():
+    home = str(Path.home())
+    assert redact_path(home) == "~"
+
+
 # ---------------------------------------------------------------------------
 # redact_audio_metadata
 # ---------------------------------------------------------------------------
