@@ -122,6 +122,18 @@ class TestBuildVariableDefs:
         defs = build_variable_defs({"rapport": 80})
         assert defs["rapport"].default == 80
 
+    def test_custom_integer_spec_preserves_visibility_of_hidden_baseline(self):
+        # pressure is HIDDEN in the baseline; an integer override must not reset it to VISIBLE
+        defs = build_variable_defs({"pressure": 15})
+        assert defs["pressure"].default == 15
+        assert defs["pressure"].visibility == VariableVisibility.HIDDEN
+
+    def test_custom_integer_spec_preserves_max_delta_per_turn(self):
+        defs = build_variable_defs({"trust": {"max_delta_per_turn": 5}})
+        defs2 = build_variable_defs({"trust": 30})  # integer shorthand should not reset max_delta
+        # A fresh integer override on the original baseline should keep baseline max_delta_per_turn=20
+        assert defs2["trust"].max_delta_per_turn == 20
+
     def test_new_custom_variable_added(self):
         defs = build_variable_defs({"motivation": {"default": 60, "min": 0, "max": 100}})
         assert "motivation" in defs

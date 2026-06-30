@@ -77,7 +77,15 @@ def build_variable_defs(
         if isinstance(spec, int):
             # Legacy simple format: name → default_value (0-100 integer).
             if name in defs:
-                defs[name] = ScenarioVariableDef(name=name, default=spec)
+                existing = defs[name]
+                defs[name] = ScenarioVariableDef(
+                    name=name,
+                    min=existing.min,
+                    max=existing.max,
+                    default=spec,
+                    visibility=existing.visibility,
+                    max_delta_per_turn=existing.max_delta_per_turn,
+                )
             else:
                 defs[name] = ScenarioVariableDef(name=name, default=spec)
         elif isinstance(spec, dict):
