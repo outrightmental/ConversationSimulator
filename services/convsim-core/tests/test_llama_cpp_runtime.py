@@ -263,6 +263,22 @@ async def test_chat_stream_uses_request_model_id(runtime):
 
 
 @pytest.mark.asyncio
+async def test_chat_stream_uses_config_temperature(runtime):
+    lines = _sse_lines(_token_chunk("ok"), _final_chunk())
+    stream = _MockStreamResponse(lines)
+    client = _mock_client(stream_response=stream)
+    rt = LlamaCppRuntime(LlamaCppConfig(base_url="http://127.0.0.1:7356", temperature=0.3))
+    request = ChatRequest(messages=[ChatMessage(role="user", content="hi")])
+
+    with patch("convsim_core.runtime.llama_cpp.httpx.AsyncClient", return_value=client):
+        async for _ in rt.chat_stream(request):
+            pass
+
+    sent_payload = client.stream.call_args.kwargs["json"]
+    assert sent_payload["temperature"] == 0.3
+
+
+@pytest.mark.asyncio
 async def test_chat_stream_structured_output_when_schema_provided(runtime):
     structured_obj = {"answer": 42}
     lines = _sse_lines(_token_chunk(json.dumps(structured_obj)), _final_chunk())

@@ -36,6 +36,7 @@ class LlamaCppConfig(BaseSettings):
     base_url: str = "http://127.0.0.1:7356"
     model_id: str | None = None
     context_length: int | None = None
+    temperature: float = 0.8
     top_p: float = 0.95
     repeat_penalty: float = 1.1
     threads: int | None = None
@@ -57,6 +58,7 @@ class LlamaCppRuntime(ChatRuntime):
         self._base_url = cfg.base_url.rstrip("/")
         self._model_id = cfg.model_id
         self._context_length = cfg.context_length
+        self._temperature = cfg.temperature
         self._top_p = cfg.top_p
         self._repeat_penalty = cfg.repeat_penalty
         self._threads = cfg.threads
@@ -127,7 +129,7 @@ class LlamaCppRuntime(ChatRuntime):
             "model": model_id,
             "messages": messages,
             "stream": True,
-            "temperature": request.temperature,
+            "temperature": self._temperature,
             "max_tokens": request.max_tokens,
             "top_p": self._top_p,
             "repeat_penalty": self._repeat_penalty,
