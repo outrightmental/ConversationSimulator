@@ -46,7 +46,7 @@ export const ManifestSchema = z
         z
           .string()
           .regex(/^[a-z][a-z0-9-]*$/, 'Tags must be lowercase kebab-case')
-          .max(32),
+          .max(32, 'Tag must be 32 characters or fewer'),
       )
       .max(20, 'At most 20 tags allowed')
       .refine((arr) => new Set(arr).size === arr.length, { message: 'Tags must be unique' })
@@ -104,7 +104,7 @@ export const ScenarioSchema = z
       .min(1, 'Player role description is required')
       .max(500, 'Player role must be 500 characters or fewer'),
     goals: z
-      .array(z.string().min(1).max(200))
+      .array(z.string().min(1, 'Goal cannot be empty').max(200, 'Goal must be 200 characters or fewer'))
       .min(1, 'At least one goal is required')
       .max(10, 'At most 10 goals allowed'),
     difficulty: z.enum(['easy', 'medium', 'hard'], {
@@ -144,7 +144,7 @@ export const NpcPersonaSchema = z
       .min(1, 'Speaking style is required')
       .max(500, 'Speaking style must be 500 characters or fewer'),
     personality_traits: z
-      .array(z.string().min(1).max(50))
+      .array(z.string().min(1, 'Trait cannot be empty').max(50, 'Trait must be 50 characters or fewer'))
       .min(1, 'At least one personality trait is required')
       .max(10, 'At most 10 personality traits allowed'),
   })
@@ -180,7 +180,7 @@ export const NpcSchema = z
     persona: NpcPersonaSchema,
     voice: NpcVoiceSchema,
     boundaries: z
-      .array(z.string().min(1).max(300))
+      .array(z.string().min(1, 'Boundary cannot be empty').max(300, 'Boundary must be 300 characters or fewer'))
       .min(1, 'At least one boundary is required')
       .max(20, 'At most 20 boundaries allowed'),
     hidden_agenda: z

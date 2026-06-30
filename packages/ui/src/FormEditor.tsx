@@ -51,13 +51,25 @@ export function FormEditor({ fileType, initialYaml, onChange, className }: FormE
     setYaml(newYaml);
   }
 
-  // Notify parent whenever yaml changes after the initial mount.
-  // The parent already has the initial value (they passed it as initialYaml),
-  // so firing on mount would violate "called whenever the YAML content changes".
+  // Notify parent whenever yaml changes due to a user edit (form or YAML tab).
+  // We must NOT fire when yaml changes because initialYaml prop changed — the
+  // parent already holds that value (they just passed it in). We detect prop
+  // changes by comparing to the previous initialYaml in the render phase and
+  // setting a flag before the yaml effect can fire.
   const isFirstRender = React.useRef(true);
+  const suppressNextOnChange = React.useRef(false);
+  const prevInitialYaml = React.useRef(initialYaml);
+  if (prevInitialYaml.current !== initialYaml) {
+    prevInitialYaml.current = initialYaml;
+    suppressNextOnChange.current = true;
+  }
   React.useEffect(() => {
     if (isFirstRender.current) {
       isFirstRender.current = false;
+      return;
+    }
+    if (suppressNextOnChange.current) {
+      suppressNextOnChange.current = false;
       return;
     }
     onChange?.(yaml);

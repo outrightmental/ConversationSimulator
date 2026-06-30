@@ -533,7 +533,7 @@ describe('FormEditor — per-item validation errors', () => {
     // The new empty goal should trigger a validation error at goals.1
     // (index 1 because there is already one goal in the fixture)
     const alerts = await screen.findAllByRole('alert');
-    const goalError = alerts.find((el) => el.textContent?.match(/at least/i));
+    const goalError = alerts.find((el) => el.textContent?.match(/cannot be empty/i));
     expect(goalError).toBeTruthy();
   });
 
@@ -556,7 +556,7 @@ describe('FormEditor — per-item validation errors', () => {
     await user.click(screen.getByRole('button', { name: 'Add limit' }));
 
     const alerts = await screen.findAllByRole('alert');
-    const boundaryError = alerts.find((el) => el.textContent?.match(/at least/i));
+    const boundaryError = alerts.find((el) => el.textContent?.match(/cannot be empty/i));
     expect(boundaryError).toBeTruthy();
   });
 });
@@ -569,6 +569,25 @@ describe('FormEditor — onChange call count', () => {
   it('does not call onChange on initial mount', () => {
     const onChange = vi.fn();
     render(<FormEditor fileType="manifest" initialYaml={MANIFEST_YAML} onChange={onChange} />);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('does not call onChange when initialYaml prop changes (file switch)', async () => {
+    const onChange = vi.fn();
+    const SECOND_MANIFEST = MANIFEST_YAML.replace('name: "Test Pack"', 'name: "Second Pack"')
+      .replace('id: test-pack', 'id: second-pack');
+
+    const { rerender } = render(
+      <FormEditor fileType="manifest" initialYaml={MANIFEST_YAML} onChange={onChange} />,
+    );
+    onChange.mockClear();
+
+    // Simulate the parent loading a different file by changing initialYaml
+    rerender(<FormEditor fileType="manifest" initialYaml={SECOND_MANIFEST} onChange={onChange} />);
+
+    // Wait a tick for any async effects
+    await new Promise((r) => setTimeout(r, 50));
+
     expect(onChange).not.toHaveBeenCalled();
   });
 
