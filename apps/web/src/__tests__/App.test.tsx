@@ -40,7 +40,7 @@ describe('App shell', () => {
 
   it('renders Scenario Setup at /setup/:id', () => {
     renderAt('/setup/behavioral-interview')
-    expect(screen.getByRole('heading', { name: /scenario setup/i })).toBeInTheDocument()
+    expect(screen.getByTestId('setup-page')).toBeInTheDocument()
     expect(screen.getByText(/behavioral-interview/)).toBeInTheDocument()
   })
 
