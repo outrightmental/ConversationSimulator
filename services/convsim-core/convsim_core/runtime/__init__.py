@@ -20,6 +20,7 @@ from convsim_core.runtime.types import (
 
 # Import built-in adapters to trigger their @register() decorators.
 import convsim_core.runtime.fake  # noqa: F401, E402
+import convsim_core.runtime.llama_cpp  # noqa: F401, E402
 
 __all__ = [
     "ChatRuntime",
