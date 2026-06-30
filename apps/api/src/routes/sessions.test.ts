@@ -245,6 +245,14 @@ describe('DELETE /api/sessions/:session_id', () => {
     });
     expect(getRes.statusCode).toBe(404);
   });
+
+  it('returns 404 for unknown session id', async () => {
+    const res = await app.inject({
+      method: 'DELETE',
+      url: '/api/sessions/sess-doesnotexist',
+    });
+    expect(res.statusCode).toBe(404);
+  });
 });
 
 // ---------------------------------------------------------------------------
