@@ -1,0 +1,114 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: Apache-2.0
+# Verify that all expected monorepo paths exist after a fresh clone.
+# Exit 0 when every path is present; exit 1 and list what is missing otherwise.
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ERRORS=0
+
+check_dir() {
+    if [[ -d "$REPO_ROOT/$1" ]]; then
+        echo "  OK  $1/"
+    else
+        echo "  MISSING  $1/" >&2
+        ERRORS=$((ERRORS + 1))
+    fi
+}
+
+check_file() {
+    if [[ -f "$REPO_ROOT/$1" ]]; then
+        echo "  OK  $1"
+    else
+        echo "  MISSING  $1" >&2
+        ERRORS=$((ERRORS + 1))
+    fi
+}
+
+echo ""
+echo "Conversation Simulator — smoke check"
+echo "======================================"
+echo ""
+echo "Checking expected monorepo paths..."
+echo ""
+
+# Top-level workspace directories
+check_dir "apps"
+check_dir "packages"
+check_dir "services"
+check_dir "runtimes"
+check_dir "packs"
+check_dir "schemas"
+check_dir "model-registry"
+check_dir "docs"
+check_dir "scripts"
+
+echo ""
+
+# Application workspaces
+check_dir "apps/web"
+check_dir "apps/desktop"
+check_file "apps/web/package.json"
+check_file "apps/desktop/package.json"
+
+echo ""
+
+# Package workspaces
+check_dir "packages/ui"
+check_dir "packages/scenario-schema"
+check_dir "packages/shared-types"
+check_file "packages/ui/package.json"
+check_file "packages/scenario-schema/package.json"
+check_file "packages/shared-types/package.json"
+
+echo ""
+
+# Backend service
+check_dir "services/convsim-core"
+check_file "services/convsim-core/pyproject.toml"
+
+echo ""
+
+# Runtime adapters
+check_dir "runtimes/llama_cpp"
+check_dir "runtimes/whisper_cpp"
+
+echo ""
+
+# Scenario packs
+check_dir "packs/official"
+check_dir "packs/official/job-interview-basic"
+check_dir "packs/official/everyday-negotiation"
+check_dir "packs/official/language-cafe"
+check_dir "packs/official/difficult-conversations"
+
+echo ""
+
+# Root files
+check_file "README.md"
+check_file "LICENSE"
+check_file "NOTICE"
+check_file "package.json"
+check_file ".editorconfig"
+check_file ".gitignore"
+check_file ".prettierrc"
+
+echo ""
+
+# Developer scripts (all four variants required)
+check_file "scripts/setup.sh"
+check_file "scripts/dev.sh"
+check_file "scripts/setup.ps1"
+check_file "scripts/dev.ps1"
+
+echo ""
+
+if [[ "$ERRORS" -gt 0 ]]; then
+    echo "FAIL: $ERRORS expected path(s) are missing." >&2
+    echo "" >&2
+    exit 1
+fi
+
+echo "All expected paths are present."
+echo ""
+exit 0
