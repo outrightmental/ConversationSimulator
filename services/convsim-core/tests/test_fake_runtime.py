@@ -134,3 +134,21 @@ async def test_fake_runtime_model_id_uses_request_model(runtime):
 
     assert final is not None
     assert final.model_id == "fake-large"
+
+
+@pytest.mark.asyncio
+async def test_fake_runtime_input_tokens_counts_message_words(runtime):
+    request = ChatRequest(
+        messages=[
+            ChatMessage(role="system", content="You are helpful."),
+            ChatMessage(role="user", content="hello world"),
+        ]
+    )
+    final = None
+    async for chunk in runtime.chat_stream(request):
+        if isinstance(chunk, ChatFinal):
+            final = chunk
+
+    assert final is not None
+    # input_tokens = word count across all messages: 3 + 2 = 5
+    assert final.input_tokens == 5
