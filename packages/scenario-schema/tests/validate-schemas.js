@@ -167,4 +167,78 @@ mustReject("safety", () => {
   const d = loadExample("safety.example.json");
   d.content_categories.made_up_category = "stop";
   return d;
-}, "safety with unknown content category (additionalProperties: false)");
+}, "safety missing required instructional_criminal category");
+
+mustReject("safety", () => {
+  const d = loadExample("safety.example.json");
+  delete d.content_categories.crisis_content;
+  return d;
+}, "safety missing required crisis_content category");
+
+// Rubric: stable dimension ids and required fields
+mustReject("rubric", () => {
+  const d = loadExample("rubric.example.json");
+  delete d.rubric_id;
+  return d;
+}, "rubric missing rubric_id");
+
+mustReject("rubric", () => {
+  const d = loadExample("rubric.example.json");
+  d.dimensions = [];
+  return d;
+}, "rubric with empty dimensions array");
+
+mustReject("rubric", () => {
+  const d = loadExample("rubric.example.json");
+  delete d.dimensions[0].id;
+  return d;
+}, "rubric dimension missing stable id");
+
+mustReject("rubric", () => {
+  const d = loadExample("rubric.example.json");
+  delete d.dimensions[0].scoring;
+  return d;
+}, "rubric dimension missing scoring descriptions");
+
+mustReject("rubric", () => {
+  const d = loadExample("rubric.example.json");
+  d.dimensions[0].id = "InvalidID";
+  return d;
+}, "rubric dimension id with uppercase (pattern violation)");
+
+// Scenario: required fields
+mustReject("scenario", () => {
+  const d = loadExample("scenario.example.json");
+  delete d.scenario_id;
+  return d;
+}, "scenario missing scenario_id");
+
+mustReject("scenario", () => {
+  const d = loadExample("scenario.example.json");
+  delete d.npc;
+  return d;
+}, "scenario missing npc reference");
+
+mustReject("scenario", () => {
+  const d = loadExample("scenario.example.json");
+  delete d.rubric;
+  return d;
+}, "scenario missing rubric reference");
+
+// Pack-test: required fields
+mustReject("packTest", () => {
+  const d = loadExample("pack-test.example.json");
+  d.turns = [];
+  return d;
+}, "pack-test with empty turns array");
+
+mustReject("packTest", () => {
+  const d = loadExample("pack-test.example.json");
+  delete d.fixture_id;
+  return d;
+}, "pack-test missing fixture_id");
+
+// Asset: executable field prohibition
+mustReject("asset", () => {
+  return { ...loadExample("asset.example.json"), runtime_url: "https://example.com/file.png" };
+}, "asset with runtime_url field (executable field forbidden)");
