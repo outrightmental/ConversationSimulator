@@ -13,6 +13,7 @@ from convsim_core.errors import (
 )
 from convsim_core.logging_setup import configure_logging
 from convsim_core.routers import diag as diag_router, health, settings as settings_router
+from convsim_core.runtime import build_runtime
 from convsim_core.storage.database import Database
 from convsim_core.storage.repositories.settings_repo import load_settings
 
