@@ -36,7 +36,6 @@ class LlamaCppConfig(BaseSettings):
     base_url: str = "http://127.0.0.1:7356"
     model_id: str | None = None
     context_length: int | None = None
-    temperature: float = 0.8
     top_p: float = 0.95
     repeat_penalty: float = 1.1
     threads: int | None = None
@@ -58,7 +57,6 @@ class LlamaCppRuntime(ChatRuntime):
         self._base_url = cfg.base_url.rstrip("/")
         self._model_id = cfg.model_id
         self._context_length = cfg.context_length
-        self._temperature = cfg.temperature
         self._top_p = cfg.top_p
         self._repeat_penalty = cfg.repeat_penalty
         self._threads = cfg.threads
@@ -98,6 +96,11 @@ class LlamaCppRuntime(ChatRuntime):
         except httpx.HTTPStatusError as exc:
             raise ConnectionError(
                 f"llama-server returned HTTP {exc.response.status_code} for /v1/models"
+            ) from exc
+        except httpx.TimeoutException as exc:
+            raise TimeoutError(
+                f"llama-server /v1/models timed out after {self._timeout}s. "
+                "Increase CONVSIM_LLAMA_CPP_TIMEOUT or check server responsiveness."
             ) from exc
 
         return [

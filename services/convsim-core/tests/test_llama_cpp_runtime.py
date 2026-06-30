@@ -178,6 +178,15 @@ async def test_list_models_http_error_raises_connection_error(runtime):
             await runtime.list_models()
 
 
+@pytest.mark.asyncio
+async def test_list_models_timeout_raises_timeout_error(runtime):
+    client = _mock_client(timeout_error=True)
+
+    with patch("convsim_core.runtime.llama_cpp.httpx.AsyncClient", return_value=client):
+        with pytest.raises(TimeoutError, match="timed out"):
+            await runtime.list_models()
+
+
 # ---------------------------------------------------------------------------
 # chat_stream — happy path
 # ---------------------------------------------------------------------------
