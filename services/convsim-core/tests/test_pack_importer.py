@@ -240,3 +240,28 @@ def test_import_different_version_same_id_raises_conflict(tmp_path):
     with pytest.raises(PackConflictError):
         import_from_folder(pack_dir_v2, packs_dir, db.connection())
     db.close()
+
+
+def test_import_links_scenario_scoped_assets(tmp_path):
+    """Assets stored under scenarios/<slug>/ must have scenario_id set in asset_index."""
+    db = _open_db(tmp_path)
+    zip_bytes = make_pack_zip(
+        tmp_path / "src",
+        extra_files={
+            "scenarios/intro/portraits/npc2.png": b"\x89PNG\r\n\x1a\n" + b"\x00" * 10,
+        },
+    )
+    packs_dir = tmp_path / "packs"
+    packs_dir.mkdir()
+
+    import_from_zip(zip_bytes, packs_dir, db.connection())
+
+    rows = db.connection().execute(
+        "SELECT relative_path, scenario_id FROM asset_index WHERE scenario_id IS NOT NULL"
+    ).fetchall()
+    assert len(rows) > 0, "Expected at least one asset linked to a scenario via scenario_id"
+    rel_paths = [r["relative_path"] for r in rows]
+    assert any("intro" in p for p in rel_paths), (
+        f"Expected an asset under scenarios/intro/ to be linked; got: {rel_paths}"
+    )
+    db.close()

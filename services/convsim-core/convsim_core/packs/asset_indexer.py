@@ -36,28 +36,42 @@ def _classify_asset(path: Path) -> str:
     return "other"
 
 
+def _resolve_scenario_id(relative_path: str, scenario_map: dict[str, int]) -> Optional[int]:
+    """Return the scenario DB id for an asset stored under scenarios/<slug>/*, else None."""
+    parts = relative_path.split("/")
+    if len(parts) >= 3 and parts[0] == "scenarios":
+        return scenario_map.get(parts[1])
+    return None
+
+
 def index_pack_assets(
     conn: sqlite3.Connection,
     pack_dir: Path,
     pack_db_id: int,
     pack_license: Optional[str] = None,
+    scenario_map: Optional[dict[str, int]] = None,
 ) -> int:
     """
     Insert an asset_index row for every file in pack_dir.
     Returns the number of assets indexed.
     Does not commit — caller is responsible for the transaction boundary.
+
+    scenario_map maps scenario slug → scenario DB id; assets stored under
+    scenarios/<slug>/* are linked to that scenario via the scenario_id FK.
     """
+    _scenario_map: dict[str, int] = scenario_map or {}
     count = 0
     for file_path in sorted(pack_dir.rglob("*")):
         if not file_path.is_file():
             continue
         relative_path = str(file_path.relative_to(pack_dir)).replace("\\", "/")
+        scenario_id = _resolve_scenario_id(relative_path, _scenario_map) if _scenario_map else None
         conn.execute(
             """
             INSERT INTO asset_index
                 (asset_type, filename, file_path, relative_path,
-                 content_hash, size_bytes, media_type, license, pack_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 content_hash, size_bytes, media_type, license, pack_id, scenario_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 _classify_asset(file_path),
@@ -69,6 +83,7 @@ def index_pack_assets(
                 _detect_media_type(file_path),
                 pack_license,
                 pack_db_id,
+                scenario_id,
             ),
         )
         count += 1

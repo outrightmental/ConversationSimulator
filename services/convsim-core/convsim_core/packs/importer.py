@@ -158,8 +158,10 @@ def _install_from_dir(
         pack_db_id = insert_pack(conn, manifest, str(pack_dest))
 
         scenarios = _discover_scenarios(tmp_dest, manifest)
+        slug_to_scenario_id: dict[str, int] = {}
         for slug, name in scenarios:
-            insert_scenario(conn, pack_db_id, slug, name)
+            scenario_db_id = insert_scenario(conn, pack_db_id, slug, name)
+            slug_to_scenario_id[slug] = scenario_db_id
 
         # Move staging copy to final destination before indexing so that
         # absolute file_path values stored in asset_index reflect the real location.
@@ -168,7 +170,7 @@ def _install_from_dir(
         pack_dest.parent.mkdir(parents=True, exist_ok=True)
         shutil.move(str(tmp_dest), str(pack_dest))
 
-        assets_count = index_pack_assets(conn, pack_dest, pack_db_id, manifest.license)
+        assets_count = index_pack_assets(conn, pack_dest, pack_db_id, manifest.license, slug_to_scenario_id)
 
         conn.commit()
         logger.info(
