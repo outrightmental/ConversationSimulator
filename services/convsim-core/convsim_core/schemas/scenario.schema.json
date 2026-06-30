@@ -119,10 +119,37 @@
       "properties": {
         "variables": {
           "type": "object",
+          "description": "Override or extend baseline variables. Each key is a variable name. Value may be a simple integer (sets the default) or a rich object with min/max/default/visibility/max_delta_per_turn.",
           "additionalProperties": {
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 100
+            "oneOf": [
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 100,
+                "description": "Shorthand: sets the default value for a baseline variable."
+              },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "description": "Full variable definition.",
+                "properties": {
+                  "min": { "type": "integer", "default": 0 },
+                  "max": { "type": "integer", "default": 100 },
+                  "default": { "type": "integer" },
+                  "visibility": {
+                    "type": "string",
+                    "enum": ["visible", "hidden"],
+                    "default": "visible"
+                  },
+                  "max_delta_per_turn": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 100,
+                    "default": 20
+                  }
+                }
+              }
+            ]
           }
         }
       }
@@ -158,8 +185,54 @@
         "additionalProperties": false,
         "properties": {
           "id": { "type": "string", "pattern": "^[a-z0-9_]+$" },
-          "when": { "type": "object" },
-          "npc_instruction": { "type": "string" }
+          "when": {
+            "oneOf": [
+              {
+                "type": "object",
+                "required": ["type", "variable", "threshold"],
+                "additionalProperties": false,
+                "properties": {
+                  "type": { "type": "string", "enum": ["variable_above"] },
+                  "variable": { "type": "string" },
+                  "threshold": { "type": "integer" }
+                }
+              },
+              {
+                "type": "object",
+                "required": ["type", "variable", "threshold"],
+                "additionalProperties": false,
+                "properties": {
+                  "type": { "type": "string", "enum": ["variable_below"] },
+                  "variable": { "type": "string" },
+                  "threshold": { "type": "integer" }
+                }
+              },
+              {
+                "type": "object",
+                "required": ["type", "value"],
+                "additionalProperties": false,
+                "properties": {
+                  "type": { "type": "string", "enum": ["max_turns"] },
+                  "value": { "type": "integer", "minimum": 1 }
+                }
+              },
+              {
+                "type": "object",
+                "required": ["type", "flag_id"],
+                "additionalProperties": false,
+                "properties": {
+                  "type": { "type": "string", "enum": ["flag"] },
+                  "flag_id": { "type": "string", "pattern": "^[a-z0-9_]+$" }
+                }
+              }
+            ]
+          },
+          "npc_instruction": { "type": "string" },
+          "repeat": {
+            "type": "boolean",
+            "default": false,
+            "description": "If true, the event may fire on every turn the condition is met. If false (default), fires at most once per session."
+          }
         }
       }
     },
@@ -167,9 +240,76 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "success": { "type": "object" },
-        "failure": { "type": "object" },
-        "timeout": { "type": "object" }
+        "success": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["type", "variable", "threshold"],
+              "additionalProperties": false,
+              "properties": {
+                "type": { "type": "string", "enum": ["variable_above"] },
+                "variable": { "type": "string" },
+                "threshold": { "type": "integer" }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["type", "variable", "threshold"],
+              "additionalProperties": false,
+              "properties": {
+                "type": { "type": "string", "enum": ["variable_below"] },
+                "variable": { "type": "string" },
+                "threshold": { "type": "integer" }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["type", "value"],
+              "additionalProperties": false,
+              "properties": {
+                "type": { "type": "string", "enum": ["max_turns"] },
+                "value": { "type": "integer", "minimum": 1 }
+              }
+            }
+          ]
+        },
+        "failure": {
+          "oneOf": [
+            {
+              "type": "object",
+              "required": ["type", "variable", "threshold"],
+              "additionalProperties": false,
+              "properties": {
+                "type": { "type": "string", "enum": ["variable_above"] },
+                "variable": { "type": "string" },
+                "threshold": { "type": "integer" }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["type", "variable", "threshold"],
+              "additionalProperties": false,
+              "properties": {
+                "type": { "type": "string", "enum": ["variable_below"] },
+                "variable": { "type": "string" },
+                "threshold": { "type": "integer" }
+              }
+            },
+            {
+              "type": "object",
+              "required": ["type", "value"],
+              "additionalProperties": false,
+              "properties": {
+                "type": { "type": "string", "enum": ["max_turns"] },
+                "value": { "type": "integer", "minimum": 1 }
+              }
+            }
+          ]
+        },
+        "timeout": {
+          "type": "object",
+          "description": "Optional explicit timeout condition (turn-count-based timeout is always enforced via duration.max_turns)."
+        }
       }
     }
   }
