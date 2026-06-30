@@ -84,6 +84,7 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
           language: scenarioData.supported_languages[0] ?? 'en',
           tts_enabled: rt.tts_ready,
           input_mode: rt.stt_ready ? 'push-to-talk' : 'text-only',
+          show_state_meters: scenarioData.state_meters_permitted ? prev.show_state_meters : false,
         }));
       },
       (err: unknown) => {
