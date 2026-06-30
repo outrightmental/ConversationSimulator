@@ -10,7 +10,8 @@ You may obtain a copy of the License at:
 
 Licensing summary by content type (SPDX identifiers):
 
-  Application code (apps/, packages/, services/, runtimes/, scripts/):
+  Application code (apps/, packages/, services/, runtimes/, scripts/,
+    model-registry/, schemas/):
     SPDX-License-Identifier: Apache-2.0
 
   Documentation (docs/):
