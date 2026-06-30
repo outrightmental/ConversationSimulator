@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
-import { mkdtempSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { loadPack, resolveBundle } from '../src/loader.js';
+import { loadPack, resolveBundle, loadPacksFromRoots } from '../src/loader.js';
 import { PackLoaderError } from '../src/types.js';
 import {
   makeTempPackDir,
   VALID_MANIFEST_YAML,
+  VALID_SAFETY_YAML,
+  VALID_NPC_YAML,
+  VALID_RUBRIC_YAML,
   VALID_SCENARIO_YAML,
   VALID_SCENARIO_WITH_SCENE_YAML,
   VALID_SCENE_YAML,
@@ -258,5 +261,83 @@ private_persona: {}
       const code = (e as PackLoaderError).code;
       expect(['INVALID_YAML', 'SCHEMA_VALIDATION']).toContain(code);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// loadPacksFromRoots
+// ---------------------------------------------------------------------------
+
+/**
+ * Build a valid pack directory tree directly inside `parentDir` and return its
+ * absolute path.  Unlike makeTempPackDir(), the directory is created *within*
+ * a caller-supplied parent so it shows up when loadPacksFromRoots() scans that
+ * parent for subdirectories.
+ */
+function makePackSubdir(parentDir: string, manifestYaml: string = VALID_MANIFEST_YAML): string {
+  const dir = mkdtempSync(join(parentDir, 'pack-'));
+  for (const sub of ['scenarios', 'npcs', 'rubrics', 'safety']) {
+    mkdirSync(join(dir, sub), { recursive: true });
+  }
+  writeFileSync(join(dir, 'manifest.yaml'), manifestYaml, 'utf8');
+  writeFileSync(join(dir, 'safety', 'policy.yaml'), VALID_SAFETY_YAML, 'utf8');
+  writeFileSync(join(dir, 'npcs', 'test_npc.yaml'), VALID_NPC_YAML, 'utf8');
+  writeFileSync(join(dir, 'rubrics', 'test_rubric.yaml'), VALID_RUBRIC_YAML, 'utf8');
+  writeFileSync(join(dir, 'scenarios', 'test_scenario.yaml'), VALID_SCENARIO_YAML, 'utf8');
+  return dir;
+}
+
+describe('loadPacksFromRoots', () => {
+  it('loads packs from an official root', () => {
+    const officialRoot = mkdtempSync(join(tmpdir(), 'convsim-official-root-'));
+    const manifestA = VALID_MANIFEST_YAML.replace('pack_id: test.minimal_pack', 'pack_id: official.pack_a');
+    const manifestB = VALID_MANIFEST_YAML.replace('pack_id: test.minimal_pack', 'pack_id: official.pack_b');
+    makePackSubdir(officialRoot, manifestA);
+    makePackSubdir(officialRoot, manifestB);
+
+    const result = loadPacksFromRoots({ officialRoot });
+    expect(result.errors).toHaveLength(0);
+    expect(result.packs).toHaveLength(2);
+    expect(result.packs.every((p) => p.packRootKind === 'official')).toBe(true);
+    const ids = result.packs.map((p) => p.manifest.pack_id).sort();
+    expect(ids).toContain('official.pack_a');
+    expect(ids).toContain('official.pack_b');
+  });
+
+  it('collects errors for invalid packs without throwing', () => {
+    const localDevRoot = mkdtempSync(join(tmpdir(), 'convsim-local-root-'));
+    makePackSubdir(localDevRoot);
+    mkdirSync(join(localDevRoot, 'broken-pack'), { recursive: true }); // empty dir, no manifest
+
+    const result = loadPacksFromRoots({ localDevRoot });
+    expect(result.packs).toHaveLength(1);
+    expect(result.errors).toHaveLength(1);
+    expect(result.packs[0]?.manifest.pack_id).toBe('test.minimal_pack');
+    expect(result.packs[0]?.packRootKind).toBe('local-dev');
+  });
+
+  it('returns empty results when root directories do not exist', () => {
+    const result = loadPacksFromRoots({
+      officialRoot: join(tmpdir(), 'convsim-nonexistent-official-zzz'),
+      communityRoot: join(tmpdir(), 'convsim-nonexistent-community-zzz'),
+    });
+    expect(result.packs).toHaveLength(0);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it('loads from multiple roots and tags packs with their root kind', () => {
+    const officialRoot = mkdtempSync(join(tmpdir(), 'convsim-multi-official-'));
+    const communityRoot = mkdtempSync(join(tmpdir(), 'convsim-multi-community-'));
+    makePackSubdir(officialRoot, VALID_MANIFEST_YAML.replace('pack_id: test.minimal_pack', 'pack_id: official.one'));
+    makePackSubdir(communityRoot, VALID_MANIFEST_YAML.replace('pack_id: test.minimal_pack', 'pack_id: community.one'));
+
+    const result = loadPacksFromRoots({ officialRoot, communityRoot });
+    expect(result.errors).toHaveLength(0);
+    expect(result.packs).toHaveLength(2);
+
+    const official = result.packs.find((p) => p.manifest.pack_id === 'official.one');
+    const community = result.packs.find((p) => p.manifest.pack_id === 'community.one');
+    expect(official?.packRootKind).toBe('official');
+    expect(community?.packRootKind).toBe('community');
   });
 });
