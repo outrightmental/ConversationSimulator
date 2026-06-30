@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from typing import List, Optional
 
+from .composer import SYSTEM_LAYER_ORDER
 from .types import PromptBundle
 
 _REDACTED_PLACEHOLDER = "[REDACTED BY INSPECTOR]"
@@ -64,9 +65,8 @@ class PromptInspector:
             "--- SYSTEM PROMPT (by layer) ---",
         ]
 
-        for name, content in bundle.layer_map.items():
-            if name == "PLAYER_UTTERANCE":
-                continue
+        for name in SYSTEM_LAYER_ORDER:
+            content = bundle.layer_map.get(name, "(missing layer)")
             section = _REDACTED_PLACEHOLDER if name in redact_set else content
             lines.append(f"\n[Layer: {name}]\n{section}")
 
