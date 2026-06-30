@@ -7,8 +7,8 @@ LOCAL_FIRST_STATEMENT = (
 )
 
 TELEMETRY_POLICY = (
-    "Telemetry is disabled and cannot be enabled. "
-    "No usage data, crash reports, or analytics are sent anywhere."
+    "Telemetry is disabled by default. "
+    "No usage data or analytics are collected or transmitted without explicit opt-in."
 )
 
 TRANSCRIPT_SAVING_NOTICE = (
