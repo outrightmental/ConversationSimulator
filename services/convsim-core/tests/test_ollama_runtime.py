@@ -312,6 +312,17 @@ async def test_chat_stream_raises_when_no_models_and_no_model_id():
 
 
 @pytest.mark.asyncio
+async def test_chat_stream_raises_not_running_when_ollama_down_and_no_model_id():
+    """When Ollama is unreachable *and* no model_id is supplied, the error must
+    say the server is not reachable — not that it has no models installed."""
+    runtime = _make_runtime(connect_error=True)
+    request = ChatRequest(messages=[ChatMessage(role="user", content="hello")])
+    with pytest.raises(RuntimeError, match="[Oo]llama"):
+        async for _ in runtime.chat_stream(request):
+            pass
+
+
+@pytest.mark.asyncio
 async def test_chat_stream_raises_runtime_error_on_404():
     """A 404 from Ollama (model not found) should raise RuntimeError, not HTTPStatusError."""
 

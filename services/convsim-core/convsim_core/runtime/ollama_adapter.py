@@ -123,6 +123,13 @@ class OllamaChatRuntime(ChatRuntime):
         if not model_id:
             models = await self.list_models()
             if not models:
+                # list_models() silently returns [] on both connection failure and
+                # genuinely no models, so check reachability to give the right message.
+                try:
+                    resp = await self._client.get("/")
+                    resp.raise_for_status()
+                except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPStatusError):
+                    raise RuntimeError(_NOT_RUNNING_HINT)
                 raise RuntimeError(_NO_MODELS_HINT)
             model_id = models[0].id
 
