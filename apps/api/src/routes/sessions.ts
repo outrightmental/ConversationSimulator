@@ -3,8 +3,15 @@ import type {
   SessionCreateRequest,
   SessionCreateResponse,
   SessionState,
+  SessionStartResponse,
+  TurnRequest,
+  TurnResponse,
+  SessionEndResponse,
+  SessionDebriefResponse,
+  EndingType,
 } from '@convsim/shared';
 import { SCENARIOS } from '../data/scenarios.js';
+import { getDb } from '../db.js';
 
 function generateSessionId(): string {
   const bytes = Array.from({ length: 8 }, () =>
@@ -15,17 +22,74 @@ function generateSessionId(): string {
   return `sess-${bytes.join('')}`;
 }
 
-interface StoredSession {
-  session_id: string;
-  scenario_id: string;
-  state: SessionState;
-  created_at: string;
-  setup: SessionCreateRequest;
+type Action = 'start' | 'turn' | 'end' | 'debrief';
+
+// Returns true when the action is a legal next step from the given state.
+function canTransition(state: SessionState, action: Action): boolean {
+  if (state === 'Ended') return false;
+  if (state === 'Error') return action === 'end';
+  if (action === 'end') return true;
+  if (action === 'start') return state === 'NotStarted';
+  if (action === 'turn') return state === 'PlayerTurnListening';
+  if (action === 'debrief') return state === 'DebriefReady';
+  return false;
 }
 
-const sessions = new Map<string, StoredSession>();
+interface SessionRow {
+  session_id: string;
+  scenario_id: string;
+  state: string;
+  ending_type: string | null;
+  created_at: string;
+  setup_json: string;
+}
+
+interface EventRow {
+  event_id: number;
+  session_id: string;
+  event_type: string;
+  payload_json: string;
+  created_at: string;
+}
+
+function rowToEvent(row: EventRow) {
+  return {
+    event_id: row.event_id,
+    session_id: row.session_id,
+    event_type: row.event_type,
+    payload: JSON.parse(row.payload_json) as Record<string, unknown>,
+    created_at: row.created_at,
+  };
+}
+
+function insertEvent(
+  session_id: string,
+  event_type: string,
+  payload: Record<string, unknown>,
+): EventRow {
+  const db = getDb();
+  const now = new Date().toISOString();
+  const result = db
+    .prepare(
+      'INSERT INTO session_events (session_id, event_type, payload_json, created_at) VALUES (?, ?, ?, ?)',
+    )
+    .run(session_id, event_type, JSON.stringify(payload), now);
+  return db
+    .prepare<[number], EventRow>('SELECT * FROM session_events WHERE event_id = ?')
+    .get(Number(result.lastInsertRowid))!;
+}
+
+function rejectTransition(reply: { status: (code: number) => void }, state: SessionState, msg: string): never {
+  reply.status(409);
+  const err = new Error(msg) as Error & { statusCode: number; code: string; current_state: string };
+  err.statusCode = 409;
+  err.code = 'INVALID_TRANSITION';
+  err.current_state = state;
+  throw err;
+}
 
 export async function sessionRoutes(app: FastifyInstance) {
+  // POST /api/sessions
   app.post<{ Body: SessionCreateRequest }>(
     '/api/sessions',
     {
@@ -91,49 +155,250 @@ export async function sessionRoutes(app: FastifyInstance) {
 
       if (body.show_state_meters && !scenario.state_meters_permitted) {
         reply.status(400);
-        throw new Error(
-          `Scenario '${body.scenario_id}' does not permit state meters`,
-        );
+        throw new Error(`Scenario '${body.scenario_id}' does not permit state meters`);
       }
 
-      const session: StoredSession = {
-        session_id: generateSessionId(),
-        scenario_id: body.scenario_id,
-        state: 'NotStarted',
-        created_at: new Date().toISOString(),
-        setup: body,
-      };
+      const db = getDb();
+      const now = new Date().toISOString();
+      const session_id = generateSessionId();
 
-      sessions.set(session.session_id, session);
+      db
+        .prepare(
+          'INSERT INTO sessions (session_id, scenario_id, state, created_at, setup_json) VALUES (?, ?, ?, ?, ?)',
+        )
+        .run(session_id, body.scenario_id, 'NotStarted', now, JSON.stringify(body));
 
       reply.status(201);
-      return session;
+      return {
+        session_id,
+        scenario_id: body.scenario_id,
+        state: 'NotStarted',
+        created_at: now,
+        setup: body,
+      };
     },
   );
 
+  // GET /api/sessions/:session_id
   app.get<{ Params: { session_id: string } }>(
     '/api/sessions/:session_id',
-    async (req, reply): Promise<StoredSession> => {
-      const session = sessions.get(req.params.session_id);
-      if (!session) {
+    async (req, reply): Promise<SessionCreateResponse> => {
+      const db = getDb();
+      const row = db
+        .prepare<[string], SessionRow>('SELECT * FROM sessions WHERE session_id = ?')
+        .get(req.params.session_id);
+
+      if (!row) {
         reply.status(404);
         throw new Error(`Session '${req.params.session_id}' not found`);
       }
-      return session;
+
+      return {
+        session_id: row.session_id,
+        scenario_id: row.scenario_id,
+        state: row.state as SessionState,
+        created_at: row.created_at,
+        setup: JSON.parse(row.setup_json) as SessionCreateRequest,
+      };
     },
   );
 
+  // DELETE /api/sessions/:session_id
   app.delete<{ Params: { session_id: string } }>(
     '/api/sessions/:session_id',
     async (req, reply): Promise<void> => {
-      if (!sessions.has(req.params.session_id)) {
+      const db = getDb();
+      const row = db
+        .prepare<[string], Pick<SessionRow, 'session_id'>>(
+          'SELECT session_id FROM sessions WHERE session_id = ?',
+        )
+        .get(req.params.session_id);
+
+      if (!row) {
         reply.status(404);
         throw new Error(`Session '${req.params.session_id}' not found`);
       }
-      sessions.delete(req.params.session_id);
+
+      db.prepare('DELETE FROM sessions WHERE session_id = ?').run(req.params.session_id);
       reply.status(204);
     },
   );
-}
 
-export { sessions };
+  // POST /api/sessions/:session_id/start
+  app.post<{ Params: { session_id: string } }>(
+    '/api/sessions/:session_id/start',
+    async (req, reply): Promise<SessionStartResponse> => {
+      const db = getDb();
+      const row = db
+        .prepare<[string], SessionRow>('SELECT * FROM sessions WHERE session_id = ?')
+        .get(req.params.session_id);
+
+      if (!row) {
+        reply.status(404);
+        throw new Error(`Session '${req.params.session_id}' not found`);
+      }
+
+      const currentState = row.state as SessionState;
+      if (!canTransition(currentState, 'start')) {
+        rejectTransition(
+          reply,
+          currentState,
+          `Cannot start session from state '${currentState}'. Session must be in NotStarted state.`,
+        );
+      }
+
+      // Stub: skip loading states and emit an NPC opening placeholder.
+      // Wrapped in a transaction so the state update and event insert are atomic.
+      const openingRow = db.transaction(() => {
+        db.prepare("UPDATE sessions SET state = 'PlayerTurnListening' WHERE session_id = ?").run(
+          req.params.session_id,
+        );
+        return insertEvent(req.params.session_id, 'npc_opening', {
+          content: 'Hello! I am ready to begin our conversation. Please go ahead.',
+        });
+      })();
+
+      return {
+        session_id: req.params.session_id,
+        state: 'PlayerTurnListening',
+        events: [rowToEvent(openingRow)],
+      };
+    },
+  );
+
+  // POST /api/sessions/:session_id/turn
+  app.post<{ Params: { session_id: string }; Body: TurnRequest }>(
+    '/api/sessions/:session_id/turn',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          required: ['content'],
+          properties: {
+            content: { type: 'string', minLength: 1 },
+          },
+        },
+      },
+    },
+    async (req, reply): Promise<TurnResponse> => {
+      const db = getDb();
+      const row = db
+        .prepare<[string], SessionRow>('SELECT * FROM sessions WHERE session_id = ?')
+        .get(req.params.session_id);
+
+      if (!row) {
+        reply.status(404);
+        throw new Error(`Session '${req.params.session_id}' not found`);
+      }
+
+      const currentState = row.state as SessionState;
+      if (!canTransition(currentState, 'turn')) {
+        rejectTransition(
+          reply,
+          currentState,
+          `Cannot submit turn from state '${currentState}'. Session must be in PlayerTurnListening state.`,
+        );
+      }
+
+      // Both event inserts are atomic so a partial failure doesn't leave an
+      // orphaned player_turn without its corresponding npc_turn.
+      const [playerRow, npcRow] = db.transaction(() => {
+        const player = insertEvent(req.params.session_id, 'player_turn', {
+          content: req.body.content,
+        });
+        const npc = insertEvent(req.params.session_id, 'npc_turn', {
+          content: 'Thank you for your response. Please continue.',
+        });
+        return [player, npc] as const;
+      })();
+
+      return {
+        session_id: req.params.session_id,
+        state: 'PlayerTurnListening',
+        events: [rowToEvent(playerRow), rowToEvent(npcRow)],
+      };
+    },
+  );
+
+  // POST /api/sessions/:session_id/end
+  app.post<{ Params: { session_id: string } }>(
+    '/api/sessions/:session_id/end',
+    async (req, reply): Promise<SessionEndResponse> => {
+      const db = getDb();
+      const row = db
+        .prepare<[string], SessionRow>('SELECT * FROM sessions WHERE session_id = ?')
+        .get(req.params.session_id);
+
+      if (!row) {
+        reply.status(404);
+        throw new Error(`Session '${req.params.session_id}' not found`);
+      }
+
+      const currentState = row.state as SessionState;
+      if (!canTransition(currentState, 'end')) {
+        rejectTransition(
+          reply,
+          currentState,
+          `Cannot end session from state '${currentState}'. Session is already in a terminal state.`,
+        );
+      }
+
+      // Preserve an existing ending type (e.g. success/failure) set by a scenario ending;
+      // fall back to player_exit when none is recorded.
+      const endingType: EndingType = (row.ending_type as EndingType | null) ?? 'player_exit';
+
+      db.transaction(() => {
+        db.prepare(
+          "UPDATE sessions SET state = 'Ended', ending_type = ? WHERE session_id = ?",
+        ).run(endingType, req.params.session_id);
+        insertEvent(req.params.session_id, 'session_ended', { ending_type: endingType });
+      })();
+
+      return {
+        session_id: req.params.session_id,
+        state: 'Ended',
+        ending_type: endingType,
+      };
+    },
+  );
+
+  // POST /api/sessions/:session_id/debrief
+  app.post<{ Params: { session_id: string } }>(
+    '/api/sessions/:session_id/debrief',
+    async (req, reply): Promise<SessionDebriefResponse> => {
+      const db = getDb();
+      const row = db
+        .prepare<[string], SessionRow>('SELECT * FROM sessions WHERE session_id = ?')
+        .get(req.params.session_id);
+
+      if (!row) {
+        reply.status(404);
+        throw new Error(`Session '${req.params.session_id}' not found`);
+      }
+
+      const currentState = row.state as SessionState;
+      if (!canTransition(currentState, 'debrief')) {
+        rejectTransition(
+          reply,
+          currentState,
+          `Cannot generate debrief from state '${currentState}'. Session must be in DebriefReady state.`,
+        );
+      }
+
+      const summary = 'Stub debrief: the session has completed. Full analysis is not yet available.';
+
+      db.transaction(() => {
+        db.prepare("UPDATE sessions SET state = 'Ended' WHERE session_id = ?").run(
+          req.params.session_id,
+        );
+        insertEvent(req.params.session_id, 'debrief_generated', { summary });
+      })();
+
+      return {
+        session_id: req.params.session_id,
+        state: 'Ended',
+        summary,
+      };
+    },
+  );
+}
