@@ -371,6 +371,7 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
                   placeholder="Auto"
                   min={0}
                   max={2147483647}
+                  step={1}
                   onChange={(e) => {
                     const v = e.target.value;
                     setField('seed', v === '' ? null : parseInt(v, 10));
