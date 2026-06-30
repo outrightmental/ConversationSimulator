@@ -188,3 +188,24 @@ def test_crash_bundle_includes_log_tail_when_present(tmp_path, settings):
     files = _open_zip(create_crash_bundle(str(log_dir), settings))
     recent = files["recent_errors.txt"].decode()
     assert "something went wrong" in recent
+
+
+def test_crash_bundle_recent_errors_excludes_info_entries(tmp_path, settings):
+    """recent_errors.txt must contain only WARNING/ERROR/CRITICAL entries.
+
+    INFO messages are intentionally omitted: the file is named "recent *errors*"
+    and including routine INFO lines would inflate the bundle with noise.
+    """
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir(parents=True)
+    (log_dir / "app.log").write_text(
+        '{"level": "INFO", "message": "routine startup"}\n'
+        '{"level": "ERROR", "message": "something failed"}\n'
+        '{"level": "WARNING", "message": "low memory"}\n',
+        encoding="utf-8",
+    )
+    files = _open_zip(create_crash_bundle(str(log_dir), settings))
+    recent = files["recent_errors.txt"].decode()
+    assert "routine startup" not in recent
+    assert "something failed" in recent
+    assert "low memory" in recent

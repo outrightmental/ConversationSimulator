@@ -62,11 +62,27 @@ def _safe_settings(settings: AppSettings) -> dict:
     return d
 
 
+_ERROR_LEVELS: frozenset[str] = frozenset({"WARNING", "ERROR", "CRITICAL"})
+
+
 def _tail_log(log_path: Path, n: int) -> str:
+    """Return the last *n* WARNING/ERROR/CRITICAL entries from *log_path*.
+
+    Lines that cannot be parsed as JSON are included verbatim so that
+    nothing is silently dropped when the log format is unexpected.
+    """
     if not log_path.exists():
         return ""
     lines = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
-    return "\n".join(lines[-n:])
+    error_lines: list[str] = []
+    for line in lines:
+        try:
+            entry = json.loads(line)
+            if entry.get("level") in _ERROR_LEVELS:
+                error_lines.append(line)
+        except (json.JSONDecodeError, AttributeError):
+            error_lines.append(line)
+    return "\n".join(error_lines[-n:])
 
 
 def create_crash_bundle(log_dir: str, settings: AppSettings) -> Path:
