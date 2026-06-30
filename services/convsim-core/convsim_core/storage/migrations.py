@@ -134,7 +134,10 @@ def run_migrations(conn: sqlite3.Connection) -> int:
     applied = {row[0] for row in conn.execute("SELECT name FROM schema_migrations").fetchall()}
     for name, sql in MIGRATIONS:
         if name not in applied:
-            conn.executescript(sql)
-            conn.execute("INSERT INTO schema_migrations (name) VALUES (?)", (name,))
-            conn.commit()
+            # Wrap the migration DDL and the tracking INSERT in one atomic transaction so
+            # a crash mid-migration cannot leave tables created but the migration unrecorded
+            # (which would break the next startup with "table already exists").
+            conn.executescript(
+                f"BEGIN;\n{sql}\nINSERT INTO schema_migrations(name) VALUES('{name}');\nCOMMIT;\n"
+            )
     return conn.execute("SELECT COUNT(*) FROM schema_migrations").fetchone()[0]
