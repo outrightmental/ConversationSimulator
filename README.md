@@ -55,8 +55,10 @@ cd ConversationSimulator
 ./scripts/setup.sh
 ```
 
-The setup script checks your environment and prints the next step to take.
-It does **not** modify global state or download model files.
+The setup script checks your environment, installs frontend packages, creates
+the Python virtual environment for `convsim-core`, and creates local data
+directories under `~/.convsim/`. It does **not** modify global state or
+download model files.
 
 On Windows (PowerShell), use `scripts\setup.ps1` instead.
 
@@ -66,8 +68,8 @@ On Windows (PowerShell), use `scripts\setup.ps1` instead.
 ./scripts/dev.sh
 ```
 
-Services are not yet implemented. The script prints the intended ports and
-exits cleanly. It will launch live services once Milestone 1 is complete.
+This starts both services and prints their URLs. Press **Ctrl-C** to stop
+everything cleanly.
 
 | Service       | URL                   | Responsibility              |
 | ------------- | --------------------- | --------------------------- |
@@ -76,6 +78,10 @@ exits cleanly. It will launch live services once Milestone 1 is complete.
 | convsim-llm   | http://127.0.0.1:7356 | Local LLM server            |
 | convsim-stt   | http://127.0.0.1:7357 | Speech-to-text worker       |
 | convsim-tts   | http://127.0.0.1:7358 | Text-to-speech worker       |
+
+Runtime logs are written to `~/.convsim/logs/` (override with
+`CONVSIM_LOG_DIR`). If a port is already occupied the script reports which
+process is blocking it.
 
 On Windows (PowerShell), use `scripts\dev.ps1` instead.
 
