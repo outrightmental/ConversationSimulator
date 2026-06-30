@@ -39,6 +39,7 @@ export interface ScenarioEnding {
   label: string;
   condition: string;
   npc_reaction: string;
+  [key: string]: unknown;
 }
 
 export interface ScenarioFile {
@@ -98,6 +99,7 @@ export interface RubricDimension {
   description: string;
   weight: number;
   max_score: number;
+  [key: string]: unknown;
 }
 
 export interface RubricFile {

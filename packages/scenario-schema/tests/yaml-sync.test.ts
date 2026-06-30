@@ -160,6 +160,21 @@ describe('mergeScenarioToYaml', () => {
     if (!result.ok) return;
     expect(result.data.difficulty).toBe('hard');
   });
+
+  it('preserves unknown fields inside ending objects', () => {
+    const yamlWithExtra = VALID_SCENARIO_YAML.replace(
+      '    npc_reaction: "I was genuinely impressed. We would like to move you forward."',
+      '    npc_reaction: "I was genuinely impressed. We would like to move you forward."\n    custom_tag: "success-path"',
+    );
+    const parsed = parseScenarioYaml(yamlWithExtra);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect((parsed.data.endings[0] as Record<string, unknown>)['custom_tag']).toBe('success-path');
+
+    const newYaml = mergeScenarioToYaml({ title: 'New Title' }, yamlWithExtra);
+    expect(newYaml).toContain('custom_tag');
+    expect(newYaml).toContain('success-path');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -230,6 +245,23 @@ describe('mergeRubricToYaml', () => {
     if (!result.ok) return;
     expect(result.data.title).toBe('Updated Rubric');
     expect(result.data.dimensions).toHaveLength(2);
+  });
+
+  it('preserves unknown fields inside dimension objects', () => {
+    const yamlWithExtra = VALID_RUBRIC_YAML.replace(
+      '    weight: 1.0',
+      '    weight: 1.0\n    reviewer_note: "internal use only"',
+    );
+    const parsed = parseRubricYaml(yamlWithExtra);
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect((parsed.data.dimensions[0] as Record<string, unknown>)['reviewer_note']).toBe(
+      'internal use only',
+    );
+
+    const newYaml = mergeRubricToYaml({ title: 'Changed Title' }, yamlWithExtra);
+    expect(newYaml).toContain('reviewer_note');
+    expect(newYaml).toContain('internal use only');
   });
 });
 

@@ -70,18 +70,20 @@ export const StateDefaultsSchema = z.object({
   objective_progress: z.number().int().min(0).max(100),
 });
 
-export const ScenarioEndingSchema = z.object({
-  id: z
-    .string()
-    .regex(/^[a-z][a-z0-9_-]*$/, 'Ending ID must be kebab-case or snake_case')
-    .max(32),
-  label: z.string().min(1, 'Label is required').max(60, 'Label must be 60 characters or fewer'),
-  condition: z.string().min(1, 'Condition expression is required'),
-  npc_reaction: z
-    .string()
-    .min(1, 'NPC reaction is required')
-    .max(500, 'NPC reaction must be 500 characters or fewer'),
-});
+export const ScenarioEndingSchema = z
+  .object({
+    id: z
+      .string()
+      .regex(/^[a-z][a-z0-9_-]*$/, 'Ending ID must be kebab-case or snake_case')
+      .max(32),
+    label: z.string().min(1, 'Label is required').max(60, 'Label must be 60 characters or fewer'),
+    condition: z.string().min(1, 'Condition expression is required'),
+    npc_reaction: z
+      .string()
+      .min(1, 'NPC reaction is required')
+      .max(500, 'NPC reaction must be 500 characters or fewer'),
+  })
+  .passthrough();
 
 export const ScenarioSchema = z
   .object({
@@ -190,26 +192,28 @@ export const NpcSchema = z
 // Rubric
 // ---------------------------------------------------------------------------
 
-export const RubricDimensionSchema = z.object({
-  id: z
-    .string()
-    .regex(/^[a-z][a-z0-9_-]*$/, 'Dimension ID must be kebab-case or snake_case')
-    .max(32),
-  label: z.string().min(1, 'Label is required').max(60, 'Label must be 60 characters or fewer'),
-  description: z
-    .string()
-    .min(1, 'Description is required')
-    .max(300, 'Description must be 300 characters or fewer'),
-  weight: z
-    .number()
-    .min(0.1, 'Weight must be at least 0.1')
-    .max(5.0, 'Weight must be 5.0 or less'),
-  max_score: z
-    .number()
-    .int('Max score must be a whole number')
-    .min(1, 'Max score must be at least 1')
-    .max(10, 'Max score must be 10 or less'),
-});
+export const RubricDimensionSchema = z
+  .object({
+    id: z
+      .string()
+      .regex(/^[a-z][a-z0-9_-]*$/, 'Dimension ID must be kebab-case or snake_case')
+      .max(32),
+    label: z.string().min(1, 'Label is required').max(60, 'Label must be 60 characters or fewer'),
+    description: z
+      .string()
+      .min(1, 'Description is required')
+      .max(300, 'Description must be 300 characters or fewer'),
+    weight: z
+      .number()
+      .min(0.1, 'Weight must be at least 0.1')
+      .max(5.0, 'Weight must be 5.0 or less'),
+    max_score: z
+      .number()
+      .int('Max score must be a whole number')
+      .min(1, 'Max score must be at least 1')
+      .max(10, 'Max score must be 10 or less'),
+  })
+  .passthrough();
 
 export const RubricSchema = z
   .object({

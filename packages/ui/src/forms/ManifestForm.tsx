@@ -80,7 +80,9 @@ export function ManifestForm({ values, errors, onChange }: ManifestFormProps) {
           className="form-field__input"
           value={str(values['id'])}
           onChange={(e) => onChange('id', e.target.value)}
+          maxLength={64}
           placeholder="my-pack-id"
+          pattern="[a-z][a-z0-9-]*"
         />
       </FieldWrapper>
 
