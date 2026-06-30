@@ -32,6 +32,7 @@ function makeMicState(overrides: Partial<ReturnType<typeof useMicCapture>> = {})
 }
 
 beforeEach(() => {
+  vi.clearAllMocks()
   vi.mocked(useMicCapture).mockReturnValue(makeMicState())
   vi.mocked(apiClient.uploadAudio).mockResolvedValue({ transcript: null, status: 'received' })
 })
@@ -116,6 +117,49 @@ describe('VoiceInput — global Space hotkey focus guard', () => {
 
     render(<VoiceInput />)
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+
+    fireEvent.keyUp(document, { code: 'Space' })
+
+    expect(stopRecording).not.toHaveBeenCalled()
+  })
+
+  it('does not call startRecording on Space keydown while upload is in progress', async () => {
+    const startRecording = vi.fn()
+    let capturedOnAudioReady: ((blob: Blob) => void) | undefined
+    vi.mocked(useMicCapture).mockImplementation((cb) => {
+      capturedOnAudioReady = cb
+      return makeMicState({ startRecording })
+    })
+    vi.mocked(apiClient.uploadAudio).mockReturnValueOnce(new Promise(() => {}))
+
+    render(<VoiceInput />)
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+
+    // Trigger upload; sets isSubmitting=true before the first await
+    await act(async () => {
+      capturedOnAudioReady?.(new Blob(['audio'], { type: 'audio/webm' }))
+    })
+
+    fireEvent.keyDown(document, { code: 'Space' })
+
+    expect(startRecording).not.toHaveBeenCalled()
+  })
+
+  it('does not call stopRecording on Space keyup while upload is in progress', async () => {
+    const stopRecording = vi.fn()
+    let capturedOnAudioReady: ((blob: Blob) => void) | undefined
+    vi.mocked(useMicCapture).mockImplementation((cb) => {
+      capturedOnAudioReady = cb
+      return makeMicState({ stopRecording })
+    })
+    vi.mocked(apiClient.uploadAudio).mockReturnValueOnce(new Promise(() => {}))
+
+    render(<VoiceInput />)
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+
+    await act(async () => {
+      capturedOnAudioReady?.(new Blob(['audio'], { type: 'audio/webm' }))
+    })
 
     fireEvent.keyUp(document, { code: 'Space' })
 
