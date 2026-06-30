@@ -125,13 +125,31 @@ def test_config_json_redacts_home_in_data_dir(tmp_path, settings):
 # ---------------------------------------------------------------------------
 
 
-def test_crash_bundle_no_transcript_in_any_file(tmp_path, settings):
-    """Bundle must not contain any conversational text."""
-    sensitive_marker = "SENSITIVE_TRANSCRIPT_MARKER_12345"
-    files = _open_zip(create_crash_bundle(str(tmp_path / "logs"), settings))
-    for name, data in files.items():
-        text = data.decode(errors="replace")
-        assert sensitive_marker not in text, f"{name} contains sensitive marker"
+def test_crash_bundle_log_content_does_not_bleed_into_metadata_files(tmp_path, settings):
+    """Log-tail content must not appear in version, config, or system files.
+
+    Writes a synthetic log entry and checks it ends up only in recent_errors.txt
+    (the log tail, where it belongs), not in any metadata file that the bundle
+    creation code assembles independently.
+    """
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir(parents=True)
+    marker = "SENTINEL_LOG_ENTRY_SHOULD_ONLY_APPEAR_IN_RECENT_ERRORS"
+    (log_dir / "app.log").write_text(
+        f'{{"level": "ERROR", "message": "{marker}"}}\n', encoding="utf-8"
+    )
+
+    files = _open_zip(create_crash_bundle(str(log_dir), settings))
+
+    # The marker must appear in the log tail.
+    assert marker in files["recent_errors.txt"].decode()
+
+    # The marker must NOT bleed into any metadata file.
+    metadata_files = ["versions.json", "config.json", "system.txt"]
+    for name in metadata_files:
+        assert marker not in files[name].decode(), (
+            f"log content leaked into {name}"
+        )
 
 
 def test_crash_bundle_readme_mentions_local(tmp_path, settings):

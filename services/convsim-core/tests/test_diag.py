@@ -49,6 +49,7 @@ def test_post_crash_bundle_contains_required_files(client):
     assert "versions.json" in names
     assert "config.json" in names
     assert "recent_errors.txt" in names
+    assert "system.txt" in names
     assert "README.txt" in names
 
 
