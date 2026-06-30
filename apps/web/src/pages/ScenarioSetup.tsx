@@ -386,7 +386,7 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
                   step={1}
                   onChange={(e) => {
                     const v = e.target.value;
-                    const parsed = parseInt(v, 10);
+                    const parsed = Number(v);
                     setField('seed', v === '' || isNaN(parsed) ? null : parsed);
                   }}
                   aria-label="Variation seed value"

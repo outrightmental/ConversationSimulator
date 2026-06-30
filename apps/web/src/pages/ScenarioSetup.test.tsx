@@ -233,6 +233,21 @@ describe('ScenarioSetupPage', () => {
       expect(textOnlyRadio).not.toBeDisabled();
     });
 
+    it('shows TTS fallback message when TTS is not available', async () => {
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      expect(
+        screen.getByText(/Install a TTS model to enable voice output/i),
+      ).toBeInTheDocument();
+    });
+
+    it('shows STT not loaded badge on voice input options when STT is not available', async () => {
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      const sttBadges = screen.getAllByText(/STT not loaded/i);
+      expect(sttBadges.length).toBeGreaterThanOrEqual(2);
+    });
+
     it('shows error when player name is cleared', async () => {
       mockApi.getScenario.mockResolvedValue(mockScenario);
       mockApi.health.mockResolvedValue(healthReady);
@@ -305,6 +320,19 @@ describe('ScenarioSetupPage', () => {
         name: /variation seed value/i,
       });
       fireEvent.change(seedInput, { target: { value: '3000000000' } });
+      await waitFor(() =>
+        expect(screen.getByText(/seed must be between/i)).toBeInTheDocument(),
+      );
+      expect(screen.getByRole('button', { name: /start scenario/i })).toBeDisabled();
+    });
+
+    it('shows an error and disables submit when seed is a decimal', async () => {
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      const seedInput = screen.getByRole('spinbutton', {
+        name: /variation seed value/i,
+      });
+      fireEvent.change(seedInput, { target: { value: '1.5' } });
       await waitFor(() =>
         expect(screen.getByText(/seed must be between/i)).toBeInTheDocument(),
       );
