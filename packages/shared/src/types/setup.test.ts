@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { validateSetup, randomSeed } from './setup.js';
-import type { SetupFormValues, RuntimeReadiness } from './setup.js';
+import type { SetupFormValues } from './setup.js';
+import type { RuntimeReadiness } from './runtime.js';
 
 const runtimeReady: RuntimeReadiness = {
   llm_ready: true,

@@ -1,6 +1,5 @@
 import type { ScenarioDifficulty } from './scenario.js';
-import type { RuntimeHealth as RuntimeReadiness } from './runtime.js';
-export type { RuntimeReadiness };
+import type { RuntimeReadiness } from './runtime.js';
 
 export type InputMode = 'push-to-talk' | 'hands-free' | 'text-only';
 

@@ -1,4 +1,4 @@
-export interface RuntimeHealth {
+export interface RuntimeReadiness {
   llm_ready: boolean;
   llm_model_name: string | null;
   stt_ready: boolean;
@@ -9,6 +9,6 @@ export interface RuntimeHealth {
 
 export interface HealthResponse {
   status: 'ok' | 'degraded' | 'error';
-  runtime: RuntimeHealth;
+  runtime: RuntimeReadiness;
   version: string;
 }
