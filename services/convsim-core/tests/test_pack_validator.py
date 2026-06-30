@@ -111,6 +111,33 @@ def test_pack_id_header_injection_chars_rejected(tmp_path, bad_id):
     )
 
 
+def test_null_byte_in_pack_id_rejected(tmp_path):
+    """pack_id containing a null byte must be rejected by the validator.
+
+    On POSIX, os.path silently truncates paths at the first null byte, which could
+    redirect an install to an unintended directory. On Windows, pathlib raises an
+    unhandled ValueError that would produce a 500 instead of a 422.
+    """
+    pack_dir = make_pack_dir(tmp_path, manifest={"pack_id": "evil\x00pack"})
+    _, errors = validate_pack_dir(pack_dir)
+    assert any("unsafe" in e.lower() for e in errors), (
+        f"Expected pack_id with null byte to be rejected; got: {errors}"
+    )
+
+
+def test_null_byte_in_entry_scenario_rejected(tmp_path):
+    """An entry_scenarios path containing a null byte must be rejected.
+
+    pathlib raises an unhandled ValueError for null-byte paths, so the validator
+    must catch this before delegating to pathlib.
+    """
+    pack_dir = make_pack_dir(tmp_path, manifest={"entry_scenarios": ["scenarios/intro\x00.yaml"]})
+    _, errors = validate_pack_dir(pack_dir)
+    assert any("null" in e.lower() for e in errors), (
+        f"Expected entry_scenario with null byte to be rejected; got: {errors}"
+    )
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="symlink creation requires elevated privileges on Windows")
 def test_symlink_in_pack_dir_rejected(tmp_path):
     """A pack directory containing a symlink must be rejected.

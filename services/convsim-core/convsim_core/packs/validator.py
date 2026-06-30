@@ -60,8 +60,10 @@ def validate_pack_dir(pack_dir: Path) -> tuple[Optional[PackManifest], list[str]
             f"Allowed values: {', '.join(sorted(CONTENT_RATINGS))}"
         )
 
-    # pack_id must not contain path-traversal or header-injection characters.
-    _PACK_ID_FORBIDDEN = {'"', "\r", "\n"}
+    # pack_id must not contain path-traversal, header-injection, or null characters.
+    # Null bytes (\x00) are included because os.path on POSIX silently truncates paths
+    # at the first null byte, which could redirect installs to an unintended directory.
+    _PACK_ID_FORBIDDEN = {'"', "\r", "\n", "\x00"}
     if (
         ".." in manifest.pack_id
         or manifest.pack_id.startswith("/")
@@ -71,6 +73,9 @@ def validate_pack_dir(pack_dir: Path) -> tuple[Optional[PackManifest], list[str]
 
     # Each entry scenario must reference a file that exists within the pack dir.
     for ref in manifest.entry_scenarios:
+        if "\x00" in ref:
+            errors.append(f"Entry scenario path contains null byte: {ref!r}")
+            continue
         norm = ref.replace("\\", "/")
         if norm.startswith("/") or ".." in norm.split("/"):
             errors.append(f"Entry scenario path is unsafe: {ref!r}")
