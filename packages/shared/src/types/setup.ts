@@ -1,4 +1,6 @@
 import type { ScenarioDifficulty } from './scenario.js';
+import type { RuntimeHealth as RuntimeReadiness } from './runtime.js';
+export type { RuntimeReadiness };
 
 export type InputMode = 'push-to-talk' | 'hands-free' | 'text-only';
 
@@ -21,15 +23,6 @@ export interface SetupValidationError {
 export interface SetupValidationResult {
   valid: boolean;
   errors: SetupValidationError[];
-}
-
-export interface RuntimeReadiness {
-  llm_ready: boolean;
-  llm_model_name: string | null;
-  stt_ready: boolean;
-  tts_ready: boolean;
-  tts_voice_name: string | null;
-  network_required: boolean;
 }
 
 export function validateSetup(

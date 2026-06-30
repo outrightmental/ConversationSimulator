@@ -206,6 +206,13 @@ describe('ScenarioSetupPage', () => {
       expect(pttRadio).toBeDisabled();
     });
 
+    it('disables hands-free voice input when STT is not available', async () => {
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      const handsFreeRadio = screen.getByRole('radio', { name: /hands-free/i });
+      expect(handsFreeRadio).toBeDisabled();
+    });
+
     it('text-only mode is always available even without STT', async () => {
       renderSetup();
       await waitFor(() => screen.getByText('Behavioral Interview'));
