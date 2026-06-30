@@ -74,6 +74,17 @@ def test_stt_upload_rejects_oversized_audio(client):
     assert resp.status_code == 413
 
 
+def test_stt_upload_accepts_empty_content_type(client):
+    # An empty/missing content-type should default to application/octet-stream (accepted),
+    # not silently bypass the allowlist check entirely.
+    audio = io.BytesIO(b"\x00" * 100)
+    resp = client.post(
+        "/api/stt/upload",
+        files={"audio": ("recording.webm", audio, "")},
+    )
+    assert resp.status_code == 200
+
+
 def test_stt_upload_requires_audio_field(client):
     resp = client.post("/api/stt/upload")
     assert resp.status_code == 422

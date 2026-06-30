@@ -33,8 +33,8 @@ async def upload_audio(request: Request, audio: UploadFile = File(...)) -> SttUp
     """
     app_settings = request.app.state.app_settings
 
-    content_type = (audio.content_type or "").split(";")[0].strip().lower()
-    if content_type and content_type not in _ALLOWED_CONTENT_TYPES:
+    content_type = (audio.content_type or "application/octet-stream").split(";")[0].strip().lower()
+    if content_type not in _ALLOWED_CONTENT_TYPES:
         raise HTTPException(status_code=415, detail=f"Unsupported media type: {content_type}")
 
     data = await audio.read()
