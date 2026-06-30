@@ -26,6 +26,9 @@ class TestSchemaNames:
             "npc.schema.json",
             "rubric.schema.json",
             "safety.schema.json",
+            "scene.schema.json",
+            "pack-test.schema.json",
+            "asset.schema.json",
             "turn-output.schema.json",
             "debrief.schema.json",
         }
