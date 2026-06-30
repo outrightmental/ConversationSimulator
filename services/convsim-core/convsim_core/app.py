@@ -11,7 +11,7 @@ from convsim_core.errors import (
 )
 from convsim_core.logging_setup import configure_logging
 from convsim_core.routers import health, settings as settings_router
-from convsim_core.routers.settings import AppSettings, load_settings_from_disk
+from convsim_core.routers.settings import load_settings_from_disk
 
 
 def create_app(config: ServiceConfig | None = None) -> FastAPI:
