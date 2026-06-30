@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.convsim.dev/v0.1/asset.schema.json",
+  "title": "ConvSim Asset Metadata",
+  "description": "Validates an asset metadata sidecar file (.meta.json). One metadata file per asset records license, type, and provenance for offline-first packs.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "asset_id",
+    "type",
+    "file",
+    "license"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["0.1"]
+    },
+    "asset_id": {
+      "type": "string",
+      "description": "Unique identifier for this asset within the pack.",
+      "pattern": "^[a-z0-9_]+$"
+    },
+    "type": {
+      "type": "string",
+      "enum": ["portrait", "background", "audio", "music", "icon"],
+      "description": "Asset category. Determines how the runtime loads and displays the asset."
+    },
+    "file": {
+      "type": "string",
+      "description": "Relative path to the asset file from the pack root.",
+      "minLength": 1
+    },
+    "license": {
+      "type": "string",
+      "description": "SPDX license identifier for this individual asset.",
+      "minLength": 1
+    },
+    "attribution": {
+      "type": "string",
+      "description": "Required attribution text if the license demands it (e.g. CC BY 4.0)."
+    },
+    "source_url": {
+      "type": "string",
+      "description": "Original source URL for attribution. Informational only — never loaded at runtime."
+    },
+    "width_px": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Width in pixels. Required for portrait and background assets."
+    },
+    "height_px": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Height in pixels. Required for portrait and background assets."
+    },
+    "duration_seconds": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Duration in seconds. Required for audio and music assets."
+    }
+  },
+  "not": {
+    "description": "Asset metadata must not contain runtime-loaded URLs or executable fields.",
+    "required": ["runtime_url"]
+  }
+}

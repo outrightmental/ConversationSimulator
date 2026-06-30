@@ -11,7 +11,9 @@
     "version",
     "description",
     "author",
-    "license"
+    "license",
+    "content_rating",
+    "safety"
   ],
   "additionalProperties": false,
   "properties": {
@@ -99,6 +101,7 @@
     },
     "safety": {
       "type": "object",
+      "required": ["policy"],
       "additionalProperties": false,
       "properties": {
         "policy": {

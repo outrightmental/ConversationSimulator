@@ -10,6 +10,7 @@
     "display_name",
     "archetype",
     "fictional",
+    "age_band",
     "public_persona",
     "private_persona"
   ],
@@ -53,6 +54,10 @@
         },
         "voice_id": { "type": "string" }
       }
+    },
+    "licensed_persona": {
+      "$comment": "Reserved for a future licensed persona namespace. Not implemented in schema v0.1. This field is explicitly blocked to prevent incompatible use before the namespace is defined.",
+      "not": {}
     },
     "portrait": {
       "type": "string",
