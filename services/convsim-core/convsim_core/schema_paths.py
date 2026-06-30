@@ -33,8 +33,9 @@ def get_schema_text(name: str) -> str:
         name: Filename, e.g. ``"pack.schema.json"``.
 
     Raises:
-        FileNotFoundError: If ``name`` is not a known schema.
-        ValueError: If ``name`` is not in SCHEMA_NAMES.
+        ValueError: If ``name`` is not in ``SCHEMA_NAMES``.
+        FileNotFoundError: If the bundled schema file is missing from the
+            installed package (should not occur in a correctly built package).
     """
     if name not in SCHEMA_NAMES:
         raise ValueError(
