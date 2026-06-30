@@ -159,7 +159,7 @@ class OllamaChatRuntime(ChatRuntime):
                     if done:
                         input_tokens = chunk.get("prompt_eval_count", 0)
                         output_tokens = chunk.get("eval_count", 0)
-        except httpx.ConnectError as exc:
+        except (httpx.ConnectError, httpx.TimeoutException) as exc:
             raise RuntimeError(_NOT_RUNNING_HINT) from exc
         except httpx.HTTPStatusError as exc:
             code = exc.response.status_code

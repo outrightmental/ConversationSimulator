@@ -288,6 +288,21 @@ async def test_chat_stream_raises_on_connection_error():
 
 
 @pytest.mark.asyncio
+async def test_chat_stream_raises_runtime_error_on_timeout():
+    """A timeout during generation should raise RuntimeError, not TimeoutException."""
+    client = MagicMock()
+    client.stream = MagicMock(side_effect=httpx.TimeoutException("timed out"))
+    runtime = OllamaChatRuntime(client=client)
+    request = ChatRequest(
+        model_id="llama3.2:latest",
+        messages=[ChatMessage(role="user", content="hello")],
+    )
+    with pytest.raises(RuntimeError, match="[Oo]llama"):
+        async for _ in runtime.chat_stream(request):
+            pass
+
+
+@pytest.mark.asyncio
 async def test_chat_stream_raises_when_no_models_and_no_model_id():
     runtime = _make_runtime(get_json={"models": []})
     request = ChatRequest(messages=[ChatMessage(role="user", content="hello")])
