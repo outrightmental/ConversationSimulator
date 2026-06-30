@@ -1,15 +1,11 @@
 import React from 'react';
 import type { FieldError } from '@convsim/scenario-schema';
-import { FieldWrapper, errorFor } from './shared.js';
+import { FieldWrapper, errorFor, str } from './shared.js';
 
 interface ManifestFormProps {
   values: Record<string, unknown>;
   errors: FieldError[];
   onChange: (path: string, value: unknown) => void;
-}
-
-function str(v: unknown): string {
-  return typeof v === 'string' ? v : '';
 }
 
 /**

@@ -1,19 +1,11 @@
 import React from 'react';
 import type { FieldError } from '@convsim/scenario-schema';
-import { FieldWrapper, errorFor } from './shared.js';
+import { FieldWrapper, errorFor, str, num } from './shared.js';
 
 interface ScenarioFormProps {
   values: Record<string, unknown>;
   errors: FieldError[];
   onChange: (path: string, value: unknown) => void;
-}
-
-function str(v: unknown): string {
-  return typeof v === 'string' ? v : '';
-}
-
-function num(v: unknown, fallback = 0): number {
-  return typeof v === 'number' ? v : fallback;
 }
 
 const STATE_VARS: Array<{ key: string; label: string; hint: string }> = [

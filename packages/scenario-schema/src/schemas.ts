@@ -61,14 +61,16 @@ export const ManifestSchema = z
 // Scenario
 // ---------------------------------------------------------------------------
 
-export const StateDefaultsSchema = z.object({
-  trust: z.number().int().min(0).max(100),
-  patience: z.number().int().min(0).max(100),
-  pressure: z.number().int().min(0).max(100),
-  rapport: z.number().int().min(0).max(100),
-  openness: z.number().int().min(0).max(100),
-  objective_progress: z.number().int().min(0).max(100),
-});
+export const StateDefaultsSchema = z
+  .object({
+    trust: z.number().int().min(0).max(100),
+    patience: z.number().int().min(0).max(100),
+    pressure: z.number().int().min(0).max(100),
+    rapport: z.number().int().min(0).max(100),
+    openness: z.number().int().min(0).max(100),
+    objective_progress: z.number().int().min(0).max(100),
+  })
+  .passthrough();
 
 export const ScenarioEndingSchema = z
   .object({

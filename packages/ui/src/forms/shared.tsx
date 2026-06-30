@@ -33,3 +33,11 @@ export function FieldWrapper({
 export function errorFor(errors: FieldError[], path: string): string | undefined {
   return errors.find((e) => e.path === path)?.message;
 }
+
+export function str(v: unknown): string {
+  return typeof v === 'string' ? v : '';
+}
+
+export function num(v: unknown, fallback = 0): number {
+  return typeof v === 'number' ? v : fallback;
+}
