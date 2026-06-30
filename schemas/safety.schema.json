@@ -4,7 +4,7 @@
   "title": "ConvSim Safety Policy",
   "description": "Validates a safety policy file that governs content boundaries for a scenario. Categories listed here are enforced by the input router before the NPC runtime is called (SPEC §13.2).",
   "type": "object",
-  "required": ["schema_version", "policy_id", "content_categories"],
+  "required": ["schema_version", "policy_id", "content_categories", "redirect_message", "content_rating_cap"],
   "additionalProperties": false,
   "properties": {
     "schema_version": {
@@ -20,7 +20,13 @@
     },
     "content_categories": {
       "type": "object",
-      "description": "Per-category action rules. Two categories are global non-overridable: minors_romantic_or_sexual always stops; self_harm_crisis always stops with a real-resource message.",
+      "description": "Explicit allow/block rules per content category. Non-negotiable categories (nsfw_sexual, real_person_impersonation, instructional_criminal, crisis_content) must be declared.",
+      "required": [
+        "nsfw_sexual",
+        "real_person_impersonation",
+        "instructional_criminal",
+        "crisis_content"
+      ],
       "additionalProperties": false,
       "properties": {
         "nsfw_sexual_content": {
