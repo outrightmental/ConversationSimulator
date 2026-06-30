@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from convsim_core.runtime.types import RuntimeStatus
-from convsim_core.stt.types import SttRequest, SttUnavailableError
+from convsim_core.stt.types import SttError, SttRequest, SttUnavailableError
 from convsim_core.stt.whisper_cpp import (
     WhisperCppConfig,
     WhisperCppWorker,
@@ -323,3 +323,44 @@ async def test_transcribe_raises_unavailable_when_model_missing():
     worker = _make_worker(model="/nonexistent/model.bin")
     with pytest.raises(SttUnavailableError):
         await worker.transcribe(SttRequest(audio=b"\x00" * 100, audio_format="wav"))
+
+
+@pytest.mark.asyncio
+async def test_transcribe_raises_stt_error_on_nonzero_returncode(tmp_path):
+    """whisper-cli non-zero exit should raise SttError, not crash the request."""
+    model_file = tmp_path / "model.bin"
+    model_file.write_bytes(b"\x00")
+
+    worker = _make_worker(binary=_FAKE_BINARY, model=str(model_file))
+
+    async def _failing_exec(*args, stdout=None, stderr=None):
+        return _FakeProcess(b"", b"error: bad input", 1)
+
+    with patch("os.path.isfile", return_value=True), \
+         patch("asyncio.create_subprocess_exec", side_effect=_failing_exec):
+        with pytest.raises(SttError) as exc_info:
+            await worker.transcribe(SttRequest(audio=b"\x00" * 100, audio_format="wav"))
+
+    assert exc_info.value.recoverable is True
+
+
+@pytest.mark.asyncio
+async def test_transcribe_falls_back_to_stdout_when_json_sidecar_absent(tmp_path):
+    """Older whisper-cli binaries that don't write --output-json: fall back to stdout."""
+    model_file = tmp_path / "model.bin"
+    model_file.write_bytes(b"\x00")
+
+    worker = _make_worker(binary=_FAKE_BINARY, model=str(model_file))
+
+    async def _no_sidecar_exec(*args, stdout=None, stderr=None):
+        # Deliberately do NOT write a JSON sidecar — simulates older binary.
+        return _FakeProcess(b"hello world", b"", 0)
+
+    with patch("os.path.isfile", return_value=True), \
+         patch("asyncio.create_subprocess_exec", side_effect=_no_sidecar_exec):
+        result = await worker.transcribe(
+            SttRequest(audio=b"\x00" * 100, audio_format="wav")
+        )
+
+    assert result.transcript == "hello world"
+    assert result.segments is None

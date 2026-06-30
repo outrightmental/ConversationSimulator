@@ -230,7 +230,10 @@ def _read_result(json_path: str, stdout: str, processing_ms: float) -> SttResult
         _try_unlink(json_path)
         return _parse_json_output(data, processing_ms)
     except (OSError, json.JSONDecodeError):
-        pass
+        # OSError: sidecar absent (normal for older binaries).
+        # JSONDecodeError: sidecar written but malformed; clean it up so it
+        # doesn't accumulate in the temp directory.
+        _try_unlink(json_path)
 
     # Fallback: plain-text stdout — no timing or confidence metadata
     text = stdout.strip()
