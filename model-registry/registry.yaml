@@ -1,41 +1,75 @@
 # SPDX-License-Identifier: Apache-2.0
 # Conversation Simulator model registry
 # Models are not bundled. The app shows license and size before any download.
-# URLs and checksums are placeholders to be filled when Milestone 1 is implemented.
+# URLs and checksums marked PENDING will be confirmed at Milestone 1.
+# Checksum policy: registry-managed models require sha256 (64-char hex or PENDING).
 
 schema_version: "0.1"
 
 models:
-  - id: qwen3-8b-instruct-q4_k_m
-    name: "Qwen3 8B Instruct Q4_K_M"
+  # ── Starter tier ─────────────────────────────────────────────────────────────
+  # Smallest recommended model; suitable for first-run demo on lower VRAM systems.
+  - id: qwen3-4b-instruct-q4_k_m
+    name: "Qwen3 4B Instruct Q4_K_M"
     family: qwen3
-    role: default-demo
+    role: starter
     format: gguf
     license: Apache-2.0
-    min_vram_gb_target: 6
-    recommended_vram_gb_target: 8
+    license_url: "https://www.apache.org/licenses/LICENSE-2.0"
+    size_gb: 2.6
+    hardware:
+      min_vram_gb: 4
+      recommended_vram_gb: 6
     download:
       provider: huggingface
-      url: "<placeholder — to be confirmed at Milestone 1>"
-      sha256: "<placeholder>"
+      url: "PENDING"
+      sha256: "PENDING"
     runtime:
       llama_cpp:
         context_length: 8192
         temperature_default: 0.75
         top_p_default: 0.9
 
-  - id: qwen3-14b-instruct-q4_k_m
-    name: "Qwen3 14B Instruct Q4_K_M"
+  # ── Standard tier ────────────────────────────────────────────────────────────
+  # Default quality target for most users.
+  - id: qwen3-8b-instruct-q4_k_m
+    name: "Qwen3 8B Instruct Q4_K_M"
     family: qwen3
     role: standard
     format: gguf
     license: Apache-2.0
-    min_vram_gb_target: 10
-    recommended_vram_gb_target: 12
+    license_url: "https://www.apache.org/licenses/LICENSE-2.0"
+    size_gb: 5.0
+    hardware:
+      min_vram_gb: 6
+      recommended_vram_gb: 8
     download:
       provider: huggingface
-      url: "<placeholder>"
-      sha256: "<placeholder>"
+      url: "PENDING"
+      sha256: "PENDING"
+    runtime:
+      llama_cpp:
+        context_length: 8192
+        temperature_default: 0.75
+        top_p_default: 0.9
+
+  # ── High-quality tier ────────────────────────────────────────────────────────
+  # Better NPC coherence on systems with more VRAM.
+  - id: qwen3-14b-instruct-q4_k_m
+    name: "Qwen3 14B Instruct Q4_K_M"
+    family: qwen3
+    role: high-quality
+    format: gguf
+    license: Apache-2.0
+    license_url: "https://www.apache.org/licenses/LICENSE-2.0"
+    size_gb: 9.0
+    hardware:
+      min_vram_gb: 10
+      recommended_vram_gb: 12
+    download:
+      provider: huggingface
+      url: "PENDING"
+      sha256: "PENDING"
     runtime:
       llama_cpp:
         context_length: 8192
@@ -48,14 +82,35 @@ models:
     role: high-quality
     format: gguf
     license: Apache-2.0
-    min_vram_gb_target: 16
-    recommended_vram_gb_target: 24
+    license_url: "https://www.apache.org/licenses/LICENSE-2.0"
+    size_gb: 14.8
+    hardware:
+      min_vram_gb: 16
+      recommended_vram_gb: 24
     download:
       provider: huggingface
-      url: "<placeholder>"
-      sha256: "<placeholder>"
+      url: "PENDING"
+      sha256: "PENDING"
     runtime:
       llama_cpp:
         context_length: 32768
         temperature_default: 0.75
         top_p_default: 0.9
+
+  # ── User-supplied tier ───────────────────────────────────────────────────────
+  # Represents an arbitrary GGUF file provided by the user.
+  # License, size, and checksum are intentionally unknown — the app cannot
+  # verify what the user brings and must not pretend otherwise.
+  - id: user-supplied-gguf
+    name: "User-Supplied GGUF"
+    family: unknown
+    role: user-supplied
+    format: gguf
+    license: unknown-user-supplied
+    size_gb: null
+    hardware:
+      min_vram_gb: null
+      recommended_vram_gb: null
+    download:
+      provider: user-filesystem
+      path_hint: "~/.convsim/models/"

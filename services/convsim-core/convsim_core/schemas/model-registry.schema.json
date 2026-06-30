@@ -1,0 +1,183 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.convsim.dev/v0.1/model-registry.schema.json",
+  "title": "ConvSim Model Registry",
+  "description": "Validates model-registry/registry.yaml. All models must declare license, source, hardware guidance, and approximate size. Registry-managed models must include a checksum (or the PENDING sentinel for pre-release entries).",
+  "type": "object",
+  "required": ["schema_version", "models"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["0.1"]
+    },
+    "models": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/ModelEntry" }
+    }
+  },
+  "$defs": {
+    "ModelEntry": {
+      "type": "object",
+      "description": "A single model entry in the registry. Registry-managed models require size_gb and a checksum. User-supplied models must set license to 'unknown-user-supplied'.",
+      "required": ["id", "name", "family", "role", "format", "license", "hardware", "download"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Machine-readable unique identifier (lowercase, kebab/dot/underscore allowed).",
+          "pattern": "^[a-z0-9][a-z0-9._-]*$"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable display name."
+        },
+        "family": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Model family (e.g. qwen3, mistral, unknown)."
+        },
+        "role": {
+          "type": "string",
+          "enum": ["starter", "standard", "high-quality", "user-supplied"],
+          "description": "Recommended use tier."
+        },
+        "format": {
+          "type": "string",
+          "enum": ["gguf"],
+          "description": "File format. Currently only GGUF is supported."
+        },
+        "license": {
+          "type": "string",
+          "minLength": 1,
+          "description": "SPDX license identifier, or 'unknown-user-supplied' for user-provided models."
+        },
+        "license_url": {
+          "type": "string",
+          "description": "URL to the full license text. Recommended for registry-managed models."
+        },
+        "size_gb": {
+          "description": "Approximate download size in gigabytes. Required for registry-managed models; null for user-supplied.",
+          "oneOf": [
+            { "type": "number", "exclusiveMinimum": 0 },
+            { "type": "null" }
+          ]
+        },
+        "hardware": { "$ref": "#/$defs/HardwareTarget" },
+        "download": {
+          "type": "object",
+          "description": "Download source. Specific schema depends on role (registry-managed vs user-supplied)."
+        },
+        "runtime": { "$ref": "#/$defs/RuntimeDefaults" }
+      },
+      "if": {
+        "properties": { "role": { "not": { "const": "user-supplied" } } },
+        "required": ["role"]
+      },
+      "then": {
+        "required": ["size_gb"],
+        "properties": {
+          "size_gb": { "type": "number", "exclusiveMinimum": 0 },
+          "download": { "$ref": "#/$defs/RegistryDownload" }
+        }
+      },
+      "else": {
+        "properties": {
+          "license": { "const": "unknown-user-supplied" },
+          "download": { "$ref": "#/$defs/UserSuppliedDownload" }
+        }
+      }
+    },
+    "HardwareTarget": {
+      "type": "object",
+      "description": "VRAM requirements for running the model. null means unknown (e.g. for user-supplied models).",
+      "additionalProperties": false,
+      "properties": {
+        "min_vram_gb": {
+          "description": "Minimum VRAM in gigabytes needed to load the model.",
+          "oneOf": [
+            { "type": "number", "minimum": 0 },
+            { "type": "null" }
+          ]
+        },
+        "recommended_vram_gb": {
+          "description": "Recommended VRAM in gigabytes for good inference speed.",
+          "oneOf": [
+            { "type": "number", "minimum": 0 },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "RegistryDownload": {
+      "type": "object",
+      "description": "Download source for registry-managed models. sha256 is required and must be a 64-character lowercase hex digest, or 'PENDING' for pre-release entries not yet checksum-confirmed.",
+      "required": ["provider", "url", "sha256"],
+      "additionalProperties": false,
+      "properties": {
+        "provider": {
+          "type": "string",
+          "enum": ["huggingface", "github", "direct"]
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Download URL or 'PENDING' placeholder for pre-release entries."
+        },
+        "sha256": {
+          "type": "string",
+          "description": "SHA-256 hex digest (64 lowercase hex chars) or 'PENDING' for pre-release entries.",
+          "pattern": "^([0-9a-f]{64}|PENDING)$"
+        }
+      }
+    },
+    "UserSuppliedDownload": {
+      "type": "object",
+      "description": "Represents a user-provided GGUF file. No checksum is recorded because the file is sourced externally and the app cannot know its provenance.",
+      "required": ["provider"],
+      "additionalProperties": false,
+      "properties": {
+        "provider": {
+          "type": "string",
+          "const": "user-filesystem"
+        },
+        "path_hint": {
+          "type": "string",
+          "description": "Suggested directory for the user to place GGUF files."
+        }
+      }
+    },
+    "RuntimeDefaults": {
+      "type": "object",
+      "description": "Default inference parameters per runtime backend.",
+      "additionalProperties": false,
+      "properties": {
+        "llama_cpp": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "context_length": {
+              "type": "integer",
+              "minimum": 128,
+              "description": "Context window size in tokens."
+            },
+            "temperature_default": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 2,
+              "description": "Sampling temperature."
+            },
+            "top_p_default": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "Nucleus sampling probability."
+            }
+          }
+        }
+      }
+    }
+  }
+}
