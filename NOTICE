@@ -1,0 +1,40 @@
+Conversation Simulator
+Copyright 2024 Conversation Simulator Contributors
+
+This product is licensed under the Apache License, Version 2.0.
+You may obtain a copy of the License at:
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+---------------------------------------------------------------------------
+
+Licensing summary by content type (SPDX identifiers):
+
+  Application code (apps/, packages/, services/, runtimes/, scripts/):
+    SPDX-License-Identifier: Apache-2.0
+
+  Documentation (docs/):
+    SPDX-License-Identifier: CC-BY-4.0
+    https://creativecommons.org/licenses/by/4.0/
+
+  Official scenario packs (packs/official/):
+    SPDX-License-Identifier: CC-BY-4.0
+    https://creativecommons.org/licenses/by/4.0/
+
+  Placeholder assets (portrait placeholders, background placeholders):
+    SPDX-License-Identifier: CC0-1.0
+    https://creativecommons.org/publicdomain/zero/1.0/
+
+  Model weights:
+    Not bundled in this repository.
+    Downloaded by the user through explicit action only.
+    License for each model is displayed to the user before download.
+
+  User-generated scenario packs:
+    License chosen by the creator; must be declared in pack manifest.yaml.
+
+---------------------------------------------------------------------------
+
+Third-party runtime dependencies and their licenses will be listed here as
+they are introduced. This file is a placeholder until the first dependencies
+are added in Milestone 1.

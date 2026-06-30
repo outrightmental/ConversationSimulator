@@ -1,0 +1,11 @@
+{
+  "name": "@convsim/web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "echo 'Web app not yet implemented.' && exit 0",
+    "build": "echo 'Web app not yet implemented.' && exit 0"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}
