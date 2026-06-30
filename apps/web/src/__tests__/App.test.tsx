@@ -4,6 +4,12 @@ import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import App from '../App'
 
+function mockFetch(response: object) {
+  vi.stubGlobal('fetch', vi.fn(() =>
+    Promise.resolve({ ok: true, json: () => Promise.resolve(response) }),
+  ))
+}
+
 // Prevent real fetch calls; return a promise that never resolves so the
 // pending-state async health check never triggers a post-render state update.
 beforeEach(() => {
@@ -64,5 +70,17 @@ describe('App shell', () => {
     expect(screen.getByRole('link', { name: /scenarios/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /workbench/i })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /settings/i })).toBeInTheDocument()
+  })
+
+  it('shows healthy status when backend returns ok', async () => {
+    mockFetch({ status: 'ok' })
+    renderAt('/')
+    expect(await screen.findByText('Local runtime: Ready')).toBeInTheDocument()
+  })
+
+  it('shows unavailable status when backend is unreachable', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('Network error'))))
+    renderAt('/')
+    expect(await screen.findByText('Local runtime: Unavailable')).toBeInTheDocument()
   })
 })
