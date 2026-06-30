@@ -92,6 +92,20 @@ class TestNoExecutableCode:
             "pack.schema.json must use 'not' to prohibit a top-level 'scripts' field"
         )
 
+    def test_no_schema_references_scripts_property(self):
+        """Mirror the JS load-schemas.js cross-schema scripts check.
+
+        No schema (other than pack.schema.json) should serialise the string
+        '"scripts"' anywhere in its body.  pack.schema.json is permitted to
+        reference it inside the 'not' clause that explicitly blocks the field.
+        """
+        for name, schema in get_all_schemas().items():
+            raw = json.dumps(schema)
+            assert '"scripts"' not in raw or name == "pack.schema.json", (
+                f"{name}: must not reference a 'scripts' property "
+                "(pack.schema.json may reference it via the 'not' clause)"
+            )
+
     def test_get_all_schemas(self):
         all_schemas = get_all_schemas()
         assert set(all_schemas.keys()) == set(SCHEMA_NAMES)
