@@ -6,6 +6,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from convsim_core import __version__
+from convsim_core.runtime.types import RuntimeHealth
 
 router = APIRouter()
 
@@ -15,12 +16,6 @@ class _DatabaseStatus(BaseModel):
     path: Optional[str] = None
     migrations_applied: Optional[int] = None
     message: Optional[str] = None
-
-
-class _RuntimeReadiness(BaseModel):
-    llm_ready: bool = False
-    stt_ready: bool = False
-    tts_ready: bool = False
 
 
 class _PrivacyPosture(BaseModel):
@@ -38,7 +33,7 @@ class HealthResponse(BaseModel):
     pid: int
     config_path: str
     database: _DatabaseStatus
-    runtime: _RuntimeReadiness
+    runtime: RuntimeHealth
     privacy: _PrivacyPosture
 
 
@@ -57,7 +52,7 @@ async def health(request: Request) -> HealthResponse:
             path=db.path,
             migrations_applied=db.migrations_applied,
         ),
-        runtime=_RuntimeReadiness(),
+        runtime=await request.app.state.runtime.health(),
         privacy=_PrivacyPosture(
             telemetry_enabled=app_settings.telemetry_enabled,
             save_transcripts=app_settings.save_transcripts,
