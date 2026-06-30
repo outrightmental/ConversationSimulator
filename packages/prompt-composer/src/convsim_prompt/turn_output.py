@@ -35,9 +35,11 @@ _VALID_ENDING_TYPES = frozenset({
 
 _STATE_DELTA_MIN = -20
 _STATE_DELTA_MAX = 20
+_RUBRIC_SCORE_DELTA_MIN = -3
+_RUBRIC_SCORE_DELTA_MAX = 3
 
 _REPAIR_PROMPT = (
-    "Your previous response was not valid JSON. "
+    "Your previous response did not produce a valid structured JSON response. "
     "Return ONLY a valid JSON object matching this schema — no markdown fences, "
     "no explanation, no text outside the JSON object itself:\n"
     + json.dumps(NPC_TURN_OUTPUT_SCHEMA, indent=2)
@@ -169,7 +171,7 @@ def _validate(data: Dict[str, Any]) -> TurnOutput:
         raise ValidationError("state_delta must be an object")
     state_delta: Dict[str, int] = {}
     for k, v in raw_delta.items():
-        if not isinstance(v, int):
+        if not isinstance(v, int) or isinstance(v, bool):
             raise ValidationError(
                 f"state_delta[{k!r}] must be an integer, got {type(v).__name__}"
             )
@@ -204,10 +206,18 @@ def _validate(data: Dict[str, Any]) -> TurnOutput:
                 f"rubric_observations[{i}].observation missing or not a string"
             )
         score_delta = obs.get("score_delta")
-        if score_delta is not None and not isinstance(score_delta, int):
-            raise ValidationError(
-                f"rubric_observations[{i}].score_delta must be an integer"
-            )
+        if score_delta is not None:
+            if not isinstance(score_delta, int) or isinstance(score_delta, bool):
+                raise ValidationError(
+                    f"rubric_observations[{i}].score_delta must be an integer"
+                )
+            clamped_sd = max(_RUBRIC_SCORE_DELTA_MIN, min(_RUBRIC_SCORE_DELTA_MAX, score_delta))
+            if clamped_sd != score_delta:
+                logger.warning(
+                    "rubric_observations[%d].score_delta clamped %d → %d",
+                    i, score_delta, clamped_sd,
+                )
+            score_delta = clamped_sd
         observations.append(
             RubricObservation(rubric_id=r_id, observation=r_text, score_delta=score_delta)
         )

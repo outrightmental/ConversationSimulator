@@ -28,6 +28,8 @@ from convsim_prompt.turn_output import (
     _REPAIR_PROMPT,
     _STATE_DELTA_MIN,
     _STATE_DELTA_MAX,
+    _RUBRIC_SCORE_DELTA_MIN,
+    _RUBRIC_SCORE_DELTA_MAX,
 )
 
 
@@ -121,6 +123,13 @@ class TestExtractJson:
 
     def test_whitespace_only_returns_none(self):
         assert _extract_json("   \n\t  ") is None
+
+    def test_fenced_block_when_brace_scan_fails(self):
+        # A stray opening brace before the fence makes the brace-scan span invalid;
+        # the fence-regex path must pick up the correct JSON.
+        raw = "Use { this schema:\n```json\n{\"a\": 1}\n```"
+        result = _extract_json(raw)
+        assert result == {"a": 1}
 
 
 # ---------------------------------------------------------------------------
@@ -320,6 +329,42 @@ class TestStateDeltaBounds:
         data = _minimal_valid_dict(state_delta=[1, 2, 3])
         with pytest.raises(ValidationError, match="state_delta"):
             _validate(data)
+
+    def test_state_delta_bool_value_raises(self):
+        # Python bool is a subclass of int; JSON `true`/`false` must be rejected.
+        for v in (True, False):
+            data = _minimal_valid_dict(state_delta={"trust": v})
+            with pytest.raises(ValidationError, match="integer"):
+                _validate(data)
+
+
+# ---------------------------------------------------------------------------
+# Validation — rubric score_delta bounds
+# ---------------------------------------------------------------------------
+
+
+class TestRubricScoreDeltaBounds:
+    def _obs(self, score_delta):
+        return [{"rubric_id": "r1", "observation": "ok", "score_delta": score_delta}]
+
+    def test_in_bounds_score_delta_unchanged(self):
+        for v in (_RUBRIC_SCORE_DELTA_MIN, 0, _RUBRIC_SCORE_DELTA_MAX):
+            result = _validate(_minimal_valid_dict(rubric_observations=self._obs(v)))
+            assert result.rubric_observations[0].score_delta == v
+
+    def test_oversized_positive_score_delta_clamped(self):
+        result = _validate(_minimal_valid_dict(rubric_observations=self._obs(99)))
+        assert result.rubric_observations[0].score_delta == _RUBRIC_SCORE_DELTA_MAX
+
+    def test_oversized_negative_score_delta_clamped(self):
+        result = _validate(_minimal_valid_dict(rubric_observations=self._obs(-99)))
+        assert result.rubric_observations[0].score_delta == _RUBRIC_SCORE_DELTA_MIN
+
+    def test_score_delta_bool_raises(self):
+        for v in (True, False):
+            data = _minimal_valid_dict(rubric_observations=self._obs(v))
+            with pytest.raises(ValidationError, match="integer"):
+                _validate(data)
 
 
 # ---------------------------------------------------------------------------
