@@ -2,6 +2,8 @@
 node_modules/
 .npm/
 .pnpm-store/
+package-lock.json
+yarn.lock
 dist/
 out/
 .next/
