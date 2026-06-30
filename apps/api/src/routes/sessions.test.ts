@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { buildApp } from '../index.js';
 import type { FastifyInstance } from 'fastify';
 import type { SessionCreateRequest, SessionCreateResponse } from '@convsim/shared';
@@ -9,6 +9,10 @@ let app: FastifyInstance;
 beforeEach(async () => {
   sessions.clear();
   app = await buildApp();
+});
+
+afterEach(async () => {
+  await app.close();
 });
 
 const validRequest: SessionCreateRequest = {

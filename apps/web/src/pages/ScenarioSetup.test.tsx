@@ -407,6 +407,25 @@ describe('ScenarioSetupPage', () => {
       expect(screen.getByText(/STT:/)).toBeInTheDocument();
       expect(screen.getByText(/TTS:/)).toBeInTheDocument();
     });
+
+    it('shows network required as No when runtime reports false', async () => {
+      mockApi.getScenario.mockResolvedValue(mockScenario);
+      mockApi.health.mockResolvedValue(healthReady);
+      renderSetup();
+      await waitFor(() => screen.getByTestId('runtime-readiness'));
+      expect(screen.getByText(/network required to play: no/i)).toBeInTheDocument();
+    });
+
+    it('shows network required as Yes when runtime reports true', async () => {
+      mockApi.getScenario.mockResolvedValue(mockScenario);
+      mockApi.health.mockResolvedValue({
+        ...healthReady,
+        runtime: { ...healthReady.runtime, network_required: true },
+      });
+      renderSetup();
+      await waitFor(() => screen.getByTestId('runtime-readiness'));
+      expect(screen.getByText(/network required to play: yes/i)).toBeInTheDocument();
+    });
   });
 
   describe('privacy', () => {
@@ -437,6 +456,29 @@ describe('ScenarioSetupPage', () => {
       await waitFor(() =>
         expect(screen.getByText(/not saved/i)).toBeInTheDocument(),
       );
+    });
+
+    it('shows state meters toggle when scenario permits it', async () => {
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      expect(
+        screen.getByRole('checkbox', { name: /show npc state meters/i }),
+      ).toBeInTheDocument();
+    });
+
+    it('hides state meters toggle and shows note when scenario does not permit it', async () => {
+      mockApi.getScenario.mockResolvedValue({
+        ...mockScenario,
+        state_meters_permitted: false,
+      });
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      expect(
+        screen.queryByRole('checkbox', { name: /show npc state meters/i }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByText(/state meters are hidden in this scenario/i),
+      ).toBeInTheDocument();
     });
   });
 

@@ -41,6 +41,7 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
     stt_ready: false,
     tts_ready: false,
     tts_voice_name: null,
+    network_required: false,
   });
   const [loadError, setLoadError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -433,8 +434,8 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
                 </span>
               </li>
               <li>
-                <span className="setup-status-dot ready" />
-                <span>Network required to play: No</span>
+                <span className={`setup-status-dot ${runtime.network_required ? 'not-ready' : 'ready'}`} />
+                <span>Network required to play: {runtime.network_required ? 'Yes' : 'No'}</span>
               </li>
             </ul>
           </div>

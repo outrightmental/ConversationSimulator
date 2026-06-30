@@ -29,6 +29,7 @@ export interface RuntimeReadiness {
   stt_ready: boolean;
   tts_ready: boolean;
   tts_voice_name: string | null;
+  network_required: boolean;
 }
 
 export function validateSetup(

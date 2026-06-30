@@ -8,6 +8,7 @@ const runtimeReady: RuntimeReadiness = {
   stt_ready: true,
   tts_ready: true,
   tts_voice_name: 'af_heart',
+  network_required: false,
 };
 
 const runtimeTextOnly: RuntimeReadiness = {
@@ -16,6 +17,7 @@ const runtimeTextOnly: RuntimeReadiness = {
   stt_ready: false,
   tts_ready: false,
   tts_voice_name: null,
+  network_required: false,
 };
 
 const validForm: SetupFormValues = {
