@@ -51,12 +51,16 @@ export function FormEditor({ fileType, initialYaml, onChange, className }: FormE
     setYaml(newYaml);
   }
 
-  // Notify parent when form field changes update YAML.
-  // We use a layout effect to call onChange after render so the parent
-  // always receives the post-update YAML string.
+  // Notify parent whenever yaml changes after the initial mount.
+  // The parent already has the initial value (they passed it as initialYaml),
+  // so firing on mount would violate "called whenever the YAML content changes".
+  const isFirstRender = React.useRef(true);
   React.useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
     onChange?.(yaml);
-    // Only call when yaml changes — not on every render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [yaml]);
 
