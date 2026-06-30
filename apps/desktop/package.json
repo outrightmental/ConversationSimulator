@@ -1,0 +1,10 @@
+{
+  "name": "@convsim/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "echo 'Desktop app not yet implemented. Use apps/web for the web UI.' && exit 0",
+    "build": "echo 'Desktop app not yet implemented.' && exit 0"
+  },
+  "devDependencies": {}
+}

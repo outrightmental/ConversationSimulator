@@ -1,0 +1,15 @@
+{
+  "name": "conversation-simulator",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "setup": "./scripts/setup.sh",
+    "dev": "./scripts/dev.sh"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

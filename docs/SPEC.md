@@ -1,3 +1,4 @@
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
 # Requirements document: Conversation Simulator MVP
 
 ## 0. Product thesis
