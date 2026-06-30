@@ -1,8 +1,12 @@
 # SPDX-License-Identifier: Apache-2.0
+import logging
+
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 
 from convsim_core.stt.types import SttError, SttRequest, SttUnavailableError
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -81,5 +85,6 @@ async def upload_audio(
         )
     except SttUnavailableError:
         return SttUploadResponse(transcript=None, status="unavailable")
-    except SttError:
+    except SttError as exc:
+        logger.warning("STT worker error during transcription: %s", exc, exc_info=True)
         return SttUploadResponse(transcript=None, status="error")

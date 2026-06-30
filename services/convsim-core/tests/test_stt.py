@@ -1,5 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 import io
+from unittest.mock import AsyncMock, patch
+
+from convsim_core.stt.types import SttError
 
 
 def test_stt_upload_returns_200(client):
@@ -118,3 +121,20 @@ def test_stt_upload_language_field_is_optional(client):
         files={"audio": ("recording.webm", audio, "audio/webm")},
     )
     assert resp.status_code == 200
+
+
+def test_stt_upload_status_error_on_worker_failure(client):
+    # Simulate whisper-cli crashing (e.g. bad audio, non-zero exit) — the router
+    # must return status='error' with null transcript rather than a 500.
+    audio = io.BytesIO(b"\x00" * 100)
+    with patch.object(
+        client.app.state.stt_worker,
+        "transcribe",
+        new=AsyncMock(side_effect=SttError("whisper-cli exited with code 1: error: bad input")),
+    ):
+        body = client.post(
+            "/api/stt/upload",
+            files={"audio": ("recording.webm", audio, "audio/webm")},
+        ).json()
+    assert body["status"] == "error"
+    assert body["transcript"] is None
