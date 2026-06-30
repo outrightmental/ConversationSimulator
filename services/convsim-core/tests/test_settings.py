@@ -35,8 +35,12 @@ def test_put_settings_round_trip(client, tmp_path):
     assert get_resp.json()["tts_cache_enabled"] is False
 
 
-def test_put_settings_invalid_body_returns_structured_error(client):
-    resp = client.put("/api/settings", json={"save_transcripts": "not-a-bool"})
+def test_put_settings_invalid_body_returns_structured_error(client, tmp_config):
+    resp = client.put("/api/settings", json={
+        "data_dir": tmp_config.data_dir,
+        "log_dir": tmp_config.log_dir,
+        "save_transcripts": "not-a-bool",
+    })
     assert resp.status_code == 422
     body = resp.json()
     assert "error" in body
