@@ -70,7 +70,9 @@ cleanup() {
     done
     echo "Done."
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT
+# INT/TERM: clean up then exit 0 (intentional stop by user).
+trap 'cleanup; exit 0' INT TERM
 
 echo ""
 echo "Conversation Simulator — local dev"
@@ -140,5 +142,14 @@ PIDS+=($!)
 
 echo ""
 
-# Wait for both services (Ctrl-C triggers cleanup trap)
-wait "${PIDS[@]}" 2>/dev/null || true
+# Poll until a service exits; Ctrl-C triggers INT trap (clean exit).
+while true; do
+    for pid in "${PIDS[@]+"${PIDS[@]}"}"; do
+        if ! kill -0 "$pid" 2>/dev/null; then
+            echo "" >&2
+            echo "A service stopped unexpectedly. Check logs at: $LOG_DIR" >&2
+            exit 1
+        fi
+    done
+    sleep 0.2
+done
