@@ -570,6 +570,12 @@ describe('FormEditor — per-item validation errors', () => {
 // ---------------------------------------------------------------------------
 
 describe('FormEditor — onChange call count', () => {
+  it('does not call onChange on initial mount', () => {
+    const onChange = vi.fn();
+    render(<FormEditor fileType="manifest" initialYaml={MANIFEST_YAML} onChange={onChange} />);
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it('calls onChange exactly once per YAML tab edit, not twice', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();
@@ -577,7 +583,7 @@ describe('FormEditor — onChange call count', () => {
       <FormEditor fileType="manifest" initialYaml={MANIFEST_YAML} onChange={onChange} />,
     );
 
-    // Clear calls from initial mount effect
+    // Nothing fired on mount; start fresh for this test.
     onChange.mockClear();
 
     // Switch to YAML tab and make one change
