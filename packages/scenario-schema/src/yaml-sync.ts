@@ -223,7 +223,7 @@ export function setByPath(
   if (parts.length === 1) {
     return { ...obj, [path]: value };
   }
-  const [head, ...rest] = parts;
+  const [head, ...rest] = parts as [string, ...string[]];
   const nested = isPlainObject(obj[head]) ? (obj[head] as Record<string, unknown>) : {};
   return { ...obj, [head]: setByPath(nested, rest.join('.'), value) };
 }
