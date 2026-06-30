@@ -13,6 +13,11 @@ export interface HealthResponse {
   version?: string
 }
 
+export interface SttUploadResponse {
+  transcript: string | null
+  status: string
+}
+
 async function parseErrorMessage(res: Response): Promise<string> {
   const text = await res.text()
   let message = text || `${res.status} ${res.statusText}`
