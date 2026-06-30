@@ -110,6 +110,9 @@ importers:
 
   packages/scenario-schema:
     devDependencies:
+      ajv:
+        specifier: ^8.17.1
+        version: 8.20.0
       typescript:
         specifier: ^5.5.0
         version: 5.6.3

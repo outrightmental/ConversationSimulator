@@ -17,6 +17,7 @@
     "test": "node tests/load-schemas.js"
   },
   "devDependencies": {
+    "ajv": "^8.17.1",
     "typescript": "^5.5.0"
   }
 }
