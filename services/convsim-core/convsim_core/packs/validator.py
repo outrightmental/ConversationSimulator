@@ -60,15 +60,21 @@ def validate_pack_dir(pack_dir: Path) -> tuple[Optional[PackManifest], list[str]
             f"Allowed values: {', '.join(sorted(CONTENT_RATINGS))}"
         )
 
-    # pack_id must not contain path-traversal, header-injection, null characters, or
-    # path separators.  Path separators (/ and \) are rejected because _install_from_dir
-    # maps pack_id directly to a directory name after stripping them; two different ids
-    # (e.g. "foo/bar" and "foo_bar") would collide to the same directory, causing the
-    # importer to silently overwrite the first pack's files with the second's.
-    # Null bytes (\x00) are included because os.path on POSIX silently truncates paths
-    # at the first null byte, which could redirect installs to an unintended directory.
+    # pack_id must be non-empty and must not contain path-traversal, header-injection,
+    # null characters, or path separators.  Path separators (/ and \) are rejected because
+    # _install_from_dir maps pack_id directly to a directory name after stripping them; two
+    # different ids (e.g. "foo/bar" and "foo_bar") would collide to the same directory,
+    # causing the importer to silently overwrite the first pack's files with the second's.
+    # Null bytes (\x00) are included because os.path on POSIX silently truncates paths at
+    # the first null byte, which could redirect installs to an unintended directory.
+    # "." is rejected because Path(packs_dir) / "." resolves back to packs_dir itself,
+    # which would cause the importer to rmtree the entire packs directory.
     _PACK_ID_FORBIDDEN = {'"', "/", "\\", "\r", "\n", "\x00"}
-    if ".." in manifest.pack_id or any(c in manifest.pack_id for c in _PACK_ID_FORBIDDEN):
+    if not manifest.pack_id:
+        errors.append("pack_id must not be empty")
+    elif manifest.pack_id == ".":
+        errors.append("pack_id '.' is not a valid pack identifier")
+    elif ".." in manifest.pack_id or any(c in manifest.pack_id for c in _PACK_ID_FORBIDDEN):
         errors.append(f"pack_id contains unsafe characters: {manifest.pack_id!r}")
 
     # Each entry scenario must reference a file that exists within the pack dir.

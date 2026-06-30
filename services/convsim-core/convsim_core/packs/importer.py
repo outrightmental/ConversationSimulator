@@ -130,15 +130,29 @@ def _install_from_dir(
     if manifest is None:
         raise ConvsimError("PACK_INVALID", "Pack manifest could not be loaded.", status_code=422)
 
-    # Safety: ensure the computed install path stays within packs_base_dir.
+    # Safety: ensure the computed install path stays within packs_base_dir and is not
+    # equal to packs_base_dir itself (which would happen with an empty safe_name, causing
+    # shutil.rmtree to wipe the entire packs directory before the atomic move).
     safe_name = manifest.pack_id.replace("/", "_").replace("\\", "_")
+    if not safe_name:
+        raise ConvsimError(
+            "PACK_INVALID",
+            f"pack_id {manifest.pack_id!r} produces an empty install directory name.",
+            status_code=422,
+        )
     pack_dest = packs_base_dir / safe_name
     try:
-        pack_dest.resolve().relative_to(packs_base_dir.resolve())
+        rel = pack_dest.resolve().relative_to(packs_base_dir.resolve())
     except ValueError:
         raise ConvsimError(
             "PATH_ESCAPE",
             f"Pack id would install outside packs directory: {manifest.pack_id!r}",
+            status_code=422,
+        )
+    if str(rel) in {".", ""}:
+        raise ConvsimError(
+            "PATH_ESCAPE",
+            f"Pack id resolves to the packs base directory itself: {manifest.pack_id!r}",
             status_code=422,
         )
 

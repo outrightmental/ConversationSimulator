@@ -158,6 +158,26 @@ def test_pack_id_path_separator_rejected(tmp_path, bad_id):
     )
 
 
+def test_empty_pack_id_rejected(tmp_path):
+    """pack_id '' would cause _install_from_dir to compute pack_dest == packs_base_dir,
+    causing shutil.rmtree to wipe the entire packs directory before the atomic move."""
+    pack_dir = make_pack_dir(tmp_path, manifest={"pack_id": ""})
+    _, errors = validate_pack_dir(pack_dir)
+    assert any("empty" in e.lower() or "pack_id" in e.lower() for e in errors), (
+        f"Expected empty pack_id to be rejected; got: {errors}"
+    )
+
+
+def test_dot_pack_id_rejected(tmp_path):
+    """pack_id '.' resolves pack_dest to packs_base_dir itself (Path(d) / '.' == Path(d)),
+    which would cause shutil.rmtree to delete the entire packs directory."""
+    pack_dir = make_pack_dir(tmp_path, manifest={"pack_id": "."})
+    _, errors = validate_pack_dir(pack_dir)
+    assert any("pack_id" in e.lower() or "valid" in e.lower() for e in errors), (
+        f"Expected pack_id '.' to be rejected; got: {errors}"
+    )
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="symlink creation requires elevated privileges on Windows")
 def test_symlink_in_pack_dir_rejected(tmp_path):
     """A pack directory containing a symlink must be rejected.
