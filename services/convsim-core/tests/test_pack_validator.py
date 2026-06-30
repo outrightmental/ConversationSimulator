@@ -194,3 +194,19 @@ def test_symlink_in_pack_dir_rejected(tmp_path):
     assert any("symlink" in e.lower() for e in errors), (
         f"Expected a symlink rejection error; got: {errors}"
     )
+
+
+def test_entry_scenario_pointing_to_directory_rejected(tmp_path):
+    """entry_scenarios must reference a file, not a directory.
+
+    Previously the check used resolved.exists() which accepted a directory path,
+    silently registering the directory's stem as a bogus scenario slug.
+    """
+    pack_dir = make_pack_dir(
+        tmp_path,
+        manifest={"entry_scenarios": ["scenarios"]},  # "scenarios" is a directory
+    )
+    _, errors = validate_pack_dir(pack_dir)
+    assert any("not found" in e.lower() or "file" in e.lower() for e in errors), (
+        f"Expected entry_scenarios pointing to a directory to be rejected; got: {errors}"
+    )

@@ -92,7 +92,7 @@ def validate_pack_dir(pack_dir: Path) -> tuple[Optional[PackManifest], list[str]
         except ValueError:
             errors.append(f"Entry scenario escapes pack directory: {ref!r}")
             continue
-        if not resolved.exists():
+        if not resolved.is_file():
             errors.append(f"Entry scenario file not found: {ref!r}")
 
     # Scan every entry for symlinks and forbidden extensions.

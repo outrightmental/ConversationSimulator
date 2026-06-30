@@ -147,6 +147,8 @@ ALTER TABLE asset_index ADD COLUMN media_type TEXT;
 ALTER TABLE asset_index ADD COLUMN license TEXT;
 ALTER TABLE asset_index ADD COLUMN pack_id INTEGER;
 ALTER TABLE asset_index ADD COLUMN scenario_id INTEGER;
+CREATE INDEX IF NOT EXISTS idx_asset_index_pack_id ON asset_index (pack_id);
+CREATE INDEX IF NOT EXISTS idx_asset_index_scenario_id ON asset_index (scenario_id);
 """
 
 MIGRATIONS: list[tuple[str, str]] = [

@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 """Unit tests for pack import with rollback-on-failure guarantees."""
+import copy
 import io
 import json
 import sys
@@ -77,6 +78,43 @@ def test_zip_bomb_rejected(tmp_path, monkeypatch):
     dest = tmp_path / "out"
     dest.mkdir()
     exc = pytest.raises(ConvsimError, safe_extract_zip, buf.getvalue(), dest)
+    assert exc.value.code == "ZIP_TOO_LARGE"
+
+
+def test_zip_bomb_false_metadata_post_extraction_check(tmp_path, monkeypatch):
+    """Post-extraction size check catches a zip whose ZipInfo.file_size metadata was falsified to 0.
+
+    An adversary can craft a zip where ZipInfo.file_size reports 0 for all entries,
+    causing the pre-extraction check (which sums metadata sizes) to pass.  The actual
+    extractall() uses ZipFile.NameToInfo — the raw parsed central directory — not the
+    return value of infolist(), so it still writes the real bytes to disk.  The
+    post-extraction check then catches the true size exceeding the limit.
+    """
+    monkeypatch.setattr(_importer_mod, "_MAX_UNCOMPRESSED_BYTES", 1024)
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_STORED) as zf:
+        zf.writestr("pack/data.bin", b"A" * 2048)
+    zip_bytes = buf.getvalue()
+
+    # Patch infolist() to return *copies* of the ZipInfo entries with file_size=0,
+    # simulating falsified central-directory metadata.  Using shallow copies leaves the
+    # originals in NameToInfo untouched, so extractall() still writes the real bytes
+    # while the pre-check sums only the faked zeros.
+    _real_infolist = zipfile.ZipFile.infolist
+
+    def _fake_infolist(self):
+        fakes = []
+        for e in _real_infolist(self):
+            fake = copy.copy(e)
+            fake.file_size = 0
+            fakes.append(fake)
+        return fakes
+
+    dest = tmp_path / "out"
+    dest.mkdir()
+    monkeypatch.setattr(zipfile.ZipFile, "infolist", _fake_infolist)
+    exc = pytest.raises(ConvsimError, safe_extract_zip, zip_bytes, dest)
     assert exc.value.code == "ZIP_TOO_LARGE"
 
 

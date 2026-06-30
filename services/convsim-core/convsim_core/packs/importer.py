@@ -78,6 +78,16 @@ def safe_extract_zip(zip_bytes: bytes, dest: Path) -> None:
                     status_code=422,
                 )
         zf.extractall(dest)
+    # Defense-in-depth: verify actual bytes written, because a malicious archive can set
+    # file_size to 0 in the central directory to bypass the pre-check above.
+    actual_size = sum(f.stat().st_size for f in dest.rglob("*") if f.is_file())
+    if actual_size > _MAX_UNCOMPRESSED_BYTES:
+        raise ConvsimError(
+            "ZIP_TOO_LARGE",
+            f"Archive expands to {actual_size // (1024 * 1024)} MB, "
+            f"exceeding the {_MAX_UNCOMPRESSED_BYTES // (1024 * 1024)} MB limit.",
+            status_code=422,
+        )
 
 
 def _discover_scenarios(pack_dir: Path, manifest: PackManifest) -> list[tuple[str, str]]:
@@ -87,7 +97,7 @@ def _discover_scenarios(pack_dir: Path, manifest: PackManifest) -> list[tuple[st
 
     for ref in manifest.entry_scenarios:
         path = pack_dir / ref
-        if path.exists():
+        if path.is_file():
             slug = path.stem
             if slug not in seen:
                 seen.add(slug)
