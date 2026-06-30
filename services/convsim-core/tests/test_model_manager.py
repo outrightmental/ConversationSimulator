@@ -223,12 +223,6 @@ def _load_registry(client):
     load_and_persist_registry(client.app.state.db.connection(), _REGISTRY_PATH)
 
 
-def _starter_id(client) -> str:
-    body = client.get("/api/models").json()
-    starter = next(m for m in body["registry"] if m["role"] == "starter")
-    return starter["id"]
-
-
 def test_install_rejects_unknown_model(client):
     resp = client.post("/api/models/install", json={"registry_id": "does-not-exist"})
     assert resp.status_code == 404
@@ -244,10 +238,14 @@ def test_install_rejects_user_supplied_model(client):
 
 def test_install_rejects_model_with_pending_sha256(client):
     """The explicit-download guard must reject models that have PENDING checksums."""
-    _load_registry(client)
-    model_id = _starter_id(client)
-    # Starter model has sha256 == "PENDING" in the registry
-    resp = client.post("/api/models/install", json={"registry_id": model_id})
+    conn = client.app.state.db.connection()
+    conn.execute(
+        """INSERT INTO model_registry (id, name, provider, license_spdx, sha256, source_type)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        ("pending-sha-model", "Pending SHA Model", "test", "MIT", "PENDING", "registry"),
+    )
+    conn.commit()
+    resp = client.post("/api/models/install", json={"registry_id": "pending-sha-model"})
     assert resp.status_code == 400
     assert resp.json()["error"]["code"] == "MISSING_CHECKSUM"
 

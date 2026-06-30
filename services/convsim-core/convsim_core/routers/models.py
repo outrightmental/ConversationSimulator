@@ -199,6 +199,7 @@ async def use_model(request: Request, body: UseModelRequest) -> UseModelResponse
             status_code=400,
         )
 
+    test_runtime = None
     try:
         test_runtime = build_runtime(body.runtime_id)
         health = await test_runtime.health()
@@ -208,6 +209,13 @@ async def use_model(request: Request, body: UseModelRequest) -> UseModelResponse
             message=f"Cannot reach runtime '{body.runtime_id}': {exc}",
             status_code=503,
         ) from exc
+    finally:
+        # OllamaChatRuntime holds a persistent httpx.AsyncClient; close it to
+        # avoid connection-pool leaks when this temporary instance is used only
+        # for the availability check.
+        _client = getattr(test_runtime, "_client", None)
+        if isinstance(_client, httpx.AsyncClient):
+            await _client.aclose()
 
     if health.status in (RuntimeStatus.UNAVAILABLE, RuntimeStatus.ERROR):
         raise ConvsimError(
