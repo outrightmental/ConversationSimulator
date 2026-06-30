@@ -28,7 +28,7 @@ _CHARS_PER_TOKEN = 4
 #   - OUTPUT_SCHEMA is always the final system-prompt section so it cannot be
 #     displaced or overridden by anything in the scenario or player input.
 #   - The UNTRUSTED_CONTENT_BEGIN / UNTRUSTED_CONTENT_END sentinels (inserted by
-#     the scenario brief and output schema layers respectively) bracket items 3–9,
+#     the scenario brief and response style layers respectively) bracket items 3–9,
 #     making the untrusted region verifiable by adapters.
 SYSTEM_LAYER_ORDER: List[str] = [
     "GLOBAL_RULES",
@@ -39,8 +39,8 @@ SYSTEM_LAYER_ORDER: List[str] = [
     "CURRENT_STATE",
     "RECENT_TRANSCRIPT",
     "MEMORY_SUMMARY",
-    "RESPONSE_STYLE",
-    "OUTPUT_SCHEMA",        # untrusted region closes here; schema always last
+    "RESPONSE_STYLE",       # untrusted region closes here (END sentinel appended by this layer)
+    "OUTPUT_SCHEMA",        # always last in system prompt
 ]
 
 # Full ordering including the user turn.
