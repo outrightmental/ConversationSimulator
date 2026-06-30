@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.convsim.dev/v0.1/debrief.schema.json",
+  "title": "ConvSim Debrief",
+  "description": "Structure of the debrief report generated after a completed session.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "session_id",
+    "scenario_id",
+    "outcome",
+    "scores",
+    "strengths",
+    "improvements",
+    "turning_points"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["0.1"]
+    },
+    "session_id": {
+      "type": "string",
+      "description": "UUID of the session this debrief covers."
+    },
+    "scenario_id": {
+      "type": "string"
+    },
+    "pack_id": {
+      "type": "string"
+    },
+    "outcome": {
+      "type": "string",
+      "enum": ["success", "failure", "timeout", "safety_stop", "player_exit"],
+      "description": "How the session ended."
+    },
+    "total_turns": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "scores": {
+      "type": "object",
+      "description": "Map of rubric dimension id to score (0-100).",
+      "additionalProperties": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 100
+      }
+    },
+    "overall_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "strengths": {
+      "type": "array",
+      "description": "What the player did well.",
+      "items": { "type": "string" }
+    },
+    "improvements": {
+      "type": "array",
+      "description": "Suggested improvements for next attempt.",
+      "items": { "type": "string" }
+    },
+    "turning_points": {
+      "type": "array",
+      "description": "Key moments in the conversation that significantly shifted the outcome.",
+      "items": {
+        "type": "object",
+        "required": ["turn_number", "description"],
+        "additionalProperties": false,
+        "properties": {
+          "turn_number": { "type": "integer", "minimum": 0 },
+          "description": { "type": "string" },
+          "impact": {
+            "type": "string",
+            "enum": ["positive", "negative", "neutral"]
+          }
+        }
+      }
+    },
+    "replay_suggestions": {
+      "type": "array",
+      "description": "Specific adjustments worth trying in a replay.",
+      "items": { "type": "string" }
+    },
+    "npc_final_state": {
+      "type": "object",
+      "description": "NPC state variable values at end of session.",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 100
+      }
+    },
+    "generated_at": {
+      "type": "string",
+      "description": "ISO 8601 timestamp when debrief was generated."
+    }
+  }
+}

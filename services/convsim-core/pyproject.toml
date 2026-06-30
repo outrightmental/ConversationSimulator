@@ -13,11 +13,17 @@ license = { text = "Apache-2.0" }
 dependencies = []
 
 [project.optional-dependencies]
-dev = []
+dev = ["pytest>=8.0"]
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["convsim*"]
+
+[tool.setuptools.package-data]
+"convsim_core" = ["schemas/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100
