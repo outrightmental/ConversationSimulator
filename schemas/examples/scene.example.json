@@ -1,0 +1,8 @@
+{
+  "schema_version": "0.1",
+  "scene_id": "example_office_lobby",
+  "display_name": "Example Office — Main Lobby",
+  "description": "A bright, open lobby with a welcome desk at the center. A few chairs line the wall to the left. The space feels calm and professional.",
+  "background": "assets/backgrounds/lobby_placeholder.png",
+  "ambient": "quiet_office"
+}

@@ -1,0 +1,19 @@
+{
+  "schema_version": "0.1",
+  "pack_id": "example.hello_world",
+  "name": "Hello World",
+  "version": "0.1.0",
+  "description": "A minimal example pack for documentation and schema tests.",
+  "author": "ConvSim Contributors",
+  "license": "CC-BY-4.0",
+  "content_rating": "G",
+  "tags": ["example"],
+  "supported_languages": ["en"],
+  "entry_scenarios": ["scenarios/hello.yaml"],
+  "assets": {
+    "allow_external_urls": false
+  },
+  "safety": {
+    "policy": "safety/default.yaml"
+  }
+}
