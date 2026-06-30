@@ -457,6 +457,15 @@ def test_benchmark_context_length_from_fake_runtime(client):
     assert body["context_length"] == 4096
 
 
+def test_benchmark_persisted_benchmarked_at_matches_response(client):
+    body = client.post("/api/models/benchmark", json={}).json()
+    saved = get_latest_benchmark(
+        client.app.state.db.connection(), body["model_id"], body["runtime_id"]
+    )
+    assert saved is not None
+    assert saved["benchmarked_at"] == body["benchmarked_at"]
+
+
 def test_benchmark_runtime_unavailable_returns_503(client, monkeypatch):
     import convsim_core.routers.models as models_module
 

@@ -89,14 +89,15 @@ def save_benchmark_result(
     warnings: list[str] | None = None,
     prompt_used: str | None = None,
     output_tokens: int | None = None,
+    benchmarked_at: str | None = None,
 ) -> None:
     """Persist a benchmark result to the benchmark_results table."""
     conn.execute(
         """
         INSERT INTO benchmark_results
             (model_id, runtime_id, tokens_per_sec, context_length,
-             warnings_json, prompt_used, output_tokens)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+             warnings_json, prompt_used, output_tokens, benchmarked_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now')))
         """,
         (
             model_id,
@@ -106,6 +107,7 @@ def save_benchmark_result(
             json.dumps(warnings or []),
             prompt_used,
             output_tokens,
+            benchmarked_at,
         ),
     )
     conn.commit()

@@ -379,6 +379,7 @@ async def benchmark_model(request: Request, body: BenchmarkRequest) -> Benchmark
         warnings=warnings,
         prompt_used=_BENCHMARK_PROMPT,
         output_tokens=output_tokens,
+        benchmarked_at=benchmarked_at,
     )
 
     return BenchmarkResponse(
