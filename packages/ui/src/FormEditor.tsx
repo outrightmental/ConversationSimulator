@@ -40,6 +40,12 @@ const FILE_TYPE_LABELS: Record<PackFileType, string> = {
  * Executable behaviour cannot be added (pack format is purely declarative).
  */
 export function FormEditor({ fileType, initialYaml, onChange, className }: FormEditorProps) {
+  const uid = React.useId();
+  const formTabId = `${uid}-form-tab`;
+  const yamlTabId = `${uid}-yaml-tab`;
+  const formPanelId = `${uid}-form-panel`;
+  const yamlPanelId = `${uid}-yaml-panel`;
+
   const { yaml, formValues, errors, activeTab, setActiveTab, updateField, setYaml } =
     useFormSync(fileType, initialYaml);
 
@@ -91,8 +97,8 @@ export function FormEditor({ fileType, initialYaml, onChange, className }: FormE
         <button
           role="tab"
           aria-selected={activeTab === 'form'}
-          aria-controls="form-editor-form-panel"
-          id="form-editor-form-tab"
+          aria-controls={formPanelId}
+          id={formTabId}
           className={`form-editor__tab ${activeTab === 'form' ? 'form-editor__tab--active' : ''}`}
           onClick={() => setActiveTab('form')}
         >
@@ -101,8 +107,8 @@ export function FormEditor({ fileType, initialYaml, onChange, className }: FormE
         <button
           role="tab"
           aria-selected={activeTab === 'yaml'}
-          aria-controls="form-editor-yaml-panel"
-          id="form-editor-yaml-tab"
+          aria-controls={yamlPanelId}
+          id={yamlTabId}
           className={`form-editor__tab ${activeTab === 'yaml' ? 'form-editor__tab--active' : ''}`}
           onClick={() => setActiveTab('yaml')}
         >
@@ -111,9 +117,9 @@ export function FormEditor({ fileType, initialYaml, onChange, className }: FormE
       </div>
 
       <div
-        id="form-editor-form-panel"
+        id={formPanelId}
         role="tabpanel"
-        aria-labelledby="form-editor-form-tab"
+        aria-labelledby={formTabId}
         hidden={activeTab !== 'form'}
         className="form-editor__panel"
       >
@@ -132,9 +138,9 @@ export function FormEditor({ fileType, initialYaml, onChange, className }: FormE
       </div>
 
       <div
-        id="form-editor-yaml-panel"
+        id={yamlPanelId}
         role="tabpanel"
-        aria-labelledby="form-editor-yaml-tab"
+        aria-labelledby={yamlTabId}
         hidden={activeTab !== 'yaml'}
         className="form-editor__panel"
       >

@@ -185,8 +185,8 @@ describe('FormEditor — manifest form', () => {
     render(<FormEditor fileType="manifest" initialYaml={MANIFEST_YAML} />);
     // There's no editable input for the fictional field in the form panel
     expect(screen.queryByLabelText(/fictional/i)).toBeNull();
-    // The form panel contains the read-only notice
-    const formPanel = document.getElementById('form-editor-form-panel')!;
+    // The form panel (visible — it's the active tab) contains the read-only notice
+    const formPanel = screen.getByRole('tabpanel');
     expect(within(formPanel).getByText(/fictional: true/)).toBeInTheDocument();
   });
 
