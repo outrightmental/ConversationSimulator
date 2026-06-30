@@ -523,6 +523,49 @@ describe('FormEditor — initialYaml prop reset', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Per-item validation errors in flat string arrays
+// ---------------------------------------------------------------------------
+
+describe('FormEditor — per-item validation errors', () => {
+  it('shows a per-goal error when an empty goal is added', async () => {
+    const user = userEvent.setup();
+    render(<FormEditor fileType="scenario" initialYaml={SCENARIO_YAML} />);
+
+    // Add a new goal (starts empty — empty string fails min(1) validation)
+    await user.click(screen.getByRole('button', { name: 'Add goal' }));
+
+    // The new empty goal should trigger a validation error at goals.1
+    // (index 1 because there is already one goal in the fixture)
+    const alerts = await screen.findAllByRole('alert');
+    const goalError = alerts.find((el) => el.textContent?.match(/at least/i));
+    expect(goalError).toBeTruthy();
+  });
+
+  it('shows a per-tag error when a new tag is added (empty tag fails kebab-case validation)', async () => {
+    const user = userEvent.setup();
+    render(<FormEditor fileType="manifest" initialYaml={MANIFEST_YAML} />);
+
+    // Adding a new tag starts it as an empty string which fails the kebab-case regex
+    await user.click(screen.getByRole('button', { name: 'Add tag' }));
+
+    const alerts = await screen.findAllByRole('alert');
+    const tagError = alerts.find((el) => el.textContent?.match(/kebab-case/i));
+    expect(tagError).toBeTruthy();
+  });
+
+  it('shows a per-boundary error when an empty boundary is added', async () => {
+    const user = userEvent.setup();
+    render(<FormEditor fileType="npc" initialYaml={NPC_YAML} />);
+
+    await user.click(screen.getByRole('button', { name: 'Add limit' }));
+
+    const alerts = await screen.findAllByRole('alert');
+    const boundaryError = alerts.find((el) => el.textContent?.match(/at least/i));
+    expect(boundaryError).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // onChange call count
 // ---------------------------------------------------------------------------
 

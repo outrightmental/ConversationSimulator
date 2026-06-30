@@ -198,6 +198,11 @@ export function ManifestForm({ values, errors, onChange }: ManifestFormProps) {
               >
                 Remove
               </button>
+              {errorFor(errors, `tags.${i}`) && (
+                <p className="form-field__error" role="alert">
+                  {errorFor(errors, `tags.${i}`)}
+                </p>
+              )}
             </li>
           ))}
         </ul>

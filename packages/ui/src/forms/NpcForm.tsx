@@ -199,6 +199,11 @@ export function NpcForm({ values, errors, onChange }: NpcFormProps) {
                 >
                   Remove
                 </button>
+                {errorFor(errors, `persona.personality_traits.${i}`) && (
+                  <p className="form-field__error" role="alert">
+                    {errorFor(errors, `persona.personality_traits.${i}`)}
+                  </p>
+                )}
               </li>
             ))}
           </ul>
@@ -298,6 +303,11 @@ export function NpcForm({ values, errors, onChange }: NpcFormProps) {
               >
                 Remove
               </button>
+              {errorFor(errors, `boundaries.${i}`) && (
+                <p className="form-field__error" role="alert">
+                  {errorFor(errors, `boundaries.${i}`)}
+                </p>
+              )}
             </li>
           ))}
         </ul>

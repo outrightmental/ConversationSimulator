@@ -49,6 +49,7 @@ export const ManifestSchema = z
           .max(32),
       )
       .max(20, 'At most 20 tags allowed')
+      .refine((arr) => new Set(arr).size === arr.length, { message: 'Tags must be unique' })
       .optional(),
     scenarios: z.array(z.string()).min(1, 'At least one scenario is required').optional(),
     npcs: z.array(z.string()).optional(),

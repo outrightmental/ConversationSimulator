@@ -222,6 +222,11 @@ export function ScenarioForm({ values, errors, onChange }: ScenarioFormProps) {
               >
                 Remove
               </button>
+              {errorFor(errors, `goals.${i}`) && (
+                <p className="form-field__error" role="alert">
+                  {errorFor(errors, `goals.${i}`)}
+                </p>
+              )}
             </li>
           ))}
         </ul>
