@@ -24,11 +24,15 @@ class _JsonFormatter(logging.Formatter):
         return json.dumps(entry)
 
 
+_RUNTIMES_PREFIX = "convsim_core.runtimes"
+
+
 class _RuntimeFilter(logging.Filter):
     """Accept only log records from the runtimes sub-package."""
 
     def filter(self, record: logging.LogRecord) -> bool:
-        return record.name.startswith("convsim_core.runtimes")
+        name = record.name
+        return name == _RUNTIMES_PREFIX or name.startswith(_RUNTIMES_PREFIX + ".")
 
 
 def configure_logging(log_dir: str, debug: bool = False) -> None:
