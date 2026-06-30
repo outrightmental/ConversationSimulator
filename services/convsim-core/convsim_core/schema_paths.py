@@ -16,6 +16,7 @@ from typing import Any
 _SCHEMAS_PKG = files("convsim_core") / "schemas"
 
 SCHEMA_NAMES: tuple[str, ...] = (
+    "model-registry.schema.json",
     "pack.schema.json",
     "scenario.schema.json",
     "npc.schema.json",
