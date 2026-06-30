@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { apiClient } from '../api/client'
 import { useMicCapture, MAX_RECORDING_SECONDS } from '../hooks/useMicCapture'
 import MicButton from './MicButton'
@@ -18,7 +18,6 @@ function isInteractiveElement(el: Element | null): boolean {
 export default function VoiceInput({ onSubmit, disabled = false }: VoiceInputProps) {
   const [textValue, setTextValue] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const textInputRef = useRef<HTMLInputElement>(null)
 
   const handleAudioReady = useCallback(
     async (blob: Blob) => {
@@ -106,7 +105,6 @@ export default function VoiceInput({ onSubmit, disabled = false }: VoiceInputPro
 
         <form onSubmit={handleTextSubmit} style={{ display: 'flex', flex: 1, gap: '0.5rem' }}>
           <input
-            ref={textInputRef}
             type="text"
             value={textValue}
             onChange={(e) => setTextValue(e.target.value)}
