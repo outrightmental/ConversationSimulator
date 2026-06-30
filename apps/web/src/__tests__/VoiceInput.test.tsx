@@ -231,6 +231,23 @@ describe('VoiceInput — hotkey hint', () => {
 
     expect(screen.queryByText(/max 60s/i)).not.toBeInTheDocument()
   })
+
+  it('hides Space hotkey hint while audio is uploading', async () => {
+    let capturedOnAudioReady: ((blob: Blob) => void) | undefined
+    vi.mocked(useMicCapture).mockImplementation((cb) => {
+      capturedOnAudioReady = cb
+      return makeMicState({ permission: 'granted', isRecording: false })
+    })
+    vi.mocked(apiClient.uploadAudio).mockReturnValueOnce(new Promise(() => {}))
+
+    render(<VoiceInput />)
+
+    await act(async () => {
+      capturedOnAudioReady?.(new Blob(['audio'], { type: 'audio/webm' }))
+    })
+
+    expect(screen.queryByText(/max 60s/i)).not.toBeInTheDocument()
+  })
 })
 
 describe('VoiceInput — audio upload flow', () => {

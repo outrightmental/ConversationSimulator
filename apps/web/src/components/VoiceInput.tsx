@@ -140,7 +140,7 @@ export default function VoiceInput({ onSubmit, disabled = false }: VoiceInputPro
         </form>
       </div>
 
-      {permission === 'granted' && !isRecording && (
+      {permission === 'granted' && !isRecording && !isSubmitting && (
         <p style={hintStyle}>
           Press <kbd style={kbdStyle}>Space</kbd> to record when not typing, or hold the mic
           button. Max {MAX_RECORDING_SECONDS}s.
