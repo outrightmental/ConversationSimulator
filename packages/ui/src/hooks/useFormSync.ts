@@ -4,6 +4,7 @@ import {
   getByPath,
   mergeToYaml,
   parseByType,
+  parseYamlToObject,
   setByPath,
 } from '@convsim/scenario-schema';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -87,6 +88,11 @@ export function useFormSync(fileType: PackFileType, initialYaml: string): FormSy
         setFormValues(result.data as Record<string, unknown>);
         setErrors([]);
       } else {
+        // Even when schema validation fails, update form fields from the raw
+        // parsed object (if YAML syntax is valid) so that form and YAML views
+        // stay in sync for any field that isn't itself the cause of the error.
+        const raw = parseYamlToObject(newYaml);
+        if (raw) setFormValues(raw);
         setErrors(result.errors);
       }
     },

@@ -415,6 +415,35 @@ describe('FormEditor — initial error state', () => {
 });
 
 // ---------------------------------------------------------------------------
+// YAML → Form sync with validation errors
+// ---------------------------------------------------------------------------
+
+describe('FormEditor — YAML to form sync with validation errors', () => {
+  it('updates form fields for valid-syntax but invalid-schema YAML so unrelated fields stay in sync', async () => {
+    const user = userEvent.setup();
+    render(<FormEditor fileType="manifest" initialYaml={MANIFEST_YAML} />);
+
+    // Switch to YAML tab and change `name` while also introducing a validation error
+    await user.click(screen.getByRole('tab', { name: 'YAML' }));
+    const textarea = getYamlTextarea();
+    await user.clear(textarea);
+    // fictional: false is a validation error, but name has changed
+    await user.type(
+      textarea,
+      'schema_version: "1.0"\nfictional: false\nid: test-pack\nname: "Synced Despite Error"\nversion: "1.0.0"\ndescription: "x"\nauthor: "x"\nlicense: "x"',
+    );
+
+    // Errors should be visible (fictional: false)
+    const badges = await screen.findAllByLabelText(/validation errors/i);
+    expect(badges.length).toBeGreaterThan(0);
+
+    // Switch back to form tab: name should reflect the edit, not the stale value
+    await user.click(screen.getByRole('tab', { name: 'Form' }));
+    expect(screen.getByLabelText('Pack name')).toHaveValue('Synced Despite Error');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // onChange call count
 // ---------------------------------------------------------------------------
 

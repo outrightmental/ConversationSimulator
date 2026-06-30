@@ -81,7 +81,6 @@ export function ManifestForm({ values, errors, onChange }: ManifestFormProps) {
           value={str(values['id'])}
           onChange={(e) => onChange('id', e.target.value)}
           placeholder="my-pack-id"
-          aria-describedby={errorFor(errors, 'id') ? 'manifest-id-error' : undefined}
         />
       </FieldWrapper>
 
@@ -185,7 +184,7 @@ export function ManifestForm({ values, errors, onChange }: ManifestFormProps) {
               <input
                 type="text"
                 className="form-field__input form-list__item-input"
-                value={tag}
+                value={str(tag)}
                 onChange={(e) => handleTagChange(i, e.target.value)}
                 placeholder="interview"
                 aria-label={`Tag ${i + 1}`}

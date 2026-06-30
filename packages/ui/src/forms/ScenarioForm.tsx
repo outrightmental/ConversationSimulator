@@ -208,7 +208,7 @@ export function ScenarioForm({ values, errors, onChange }: ScenarioFormProps) {
               <input
                 type="text"
                 className="form-field__input form-list__item-input"
-                value={goal}
+                value={str(goal)}
                 onChange={(e) => handleGoalChange(i, e.target.value)}
                 placeholder="Demonstrate relevant experience"
                 aria-label={`Goal ${i + 1}`}

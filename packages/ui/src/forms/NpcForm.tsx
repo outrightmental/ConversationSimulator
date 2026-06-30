@@ -185,7 +185,7 @@ export function NpcForm({ values, errors, onChange }: NpcFormProps) {
                 <input
                   type="text"
                   className="form-field__input form-list__item-input"
-                  value={trait}
+                  value={str(trait)}
                   onChange={(e) => handleTraitChange(i, e.target.value)}
                   placeholder="analytical"
                   aria-label={`Trait ${i + 1}`}
@@ -284,7 +284,7 @@ export function NpcForm({ values, errors, onChange }: NpcFormProps) {
               <input
                 type="text"
                 className="form-field__input form-list__item-input"
-                value={b}
+                value={str(b)}
                 onChange={(e) => handleBoundaryChange(i, e.target.value)}
                 placeholder="Does not discuss salary before a formal offer."
                 aria-label={`Limit ${i + 1}`}

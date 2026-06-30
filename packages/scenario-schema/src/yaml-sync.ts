@@ -161,6 +161,20 @@ function safeParseObject(yamlStr: string): Record<string, unknown> {
   }
 }
 
+/**
+ * Parse a YAML string to a plain object without schema validation.
+ * Returns the parsed object, or null if the YAML is syntactically invalid or
+ * does not produce a plain object (e.g. a bare scalar or sequence).
+ */
+export function parseYamlToObject(yamlStr: string): Record<string, unknown> | null {
+  try {
+    const parsed = yaml.load(yamlStr);
+    return isPlainObject(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Dispatch parse by file type. */
 export function parseByType(
   fileType: PackFileType,

@@ -37,5 +37,6 @@ export {
   parseNpcYaml,
   parseRubricYaml,
   parseScenarioYaml,
+  parseYamlToObject,
   setByPath,
 } from './yaml-sync.js';
