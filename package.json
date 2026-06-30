@@ -9,6 +9,7 @@
     "setup": "./scripts/setup.sh",
     "dev": "./scripts/dev.sh",
     "test:schemas": "node packages/scenario-schema/tests/load-schemas.js && node packages/scenario-schema/tests/validate-schemas.js",
+    "test:packs": "node packages/scenario-schema/tests/validate-packs.js packs/official",
     "test:types": "pnpm --filter @convsim/shared-types check && pnpm --filter @convsim/scenario-schema check"
   },
   "engines": {
