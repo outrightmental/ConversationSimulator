@@ -103,6 +103,14 @@ class TestInterviewPromptSnapshot:
         assert "Tell me about yourself" in bundle.system_prompt
         assert "five years in product" in bundle.system_prompt
 
+    def test_memory_summary_included_when_provided(self):
+        from convsim_prompt import PromptComposerInput
+        inp = make_interview_input()
+        inp.memory_summary = "Player demonstrated strong STAR method usage in turn 3."
+        bundle = compose_turn_prompt(inp)
+        assert "STAR method" in bundle.system_prompt
+        assert "STAR method" in bundle.layer_map["MEMORY_SUMMARY"]
+
     def test_bundle_is_deterministic(self):
         inp = make_interview_input()
         b1 = compose_turn_prompt(inp)
