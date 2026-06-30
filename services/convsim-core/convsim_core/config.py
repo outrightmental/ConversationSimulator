@@ -33,6 +33,7 @@ class ServiceConfig(BaseSettings):
     db_dir: str = _DEFAULT_DB_DIR
     packs_dir: str = _DEFAULT_PACKS_DIR
     lan_access_enabled: bool = False
+    runtime_id: str = "fake"
     # Set CONVSIM_DEV_DEBUG=true to enable DEBUG-level logging.
     # Even in debug mode callers must use convsim_core.redaction helpers
     # before logging any value derived from conversation content.
