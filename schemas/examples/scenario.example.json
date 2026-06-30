@@ -1,0 +1,81 @@
+{
+  "schema_version": "0.1",
+  "scenario_id": "hello_world",
+  "title": "Hello World",
+  "summary": "A minimal example scenario demonstrating the core scenario structure.",
+  "player_role": {
+    "label": "Guest",
+    "brief": "You are visiting the example office for a brief meeting."
+  },
+  "npc": {
+    "ref": "../npcs/greeter.yaml"
+  },
+  "rubric": {
+    "ref": "../rubrics/basic_rubric.yaml"
+  },
+  "duration": {
+    "max_turns": 5,
+    "soft_time_limit_minutes": 5
+  },
+  "opening": {
+    "npc_says": "Welcome! How can I help you today?"
+  },
+  "goals": {
+    "player_visible": [
+      "Introduce yourself and state the purpose of your visit.",
+      "Be polite and concise."
+    ],
+    "hidden": [
+      "The greeter is assessing whether visitors can communicate their purpose clearly in one or two sentences."
+    ]
+  },
+  "state": {
+    "variables": {
+      "clarity": {
+        "min": 0,
+        "max": 100,
+        "default": 50,
+        "visibility": "visible",
+        "max_delta_per_turn": 20
+      }
+    }
+  },
+  "difficulty": {
+    "default": "normal",
+    "options": {
+      "easy": { "npc_patience_modifier": 20, "challenge_frequency": "low" },
+      "normal": { "npc_patience_modifier": 0, "challenge_frequency": "medium" },
+      "hard": { "npc_patience_modifier": -20, "challenge_frequency": "high" }
+    }
+  },
+  "replay_seed": 42,
+  "response_style": {
+    "max_words": 80,
+    "verbosity": "moderate",
+    "formality": "professional"
+  },
+  "events": [
+    {
+      "id": "high_clarity_reward",
+      "when": {
+        "type": "variable_above",
+        "variable": "clarity",
+        "threshold": 75
+      },
+      "npc_instruction": "The visitor communicated very clearly. Acknowledge it warmly.",
+      "repeat": false
+    }
+  ],
+  "ending_conditions": {
+    "success": {
+      "type": "variable_above",
+      "variable": "clarity",
+      "threshold": 70
+    },
+    "failure": {
+      "type": "variable_below",
+      "variable": "clarity",
+      "threshold": 20
+    }
+  }
+}

@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.convsim.dev/v0.1/pack-test.schema.json",
+  "title": "ConvSim Pack Test Fixture",
+  "description": "Validates a pack test fixture file. Fixtures define scripted turn sequences and static assertions used by the pack test runner.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "fixture_id",
+    "scenario_id",
+    "description",
+    "turns"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["0.1"]
+    },
+    "fixture_id": {
+      "type": "string",
+      "description": "Unique identifier for this test fixture within the pack.",
+      "pattern": "^[a-z0-9_]+$"
+    },
+    "scenario_id": {
+      "type": "string",
+      "description": "The scenario_id this fixture exercises.",
+      "pattern": "^[a-z0-9_]+$"
+    },
+    "description": {
+      "type": "string",
+      "description": "Human-readable description of what this fixture verifies.",
+      "minLength": 1
+    },
+    "seed": {
+      "type": "integer",
+      "description": "Deterministic RNG seed to pass to the runtime for reproducible results.",
+      "minimum": 0
+    },
+    "input_mode": {
+      "type": "string",
+      "enum": ["text", "voice"],
+      "description": "Input modality to simulate."
+    },
+    "difficulty": {
+      "type": "string",
+      "enum": ["easy", "normal", "hard"],
+      "description": "Difficulty setting to use when running the fixture."
+    },
+    "turns": {
+      "type": "array",
+      "description": "Scripted player turns to execute in order.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["turn", "player_input"],
+        "additionalProperties": false,
+        "properties": {
+          "turn": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "1-based turn number."
+          },
+          "player_input": {
+            "type": "string",
+            "description": "The player utterance to inject for this turn.",
+            "minLength": 1
+          },
+          "expect": {
+            "type": "object",
+            "description": "Assertions the test runner must verify for this turn's output.",
+            "additionalProperties": false,
+            "properties": {
+              "state_delta_contains": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Variable names that must appear in the state_delta output."
+              },
+              "npc_emotion_not": {
+                "type": "string",
+                "description": "Emotion value that must NOT appear in npc_emotion."
+              },
+              "session_control": {
+                "type": "string",
+                "enum": ["continue_session", "end_session"],
+                "description": "Expected value of session_control.continue_session (true=continue_session, false=end_session)."
+              },
+              "safety_status": {
+                "type": "string",
+                "enum": ["ok", "redirect", "stop"],
+                "description": "Expected safety status in the turn output."
+              }
+            }
+          }
+        }
+      }
+    },
+    "static_assertions": {
+      "type": "array",
+      "description": "Structural assertions checked against the loaded scenario and pack manifest (not against live turn output).",
+      "items": {
+        "type": "object",
+        "required": ["description", "path", "check"],
+        "additionalProperties": false,
+        "properties": {
+          "description": {
+            "type": "string",
+            "description": "Human-readable description of what is being asserted."
+          },
+          "path": {
+            "type": "string",
+            "description": "Dot-separated path expression (with optional bracket selectors) into the scenario or pack document."
+          },
+          "check": {
+            "type": "string",
+            "description": "Assertion expression evaluated by the pack test runner."
+          }
+        }
+      }
+    }
+  }
+}
