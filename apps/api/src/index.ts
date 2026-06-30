@@ -18,7 +18,7 @@ export async function buildApp() {
   // because some routes call reply.status(4xx) and then throw a plain Error.
   app.setErrorHandler((error, _request, reply) => {
     const typed = error as { statusCode?: number; message?: string; code?: string; current_state?: string };
-    const statusCode = typed.statusCode ?? reply.statusCode ?? 500;
+    const statusCode = typed.statusCode ?? (reply.statusCode >= 400 ? reply.statusCode : 500);
     const body: Record<string, unknown> = { statusCode, message: typed.message ?? 'Internal Server Error' };
     if (typed.code) body['code'] = typed.code;
     if (typed.current_state) body['current_state'] = typed.current_state;
