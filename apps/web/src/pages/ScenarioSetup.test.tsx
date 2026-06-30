@@ -332,15 +332,17 @@ describe('ScenarioSetupPage', () => {
       fireEvent.click(submitBtn);
 
       await waitFor(() => {
-        expect(mockApi.createSession).toHaveBeenCalledWith(
-          expect.objectContaining({
-            scenario_id: 'behavioral_interview',
-            difficulty: 'normal',
-            player_role_name: 'Candidate',
-            language: 'en',
-            save_transcript: true,
-          }),
-        );
+        expect(mockApi.createSession).toHaveBeenCalledWith({
+          scenario_id: 'behavioral_interview',
+          difficulty: 'normal',
+          player_role_name: 'Candidate',
+          language: 'en',
+          input_mode: 'push-to-talk',
+          tts_enabled: true,
+          show_state_meters: false,
+          save_transcript: true,
+          seed: null,
+        });
       });
 
       await waitFor(() => {

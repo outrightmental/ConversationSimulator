@@ -41,6 +41,10 @@ describe('POST /api/sessions', () => {
     expect(body.state).toBe('NotStarted');
     expect(body.setup.difficulty).toBe('normal');
     expect(body.setup.player_role_name).toBe('Alice');
+    expect(body.setup.language).toBe('en');
+    expect(body.setup.input_mode).toBe('text-only');
+    expect(body.setup.tts_enabled).toBe(false);
+    expect(body.setup.show_state_meters).toBe(false);
     expect(body.setup.save_transcript).toBe(true);
     expect(body.setup.seed).toBeNull();
   });
