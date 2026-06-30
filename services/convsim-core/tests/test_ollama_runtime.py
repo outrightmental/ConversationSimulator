@@ -296,6 +296,70 @@ async def test_chat_stream_raises_when_no_models_and_no_model_id():
             pass
 
 
+@pytest.mark.asyncio
+async def test_chat_stream_raises_runtime_error_on_404():
+    """A 404 from Ollama (model not found) should raise RuntimeError, not HTTPStatusError."""
+
+    class _Http404StreamContext:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        def raise_for_status(self):
+            mock_resp = MagicMock()
+            mock_resp.status_code = 404
+            raise httpx.HTTPStatusError("404", request=MagicMock(), response=mock_resp)
+
+        async def aiter_lines(self):
+            return
+            yield  # pragma: no cover — makes this a valid async generator
+
+    client = MagicMock()
+    client.stream = MagicMock(return_value=_Http404StreamContext())
+    runtime = OllamaChatRuntime(client=client)
+    request = ChatRequest(
+        model_id="nonexistent:latest",
+        messages=[ChatMessage(role="user", content="hello")],
+    )
+    with pytest.raises(RuntimeError, match="[Mm]odel"):
+        async for _ in runtime.chat_stream(request):
+            pass
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_raises_runtime_error_on_server_error():
+    """A 5xx from Ollama during generation should raise RuntimeError, not HTTPStatusError."""
+
+    class _Http500StreamContext:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        def raise_for_status(self):
+            mock_resp = MagicMock()
+            mock_resp.status_code = 500
+            raise httpx.HTTPStatusError("500", request=MagicMock(), response=mock_resp)
+
+        async def aiter_lines(self):
+            return
+            yield  # pragma: no cover
+
+    client = MagicMock()
+    client.stream = MagicMock(return_value=_Http500StreamContext())
+    runtime = OllamaChatRuntime(client=client)
+    request = ChatRequest(
+        model_id="llama3.2:latest",
+        messages=[ChatMessage(role="user", content="hello")],
+    )
+    with pytest.raises(RuntimeError, match="500"):
+        async for _ in runtime.chat_stream(request):
+            pass
+
+
 # ---------------------------------------------------------------------------
 # health tests
 # ---------------------------------------------------------------------------

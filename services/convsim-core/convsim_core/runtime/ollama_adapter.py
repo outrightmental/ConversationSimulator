@@ -161,6 +161,16 @@ class OllamaChatRuntime(ChatRuntime):
                         output_tokens = chunk.get("eval_count", 0)
         except httpx.ConnectError as exc:
             raise RuntimeError(_NOT_RUNNING_HINT) from exc
+        except httpx.HTTPStatusError as exc:
+            code = exc.response.status_code
+            if code == 404:
+                raise RuntimeError(
+                    f"Model '{model_id}' was not found by Ollama. "
+                    f"Run 'ollama pull {model_id}' to install it."
+                ) from exc
+            raise RuntimeError(
+                f"Ollama returned an unexpected status {code} during generation."
+            ) from exc
 
         structured: dict[str, Any] | None = None
         if request.json_schema is not None:
