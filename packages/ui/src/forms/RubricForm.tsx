@@ -123,6 +123,24 @@ export function RubricForm({ values, errors, onChange }: RubricFormProps) {
             </div>
 
             <FieldWrapper
+              id={`dim-${i}-id`}
+              label="Dimension ID"
+              hint='Internal kebab-case identifier (e.g. "communication-clarity"). Must be unique within the rubric.'
+              error={errorFor(errors, `dimensions.${i}.id`)}
+            >
+              <input
+                id={`dim-${i}-id`}
+                type="text"
+                className="form-field__input"
+                value={str(dim['id'])}
+                onChange={(e) => handleDimChange(i, 'id', e.target.value)}
+                maxLength={32}
+                placeholder="communication-clarity"
+                pattern="[a-z][a-z0-9_-]*"
+              />
+            </FieldWrapper>
+
+            <FieldWrapper
               id={`dim-${i}-label`}
               label="Dimension name"
               hint='Player-visible label on the debrief screen (e.g. "Communication Clarity").'

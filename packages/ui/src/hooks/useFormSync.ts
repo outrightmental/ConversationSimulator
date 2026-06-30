@@ -6,7 +6,7 @@ import {
   parseByType,
   setByPath,
 } from '@convsim/scenario-schema';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 export type ActiveTab = 'form' | 'yaml';
 
@@ -45,6 +45,23 @@ export function useFormSync(fileType: PackFileType, initialYaml: string): FormSy
     return result.ok ? [] : result.errors;
   });
   const [activeTab, setActiveTab] = useState<ActiveTab>('form');
+
+  // Reset all derived state when initialYaml or fileType changes (e.g. user loads a different file).
+  // The ref tracks whether the initial mount has already run so we don't discard the
+  // lazy-initialised state with a redundant parse on mount.
+  const skipResetRef = useRef(true);
+  useEffect(() => {
+    if (skipResetRef.current) {
+      skipResetRef.current = false;
+      return;
+    }
+    const result = parseByType(fileType, initialYaml);
+    setYamlInternal(initialYaml);
+    setFormValues(result.ok ? (result.data as Record<string, unknown>) : {});
+    setErrors(result.ok ? [] : result.errors);
+    setActiveTab('form');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialYaml, fileType]);
 
   const updateField = useCallback(
     (path: string, value: unknown) => {

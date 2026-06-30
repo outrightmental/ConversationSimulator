@@ -329,6 +329,23 @@ export function ScenarioForm({ values, errors, onChange }: ScenarioFormProps) {
               </button>
             </div>
             <FieldWrapper
+              id={`ending-${i}-id`}
+              label="Ending ID"
+              hint='Internal kebab-case or snake_case identifier (e.g. "offer-extended").'
+              error={errorFor(errors, `endings.${i}.id`)}
+            >
+              <input
+                id={`ending-${i}-id`}
+                type="text"
+                className="form-field__input"
+                value={str(ending['id'])}
+                onChange={(e) => handleEndingChange(i, 'id', e.target.value)}
+                maxLength={32}
+                placeholder="offer-extended"
+                pattern="[a-z][a-z0-9_-]*"
+              />
+            </FieldWrapper>
+            <FieldWrapper
               id={`ending-${i}-label`}
               label="Label"
               hint='Shown on the debrief screen (e.g. "Offer Extended").'

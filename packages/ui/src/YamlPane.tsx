@@ -37,8 +37,8 @@ export function YamlPane({ value, onChange, errors }: YamlPaneProps) {
         </ul>
       )}
       <p className="yaml-pane__notice">
-        YAML comments and unknown fields are preserved across form edits.
-        Comments written here may be removed on the next form save.
+        Unknown fields are preserved across form edits.
+        YAML comments are not preserved — they will be removed when a form edit is applied.
       </p>
     </div>
   );

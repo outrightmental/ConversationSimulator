@@ -8,7 +8,8 @@
   },
   "main": "./src/index.ts",
   "scripts": {
-    "build": "echo 'UI package built as source — no compile step needed for Vite consumers.'"
+    "build": "echo 'UI package built as source — no compile step needed for Vite consumers.'",
+    "test": "vitest run"
   },
   "peerDependencies": {
     "react": "^18.3.1"

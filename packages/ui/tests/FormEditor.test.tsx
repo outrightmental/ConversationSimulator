@@ -418,6 +418,85 @@ describe('FormEditor — initial error state', () => {
 // onChange call count
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Rubric — dimension ID field
+// ---------------------------------------------------------------------------
+
+describe('FormEditor — rubric dimension ID', () => {
+  it('renders an ID input for each existing dimension', () => {
+    render(<FormEditor fileType="rubric" initialYaml={RUBRIC_YAML} />);
+    const idInputs = screen.getAllByLabelText('Dimension ID');
+    expect(idInputs).toHaveLength(2);
+    expect(idInputs[0]).toHaveValue('accuracy');
+    expect(idInputs[1]).toHaveValue('clarity');
+  });
+
+  it('newly added dimension renders an editable ID field', async () => {
+    const user = userEvent.setup();
+    render(<FormEditor fileType="rubric" initialYaml={RUBRIC_YAML} />);
+
+    await user.click(screen.getByRole('button', { name: 'Add dimension' }));
+
+    const idInputs = screen.getAllByLabelText('Dimension ID');
+    expect(idInputs).toHaveLength(3);
+    // New dimension starts with empty id
+    expect(idInputs[2]).toHaveValue('');
+
+    await user.type(idInputs[2], 'new-dim');
+    expect(getYamlTextarea().value).toContain('new-dim');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Scenario — ending ID field
+// ---------------------------------------------------------------------------
+
+describe('FormEditor — scenario ending ID', () => {
+  it('renders an ID input for each existing ending', () => {
+    render(<FormEditor fileType="scenario" initialYaml={SCENARIO_YAML} />);
+    const idInputs = screen.getAllByLabelText('Ending ID');
+    expect(idInputs).toHaveLength(2);
+    expect(idInputs[0]).toHaveValue('pass');
+    expect(idInputs[1]).toHaveValue('fail');
+  });
+
+  it('newly added ending renders an editable ID field', async () => {
+    const user = userEvent.setup();
+    render(<FormEditor fileType="scenario" initialYaml={SCENARIO_YAML} />);
+
+    await user.click(screen.getByRole('button', { name: 'Add ending' }));
+
+    const idInputs = screen.getAllByLabelText('Ending ID');
+    expect(idInputs).toHaveLength(3);
+    expect(idInputs[2]).toHaveValue('');
+
+    await user.type(idInputs[2], 'timeout');
+    expect(getYamlTextarea().value).toContain('timeout');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// initialYaml prop reset
+// ---------------------------------------------------------------------------
+
+describe('FormEditor — initialYaml prop reset', () => {
+  it('resets form fields when initialYaml prop changes to a different file', async () => {
+    const SECOND_MANIFEST = MANIFEST_YAML.replace('name: "Test Pack"', 'name: "Second Pack"')
+      .replace('id: test-pack', 'id: second-pack');
+
+    const { rerender } = render(<FormEditor fileType="manifest" initialYaml={MANIFEST_YAML} />);
+    expect(screen.getByLabelText('Pack name')).toHaveValue('Test Pack');
+
+    rerender(<FormEditor fileType="manifest" initialYaml={SECOND_MANIFEST} />);
+
+    expect(await screen.findByDisplayValue('Second Pack')).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// onChange call count
+// ---------------------------------------------------------------------------
+
 describe('FormEditor — onChange call count', () => {
   it('calls onChange exactly once per YAML tab edit, not twice', async () => {
     const user = userEvent.setup();
