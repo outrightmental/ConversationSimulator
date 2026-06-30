@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
+export * from './types.js';
+export * from './schemas.js';
+export * from './yaml-sync.js';
+
 /** Names of all schema files shipped in the root schemas/ directory. */
 export const SCHEMA_NAMES = [
   "pack.schema.json",

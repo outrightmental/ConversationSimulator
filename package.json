@@ -9,7 +9,7 @@
     "setup": "./scripts/setup.sh",
     "dev": "./scripts/dev.sh",
     "test:schemas": "node packages/scenario-schema/tests/load-schemas.js",
-    "test:types": "pnpm --filter @convsim/shared-types check && pnpm --filter @convsim/scenario-schema check"
+    "test:types": "pnpm --filter @convsim/shared-types check && pnpm --filter @convsim/scenario-schema check && pnpm --filter @convsim/ui check"
   },
   "engines": {
     "node": ">=18"
