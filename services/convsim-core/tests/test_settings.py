@@ -14,6 +14,9 @@ def test_get_settings_returns_200(client):
 def test_get_settings_privacy_defaults(client):
     body = client.get("/api/settings").json()
     assert body["save_transcripts"] is False
+    assert body["save_raw_audio"] is False
+    assert body["telemetry_enabled"] is False
+    assert body["crash_logging_enabled"] is False
     assert body["tts_cache_enabled"] is True
 
 
@@ -22,7 +25,10 @@ def test_put_settings_round_trip(client, tmp_path):
         "data_dir": str(tmp_path / "data"),
         "log_dir": str(tmp_path / "logs"),
         "save_transcripts": True,
+        "save_raw_audio": False,
         "tts_cache_enabled": False,
+        "telemetry_enabled": False,
+        "crash_logging_enabled": True,
     }
     put_resp = client.put("/api/settings", json=payload)
     assert put_resp.status_code == 200
@@ -32,6 +38,7 @@ def test_put_settings_round_trip(client, tmp_path):
     assert get_resp.status_code == 200
     assert get_resp.json()["save_transcripts"] is True
     assert get_resp.json()["tts_cache_enabled"] is False
+    assert get_resp.json()["crash_logging_enabled"] is True
 
 
 def test_put_settings_invalid_body_returns_structured_error(client, tmp_config):
@@ -59,7 +66,10 @@ def test_put_settings_persists_to_database(client, tmp_config):
         "data_dir": tmp_config.data_dir,
         "log_dir": tmp_config.log_dir,
         "save_transcripts": True,
+        "save_raw_audio": False,
         "tts_cache_enabled": False,
+        "telemetry_enabled": False,
+        "crash_logging_enabled": True,
     }
     resp = client.put("/api/settings", json=payload)
     assert resp.status_code == 200
@@ -70,6 +80,9 @@ def test_put_settings_persists_to_database(client, tmp_config):
         settings = load_settings(fresh_db.connection(), tmp_config.data_dir, tmp_config.log_dir)
         assert settings.save_transcripts is True
         assert settings.tts_cache_enabled is False
+        assert settings.crash_logging_enabled is True
+        assert settings.telemetry_enabled is False
+        assert settings.save_raw_audio is False
     finally:
         fresh_db.close()
 

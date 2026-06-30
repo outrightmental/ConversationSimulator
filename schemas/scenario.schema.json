@@ -1,0 +1,176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.convsim.dev/v0.1/scenario.schema.json",
+  "title": "ConvSim Scenario",
+  "description": "Validates an individual scenario YAML file.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "scenario_id",
+    "title",
+    "summary",
+    "player_role",
+    "npc",
+    "rubric",
+    "duration",
+    "opening",
+    "goals"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["0.1"]
+    },
+    "scenario_id": {
+      "type": "string",
+      "description": "Unique identifier within the pack.",
+      "pattern": "^[a-z0-9_]+$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "summary": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "player_role": {
+      "type": "object",
+      "required": ["label", "brief"],
+      "additionalProperties": false,
+      "properties": {
+        "label": { "type": "string" },
+        "brief": { "type": "string" }
+      }
+    },
+    "npc": {
+      "type": "object",
+      "required": ["ref"],
+      "additionalProperties": false,
+      "properties": {
+        "ref": {
+          "type": "string",
+          "description": "Relative path to the NPC YAML file."
+        }
+      }
+    },
+    "scene": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "ref": { "type": "string" }
+      }
+    },
+    "rubric": {
+      "type": "object",
+      "required": ["ref"],
+      "additionalProperties": false,
+      "properties": {
+        "ref": {
+          "type": "string",
+          "description": "Relative path to the rubric YAML file."
+        }
+      }
+    },
+    "duration": {
+      "type": "object",
+      "required": ["max_turns"],
+      "additionalProperties": false,
+      "properties": {
+        "max_turns": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "soft_time_limit_minutes": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "opening": {
+      "type": "object",
+      "required": ["npc_says"],
+      "additionalProperties": false,
+      "properties": {
+        "npc_says": { "type": "string" }
+      }
+    },
+    "goals": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "player_visible": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "hidden": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "state": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "variables": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          }
+        }
+      }
+    },
+    "difficulty": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "default": {
+          "type": "string",
+          "enum": ["easy", "normal", "hard"]
+        },
+        "options": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "npc_patience_modifier": { "type": "integer" },
+              "challenge_frequency": {
+                "type": "string",
+                "enum": ["low", "medium", "high"]
+              }
+            }
+          }
+        }
+      }
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "when", "npc_instruction"],
+        "additionalProperties": false,
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+          "when": { "type": "object" },
+          "npc_instruction": { "type": "string" }
+        }
+      }
+    },
+    "ending_conditions": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "success": { "type": "object" },
+        "failure": { "type": "object" },
+        "timeout": { "type": "object" }
+      }
+    }
+  }
+}

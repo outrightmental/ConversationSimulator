@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.convsim.dev/v0.1/turn-output.schema.json",
+  "title": "ConvSim Turn Output",
+  "description": "Structured JSON output the LLM must produce for each conversation turn.",
+  "type": "object",
+  "required": [
+    "npc_utterance",
+    "npc_emotion",
+    "state_delta",
+    "event_flags",
+    "rubric_observations",
+    "safety",
+    "session_control"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "npc_utterance": {
+      "type": "string",
+      "description": "The exact words the NPC says to the player.",
+      "minLength": 1
+    },
+    "npc_emotion": {
+      "type": "string",
+      "enum": [
+        "neutral",
+        "warm",
+        "curious",
+        "skeptical",
+        "impatient",
+        "defensive",
+        "confused",
+        "impressed",
+        "concerned",
+        "angry"
+      ]
+    },
+    "state_delta": {
+      "type": "object",
+      "description": "Changes to NPC state variables this turn. Keys are variable names.",
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": -20,
+        "maximum": 20
+      }
+    },
+    "event_flags": {
+      "type": "array",
+      "description": "Event IDs triggered this turn (matches scenario event ids).",
+      "items": { "type": "string" }
+    },
+    "rubric_observations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["rubric_id", "observation"],
+        "additionalProperties": false,
+        "properties": {
+          "rubric_id": { "type": "string" },
+          "observation": { "type": "string" },
+          "score_delta": {
+            "type": "integer",
+            "minimum": -3,
+            "maximum": 3
+          }
+        }
+      }
+    },
+    "safety": {
+      "type": "object",
+      "required": ["status"],
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["ok", "redirect", "stop"]
+        },
+        "reason": { "type": "string" }
+      }
+    },
+    "session_control": {
+      "type": "object",
+      "required": ["continue_session"],
+      "additionalProperties": false,
+      "properties": {
+        "continue_session": { "type": "boolean" },
+        "ending_type": {
+          "type": "string",
+          "enum": [
+            "none",
+            "success",
+            "failure",
+            "timeout",
+            "safety_stop",
+            "player_exit"
+          ]
+        },
+        "ending_summary": { "type": "string" }
+      }
+    }
+  }
+}

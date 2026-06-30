@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.convsim.dev/v0.1/npc.schema.json",
+  "title": "ConvSim NPC",
+  "description": "Validates an NPC definition file. All NPCs must be fictional.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "npc_id",
+    "display_name",
+    "archetype",
+    "fictional",
+    "public_persona",
+    "private_persona"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["0.1"]
+    },
+    "npc_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9_]+$"
+    },
+    "display_name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "archetype": {
+      "type": "string",
+      "description": "Behaviour archetype slug used for system prompt construction.",
+      "pattern": "^[a-z0-9_]+$"
+    },
+    "fictional": {
+      "type": "boolean",
+      "description": "Must be true. Real-person impersonation is not permitted in MVP.",
+      "const": true
+    },
+    "age_band": {
+      "type": "string",
+      "enum": ["adult"],
+      "description": "Only 'adult' NPCs are permitted in MVP."
+    },
+    "voice": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "engine": {
+          "type": "string",
+          "enum": ["kokoro", "sherpa-onnx", "none"]
+        },
+        "voice_id": { "type": "string" }
+      }
+    },
+    "portrait": {
+      "type": "string",
+      "description": "Relative path to portrait image within the pack."
+    },
+    "public_persona": {
+      "type": "object",
+      "required": ["occupation", "speaking_style", "demeanor"],
+      "additionalProperties": false,
+      "properties": {
+        "occupation": { "type": "string" },
+        "speaking_style": { "type": "string" },
+        "demeanor": { "type": "string" }
+      }
+    },
+    "private_persona": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "hidden_agenda": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "biases_to_simulate": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "boundaries": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Hard rules the NPC must never violate."
+        }
+      }
+    }
+  }
+}

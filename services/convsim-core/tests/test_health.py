@@ -51,3 +51,26 @@ def test_health_config_path_present(client):
     body = client.get("/api/health").json()
     assert "config_path" in body
     assert isinstance(body["config_path"], str)
+
+
+def test_health_privacy_posture_present(client):
+    body = client.get("/api/health").json()
+    assert "privacy" in body
+
+
+def test_health_privacy_telemetry_disabled(client):
+    privacy = client.get("/api/health").json()["privacy"]
+    assert privacy["telemetry_enabled"] is False
+
+
+def test_health_privacy_raw_audio_disabled(client):
+    privacy = client.get("/api/health").json()["privacy"]
+    assert privacy["save_raw_audio"] is False
+
+
+def test_health_privacy_posture_has_all_fields(client):
+    privacy = client.get("/api/health").json()["privacy"]
+    assert "telemetry_enabled" in privacy
+    assert "save_transcripts" in privacy
+    assert "save_raw_audio" in privacy
+    assert "crash_logging_enabled" in privacy
