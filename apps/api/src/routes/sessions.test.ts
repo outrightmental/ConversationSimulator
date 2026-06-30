@@ -417,6 +417,21 @@ describe('POST /api/sessions/:id/end', () => {
     expect(getRes.json<SessionCreateResponse>().state).toBe('Ended');
   });
 
+  it('preserves an existing ending_type set by the scenario rather than defaulting to player_exit', async () => {
+    const { session_id } = (
+      await app.inject({ method: 'POST', url: '/api/sessions', payload: validRequest })
+    ).json<SessionCreateResponse>();
+
+    // Simulate a scenario that already decided the outcome before the player exited.
+    getDb()
+      .prepare("UPDATE sessions SET ending_type = 'success' WHERE session_id = ?")
+      .run(session_id);
+
+    const res = await app.inject({ method: 'POST', url: `/api/sessions/${session_id}/end` });
+    expect(res.statusCode).toBe(200);
+    expect(res.json<SessionEndResponse>().ending_type).toBe('success');
+  });
+
   it('returns 409 when called on an already-ended session', async () => {
     const { session_id } = (
       await app.inject({ method: 'POST', url: '/api/sessions', payload: validRequest })
@@ -440,6 +455,23 @@ describe('POST /api/sessions/:id/end', () => {
 // ---------------------------------------------------------------------------
 
 describe('POST /api/sessions/:id/debrief', () => {
+  it('generates debrief from DebriefReady state and returns Ended with summary', async () => {
+    const { session_id } = (
+      await app.inject({ method: 'POST', url: '/api/sessions', payload: validRequest })
+    ).json<SessionCreateResponse>();
+
+    // No API path reaches DebriefReady yet; force the state directly.
+    getDb().prepare("UPDATE sessions SET state = 'DebriefReady' WHERE session_id = ?").run(session_id);
+
+    const res = await app.inject({ method: 'POST', url: `/api/sessions/${session_id}/debrief` });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.session_id).toBe(session_id);
+    expect(body.state).toBe('Ended');
+    expect(typeof body.summary).toBe('string');
+    expect(body.summary.length).toBeGreaterThan(0);
+  });
+
   it('returns 409 from NotStarted (not in DebriefReady)', async () => {
     const { session_id } = (
       await app.inject({ method: 'POST', url: '/api/sessions', payload: validRequest })
