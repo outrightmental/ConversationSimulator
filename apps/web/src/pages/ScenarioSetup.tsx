@@ -376,6 +376,8 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
                     setField('seed', v === '' ? null : parseInt(v, 10));
                   }}
                   aria-label="Variation seed value"
+                  aria-invalid={!!validationErrorMap['seed']}
+                  aria-describedby={validationErrorMap['seed'] ? 'seed-error' : undefined}
                 />
               </label>
               <button type="button" className="setup-btn-secondary" onClick={handleRandomizeSeed}>
@@ -387,6 +389,11 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
                 </button>
               )}
             </div>
+            {validationErrorMap['seed'] && (
+              <span id="seed-error" className="setup-field-error" role="alert">
+                {validationErrorMap['seed']}
+              </span>
+            )}
           </section>
 
           {submitError && (

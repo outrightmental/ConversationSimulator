@@ -284,6 +284,19 @@ describe('ScenarioSetupPage', () => {
       fireEvent.change(seedInput, { target: { value: '1234' } });
       expect((seedInput as HTMLInputElement).value).toBe('1234');
     });
+
+    it('shows an error and disables submit when seed is out of range', async () => {
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      const seedInput = screen.getByRole('spinbutton', {
+        name: /variation seed value/i,
+      });
+      fireEvent.change(seedInput, { target: { value: '3000000000' } });
+      await waitFor(() =>
+        expect(screen.getByText(/seed must be between/i)).toBeInTheDocument(),
+      );
+      expect(screen.getByRole('button', { name: /start scenario/i })).toBeDisabled();
+    });
   });
 
   describe('session creation', () => {
