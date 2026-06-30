@@ -50,7 +50,7 @@ def validate_pack_dir(pack_dir: Path) -> tuple[Optional[PackManifest], list[str]
         return None, manifest_errors
 
     assert manifest is not None
-    pack_dir_resolved = str(pack_dir.resolve())
+    pack_dir_resolved = pack_dir.resolve()
 
     # Content rating must be in the permitted set.
     if manifest.content_rating and manifest.content_rating not in CONTENT_RATINGS:
@@ -69,10 +69,13 @@ def validate_pack_dir(pack_dir: Path) -> tuple[Optional[PackManifest], list[str]
         if norm.startswith("/") or ".." in norm.split("/"):
             errors.append(f"Entry scenario path is unsafe: {ref!r}")
             continue
-        resolved = str((pack_dir / ref).resolve())
-        if not resolved.startswith(pack_dir_resolved):
+        resolved = (pack_dir / ref).resolve()
+        try:
+            resolved.relative_to(pack_dir_resolved)
+        except ValueError:
             errors.append(f"Entry scenario escapes pack directory: {ref!r}")
-        elif not Path(resolved).exists():
+            continue
+        if not resolved.exists():
             errors.append(f"Entry scenario file not found: {ref!r}")
 
     # Scan every file for forbidden extensions (no executables allowed in packs).
