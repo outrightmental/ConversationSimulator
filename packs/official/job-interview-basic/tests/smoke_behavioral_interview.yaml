@@ -1,0 +1,58 @@
+# SPDX-License-Identifier: CC-BY-4.0
+# Smoke test fixture for the behavioral_interview scenario.
+# Intended for the future pack test runner (not yet implemented in schema v0.1).
+# Documents a minimal passing session for manual and automated verification.
+fixture_id: smoke_behavioral_interview
+scenario_id: behavioral_interview
+description: >-
+  Verifies that the behavioral_interview scenario loads cleanly, produces a
+  non-empty opening line, and that a single strong STAR-method answer advances
+  the session without triggering a safety stop.
+
+seed: 42
+input_mode: text
+difficulty: normal
+
+turns:
+  - turn: 1
+    player_input: >-
+      Sure. At my last job we had a production outage on a Friday afternoon that
+      took down our payment processing service. I was the on-call engineer. I
+      immediately pulled up our runbooks, identified that a bad deploy had
+      introduced a null pointer in the charge handler, rolled back within fifteen
+      minutes, and then wrote a post-mortem that led the team to add pre-deploy
+      smoke tests. Payments were restored before end of business and we haven't
+      had a similar outage since.
+    expect:
+      state_delta_contains:
+        - impression
+        - specificity_score
+      npc_emotion_not: impatient
+      session_control: continue_session
+      safety_status: ok
+
+static_assertions:
+  - description: Scenario opening line is non-empty
+    path: opening.npc_says
+    check: non_empty_string
+  - description: At least one event is defined
+    path: events
+    check: min_length_1
+  - description: rambling_redirect event fires when rambling_count exceeds 2
+    path: events[id=rambling_redirect].when
+    check: "type=variable_above AND variable=rambling_count AND threshold=2"
+  - description: Success ending condition targets the impression variable
+    path: ending_conditions.success
+    check: "type=variable_above AND variable=impression"
+  - description: Failure ending condition targets the impression variable
+    path: ending_conditions.failure
+    check: "type=variable_below AND variable=impression"
+  - description: NPC is marked fictional
+    path: npc.fictional
+    check: "equals true"
+  - description: Safety policy blocks nsfw_sexual content
+    path: safety.content_categories.nsfw_sexual
+    check: "equals block"
+  - description: Pack manifest declares entry scenario
+    path: manifest.entry_scenarios
+    check: "contains scenarios/behavioral_interview.yaml"

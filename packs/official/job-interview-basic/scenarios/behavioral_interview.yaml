@@ -1,0 +1,120 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scenario_id: behavioral_interview
+title: The Behavioral Interview
+summary: >-
+  You are interviewing for a Software Engineer role at Meridian Systems, a
+  mid-sized B2B tech company. Dana Reyes, the Engineering Manager, will ask
+  behavioral questions about your past experience. Specific, structured answers
+  using the STAR method earn a stronger impression; vague platitudes lower it.
+player_role:
+  label: Job Candidate
+  brief: >-
+    You are applying for a mid-level Software Engineer position. You have relevant
+    experience but need to convince Dana that you can handle ambiguous problems,
+    collaborate well, and grow from mistakes. This is your final-round interview
+    before a hiring decision is made.
+npc:
+  ref: ../npcs/hiring_manager.yaml
+scene:
+  ref: ../scenes/meridian_conference_room.yaml
+rubric:
+  ref: ../rubrics/interview_rubric.yaml
+duration:
+  max_turns: 20
+  soft_time_limit_minutes: 15
+opening:
+  npc_says: >-
+    Good morning! Thanks so much for making the time. I'm Dana Reyes, Engineering
+    Manager on the platform team here at Meridian Systems. I've looked over your
+    resume — very interesting background. To kick things off, tell me about a time
+    when you had to work through a difficult technical problem under real pressure.
+    What was the situation, and how did you handle it?
+goals:
+  player_visible:
+    - "Impress Dana with specific, concrete examples from your past work"
+    - "Build rapport and show genuine enthusiasm for the role"
+    - "Demonstrate self-awareness about your strengths and areas for growth"
+  hidden:
+    - "Dana is testing whether you use vague platitudes or real examples with measurable outcomes"
+    - "Dana wants to see how you handle ambiguity and whether you own your mistakes"
+    - "Dana is watching for cultural fit — curiosity, collaboration, and candor under mild pressure"
+state:
+  variables:
+    impression:
+      min: 0
+      max: 100
+      default: 50
+      visibility: visible
+      max_delta_per_turn: 15
+    rapport:
+      min: 0
+      max: 100
+      default: 40
+      visibility: visible
+      max_delta_per_turn: 10
+    rambling_count:
+      min: 0
+      max: 10
+      default: 0
+      visibility: hidden
+      max_delta_per_turn: 2
+    specificity_score:
+      min: 0
+      max: 100
+      default: 50
+      visibility: hidden
+      max_delta_per_turn: 15
+difficulty:
+  default: normal
+  options:
+    easy:
+      npc_patience_modifier: 20
+      challenge_frequency: low
+    normal:
+      npc_patience_modifier: 0
+      challenge_frequency: medium
+    hard:
+      npc_patience_modifier: -20
+      challenge_frequency: high
+events:
+  - id: rambling_redirect
+    when:
+      type: variable_above
+      variable: rambling_count
+      threshold: 2
+    npc_instruction: >-
+      The candidate has been giving lengthy, unfocused answers. Gently but firmly
+      redirect: "That's helpful context — let me zoom in. Can you walk me through
+      one specific situation? What exactly did you do, and what was the result?"
+    repeat: true
+  - id: high_specificity_reward
+    when:
+      type: variable_above
+      variable: specificity_score
+      threshold: 75
+    npc_instruction: >-
+      The candidate just gave an impressively specific, well-structured answer.
+      Show genuine engagement: acknowledge the detail, and follow up with a deeper
+      question such as what they learned from the experience or how they would
+      approach it differently today.
+    repeat: false
+  - id: low_impression_warning
+    when:
+      type: variable_below
+      variable: impression
+      threshold: 25
+    npc_instruction: >-
+      Dana is losing confidence in this candidate. Begin wrapping up the interview
+      with one final question and signal that time is short: "We're getting close
+      to time — let me ask you one last thing before we wrap up."
+    repeat: false
+ending_conditions:
+  success:
+    type: variable_above
+    variable: impression
+    threshold: 70
+  failure:
+    type: variable_below
+    variable: impression
+    threshold: 15
