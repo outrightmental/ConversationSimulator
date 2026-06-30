@@ -118,13 +118,7 @@ export interface PackDirOptions {
   extraFiles?: Record<string, string>;
 }
 
-/**
- * Create a temporary pack directory with the supplied file contents.
- * Returns the absolute path to the pack root.
- */
-export function makeTempPackDir(options: PackDirOptions = {}): string {
-  const root = mkdtempSync(join(tmpdir(), 'convsim-pack-loader-test-'));
-
+function populatePackDir(root: string, options: PackDirOptions): void {
   const {
     manifestYaml = VALID_MANIFEST_YAML,
     safetyYaml = VALID_SAFETY_YAML,
@@ -135,7 +129,6 @@ export function makeTempPackDir(options: PackDirOptions = {}): string {
     extraFiles = {},
   } = options;
 
-  // Sub-directories
   for (const sub of ['scenarios', 'npcs', 'rubrics', 'safety', 'scenes']) {
     mkdirSync(join(root, sub), { recursive: true });
   }
@@ -158,6 +151,30 @@ export function makeTempPackDir(options: PackDirOptions = {}): string {
     mkdirSync(resolve(abs, '..'), { recursive: true });
     writeFileSync(abs, content, 'utf8');
   }
+}
 
+/**
+ * Create a temporary pack directory with the supplied file contents.
+ * Returns the absolute path to the pack root.
+ */
+export function makeTempPackDir(options: PackDirOptions = {}): string {
+  const root = mkdtempSync(join(tmpdir(), 'convsim-pack-loader-test-'));
+  populatePackDir(root, options);
+  return root;
+}
+
+/**
+ * Create a pack directory as a named subdirectory of `parentDir`.
+ * Useful for testing `loadPacksFromRoots` where packs must live inside a root.
+ * Returns the absolute path to the pack directory.
+ */
+export function makePackInDir(
+  parentDir: string,
+  packName: string,
+  options: PackDirOptions = {},
+): string {
+  const root = join(parentDir, packName);
+  mkdirSync(root, { recursive: true });
+  populatePackDir(root, options);
   return root;
 }
