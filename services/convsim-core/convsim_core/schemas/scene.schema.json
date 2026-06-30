@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.convsim.dev/v0.1/scene.schema.json",
+  "title": "ConvSim Scene",
+  "description": "Validates a scene descriptor file. Scenes supply visual and ambient context for a scenario without affecting game logic.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "scene_id",
+    "display_name",
+    "description"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["0.1"]
+    },
+    "scene_id": {
+      "type": "string",
+      "description": "Unique identifier for this scene within the pack.",
+      "pattern": "^[a-z0-9_]+$"
+    },
+    "display_name": {
+      "type": "string",
+      "description": "Human-readable name shown in the UI.",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "description": {
+      "type": "string",
+      "description": "Prose description of the scene used to set context in the system prompt.",
+      "minLength": 1,
+      "maxLength": 2000
+    },
+    "background": {
+      "type": "string",
+      "description": "Relative path to the background image within the pack assets directory."
+    },
+    "ambient": {
+      "type": "string",
+      "description": "Ambient audio identifier. Must be a slug defined in the runtime audio registry.",
+      "pattern": "^[a-z0-9_]+$"
+    }
+  }
+}
