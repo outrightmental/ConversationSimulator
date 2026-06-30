@@ -93,3 +93,18 @@ def test_unsafe_pack_id_rejected(tmp_path):
     pack_dir = make_pack_dir(tmp_path, manifest={"pack_id": "../../evil"})
     _, errors = validate_pack_dir(pack_dir)
     assert any("unsafe" in e.lower() for e in errors)
+
+
+@pytest.mark.parametrize("bad_id", [
+    'evil"; X-Injected: header',
+    "evil\r\nX-Injected: header",
+    "evil\rX-Injected: header",
+    "evil\nX-Injected: header",
+])
+def test_pack_id_header_injection_chars_rejected(tmp_path, bad_id):
+    """pack_id containing CR, LF, or double-quote must be rejected (header injection)."""
+    pack_dir = make_pack_dir(tmp_path, manifest={"pack_id": bad_id})
+    _, errors = validate_pack_dir(pack_dir)
+    assert any("unsafe" in e.lower() for e in errors), (
+        f"pack_id {bad_id!r} should have been rejected"
+    )

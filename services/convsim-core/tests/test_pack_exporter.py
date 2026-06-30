@@ -55,6 +55,30 @@ def test_exported_zip_contains_manifest(tmp_path):
     db.close()
 
 
+def test_export_filename_strips_header_injection_chars(tmp_path):
+    """Exported filename must not contain CR, LF, or double-quote even if slug does."""
+    db = _open_db(tmp_path)
+    zip_bytes = make_pack_zip(tmp_path / "src")
+    packs_dir = tmp_path / "packs"
+    packs_dir.mkdir()
+
+    import_from_zip(zip_bytes, packs_dir, db.connection())
+
+    # Patch the stored slug to contain injection chars, simulating a slug
+    # that somehow bypassed the validator (defence-in-depth for the exporter).
+    db.connection().execute(
+        "UPDATE packs SET slug = ? WHERE slug = 'test.sample_pack'",
+        ('evil"; X-Injected: header',),
+    )
+    db.connection().commit()
+
+    _, filename = export_to_zip('evil"; X-Injected: header', db.connection())
+    assert '"' not in filename
+    assert "\r" not in filename
+    assert "\n" not in filename
+    db.close()
+
+
 def test_exported_zip_revalidates_successfully(tmp_path):
     """Round-trip: import → export → extract → validate must pass."""
     db = _open_db(tmp_path)

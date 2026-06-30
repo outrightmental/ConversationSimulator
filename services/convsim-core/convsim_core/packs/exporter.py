@@ -39,7 +39,11 @@ def export_to_zip(pack_slug: str, conn: sqlite3.Connection) -> tuple[bytes, str]
         )
 
     buf = io.BytesIO()
-    safe_slug = pack.slug.replace("/", "_").replace("\\", "_")
+    # Strip path separators for use as a directory name inside the archive, then
+    # additionally strip characters that would break a quoted Content-Disposition
+    # filename or allow HTTP header injection (CR, LF, double-quote).
+    _slug_no_sep = pack.slug.replace("/", "_").replace("\\", "_")
+    safe_slug = "".join(c for c in _slug_no_sep if c not in ('"', "\r", "\n"))
 
     with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
         for file_path in sorted(pack_dir.rglob("*")):

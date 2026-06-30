@@ -59,8 +59,13 @@ def validate_pack_dir(pack_dir: Path) -> tuple[Optional[PackManifest], list[str]
             f"Allowed values: {', '.join(sorted(CONTENT_RATINGS))}"
         )
 
-    # pack_id must not contain path-traversal characters.
-    if ".." in manifest.pack_id or manifest.pack_id.startswith("/"):
+    # pack_id must not contain path-traversal or header-injection characters.
+    _PACK_ID_FORBIDDEN = {'"', "\r", "\n"}
+    if (
+        ".." in manifest.pack_id
+        or manifest.pack_id.startswith("/")
+        or any(c in manifest.pack_id for c in _PACK_ID_FORBIDDEN)
+    ):
         errors.append(f"pack_id contains unsafe characters: {manifest.pack_id!r}")
 
     # Each entry scenario must reference a file that exists within the pack dir.
