@@ -83,7 +83,7 @@ export default function MicButton({
         type="button"
         aria-label={label}
         aria-pressed={isRecording}
-        disabled={disabled}
+        disabled={disabled && !isRecording}
         onPointerDown={onRecordStart}
         onPointerUp={onRecordStop}
         onPointerLeave={onRecordStop}

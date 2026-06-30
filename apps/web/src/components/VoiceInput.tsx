@@ -56,7 +56,7 @@ export default function VoiceInput({ onSubmit, disabled = false }: VoiceInputPro
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.code !== 'Space') return
       if (isInteractiveElement(document.activeElement)) return
-      if (permission !== 'granted' || isSubmitting || disabled) return
+      if (permission !== 'granted' || isSubmitting || (disabled && !isRecording)) return
       stopRecording()
     }
 
@@ -66,7 +66,7 @@ export default function VoiceInput({ onSubmit, disabled = false }: VoiceInputPro
       document.removeEventListener('keydown', handleKeyDown)
       document.removeEventListener('keyup', handleKeyUp)
     }
-  }, [startRecording, stopRecording, permission, isSubmitting, disabled])
+  }, [startRecording, stopRecording, permission, isRecording, isSubmitting, disabled])
 
   const handleTextSubmit = (e: React.FormEvent) => {
     e.preventDefault()

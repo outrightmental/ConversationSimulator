@@ -336,9 +336,9 @@ describe('VoiceInput — disabled prop', () => {
     expect(startRecording).not.toHaveBeenCalled()
   })
 
-  it('does not call stopRecording on Space keyup when disabled', () => {
+  it('does not call stopRecording on Space keyup when disabled and not recording', () => {
     const stopRecording = vi.fn()
-    vi.mocked(useMicCapture).mockReturnValue(makeMicState({ stopRecording }))
+    vi.mocked(useMicCapture).mockReturnValue(makeMicState({ stopRecording, isRecording: false }))
 
     render(<VoiceInput disabled />)
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
@@ -346,5 +346,17 @@ describe('VoiceInput — disabled prop', () => {
     fireEvent.keyUp(document, { code: 'Space' })
 
     expect(stopRecording).not.toHaveBeenCalled()
+  })
+
+  it('calls stopRecording on Space keyup when disabled but recording is in progress', () => {
+    const stopRecording = vi.fn()
+    vi.mocked(useMicCapture).mockReturnValue(makeMicState({ stopRecording, isRecording: true }))
+
+    render(<VoiceInput disabled />)
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+
+    fireEvent.keyUp(document, { code: 'Space' })
+
+    expect(stopRecording).toHaveBeenCalledOnce()
   })
 })
