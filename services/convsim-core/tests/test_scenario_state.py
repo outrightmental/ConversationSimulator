@@ -224,6 +224,12 @@ class TestApplyStateDeltaClamping:
         result = apply_state_delta(state, {"trust": 20}, self.defs)
         assert result.actual_changes["trust"] == 5  # 100 - 95
 
+    def test_actual_changes_reflect_change_clamped_at_min(self):
+        state = dict(self.state)
+        state["trust"] = 5
+        result = apply_state_delta(state, {"trust": -20}, self.defs)
+        assert result.actual_changes["trust"] == -5  # 0 - 5
+
     def test_zero_delta_produces_zero_actual_change(self):
         result = apply_state_delta(self.state, {"trust": 0}, self.defs)
         assert result.actual_changes["trust"] == 0

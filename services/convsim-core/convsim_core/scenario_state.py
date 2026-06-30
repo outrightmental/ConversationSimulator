@@ -243,6 +243,7 @@ def evaluate_event_triggers(
 # Ending condition evaluation
 # ---------------------------------------------------------------------------
 
+
 def evaluate_ending_condition(
     state: Dict[str, int],
     turn_number: int,
