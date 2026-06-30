@@ -273,7 +273,7 @@ async def install_model(request: Request, body: InstallModelRequest) -> InstallM
         )
 
     sha256 = model.get("sha256") or ""
-    if not sha256 or sha256 == "PENDING":
+    if not sha256 or sha256.upper() == "PENDING":
         raise ConvsimError(
             code="MISSING_CHECKSUM",
             message=(

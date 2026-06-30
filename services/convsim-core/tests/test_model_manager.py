@@ -250,6 +250,20 @@ def test_install_rejects_model_with_pending_sha256(client):
     assert resp.json()["error"]["code"] == "MISSING_CHECKSUM"
 
 
+def test_install_rejects_model_with_lowercase_pending_sha256(client):
+    """The explicit-download guard must be case-insensitive for the PENDING sentinel."""
+    conn = client.app.state.db.connection()
+    conn.execute(
+        """INSERT INTO model_registry (id, name, provider, license_spdx, sha256, source_type)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        ("lowercase-pending-model", "Lowercase Pending", "test", "MIT", "pending", "registry"),
+    )
+    conn.commit()
+    resp = client.post("/api/models/install", json={"registry_id": "lowercase-pending-model"})
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "MISSING_CHECKSUM"
+
+
 def test_install_rejects_model_with_null_sha256(client):
     """The explicit-download guard must reject models whose sha256 is NULL (absent)."""
     conn = client.app.state.db.connection()
