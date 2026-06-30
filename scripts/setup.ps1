@@ -1,21 +1,30 @@
 # SPDX-License-Identifier: Apache-2.0
-# Check that all required developer dependencies are present (Windows PowerShell version).
-# Prints the next dependency to install, or confirms the environment is ready.
+# Set up the Conversation Simulator development environment (Windows PowerShell).
+# Checks dependencies, installs frontend packages, creates a Python virtual
+# environment for convsim-core, and creates local data directories.
 # Does not modify global state or download model files.
 
 $RequiredPythonMajor = 3
 $RequiredPythonMinor = 10
 $RequiredNodeMajor = 18
 
-function Fail {
-    param([string]$Message)
-    Write-Error $Message
+$RepoRoot = (Resolve-Path "$PSScriptRoot\..").Path
+$CoreDir = Join-Path $RepoRoot "services\convsim-core"
+
+$LogDir  = if ($env:CONVSIM_LOG_DIR)  { $env:CONVSIM_LOG_DIR }  else { Join-Path $env:USERPROFILE ".convsim\logs" }
+$DataDir = if ($env:CONVSIM_DATA_DIR) { $env:CONVSIM_DATA_DIR } else { Join-Path $env:USERPROFILE ".convsim\data" }
+$DbDir   = if ($env:CONVSIM_DB_DIR)   { $env:CONVSIM_DB_DIR }   else { Join-Path $env:USERPROFILE ".convsim\db" }
+
+function Fail([string]$Message) {
+    Write-Host ""
+    Write-Host "ERROR: $Message" -ForegroundColor Red
+    Write-Host ""
     exit 1
 }
 
 Write-Host ""
-Write-Host "Conversation Simulator — environment check"
-Write-Host "==========================================="
+Write-Host "Conversation Simulator — setup"
+Write-Host "================================"
 Write-Host ""
 Write-Host "Checking required dependencies..."
 Write-Host ""
@@ -58,32 +67,65 @@ Write-Host "  node $nodeVersion ... OK"
 
 # --- Package manager ---
 $pkgManager = $null
+$pkgManagerPath = $null
 if (Get-Command pnpm -ErrorAction SilentlyContinue) {
     $pkgManager = "pnpm"
+    $pkgManagerPath = (Get-Command pnpm).Source
 } elseif (Get-Command npm -ErrorAction SilentlyContinue) {
     $pkgManager = "npm"
+    $pkgManagerPath = (Get-Command npm).Source
 } else {
     Fail "npm or pnpm is required but not found.`n       npm is included with Node.js — install Node.js from https://nodejs.org/"
 }
 
 Write-Host "  $pkgManager ... OK"
 
+# --- Frontend dependencies ---
 Write-Host ""
-Write-Host "All required dependencies found."
+Write-Host "Installing frontend dependencies..."
 Write-Host ""
-Write-Host "Next steps:"
+Push-Location $RepoRoot
+& $pkgManagerPath install
+Pop-Location
 Write-Host ""
-Write-Host "  1. Install frontend packages:"
-Write-Host "       $pkgManager install"
+Write-Host "  Frontend dependencies installed."
+
+# --- Python virtual environment ---
 Write-Host ""
-Write-Host "  2. Install Python packages (once convsim-core is implemented):"
-Write-Host "       cd services\convsim-core"
-Write-Host "       python -m venv .venv"
-Write-Host "       .venv\Scripts\activate"
-Write-Host "       pip install -e '.[dev]'"
+Write-Host "Setting up Python environment (services\convsim-core)..."
 Write-Host ""
-Write-Host "  3. Start local dev:"
-Write-Host "       .\scripts\dev.ps1"
+
+$VenvDir    = Join-Path $CoreDir ".venv"
+$VenvPip    = Join-Path $VenvDir "Scripts\pip.exe"
+
+if (-not (Test-Path $VenvDir)) {
+    Write-Host "  Creating virtual environment..."
+    & $pythonCmd.Source -m venv $VenvDir
+}
+
+& $VenvPip install -q --upgrade pip
+& $VenvPip install -q -e "$CoreDir[dev]"
+Write-Host "  Python packages installed."
+
+# --- Local data directories ---
+Write-Host ""
+Write-Host "Creating local data directories..."
+Write-Host ""
+
+New-Item -ItemType Directory -Force -Path $LogDir  | Out-Null
+New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
+New-Item -ItemType Directory -Force -Path $DbDir   | Out-Null
+
+Write-Host "  $LogDir"
+Write-Host "  $DataDir"
+Write-Host "  $DbDir"
+
+Write-Host ""
+Write-Host "Setup complete."
+Write-Host ""
+Write-Host "Start local dev with:"
+Write-Host ""
+Write-Host "  .\scripts\dev.ps1      (Windows PowerShell)"
 Write-Host ""
 Write-Host "NOTE: No model files are downloaded by this script."
 Write-Host "      The app will prompt you to install a model on first run."
