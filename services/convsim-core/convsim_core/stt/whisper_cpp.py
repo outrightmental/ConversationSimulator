@@ -155,6 +155,7 @@ class WhisperCppWorker(SttWorker):
             except asyncio.TimeoutError as exc:
                 proc.kill()
                 await proc.communicate()
+                _try_unlink(json_path)
                 raise SttError(
                     f"whisper-cli timed out after {self._timeout}s", recoverable=True
                 ) from exc
