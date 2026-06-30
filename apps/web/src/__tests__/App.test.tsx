@@ -12,7 +12,10 @@ beforeEach(() => {
 
 function renderAt(initialPath: string) {
   return render(
-    <MemoryRouter initialEntries={[initialPath]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+    <MemoryRouter
+      initialEntries={[initialPath]}
+      future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+    >
       <App />
     </MemoryRouter>,
   )
