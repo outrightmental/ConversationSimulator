@@ -216,6 +216,7 @@ def test_import_invalid_zip_pack_no_partial_files(tmp_path):
     exc = pytest.raises(ConvsimError, import_from_zip, zip_bytes, packs_dir, db.connection())
     assert exc.value.code == "PACK_INVALID"
 
+    assert list(packs_dir.iterdir()) == [], "No partial files must remain after invalid zip import"
     assert list_packs(db.connection()) == []
     db.close()
 
