@@ -28,7 +28,8 @@ class _RuntimeFilter(logging.Filter):
     """Accept only log records from the runtimes sub-package."""
 
     def filter(self, record: logging.LogRecord) -> bool:
-        return record.name.startswith("convsim_core.runtimes")
+        name = record.name
+        return name == "convsim_core.runtimes" or name.startswith("convsim_core.runtimes.")
 
 
 def configure_logging(log_dir: str, debug: bool = False) -> None:
