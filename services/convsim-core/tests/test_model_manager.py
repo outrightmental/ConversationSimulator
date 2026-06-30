@@ -250,6 +250,20 @@ def test_install_rejects_model_with_pending_sha256(client):
     assert resp.json()["error"]["code"] == "MISSING_CHECKSUM"
 
 
+def test_install_rejects_model_with_null_sha256(client):
+    """The explicit-download guard must reject models whose sha256 is NULL (absent)."""
+    conn = client.app.state.db.connection()
+    conn.execute(
+        """INSERT INTO model_registry (id, name, provider, license_spdx, sha256, source_type)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        ("null-sha-model", "Null SHA Model", "test", "MIT", None, "registry"),
+    )
+    conn.commit()
+    resp = client.post("/api/models/install", json={"registry_id": "null-sha-model"})
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "MISSING_CHECKSUM"
+
+
 def test_install_rejects_model_without_license(client):
     """A registry entry with no license must be rejected."""
     _load_registry(client)
