@@ -410,7 +410,7 @@ def test_use_model_llama_cpp_returns_error_when_unavailable(client, monkeypatch)
     monkeypatch.setattr(models_module, "build_runtime", lambda _id: rt)
     resp = client.post("/api/models/use", json={"runtime_id": "llama_cpp"})
     assert resp.status_code == 503
-    assert "llama" in resp.json()["error"]["message"].lower()
+    assert resp.json()["error"]["code"] == "RUNTIME_UNAVAILABLE"
 
 
 # ── POST /api/models/benchmark ───────────────────────────────────────────────
