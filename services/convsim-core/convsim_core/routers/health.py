@@ -18,12 +18,6 @@ class _DatabaseStatus(BaseModel):
     message: Optional[str] = None
 
 
-class _RuntimeReadiness(BaseModel):
-    llm_ready: bool = False
-    stt_ready: bool = False
-    tts_ready: bool = False
-
-
 class _PrivacyPosture(BaseModel):
     """Current privacy-relevant settings, safe to expose publicly."""
 
@@ -39,7 +33,7 @@ class HealthResponse(BaseModel):
     pid: int
     config_path: str
     database: _DatabaseStatus
-    runtime: _RuntimeReadiness
+    runtime: RuntimeHealth
     privacy: _PrivacyPosture
 
 
@@ -58,7 +52,7 @@ async def health(request: Request) -> HealthResponse:
             path=db.path,
             migrations_applied=db.migrations_applied,
         ),
-        runtime=_RuntimeReadiness(),
+        runtime=await request.app.state.runtime.health(),
         privacy=_PrivacyPosture(
             telemetry_enabled=app_settings.telemetry_enabled,
             save_transcripts=app_settings.save_transcripts,
