@@ -377,6 +377,16 @@ describe('POST /api/sessions/:id/turn', () => {
     expect(res.statusCode).toBe(400);
   });
 
+  it('returns 400 for empty string turn content', async () => {
+    const session_id = await createStartedSession();
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/sessions/${session_id}/turn`,
+      payload: { content: '' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
   it('returns 404 for unknown session', async () => {
     const res = await app.inject({
       method: 'POST',
