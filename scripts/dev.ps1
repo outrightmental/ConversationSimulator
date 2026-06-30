@@ -74,41 +74,31 @@ Write-Host ""
 Write-Host "Press Ctrl-C to stop all services."
 Write-Host ""
 
-$Jobs = @()
+$Processes = @()
+
+# Forward CONVSIM_LOG_DIR so uvicorn's ServiceConfig picks it up via env prefix.
+$env:CONVSIM_LOG_DIR = $LogDir
 
 try {
     # --- Start convsim-core ---
     Write-Host "Starting convsim-core..."
-    $CoreJob = Start-Job -ScriptBlock {
-        param($Dir, $Uvicorn, $Port, $LogDir)
-        Set-Location $Dir
-        $env:CONVSIM_LOG_DIR = $LogDir
-        & $Uvicorn convsim_core.main:app --host 127.0.0.1 --port $Port --reload
-    } -ArgumentList $CoreDir, $Uvicorn, $CorePort, $LogDir
-    $Jobs += $CoreJob
+    $CoreProcess = Start-Process -FilePath $Uvicorn `
+        -ArgumentList @("convsim_core.main:app", "--host", "127.0.0.1", "--port", $CorePort, "--reload") `
+        -WorkingDirectory $CoreDir -PassThru -NoNewWindow
+    $Processes += $CoreProcess
 
     # --- Start convsim-ui ---
     Write-Host "Starting convsim-ui..."
-    $WebJob = Start-Job -ScriptBlock {
-        param($Dir, $PkgMgrPath, $PkgMgr)
-        Set-Location $Dir
-        if ($PkgMgr -eq "pnpm") {
-            & $PkgMgrPath dev
-        } else {
-            & $PkgMgrPath run dev
-        }
-    } -ArgumentList $WebDir, $PkgManagerPath, $PkgManager
-    $Jobs += $WebJob
+    $WebArgs = if ($PkgManager -eq "pnpm") { @("dev") } else { @("run", "dev") }
+    $WebProcess = Start-Process -FilePath $PkgManagerPath -ArgumentList $WebArgs `
+        -WorkingDirectory $WebDir -PassThru -NoNewWindow
+    $Processes += $WebProcess
 
     Write-Host ""
 
-    # Stream output from both jobs until interrupted or a job exits unexpectedly
+    # Poll until a service exits; Ctrl-C or shell exit triggers the finally block.
     while ($true) {
-        foreach ($job in $Jobs) {
-            $out = Receive-Job -Job $job -ErrorAction SilentlyContinue
-            if ($out) { Write-Host $out }
-        }
-        $dead = @($Jobs | Where-Object { $_.State -ne "Running" })
+        $dead = @($Processes | Where-Object { $_.HasExited })
         if ($dead.Count -gt 0) {
             Write-Host ""
             Write-Host "A service stopped unexpectedly. Check logs at: $LogDir" -ForegroundColor Yellow
@@ -119,9 +109,11 @@ try {
 } finally {
     Write-Host ""
     Write-Host "Stopping services..."
-    foreach ($job in $Jobs) {
-        Stop-Job   -Job $job -ErrorAction SilentlyContinue
-        Remove-Job -Job $job -Force -ErrorAction SilentlyContinue
+    foreach ($proc in $Processes) {
+        if (-not $proc.HasExited) {
+            # /T kills the full process tree so uvicorn/vite child processes don't orphan.
+            taskkill /F /T /PID $proc.Id | Out-Null
+        }
     }
     Write-Host "Done."
 }
