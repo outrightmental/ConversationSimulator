@@ -31,6 +31,7 @@ class ServiceConfig(BaseSettings):
     log_dir: str = _DEFAULT_LOG_DIR
     db_dir: str = _DEFAULT_DB_DIR
     lan_access_enabled: bool = False
+    runtime_id: str = "fake"
 
     @model_validator(mode="after")
     def _reject_wildcard_bind(self) -> "ServiceConfig":

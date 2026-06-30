@@ -6,6 +6,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from convsim_core import __version__
+from convsim_core.runtime.types import RuntimeHealth
 
 router = APIRouter()
 
@@ -17,25 +18,21 @@ class _DatabaseStatus(BaseModel):
     message: Optional[str] = None
 
 
-class _RuntimeReadiness(BaseModel):
-    llm_ready: bool = False
-    stt_ready: bool = False
-    tts_ready: bool = False
-
-
 class HealthResponse(BaseModel):
     status: str
     version: str
     pid: int
     config_path: str
     database: _DatabaseStatus
-    runtime: _RuntimeReadiness
+    runtime: RuntimeHealth
 
 
 @router.get("/api/health", response_model=HealthResponse)
 async def health(request: Request) -> HealthResponse:
     config = request.app.state.service_config
     db = request.app.state.db
+    runtime = request.app.state.runtime
+    runtime_health = await runtime.health()
     return HealthResponse(
         status="ok",
         version=__version__,
@@ -46,5 +43,5 @@ async def health(request: Request) -> HealthResponse:
             path=db.path,
             migrations_applied=db.migrations_applied,
         ),
-        runtime=_RuntimeReadiness(),
+        runtime=runtime_health,
     )
