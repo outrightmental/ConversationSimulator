@@ -84,9 +84,14 @@ def validate_pack_dir(pack_dir: Path) -> tuple[Optional[PackManifest], list[str]
         if not resolved.exists():
             errors.append(f"Entry scenario file not found: {ref!r}")
 
-    # Scan every file for forbidden extensions (no executables allowed in packs).
+    # Scan every entry for symlinks and forbidden extensions.
+    # Symlinks are rejected here (consistent with safe_extract_zip for zip archives)
+    # to prevent shutil.copytree from following them to files outside the pack dir.
     for file_path in pack_dir.rglob("*"):
-        if file_path.is_file() and file_path.suffix.lower() in FORBIDDEN_EXTENSIONS:
+        if file_path.is_symlink():
+            rel = file_path.relative_to(pack_dir)
+            errors.append(f"Symlinks are not permitted in pack: {rel}")
+        elif file_path.is_file() and file_path.suffix.lower() in FORBIDDEN_EXTENSIONS:
             rel = file_path.relative_to(pack_dir)
             errors.append(f"Executable file not allowed in pack: {rel}")
 

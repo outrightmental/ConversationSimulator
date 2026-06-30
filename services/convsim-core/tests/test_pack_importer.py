@@ -2,6 +2,7 @@
 """Unit tests for pack import with rollback-on-failure guarantees."""
 import io
 import json
+import sys
 import zipfile
 from pathlib import Path
 
@@ -264,4 +265,26 @@ def test_import_links_scenario_scoped_assets(tmp_path):
     assert any("intro" in p for p in rel_paths), (
         f"Expected an asset under scenarios/intro/ to be linked; got: {rel_paths}"
     )
+    db.close()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="symlink creation requires elevated privileges on Windows")
+def test_import_folder_with_symlink_rejected(tmp_path):
+    """Folder import of a pack containing a symlink must fail and leave no partial install.
+
+    shutil.copytree follows symlinks by default; rejecting them in validate_pack_dir
+    ensures external file content can never be copied into the pack installation.
+    """
+    db = _open_db(tmp_path)
+    pack_dir = make_pack_dir(tmp_path / "src")
+    external = tmp_path / "external_secret.txt"
+    external.write_text("content outside pack boundary")
+    (pack_dir / "link_to_outside").symlink_to(external)
+
+    packs_dir = tmp_path / "packs"
+    packs_dir.mkdir()
+
+    exc = pytest.raises(ConvsimError, import_from_folder, pack_dir, packs_dir, db.connection())
+    assert exc.value.code == "PACK_INVALID"
+    assert list(packs_dir.iterdir()) == [], "No partial install must remain after symlink rejection"
     db.close()

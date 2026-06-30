@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -107,4 +108,22 @@ def test_pack_id_header_injection_chars_rejected(tmp_path, bad_id):
     _, errors = validate_pack_dir(pack_dir)
     assert any("unsafe" in e.lower() for e in errors), (
         f"pack_id {bad_id!r} should have been rejected"
+    )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="symlink creation requires elevated privileges on Windows")
+def test_symlink_in_pack_dir_rejected(tmp_path):
+    """A pack directory containing a symlink must be rejected.
+
+    Consistent with safe_extract_zip which rejects symlinks in zip archives.
+    Prevents shutil.copytree from following symlinks to files outside the pack.
+    """
+    pack_dir = make_pack_dir(tmp_path)
+    external = tmp_path / "external_secret.txt"
+    external.write_text("secret content outside pack")
+    (pack_dir / "link_to_outside").symlink_to(external)
+
+    _, errors = validate_pack_dir(pack_dir)
+    assert any("symlink" in e.lower() for e in errors), (
+        f"Expected a symlink rejection error; got: {errors}"
     )
