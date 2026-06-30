@@ -77,7 +77,7 @@ export const ScenarioEndingSchema = z
     id: z
       .string()
       .regex(/^[a-z][a-z0-9_-]*$/, 'Ending ID must be kebab-case or snake_case')
-      .max(32),
+      .max(32, 'Ending ID must be 32 characters or fewer'),
     label: z.string().min(1, 'Label is required').max(60, 'Label must be 60 characters or fewer'),
     condition: z.string().min(1, 'Condition expression is required'),
     npc_reaction: z
@@ -199,7 +199,7 @@ export const RubricDimensionSchema = z
     id: z
       .string()
       .regex(/^[a-z][a-z0-9_-]*$/, 'Dimension ID must be kebab-case or snake_case')
-      .max(32),
+      .max(32, 'Dimension ID must be 32 characters or fewer'),
     label: z.string().min(1, 'Label is required').max(60, 'Label must be 60 characters or fewer'),
     description: z
       .string()
@@ -221,7 +221,7 @@ export const RubricSchema = z
   .object({
     schema_version: schemaVersion,
     id: idField,
-    title: z.string().min(1, 'Rubric title is required').max(120),
+    title: z.string().min(1, 'Rubric title is required').max(120, 'Rubric title must be 120 characters or fewer'),
     dimensions: z
       .array(RubricDimensionSchema)
       .min(1, 'At least one dimension is required')
