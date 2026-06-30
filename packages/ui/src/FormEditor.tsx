@@ -67,7 +67,13 @@ export function FormEditor({ fileType, initialYaml, onChange, className }: FormE
   const prevInitialYaml = React.useRef(initialYaml);
   if (prevInitialYaml.current !== initialYaml) {
     prevInitialYaml.current = initialYaml;
-    suppressNextOnChange.current = true;
+    // Only arm the suppression when yaml will actually change. If yaml is already
+    // equal to the new initialYaml, useFormSync's reset effect is a no-op and the
+    // [yaml] effect will never fire to clear the flag — leaving it stuck at true
+    // and silently dropping the next user-driven onChange call.
+    if (yaml !== initialYaml) {
+      suppressNextOnChange.current = true;
+    }
   }
   React.useEffect(() => {
     if (isFirstRender.current) {

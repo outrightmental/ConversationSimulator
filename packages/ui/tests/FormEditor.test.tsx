@@ -582,6 +582,43 @@ describe('FormEditor — onChange call count', () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
+  it('does not suppress onChange after prop reset where initialYaml equals current yaml', async () => {
+    // Regression: if initialYaml changes to the same value as the current yaml state
+    // (e.g. parent saves edits then reloads that content), suppressNextOnChange could
+    // get stuck at true because useFormSync's setYamlInternal call is a no-op and the
+    // [yaml] effect never fires to clear the flag. The next user edit would then be
+    // silently dropped.
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    const { rerender } = render(
+      <FormEditor fileType="manifest" initialYaml={MANIFEST_YAML} onChange={onChange} />,
+    );
+
+    // Edit a field to diverge yaml from initialYaml
+    const authorInput = screen.getByLabelText('Author');
+    await user.clear(authorInput);
+    await user.type(authorInput, 'Edited Author');
+    expect(onChange).toHaveBeenCalled();
+
+    // Capture the current yaml (what onChange last emitted)
+    const editedYaml = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
+    onChange.mockClear();
+
+    // Simulate parent "saving" and reloading the exact edited content as initialYaml
+    rerender(<FormEditor fileType="manifest" initialYaml={editedYaml} onChange={onChange} />);
+    await new Promise((r) => setTimeout(r, 50));
+    onChange.mockClear();
+
+    // User makes another edit — this must NOT be suppressed
+    const versionInput = screen.getByLabelText('Version');
+    await user.clear(versionInput);
+    await user.type(versionInput, '2.0.0');
+
+    expect(onChange).toHaveBeenCalled();
+    const lastCall = onChange.mock.calls[onChange.mock.calls.length - 1][0] as string;
+    expect(lastCall).toContain('2.0.0');
+  });
+
   it('does not call onChange when initialYaml prop changes (file switch)', async () => {
     const onChange = vi.fn();
     const SECOND_MANIFEST = MANIFEST_YAML.replace('name: "Test Pack"', 'name: "Second Pack"')
