@@ -24,7 +24,7 @@ Every entity that crosses a package boundary must have a stable, unique identifi
 | Safety policy | `policy_id` | Snake-case slug, unique within a pack           | `default_safe_conversation`     |
 | Session     | `session_id`  | UUID v4, assigned at runtime                    | `550e8400-e29b-41d4-a716-...`  |
 
-IDs must match the pattern `^[a-z0-9_]+(\\.[a-z0-9_]+)*$` (lowercase letters, digits, underscores; dots only for namespaced pack IDs).
+IDs must match the pattern `^[a-z0-9_]+(\.[a-z0-9_]+)*$` (lowercase letters, digits, underscores; dots only for namespaced pack IDs).
 
 Once published in a released pack, IDs must not be renamed. If an entity is superseded, deprecate it and introduce a new ID.
 
@@ -43,6 +43,8 @@ Once published in a released pack, IDs must not be renamed. If an entity is supe
 | Typo fix or documentation change | No change needed |
 
 The validator must reject files whose `schema_version` it does not recognise. Supported versions are listed in the schema `enum`.
+
+**Exception: `turn-output.schema.json`** — Turn output is a runtime LLM response format, not a pack-authored file. Pack authors never write turn output documents directly; the model generates them during a session. `turn-output.schema.json` therefore does not define a `schema_version` field. Changes to the turn output format are tracked by the overall project version (see `$id`) and require corresponding backend changes.
 
 ### Breaking vs non-breaking changes
 

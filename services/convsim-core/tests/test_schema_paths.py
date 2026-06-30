@@ -7,6 +7,7 @@ without relying on the current working directory.
 
 import json
 import os
+from pathlib import Path
 import pytest
 
 from convsim_core.schema_paths import (
@@ -102,3 +103,32 @@ class TestUnknownSchemaRejected:
     def test_unknown_name_raises_value_error(self):
         with pytest.raises(ValueError, match="Unknown schema"):
             get_schema_text("nonexistent.schema.json")
+
+
+class TestBundledSchemaSync:
+    """Verify the bundled schemas/ copy is identical to the root schemas/ directory.
+
+    The Python package bundles schemas inside convsim_core/schemas/ for
+    CWD-independent access and wheel distribution. This test catches drift
+    between the two copies so they cannot silently diverge.
+    """
+
+    _root_schemas = Path(__file__).parents[3] / "schemas"
+
+    def test_root_schemas_dir_exists(self):
+        if not self._root_schemas.exists():
+            pytest.skip("Root schemas/ directory not found (installed package build?)")
+        assert self._root_schemas.is_dir()
+
+    @pytest.mark.parametrize("name", SCHEMA_NAMES)
+    def test_bundled_matches_root(self, name):
+        if not self._root_schemas.exists():
+            pytest.skip("Root schemas/ directory not found (installed package build?)")
+        root_path = self._root_schemas / name
+        assert root_path.exists(), f"Root schemas/{name} not found"
+        root_text = root_path.read_text(encoding="utf-8")
+        bundled_text = get_schema_text(name)
+        assert bundled_text == root_text, (
+            f"Bundled convsim_core/schemas/{name} differs from root schemas/{name}. "
+            "Update both copies together to prevent contract drift."
+        )
