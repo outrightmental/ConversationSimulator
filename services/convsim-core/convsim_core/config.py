@@ -8,6 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _DEFAULT_DATA_DIR = str(Path.home() / ".convsim" / "data")
 _DEFAULT_LOG_DIR = str(Path.home() / ".convsim" / "logs")
+_DEFAULT_DB_DIR = str(Path.home() / ".convsim" / "db")
 
 
 class ServiceConfig(BaseSettings):
@@ -28,6 +29,7 @@ class ServiceConfig(BaseSettings):
     port: int = 7355
     data_dir: str = _DEFAULT_DATA_DIR
     log_dir: str = _DEFAULT_LOG_DIR
+    db_dir: str = _DEFAULT_DB_DIR
     lan_access_enabled: bool = False
 
     @model_validator(mode="after")
