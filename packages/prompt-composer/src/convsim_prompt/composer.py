@@ -94,21 +94,19 @@ def compose_turn_prompt(inp: PromptComposerInput) -> PromptBundle:
     layers = _build_layers(inp, max_turns)
 
     system_prompt = "\n\n".join(layers[name] for name in SYSTEM_LAYER_ORDER)
-    user_prompt = layers["PLAYER_UTTERANCE"]
-
-    estimated_tokens = _estimate_tokens(system_prompt + user_prompt)
+    estimated_tokens = _estimate_tokens(system_prompt + layers["PLAYER_UTTERANCE"])
     was_truncated = False
 
     if estimated_tokens > inp.token_budget and max_turns > 2:
         reduced_max = max(2, max_turns // 2)
         layers = _build_layers(inp, reduced_max)
         system_prompt = "\n\n".join(layers[name] for name in SYSTEM_LAYER_ORDER)
-        estimated_tokens = _estimate_tokens(system_prompt + user_prompt)
+        estimated_tokens = _estimate_tokens(system_prompt + layers["PLAYER_UTTERANCE"])
         was_truncated = True
 
     return PromptBundle(
         system_prompt=system_prompt,
-        user_prompt=user_prompt,
+        user_prompt=layers["PLAYER_UTTERANCE"],
         layer_map=layers,
         estimated_token_count=estimated_tokens,
         was_truncated=was_truncated,
