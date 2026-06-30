@@ -138,6 +138,26 @@ def test_null_byte_in_entry_scenario_rejected(tmp_path):
     )
 
 
+@pytest.mark.parametrize("bad_id", [
+    "foo/bar",
+    "foo\\bar",
+    "/absolute",
+    "a/b/c",
+])
+def test_pack_id_path_separator_rejected(tmp_path, bad_id):
+    """pack_id containing path separators must be rejected.
+
+    _install_from_dir maps pack_id to a directory name after stripping separators;
+    two ids like 'foo/bar' and 'foo_bar' would collide to the same directory, causing
+    the second import to silently overwrite the first pack's installed files.
+    """
+    pack_dir = make_pack_dir(tmp_path / bad_id.replace("/", "_").replace("\\", "_"), manifest={"pack_id": bad_id})
+    _, errors = validate_pack_dir(pack_dir)
+    assert any("unsafe" in e.lower() for e in errors), (
+        f"pack_id {bad_id!r} should have been rejected; got: {errors}"
+    )
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="symlink creation requires elevated privileges on Windows")
 def test_symlink_in_pack_dir_rejected(tmp_path):
     """A pack directory containing a symlink must be rejected.
