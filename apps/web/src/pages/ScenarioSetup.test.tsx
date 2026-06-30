@@ -99,9 +99,9 @@ describe('ScenarioSetupPage', () => {
       mockApi.health.mockResolvedValue(healthReady);
       renderSetup();
       await waitFor(() =>
-        expect(screen.getByTestId('setup-page')).toBeInTheDocument(),
+        expect(screen.getByText('Behavioral Interview')).toBeInTheDocument(),
       );
-      expect(screen.getByText('Behavioral Interview')).toBeInTheDocument();
+      expect(screen.getByTestId('setup-page')).toBeInTheDocument();
       expect(screen.getByText('Job Interview Basics')).toBeInTheDocument();
     });
 

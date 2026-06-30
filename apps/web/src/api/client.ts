@@ -13,19 +13,21 @@ export interface HealthResponse {
   version?: string
 }
 
+async function parseErrorMessage(res: Response): Promise<string> {
+  const text = await res.text()
+  let message = text || `${res.status} ${res.statusText}`
+  try {
+    const json = JSON.parse(text) as { message?: string }
+    if (json.message) message = json.message
+  } catch {
+    // text is not JSON; use as-is
+  }
+  return message
+}
+
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`)
-  if (!res.ok) {
-    const text = await res.text()
-    let message = text || `${res.status} ${res.statusText}`
-    try {
-      const json = JSON.parse(text) as { message?: string }
-      if (json.message) message = json.message
-    } catch {
-      // text is not JSON; use as-is
-    }
-    throw new Error(message)
-  }
+  if (!res.ok) throw new Error(await parseErrorMessage(res))
   return res.json() as Promise<T>
 }
 
@@ -35,17 +37,7 @@ async function post<T>(path: string, body: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!res.ok) {
-    const text = await res.text()
-    let message = text || `${res.status} ${res.statusText}`
-    try {
-      const json = JSON.parse(text) as { message?: string }
-      if (json.message) message = json.message
-    } catch {
-      // text is not JSON; use as-is
-    }
-    throw new Error(message)
-  }
+  if (!res.ok) throw new Error(await parseErrorMessage(res))
   return res.json() as Promise<T>
 }
 
