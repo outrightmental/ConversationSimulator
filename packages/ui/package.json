@@ -6,25 +6,14 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "main": "./src/index.ts",
   "scripts": {
-    "build": "tsc --noEmit",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "build": "echo 'UI package built as source — no compile step needed for Vite consumers.'"
   },
-  "dependencies": {
-    "@convsim/scenario-schema": "*",
-    "react": "^18.3.0",
-    "react-dom": "^18.3.0"
+  "peerDependencies": {
+    "react": "^18.3.1"
   },
   "devDependencies": {
-    "@testing-library/jest-dom": "^6.4.0",
-    "@testing-library/react": "^16.0.0",
-    "@testing-library/user-event": "^14.5.0",
-    "@types/react": "^18.3.0",
-    "@types/react-dom": "^18.3.0",
-    "jsdom": "^24.0.0",
-    "typescript": "^5.4.0",
-    "vitest": "^1.6.0"
+    "@types/react": "^18.3.12"
   }
 }

@@ -1,36 +1,42 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# Start all Conversation Simulator local dev services.
-# Services are not yet implemented; this script prints the intended ports
-# and exits cleanly until Milestone 1 is complete.
+# Start the Conversation Simulator local dev services.
+# Currently launches convsim-core; remaining services are TODO for later milestones.
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CORE_DIR="$SCRIPT_DIR/../services/convsim-core"
 
 echo ""
 echo "Conversation Simulator — local dev"
 echo "===================================="
 echo ""
-echo "Intended local service ports:"
+echo "Local service ports:"
 echo ""
-echo "  convsim-ui    http://127.0.0.1:7354  (browser UI, dev mode)"
+echo "  convsim-ui    http://127.0.0.1:7354  (browser UI — TODO Milestone 1)"
 echo "  convsim-core  http://127.0.0.1:7355  (main server, WebSocket, API)"
-echo "  convsim-llm   http://127.0.0.1:7356  (local LLM server)"
-echo "  convsim-stt   http://127.0.0.1:7357  (speech-to-text worker)"
-echo "  convsim-tts   http://127.0.0.1:7358  (text-to-speech worker)"
+echo "  convsim-llm   http://127.0.0.1:7356  (local LLM server — TODO)"
+echo "  convsim-stt   http://127.0.0.1:7357  (speech-to-text worker — TODO)"
+echo "  convsim-tts   http://127.0.0.1:7358  (text-to-speech worker — TODO)"
 echo ""
-echo "All services bind to 127.0.0.1 only (localhost)."
+echo "All services bind to 127.0.0.1 only."
 echo ""
-echo "Status:"
-echo "  Services are not yet implemented."
-echo "  This script will launch all processes once Milestone 1 is complete."
+
+cd "$CORE_DIR"
+
+if [ -f ".venv/bin/uvicorn" ]; then
+    UVICORN=".venv/bin/uvicorn"
+elif command -v uvicorn &>/dev/null; then
+    UVICORN="uvicorn"
+else
+    echo "ERROR: uvicorn not found."
+    echo "Set up the virtual environment first:"
+    echo "  cd services/convsim-core"
+    echo "  python -m venv .venv"
+    echo "  .venv/bin/pip install -e '.[dev]'"
+    exit 1
+fi
+
+echo "Starting convsim-core ..."
 echo ""
-echo "Milestones:"
-echo "  Milestone 0: repo skeleton and local dev setup   [COMPLETE]"
-echo "  Milestone 1: text-only conversation simulator    [TODO]"
-echo "  Milestone 2: scenario pack system                [TODO]"
-echo "  Milestone 3: local voice input                   [TODO]"
-echo "  Milestone 4: local voice output                  [TODO]"
-echo "  Milestone 5: polished playable alpha             [TODO]"
-echo ""
-echo "Track progress: https://github.com/outrightmental/ConversationSimulator/milestones"
-echo ""
-exit 0
+exec "$UVICORN" convsim_core.main:app --host 127.0.0.1 --port 7355 --reload
