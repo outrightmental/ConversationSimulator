@@ -31,6 +31,10 @@ class ServiceConfig(BaseSettings):
     log_dir: str = _DEFAULT_LOG_DIR
     db_dir: str = _DEFAULT_DB_DIR
     lan_access_enabled: bool = False
+    # Set CONVSIM_DEV_DEBUG=true to enable DEBUG-level logging.
+    # Even in debug mode callers must use convsim_core.redaction helpers
+    # before logging any value derived from conversation content.
+    dev_debug: bool = False
 
     @model_validator(mode="after")
     def _reject_wildcard_bind(self) -> "ServiceConfig":
