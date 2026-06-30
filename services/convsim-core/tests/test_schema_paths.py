@@ -61,7 +61,7 @@ class TestSchemaLoading:
         # turn-output is a runtime LLM output format, not a pack-authored file,
         # so it intentionally omits schema_version from its properties.
         if name == "turn-output.schema.json":
-            return
+            pytest.skip("turn-output.schema.json intentionally omits schema_version")
         schema = get_schema(name)
         props = schema.get("properties", {})
         sv = props.get("schema_version", {})
