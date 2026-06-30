@@ -26,6 +26,8 @@ from convsim_prompt import (
     compose_turn_prompt,
     LAYER_ORDER,
     SYSTEM_LAYER_ORDER,
+    UNTRUSTED_CONTENT_BEGIN,
+    UNTRUSTED_CONTENT_END,
 )
 from _helpers import (
     DEFAULT_SAFETY_POLICY,
@@ -184,16 +186,22 @@ class TestLayerOrdering:
 
 
 class TestUntrustedContentBoundaries:
+    def test_untrusted_sentinel_constants_exported(self):
+        """UNTRUSTED_CONTENT_BEGIN/END must be importable from the public package API
+        so adapter code can verify boundaries without hardcoding sentinel strings."""
+        assert UNTRUSTED_CONTENT_BEGIN
+        assert UNTRUSTED_CONTENT_END
+
     def test_untrusted_begin_marker_before_scenario_brief(self):
         bundle = compose_turn_prompt(make_interview_input())
         sp = bundle.system_prompt
-        begin_pos = sp.index("BEGIN UNTRUSTED CONTENT")
+        begin_pos = sp.index(UNTRUSTED_CONTENT_BEGIN)
         assert begin_pos < _layer_pos(sp, "SCENARIO_BRIEF")
 
     def test_untrusted_end_marker_before_output_schema(self):
         bundle = compose_turn_prompt(make_interview_input())
         sp = bundle.system_prompt
-        end_pos = sp.index("END UNTRUSTED CONTENT")
+        end_pos = sp.index(UNTRUSTED_CONTENT_END)
         schema_pos = _layer_pos(sp, "OUTPUT_SCHEMA")
         assert end_pos < schema_pos
 
@@ -202,7 +210,7 @@ class TestUntrustedContentBoundaries:
         bundle = compose_turn_prompt(make_interview_input())
         sp = bundle.system_prompt
         safety_pos = _layer_pos(sp, "SAFETY_POLICY")
-        begin_pos = sp.index("BEGIN UNTRUSTED CONTENT")
+        begin_pos = sp.index(UNTRUSTED_CONTENT_BEGIN)
         assert safety_pos < begin_pos
 
     def test_untrusted_end_marker_after_response_style(self):
@@ -210,7 +218,7 @@ class TestUntrustedContentBoundaries:
         bundle = compose_turn_prompt(make_interview_input())
         sp = bundle.system_prompt
         style_pos = _layer_pos(sp, "RESPONSE_STYLE")
-        end_pos = sp.index("END UNTRUSTED CONTENT")
+        end_pos = sp.index(UNTRUSTED_CONTENT_END)
         assert style_pos < end_pos
 
     def test_player_utterance_marked_untrusted(self):
