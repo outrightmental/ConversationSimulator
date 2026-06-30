@@ -104,7 +104,7 @@ if (-not (Test-Path $VenvDir)) {
 }
 
 & $VenvPip install -q --upgrade pip
-& $VenvPip install -q -e "$CoreDir[dev]"
+& $VenvPip install -q -e "${CoreDir}[dev]"
 Write-Host "  Python packages installed."
 
 # --- Local data directories ---

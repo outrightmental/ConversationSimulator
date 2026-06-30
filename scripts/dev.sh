@@ -151,5 +151,5 @@ while true; do
             exit 1
         fi
     done
-    sleep 0.2
+    sleep 1
 done
