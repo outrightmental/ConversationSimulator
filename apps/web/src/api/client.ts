@@ -29,7 +29,14 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   })
   if (!res.ok) {
     const text = await res.text()
-    throw new Error(text || `${res.status} ${res.statusText}`)
+    let message = text || `${res.status} ${res.statusText}`
+    try {
+      const json = JSON.parse(text) as { message?: string }
+      if (json.message) message = json.message
+    } catch {
+      // text is not JSON; use as-is
+    }
+    throw new Error(message)
   }
   return res.json() as Promise<T>
 }

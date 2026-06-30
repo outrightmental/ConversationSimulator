@@ -391,6 +391,24 @@ describe('ScenarioSetupPage', () => {
       );
     });
 
+    it('shows human-readable message not raw JSON when error has a message field', async () => {
+      mockApi.createSession.mockRejectedValue(
+        new Error('Unknown scenario_id: behavioral_interview'),
+      );
+
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+
+      const submitBtn = screen.getByRole('button', { name: /start scenario/i });
+      fireEvent.click(submitBtn);
+
+      await waitFor(() => {
+        const alert = screen.getByRole('alert');
+        expect(alert).toHaveTextContent('Unknown scenario_id: behavioral_interview');
+        expect(alert).not.toHaveTextContent('"statusCode"');
+      });
+    });
+
     it('disables submit button while submitting', async () => {
       let resolveSession!: (v: SessionCreateResponse) => void;
       mockApi.createSession.mockReturnValue(
