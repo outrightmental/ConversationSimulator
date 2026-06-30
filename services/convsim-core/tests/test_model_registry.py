@@ -246,6 +246,22 @@ def test_registry_model_with_user_filesystem_provider_fails(
         )
 
 
+def test_null_min_vram_gb_for_registry_model_fails(registry_schema, valid_registry_entry):
+    valid_registry_entry["hardware"]["min_vram_gb"] = None
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(
+            instance=make_registry([valid_registry_entry]), schema=registry_schema
+        )
+
+
+def test_missing_min_vram_gb_for_registry_model_fails(registry_schema, valid_registry_entry):
+    valid_registry_entry["hardware"] = {}
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(
+            instance=make_registry([valid_registry_entry]), schema=registry_schema
+        )
+
+
 def test_unknown_schema_version_fails(registry_schema, valid_registry_entry):
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate(

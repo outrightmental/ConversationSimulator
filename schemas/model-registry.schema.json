@@ -80,7 +80,14 @@
         "required": ["size_gb"],
         "properties": {
           "size_gb": { "type": "number", "exclusiveMinimum": 0 },
-          "download": { "$ref": "#/$defs/RegistryDownload" }
+          "download": { "$ref": "#/$defs/RegistryDownload" },
+          "hardware": {
+            "required": ["min_vram_gb", "recommended_vram_gb"],
+            "properties": {
+              "min_vram_gb": { "type": "number", "minimum": 0 },
+              "recommended_vram_gb": { "type": "number", "minimum": 0 }
+            }
+          }
         }
       },
       "else": {
