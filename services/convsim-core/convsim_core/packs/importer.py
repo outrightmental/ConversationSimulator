@@ -29,6 +29,9 @@ class PackConflictError(ConvsimError):
         )
 
 
+_MAX_UNCOMPRESSED_BYTES = 500 * 1024 * 1024  # 500 MB
+
+
 def safe_extract_zip(zip_bytes: bytes, dest: Path) -> None:
     """
     Extract zip_bytes into dest, rejecting any member whose resolved path would
@@ -36,6 +39,14 @@ def safe_extract_zip(zip_bytes: bytes, dest: Path) -> None:
     """
     dest_resolved = dest.resolve()
     with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+        total_size = sum(m.file_size for m in zf.infolist())
+        if total_size > _MAX_UNCOMPRESSED_BYTES:
+            raise ConvsimError(
+                "ZIP_TOO_LARGE",
+                f"Archive expands to {total_size // (1024 * 1024)} MB, "
+                f"exceeding the {_MAX_UNCOMPRESSED_BYTES // (1024 * 1024)} MB limit.",
+                status_code=422,
+            )
         for member in zf.infolist():
             name = member.filename.replace("\\", "/")
             parts = [p for p in name.split("/") if p]
@@ -116,7 +127,8 @@ def _install_from_dir(
             f"Pack validation failed: {'; '.join(errors)}",
             status_code=422,
         )
-    assert manifest is not None
+    if manifest is None:
+        raise ConvsimError("PACK_INVALID", "Pack manifest could not be loaded.", status_code=422)
 
     # Safety: ensure the computed install path stays within packs_base_dir.
     safe_name = manifest.pack_id.replace("/", "_").replace("\\", "_")

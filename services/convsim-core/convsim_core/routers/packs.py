@@ -19,6 +19,8 @@ from convsim_core.storage.repositories.pack_repo import list_packs
 
 router = APIRouter(prefix="/api/packs", tags=["packs"])
 
+_MAX_UPLOAD_BYTES = 100 * 1024 * 1024  # 100 MB
+
 
 class _FolderImportBody(BaseModel):
     path: str
@@ -49,6 +51,12 @@ async def import_pack_from_zip(
     db = request.app.state.db
 
     zip_bytes = await file.read()
+    if len(zip_bytes) > _MAX_UPLOAD_BYTES:
+        raise ConvsimError(
+            "FILE_TOO_LARGE",
+            f"Uploaded file exceeds the {_MAX_UPLOAD_BYTES // (1024 * 1024)} MB limit.",
+            status_code=413,
+        )
     packs_dir = Path(config.packs_dir)
     packs_dir.mkdir(parents=True, exist_ok=True)
 
@@ -92,6 +100,11 @@ async def validate_pack(
 ) -> ValidationResult:
     """Validate a zip pack without installing it. Returns a list of validation errors."""
     zip_bytes = await file.read()
+    if len(zip_bytes) > _MAX_UPLOAD_BYTES:
+        return ValidationResult(
+            valid=False,
+            errors=[f"Uploaded file exceeds the {_MAX_UPLOAD_BYTES // (1024 * 1024)} MB limit."],
+        )
 
     if not zipfile.is_zipfile(io.BytesIO(zip_bytes)):
         return ValidationResult(valid=False, errors=["Not a valid zip archive"])

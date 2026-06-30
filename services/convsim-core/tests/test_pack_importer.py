@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+import convsim_core.packs.importer as _importer_mod
 from convsim_core.errors import ConvsimError
 from convsim_core.packs.importer import (
     PackConflictError,
@@ -64,6 +65,18 @@ def test_zip_symlink_external_attr_rejected(tmp_path):
     dest.mkdir()
     exc = pytest.raises(ConvsimError, safe_extract_zip, buf.getvalue(), dest)
     assert exc.value.code == "ZIP_SLIP"
+
+
+def test_zip_bomb_rejected(tmp_path, monkeypatch):
+    """Archives whose total uncompressed size exceeds the limit must be rejected."""
+    monkeypatch.setattr(_importer_mod, "_MAX_UNCOMPRESSED_BYTES", 1024)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("pack/bigfile.bin", b"A" * 2048)
+    dest = tmp_path / "out"
+    dest.mkdir()
+    exc = pytest.raises(ConvsimError, safe_extract_zip, buf.getvalue(), dest)
+    assert exc.value.code == "ZIP_TOO_LARGE"
 
 
 def test_valid_zip_extracts_normally(tmp_path):

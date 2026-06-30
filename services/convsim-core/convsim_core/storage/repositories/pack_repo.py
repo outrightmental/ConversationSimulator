@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 """Database operations for packs, scenarios, and asset_index."""
+import json
 import sqlite3
 from typing import Optional
 
@@ -31,8 +32,8 @@ def insert_pack(
     """Insert a pack record. Returns the new pack DB id. Does not commit."""
     cursor = conn.execute(
         """
-        INSERT INTO packs (slug, name, version, description, author, license, source_path)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO packs (slug, name, version, description, author, license, source_path, tags_json)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             manifest.pack_id,
@@ -42,6 +43,7 @@ def insert_pack(
             manifest.author,
             manifest.license,
             source_path,
+            json.dumps(manifest.tags) if manifest.tags else None,
         ),
     )
     return cursor.lastrowid  # type: ignore[return-value]

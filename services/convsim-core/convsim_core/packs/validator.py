@@ -49,7 +49,8 @@ def validate_pack_dir(pack_dir: Path) -> tuple[Optional[PackManifest], list[str]
     if manifest_errors:
         return None, manifest_errors
 
-    assert manifest is not None
+    if manifest is None:
+        return None, ["Internal error: manifest is None after successful load"]
     pack_dir_resolved = pack_dir.resolve()
 
     # Content rating must be in the permitted set.
