@@ -299,8 +299,6 @@ def test_actual_registry_has_all_required_tiers(registry_schema):
 
 def test_actual_registry_no_model_weights():
     """No binary model weights are included in the repository."""
-    import mimetypes
-
     registry_dir = _REGISTRY_PATH.parent
     for path in registry_dir.rglob("*"):
         if path.is_file():
