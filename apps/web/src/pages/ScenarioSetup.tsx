@@ -374,7 +374,8 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
                   step={1}
                   onChange={(e) => {
                     const v = e.target.value;
-                    setField('seed', v === '' ? null : parseInt(v, 10));
+                    const parsed = parseInt(v, 10);
+                    setField('seed', v === '' || isNaN(parsed) ? null : parsed);
                   }}
                   aria-label="Variation seed value"
                   aria-invalid={!!validationErrorMap['seed']}

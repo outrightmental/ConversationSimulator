@@ -154,6 +154,23 @@ describe('validateSetup', () => {
     );
     expect(result.valid).toBe(true);
   });
+
+  it('passes when seed is 0 (lower bound)', () => {
+    const result = validateSetup({ ...validForm, seed: 0 }, runtimeReady, false);
+    expect(result.valid).toBe(true);
+  });
+
+  it('fails when seed is NaN', () => {
+    const result = validateSetup({ ...validForm, seed: NaN }, runtimeReady, false);
+    expect(result.valid).toBe(false);
+    expect(result.errors.find((e) => e.field === 'seed')).toBeDefined();
+  });
+
+  it('fails when seed is a non-integer float', () => {
+    const result = validateSetup({ ...validForm, seed: 1.5 }, runtimeReady, false);
+    expect(result.valid).toBe(false);
+    expect(result.errors.find((e) => e.field === 'seed')).toBeDefined();
+  });
 });
 
 describe('randomSeed', () => {
