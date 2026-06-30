@@ -1,19 +1,15 @@
 {
   "name": "conversation-simulator",
-  "version": "0.1.0",
   "private": true,
-  "license": "Apache-2.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "pnpm --parallel -r dev",
-    "build": "pnpm -r build",
-    "test": "pnpm -r test",
-    "lint": "eslint . --ext ts,tsx"
+    "setup": "./scripts/setup.sh",
+    "dev": "./scripts/dev.sh"
   },
-  "devDependencies": {
-    "@typescript-eslint/eslint-plugin": "^8.0.0",
-    "@typescript-eslint/parser": "^8.0.0",
-    "eslint": "^9.0.0",
-    "prettier": "^3.0.0",
-    "typescript": "^5.5.0"
+  "engines": {
+    "node": ">=18"
   }
 }
