@@ -52,6 +52,7 @@ export interface RawNpc {
   archetype: string;
   fictional: true;
   age_band: 'adult';
+  portrait?: string;
   public_persona: { occupation: string; speaking_style: string; demeanor: string };
   private_persona: Record<string, unknown>;
   [key: string]: unknown;
@@ -85,6 +86,8 @@ export interface RawScene {
   scene_id: string;
   display_name: string;
   description: string;
+  background?: string;
+  ambient?: string;
   [key: string]: unknown;
 }
 

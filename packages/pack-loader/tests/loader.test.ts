@@ -262,6 +262,31 @@ private_persona: {}
       expect(['INVALID_YAML', 'SCHEMA_VALIDATION']).toContain(code);
     }
   });
+
+  it('throws PATH_TRAVERSAL when an NPC portrait path escapes the pack root', () => {
+    const dir = makeTempPackDir({
+      npcYaml: VALID_NPC_YAML + 'portrait: ../../outside.png\n',
+    });
+    expect(() => loadPack(dir)).toThrowError(PackLoaderError);
+    try {
+      loadPack(dir);
+    } catch (e) {
+      expect((e as PackLoaderError).code).toBe('PATH_TRAVERSAL');
+    }
+  });
+
+  it('throws PATH_TRAVERSAL when a scene background path escapes the pack root', () => {
+    const dir = makeTempPackDir({
+      sceneYaml: VALID_SCENE_YAML + 'background: ../../outside.png\n',
+      scenarioYamls: { 'scenario_with_scene.yaml': VALID_SCENARIO_WITH_SCENE_YAML },
+    });
+    expect(() => loadPack(dir)).toThrowError(PackLoaderError);
+    try {
+      loadPack(dir);
+    } catch (e) {
+      expect((e as PackLoaderError).code).toBe('PATH_TRAVERSAL');
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

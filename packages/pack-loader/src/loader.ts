@@ -76,6 +76,9 @@ export function loadPack(packDir: string, kind: PackRootKind = 'local-dev'): Loa
     const npcAbsPath = resolveRef(scenarioDir, normalPackDir, data.npc.ref);
     if (!npcs.has(npcAbsPath)) {
       const npc = parseAndValidate<RawNpc>(readPackFile(npcAbsPath), 'npc', npcAbsPath);
+      if (npc.portrait !== undefined) {
+        resolveRef(normalPackDir, normalPackDir, npc.portrait);
+      }
       npcs.set(npcAbsPath, npc);
     }
 
@@ -95,6 +98,9 @@ export function loadPack(packDir: string, kind: PackRootKind = 'local-dev'): Loa
       const sceneAbsPath = resolveRef(scenarioDir, normalPackDir, data.scene.ref);
       if (!scenes.has(sceneAbsPath)) {
         const scene = parseAndValidate<RawScene>(readPackFile(sceneAbsPath), 'scene', sceneAbsPath);
+        if (scene.background !== undefined) {
+          resolveRef(normalPackDir, normalPackDir, scene.background);
+        }
         scenes.set(sceneAbsPath, scene);
       }
     }
