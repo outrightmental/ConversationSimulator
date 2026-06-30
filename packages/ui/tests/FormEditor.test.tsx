@@ -412,6 +412,16 @@ describe('FormEditor — initial error state', () => {
     const badges = document.querySelectorAll('[aria-label*="validation errors"]');
     expect(badges.length).toBeGreaterThan(0);
   });
+
+  it('populates form fields on initial load even when YAML has schema errors', () => {
+    // fictional: false is invalid, but name and author are perfectly valid.
+    // The form should show those valid fields rather than blank placeholders.
+    const invalidYaml =
+      'schema_version: "1.0"\nfictional: false\nid: my-pack\nname: "Real Pack Name"\nversion: "1.0.0"\ndescription: "x"\nauthor: "Jane Doe"\nlicense: "MIT"';
+    render(<FormEditor fileType="manifest" initialYaml={invalidYaml} />);
+    expect(screen.getByLabelText('Pack name')).toHaveValue('Real Pack Name');
+    expect(screen.getByLabelText('Author')).toHaveValue('Jane Doe');
+  });
 });
 
 // ---------------------------------------------------------------------------

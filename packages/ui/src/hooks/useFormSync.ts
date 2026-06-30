@@ -35,12 +35,26 @@ export interface FormSyncState {
   getField: (path: string) => unknown;
 }
 
+/**
+ * Extract form values from a YAML string.
+ * On schema validation failure, falls back to the raw parsed object so that
+ * fields unrelated to the error remain visible in the form (same behaviour as
+ * the YAML-pane-edit path in setYaml).
+ */
+function extractFormValues(
+  fileType: PackFileType,
+  yamlStr: string,
+): Record<string, unknown> {
+  const result = parseByType(fileType, yamlStr);
+  if (result.ok) return result.data as Record<string, unknown>;
+  return parseYamlToObject(yamlStr) ?? {};
+}
+
 export function useFormSync(fileType: PackFileType, initialYaml: string): FormSyncState {
   const [yaml, setYamlInternal] = useState(initialYaml);
-  const [formValues, setFormValues] = useState<Record<string, unknown>>(() => {
-    const result = parseByType(fileType, initialYaml);
-    return result.ok ? (result.data as Record<string, unknown>) : {};
-  });
+  const [formValues, setFormValues] = useState<Record<string, unknown>>(() =>
+    extractFormValues(fileType, initialYaml),
+  );
   const [errors, setErrors] = useState<FieldError[]>(() => {
     const result = parseByType(fileType, initialYaml);
     return result.ok ? [] : result.errors;
@@ -58,7 +72,7 @@ export function useFormSync(fileType: PackFileType, initialYaml: string): FormSy
     }
     const result = parseByType(fileType, initialYaml);
     setYamlInternal(initialYaml);
-    setFormValues(result.ok ? (result.data as Record<string, unknown>) : {});
+    setFormValues(extractFormValues(fileType, initialYaml));
     setErrors(result.ok ? [] : result.errors);
     setActiveTab('form');
     // eslint-disable-next-line react-hooks/exhaustive-deps
