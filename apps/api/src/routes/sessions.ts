@@ -26,7 +26,8 @@ type Action = 'start' | 'turn' | 'end' | 'debrief';
 
 // Returns true when the action is a legal next step from the given state.
 function canTransition(state: SessionState, action: Action): boolean {
-  if (state === 'Ended' || state === 'Error') return false;
+  if (state === 'Ended') return false;
+  if (state === 'Error') return action === 'end';
   if (action === 'end') return true;
   if (action === 'start') return state === 'NotStarted';
   if (action === 'turn') return state === 'PlayerTurnListening';

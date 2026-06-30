@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { buildApp } from '../index.js';
-import { resetDb } from '../db.js';
+import { resetDb, getDb } from '../db.js';
 import type { FastifyInstance } from 'fastify';
 import type {
   SessionCreateRequest,
@@ -291,6 +291,7 @@ describe('POST /api/sessions/:id/start', () => {
     const res = await app.inject({ method: 'POST', url: `/api/sessions/${session_id}/start` });
     expect(res.statusCode).toBe(409);
     expect(res.json().code).toBe('INVALID_TRANSITION');
+    expect(res.json().current_state).toBe('PlayerTurnListening');
   });
 
   it('returns 404 for unknown session', async () => {
@@ -341,6 +342,7 @@ describe('POST /api/sessions/:id/turn', () => {
     });
     expect(res.statusCode).toBe(409);
     expect(res.json().code).toBe('INVALID_TRANSITION');
+    expect(res.json().current_state).toBe('NotStarted');
   });
 
   it('rejects turn submission from Ended state with 409', async () => {
@@ -354,6 +356,7 @@ describe('POST /api/sessions/:id/turn', () => {
     });
     expect(res.statusCode).toBe(409);
     expect(res.json().code).toBe('INVALID_TRANSITION');
+    expect(res.json().current_state).toBe('Ended');
   });
 
   it('returns 400 for missing turn content', async () => {
@@ -423,6 +426,7 @@ describe('POST /api/sessions/:id/end', () => {
     const res = await app.inject({ method: 'POST', url: `/api/sessions/${session_id}/end` });
     expect(res.statusCode).toBe(409);
     expect(res.json().code).toBe('INVALID_TRANSITION');
+    expect(res.json().current_state).toBe('Ended');
   });
 
   it('returns 404 for unknown session', async () => {
@@ -455,6 +459,8 @@ describe('POST /api/sessions/:id/debrief', () => {
 
     const res = await app.inject({ method: 'POST', url: `/api/sessions/${session_id}/debrief` });
     expect(res.statusCode).toBe(409);
+    expect(res.json().code).toBe('INVALID_TRANSITION');
+    expect(res.json().current_state).toBe('Ended');
   });
 
   it('returns 404 for unknown session', async () => {
@@ -517,6 +523,32 @@ describe('state machine transitions', () => {
       payload: { content: 'skip the start step' },
     });
     expect(res.statusCode).toBe(409);
+  });
+
+  it('allows end from Error state so broken sessions can be exited', async () => {
+    const { session_id } = (
+      await app.inject({ method: 'POST', url: '/api/sessions', payload: validRequest })
+    ).json<SessionCreateResponse>();
+
+    // Force session into Error state directly (no API path sets this yet).
+    getDb().prepare("UPDATE sessions SET state = 'Error' WHERE session_id = ?").run(session_id);
+
+    const endRes = await app.inject({ method: 'POST', url: `/api/sessions/${session_id}/end` });
+    expect(endRes.statusCode).toBe(200);
+    expect(endRes.json<SessionEndResponse>().state).toBe('Ended');
+    expect(endRes.json<SessionEndResponse>().ending_type).toBe('player_exit');
+  });
+
+  it('rejects start from Error state with 409', async () => {
+    const { session_id } = (
+      await app.inject({ method: 'POST', url: '/api/sessions', payload: validRequest })
+    ).json<SessionCreateResponse>();
+    getDb().prepare("UPDATE sessions SET state = 'Error' WHERE session_id = ?").run(session_id);
+
+    const res = await app.inject({ method: 'POST', url: `/api/sessions/${session_id}/start` });
+    expect(res.statusCode).toBe(409);
+    expect(res.json().code).toBe('INVALID_TRANSITION');
+    expect(res.json().current_state).toBe('Error');
   });
 
   it('does not mutate state on a rejected transition', async () => {
