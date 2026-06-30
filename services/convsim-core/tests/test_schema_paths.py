@@ -21,6 +21,7 @@ from convsim_core.schema_paths import (
 class TestSchemaNames:
     def test_expected_schemas_present(self):
         expected = {
+            "model-registry.schema.json",
             "pack.schema.json",
             "scenario.schema.json",
             "npc.schema.json",
