@@ -88,3 +88,4 @@ Write-Host ""
 Write-Host "NOTE: No model files are downloaded by this script."
 Write-Host "      The app will prompt you to install a model on first run."
 Write-Host ""
+exit 0

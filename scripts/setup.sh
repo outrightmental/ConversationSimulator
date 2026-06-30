@@ -105,3 +105,4 @@ echo ""
 echo "NOTE: No model files are downloaded by this script."
 echo "      The app will prompt you to install a model on first run."
 echo ""
+exit 0
