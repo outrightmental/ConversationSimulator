@@ -248,13 +248,15 @@ export async function sessionRoutes(app: FastifyInstance) {
       }
 
       // Stub: skip loading states and emit an NPC opening placeholder.
-      db.prepare("UPDATE sessions SET state = 'PlayerTurnListening' WHERE session_id = ?").run(
-        req.params.session_id,
-      );
-
-      const openingRow = insertEvent(req.params.session_id, 'npc_opening', {
-        content: 'Hello! I am ready to begin our conversation. Please go ahead.',
-      });
+      // Wrapped in a transaction so the state update and event insert are atomic.
+      const openingRow = db.transaction(() => {
+        db.prepare("UPDATE sessions SET state = 'PlayerTurnListening' WHERE session_id = ?").run(
+          req.params.session_id,
+        );
+        return insertEvent(req.params.session_id, 'npc_opening', {
+          content: 'Hello! I am ready to begin our conversation. Please go ahead.',
+        });
+      })();
 
       return {
         session_id: req.params.session_id,
@@ -298,14 +300,17 @@ export async function sessionRoutes(app: FastifyInstance) {
         );
       }
 
-      const playerRow = insertEvent(req.params.session_id, 'player_turn', {
-        content: req.body.content,
-      });
-
-      // Stub NPC response: immediate placeholder reply.
-      const npcRow = insertEvent(req.params.session_id, 'npc_turn', {
-        content: 'Thank you for your response. Please continue.',
-      });
+      // Both event inserts are atomic so a partial failure doesn't leave an
+      // orphaned player_turn without its corresponding npc_turn.
+      const [playerRow, npcRow] = db.transaction(() => {
+        const player = insertEvent(req.params.session_id, 'player_turn', {
+          content: req.body.content,
+        });
+        const npc = insertEvent(req.params.session_id, 'npc_turn', {
+          content: 'Thank you for your response. Please continue.',
+        });
+        return [player, npc] as const;
+      })();
 
       return {
         session_id: req.params.session_id,
@@ -342,12 +347,12 @@ export async function sessionRoutes(app: FastifyInstance) {
       // fall back to player_exit when none is recorded.
       const endingType: EndingType = (row.ending_type as EndingType | null) ?? 'player_exit';
 
-      db.prepare("UPDATE sessions SET state = 'Ended', ending_type = ? WHERE session_id = ?").run(
-        endingType,
-        req.params.session_id,
-      );
-
-      insertEvent(req.params.session_id, 'session_ended', { ending_type: endingType });
+      db.transaction(() => {
+        db.prepare(
+          "UPDATE sessions SET state = 'Ended', ending_type = ? WHERE session_id = ?",
+        ).run(endingType, req.params.session_id);
+        insertEvent(req.params.session_id, 'session_ended', { ending_type: endingType });
+      })();
 
       return {
         session_id: req.params.session_id,
