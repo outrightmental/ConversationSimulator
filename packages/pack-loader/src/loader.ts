@@ -197,6 +197,8 @@ export interface LoadRootsResult {
 /**
  * Scan the configured pack roots and load every pack directory found.
  * Packs that fail validation are collected in `errors` and skipped.
+ * When the same pack_id appears in multiple roots, the pack with the highest
+ * semver version is selected.
  */
 export function loadPacksFromRoots(config: PackRootConfig): LoadRootsResult {
   const roots: Array<{ dir: string; kind: PackRootKind }> = [];
@@ -204,7 +206,7 @@ export function loadPacksFromRoots(config: PackRootConfig): LoadRootsResult {
   if (config.communityRoot) roots.push({ dir: config.communityRoot, kind: 'community' });
   if (config.localDevRoot) roots.push({ dir: config.localDevRoot, kind: 'local-dev' });
 
-  const packs: LoadedPack[] = [];
+  const loaded: LoadedPack[] = [];
   const errors: Array<{ dir: string; error: Error }> = [];
 
   for (const { dir, kind } of roots) {
@@ -218,14 +220,24 @@ export function loadPacksFromRoots(config: PackRootConfig): LoadRootsResult {
     }
     for (const packDir of packDirs) {
       try {
-        packs.push(loadPack(packDir, kind));
+        loaded.push(loadPack(packDir, kind));
       } catch (error) {
         errors.push({ dir: packDir, error: error as Error });
       }
     }
   }
 
-  return { packs, errors };
+  // Deduplicate: when the same pack_id appears across roots, keep the pack
+  // with the highest semver version so the latest compatible release wins.
+  const best = new Map<string, LoadedPack>();
+  for (const pack of loaded) {
+    const existing = best.get(pack.manifest.pack_id);
+    if (!existing || compareSemver(pack.manifest.version, existing.manifest.version) > 0) {
+      best.set(pack.manifest.pack_id, pack);
+    }
+  }
+
+  return { packs: [...best.values()], errors };
 }
 
 // ---------------------------------------------------------------------------
@@ -240,4 +252,18 @@ function discoverYamlFiles(dir: string): string[] {
   } catch {
     return [];
   }
+}
+
+/** Compare two semver strings. Returns positive if a > b, negative if a < b, 0 if equal. */
+function compareSemver(a: string, b: string): number {
+  const parse = (v: string): [number, number, number] => {
+    const parts = v
+      .replace(/[^0-9.]/g, '')
+      .split('.')
+      .map((n) => parseInt(n, 10) || 0);
+    return [parts[0] ?? 0, parts[1] ?? 0, parts[2] ?? 0];
+  };
+  const [aMaj, aMin, aPat] = parse(a);
+  const [bMaj, bMin, bPat] = parse(b);
+  return aMaj !== bMaj ? aMaj - bMaj : aMin !== bMin ? aMin - bMin : aPat - bPat;
 }
