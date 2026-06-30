@@ -42,11 +42,12 @@ export default function VoiceInput({ onSubmit, disabled = false }: VoiceInputPro
   const { permission, isRecording, recordingSeconds, error, requestPermission, startRecording, stopRecording } =
     useMicCapture(handleAudioReady)
 
-  // Global Space hotkey for PTT — skips when any interactive element is focused.
+  // Global Space hotkey for PTT — skips when any interactive element is focused or mic is unavailable.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.code !== 'Space' || e.repeat) return
       if (isInteractiveElement(document.activeElement)) return
+      if (permission !== 'granted') return
       e.preventDefault()
       startRecording()
     }
@@ -54,6 +55,7 @@ export default function VoiceInput({ onSubmit, disabled = false }: VoiceInputPro
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.code !== 'Space') return
       if (isInteractiveElement(document.activeElement)) return
+      if (permission !== 'granted') return
       stopRecording()
     }
 
@@ -63,7 +65,7 @@ export default function VoiceInput({ onSubmit, disabled = false }: VoiceInputPro
       document.removeEventListener('keydown', handleKeyDown)
       document.removeEventListener('keyup', handleKeyUp)
     }
-  }, [startRecording, stopRecording])
+  }, [startRecording, stopRecording, permission])
 
   const handleTextSubmit = (e: React.FormEvent) => {
     e.preventDefault()

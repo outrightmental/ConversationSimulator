@@ -97,6 +97,30 @@ describe('VoiceInput — global Space hotkey focus guard', () => {
 
     expect(stopRecording).not.toHaveBeenCalled()
   })
+
+  it('does not call startRecording on Space keydown when permission is not granted', () => {
+    const startRecording = vi.fn()
+    vi.mocked(useMicCapture).mockReturnValue(makeMicState({ permission: 'denied', startRecording }))
+
+    render(<VoiceInput />)
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+
+    fireEvent.keyDown(document, { code: 'Space' })
+
+    expect(startRecording).not.toHaveBeenCalled()
+  })
+
+  it('does not call stopRecording on Space keyup when permission is not granted', () => {
+    const stopRecording = vi.fn()
+    vi.mocked(useMicCapture).mockReturnValue(makeMicState({ permission: 'denied', stopRecording }))
+
+    render(<VoiceInput />)
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+
+    fireEvent.keyUp(document, { code: 'Space' })
+
+    expect(stopRecording).not.toHaveBeenCalled()
+  })
 })
 
 describe('VoiceInput — text submission', () => {
