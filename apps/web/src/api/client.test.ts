@@ -88,3 +88,48 @@ describe('api.createSession error handling', () => {
     ).rejects.toThrow('Internal server error (plain text)');
   });
 });
+
+describe('api.getScenario error handling', () => {
+  it('throws with the human-readable message field from a Fastify JSON error', async () => {
+    mockFetch(404, {
+      statusCode: 404,
+      error: 'Not Found',
+      message: "Scenario 'nonexistent' not found",
+    });
+
+    await expect(api.getScenario('nonexistent')).rejects.toThrow(
+      "Scenario 'nonexistent' not found",
+    );
+  });
+
+  it('does not throw raw JSON string as the error message', async () => {
+    mockFetch(404, {
+      statusCode: 404,
+      error: 'Not Found',
+      message: "Scenario 'nonexistent' not found",
+    });
+
+    let thrownMessage = '';
+    try {
+      await api.getScenario('nonexistent');
+    } catch (e) {
+      thrownMessage = e instanceof Error ? e.message : String(e);
+    }
+
+    expect(thrownMessage).not.toContain('"statusCode"');
+  });
+
+  it('falls back to status text when response is not JSON', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        statusText: 'Internal Server Error',
+        text: () => Promise.resolve(''),
+      }),
+    );
+
+    await expect(api.getScenario('some_id')).rejects.toThrow('500 Internal Server Error');
+  });
+});

@@ -16,7 +16,15 @@ export interface HealthResponse {
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`)
   if (!res.ok) {
-    throw new Error(`${res.status} ${res.statusText}`)
+    const text = await res.text()
+    let message = text || `${res.status} ${res.statusText}`
+    try {
+      const json = JSON.parse(text) as { message?: string }
+      if (json.message) message = json.message
+    } catch {
+      // text is not JSON; use as-is
+    }
+    throw new Error(message)
   }
   return res.json() as Promise<T>
 }
