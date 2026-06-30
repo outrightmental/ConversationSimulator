@@ -165,6 +165,25 @@ describe('VoiceInput — global Space hotkey focus guard', () => {
 
     expect(stopRecording).not.toHaveBeenCalled()
   })
+
+  it('does not call startRecording on Space keydown while an anchor element is focused', () => {
+    const startRecording = vi.fn()
+    vi.mocked(useMicCapture).mockReturnValue(makeMicState({ startRecording }))
+
+    render(<VoiceInput />)
+
+    const link = document.createElement('a')
+    link.href = '#'
+    link.tabIndex = 0
+    document.body.appendChild(link)
+    link.focus()
+
+    fireEvent.keyDown(document, { code: 'Space' })
+
+    expect(startRecording).not.toHaveBeenCalled()
+
+    document.body.removeChild(link)
+  })
 })
 
 describe('VoiceInput — text submission', () => {

@@ -12,7 +12,7 @@ interface VoiceInputProps {
 function isInteractiveElement(el: Element | null): boolean {
   if (!el) return false
   const tag = el.tagName.toLowerCase()
-  return tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'button'
+  return tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'button' || tag === 'a'
 }
 
 export default function VoiceInput({ onSubmit, disabled = false }: VoiceInputProps) {
