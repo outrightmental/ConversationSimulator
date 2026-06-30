@@ -49,7 +49,7 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 async function postForm<T>(path: string, body: FormData): Promise<T> {
   const res = await fetch(`${BASE}${path}`, { method: 'POST', body })
   if (!res.ok) {
-    throw new Error(`${res.status} ${res.statusText}`)
+    throw new Error(await parseErrorMessage(res))
   }
   return res.json() as Promise<T>
 }

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, act } from '@testing-library/react'
 
 vi.mock('../hooks/useMicCapture', () => ({
   useMicCapture: vi.fn(),
@@ -14,6 +14,7 @@ vi.mock('../api/client', () => ({
 }))
 
 import { useMicCapture } from '../hooks/useMicCapture'
+import { apiClient } from '../api/client'
 import VoiceInput from '../components/VoiceInput'
 import type { MicPermission } from '../hooks/useMicCapture'
 
@@ -32,6 +33,7 @@ function makeMicState(overrides: Partial<ReturnType<typeof useMicCapture>> = {})
 
 beforeEach(() => {
   vi.mocked(useMicCapture).mockReturnValue(makeMicState())
+  vi.mocked(apiClient.uploadAudio).mockResolvedValue({ transcript: null, status: 'received' })
 })
 
 describe('VoiceInput — global Space hotkey focus guard', () => {
@@ -160,5 +162,60 @@ describe('VoiceInput — hotkey hint', () => {
     render(<VoiceInput />)
 
     expect(screen.queryByText(/max 60s/i)).not.toBeInTheDocument()
+  })
+})
+
+describe('VoiceInput — audio upload flow', () => {
+  it('calls uploadAudio with the blob when onAudioReady fires', async () => {
+    let capturedOnAudioReady: ((blob: Blob) => void) | undefined
+    vi.mocked(useMicCapture).mockImplementation((cb) => {
+      capturedOnAudioReady = cb
+      return makeMicState()
+    })
+
+    render(<VoiceInput />)
+
+    const blob = new Blob(['audio'], { type: 'audio/webm' })
+    await act(async () => {
+      capturedOnAudioReady?.(blob)
+    })
+
+    expect(vi.mocked(apiClient.uploadAudio)).toHaveBeenCalledOnce()
+    expect(vi.mocked(apiClient.uploadAudio)).toHaveBeenCalledWith(blob)
+  })
+
+  it('calls onSubmit with the transcript when uploadAudio returns one', async () => {
+    const onSubmit = vi.fn()
+    let capturedOnAudioReady: ((blob: Blob) => void) | undefined
+    vi.mocked(useMicCapture).mockImplementation((cb) => {
+      capturedOnAudioReady = cb
+      return makeMicState()
+    })
+    vi.mocked(apiClient.uploadAudio).mockResolvedValueOnce({ transcript: 'hello world', status: 'received' })
+
+    render(<VoiceInput onSubmit={onSubmit} />)
+
+    await act(async () => {
+      capturedOnAudioReady?.(new Blob(['audio'], { type: 'audio/webm' }))
+    })
+
+    expect(onSubmit).toHaveBeenCalledWith('hello world')
+  })
+
+  it('does not call onSubmit when transcript is null', async () => {
+    const onSubmit = vi.fn()
+    let capturedOnAudioReady: ((blob: Blob) => void) | undefined
+    vi.mocked(useMicCapture).mockImplementation((cb) => {
+      capturedOnAudioReady = cb
+      return makeMicState()
+    })
+
+    render(<VoiceInput onSubmit={onSubmit} />)
+
+    await act(async () => {
+      capturedOnAudioReady?.(new Blob(['audio'], { type: 'audio/webm' }))
+    })
+
+    expect(onSubmit).not.toHaveBeenCalled()
   })
 })
