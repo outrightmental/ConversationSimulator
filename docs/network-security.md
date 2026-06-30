@@ -63,7 +63,7 @@ from convsim_core.network_policy import NetworkMode
 policy.require_network(NetworkMode.PLAY)
 ```
 
-When `policy.LOCAL_MODE = True` (set automatically in test environments),
+When `policy.LOCAL_MODE = True` (set explicitly in each test that needs it),
 `require_network(NetworkMode.PLAY)` raises `NetworkBlockedError`, catching
 any accidental outbound calls early.
 
