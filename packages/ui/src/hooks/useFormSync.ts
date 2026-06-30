@@ -34,20 +34,16 @@ export interface FormSyncState {
   getField: (path: string) => unknown;
 }
 
-function parseInitialValues(
-  fileType: PackFileType,
-  initialYaml: string,
-): Record<string, unknown> {
-  const result = parseByType(fileType, initialYaml);
-  return result.ok ? (result.data as Record<string, unknown>) : {};
-}
-
 export function useFormSync(fileType: PackFileType, initialYaml: string): FormSyncState {
   const [yaml, setYamlInternal] = useState(initialYaml);
-  const [formValues, setFormValues] = useState<Record<string, unknown>>(() =>
-    parseInitialValues(fileType, initialYaml),
-  );
-  const [errors, setErrors] = useState<FieldError[]>([]);
+  const [formValues, setFormValues] = useState<Record<string, unknown>>(() => {
+    const result = parseByType(fileType, initialYaml);
+    return result.ok ? (result.data as Record<string, unknown>) : {};
+  });
+  const [errors, setErrors] = useState<FieldError[]>(() => {
+    const result = parseByType(fileType, initialYaml);
+    return result.ok ? [] : result.errors;
+  });
   const [activeTab, setActiveTab] = useState<ActiveTab>('form');
 
   const updateField = useCallback(

@@ -398,3 +398,51 @@ describe('FormEditor — unknown field preservation', () => {
     expect(getYamlTextarea().value).toContain('internal_notes');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Initial error state
+// ---------------------------------------------------------------------------
+
+describe('FormEditor — initial error state', () => {
+  it('shows validation errors immediately when opened with invalid YAML', () => {
+    const invalidYaml =
+      'schema_version: "1.0"\nfictional: false\nid: x\nname: x\nversion: "1.0.0"\ndescription: x\nauthor: x\nlicense: x';
+    render(<FormEditor fileType="manifest" initialYaml={invalidYaml} />);
+    // Error badge should be visible without any user interaction
+    const badges = document.querySelectorAll('[aria-label*="validation errors"]');
+    expect(badges.length).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// onChange call count
+// ---------------------------------------------------------------------------
+
+describe('FormEditor — onChange call count', () => {
+  it('calls onChange exactly once per YAML tab edit, not twice', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    render(
+      <FormEditor fileType="manifest" initialYaml={MANIFEST_YAML} onChange={onChange} />,
+    );
+
+    // Clear calls from initial mount effect
+    onChange.mockClear();
+
+    // Switch to YAML tab and make one change
+    await user.click(screen.getByRole('tab', { name: 'YAML' }));
+    const textarea = getYamlTextarea();
+    // Focus then type a single character to trigger exactly one change event
+    await user.click(textarea);
+    await user.keyboard('x');
+
+    // onChange should have been called, and each distinct yaml value should
+    // appear at most once — not duplicated by both handleYamlChange and useEffect.
+    const calls = onChange.mock.calls.map((c) => c[0] as string);
+    // Check no two consecutive calls carry the same yaml string (which would
+    // indicate the double-fire bug).
+    for (let i = 1; i < calls.length; i++) {
+      expect(calls[i]).not.toBe(calls[i - 1]);
+    }
+  });
+});

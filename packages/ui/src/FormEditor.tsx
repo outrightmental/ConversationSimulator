@@ -45,17 +45,10 @@ export function FormEditor({ fileType, initialYaml, onChange, className }: FormE
 
   function handleFormChange(path: string, value: unknown) {
     updateField(path, value);
-    if (onChange) {
-      // YAML will be updated inside updateField; we need the next YAML value.
-      // The hook updates yaml synchronously within the state setter, so we
-      // call onChange after state has been enqueued. The parent will see the
-      // latest value on the next render.
-    }
   }
 
   function handleYamlChange(newYaml: string) {
     setYaml(newYaml);
-    onChange?.(newYaml);
   }
 
   // Notify parent when form field changes update YAML.
