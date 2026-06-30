@@ -9,6 +9,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 _DEFAULT_DATA_DIR = str(Path.home() / ".convsim" / "data")
 _DEFAULT_LOG_DIR = str(Path.home() / ".convsim" / "logs")
 _DEFAULT_DB_DIR = str(Path.home() / ".convsim" / "db")
+_DEFAULT_PACKS_DIR = str(Path.home() / ".convsim" / "packs")
 
 
 class ServiceConfig(BaseSettings):
@@ -30,6 +31,7 @@ class ServiceConfig(BaseSettings):
     data_dir: str = _DEFAULT_DATA_DIR
     log_dir: str = _DEFAULT_LOG_DIR
     db_dir: str = _DEFAULT_DB_DIR
+    packs_dir: str = _DEFAULT_PACKS_DIR
     lan_access_enabled: bool = False
     # Set CONVSIM_DEV_DEBUG=true to enable DEBUG-level logging.
     # Even in debug mode callers must use convsim_core.redaction helpers

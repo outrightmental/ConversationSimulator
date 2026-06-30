@@ -19,6 +19,7 @@ CREATE TABLE packs (
     source_path TEXT,
     installed_at TEXT   NOT NULL DEFAULT (datetime('now'))
 );
+-- license and tags added in 0002_extend_pack_assets
 
 CREATE TABLE scenarios (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -123,8 +124,19 @@ CREATE VIRTUAL TABLE pack_readme_fts USING fts5(
 );
 """
 
+_EXTEND_PACK_ASSETS_SQL = """
+ALTER TABLE packs ADD COLUMN license TEXT;
+ALTER TABLE packs ADD COLUMN tags_json TEXT;
+ALTER TABLE asset_index ADD COLUMN relative_path TEXT;
+ALTER TABLE asset_index ADD COLUMN media_type TEXT;
+ALTER TABLE asset_index ADD COLUMN license TEXT;
+ALTER TABLE asset_index ADD COLUMN pack_id INTEGER;
+ALTER TABLE asset_index ADD COLUMN scenario_id INTEGER;
+"""
+
 MIGRATIONS: list[tuple[str, str]] = [
     ("0001_initial_schema", _INITIAL_SCHEMA_SQL),
+    ("0002_extend_pack_assets", _EXTEND_PACK_ASSETS_SQL),
 ]
 
 
