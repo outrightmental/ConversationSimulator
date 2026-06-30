@@ -480,6 +480,22 @@ describe('POST /api/sessions/:id/debrief', () => {
     expect(body.summary.length).toBeGreaterThan(0);
   });
 
+  it('persists a debrief_generated event in session_events', async () => {
+    const { session_id } = (
+      await app.inject({ method: 'POST', url: '/api/sessions', payload: validRequest })
+    ).json<SessionCreateResponse>();
+    getDb().prepare("UPDATE sessions SET state = 'DebriefReady' WHERE session_id = ?").run(session_id);
+
+    await app.inject({ method: 'POST', url: `/api/sessions/${session_id}/debrief` });
+
+    const events = getDb()
+      .prepare<[string], { event_type: string }>(
+        'SELECT event_type FROM session_events WHERE session_id = ? ORDER BY event_id',
+      )
+      .all(session_id);
+    expect(events.map((e) => e.event_type)).toContain('debrief_generated');
+  });
+
   it('returns 409 from NotStarted (not in DebriefReady)', async () => {
     const { session_id } = (
       await app.inject({ method: 'POST', url: '/api/sessions', payload: validRequest })

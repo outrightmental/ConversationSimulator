@@ -385,14 +385,19 @@ export async function sessionRoutes(app: FastifyInstance) {
         );
       }
 
-      db.prepare("UPDATE sessions SET state = 'Ended' WHERE session_id = ?").run(
-        req.params.session_id,
-      );
+      const summary = 'Stub debrief: the session has completed. Full analysis is not yet available.';
+
+      db.transaction(() => {
+        db.prepare("UPDATE sessions SET state = 'Ended' WHERE session_id = ?").run(
+          req.params.session_id,
+        );
+        insertEvent(req.params.session_id, 'debrief_generated', { summary });
+      })();
 
       return {
         session_id: req.params.session_id,
         state: 'Ended',
-        summary: 'Stub debrief: the session has completed. Full analysis is not yet available.',
+        summary,
       };
     },
   );
