@@ -106,6 +106,10 @@ importers:
         version: 5.6.3
 
   packages/ui:
+    dependencies:
+      '@convsim/scenario-schema':
+        specifier: workspace:*
+        version: link:../scenario-schema
     devDependencies:
       '@testing-library/jest-dom':
         specifier: ^6.6.3

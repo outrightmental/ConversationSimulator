@@ -1,4 +1,3 @@
-import React from 'react';
 import type { FieldError } from '@convsim/scenario-schema';
 
 interface YamlPaneProps {

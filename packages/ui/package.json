@@ -11,6 +11,9 @@
     "build": "echo 'UI package built as source — no compile step needed for Vite consumers.'",
     "test": "vitest run"
   },
+  "dependencies": {
+    "@convsim/scenario-schema": "workspace:*"
+  },
   "peerDependencies": {
     "react": "^18.3.1",
     "react-dom": "^18.3.1"

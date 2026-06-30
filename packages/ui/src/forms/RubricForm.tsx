@@ -1,4 +1,3 @@
-import React from 'react';
 import type { FieldError } from '@convsim/scenario-schema';
 import { FieldWrapper, errorFor, str, num } from './shared.js';
 
