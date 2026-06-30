@@ -76,7 +76,7 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
         }));
       },
       (err: unknown) => {
-        if (!cancelled) setLoadError(String(err));
+        if (!cancelled) setLoadError(err instanceof Error ? err.message : String(err));
       },
     );
 
@@ -119,7 +119,7 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
         });
         onSessionCreated(session);
       } catch (err: unknown) {
-        setSubmitError(String(err));
+        setSubmitError(err instanceof Error ? err.message : String(err));
       } finally {
         setSubmitting(false);
       }
