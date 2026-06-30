@@ -42,6 +42,7 @@ class LlamaCppConfig(BaseSettings):
     threads: int | None = None
     gpu_layers: int | None = None
     timeout: float = 30.0
+    json_schema_enabled: bool = True
 
 
 @register("llama_cpp")
@@ -64,6 +65,7 @@ class LlamaCppRuntime(ChatRuntime):
         self._threads = cfg.threads
         self._gpu_layers = cfg.gpu_layers
         self._timeout = cfg.timeout
+        self._json_schema_enabled = cfg.json_schema_enabled
 
     @property
     def id(self) -> str:
@@ -77,7 +79,7 @@ class LlamaCppRuntime(ChatRuntime):
     def capabilities(self) -> RuntimeCapabilities:
         return RuntimeCapabilities(
             streaming=True,
-            json_schema=True,
+            json_schema=self._json_schema_enabled,
             grammar=False,
             tool_calling=False,
             embeddings=False,
@@ -135,7 +137,7 @@ class LlamaCppRuntime(ChatRuntime):
             "repeat_penalty": self._repeat_penalty,
         }
 
-        if request.json_schema is not None:
+        if self._json_schema_enabled and request.json_schema is not None:
             payload["response_format"] = {
                 "type": "json_schema",
                 "json_schema": {
@@ -206,7 +208,7 @@ class LlamaCppRuntime(ChatRuntime):
             ) from exc
 
         structured = None
-        if request.json_schema is not None and full_text:
+        if self._json_schema_enabled and request.json_schema is not None and full_text:
             try:
                 structured = json.loads(full_text)
             except json.JSONDecodeError:

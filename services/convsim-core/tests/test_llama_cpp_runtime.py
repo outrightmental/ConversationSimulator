@@ -539,3 +539,61 @@ def test_runtime_ids_remain_sorted():
     from convsim_core.runtime.registry import list_runtime_ids
     ids = list_runtime_ids()
     assert ids == sorted(ids)
+
+
+# ---------------------------------------------------------------------------
+# json_schema_enabled config flag
+# ---------------------------------------------------------------------------
+
+def test_runtime_capabilities_json_schema_disabled():
+    rt = LlamaCppRuntime(LlamaCppConfig(base_url="http://127.0.0.1:7356", json_schema_enabled=False))
+    assert rt.capabilities.json_schema is False
+
+
+def test_runtime_capabilities_json_schema_enabled_by_default(runtime):
+    assert runtime.capabilities.json_schema is True
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_omits_response_format_when_json_schema_disabled():
+    rt = LlamaCppRuntime(LlamaCppConfig(base_url="http://127.0.0.1:7356", json_schema_enabled=False))
+    lines = _sse_lines(_token_chunk('{"x": 1}'), _final_chunk())
+    stream = _MockStreamResponse(lines)
+    client = _mock_client(stream_response=stream)
+    request = ChatRequest(
+        messages=[ChatMessage(role="user", content="go")],
+        json_schema={"type": "object"},
+    )
+
+    final = None
+    with patch("convsim_core.runtime.llama_cpp.httpx.AsyncClient", return_value=client):
+        async for chunk in rt.chat_stream(request):
+            if isinstance(chunk, ChatFinal):
+                final = chunk
+
+    sent_payload = client.stream.call_args.kwargs["json"]
+    assert "response_format" not in sent_payload
+    assert final is not None
+    assert final.structured is None
+
+
+# ---------------------------------------------------------------------------
+# Config parameters forwarded in payload
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_chat_stream_sends_top_p_and_repeat_penalty_from_config():
+    cfg = LlamaCppConfig(base_url="http://127.0.0.1:7356", top_p=0.7, repeat_penalty=1.3)
+    rt = LlamaCppRuntime(cfg)
+    lines = _sse_lines(_token_chunk("ok"), _final_chunk())
+    stream = _MockStreamResponse(lines)
+    client = _mock_client(stream_response=stream)
+    request = ChatRequest(messages=[ChatMessage(role="user", content="hi")])
+
+    with patch("convsim_core.runtime.llama_cpp.httpx.AsyncClient", return_value=client):
+        async for _ in rt.chat_stream(request):
+            pass
+
+    sent_payload = client.stream.call_args.kwargs["json"]
+    assert sent_payload["top_p"] == 0.7
+    assert sent_payload["repeat_penalty"] == 1.3
