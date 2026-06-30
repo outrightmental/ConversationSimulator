@@ -10,11 +10,15 @@ machines on the network.
 | Service | Default address | Override env var |
 |---------|-----------------|------------------|
 | `convsim-ui` (Vite dev server) | `127.0.0.1:7354` | hardcoded (dev only) |
-| `convsim-api` (TypeScript/Fastify) | `127.0.0.1:7355` | `API_HOST` / `API_PORT` |
 | `convsim-core` (Python/FastAPI) | `127.0.0.1:7355` | `CONVSIM_HOST` / `CONVSIM_PORT` |
+| `convsim-api` (TypeScript/Fastify) ¹ | `127.0.0.1:7355` | `API_HOST` / `API_PORT` |
 | `convsim-llm` (llama-server sidecar) | `127.0.0.1:7356` | future |
 | `convsim-stt` (Whisper sidecar) | `127.0.0.1:7357` | future |
 | `convsim-tts` (Kokoro sidecar) | `127.0.0.1:7358` | future |
+
+¹ `convsim-api` (TypeScript) and `convsim-core` (Python) are alternative backends that
+both default to port 7355.  They are not run simultaneously — `convsim-api` is an interim
+implementation; `convsim-core` is the target architecture (see `docs/architecture.md`).
 
 All dev-server proxy targets point to `127.0.0.1` — see
 `apps/web/vite.config.ts`.
@@ -31,6 +35,9 @@ ValueError: Binding to 0.0.0.0 is not allowed in default mode.
 Set CONVSIM_LAN_ACCESS_ENABLED=true to enable LAN access
 and specify an explicit LAN IP address.
 ```
+
+The same error is raised for the IPv6 wildcard `::`.  The host name appears
+verbatim in the message, e.g. `Binding to :: is not allowed in default mode.`
 
 **TypeScript (`convsim-api`):**
 

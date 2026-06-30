@@ -92,6 +92,11 @@ def test_host_config_rejects_0_0_0_0():
         ServiceConfig(host="0.0.0.0", lan_access_enabled=False)
 
 
+def test_host_config_rejects_ipv6_wildcard():
+    with pytest.raises((ValueError, ValidationError)):
+        ServiceConfig(host="::", lan_access_enabled=False)
+
+
 def test_host_config_allows_localhost():
     config = ServiceConfig(host="127.0.0.1", lan_access_enabled=False)
     assert config.host == "127.0.0.1"
