@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: CC-BY-4.0
+# Scene descriptor — informs the renderer of visual context.
+# No schema validation applies to scene files in schema version 0.1.
+scene_id: meridian_conference_room
+display_name: "Meridian Systems — Conference Room B"
+background: assets/backgrounds/conference_room_placeholder.png
+description: >-
+  A small glass-walled conference room on the third floor of Meridian Systems'
+  downtown office. A round table with four chairs sits in the center. A
+  whiteboard covered in faded architectural diagrams is visible on the far wall.
+  Morning light filters through floor-to-ceiling windows overlooking a quiet
+  street below.
+ambient: quiet_office
