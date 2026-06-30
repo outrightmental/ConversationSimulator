@@ -171,6 +171,16 @@ class TestInitializeState:
         state = initialize_state(defs)
         assert state["trust"] == 20
 
+    def test_default_above_max_is_clamped_to_max(self):
+        defs = build_variable_defs({"trust": {"min": 0, "max": 50, "default": 75}})
+        state = initialize_state(defs)
+        assert state["trust"] == 50
+
+    def test_default_below_min_is_clamped_to_min(self):
+        defs = build_variable_defs({"trust": {"min": 10, "max": 100, "default": 5}})
+        state = initialize_state(defs)
+        assert state["trust"] == 10
+
 
 # ---------------------------------------------------------------------------
 # apply_state_delta — clamping

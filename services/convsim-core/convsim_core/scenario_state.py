@@ -108,8 +108,11 @@ def build_variable_defs(
 def initialize_state(
     variable_defs: Dict[str, ScenarioVariableDef],
 ) -> Dict[str, int]:
-    """Return initial state dict from variable defaults."""
-    return {name: defn.default for name, defn in variable_defs.items()}
+    """Return initial state dict from variable defaults, clamped to [min, max]."""
+    return {
+        name: max(defn.min, min(defn.max, defn.default))
+        for name, defn in variable_defs.items()
+    }
 
 
 # ---------------------------------------------------------------------------
