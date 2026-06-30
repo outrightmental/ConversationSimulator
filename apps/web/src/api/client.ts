@@ -13,6 +13,11 @@ export interface HealthResponse {
   version?: string
 }
 
+export interface SttUploadResponse {
+  transcript: string | null
+  status: string
+}
+
 async function parseErrorMessage(res: Response): Promise<string> {
   const text = await res.text()
   let message = text || `${res.status} ${res.statusText}`
@@ -41,9 +46,24 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return res.json() as Promise<T>
 }
 
+async function postForm<T>(path: string, body: FormData): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, { method: 'POST', body })
+  if (!res.ok) {
+    throw new Error(await parseErrorMessage(res))
+  }
+  return res.json() as Promise<T>
+}
+
 export const apiClient = {
   health(): Promise<HealthResponse> {
     return get<HealthResponse>('/health')
+  },
+
+  uploadAudio(blob: Blob): Promise<SttUploadResponse> {
+    const ext = blob.type.includes('ogg') ? 'ogg' : 'webm'
+    const form = new FormData()
+    form.append('audio', blob, `recording.${ext}`)
+    return postForm<SttUploadResponse>('/stt/upload', form)
   },
 }
 
