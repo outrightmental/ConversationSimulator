@@ -1,4 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
+import type {
+  HealthResponse as SharedHealthResponse,
+  ScenarioInfo,
+  SessionCreateRequest,
+  SessionCreateResponse,
+} from '@convsim/shared';
 
 const BASE = '/api'
 
@@ -7,16 +13,31 @@ export interface HealthResponse {
   version?: string
 }
 
-export interface SttUploadResponse {
-  transcript: string | null
-  status: string
+async function parseErrorMessage(res: Response): Promise<string> {
+  const text = await res.text()
+  let message = text || `${res.status} ${res.statusText}`
+  try {
+    const json = JSON.parse(text) as { message?: string }
+    if (json.message) message = json.message
+  } catch {
+    // text is not JSON; use as-is
+  }
+  return message
 }
 
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`)
-  if (!res.ok) {
-    throw new Error(`${res.status} ${res.statusText}`)
-  }
+  if (!res.ok) throw new Error(await parseErrorMessage(res))
+  return res.json() as Promise<T>
+}
+
+async function post<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw new Error(await parseErrorMessage(res))
   return res.json() as Promise<T>
 }
 
@@ -38,5 +59,17 @@ export const apiClient = {
     const form = new FormData()
     form.append('audio', blob, `recording.${ext}`)
     return postForm<SttUploadResponse>('/stt/upload', form)
+  },
+}
+
+export const api = {
+  health(): Promise<SharedHealthResponse> {
+    return get<SharedHealthResponse>('/health')
+  },
+  getScenario(scenarioId: string): Promise<ScenarioInfo> {
+    return get<ScenarioInfo>(`/scenarios/${scenarioId}`)
+  },
+  createSession(request: SessionCreateRequest): Promise<SessionCreateResponse> {
+    return post<SessionCreateResponse>('/sessions', request)
   },
 }
