@@ -229,14 +229,22 @@ export function setByPath(
 }
 
 /**
- * Get a value at a dot-separated path in a nested object.
+ * Get a value at a dot-separated path in a nested object or array.
+ * Numeric path segments (e.g. "goals.0") index into arrays.
  */
 export function getByPath(obj: Record<string, unknown>, path: string): unknown {
   const parts = path.split('.');
   let current: unknown = obj;
   for (const part of parts) {
-    if (!isPlainObject(current)) return undefined;
-    current = current[part];
+    if (Array.isArray(current)) {
+      const index = Number(part);
+      if (!Number.isInteger(index) || index < 0) return undefined;
+      current = current[index];
+    } else if (isPlainObject(current)) {
+      current = current[part];
+    } else {
+      return undefined;
+    }
   }
   return current;
 }

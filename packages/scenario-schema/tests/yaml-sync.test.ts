@@ -58,6 +58,20 @@ describe('getByPath', () => {
   it('returns undefined for missing paths', () => {
     expect(getByPath({}, 'a.b.c')).toBeUndefined();
   });
+
+  it('reads an array element by numeric index', () => {
+    expect(getByPath({ goals: ['first', 'second'] }, 'goals.0')).toBe('first');
+    expect(getByPath({ goals: ['first', 'second'] }, 'goals.1')).toBe('second');
+  });
+
+  it('reads a field inside an array element', () => {
+    const obj = { endings: [{ id: 'offer', label: 'Offer Extended' }] };
+    expect(getByPath(obj as Record<string, unknown>, 'endings.0.label')).toBe('Offer Extended');
+  });
+
+  it('returns undefined for out-of-bounds array index', () => {
+    expect(getByPath({ goals: ['a'] }, 'goals.5')).toBeUndefined();
+  });
 });
 
 // ---------------------------------------------------------------------------
