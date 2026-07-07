@@ -177,9 +177,12 @@ class TestValidateSafetyPolicy:
             validate_safety_policy(data)
 
     def test_unknown_category_raises(self):
+        # All required fields present so the only error is the unknown category,
+        # exercising additionalProperties: false on content_categories.
         data = {
             "schema_version": "0.1",
             "policy_id": "test",
+            "content_rating_cap": "PG",
             "content_categories": {
                 "made_up_category": "block",  # additionalProperties: false
             },
