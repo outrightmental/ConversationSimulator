@@ -22,7 +22,8 @@ export interface ListenConfig {
  */
 export function getListenConfig(): ListenConfig {
   const host = process.env['API_HOST'] ?? '127.0.0.1';
-  const port = Number(process.env['API_PORT'] ?? 7355);
+  const rawPort = process.env['API_PORT'];
+  const port = rawPort !== undefined ? Number(rawPort) : 7355;
   const lanEnabled = process.env['API_LAN_ACCESS_ENABLED'] === 'true';
 
   if ((host === '0.0.0.0' || host === '::') && !lanEnabled) {
@@ -30,6 +31,12 @@ export function getListenConfig(): ListenConfig {
       `Binding to ${host} is not allowed in default mode. ` +
         'Set API_LAN_ACCESS_ENABLED=true to enable LAN access ' +
         'and specify an explicit LAN IP address.',
+    );
+  }
+
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error(
+      `Invalid API_PORT "${rawPort}": must be an integer between 1 and 65535.`,
     );
   }
 

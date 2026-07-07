@@ -85,6 +85,12 @@ describe('getListenConfig host validation', () => {
     process.env['API_LAN_ACCESS_ENABLED'] = 'false';
     expect(() => getListenConfig()).toThrow(/not allowed/);
   });
+
+  it('allows :: when API_LAN_ACCESS_ENABLED=true', () => {
+    process.env['API_HOST'] = '::';
+    process.env['API_LAN_ACCESS_ENABLED'] = 'true';
+    expect(getListenConfig().host).toBe('::');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -95,5 +101,15 @@ describe('getListenConfig port override', () => {
   it('reads API_PORT from env', () => {
     process.env['API_PORT'] = '8080';
     expect(getListenConfig().port).toBe(8080);
+  });
+
+  it('throws for non-numeric API_PORT', () => {
+    process.env['API_PORT'] = 'abc';
+    expect(() => getListenConfig()).toThrow(/API_PORT/);
+  });
+
+  it('throws for out-of-range API_PORT', () => {
+    process.env['API_PORT'] = '99999';
+    expect(() => getListenConfig()).toThrow(/API_PORT/);
   });
 });
