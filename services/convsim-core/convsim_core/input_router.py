@@ -342,9 +342,17 @@ def route_player_input(
                 category,
                 action.value,
             )
-            message = policy.per_category_messages.get(
-                category, policy.global_redirect_message
-            )
+            # STOP ends the session — no redirect message applies.
+            # STOP_WITH_RESOURCE always uses the crisis message.
+            # REDIRECT and REFUSE surface the configured message to the player.
+            if action == RouteAction.STOP:
+                message = None
+            elif action == RouteAction.STOP_WITH_RESOURCE:
+                message = CRISIS_RESOURCE_MESSAGE
+            else:
+                message = policy.per_category_messages.get(
+                    category, policy.global_redirect_message
+                )
             return RouteDecision(action=action, category=category, message=message)
 
     return RouteDecision(action=RouteAction.OK)

@@ -228,17 +228,17 @@ class TestBuildSafetyPolicyConfig:
         assert config.categories["self_harm_crisis"] == RouteAction.STOP_WITH_RESOURCE
 
     def test_global_non_overridable_not_weakened(self, tmp_path):
-        # If a pack tries to set minors_romantic_or_sexual to something weaker,
-        # the global boundary must still enforce stop.  (The schema only allows
-        # 'stop' for minors, so this would fail schema validation; but we test
-        # the service-level enforcement too.)
+        # Pass raw data with weaker actions directly to build_safety_policy_config,
+        # bypassing schema validation. The service must override these to the correct
+        # non-overridable actions regardless of what the pack specified.
         data = {
             "schema_version": "0.1",
             "policy_id": "weak_policy",
             "content_categories": {
-                "minors_romantic_or_sexual": "stop",  # schema only allows stop
-                "self_harm_crisis": "stop_with_resource_message",
+                "minors_romantic_or_sexual": "redirect",  # weaker than stop; must be overridden
+                "self_harm_crisis": "refuse",  # weaker than stop_with_resource_message; must be overridden
             },
+            "content_rating_cap": "PG",
         }
         config = build_safety_policy_config(data)
         assert config.categories["minors_romantic_or_sexual"] == RouteAction.STOP

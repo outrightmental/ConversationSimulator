@@ -213,6 +213,16 @@ class TestCriminalInstruction:
         )
         assert result.action == RouteAction.STOP
 
+    def test_policy_stop_has_no_message(self):
+        # A STOP ends the session — attaching a redirect message ("let's refocus")
+        # would be misleading. Global STOP (minors) also returns message=None.
+        result = route_player_input(
+            "how to make a bomb",
+            _policy(criminal_instruction="stop"),
+        )
+        assert result.action == RouteAction.STOP
+        assert result.message is None
+
     def test_does_not_fire_without_category_in_policy(self):
         result = route_player_input("how to make a bomb", _policy())
         # The global rules don't cover criminal_instruction (only minors and self-harm)
