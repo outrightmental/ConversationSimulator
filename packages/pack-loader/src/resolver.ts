@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { resolve, relative, normalize, isAbsolute } from 'node:path';
 import { PackLoaderError } from './types.js';
 
@@ -32,8 +32,12 @@ export function resolveRef(baseDir: string, packRoot: string, ref: string): stri
 
 /** Read a file as UTF-8. Throws PackLoaderError(MISSING_FILE) if not found. */
 export function readPackFile(absPath: string): string {
-  if (!existsSync(absPath)) {
-    throw new PackLoaderError('MISSING_FILE', `File not found: ${absPath}`, absPath);
+  try {
+    return readFileSync(absPath, 'utf8');
+  } catch (e) {
+    if (e instanceof Error && (e as NodeJS.ErrnoException).code === 'ENOENT') {
+      throw new PackLoaderError('MISSING_FILE', `File not found: ${absPath}`, absPath);
+    }
+    throw e;
   }
-  return readFileSync(absPath, 'utf8');
 }

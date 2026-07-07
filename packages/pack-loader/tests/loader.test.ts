@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, afterEach } from 'vitest';
 import { loadPack, resolveBundle, loadPacksFromRoots } from '../src/loader.js';
+import { resolveRef } from '../src/resolver.js';
 import { PackLoaderError } from '../src/types.js';
 import {
   makeTempPackDir,
@@ -318,6 +319,7 @@ private_persona: {}
       expect((e as PackLoaderError).code).toBe('PATH_TRAVERSAL');
     }
   });
+
 });
 
 // ---------------------------------------------------------------------------
@@ -395,5 +397,34 @@ describe('loadPacksFromRoots', () => {
     const community = result.packs.find((p) => p.manifest.pack_id === 'community.one');
     expect(official?.packRootKind).toBe('official');
     expect(community?.packRootKind).toBe('community');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// resolveRef unit tests
+// ---------------------------------------------------------------------------
+
+describe('resolveRef', () => {
+  it('throws PATH_TRAVERSAL for a ref containing a null byte', () => {
+    expect(() => resolveRef('/tmp/pack/scenarios', '/tmp/pack', 'npc\x00.evil')).toThrow(PackLoaderError);
+    try {
+      resolveRef('/tmp/pack/scenarios', '/tmp/pack', 'npc\x00.evil');
+    } catch (e) {
+      expect((e as PackLoaderError).code).toBe('PATH_TRAVERSAL');
+    }
+  });
+
+  it('resolves a safe relative ref without throwing', () => {
+    const result = resolveRef('/tmp/pack/scenarios', '/tmp/pack', '../npcs/npc.yaml');
+    expect(result).toBe('/tmp/pack/npcs/npc.yaml');
+  });
+
+  it('throws PATH_TRAVERSAL for a ref that escapes via ..', () => {
+    expect(() => resolveRef('/tmp/pack/scenarios', '/tmp/pack', '../../outside.yaml')).toThrow(PackLoaderError);
+    try {
+      resolveRef('/tmp/pack/scenarios', '/tmp/pack', '../../outside.yaml');
+    } catch (e) {
+      expect((e as PackLoaderError).code).toBe('PATH_TRAVERSAL');
+    }
   });
 });
