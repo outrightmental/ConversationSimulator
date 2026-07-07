@@ -4,7 +4,13 @@ import json
 from pathlib import Path
 from typing import Optional
 
+import jsonschema
+
 from convsim_core.packs.models import PackManifest
+from convsim_core.schema_paths import get_schema
+
+# Compiled once at import time; schema is bundled and immutable.
+_PACK_SCHEMA_VALIDATOR = jsonschema.Draft202012Validator(get_schema("pack.schema.json"))
 
 CONTENT_RATINGS = frozenset({"G", "PG", "PG-13"})
 
@@ -17,8 +23,20 @@ FORBIDDEN_EXTENSIONS = frozenset({
 })
 
 
+def _fmt_schema_err(exc: jsonschema.ValidationError) -> str:
+    path = list(exc.absolute_path)
+    if path:
+        return f"pack.json [{'.'.join(str(p) for p in path)}]: {exc.message}"
+    return f"pack.json: {exc.message}"
+
+
 def load_manifest(pack_dir: Path) -> tuple[Optional[PackManifest], list[str]]:
-    """Parse pack.json from pack_dir. Returns (manifest, errors)."""
+    """Parse pack.json from pack_dir. Returns (manifest_or_None, errors).
+
+    When the manifest can be parsed but fails the JSON Schema, the manifest is
+    still returned so that validate_pack_dir can continue its path-safety and
+    executable-rejection checks and surface ALL problems in one pass.
+    """
     manifest_path = pack_dir / "pack.json"
     if not manifest_path.exists():
         return None, ["Missing pack.json at pack root"]
@@ -28,12 +46,16 @@ def load_manifest(pack_dir: Path) -> tuple[Optional[PackManifest], list[str]]:
     except json.JSONDecodeError as exc:
         return None, [f"pack.json is not valid JSON: {exc}"]
 
+    # Validate against the authoritative JSON Schema (same pattern as model_registry_service).
+    schema_errs = [_fmt_schema_err(e) for e in _PACK_SCHEMA_VALIDATOR.iter_errors(raw)]
+
     try:
         manifest = PackManifest.model_validate(raw)
     except Exception as exc:
-        return None, [f"pack.json failed schema validation: {exc}"]
+        return None, schema_errs + [f"pack.json failed schema validation: {exc}"]
 
-    return manifest, []
+    # Return manifest + any schema errors; caller decides whether to halt.
+    return manifest, schema_errs
 
 
 def validate_pack_dir(pack_dir: Path) -> tuple[Optional[PackManifest], list[str]]:
@@ -46,11 +68,10 @@ def validate_pack_dir(pack_dir: Path) -> tuple[Optional[PackManifest], list[str]
     errors: list[str] = []
 
     manifest, manifest_errors = load_manifest(pack_dir)
-    if manifest_errors:
-        return None, manifest_errors
-
+    errors.extend(manifest_errors)
     if manifest is None:
-        return None, ["Internal error: manifest is None after successful load"]
+        # JSON / Pydantic parse failed — no manifest to continue validating.
+        return None, errors
     pack_dir_resolved = pack_dir.resolve()
 
     # Content rating must be in the permitted set.

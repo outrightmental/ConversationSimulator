@@ -18,6 +18,7 @@ _VALID_MANIFEST = {
     "tags": ["test"],
     "supported_languages": ["en"],
     "entry_scenarios": ["scenarios/intro.yaml"],
+    "safety": {"policy": "safety/default.yaml"},
 }
 
 
@@ -41,6 +42,21 @@ def make_pack_dir(base: Path, manifest: dict | None = None, extra_files: dict | 
     portraits_dir = pack_dir / "assets" / "portraits"
     portraits_dir.mkdir(parents=True, exist_ok=True)
     (portraits_dir / "npc.png").write_bytes(b"\x89PNG\r\n\x1a\n" + b"\x00" * 100)
+
+    safety_dir = pack_dir / "safety"
+    safety_dir.mkdir(exist_ok=True)
+    (safety_dir / "default.yaml").write_text(
+        "schema_version: '0.1'\n"
+        "policy_id: default\n"
+        "content_categories:\n"
+        "  nsfw_sexual: block\n"
+        "  real_person_impersonation: block\n"
+        "  instructional_criminal: block\n"
+        "  crisis_content: redirect\n"
+        "redirect_message: \"I can't help with that in this context.\"\n"
+        "content_rating_cap: G\n",
+        encoding="utf-8",
+    )
 
     if extra_files:
         for rel, content in extra_files.items():
