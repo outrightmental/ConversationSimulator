@@ -71,7 +71,9 @@ describe('getListenConfig host validation', () => {
 
   it('rejects :: without LAN flag', () => {
     process.env['API_HOST'] = '::';
+    expect(() => getListenConfig()).toThrow(/::/);
     expect(() => getListenConfig()).toThrow(/not allowed/);
+    expect(() => getListenConfig()).toThrow(/API_LAN_ACCESS_ENABLED/);
   });
 
   it('allows 0.0.0.0 when API_LAN_ACCESS_ENABLED=true', () => {
