@@ -4,6 +4,8 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { api } from '../api/client'
 import type { ScenarioInfo, WsEvent } from '@convsim/shared'
 import VoiceInput from '../components/VoiceInput'
+import DebugDrawer, { type DebugTurnEntry } from '../components/DebugDrawer'
+import { isDevModeEnabled } from '../privacyPrefs'
 
 const BASELINE_STATE_VARS: Record<string, number> = {
   trust: 50,
@@ -81,10 +83,8 @@ export default function Conversation() {
   const [stateVars, setStateVars] = useState<Record<string, number>>(BASELINE_STATE_VARS)
   const [allEventFlags, setAllEventFlags] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
-  const [npcEmotion, setNpcEmotion] = useState<string>('neutral')
-  const [scenario, setScenario] = useState<ScenarioInfo | null>(null)
-  const [streamingText, setStreamingText] = useState('')
-  const [banners, setBanners] = useState<Banner[]>([])
+  const [devMode] = useState(() => isDevModeEnabled())
+  const [debugEntries, setDebugEntries] = useState<DebugTurnEntry[]>([])
 
   const transcriptRef = useRef<HTMLDivElement>(null)
   const turnUidRef = useRef(0)
@@ -116,17 +116,26 @@ export default function Conversation() {
         if (cancelled) return
         const opening = res.events.find((e) => e.event_type === 'npc_opening')
         if (opening) {
-          const emotion = opening.payload['emotion'] as string | undefined
+          const uid = ++turnUidRef.current
           setTurns([
             {
-              id: ++turnUidRef.current,
+              id: uid,
               role: 'npc_opening',
               content: opening.payload['content'] as string,
               emotion,
               turnNum: ++turnNumRef.current,
             },
           ])
-          if (emotion) setNpcEmotion(emotion)
+          if (devMode) {
+            setDebugEntries([
+              {
+                turnId: uid,
+                role: 'npc_opening',
+                rawPayload: opening.payload,
+                appliedDelta: {},
+              },
+            ])
+          }
         }
         setSessionState(res.state)
         setStateVars({ ...BASELINE_STATE_VARS })
@@ -149,7 +158,7 @@ export default function Conversation() {
     return () => {
       cancelled = true
     }
-  }, [sessionId])
+  }, [sessionId, devMode])
 
   // WebSocket connection — best effort; REST fallback continues to work
   useEffect(() => {
@@ -285,19 +294,30 @@ export default function Conversation() {
         const flags = (payload['event_flags'] ?? []) as string[]
         const emotion = payload['emotion'] as string | undefined
 
-        if (emotion) setNpcEmotion(emotion)
+        const uid = ++turnUidRef.current
+        newTurns.push({
+          id: uid,
+          role: 'npc',
+          content: payload['content'] as string,
+          emotion: payload['emotion'] as string | undefined,
+          eventFlags: flags.length > 0 ? flags : undefined,
+        })
 
-        setTurns((prev) => [
-          ...prev,
-          {
-            id: ++turnUidRef.current,
-            role: 'npc',
-            content: payload['content'] as string,
-            emotion,
-            eventFlags: flags.length > 0 ? flags : undefined,
-            turnNum: ++turnNumRef.current,
-          },
-        ])
+        if (devMode) {
+          // Split the model's requested delta into entries that target tracked
+          // state variables (applied) and entries for unknown variables that the
+          // reducer below silently drops (rejected) — surfacing model drift.
+          const appliedDelta: Record<string, number> = {}
+          const rejectedDelta: Record<string, number> = {}
+          for (const [k, d] of Object.entries(delta)) {
+            if (k in BASELINE_STATE_VARS) appliedDelta[k] = d
+            else rejectedDelta[k] = d
+          }
+          setDebugEntries((prev) => [
+            ...prev,
+            { turnId: uid, role: 'npc', rawPayload: payload, appliedDelta, rejectedDelta },
+          ])
+        }
 
         if (Object.keys(delta).length > 0) {
           setStateVars((prev) => {
@@ -717,7 +737,9 @@ export default function Conversation() {
         </div>
       )}
 
-      {/* Input / ended / error section */}
+      {devMode && <DebugDrawer entries={debugEntries} />}
+
+      {/* Input / end section */}
       {isEnded ? (
         <div
           style={{
