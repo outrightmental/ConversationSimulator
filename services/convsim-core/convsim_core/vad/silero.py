@@ -258,7 +258,7 @@ class SileroVadWorker(VadWorker):
             silero_message = str(exc)
             logger.info("Silero VAD not available; using energy-only calibration: %s", exc)
 
-        if silero_confidences:
+        if silero_confidences is not None:
             # Identify frames the model classifies as silence (confidence < 0.3).
             silence_energies = [
                 e

@@ -158,6 +158,7 @@ export function useVad(): UseVadReturn {
           setVadState('silence')
           silenceTimerRef.current = setTimeout(() => {
             silenceTimerRef.current = null
+            analyserRef.current = null
             setVadState('stopping')
             onSilenceRef.current?.()
           }, silenceDurationMs)

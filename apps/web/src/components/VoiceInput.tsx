@@ -31,7 +31,6 @@ export default function VoiceInput({ onSubmit, disabled = false, language }: Voi
 
   const handleAudioReady = useCallback(
     async (blob: Blob) => {
-      stopSilenceDetection()
       setIsSubmitting(true)
       setUploadError(null)
       try {
@@ -56,7 +55,7 @@ export default function VoiceInput({ onSubmit, disabled = false, language }: Voi
         setIsSubmitting(false)
       }
     },
-    [onSubmit, disabled, language, stopSilenceDetection],
+    [onSubmit, disabled, language],
   )
 
   const {
@@ -74,11 +73,12 @@ export default function VoiceInput({ onSubmit, disabled = false, language }: Voi
   const startRecording = useCallback(() => {
     if (isHandsFree && stream) {
       startSilenceDetection(stream, () => {
+        stopSilenceDetection()
         stopPttRecording()
       })
     }
     startPttRecording()
-  }, [isHandsFree, stream, startSilenceDetection, startPttRecording, stopPttRecording])
+  }, [isHandsFree, stream, startSilenceDetection, stopSilenceDetection, startPttRecording, stopPttRecording])
 
   const stopRecording = useCallback(() => {
     stopSilenceDetection()
