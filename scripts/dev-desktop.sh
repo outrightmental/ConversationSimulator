@@ -115,7 +115,7 @@ echo "Starting convsim-core on port $CORE_PORT..."
 PIDS+=($!)
 
 echo "Waiting for convsim-core to be ready..."
-for i in $(seq 1 20); do
+for _ in $(seq 1 20); do
     if curl -sf "http://127.0.0.1:$CORE_PORT/health" >/dev/null 2>&1; then
         echo "  convsim-core ready."
         break
