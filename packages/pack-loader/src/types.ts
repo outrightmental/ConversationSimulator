@@ -37,7 +37,7 @@ export interface RawScenario {
   scene?: { ref: string };
   duration: { max_turns: number; soft_time_limit_minutes?: number };
   opening: { npc_says: string };
-  goals?: { player_visible?: string[]; hidden?: string[] };
+  goals: { player_visible?: string[]; hidden?: string[] };
   difficulty?: { default?: string; options?: Record<string, unknown> };
   state?: unknown;
   events?: unknown[];
