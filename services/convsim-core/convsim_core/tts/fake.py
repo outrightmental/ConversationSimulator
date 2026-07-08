@@ -62,6 +62,9 @@ class FakeTtsWorker(TtsWorker):
     async def clear_cache(self) -> int:
         return 0  # Fake worker writes to temp files; nothing to clear.
 
+    async def cache_size(self) -> dict:
+        return {"files": 0, "size_bytes": 0}
+
     async def health(self) -> TtsHealth:
         return TtsHealth(
             worker_id=self.id,

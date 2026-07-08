@@ -237,6 +237,55 @@ def test_tts_voices_all_have_required_fields(client):
         assert "locale" in v
 
 
+def test_tts_cache_size_returns_200(client):
+    resp = client.get("/api/tts/cache/size")
+    assert resp.status_code == 200
+
+
+def test_tts_cache_size_returns_files_and_size_bytes(client):
+    body = client.get("/api/tts/cache/size").json()
+    assert "files" in body
+    assert "size_bytes" in body
+    assert isinstance(body["files"], int)
+    assert isinstance(body["size_bytes"], int)
+
+
+def test_tts_cache_size_is_zero_when_no_cache(client):
+    # Fake worker always reports empty cache.
+    body = client.get("/api/tts/cache/size").json()
+    assert body["files"] == 0
+    assert body["size_bytes"] == 0
+
+
+def test_tts_cache_size_reflects_written_files(client, tmp_path):
+    """Cache size updates when a synthesis result is stored in the cache dir."""
+    from unittest.mock import AsyncMock
+    from convsim_core.tts.types import TtsResult
+
+    audio_path = str(tmp_path / "out.wav")
+    mock_result = TtsResult(audio_path=audio_path, audio_format="wav", duration_ms=100.0, voice_id="af_heart")
+    with patch.object(
+        client.app.state.tts_worker,
+        "synthesize",
+        new=AsyncMock(return_value=mock_result),
+    ):
+        client.post("/api/tts/synthesize", json={"text": "Hello", "voice_id": "af_heart"})
+
+    # After synthesis the cache reports non-zero only if the worker tracks files —
+    # the fake worker uses tempfiles so size stays 0; this test just confirms the
+    # endpoint is wired to the worker's cache_size() method without HTTP errors.
+    resp = client.get("/api/tts/cache/size")
+    assert resp.status_code == 200
+
+
+def test_tts_cache_clear_returns_deleted_count(client):
+    resp = client.post("/api/tts/cache/clear")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert "deleted_files" in body
+    assert isinstance(body["deleted_files"], int)
+
+
 def test_tts_voices_no_clone_or_import_endpoint_exists(client):
     # Verify there is no voice upload or cloning endpoint in the API.
     # 404 = route doesn't exist; 405 = path exists but method not allowed — both

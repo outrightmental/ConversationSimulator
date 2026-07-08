@@ -26,6 +26,10 @@ export interface SessionCreateRequest {
   language: string;
   input_mode: InputMode;
   tts_enabled: boolean;
+  // Approved built-in TTS voice id. Omitted when no voice is selected, in which
+  // case the backend applies its default. Matches the backend `tts_voice_id`
+  // field, which validates the value against the approved voice list.
+  tts_voice_id?: string;
   show_state_meters: boolean;
   save_transcript: boolean;
   seed: number | null;
