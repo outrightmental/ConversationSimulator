@@ -21,15 +21,17 @@ This is backed by the code, not just by policy:
 
 - All services bind to `127.0.0.1` by default. No ports are reachable from
   other machines. This is the primary runtime guarantee.
-- Play-mode network calls (LLM, TTS, STT) route through a central gate,
-  `require_network(NetworkMode.PLAY)` in `convsim_core.network_policy`. When
-  local-only mode is enabled (`LOCAL_MODE = True`) the gate raises
-  `NetworkBlockedError` on any play-mode outbound attempt. Local-only mode is
-  what the offline smoke test and CI run under, so an accidental outbound call
-  is caught before it can ship.
+- `convsim_core.network_policy` provides a central guard,
+  `require_network(NetworkMode.PLAY)`, that outbound-capable play-mode code
+  (LLM, TTS, STT) is required to clear before opening a connection. Setting
+  `LOCAL_MODE = True` makes any play-mode attempt raise `NetworkBlockedError`.
+  This contract is enforced by the unit tests in
+  `services/convsim-core/tests/test_network_policy.py`, which run in CI.
 - The offline smoke test (see [Verifying local-only operation](#verifying-local-only-operation))
-  runs an end-to-end session with a blocked network and confirms that nothing
-  reaches out.
+  is the end-to-end check. It installs a socket-level network guard that blocks
+  any non-localhost connection during a scripted session and records a violation
+  if anything reaches out — so an accidental outbound call fails the test before
+  it can ship.
 
 ---
 
