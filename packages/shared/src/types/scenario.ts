@@ -49,6 +49,7 @@ export interface ScenarioInfo {
   safety_summary: string;
   estimated_length_label: string;
   tags?: string[];
+  recommended_model?: string[];
 }
 
 export interface PackValidationError {
