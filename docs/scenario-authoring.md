@@ -118,8 +118,8 @@ cp -r packs/official/job-interview-basic packs/local-dev/workplace-conversations
 
 ## Step 3: Meet the files
 
-After copying, browse the file tree in the left panel. Every official pack
-has this layout:
+After copying, browse the file tree in the left panel. Official packs share
+this directory structure — one folder per file type:
 
 ```
 workplace-conversations/
@@ -139,6 +139,13 @@ workplace-conversations/
 └── assets/
     └── portraits/                        # Optional NPC portraits
 ```
+
+> **The pack you copied ships with more than one example.** `job-interview-basic`
+> contains four scenarios (and their NPCs, rubrics, scenes, and smoke tests).
+> This tutorial edits just one chain — `behavioral_interview` and the files it
+> references — into the Raise Conversation. The extra example files stay valid,
+> but you don't need them; [Trim the starter files](#trim-the-starter-files)
+> before Step 9 removes them so your exported pack contains only what you built.
 
 > Files ending in `.yaml` or `.md` are editable in the workbench. Portrait
 > images in `assets/` show as **unsupported** in the file tree and cannot
@@ -237,10 +244,10 @@ player_role:
     tenure are unlikely to move Morgan.
 
 npc:
-  ref: ../npcs/hr_manager.yaml
+  ref: ../npcs/hiring_manager.yaml   # The file you edited in place in Step 4
 
 rubric:
-  ref: ../rubrics/raise_rubric.yaml
+  ref: ../rubrics/interview_rubric.yaml   # The file you edited in place in Step 6
 
 duration:
   max_turns: 16
@@ -336,6 +343,13 @@ difficulty:
 > `mv scenarios/behavioral_interview.yaml scenarios/raise_conversation.yaml`.
 > Then update `entry_scenarios` in `manifest.yaml` to match (Step 8).
 > The workbench file tree reflects the rename after a reload.
+>
+> Only the scenario file needs renaming, because `manifest.yaml` references it
+> by path. The NPC and rubric files keep their original names
+> (`hiring_manager.yaml`, `interview_rubric.yaml`) — a file name never has to
+> match the `npc_id` or `rubric_id` inside it, and the scenario's `ref:` fields
+> already point at those paths. If you do rename them, update the matching
+> `ref:` in the scenario or validation reports `MISSING_FILE`.
 
 **State variables** track the NPC's internal state across turns:
 
@@ -474,6 +488,44 @@ assets:
 safety:
   policy: safety/interview_safety.yaml
 ```
+
+---
+
+## Trim the starter files
+
+`job-interview-basic` shipped with four scenario chains. Your manifest now lists
+only `scenarios/raise_conversation.yaml`, so the other three are dead weight —
+their files still validate, but they'd ride along in your export. Delete them,
+their NPCs, rubrics, scenes, and the original smoke tests. You keep only the
+files you edited plus `manifest.yaml`, `safety/interview_safety.yaml`, and
+`README.md`.
+
+```sh
+cd packs/local-dev/workplace-conversations
+
+# Extra scenario chains (kept only behavioral_interview, now raise_conversation)
+rm scenarios/hostile_executive_interview.yaml \
+   scenarios/blue_collar_supervisor_interview.yaml \
+   scenarios/stretch_role_interview.yaml
+rm npcs/executive_interviewer.yaml npcs/product_head.yaml npcs/trade_supervisor.yaml
+rm rubrics/blue_collar_rubric.yaml rubrics/executive_interview_rubric.yaml \
+   rubrics/stretch_role_rubric.yaml
+
+# Scenes — the Raise Conversation declares no scene, so remove all of them
+rm scenes/*.yaml
+
+# Original smoke/golden tests — you'll add your own below
+rm tests/*.yaml
+```
+
+Do this **after** Step 8. Because the manifest no longer references any of these
+files, removing them leaves the pack valid. (Removing them earlier, while
+`entry_scenarios` still listed the interview scenarios, would produce
+`MISSING_FILE` errors.) The leftover smoke tests would otherwise be *skipped*
+rather than failed — `test-pack` still exits `0` — but a clean pack is the
+whole point.
+
+In the workbench, the file tree reflects the deletions after a reload.
 
 ---
 
@@ -735,7 +787,7 @@ the actual file tree shown in the left panel.
 ### SCHEMA_VALIDATION
 
 ```
-✗ SCHEMA_VALIDATION: npcs/hr_manager.yaml
+✗ SCHEMA_VALIDATION: npcs/hiring_manager.yaml
   /fictional: must be equal to one of the allowed values
 ```
 
