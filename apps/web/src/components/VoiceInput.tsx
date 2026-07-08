@@ -24,6 +24,8 @@ type ReviewState = {
 interface VoiceInputProps {
   onSubmit?: (text: string) => void
   onRawStt?: (meta: SttReviewMeta) => void
+  /** Called with the STT round-trip latency (ms) once a transcript is returned. */
+  onSttLatency?: (ms: number) => void
   disabled?: boolean
   language?: string
 }
@@ -34,7 +36,7 @@ function isInteractiveElement(el: Element | null): boolean {
   return tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'button' || tag === 'a'
 }
 
-export default function VoiceInput({ onSubmit, onRawStt, disabled = false, language }: VoiceInputProps) {
+export default function VoiceInput({ onSubmit, onRawStt, onSttLatency, disabled = false, language }: VoiceInputProps) {
   const [textValue, setTextValue] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
@@ -49,8 +51,10 @@ export default function VoiceInput({ onSubmit, onRawStt, disabled = false, langu
     async (blob: Blob) => {
       setIsSubmitting(true)
       setUploadError(null)
+      const sttStart = performance.now()
       try {
         const result = await apiClient.uploadAudio(blob, language)
+        onSttLatency?.(Math.round(performance.now() - sttStart))
         if (result.status === 'error') {
           setUploadError('Speech could not be transcribed. Please try again or type your response.')
         } else if (result.status === 'unavailable') {
@@ -71,7 +75,7 @@ export default function VoiceInput({ onSubmit, onRawStt, disabled = false, langu
         setIsSubmitting(false)
       }
     },
-    [language],
+    [language, onSttLatency],
   )
 
   const {

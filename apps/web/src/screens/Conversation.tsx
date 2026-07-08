@@ -5,7 +5,12 @@ import { api } from '../api/client'
 import type { ScenarioInfo, WsEvent } from '@convsim/shared'
 import VoiceInput, { type SttReviewMeta } from '../components/VoiceInput'
 import DebugDrawer, { type DebugTurnEntry } from '../components/DebugDrawer'
+import PerformanceWarningBanner from '../components/PerformanceWarning'
+import { useLatencyMetrics } from '../hooks/useLatencyMetrics'
 import { isDevModeEnabled } from '../privacyPrefs'
+
+const TURN_TIMEOUT_MS = 60_000
+const SLOW_RESPONSE_MS = 5_000
 
 const BASELINE_STATE_VARS: Record<string, number> = {
   trust: 50,
@@ -89,6 +94,12 @@ export default function Conversation() {
   const [npcEmotion, setNpcEmotion] = useState<string | null>(null)
   const [streamingText, setStreamingText] = useState('')
   const [banners, setBanners] = useState<Banner[]>([])
+  const [isSlowResponse, setIsSlowResponse] = useState(false)
+
+  const { snapshot: latencySnapshot, mark, recordInterval, recordValue, warnings: perfWarnings } = useLatencyMetrics()
+  const firstTokenMarkedRef = useRef(false)
+  const turnTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const slowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const transcriptRef = useRef<HTMLDivElement>(null)
   const turnUidRef = useRef(0)
@@ -99,6 +110,14 @@ export default function Conversation() {
   const npcTurnCommittedRef = useRef(false)
   const pendingRawSttRef = useRef<SttReviewMeta | null>(null)
   phaseRef.current = phase
+
+  // Clean up any pending timers when the component unmounts.
+  useEffect(() => {
+    return () => {
+      if (turnTimeoutRef.current) clearTimeout(turnTimeoutRef.current)
+      if (slowTimerRef.current) clearTimeout(slowTimerRef.current)
+    }
+  }, [])
 
   // Fetch scenario for NPC panel and scene card — best effort
   useEffect(() => {
@@ -116,9 +135,11 @@ export default function Conversation() {
     if (!sessionId) return
     let cancelled = false
 
+    mark('session_start')
     api.startSession(sessionId).then(
       (res) => {
         if (cancelled) return
+        recordInterval('session_start_ms', 'session_start')
         const opening = res.events.find((e) => e.event_type === 'npc_opening')
         if (opening) {
           const uid = ++turnUidRef.current
@@ -163,7 +184,7 @@ export default function Conversation() {
     return () => {
       cancelled = true
     }
-  }, [sessionId, devMode])
+  }, [sessionId, devMode, mark, recordInterval])
 
   // WebSocket connection — best effort; REST fallback continues to work
   useEffect(() => {
@@ -186,6 +207,10 @@ export default function Conversation() {
             }
             break
           case 'npc.token':
+            if (!firstTokenMarkedRef.current) {
+              firstTokenMarkedRef.current = true
+              recordInterval('first_token_ms', 'turn_submit')
+            }
             streamingRef.current += event.payload.text
             setStreamingText(streamingRef.current)
             break
@@ -257,7 +282,7 @@ export default function Conversation() {
     return () => {
       conn?.close()
     }
-  }, [sessionId])
+  }, [sessionId, recordInterval])
 
   // Auto-scroll transcript
   useEffect(() => {
@@ -302,12 +327,39 @@ export default function Conversation() {
 
     setPhase('submitting')
     setError(null)
+    setIsSlowResponse(false)
     streamingRef.current = ''
     setStreamingText('')
     npcTurnCommittedRef.current = false
+    firstTokenMarkedRef.current = false
+
+    mark('turn_submit')
+
+    // Show a "slow response" indicator if the NPC hasn't responded after SLOW_RESPONSE_MS.
+    if (slowTimerRef.current) clearTimeout(slowTimerRef.current)
+    slowTimerRef.current = setTimeout(() => setIsSlowResponse(true), SLOW_RESPONSE_MS)
+
+    // Wrap the API call with a hard timeout so the UI is never stuck indefinitely.
+    const turnPromise = api.submitTurn(sessionId!, text)
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      turnTimeoutRef.current = setTimeout(() => {
+        reject(new Error(
+          'LLM response timed out after 60 seconds. Suggested fixes: use a smaller model, ' +
+          'reduce context length, or check that the runtime is running in Runtime Settings.',
+        ))
+      }, TURN_TIMEOUT_MS)
+    })
 
     try {
-      const res = await api.submitTurn(sessionId!, text)
+      const res = await Promise.race([turnPromise, timeoutPromise])
+      if (turnTimeoutRef.current) clearTimeout(turnTimeoutRef.current)
+      if (slowTimerRef.current) clearTimeout(slowTimerRef.current)
+      setIsSlowResponse(false)
+      if (!firstTokenMarkedRef.current) {
+        recordInterval('first_token_ms', 'turn_submit')
+        firstTokenMarkedRef.current = true
+      }
+      recordInterval('full_response_ms', 'turn_submit')
 
       const npcEvent = res.events.find((e) => e.event_type === 'npc_turn')
 
@@ -376,6 +428,9 @@ export default function Conversation() {
         setPhase('active')
       }
     } catch (err: unknown) {
+      if (turnTimeoutRef.current) clearTimeout(turnTimeoutRef.current)
+      if (slowTimerRef.current) clearTimeout(slowTimerRef.current)
+      setIsSlowResponse(false)
       const msg = err instanceof Error ? err.message : String(err)
       setError(msg)
       // Discard any partial streamed tokens so a failed turn doesn't leave a
@@ -550,6 +605,9 @@ export default function Conversation() {
         </div>
       )}
 
+      {/* Performance warnings — shown when latency thresholds are exceeded */}
+      <PerformanceWarningBanner warnings={perfWarnings} />
+
       {/* Event and safety banners */}
       {banners.map((banner) => (
         <div
@@ -695,6 +753,25 @@ export default function Conversation() {
             {phase === 'submitting' ? 'NPC is responding…' : 'Ending session…'}
           </div>
         )}
+
+        {isSlowResponse && phase === 'submitting' && (
+          <div
+            data-testid="slow-response-indicator"
+            role="status"
+            aria-live="polite"
+            style={{
+              padding: '0.5rem 0.75rem',
+              borderRadius: 6,
+              border: '1px solid #713f12',
+              background: '#1c1000',
+              color: '#fde68a',
+              fontSize: '0.8rem',
+            }}
+          >
+            NPC is taking longer than usual. The model may be slow on this hardware. You can
+            adjust settings or try a smaller model.
+          </div>
+        )}
       </div>
 
       {/* State meters — shown only when enabled in setup */}
@@ -779,7 +856,7 @@ export default function Conversation() {
         </div>
       )}
 
-      {devMode && <DebugDrawer entries={debugEntries} />}
+      {devMode && <DebugDrawer entries={debugEntries} latencySnapshot={latencySnapshot} />}
 
       {/* Input / end section */}
       {isEnded ? (
@@ -844,6 +921,7 @@ export default function Conversation() {
         <VoiceInput
           onSubmit={(text) => void handleSubmit(text)}
           onRawStt={devMode ? (meta) => { pendingRawSttRef.current = meta } : undefined}
+          onSttLatency={(ms) => recordValue('stt_final_ms', ms)}
           disabled={!isIdle}
           language={language}
         />
