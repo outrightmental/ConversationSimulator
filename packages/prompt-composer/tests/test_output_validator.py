@@ -383,6 +383,30 @@ class TestTherapyClaim:
         )
         assert result.is_safe
 
+    def test_think_you_have_without_condition_is_clean(self):
+        # "I think you have the right qualifications" is a common NPC compliment —
+        # it must not trigger a hard therapy_or_diagnosis stop.
+        result = _validate("I think you have the right qualifications for this role.")
+        assert result.is_safe
+
+    def test_believe_you_have_without_condition_is_clean(self):
+        result = _validate("I believe you have excellent communication skills.")
+        assert result.is_safe
+
+    def test_suspect_you_have_without_condition_is_clean(self):
+        result = _validate("I suspect you have some great examples to share.")
+        assert result.is_safe
+
+    def test_think_you_have_condition_is_flagged(self):
+        # "I think you have [medical condition]" should still be caught.
+        v = _first("I think you have depression based on what you've shared.")
+        assert v.category == "therapy_or_diagnosis"
+        assert v.is_recoverable is False
+
+    def test_believe_you_have_condition_is_flagged(self):
+        v = _first("I believe you have an anxiety disorder.")
+        assert v.category == "therapy_or_diagnosis"
+
 
 # ---------------------------------------------------------------------------
 # Real-person impersonation (recoverable)

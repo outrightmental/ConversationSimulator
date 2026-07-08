@@ -93,7 +93,11 @@ _ILLEGAL_ADVICE = _compile(
 
 # Therapy or diagnosis claims — NPC claiming to diagnose, prescribe, or treat (hard).
 _THERAPY_CLAIM = _compile(
-    r"\bI\s+(?:diagnose|think\s+you\s+have|believe\s+you\s+have|suspect\s+you\s+have)\b",
+    # "I diagnose" is specific enough to flag without an object.
+    r"\bI\s+diagnose\b",
+    # "think/believe/suspect you have" must be followed by a recognised medical
+    # condition — bare "I think you have the right skills" must NOT trigger.
+    r"\bI\s+(?:think|believe|suspect)\s+you\s+(?:have|may\s+have)\s+(?:[a-z]+\s+)?(?:disorder|syndrome|condition|depression|anxiety|ptsd|adhd|autism|bipolar|schizophrenia)\b",
     r"\byou\s+(?:have|are\s+experiencing|suffer\s+from|show\s+signs\s+of)\s+(?:[a-z]+\s+)?(?:disorder|syndrome|condition|depression|anxiety|ptsd|adhd|autism|bipolar|schizophrenia)\b",
     r"\b(?:as\s+your\s+(?:therapist|doctor|psychiatrist|psychologist|counselor))\b",
     r"\bI(?:'m|\s+am)\s+(?:your\s+)?(?:therapist|doctor|psychiatrist|psychologist|counselor)\b",
