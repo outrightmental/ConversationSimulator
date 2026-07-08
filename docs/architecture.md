@@ -229,8 +229,17 @@ was already recorded.
 
 ## WebSocket events
 
-The WebSocket endpoint is at `ws://127.0.0.1:7355/ws/session/{id}`.
-On reconnect, pass `?after_seq={seq}` to resume after the last received event.
+The WebSocket endpoint is at `ws://127.0.0.1:7355/ws/session/{id}`, served by
+the API layer (`apps/api`). On connect the server always sends the current
+`session.state` so a reconnecting client can resync.
+
+Pass `?after_seq=0` to also replay the recent durable events for the session
+(NPC turns and the ending, capped at the 50 most recent). Per-`seq` resume —
+passing the last received `seq` to receive only events after it — is **not yet
+implemented**; any non-zero `after_seq` value is silently ignored because the
+persisted events are keyed by `event_id`, a different number space from the WS
+`seq`. Until seq-mapped replay lands, a client that detects a gap should
+re-fetch full state via `GET /api/sessions/{id}`.
 
 Every message is a JSON object with these base fields:
 
@@ -244,9 +253,9 @@ Every message is a JSON object with these base fields:
 }
 ```
 
-`seq` is a monotonically increasing per-session counter. Gaps in `seq` on
-reconnect indicate missed events; the client should re-fetch state via
-`GET /api/sessions/{id}`.
+`seq` is a monotonically increasing per-session counter assigned by the server
+as each event is sent. Gaps in `seq` indicate missed events; the client should
+re-fetch state via `GET /api/sessions/{id}`.
 
 ### Event types
 
