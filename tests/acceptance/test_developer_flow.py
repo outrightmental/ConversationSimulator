@@ -18,8 +18,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
-import sys
 from pathlib import Path
 
 import pytest
@@ -238,12 +236,7 @@ class TestAdapterStub:
     @pytest.mark.asyncio
     async def test_custom_adapter_satisfies_interface(self):
         """Demonstrates that extending FakeChatRuntime is sufficient to add an adapter."""
-        from convsim_core.runtime.types import (
-            ChatFinal,
-            ChatRequest,
-            RuntimeCapabilities,
-            RuntimeHealth,
-        )
+        from convsim_core.runtime.types import RuntimeCapabilities
 
         class _StubAdapter(FakeChatRuntime):
             @property

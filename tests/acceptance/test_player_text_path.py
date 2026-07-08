@@ -18,18 +18,14 @@ from __future__ import annotations
 
 import io
 import zipfile
-from pathlib import Path
-from unittest.mock import patch
 
-import pytest
 from fastapi.testclient import TestClient
 
 from convsim_core.app import create_app
-from convsim_core.config import ServiceConfig
 from convsim_core.runtime.fake import FakeChatRuntime
-from convsim_core.runtime.types import ChatFinal, ChatToken
+from convsim_core.runtime.types import ChatFinal
 
-# Re-export shared setup dict so individual tests can customise it.
+# Shared session-setup payload; individual tests copy and customise it.
 _SESSION_SETUP = {
     "scenario_id": "behavioral_interview",
     "difficulty": "normal",
@@ -41,8 +37,6 @@ _SESSION_SETUP = {
     "save_transcript": True,
     "seed": None,
 }
-
-_REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _make_minimal_zip() -> bytes:
