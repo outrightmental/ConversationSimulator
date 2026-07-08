@@ -2,61 +2,127 @@
 import { Link } from 'react-router-dom'
 import { StatusBadge } from '@convsim/ui'
 import { useApiHealth } from '../api/useApiHealth'
+import { usePackCount } from '../api/usePackCount'
+import type { BadgeStatus } from '@convsim/ui'
 
-function sttBadgeStatus(sttStatus: string | undefined): 'online' | 'offline' | 'loading' {
-  if (!sttStatus) return 'offline'
-  if (sttStatus === 'ready') return 'online'
-  if (sttStatus === 'starting') return 'loading'
-  return 'offline'
+function runtimeBadge(loading: boolean, healthy: boolean): { status: BadgeStatus; label: string } {
+  if (loading) return { status: 'loading', label: 'Checking…' }
+  return healthy
+    ? { status: 'online', label: 'Ready' }
+    : { status: 'offline', label: 'Unavailable' }
 }
 
-function sttBadgeLabel(sttStatus: string | undefined, loading: boolean): string {
-  if (loading) return 'Checking…'
-  if (!sttStatus || sttStatus === 'unavailable') return 'Not installed'
-  if (sttStatus === 'ready') return 'Ready'
-  if (sttStatus === 'starting') return 'Starting…'
-  return 'Unavailable'
+function readinessBadge(loading: boolean, ready: boolean, offLabel = 'Not installed'): { status: BadgeStatus; label: string } {
+  if (loading) return { status: 'loading', label: 'Checking…' }
+  return ready ? { status: 'online', label: 'Ready' } : { status: 'offline', label: offLabel }
 }
 
 export default function Home() {
-  const { state, healthy, stt } = useApiHealth()
-  const loading = state === 'loading'
+  const health = useApiHealth()
+  const packCount = usePackCount()
+  const loading = health.state === 'loading'
+
+  const runtime = health.runtime
+  const llmReady = runtime?.llm_ready ?? false
+  const llmName = runtime?.llm_model_name ?? null
+  const sttReady = runtime?.stt_ready ?? false
+  const ttsReady = runtime?.tts_ready ?? false
+  const networkRequired = runtime?.network_required ?? false
+
+  const runtimeBadgeProps = runtimeBadge(loading, health.healthy)
+  const llmBadgeProps = loading
+    ? { status: 'loading' as BadgeStatus, label: 'Checking…' }
+    : llmReady
+    ? { status: 'online' as BadgeStatus, label: llmName ?? 'Ready' }
+    : { status: 'offline' as BadgeStatus, label: 'Not installed' }
+  const sttBadgeProps = readinessBadge(loading, sttReady)
+  const ttsBadgeProps = readinessBadge(loading, ttsReady)
+
+  const showNoModelPrompt = !loading && health.healthy && !llmReady
+  const showError = health.state === 'unavailable'
 
   return (
     <div>
       <h1>Conversation Simulator</h1>
       <p>Flight Simulator for conversations.</p>
 
-      <section style={{ marginTop: '2rem' }}>
-        <h2>Status</h2>
-        <dl style={{ display: 'grid', gridTemplateColumns: 'max-content 1fr', gap: '0.25rem 1rem' }}>
-          <dt>Local runtime</dt>
-          <dd>
-            <StatusBadge status={loading ? 'loading' : healthy ? 'online' : 'offline'}>
-              {loading ? 'Checking…' : healthy ? 'Ready' : 'Unavailable'}
-            </StatusBadge>
-          </dd>
-          <dt>LLM</dt>
-          <dd><StatusBadge status="offline">Not installed</StatusBadge></dd>
-          <dt>STT</dt>
-          <dd>
-            <StatusBadge status={loading ? 'loading' : sttBadgeStatus(stt?.status)}>
-              {sttBadgeLabel(stt?.status, loading)}
-            </StatusBadge>
-          </dd>
-          <dt>TTS</dt>
-          <dd><StatusBadge status="offline">Not installed</StatusBadge></dd>
-          <dt>Network required to play</dt>
-          <dd>No</dd>
-        </dl>
-      </section>
-
-      <nav style={{ marginTop: '2rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', maxWidth: '20rem' }}>
+      <nav
+        aria-label="Primary actions"
+        style={{ marginTop: '2rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', maxWidth: '20rem' }}
+      >
         <Link to="/library">Start a scenario</Link>
         <Link to="/workbench">Create / edit a scenario</Link>
         <Link to="/settings">Install model</Link>
         <Link to="/settings">Import pack</Link>
+        <a href="https://github.com/outrightmental/ConversationSimulator/wiki" target="_blank" rel="noreferrer">
+          Read docs
+        </a>
       </nav>
+
+      <section aria-label="System readiness" style={{ marginTop: '2rem' }}>
+        <h2>Status</h2>
+        <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+          <li>
+            Local runtime:{' '}
+            <StatusBadge status={runtimeBadgeProps.status}>{runtimeBadgeProps.label}</StatusBadge>
+          </li>
+          <li>
+            LLM:{' '}
+            <Link to="/settings" style={{ textDecoration: 'none' }}>
+              <StatusBadge status={llmBadgeProps.status}>{llmBadgeProps.label}</StatusBadge>
+            </Link>
+          </li>
+          <li>
+            STT:{' '}
+            <StatusBadge status={sttBadgeProps.status}>{sttBadgeProps.label}</StatusBadge>
+          </li>
+          <li>
+            TTS:{' '}
+            <StatusBadge status={ttsBadgeProps.status}>{ttsBadgeProps.label}</StatusBadge>
+          </li>
+          <li>
+            Network required to play:{' '}
+            <StatusBadge status={networkRequired ? 'offline' : 'online'}>
+              {networkRequired ? 'Yes' : 'No'}
+            </StatusBadge>
+          </li>
+          <li>
+            Packs:{' '}
+            <Link to="/library" style={{ textDecoration: 'none' }}>
+              <StatusBadge status={packCount > 0 ? 'online' : 'offline'}>
+                {packCount > 0 ? `${packCount} installed` : 'None installed'}
+              </StatusBadge>
+            </Link>
+          </li>
+        </ul>
+
+        {showError && (
+          <p role="alert" style={{ color: '#cc4444', marginTop: '0.75rem' }}>
+            Cannot reach the local runtime. Ensure the API server is running.
+          </p>
+        )}
+      </section>
+
+      {showNoModelPrompt && (
+        <section aria-label="Get started without a model" style={{ marginTop: '2rem' }}>
+          <h2>No model configured</h2>
+          <p>Choose how to get started:</p>
+          <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <li>
+              <Link to="/settings">Install a GGUF model</Link>
+              {' — download a local model file'}
+            </li>
+            <li>
+              <Link to="/settings">Connect Ollama</Link>
+              {' — use an existing Ollama installation'}
+            </li>
+            <li>
+              <Link to="/settings">Try text-only demo</Link>
+              {' — run without a model using the fake runtime'}
+            </li>
+          </ul>
+        </section>
+      )}
     </div>
   )
 }
