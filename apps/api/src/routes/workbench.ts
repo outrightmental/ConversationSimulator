@@ -440,9 +440,15 @@ export async function workbenchRoutes(app: FastifyInstance): Promise<void> {
       const issues: WorkbenchValidationIssue[] = [];
 
       // Phase 1: security scan — collect ALL forbidden files/symlinks up front,
-      // rather than stopping at the first one like the pack loader does.
-      issues.push(...scanForbiddenFiles(packRoot));
-      const hasSecurityIssue = issues.length > 0;
+      // rather than stopping at the first one like the pack loader does. This
+      // is extension/symlink based; it does NOT sniff file content.
+      const phase1Issues = scanForbiddenFiles(packRoot);
+      issues.push(...phase1Issues);
+      // Track the exact files phase 1 already flagged so we can drop the loader's
+      // duplicate report of the same file — but keep loader-only security findings
+      // (e.g. FORBIDDEN_BINARY, a disguised executable with an allowed extension)
+      // that phase 1 cannot detect.
+      const reportedSecurityFiles = new Set(phase1Issues.map((i) => i.file));
 
       // Phase 2: structural/schema validation via the pack loader. It throws on
       // the first PackLoaderError it encounters; convert that into one or more
@@ -452,9 +458,10 @@ export async function workbenchRoutes(app: FastifyInstance): Promise<void> {
       } catch (e) {
         if (e instanceof PackLoaderError) {
           for (const issue of convertPackLoaderError(e, packRoot)) {
-            // The loader's own security scan re-reports a forbidden file/symlink
-            // that phase 1 already collected — skip the duplicate.
-            if (hasSecurityIssue && issue.category === 'security') continue;
+            // Skip only the specific file phase 1 already reported, not every
+            // security finding — otherwise a disguised binary in one file is
+            // suppressed just because an unrelated script file also exists.
+            if (issue.category === 'security' && reportedSecurityFiles.has(issue.file)) continue;
             issues.push(issue);
           }
         } else {

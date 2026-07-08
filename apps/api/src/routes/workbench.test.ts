@@ -340,6 +340,26 @@ describe('GET /api/workbench/packs/:kind/:slug/validate', () => {
     expect(secErrors.every((e) => e.category === 'security')).toBe(true);
   });
 
+  it('flags a disguised binary (allowed extension, executable content) as a security issue', async () => {
+    const packDir = join(localDevRoot, 'my-pack');
+    // A .yaml file whose bytes are actually an ELF executable header. Phase 1's
+    // extension scan can't catch this; only the loader's magic-byte check does.
+    // The file-specific dedup must not suppress this loader-only finding.
+    writeFileSync(join(packDir, 'notes.yaml'), Buffer.from([0x7f, 0x45, 0x4c, 0x46, 0x02, 0x01]));
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/workbench/packs/local-dev/my-pack/validate',
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ valid: boolean; errors: { rule_id: string; category: string; file: string }[] }>();
+    expect(body.valid).toBe(false);
+    const binary = body.errors.find((e) => e.rule_id === 'FORBIDDEN_BINARY');
+    expect(binary).toBeDefined();
+    expect(binary?.category).toBe('security');
+    expect(binary?.file).toBe('notes.yaml');
+  });
+
   it('flags symlinks as forbidden without following them', async () => {
     const packDir = join(localDevRoot, 'my-pack');
     // A symlink pointing outside the pack — must be reported, never followed.
