@@ -194,6 +194,7 @@ describe('validate-pack — valid pack', () => {
     expect(result['name']).toBe('CLI Test Pack');
     expect(result['version']).toBe('0.2.0');
     expect(result['scenario_count']).toBe(1);
+    expect(result['scene_count']).toBe(0);
   });
 });
 
@@ -317,9 +318,9 @@ describe('import-pack — from directory', () => {
     const packDir = track(makeValidPackDir());
     writeFileSync(join(packDir, 'run.sh'), '#!/bin/sh\necho evil\n');
     const dataDir = track(mkdtempSync(join(tmpdir(), 'convsim-data-')));
-    const code = runImportPack(packDir, false, dataDir);
+    let code = -1;
+    const { stderr } = capture(() => { code = runImportPack(packDir, false, dataDir); });
     expect(code).toBe(1);
-    const { stderr } = capture(() => runImportPack(packDir, false, dataDir));
     expect(stderr).toContain('FORBIDDEN_FILE');
   });
 });

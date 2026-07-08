@@ -16,6 +16,7 @@ export type ValidatePackResult =
       scenario_count: number;
       npc_count: number;
       rubric_count: number;
+      scene_count: number;
     }
   | {
       status: 'error';
@@ -52,6 +53,7 @@ export function runValidatePack(packPath: string, json: boolean): number {
       scenario_count: pack.scenarios.length,
       npc_count: pack.npcs.size,
       rubric_count: pack.rubrics.size,
+      scene_count: pack.scenes.size,
     };
 
     if (json) {
