@@ -12,7 +12,7 @@ from convsim_core.errors import (
     request_validation_error_handler,
 )
 from convsim_core.logging_setup import configure_logging
-from convsim_core.routers import diag as diag_router, health, models as models_router, packs as packs_router, sessions as sessions_router, settings as settings_router, sidecar as sidecar_router, stt as stt_router
+from convsim_core.routers import diag as diag_router, health, models as models_router, packs as packs_router, scenarios as scenarios_router, sessions as sessions_router, settings as settings_router, sidecar as sidecar_router, stt as stt_router
 from convsim_core.runtime import build_runtime
 from convsim_core.runtime.sidecar import LlamaCppSidecar
 from convsim_core.storage.database import Database
