@@ -711,6 +711,27 @@ class TestHardContentViolations:
         assert result.session_control.continue_session is False
         assert runtime.call_count == 0
 
+    def test_hard_violation_after_recoverable_still_stops_without_retry(self):
+        # Utterance has a recoverable violation (hidden_agenda_leak) FIRST and a
+        # hard violation (nsfw_content) SECOND.  first_violation is recoverable,
+        # but the presence of any hard violation must bypass retry entirely.
+        utterance = "My real goal is to watch porn with you."
+        runtime = FakeRuntime(response=_minimal_valid_json(npc_utterance="Clean response."))
+        result = parse_turn_output(self._unsafe_json(utterance), runtime=runtime)
+        assert result.session_control.continue_session is False
+        assert result.session_control.ending_type == "safety_stop"
+        assert runtime.call_count == 0
+
+    def test_safety_stop_reason_comes_from_hard_violation(self):
+        # When first_violation is recoverable but a hard violation follows,
+        # the safety stop reason must reference the hard violation's category.
+        utterance = "My real goal is to watch porn with you."
+        result = parse_turn_output(self._unsafe_json(utterance))
+        assert result.safety.status == "stop"
+        # Reason should come from nsfw_content (hard), not hidden_agenda_leak.
+        assert result.safety.reason is not None
+        assert "sexual" in result.safety.reason.lower() or "nsfw" in result.safety.reason.lower()
+
 
 # ---------------------------------------------------------------------------
 # Content safety integration — recoverable violations
