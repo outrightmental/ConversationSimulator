@@ -380,6 +380,12 @@ function FileEditor({
 
 const SECURITY_RULES = new Set(['FORBIDDEN_FILE', 'FORBIDDEN_BINARY'])
 
+// Authoring documentation the suggested fixes refer to ("See the authoring
+// guide"). Surfaced as links so creators can reach them without leaving the
+// workbench.
+const AUTHORING_DOCS_URL = 'https://github.com/outrightmental/ConversationSimulator/blob/main/docs/scenario-authoring.md'
+const VALIDATION_DOCS_URL = 'https://github.com/outrightmental/ConversationSimulator/blob/main/docs/pack-validation.md'
+
 function isSecurityIssue(issue: WorkbenchValidationIssue): boolean {
   return SECURITY_RULES.has(issue.rule_id) || issue.category === 'security'
 }
@@ -674,6 +680,16 @@ function ValidationPanel({ validation, loading, serviceError, onSelectFile, onRe
             </div>
           )
         })}
+      </div>
+
+      {/* Links to authoring docs referenced by the suggested fixes */}
+      <div style={{ marginTop: '0.6rem', fontSize: '0.72rem', color: '#71717a', display: 'flex', gap: '0.9rem' }}>
+        <a href={AUTHORING_DOCS_URL} target="_blank" rel="noreferrer" style={{ color: '#93c5fd' }}>
+          Authoring guide ↗
+        </a>
+        <a href={VALIDATION_DOCS_URL} target="_blank" rel="noreferrer" style={{ color: '#93c5fd' }}>
+          Validation rules ↗
+        </a>
       </div>
     </div>
   )

@@ -481,6 +481,29 @@ describe('CreatorWorkbench', () => {
     })
   })
 
+  it('shows links to authoring docs alongside findings', async () => {
+    stubFetch((url) => {
+      if (url.includes('/validate')) {
+        return okJson({
+          valid: false,
+          errors: [
+            { severity: 'error', rule_id: 'SCHEMA_VIOLATION', file: 'manifest.yaml', pointer: '/author', message: 'author required', suggested_fix: 'See the authoring guide' },
+          ],
+          warnings: [],
+        })
+      }
+      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
+      return okJson([OFFICIAL_PACK, LOCAL_PACK])
+    })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+
+    const guideLink = await screen.findByRole('link', { name: /authoring guide/i })
+    expect(guideLink).toHaveAttribute('href', expect.stringContaining('scenario-authoring'))
+    expect(screen.getByRole('link', { name: /validation rules/i })).toBeInTheDocument()
+  })
+
   it('shows copy validation button', async () => {
     stubFetch((url) => {
       if (url.includes('/validate')) {
