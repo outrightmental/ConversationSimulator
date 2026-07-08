@@ -11,7 +11,9 @@ Audio recorded via push-to-talk is transcribed on-device. No audio is sent to re
 bash runtimes/whisper_cpp/download-runtime.sh
 ```
 
-The script downloads a pre-built whisper.cpp binary and the `ggml-base.en` model into `~/.convsim/models/stt/`.
+The script downloads the `ggml-base.en` model into `~/.convsim/models/stt/` and checks
+whether `whisper-cli` is already on your `PATH`. If the binary is not found it prints
+build-from-source instructions — no pre-built binary download is attempted.
 
 ### Manual install
 

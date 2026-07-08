@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# download-runtime.sh — download a pre-built whisper.cpp binary and a starter model.
+# download-runtime.sh — download a starter model and verify the whisper-cli binary.
 #
 # Usage:
 #   bash runtimes/whisper_cpp/download-runtime.sh [model]
