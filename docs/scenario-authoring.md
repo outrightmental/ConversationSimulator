@@ -352,7 +352,8 @@ This checks:
 - All required files are present
 - All files are valid against their schemas
 - All cross-file references resolve (NPC refs, rubric refs, safety policy)
-- No injection patterns or executable fields
+- No executable or script files, disguised binaries, or symlinks; no `scripts`
+  field in the manifest (packs are data, not code)
 
 A valid pack exits with code `0`. Errors are reported with the failing file
 path and schema field.

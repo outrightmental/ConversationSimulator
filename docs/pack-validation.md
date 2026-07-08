@@ -72,15 +72,20 @@ the schema field that failed.
 
 **Safety policy validation**
 
-- The safety policy file must parse as valid YAML and pass schema validation.
-- The `content_rating_cap` field must match the `content_rating` declared in
-  `manifest.yaml` or be stricter.
+- The safety policy file must parse as valid YAML and pass schema validation
+  against `schemas/safety.schema.json` — this includes the required
+  `content_rating_cap` field and the allowed action for each declared category.
 
-**Injection scan**
+> Keeping `content_rating_cap` consistent with the manifest's `content_rating`
+> is a **manual** review item; the validator does not currently compare the two.
 
-Pack files are scanned for template injection patterns. Any file that appears
-to embed executable directives is rejected with error code
-`INJECTION_PATTERN_DETECTED`. Packs are data, not code.
+**Executable-content scan**
+
+Before any YAML is parsed, the loader scans the pack directory and rejects it
+if it finds an executable or script file — matched by extension (`.sh`, `.py`,
+`.js`, `.exe`, …), by executable magic-byte signature (a disguised binary given
+a data extension), or a symlink (which could escape the pack root). Violations
+fail with `FORBIDDEN_FILE` or `FORBIDDEN_BINARY`. Packs are data, not code.
 
 **No-scripts enforcement**
 
@@ -138,7 +143,7 @@ For each turn, the test runner checks:
 |-----------------|----------------|
 | `state_delta_contains` | Listed state variables changed value during the turn |
 | `session_control` | `continue_session` or `end_session` |
-| `safety_status` | `ok`, `redirect`, `refuse`, or `stop` |
+| `safety_status` | `ok`, `redirect`, or `stop` |
 | `npc_emotion_not` | NPC emotional state does not include the listed value |
 
 #### Static assertions
@@ -150,7 +155,7 @@ and `check` expressions:
 |-------|---------|
 | `non_empty_string` | `check: non_empty_string` |
 | `equals <value>` | `check: "equals true"` |
-| `min_length_<n>` | `check: min_length_1` |
+| `min_length_1` | `check: min_length_1` |
 | `contains <value>` | `check: "contains scenarios/my_scenario.yaml"` |
 | Compound (`AND`) | `check: "type=variable_above AND variable=impression"` |
 
@@ -186,91 +191,75 @@ done
 
 ## Common validation errors and how to fix them
 
-### MANIFEST_NOT_FOUND
+Each failure is reported with a stable error `code` (also surfaced in `--json`
+mode) followed by a human-readable message. The codes below are the ones the
+loader actually emits.
+
+### MISSING_FILE
 
 ```
-✗ Pack validation failed: MANIFEST_NOT_FOUND
-  manifest.yaml not found at: my-pack/manifest.yaml
+✗ Pack validation failed: MISSING_FILE
+  File not found: my-pack/manifest.yaml
 ```
 
-The pack directory does not contain a `manifest.yaml`. Check the path you
-passed to `validate-pack` and ensure the file exists.
+A required file is missing. This covers a missing `manifest.yaml`, a
+`safety.policy` / `npc.ref` / `rubric.ref` / `scene.ref` that resolves to a
+non-existent file, and an `entry_scenarios` path that does not match a
+discovered scenario. Check the path you passed to `validate-pack` and confirm
+every referenced file exists at the resolved relative path.
 
-### SCHEMA_INVALID
-
-```
-✗ Pack validation failed: SCHEMA_INVALID
-  File: my-pack/manifest.yaml
-  Validation error at /content_rating: must be one of ["G", "PG", "PG-13"]
-```
-
-A file failed JSON Schema validation. The error message includes the file
-path and the failing field. Check the value against the allowed options in the
-corresponding schema file.
-
-### NPC_NOT_FICTIONAL
+### SCHEMA_VALIDATION
 
 ```
-✗ Pack validation failed: NPC_NOT_FICTIONAL
-  File: my-pack/npcs/my_npc.yaml
-  NPC must have fictional: true
+✗ Pack validation failed: SCHEMA_VALIDATION
+  Schema validation failed for my-pack/manifest.yaml: /content_rating: must be equal to one of the allowed values
 ```
 
-Every NPC must set `fictional: true`. Real-person impersonation is not
-permitted. Add or correct the `fictional` field.
+A file failed JSON Schema validation. The message names the file path and the
+failing field (JSON pointer). Common cases include an out-of-range
+`content_rating`, a missing required field, and an NPC with `fictional: false`
+or a missing `fictional` field (the schema requires `fictional: true`). Check
+the value against the corresponding schema in `schemas/`.
 
-### MISSING_SAFETY_POLICY
-
-```
-✗ Pack validation failed: MISSING_SAFETY_POLICY
-  File: my-pack/safety/my_policy.yaml not found
-  Referenced from: manifest.yaml → safety.policy
-```
-
-The safety policy file referenced in `manifest.yaml` does not exist. Create
-the file or correct the path.
-
-### UNRESOLVED_REF
+### INVALID_YAML
 
 ```
-✗ Pack validation failed: UNRESOLVED_REF
-  File: my-pack/scenarios/my_scenario.yaml
-  npc.ref resolves to a file that does not exist: my-pack/npcs/missing_npc.yaml
+✗ Pack validation failed: INVALID_YAML
+  YAML parse error in my-pack/npcs/my_npc.yaml: bad indentation of a mapping entry
 ```
 
-A `ref` field in a scenario points to a file that does not exist. Check the
-relative path and create or rename the file.
+A file is not well-formed YAML, or its top level is not a mapping. Fix the
+syntax reported in the message.
 
-### INJECTION_PATTERN_DETECTED
-
-```
-✗ Pack validation failed: INJECTION_PATTERN_DETECTED
-  File: my-pack/npcs/my_npc.yaml
-  Executable directive pattern detected in field: public_persona.speaking_style
-```
-
-A pack file contains a pattern that looks like template injection or an
-embedded executable directive. Packs are data, not code. Remove any
-`{{...}}`, `{% %}`, or similar template syntax from the file.
-
-### CONTENT_RATING_MISMATCH
+### FORBIDDEN_FILE / FORBIDDEN_BINARY
 
 ```
-✗ Pack validation failed: CONTENT_RATING_MISMATCH
-  manifest.yaml declares content_rating: G but safety policy declares content_rating_cap: PG
+✗ Pack validation failed: FORBIDDEN_FILE
+  Executable or script file not allowed in pack: 'scripts/setup.py'. MVP packs are data, not code.
 ```
 
-The `content_rating_cap` in the safety policy must match or be stricter than
-the `content_rating` in `manifest.yaml`. Update one of the values to be
-consistent.
+The pack contains a script/executable file (by extension), a file whose bytes
+match an executable format (`FORBIDDEN_BINARY`), or a symlink. Packs are data,
+not code — remove the offending file and inline any needed content as data.
 
-### TEST_FIXTURE_FAILED
+### DUPLICATE_ID
 
 ```
-✗ Test failed: smoke_my_scenario
-  Turn 1 assertion failed: session_control expected continue_session, got end_session
+✗ Pack validation failed: DUPLICATE_ID
+  Duplicate scenario_id "behavioral_interview" found in pack "official.my_pack"
+```
+
+Two scenarios share a `scenario_id`, or two NPCs share an `npc_id`. IDs must
+be unique within a pack. Rename one of them.
+
+### Test fixture failure (`convsim test-pack`)
+
+```
+✗ 1 failed, 0 passed
+  smoke_my_scenario: Turn 1: session_control expected "continue_session", got "end_session"
 ```
 
 A smoke test turn assertion failed. Check the fixture's `player_input` for
 that turn — it may be triggering an unexpected session end (safety stop or
 ending condition). Adjust the input or check the scenario's ending thresholds.
+`test-pack` exits `1` when any fixture fails and `0` when all pass.

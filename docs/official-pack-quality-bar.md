@@ -14,9 +14,11 @@ as their content definition of done.
 code, shell commands, or scripts of any kind.**
 
 The pack schema enforces this: a `manifest.yaml` that declares a `scripts`
-field fails validation immediately. The validator also scans all pack files
-for template injection patterns and rejects any file that appears to embed
-executable directives.
+field fails validation immediately. Before any YAML is parsed, the loader also
+refuses to load a pack that contains an executable or script file — matched by
+extension (`.sh`, `.py`, `.js`, `.exe`, …), by executable magic-byte signature
+(so a binary renamed to a data extension is still caught), or a symlink (which
+could escape the pack root).
 
 This rule is non-negotiable in MVP. Treat every pack file as a document, not
 a program.
