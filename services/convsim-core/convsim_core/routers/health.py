@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from convsim_core import __version__
 from convsim_core.runtime.types import RuntimeHealth
+from convsim_core.services.model_manager_service import get_active_config
 
 router = APIRouter()
 
@@ -27,6 +28,11 @@ class _PrivacyPosture(BaseModel):
     crash_logging_enabled: bool
 
 
+class _ActiveModelConfig(BaseModel):
+    runtime_id: Optional[str] = None
+    model_id: Optional[str] = None
+
+
 class HealthResponse(BaseModel):
     status: str
     version: str
@@ -34,6 +40,7 @@ class HealthResponse(BaseModel):
     config_path: str
     database: _DatabaseStatus
     runtime: RuntimeHealth
+    active_model: _ActiveModelConfig
     privacy: _PrivacyPosture
 
 
@@ -42,6 +49,7 @@ async def health(request: Request) -> HealthResponse:
     config = request.app.state.service_config
     db = request.app.state.db
     app_settings = request.app.state.app_settings
+    active_cfg = get_active_config(db.connection())
     return HealthResponse(
         status="ok",
         version=__version__,
@@ -53,6 +61,7 @@ async def health(request: Request) -> HealthResponse:
             migrations_applied=db.migrations_applied,
         ),
         runtime=await request.app.state.runtime.health(),
+        active_model=_ActiveModelConfig(**active_cfg),
         privacy=_PrivacyPosture(
             telemetry_enabled=app_settings.telemetry_enabled,
             save_transcripts=app_settings.save_transcripts,
