@@ -11,6 +11,7 @@ _DEFAULT_DATA_DIR = str(Path.home() / ".convsim" / "data")
 _DEFAULT_LOG_DIR = str(Path.home() / ".convsim" / "logs")
 _DEFAULT_DB_DIR = str(Path.home() / ".convsim" / "db")
 _DEFAULT_PACKS_DIR = str(Path.home() / ".convsim" / "packs")
+_DEFAULT_MODELS_DIR = str(Path.home() / ".convsim" / "models" / "llm")
 
 
 class ServiceConfig(BaseSettings):
@@ -34,6 +35,7 @@ class ServiceConfig(BaseSettings):
     log_dir: str = _DEFAULT_LOG_DIR
     db_dir: str = _DEFAULT_DB_DIR
     packs_dir: str = _DEFAULT_PACKS_DIR
+    models_dir: str = _DEFAULT_MODELS_DIR
     # Set CONVSIM_LOCAL_DEV_PACKS_DIR to a directory that contains in-progress
     # pack folders.  The /api/packs/import/folder endpoint only accepts source
     # paths that fall within packs_dir or this directory; leaving it unset

@@ -1,9 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 from __future__ import annotations
 
+import asyncio
 import os
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Optional
 
 import httpx
@@ -20,16 +22,22 @@ from convsim_core.runtime.types import (
     RuntimeHealth,
     RuntimeStatus,
 )
+from convsim_core.services.model_download_service import execute_download
 from convsim_core.services.model_manager_service import (
     create_install_record,
     get_active_config,
+    get_install_record,
     get_installed_models,
+    mark_install_failed,
     save_benchmark_result,
     set_active_config,
 )
 from convsim_core.services.model_registry_service import list_registry_models
 
 router = APIRouter()
+
+# Maps install_id → asyncio.Event; setting the event signals cancel to the download task.
+_cancel_events: dict[int, asyncio.Event] = {}
 
 _BENCHMARK_PROMPT = "Say hello in exactly three words."
 _BENCHMARK_SYSTEM = "You are a helpful assistant. Be brief and literal."
@@ -67,6 +75,7 @@ class InstalledModelInfo(BaseModel):
     install_status: str
     progress_bytes: Optional[int] = None
     error_message: Optional[str] = None
+    verified_sha256: Optional[str] = None
     installed_at: str
 
 
@@ -150,10 +159,17 @@ async def _detect_ollama_models() -> list[DetectedOllamaModel]:
 
 def _get_registry_row(conn: Any, registry_id: str) -> dict[str, Any] | None:
     row = conn.execute(
-        "SELECT id, name, license_spdx, sha256, source_type FROM model_registry WHERE id = ?",
+        "SELECT id, name, license_spdx, sha256, source_type, download_url FROM model_registry WHERE id = ?",
         (registry_id,),
     ).fetchone()
     return dict(row) if row is not None else None
+
+
+def _get_download_url(conn: Any, registry_id: str) -> str | None:
+    row = conn.execute(
+        "SELECT download_url FROM model_registry WHERE id = ?", (registry_id,)
+    ).fetchone()
+    return row["download_url"] if row else None
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
@@ -237,12 +253,14 @@ async def use_model(request: Request, body: UseModelRequest) -> UseModelResponse
 
 @router.post("/api/models/install", response_model=InstallModelResponse)
 async def install_model(request: Request, body: InstallModelRequest) -> InstallModelResponse:
-    """Queue an explicit model download.
+    """Start an explicit model download.
 
-    Rejects registry entries that lack license or verified checksum metadata,
-    ensuring the API never downloads unverified weights.
+    Validates license and checksum metadata before creating the install record,
+    then kicks off a background download task.  The install_id returned can be
+    polled via GET /api/models/install/{install_id}.
     """
     conn = request.app.state.db.connection()
+    models_dir = Path(getattr(request.app.state, "models_dir", ""))
 
     model = _get_registry_row(conn, body.registry_id)
     if model is None:
@@ -288,12 +306,79 @@ async def install_model(request: Request, body: InstallModelRequest) -> InstallM
         conn, registry_id=body.registry_id, filename=filename, file_path=""
     )
 
+    # Register a cancel event before launching the task so DELETE can signal it.
+    cancel_event = asyncio.Event()
+    _cancel_events[install_id] = cancel_event
+
+    download_url = _get_download_url(conn, body.registry_id)
+
+    async def _run_download() -> None:
+        try:
+            await execute_download(
+                conn,
+                install_id,
+                download_url or "",
+                sha256,
+                models_dir,
+                filename,
+                cancel_event=cancel_event,
+            )
+        finally:
+            _cancel_events.pop(install_id, None)
+
+    asyncio.create_task(_run_download())
+
     return InstallModelResponse(
         install_id=install_id,
         registry_id=body.registry_id,
         status="pending",
-        message=f"Install queued for '{model['name']}'. Download will proceed in the background.",
+        message=f"Downloading '{model['name']}'. Poll GET /api/models/install/{install_id} for progress.",
     )
+
+
+@router.get("/api/models/install/{install_id}", response_model=InstalledModelInfo)
+async def get_install_status(request: Request, install_id: int) -> InstalledModelInfo:
+    """Return the current status and progress of a model install."""
+    conn = request.app.state.db.connection()
+    record = get_install_record(conn, install_id)
+    if record is None:
+        raise ConvsimError(
+            code="INSTALL_NOT_FOUND",
+            message=f"No install record with id {install_id}.",
+            status_code=404,
+        )
+    return InstalledModelInfo(**record)
+
+
+@router.delete("/api/models/install/{install_id}", status_code=204)
+async def cancel_install(request: Request, install_id: int) -> None:
+    """Cancel an in-progress model download.
+
+    If the download is already complete or was never started, returns 404.
+    Sets the cancel event so the download task stops cleanly between chunks.
+    """
+    conn = request.app.state.db.connection()
+    record = get_install_record(conn, install_id)
+    if record is None:
+        raise ConvsimError(
+            code="INSTALL_NOT_FOUND",
+            message=f"No install record with id {install_id}.",
+            status_code=404,
+        )
+
+    terminal_statuses = {"ready", "complete", "failed", "cancelled", "checksum_mismatch"}
+    if record["install_status"] in terminal_statuses:
+        raise ConvsimError(
+            code="INSTALL_NOT_CANCELLABLE",
+            message=f"Install {install_id} is in terminal state '{record['install_status']}' and cannot be cancelled.",
+            status_code=409,
+        )
+
+    event = _cancel_events.get(install_id)
+    if event is not None:
+        event.set()
+    else:
+        mark_install_failed(conn, install_id, "Cancelled by user.", status="cancelled")
 
 
 @router.post("/api/models/benchmark", response_model=BenchmarkResponse)

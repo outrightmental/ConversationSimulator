@@ -10,6 +10,8 @@ vi.mock('../api/client', () => ({
     getModels: vi.fn(),
     useModel: vi.fn(),
     installModel: vi.fn(),
+    getInstallStatus: vi.fn(),
+    cancelInstall: vi.fn(),
   },
 }))
 
@@ -90,6 +92,20 @@ beforeEach(() => {
     status: 'pending',
     message: 'Install queued.',
   })
+  // Default: stay in 'downloading' state so the installing step remains visible in tests.
+  mockApi.getInstallStatus.mockResolvedValue({
+    id: 1,
+    registry_id: 'qwen3-4b-instruct-q4_k_m',
+    filename: 'qwen3-4b-instruct-q4_k_m.gguf',
+    file_path: '',
+    size_bytes: null,
+    install_status: 'downloading',
+    progress_bytes: null,
+    error_message: null,
+    verified_sha256: null,
+    installed_at: '2026-01-01T00:00:00.000Z',
+  })
+  mockApi.cancelInstall.mockResolvedValue(undefined)
 })
 
 // ── Loading state ────────────────────────────────────────────────────────────

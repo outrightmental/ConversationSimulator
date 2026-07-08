@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
-import type { ModelsResponse, ModelRegistryEntry, DetectedOllamaModel } from '@convsim/shared'
+import type { ModelsResponse, ModelRegistryEntry, DetectedOllamaModel, InstalledModelInfo } from '@convsim/shared'
 
 const SETUP_DOCS_URL = 'https://github.com/outrightmental/ConversationSimulator/wiki'
 
@@ -137,6 +137,10 @@ export default function ModelManager() {
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState(false)
 
+  const [installId, setInstallId] = useState<number | null>(null)
+  const [installRecord, setInstallRecord] = useState<InstalledModelInfo | null>(null)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
   useEffect(() => {
     api
       .getModels()
@@ -149,6 +153,41 @@ export default function ModelManager() {
         setStep('load-error')
       })
   }, [])
+
+  // Poll install progress while in the 'installing' step.
+  useEffect(() => {
+    if (step !== 'installing' || installId == null) return
+
+    function stopPoll() {
+      if (pollRef.current != null) {
+        clearInterval(pollRef.current)
+        pollRef.current = null
+      }
+    }
+
+    pollRef.current = setInterval(() => {
+      api
+        .getInstallStatus(installId)
+        .then((record) => {
+          setInstallRecord(record)
+          const terminal = ['ready', 'complete', 'failed', 'cancelled', 'checksum_mismatch']
+          if (terminal.includes(record.install_status)) {
+            stopPoll()
+            if (record.install_status === 'ready' || record.install_status === 'complete') {
+              navigate('/')
+            } else {
+              setActionError(record.error_message ?? 'Download failed. Please try again.')
+              setStep('confirm-install')
+            }
+          }
+        })
+        .catch(() => {
+          // Ignore transient polling errors; keep polling.
+        })
+    }, 2000)
+
+    return stopPoll
+  }, [step, installId, navigate])
 
   const recommendedModel = modelsData?.registry.find((m) => m.role === 'starter') ?? null
 
@@ -370,7 +409,9 @@ export default function ModelManager() {
               setActionLoading(true)
               setActionError(null)
               try {
-                await api.installModel({ registry_id: selectedModel.id })
+                const resp = await api.installModel({ registry_id: selectedModel.id })
+                setInstallId(resp.install_id)
+                setInstallRecord(null)
                 setStep('installing')
               } catch (err: unknown) {
                 setActionError(
@@ -400,19 +441,72 @@ export default function ModelManager() {
   // ── Installing ───────────────────────────────────────────────────────────────
 
   if (step === 'installing') {
+    const status = installRecord?.install_status ?? 'pending'
+    const progressBytes = installRecord?.progress_bytes ?? 0
+    const totalBytes = installRecord?.size_bytes ?? null
+    const pct = totalBytes != null && totalBytes > 0
+      ? Math.min(100, Math.round((progressBytes / totalBytes) * 100))
+      : null
+
+    const statusLabel: Record<string, string> = {
+      pending: 'Queued…',
+      downloading: 'Downloading…',
+    }
+
     return (
       <div style={{ maxWidth: '640px' }}>
         <h1>Installing model</h1>
-        <p>
-          Your model has been queued for download. The runtime will begin downloading in the
-          background.
+        <p style={{ color: '#a1a1aa', fontSize: '0.9rem' }}>
+          {statusLabel[status] ?? 'Downloading…'} Download time depends on your connection speed.
         </p>
-        <p style={{ fontSize: '0.875rem', color: '#a1a1aa', marginTop: '0.5rem' }}>
-          Download time depends on your connection speed. You can return to the Home screen and
-          watch the LLM status badge update when the model is ready.
+
+        {/* Progress bar */}
+        <div
+          role="progressbar"
+          aria-valuenow={pct ?? 0}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label="Download progress"
+          style={{
+            marginTop: '1rem',
+            height: '8px',
+            borderRadius: '4px',
+            background: 'rgba(255,255,255,0.1)',
+            overflow: 'hidden',
+          }}
+        >
+          <div
+            style={{
+              height: '100%',
+              width: pct != null ? `${pct}%` : '0%',
+              background: 'rgba(99,102,241,0.85)',
+              borderRadius: '4px',
+              transition: 'width 0.4s ease',
+            }}
+          />
+        </div>
+
+        <p style={{ fontSize: '0.8rem', color: '#71717a', marginTop: '0.4rem' }}>
+          {pct != null
+            ? `${pct}% — ${(progressBytes / 1_073_741_824).toFixed(2)} GB`
+            : 'Waiting for progress data…'}
         </p>
-        <div style={{ marginTop: '1.5rem' }}>
-          <PrimaryButton onClick={() => navigate('/')}>Back to Home</PrimaryButton>
+
+        <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1.5rem' }}>
+          <ActionButton
+            onClick={async () => {
+              if (installId != null) {
+                try {
+                  await api.cancelInstall(installId)
+                } catch {
+                  // Cancel is best-effort; navigate home regardless.
+                }
+              }
+              navigate('/')
+            }}
+          >
+            Cancel and go home
+          </ActionButton>
         </div>
       </div>
     )

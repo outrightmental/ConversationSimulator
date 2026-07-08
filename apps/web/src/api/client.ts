@@ -15,6 +15,7 @@ import type {
   UseModelResponse,
   InstallModelRequest,
   InstallModelResponse,
+  InstalledModelInfo,
 } from '@convsim/shared';
 
 export type { HealthResponse };
@@ -157,6 +158,12 @@ export const api = {
   },
   installModel(request: InstallModelRequest): Promise<InstallModelResponse> {
     return post<InstallModelResponse>('/models/install', request)
+  },
+  getInstallStatus(installId: number): Promise<InstalledModelInfo> {
+    return get<InstalledModelInfo>(`/models/install/${installId}`)
+  },
+  cancelInstall(installId: number): Promise<void> {
+    return del(`/models/install/${installId}`)
   },
   connectSession(
     sessionId: string,
