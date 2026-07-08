@@ -168,36 +168,32 @@ ALTER TABLE asset_index ADD COLUMN pack_id INTEGER REFERENCES packs(id) ON DELET
 ALTER TABLE asset_index ADD COLUMN scenario_id INTEGER REFERENCES scenarios(id) ON DELETE SET NULL;
 """
 
-_SCENARIO_LIBRARY_API_SQL = """
-ALTER TABLE packs ADD COLUMN content_rating TEXT;
-ALTER TABLE packs ADD COLUMN supported_languages_json TEXT;
-ALTER TABLE packs ADD COLUMN validation_status TEXT NOT NULL DEFAULT 'unknown';
-ALTER TABLE packs ADD COLUMN last_validated_at TEXT;
+_TURN_PIPELINE_SQL = """
+CREATE TABLE turn_sessions (
+    session_id        TEXT PRIMARY KEY,
+    scenario_id       TEXT NOT NULL,
+    flow_state        TEXT NOT NULL DEFAULT 'NotStarted',
+    ending_type       TEXT,
+    state_vars_json   TEXT NOT NULL DEFAULT '{}',
+    fired_events_json TEXT NOT NULL DEFAULT '[]',
+    turn_count        INTEGER NOT NULL DEFAULT 0,
+    setup_json        TEXT NOT NULL DEFAULT '{}',
+    created_at        TEXT NOT NULL DEFAULT (datetime('now'))
+);
 
-ALTER TABLE scenarios ADD COLUMN title TEXT;
-ALTER TABLE scenarios ADD COLUMN summary TEXT;
-ALTER TABLE scenarios ADD COLUMN content_rating TEXT;
-ALTER TABLE scenarios ADD COLUMN difficulty_default TEXT;
-ALTER TABLE scenarios ADD COLUMN max_turns INTEGER;
-ALTER TABLE scenarios ADD COLUMN soft_time_limit_minutes INTEGER;
-ALTER TABLE scenarios ADD COLUMN tags_json TEXT;
-ALTER TABLE scenarios ADD COLUMN voice_support INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE scenarios ADD COLUMN model_recommendation TEXT;
-ALTER TABLE scenarios ADD COLUMN rel_path TEXT;
-
-DROP TABLE scenario_fts;
-CREATE VIRTUAL TABLE scenario_fts USING fts5(title, summary, tags, pack_name, pack_readme);
-
-DROP TABLE pack_readme_fts;
-CREATE VIRTUAL TABLE pack_readme_fts USING fts5(name, description);
-
-CREATE TRIGGER scenario_fts_ad AFTER DELETE ON scenarios BEGIN
-    DELETE FROM scenario_fts WHERE rowid = old.id;
-END;
-
-CREATE TRIGGER pack_readme_fts_ad AFTER DELETE ON packs BEGIN
-    DELETE FROM pack_readme_fts WHERE rowid = old.id;
-END;
+CREATE TABLE turn_session_turns (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id       TEXT NOT NULL REFERENCES turn_sessions(session_id) ON DELETE CASCADE,
+    turn_number      INTEGER NOT NULL,
+    role             TEXT NOT NULL,
+    content          TEXT NOT NULL,
+    emotion          TEXT,
+    state_delta_json TEXT,
+    event_flags_json TEXT,
+    safety_json      TEXT,
+    created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(session_id, turn_number)
+);
 """
 
 MIGRATIONS: list[tuple[str, str]] = [
@@ -205,7 +201,7 @@ MIGRATIONS: list[tuple[str, str]] = [
     ("0002_model_registry_v2", _MODEL_REGISTRY_V2_SQL),
     ("0003_model_manager_api", _MODEL_MANAGER_API_SQL),
     ("0004_extend_pack_assets", _EXTEND_PACK_ASSETS_SQL),
-    ("0005_scenario_library_api", _SCENARIO_LIBRARY_API_SQL),
+    ("0005_turn_pipeline", _TURN_PIPELINE_SQL),
 ]
 
 
