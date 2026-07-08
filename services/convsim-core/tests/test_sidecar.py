@@ -271,13 +271,15 @@ def test_sidecar_stop_when_not_running_returns_200(client):
 
 
 def test_sidecar_stop_when_crashed_returns_stopped(client):
-    """POST /api/sidecar/stop must return state=stopped even when sidecar has crashed.
+    """POST /api/sidecar/stop must return state=stopped and clear error when sidecar crashed.
 
-    Without this, the endpoint returned state="crashed" — contradicting the
-    "No managed llama-server is running" message and leaving the sidecar in a
-    non-STOPPED state that prevented clean status queries.
+    Without the state fix, the endpoint returned state="crashed" — contradicting
+    the "No managed llama-server is running" message.
+    Without the error fix, GET /api/sidecar/status would still report the crash
+    error message after stop, which is confusing when state=stopped.
     """
     client.app.state.sidecar._state = SidecarState.CRASHED
+    client.app.state.sidecar._error = "llama-server exited unexpectedly with code 1."
 
     resp = client.post("/api/sidecar/stop")
     assert resp.status_code == 200
@@ -288,15 +290,20 @@ def test_sidecar_stop_when_crashed_returns_stopped(client):
     status = client.get("/api/sidecar/status").json()
     assert status["state"] == "stopped"
     assert status["started_at"] is None
+    assert status["error"] is None
 
 
 def test_sidecar_stop_when_port_conflict_returns_stopped(client):
-    """POST /api/sidecar/stop must return state=stopped for PORT_CONFLICT state."""
+    """POST /api/sidecar/stop must return state=stopped and clear error for PORT_CONFLICT."""
     client.app.state.sidecar._state = SidecarState.PORT_CONFLICT
+    client.app.state.sidecar._error = "Port 7356 on 127.0.0.1 is already in use."
 
     resp = client.post("/api/sidecar/stop")
     assert resp.status_code == 200
     assert resp.json()["state"] == "stopped"
+
+    status = client.get("/api/sidecar/status").json()
+    assert status["error"] is None
 
 
 def test_sidecar_start_missing_executable_returns_503(client):
