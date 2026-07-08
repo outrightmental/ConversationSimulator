@@ -37,6 +37,7 @@ export default function ScenarioLibrary() {
   const [filterLanguage, setFilterLanguage] = useState('')
   const [filterDifficulty, setFilterDifficulty] = useState('')
   const [filterTag, setFilterTag] = useState('')
+  const [filterModel, setFilterModel] = useState('')
   const [voiceOnly, setVoiceOnly] = useState(false)
   const [validations, setValidations] = useState<Record<string, ValidationState>>({})
   const [expandedValidation, setExpandedValidation] = useState<string | null>(null)
@@ -46,6 +47,7 @@ export default function ScenarioLibrary() {
   const languageId = useId()
   const difficultyId = useId()
   const tagId = useId()
+  const modelId = useId()
 
   useEffect(() => {
     api
@@ -54,23 +56,26 @@ export default function ScenarioLibrary() {
       .catch(() => setLoadError(true))
   }, [])
 
-  const { allRatings, allLanguages, allDifficulties, allTags } = useMemo(() => {
-    if (!scenarios) return { allRatings: [], allLanguages: [], allDifficulties: [], allTags: [] }
+  const { allRatings, allLanguages, allDifficulties, allTags, allModels } = useMemo(() => {
+    if (!scenarios) return { allRatings: [], allLanguages: [], allDifficulties: [], allTags: [], allModels: [] }
     const ratings = new Set<string>()
     const languages = new Set<string>()
     const difficulties = new Set<string>()
     const tags = new Set<string>()
+    const models = new Set<string>()
     for (const s of scenarios) {
       ratings.add(s.content_rating)
       for (const l of s.supported_languages) languages.add(l)
       for (const d of Object.keys(s.difficulty.options)) difficulties.add(d)
       for (const t of s.tags ?? []) tags.add(t)
+      for (const m of s.recommended_model ?? []) models.add(m)
     }
     return {
       allRatings: [...ratings].sort(),
       allLanguages: [...languages].sort(),
       allDifficulties: [...difficulties].sort(),
       allTags: [...tags].sort(),
+      allModels: [...models].sort(),
     }
   }, [scenarios])
 
@@ -82,6 +87,7 @@ export default function ScenarioLibrary() {
       if (filterLanguage && !s.supported_languages.includes(filterLanguage)) return false
       if (filterDifficulty && !Object.keys(s.difficulty.options).includes(filterDifficulty)) return false
       if (filterTag && !(s.tags ?? []).includes(filterTag)) return false
+      if (filterModel && !(s.recommended_model ?? []).includes(filterModel)) return false
       if (voiceOnly && !s.voice_supported) return false
       if (q) {
         const hay = `${s.title} ${s.summary} ${s.pack_name} ${s.player_role.label}`.toLowerCase()
@@ -90,7 +96,7 @@ export default function ScenarioLibrary() {
       return true
     })
     return groupByPack(filtered)
-  }, [scenarios, search, filterRating, filterLanguage, filterDifficulty, filterTag, voiceOnly])
+  }, [scenarios, search, filterRating, filterLanguage, filterDifficulty, filterTag, filterModel, voiceOnly])
 
   const totalVisible = packs.reduce((n, p) => n + p.scenarios.length, 0)
 
@@ -219,6 +225,28 @@ export default function ScenarioLibrary() {
               {allTags.map((t) => (
                 <option key={t} value={t}>
                   {t}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {allModels.length > 0 && (
+          <div style={filterGroupStyle}>
+            <label htmlFor={modelId} style={labelStyle}>
+              Model
+            </label>
+            <select
+              id={modelId}
+              value={filterModel}
+              onChange={(e) => setFilterModel(e.target.value)}
+              style={selectStyle}
+              aria-label="Filter by recommended model"
+            >
+              <option value="">All models</option>
+              {allModels.map((m) => (
+                <option key={m} value={m}>
+                  {m}
                 </option>
               ))}
             </select>
@@ -506,6 +534,9 @@ export default function ScenarioLibrary() {
                           {(scenario.tags ?? []).map((t) => (
                             <Chip key={t} label={t} accent="blue" />
                           ))}
+                          {(scenario.recommended_model ?? []).map((m) => (
+                            <Chip key={m} label={m} accent="purple" />
+                          ))}
                         </div>
                       </div>
 
@@ -540,9 +571,10 @@ export default function ScenarioLibrary() {
   )
 }
 
-function Chip({ label, accent }: { label: string; accent?: 'green' | 'blue' }) {
+function Chip({ label, accent }: { label: string; accent?: 'green' | 'blue' | 'purple' }) {
   const green = accent === 'green'
   const blue = accent === 'blue'
+  const purple = accent === 'purple'
   return (
     <span
       style={{
@@ -554,13 +586,17 @@ function Chip({ label, accent }: { label: string; accent?: 'green' | 'blue' }) {
           ? 'rgba(34,197,94,0.12)'
           : blue
             ? 'rgba(99,102,241,0.12)'
-            : 'rgba(255,255,255,0.06)',
-        color: green ? '#86efac' : blue ? '#a5b4fc' : '#a1a1aa',
+            : purple
+              ? 'rgba(168,85,247,0.12)'
+              : 'rgba(255,255,255,0.06)',
+        color: green ? '#86efac' : blue ? '#a5b4fc' : purple ? '#d8b4fe' : '#a1a1aa',
         border: green
           ? '1px solid rgba(34,197,94,0.2)'
           : blue
             ? '1px solid rgba(99,102,241,0.2)'
-            : '1px solid rgba(255,255,255,0.08)',
+            : purple
+              ? '1px solid rgba(168,85,247,0.2)'
+              : '1px solid rgba(255,255,255,0.08)',
       }}
     >
       {label}
