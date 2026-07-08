@@ -5,8 +5,10 @@ name: Everyday Negotiation
 version: 0.1.0
 description: >-
   Practice realistic everyday negotiation conversations with configurable NPCs.
-  Build confidence navigating competing goals and advocating for yourself
-  in common real-world situations.
+  Build confidence navigating competing goals and advocating for yourself in
+  four common real-world situations: buying a used car, renewing an apartment
+  lease, pushing back on freelance scope creep, and resolving a customer
+  service dispute.
 author: Outright Mental
 license: CC-BY-4.0
 content_rating: PG
@@ -17,6 +19,11 @@ tags:
   - professional
 supported_languages:
   - en
+entry_scenarios:
+  - scenarios/used_car_negotiation.yaml
+  - scenarios/apartment_lease_renewal.yaml
+  - scenarios/freelance_scope_negotiation.yaml
+  - scenarios/customer_service_refund.yaml
 assets:
   allow_external_urls: false
 safety:
