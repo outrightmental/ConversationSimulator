@@ -291,12 +291,14 @@ def test_sidecar_stop_when_crashed_returns_stopped(client):
     assert status["state"] == "stopped"
     assert status["started_at"] is None
     assert status["error"] is None
+    assert status["model_path"] is None
 
 
 def test_sidecar_stop_when_port_conflict_returns_stopped(client):
     """POST /api/sidecar/stop must return state=stopped and clear error for PORT_CONFLICT."""
     client.app.state.sidecar._state = SidecarState.PORT_CONFLICT
     client.app.state.sidecar._error = "Port 7356 on 127.0.0.1 is already in use."
+    client.app.state.sidecar._model_path = "/some/model.gguf"
 
     resp = client.post("/api/sidecar/stop")
     assert resp.status_code == 200
@@ -304,6 +306,7 @@ def test_sidecar_stop_when_port_conflict_returns_stopped(client):
 
     status = client.get("/api/sidecar/status").json()
     assert status["error"] is None
+    assert status["model_path"] is None
 
 
 def test_sidecar_start_missing_executable_returns_503(client):
@@ -518,7 +521,45 @@ async def test_start_and_stop_with_fake_executable(tmp_path):
     await sidecar.stop()
 
     assert sidecar.state == SidecarState.STOPPED
-    assert sidecar.get_status()["pid"] is None
+    status = sidecar.get_status()
+    assert status["pid"] is None
+    assert status["model_path"] is None
+    assert status["error"] is None
+    assert status["started_at"] is None
+
+
+@pytest.mark.asyncio
+async def test_stop_clears_model_path_after_crash(tmp_path):
+    """stop() must clear model_path regardless of whether the sidecar crashed.
+
+    The state property transitions _state to CRASHED but does not touch
+    _model_path. stop() must clear it so that GET /api/sidecar/status returns
+    model_path=null after the sidecar is stopped, not the stale path.
+    Also verifies that _process is set to None (resource cleanup).
+    """
+    import signal
+
+    exe = _write_fake_server(tmp_path)
+    port = _free_port()
+    sidecar = LlamaCppSidecar(log_dir=str(tmp_path / "logs"))
+
+    await sidecar.start("crash-model.gguf", executable=exe, port=port, startup_timeout=15.0)
+    assert sidecar.state == SidecarState.RUNNING
+
+    # Kill externally to trigger spontaneous crash, then read .state so the
+    # property updates _state = CRASHED (the early-return path in stop()).
+    os.kill(sidecar.get_status()["pid"], signal.SIGKILL)
+    await asyncio.sleep(0.3)
+    assert sidecar.state == SidecarState.CRASHED
+
+    await sidecar.stop()
+
+    assert sidecar.state == SidecarState.STOPPED
+    status = sidecar.get_status()
+    assert status["model_path"] is None
+    assert status["error"] is None
+    assert status["started_at"] is None
+    assert sidecar._process is None
 
 
 @pytest.mark.asyncio
