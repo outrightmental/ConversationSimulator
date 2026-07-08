@@ -71,6 +71,7 @@ export interface ModelsResponse {
   active: ActiveModelConfig;
   runtime_health: ModelRuntimeHealth;
   total: number;
+  last_benchmark: BenchmarkResponse | null;
 }
 
 export interface UseModelRequest {
