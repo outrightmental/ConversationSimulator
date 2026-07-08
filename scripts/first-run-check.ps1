@@ -141,10 +141,12 @@ function Check-WebView2 {
 function Check-Port([int]$Port, [string]$Label) {
     $conn = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
     if ($conn) {
-        $pid  = $conn.OwningProcess | Select-Object -First 1
-        $proc = Get-Process -Id $pid -ErrorAction SilentlyContinue
+        # NB: do not name this $pid — that is a read-only automatic variable
+        # in PowerShell, and assigning to it throws a terminating error.
+        $procId = $conn.OwningProcess | Select-Object -First 1
+        $proc = Get-Process -Id $procId -ErrorAction SilentlyContinue
         $name = if ($proc) { $proc.Name } else { 'unknown' }
-        Status-Warn "Port $Port ($Label): in use by PID $pid ($name) — stop it before starting services"
+        Status-Warn "Port $Port ($Label): in use by PID $procId ($name) — stop it before starting services"
     } else {
         Status-Pass "Port $Port ($Label): free"
     }
