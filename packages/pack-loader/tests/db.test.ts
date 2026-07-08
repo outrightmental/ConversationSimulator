@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { join } from 'node:path';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -116,17 +116,24 @@ describe('PackIndex.importPack — replace', () => {
   });
 
   it('preserves installed_at timestamp when pack is re-imported', () => {
-    const v1Dir = tempPackDir();
-    index.importPack(loadPack(v1Dir, 'official'));
-    const originalEntry = index.getPack('test.minimal_pack');
-    const originalInstalledAt = originalEntry?.installed_at;
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2025-01-01T00:00:00.000Z'));
+      const v1Dir = tempPackDir();
+      index.importPack(loadPack(v1Dir, 'official'));
+      const originalInstalledAt = index.getPack('test.minimal_pack')?.installed_at;
 
-    const updatedManifest = VALID_MANIFEST_YAML.replace('version: 0.1.0', 'version: 0.2.0');
-    const v2Dir = tempPackDir({ manifestYaml: updatedManifest });
-    index.importPack(loadPack(v2Dir, 'official'));
+      // Advance time by 1 day so the re-import's now() differs from installed_at.
+      // Without the fix (installed_at excluded from ON CONFLICT SET), this would
+      // overwrite installed_at with the newer timestamp and the assertion below fails.
+      vi.setSystemTime(new Date('2025-01-02T00:00:00.000Z'));
+      const updatedManifest = VALID_MANIFEST_YAML.replace('version: 0.1.0', 'version: 0.2.0');
+      index.importPack(loadPack(tempPackDir({ manifestYaml: updatedManifest }), 'official'));
 
-    const updatedEntry = index.getPack('test.minimal_pack');
-    expect(updatedEntry?.installed_at).toBe(originalInstalledAt);
+      expect(index.getPack('test.minimal_pack')?.installed_at).toBe(originalInstalledAt);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('replaces the scenario list when pack is updated', () => {
