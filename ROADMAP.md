@@ -58,7 +58,7 @@ criteria.
 - [x] Debrief generation from rubric scores
 - [x] Browser UI connected to Python backend via WebSocket
 - [x] JSON Schema covering scenarios, NPCs, rubrics, scenes, safety policies
-- [x] Pack validator CLI (`convsim-validate-pack <path>`)
+- [x] Pack validator CLI (`convsim validate-pack <path>`)
 - [x] Pack import/export flow in the browser workbench
 - [x] Offline smoke test CI gate
 - [x] Whisper STT integration (voice input, local — requires whisper.cpp runtime)

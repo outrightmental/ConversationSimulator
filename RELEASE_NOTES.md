@@ -21,8 +21,8 @@ new relative to the empty repository.
   Basics, Everyday Negotiation, Language Café, and Difficult Conversations. All
   packs are CC BY 4.0.
 - **Pack schema and validator** — JSON Schema covering scenarios, NPCs, rubrics,
-  scenes, and safety policies. The `convsim-validate-pack` CLI catches malformed
-  packs at import time and prints actionable errors.
+  scenes, and safety policies. The `convsim validate-pack` command catches
+  malformed packs at import time and prints actionable errors.
 - **Creator Workbench** — Browser UI for inspecting, editing, validating, and
   exporting scenario packs. No command-line skills required for pack authoring.
 - **Model Manager** — Curated registry of local GGUF models with explicit
