@@ -73,8 +73,10 @@ class TurnInputError(ValueError):
 @dataclass
 class TurnPipelineResult:
     player_content: str
+    player_event_id: int
     npc_utterance: str
     npc_emotion: str
+    npc_event_id: int
     state_delta: Dict[str, int]
     new_state_vars: Dict[str, int]
     visible_state: Dict[str, int]
@@ -249,13 +251,13 @@ async def process_turn(
     player_turn_number = turn_number * 2 - 1
     npc_turn_number = turn_number * 2
 
-    conn.execute(
+    player_cursor = conn.execute(
         "INSERT INTO turn_session_turns "
         "(session_id, turn_number, role, content, created_at) "
         "VALUES (?, ?, 'player', ?, ?)",
         (session_id, player_turn_number, normalized, now),
     )
-    conn.execute(
+    npc_cursor = conn.execute(
         "INSERT INTO turn_session_turns "
         "(session_id, turn_number, role, content, emotion, state_delta_json, event_flags_json, safety_json, created_at) "
         "VALUES (?, ?, 'npc', ?, ?, ?, ?, ?, ?)",
@@ -298,8 +300,10 @@ async def process_turn(
 
     return TurnPipelineResult(
         player_content=normalized,
+        player_event_id=player_cursor.lastrowid,
         npc_utterance=turn_output.npc_utterance,
         npc_emotion=turn_output.npc_emotion,
+        npc_event_id=npc_cursor.lastrowid,
         state_delta=dict(delta_result.actual_changes),
         new_state_vars=delta_result.new_state,
         visible_state=visible,
