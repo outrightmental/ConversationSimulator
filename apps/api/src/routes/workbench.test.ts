@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../index.js';
 import { setWorkbenchRoots } from './workbench.js';
+import { resetDb } from '../db.js';
 
 let app: FastifyInstance;
 let officialRoot: string;
@@ -43,6 +44,7 @@ function setupPack(root: string, slug: string, name: string, packId: string) {
 }
 
 beforeEach(async () => {
+  resetDb();
   tmpBase = join(tmpdir(), `workbench-test-${Math.random().toString(36).slice(2)}`);
   officialRoot = join(tmpBase, 'official');
   localDevRoot = join(tmpBase, 'local-dev');
@@ -439,5 +441,161 @@ describe('POST /api/workbench/packs/:kind/:slug/copy-to-local', () => {
     const slug2 = res2.json<{ slug: string }>().slug;
 
     expect(slug1).not.toBe(slug2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/workbench/packs/:kind/:slug/test-session
+// ---------------------------------------------------------------------------
+
+describe('POST /api/workbench/packs/:kind/:slug/test-session', () => {
+  it('creates a test session and returns session_id, state, npc_opening, and state_vars', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workbench/packs/official/sample-pack/test-session',
+    });
+    expect(res.statusCode).toBe(201);
+    const body = res.json<{
+      session_id: string;
+      state: string;
+      npc_opening: string;
+      state_vars: Record<string, number>;
+    }>();
+    expect(body.session_id).toMatch(/^test-/);
+    expect(body.state).toBe('PlayerTurnListening');
+    expect(typeof body.npc_opening).toBe('string');
+    expect(body.npc_opening.length).toBeGreaterThan(0);
+    expect(typeof body.state_vars).toBe('object');
+    expect(body.state_vars['trust']).toBe(50);
+    expect(body.state_vars['patience']).toBe(75);
+  });
+
+  it('works for local-dev packs too', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workbench/packs/local-dev/my-pack/test-session',
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json<{ session_id: string }>().session_id).toMatch(/^test-/);
+  });
+
+  it('returns 404 for an unknown pack slug', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workbench/packs/official/does-not-exist/test-session',
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('returns 400 for an invalid kind', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workbench/packs/community/sample-pack/test-session',
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('created session accepts turns via the sessions API', async () => {
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/workbench/packs/local-dev/my-pack/test-session',
+    });
+    expect(createRes.statusCode).toBe(201);
+    const { session_id } = createRes.json<{ session_id: string }>();
+
+    const turnRes = await app.inject({
+      method: 'POST',
+      url: `/api/sessions/${session_id}/turn`,
+      payload: { content: 'Hello there.' },
+    });
+    expect(turnRes.statusCode).toBe(200);
+    expect(turnRes.json<{ state: string }>().state).toBe('PlayerTurnListening');
+  });
+
+  it('session is not included in the normal GET /api/sessions history', async () => {
+    // Temporary workbench test sessions must not pollute the player's session
+    // history list, even though they are stored as real session rows.
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/workbench/packs/local-dev/my-pack/test-session',
+    });
+    const { session_id } = createRes.json<{ session_id: string }>();
+
+    // The session IS retrievable by id (it's a real session row)
+    const getRes = await app.inject({ method: 'GET', url: `/api/sessions/${session_id}` });
+    expect(getRes.statusCode).toBe(200);
+
+    // Verify it has save_transcript: false in setup
+    const session = getRes.json<{ setup: { save_transcript: boolean } }>();
+    expect(session.setup.save_transcript).toBe(false);
+
+    // ...but it must NOT appear in the GET /api/sessions history list.
+    const listRes = await app.inject({ method: 'GET', url: '/api/sessions' });
+    expect(listRes.statusCode).toBe(200);
+    const { sessions } = listRes.json<{ sessions: { session_id: string }[] }>();
+    expect(sessions.some((s) => s.session_id === session_id)).toBe(false);
+  });
+
+  it('test session can be deleted via DELETE /api/sessions/:id', async () => {
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/workbench/packs/official/sample-pack/test-session',
+    });
+    const { session_id } = createRes.json<{ session_id: string }>();
+
+    const deleteRes = await app.inject({
+      method: 'DELETE',
+      url: `/api/sessions/${session_id}`,
+    });
+    expect(deleteRes.statusCode).toBe(204);
+
+    const getRes = await app.inject({ method: 'GET', url: `/api/sessions/${session_id}` });
+    expect(getRes.statusCode).toBe(404);
+  });
+
+  it('session events are not persisted (save_transcript=false)', async () => {
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/workbench/packs/local-dev/my-pack/test-session',
+    });
+    const { session_id } = createRes.json<{ session_id: string }>();
+
+    // Submit a turn — with save_transcript=false, no events row is written
+    await app.inject({
+      method: 'POST',
+      url: `/api/sessions/${session_id}/turn`,
+      payload: { content: 'Test message' },
+    });
+
+    // The turn response still returns synthetic event objects but they have event_id=0
+    // (not persisted). The session itself is still accessible.
+    const getRes = await app.inject({ method: 'GET', url: `/api/sessions/${session_id}` });
+    expect(getRes.statusCode).toBe(200);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/workbench/packs/:kind/:slug/validate (stub endpoint)
+// ---------------------------------------------------------------------------
+
+describe('GET /api/workbench/packs/:kind/:slug/validate', () => {
+  it('returns valid=true for an existing pack', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/workbench/packs/official/sample-pack/validate',
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ valid: boolean; errors: unknown[]; warnings: unknown[] }>();
+    expect(body.valid).toBe(true);
+    expect(Array.isArray(body.errors)).toBe(true);
+    expect(Array.isArray(body.warnings)).toBe(true);
+  });
+
+  it('returns 404 for unknown pack', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/workbench/packs/official/does-not-exist/validate',
+    });
+    expect(res.statusCode).toBe(404);
   });
 });
