@@ -3,9 +3,11 @@ import os from 'node:os';
 import path from 'node:path';
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import websocket from '@fastify/websocket';
 import { healthRoutes } from './routes/health.js';
 import { scenarioRoutes } from './routes/scenarios.js';
 import { sessionRoutes } from './routes/sessions.js';
+import { sessionWsRoutes } from './routes/session-ws.js';
 import { initDb } from './db.js';
 import { getListenConfig } from './config.js';
 
@@ -13,6 +15,7 @@ export async function buildApp() {
   const app = Fastify({ logger: true });
 
   await app.register(cors, { origin: 'http://localhost:7354' });
+  await app.register(websocket);
 
   // Propagate typed error fields (code, current_state) set by route handlers.
   // Fall back to reply.statusCode when the error itself has no statusCode set,
@@ -29,6 +32,7 @@ export async function buildApp() {
   await app.register(healthRoutes);
   await app.register(scenarioRoutes);
   await app.register(sessionRoutes);
+  await app.register(sessionWsRoutes);
 
   return app;
 }
