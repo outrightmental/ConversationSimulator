@@ -1,9 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { api } from '../api/client'
 import { readPrivacyPref, writePrivacyPref, PRIVACY_KEYS } from '../privacyPrefs'
 
 type ClearState = 'idle' | 'confirming' | 'clearing' | 'done' | 'error'
+
+interface SessionSummary {
+  session_id: string
+  scenario_id: string
+  state: string
+  created_at: string
+}
 
 interface PrivacyToggleProps {
   id: string
@@ -70,11 +77,24 @@ export default function Settings() {
   const [clearError, setClearError] = useState<string | null>(null)
   const [deletedCount, setDeletedCount] = useState<number | null>(null)
 
+  const [sessions, setSessions] = useState<SessionSummary[] | null>(null)
+  const [sessionsError, setSessionsError] = useState(false)
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+
+  const loadSessions = useCallback(() => {
+    api.listSessions()
+      .then((r) => setSessions(r.sessions))
+      .catch(() => setSessionsError(true))
+  }, [])
+
   useEffect(() => {
     api.getDataFolder()
       .then((r) => setDataFolder(r.path))
       .catch(() => setDataFolderError(true))
   }, [])
+
+  useEffect(() => { loadSessions() }, [loadSessions])
 
   async function handleClearLocalData() {
     if (clearState === 'idle' || clearState === 'done' || clearState === 'error') {
@@ -88,6 +108,7 @@ export default function Settings() {
         const result = await api.clearLocalData()
         setDeletedCount(result.deleted_sessions)
         setClearState('done')
+        loadSessions()
       } catch (err) {
         setClearError(err instanceof Error ? err.message : 'Unknown error')
         setClearState('error')
@@ -98,6 +119,28 @@ export default function Settings() {
   function cancelClear() {
     setClearState('idle')
     setClearError(null)
+  }
+
+  async function handleDeleteSession(sessionId: string) {
+    setDeletingId(sessionId)
+    try {
+      await api.deleteSession(sessionId)
+      setSessions((prev) => prev?.filter((s) => s.session_id !== sessionId) ?? null)
+    } finally {
+      setDeletingId(null)
+      setDeleteConfirmId(null)
+    }
+  }
+
+  async function handleExportSession(sessionId: string) {
+    const data = await api.exportSession(sessionId)
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `session-${sessionId}.json`
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   const clearButtonLabel =
@@ -269,6 +312,127 @@ export default function Settings() {
             </button>
           )}
         </div>
+      </section>
+
+      {/* Your sessions */}
+      <section style={{ marginBottom: '2rem' }}>
+        <SectionHeading>Your sessions</SectionHeading>
+        <p style={{ fontSize: '0.875rem', color: '#a1a1aa', marginBottom: '0.75rem' }}>
+          Export a session as JSON or delete it permanently.
+        </p>
+        {sessionsError && (
+          <p style={{ fontSize: '0.875rem', color: '#f87171' }}>Could not load sessions.</p>
+        )}
+        {!sessionsError && sessions === null && (
+          <p style={{ fontSize: '0.875rem', color: '#a1a1aa' }}>Loading…</p>
+        )}
+        {!sessionsError && sessions !== null && sessions.length === 0 && (
+          <p data-testid="no-sessions" style={{ fontSize: '0.875rem', color: '#a1a1aa' }}>
+            No sessions yet.
+          </p>
+        )}
+        {!sessionsError && sessions !== null && sessions.length > 0 && (
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+            {sessions.map((s) => (
+              <li
+                key={s.session_id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '0.5rem',
+                  padding: '0.5rem 0',
+                  borderBottom: '1px solid rgba(255,255,255,0.06)',
+                  fontSize: '0.875rem',
+                }}
+              >
+                <span style={{ color: '#d4d4d8', flex: 1, minWidth: 0 }}>
+                  <span style={{ fontWeight: 500 }}>{s.scenario_id}</span>
+                  <span style={{ color: '#71717a', marginLeft: '0.5rem' }}>
+                    {new Date(s.created_at).toLocaleDateString()}
+                  </span>
+                  <span
+                    style={{
+                      marginLeft: '0.5rem',
+                      fontSize: '0.75rem',
+                      color: s.state === 'Ended' ? '#86efac' : '#fbbf24',
+                    }}
+                  >
+                    {s.state}
+                  </span>
+                </span>
+                <div style={{ display: 'flex', gap: '0.4rem', flexShrink: 0 }}>
+                  <button
+                    aria-label={`Export session ${s.session_id}`}
+                    onClick={() => handleExportSession(s.session_id)}
+                    style={{
+                      padding: '0.2rem 0.6rem',
+                      borderRadius: '4px',
+                      border: '1px solid rgba(255,255,255,0.15)',
+                      cursor: 'pointer',
+                      background: 'transparent',
+                      color: '#a1a1aa',
+                      fontSize: '0.8rem',
+                    }}
+                  >
+                    Export
+                  </button>
+                  {deleteConfirmId === s.session_id ? (
+                    <>
+                      <button
+                        aria-label={`Confirm delete session ${s.session_id}`}
+                        onClick={() => handleDeleteSession(s.session_id)}
+                        disabled={deletingId === s.session_id}
+                        style={{
+                          padding: '0.2rem 0.6rem',
+                          borderRadius: '4px',
+                          border: 'none',
+                          cursor: deletingId === s.session_id ? 'wait' : 'pointer',
+                          background: '#dc2626',
+                          color: '#fff',
+                          fontSize: '0.8rem',
+                        }}
+                      >
+                        Confirm delete
+                      </button>
+                      <button
+                        aria-label={`Cancel delete session ${s.session_id}`}
+                        onClick={() => setDeleteConfirmId(null)}
+                        style={{
+                          padding: '0.2rem 0.6rem',
+                          borderRadius: '4px',
+                          border: '1px solid rgba(255,255,255,0.15)',
+                          cursor: 'pointer',
+                          background: 'transparent',
+                          color: '#a1a1aa',
+                          fontSize: '0.8rem',
+                        }}
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      aria-label={`Delete session ${s.session_id}`}
+                      onClick={() => setDeleteConfirmId(s.session_id)}
+                      style={{
+                        padding: '0.2rem 0.6rem',
+                        borderRadius: '4px',
+                        border: '1px solid rgba(239,68,68,0.4)',
+                        cursor: 'pointer',
+                        background: 'transparent',
+                        color: '#f87171',
+                        fontSize: '0.8rem',
+                      }}
+                    >
+                      Delete
+                    </button>
+                  )}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       {/* Advanced */}

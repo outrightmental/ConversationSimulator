@@ -113,6 +113,23 @@ function rejectTransition(reply: { status: (code: number) => void }, state: Sess
 }
 
 export async function sessionRoutes(app: FastifyInstance) {
+  // GET /api/sessions
+  app.get('/api/sessions', async (): Promise<{ sessions: SessionCreateResponse[] }> => {
+    const db = getDb();
+    const rows = db
+      .prepare<[], SessionRow>('SELECT * FROM sessions ORDER BY created_at DESC')
+      .all();
+    return {
+      sessions: rows.map((row) => ({
+        session_id: row.session_id,
+        scenario_id: row.scenario_id,
+        state: row.state as SessionState,
+        created_at: row.created_at,
+        setup: JSON.parse(row.setup_json) as SessionCreateRequest,
+      })),
+    };
+  });
+
   // POST /api/sessions
   app.post<{ Body: SessionCreateRequest }>(
     '/api/sessions',

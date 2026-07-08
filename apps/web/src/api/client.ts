@@ -99,6 +99,9 @@ export const api = {
   getScenario(scenarioId: string): Promise<ScenarioInfo> {
     return get<ScenarioInfo>(`/scenarios/${scenarioId}`)
   },
+  listSessions(): Promise<{ sessions: SessionCreateResponse[] }> {
+    return get<{ sessions: SessionCreateResponse[] }>('/sessions')
+  },
   createSession(request: SessionCreateRequest): Promise<SessionCreateResponse> {
     return post<SessionCreateResponse>('/sessions', request)
   },

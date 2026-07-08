@@ -7,20 +7,41 @@ vi.mock('../api/client', () => ({
   api: {
     getDataFolder: vi.fn(),
     clearLocalData: vi.fn(),
+    listSessions: vi.fn(),
+    deleteSession: vi.fn(),
+    exportSession: vi.fn(),
   },
 }))
 
 import { api } from '../api/client'
 const mockApi = vi.mocked(api)
 
+const SESSION_A = {
+  session_id: 'sess-aaa',
+  scenario_id: 'behavioral_interview',
+  state: 'Ended',
+  created_at: '2026-01-01T00:00:00.000Z',
+  setup: {},
+}
+
+const SESSION_B = {
+  session_id: 'sess-bbb',
+  scenario_id: 'sales_call',
+  state: 'NotStarted',
+  created_at: '2026-01-02T00:00:00.000Z',
+  setup: {},
+}
+
 function renderSettings() {
   return render(<Settings />)
 }
 
 beforeEach(() => {
+  vi.restoreAllMocks()
   vi.clearAllMocks()
   localStorage.clear()
   mockApi.getDataFolder.mockResolvedValue({ path: '/home/user/.convsim/db' })
+  mockApi.listSessions.mockResolvedValue({ sessions: [] })
 })
 
 // ---------------------------------------------------------------------------
@@ -239,6 +260,93 @@ describe('clear local data', () => {
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /confirm.*delete everything/i })).toBeInTheDocument(),
     )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Your sessions
+// ---------------------------------------------------------------------------
+
+describe('your sessions', () => {
+  it('shows "No sessions yet." when the list is empty', async () => {
+    mockApi.listSessions.mockResolvedValue({ sessions: [] })
+    renderSettings()
+    await waitFor(() =>
+      expect(screen.getByTestId('no-sessions')).toBeInTheDocument(),
+    )
+  })
+
+  it('renders a row for each session', async () => {
+    mockApi.listSessions.mockResolvedValue({ sessions: [SESSION_A, SESSION_B] })
+    renderSettings()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /export session sess-aaa/i })).toBeInTheDocument(),
+    )
+    expect(screen.getByRole('button', { name: /export session sess-bbb/i })).toBeInTheDocument()
+  })
+
+  it('shows an error message when listSessions fails', async () => {
+    mockApi.listSessions.mockRejectedValue(new Error('network'))
+    renderSettings()
+    await waitFor(() =>
+      expect(screen.getByText(/could not load sessions/i)).toBeInTheDocument(),
+    )
+  })
+
+  it('clicking Delete shows a confirm button', async () => {
+    mockApi.listSessions.mockResolvedValue({ sessions: [SESSION_A] })
+    renderSettings()
+    await waitFor(() => screen.getByRole('button', { name: /delete session sess-aaa/i }))
+    fireEvent.click(screen.getByRole('button', { name: /delete session sess-aaa/i }))
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /confirm delete session sess-aaa/i })).toBeInTheDocument(),
+    )
+  })
+
+  it('clicking Cancel after Delete dismisses without calling API', async () => {
+    mockApi.listSessions.mockResolvedValue({ sessions: [SESSION_A] })
+    renderSettings()
+    await waitFor(() => screen.getByRole('button', { name: /delete session sess-aaa/i }))
+    fireEvent.click(screen.getByRole('button', { name: /delete session sess-aaa/i }))
+    await waitFor(() => screen.getByRole('button', { name: /cancel delete session sess-aaa/i }))
+    fireEvent.click(screen.getByRole('button', { name: /cancel delete session sess-aaa/i }))
+    expect(mockApi.deleteSession).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: /confirm delete session sess-aaa/i })).not.toBeInTheDocument()
+  })
+
+  it('clicking Confirm delete calls deleteSession and removes the row', async () => {
+    mockApi.listSessions.mockResolvedValue({ sessions: [SESSION_A, SESSION_B] })
+    mockApi.deleteSession.mockResolvedValue(undefined)
+    renderSettings()
+    await waitFor(() => screen.getByRole('button', { name: /delete session sess-aaa/i }))
+    fireEvent.click(screen.getByRole('button', { name: /delete session sess-aaa/i }))
+    await waitFor(() => screen.getByRole('button', { name: /confirm delete session sess-aaa/i }))
+    fireEvent.click(screen.getByRole('button', { name: /confirm delete session sess-aaa/i }))
+    await waitFor(() => expect(mockApi.deleteSession).toHaveBeenCalledWith('sess-aaa'))
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: /delete session sess-aaa/i })).not.toBeInTheDocument(),
+    )
+    expect(screen.getByRole('button', { name: /delete session sess-bbb/i })).toBeInTheDocument()
+  })
+
+  it('clicking Export calls exportSession', async () => {
+    mockApi.listSessions.mockResolvedValue({ sessions: [SESSION_A] })
+    mockApi.exportSession.mockResolvedValue({ session: SESSION_A, events: [] })
+    // Stub URL.createObjectURL/revokeObjectURL which jsdom does not implement.
+    const origURL = globalThis.URL
+    Object.defineProperty(globalThis, 'URL', {
+      value: Object.assign(Object.create(origURL), {
+        createObjectURL: vi.fn().mockReturnValue('blob:mock'),
+        revokeObjectURL: vi.fn(),
+      }),
+      writable: true,
+      configurable: true,
+    })
+    renderSettings()
+    await waitFor(() => screen.getByRole('button', { name: /export session sess-aaa/i }))
+    fireEvent.click(screen.getByRole('button', { name: /export session sess-aaa/i }))
+    await waitFor(() => expect(mockApi.exportSession).toHaveBeenCalledWith('sess-aaa'))
+    Object.defineProperty(globalThis, 'URL', { value: origURL, writable: true, configurable: true })
   })
 })
 
