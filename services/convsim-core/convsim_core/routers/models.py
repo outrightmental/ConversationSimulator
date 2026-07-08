@@ -165,13 +165,6 @@ def _get_registry_row(conn: Any, registry_id: str) -> dict[str, Any] | None:
     return dict(row) if row is not None else None
 
 
-def _get_download_url(conn: Any, registry_id: str) -> str | None:
-    row = conn.execute(
-        "SELECT download_url FROM model_registry WHERE id = ?", (registry_id,)
-    ).fetchone()
-    return row["download_url"] if row else None
-
-
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 
@@ -301,6 +294,17 @@ async def install_model(request: Request, body: InstallModelRequest) -> InstallM
             status_code=400,
         )
 
+    download_url = (model.get("download_url") or "").strip()
+    if not download_url:
+        raise ConvsimError(
+            code="MISSING_DOWNLOAD_URL",
+            message=(
+                f"Registry entry '{body.registry_id}' has no download URL. "
+                "Cannot start a download without a source URL."
+            ),
+            status_code=400,
+        )
+
     filename = f"{body.registry_id}.gguf"
     install_id = create_install_record(
         conn, registry_id=body.registry_id, filename=filename, file_path=""
@@ -310,14 +314,12 @@ async def install_model(request: Request, body: InstallModelRequest) -> InstallM
     cancel_event = asyncio.Event()
     _cancel_events[install_id] = cancel_event
 
-    download_url = _get_download_url(conn, body.registry_id)
-
     async def _run_download() -> None:
         try:
             await execute_download(
                 conn,
                 install_id,
-                download_url or "",
+                download_url,
                 sha256,
                 models_dir,
                 filename,

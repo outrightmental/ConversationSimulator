@@ -442,6 +442,20 @@ def test_install_does_not_download_when_sha256_pending(client):
     assert resp.json()["error"]["code"] == "MISSING_CHECKSUM"
 
 
+def test_install_does_not_download_when_url_missing(client):
+    """A registry entry with a valid checksum but no download URL must be rejected."""
+    conn = client.app.state.db.connection()
+    _insert_registry_model(conn, "no-url-model", "c" * 64)
+    resp = client.post("/api/models/install", json={"registry_id": "no-url-model"})
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "MISSING_DOWNLOAD_URL"
+    # No install record must be created for a model that cannot be downloaded.
+    rows = conn.execute(
+        "SELECT id FROM installed_models WHERE registry_id = 'no-url-model'"
+    ).fetchall()
+    assert rows == []
+
+
 def test_install_accepted_model_creates_install_record(client):
     conn = client.app.state.db.connection()
     _insert_registry_model(conn, "valid-model", "c" * 64)
