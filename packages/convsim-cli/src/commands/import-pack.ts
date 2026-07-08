@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { statSync, mkdirSync, cpSync, rmSync, mkdtempSync, readdirSync } from 'node:fs';
-import { resolve, join, extname, dirname } from 'node:path';
+import { resolve, join, extname, dirname, isAbsolute } from 'node:path';
 import { tmpdir } from 'node:os';
 import AdmZip from 'adm-zip';
 import { loadPack, PackIndex, PackLoaderError } from '@convsim/pack-loader';
@@ -42,6 +42,30 @@ function detectSourceKind(absPath: string): 'zip' | 'dir' {
   if (st.isDirectory()) return 'dir';
   if (st.isFile() && extname(absPath).toLowerCase() === '.zip') return 'zip';
   throw new Error(`Source must be a directory or a .zip file: ${absPath}`);
+}
+
+/**
+ * Reject zip entries that would escape the extraction root (zip-slip).
+ * AdmZip does not sanitise entry names, so a crafted zip could write to
+ * arbitrary filesystem locations before loadPack's security scan runs.
+ * Throws PackLoaderError so the caller treats it as a user-facing rejection
+ * (exit code 1) rather than an unexpected error (exit code 3).
+ */
+function assertNoZipSlip(zip: AdmZip): void {
+  for (const entry of zip.getEntries()) {
+    const name = entry.entryName;
+    if (isAbsolute(name)) {
+      throw new PackLoaderError('UNSAFE_ZIP', `Zip entry has absolute path: "${name}"`, name);
+    }
+    const parts = name.split(/[\\/]/);
+    if (parts.some((p) => p === '..')) {
+      throw new PackLoaderError(
+        'UNSAFE_ZIP',
+        `Zip entry attempts path traversal: "${name}"`,
+        name,
+      );
+    }
+  }
 }
 
 /**
@@ -92,6 +116,7 @@ export function runImportPack(
     if (kind === 'zip') {
       tempDir = mkdtempSync(join(tmpdir(), 'convsim-import-'));
       const zip = new AdmZip(absSource);
+      assertNoZipSlip(zip);
       zip.extractAllTo(tempDir, /* overwrite */ true);
       packDir = unwrapSingleSubdir(tempDir);
     } else {

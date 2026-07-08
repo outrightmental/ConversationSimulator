@@ -167,7 +167,7 @@ afterEach(() => {
 describe('validate-pack — valid pack', () => {
   it('returns exit code 0', () => {
     const packDir = track(makeValidPackDir());
-    const code = capture(() => runValidatePack(packDir, false)).stdout && runValidatePack(packDir, false);
+    const code = runValidatePack(packDir, false);
     expect(code).toBe(0);
   });
 
@@ -359,6 +359,17 @@ describe('import-pack — from zip', () => {
     const zipPath = join(tmp, 'unsafe.zip');
     const zip = new AdmZip();
     zip.addLocalFolder(packDir, '');
+    zip.writeZip(zipPath);
+    const dataDir = track(mkdtempSync(join(tmpdir(), 'convsim-data-')));
+    const code = runImportPack(zipPath, false, dataDir);
+    expect(code).toBe(1);
+  });
+
+  it('rejects a zip with path-traversal entries (zip-slip)', () => {
+    const tmp = track(mkdtempSync(join(tmpdir(), 'convsim-zip-slip-')));
+    const zipPath = join(tmp, 'slip.zip');
+    const zip = new AdmZip();
+    zip.addFile('../../evil.txt', Buffer.from('pwned'));
     zip.writeZip(zipPath);
     const dataDir = track(mkdtempSync(join(tmpdir(), 'convsim-data-')));
     const code = runImportPack(zipPath, false, dataDir);
