@@ -49,7 +49,7 @@ type Action = 'start' | 'turn' | 'end' | 'debrief';
 
 // Returns true when the action is a legal next step from the given state.
 function canTransition(state: SessionState, action: Action): boolean {
-  if (state === 'Ended') return false;
+  if (state === 'Ended') return action === 'debrief';
   if (state === 'Error') return action === 'end';
   if (action === 'end') return true;
   if (action === 'start') return state === 'NotStarted';
@@ -524,22 +524,47 @@ export async function sessionRoutes(app: FastifyInstance) {
         rejectTransition(
           reply,
           currentState,
-          `Cannot generate debrief from state '${currentState}'. Session must be in DebriefReady state.`,
+          `Cannot generate debrief from state '${currentState}'. Session must be in Ended or DebriefReady state.`,
         );
       }
 
-      const summary = 'Stub debrief: the session has completed. Full analysis is not yet available.';
+      const scenario = SCENARIOS[row.scenario_id];
+      const turnCount = row.turn_count;
+      const outcome = (row.ending_type as EndingType | null) ?? 'player_exit';
+      const scenarioTitle = scenario?.title ?? row.scenario_id;
+
+      const summary =
+        turnCount > 0
+          ? `You completed ${turnCount} turn${turnCount !== 1 ? 's' : ''} of "${scenarioTitle}". ` +
+            `Session outcome: ${outcome.replace('_', ' ')}. ` +
+            `This demo uses the fake runtime — install a local LLM for full personalized analysis.`
+          : `The session ended without any turns. No analysis is available.`;
+
+      const strengths =
+        turnCount > 0
+          ? ['Engaged with the scenario', 'Completed the session flow']
+          : ['Session was created successfully'];
+
+      const improvements = [
+        'Install a local LLM model for real NPC responses and personalized feedback',
+        'Try a different difficulty level for more variety',
+      ];
+
+      const replaySuggestions = [
+        'Replay with a different approach and compare outcomes',
+        'Try the hard difficulty to push your skills further',
+      ];
 
       db.transaction(() => {
         db.prepare("UPDATE sessions SET state = 'Ended' WHERE session_id = ?").run(
           req.params.session_id,
         );
-        insertEvent(req.params.session_id, 'debrief_generated', { summary });
+        insertEvent(req.params.session_id, 'debrief_generated', { summary, outcome, turn_count: turnCount });
       })();
 
       broadcast(req.params.session_id, 'session.state', {
         state: 'Ended',
-        ending_type: (row.ending_type as EndingType | null) ?? null,
+        ending_type: outcome,
         state_vars: JSON.parse(row.state_vars_json || '{}') as Record<string, number>,
       });
       closeSessionSockets(req.params.session_id);
@@ -548,6 +573,12 @@ export async function sessionRoutes(app: FastifyInstance) {
         session_id: req.params.session_id,
         state: 'Ended',
         summary,
+        outcome,
+        turn_count: turnCount,
+        scenario_id: row.scenario_id,
+        strengths,
+        improvements,
+        replay_suggestions: replaySuggestions,
       };
     },
   );

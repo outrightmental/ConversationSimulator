@@ -4,6 +4,10 @@ import type {
   ScenarioInfo,
   SessionCreateRequest,
   SessionCreateResponse,
+  SessionStartResponse,
+  TurnResponse,
+  SessionEndResponse,
+  SessionDebriefResponse,
   WsEvent,
 } from '@convsim/shared';
 
@@ -81,6 +85,18 @@ export const api = {
   },
   createSession(request: SessionCreateRequest): Promise<SessionCreateResponse> {
     return post<SessionCreateResponse>('/sessions', request)
+  },
+  startSession(sessionId: string): Promise<SessionStartResponse> {
+    return post<SessionStartResponse>(`/sessions/${sessionId}/start`, {})
+  },
+  submitTurn(sessionId: string, content: string): Promise<TurnResponse> {
+    return post<TurnResponse>(`/sessions/${sessionId}/turn`, { content })
+  },
+  endSession(sessionId: string): Promise<SessionEndResponse> {
+    return post<SessionEndResponse>(`/sessions/${sessionId}/end`, {})
+  },
+  generateDebrief(sessionId: string): Promise<SessionDebriefResponse> {
+    return post<SessionDebriefResponse>(`/sessions/${sessionId}/debrief`, {})
   },
   connectSession(
     sessionId: string,

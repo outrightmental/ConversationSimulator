@@ -606,16 +606,43 @@ describe('POST /api/sessions/:id/debrief', () => {
     expect(res.json().current_state).toBe('NotStarted');
   });
 
-  it('returns 409 when session is already Ended', async () => {
+  it('generates debrief from Ended state after a full session', async () => {
     const { session_id } = (
       await app.inject({ method: 'POST', url: '/api/sessions', payload: validRequest })
     ).json<SessionCreateResponse>();
+    await app.inject({ method: 'POST', url: `/api/sessions/${session_id}/start` });
+    await app.inject({
+      method: 'POST',
+      url: `/api/sessions/${session_id}/turn`,
+      payload: { content: 'I have five years of PM experience.' },
+    });
     await app.inject({ method: 'POST', url: `/api/sessions/${session_id}/end` });
+
+    const res = await app.inject({ method: 'POST', url: `/api/sessions/${session_id}/debrief` });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.session_id).toBe(session_id);
+    expect(body.state).toBe('Ended');
+    expect(typeof body.summary).toBe('string');
+    expect(body.summary.length).toBeGreaterThan(0);
+    expect(body.outcome).toBe('player_exit');
+    expect(body.turn_count).toBe(1);
+    expect(body.scenario_id).toBe('behavioral_interview');
+    expect(Array.isArray(body.strengths)).toBe(true);
+    expect(Array.isArray(body.improvements)).toBe(true);
+    expect(Array.isArray(body.replay_suggestions)).toBe(true);
+  });
+
+  it('returns 409 from PlayerTurnListening (not in Ended or DebriefReady)', async () => {
+    const { session_id } = (
+      await app.inject({ method: 'POST', url: '/api/sessions', payload: validRequest })
+    ).json<SessionCreateResponse>();
+    await app.inject({ method: 'POST', url: `/api/sessions/${session_id}/start` });
 
     const res = await app.inject({ method: 'POST', url: `/api/sessions/${session_id}/debrief` });
     expect(res.statusCode).toBe(409);
     expect(res.json().code).toBe('INVALID_TRANSITION');
-    expect(res.json().current_state).toBe('Ended');
+    expect(res.json().current_state).toBe('PlayerTurnListening');
   });
 
   it('returns 404 for unknown session', async () => {
@@ -721,5 +748,136 @@ describe('state machine transitions', () => {
     // State must still be NotStarted
     const getRes = await app.inject({ method: 'GET', url: `/api/sessions/${session_id}` });
     expect(getRes.json().state).toBe('NotStarted');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Full text-only demo lifecycle: create → start → turn(s) → end → debrief
+// ---------------------------------------------------------------------------
+
+describe('full text-only demo flow', () => {
+  it('completes the create → start → turn → end → debrief lifecycle', async () => {
+    // 1. Create session
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/sessions',
+      payload: validRequest,
+    });
+    expect(createRes.statusCode).toBe(201);
+    const { session_id } = createRes.json<SessionCreateResponse>();
+    expect(session_id).toMatch(/^sess-/);
+
+    // 2. Start session — receive NPC opening
+    const startRes = await app.inject({
+      method: 'POST',
+      url: `/api/sessions/${session_id}/start`,
+    });
+    expect(startRes.statusCode).toBe(200);
+    const startBody = startRes.json<SessionStartResponse>();
+    expect(startBody.state).toBe('PlayerTurnListening');
+    expect(startBody.events).toHaveLength(1);
+    expect(startBody.events[0].event_type).toBe('npc_opening');
+    expect(typeof startBody.events[0].payload['content']).toBe('string');
+    expect((startBody.events[0].payload['content'] as string).length).toBeGreaterThan(0);
+
+    // 3. Submit first player turn — receive NPC response
+    const turn1Res = await app.inject({
+      method: 'POST',
+      url: `/api/sessions/${session_id}/turn`,
+      payload: { content: 'I have five years of product management experience.' },
+    });
+    expect(turn1Res.statusCode).toBe(200);
+    const turn1Body = turn1Res.json<TurnResponse>();
+    expect(turn1Body.state).toBe('PlayerTurnListening');
+    expect(turn1Body.events).toHaveLength(2);
+    const playerEvent = turn1Body.events.find((e) => e.event_type === 'player_turn');
+    const npcEvent = turn1Body.events.find((e) => e.event_type === 'npc_turn');
+    expect(playerEvent?.payload['content']).toBe('I have five years of product management experience.');
+    expect(typeof npcEvent?.payload['content']).toBe('string');
+    expect((npcEvent?.payload['content'] as string).length).toBeGreaterThan(0);
+    expect(typeof npcEvent?.payload['state_delta']).toBe('object');
+    expect(Array.isArray(npcEvent?.payload['event_flags'])).toBe(true);
+    expect(typeof npcEvent?.payload['safety']).toBe('object');
+
+    // 4. Submit second player turn
+    const turn2Res = await app.inject({
+      method: 'POST',
+      url: `/api/sessions/${session_id}/turn`,
+      payload: { content: 'I led the launch of our mobile app feature last year.' },
+    });
+    expect(turn2Res.statusCode).toBe(200);
+    expect(turn2Res.json<TurnResponse>().state).toBe('PlayerTurnListening');
+
+    // 5. End session — player_exit
+    const endRes = await app.inject({
+      method: 'POST',
+      url: `/api/sessions/${session_id}/end`,
+    });
+    expect(endRes.statusCode).toBe(200);
+    const endBody = endRes.json<SessionEndResponse>();
+    expect(endBody.state).toBe('Ended');
+    expect(endBody.ending_type).toBe('player_exit');
+
+    // 6. Generate debrief — works from Ended state
+    const debriefRes = await app.inject({
+      method: 'POST',
+      url: `/api/sessions/${session_id}/debrief`,
+    });
+    expect(debriefRes.statusCode).toBe(200);
+    const debriefBody = debriefRes.json();
+    expect(debriefBody.session_id).toBe(session_id);
+    expect(debriefBody.state).toBe('Ended');
+    expect(typeof debriefBody.summary).toBe('string');
+    expect(debriefBody.summary.length).toBeGreaterThan(0);
+    expect(debriefBody.outcome).toBe('player_exit');
+    expect(debriefBody.turn_count).toBe(2);
+    expect(debriefBody.scenario_id).toBe('behavioral_interview');
+    expect(Array.isArray(debriefBody.strengths)).toBe(true);
+    expect(debriefBody.strengths.length).toBeGreaterThan(0);
+    expect(Array.isArray(debriefBody.improvements)).toBe(true);
+    expect(Array.isArray(debriefBody.replay_suggestions)).toBe(true);
+
+    // 7. Verify final session state via GET
+    const getRes = await app.inject({
+      method: 'GET',
+      url: `/api/sessions/${session_id}`,
+    });
+    expect(getRes.statusCode).toBe(200);
+    expect(getRes.json<SessionCreateResponse>().state).toBe('Ended');
+  });
+
+  it('debrief summary mentions turn count and scenario title', async () => {
+    const { session_id } = (
+      await app.inject({ method: 'POST', url: '/api/sessions', payload: validRequest })
+    ).json<SessionCreateResponse>();
+    await app.inject({ method: 'POST', url: `/api/sessions/${session_id}/start` });
+    await app.inject({
+      method: 'POST',
+      url: `/api/sessions/${session_id}/turn`,
+      payload: { content: 'Tell me about this role.' },
+    });
+    await app.inject({ method: 'POST', url: `/api/sessions/${session_id}/end` });
+
+    const debriefRes = await app.inject({
+      method: 'POST',
+      url: `/api/sessions/${session_id}/debrief`,
+    });
+    const body = debriefRes.json();
+    expect(body.summary).toContain('1 turn');
+  });
+
+  it('debrief is callable again from Ended after the first call', async () => {
+    const { session_id } = (
+      await app.inject({ method: 'POST', url: '/api/sessions', payload: validRequest })
+    ).json<SessionCreateResponse>();
+    await app.inject({ method: 'POST', url: `/api/sessions/${session_id}/start` });
+    await app.inject({ method: 'POST', url: `/api/sessions/${session_id}/end` });
+
+    const first = await app.inject({ method: 'POST', url: `/api/sessions/${session_id}/debrief` });
+    expect(first.statusCode).toBe(200);
+
+    const second = await app.inject({ method: 'POST', url: `/api/sessions/${session_id}/debrief` });
+    expect(second.statusCode).toBe(200);
+    expect(second.json().session_id).toBe(session_id);
   });
 });
