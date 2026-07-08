@@ -372,7 +372,9 @@ function Invoke-SmokeTextSession {
 
     Write-Info "text-session" "Creating session via $CoreUrl/api/sessions"
     try {
-        $createBody = '{"scenario_id":"job-interview-basic/behavioral_interview","tts_enabled":false}'
+        # scenario_id is the bare registry id (not "pack/scenario"); player_role_name
+        # is required by POST /api/sessions. See services/convsim-core routers/sessions.py.
+        $createBody = '{"scenario_id":"behavioral_interview","player_role_name":"Smoke Tester","difficulty":"normal","language":"en","input_mode":"text-only","tts_enabled":false}'
         $createResp = Invoke-WebRequest -Uri "$CoreUrl/api/sessions" -Method POST `
             -ContentType "application/json" -Body $createBody -TimeoutSec 10 -UseBasicParsing -ErrorAction Stop
         if ($createResp.StatusCode -ne 201) {
@@ -383,14 +385,24 @@ function Invoke-SmokeTextSession {
         $sessionId = $sessionData.session_id
         Write-Info "text-session" "Session created: $sessionId"
 
-        $turnBody = '{"player_text":"Hello, I am ready to start."}'
-        $turnResp = Invoke-WebRequest -Uri "$CoreUrl/api/sessions/$sessionId/turns" -Method POST `
-            -ContentType "application/json" -Body $turnBody -TimeoutSec 30 -UseBasicParsing -ErrorAction Stop
-        if ($turnResp.StatusCode -ne 200) {
-            Write-Fail "text-session" "POST /api/sessions/$sessionId/turns returned HTTP $($turnResp.StatusCode)"
+        # Start the session (moves it into PlayerTurnListening) before submitting a
+        # turn — POST /turn rejects turns from any other state with HTTP 409.
+        $startResp = Invoke-WebRequest -Uri "$CoreUrl/api/sessions/$sessionId/start" -Method POST `
+            -TimeoutSec 30 -UseBasicParsing -ErrorAction Stop
+        if ($startResp.StatusCode -ne 200) {
+            Write-Fail "text-session" "POST /api/sessions/$sessionId/start returned HTTP $($startResp.StatusCode)"
             return
         }
-        Write-Pass "text-session" "Session created and one turn completed (session_id=$sessionId)"
+
+        # Submit one player turn. Endpoint is /turn (singular); body field is "content".
+        $turnBody = '{"content":"Hello, I am ready to start."}'
+        $turnResp = Invoke-WebRequest -Uri "$CoreUrl/api/sessions/$sessionId/turn" -Method POST `
+            -ContentType "application/json" -Body $turnBody -TimeoutSec 30 -UseBasicParsing -ErrorAction Stop
+        if ($turnResp.StatusCode -ne 200) {
+            Write-Fail "text-session" "POST /api/sessions/$sessionId/turn returned HTTP $($turnResp.StatusCode)"
+            return
+        }
+        Write-Pass "text-session" "Session created, started, and one turn completed (session_id=$sessionId)"
     } catch {
         Write-Fail "text-session" "Text session failed: $_"
     }

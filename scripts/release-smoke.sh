@@ -444,11 +444,13 @@ smoke_text_session() {
     fi
 
     info "text-session" "Creating session via $CORE_URL/api/sessions"
+    # scenario_id is the bare registry id (not "pack/scenario"); player_role_name
+    # is required by POST /api/sessions. See services/convsim-core routers/sessions.py.
     local create_resp http_code session_id
-    create_resp="$(curl -sf --max-time 10 -w '\n%{http_code}' \
+    create_resp="$(curl -s --max-time 10 -w '\n%{http_code}' \
         -X POST "$CORE_URL/api/sessions" \
         -H 'Content-Type: application/json' \
-        -d '{"scenario_id":"job-interview-basic/behavioral_interview","tts_enabled":false}' \
+        -d '{"scenario_id":"behavioral_interview","player_role_name":"Smoke Tester","difficulty":"normal","language":"en","input_mode":"text-only","tts_enabled":false}' \
         2>&1)" || {
         fail "text-session" "POST /api/sessions failed"
         return
@@ -470,24 +472,41 @@ smoke_text_session() {
     fi
     info "text-session" "Session created: $session_id"
 
-    # Submit one player turn.
-    local turn_resp turn_code
-    turn_resp="$(curl -sf --max-time 30 -w '\n%{http_code}' \
-        -X POST "$CORE_URL/api/sessions/$session_id/turns" \
-        -H 'Content-Type: application/json' \
-        -d '{"player_text":"Hello, I am ready to start."}' \
+    # Start the session (moves it into PlayerTurnListening) before submitting a
+    # turn — POST /turn rejects turns from any other state with HTTP 409.
+    local start_resp start_code
+    start_resp="$(curl -s --max-time 30 -w '\n%{http_code}' \
+        -X POST "$CORE_URL/api/sessions/$session_id/start" \
         2>&1)" || {
-        fail "text-session" "POST /api/sessions/$session_id/turns failed"
+        fail "text-session" "POST /api/sessions/$session_id/start failed"
+        return
+    }
+    start_code="${start_resp##*$'\n'}"
+    if [[ "$start_code" != "200" ]]; then
+        fail "text-session" "POST /api/sessions/$session_id/start returned HTTP $start_code (expected 200)"
+        printf '%s\n' "${start_resp%$'\n'*}" >> "$ARTIFACT_DIR/text-session-error.txt"
+        _ARTIFACTS_WRITTEN=1
+        return
+    fi
+
+    # Submit one player turn. Endpoint is /turn (singular); body field is "content".
+    local turn_resp turn_code
+    turn_resp="$(curl -s --max-time 30 -w '\n%{http_code}' \
+        -X POST "$CORE_URL/api/sessions/$session_id/turn" \
+        -H 'Content-Type: application/json' \
+        -d '{"content":"Hello, I am ready to start."}' \
+        2>&1)" || {
+        fail "text-session" "POST /api/sessions/$session_id/turn failed"
         return
     }
     turn_code="${turn_resp##*$'\n'}"
     if [[ "$turn_code" != "200" ]]; then
-        fail "text-session" "POST /api/sessions/$session_id/turns returned HTTP $turn_code"
+        fail "text-session" "POST /api/sessions/$session_id/turn returned HTTP $turn_code"
         printf '%s\n' "${turn_resp%$'\n'*}" >> "$ARTIFACT_DIR/text-session-error.txt"
         _ARTIFACTS_WRITTEN=1
         return
     fi
-    pass "text-session" "Session created and one turn completed (session_id=$session_id)"
+    pass "text-session" "Session created, started, and one turn completed (session_id=$session_id)"
 }
 
 # ── [debrief] Debrief report ──────────────────────────────────────────────────
