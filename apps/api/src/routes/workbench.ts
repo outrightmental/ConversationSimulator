@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { FastifyInstance } from 'fastify';
 import fs from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 
 let _officialRoot = '';
@@ -144,7 +145,7 @@ function getPackRoot(kind: PackKind, slug: string, reply: Reply): string {
 
 function resolveFilePath(packRoot: string, relPath: string, reply: Reply): string {
   const abs = path.normalize(path.resolve(packRoot, relPath));
-  if (!abs.startsWith(packRoot + path.sep) && abs !== packRoot) {
+  if (!abs.startsWith(packRoot + path.sep)) {
     reply.status(400);
     throw new Error('Path traversal not allowed');
   }
@@ -244,7 +245,14 @@ export async function workbenchRoutes(app: FastifyInstance): Promise<void> {
         throw new Error(`File type "${ext}" is not editable via the workbench`);
       }
       fs.mkdirSync(path.dirname(absPath), { recursive: true });
-      fs.writeFileSync(absPath, content, 'utf-8');
+      const tmpPath = `${absPath}.tmp.${randomBytes(4).toString('hex')}`;
+      try {
+        fs.writeFileSync(tmpPath, content, 'utf-8');
+        fs.renameSync(tmpPath, absPath);
+      } catch (err) {
+        try { fs.unlinkSync(tmpPath); } catch { /* ignore cleanup failure */ }
+        throw err;
+      }
       return { ok: true };
     },
   );

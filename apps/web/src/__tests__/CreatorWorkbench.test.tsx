@@ -290,5 +290,10 @@ describe('CreatorWorkbench', () => {
     await waitFor(() => {
       expect(copySpy).toHaveBeenCalledOnce()
     })
+
+    // After copy, the file editor should be cleared (no file selected)
+    await waitFor(() => {
+      expect(screen.queryByTestId('file-editor')).not.toBeInTheDocument()
+    })
   })
 })

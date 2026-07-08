@@ -155,6 +155,14 @@ describe('GET /api/workbench/packs/:kind/:slug/file', () => {
     expect(res.statusCode).toBe(400);
   });
 
+  it('returns 400 when path resolves to the pack root itself (dot-traversal)', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/workbench/packs/official/sample-pack/file?path=.',
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
   it('returns 404 for non-existent file', async () => {
     const res = await app.inject({
       method: 'GET',
@@ -211,6 +219,26 @@ describe('PUT /api/workbench/packs/:kind/:slug/file', () => {
       url: '/api/workbench/packs/local-dev/my-pack/file?path=../../etc/cron.d/evil',
       headers: { 'content-type': 'application/json' },
       payload: JSON.stringify({ content: 'evil' }),
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('returns 400 when path param is missing', async () => {
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/api/workbench/packs/local-dev/my-pack/file',
+      headers: { 'content-type': 'application/json' },
+      payload: JSON.stringify({ content: 'hello' }),
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('returns 400 when path resolves to the pack root itself (dot-traversal)', async () => {
+    const res = await app.inject({
+      method: 'PUT',
+      url: '/api/workbench/packs/local-dev/my-pack/file?path=.',
+      headers: { 'content-type': 'application/json' },
+      payload: JSON.stringify({ content: 'hello' }),
     });
     expect(res.statusCode).toBe(400);
   });
