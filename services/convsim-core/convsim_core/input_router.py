@@ -130,10 +130,12 @@ _MINORS_PATTERN = _compile(
     r"\b(?:minor|youth|teen|teenager)\s+(?:sex|sexual|nude|naked|porn|erotic|rape)",
     r"\b(?:1[0-7]|[0-9])[- ]year[- ]old\s+(?:sex|sexual|nude|naked|porn|erotic)",
     # Reverse-order: sexual/illegal act described before the minor-related subject.
-    # .{0,10} covers articles and prepositions ("rape a child", "sex with a minor")
-    # without a window wide enough to cause false positives on educational phrases.
-    r"(?:sex|sexual|porn|naked|nude|erotic|rape|molest).{0,10}\bchild(?:ren)?\b",
-    r"(?:sex|sexual|porn|naked|nude|erotic|rape|molest).{0,10}\b(?:minor|youth|teen|teenager|kid[s]?)\b",
+    # .{0,15} covers short prepositional phrases ("rape a child", "sex with a minor",
+    # "sexual abuse of a teen", "porn involving a minor") without a window wide enough
+    # to cause false positives on educational discourse (which tends toward longer
+    # intervening phrases like "sexual education curriculum for teenagers").
+    r"(?:sex|sexual|porn|naked|nude|erotic|rape|molest).{0,15}\bchild(?:ren)?\b",
+    r"(?:sex|sexual|porn|naked|nude|erotic|rape|molest).{0,15}\b(?:minor|youth|teen|teenager|kid[s]?)\b",
     r"(?:sex|sexual|porn|naked|nude|erotic|rape|molest).{0,15}\b(?:1[0-7]|[0-9])[- ]year[- ]old\b",
 )
 

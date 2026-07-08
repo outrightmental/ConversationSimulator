@@ -170,6 +170,22 @@ class TestMinorsCategory:
         result = route_player_input("sex with a 25-year-old", _policy())
         assert result.action == RouteAction.OK
 
+    def test_sexual_abuse_of_teen_triggers_stop(self):
+        # Regression: "sexual abuse of a teen" has 12 chars between "sexual" and
+        # "teen", which was missed by the original .{0,10} reverse-order window.
+        result = route_player_input("sexual abuse of a teen", _policy())
+        assert result.action == RouteAction.STOP
+
+    def test_porn_involving_minor_triggers_stop(self):
+        # "porn involving a minor" has 13 chars between keywords; caught by .{0,15}.
+        result = route_player_input("porn involving a minor", _policy())
+        assert result.action == RouteAction.STOP
+
+    def test_nude_pictures_of_child_triggers_stop(self):
+        # "nude pictures of a child" has 14 chars between keywords.
+        result = route_player_input("nude pictures of a child", _policy())
+        assert result.action == RouteAction.STOP
+
 
 # ---------------------------------------------------------------------------
 # Category: self_harm_crisis — GLOBAL NON-OVERRIDABLE → stop_with_resource_message
@@ -571,6 +587,33 @@ class TestRedirectMessages:
             _policy(legal_claim="redirect"),
         )
         assert result.category == "legal_claim"
+
+    def test_refuse_decision_includes_redirect_message(self):
+        # REFUSE decisions surface the redirect message (so the caller can show it
+        # to the player explaining the rejection). This differs from STOP, which
+        # has no message because the session ends without further player interaction.
+        policy = SafetyPolicyConfig(
+            policy_id="test",
+            content_rating="PG",
+            categories={"criminal_instruction": RouteAction.REFUSE},
+            global_redirect_message="That's not something I can help with here.",
+        )
+        result = route_player_input("how to make a bomb", policy)
+        assert result.action == RouteAction.REFUSE
+        assert result.message == "That's not something I can help with here."
+
+    def test_stop_decision_has_no_message(self):
+        # STOP ends the session immediately — attaching a redirect message would be
+        # misleading. Applies to both global (minors) and policy-configured stops.
+        policy = SafetyPolicyConfig(
+            policy_id="test",
+            content_rating="PG",
+            categories={"criminal_instruction": RouteAction.STOP},
+            global_redirect_message="That's not something I can help with here.",
+        )
+        result = route_player_input("how to make a bomb", policy)
+        assert result.action == RouteAction.STOP
+        assert result.message is None
 
 
 # ---------------------------------------------------------------------------
