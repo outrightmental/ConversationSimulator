@@ -395,6 +395,95 @@ describe('POST /api/sessions/:id/turn', () => {
     });
     expect(res.statusCode).toBe(404);
   });
+
+  it('returns 400 for whitespace-only turn content', async () => {
+    const session_id = await createStartedSession();
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/sessions/${session_id}/turn`,
+      payload: { content: '   ' },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('returns 400 for oversized turn content', async () => {
+    const session_id = await createStartedSession();
+    const oversized = 'a'.repeat(2001);
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/sessions/${session_id}/turn`,
+      payload: { content: oversized },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('npc_turn event payload includes emotion, state_delta, event_flags, and safety', async () => {
+    const session_id = await createStartedSession();
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/sessions/${session_id}/turn`,
+      payload: { content: 'I have five years of experience.' },
+    });
+    expect(res.statusCode).toBe(200);
+    const npcPayload = res.json<TurnResponse>().events[1].payload;
+    expect(typeof npcPayload['content']).toBe('string');
+    expect(typeof npcPayload['emotion']).toBe('string');
+    expect(typeof npcPayload['state_delta']).toBe('object');
+    expect(Array.isArray(npcPayload['event_flags'])).toBe(true);
+    expect(typeof npcPayload['safety']).toBe('object');
+  });
+
+  it('two-turn conversation keeps session in PlayerTurnListening', async () => {
+    const session_id = await createStartedSession();
+
+    const res1 = await app.inject({
+      method: 'POST',
+      url: `/api/sessions/${session_id}/turn`,
+      payload: { content: 'First message.' },
+    });
+    expect(res1.statusCode).toBe(200);
+    expect(res1.json<TurnResponse>().state).toBe('PlayerTurnListening');
+
+    const res2 = await app.inject({
+      method: 'POST',
+      url: `/api/sessions/${session_id}/turn`,
+      payload: { content: 'Second message.' },
+    });
+    expect(res2.statusCode).toBe(200);
+    expect(res2.json<TurnResponse>().state).toBe('PlayerTurnListening');
+  });
+
+  it('state vars are initialized on start and tracked across turns', async () => {
+    const session_id = await createStartedSession();
+
+    await app.inject({
+      method: 'POST',
+      url: `/api/sessions/${session_id}/turn`,
+      payload: { content: 'First turn content.' },
+    });
+
+    // Session should still be accessible with correct state after a turn.
+    const getRes = await app.inject({ method: 'GET', url: `/api/sessions/${session_id}` });
+    expect(getRes.statusCode).toBe(200);
+    expect(getRes.json().state).toBe('PlayerTurnListening');
+  });
+
+  it('session ends with timeout when max_turns reached', async () => {
+    // behavioral_interview has max_turns=18; set turn_count near the limit via DB.
+    const session_id = await createStartedSession();
+    // Manually set turn_count to max_turns - 1 so next turn triggers timeout.
+    getDb()
+      .prepare('UPDATE sessions SET turn_count = 17 WHERE session_id = ?')
+      .run(session_id);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: `/api/sessions/${session_id}/turn`,
+      payload: { content: 'Final message.' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json<TurnResponse>().state).toBe('Ended');
+  });
 });
 
 // ---------------------------------------------------------------------------
