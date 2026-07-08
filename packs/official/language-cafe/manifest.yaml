@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+pack_id: official.language_cafe
+name: Language Café
+version: 0.1.0
+description: >-
+  Practice natural language conversations in a friendly café setting.
+  Build confidence speaking and listening in a new language through
+  low-stakes, everyday social interactions.
+author: Outright Mental
+license: CC-BY-4.0
+content_rating: G
+tags:
+  - language-learning
+  - conversation
+  - social
+supported_languages:
+  - en
+  - es
+  - fr
+  - ja
+assets:
+  allow_external_urls: false
+safety:
+  policy: safety/default.yaml
