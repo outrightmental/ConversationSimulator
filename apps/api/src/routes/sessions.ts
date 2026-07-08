@@ -539,7 +539,7 @@ export async function sessionRoutes(app: FastifyInstance) {
 
       broadcast(req.params.session_id, 'session.state', {
         state: 'Ended',
-        ending_type: null,
+        ending_type: (row.ending_type as EndingType | null) ?? null,
         state_vars: JSON.parse(row.state_vars_json || '{}') as Record<string, number>,
       });
       closeSessionSockets(req.params.session_id);
