@@ -90,6 +90,18 @@ export const api = {
   createSession(request: SessionCreateRequest): Promise<SessionCreateResponse> {
     return post<SessionCreateResponse>('/sessions', request)
   },
+  getDataFolder(): Promise<{ path: string }> {
+    return get<{ path: string }>('/privacy/data-folder')
+  },
+  clearLocalData(): Promise<{ deleted_sessions: number }> {
+    return post<{ deleted_sessions: number }>('/privacy/clear')
+  },
+  deleteSession(sessionId: string): Promise<void> {
+    return del(`/sessions/${sessionId}`)
+  },
+  exportSession(sessionId: string): Promise<unknown> {
+    return get<unknown>(`/sessions/${sessionId}/export`)
+  },
   connectSession(
     sessionId: string,
     onEvent: (event: WsEvent) => void,
