@@ -1,0 +1,88 @@
+name: Bug report
+description: Something is broken or behaving unexpectedly.
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please fill in as much
+        detail as you can — it helps us reproduce and fix the issue faster.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug.
+      placeholder: "Example: The debrief score is always 0 regardless of conversation quality."
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+      placeholder: "Example: A score between 0 and 100 based on my responses."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps to reproduce the bug.
+      placeholder: |
+        1. Launch the app with `./scripts/dev.sh`
+        2. Select pack "Job Interview Basics" → "The Executive Gauntlet"
+        3. Complete the conversation
+        4. Open the debrief — score shows 0
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which area of the app?
+      options:
+        - Conversation / NPC turn
+        - Debrief / scoring
+        - Creator Workbench
+        - Pack loading / validation
+        - Model Manager
+        - Voice / STT (speech to text)
+        - Voice / TTS (text to speech)
+        - Setup / install
+        - Desktop app (Tauri)
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, browser or desktop, model in use.
+      placeholder: |
+        OS: macOS 14.5
+        App: browser at http://127.0.0.1:7354
+        Model: Qwen3 8B Q4_K_M
+        Pack: Job Interview Basics
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or error messages
+      description: Paste any console output, terminal errors, or browser console errors.
+      render: text
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this has not been reported before.
+          required: true
+        - label: I am running the latest version from `main`.
+          required: false

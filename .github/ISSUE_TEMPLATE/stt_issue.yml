@@ -1,0 +1,82 @@
+name: Speech / STT issue
+description: Report a problem with speech input or the speech-to-text pipeline.
+labels:
+  - speech
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for issues with microphone input, transcription
+        accuracy, silence detection, or the STT service.
+
+        See [docs/voice-smoke-tests.md](https://github.com/outrightmental/ConversationSimulator/blob/main/docs/voice-smoke-tests.md) for
+        the manual test suite.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      placeholder: >
+        Example: The STT service transcribes my speech with a 5-second delay
+        and frequently drops the first word.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Enable voice input in Settings → Voice
+        2. Start a conversation in the Job Interview Basics pack
+        3. Speak a sentence
+        4. Observe: transcription appears 5 s later with the first word cut off
+    validations:
+      required: true
+
+  - type: dropdown
+    id: stt-backend
+    attributes:
+      label: STT backend
+      options:
+        - whisper.cpp (default)
+        - Other (describe below)
+    validations:
+      required: true
+
+  - type: input
+    id: model-used
+    attributes:
+      label: Whisper model in use
+      placeholder: "Example: ggml-base.en.bin"
+    validations:
+      required: false
+
+  - type: textarea
+    id: hardware
+    attributes:
+      label: Hardware and OS
+      placeholder: |
+        OS: macOS 14.5
+        CPU: Apple M3 Pro
+        Microphone: Built-in
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or errors
+      render: text
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before submitting
+      options:
+        - label: I ran the voice smoke tests in docs/voice-smoke-tests.md.
+          required: false
+        - label: I searched existing issues and this has not been reported before.
+          required: true

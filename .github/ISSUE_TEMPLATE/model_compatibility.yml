@@ -1,0 +1,95 @@
+name: Model compatibility report
+description: Report a model that works well, has issues, or is not yet listed in the model registry.
+labels:
+  - ai-runtime
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template to report a model that works well with Conversation
+        Simulator, one that has issues, or one that should be added to the
+        model registry.
+
+        See [docs/local-models.md](https://github.com/outrightmental/ConversationSimulator/blob/main/docs/local-models.md) and
+        [docs/runtime-adapters.md](https://github.com/outrightmental/ConversationSimulator/blob/main/docs/runtime-adapters.md) for context.
+
+  - type: dropdown
+    id: report-type
+    attributes:
+      label: Report type
+      options:
+        - Works well — add to registry or confirm support
+        - Has issues — degraded quality or errors
+        - Not yet tested — I would like to test this model
+    validations:
+      required: true
+
+  - type: input
+    id: model-name
+    attributes:
+      label: Model name and variant
+      placeholder: "Example: Qwen3 8B Instruct Q4_K_M"
+    validations:
+      required: true
+
+  - type: input
+    id: model-source
+    attributes:
+      label: Model source / HuggingFace repo
+      placeholder: "Example: Qwen/Qwen3-8B-Instruct-GGUF"
+    validations:
+      required: false
+
+  - type: input
+    id: model-license
+    attributes:
+      label: Model license (SPDX identifier if known)
+      placeholder: "Example: Apache-2.0"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: runtime
+    attributes:
+      label: Runtime backend
+      options:
+        - llama.cpp
+        - ollama
+        - Other (describe below)
+    validations:
+      required: true
+
+  - type: textarea
+    id: hardware
+    attributes:
+      label: Hardware
+      description: CPU, RAM, GPU (if any), and OS.
+      placeholder: |
+        CPU: Apple M3 Pro
+        RAM: 36 GB
+        GPU: Apple Metal (integrated)
+        OS: macOS 14.5
+    validations:
+      required: true
+
+  - type: textarea
+    id: observations
+    attributes:
+      label: Observations
+      description: >
+        What did you test? What worked? What failed?
+        Include latency measurements if available.
+      placeholder: |
+        Tested with Job Interview Basics pack, all 4 scenarios. NPC turn
+        latency averaged 1.8 s TTFT on the above hardware. Scoring and
+        debrief output looked correct. No errors in convsim-core logs.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or errors
+      render: text
+    validations:
+      required: false

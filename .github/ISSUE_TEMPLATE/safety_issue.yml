@@ -1,0 +1,93 @@
+name: Safety issue
+description: Report a safety concern about content, NPC behaviour, or policy enforcement.
+labels:
+  - safety
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template to report a safety concern about a scenario pack,
+        NPC behaviour, content policy gap, or safety system failure.
+
+        **When to use private reporting instead:**
+        If your report involves a security vulnerability (e.g. prompt injection
+        that escapes the sandbox, privilege escalation, or data exfiltration),
+        please use
+        [GitHub private vulnerability reporting](https://github.com/outrightmental/ConversationSimulator/security/advisories/new)
+        or follow the process in [SECURITY.md](https://github.com/outrightmental/ConversationSimulator/blob/main/SECURITY.md) instead.
+
+        For general safety content concerns, this public issue template is
+        appropriate. For concerns that require confidential handling, contact
+        the maintainers directly as described in
+        [CODE_OF_CONDUCT.md](https://github.com/outrightmental/ConversationSimulator/blob/main/CODE_OF_CONDUCT.md).
+
+  - type: dropdown
+    id: concern-type
+    attributes:
+      label: Type of safety concern
+      options:
+        - Pack content violates safety policy (prohibited content category)
+        - NPC output crossed a content boundary during a session
+        - Safety validator accepted something it should have rejected
+        - Safety validator rejected something that should be allowed
+        - Crisis resource or self-harm handling gap
+        - Real-person impersonation concern
+        - Other (describe below)
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: >
+        Describe the safety concern. For NPC output issues, include the NPC
+        turn text and the pack and scenario that produced it.
+    validations:
+      required: true
+
+  - type: textarea
+    id: pack
+    attributes:
+      label: Pack and scenario (if applicable)
+      placeholder: |
+        Pack: Job Interview Basics
+        Scenario: The Executive Gauntlet
+        Turn number: 7
+    validations:
+      required: false
+
+  - type: textarea
+    id: policy-reference
+    attributes:
+      label: Relevant policy section (if known)
+      description: >
+        Which section of docs/safety-policy.md does this relate to?
+      placeholder: "Example: Content policy → Prohibited content → NSFW sexual content"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: disclosure-preference
+    attributes:
+      label: Disclosure preference
+      description: >
+        Public issues are visible to everyone. Select private if this concern
+        requires confidential handling — a maintainer will contact you.
+      options:
+        - Public — I am comfortable with this being visible on GitHub
+        - Private — please contact me directly for confidential handling
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before submitting
+      options:
+        - label: >
+            This is not a security vulnerability. (For security issues,
+            use GitHub private vulnerability reporting or SECURITY.md.)
+          required: true
+        - label: I have read docs/safety-policy.md.
+          required: false
