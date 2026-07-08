@@ -168,7 +168,9 @@ export type PackLoaderErrorCode =
   | 'DUPLICATE_ID'
   | 'UNSUPPORTED_VERSION'
   | 'FORBIDDEN_FILE'
-  | 'FORBIDDEN_BINARY';
+  | 'FORBIDDEN_BINARY'
+  | 'INVALID_SOURCE'
+  | 'UNSAFE_ZIP';
 
 export class PackLoaderError extends Error {
   readonly code: PackLoaderErrorCode;
