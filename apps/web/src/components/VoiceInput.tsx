@@ -31,8 +31,12 @@ export default function VoiceInput({ onSubmit, disabled = false, language }: Voi
           setUploadError('Speech could not be transcribed. Please try again or type your response.')
         } else if (result.status === 'unavailable') {
           setUploadError('Speech-to-text is not installed. Please type your response.')
-        } else if (result.transcript && !disabled) {
-          onSubmit?.(result.transcript)
+        } else if (result.transcript) {
+          if (!disabled) {
+            onSubmit?.(result.transcript)
+          } else {
+            setTextValue(result.transcript)
+          }
         } else if (result.status === 'ok' && !result.transcript) {
           setUploadError('No speech detected. Please try again or type your response.')
         }

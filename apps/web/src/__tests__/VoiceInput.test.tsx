@@ -408,7 +408,7 @@ describe('VoiceInput — audio upload flow', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(/failed to process audio/i)
   })
 
-  it('does not call onSubmit with transcript when disabled', async () => {
+  it('does not call onSubmit with transcript when disabled, but populates the text input', async () => {
     const onSubmit = vi.fn()
     let capturedOnAudioReady: ((blob: Blob) => void) | undefined
     vi.mocked(useMicCapture).mockImplementation((cb) => {
@@ -424,6 +424,7 @@ describe('VoiceInput — audio upload flow', () => {
     })
 
     expect(onSubmit).not.toHaveBeenCalled()
+    expect(screen.getByRole('textbox')).toHaveValue('hello world')
   })
 })
 
