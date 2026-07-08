@@ -2,14 +2,20 @@
 # Release checklist
 
 This checklist covers every step a maintainer must complete before tagging a
-release.  It is split into two parts:
+release.  It is split into three parts:
 
 - **Part A — CI gates** (automated, no model downloads): must be green before
   any manual step begins.
 - **Part B — Manual release smoke** (run on a clean profile): covers subsystems
   that require real services, a browser, and optionally real model weights.
+- **Part C — Acceptance suite** (persona-specific checklists): player, creator,
+  developer, and concept review gates that must pass before the MVP tag is applied.
 
-Read Part A results in GitHub Actions before you touch Part B.
+Read Part A results in GitHub Actions before you touch Part B or Part C.
+
+> **MVP release gate:** The release **cannot** be tagged as MVP unless every
+> acceptance checklist under `docs/acceptance/` shows PASS (or a documented,
+> maintainer-approved exception) in addition to Parts A and B below.
 
 ---
 
@@ -20,7 +26,7 @@ intend to tag.
 
 | Workflow | File | What it checks |
 |---|---|---|
-| CI | `.github/workflows/ci.yml` | Backend tests, frontend typecheck/test, schema and pack validation |
+| CI | `.github/workflows/ci.yml` | Backend tests, frontend typecheck/test, schema and pack validation, acceptance tests |
 | Release smoke — Linux x86_64 | `.github/workflows/release-smoke.yml` (job: `smoke-linux`) | All CI-subset subsystems on Ubuntu |
 | Release smoke — macOS aarch64 | `.github/workflows/release-smoke.yml` (job: `smoke-macos / aarch64`) | All CI-subset subsystems on Apple Silicon |
 | Release smoke — Windows x86_64 | `.github/workflows/release-smoke.yml` (job: `smoke-windows`) | All CI-subset subsystems on Windows |
@@ -240,7 +246,38 @@ node packages/convsim-cli/dist/index.js offline-smoke-test packs/official/job-in
 
 ---
 
-## Part C — Platform coverage matrix
+## Part C — Acceptance suite
+
+Complete the persona-specific checklists before applying the MVP tag.
+Detailed rubrics, automated test references, and sign-off tables live in:
+
+| Checklist | File | Owner | Automated test |
+|---|---|---|---|
+| Player | `docs/acceptance/player-checklist.md` | Platform team | `tests/acceptance/test_player_text_path.py` |
+| Creator | `docs/acceptance/creator-checklist.md` | Content team | `tests/acceptance/test_creator_flow.py` |
+| Developer | `docs/acceptance/developer-checklist.md` | DX team | `tests/acceptance/test_developer_flow.py` |
+| Concept review | `docs/acceptance/concept-review.md` | Product team | manual only |
+
+Run the automated portion from the repo root:
+
+```bash
+python -m pytest tests/acceptance/ -v
+```
+
+Summary sign-off:
+
+| Checklist | Automated | Manual | Sign-off | Date |
+|---|---|---|---|---|
+| Player | ☐ | ☐ | | |
+| Creator | ☐ | ☐ | | |
+| Developer | ☐ | ☐ | | |
+| Concept review | n/a | ☐ | | |
+
+All four checklists must reach PASS (or PARTIAL with documented, maintainer-approved exception) before the release is tagged MVP.
+
+---
+
+## Part D — Platform coverage matrix
 
 Mark which platforms were manually tested for this release.
 
@@ -263,7 +300,7 @@ Fill this in for each manual release smoke run.
 ```
 Release version  : vX.Y.Z-alpha.N
 Date             : YYYY-MM-DD
-Tester           : 
+Tester           :
 Platform         : macOS 14.x / Ubuntu 22.04.x / Windows 11
 CPU              : Apple M2 / Intel Core i7-xxxx / AMD Ryzen xxxx
 RAM              : xx GB
@@ -271,15 +308,16 @@ VRAM             : xx GB (or "none — CPU only")
 Model tested     : Qwen3 4B Q4_K_M / (none — fake runtime only)
 Source commit    : <git sha>
 
-Part A (CI) : PASS / FAIL
+Part A (CI)      : PASS / FAIL
 Part B result    : PASS / FAIL / PARTIAL
+Part C acceptance: PASS / PARTIAL / FAIL
 
 Notes:
-  - 
-  - 
+  -
+  -
 ```
 
-If Part B includes any failures, attach the artifact directory
+If Part B or Part C includes any failures, attach the artifact directory
 (`$TMPDIR/convsim-release-smoke-*/`) to the release issue before proceeding.
 
 ---
@@ -300,6 +338,7 @@ When a subsystem fails, the output labels the failing step:
 | `[pack-valid]` | Pack validation | Schema change broke existing packs; YAML parse error |
 | `[voice]` | Voice fallback | TTS worker state machine regression; fallback path not taken |
 | `[offline]` | Offline policy | Outbound call detected; network guard not active |
+| `[workbench]` | Creator workbench | Pack import/export or file API broken; workbench route error |
 
 CI artifacts for failed runs are uploaded to GitHub Actions under the job name
 `release-smoke-<platform>` and retained for 7 days.
