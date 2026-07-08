@@ -122,12 +122,10 @@ def test_build_command_omits_language_when_none():
 
 
 def test_build_command_includes_threads_when_set():
-    config = WhisperCppConfig(binary_path=_FAKE_BINARY, model_path=_FAKE_MODEL, n_threads=4)
     worker = WhisperCppWorker.__new__(WhisperCppWorker)
     worker._binary = _FAKE_BINARY
     worker._model_path = _FAKE_MODEL
     worker._n_threads = 4
-    worker._gpu = False
     worker._timeout = 5.0
     cmd = worker._build_command("/tmp/audio.wav", None)
     assert "--threads" in cmd
@@ -366,3 +364,19 @@ async def test_transcribe_falls_back_to_stdout_when_json_sidecar_absent(tmp_path
 
     assert result.transcript == "hello world"
     assert result.segments is None
+
+
+@pytest.mark.asyncio
+async def test_transcribe_raises_stt_error_when_exec_raises_os_error(tmp_path):
+    """PermissionError / FileNotFoundError from exec must surface as SttError, not 500."""
+    model_file = tmp_path / "model.bin"
+    model_file.write_bytes(b"\x00")
+
+    worker = _make_worker(binary=_FAKE_BINARY, model=str(model_file))
+
+    with patch("os.path.isfile", return_value=True), \
+         patch("asyncio.create_subprocess_exec", side_effect=PermissionError("not executable")):
+        with pytest.raises(SttError) as exc_info:
+            await worker.transcribe(SttRequest(audio=b"\x00" * 100, audio_format="wav"))
+
+    assert exc_info.value.recoverable is True

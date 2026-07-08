@@ -56,7 +56,6 @@ All settings are read from `CONVSIM_WHISPER_CPP_*` environment variables or a `.
 | `CONVSIM_WHISPER_CPP_BINARY_PATH` | auto-detect from PATH | Explicit path to `whisper-cli` binary |
 | `CONVSIM_WHISPER_CPP_MODEL_PATH` | `~/.convsim/models/stt/ggml-base.en.bin` | Path to GGML model file |
 | `CONVSIM_WHISPER_CPP_N_THREADS` | (auto) | CPU threads for inference |
-| `CONVSIM_WHISPER_CPP_GPU` | `false` | Enable GPU acceleration (requires GPU build) |
 | `CONVSIM_WHISPER_CPP_TIMEOUT` | `60.0` | Max seconds to wait for transcription |
 
 The STT worker is also selected via:
@@ -76,8 +75,8 @@ The STT worker is also selected via:
 | Apple Silicon | Metal | Build with `-DWHISPER_METAL=ON` |
 | Vulkan (any GPU) | Vulkan | Build with `-DWHISPER_VULKAN=ON` |
 
-When `CONVSIM_WHISPER_CPP_GPU=false` (the default) GPU flags are omitted from the
-command, giving CPU-only operation on any machine.
+GPU support is compile-time in whisper.cpp. When built with CUDA, Metal, or another
+GPU backend, the runtime selects the GPU automatically — no extra configuration needed.
 
 ## Fallback behaviour
 

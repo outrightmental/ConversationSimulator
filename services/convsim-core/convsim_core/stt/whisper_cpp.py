@@ -45,9 +45,6 @@ class WhisperCppConfig(BaseSettings):
     binary_path: str | None = None
     model_path: str = _DEFAULT_MODEL_PATH
     n_threads: int | None = None
-    # CPU fallback: set gpu=false (default) to skip GPU-layer flags entirely.
-    # Set CONVSIM_WHISPER_CPP_GPU=true to allow GPU acceleration when available.
-    gpu: bool = False
     timeout: float = 60.0
 
 
@@ -71,9 +68,6 @@ class WhisperCppWorker(SttWorker):
     captured alongside the transcript. The temporary file and JSON sidecar
     are removed after each call, regardless of outcome.
 
-    CPU fallback: GPU flags are omitted by default so the worker runs on CPU
-    on any machine. Set CONVSIM_WHISPER_CPP_GPU=true to enable GPU layers.
-
     When the binary or model is absent the worker raises SttUnavailableError;
     callers (the STT router) convert this to a text-only fallback response
     rather than an HTTP error.
@@ -84,7 +78,6 @@ class WhisperCppWorker(SttWorker):
         self._binary = _find_binary(cfg.binary_path)
         self._model_path = cfg.model_path
         self._n_threads = cfg.n_threads
-        self._gpu = cfg.gpu
         self._timeout = cfg.timeout
 
     @property
@@ -115,8 +108,6 @@ class WhisperCppWorker(SttWorker):
             cmd += ["--language", language]
         if self._n_threads is not None:
             cmd += ["--threads", str(self._n_threads)]
-        # Omitting GPU flags (default) gives CPU-only operation; GPU flags are
-        # only added when the user has explicitly opted in.
         return cmd
 
     async def transcribe(self, request: SttRequest) -> SttResult:
@@ -147,11 +138,16 @@ class WhisperCppWorker(SttWorker):
 
             cmd = self._build_command(audio_path, request.language)
             t0 = time.monotonic()
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
+            try:
+                proc = await asyncio.create_subprocess_exec(
+                    *cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+            except OSError as exc:
+                raise SttError(
+                    f"Failed to start whisper-cli: {exc}", recoverable=True
+                ) from exc
             try:
                 stdout, stderr = await asyncio.wait_for(
                     proc.communicate(), timeout=self._timeout
