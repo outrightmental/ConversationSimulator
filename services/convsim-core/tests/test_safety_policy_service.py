@@ -208,6 +208,20 @@ class TestValidateSafetyPolicy:
         # Legacy names are still in the schema for backward compat.
         validate_safety_policy(data)
 
+    def test_legacy_real_person_impersonation_block_passes(self):
+        # real_person_impersonation: block was the ONLY valid value in the old schema
+        # (it was required). Packs written against the old schema must still validate.
+        data = {
+            "schema_version": "0.1",
+            "policy_id": "old_pack",
+            "content_categories": {
+                "real_person_impersonation": "block",
+            },
+            "content_rating_cap": "PG",
+        }
+        # Should not raise.
+        validate_safety_policy(data)
+
 
 # ---------------------------------------------------------------------------
 # build_safety_policy_config
@@ -294,6 +308,21 @@ class TestBuildSafetyPolicyConfig:
         # Legacy crisis_content → redirect maps to self_harm_crisis,
         # then the global boundary overwrites to stop_with_resource_message.
         assert config.categories["self_harm_crisis"] == RouteAction.STOP_WITH_RESOURCE
+
+    def test_legacy_real_person_impersonation_block_maps_to_stop(self):
+        # real_person_impersonation: block (old required value) must map to STOP
+        # via LEGACY_ACTION_MAP so that old packs get the same enforcement as new
+        # packs using real_person_impersonation: stop.
+        data = {
+            "schema_version": "0.1",
+            "policy_id": "old_pack",
+            "content_categories": {
+                "real_person_impersonation": "block",
+            },
+            "content_rating_cap": "PG",
+        }
+        config = build_safety_policy_config(data)
+        assert config.categories["real_person_impersonation"] == RouteAction.STOP
 
     def test_global_redirect_message_from_yaml(self, full_mvp_yaml):
         data = load_safety_policy_yaml(full_mvp_yaml)

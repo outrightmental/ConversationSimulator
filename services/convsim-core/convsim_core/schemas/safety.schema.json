@@ -35,8 +35,8 @@
         },
         "real_person_impersonation": {
           "type": "string",
-          "enum": ["stop", "redirect", "refuse"],
-          "description": "Impersonation of an identifiable real person."
+          "enum": ["stop", "redirect", "refuse", "block"],
+          "description": "Impersonation of an identifiable real person. 'block' is a legacy value that maps to 'stop'; prefer 'stop' in new policies."
         },
         "voice_cloning_request": {
           "type": "string",
