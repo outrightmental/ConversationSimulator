@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
-import type { ModelsResponse, ModelRegistryEntry, DetectedOllamaModel, InstalledModelInfo } from '@convsim/shared'
+import type { ModelsResponse, ModelRegistryEntry, DetectedOllamaModel, InstalledModelInfo, BenchmarkResponse } from '@convsim/shared'
 
 const SETUP_DOCS_URL = 'https://github.com/outrightmental/ConversationSimulator/wiki'
 
@@ -142,6 +142,11 @@ export default function ModelManager() {
   const [installRecord, setInstallRecord] = useState<InstalledModelInfo | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
+  const [benchmarkRunning, setBenchmarkRunning] = useState(false)
+  const [benchmarkResult, setBenchmarkResult] = useState<BenchmarkResponse | null>(null)
+  const [benchmarkError, setBenchmarkError] = useState<string | null>(null)
+  const benchmarkStartedRef = useRef(false)
+
   useEffect(() => {
     api
       .getModels()
@@ -189,6 +194,28 @@ export default function ModelManager() {
 
     return stopPoll
   }, [step, installId, navigate])
+
+  // Auto-run the benchmark once when entering the 'benchmark' step. The prompt is
+  // fixed server-side and contains no user transcript. A failure is non-fatal —
+  // the model is already active, so we surface the error and still allow Continue.
+  useEffect(() => {
+    if (step !== 'benchmark' || benchmarkStartedRef.current) return
+    benchmarkStartedRef.current = true
+    setBenchmarkRunning(true)
+    setBenchmarkResult(null)
+    setBenchmarkError(null)
+    api
+      .benchmarkModel({})
+      .then((result) => {
+        setBenchmarkResult(result)
+      })
+      .catch((err: unknown) => {
+        setBenchmarkError(err instanceof Error ? err.message : 'Benchmark failed.')
+      })
+      .finally(() => {
+        setBenchmarkRunning(false)
+      })
+  }, [step])
 
   const recommendedModel = modelsData?.registry.find((m) => m.role === 'starter') ?? null
 

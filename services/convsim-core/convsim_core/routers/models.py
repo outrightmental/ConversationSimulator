@@ -28,6 +28,7 @@ from convsim_core.services.model_manager_service import (
     get_active_config,
     get_install_record,
     get_installed_models,
+    get_most_recent_benchmark,
     mark_install_failed,
     register_user_gguf,
     save_benchmark_result,
@@ -626,55 +627,4 @@ async def benchmark_model(request: Request, body: BenchmarkRequest) -> Benchmark
         warnings=warnings,
         output_tokens=output_tokens,
         benchmarked_at=benchmarked_at,
-    )
-
-
-@router.post("/api/models/register-gguf", response_model=RegisterGgufResponse)
-async def register_gguf(request: Request, body: RegisterGgufRequest) -> RegisterGgufResponse:
-    """Register a user-supplied GGUF file and activate it on the llama_cpp runtime."""
-    path = body.path.strip()
-    if not path:
-        raise ConvsimError(
-            code="GGUF_PATH_EMPTY",
-            message="Path must not be empty.",
-            status_code=400,
-        )
-
-    if not path.lower().endswith(".gguf"):
-        raise ConvsimError(
-            code="GGUF_INVALID_EXTENSION",
-            message=f"Path '{path}' does not have a .gguf extension.",
-            status_code=400,
-        )
-
-    if not os.path.isfile(path):
-        raise ConvsimError(
-            code="GGUF_FILE_NOT_FOUND",
-            message=f"GGUF file not found at path: {path}",
-            status_code=404,
-        )
-
-    db = request.app.state.db
-    conn = db.connection()
-
-    record = register_user_gguf(
-        conn,
-        path=path,
-        display_name=body.display_name,
-        family_guess=body.family_guess,
-        context_length_default=body.context_length,
-    )
-
-    set_active_config(conn, runtime_id="llama_cpp", model_id=path)
-
-    return RegisterGgufResponse(
-        profile_id=record["id"],
-        file_path=record["file_path"],
-        filename=record["filename"],
-        display_name=record["display_name"],
-        family_guess=record["family_guess"],
-        context_length_default=record["context_length_default"],
-        warnings=[],
-        active_runtime_id="llama_cpp",
-        active_model_id=path,
     )
