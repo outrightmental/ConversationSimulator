@@ -1,0 +1,143 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scenario_id: missed_deadline_apology
+title: Owning the Miss
+summary: >-
+  You missed a client deliverable deadline yesterday — the first time this has
+  happened on your watch. Your team lead, Priya Nair, has asked you to come to
+  her office first thing this morning. She is not furious, but she is clearly
+  not happy. She needs to understand what happened and know it will not happen
+  again, because she already had to explain it upward to her own manager.
+player_role:
+  label: Team Member
+  brief: >-
+    You are a member of Priya's team and you missed the deadline. You have your
+    reasons — some external, some yours — but you know that leading with excuses
+    will make this worse, not better. Your goal is to take clear ownership, show
+    Priya you understand the downstream impact, and give her a concrete plan
+    going forward. The relationship is repairable; how you handle this moment
+    will determine whether it is.
+npc:
+  ref: ../npcs/disappointed_manager.yaml
+scene:
+  ref: ../scenes/managers_office.yaml
+rubric:
+  ref: ../rubrics/apology_rubric.yaml
+duration:
+  max_turns: 16
+  soft_time_limit_minutes: 10
+opening:
+  npc_says: >-
+    Morning. Close the door, please. I want to talk about what happened
+    yesterday with the deliverable. I've already spoken to the client and to
+    Vikram about the delay. What I need from you is a clear picture of what
+    happened — not from the system's perspective, from yours.
+goals:
+  player_visible:
+    - "Take ownership of your part in the missed deadline clearly and early"
+    - "Show Priya you understand the impact this had on her, the team, and the client"
+    - "Give her a specific, credible plan that this will not repeat"
+  hidden:
+    - "Priya needs something she can repeat to her own manager — a clear explanation and a named remedy, not reassurance and goodwill"
+    - "She is calibrating whether the player is a growth investment or a liability; clean ownership without over-explanation tips it strongly toward investment"
+    - "She watches for whether the player acknowledges her specific position (having had to explain it upward) — players who see only their own situation leave her feeling unseen"
+    - "Any external explanation before ownership is complete will lower her trust measurably; context after ownership is accepted"
+state:
+  variables:
+    trust:
+      min: 0
+      max: 100
+      default: 45
+      visibility: visible
+      max_delta_per_turn: 15
+    pressure:
+      min: 0
+      max: 100
+      default: 70
+      visibility: hidden
+      max_delta_per_turn: 12
+    clarity:
+      min: 0
+      max: 100
+      default: 10
+      visibility: visible
+      max_delta_per_turn: 20
+    repair_confidence:
+      min: 0
+      max: 100
+      default: 20
+      visibility: hidden
+      max_delta_per_turn: 18
+difficulty:
+  default: normal
+  options:
+    easy:
+      npc_patience_modifier: 20
+      challenge_frequency: low
+    normal:
+      npc_patience_modifier: 0
+      challenge_frequency: medium
+    hard:
+      npc_patience_modifier: -25
+      challenge_frequency: high
+events:
+  - id: excuse_detection
+    when:
+      type: variable_above
+      variable: pressure
+      threshold: 75
+    npc_instruction: >-
+      The player has led with external factors before completing ownership. Priya
+      is not dismissing the context but will not proceed until she has ownership
+      in hand. She will probe, calmly but directly: "I hear that there were
+      contributing factors. Before we get into those — what was your specific
+      role in the miss? What did you see coming that you didn't flag?"
+    repeat: true
+  - id: trust_recovery
+    when:
+      type: variable_above
+      variable: trust
+      threshold: 70
+    npc_instruction: >-
+      The player has taken clear ownership and Priya's affect shifts — she is
+      still serious, but the pressure in the room drops slightly. She begins
+      engaging constructively rather than interrogating. She might say: "Okay.
+      I appreciate that. Now let's talk about what we put in place going forward."
+    repeat: false
+  - id: hollow_reassurance
+    when:
+      type: variable_above
+      variable: pressure
+      threshold: 85
+    npc_instruction: >-
+      The player has offered only general reassurances ("I'll do better", "it
+      won't happen again"). Priya's patience narrows. She remains controlled
+      but shifts to a shorter, more pointed register: "What does 'better'
+      look like specifically? I need something concrete I can hold onto —
+      and that I can take back to Vikram."
+    repeat: false
+  - id: resolution_signal
+    when:
+      type: variable_above
+      variable: repair_confidence
+      threshold: 70
+    npc_instruction: >-
+      Priya is satisfied enough to begin closing the conversation. She does not
+      offer praise — that is not her style — but she signals that the conversation
+      has landed: "All right. Let's make sure that stays in place. I'll check
+      in with you on Friday." The tone has shifted from accountability to
+      forward movement.
+    repeat: false
+ending_conditions:
+  success:
+    type: variable_above
+    variable: repair_confidence
+    threshold: 65
+  failure:
+    type: variable_below
+    variable: trust
+    threshold: 15
+response_style:
+  max_words: 75
+  verbosity: moderate
+  formality: professional

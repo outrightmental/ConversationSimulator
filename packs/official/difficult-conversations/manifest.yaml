@@ -15,8 +15,15 @@ tags:
   - workplace
   - relationships
   - emotional-intelligence
+  - feedback
+  - conflict
 supported_languages:
   - en
+entry_scenarios:
+  - scenarios/coworker_feedback.yaml
+  - scenarios/missed_deadline_apology.yaml
+  - scenarios/boundary_with_friend.yaml
+  - scenarios/ask_for_raise.yaml
 assets:
   allow_external_urls: false
 safety:
