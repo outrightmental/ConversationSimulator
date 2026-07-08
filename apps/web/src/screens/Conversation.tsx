@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { api } from '../api/client'
 import type { ScenarioInfo, WsEvent } from '@convsim/shared'
-import VoiceInput from '../components/VoiceInput'
+import VoiceInput, { type SttReviewMeta } from '../components/VoiceInput'
 import DebugDrawer, { type DebugTurnEntry } from '../components/DebugDrawer'
 import { isDevModeEnabled } from '../privacyPrefs'
 
@@ -97,6 +97,7 @@ export default function Conversation() {
   const streamingRef = useRef('')
   const phaseRef = useRef<Phase>('starting')
   const npcTurnCommittedRef = useRef(false)
+  const pendingRawSttRef = useRef<SttReviewMeta | null>(null)
   phaseRef.current = phase
 
   // Fetch scenario for NPC panel and scene card — best effort
@@ -242,6 +243,11 @@ export default function Conversation() {
               { id: ++bannerUidRef.current, kind: 'safety', text: event.payload.reason },
             ])
             break
+          case 'stt.partial':
+          case 'stt.final':
+            // STT streaming events — handled by VoiceInput via REST; these WS events
+            // are emitted by future streaming STT backends and are safe to ignore here.
+            break
         }
       })
     } catch {
@@ -264,6 +270,10 @@ export default function Conversation() {
   async function handleSubmit(text: string) {
     if (!text || phase !== 'active') return
 
+    // Capture any pending STT metadata before resetting it (set synchronously by onRawStt).
+    const rawSttMeta = pendingRawSttRef.current
+    pendingRawSttRef.current = null
+
     // Add the player turn immediately so it appears before the NPC response
     // regardless of whether the NPC turn is committed by WebSocket or REST.
     const playerTurnId = ++turnUidRef.current
@@ -277,6 +287,18 @@ export default function Conversation() {
         turnNum: playerTurnNum,
       },
     ])
+
+    if (devMode) {
+      const playerDebugEntry: DebugTurnEntry = {
+        turnId: playerTurnId,
+        role: 'player',
+        rawPayload: { content: text },
+        ...(rawSttMeta && rawSttMeta.rawTranscript !== rawSttMeta.finalTranscript
+          ? { rawStt: rawSttMeta.rawTranscript }
+          : {}),
+      }
+      setDebugEntries((prev) => [...prev, playerDebugEntry])
+    }
 
     setPhase('submitting')
     setError(null)
@@ -814,6 +836,7 @@ export default function Conversation() {
       ) : (
         <VoiceInput
           onSubmit={(text) => void handleSubmit(text)}
+          onRawStt={devMode ? (meta) => { pendingRawSttRef.current = meta } : undefined}
           disabled={!isIdle}
           language={language}
         />
