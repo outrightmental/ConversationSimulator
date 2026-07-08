@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from 'react'
+import type { LatencySnapshot } from '@convsim/shared'
 
 export interface DebugTurnEntry {
   turnId: number
@@ -265,11 +266,70 @@ function DebugTurnItem({ entry, index }: { entry: DebugTurnEntry; index: number 
   )
 }
 
-interface DebugDrawerProps {
-  entries: DebugTurnEntry[]
+const LATENCY_LABELS: Record<keyof LatencySnapshot, string> = {
+  session_start_ms: 'Session start',
+  first_token_ms: 'First token',
+  full_response_ms: 'Full response',
+  debrief_ms: 'Debrief generation',
+  stt_final_ms: 'STT final',
+  tts_first_sentence_ms: 'TTS first sentence',
 }
 
-export default function DebugDrawer({ entries }: DebugDrawerProps) {
+function LatencyTable({ snapshot }: { snapshot: LatencySnapshot }) {
+  const entries = (Object.keys(LATENCY_LABELS) as (keyof LatencySnapshot)[]).filter(
+    (k) => snapshot[k] !== undefined,
+  )
+  if (entries.length === 0) return null
+
+  return (
+    <div
+      data-testid="latency-metrics"
+      style={{
+        marginBottom: '0.5rem',
+        padding: '0.4rem 0.5rem',
+        borderRadius: 4,
+        border: '1px solid rgba(110,231,183,0.2)',
+        background: 'rgba(110,231,183,0.04)',
+      }}
+    >
+      <div style={{ fontSize: '0.65rem', color: '#6ee7b7', marginBottom: 4 }}>
+        Latency metrics (ms)
+      </div>
+      <table style={{ fontSize: '0.7rem', borderCollapse: 'collapse', width: '100%' }}>
+        <tbody>
+          {entries.map((k) => {
+            const ms = snapshot[k]!
+            const isWarn = (k === 'first_token_ms' && ms > 3000) ||
+              (k === 'full_response_ms' && ms > 10000) ||
+              (k === 'session_start_ms' && ms > 5000)
+            return (
+              <tr key={k}>
+                <td style={{ color: '#71717a', paddingRight: '0.75rem', paddingBottom: 2 }}>
+                  {LATENCY_LABELS[k]}
+                </td>
+                <td
+                  style={{
+                    color: isWarn ? '#fbbf24' : '#d4d4d8',
+                    fontVariantNumeric: 'tabular-nums',
+                  }}
+                >
+                  {ms.toLocaleString()} ms{isWarn ? ' ⚠' : ''}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+interface DebugDrawerProps {
+  entries: DebugTurnEntry[]
+  latencySnapshot?: LatencySnapshot
+}
+
+export default function DebugDrawer({ entries, latencySnapshot }: DebugDrawerProps) {
   return (
     <details data-testid="debug-drawer">
       <summary
@@ -330,6 +390,8 @@ export default function DebugDrawer({ entries }: DebugDrawerProps) {
           Developer mode — internal model data is visible here. Hidden NPC fields (agenda,
           prompt metadata) never appear in the normal player view.
         </div>
+
+        {latencySnapshot && <LatencyTable snapshot={latencySnapshot} />}
 
         {entries.length === 0 ? (
           <p style={{ fontSize: '0.75rem', color: '#52525b', margin: 0 }}>
