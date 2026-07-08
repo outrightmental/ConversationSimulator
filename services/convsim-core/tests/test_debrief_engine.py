@@ -426,10 +426,13 @@ class TestDebriefEndpoint:
         body = res.json()
         # The debrief text (summary + improvements) should reference the simulation context.
         all_text = " ".join([body["summary"]] + body["improvements"] + body["strengths"])
-        # Simple check: the text refers to the session/practice, not to real-world guarantees.
-        # (The guardrail language in DEBRIEF_SYSTEM_PREAMBLE enforces this for LLM output;
-        # the fallback template includes "practice session" directly.)
-        assert len(all_text) > 0
+        # The fake runtime summary always starts with "This was a simulated practice session."
+        # The fallback template also uses "practice session" directly.
+        # Either way the combined text must anchor itself to the practice context.
+        assert any(
+            keyword in all_text.lower()
+            for keyword in ("simulated", "practice session", "scenario", "session")
+        ), f"Debrief text does not reference simulation context: {all_text!r}"
 
     def test_debrief_scores_are_in_range(self, client):
         session_id = _complete_session(client)
@@ -601,3 +604,56 @@ class TestDebriefWithRubricObservations:
         assert body["total_turns"] == 3
         # Three turns × score_delta=2 each → 50 + 6 = 56
         assert body["scores"].get("communication_clarity", 0) == 56.0
+
+
+# ---------------------------------------------------------------------------
+# Integration tests — debrief error state transition
+# ---------------------------------------------------------------------------
+
+
+class _FailingDebriefRuntime(FakeChatRuntime):
+    """Runtime that raises when the debrief narrative schema is requested.
+
+    NPC turn calls (which use a different discriminant key) fall through to the
+    parent FakeChatRuntime so the session can be completed normally before the
+    debrief step is exercised.
+    """
+
+    def chat_stream(self, request: ChatRequest) -> Any:
+        is_debrief = "replay_suggestions" in (
+            (request.json_schema or {}).get("properties") or {}
+        )
+        if is_debrief:
+            return self._fail_debrief_stream(request)
+        return super().chat_stream(request)
+
+    async def _fail_debrief_stream(self, request: ChatRequest) -> AsyncGenerator:
+        raise RuntimeError("Simulated debrief runtime failure")
+        yield  # pragma: no cover — makes this an async generator
+
+
+class TestDebriefErrorState:
+    def test_debrief_generation_failure_transitions_session_to_error(self, tmp_config):
+        """When debrief generation raises, session must transition to Error state.
+
+        Acceptance criterion: Debrief generation state transitions through
+        DebriefGenerating and DebriefReady or Error.
+        """
+        app = create_app(tmp_config)
+        with TestClient(app) as client:
+            res = client.post("/api/sessions", json=_VALID_SETUP)
+            session_id = res.json()["session_id"]
+            client.post(f"/api/sessions/{session_id}/start")
+            client.post(
+                f"/api/sessions/{session_id}/turn",
+                json={"content": "I have experience managing cross-functional teams."},
+            )
+            client.post(f"/api/sessions/{session_id}/end")
+
+            # Switch to a runtime that fails during debrief narrative generation.
+            app.state.runtime = _FailingDebriefRuntime()
+            debrief_res = client.post(f"/api/sessions/{session_id}/debrief")
+            state_res = client.get(f"/api/sessions/{session_id}")
+
+        assert debrief_res.status_code == 500
+        assert state_res.json()["state"] == "Error"
