@@ -21,6 +21,8 @@ router = APIRouter()
 class SidecarStartRequest(BaseModel):
     model_path: str
     executable: Optional[str] = None
+    host: str = "127.0.0.1"
+    port: int = 7356
     context_length: Optional[int] = None
     threads: Optional[int] = None
     gpu_layers: Optional[int] = None
@@ -73,6 +75,8 @@ async def start_sidecar(request: Request, body: SidecarStartRequest) -> SidecarS
         await sidecar.start(
             body.model_path,
             executable=body.executable,
+            host=body.host,
+            port=body.port,
             context_length=body.context_length,
             threads=body.threads,
             gpu_layers=body.gpu_layers,

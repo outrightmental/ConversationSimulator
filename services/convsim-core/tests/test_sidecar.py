@@ -363,6 +363,39 @@ def test_sidecar_start_returns_409_when_starting(client):
     assert resp.json()["error"]["code"] == "SIDECAR_ALREADY_RUNNING"
 
 
+def test_sidecar_start_forwards_custom_host_and_port(client):
+    """POST /api/sidecar/start must forward host and port to sidecar.start().
+
+    The port-conflict error message tells users to "configure a different port",
+    so the API must actually accept host/port fields and forward them.
+    """
+    from unittest.mock import AsyncMock, patch
+
+    captured = {}
+
+    async def _mock_start(model_path, *, host, port, **kwargs):
+        captured["host"] = host
+        captured["port"] = port
+
+    with patch.object(client.app.state.sidecar, "start", _mock_start):
+        with patch.object(
+            client.app.state.sidecar, "get_status",
+            return_value={
+                "state": "running", "pid": 42, "model_path": "/m.gguf",
+                "log_path": "/tmp/runtime.log", "host": "0.0.0.0", "port": 9000,
+                "error": None, "started_at": "2026-01-01T00:00:00+00:00",
+            },
+        ):
+            resp = client.post(
+                "/api/sidecar/start",
+                json={"model_path": "/m.gguf", "host": "0.0.0.0", "port": 9000},
+            )
+
+    assert resp.status_code == 200
+    assert captured["host"] == "0.0.0.0"
+    assert captured["port"] == 9000
+
+
 # ---------------------------------------------------------------------------
 # Integration test — real fake executable
 # ---------------------------------------------------------------------------

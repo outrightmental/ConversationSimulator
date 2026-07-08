@@ -52,14 +52,16 @@ curl -X POST http://127.0.0.1:7355/api/sidecar/start \
 
 Optional request fields:
 
-| Field             | Type    | Default | Description                          |
-|-------------------|---------|---------|--------------------------------------|
-| `model_path`      | string  | —       | Absolute path to the GGUF file       |
-| `executable`      | string  | auto    | Path to llama-server binary          |
-| `context_length`  | int     | null    | Context window size (`--ctx-size`)   |
-| `threads`         | int     | null    | CPU thread count (`--threads`)       |
-| `gpu_layers`      | int     | null    | GPU layers (`--n-gpu-layers`)        |
-| `startup_timeout` | float   | 120.0   | Seconds to wait for /health          |
+| Field             | Type    | Default       | Description                          |
+|-------------------|---------|---------------|--------------------------------------|
+| `model_path`      | string  | —             | Absolute path to the GGUF file       |
+| `executable`      | string  | auto          | Path to llama-server binary          |
+| `host`            | string  | `127.0.0.1`   | Interface for llama-server to bind   |
+| `port`            | int     | `7356`        | Port for llama-server to bind        |
+| `context_length`  | int     | null          | Context window size (`--ctx-size`)   |
+| `threads`         | int     | null          | CPU thread count (`--threads`)       |
+| `gpu_layers`      | int     | null          | GPU layers (`--n-gpu-layers`)        |
+| `startup_timeout` | float   | 120.0         | Seconds to wait for /health          |
 
 Stop with `POST /api/sidecar/stop`. Query state with `GET /api/sidecar/status`.
 
