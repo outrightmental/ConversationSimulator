@@ -53,9 +53,9 @@ A model must be installed before conversations can start. Open **Settings → Mo
 
 Possible causes:
 
-1. **Insufficient VRAM:** the model requires more GPU memory than is available. Try the starter model (Qwen3 4B, ~2.6 GB, 4 GB VRAM minimum). To force CPU-only mode and bypass the GPU entirely, set `CONVSIM_LLAMA_CPP_ARGS="-ngl 0"` before starting the dev server. Inference will be slower but the model will load.
+1. **Insufficient VRAM:** the model requires more GPU memory than is available. Try the starter model (Qwen3 4B, ~2.6 GB, 4 GB VRAM minimum). To force CPU-only mode and bypass the GPU entirely, open **Settings → Advanced**, set GPU layers (`n_gpu_layers`) to 0, and reload the model. Inference will be slower but the model will load.
 
-2. **Corrupted download:** delete the file from `~/.convsim/models/` and re-download through the model manager.
+2. **Corrupted download:** delete the file from `~/.convsim/models/llm/` and re-download through the model manager.
 
 3. **llama-server binary not found:** the llama.cpp binary must be present before the LLM runtime can start. Run `./runtimes/llama_cpp/download-runtime.sh` to fetch the binary for your platform. If that script is not yet available, check the [GitHub releases](https://github.com/outrightmental/ConversationSimulator/releases) page for pre-built binaries.
 
@@ -89,7 +89,7 @@ Not enough VRAM, or insufficient system RAM for CPU mode. Recommended model by a
 
 | Available VRAM / RAM | Recommendation |
 |---|---|
-| < 4 GB VRAM, ≥ 8 GB RAM | Qwen3 4B on CPU (`-ngl 0`) |
+| < 4 GB VRAM, ≥ 8 GB RAM | Qwen3 4B on CPU (GPU layers = 0) |
 | 4–6 GB VRAM | Qwen3 4B (starter) |
 | 6–8 GB VRAM | Qwen3 8B (standard) |
 | 10–12 GB VRAM | Qwen3 14B (high-quality) |

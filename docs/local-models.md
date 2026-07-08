@@ -21,7 +21,7 @@ The model manager shows curated models from the registry (`model-registry/regist
 
 You must accept the license before a download begins. After downloading, the app verifies the SHA-256 checksum before loading the file. If the checksum does not match, the file is discarded and an error is shown — the app never loads a file whose integrity cannot be confirmed.
 
-Downloaded models are stored in `~/.convsim/models/`.
+Downloaded models are stored in `~/.convsim/models/llm/`.
 
 ---
 
@@ -123,12 +123,12 @@ The registry uses Q4_K_M quantization for all curated models. This offers a good
 
 ```bash
 # macOS / Linux
-shasum -a 256 ~/.convsim/models/qwen3-4b-instruct-q4_k_m.gguf
+shasum -a 256 ~/.convsim/models/llm/qwen3-4b-instruct-q4_k_m.gguf
 ```
 
 ```powershell
 # Windows PowerShell
-Get-FileHash "$env:USERPROFILE\.convsim\models\qwen3-4b-instruct-q4_k_m.gguf" -Algorithm SHA256
+Get-FileHash "$env:USERPROFILE\.convsim\models\llm\qwen3-4b-instruct-q4_k_m.gguf" -Algorithm SHA256
 ```
 
 Compare the output against the checksum in `model-registry/registry.yaml`.
@@ -139,9 +139,9 @@ Compare the output against the checksum in `model-registry/registry.yaml`.
 
 To use a GGUF file you obtained independently:
 
-1. Place the file in `~/.convsim/models/`.
+1. Place the file in `~/.convsim/models/llm/`.
 2. In the model manager, click **Use custom GGUF**.
-3. Enter the full path to the file (e.g., `~/.convsim/models/my-model.gguf`).
+3. Enter the full path to the file (e.g., `~/.convsim/models/llm/my-model.gguf`).
 
 The app loads the file without checksum verification — only registry-managed models have known checksums. Ensure you have the right to use the model under its license; the application cannot verify the license of a user-supplied file.
 
@@ -159,7 +159,7 @@ If you supply your own GGUF file, you are responsible for complying with its lic
 
 **Update:** re-download the model from the model manager. The old file is replaced only after the new download and checksum verification succeed.
 
-**Remove:** delete the file from `~/.convsim/models/` and select a different model in the model manager.
+**Remove:** delete the file from `~/.convsim/models/llm/` and select a different model in the model manager.
 
 ---
 
@@ -167,7 +167,7 @@ If you supply your own GGUF file, you are responsible for complying with its lic
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `CONVSIM_RUNTIME_ID` | `llama_cpp` | Select runtime: `llama_cpp`, `ollama`, or `fake` |
+| `CONVSIM_RUNTIME_ID` | `fake` | Select runtime: `llama_cpp`, `ollama`, or `fake`. Set to `llama_cpp` to use a downloaded local model. |
 | `CONVSIM_LLAMA_CPP_BASE_URL` | `http://127.0.0.1:7356` | llama-server URL |
 | `CONVSIM_OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Ollama server URL |
 

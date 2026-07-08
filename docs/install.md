@@ -158,7 +158,7 @@ The expected checksum is listed on the GitHub release page alongside each downlo
 | `~/.convsim/db/` | Session database (SQLite) |
 | `~/.convsim/data/` | Exported data and pack cache |
 | `~/.convsim/logs/` | Runtime logs |
-| `~/.convsim/models/` | Downloaded model weights |
+| `~/.convsim/models/llm/` | Downloaded model weights |
 
 Override any of these with environment variables: `CONVSIM_DB_DIR`, `CONVSIM_DATA_DIR`, `CONVSIM_LOG_DIR`.
 
