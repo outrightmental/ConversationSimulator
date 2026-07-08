@@ -75,6 +75,7 @@ class WhisperCppWorker(SttWorker):
 
     def __init__(self, config: WhisperCppConfig | None = None) -> None:
         cfg = config or WhisperCppConfig()
+        self._configured_binary_path = cfg.binary_path
         self._binary = _find_binary(cfg.binary_path)
         self._model_path = cfg.model_path
         self._n_threads = cfg.n_threads
@@ -190,6 +191,12 @@ class WhisperCppWorker(SttWorker):
 
     async def health(self) -> SttHealth:
         checked_at = datetime.now(timezone.utc).isoformat()
+
+        # Re-check PATH on each call when binary was absent at startup, so a
+        # newly-installed whisper-cli is reflected without a server restart.
+        # Once found, the cached path is reused for performance.
+        if self._binary is None:
+            self._binary = _find_binary(self._configured_binary_path)
 
         if self._binary is None:
             return SttHealth(

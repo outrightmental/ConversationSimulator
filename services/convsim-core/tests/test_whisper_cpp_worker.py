@@ -209,10 +209,23 @@ def test_parse_json_output_detected_language_top_level_fallback():
 @pytest.mark.asyncio
 async def test_health_unavailable_when_binary_missing():
     worker = _make_worker(binary=None)
-    h = await worker.health()
+    with patch("convsim_core.stt.whisper_cpp._find_binary", return_value=None):
+        h = await worker.health()
     assert h.status == RuntimeStatus.UNAVAILABLE
     assert h.worker_id == "whisper_cpp"
     assert h.message is not None
+
+
+@pytest.mark.asyncio
+async def test_health_detects_binary_installed_after_startup():
+    """Binary installed after server startup must be detected on next health call."""
+    worker = _make_worker(binary=None)
+    assert worker._binary is None
+    with patch("convsim_core.stt.whisper_cpp._find_binary", return_value=_FAKE_BINARY), \
+         patch("os.path.isfile", return_value=True):
+        h = await worker.health()
+    assert h.status == RuntimeStatus.READY
+    assert worker._binary == _FAKE_BINARY
 
 
 @pytest.mark.asyncio
