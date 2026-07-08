@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import CreatorWorkbench from '../screens/CreatorWorkbench'
@@ -337,6 +337,10 @@ describe('CreatorWorkbench', () => {
     })
   })
 
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
   it('refreshes validation from the save response', async () => {
     const localContent = 'name: My Pack\n'
     stubFetch((url, opts) => {
@@ -402,7 +406,327 @@ describe('CreatorWorkbench', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('dirty-indicator')).not.toBeInTheDocument()
     })
+  })
+})
 
+// ---------------------------------------------------------------------------
+// Test Chat Panel
+// ---------------------------------------------------------------------------
+
+const TEST_SESSION_RESPONSE = {
+  session_id: 'test-abc123',
+  state: 'PlayerTurnListening',
+  npc_opening: 'Ready to test. Send a message to begin.',
+  state_vars: { trust: 50, patience: 75, pressure: 25, rapport: 50, openness: 50, objective_progress: 0 },
+}
+
+const TURN_RESPONSE = {
+  session_id: 'test-abc123',
+  state: 'PlayerTurnListening',
+  events: [
+    {
+      event_id: 1,
+      session_id: 'test-abc123',
+      event_type: 'player_turn',
+      payload: { content: 'Hello there.' },
+      created_at: '2026-01-01T00:00:00Z',
+    },
+    {
+      event_id: 2,
+      session_id: 'test-abc123',
+      event_type: 'npc_turn',
+      payload: {
+        content: 'Hello! I am a simulated NPC.',
+        emotion: 'neutral',
+        state_delta: { trust: 5 },
+        event_flags: [],
+        safety: { status: 'ok' },
+        ending_type: null,
+      },
+      created_at: '2026-01-01T00:00:01Z',
+    },
+  ],
+}
+
+function stubFetchWithTestChat(handler: (url: string, opts?: RequestInit) => FetchResponse) {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((url: string, opts?: RequestInit) => Promise.resolve(handler(url, opts))),
+  )
+}
+
+describe('CreatorWorkbench — Test Chat', () => {
+  afterEach(() => {
     vi.unstubAllGlobals()
+  })
+
+  function setupBaseStub(extras?: (url: string, opts?: RequestInit) => FetchResponse | null) {
+    stubFetchWithTestChat((url, opts) => {
+      const extra = extras?.(url, opts)
+      if (extra) return extra
+      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
+      if (url.includes('/validate')) return okJson({ valid: true, errors: [], warnings: [] })
+      if (url.includes('/api/workbench/packs') && !url.includes('/')) return okJson([OFFICIAL_PACK, LOCAL_PACK])
+      return okJson([OFFICIAL_PACK, LOCAL_PACK])
+    })
+  }
+
+  it('shows Edit and Test Chat tabs when a pack is selected', async () => {
+    setupBaseStub()
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('tab-edit')).toBeInTheDocument()
+      expect(screen.getByTestId('tab-test')).toBeInTheDocument()
+    })
+  })
+
+  it('does not show tabs when no pack is selected', () => {
+    setupBaseStub()
+    renderWorkbench()
+    expect(screen.queryByTestId('tab-edit')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('tab-test')).not.toBeInTheDocument()
+  })
+
+  it('switches to Test Chat tab and shows Start Test button', async () => {
+    setupBaseStub()
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+    await waitFor(() => expect(screen.getByTestId('tab-test')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('tab-test'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('start-test-btn')).toBeInTheDocument()
+    })
+  })
+
+  it('shows validation error message and disables Start Test when pack has errors', async () => {
+    stubFetchWithTestChat((url) => {
+      if (url.includes('/validate')) {
+        return okJson({
+          valid: false,
+          errors: [{ severity: 'error', rule_id: 'SCHEMA_VIOLATION', file: 'manifest.yaml', pointer: '/name', message: 'name is required', suggested_fix: 'Add name' }],
+          warnings: [],
+        })
+      }
+      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
+      return okJson([OFFICIAL_PACK, LOCAL_PACK])
+    })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+    await waitFor(() => expect(screen.getByTestId('tab-test')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('tab-test'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('test-chat-validation-error')).toBeInTheDocument()
+      expect(screen.getByTestId('start-test-btn')).toBeDisabled()
+    })
+  })
+
+  it('starts a test session and shows NPC opening in transcript', async () => {
+    const startSpy = vi.fn().mockReturnValue(okJson(TEST_SESSION_RESPONSE))
+    stubFetchWithTestChat((url, opts) => {
+      if (url.includes('/test-session') && opts?.method === 'POST') return startSpy()
+      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
+      if (url.includes('/validate')) return okJson({ valid: true, errors: [], warnings: [] })
+      return okJson([OFFICIAL_PACK, LOCAL_PACK])
+    })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+    await waitFor(() => expect(screen.getByTestId('tab-test')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('tab-test'))
+    fireEvent.click(await screen.findByTestId('start-test-btn'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('test-transcript')).toBeInTheDocument()
+      expect(screen.getByText('Ready to test. Send a message to begin.')).toBeInTheDocument()
+    })
+    expect(startSpy).toHaveBeenCalledOnce()
+  })
+
+  it('shows state inspector with initial state variables after start', async () => {
+    stubFetchWithTestChat((url, opts) => {
+      if (url.includes('/test-session') && opts?.method === 'POST') return okJson(TEST_SESSION_RESPONSE)
+      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
+      if (url.includes('/validate')) return okJson({ valid: true, errors: [], warnings: [] })
+      return okJson([OFFICIAL_PACK, LOCAL_PACK])
+    })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+    fireEvent.click(await screen.findByTestId('tab-test'))
+    fireEvent.click(await screen.findByTestId('start-test-btn'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('state-inspector')).toBeInTheDocument()
+      expect(screen.getByTestId('state-inspector')).toHaveTextContent('trust')
+      expect(screen.getByTestId('state-inspector')).toHaveTextContent('50')
+    })
+  })
+
+  it('submits a message and adds player and NPC entries to transcript', async () => {
+    const turnSpy = vi.fn().mockReturnValue(okJson(TURN_RESPONSE))
+    stubFetchWithTestChat((url, opts) => {
+      if (url.includes('/test-session') && opts?.method === 'POST') return okJson(TEST_SESSION_RESPONSE)
+      if (url.includes('/turn') && opts?.method === 'POST') return turnSpy()
+      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
+      if (url.includes('/validate')) return okJson({ valid: true, errors: [], warnings: [] })
+      return okJson([OFFICIAL_PACK, LOCAL_PACK])
+    })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+    fireEvent.click(await screen.findByTestId('tab-test'))
+    fireEvent.click(await screen.findByTestId('start-test-btn'))
+
+    await waitFor(() => screen.findByTestId('test-chat-input'))
+
+    fireEvent.change(screen.getByTestId('test-chat-input'), { target: { value: 'Hello there.' } })
+    fireEvent.click(screen.getByTestId('send-test-btn'))
+
+    await waitFor(() => {
+      expect(screen.getByText('Hello there.')).toBeInTheDocument()
+      expect(screen.getByText('Hello! I am a simulated NPC.')).toBeInTheDocument()
+    })
+    expect(turnSpy).toHaveBeenCalledOnce()
+  })
+
+  it('shows state delta indicators after a turn with non-zero delta', async () => {
+    stubFetchWithTestChat((url, opts) => {
+      if (url.includes('/test-session') && opts?.method === 'POST') return okJson(TEST_SESSION_RESPONSE)
+      if (url.includes('/turn') && opts?.method === 'POST') return okJson(TURN_RESPONSE)
+      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
+      if (url.includes('/validate')) return okJson({ valid: true, errors: [], warnings: [] })
+      return okJson([OFFICIAL_PACK, LOCAL_PACK])
+    })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+    fireEvent.click(await screen.findByTestId('tab-test'))
+    fireEvent.click(await screen.findByTestId('start-test-btn'))
+    await screen.findByTestId('test-chat-input')
+
+    fireEvent.change(screen.getByTestId('test-chat-input'), { target: { value: 'test' } })
+    fireEvent.click(screen.getByTestId('send-test-btn'))
+
+    // state_delta has { trust: 5 }, so a +5 indicator should appear
+    await waitFor(() => {
+      expect(screen.getByTestId('state-delta')).toHaveTextContent('+5')
+    })
+  })
+
+  it('discard button calls DELETE and returns to idle state', async () => {
+    const deleteSpy = vi.fn().mockReturnValue({ ok: true, status: 204, json: () => Promise.resolve(null), text: () => Promise.resolve('') })
+    stubFetchWithTestChat((url, opts) => {
+      if (url.includes('/test-session') && opts?.method === 'POST') return okJson(TEST_SESSION_RESPONSE)
+      if (url.includes('/api/sessions/') && opts?.method === 'DELETE') return deleteSpy()
+      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
+      if (url.includes('/validate')) return okJson({ valid: true, errors: [], warnings: [] })
+      return okJson([OFFICIAL_PACK, LOCAL_PACK])
+    })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+    fireEvent.click(await screen.findByTestId('tab-test'))
+    fireEvent.click(await screen.findByTestId('start-test-btn'))
+
+    await waitFor(() => screen.findByTestId('discard-test-btn'))
+    fireEvent.click(screen.getByTestId('discard-test-btn'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('start-test-btn')).toBeInTheDocument()
+    })
+    expect(deleteSpy).toHaveBeenCalledOnce()
+  })
+
+  it('reset button discards current session and starts a new one', async () => {
+    const startCount = { n: 0 }
+    const deleteSpy = vi.fn().mockReturnValue({ ok: true, status: 204, json: () => Promise.resolve(null), text: () => Promise.resolve('') })
+    stubFetchWithTestChat((url, opts) => {
+      if (url.includes('/test-session') && opts?.method === 'POST') {
+        startCount.n++
+        return okJson({ ...TEST_SESSION_RESPONSE, session_id: `test-${startCount.n}` })
+      }
+      if (url.includes('/api/sessions/') && opts?.method === 'DELETE') return deleteSpy()
+      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
+      if (url.includes('/validate')) return okJson({ valid: true, errors: [], warnings: [] })
+      return okJson([OFFICIAL_PACK, LOCAL_PACK])
+    })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+    fireEvent.click(await screen.findByTestId('tab-test'))
+    fireEvent.click(await screen.findByTestId('start-test-btn'))
+
+    await waitFor(() => screen.findByTestId('reset-test-btn'))
+    fireEvent.click(screen.getByTestId('reset-test-btn'))
+
+    await waitFor(() => {
+      expect(startCount.n).toBe(2)
+    })
+  })
+
+  it('session ended banner appears when state transitions to Ended', async () => {
+    const endedTurnResponse = {
+      ...TURN_RESPONSE,
+      state: 'Ended',
+      events: [
+        TURN_RESPONSE.events[0],
+        {
+          ...TURN_RESPONSE.events[1],
+          payload: { ...TURN_RESPONSE.events[1].payload, ending_type: 'timeout', safety: { status: 'ok' } },
+        },
+      ],
+    }
+    stubFetchWithTestChat((url, opts) => {
+      if (url.includes('/test-session') && opts?.method === 'POST') return okJson(TEST_SESSION_RESPONSE)
+      if (url.includes('/turn') && opts?.method === 'POST') return okJson(endedTurnResponse)
+      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
+      if (url.includes('/validate')) return okJson({ valid: true, errors: [], warnings: [] })
+      return okJson([OFFICIAL_PACK, LOCAL_PACK])
+    })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+    fireEvent.click(await screen.findByTestId('tab-test'))
+    fireEvent.click(await screen.findByTestId('start-test-btn'))
+    await screen.findByTestId('test-chat-input')
+
+    fireEvent.change(screen.getByTestId('test-chat-input'), { target: { value: 'last message' } })
+    fireEvent.click(screen.getByTestId('send-test-btn'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('session-ended-banner')).toBeInTheDocument()
+      expect(screen.getByTestId('session-ended-banner')).toHaveTextContent(/timeout/i)
+    })
+  })
+
+  it('switching back to Edit tab preserves editor state', async () => {
+    const localContent = 'name: My Pack\n'
+    stubFetchWithTestChat((url) => {
+      if (url.includes('/test-session')) return okJson(TEST_SESSION_RESPONSE)
+      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
+      if (url.includes('/file?')) return okJson({ content: localContent, editable: true })
+      if (url.includes('/validate')) return okJson({ valid: true, errors: [], warnings: [] })
+      return okJson([OFFICIAL_PACK, LOCAL_PACK])
+    })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /open manifest\.yaml/i }))
+    await waitFor(() => expect(screen.getByTestId('file-editor')).toBeInTheDocument())
+
+    // Switch to test tab then back to edit tab
+    fireEvent.click(screen.getByTestId('tab-test'))
+    fireEvent.click(screen.getByTestId('tab-edit'))
+
+    // Editor should still be present with the same content
+    await waitFor(() => {
+      const editor = screen.getByTestId('file-editor') as HTMLTextAreaElement
+      expect(editor.value).toContain('name: My Pack')
+    })
   })
 })
