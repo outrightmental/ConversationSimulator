@@ -52,7 +52,7 @@ criteria.
 - [x] Model registry with checksums and explicit license disclosure flow
 - [x] Local TTS adapter (Kokoro / sherpa-onnx, synthetic voices, no voice cloning)
 - [x] Text-only workbench — chat panel + live state inspector
-- [x] Job Interview Basics official pack — four playable scenarios
+- [x] Four official packs — Job Interview Basics, Everyday Negotiation, Language Café, Difficult Conversations (four playable scenarios each)
 - [x] README rewritten for instant GitHub comprehension
 
 ### In progress — Milestone 1 (text conversation loop)
@@ -73,7 +73,6 @@ criteria.
 - [ ] Whisper STT integration (voice input, local, no audio uploads)
 - [ ] Full TTS playback connected to scenario engine (voice output)
 - [ ] Workbench: turn replay, state diff, rubric live preview
-- [ ] Everyday Negotiation, Language Café, Difficult Conversations packs
 - [ ] Polished demo GIF and README launch assets
 
 ---
