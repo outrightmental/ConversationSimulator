@@ -100,7 +100,7 @@ async def _wait_for_ready(
                 if resp.status_code == 200:
                     return
                 # 503 = model still loading; keep polling
-        except (httpx.ConnectError, httpx.TimeoutException) as exc:
+        except httpx.TransportError as exc:
             last_error = exc
 
         await asyncio.sleep(_HEALTH_POLL_INTERVAL)
