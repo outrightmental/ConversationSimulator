@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, statSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, statSync, existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import AdmZip from 'adm-zip';
@@ -685,5 +686,37 @@ describe('export-pack', () => {
     const result = JSON.parse(captured) as Record<string, unknown>;
     expect(result['status']).toBe('error');
     expect(typeof (result['error'] as Record<string, unknown>)['code']).toBe('string');
+  });
+});
+
+// ===========================================================================
+// validate-pack — official packs (acceptance criterion: exit 0 for all of them)
+// ===========================================================================
+
+describe('validate-pack — official packs', () => {
+  const repoRoot = fileURLToPath(new URL('../../../', import.meta.url));
+  const officialPacksDir = join(repoRoot, 'packs', 'official');
+  const officialPacks = readdirSync(officialPacksDir).filter((name) =>
+    statSync(join(officialPacksDir, name)).isDirectory(),
+  );
+
+  it.each(officialPacks)('succeeds for official pack: %s', (packName) => {
+    const code = runValidatePack(join(officialPacksDir, packName), false);
+    expect(code).toBe(0);
+  });
+
+  it.each(officialPacks)('JSON output is well-formed for official pack: %s', (packName) => {
+    let captured = '';
+    const spy = vi.spyOn(process.stdout, 'write').mockImplementation((d) => {
+      captured += String(d);
+      return true;
+    });
+    const code = runValidatePack(join(officialPacksDir, packName), true);
+    spy.mockRestore();
+    expect(code).toBe(0);
+    const result = JSON.parse(captured) as Record<string, unknown>;
+    expect(result['status']).toBe('ok');
+    expect(typeof result['pack_id']).toBe('string');
+    expect(typeof result['scenario_count']).toBe('number');
   });
 });
