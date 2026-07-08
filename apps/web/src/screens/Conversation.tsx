@@ -253,13 +253,15 @@ export default function Conversation() {
 
     // Add the player turn immediately so it appears before the NPC response
     // regardless of whether the NPC turn is committed by WebSocket or REST.
+    const playerTurnId = ++turnUidRef.current
+    const playerTurnNum = ++turnNumRef.current
     setTurns((prev) => [
       ...prev,
       {
-        id: ++turnUidRef.current,
+        id: playerTurnId,
         role: 'player',
         content: text,
-        turnNum: ++turnNumRef.current,
+        turnNum: playerTurnNum,
       },
     ])
 
@@ -325,6 +327,12 @@ export default function Conversation() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       setError(msg)
+      // Roll back the optimistic player turn if the NPC never responded, so a
+      // retry doesn't leave an orphaned failed message or skip a turn number.
+      if (!npcTurnCommittedRef.current) {
+        setTurns((prev) => prev.filter((t) => t.id !== playerTurnId))
+        turnNumRef.current -= 1
+      }
       setPhase('active')
     }
   }

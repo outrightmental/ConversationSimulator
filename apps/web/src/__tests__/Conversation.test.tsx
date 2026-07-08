@@ -345,6 +345,41 @@ describe('Conversation screen', () => {
       )
     })
 
+    it('rolls back the optimistic player turn when submitTurn fails', async () => {
+      mockApi.submitTurn.mockRejectedValue(new Error('Turn failed'))
+      renderConversation()
+      await waitFor(() =>
+        expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument(),
+      )
+
+      fireEvent.change(screen.getByRole('textbox', { name: /your response/i }), {
+        target: { value: 'This will fail.' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+
+      await waitFor(() =>
+        expect(screen.getByRole('alert')).toHaveTextContent('Turn failed'),
+      )
+      // The failed message must not linger in the transcript.
+      expect(screen.queryByText('This will fail.')).not.toBeInTheDocument()
+
+      // A successful retry should be labelled Turn 2 (opening was Turn 1),
+      // with no gap or duplicate from the rolled-back attempt.
+      mockApi.submitTurn.mockResolvedValue(turnResponse)
+      fireEvent.change(screen.getByRole('textbox', { name: /your response/i }), {
+        target: { value: 'Retry message.' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+
+      await waitFor(() =>
+        expect(screen.getByText('Retry message.')).toBeInTheDocument(),
+      )
+      // Opening=Turn 1, retry player=Turn 2, NPC=Turn 3. The absence of a
+      // Turn 4 confirms the failed attempt did not consume a turn number.
+      expect(screen.getByText('Turn 2')).toBeInTheDocument()
+      expect(screen.queryByText('Turn 4')).not.toBeInTheDocument()
+    })
+
     it('shows turn number markers in the transcript', async () => {
       mockApi.submitTurn.mockResolvedValue(turnResponse)
       renderConversation()
