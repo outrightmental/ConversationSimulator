@@ -1,9 +1,31 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useLocation, useParams } from 'react-router-dom'
+import { useEffect, useRef, useState } from 'react'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
+import { api } from '../api/client'
 import VoiceInput from '../components/VoiceInput'
+
+const BASELINE_STATE_VARS: Record<string, number> = {
+  trust: 50,
+  patience: 75,
+  pressure: 25,
+  rapport: 50,
+  openness: 50,
+  objective_progress: 0,
+}
+
+type TurnEntry = {
+  id: number  // client-side sequential id used as React key; NOT the server event_id
+  role: 'npc_opening' | 'npc' | 'player'
+  content: string
+  emotion?: string
+  eventFlags?: string[]
+}
+
+type Phase = 'starting' | 'active' | 'submitting' | 'ending' | 'ended' | 'error'
 
 export default function Conversation() {
   const { sessionId } = useParams<{ sessionId: string }>()
+  const navigate = useNavigate()
   const { state } = useLocation()
   const language = (state as { language?: string } | null)?.language
 
@@ -13,11 +35,9 @@ export default function Conversation() {
   const [turns, setTurns] = useState<TurnEntry[]>([])
   const [stateVars, setStateVars] = useState<Record<string, number>>(BASELINE_STATE_VARS)
   const [allEventFlags, setAllEventFlags] = useState<string[]>([])
-  const [inputText, setInputText] = useState('')
   const [error, setError] = useState<string | null>(null)
 
   const transcriptRef = useRef<HTMLDivElement>(null)
-  const inputRef = useRef<HTMLTextAreaElement>(null)
   const turnUidRef = useRef(0)
 
   useEffect(() => {
@@ -67,22 +87,14 @@ export default function Conversation() {
     }
   }, [turns])
 
-  useEffect(() => {
-    if (phase === 'active') {
-      inputRef.current?.focus()
-    }
-  }, [phase, turns.length])
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    const content = inputText.trim()
-    if (!content || phase !== 'active') return
+  async function handleSubmit(text: string) {
+    if (!text || phase !== 'active') return
 
     setPhase('submitting')
     setError(null)
 
     try {
-      const res = await api.submitTurn(sessionId!, content)
+      const res = await api.submitTurn(sessionId!, text)
 
       const playerEvent = res.events.find((e) => e.event_type === 'player_turn')
       const npcEvent = res.events.find((e) => e.event_type === 'npc_turn')
@@ -124,7 +136,6 @@ export default function Conversation() {
 
       setTurns((prev) => [...prev, ...newTurns])
       setSessionState(res.state)
-      setInputText('')
 
       if (res.state === 'Ended') {
         const npcPayload = npcEvent?.payload
@@ -181,7 +192,7 @@ export default function Conversation() {
             <code>{sessionState}</code>
             {endingType && (
               <span style={{ marginLeft: '0.5rem', color: '#a1a1aa' }}>
-                ({endingType.replace(/_/g, ' ')})
+                ({endingType.replace('_', ' ')})
               </span>
             )}
           </p>
@@ -294,7 +305,144 @@ export default function Conversation() {
         )}
       </div>
 
-      <VoiceInput onSubmit={handleSubmit} language={language} />
+      {/* State variables panel */}
+      <details open>
+        <summary
+          style={{ cursor: 'pointer', fontSize: '0.8rem', color: '#71717a', userSelect: 'none' }}
+        >
+          NPC state variables
+        </summary>
+        <div
+          data-testid="state-vars"
+          style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            gap: '0.5rem',
+            marginTop: '0.5rem',
+            padding: '0.5rem',
+            borderRadius: 6,
+            border: '1px solid #27272a',
+          }}
+        >
+          {Object.entries(stateVars).map(([key, value]) => (
+            <div
+              key={key}
+              style={{
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                minWidth: 80,
+                padding: '0.4rem 0.5rem',
+                borderRadius: 4,
+                background: '#18181b',
+                fontSize: '0.8rem',
+              }}
+            >
+              <span style={{ color: '#a1a1aa', marginBottom: 2 }}>{key}</span>
+              <span style={{ color: '#f4f4f5', fontWeight: 600 }}>{value}</span>
+              <div
+                style={{
+                  width: '100%',
+                  height: 4,
+                  borderRadius: 2,
+                  background: '#27272a',
+                  marginTop: 4,
+                }}
+              >
+                <div
+                  style={{
+                    width: `${value}%`,
+                    height: '100%',
+                    borderRadius: 2,
+                    background: value >= 50 ? '#22c55e' : '#f97316',
+                  }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      </details>
+
+      {allEventFlags.length > 0 && (
+        <div
+          style={{
+            padding: '0.5rem 0.75rem',
+            borderRadius: 6,
+            border: '1px solid #451a03',
+            background: '#1c0a00',
+            fontSize: '0.8rem',
+            color: '#fbbf24',
+          }}
+        >
+          Event flags: {allEventFlags.join(', ')}
+        </div>
+      )}
+
+      {/* Input / end section */}
+      {isEnded ? (
+        <div
+          style={{
+            padding: '1rem',
+            borderRadius: 8,
+            border: '1px solid #27272a',
+            textAlign: 'center',
+          }}
+        >
+          <p style={{ margin: '0 0 0.75rem', color: '#a1a1aa' }}>
+            Session ended.{endingType ? ` Outcome: ${endingType.replace('_', ' ')}.` : ''}
+          </p>
+          <button
+            onClick={() => navigate(`/debrief/${sessionId}`)}
+            style={{
+              padding: '0.5rem 1.5rem',
+              borderRadius: 6,
+              border: 'none',
+              background: '#4f46e5',
+              color: '#fff',
+              fontWeight: 600,
+              cursor: 'pointer',
+              marginRight: '0.5rem',
+            }}
+          >
+            Generate debrief
+          </button>
+          <button
+            onClick={() => navigate('/library')}
+            style={{
+              padding: '0.5rem 1rem',
+              borderRadius: 6,
+              border: '1px solid #52525b',
+              background: 'transparent',
+              color: '#a1a1aa',
+              cursor: 'pointer',
+            }}
+          >
+            Back to library
+          </button>
+        </div>
+      ) : phase === 'error' ? (
+        <div style={{ textAlign: 'center' }}>
+          <button
+            onClick={() => navigate('/library')}
+            style={{
+              padding: '0.5rem 1rem',
+              borderRadius: 6,
+              border: '1px solid #52525b',
+              background: 'transparent',
+              color: '#a1a1aa',
+              cursor: 'pointer',
+            }}
+          >
+            Back to library
+          </button>
+        </div>
+      ) : (
+        <VoiceInput
+          onSubmit={(text) => void handleSubmit(text)}
+          disabled={!isIdle}
+          language={language}
+        />
+      )}
     </div>
   )
 }
