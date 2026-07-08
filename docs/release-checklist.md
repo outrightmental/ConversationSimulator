@@ -23,7 +23,6 @@ intend to tag.
 | CI | `.github/workflows/ci.yml` | Backend tests, frontend typecheck/test, schema and pack validation |
 | Release smoke — Linux x86_64 | `.github/workflows/release-smoke.yml` (job: `smoke-linux`) | All CI-subset subsystems on Ubuntu |
 | Release smoke — macOS aarch64 | `.github/workflows/release-smoke.yml` (job: `smoke-macos / aarch64`) | All CI-subset subsystems on Apple Silicon |
-| Release smoke — macOS x86_64 | `.github/workflows/release-smoke.yml` (job: `smoke-macos / x86_64`) | All CI-subset subsystems on Intel Mac |
 | Release smoke — Windows x86_64 | `.github/workflows/release-smoke.yml` (job: `smoke-windows`) | All CI-subset subsystems on Windows |
 
 **CI-subset subsystems (no model downloads, fake runtime):**
