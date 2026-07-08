@@ -269,6 +269,7 @@ MIGRATIONS: list[tuple[str, str]] = [
     ("0006_turn_transcript_and_events", _TURN_TRANSCRIPT_AND_EVENTS_SQL),
     ("0007_session_debriefs", _DEBRIEF_TABLE_SQL),
     ("0008_session_debriefs_unique_idx", _DEBRIEF_UNIQUE_IDX_SQL),
+    ("0009_scenario_library_schema", _SCENARIO_LIBRARY_SCHEMA_SQL),
 ]
 
 
