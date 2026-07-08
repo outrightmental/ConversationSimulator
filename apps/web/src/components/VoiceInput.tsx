@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState, useCallback, useEffect, useRef } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { apiClient } from '../api/client'
 import { useMicCapture, MAX_RECORDING_SECONDS } from '../hooks/useMicCapture'
 import { useVad } from '../hooks/useVad'
