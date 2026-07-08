@@ -469,6 +469,8 @@ class TestNoCloudInference:
             health = c.get("/api/health")
         runtime_status = health.json().get("runtime", {})
         runtime_id = runtime_status.get("runtime_id", "") or runtime_status.get("id", "")
-        assert "fake" in runtime_id.lower() or runtime_status.get("status") in {"ready", "ok"}, (
-            f"expected fake runtime in test environment, got: {runtime_status}"
+        # The default runtime must be the fake one — a ready *cloud* runtime would
+        # also report "ready", so status alone cannot prove no cloud inference.
+        assert "fake" in runtime_id.lower(), (
+            f"expected fake runtime by default in test environment, got: {runtime_status}"
         )
