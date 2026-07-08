@@ -92,10 +92,23 @@ export interface WsSttFinalEvent extends WsEventBase {
   payload: { text: string; confidence: number };
 }
 
-/** A chunk of TTS audio encoded as base64. Reserved for future speech support. */
+/** A synthesized sentence chunk from the local TTS cache. */
 export interface WsTtsAudioChunkEvent extends WsEventBase {
   type: 'tts.audio_chunk';
-  payload: { chunk: string };
+  payload: {
+    /** Zero-based position of this chunk within the utterance. */
+    chunk_index: number;
+    /** Total number of chunks for this utterance. */
+    total_chunks: number;
+    /** Sentence text (always present; use as fallback when cache_path is null). */
+    text: string;
+    /** Voice used for synthesis. */
+    voice_id: string;
+    /** Absolute path to the cached WAV file on localhost, or null on failure. */
+    cache_path: string | null;
+    /** Error message if synthesis failed; null on success. */
+    error: string | null;
+  };
 }
 
 /** Union of all WebSocket event shapes. */
