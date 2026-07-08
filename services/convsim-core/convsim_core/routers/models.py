@@ -470,8 +470,6 @@ async def benchmark_model(request: Request, body: BenchmarkRequest) -> Benchmark
 @router.post("/api/models/register-gguf", response_model=RegisterGgufResponse)
 async def register_gguf(request: Request, body: RegisterGgufRequest) -> RegisterGgufResponse:
     """Register a user-supplied GGUF file and activate it on the llama_cpp runtime."""
-    import os
-
     path = body.path.strip()
     if not path:
         raise ConvsimError(
