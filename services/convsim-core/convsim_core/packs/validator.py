@@ -211,12 +211,11 @@ class _PackValidator:
         self._validate_manifest_semantics(manifest_raw, manifest_file)
         self._validate_safety_policy(manifest_raw, manifest_file)
         self._validate_all_npcs()
+        self._validate_entry_scenarios(manifest_raw, manifest_file)
 
         if is_yaml_pack:
             self._validate_yaml_pack_scenarios()
             self._validate_smoke_tests(manifest_raw, manifest_file)
-        else:
-            self._validate_entry_scenarios(manifest_raw, manifest_file)
 
         self._scan_for_forbidden_files()
 

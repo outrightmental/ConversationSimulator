@@ -236,8 +236,6 @@ def test_safety_policy_file_missing_returns_error(tmp_path):
         tmp_path,
         manifest={"safety": {"policy": "safety/nonexistent.yaml"}},
     )
-    # Remove the actual safety file the helper created
-    (pack_dir / "safety" / "default.yaml").unlink()
     result = validate_pack_dir(pack_dir)
     assert _has_error(result, rule_id="MISSING_FILE", text="nonexistent.yaml")
 
@@ -397,6 +395,18 @@ def test_missing_rubric_ref_file_returns_error(tmp_path):
     (pack_dir / "rubrics" / "test_rubric.yaml").unlink()
     result = validate_pack_dir(pack_dir)
     assert _has_error(result, rule_id="MISSING_FILE")
+
+
+def test_yaml_pack_missing_entry_scenario_file_returns_error(tmp_path):
+    """entry_scenarios must reference existing files in YAML-format packs, not just JSON packs."""
+    from tests.helpers import _VALID_MANIFEST_YAML
+    missing_ref_manifest = _VALID_MANIFEST_YAML.replace(
+        "  - scenarios/intro.yaml",
+        "  - scenarios/nonexistent.yaml",
+    )
+    pack_dir = make_yaml_pack_dir(tmp_path, manifest_yaml=missing_ref_manifest)
+    result = validate_pack_dir(pack_dir)
+    assert _has_error(result, rule_id="MISSING_FILE", text="nonexistent.yaml")
 
 
 # ---------------------------------------------------------------------------
