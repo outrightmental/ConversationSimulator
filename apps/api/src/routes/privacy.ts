@@ -56,7 +56,16 @@ export async function privacyRoutes(app: FastifyInstance) {
   app.get<{ Params: { session_id: string } }>(
     '/api/sessions/:session_id/export',
     async (req, reply): Promise<{
-      session: SessionRow & { setup: unknown; state_vars: unknown };
+      session: {
+        session_id: string;
+        scenario_id: string;
+        state: string;
+        ending_type: string | null;
+        created_at: string;
+        turn_count: number;
+        setup: unknown;
+        state_vars: unknown;
+      };
       events: Array<{ event_id: number; session_id: string; event_type: string; payload: unknown; created_at: string }>;
     }> => {
       const db = getDb();
@@ -77,7 +86,12 @@ export async function privacyRoutes(app: FastifyInstance) {
 
       return {
         session: {
-          ...row,
+          session_id: row.session_id,
+          scenario_id: row.scenario_id,
+          state: row.state,
+          ending_type: row.ending_type,
+          created_at: row.created_at,
+          turn_count: row.turn_count,
           setup: JSON.parse(row.setup_json) as unknown,
           state_vars: JSON.parse(row.state_vars_json) as unknown,
         },

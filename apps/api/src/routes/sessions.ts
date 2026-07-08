@@ -117,7 +117,7 @@ export async function sessionRoutes(app: FastifyInstance) {
   app.get('/api/sessions', async (): Promise<{ sessions: SessionCreateResponse[] }> => {
     const db = getDb();
     const rows = db
-      .prepare<[], SessionRow>('SELECT * FROM sessions ORDER BY created_at DESC')
+      .prepare<[], SessionRow>('SELECT * FROM sessions ORDER BY created_at DESC, rowid DESC')
       .all();
     return {
       sessions: rows.map((row) => ({
