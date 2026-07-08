@@ -141,7 +141,7 @@ When STT is available, a microphone icon will appear in the conversation input. 
 
 **"Voice output unavailable" on the conversation screen**
 
-Text-to-speech (TTS) requires the Silero TTS runtime. In the first milestone, TTS is not yet implemented. The conversation screen shows NPC dialogue as text automatically.
+Text-to-speech (TTS) requires the Kokoro TTS runtime. In the first milestone, TTS is not yet implemented. The conversation screen shows NPC dialogue as text automatically.
 
 When TTS is available, a speaker icon will appear in the conversation settings. If it is greyed out, confirm convsim-tts is running on port 7358.
 
