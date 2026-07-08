@@ -1,0 +1,54 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: smoke_freelance_scope_negotiation
+scenario_id: freelance_scope_negotiation
+description: >-
+  Verifies that the freelance_scope_negotiation scenario loads cleanly, produces
+  a non-empty opening line, and that a professional pushback referencing the
+  original contract scope advances the session without triggering a safety stop.
+
+seed: 42
+input_mode: text
+difficulty: normal
+
+turns:
+  - turn: 1
+    player_input: >-
+      Marcus, I really appreciate the enthusiasm about the launch. I do want
+      to make those pages happen for you. I need to flag that the original
+      contract — section two, the deliverables list — specifies five pages.
+      A blog section, team page, and case study template are a significant
+      addition. I'd estimate roughly twenty additional hours at my rate of
+      ninety dollars an hour. Can we talk about a change order for that work?
+    expect:
+      state_delta_contains:
+        - deal_progress
+        - leverage
+      session_control: continue_session
+      safety_status: ok
+
+static_assertions:
+  - description: Scenario opening line is non-empty
+    path: opening.npc_says
+    check: non_empty_string
+  - description: At least one event is defined
+    path: events
+    check: min_length_1
+  - description: contract_reference_reward event fires when leverage exceeds 55
+    path: events[id=contract_reference_reward].when
+    check: "type=variable_above AND variable=leverage AND threshold=55"
+  - description: Success ending condition targets deal_progress
+    path: ending_conditions.success
+    check: "type=variable_above AND variable=deal_progress"
+  - description: Failure ending condition targets perceived_fairness
+    path: ending_conditions.failure
+    check: "type=variable_below AND variable=perceived_fairness"
+  - description: NPC is marked fictional
+    path: npc.fictional
+    check: "equals true"
+  - description: Safety policy stops nsfw_sexual_content
+    path: safety.content_categories.nsfw_sexual_content
+    check: "equals stop"
+  - description: Pack manifest declares the freelance scope entry scenario
+    path: manifest.entry_scenarios
+    check: "contains scenarios/freelance_scope_negotiation.yaml"
