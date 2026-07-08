@@ -17,12 +17,16 @@ For content safety policy, see [`safety-policy.md`](safety-policy.md).
 > transcripts, or model outputs to any server during play. Model and pack
 > downloads happen only when you explicitly request them.
 
-This is enforced at the code level, not just by policy:
+This is backed by the code, not just by policy:
 
 - All services bind to `127.0.0.1` by default. No ports are reachable from
-  other machines.
-- The `NetworkMode.PLAY` guard (`convsim_core.network_policy`) raises an error
-  if any subsystem attempts an outbound connection during a live session.
+  other machines. This is the primary runtime guarantee.
+- Play-mode network calls (LLM, TTS, STT) route through a central gate,
+  `require_network(NetworkMode.PLAY)` in `convsim_core.network_policy`. When
+  local-only mode is enabled (`LOCAL_MODE = True`) the gate raises
+  `NetworkBlockedError` on any play-mode outbound attempt. Local-only mode is
+  what the offline smoke test and CI run under, so an accidental outbound call
+  is caught before it can ship.
 - The offline smoke test (see [Verifying local-only operation](#verifying-local-only-operation))
   runs an end-to-end session with a blocked network and confirms that nothing
   reaches out.
@@ -101,8 +105,9 @@ Log files are rotated and stored locally only. They are never transmitted.
 No usage analytics, session counts, feature-use events, or performance
 metrics are sent to any server. There are no background pings and no anonymous
 reporting. The settings model carries a `telemetry_enabled` flag that defaults
-to off (exposed read-only on `/health`), but the MVP ships no telemetry
-subsystem to act on it — nothing is transmitted regardless of the flag.
+to off (surfaced read-only under the `privacy` object of the `/api/health`
+response), but the MVP ships no telemetry subsystem to act on it — nothing is
+transmitted regardless of the flag.
 
 If telemetry is ever added in a future release, it will:
 
