@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scene_id: managers_office
+display_name: "Priya's Office — Morning"
+description: >-
+  A small private office with a glass panel beside the door. Priya is seated
+  behind a cluttered desk. A second chair has been pulled up across from her.
+  A project timeline is visible on her monitor, turned slightly away from the
+  player. Morning light, no ambient noise — this is a closed-door conversation
+  that both parties know matters.
+ambient: quiet_office

@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scene_id: paris_hotel
+display_name: "Hôtel Lumière — Paris, Marais"
+description: >-
+  The lobby of Hôtel Lumière, a small but well-kept three-star hotel near
+  the Marais district in Paris. The desk is polished wood topped with a
+  small vase of fresh flowers and a vintage brass key-rack on the wall
+  behind. Framed black-and-white photographs of Parisian streets line the
+  walls. The overhead light is warm and the space feels unhurried despite
+  a handful of guests waiting near the lift. A faint scent of espresso
+  drifts from the breakfast room around the corner. Check-in is at three
+  in the afternoon; arrivals are trickling in.
+background: assets/backgrounds/paris_hotel_placeholder.png
+ambient: hotel_lobby

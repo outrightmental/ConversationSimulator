@@ -1,0 +1,50 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+rubric_id: boundary_rubric
+title: Friend Boundary Rubric
+dimensions:
+  - id: boundary_clarity
+    name: Boundary Clarity
+    description: >-
+      Whether the player states the boundary in clear, unambiguous language
+      without leaving Jamie room to interpret it as a soft no, an invitation
+      to negotiate, or a temporary condition.
+    scoring:
+      low: Player's boundary is implied rather than stated, uses hedging language ("I don't think I can", "it's complicated right now"), or gives enough qualifying detail that Jamie can find a workaround to negotiate around.
+      medium: Player states a clear no but qualifies it enough to invite follow-up ("I can't this time but maybe in a few weeks"), or takes so long to arrive at the no that the clarity is diluted by the framing.
+      high: Player states the boundary explicitly and early, in plain language ("I'm not going to do that"), without over-qualifying it or attaching conditions that invite negotiation.
+    weight: 0.35
+
+  - id: warmth_retention
+    name: Warmth Retention
+    description: >-
+      Whether the player maintains warmth and care for the friendship alongside
+      the boundary, distinguishing the refusal from a withdrawal of affection.
+    scoring:
+      low: Player delivers the boundary with coldness, frustration, or a character judgment about Jamie ("you always do this"), leaving Jamie feeling attacked rather than just declined.
+      medium: Player's tone is neutral and civil but does not actively signal that the friendship itself is intact — Jamie is likely to interpret the boundary as emotional distance.
+      high: Player names the friendship explicitly alongside the boundary ("I value this friendship and that's not going to change — and this particular thing is not something I'm going to do"), or reaffirms genuine care in a way that lands as authentic rather than transactional.
+    weight: 0.25
+
+  - id: hold_under_pressure
+    name: Hold Under Pressure
+    description: >-
+      Whether the player maintains the boundary when Jamie pushes back, reframes
+      the ask, or introduces guilt, without escalating or capitulating.
+    scoring:
+      low: Player changes their position after the first or second pushback, or responds to Jamie's pressure by over-explaining in a way that sounds like backtracking.
+      medium: Player holds the boundary but matches Jamie's emotional intensity — raising their voice, becoming defensive, or adding justifications that were not present in the initial statement.
+      high: Player repeats the boundary calmly and with similar phrasing each time it is tested, without escalating or adding new justifications, and without dismissing Jamie's feelings in doing so.
+    weight: 0.25
+
+  - id: self_disclosure
+    name: Self-Disclosure
+    description: >-
+      Whether the player names their own need or reasoning at an appropriate
+      level — enough to be honest with Jamie, not so much that it becomes
+      an over-explanation that invites debate.
+    scoring:
+      low: Player gives no reason at all (cold refusal) or gives so much justification that it reads as a defense brief rather than a human explanation.
+      medium: Player gives a reason but frames it in a way that makes their need sound apologetic or contingent ("I'm just really overwhelmed lately, sorry").
+      high: Player names their need briefly and without apology ("I need to protect my weekends right now — that's genuinely not flexible for me"), landing it as information rather than a plea for permission.
+    weight: 0.15

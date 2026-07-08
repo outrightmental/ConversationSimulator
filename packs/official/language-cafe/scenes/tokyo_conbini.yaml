@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scene_id: tokyo_conbini
+display_name: "Convenience Store — Shinjuku, Tokyo"
+description: >-
+  A brightly lit 24-hour convenience store on a busy corner in Shinjuku,
+  Tokyo. The entrance chimes as you step inside. Rows of neatly arranged
+  onigiri, bento boxes, and packaged snacks fill the refrigerated shelves
+  along the right wall. The counter ahead has a register, a heated display
+  case of steamed goods, and an ATM to one side. Overhead fluorescent
+  lighting is crisp and even. A small queue of customers waits behind you.
+  Everything is orderly, fast-moving, and clean — the quintessential konbini
+  experience. Staff work behind the counter with quiet efficiency and a
+  standard greeting for every customer who enters.
+background: assets/backgrounds/tokyo_conbini_placeholder.png
+ambient: convenience_store
