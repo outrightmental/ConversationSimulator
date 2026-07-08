@@ -79,7 +79,7 @@ difficulty:
       challenge_frequency: high
     hard:
       npc_patience_modifier: -20
-      challenge_frequency: very_high
+      challenge_frequency: high
 events:
   - id: credibility_challenge
     when:
