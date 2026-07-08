@@ -254,7 +254,8 @@ class TestNsfwContent:
     def test_aroused_triggers_nsfw_as_conservative_false_positive(self):
         # "aroused" matches the NSFW pattern even in a non-sexual context —
         # intentionally high-recall.  In real usage the NPC prompt prevents
-        # sexual framing; borderline hits go through the retry path.
+        # sexual framing; false positives here produce a safety stop because
+        # nsfw_content is a hard violation that bypasses retry.
         result = _validate("The topic aroused my curiosity.")
         assert result.has_hard_violation
         assert result.first_violation.category == "nsfw_content"
