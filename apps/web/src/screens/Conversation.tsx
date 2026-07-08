@@ -184,7 +184,7 @@ export default function Conversation() {
     return () => {
       cancelled = true
     }
-  }, [sessionId, devMode])
+  }, [sessionId, devMode, mark, recordInterval])
 
   // WebSocket connection — best effort; REST fallback continues to work
   useEffect(() => {
@@ -282,7 +282,7 @@ export default function Conversation() {
     return () => {
       conn?.close()
     }
-  }, [sessionId])
+  }, [sessionId, recordInterval])
 
   // Auto-scroll transcript
   useEffect(() => {
