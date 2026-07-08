@@ -43,7 +43,12 @@ export type OfflineSmokeTestResult =
 const LOCALHOST_HOSTS = new Set(['127.0.0.1', 'localhost', '::1', '[::1]', '0.0.0.0']);
 
 function isLocalhost(host: string): boolean {
-  const h = (host ?? '').split(':')[0]!.toLowerCase();
+  const lh = (host ?? '').toLowerCase();
+  // Check full string first — required for IPv6 addresses (::1, [::1]) where
+  // splitting on ':' produces an empty string that misses the set entirely.
+  if (LOCALHOST_HOSTS.has(lh) || lh.endsWith('.localhost')) return true;
+  // Also check without port suffix for IPv4 "host:port" strings.
+  const h = lh.split(':')[0]!;
   return LOCALHOST_HOSTS.has(h) || h.endsWith('.localhost');
 }
 

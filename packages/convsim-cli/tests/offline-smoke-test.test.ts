@@ -242,6 +242,16 @@ describe('installNetworkGuard — localhost is allowed', () => {
     guard.restore();
     expect(guard.violations).toHaveLength(0);
   });
+
+  it('does not record a violation for a request to ::1 (IPv6 loopback)', () => {
+    const guard = installNetworkGuard();
+    // ::1 splits to '' on ':', so the pre-fix code missed this — verify the guard allows it.
+    const req = http.request({ hostname: '::1', port: 19997, path: '/' });
+    req.on('error', () => {});
+    req.end();
+    guard.restore();
+    expect(guard.violations).toHaveLength(0);
+  });
 });
 
 describe('installNetworkGuard — subsystem identification', () => {
