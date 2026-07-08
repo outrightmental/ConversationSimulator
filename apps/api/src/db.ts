@@ -30,6 +30,24 @@ export function initDb(path = ':memory:'): Database.Database {
       payload_json TEXT NOT NULL DEFAULT '{}',
       created_at   TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS installed_models (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      registry_id     TEXT,
+      filename        TEXT NOT NULL,
+      file_path       TEXT NOT NULL DEFAULT '',
+      size_bytes      INTEGER,
+      install_status  TEXT NOT NULL DEFAULT 'pending',
+      progress_bytes  INTEGER NOT NULL DEFAULT 0,
+      error_message   TEXT,
+      verified_sha256 TEXT,
+      installed_at    TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS model_config (
+      key   TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
   `);
   // Migrate existing databases: CREATE TABLE IF NOT EXISTS is a no-op when
   // the table already exists, so new columns must be added explicitly.
@@ -44,6 +62,16 @@ export function initDb(path = ':memory:'): Database.Database {
       db.exec(`ALTER TABLE sessions ADD COLUMN ${col} ${def}`);
     }
   }
+
+  // On startup, any download that was 'pending' or 'downloading' when the
+  // server last shut down cannot resume. Mark them failed so the UI doesn't
+  // show a phantom in-progress bar.
+  db.exec(`
+    UPDATE installed_models
+    SET install_status = 'failed',
+        error_message  = 'Download interrupted — server restarted. Please retry.'
+    WHERE install_status IN ('pending', 'downloading')
+  `);
 
   _db = db;
   return db;
