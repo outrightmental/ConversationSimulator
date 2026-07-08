@@ -19,6 +19,7 @@ CREATE TABLE packs (
     source_path TEXT,
     installed_at TEXT   NOT NULL DEFAULT (datetime('now'))
 );
+-- license and tags added in 0004_extend_pack_assets
 
 CREATE TABLE scenarios (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -156,10 +157,22 @@ CREATE TABLE benchmark_results (
 );
 """
 
+_EXTEND_PACK_ASSETS_SQL = """
+ALTER TABLE packs ADD COLUMN license TEXT;
+ALTER TABLE packs ADD COLUMN tags_json TEXT;
+
+ALTER TABLE asset_index ADD COLUMN relative_path TEXT;
+ALTER TABLE asset_index ADD COLUMN media_type TEXT;
+ALTER TABLE asset_index ADD COLUMN license TEXT;
+ALTER TABLE asset_index ADD COLUMN pack_id INTEGER REFERENCES packs(id) ON DELETE CASCADE;
+ALTER TABLE asset_index ADD COLUMN scenario_id INTEGER REFERENCES scenarios(id) ON DELETE SET NULL;
+"""
+
 MIGRATIONS: list[tuple[str, str]] = [
     ("0001_initial_schema", _INITIAL_SCHEMA_SQL),
     ("0002_model_registry_v2", _MODEL_REGISTRY_V2_SQL),
     ("0003_model_manager_api", _MODEL_MANAGER_API_SQL),
+    ("0004_extend_pack_assets", _EXTEND_PACK_ASSETS_SQL),
 ]
 
 
