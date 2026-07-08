@@ -10,13 +10,21 @@ vi.mock('../hooks/useMicCapture', () => ({
 vi.mock('../api/client', () => ({
   apiClient: {
     uploadAudio: vi.fn().mockResolvedValue({ transcript: null, status: 'unavailable' }),
+    vadHealth: vi.fn().mockResolvedValue({ status: 'unavailable', worker_id: 'fake', worker_name: 'Fake VAD', checked_at: '' }),
+    vadCalibrate: vi.fn().mockResolvedValue({ recommended_threshold: 0.05, noise_floor: 0.01, worker_id: 'fake', status: 'ok' }),
   },
 }))
 
+vi.mock('../hooks/useVad', () => ({
+  useVad: vi.fn(),
+}))
+
 import { useMicCapture } from '../hooks/useMicCapture'
+import { useVad } from '../hooks/useVad'
 import { apiClient } from '../api/client'
 import VoiceInput from '../components/VoiceInput'
 import type { MicPermission } from '../hooks/useMicCapture'
+import type { UseVadReturn } from '../hooks/useVad'
 
 function makeMicState(overrides: Partial<ReturnType<typeof useMicCapture>> = {}) {
   return {
@@ -24,6 +32,7 @@ function makeMicState(overrides: Partial<ReturnType<typeof useMicCapture>> = {})
     isRecording: false,
     recordingSeconds: 0,
     error: null,
+    stream: null,
     requestPermission: vi.fn(),
     startRecording: vi.fn(),
     stopRecording: vi.fn(),
@@ -31,9 +40,26 @@ function makeMicState(overrides: Partial<ReturnType<typeof useMicCapture>> = {})
   }
 }
 
+function makeVadState(overrides: Partial<UseVadReturn> = {}): UseVadReturn {
+  return {
+    settings: { mode: 'ptt', threshold: 0.05, silenceDurationMs: 1500, calibratedAt: null },
+    vadState: 'idle',
+    isCalibrating: false,
+    backendAvailable: false,
+    setMode: vi.fn(),
+    setThreshold: vi.fn(),
+    setSilenceDurationMs: vi.fn(),
+    startSilenceDetection: vi.fn(),
+    stopSilenceDetection: vi.fn(),
+    calibrate: vi.fn().mockResolvedValue(undefined),
+    ...overrides,
+  }
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(useMicCapture).mockReturnValue(makeMicState())
+  vi.mocked(useVad).mockReturnValue(makeVadState())
   vi.mocked(apiClient.uploadAudio).mockResolvedValue({ transcript: null, status: 'unavailable' })
 })
 
