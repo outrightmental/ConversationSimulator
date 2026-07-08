@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-import { readdirSync, statSync } from 'node:fs';
-import { resolve, join, relative, dirname, normalize } from 'node:path';
+import { readdirSync, statSync, lstatSync, openSync, readSync, closeSync } from 'node:fs';
+import { resolve, join, relative, dirname, normalize, extname } from 'node:path';
 import { resolveRef, readPackFile } from './resolver.js';
 import { parseAndValidate } from './validator.js';
 import type {
@@ -18,6 +18,127 @@ import type {
 import { PackLoaderError } from './types.js';
 
 // ---------------------------------------------------------------------------
+// Security: executable file detection
+// ---------------------------------------------------------------------------
+
+const FORBIDDEN_EXTENSIONS = new Set([
+  '.exe', '.bat', '.cmd', '.sh', '.ps1', '.py', '.js', '.mjs', '.cjs',
+  '.ts', '.rb', '.pl', '.php', '.jar', '.class', '.so', '.dll', '.dylib',
+  '.vbs', '.ws', '.wsf', '.com', '.scr', '.pif', '.msi', '.deb', '.rpm',
+  '.pkg', '.app', '.command', '.wasm',
+]);
+
+// Magic-byte prefixes that identify executable binary formats regardless of extension.
+// Stored as [bytes, description] pairs so the error message names the detected format.
+const EXECUTABLE_MAGIC_SIGNATURES: Array<[Uint8Array, string]> = [
+  [new Uint8Array([0x7f, 0x45, 0x4c, 0x46]),          'ELF (Linux/Unix executable or shared library)'],
+  [new Uint8Array([0xfe, 0xed, 0xfa, 0xce]),            'Mach-O big-endian 32-bit'],
+  [new Uint8Array([0xce, 0xfa, 0xed, 0xfe]),            'Mach-O little-endian 32-bit'],
+  [new Uint8Array([0xfe, 0xed, 0xfa, 0xcf]),            'Mach-O big-endian 64-bit'],
+  [new Uint8Array([0xcf, 0xfa, 0xed, 0xfe]),            'Mach-O little-endian 64-bit'],
+  [new Uint8Array([0xca, 0xfe, 0xba, 0xbe]),            'Mach-O universal/fat binary'],
+  [new Uint8Array([0x00, 0x61, 0x73, 0x6d]),            'WebAssembly module'],
+  [new Uint8Array([0x4d, 0x5a]),                        'Windows PE (executable or DLL)'],
+  [new Uint8Array([0x23, 0x21]),                        'shebang (script interpreter directive)'],
+];
+
+function readFileHeader(filePath: string): Buffer {
+  const buf = Buffer.alloc(8);
+  let fd: number | undefined;
+  try {
+    fd = openSync(filePath, 'r');
+    readSync(fd, buf, 0, 8, 0);
+  } catch {
+    return Buffer.alloc(0);
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+  return buf;
+}
+
+function bufferStartsWith(buf: Buffer, prefix: Uint8Array): boolean {
+  if (buf.length < prefix.length) return false;
+  for (let i = 0; i < prefix.length; i++) {
+    if (buf[i] !== prefix[i]) return false;
+  }
+  return true;
+}
+
+/**
+ * Recursively scan `packDir` for forbidden files.
+ *
+ * Rejects:
+ * - Symbolic links (can escape the pack root)
+ * - Files with executable extensions (see FORBIDDEN_EXTENSIONS)
+ * - Files whose content matches known executable magic bytes (disguised binaries)
+ *
+ * Throws PackLoaderError on the first violation found.  MVP packs are data, not code.
+ */
+function scanPackForForbiddenContent(packDir: string): void {
+  function scan(dir: string): void {
+    let entries: string[];
+    try {
+      entries = readdirSync(dir);
+    } catch {
+      return;
+    }
+    for (const name of entries) {
+      const fullPath = join(dir, name);
+      let st;
+      try {
+        st = lstatSync(fullPath);
+      } catch {
+        continue;
+      }
+
+      if (st.isSymbolicLink()) {
+        const rel = relative(packDir, fullPath).replace(/\\/g, '/');
+        throw new PackLoaderError(
+          'FORBIDDEN_FILE',
+          `Symlinks are not permitted in a pack: '${rel}'. ` +
+          'Remove the symlink and include the file content directly.',
+          fullPath,
+        );
+      }
+
+      if (st.isDirectory()) {
+        scan(fullPath);
+        continue;
+      }
+
+      if (!st.isFile()) continue;
+
+      const rel = relative(packDir, fullPath).replace(/\\/g, '/');
+      const ext = extname(name).toLowerCase();
+
+      if (FORBIDDEN_EXTENSIONS.has(ext)) {
+        throw new PackLoaderError(
+          'FORBIDDEN_FILE',
+          `Executable or script file not allowed in pack: '${rel}'. ` +
+          'MVP packs are data, not code.',
+          fullPath,
+        );
+      }
+
+      const header = readFileHeader(fullPath);
+      for (const [magic, fmtName] of EXECUTABLE_MAGIC_SIGNATURES) {
+        if (bufferStartsWith(header, magic)) {
+          throw new PackLoaderError(
+            'FORBIDDEN_BINARY',
+            `File '${rel}' contains executable binary content ` +
+            `(${fmtName}, detected by magic-byte signature). ` +
+            'MVP packs are data, not code — executable content is not permitted ' +
+            'even when given a non-executable file extension.',
+            fullPath,
+          );
+        }
+      }
+    }
+  }
+  scan(packDir);
+}
+
+// ---------------------------------------------------------------------------
 // Single-pack loader
 // ---------------------------------------------------------------------------
 
@@ -33,6 +154,11 @@ import { PackLoaderError } from './types.js';
  */
 export function loadPack(packDir: string, kind: PackRootKind = 'local-dev'): LoadedPack {
   const normalPackDir = normalize(resolve(packDir));
+
+  // ── Security scan ─────────────────────────────────────────────────────────
+  // Reject executable files, symlinks, and disguised binaries before any YAML
+  // is parsed.  MVP packs are strictly declarative data — no executable content.
+  scanPackForForbiddenContent(normalPackDir);
 
   // ── Manifest ──────────────────────────────────────────────────────────────
   const manifestPath = resolve(normalPackDir, 'manifest.yaml');

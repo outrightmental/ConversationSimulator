@@ -35,6 +35,26 @@ _STRUCTURED_RESPONSE: dict = {
     "session_control": {"continue_session": True},
 }
 
+_DEBRIEF_NARRATIVE_RESPONSE: dict = {
+    "summary": (
+        "This was a simulated practice session. "
+        "You engaged with the scenario and completed the conversation."
+    ),
+    "strengths": [
+        "You maintained engagement throughout the session.",
+    ],
+    "improvements": [
+        "Consider exploring different conversational strategies in a replay.",
+    ],
+    "turning_points": [],
+    "replay_suggestions": [
+        "Try adjusting your opening approach to set a different tone.",
+    ],
+}
+
+# Discriminant key present in the debrief narrative schema but not the NPC turn schema.
+_DEBRIEF_SCHEMA_DISCRIMINANT = "replay_suggestions"
+
 
 @register("fake")
 class FakeChatRuntime(ChatRuntime):
@@ -70,8 +90,13 @@ class FakeChatRuntime(ChatRuntime):
 
     async def _stream(self, request: ChatRequest) -> AsyncGenerator[ChatToken | ChatFinal, None]:
         if request.json_schema is not None:
-            response_text = json.dumps(_STRUCTURED_RESPONSE)
-            structured = _STRUCTURED_RESPONSE
+            # Return the debrief narrative response when the debrief schema is detected.
+            if _DEBRIEF_SCHEMA_DISCRIMINANT in (request.json_schema.get("properties") or {}):
+                chosen = _DEBRIEF_NARRATIVE_RESPONSE
+            else:
+                chosen = _STRUCTURED_RESPONSE
+            response_text = json.dumps(chosen)
+            structured = chosen
         else:
             response_text = _PLAIN_RESPONSE
             structured = None

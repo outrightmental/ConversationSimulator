@@ -218,44 +218,14 @@ CREATE VIRTUAL TABLE session_transcript_fts USING fts5(
 );
 """
 
-_SCENARIO_LIBRARY_API_SQL = """
-ALTER TABLE packs ADD COLUMN content_rating TEXT;
-ALTER TABLE packs ADD COLUMN supported_languages_json TEXT;
-ALTER TABLE packs ADD COLUMN validation_status TEXT NOT NULL DEFAULT 'unknown';
-ALTER TABLE packs ADD COLUMN last_validated_at TEXT;
-
-ALTER TABLE scenarios ADD COLUMN title TEXT;
-ALTER TABLE scenarios ADD COLUMN summary TEXT;
-ALTER TABLE scenarios ADD COLUMN content_rating TEXT;
-ALTER TABLE scenarios ADD COLUMN difficulty_default TEXT;
-ALTER TABLE scenarios ADD COLUMN max_turns INTEGER;
-ALTER TABLE scenarios ADD COLUMN soft_time_limit_minutes INTEGER;
-ALTER TABLE scenarios ADD COLUMN tags_json TEXT;
-ALTER TABLE scenarios ADD COLUMN voice_support INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE scenarios ADD COLUMN model_recommendation TEXT;
-ALTER TABLE scenarios ADD COLUMN rel_path TEXT;
-
-DROP TABLE IF EXISTS scenario_fts;
-DROP TABLE IF EXISTS pack_readme_fts;
-
-
-CREATE VIRTUAL TABLE scenario_fts USING fts5(
-    title, summary, tags, pack_name, pack_readme
+_DEBRIEF_TABLE_SQL = """
+CREATE TABLE session_debriefs (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id   TEXT    NOT NULL REFERENCES turn_sessions(session_id) ON DELETE CASCADE,
+    content_json TEXT    NOT NULL,
+    generated_at TEXT    NOT NULL DEFAULT (datetime('now'))
 );
-
-CREATE VIRTUAL TABLE pack_readme_fts USING fts5(
-    name, description
-);
-
-
-
-CREATE TRIGGER scenario_fts_delete AFTER DELETE ON scenarios BEGIN
-    DELETE FROM scenario_fts WHERE rowid = OLD.id;
-END;
-
-CREATE TRIGGER pack_readme_fts_delete AFTER DELETE ON packs BEGIN
-    DELETE FROM pack_readme_fts WHERE rowid = OLD.id;
-END;
+CREATE INDEX session_debriefs_session_id ON session_debriefs(session_id);
 """
 
 MIGRATIONS: list[tuple[str, str]] = [
@@ -265,7 +235,7 @@ MIGRATIONS: list[tuple[str, str]] = [
     ("0004_extend_pack_assets", _EXTEND_PACK_ASSETS_SQL),
     ("0005_turn_pipeline", _TURN_PIPELINE_SQL),
     ("0006_turn_transcript_and_events", _TURN_TRANSCRIPT_AND_EVENTS_SQL),
-    ("0007_scenario_library_api", _SCENARIO_LIBRARY_API_SQL),
+    ("0007_session_debriefs", _DEBRIEF_TABLE_SQL),
 ]
 
 
