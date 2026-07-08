@@ -2,6 +2,7 @@
 import { resolve } from 'node:path';
 import { Socket } from 'node:net';
 import { loadPack, resolveBundle, PackLoaderError } from '@convsim/pack-loader';
+import { runFakeTurn } from '../runner/fake-runtime.js';
 import { writeJson, writeLine, writeErrorLine } from '../output.js';
 
 // ---------------------------------------------------------------------------
@@ -191,8 +192,6 @@ const SCRIPTED_PLAYER_TURNS = [
   'Thank you. I understand the goals and I am happy to continue.',
 ];
 
-const FAKE_NPC_UTTERANCE = 'Thank you for your response. Please continue.';
-
 interface SmokeSessResult {
   pack_id: string;
   scenario_id: string;
@@ -214,13 +213,15 @@ function runScriptedSession(absPackPath: string, testNetworkProbe?: () => void):
   const turnsToPlay = Math.min(SCRIPTED_PLAYER_TURNS.length, maxTurns);
 
   // Phase 1: Start — NPC delivers opening line (local string, no network)
-  const _openingLine = bundle.scenario.opening.npc_says;
+  void bundle.scenario.opening.npc_says;
 
-  // Phase 2: Player turns — fake NPC responds locally, no LLM or cloud call needed
+  // Phase 2: Player turns — drive the real fake runtime under the active network
+  // guard so its code path is actually exercised. If the runtime (or anything it
+  // calls) ever reached the network, the guard would record a violation here.
+  const turnOutputs = [];
   let turnsPlayed = 0;
   for (let i = 0; i < turnsToPlay; i++) {
-    const _playerInput = SCRIPTED_PLAYER_TURNS[i];
-    const _npcResponse = FAKE_NPC_UTTERANCE; // fake runtime, no network
+    turnOutputs.push(runFakeTurn(bundle.scenario, i + 1, SCRIPTED_PLAYER_TURNS[i]!));
     turnsPlayed++;
   }
 
@@ -229,9 +230,9 @@ function runScriptedSession(absPackPath: string, testNetworkProbe?: () => void):
   testNetworkProbe?.();
 
   // Phase 3: Generate debrief — from local session state only, no LLM call
-  const _debrief = {
+  void {
     summary: `Offline smoke: ${turnsPlayed} turn(s) of "${bundle.scenario.title}" completed.`,
-    outcome: 'player_exit',
+    outcome: turnOutputs[turnOutputs.length - 1]?.session_control ?? 'continue_session',
     scenario_id: bundle.scenarioId,
     pack_id: bundle.packId,
   };
