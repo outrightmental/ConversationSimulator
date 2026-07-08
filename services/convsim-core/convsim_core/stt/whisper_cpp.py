@@ -25,8 +25,10 @@ from convsim_core.stt.types import (
 )
 
 _DEFAULT_MODEL_PATH = str(Path.home() / ".convsim" / "models" / "stt" / "ggml-base.en.bin")
-# Binary name search order — newer releases use "whisper-cli"; older use "main" or "whisper"
-_DEFAULT_BINARY_NAMES = ("whisper-cli", "whisper", "main")
+# Binary name search order — newer releases use "whisper-cli"; older use "whisper".
+# "main" is intentionally excluded: it is a common name for compiled C/Go programs
+# and would cause shutil.which to pick up an unrelated binary on developer machines.
+_DEFAULT_BINARY_NAMES = ("whisper-cli", "whisper")
 
 
 class WhisperCppConfig(BaseSettings):
@@ -51,7 +53,7 @@ class WhisperCppConfig(BaseSettings):
 def _find_binary(explicit_path: str | None) -> str | None:
     """Return the whisper-cli binary path, or None if not found."""
     if explicit_path:
-        return explicit_path if os.path.isfile(explicit_path) else None
+        return explicit_path if os.path.isfile(explicit_path) and os.access(explicit_path, os.X_OK) else None
     for name in _DEFAULT_BINARY_NAMES:
         found = shutil.which(name)
         if found:

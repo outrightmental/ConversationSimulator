@@ -66,12 +66,22 @@ def _make_worker(binary: str | None = _FAKE_BINARY, model: str = _FAKE_MODEL) ->
 
 def test_find_binary_returns_explicit_path_when_file_exists(tmp_path):
     binary = tmp_path / "whisper-cli"
-    binary.touch()
+    binary.write_bytes(b"")
+    binary.chmod(0o755)
     assert _find_binary(str(binary)) == str(binary)
 
 
 def test_find_binary_returns_none_for_missing_explicit_path():
     assert _find_binary("/nonexistent/path/whisper-cli") is None
+
+
+def test_find_binary_returns_none_for_non_executable_explicit_path(tmp_path):
+    # A file that exists but is not executable must not be returned; otherwise
+    # health() would report READY while every transcribe() call fails with PermissionError.
+    binary = tmp_path / "whisper-cli"
+    binary.write_bytes(b"not executable")
+    binary.chmod(0o644)  # read-only, not executable
+    assert _find_binary(str(binary)) is None
 
 
 def test_find_binary_returns_none_when_not_on_path():
@@ -83,6 +93,13 @@ def test_find_binary_searches_path_when_no_explicit_path():
     with patch("shutil.which", side_effect=lambda name: f"/usr/bin/{name}" if name == "whisper-cli" else None):
         result = _find_binary(None)
     assert result == "/usr/bin/whisper-cli"
+
+
+def test_find_binary_falls_back_to_whisper_when_cli_absent():
+    # "whisper" is the legacy binary name used by pre-1.7 builds.
+    with patch("shutil.which", side_effect=lambda name: f"/usr/bin/{name}" if name == "whisper" else None):
+        result = _find_binary(None)
+    assert result == "/usr/bin/whisper"
 
 
 # ---------------------------------------------------------------------------
