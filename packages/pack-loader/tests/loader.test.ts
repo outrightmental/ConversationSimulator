@@ -629,6 +629,7 @@ describe('loadPack — security: executable files rejected', () => {
   it('error messages mention that MVP packs are data, not code', () => {
     const dir = track(makeTempPackDir());
     writeFileSync(join(dir, 'hack.sh'), '#!/bin/sh', 'utf8');
+    expect(() => loadPack(dir)).toThrowError(PackLoaderError);
     try {
       loadPack(dir);
     } catch (e) {
