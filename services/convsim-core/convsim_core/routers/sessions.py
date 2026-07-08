@@ -23,6 +23,7 @@ from typing import Any, Dict, List, Literal, Optional
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, field_validator
 
+from convsim_core.scenario_state import build_variable_defs, partition_state_by_visibility
 from convsim_core.scenarios import get_scenario_info
 from convsim_core.services.turn_pipeline import MAX_TURN_CONTENT_CHARS, TurnInputError, process_turn
 
@@ -120,6 +121,48 @@ class SessionEndResponse(BaseModel):
     ending_type: str
 
 
+class TurnEntry(BaseModel):
+    turn_number: int
+    role: str
+    content: str
+    source_mode: Optional[str] = None
+    emotion: Optional[str] = None
+    flow_state_after: Optional[str] = None
+    created_at: str
+
+
+class TranscriptResponse(BaseModel):
+    session_id: str
+    scenario_id: str
+    transcript_saved: bool
+    message: Optional[str] = None
+    turns: List[TurnEntry]
+
+
+class EventEntry(BaseModel):
+    id: int
+    turn_number: Optional[int] = None
+    event_type: str
+    payload: Dict[str, Any]
+    occurred_at: str
+
+
+class SessionExportResponse(BaseModel):
+    session_id: str
+    exported_at: str
+    scenario: Dict[str, Any]
+    setup: Dict[str, Any]
+    state: str
+    ending_type: Optional[str] = None
+    turn_count: int
+    created_at: str
+    transcript_saved: bool
+    visible_state: Dict[str, int]
+    turns: List[TurnEntry]
+    events: List[EventEntry]
+    debrief: Optional[Dict[str, Any]] = None
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -212,6 +255,8 @@ async def start_session(session_id: str, request: Request) -> SessionStartRespon
     opening_text = (
         info.opening_npc_says if info else "Hello! I am ready to begin. Please go ahead."
     )
+    setup = json.loads(row["setup_json"])
+    save_transcript = setup.get("save_transcript", True)
 
     now = _now_iso()
     with conn:
@@ -221,9 +266,16 @@ async def start_session(session_id: str, request: Request) -> SessionStartRespon
         )
         cursor = conn.execute(
             "INSERT INTO turn_session_turns "
-            "(session_id, turn_number, role, content, created_at) VALUES (?, 0, 'npc_opening', ?, ?)",
+            "(session_id, turn_number, role, content, flow_state_after, created_at) "
+            "VALUES (?, 0, 'npc_opening', ?, 'PlayerTurnListening', ?)",
             (session_id, opening_text, now),
         )
+        if save_transcript:
+            conn.execute(
+                "INSERT INTO session_transcript_fts(session_id, turn_number, role, content) "
+                "VALUES (?, ?, ?, ?)",
+                (session_id, 0, "npc_opening", opening_text),
+            )
 
     event = SessionEventPayload(
         event_id=cursor.lastrowid,
@@ -267,6 +319,8 @@ async def submit_turn(session_id: str, body: TurnSubmitRequest, request: Request
     max_turns = info.max_turns
 
     runtime = request.app.state.runtime
+    save_transcript = setup.get("save_transcript", True)
+    source_mode = setup.get("input_mode", "text-only")
 
     try:
         result = await process_turn(
@@ -276,6 +330,8 @@ async def submit_turn(session_id: str, body: TurnSubmitRequest, request: Request
             max_turns=max_turns,
             runtime=runtime,
             conn=conn,
+            save_transcript=save_transcript,
+            source_mode=source_mode,
         )
     except TurnInputError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -342,4 +398,136 @@ async def end_session(session_id: str, request: Request) -> SessionEndResponse:
         session_id=session_id,
         state="Ended",
         ending_type=ending_type,
+    )
+
+
+@router.delete("/{session_id}", status_code=204)
+async def delete_session(session_id: str, request: Request) -> None:
+    db = request.app.state.db
+    conn = db.connection()
+    row = conn.execute(
+        "SELECT session_id FROM turn_sessions WHERE session_id = ?", (session_id,)
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Session {session_id!r} not found")
+
+    with conn:
+        # FTS shadow tables have no foreign-key cascade, so delete entries explicitly.
+        conn.execute("DELETE FROM session_transcript_fts WHERE session_id = ?", (session_id,))
+        conn.execute("DELETE FROM turn_sessions WHERE session_id = ?", (session_id,))
+
+
+def _turns_from_rows(rows: list) -> List[TurnEntry]:
+    return [
+        TurnEntry(
+            turn_number=t["turn_number"],
+            role=t["role"],
+            content=t["content"],
+            source_mode=t["source_mode"],
+            emotion=t["emotion"],
+            flow_state_after=t["flow_state_after"],
+            created_at=t["created_at"],
+        )
+        for t in rows
+    ]
+
+
+@router.get("/{session_id}/transcript", response_model=TranscriptResponse)
+async def get_transcript(session_id: str, request: Request) -> TranscriptResponse:
+    db = request.app.state.db
+    conn = db.connection()
+    row = conn.execute(
+        "SELECT * FROM turn_sessions WHERE session_id = ?", (session_id,)
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Session {session_id!r} not found")
+
+    setup = json.loads(row["setup_json"])
+    save_transcript = setup.get("save_transcript", True)
+
+    if not save_transcript:
+        return TranscriptResponse(
+            session_id=session_id,
+            scenario_id=row["scenario_id"],
+            transcript_saved=False,
+            message="Transcript saving is disabled for this session.",
+            turns=[],
+        )
+
+    turn_rows = conn.execute(
+        "SELECT turn_number, role, content, source_mode, emotion, flow_state_after, created_at "
+        "FROM turn_session_turns WHERE session_id = ? ORDER BY turn_number ASC",
+        (session_id,),
+    ).fetchall()
+
+    return TranscriptResponse(
+        session_id=session_id,
+        scenario_id=row["scenario_id"],
+        transcript_saved=True,
+        turns=_turns_from_rows(turn_rows),
+    )
+
+
+@router.get("/{session_id}/export", response_model=SessionExportResponse)
+async def export_session(session_id: str, request: Request) -> SessionExportResponse:
+    db = request.app.state.db
+    conn = db.connection()
+    row = conn.execute(
+        "SELECT * FROM turn_sessions WHERE session_id = ?", (session_id,)
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Session {session_id!r} not found")
+
+    setup = json.loads(row["setup_json"])
+    save_transcript = setup.get("save_transcript", True)
+    scenario_id = row["scenario_id"]
+    info = get_scenario_info(scenario_id)
+    scenario_meta: Dict[str, Any] = {
+        "id": scenario_id,
+        "name": info.scenario_data.title if info else scenario_id,
+    }
+
+    state_vars: Dict[str, int] = json.loads(row["state_vars_json"] or "{}")
+    var_defs = build_variable_defs()
+    visible_state, _ = partition_state_by_visibility(state_vars, var_defs)
+
+    turn_rows = (
+        conn.execute(
+            "SELECT turn_number, role, content, source_mode, emotion, flow_state_after, created_at "
+            "FROM turn_session_turns WHERE session_id = ? ORDER BY turn_number ASC",
+            (session_id,),
+        ).fetchall()
+        if save_transcript
+        else []
+    )
+
+    event_rows = conn.execute(
+        "SELECT id, turn_number, event_type, payload_json, occurred_at "
+        "FROM turn_session_events WHERE session_id = ? ORDER BY id ASC",
+        (session_id,),
+    ).fetchall()
+
+    return SessionExportResponse(
+        session_id=session_id,
+        exported_at=_now_iso(),
+        scenario=scenario_meta,
+        setup=setup,
+        state=row["flow_state"],
+        ending_type=row["ending_type"],
+        turn_count=row["turn_count"],
+        created_at=row["created_at"],
+        transcript_saved=save_transcript,
+        visible_state=visible_state,
+        turns=_turns_from_rows(turn_rows),
+        events=[
+            EventEntry(
+                id=e["id"],
+                turn_number=e["turn_number"],
+                event_type=e["event_type"],
+                payload=json.loads(e["payload_json"]),
+                occurred_at=e["occurred_at"],
+            )
+            for e in event_rows
+        ],
+        debrief=None,
     )
