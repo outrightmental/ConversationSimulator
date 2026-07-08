@@ -159,7 +159,10 @@ class WhisperCppWorker(SttWorker):
                     proc.communicate(), timeout=self._timeout
                 )
             except asyncio.TimeoutError as exc:
-                proc.kill()
+                try:
+                    proc.kill()
+                except OSError:
+                    pass
                 await proc.wait()
                 raise SttError(
                     f"whisper-cli timed out after {self._timeout}s", recoverable=True
@@ -186,6 +189,7 @@ class WhisperCppWorker(SttWorker):
                     proc.kill()
                 except OSError:
                     pass
+                await proc.wait()
 
         assert result is not None  # guaranteed: no exception → _read_result ran
         return result

@@ -28,7 +28,7 @@ class FakeSttWorker(SttWorker):
         return "Fake STT (deterministic)"
 
     async def transcribe(self, request: SttRequest) -> SttResult:
-        duration_ms = float(len(request.audio)) / 16.0  # crude estimate
+        duration_ms = float(len(request.audio)) / 32.0  # crude estimate: 16 kHz 16-bit mono = 32 bytes/ms
         return SttResult(
             transcript=_FAKE_TRANSCRIPT,
             language=request.language or "en",
