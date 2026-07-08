@@ -47,6 +47,9 @@ Set API_LAN_ACCESS_ENABLED=true to enable LAN access
 and specify an explicit LAN IP address.
 ```
 
+The same error is raised for the IPv6 wildcard `::`.  The host name appears
+verbatim in the message, e.g. `Binding to :: is not allowed in default mode.`
+
 ## Outbound network policy (play mode)
 
 During a live conversation session (play mode), the application must not make

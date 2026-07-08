@@ -93,6 +93,12 @@ describe('getListenConfig host validation', () => {
     process.env['API_LAN_ACCESS_ENABLED'] = 'true';
     expect(getListenConfig().host).toBe('::');
   });
+
+  it('does not allow :: when API_LAN_ACCESS_ENABLED=false', () => {
+    process.env['API_HOST'] = '::';
+    process.env['API_LAN_ACCESS_ENABLED'] = 'false';
+    expect(() => getListenConfig()).toThrow(/not allowed/);
+  });
 });
 
 // ---------------------------------------------------------------------------

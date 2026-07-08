@@ -37,9 +37,9 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
   const dbPath =
     process.env['SESSION_DB_PATH'] ??
     path.join(os.homedir(), '.convsim', 'db', 'sessions.db');
+  const listenConfig = getListenConfig();
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   initDb(dbPath);
   const app = await buildApp();
-  const listenConfig = getListenConfig();
   await app.listen(listenConfig);
 }
