@@ -4,6 +4,8 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { ModelsResponse, ModelRegistryEntry, DetectedOllamaModel } from '@convsim/shared'
 
+const SETUP_DOCS_URL = 'https://github.com/outrightmental/ConversationSimulator/wiki'
+
 type WizardStep =
   | 'loading'
   | 'choose'
@@ -176,7 +178,13 @@ export default function ModelManager() {
           {loadError ?? 'Something went wrong loading model information. Please try again.'}
         </p>
         <p style={{ fontSize: '0.875rem', color: '#a1a1aa' }}>
-          Check that the local runtime is running, then reload this page.
+          The local runtime may be unavailable. Check that it is running, then reload this page.
+          If your hardware cannot run a full model, the text-only demo works without one, or see
+          the{' '}
+          <a href={SETUP_DOCS_URL} target="_blank" rel="noreferrer">
+            setup docs
+          </a>{' '}
+          for smaller-model and troubleshooting guidance.
         </p>
         <ActionButton onClick={() => navigate('/')}>Back to Home</ActionButton>
       </div>
@@ -342,20 +350,16 @@ export default function ModelManager() {
         {actionError && (
           <div role="alert" style={{ marginTop: '1rem' }}>
             <p style={{ color: '#f87171', margin: 0 }}>{actionError}</p>
-            {needsMoreVram && (
-              <p style={{ fontSize: '0.875rem', color: '#a1a1aa', marginTop: '0.4rem' }}>
-                This model requires {selectedModel.min_vram_gb} GB VRAM. If your hardware is
-                limited, try the starter model (Qwen3 4B, 2.6 GB, 4 GB VRAM min) or check the{' '}
-                <a
-                  href="https://github.com/outrightmental/ConversationSimulator/wiki"
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  setup docs
-                </a>
-                .
-              </p>
-            )}
+            <p style={{ fontSize: '0.875rem', color: '#a1a1aa', marginTop: '0.4rem' }}>
+              {needsMoreVram
+                ? `This model requires ${selectedModel.min_vram_gb} GB VRAM. If your hardware is limited, try a smaller model or `
+                : 'If your hardware or runtime cannot install this model, try a smaller model or '}
+              check the{' '}
+              <a href={SETUP_DOCS_URL} target="_blank" rel="noreferrer">
+                setup docs
+              </a>
+              .
+            </p>
           </div>
         )}
 

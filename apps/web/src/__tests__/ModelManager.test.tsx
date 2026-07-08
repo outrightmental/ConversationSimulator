@@ -227,6 +227,19 @@ describe('ModelManager — confirm install', () => {
     )
   })
 
+  it('suggests a smaller model and setup docs when an install fails', async () => {
+    mockApi.installModel.mockRejectedValue(new Error('runtime unavailable'))
+    await goToConfirm()
+    fireEvent.click(screen.getByRole('button', { name: /confirm & install/i }))
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(/smaller model/i),
+    )
+    expect(screen.getByRole('link', { name: /setup docs/i })).toHaveAttribute(
+      'href',
+      expect.stringContaining('/wiki'),
+    )
+  })
+
   it('returns to choose step when Cancel is clicked', async () => {
     await goToConfirm()
     fireEvent.click(screen.getByRole('button', { name: /cancel/i }))
@@ -489,5 +502,13 @@ describe('ModelManager — load error state', () => {
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent(/connection refused/i),
     )
+  })
+
+  it('suggests setup docs and the demo when the runtime is unavailable', async () => {
+    mockApi.getModels.mockRejectedValue(new Error('runtime unavailable'))
+    renderModelManager()
+    const link = await screen.findByRole('link', { name: /setup docs/i })
+    expect(link).toHaveAttribute('href', expect.stringContaining('/wiki'))
+    expect(screen.getByText(/text-only demo works without one/i)).toBeInTheDocument()
   })
 })
