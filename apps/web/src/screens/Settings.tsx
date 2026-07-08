@@ -86,7 +86,7 @@ export default function Settings() {
 
   const loadSessions = useCallback(() => {
     api.listSessions()
-      .then((r) => setSessions(r.sessions))
+      .then((r) => { setSessions(r.sessions); setSessionsError(false) })
       .catch(() => setSessionsError(true))
   }, [])
 
@@ -109,6 +109,8 @@ export default function Settings() {
       try {
         const result = await api.clearLocalData()
         setDeletedCount(result.deleted_sessions)
+        setDeleteError(null)
+        setExportError(null)
         setClearState('done')
         loadSessions()
       } catch (err) {

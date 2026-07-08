@@ -294,6 +294,24 @@ describe('your sessions', () => {
     )
   })
 
+  it('clears the sessions error when a subsequent load succeeds', async () => {
+    mockApi.listSessions
+      .mockRejectedValueOnce(new Error('network'))
+      .mockResolvedValueOnce({ sessions: [SESSION_A] })
+    mockApi.clearLocalData.mockResolvedValue({ deleted_sessions: 1 })
+    renderSettings()
+    await waitFor(() => expect(screen.getByText(/could not load sessions/i)).toBeInTheDocument())
+
+    // Trigger a reload via clear-all (success path calls loadSessions internally)
+    fireEvent.click(screen.getByRole('button', { name: /clear all local data/i }))
+    await waitFor(() => screen.getByRole('button', { name: /confirm.*delete everything/i }))
+    fireEvent.click(screen.getByRole('button', { name: /confirm.*delete everything/i }))
+
+    await waitFor(() =>
+      expect(screen.queryByText(/could not load sessions/i)).not.toBeInTheDocument(),
+    )
+  })
+
   it('clicking Delete shows a confirm button', async () => {
     mockApi.listSessions.mockResolvedValue({ sessions: [SESSION_A] })
     renderSettings()
