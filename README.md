@@ -91,10 +91,21 @@ Minimal `scenarios/my_scenario.yaml`:
 schema_version: "0.1"
 scenario_id: my_scenario
 title: My First Scenario
+summary: A one-line description of the situation the player faces.
+player_role:
+  label: Your Role
+  brief: What the player is trying to accomplish in this conversation.
 npc:
   ref: ../npcs/my_npc.yaml
+rubric:
+  ref: ../rubrics/my_rubric.yaml
+duration:
+  max_turns: 12
 opening:
   npc_says: "Let's begin."
+goals:
+  player_visible:
+    - "Reach a clear agreement without giving up your core need"
 state:
   variables:
     rapport:
@@ -105,7 +116,7 @@ state:
       max_delta_per_turn: 15
 ```
 
-Add events, endings, difficulty modifiers, and rubric dimensions as you go.
+Add events, endings, difficulty modifiers, and extra rubric dimensions as you go.
 The JSON Schema in `schemas/` validates everything at import time.
 
 > Authoring guide: [docs/scenario-authoring.md](docs/scenario-authoring.md) &nbsp;·&nbsp;
