@@ -44,7 +44,7 @@ def test_list_packs_after_import(client, tmp_path):
     packs = resp.json()
     assert len(packs) == 1
     assert packs[0]["slug"] == "test.sample_pack"
-    assert packs[0]["license"] == "CC BY 4.0"
+    assert packs[0]["license"] == "CC-BY-4.0"
 
 
 def test_import_zip_with_executable_rejected(client, tmp_path):
