@@ -357,6 +357,52 @@ def _write_fake_server(tmp_path: Path) -> str:
 
 
 @pytest.mark.asyncio
+async def test_wait_for_ready_retries_on_read_error(tmp_path):
+    """_wait_for_ready must retry on ReadError, not raise an unhandled exception.
+
+    ConnectError and TimeoutException were already caught. ReadError (connection
+    reset mid-response) and RemoteProtocolError were not, which would have
+    propagated through start() as a non-RuntimeError/TimeoutError type, bypassing
+    the router's exception handler and producing a 500 instead of 503.
+    Catching httpx.TransportError covers all transport-layer failures.
+    """
+    import httpx
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from convsim_core.runtime.sidecar import _wait_for_ready
+
+    fake_process = MagicMock()
+    fake_process.returncode = None
+
+    call_count = 0
+
+    async def _raise_read_error(*_a, **_kw):
+        nonlocal call_count
+        call_count += 1
+        raise httpx.ReadError("connection reset by peer")
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+    mock_client.get = _raise_read_error
+
+    # timeout=1.5s, poll_interval=0.5s → at least 2 calls before deadline
+    with patch("httpx.AsyncClient", return_value=mock_client):
+        with pytest.raises(TimeoutError):
+            await _wait_for_ready(
+                fake_process,
+                "http://127.0.0.1:9999/health",
+                timeout=1.5,
+                log_path=tmp_path / "runtime.log",
+            )
+
+    # Must have retried at least twice — if ReadError propagated immediately there
+    # would be exactly 1 call and the assertion above would be a RuntimeError, not
+    # a TimeoutError.
+    assert call_count >= 2
+
+
+@pytest.mark.asyncio
 async def test_start_and_stop_with_fake_executable(tmp_path):
     exe = _write_fake_server(tmp_path)
     port = _free_port()
