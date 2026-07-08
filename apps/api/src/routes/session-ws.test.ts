@@ -277,7 +277,9 @@ describe('WebSocket events from the text loop', () => {
     // End emits session.state with Ended state
     const [stateEvt] = await conn.take(1);
 
-    expect((stateEvt as WsSessionStateEvent).payload.state).toBe('Ended');
+    const payload = (stateEvt as WsSessionStateEvent).payload;
+    expect(payload.state).toBe('Ended');
+    expect(typeof payload.state_vars).toBe('object');
   });
 
   it('npc.token text matches npc.final content', async () => {

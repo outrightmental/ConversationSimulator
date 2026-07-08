@@ -492,6 +492,7 @@ export async function sessionRoutes(app: FastifyInstance) {
       broadcast(req.params.session_id, 'session.state', {
         state: 'Ended',
         ending_type: endingType,
+        state_vars: JSON.parse(row.state_vars_json || '{}') as Record<string, number>,
       });
       closeSessionSockets(req.params.session_id);
 
@@ -535,7 +536,11 @@ export async function sessionRoutes(app: FastifyInstance) {
         insertEvent(req.params.session_id, 'debrief_generated', { summary });
       })();
 
-      broadcast(req.params.session_id, 'session.state', { state: 'Ended', ending_type: null });
+      broadcast(req.params.session_id, 'session.state', {
+        state: 'Ended',
+        ending_type: null,
+        state_vars: JSON.parse(row.state_vars_json || '{}') as Record<string, number>,
+      });
       closeSessionSockets(req.params.session_id);
 
       return {
