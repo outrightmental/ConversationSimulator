@@ -16,6 +16,12 @@ vi.mock('../api/client', () => ({
     useModel: vi.fn(),
     updateRuntimeSettings: vi.fn(),
     resetRuntimeSettings: vi.fn(),
+    // VoiceSettingsPanel methods
+    listVoices: vi.fn(),
+    getTtsCacheSize: vi.fn(),
+    clearTtsCache: vi.fn(),
+    health: vi.fn(),
+    vadHealth: vi.fn(),
   },
 }))
 
@@ -84,7 +90,25 @@ async function renderSettings() {
     expect(mockApi.listSessions).toHaveBeenCalled()
     expect(mockApi.getModels).toHaveBeenCalled()
     expect(mockApi.getRuntimeSettings).toHaveBeenCalled()
+    expect(mockApi.listVoices).toHaveBeenCalled()
   })
+}
+
+const STUB_VOICES = {
+  voices: [
+    { voice_id: 'af_heart', display_name: 'Heart (US female)', engine: 'kokoro', gender: 'female' as const, locale: 'en-US' },
+  ],
+}
+
+const STUB_HEALTH = {
+  status: 'ok' as const,
+  version: '0.1.0',
+  runtime: { llm_ready: true, llm_model_name: null, stt_ready: false, tts_ready: false, tts_voice_name: null, network_required: false },
+}
+
+const STUB_VAD = {
+  worker_id: 'silero', worker_name: 'Silero VAD', status: 'unavailable' as const,
+  model_path: null, message: null, checked_at: '2026-01-01T00:00:00.000Z',
 }
 
 beforeEach(() => {
@@ -98,6 +122,17 @@ beforeEach(() => {
   mockApi.useModel.mockResolvedValue({ runtime_id: 'llama_cpp', model_id: null, runtime_name: 'llama.cpp', status: 'unavailable', message: null })
   mockApi.updateRuntimeSettings.mockResolvedValue(STUB_RUNTIME_SETTINGS)
   mockApi.resetRuntimeSettings.mockResolvedValue(STUB_RUNTIME_SETTINGS)
+  // VoiceSettingsPanel stubs
+  mockApi.listVoices.mockResolvedValue(STUB_VOICES)
+  mockApi.getTtsCacheSize.mockResolvedValue({ files: 0, size_bytes: 0 })
+  mockApi.clearTtsCache.mockResolvedValue({ deleted_files: 0 })
+  mockApi.health.mockResolvedValue(STUB_HEALTH)
+  mockApi.vadHealth.mockResolvedValue(STUB_VAD)
+  // Stub navigator.permissions so tests don't hang on browser API
+  Object.defineProperty(navigator, 'permissions', {
+    value: { query: vi.fn().mockResolvedValue({ state: 'granted', addEventListener: vi.fn() }) },
+    writable: true, configurable: true,
+  })
 })
 
 // ---------------------------------------------------------------------------

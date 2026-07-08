@@ -27,6 +27,7 @@ const validForm: SetupFormValues = {
   language: 'en',
   input_mode: 'text-only',
   tts_enabled: false,
+  voice_id: null,
   show_state_meters: false,
   save_transcript: true,
   seed: null,
