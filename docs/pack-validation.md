@@ -141,10 +141,22 @@ For each turn, the test runner checks:
 
 | Assertion field | What it checks |
 |-----------------|----------------|
-| `state_delta_contains` | Listed state variables changed value during the turn |
-| `session_control` | `continue_session` or `end_session` |
-| `safety_status` | `ok`, `redirect`, or `stop` |
-| `npc_emotion_not` | NPC emotional state does not include the listed value |
+| `state_delta_contains` | Listed variable names appear in the turn's `state_delta` output |
+| `session_control` | Turn's `session_control` equals the expected `continue_session` or `end_session` |
+| `safety_status` | Turn's `safety_status` equals the expected `ok`, `redirect`, or `stop` |
+| `npc_emotion_not` | Turn's `npc_emotion` does not equal the listed value |
+
+> **Fake-runtime limitation.** `test-pack` runs against a deterministic fake
+> runtime that requires no model weights. It populates `state_delta` with every
+> declared state variable at its **default** value (it does not simulate value
+> changes), and always returns `session_control=continue_session`,
+> `safety_status=ok`, and `npc_emotion=null`. In practice this means CI smoke
+> tests verify structure — that a variable is declared and the session proceeds
+> without an unexpected end — rather than dynamic behaviour. A turn assertion
+> expecting `end_session`, `safety_status: redirect`/`stop`, or a specific
+> emotion cannot pass under the fake runtime; those assertions are reserved for
+> when a real runtime is wired in. Assert `session_control: continue_session`
+> and `safety_status: ok` in smoke tests.
 
 #### Static assertions
 
