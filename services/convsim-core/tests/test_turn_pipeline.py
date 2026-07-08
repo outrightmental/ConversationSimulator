@@ -123,7 +123,7 @@ class TestSessionCreate:
         res = client.post("/api/sessions", json={**_VALID_SETUP, "language": "fr"})
         assert res.status_code == 400
 
-    def test_returns_400_for_blank_player_role_name(self, client):
+    def test_returns_422_for_blank_player_role_name(self, client):
         res = client.post("/api/sessions", json={**_VALID_SETUP, "player_role_name": "   "})
         assert res.status_code == 422
 

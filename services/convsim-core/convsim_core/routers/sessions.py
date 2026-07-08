@@ -31,7 +31,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/sessions", tags=["sessions"])
 
 _VALID_STATES_FOR_TURN = {"PlayerTurnListening"}
-_TERMINAL_STATES = {"Ended"}
 
 
 def _generate_session_id() -> str:
