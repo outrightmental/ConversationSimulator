@@ -10,10 +10,12 @@ vi.mock('../api/client', () => ({
     getModels: vi.fn(),
     useModel: vi.fn(),
     installModel: vi.fn(),
+    benchmarkModel: vi.fn(),
   },
 }))
 
 import { api } from '../api/client'
+import type { BenchmarkResponse } from '@convsim/shared'
 const mockApi = vi.mocked(api)
 
 const REGISTRY_ENTRY = {
@@ -54,6 +56,7 @@ function makeModelsResponse(overrides: Partial<ModelsResponse> = {}): ModelsResp
       checked_at: '2026-01-01T00:00:00.000Z',
     },
     total: 1,
+    last_benchmark: null,
     ...overrides,
   }
 }
@@ -89,6 +92,15 @@ beforeEach(() => {
     registry_id: 'qwen3-4b-instruct-q4_k_m',
     status: 'pending',
     message: 'Install queued.',
+  })
+  mockApi.benchmarkModel.mockResolvedValue({
+    model_id: 'llama3:latest',
+    runtime_id: 'ollama',
+    tokens_per_sec: 12.5,
+    context_length: 4096,
+    warnings: [],
+    output_tokens: 5,
+    benchmarked_at: '2026-01-01T00:00:00.000Z',
   })
 })
 
@@ -300,11 +312,12 @@ describe('ModelManager — Ollama branch', () => {
     )
   })
 
-  it('navigates to home after selecting an Ollama model', async () => {
+  it('shows the benchmark step after selecting an Ollama model', async () => {
     await goToOllama()
     const [firstButton] = screen.getAllByRole('button', { name: /use this model/i })
     fireEvent.click(firstButton)
-    await waitFor(() => expect(screen.getByTestId('home-page')).toBeInTheDocument())
+    await screen.findByRole('heading', { name: /model benchmark/i })
+    expect(screen.getByRole('heading', { name: /model benchmark/i })).toBeInTheDocument()
   })
 
   it('shows an alert when useModel fails', async () => {
@@ -386,13 +399,14 @@ describe('ModelManager — GGUF branch', () => {
     )
   })
 
-  it('navigates to home after a valid GGUF path is submitted', async () => {
+  it('shows the benchmark step after a valid GGUF path is submitted', async () => {
     await goToGguf()
     fireEvent.change(screen.getByRole('textbox', { name: /file path/i }), {
       target: { value: '/home/user/models/my-model.gguf' },
     })
     fireEvent.click(screen.getByRole('button', { name: /use this file/i }))
-    await waitFor(() => expect(screen.getByTestId('home-page')).toBeInTheDocument())
+    await screen.findByRole('heading', { name: /model benchmark/i })
+    expect(screen.getByRole('heading', { name: /model benchmark/i })).toBeInTheDocument()
   })
 
   it('shows an error when useModel fails for the GGUF path', async () => {
@@ -484,6 +498,134 @@ describe('ModelManager — text-only demo branch', () => {
     await goToDemo()
     fireEvent.click(screen.getByRole('button', { name: /i understand/i }))
     await waitFor(() => expect(screen.getByTestId('library-page')).toBeInTheDocument())
+  })
+})
+
+// ── Benchmark step ────────────────────────────────────────────────────────────
+
+describe('ModelManager — benchmark step', () => {
+  async function goToBenchmarkViaOllama() {
+    renderModelManager()
+    await screen.findByRole('button', { name: /browse ollama models/i })
+    fireEvent.click(screen.getByRole('button', { name: /browse ollama models/i }))
+    await screen.findByRole('heading', { name: /use ollama model/i })
+    const [firstButton] = screen.getAllByRole('button', { name: /use this model/i })
+    fireEvent.click(firstButton)
+    await screen.findByRole('heading', { name: /model benchmark/i })
+  }
+
+  it('shows the model benchmark heading after Ollama model selection', async () => {
+    await goToBenchmarkViaOllama()
+    expect(screen.getByRole('heading', { name: /model benchmark/i })).toBeInTheDocument()
+  })
+
+  it('automatically runs the benchmark on entering the step', async () => {
+    await goToBenchmarkViaOllama()
+    await waitFor(() => expect(mockApi.benchmarkModel).toHaveBeenCalledWith({}))
+  })
+
+  it('shows tokens per second after benchmark completes', async () => {
+    await goToBenchmarkViaOllama()
+    await waitFor(() => expect(screen.getByText(/12\.5 tokens\/sec/i)).toBeInTheDocument())
+  })
+
+  it('shows context window size after benchmark completes', async () => {
+    await goToBenchmarkViaOllama()
+    await waitFor(() => expect(screen.getByText(/4,096/)).toBeInTheDocument())
+  })
+
+  it('shows continue to home button', async () => {
+    await goToBenchmarkViaOllama()
+    const btn = await screen.findByRole('button', { name: /continue to home/i })
+    expect(btn).toBeInTheDocument()
+  })
+
+  it('navigates to home when continue button is clicked', async () => {
+    await goToBenchmarkViaOllama()
+    const btn = await screen.findByRole('button', { name: /continue to home/i })
+    fireEvent.click(btn)
+    await waitFor(() => expect(screen.getByTestId('home-page')).toBeInTheDocument())
+  })
+
+  it('shows benchmark warnings when returned by the API', async () => {
+    mockApi.benchmarkModel.mockResolvedValue({
+      model_id: 'llama3:latest',
+      runtime_id: 'ollama',
+      tokens_per_sec: 0.8,
+      context_length: null,
+      warnings: ['Very slow generation (0.8 tok/s). The model may be running on CPU only.'],
+      output_tokens: 5,
+      benchmarked_at: '2026-01-01T00:00:00.000Z',
+    } satisfies BenchmarkResponse)
+    await goToBenchmarkViaOllama()
+    const alertEl = await screen.findByRole('alert', { name: /benchmark warnings/i })
+    expect(alertEl).toBeInTheDocument()
+    expect(alertEl).toHaveTextContent(/very slow/i)
+  })
+
+  it('shows error message when benchmark fails but still allows continuing', async () => {
+    mockApi.benchmarkModel.mockRejectedValue(new Error('runtime unavailable'))
+    await goToBenchmarkViaOllama()
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(/benchmark failed/i),
+    )
+    expect(screen.getByRole('button', { name: /continue to home/i })).toBeInTheDocument()
+  })
+
+  it('allows navigating home even after benchmark failure', async () => {
+    mockApi.benchmarkModel.mockRejectedValue(new Error('runtime unavailable'))
+    await goToBenchmarkViaOllama()
+    const btn = await screen.findByRole('button', { name: /continue to home/i })
+    fireEvent.click(btn)
+    await waitFor(() => expect(screen.getByTestId('home-page')).toBeInTheDocument())
+  })
+})
+
+// ── Choose step — last benchmark display ─────────────────────────────────────
+
+describe('ModelManager — last benchmark in choose step', () => {
+  it('shows last benchmark speed when available', async () => {
+    mockApi.getModels.mockResolvedValue(
+      makeModelsResponse({
+        last_benchmark: {
+          model_id: 'llama3:latest',
+          runtime_id: 'ollama',
+          tokens_per_sec: 18.3,
+          context_length: 8192,
+          warnings: [],
+          output_tokens: 5,
+          benchmarked_at: '2026-01-01T00:00:00.000Z',
+        },
+      }),
+    )
+    renderModelManager()
+    expect(await screen.findByLabelText(/last benchmark result/i)).toBeInTheDocument()
+    expect(screen.getByText(/18\.3 tok\/s/i)).toBeInTheDocument()
+  })
+
+  it('shows warning count when last benchmark has warnings', async () => {
+    mockApi.getModels.mockResolvedValue(
+      makeModelsResponse({
+        last_benchmark: {
+          model_id: 'llama3:latest',
+          runtime_id: 'ollama',
+          tokens_per_sec: 1.2,
+          context_length: null,
+          warnings: ['Slow generation (1.2 tok/s).'],
+          output_tokens: 2,
+          benchmarked_at: '2026-01-01T00:00:00.000Z',
+        },
+      }),
+    )
+    renderModelManager()
+    await screen.findByRole('heading', { name: /set up your model/i })
+    expect(screen.getByText(/1 warning/i)).toBeInTheDocument()
+  })
+
+  it('does not show the last benchmark section when last_benchmark is null', async () => {
+    renderModelManager()
+    await screen.findByRole('heading', { name: /set up your model/i })
+    expect(screen.queryByLabelText(/last benchmark result/i)).not.toBeInTheDocument()
   })
 })
 

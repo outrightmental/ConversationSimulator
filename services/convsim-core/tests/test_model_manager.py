@@ -19,11 +19,13 @@ from convsim_core.runtime.types import (
     RuntimeHealth,
     RuntimeStatus,
 )
+from convsim_core.routers.models import _compute_warnings
 from convsim_core.services.model_manager_service import (
     create_install_record,
     get_active_config,
     get_installed_models,
     get_latest_benchmark,
+    get_most_recent_benchmark,
     save_benchmark_result,
     set_active_config,
 )
@@ -214,6 +216,135 @@ def test_get_latest_benchmark_returns_most_recent(db):
 
 def test_get_latest_benchmark_none_when_missing(db):
     assert get_latest_benchmark(db.connection(), "does-not-exist", "fake") is None
+
+
+# ── model_manager_service: get_most_recent_benchmark ──────────────────────────
+
+
+def test_get_most_recent_benchmark_returns_none_when_empty(db):
+    assert get_most_recent_benchmark(db.connection()) is None
+
+
+def test_get_most_recent_benchmark_returns_latest_across_models(db):
+    save_benchmark_result(db.connection(), model_id="m1", runtime_id="r1", tokens_per_sec=10.0)
+    save_benchmark_result(db.connection(), model_id="m2", runtime_id="r2", tokens_per_sec=20.0)
+    result = get_most_recent_benchmark(db.connection())
+    assert result is not None
+    assert result["tokens_per_sec"] == pytest.approx(20.0)
+    assert result["model_id"] == "m2"
+
+
+# ── Warning threshold unit tests (_compute_warnings) ─────────────────────────
+
+
+def test_compute_warnings_no_issues():
+    warnings = _compute_warnings(
+        original_output_tokens=5,
+        elapsed_sec=1.0,
+        tokens_per_sec=15.0,
+        context_length=4096,
+    )
+    assert warnings == []
+
+
+def test_compute_warnings_zero_output_tokens():
+    warnings = _compute_warnings(
+        original_output_tokens=0,
+        elapsed_sec=1.0,
+        tokens_per_sec=15.0,
+        context_length=4096,
+    )
+    assert any("token count" in w.lower() for w in warnings)
+
+
+def test_compute_warnings_fast_runtime_under_1ms():
+    warnings = _compute_warnings(
+        original_output_tokens=5,
+        elapsed_sec=0.0001,
+        tokens_per_sec=50000.0,
+        context_length=None,
+    )
+    assert any("under 1 ms" in w for w in warnings)
+    assert not any("slow" in w.lower() for w in warnings)
+
+
+def test_compute_warnings_very_slow_generation():
+    warnings = _compute_warnings(
+        original_output_tokens=5,
+        elapsed_sec=10.0,
+        tokens_per_sec=0.5,
+        context_length=4096,
+    )
+    assert any("very slow" in w.lower() for w in warnings)
+    assert any("cpu" in w.lower() for w in warnings)
+
+
+def test_compute_warnings_slow_generation_not_very_slow():
+    warnings = _compute_warnings(
+        original_output_tokens=5,
+        elapsed_sec=5.0,
+        tokens_per_sec=2.0,
+        context_length=4096,
+    )
+    assert any("slow" in w.lower() for w in warnings)
+    assert not any("very slow" in w.lower() for w in warnings)
+
+
+def test_compute_warnings_exactly_3_tok_per_sec_no_warning():
+    warnings = _compute_warnings(
+        original_output_tokens=3,
+        elapsed_sec=1.0,
+        tokens_per_sec=3.0,
+        context_length=None,
+    )
+    assert not any("slow" in w.lower() for w in warnings)
+
+
+def test_compute_warnings_very_large_context():
+    warnings = _compute_warnings(
+        original_output_tokens=5,
+        elapsed_sec=1.0,
+        tokens_per_sec=15.0,
+        context_length=65536,
+    )
+    assert any("context" in w.lower() and "large" in w.lower() for w in warnings)
+
+
+def test_compute_warnings_context_at_threshold_no_warning():
+    warnings = _compute_warnings(
+        original_output_tokens=5,
+        elapsed_sec=1.0,
+        tokens_per_sec=15.0,
+        context_length=32768,
+    )
+    assert not any("context" in w.lower() and "large" in w.lower() for w in warnings)
+
+
+def test_compute_warnings_no_context_length_no_warning():
+    warnings = _compute_warnings(
+        original_output_tokens=5,
+        elapsed_sec=1.0,
+        tokens_per_sec=15.0,
+        context_length=None,
+    )
+    assert warnings == []
+
+
+# ── GET /api/models — last_benchmark field ────────────────────────────────────
+
+
+def test_get_models_last_benchmark_is_null_initially(client):
+    body = client.get("/api/models").json()
+    assert body["last_benchmark"] is None
+
+
+def test_get_models_last_benchmark_populated_after_benchmark(client):
+    client.post("/api/models/benchmark", json={})
+    body = client.get("/api/models").json()
+    assert body["last_benchmark"] is not None
+    assert "tokens_per_sec" in body["last_benchmark"]
+    assert "warnings" in body["last_benchmark"]
+    assert isinstance(body["last_benchmark"]["warnings"], list)
 
 
 # ── POST /api/models/install ─────────────────────────────────────────────────

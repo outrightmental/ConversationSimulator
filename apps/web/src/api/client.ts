@@ -15,6 +15,8 @@ import type {
   UseModelResponse,
   InstallModelRequest,
   InstallModelResponse,
+  BenchmarkRequest,
+  BenchmarkResponse,
 } from '@convsim/shared';
 
 export type { HealthResponse };
@@ -157,6 +159,9 @@ export const api = {
   },
   installModel(request: InstallModelRequest): Promise<InstallModelResponse> {
     return post<InstallModelResponse>('/models/install', request)
+  },
+  benchmarkModel(request: BenchmarkRequest): Promise<BenchmarkResponse> {
+    return post<BenchmarkResponse>('/models/benchmark', request)
   },
   connectSession(
     sessionId: string,
