@@ -599,7 +599,8 @@ Items marked **[manual]** require human review.
 
 ### Rubric
 
-- [ ] At least 2 rubric dimensions **[validator]** (minItems: 1 in schema, manual bar is ≥ 2)
+- [ ] At least 1 rubric dimension **[validator]** (schema enforces `minItems: 1`)
+- [ ] At least 2 rubric dimensions (official quality bar) **[manual]**
 - [ ] All three scoring anchors (low/medium/high) present **[validator]**
 - [ ] Anchors describe observable behaviours, not abstract qualities **[manual]**
 - [ ] Dimension names are ≤ 3 words **[manual]**
