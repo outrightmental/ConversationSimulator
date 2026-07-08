@@ -1248,6 +1248,7 @@ export default function CreatorWorkbench() {
   const [copyError, setCopyError] = useState<string | null>(null)
   const [validation, setValidation] = useState<WorkbenchValidation | null>(null)
   const [validationLoading, setValidationLoading] = useState(false)
+  const [validationServiceError, setValidationServiceError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'edit' | 'test'>('edit')
 
   const isDirty = selectedFile !== null && editorContent !== savedContent
