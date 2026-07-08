@@ -250,3 +250,21 @@ def get_latest_benchmark(
     result = dict(row)
     result["warnings"] = json.loads(result.pop("warnings_json", "[]"))
     return result
+
+
+def get_most_recent_benchmark(conn: sqlite3.Connection) -> dict[str, Any] | None:
+    """Return the most recent benchmark result across all models and runtimes, or None."""
+    row = conn.execute(
+        """
+        SELECT id, model_id, runtime_id, tokens_per_sec, context_length,
+               warnings_json, prompt_used, output_tokens, benchmarked_at
+        FROM benchmark_results
+        ORDER BY id DESC
+        LIMIT 1
+        """
+    ).fetchone()
+    if row is None:
+        return None
+    result = dict(row)
+    result["warnings"] = json.loads(result.pop("warnings_json", "[]"))
+    return result
