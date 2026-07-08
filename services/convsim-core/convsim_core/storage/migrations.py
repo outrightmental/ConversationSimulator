@@ -258,6 +258,35 @@ CREATE VIRTUAL TABLE scenario_fts USING fts5(
 CREATE TRIGGER scenario_fts_delete AFTER DELETE ON scenarios BEGIN
     DELETE FROM scenario_fts WHERE rowid = OLD.id;
 END;
+
+-- Backfill scenario_fts for any scenarios already in the DB before this migration.
+-- Uses name/description as fallbacks because title/summary are NULL on pre-existing rows.
+INSERT INTO scenario_fts(rowid, title, summary, tags, pack_name, pack_readme)
+SELECT s.id,
+       COALESCE(s.title, s.name, ''),
+       COALESCE(s.summary, s.description, ''),
+       '',
+       COALESCE(p.name, ''),
+       COALESCE(p.description, '')
+FROM scenarios s
+JOIN packs p ON s.pack_id = p.id;
+
+-- Keep pack_readme_fts in sync when packs are deleted.  The insert path (insert_pack)
+-- adds a row manually; we need a matching delete trigger so the FTS index doesn't
+-- accumulate ghost entries for removed packs.
+-- pack_readme_fts uses content='packs', so we must use the FTS5 'delete' command
+-- (providing the old column values) instead of a plain DELETE, because by the time
+-- an AFTER DELETE trigger fires the content-table row is already gone and SQLite
+-- can no longer read the indexed terms from it.
+CREATE TRIGGER pack_readme_fts_delete AFTER DELETE ON packs BEGIN
+    INSERT INTO pack_readme_fts(pack_readme_fts, rowid, name, description)
+    VALUES('delete', OLD.id, OLD.name, COALESCE(OLD.description, ''));
+END;
+
+-- Backfill pack_readme_fts for packs imported before this migration (the old
+-- insert_pack did not insert into pack_readme_fts).
+INSERT INTO pack_readme_fts(rowid, name, description)
+SELECT id, name, COALESCE(description, '') FROM packs;
 """
 
 MIGRATIONS: list[tuple[str, str]] = [
