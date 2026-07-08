@@ -23,6 +23,7 @@ from typing import Optional
 import jsonschema
 import yaml
 
+from convsim_core.packs.injection_scanner import scan_pack_dir as _scan_pack_dir
 from convsim_core.packs.models import (
     PackManifest,
     ValidationIssue,
@@ -237,6 +238,7 @@ class _PackValidator:
             self._validate_smoke_tests(manifest_raw, manifest_file)
 
         self._scan_for_forbidden_files()
+        self._scan_for_prompt_injection()
 
         return self._build_result(manifest)
 
@@ -594,6 +596,29 @@ class _PackValidator:
             test_data = self._load_yaml(test_path)
             if test_data is not None:
                 self._schema_errors(test_data, "pack-test", self._rel(test_path))
+
+    # ------------------------------------------------------------------
+    # Prompt-injection content scan (all packs)
+    # ------------------------------------------------------------------
+
+    def _scan_for_prompt_injection(self) -> None:
+        """Scan natural-language text fields for prompt-injection patterns.
+
+        Findings are added as WARNING or ERROR issues depending on severity.
+        See :mod:`convsim_core.packs.injection_scanner` for the full rule set
+        and the rationale for each severity tier.
+        """
+        for finding in _scan_pack_dir(self._pack_dir):
+            severity = ValidationSeverity(finding.severity)
+            issue = ValidationIssue(
+                severity=severity,
+                rule_id=finding.rule_id,
+                file=finding.file,
+                pointer=finding.pointer,
+                message=finding.message,
+                suggested_fix=finding.suggested_fix,
+            )
+            self._issues.append(issue)
 
     # ------------------------------------------------------------------
     # File-system security scan (all packs)
