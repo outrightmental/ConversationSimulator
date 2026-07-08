@@ -197,6 +197,13 @@ export interface WriteFileResult {
   validation?: WorkbenchValidation | null
 }
 
+export interface WorkbenchTestSession {
+  session_id: string
+  state: string
+  npc_opening: string
+  state_vars: Record<string, number>
+}
+
 export interface WsConnection {
   close(): void;
 }
@@ -298,6 +305,9 @@ export const api = {
     },
     copyToLocal(kind: PackKind, slug: string): Promise<WorkbenchPack> {
       return post<WorkbenchPack>(`/workbench/packs/${kind}/${slug}/copy-to-local`)
+    },
+    startTestSession(kind: PackKind, slug: string): Promise<WorkbenchTestSession> {
+      return post<WorkbenchTestSession>(`/workbench/packs/${kind}/${slug}/test-session`)
     },
   },
 }

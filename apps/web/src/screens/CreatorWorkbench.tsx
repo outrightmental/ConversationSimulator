@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState, useEffect, useCallback, type CSSProperties } from 'react'
+import { useState, useEffect, useCallback, useRef, type CSSProperties } from 'react'
 import { useBlocker } from 'react-router-dom'
 import { api, type WorkbenchPack, type FileNode, type WorkbenchValidation } from '../api/client'
 
@@ -443,6 +443,540 @@ function ValidationPanel({ validation, loading }: ValidationPanelProps) {
 }
 
 // ---------------------------------------------------------------------------
+// TestChatPanel — text-only workbench test chat with state inspector
+// ---------------------------------------------------------------------------
+
+interface TranscriptEntry {
+  role: 'npc' | 'player'
+  content: string
+  emotion?: string
+  stateDelta?: Record<string, number>
+  eventFlags?: string[]
+  safetyStatus?: string
+  endingType?: string | null
+}
+
+interface TestChatPanelProps {
+  pack: WorkbenchPack
+  validation: WorkbenchValidation | null
+}
+
+function TestChatPanel({ pack, validation }: TestChatPanelProps) {
+  const [sessionId, setSessionId] = useState<string | null>(null)
+  const [chatStatus, setChatStatus] = useState<'idle' | 'starting' | 'active' | 'sending' | 'ended'>('idle')
+  const [transcript, setTranscript] = useState<TranscriptEntry[]>([])
+  const [stateVars, setStateVars] = useState<Record<string, number>>({})
+  const [lastDelta, setLastDelta] = useState<Record<string, number>>({})
+  const [inputText, setInputText] = useState('')
+  const [endingType, setEndingType] = useState<string | null>(null)
+  const [startError, setStartError] = useState<string | null>(null)
+  const [turnError, setTurnError] = useState<string | null>(null)
+  const sessionIdRef = useRef<string | null>(null)
+  const transcriptRef = useRef<HTMLDivElement>(null)
+
+  // Cleanup test session on unmount (pack change or screen exit)
+  useEffect(() => {
+    return () => {
+      if (sessionIdRef.current) {
+        api.deleteSession(sessionIdRef.current).catch(() => {})
+      }
+    }
+  }, [])
+
+  // Scroll transcript to bottom on each new entry
+  useEffect(() => {
+    if (transcriptRef.current) {
+      transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight
+    }
+  }, [transcript])
+
+  const hasValidationErrors = (validation?.errors?.length ?? 0) > 0
+
+  async function startSession() {
+    setChatStatus('starting')
+    setStartError(null)
+    setTranscript([])
+    setStateVars({})
+    setLastDelta({})
+    setEndingType(null)
+    setTurnError(null)
+    try {
+      const result = await api.workbench.startTestSession(pack.kind, pack.slug)
+      sessionIdRef.current = result.session_id
+      setSessionId(result.session_id)
+      setStateVars(result.state_vars)
+      setTranscript([{ role: 'npc', content: result.npc_opening }])
+      setChatStatus('active')
+    } catch (e) {
+      setStartError(e instanceof Error ? e.message : 'Failed to start test session')
+      setChatStatus('idle')
+    }
+  }
+
+  async function handleStart() {
+    if (hasValidationErrors) return
+    await startSession()
+  }
+
+  async function handleDiscard() {
+    const id = sessionIdRef.current
+    sessionIdRef.current = null
+    setSessionId(null)
+    setChatStatus('idle')
+    setTranscript([])
+    setStateVars({})
+    setLastDelta({})
+    setEndingType(null)
+    setStartError(null)
+    setTurnError(null)
+    if (id) {
+      try { await api.deleteSession(id) } catch { /* ignore cleanup errors */ }
+    }
+  }
+
+  async function handleReset() {
+    const id = sessionIdRef.current
+    sessionIdRef.current = null
+    setSessionId(null)
+    if (id) {
+      try { await api.deleteSession(id) } catch { /* ignore */ }
+    }
+    await startSession()
+  }
+
+  async function handleSend() {
+    const id = sessionIdRef.current
+    if (!id || !inputText.trim() || chatStatus !== 'active') return
+    const text = inputText.trim()
+    setInputText('')
+    setTurnError(null)
+    setTranscript(prev => [...prev, { role: 'player', content: text }])
+    setChatStatus('sending')
+    try {
+      const result = await api.submitTurn(id, text)
+      const npcEvent = result.events.find(e => e.event_type === 'npc_turn')
+      if (npcEvent) {
+        const p = npcEvent.payload as Record<string, unknown>
+        const delta = (p['state_delta'] as Record<string, number> | undefined) ?? {}
+        setLastDelta(delta)
+        setStateVars(prev => {
+          const next = { ...prev }
+          for (const [k, v] of Object.entries(delta)) {
+            if (k in next) next[k] = Math.max(0, Math.min(100, (next[k] ?? 0) + v))
+          }
+          return next
+        })
+        const npcEntry: TranscriptEntry = {
+          role: 'npc',
+          content: (p['content'] as string) ?? '',
+          emotion: p['emotion'] as string | undefined,
+          stateDelta: Object.keys(delta).length > 0 ? delta : undefined,
+          eventFlags: ((p['event_flags'] as string[] | undefined) ?? []).filter(Boolean),
+          safetyStatus: (p['safety'] as { status?: string } | undefined)?.status,
+          endingType: (p['ending_type'] as string | null | undefined) ?? null,
+        }
+        setTranscript(prev => [...prev, npcEntry])
+        if (result.state === 'Ended') {
+          setEndingType((p['ending_type'] as string | null | undefined) ?? 'player_exit')
+          setChatStatus('ended')
+        } else {
+          setChatStatus('active')
+        }
+      }
+    } catch (e) {
+      setTurnError(e instanceof Error ? e.message : 'Turn failed')
+      setChatStatus('active')
+    }
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      void handleSend()
+    }
+  }
+
+  // ── Idle / Starting state ──
+  if (chatStatus === 'idle' || chatStatus === 'starting') {
+    return (
+      <div
+        style={{
+          flex: 1,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '2rem',
+          gap: '1rem',
+        }}
+      >
+        <div style={{ fontSize: '0.875rem', color: '#71717a', textAlign: 'center', maxWidth: '320px' }}>
+          Start a temporary text-only session to preview conversation flow, state variables, events,
+          and safety redirects. Sessions are not saved to history.
+        </div>
+
+        {hasValidationErrors && (
+          <div
+            data-testid="test-chat-validation-error"
+            role="alert"
+            style={{
+              padding: '0.5rem 0.75rem',
+              borderRadius: '4px',
+              border: '1px solid rgba(248,113,113,0.3)',
+              background: 'rgba(248,113,113,0.08)',
+              fontSize: '0.8rem',
+              color: '#f87171',
+              maxWidth: '320px',
+            }}
+          >
+            Fix {validation!.errors.length} validation error
+            {validation!.errors.length === 1 ? '' : 's'} before testing.
+          </div>
+        )}
+
+        {startError && (
+          <p
+            role="alert"
+            data-testid="test-chat-start-error"
+            style={{ fontSize: '0.8rem', color: '#f87171', maxWidth: '320px', textAlign: 'center' }}
+          >
+            {startError}
+          </p>
+        )}
+
+        <button
+          onClick={() => void handleStart()}
+          disabled={hasValidationErrors || chatStatus === 'starting'}
+          data-testid="start-test-btn"
+          style={{
+            ...BTN_PRIMARY,
+            padding: '0.5rem 1.25rem',
+            fontSize: '0.875rem',
+            ...(hasValidationErrors || chatStatus === 'starting' ? BTN_DISABLED : {}),
+          }}
+        >
+          {chatStatus === 'starting' ? 'Starting…' : '▶ Start Test Session'}
+        </button>
+      </div>
+    )
+  }
+
+  // ── Active / Sending / Ended state ──
+  const statusColor =
+    chatStatus === 'ended'
+      ? endingType === 'success'
+        ? '#4ade80'
+        : endingType === 'safety_stop'
+          ? '#f87171'
+          : '#fbbf24'
+      : '#4ade80'
+
+  const statusLabel =
+    chatStatus === 'ended'
+      ? `Ended: ${(endingType ?? 'player_exit').replace(/_/g, ' ')}`
+      : chatStatus === 'sending'
+        ? 'Thinking…'
+        : 'Active'
+
+  const canInteract = chatStatus === 'active' || chatStatus === 'sending'
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+      {/* Toolbar */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem',
+          padding: '0.4rem 0.75rem',
+          borderBottom: '1px solid rgba(255,255,255,0.08)',
+          background: 'rgba(0,0,0,0.15)',
+          flexShrink: 0,
+        }}
+      >
+        <span
+          style={{ width: '6px', height: '6px', borderRadius: '50%', background: statusColor, flexShrink: 0 }}
+        />
+        <span style={{ fontSize: '0.8rem', color: statusColor, flex: 1 }}>{statusLabel}</span>
+        {turnError && (
+          <span
+            data-testid="turn-error"
+            role="alert"
+            style={{ fontSize: '0.75rem', color: '#f87171' }}
+          >
+            {turnError}
+          </span>
+        )}
+        <button
+          onClick={() => void handleReset()}
+          disabled={chatStatus === 'sending'}
+          data-testid="reset-test-btn"
+          style={{ ...BTN, ...(chatStatus === 'sending' ? BTN_DISABLED : {}) }}
+          aria-label="Reset test session"
+        >
+          Reset
+        </button>
+        <button
+          onClick={() => void handleDiscard()}
+          disabled={chatStatus === 'sending'}
+          data-testid="discard-test-btn"
+          style={{ ...BTN, ...(chatStatus === 'sending' ? BTN_DISABLED : {}) }}
+          aria-label="Discard test session"
+        >
+          Discard
+        </button>
+      </div>
+
+      {/* Main content: transcript + state inspector */}
+      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+        {/* Transcript */}
+        <div
+          ref={transcriptRef}
+          data-testid="test-transcript"
+          style={{
+            flex: 2,
+            overflowY: 'auto',
+            padding: '0.75rem',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.5rem',
+          }}
+        >
+          {transcript.map((entry, i) => (
+            <div key={i} style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+              <div
+                style={{
+                  alignSelf: entry.role === 'player' ? 'flex-end' : 'flex-start',
+                  maxWidth: '82%',
+                  padding: '0.5rem 0.75rem',
+                  borderRadius: '6px',
+                  background:
+                    entry.role === 'player'
+                      ? 'rgba(99,102,241,0.2)'
+                      : 'rgba(255,255,255,0.06)',
+                  color: entry.role === 'player' ? '#a5b4fc' : '#e8e8ea',
+                  fontSize: '0.85rem',
+                  lineHeight: 1.5,
+                }}
+              >
+                {entry.role === 'npc' && entry.emotion && (
+                  <div style={{ fontSize: '0.7rem', color: '#71717a', marginBottom: '0.2rem' }}>
+                    NPC ({entry.emotion})
+                  </div>
+                )}
+                {entry.content}
+              </div>
+
+              {entry.safetyStatus === 'redirect' && (
+                <div
+                  data-testid="safety-redirect-badge"
+                  style={{
+                    alignSelf: 'flex-start',
+                    fontSize: '0.7rem',
+                    color: '#fbbf24',
+                    background: 'rgba(251,191,36,0.08)',
+                    border: '1px solid rgba(251,191,36,0.2)',
+                    borderRadius: '3px',
+                    padding: '0.15rem 0.4rem',
+                  }}
+                >
+                  ⚠ Safety redirect applied
+                </div>
+              )}
+
+              {entry.safetyStatus === 'stop' && (
+                <div
+                  data-testid="safety-stop-badge"
+                  style={{
+                    alignSelf: 'flex-start',
+                    fontSize: '0.7rem',
+                    color: '#f87171',
+                    background: 'rgba(248,113,113,0.08)',
+                    border: '1px solid rgba(248,113,113,0.2)',
+                    borderRadius: '3px',
+                    padding: '0.15rem 0.4rem',
+                  }}
+                >
+                  ✕ Safety stop — session ended
+                </div>
+              )}
+
+              {entry.eventFlags && entry.eventFlags.length > 0 && (
+                <div style={{ display: 'flex', gap: '0.25rem', flexWrap: 'wrap' }}>
+                  {entry.eventFlags.map((flag) => (
+                    <span
+                      key={flag}
+                      data-testid="event-flag"
+                      style={{
+                        fontSize: '0.7rem',
+                        color: '#a78bfa',
+                        background: 'rgba(167,139,250,0.08)',
+                        border: '1px solid rgba(167,139,250,0.2)',
+                        borderRadius: '3px',
+                        padding: '0.1rem 0.35rem',
+                      }}
+                    >
+                      {flag}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+
+          {chatStatus === 'ended' && (
+            <div
+              data-testid="session-ended-banner"
+              style={{
+                padding: '0.5rem 0.75rem',
+                borderRadius: '4px',
+                border: `1px solid ${statusColor}33`,
+                background: `${statusColor}11`,
+                fontSize: '0.8rem',
+                color: statusColor,
+                textAlign: 'center',
+              }}
+            >
+              Session ended: {(endingType ?? 'player_exit').replace(/_/g, ' ')}
+            </div>
+          )}
+        </div>
+
+        {/* State inspector */}
+        <div
+          data-testid="state-inspector"
+          style={{
+            width: '180px',
+            flexShrink: 0,
+            borderLeft: '1px solid rgba(255,255,255,0.08)',
+            padding: '0.75rem 0.5rem',
+            overflowY: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.5rem',
+          }}
+        >
+          <div
+            style={{
+              fontSize: '0.7rem',
+              fontWeight: 600,
+              color: '#71717a',
+              textTransform: 'uppercase',
+              letterSpacing: '0.06em',
+            }}
+          >
+            State Variables
+          </div>
+
+          {Object.entries(stateVars).map(([key, value]) => {
+            const delta = lastDelta[key]
+            return (
+              <div key={key} style={{ fontSize: '0.8rem' }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    marginBottom: '0.15rem',
+                  }}
+                >
+                  <span style={{ color: '#a1a1aa' }}>{key.replace(/_/g, ' ')}</span>
+                  <span
+                    style={{ color: '#e8e8ea', display: 'flex', gap: '0.3rem', alignItems: 'center' }}
+                  >
+                    {value}
+                    {delta !== undefined && delta !== 0 && (
+                      <span
+                        data-testid="state-delta"
+                        style={{ fontSize: '0.7rem', color: delta > 0 ? '#4ade80' : '#f87171' }}
+                      >
+                        {delta > 0 ? `+${delta}` : delta}
+                      </span>
+                    )}
+                  </span>
+                </div>
+                <div
+                  style={{
+                    height: '4px',
+                    background: 'rgba(255,255,255,0.1)',
+                    borderRadius: '2px',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <div
+                    style={{
+                      height: '100%',
+                      width: `${value}%`,
+                      background:
+                        value >= 60 ? '#4ade80' : value >= 30 ? '#fbbf24' : '#f87171',
+                      borderRadius: '2px',
+                      transition: 'width 0.3s ease',
+                    }}
+                  />
+                </div>
+              </div>
+            )
+          })}
+
+          {Object.keys(stateVars).length === 0 && (
+            <p style={{ fontSize: '0.75rem', color: '#52525b' }}>No state yet.</p>
+          )}
+        </div>
+      </div>
+
+      {/* Input row */}
+      {chatStatus !== 'ended' && (
+        <div
+          style={{
+            display: 'flex',
+            gap: '0.5rem',
+            padding: '0.5rem 0.75rem',
+            borderTop: '1px solid rgba(255,255,255,0.08)',
+            background: 'rgba(0,0,0,0.15)',
+            flexShrink: 0,
+          }}
+        >
+          <textarea
+            data-testid="test-chat-input"
+            value={inputText}
+            onChange={e => setInputText(e.target.value)}
+            onKeyDown={handleKeyDown}
+            disabled={!canInteract}
+            placeholder="Type a message… (Enter to send, Shift+Enter for new line)"
+            rows={2}
+            style={{
+              flex: 1,
+              background: 'rgba(0,0,0,0.2)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: '4px',
+              color: '#e8e8ea',
+              padding: '0.4rem 0.5rem',
+              fontSize: '0.85rem',
+              fontFamily: 'inherit',
+              resize: 'none',
+              outline: 'none',
+              opacity: canInteract ? 1 : 0.5,
+            }}
+          />
+          <button
+            onClick={() => void handleSend()}
+            disabled={chatStatus !== 'active' || !inputText.trim()}
+            data-testid="send-test-btn"
+            style={{
+              ...BTN_PRIMARY,
+              alignSelf: 'flex-end',
+              ...(chatStatus !== 'active' || !inputText.trim() ? BTN_DISABLED : {}),
+            }}
+            aria-label="Send message"
+          >
+            Send
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // CreatorWorkbench (main screen)
 // ---------------------------------------------------------------------------
 
@@ -465,6 +999,7 @@ export default function CreatorWorkbench() {
   const [copyError, setCopyError] = useState<string | null>(null)
   const [validation, setValidation] = useState<WorkbenchValidation | null>(null)
   const [validationLoading, setValidationLoading] = useState(false)
+  const [activeTab, setActiveTab] = useState<'edit' | 'test'>('edit')
 
   const isDirty = selectedFile !== null && editorContent !== savedContent
 
@@ -536,6 +1071,7 @@ export default function CreatorWorkbench() {
     setSaveError(null)
     setCopyError(null)
     setValidation(null)
+    setActiveTab('edit')
     await Promise.all([loadFileTree(pack), refreshValidation(pack)])
   }
 
@@ -595,6 +1131,7 @@ export default function CreatorWorkbench() {
       setEditorContent('')
       setSavedContent('')
       setValidation(null)
+      setActiveTab('edit')
       await Promise.all([loadFileTree(newPack), refreshValidation(newPack)])
     } catch (e: unknown) {
       setCopyError(e instanceof Error ? e.message : 'Failed to copy pack to local-dev')
@@ -673,53 +1210,111 @@ export default function CreatorWorkbench() {
           </div>
         </div>
 
-        {/* Right panel: editor */}
+        {/* Right panel: editor / test chat */}
         <div style={{ flex: 1, ...PANEL_STYLE, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-          {!selectedFile && !fileLoading && (
+          {/* Tab header — only when a pack is selected */}
+          {selectedPack && (
             <div
               style={{
-                flex: 1,
                 display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#52525b',
-                fontSize: '0.875rem',
+                borderBottom: '1px solid rgba(255,255,255,0.08)',
+                background: 'rgba(0,0,0,0.1)',
+                flexShrink: 0,
               }}
             >
-              {selectedPack
-                ? 'Select a YAML or Markdown file from the tree.'
-                : 'Select a pack to get started.'}
+              {(['edit', 'test'] as const).map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  data-testid={`tab-${tab}`}
+                  aria-selected={activeTab === tab}
+                  style={{
+                    padding: '0.5rem 0.75rem',
+                    background: 'transparent',
+                    border: 'none',
+                    borderBottom: `2px solid ${activeTab === tab ? '#a5b4fc' : 'transparent'}`,
+                    color: activeTab === tab ? '#a5b4fc' : '#71717a',
+                    cursor: 'pointer',
+                    fontSize: '0.8rem',
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  {tab === 'edit' ? 'Edit' : 'Test Chat'}
+                </button>
+              ))}
             </div>
           )}
 
-          {fileLoading && (
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#71717a', fontSize: '0.875rem' }}>
-              Loading file…
-            </div>
-          )}
+          {/* Edit panel */}
+          <div
+            style={{
+              flex: 1,
+              display: activeTab === 'edit' ? 'flex' : 'none',
+              flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+          >
+            {!selectedFile && !fileLoading && (
+              <div
+                style={{
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#52525b',
+                  fontSize: '0.875rem',
+                }}
+              >
+                {selectedPack
+                  ? 'Select a YAML or Markdown file from the tree.'
+                  : 'Select a pack to get started.'}
+              </div>
+            )}
 
-          {fileError && !fileLoading && (
-            <div style={{ flex: 1, padding: '1rem' }}>
-              <p role="alert" style={{ fontSize: '0.875rem', color: '#f87171' }}>
-                {fileError}
-              </p>
-            </div>
-          )}
+            {fileLoading && (
+              <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#71717a', fontSize: '0.875rem' }}>
+                Loading file…
+              </div>
+            )}
 
-          {selectedFile && !fileLoading && !fileError && (
-            <FileEditor
-              filePath={selectedFile}
-              content={editorContent}
-              editable={editorEditable}
-              isDirty={isDirty}
-              saving={saving}
-              saveError={saveError}
-              copying={copying}
-              copyError={copyError}
-              onChange={setEditorContent}
-              onSave={handleSave}
-              onCopyToLocal={!editorEditable ? handleCopyToLocal : undefined}
-            />
+            {fileError && !fileLoading && (
+              <div style={{ flex: 1, padding: '1rem' }}>
+                <p role="alert" style={{ fontSize: '0.875rem', color: '#f87171' }}>
+                  {fileError}
+                </p>
+              </div>
+            )}
+
+            {selectedFile && !fileLoading && !fileError && (
+              <FileEditor
+                filePath={selectedFile}
+                content={editorContent}
+                editable={editorEditable}
+                isDirty={isDirty}
+                saving={saving}
+                saveError={saveError}
+                copying={copying}
+                copyError={copyError}
+                onChange={setEditorContent}
+                onSave={handleSave}
+                onCopyToLocal={!editorEditable ? handleCopyToLocal : undefined}
+              />
+            )}
+          </div>
+
+          {/* Test chat panel — keeps session alive while editing (display:none, not unmounted) */}
+          {selectedPack && (
+            <div
+              key={`${selectedPack.kind}/${selectedPack.slug}`}
+              style={{
+                flex: 1,
+                display: activeTab === 'test' ? 'flex' : 'none',
+                flexDirection: 'column',
+                overflow: 'hidden',
+              }}
+            >
+              <TestChatPanel pack={selectedPack} validation={validation} />
+            </div>
           )}
         </div>
       </div>
