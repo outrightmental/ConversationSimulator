@@ -607,11 +607,13 @@ describe('CreatorWorkbench', () => {
       headers: { get: (h: string) => h === 'Content-Disposition' ? 'attachment; filename="my-pack-0.1.0.zip"' : null },
     })
 
-    // jsdom does not implement URL.createObjectURL; stub it so triggerDownload doesn't throw.
+    // jsdom does not implement URL.createObjectURL, so vi.spyOn can't wrap a
+    // non-existent method — define the property directly so triggerDownload
+    // doesn't throw.
     const createObjectURL = vi.fn().mockReturnValue('blob:test')
     const revokeObjectURL = vi.fn()
-    vi.spyOn(URL, 'createObjectURL').mockImplementation(createObjectURL)
-    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(revokeObjectURL)
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: createObjectURL })
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: revokeObjectURL })
 
     stubFetch((url) => {
       if (url.includes('/export')) return exportSpy()
