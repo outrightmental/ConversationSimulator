@@ -81,7 +81,3 @@ export function closeSessionSockets(sessionId: string): void {
   sessions.delete(sessionId);
 }
 
-/** Returns the number of active connections for a session (used in tests). */
-export function connectionCount(sessionId: string): number {
-  return sessions.get(sessionId)?.connections.size ?? 0;
-}

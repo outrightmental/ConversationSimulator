@@ -245,6 +245,7 @@ export async function sessionRoutes(app: FastifyInstance) {
       }
 
       db.prepare('DELETE FROM sessions WHERE session_id = ?').run(req.params.session_id);
+      closeSessionSockets(req.params.session_id);
       reply.status(204);
     },
   );
