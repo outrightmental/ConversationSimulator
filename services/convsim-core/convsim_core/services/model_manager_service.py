@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from typing import Any
 
@@ -111,6 +112,43 @@ def save_benchmark_result(
         ),
     )
     conn.commit()
+
+
+def register_user_gguf(
+    conn: sqlite3.Connection,
+    *,
+    path: str,
+    display_name: str | None = None,
+    family_guess: str | None = None,
+    context_length_default: int | None = None,
+) -> dict[str, Any]:
+    """Store a user-supplied GGUF file profile and return the created record.
+
+    The file is not copied or modified. The caller is responsible for validating
+    that the path exists and has a .gguf extension before calling this function.
+    """
+    filename = os.path.basename(path)
+    name = display_name or filename
+    cursor = conn.execute(
+        """
+        INSERT INTO installed_models
+            (registry_id, filename, file_path, install_status,
+             display_name, family_guess, context_length_default, source)
+        VALUES (NULL, ?, ?, 'complete', ?, ?, ?, 'user-supplied')
+        """,
+        (filename, path, name, family_guess, context_length_default),
+    )
+    conn.commit()
+    return {
+        "id": cursor.lastrowid,
+        "filename": filename,
+        "file_path": path,
+        "display_name": name,
+        "family_guess": family_guess,
+        "context_length_default": context_length_default,
+        "install_status": "complete",
+        "source": "user-supplied",
+    }
 
 
 def get_latest_benchmark(
