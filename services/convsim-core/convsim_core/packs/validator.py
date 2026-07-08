@@ -54,7 +54,7 @@ def errors_to_rule_ids(errors: list[str]) -> list[str]:
             ids.add(RULE_INVALID_MANIFEST_JSON)
         elif "not valid yaml" in el or "must be a yaml mapping" in el:
             ids.add(RULE_INVALID_MANIFEST_YAML)
-        elif "pack.json [" in el or "pack.json:" in el or "schema" in el or "required" in el:
+        elif "pack.json [" in el or "pack.json:" in el or "schema" in el:
             ids.add(RULE_SCHEMA_VIOLATION)
         elif "content_rating" in el:
             ids.add(RULE_INVALID_CONTENT_RATING)
@@ -134,6 +134,15 @@ def validate_pack_dir(pack_dir: Path) -> tuple[Optional[PackManifest], list[str]
             f"Allowed values: {', '.join(sorted(CONTENT_RATINGS))}"
         )
 
+    # pack_id must be non-empty and must not contain path-traversal, header-injection,
+    # null characters, or path separators.  Path separators (/ and \) are rejected because
+    # _install_from_dir maps pack_id directly to a directory name after stripping them; two
+    # different ids (e.g. "foo/bar" and "foo_bar") would collide to the same directory,
+    # causing the importer to silently overwrite the first pack's files with the second's.
+    # Null bytes (\x00) are included because os.path on POSIX silently truncates paths at
+    # the first null byte, which could redirect installs to an unintended directory.
+    # "." is rejected because Path(packs_dir) / "." resolves back to packs_dir itself,
+    # which would cause the importer to rmtree the entire packs directory.
     _PACK_ID_FORBIDDEN = {'"', "/", "\\", "\r", "\n", "\x00"}
     if not manifest.pack_id:
         errors.append("pack_id must not be empty")
@@ -159,6 +168,9 @@ def validate_pack_dir(pack_dir: Path) -> tuple[Optional[PackManifest], list[str]
         if not resolved.is_file():
             errors.append(f"Entry scenario file not found: {ref!r}")
 
+    # Scan every entry for symlinks and forbidden extensions.
+    # Symlinks are rejected here (consistent with safe_extract_zip for zip archives)
+    # to prevent shutil.copytree from following them to files outside the pack dir.
     for file_path in pack_dir.rglob("*"):
         if file_path.is_symlink():
             rel = file_path.relative_to(pack_dir)
