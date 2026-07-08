@@ -135,13 +135,17 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
-          cache-dependency-path: services/convsim-core/pyproject.toml
+          cache-dependency-path: |
+            services/convsim-core/pyproject.toml
+            packages/prompt-composer/pyproject.toml
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Validate official packs (schema check)
         run: |
           echo "Local: node packages/scenario-schema/tests/validate-packs.js packs/official"
           node packages/scenario-schema/tests/validate-packs.js packs/official
+      - name: Install prompt-composer
+        run: pip install -e "packages/prompt-composer[dev]"
       - name: Install convsim-core
         run: pip install -e "services/convsim-core[dev]"
       - name: Validate official packs (full policy check)
