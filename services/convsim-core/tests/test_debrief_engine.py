@@ -657,3 +657,27 @@ class TestDebriefErrorState:
 
         assert debrief_res.status_code == 500
         assert state_res.json()["state"] == "Error"
+
+    def test_debrief_retry_from_error_state_succeeds(self, tmp_config):
+        """After a debrief failure (Error state), retrying with a working runtime succeeds."""
+        app = create_app(tmp_config)
+        with TestClient(app) as client:
+            res = client.post("/api/sessions", json=_VALID_SETUP)
+            session_id = res.json()["session_id"]
+            client.post(f"/api/sessions/{session_id}/start")
+            client.post(
+                f"/api/sessions/{session_id}/turn",
+                json={"content": "I have experience managing cross-functional teams."},
+            )
+            client.post(f"/api/sessions/{session_id}/end")
+
+            app.state.runtime = _FailingDebriefRuntime()
+            first_res = client.post(f"/api/sessions/{session_id}/debrief")
+            assert first_res.status_code == 500
+
+            # Restore working runtime and retry — must not return 409.
+            app.state.runtime = FakeChatRuntime()
+            retry_res = client.post(f"/api/sessions/{session_id}/debrief")
+
+        assert retry_res.status_code == 200
+        assert retry_res.json()["session_id"] == session_id
