@@ -209,7 +209,7 @@ describe('ModelManager — confirm install', () => {
   it('shows the expected storage path', async () => {
     await goToConfirm()
     expect(
-      screen.getByText(/~\/.convsim\/models\/qwen3-4b-instruct-q4_k_m\.gguf/),
+      screen.getByText(/~\/.convsim\/models\/llm\/qwen3-4b-instruct-q4_k_m\.gguf/),
     ).toBeInTheDocument()
   })
 

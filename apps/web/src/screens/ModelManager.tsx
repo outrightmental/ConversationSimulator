@@ -377,7 +377,7 @@ export default function ModelManager() {
             </DetailRow>
             <DetailRow label="Storage path">
               <code style={{ fontSize: '0.8rem' }}>
-                ~/.convsim/models/{selectedModel.id}.gguf
+                ~/.convsim/models/llm/{selectedModel.id}.gguf
               </code>
             </DetailRow>
             <DetailRow label="Source">
