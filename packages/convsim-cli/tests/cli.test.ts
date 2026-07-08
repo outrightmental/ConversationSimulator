@@ -379,6 +379,23 @@ describe('import-pack — from directory', () => {
     expect(existsSync(join(dataDir, 'packs'))).toBe(false);
   });
 
+  it('returns exit code 1 for a non-existent path', () => {
+    const dataDir = track(mkdtempSync(join(tmpdir(), 'convsim-data-')));
+    const code = runImportPack('/tmp/this-does-not-exist-convsim-import-test', false, dataDir);
+    expect(code).toBe(1);
+  });
+
+  it('returns exit code 1 for a non-zip, non-directory file', () => {
+    const tmp = track(mkdtempSync(join(tmpdir(), 'convsim-import-type-')));
+    const tarPath = join(tmp, 'pack.tar.gz');
+    writeFileSync(tarPath, 'not a zip');
+    const dataDir = track(mkdtempSync(join(tmpdir(), 'convsim-data-')));
+    let code = -1;
+    const { stderr } = capture(() => { code = runImportPack(tarPath, false, dataDir); });
+    expect(code).toBe(1);
+    expect(stderr).toContain('INVALID_SOURCE');
+  });
+
   it('rejects a pack containing an executable file', () => {
     const packDir = track(makeValidPackDir());
     writeFileSync(join(packDir, 'run.sh'), '#!/bin/sh\necho evil\n');

@@ -37,11 +37,15 @@ function detectSourceKind(absPath: string): 'zip' | 'dir' {
   try {
     st = statSync(absPath);
   } catch {
-    throw new Error(`Path does not exist: ${absPath}`);
+    throw new PackLoaderError('MISSING_FILE', `Path does not exist: ${absPath}`, absPath);
   }
   if (st.isDirectory()) return 'dir';
   if (st.isFile() && extname(absPath).toLowerCase() === '.zip') return 'zip';
-  throw new Error(`Source must be a directory or a .zip file: ${absPath}`);
+  throw new PackLoaderError(
+    'INVALID_SOURCE',
+    `Source must be a directory or a .zip file: ${absPath}`,
+    absPath,
+  );
 }
 
 /**
