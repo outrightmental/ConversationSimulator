@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, statSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, statSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -194,6 +194,8 @@ describe('validate-pack — valid pack', () => {
     expect(result['name']).toBe('CLI Test Pack');
     expect(result['version']).toBe('0.2.0');
     expect(result['scenario_count']).toBe(1);
+    expect(result['npc_count']).toBe(1);
+    expect(result['rubric_count']).toBe(1);
     expect(result['scene_count']).toBe(0);
   });
 });
@@ -312,6 +314,8 @@ describe('import-pack — from directory', () => {
     const dataDir = track(mkdtempSync(join(tmpdir(), 'convsim-data-')));
     const code = runImportPack(brokenDir, false, dataDir);
     expect(code).toBe(1);
+    // Validation must fail before any files are written to the data directory.
+    expect(existsSync(join(dataDir, 'packs'))).toBe(false);
   });
 
   it('rejects a pack containing an executable file', () => {
@@ -322,6 +326,8 @@ describe('import-pack — from directory', () => {
     const { stderr } = capture(() => { code = runImportPack(packDir, false, dataDir); });
     expect(code).toBe(1);
     expect(stderr).toContain('FORBIDDEN_FILE');
+    // Security scan must reject before any files reach the data directory.
+    expect(existsSync(join(dataDir, 'packs'))).toBe(false);
   });
 });
 
@@ -362,8 +368,11 @@ describe('import-pack — from zip', () => {
     zip.addLocalFolder(packDir, '');
     zip.writeZip(zipPath);
     const dataDir = track(mkdtempSync(join(tmpdir(), 'convsim-data-')));
-    const code = runImportPack(zipPath, false, dataDir);
+    let code = -1;
+    const { stderr } = capture(() => { code = runImportPack(zipPath, false, dataDir); });
     expect(code).toBe(1);
+    expect(stderr).toContain('FORBIDDEN_FILE');
+    expect(existsSync(join(dataDir, 'packs'))).toBe(false);
   });
 
   it('rejects a zip with path-traversal entries (zip-slip)', () => {
