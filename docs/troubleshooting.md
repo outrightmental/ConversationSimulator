@@ -157,9 +157,10 @@ If the home screen shows a network error:
 2. **Pack metadata:** packs are bundled with the application and do not require a network connection. If pack loading fails, this is a bug — open a GitHub issue.
 3. **Stale browser cache:** a hard reload (`Ctrl+Shift+R` / `Cmd+Shift+R`) clears any stale service worker state.
 
-To verify that play is truly offline, run the built-in smoke test:
+To verify that play is truly offline, run the built-in smoke test. It ships as the `convsim` CLI (`@convsim/cli`); build it once first if you have not already:
 
 ```bash
+pnpm --filter @convsim/cli build
 npx convsim offline-smoke-test packs/official/job-interview-basic
 ```
 

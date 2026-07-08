@@ -114,9 +114,10 @@ See [local-models.md](local-models.md) for model recommendations by hardware.
 
 ### 7. Verify the installation
 
-Run the offline smoke test to confirm no service makes outbound network calls during play:
+Run the offline smoke test to confirm no service makes outbound network calls during play. The smoke test ships as the `convsim` CLI (`@convsim/cli`), which must be built once before first use:
 
 ```bash
+pnpm --filter @convsim/cli build
 npx convsim offline-smoke-test packs/official/job-interview-basic
 ```
 
