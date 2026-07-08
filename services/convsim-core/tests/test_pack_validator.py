@@ -70,6 +70,16 @@ def test_invalid_json_manifest_returns_error(tmp_path):
     assert result.valid is False
 
 
+def test_invalid_yaml_file_returns_error(tmp_path):
+    pack_dir = make_yaml_pack_dir(tmp_path)
+    (pack_dir / "npcs" / "test_npc.yaml").write_text(
+        "key: [unclosed bracket", encoding="utf-8"
+    )
+    result = validate_pack_dir(pack_dir)
+    assert _has_error(result, rule_id="INVALID_YAML")
+    assert result.valid is False
+
+
 def test_missing_required_field_returns_error(tmp_path):
     pack_dir = tmp_path / "incomplete"
     pack_dir.mkdir()
@@ -78,7 +88,17 @@ def test_missing_required_field_returns_error(tmp_path):
         encoding="utf-8",
     )
     result = validate_pack_dir(pack_dir)
-    assert result.errors  # schema violation for missing pack_id
+    assert _has_error(result, rule_id="SCHEMA_VIOLATION")
+
+
+def test_schema_violation_returns_error(tmp_path):
+    pack_dir = make_yaml_pack_dir(tmp_path)
+    (pack_dir / "npcs" / "test_npc.yaml").write_text(
+        _VALID_NPC_YAML.replace("age_band: adult", "age_band: 999"),
+        encoding="utf-8",
+    )
+    result = validate_pack_dir(pack_dir)
+    assert _has_error(result, rule_id="SCHEMA_VIOLATION")
 
 
 def test_forbidden_extension_rejected(tmp_path):
