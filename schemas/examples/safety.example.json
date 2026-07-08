@@ -3,12 +3,11 @@
   "policy_id": "default_safety",
   "description": "Default safety policy for example packs. Maintains a safe, professional context suitable for all ages.",
   "content_categories": {
-    "nsfw_sexual": "block",
-    "violence_graphic": "block",
-    "real_person_impersonation": "block",
-    "instructional_criminal": "block",
-    "medical_professional_advice": "redirect",
-    "crisis_content": "redirect"
+    "nsfw_sexual_content": "stop",
+    "real_person_impersonation": "refuse",
+    "criminal_instruction": "refuse",
+    "medical_or_therapy_claim": "redirect",
+    "harassment_extreme": "refuse"
   },
   "redirect_message": "That topic is outside the scope of this conversation. Let's refocus on the interaction.",
   "allow_profanity": false,
