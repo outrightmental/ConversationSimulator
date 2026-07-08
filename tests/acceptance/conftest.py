@@ -34,16 +34,3 @@ def client(tmp_config):
     app = create_app(tmp_config)
     with TestClient(app) as c:
         yield c
-
-
-_BEHAVIORAL_INTERVIEW_SETUP = {
-    "scenario_id": "behavioral_interview",
-    "difficulty": "normal",
-    "player_role_name": "Acceptance Tester",
-    "language": "en",
-    "input_mode": "text-only",
-    "tts_enabled": False,
-    "show_state_meters": False,
-    "save_transcript": True,
-    "seed": None,
-}
