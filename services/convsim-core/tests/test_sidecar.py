@@ -181,6 +181,33 @@ async def test_start_raises_when_executable_missing(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_start_raises_on_generic_oserror(tmp_path):
+    """Any OSError from create_subprocess_exec must leave state=CRASHED, not STARTING.
+
+    FileNotFoundError and PermissionError were already handled; other OSError
+    subclasses (e.g. EMFILE — too many open files) were not caught, which left
+    _state=STARTING with an open log handle and caused 500 instead of 503.
+    """
+    from unittest.mock import patch
+
+    sidecar = LlamaCppSidecar(log_dir=str(tmp_path / "logs"))
+
+    async def _raise_emfile(*_a, **_kw):
+        raise OSError(24, "Too many open files")
+
+    with patch("asyncio.create_subprocess_exec", _raise_emfile):
+        with pytest.raises(RuntimeError, match="Failed to start"):
+            await sidecar.start(
+                "fake.gguf",
+                executable="/bin/true",
+                port=_free_port(),
+            )
+
+    assert sidecar.state == SidecarState.CRASHED
+    assert sidecar._log_fh is None  # log handle must be closed, not leaked
+
+
+@pytest.mark.asyncio
 async def test_stop_when_not_running_is_noop(tmp_path):
     sidecar = LlamaCppSidecar(log_dir=str(tmp_path / "logs"))
     await sidecar.stop()  # must not raise

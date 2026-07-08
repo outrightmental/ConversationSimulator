@@ -200,7 +200,7 @@ class LlamaCppSidecar:
                 stdout=log_fh,
                 stderr=subprocess.STDOUT,
             )
-        except (FileNotFoundError, PermissionError) as exc:
+        except OSError as exc:
             self._state = SidecarState.CRASHED
             self._error = f"Failed to start llama-server: {exc}"
             self._close_log()
