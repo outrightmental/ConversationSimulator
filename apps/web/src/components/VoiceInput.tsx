@@ -33,6 +33,8 @@ export default function VoiceInput({ onSubmit, disabled = false, language }: Voi
           setUploadError('Speech-to-text is not installed. Please type your response.')
         } else if (result.transcript && !disabled) {
           onSubmit?.(result.transcript)
+        } else if (result.status === 'ok' && !result.transcript) {
+          setUploadError('No speech detected. Please try again or type your response.')
         }
       } catch (err) {
         console.error('STT upload failed:', err)
