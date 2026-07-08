@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
@@ -79,5 +79,24 @@ describe('loadPacksFromRoots — version selection', () => {
     const result = loadPacksFromRoots({ officialRoot, communityRoot, localDevRoot: localRoot });
     expect(result.packs).toHaveLength(1);
     expect(result.packs[0]?.manifest.version).toBe('1.1.0');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Root-level inaccessible entries
+// ---------------------------------------------------------------------------
+
+describe('loadPacksFromRoots — inaccessible entries in root', () => {
+  it('loads valid packs even when the root contains a broken symlink', () => {
+    const localRoot = join(rootsDir, 'local');
+    mkdirSync(localRoot);
+    makePackInDir(localRoot, 'valid-pack', { manifestYaml: VALID_MANIFEST_YAML });
+    // A symlink pointing to a non-existent target: statSync throws ENOENT on it.
+    symlinkSync(join(localRoot, 'no-such-target'), join(localRoot, 'broken-link'));
+
+    const result = loadPacksFromRoots({ localDevRoot: localRoot });
+    expect(result.packs).toHaveLength(1);
+    expect(result.packs[0]?.manifest.pack_id).toBe('test.minimal_pack');
+    expect(result.errors).toHaveLength(0);
   });
 });

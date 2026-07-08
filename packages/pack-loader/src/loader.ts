@@ -225,7 +225,13 @@ export function loadPacksFromRoots(config: PackRootConfig): LoadRootsResult {
     try {
       packDirs = readdirSync(dir)
         .map((name) => join(dir, name))
-        .filter((d) => statSync(d).isDirectory());
+        .filter((d) => {
+          try {
+            return statSync(d).isDirectory();
+          } catch {
+            return false;
+          }
+        });
     } catch {
       continue;
     }
