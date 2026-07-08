@@ -26,6 +26,10 @@ export interface HealthResponse {
 export interface SttUploadResponse {
   transcript: string | null
   status: string
+  language?: string | null
+  confidence?: number | null
+  duration_ms?: number | null
+  processing_ms?: number | null
 }
 
 async function parseErrorMessage(res: Response): Promise<string> {
