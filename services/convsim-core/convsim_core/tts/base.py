@@ -43,3 +43,11 @@ class TtsWorker(ABC):
         Called by the privacy 'clear cache' action.  Returns the number of
         files deleted.  Must not raise — callers do not expect failures here.
         """
+
+    @abstractmethod
+    async def cache_size(self) -> dict:
+        """Return cache size information without deleting any files.
+
+        Returns a dict with ``files`` (int) and ``size_bytes`` (int).
+        Must not raise — callers do not expect failures here.
+        """

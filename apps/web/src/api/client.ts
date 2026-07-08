@@ -22,6 +22,9 @@ import type {
   BenchmarkResponse,
   RuntimeSettingsResponse,
   RuntimeSettingsRequest,
+  VoicesResponse,
+  TtsCacheSizeResponse,
+  TtsCacheClearResponse,
 } from '@convsim/shared';
 
 export type { HealthResponse };
@@ -302,6 +305,18 @@ export const api = {
   },
   resetRuntimeSettings(): Promise<RuntimeSettingsResponse> {
     return post<RuntimeSettingsResponse>('/runtime/settings/reset')
+  },
+  listVoices(): Promise<VoicesResponse> {
+    return get<VoicesResponse>('/tts/voices')
+  },
+  getTtsCacheSize(): Promise<TtsCacheSizeResponse> {
+    return get<TtsCacheSizeResponse>('/tts/cache/size')
+  },
+  clearTtsCache(): Promise<TtsCacheClearResponse> {
+    return post<TtsCacheClearResponse>('/tts/cache/clear')
+  },
+  vadHealth(): Promise<VadHealthResponse> {
+    return get<VadHealthResponse>('/vad/health')
   },
   connectSession(
     sessionId: string,

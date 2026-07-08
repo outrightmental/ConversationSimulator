@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, type ReactNode } from 'react'
 import { api } from '../api/client'
 import { readPrivacyPref, writePrivacyPref, PRIVACY_KEYS, isDevModeEnabled } from '../privacyPrefs'
 import RuntimeSettingsPanel from '../components/RuntimeSettingsPanel'
+import VoiceSettingsPanel from '../components/VoiceSettingsPanel'
 
 type ClearState = 'idle' | 'confirming' | 'clearing' | 'done' | 'error'
 
@@ -228,7 +229,7 @@ export default function Settings() {
         <RuntimeSettingsPanel />
       </section>
 
-      {/* TTS cache */}
+      {/* Voice output */}
       <section style={{ marginBottom: '2rem' }}>
         <SectionHeading>Voice output</SectionHeading>
         <PrivacyToggle
@@ -238,6 +239,7 @@ export default function Settings() {
           onChange={handleSaveTtsCacheChange}
           description="Caching generated speech speeds up repeated phrases. Cached audio stays on your device and is never shared."
         />
+        <VoiceSettingsPanel />
       </section>
 
       {/* Data folder */}
