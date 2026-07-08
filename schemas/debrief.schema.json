@@ -10,6 +10,7 @@
     "scenario_id",
     "outcome",
     "scores",
+    "summary",
     "strengths",
     "improvements",
     "turning_points"

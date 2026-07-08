@@ -525,7 +525,14 @@ class TestDebriefWithRubricObservations:
         assert body["scores"]["communication_clarity"] > 50
 
     def test_debrief_turning_points_reference_real_turns(self, tmp_config):
-        """Golden fixture: all turning_point turn_numbers must exist in the transcript."""
+        """Golden fixture: all turning_point turn_numbers must exist in the transcript.
+
+        _RubricRuntime always returns turn_number=3 in its debrief. With 1 player turn
+        the stored transcript is {1, 2} (player_turn=2n-1, npc_turn=2n), so turn 3 would
+        be filtered out and the assertion loop would trivially pass over an empty list.
+        Two player turns produce stored turns {1, 2, 3, 4}, so turn 3 survives the filter
+        and the non-empty assertion below ensures the loop actually runs.
+        """
         app = create_app(tmp_config)
         with TestClient(app) as client:
             res = client.post("/api/sessions", json=_VALID_SETUP)
@@ -534,10 +541,15 @@ class TestDebriefWithRubricObservations:
 
             app.state.runtime = _RubricRuntime()
 
-            client.post(
-                f"/api/sessions/{session_id}/turn",
-                json={"content": "I led a cross-functional team at my last company."},
-            )
+            # Two turns so stored turn numbers include 3 (second player turn = 2*2-1).
+            for msg in [
+                "I led a cross-functional team at my last company.",
+                "The biggest challenge was keeping everyone aligned on priorities.",
+            ]:
+                client.post(
+                    f"/api/sessions/{session_id}/turn",
+                    json={"content": msg},
+                )
             client.post(f"/api/sessions/{session_id}/end")
 
             debrief_res = client.post(f"/api/sessions/{session_id}/debrief")
@@ -551,6 +563,11 @@ class TestDebriefWithRubricObservations:
         assert debrief_res.status_code == 200
         body = debrief_res.json()
 
+        # The filter must keep at least one turning point (turn 3 is in stored turns).
+        assert len(body["turning_points"]) > 0, (
+            "Expected at least one turning point to survive the filter; "
+            f"stored turns were {stored_turn_numbers}"
+        )
         for tp in body["turning_points"]:
             assert tp["turn_number"] in stored_turn_numbers, (
                 f"Turning point references turn {tp['turn_number']} "
