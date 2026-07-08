@@ -54,7 +54,7 @@ function main(): void {
 
   if (values['help'] === true || positionals.length === 0) {
     process.stdout.write(HELP + '\n');
-    process.exit(positionals.length === 0 ? 2 : 0);
+    process.exit(values['help'] === true ? 0 : 2);
   }
 
   const command = positionals[0];
