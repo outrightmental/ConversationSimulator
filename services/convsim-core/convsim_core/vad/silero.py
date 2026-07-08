@@ -218,7 +218,7 @@ class SileroVadWorker(VadWorker):
         return self._session
 
     async def calibrate(self, request: VadRequest) -> VadCalibrationResult:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
 
         # Attempt audio decoding: prefer ffmpeg, fall back to WAV parser.
         samples: list[float] | None = await loop.run_in_executor(

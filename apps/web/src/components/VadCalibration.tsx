@@ -61,7 +61,6 @@ export default function VadCalibration({ vad, stream, onDone }: VadCalibrationPr
       setPhase('recording') // brief "processing" label before calibrate resolves
       try {
         await vad.calibrate(blob)
-        setLocalSettings(vad.settings)
         setPhase('done')
       } catch {
         setPhase('error')

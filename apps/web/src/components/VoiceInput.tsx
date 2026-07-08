@@ -27,10 +27,11 @@ export default function VoiceInput({ onSubmit, disabled = false, language }: Voi
 
   const vad = useVad()
   const isHandsFree = vad.settings.mode === 'hands-free'
+  const { startSilenceDetection, stopSilenceDetection } = vad
 
   const handleAudioReady = useCallback(
     async (blob: Blob) => {
-      vad.stopSilenceDetection()
+      stopSilenceDetection()
       setIsSubmitting(true)
       setUploadError(null)
       try {
@@ -55,7 +56,7 @@ export default function VoiceInput({ onSubmit, disabled = false, language }: Voi
         setIsSubmitting(false)
       }
     },
-    [onSubmit, disabled, language, vad],
+    [onSubmit, disabled, language, stopSilenceDetection],
   )
 
   const {
@@ -72,17 +73,17 @@ export default function VoiceInput({ onSubmit, disabled = false, language }: Voi
   // Wrap start/stop to hook in VAD silence detection for hands-free mode.
   const startRecording = useCallback(() => {
     if (isHandsFree && stream) {
-      vad.startSilenceDetection(stream, () => {
+      startSilenceDetection(stream, () => {
         stopPttRecording()
       })
     }
     startPttRecording()
-  }, [isHandsFree, stream, vad, startPttRecording, stopPttRecording])
+  }, [isHandsFree, stream, startSilenceDetection, startPttRecording, stopPttRecording])
 
   const stopRecording = useCallback(() => {
-    vad.stopSilenceDetection()
+    stopSilenceDetection()
     stopPttRecording()
-  }, [vad, stopPttRecording])
+  }, [stopSilenceDetection, stopPttRecording])
 
   // Global Space hotkey for PTT — skips when any interactive element is focused, mic is
   // unavailable, a prior recording is still being uploaded, or the component is disabled.
