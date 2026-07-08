@@ -131,18 +131,18 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 ZIP_PATH="${TMP_DIR}/${ASSET_NAME}"
 
 echo "Downloading ${DOWNLOAD_URL} ..."
+_DOWNLOAD_FAILED_MSG() {
+  echo "" >&2
+  echo "Download failed. Check that ${RELEASE_TAG} has a ${ASSET_NAME} asset." >&2
+  echo "Browse releases: https://github.com/${REPO}/releases" >&2
+}
 if command -v curl &>/dev/null; then
-  curl -fL --progress-bar -o "$ZIP_PATH" "$DOWNLOAD_URL" || {
-    echo "" >&2
-    echo "Download failed. Check that ${RELEASE_TAG} has a ${ASSET_NAME} asset." >&2
-    echo "Browse releases: https://github.com/${REPO}/releases" >&2
-    exit 1
-  }
+  curl -fL --progress-bar -o "$ZIP_PATH" "$DOWNLOAD_URL" || { _DOWNLOAD_FAILED_MSG; exit 1; }
 elif command -v wget &>/dev/null; then
-  wget -q --show-progress -O "$ZIP_PATH" "$DOWNLOAD_URL" || {
-    echo "Download failed." >&2
-    exit 1
-  }
+  wget -q --show-progress -O "$ZIP_PATH" "$DOWNLOAD_URL" || { _DOWNLOAD_FAILED_MSG; exit 1; }
+else
+  echo "curl or wget is required to download the binary." >&2
+  exit 1
 fi
 
 echo "Extracting..."
