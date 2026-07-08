@@ -83,6 +83,17 @@ async def clear_tts_cache(request: Request) -> dict:
     return {"deleted_files": deleted}
 
 
+@router.get("/api/tts/cache/size")
+async def get_tts_cache_size(request: Request) -> dict:
+    """Return the number of cached TTS audio files and their total size in bytes.
+
+    Called by the privacy settings panel to display the current cache footprint
+    before or after a clear action.
+    """
+    tts_worker = request.app.state.tts_worker
+    return await tts_worker.cache_size()
+
+
 @router.get("/api/tts/voices")
 async def list_voices() -> dict:
     """Return the approved built-in voice list.

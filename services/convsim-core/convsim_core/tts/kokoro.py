@@ -141,6 +141,19 @@ class KokoroTtsWorker(TtsWorker):
                 pass
         return count
 
+    async def cache_size(self) -> dict:
+        if not self._cache_dir.exists():
+            return {"files": 0, "size_bytes": 0}
+        files = 0
+        size_bytes = 0
+        for entry in self._cache_dir.glob("*.wav"):
+            try:
+                size_bytes += entry.stat().st_size
+                files += 1
+            except OSError:
+                pass
+        return {"files": files, "size_bytes": size_bytes}
+
     async def health(self) -> TtsHealth:
         checked_at = datetime.now(timezone.utc).isoformat()
         try:
