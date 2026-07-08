@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Optional
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -9,6 +10,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 _DEFAULT_DATA_DIR = str(Path.home() / ".convsim" / "data")
 _DEFAULT_LOG_DIR = str(Path.home() / ".convsim" / "logs")
 _DEFAULT_DB_DIR = str(Path.home() / ".convsim" / "db")
+_DEFAULT_PACKS_DIR = str(Path.home() / ".convsim" / "packs")
 
 
 class ServiceConfig(BaseSettings):
@@ -31,6 +33,12 @@ class ServiceConfig(BaseSettings):
     data_dir: str = _DEFAULT_DATA_DIR
     log_dir: str = _DEFAULT_LOG_DIR
     db_dir: str = _DEFAULT_DB_DIR
+    packs_dir: str = _DEFAULT_PACKS_DIR
+    # Set CONVSIM_LOCAL_DEV_PACKS_DIR to a directory that contains in-progress
+    # pack folders.  The /api/packs/import/folder endpoint only accepts source
+    # paths that fall within packs_dir or this directory; leaving it unset
+    # restricts folder import to paths already inside packs_dir.
+    local_dev_packs_dir: Optional[str] = None
     lan_access_enabled: bool = False
     runtime_id: str = "fake"
     stt_worker_id: str = "whisper_cpp"

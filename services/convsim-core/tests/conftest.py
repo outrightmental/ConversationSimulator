@@ -14,7 +14,10 @@ def tmp_config(tmp_path):
         data_dir=str(tmp_path / "data"),
         log_dir=str(tmp_path / "logs"),
         db_dir=str(tmp_path / "db"),
-        stt_worker_id="whisper_cpp",
+        packs_dir=str(tmp_path / "packs"),
+        # Allow folder imports from tmp_path so integration tests can use
+        # make_pack_dir() without placing packs inside packs_dir itself.
+        local_dev_packs_dir=str(tmp_path),
     )
 
 
