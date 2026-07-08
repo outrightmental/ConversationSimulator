@@ -28,6 +28,7 @@ export default function Home() {
   const sttReady = runtime?.stt_ready ?? false
   const ttsReady = runtime?.tts_ready ?? false
   const networkRequired = runtime?.network_required ?? false
+  const lastError = runtime?.last_error ?? null
 
   const runtimeBadgeProps = runtimeBadge(loading, health.healthy)
   const llmBadgeProps = loading
@@ -39,7 +40,7 @@ export default function Home() {
   const ttsBadgeProps = readinessBadge(loading, ttsReady)
 
   const showNoModelPrompt = !loading && health.healthy && !llmReady
-  const showError = health.state === 'unavailable'
+  const showUnreachable = health.state === 'unavailable' && !health.runtime
 
   return (
     <div>
@@ -100,9 +101,14 @@ export default function Home() {
           </li>
         </ul>
 
-        {showError && (
+        {showUnreachable && (
           <p role="alert" style={{ color: '#cc4444', marginTop: '0.75rem' }}>
             Cannot reach the local runtime. Ensure the API server is running.
+          </p>
+        )}
+        {lastError && (
+          <p role="alert" style={{ color: '#cc4444', marginTop: '0.75rem' }}>
+            Last error: {lastError}
           </p>
         )}
       </section>
