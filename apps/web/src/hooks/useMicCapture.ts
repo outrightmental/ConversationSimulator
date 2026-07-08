@@ -8,6 +8,8 @@ export interface UseMicCaptureReturn {
   isRecording: boolean
   recordingSeconds: number
   error: string | null
+  /** The active MediaStream after permission is granted, null otherwise. */
+  stream: MediaStream | null
   requestPermission: () => Promise<void>
   startRecording: () => void
   stopRecording: () => void
@@ -34,6 +36,7 @@ export function useMicCapture(onAudioReady?: (blob: Blob) => void): UseMicCaptur
   const [isRecording, setIsRecording] = useState(false)
   const [recordingSeconds, setRecordingSeconds] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  const [stream, setStream] = useState<MediaStream | null>(null)
 
   const streamRef = useRef<MediaStream | null>(null)
   const recorderRef = useRef<MediaRecorder | null>(null)
@@ -109,8 +112,9 @@ export function useMicCapture(onAudioReady?: (blob: Blob) => void): UseMicCaptur
     setPermission('requesting')
     setError(null)
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
-      streamRef.current = stream
+      const s = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+      streamRef.current = s
+      setStream(s)
       setPermission('granted')
     } catch (err) {
       const isDenied =
@@ -135,6 +139,7 @@ export function useMicCapture(onAudioReady?: (blob: Blob) => void): UseMicCaptur
     isRecording,
     recordingSeconds,
     error,
+    stream,
     requestPermission,
     startRecording,
     stopRecording,

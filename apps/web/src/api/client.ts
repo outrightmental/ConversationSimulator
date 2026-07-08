@@ -42,6 +42,23 @@ export interface SttUploadResponse {
   processing_ms?: number | null
 }
 
+export interface VadCalibrateResponse {
+  recommended_threshold: number
+  noise_floor: number
+  worker_id: string
+  status: 'ok' | 'unavailable' | 'error'
+  message?: string | null
+}
+
+export interface VadHealthResponse {
+  worker_id: string
+  worker_name: string
+  status: 'unavailable' | 'starting' | 'ready' | 'degraded' | 'error'
+  model_path?: string | null
+  message?: string | null
+  checked_at: string
+}
+
 async function parseErrorMessage(res: Response): Promise<string> {
   const text = await res.text()
   let message = text || `${res.status} ${res.statusText}`
@@ -100,6 +117,17 @@ export const apiClient = {
       form.append('language', language)
     }
     return postForm<SttUploadResponse>('/stt/upload', form)
+  },
+
+  vadHealth(): Promise<VadHealthResponse> {
+    return get<VadHealthResponse>('/vad/health')
+  },
+
+  vadCalibrate(blob: Blob): Promise<VadCalibrateResponse> {
+    const ext = blob.type.includes('ogg') ? 'ogg' : 'webm'
+    const form = new FormData()
+    form.append('audio', blob, `calibration.${ext}`)
+    return postForm<VadCalibrateResponse>('/vad/calibrate', form)
   },
 }
 
