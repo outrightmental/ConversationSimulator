@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import AdmZip from 'adm-zip';
 
+import { PackIndex } from '@convsim/pack-loader';
 import { runValidatePack } from '../src/commands/validate-pack.js';
 import { runTestPack } from '../src/commands/test-pack.js';
 import { runImportPack } from '../src/commands/import-pack.js';
@@ -475,6 +476,26 @@ describe('import-pack — installation verification', () => {
     runImportPack(packDir, false, dataDir);
     // The manifest must be present at the installed location.
     expect(existsSync(join(dataDir, 'packs', 'test.cli_pack', 'manifest.yaml'))).toBe(true);
+  });
+
+  it('registers the pack in the SQLite index on success', () => {
+    const packDir = track(makeValidPackDir());
+    const dataDir = track(mkdtempSync(join(tmpdir(), 'convsim-data-')));
+    expect(runImportPack(packDir, false, dataDir)).toBe(0);
+
+    const dbPath = join(dataDir, 'index.db');
+    expect(existsSync(dbPath)).toBe(true);
+
+    const index = PackIndex.open(dbPath);
+    try {
+      const packs = index.listPacks();
+      const entry = packs.find((p) => p.pack_id === 'test.cli_pack');
+      expect(entry).toBeDefined();
+      expect(entry?.version).toBe('0.2.0');
+      expect(entry?.scenario_count).toBe(1);
+    } finally {
+      index.close();
+    }
   });
 
   it('replaces an already-installed pack on re-import', () => {
