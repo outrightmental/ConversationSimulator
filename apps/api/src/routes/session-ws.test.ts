@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { buildApp } from '../index.js';
 import { resetDb } from '../db.js';
+import { broadcast } from '../ws/session-events.js';
 import type { FastifyInstance } from 'fastify';
 import type {
   SessionCreateResponse,
@@ -474,5 +475,94 @@ describe('multi-client fan-out', () => {
 
     expect(turn1.some((e) => e.type === 'npc.final')).toBe(true);
     expect(turn2.some((e) => e.type === 'npc.final')).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Conditional event types (scenario.state_delta, scenario.event, safety.redirect)
+//
+// The fake NPC always returns empty state_delta / event_flags, so these
+// broadcasts are never triggered through the HTTP turn handler in tests.
+// We exercise them by calling broadcast() directly to prove the events are
+// delivered and well-formed on the wire.
+// ---------------------------------------------------------------------------
+
+describe('conditional broadcast event types', () => {
+  it('delivers scenario.state_delta to connected clients', async () => {
+    const session_id = await createSession();
+    const conn = await connectWs(`/ws/session/${session_id}`);
+    await conn.take(1); // initial session.state
+
+    broadcast(session_id, 'scenario.state_delta', {
+      delta: { trust: 5 },
+      state_vars: { trust: 55, patience: 75, pressure: 25, rapport: 50, openness: 50, objective_progress: 0 },
+    });
+
+    const [evt] = await conn.take(1);
+    conn.close();
+
+    expect(evt.type).toBe('scenario.state_delta');
+    expect(evt.session_id).toBe(session_id);
+    expect(typeof evt.seq).toBe('number');
+  });
+
+  it('delivers scenario.event to connected clients', async () => {
+    const session_id = await createSession();
+    const conn = await connectWs(`/ws/session/${session_id}`);
+    await conn.take(1); // initial session.state
+
+    broadcast(session_id, 'scenario.event', { flags: ['rapport_milestone'] });
+
+    const [evt] = await conn.take(1);
+    conn.close();
+
+    expect(evt.type).toBe('scenario.event');
+    expect(evt.session_id).toBe(session_id);
+  });
+
+  it('delivers safety.redirect to connected clients', async () => {
+    const session_id = await createSession();
+    const conn = await connectWs(`/ws/session/${session_id}`);
+    await conn.take(1); // initial session.state
+
+    broadcast(session_id, 'safety.redirect', { reason: 'Test safety redirect' });
+
+    const [evt] = await conn.take(1);
+    conn.close();
+
+    expect(evt.type).toBe('safety.redirect');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Seq counter advances when events fire with no clients connected
+// ---------------------------------------------------------------------------
+
+describe('seq gap detection during disconnection', () => {
+  it('seq advances for broadcasts that occur while no client is connected', async () => {
+    const session_id = await createSession();
+
+    // Connect, observe initial state (seq=1) and start events (seq=2, seq=3).
+    const conn1 = await connectWs(`/ws/session/${session_id}`);
+    await conn1.take(1);
+    await startSession(session_id);
+    const [, lastStartEvt] = await conn1.take(2);
+    conn1.close();
+
+    // Submit a turn while disconnected — 3 broadcasts (npc.token, npc.final,
+    // session.state) should still advance the seq counter.
+    await app.inject({
+      method: 'POST',
+      url: `/api/sessions/${session_id}/turn`,
+      payload: { content: 'Turn while disconnected.' },
+    });
+
+    // Reconnect: the initial session.state must have a seq greater than
+    // (lastStartEvt.seq + 1), proving the counter advanced during disconnection.
+    const conn2 = await connectWs(`/ws/session/${session_id}`);
+    const [reconnectEvt] = await conn2.take(1);
+    conn2.close();
+
+    expect(reconnectEvt.seq).toBeGreaterThan(lastStartEvt!.seq + 1);
   });
 });
