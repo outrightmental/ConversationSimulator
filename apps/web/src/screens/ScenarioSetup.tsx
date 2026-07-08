@@ -9,7 +9,11 @@ export default function ScenarioSetup() {
 
   function handleSessionCreated(session: SessionCreateResponse) {
     navigate(`/conversation/${session.session_id}`, {
-      state: { language: session.setup.language },
+      state: {
+        language: session.setup.language,
+        show_state_meters: session.setup.show_state_meters,
+        scenario_id: session.scenario_id,
+      },
     })
   }
 
