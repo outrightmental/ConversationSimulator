@@ -462,7 +462,6 @@ interface TestChatPanelProps {
 }
 
 function TestChatPanel({ pack, validation }: TestChatPanelProps) {
-  const [sessionId, setSessionId] = useState<string | null>(null)
   const [chatStatus, setChatStatus] = useState<'idle' | 'starting' | 'active' | 'sending' | 'ended'>('idle')
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([])
   const [stateVars, setStateVars] = useState<Record<string, number>>({})
@@ -503,7 +502,6 @@ function TestChatPanel({ pack, validation }: TestChatPanelProps) {
     try {
       const result = await api.workbench.startTestSession(pack.kind, pack.slug)
       sessionIdRef.current = result.session_id
-      setSessionId(result.session_id)
       setStateVars(result.state_vars)
       setTranscript([{ role: 'npc', content: result.npc_opening }])
       setChatStatus('active')
@@ -521,7 +519,6 @@ function TestChatPanel({ pack, validation }: TestChatPanelProps) {
   async function handleDiscard() {
     const id = sessionIdRef.current
     sessionIdRef.current = null
-    setSessionId(null)
     setChatStatus('idle')
     setTranscript([])
     setStateVars({})
@@ -537,7 +534,6 @@ function TestChatPanel({ pack, validation }: TestChatPanelProps) {
   async function handleReset() {
     const id = sessionIdRef.current
     sessionIdRef.current = null
-    setSessionId(null)
     if (id) {
       try { await api.deleteSession(id) } catch { /* ignore */ }
     }
