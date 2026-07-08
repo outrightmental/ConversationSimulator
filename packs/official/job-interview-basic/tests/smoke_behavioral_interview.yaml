@@ -48,9 +48,9 @@ static_assertions:
   - description: NPC is marked fictional
     path: npc.fictional
     check: "equals true"
-  - description: Safety policy blocks nsfw_sexual content
-    path: safety.content_categories.nsfw_sexual
-    check: "equals block"
+  - description: Safety policy stops nsfw_sexual_content
+    path: safety.content_categories.nsfw_sexual_content
+    check: "equals stop"
   - description: Pack manifest declares entry scenario
     path: manifest.entry_scenarios
     check: "contains scenarios/behavioral_interview.yaml"
