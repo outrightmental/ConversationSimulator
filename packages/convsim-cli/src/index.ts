@@ -5,6 +5,7 @@ import { runValidatePack } from './commands/validate-pack.js';
 import { runTestPack } from './commands/test-pack.js';
 import { runImportPack } from './commands/import-pack.js';
 import { runExportPack } from './commands/export-pack.js';
+import { runOfflineSmokeTest } from './commands/offline-smoke-test.js';
 import { writeErrorLine } from './output.js';
 
 // ---------------------------------------------------------------------------
@@ -18,10 +19,11 @@ Usage:
   convsim <command> [options] <path>
 
 Commands:
-  validate-pack <path>      Validate a pack directory (schema + security checks)
-  test-pack     <path>      Run the automated test suite for a pack (not yet available)
-  import-pack   <path>      Import a pack directory or .zip into the user data directory
-  export-pack   <path>      Export a pack directory to a .zip archive
+  validate-pack       <path>   Validate a pack directory (schema + security checks)
+  test-pack           <path>   Run the automated test suite for a pack (not yet available)
+  import-pack         <path>   Import a pack directory or .zip into the user data directory
+  export-pack         <path>   Export a pack directory to a .zip archive
+  offline-smoke-test  <path>   Verify a pack plays without any outbound network access
 
 Options:
   --json                    Output machine-readable JSON instead of human text
@@ -30,7 +32,7 @@ Options:
 
 Exit codes:
   0   Success
-  1   Validation or import error
+  1   Validation, import, or offline check error
   2   Invalid usage (bad arguments)
   3   Unexpected system error
 `.trim();
@@ -99,6 +101,15 @@ function main(): void {
       const outputVal = values['output'];
       const outputPath = typeof outputVal === 'string' ? outputVal : undefined;
       process.exit(runExportPack(packPath, json, outputPath));
+    }
+
+    case 'offline-smoke-test': {
+      const packPath = positionals[1];
+      if (!packPath) {
+        writeErrorLine('Usage: convsim offline-smoke-test [--json] <pack-directory>');
+        process.exit(2);
+      }
+      process.exit(runOfflineSmokeTest(packPath, json));
     }
 
     default:
