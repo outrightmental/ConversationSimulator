@@ -454,6 +454,43 @@ describe('VoiceInput — audio upload flow', () => {
   })
 })
 
+describe('VoiceInput — VAD status indicator', () => {
+  it('shows stopping state even when isRecording=false (auto-stop moment)', () => {
+    // When the silence timer fires, React 18 batches vadState='stopping' together with
+    // isRecording=false. The indicator must not gate on isRecording or the state is invisible.
+    vi.mocked(useVad).mockReturnValue(
+      makeVadState({ settings: { mode: 'hands-free', threshold: 0.05, silenceDurationMs: 1500, calibratedAt: null }, vadState: 'stopping' }),
+    )
+    vi.mocked(useMicCapture).mockReturnValue(makeMicState({ isRecording: false }))
+
+    render(<VoiceInput />)
+
+    expect(screen.getByRole('status', { name: /vad status: auto-stopping/i })).toBeInTheDocument()
+  })
+
+  it('shows listening state during hands-free recording', () => {
+    vi.mocked(useVad).mockReturnValue(
+      makeVadState({ settings: { mode: 'hands-free', threshold: 0.05, silenceDurationMs: 1500, calibratedAt: null }, vadState: 'listening' }),
+    )
+    vi.mocked(useMicCapture).mockReturnValue(makeMicState({ isRecording: true }))
+
+    render(<VoiceInput />)
+
+    expect(screen.getByRole('status', { name: /vad status: listening/i })).toBeInTheDocument()
+  })
+
+  it('shows idle state between recordings in hands-free mode', () => {
+    vi.mocked(useVad).mockReturnValue(
+      makeVadState({ settings: { mode: 'hands-free', threshold: 0.05, silenceDurationMs: 1500, calibratedAt: null }, vadState: 'idle' }),
+    )
+    vi.mocked(useMicCapture).mockReturnValue(makeMicState({ isRecording: false }))
+
+    render(<VoiceInput />)
+
+    expect(screen.getByRole('status', { name: /vad status: idle/i })).toBeInTheDocument()
+  })
+})
+
 describe('VoiceInput — disabled prop', () => {
   it('does not call startRecording on Space keydown when disabled', () => {
     const startRecording = vi.fn()

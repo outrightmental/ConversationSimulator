@@ -219,7 +219,7 @@ export default function VoiceInput({ onSubmit, disabled = false, language }: Voi
 
           {isHandsFree && (
             <>
-              <VadStatusIndicator state={isRecording ? vad.vadState : 'idle'} />
+              <VadStatusIndicator state={vad.vadState} />
               <button
                 type="button"
                 onClick={() => setShowCalibration((v) => !v)}
