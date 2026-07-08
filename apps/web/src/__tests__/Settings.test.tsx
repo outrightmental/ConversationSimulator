@@ -33,8 +33,15 @@ const SESSION_B = {
   setup: {} as unknown as SessionCreateRequest,
 }
 
-function renderSettings() {
-  return render(<Settings />)
+async function renderSettings() {
+  render(<Settings />)
+  // Wait for both mount effects (getDataFolder + listSessions) to fire and
+  // flush their state updates inside act(), preventing act() warnings in tests
+  // that don't otherwise await async work.
+  await waitFor(() => {
+    expect(mockApi.getDataFolder).toHaveBeenCalled()
+    expect(mockApi.listSessions).toHaveBeenCalled()
+  })
 }
 
 beforeEach(() => {
@@ -51,14 +58,14 @@ beforeEach(() => {
 
 describe('privacy notice', () => {
   it('states conversations are not sent to servers', async () => {
-    renderSettings()
+    await renderSettings()
     expect(
       screen.getByText(/conversations are processed entirely on your device/i),
     ).toBeInTheDocument()
   })
 
   it('states no conversation data is sent to external servers', async () => {
-    renderSettings()
+    await renderSettings()
     expect(
       screen.getByText(/no conversation data is ever sent to external servers/i),
     ).toBeInTheDocument()
@@ -71,25 +78,25 @@ describe('privacy notice', () => {
 
 describe('transcript saving toggle', () => {
   it('shows the save transcripts checkbox', async () => {
-    renderSettings()
+    await renderSettings()
     expect(
       screen.getByRole('checkbox', { name: /save transcripts locally/i }),
     ).toBeInTheDocument()
   })
 
   it('transcript saving is enabled by default', async () => {
-    renderSettings()
+    await renderSettings()
     const checkbox = screen.getByRole('checkbox', { name: /save transcripts locally/i })
     expect(checkbox).toBeChecked()
   })
 
   it('shows local-only note when transcript saving is on', async () => {
-    renderSettings()
+    await renderSettings()
     expect(screen.getByText(/saved to your local data folder only/i)).toBeInTheDocument()
   })
 
   it('shows not-saved note when transcript saving is toggled off', async () => {
-    renderSettings()
+    await renderSettings()
     const checkbox = screen.getByRole('checkbox', { name: /save transcripts locally/i })
     fireEvent.click(checkbox)
     expect(checkbox).not.toBeChecked()
@@ -97,7 +104,7 @@ describe('transcript saving toggle', () => {
   })
 
   it('can be toggled back on after being turned off', async () => {
-    renderSettings()
+    await renderSettings()
     const checkbox = screen.getByRole('checkbox', { name: /save transcripts locally/i })
     fireEvent.click(checkbox)
     fireEvent.click(checkbox)
@@ -110,15 +117,15 @@ describe('transcript saving toggle', () => {
 // ---------------------------------------------------------------------------
 
 describe('TTS cache toggle', () => {
-  it('shows the cache TTS audio checkbox', () => {
-    renderSettings()
+  it('shows the cache TTS audio checkbox', async () => {
+    await renderSettings()
     expect(
       screen.getByRole('checkbox', { name: /cache tts audio locally/i }),
     ).toBeInTheDocument()
   })
 
-  it('TTS cache is enabled by default', () => {
-    renderSettings()
+  it('TTS cache is enabled by default', async () => {
+    await renderSettings()
     expect(screen.getByRole('checkbox', { name: /cache tts audio locally/i })).toBeChecked()
   })
 })
@@ -129,7 +136,7 @@ describe('TTS cache toggle', () => {
 
 describe('data folder', () => {
   it('displays the data folder path returned by the API', async () => {
-    renderSettings()
+    await renderSettings()
     await waitFor(() =>
       expect(screen.getByTestId('data-folder-path')).toHaveTextContent('/home/user/.convsim/db'),
     )
@@ -137,7 +144,7 @@ describe('data folder', () => {
 
   it('shows an error message when the API fails', async () => {
     mockApi.getDataFolder.mockRejectedValue(new Error('network error'))
-    renderSettings()
+    await renderSettings()
     await waitFor(() =>
       expect(screen.getByText(/could not retrieve data folder path/i)).toBeInTheDocument(),
     )
@@ -149,15 +156,15 @@ describe('data folder', () => {
 // ---------------------------------------------------------------------------
 
 describe('clear local data', () => {
-  it('shows the clear all local data button', () => {
-    renderSettings()
+  it('shows the clear all local data button', async () => {
+    await renderSettings()
     expect(
       screen.getByRole('button', { name: /clear all local data/i }),
     ).toBeInTheDocument()
   })
 
   it('shows a confirmation warning on first click', async () => {
-    renderSettings()
+    await renderSettings()
     fireEvent.click(screen.getByRole('button', { name: /clear all local data/i }))
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent(/permanently delete all sessions/i),
@@ -165,7 +172,7 @@ describe('clear local data', () => {
   })
 
   it('shows the confirm button after the first click', async () => {
-    renderSettings()
+    await renderSettings()
     fireEvent.click(screen.getByRole('button', { name: /clear all local data/i }))
     await waitFor(() =>
       expect(
@@ -175,7 +182,7 @@ describe('clear local data', () => {
   })
 
   it('shows a cancel button during confirmation', async () => {
-    renderSettings()
+    await renderSettings()
     fireEvent.click(screen.getByRole('button', { name: /clear all local data/i }))
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument(),
@@ -183,7 +190,7 @@ describe('clear local data', () => {
   })
 
   it('cancel dismisses the confirmation without clearing', async () => {
-    renderSettings()
+    await renderSettings()
     fireEvent.click(screen.getByRole('button', { name: /clear all local data/i }))
     await waitFor(() => screen.getByRole('button', { name: /cancel/i }))
     fireEvent.click(screen.getByRole('button', { name: /cancel/i }))
@@ -193,7 +200,7 @@ describe('clear local data', () => {
 
   it('calls clearLocalData API on the second (confirm) click', async () => {
     mockApi.clearLocalData.mockResolvedValue({ deleted_sessions: 3 })
-    renderSettings()
+    await renderSettings()
     fireEvent.click(screen.getByRole('button', { name: /clear all local data/i }))
     await waitFor(() => screen.getByRole('button', { name: /confirm.*delete everything/i }))
     fireEvent.click(screen.getByRole('button', { name: /confirm.*delete everything/i }))
@@ -202,7 +209,7 @@ describe('clear local data', () => {
 
   it('shows success message with deleted count after clear', async () => {
     mockApi.clearLocalData.mockResolvedValue({ deleted_sessions: 3 })
-    renderSettings()
+    await renderSettings()
     fireEvent.click(screen.getByRole('button', { name: /clear all local data/i }))
     await waitFor(() => screen.getByRole('button', { name: /confirm.*delete everything/i }))
     fireEvent.click(screen.getByRole('button', { name: /confirm.*delete everything/i }))
@@ -213,7 +220,7 @@ describe('clear local data', () => {
 
   it('shows singular "1 session deleted" when exactly one session is removed', async () => {
     mockApi.clearLocalData.mockResolvedValue({ deleted_sessions: 1 })
-    renderSettings()
+    await renderSettings()
     fireEvent.click(screen.getByRole('button', { name: /clear all local data/i }))
     await waitFor(() => screen.getByRole('button', { name: /confirm.*delete everything/i }))
     fireEvent.click(screen.getByRole('button', { name: /confirm.*delete everything/i }))
@@ -224,7 +231,7 @@ describe('clear local data', () => {
 
   it('shows an error when the clear API call fails', async () => {
     mockApi.clearLocalData.mockRejectedValue(new Error('disk full'))
-    renderSettings()
+    await renderSettings()
     fireEvent.click(screen.getByRole('button', { name: /clear all local data/i }))
     await waitFor(() => screen.getByRole('button', { name: /confirm.*delete everything/i }))
     fireEvent.click(screen.getByRole('button', { name: /confirm.*delete everything/i }))
@@ -235,7 +242,7 @@ describe('clear local data', () => {
 
   it('clicking clear again after success re-enters the confirmation flow', async () => {
     mockApi.clearLocalData.mockResolvedValue({ deleted_sessions: 1 })
-    renderSettings()
+    await renderSettings()
     fireEvent.click(screen.getByRole('button', { name: /clear all local data/i }))
     await waitFor(() => screen.getByRole('button', { name: /confirm.*delete everything/i }))
     fireEvent.click(screen.getByRole('button', { name: /confirm.*delete everything/i }))
@@ -250,7 +257,7 @@ describe('clear local data', () => {
 
   it('clicking clear again after an error re-enters the confirmation flow', async () => {
     mockApi.clearLocalData.mockRejectedValue(new Error('disk full'))
-    renderSettings()
+    await renderSettings()
     fireEvent.click(screen.getByRole('button', { name: /clear all local data/i }))
     await waitFor(() => screen.getByRole('button', { name: /confirm.*delete everything/i }))
     fireEvent.click(screen.getByRole('button', { name: /confirm.*delete everything/i }))
@@ -271,7 +278,7 @@ describe('clear local data', () => {
 describe('your sessions', () => {
   it('shows "No sessions yet." when the list is empty', async () => {
     mockApi.listSessions.mockResolvedValue({ sessions: [] })
-    renderSettings()
+    await renderSettings()
     await waitFor(() =>
       expect(screen.getByTestId('no-sessions')).toBeInTheDocument(),
     )
@@ -279,7 +286,7 @@ describe('your sessions', () => {
 
   it('renders a row for each session', async () => {
     mockApi.listSessions.mockResolvedValue({ sessions: [SESSION_A, SESSION_B] })
-    renderSettings()
+    await renderSettings()
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /export session sess-aaa/i })).toBeInTheDocument(),
     )
@@ -288,7 +295,7 @@ describe('your sessions', () => {
 
   it('shows an error message when listSessions fails', async () => {
     mockApi.listSessions.mockRejectedValue(new Error('network'))
-    renderSettings()
+    await renderSettings()
     await waitFor(() =>
       expect(screen.getByText(/could not load sessions/i)).toBeInTheDocument(),
     )
@@ -299,7 +306,7 @@ describe('your sessions', () => {
       .mockRejectedValueOnce(new Error('network'))
       .mockResolvedValueOnce({ sessions: [SESSION_A] })
     mockApi.clearLocalData.mockResolvedValue({ deleted_sessions: 1 })
-    renderSettings()
+    await renderSettings()
     await waitFor(() => expect(screen.getByText(/could not load sessions/i)).toBeInTheDocument())
 
     // Trigger a reload via clear-all (success path calls loadSessions internally)
@@ -314,7 +321,7 @@ describe('your sessions', () => {
 
   it('clicking Delete shows a confirm button', async () => {
     mockApi.listSessions.mockResolvedValue({ sessions: [SESSION_A] })
-    renderSettings()
+    await renderSettings()
     await waitFor(() => screen.getByRole('button', { name: /delete session sess-aaa/i }))
     fireEvent.click(screen.getByRole('button', { name: /delete session sess-aaa/i }))
     await waitFor(() =>
@@ -324,7 +331,7 @@ describe('your sessions', () => {
 
   it('clicking Cancel after Delete dismisses without calling API', async () => {
     mockApi.listSessions.mockResolvedValue({ sessions: [SESSION_A] })
-    renderSettings()
+    await renderSettings()
     await waitFor(() => screen.getByRole('button', { name: /delete session sess-aaa/i }))
     fireEvent.click(screen.getByRole('button', { name: /delete session sess-aaa/i }))
     await waitFor(() => screen.getByRole('button', { name: /cancel delete session sess-aaa/i }))
@@ -336,7 +343,7 @@ describe('your sessions', () => {
   it('clicking Confirm delete calls deleteSession and removes the row', async () => {
     mockApi.listSessions.mockResolvedValue({ sessions: [SESSION_A, SESSION_B] })
     mockApi.deleteSession.mockResolvedValue(undefined)
-    renderSettings()
+    await renderSettings()
     await waitFor(() => screen.getByRole('button', { name: /delete session sess-aaa/i }))
     fireEvent.click(screen.getByRole('button', { name: /delete session sess-aaa/i }))
     await waitFor(() => screen.getByRole('button', { name: /confirm delete session sess-aaa/i }))
@@ -361,7 +368,7 @@ describe('your sessions', () => {
       writable: true,
       configurable: true,
     })
-    renderSettings()
+    await renderSettings()
     await waitFor(() => screen.getByRole('button', { name: /export session sess-aaa/i }))
     fireEvent.click(screen.getByRole('button', { name: /export session sess-aaa/i }))
     await waitFor(() => expect(mockApi.exportSession).toHaveBeenCalledWith('sess-aaa'))
@@ -371,7 +378,7 @@ describe('your sessions', () => {
   it('shows an error when deleteSession API fails', async () => {
     mockApi.listSessions.mockResolvedValue({ sessions: [SESSION_A] })
     mockApi.deleteSession.mockRejectedValue(new Error('network error'))
-    renderSettings()
+    await renderSettings()
     await waitFor(() => screen.getByRole('button', { name: /delete session sess-aaa/i }))
     fireEvent.click(screen.getByRole('button', { name: /delete session sess-aaa/i }))
     await waitFor(() => screen.getByRole('button', { name: /confirm delete session sess-aaa/i }))
@@ -386,7 +393,7 @@ describe('your sessions', () => {
   it('shows an error when exportSession API fails', async () => {
     mockApi.listSessions.mockResolvedValue({ sessions: [SESSION_A] })
     mockApi.exportSession.mockRejectedValue(new Error('export failed'))
-    renderSettings()
+    await renderSettings()
     await waitFor(() => screen.getByRole('button', { name: /export session sess-aaa/i }))
     fireEvent.click(screen.getByRole('button', { name: /export session sess-aaa/i }))
     await waitFor(() =>
@@ -400,15 +407,16 @@ describe('your sessions', () => {
 // ---------------------------------------------------------------------------
 
 describe('advanced: raw audio saving', () => {
-  it('advanced section is hidden by default', () => {
-    renderSettings()
+  it('advanced section is hidden by default', async () => {
+    await renderSettings()
+    await waitFor(() => expect(mockApi.listSessions).toHaveBeenCalled())
     expect(
       screen.queryByRole('checkbox', { name: /save raw audio/i }),
     ).not.toBeInTheDocument()
   })
 
   it('advanced section appears after clicking show advanced', async () => {
-    renderSettings()
+    await renderSettings()
     fireEvent.click(screen.getByRole('button', { name: /show advanced/i }))
     await waitFor(() =>
       expect(
@@ -418,14 +426,14 @@ describe('advanced: raw audio saving', () => {
   })
 
   it('raw audio saving is off by default', async () => {
-    renderSettings()
+    await renderSettings()
     fireEvent.click(screen.getByRole('button', { name: /show advanced/i }))
     await waitFor(() => screen.getByRole('checkbox', { name: /save raw audio recordings/i }))
     expect(screen.getByRole('checkbox', { name: /save raw audio recordings/i })).not.toBeChecked()
   })
 
   it('shows a warning when raw audio saving is enabled', async () => {
-    renderSettings()
+    await renderSettings()
     fireEvent.click(screen.getByRole('button', { name: /show advanced/i }))
     await waitFor(() => screen.getByRole('checkbox', { name: /save raw audio recordings/i }))
     fireEvent.click(screen.getByRole('checkbox', { name: /save raw audio recordings/i }))
@@ -435,7 +443,7 @@ describe('advanced: raw audio saving', () => {
   })
 
   it('advanced section collapses when hide advanced is clicked', async () => {
-    renderSettings()
+    await renderSettings()
     fireEvent.click(screen.getByRole('button', { name: /show advanced/i }))
     await waitFor(() => screen.getByRole('checkbox', { name: /save raw audio recordings/i }))
     fireEvent.click(screen.getByRole('button', { name: /hide advanced/i }))
