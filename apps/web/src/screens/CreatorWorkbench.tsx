@@ -1533,7 +1533,10 @@ export default function CreatorWorkbench() {
     <div>
       <h1 style={{ marginBottom: '0.25rem' }}>Creator Workbench</h1>
       <p style={{ color: '#71717a', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
-        Inspect and edit scenario packs. Official packs are read-only — create a local copy to modify them.
+        Inspect and edit scenario packs. Official packs are read-only — create a local copy to modify them.{' '}
+        <a href={AUTHORING_DOCS_URL} target="_blank" rel="noreferrer" style={{ color: '#93c5fd' }}>
+          Creator guide ↗
+        </a>
       </p>
 
       {packsError && (

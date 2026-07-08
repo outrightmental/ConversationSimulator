@@ -103,6 +103,11 @@ packs/
       my_scene.yaml        # visual and atmospheric context
 ```
 
+The fastest way to build a pack is the **Creator Workbench** (in the app
+navigation). Copy an official pack, edit the YAML files, validate with one
+click, quick-test in the browser, and export a shareable `.zip` — all
+without leaving the browser.
+
 Minimal `scenarios/my_scenario.yaml`:
 
 ```yaml
@@ -137,8 +142,9 @@ state:
 Add events, endings, difficulty modifiers, and extra rubric dimensions as you go.
 The JSON Schema in `schemas/` validates everything at import time.
 
-> Authoring guide: [docs/scenario-authoring.md](docs/scenario-authoring.md) &nbsp;·&nbsp;
-> Pack validation: [docs/pack-validation.md](docs/pack-validation.md)
+> Creator workbench tutorial: [docs/scenario-authoring.md](docs/scenario-authoring.md) &nbsp;·&nbsp;
+> Pack validation: [docs/pack-validation.md](docs/pack-validation.md) &nbsp;·&nbsp;
+> Official quality bar: [docs/official-pack-quality-bar.md](docs/official-pack-quality-bar.md)
 
 ---
 
