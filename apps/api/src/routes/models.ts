@@ -18,6 +18,8 @@ import type {
   RegisterGgufRequest,
   RegisterGgufResponse,
   DetectedOllamaModel,
+  BenchmarkRequest,
+  BenchmarkResponse,
 } from '@convsim/shared';
 import { getDb } from '../db.js';
 
@@ -321,6 +323,13 @@ export async function modelsRoutes(app: FastifyInstance): Promise<void> {
       fake: 'Fake (deterministic)',
     };
 
+    const lastBenchmarkRow = db
+      .prepare<[], ModelConfigRow>("SELECT key, value FROM model_config WHERE key='last_benchmark'")
+      .get();
+    const last_benchmark: BenchmarkResponse | null = lastBenchmarkRow
+      ? (JSON.parse(lastBenchmarkRow.value) as BenchmarkResponse)
+      : null;
+
     return {
       registry: REGISTRY_ENTRIES,
       installed,
@@ -338,6 +347,7 @@ export async function modelsRoutes(app: FastifyInstance): Promise<void> {
         checked_at: new Date().toISOString(),
       },
       total: REGISTRY_ENTRIES.length,
+      last_benchmark,
     };
   });
 
@@ -590,6 +600,109 @@ export async function modelsRoutes(app: FastifyInstance): Promise<void> {
         host: '127.0.0.1',
         port: 7356,
       };
+    },
+  );
+
+  // POST /api/models/benchmark
+  app.post<{ Body: BenchmarkRequest }>(
+    '/api/models/benchmark',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          properties: {
+            model_id: { type: ['string', 'null'] },
+          },
+        },
+      },
+    },
+    async (req, reply): Promise<BenchmarkResponse> => {
+      const db = getDb();
+      const active = getActiveConfig();
+
+      if (!active.runtime_id || !active.model_id) {
+        reply.status(409);
+        throw new Error(
+          'No model is currently configured. Set up a model before benchmarking.',
+        );
+      }
+
+      const modelId = req.body.model_id ?? active.model_id;
+      const runtimeId = active.runtime_id;
+      const warnings: string[] = [];
+      let tokensPerSec = 0;
+      let contextLength: number | null = null;
+      let outputTokens = 0;
+
+      try {
+        if (runtimeId === 'ollama') {
+          const res = await fetch('http://127.0.0.1:11434/api/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: modelId, prompt: 'Say hello.', stream: false }),
+            signal: AbortSignal.timeout(30000),
+          });
+          if (res.ok) {
+            const data = (await res.json()) as {
+              eval_count?: number;
+              eval_duration?: number;
+              context?: number[];
+            };
+            outputTokens = data.eval_count ?? 0;
+            const durationNs = data.eval_duration ?? 0;
+            if (outputTokens > 0 && durationNs > 0) {
+              tokensPerSec = Math.round((outputTokens / (durationNs / 1e9)) * 10) / 10;
+            }
+            contextLength = data.context?.length ?? null;
+          } else {
+            warnings.push('Ollama returned an error. Ensure the model is loaded.');
+          }
+        } else if (runtimeId === 'llama_cpp') {
+          const startMs = Date.now();
+          const res = await fetch('http://127.0.0.1:7356/v1/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: 'Say hello.', max_tokens: 5 }),
+            signal: AbortSignal.timeout(30000),
+          });
+          if (res.ok) {
+            const data = (await res.json()) as { usage?: { completion_tokens?: number } };
+            outputTokens = data.usage?.completion_tokens ?? 0;
+            const elapsedSec = (Date.now() - startMs) / 1000;
+            if (outputTokens > 0 && elapsedSec > 0) {
+              tokensPerSec = Math.round((outputTokens / elapsedSec) * 10) / 10;
+            }
+          } else {
+            warnings.push('llama.cpp server returned an error. Ensure the sidecar is running.');
+          }
+        } else {
+          warnings.push('Benchmark is not available for the demo runtime.');
+        }
+      } catch {
+        if (runtimeId === 'ollama') {
+          warnings.push('Could not reach Ollama. Ensure Ollama is running on port 11434.');
+        } else if (runtimeId === 'llama_cpp') {
+          warnings.push('Could not reach the llama.cpp server. Start the sidecar first.');
+        } else {
+          warnings.push('Benchmark failed. Check that the runtime is running.');
+        }
+      }
+
+      const result: BenchmarkResponse = {
+        model_id: modelId,
+        runtime_id: runtimeId,
+        tokens_per_sec: tokensPerSec,
+        context_length: contextLength,
+        warnings,
+        output_tokens: outputTokens,
+        benchmarked_at: new Date().toISOString(),
+      };
+
+      db.prepare(
+        "INSERT OR REPLACE INTO model_config (key, value) VALUES ('last_benchmark', ?)",
+      ).run(JSON.stringify(result));
+
+      return result;
     },
   );
 }
