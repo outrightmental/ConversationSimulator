@@ -36,14 +36,19 @@ async function get<T>(path: string): Promise<T> {
   return res.json() as Promise<T>
 }
 
-async function post<T>(path: string, body: unknown): Promise<T> {
+async function post<T>(path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    headers: body !== undefined ? { 'Content-Type': 'application/json' } : {},
+    body: body !== undefined ? JSON.stringify(body) : undefined,
   })
   if (!res.ok) throw new Error(await parseErrorMessage(res))
   return res.json() as Promise<T>
+}
+
+async function del(path: string): Promise<void> {
+  const res = await fetch(`${BASE}${path}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(await parseErrorMessage(res))
 }
 
 async function postForm<T>(path: string, body: FormData): Promise<T> {
@@ -67,6 +72,26 @@ export const apiClient = {
   },
 }
 
+export interface SessionExport {
+  session: {
+    session_id: string
+    scenario_id: string
+    state: string
+    ending_type: string | null
+    created_at: string
+    setup: SessionCreateRequest
+    state_vars: Record<string, number>
+    turn_count: number
+  }
+  events: Array<{
+    event_id: number
+    session_id: string
+    event_type: string
+    payload: Record<string, unknown>
+    created_at: string
+  }>
+}
+
 export const api = {
   health(): Promise<SharedHealthResponse> {
     return get<SharedHealthResponse>('/health')
@@ -76,5 +101,17 @@ export const api = {
   },
   createSession(request: SessionCreateRequest): Promise<SessionCreateResponse> {
     return post<SessionCreateResponse>('/sessions', request)
+  },
+  deleteSession(sessionId: string): Promise<void> {
+    return del(`/sessions/${sessionId}`)
+  },
+  exportSession(sessionId: string): Promise<SessionExport> {
+    return get<SessionExport>(`/sessions/${sessionId}/export`)
+  },
+  getDataFolder(): Promise<{ path: string }> {
+    return get<{ path: string }>('/privacy/data-folder')
+  },
+  clearLocalData(): Promise<{ deleted_sessions: number }> {
+    return post<{ deleted_sessions: number }>('/privacy/clear')
   },
 }

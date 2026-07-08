@@ -6,6 +6,7 @@ import cors from '@fastify/cors';
 import { healthRoutes } from './routes/health.js';
 import { scenarioRoutes } from './routes/scenarios.js';
 import { sessionRoutes } from './routes/sessions.js';
+import { privacyRoutes, setDataFolderPath } from './routes/privacy.js';
 import { initDb } from './db.js';
 import { getListenConfig } from './config.js';
 
@@ -29,6 +30,7 @@ export async function buildApp() {
   await app.register(healthRoutes);
   await app.register(scenarioRoutes);
   await app.register(sessionRoutes);
+  await app.register(privacyRoutes);
 
   return app;
 }
@@ -40,6 +42,7 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
   const listenConfig = getListenConfig();
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   initDb(dbPath);
+  setDataFolderPath(path.dirname(dbPath));
   const app = await buildApp();
   await app.listen(listenConfig);
 }
