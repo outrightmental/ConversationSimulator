@@ -138,9 +138,9 @@ installer small.
 - **No auto-update.** Download new releases manually from the releases page.
 - **No code signing.** macOS and Windows will warn about unverified publishers
   (see installation instructions above).
-- **Speech input / output** requires additional runtime downloads
-  (`./runtimes/whisper_cpp/download-runtime.sh` and
-  `./runtimes/kokoro/download-model.sh`). See [install.md](install.md).
+- **Speech input / output** requires additional local runtimes. Speech-to-text
+  uses whisper.cpp (`./runtimes/whisper_cpp/download-runtime.sh`); text-to-speech
+  uses a local Kokoro server. See the runtime READMEs under `runtimes/` for setup.
 
 ---
 

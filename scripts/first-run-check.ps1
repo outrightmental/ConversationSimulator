@@ -88,9 +88,7 @@ function Check-Disk {
 function Check-Audio {
     # Microphone
     try {
-        $mics = Get-CimInstance -ClassName Win32_SoundDevice -ErrorAction Stop |
-                Where-Object { $_.StatusInfo -ne $null }
-        # Check for capture devices via WMI endpoint.
+        # Check for capture devices via the audio endpoint list.
         $micDevices = Get-PnpDevice -Class AudioEndpoint -ErrorAction SilentlyContinue |
                       Where-Object { $_.FriendlyName -match 'Microphone|Headset|Line In|Capture' }
         if ($micDevices) {
