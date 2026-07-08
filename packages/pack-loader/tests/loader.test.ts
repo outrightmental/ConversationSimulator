@@ -95,6 +95,25 @@ describe('loadPack — valid pack', () => {
     const pack = loadPack(dir);
     expect(pack.scenarios).toHaveLength(2);
   });
+
+  it('accepts a portrait path using ../ relative to the NPC file directory', () => {
+    // npcs/test_npc.yaml with portrait: ../assets/portrait.png
+    // resolves to <packRoot>/assets/portrait.png — inside the pack root.
+    const dir = track(makeTempPackDir({
+      npcYaml: VALID_NPC_YAML + 'portrait: ../assets/portrait.png\n',
+    }));
+    expect(() => loadPack(dir)).not.toThrow();
+  });
+
+  it('accepts a scene background path using ../ relative to the scene file directory', () => {
+    // scenes/test_scene.yaml with background: ../assets/bg.png
+    // resolves to <packRoot>/assets/bg.png — inside the pack root.
+    const dir = track(makeTempPackDir({
+      sceneYaml: VALID_SCENE_YAML + 'background: ../assets/bg.png\n',
+      scenarioYamls: { 'scenario_with_scene.yaml': VALID_SCENARIO_WITH_SCENE_YAML },
+    }));
+    expect(() => loadPack(dir)).not.toThrow();
+  });
 });
 
 // ---------------------------------------------------------------------------

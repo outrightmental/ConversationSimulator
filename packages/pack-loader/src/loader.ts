@@ -77,7 +77,7 @@ export function loadPack(packDir: string, kind: PackRootKind = 'local-dev'): Loa
     if (!npcs.has(npcAbsPath)) {
       const npc = parseAndValidate<RawNpc>(readPackFile(npcAbsPath), 'npc', npcAbsPath);
       if (npc.portrait !== undefined) {
-        resolveRef(normalPackDir, normalPackDir, npc.portrait);
+        resolveRef(dirname(npcAbsPath), normalPackDir, npc.portrait);
       }
       npcs.set(npcAbsPath, npc);
     }
@@ -99,7 +99,7 @@ export function loadPack(packDir: string, kind: PackRootKind = 'local-dev'): Loa
       if (!scenes.has(sceneAbsPath)) {
         const scene = parseAndValidate<RawScene>(readPackFile(sceneAbsPath), 'scene', sceneAbsPath);
         if (scene.background !== undefined) {
-          resolveRef(normalPackDir, normalPackDir, scene.background);
+          resolveRef(dirname(sceneAbsPath), normalPackDir, scene.background);
         }
         scenes.set(sceneAbsPath, scene);
       }
