@@ -200,6 +200,7 @@ class TestSessionExport:
         assert "turn_count" in body
         assert "created_at" in body
         assert "transcript_saved" in body
+        assert "visible_state" in body
         assert "turns" in body
         assert "events" in body
         assert "debrief" in body  # debrief is None until debrief endpoint exists
@@ -262,6 +263,31 @@ class TestSessionExport:
 
         assert res_with.json()["transcript_saved"] is True
         assert res_without.json()["transcript_saved"] is False
+
+    def test_export_visible_state_contains_expected_keys(self, client):
+        session_id = _create_and_start(client)
+        _do_turn(client, session_id)
+
+        res = client.get(f"/api/sessions/{session_id}/export")
+        visible_state = res.json()["visible_state"]
+        assert isinstance(visible_state, dict)
+        # Baseline visible variables must appear; hidden ones (e.g. pressure) must not.
+        assert "trust" in visible_state
+        assert "rapport" in visible_state
+        assert "patience" in visible_state
+        assert "pressure" not in visible_state
+
+    def test_export_turns_empty_when_saving_disabled(self, client):
+        session_id = _create_and_start(client, save_transcript=False)
+        _do_turn(client, session_id)
+
+        res = client.get(f"/api/sessions/{session_id}/export")
+        assert res.status_code == 200
+        body = res.json()
+        assert body["transcript_saved"] is False
+        assert body["turns"] == []
+        # Events are still included regardless of transcript setting.
+        assert len(body["events"]) > 0
 
     def test_export_on_unknown_session_returns_404(self, client):
         res = client.get("/api/sessions/sess-doesnotexist/export")

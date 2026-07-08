@@ -23,6 +23,7 @@ from typing import Any, Dict, List, Literal, Optional
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, field_validator
 
+from convsim_core.scenario_state import build_variable_defs, partition_state_by_visibility
 from convsim_core.scenarios import get_scenario_info
 from convsim_core.services.turn_pipeline import MAX_TURN_CONTENT_CHARS, TurnInputError, process_turn
 
@@ -156,6 +157,7 @@ class SessionExportResponse(BaseModel):
     turn_count: int
     created_at: str
     transcript_saved: bool
+    visible_state: Dict[str, int]
     turns: List[TurnEntry]
     events: List[EventEntry]
     debrief: Optional[Dict[str, Any]] = None
@@ -477,6 +479,7 @@ async def export_session(session_id: str, request: Request) -> SessionExportResp
         raise HTTPException(status_code=404, detail=f"Session {session_id!r} not found")
 
     setup = json.loads(row["setup_json"])
+    save_transcript = setup.get("save_transcript", True)
     scenario_id = row["scenario_id"]
     info = get_scenario_info(scenario_id)
     scenario_meta: Dict[str, Any] = {
@@ -484,11 +487,19 @@ async def export_session(session_id: str, request: Request) -> SessionExportResp
         "name": info.scenario_data.title if info else scenario_id,
     }
 
-    turn_rows = conn.execute(
-        "SELECT turn_number, role, content, source_mode, emotion, flow_state_after, created_at "
-        "FROM turn_session_turns WHERE session_id = ? ORDER BY turn_number ASC",
-        (session_id,),
-    ).fetchall()
+    state_vars: Dict[str, int] = json.loads(row["state_vars_json"] or "{}")
+    var_defs = build_variable_defs()
+    visible_state, _ = partition_state_by_visibility(state_vars, var_defs)
+
+    turn_rows = (
+        conn.execute(
+            "SELECT turn_number, role, content, source_mode, emotion, flow_state_after, created_at "
+            "FROM turn_session_turns WHERE session_id = ? ORDER BY turn_number ASC",
+            (session_id,),
+        ).fetchall()
+        if save_transcript
+        else []
+    )
 
     event_rows = conn.execute(
         "SELECT id, turn_number, event_type, payload_json, occurred_at "
@@ -505,7 +516,8 @@ async def export_session(session_id: str, request: Request) -> SessionExportResp
         ending_type=row["ending_type"],
         turn_count=row["turn_count"],
         created_at=row["created_at"],
-        transcript_saved=setup.get("save_transcript", True),
+        transcript_saved=save_transcript,
+        visible_state=visible_state,
         turns=_turns_from_rows(turn_rows),
         events=[
             EventEntry(
