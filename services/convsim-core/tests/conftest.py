@@ -7,7 +7,11 @@ from convsim_core.config import ServiceConfig
 
 
 @pytest.fixture()
-def tmp_config(tmp_path):
+def tmp_config(tmp_path, monkeypatch):
+    # Pin whisper-cli to a nonexistent path so the default whisper_cpp worker
+    # always reports UNAVAILABLE in tests, regardless of what is installed on
+    # the developer's machine.
+    monkeypatch.setenv("CONVSIM_WHISPER_CPP_BINARY_PATH", str(tmp_path / "no-whisper-cli"))
     return ServiceConfig(
         host="127.0.0.1",
         port=7355,
