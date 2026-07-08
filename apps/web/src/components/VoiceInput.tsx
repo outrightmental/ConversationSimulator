@@ -29,6 +29,8 @@ export default function VoiceInput({ onSubmit, disabled = false, language }: Voi
         const result = await apiClient.uploadAudio(blob, language)
         if (result.status === 'error') {
           setUploadError('Speech could not be transcribed. Please try again or type your response.')
+        } else if (result.status === 'unavailable') {
+          setUploadError('Speech-to-text is not installed. Please type your response.')
         } else if (result.transcript && !disabled) {
           onSubmit?.(result.transcript)
         }

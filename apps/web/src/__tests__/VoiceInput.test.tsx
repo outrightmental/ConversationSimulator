@@ -340,6 +340,23 @@ describe('VoiceInput — audio upload flow', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(/could not be transcribed/i)
   })
 
+  it('shows an alert when uploadAudio resolves with status=unavailable', async () => {
+    let capturedOnAudioReady: ((blob: Blob) => void) | undefined
+    vi.mocked(useMicCapture).mockImplementation((cb) => {
+      capturedOnAudioReady = cb
+      return makeMicState()
+    })
+    vi.mocked(apiClient.uploadAudio).mockResolvedValueOnce({ transcript: null, status: 'unavailable' })
+
+    render(<VoiceInput />)
+
+    await act(async () => {
+      capturedOnAudioReady?.(new Blob(['audio'], { type: 'audio/webm' }))
+    })
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/not installed/i)
+  })
+
   it('forwards the language prop to uploadAudio', async () => {
     let capturedOnAudioReady: ((blob: Blob) => void) | undefined
     vi.mocked(useMicCapture).mockImplementation((cb) => {
