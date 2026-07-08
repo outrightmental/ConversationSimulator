@@ -101,6 +101,10 @@
     "generated_at": {
       "type": "string",
       "description": "ISO 8601 timestamp when debrief was generated."
+    },
+    "used_fallback": {
+      "type": "boolean",
+      "description": "True if the narrative was generated from a template rather than an LLM call."
     }
   }
 }
