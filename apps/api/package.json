@@ -10,6 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@convsim/pack-loader": "workspace:*",
     "@convsim/shared": "workspace:*",
     "@fastify/cors": "^11.2.0",
     "@fastify/websocket": "^11.2.0",

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState, useEffect, useCallback, type CSSProperties } from 'react'
 import { useBlocker } from 'react-router-dom'
-import { api, type WorkbenchPack, type FileNode, type WorkbenchValidation } from '../api/client'
+import { api, type WorkbenchPack, type FileNode, type WorkbenchValidation, type WorkbenchValidationIssue } from '../api/client'
 
 // A validation response is only usable if it carries the expected error/warning
 // arrays. Backends without a validator (or unexpected shapes) are treated as
@@ -378,12 +378,54 @@ function FileEditor({
 // ValidationPanel — pack-level validation status, refreshed after each save
 // ---------------------------------------------------------------------------
 
+const SECURITY_RULES = new Set(['FORBIDDEN_FILE', 'FORBIDDEN_BINARY'])
+
+function isSecurityIssue(issue: WorkbenchValidationIssue): boolean {
+  return SECURITY_RULES.has(issue.rule_id) || issue.category === 'security'
+}
+
+// Group a flat issue list by file path.
+function groupByFile(issues: WorkbenchValidationIssue[]): Map<string, WorkbenchValidationIssue[]> {
+  const map = new Map<string, WorkbenchValidationIssue[]>()
+  for (const issue of issues) {
+    const key = issue.file || '(pack-wide)'
+    const arr = map.get(key) ?? []
+    arr.push(issue)
+    map.set(key, arr)
+  }
+  return map
+}
+
 interface ValidationPanelProps {
   validation: WorkbenchValidation | null
   loading: boolean
+  serviceError: string | null
+  onSelectFile?: (filePath: string) => void
+  onRefresh?: () => void
 }
 
-function ValidationPanel({ validation, loading }: ValidationPanelProps) {
+function ValidationPanel({ validation, loading, serviceError, onSelectFile, onRefresh }: ValidationPanelProps) {
+  const [copied, setCopied] = useState(false)
+
+  function handleCopy() {
+    if (!validation) return
+    const lines = [
+      `Validation: ${validation.valid ? 'PASS' : 'FAIL'}`,
+      ...validation.errors.map((e) => `[ERROR] ${e.file || '(pack-wide)'}${e.pointer ? ' ' + e.pointer : ''}: ${e.message} (${e.rule_id})`),
+      ...validation.warnings.map((w) => `[WARNING] ${w.file || '(pack-wide)'}${w.pointer ? ' ' + w.pointer : ''}: ${w.message} (${w.rule_id})`),
+    ]
+    void navigator.clipboard.writeText(lines.join('\n'))
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  const panelBase: CSSProperties = {
+    fontSize: '0.8rem',
+    margin: '0 0 1rem',
+    padding: '0.5rem 0.75rem',
+    borderRadius: '4px',
+  }
+
   if (loading) {
     return (
       <p data-testid="validation-panel" style={{ fontSize: '0.8rem', color: '#71717a', margin: '0 0 1rem' }}>
@@ -391,6 +433,37 @@ function ValidationPanel({ validation, loading }: ValidationPanelProps) {
       </p>
     )
   }
+
+  // Service error — validator is unavailable, not a pack issue
+  if (serviceError) {
+    return (
+      <div
+        data-testid="validation-panel"
+        role="alert"
+        style={{
+          ...panelBase,
+          border: '1px solid rgba(251,191,36,0.3)',
+          background: 'rgba(251,191,36,0.06)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.75rem',
+        }}
+      >
+        <span style={{ color: '#fbbf24' }}>⚠ Validator unavailable</span>
+        <span style={{ color: '#71717a', flex: 1 }}>{serviceError}</span>
+        {onRefresh && (
+          <button
+            onClick={onRefresh}
+            style={{ ...BTN, fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}
+            aria-label="Retry validation"
+          >
+            Retry
+          </button>
+        )}
+      </div>
+    )
+  }
+
   if (!validation) return null
 
   const errorCount = validation.errors.length
@@ -398,46 +471,212 @@ function ValidationPanel({ validation, loading }: ValidationPanelProps) {
 
   if (validation.valid && warningCount === 0) {
     return (
-      <p
+      <div
         data-testid="validation-panel"
         role="status"
-        style={{ fontSize: '0.8rem', color: '#4ade80', margin: '0 0 1rem' }}
+        style={{
+          ...panelBase,
+          border: '1px solid rgba(74,222,128,0.2)',
+          background: 'rgba(74,222,128,0.05)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.75rem',
+        }}
       >
-        ✓ Pack is valid
-      </p>
+        <span style={{ color: '#4ade80' }}>✓ Pack is valid</span>
+        {onRefresh && (
+          <button
+            onClick={onRefresh}
+            style={{ ...BTN, fontSize: '0.75rem', padding: '0.2rem 0.5rem', marginLeft: 'auto' }}
+            aria-label="Revalidate pack"
+          >
+            Revalidate
+          </button>
+        )}
+      </div>
     )
   }
 
-  const issues = [...validation.errors, ...validation.warnings]
+  const allIssues = [...validation.errors, ...validation.warnings]
+  const byFile = groupByFile(allIssues)
+  const hasSecurityIssues = allIssues.some(isSecurityIssue)
+
+  const headerColor = errorCount > 0 ? '#f87171' : '#fbbf24'
+  const borderColor = hasSecurityIssues
+    ? 'rgba(239,68,68,0.4)'
+    : errorCount > 0
+    ? 'rgba(248,113,113,0.25)'
+    : 'rgba(251,191,36,0.25)'
+  const bgColor = hasSecurityIssues
+    ? 'rgba(239,68,68,0.06)'
+    : errorCount > 0
+    ? 'rgba(248,113,113,0.04)'
+    : 'rgba(251,191,36,0.06)'
+
   return (
     <div
       data-testid="validation-panel"
       role="status"
       style={{
-        fontSize: '0.8rem',
-        margin: '0 0 1rem',
-        padding: '0.5rem 0.75rem',
-        borderRadius: '4px',
-        border: '1px solid rgba(251,191,36,0.25)',
-        background: 'rgba(251,191,36,0.06)',
+        ...panelBase,
+        border: `1px solid ${borderColor}`,
+        background: bgColor,
       }}
     >
-      <div style={{ color: errorCount > 0 ? '#f87171' : '#fbbf24', fontWeight: 600, marginBottom: issues.length ? '0.4rem' : 0 }}>
-        {errorCount > 0
-          ? `${errorCount} validation error${errorCount === 1 ? '' : 's'}`
-          : `${warningCount} validation warning${warningCount === 1 ? '' : 's'}`}
-        {errorCount > 0 && warningCount > 0 && `, ${warningCount} warning${warningCount === 1 ? '' : 's'}`}
-      </div>
-      <ul style={{ margin: 0, paddingLeft: '1.1rem', color: '#a1a1aa' }}>
-        {issues.slice(0, 8).map((issue, i) => (
-          <li key={`${issue.rule_id}-${issue.file}-${issue.pointer}-${i}`} style={{ color: issue.severity === 'error' ? '#fca5a5' : '#fcd34d' }}>
-            <code style={{ color: '#a1a1aa' }}>{issue.file}</code>: {issue.message}
-          </li>
-        ))}
-        {issues.length > 8 && (
-          <li style={{ color: '#71717a' }}>…and {issues.length - 8} more</li>
+      {/* Header row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+        <span style={{ color: headerColor, fontWeight: 600 }}>
+          {errorCount > 0 && `${errorCount} validation error${errorCount === 1 ? '' : 's'}`}
+          {errorCount > 0 && warningCount > 0 && ', '}
+          {warningCount > 0 && `${warningCount} warning${warningCount === 1 ? '' : 's'}`}
+        </span>
+        {hasSecurityIssues && (
+          <span
+            data-testid="security-badge"
+            style={{
+              fontSize: '0.7rem',
+              fontWeight: 700,
+              background: 'rgba(239,68,68,0.2)',
+              border: '1px solid rgba(239,68,68,0.5)',
+              borderRadius: '3px',
+              padding: '0.1rem 0.4rem',
+              color: '#fca5a5',
+              letterSpacing: '0.03em',
+            }}
+          >
+            ⛔ SECURITY
+          </span>
         )}
-      </ul>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.4rem' }}>
+          <button
+            onClick={handleCopy}
+            data-testid="copy-validation-button"
+            style={{ ...BTN, fontSize: '0.72rem', padding: '0.15rem 0.5rem' }}
+            aria-label="Copy validation output"
+          >
+            {copied ? '✓ Copied' : 'Copy'}
+          </button>
+          {onRefresh && (
+            <button
+              onClick={onRefresh}
+              style={{ ...BTN, fontSize: '0.72rem', padding: '0.15rem 0.5rem' }}
+              aria-label="Revalidate pack"
+            >
+              Revalidate
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Issues grouped by file */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        {Array.from(byFile.entries()).map(([file, issues]) => {
+          const fileHasSecurity = issues.some(isSecurityIssue)
+          const isClickable = onSelectFile !== undefined && /\.(yaml|yml|md|txt)$/.test(file)
+
+          return (
+            <div key={file}>
+              {/* File header — clickable when the file can be opened in the editor */}
+              {isClickable ? (
+                <button
+                  onClick={() => onSelectFile(file)}
+                  data-testid={`validation-file-link-${file}`}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    padding: '0',
+                    cursor: 'pointer',
+                    color: fileHasSecurity ? '#fca5a5' : '#a1a1aa',
+                    fontSize: '0.78rem',
+                    fontFamily: 'monospace',
+                    textDecoration: 'underline',
+                    textUnderlineOffset: '2px',
+                    marginBottom: '0.2rem',
+                  }}
+                  aria-label={`Open ${file}`}
+                >
+                  📄 {file}
+                </button>
+              ) : (
+                <span
+                  style={{
+                    color: fileHasSecurity ? '#fca5a5' : '#71717a',
+                    fontSize: '0.78rem',
+                    fontFamily: 'monospace',
+                    display: 'block',
+                    marginBottom: '0.2rem',
+                  }}
+                >
+                  {file === '(pack-wide)' ? '⬛ (pack-wide)' : `📄 ${file}`}
+                </span>
+              )}
+
+              {/* Individual findings for this file */}
+              <ul style={{ margin: 0, paddingLeft: '1rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                {issues.map((issue, i) => {
+                  const isSec = isSecurityIssue(issue)
+                  const issueColor = issue.severity === 'error'
+                    ? (isSec ? '#fca5a5' : '#fca5a5')
+                    : '#fcd34d'
+
+                  return (
+                    <li
+                      key={`${issue.rule_id}-${issue.file}-${issue.pointer}-${i}`}
+                      style={{ color: issueColor, lineHeight: 1.4 }}
+                    >
+                      <div style={{ display: 'flex', gap: '0.4rem', alignItems: 'baseline', flexWrap: 'wrap' }}>
+                        {isSec && (
+                          <span
+                            style={{
+                              fontSize: '0.68rem',
+                              fontWeight: 700,
+                              background: 'rgba(239,68,68,0.25)',
+                              borderRadius: '2px',
+                              padding: '0.05rem 0.3rem',
+                              color: '#fca5a5',
+                              flexShrink: 0,
+                            }}
+                          >
+                            SECURITY
+                          </span>
+                        )}
+                        {issue.pointer && issue.pointer !== '(root)' && (
+                          <code style={{ color: '#71717a', fontSize: '0.75rem' }}>{issue.pointer}</code>
+                        )}
+                        <span>{issue.message}</span>
+                        <code
+                          style={{
+                            fontSize: '0.68rem',
+                            color: '#3f3f46',
+                            background: 'rgba(255,255,255,0.04)',
+                            borderRadius: '2px',
+                            padding: '0.05rem 0.25rem',
+                          }}
+                        >
+                          {issue.rule_id}
+                        </code>
+                      </div>
+                      {issue.suggested_fix && (
+                        <div
+                          data-testid={`suggested-fix-${i}`}
+                          style={{
+                            fontSize: '0.75rem',
+                            color: '#6b7280',
+                            marginTop: '0.15rem',
+                            paddingLeft: '0.1rem',
+                          }}
+                        >
+                          → {issue.suggested_fix}
+                        </div>
+                      )}
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )
+        })}
+      </div>
     </div>
   )
 }
@@ -465,6 +704,7 @@ export default function CreatorWorkbench() {
   const [copyError, setCopyError] = useState<string | null>(null)
   const [validation, setValidation] = useState<WorkbenchValidation | null>(null)
   const [validationLoading, setValidationLoading] = useState(false)
+  const [validationServiceError, setValidationServiceError] = useState<string | null>(null)
 
   const isDirty = selectedFile !== null && editorContent !== savedContent
 
@@ -513,15 +753,23 @@ export default function CreatorWorkbench() {
     }
   }, [])
 
-  // Refresh the pack's validation state. Best-effort: the interim convsim-api
-  // backend has no validator, so a failure just clears the panel silently.
+  // Refresh the pack's validation state. Surfaces service errors (network
+  // failures, unexpected backend responses) separately from pack findings so
+  // creators can distinguish "my pack has issues" from "the validator is down".
   const refreshValidation = useCallback(async (pack: WorkbenchPack) => {
     setValidationLoading(true)
+    setValidationServiceError(null)
     try {
       const result = await api.workbench.validate(pack.kind, pack.slug)
-      setValidation(isValidation(result) ? result : null)
-    } catch {
+      if (isValidation(result)) {
+        setValidation(result)
+      } else {
+        setValidation(null)
+        setValidationServiceError('Validator returned an unexpected response.')
+      }
+    } catch (e: unknown) {
       setValidation(null)
+      setValidationServiceError(e instanceof Error ? e.message : 'Validation service error.')
     } finally {
       setValidationLoading(false)
     }
@@ -536,6 +784,7 @@ export default function CreatorWorkbench() {
     setSaveError(null)
     setCopyError(null)
     setValidation(null)
+    setValidationServiceError(null)
     await Promise.all([loadFileTree(pack), refreshValidation(pack)])
   }
 
@@ -595,6 +844,7 @@ export default function CreatorWorkbench() {
       setEditorContent('')
       setSavedContent('')
       setValidation(null)
+      setValidationServiceError(null)
       await Promise.all([loadFileTree(newPack), refreshValidation(newPack)])
     } catch (e: unknown) {
       setCopyError(e instanceof Error ? e.message : 'Failed to copy pack to local-dev')
@@ -616,7 +866,15 @@ export default function CreatorWorkbench() {
         </p>
       )}
 
-      {selectedPack && <ValidationPanel validation={validation} loading={validationLoading} />}
+      {selectedPack && (
+        <ValidationPanel
+          validation={validation}
+          loading={validationLoading}
+          serviceError={validationServiceError}
+          onSelectFile={handleSelectFile}
+          onRefresh={() => { void refreshValidation(selectedPack) }}
+        />
+      )}
 
       <div style={{ display: 'flex', gap: '1rem', height: 'calc(100vh - 220px)', minHeight: '400px' }}>
         {/* Left panel: pack selector + file tree */}

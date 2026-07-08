@@ -16,14 +16,28 @@ function setupPack(root: string, slug: string, name: string, packId: string) {
   const packDir = join(root, slug);
   mkdirSync(join(packDir, 'scenarios'), { recursive: true });
   mkdirSync(join(packDir, 'npcs'), { recursive: true });
+  mkdirSync(join(packDir, 'rubrics'), { recursive: true });
+  mkdirSync(join(packDir, 'safety'), { recursive: true });
   writeFileSync(
     join(packDir, 'manifest.yaml'),
     `schema_version: "0.1"\npack_id: ${packId}\nname: ${name}\nversion: 0.1.0\ndescription: Test pack\nauthor: Test\nlicense: MIT\ncontent_rating: PG\nsafety:\n  policy: safety/default.yaml\n`,
   );
   writeFileSync(join(packDir, 'README.md'), `# ${name}\n\nA test pack.\n`);
   writeFileSync(
+    join(packDir, 'safety', 'default.yaml'),
+    `schema_version: "0.1"\npolicy_id: default\ncontent_rating_cap: PG\ncontent_categories: {}\n`,
+  );
+  writeFileSync(
+    join(packDir, 'npcs', 'npc.yaml'),
+    `schema_version: "0.1"\nnpc_id: test_npc\ndisplay_name: Test NPC\narchetype: helper\nfictional: true\nage_band: adult\npublic_persona:\n  occupation: Tester\n  speaking_style: direct\n  demeanor: neutral\nprivate_persona: {}\n`,
+  );
+  writeFileSync(
+    join(packDir, 'rubrics', 'rubric.yaml'),
+    `schema_version: "0.1"\nrubric_id: test_rubric\ntitle: Test Rubric\ndimensions:\n  - id: clarity\n    name: Clarity\n    description: How clear was the communication\n    scoring:\n      low: Unclear\n      medium: Somewhat clear\n      high: Very clear\n`,
+  );
+  writeFileSync(
     join(packDir, 'scenarios', 'basic.yaml'),
-    `schema_version: "0.1"\nscenario_id: basic\ntitle: Basic Scenario\n`,
+    `schema_version: "0.1"\nscenario_id: basic\ntitle: Basic Scenario\nsummary: A basic test scenario.\nplayer_role:\n  label: Tester\n  brief: You are testing the NPC.\nnpc:\n  ref: ../npcs/npc.yaml\nrubric:\n  ref: ../rubrics/rubric.yaml\nduration:\n  max_turns: 10\nopening:\n  npc_says: Hello!\ngoals: {}\n`,
   );
   return packDir;
 }
@@ -249,6 +263,107 @@ describe('PUT /api/workbench/packs/:kind/:slug/file', () => {
       payload: JSON.stringify({ content: 'hello' }),
     });
     expect(res.statusCode).toBe(400);
+  });
+});
+
+describe('GET /api/workbench/packs/:kind/:slug/validate', () => {
+  it('returns valid:true for a well-formed pack', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/workbench/packs/local-dev/my-pack/validate',
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ valid: boolean; errors: unknown[]; warnings: unknown[] }>();
+    expect(body.valid).toBe(true);
+    expect(body.errors).toHaveLength(0);
+    expect(body.warnings).toHaveLength(0);
+  });
+
+  it('returns validation errors for a pack with a missing required field', async () => {
+    // Overwrite manifest with an invalid YAML that is missing required fields
+    const packDir = join(localDevRoot, 'my-pack');
+    writeFileSync(
+      join(packDir, 'manifest.yaml'),
+      // Missing: version, author, license, etc.
+      `schema_version: "0.1"\npack_id: local.my_pack\nname: My Pack\n`,
+    );
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/workbench/packs/local-dev/my-pack/validate',
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ valid: boolean; errors: { rule_id: string; file: string; severity: string }[] }>();
+    expect(body.valid).toBe(false);
+    expect(body.errors.length).toBeGreaterThan(0);
+    expect(body.errors.every((e) => e.severity === 'error')).toBe(true);
+    // All errors should be associated with a file
+    expect(body.errors.every((e) => typeof e.file === 'string')).toBe(true);
+  });
+
+  it('returns multiple SCHEMA_VIOLATION errors when a file has several missing fields', async () => {
+    const packDir = join(localDevRoot, 'my-pack');
+    writeFileSync(
+      join(packDir, 'manifest.yaml'),
+      // schema_version present but many required fields missing
+      `schema_version: "0.1"\npack_id: local.my_pack\n`,
+    );
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/workbench/packs/local-dev/my-pack/validate',
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ valid: boolean; errors: { rule_id: string }[] }>();
+    expect(body.valid).toBe(false);
+    // AJV allErrors:true produces one issue per missing field
+    expect(body.errors.length).toBeGreaterThan(1);
+  });
+
+  it('returns FORBIDDEN_FILE errors for executable files and collects all of them', async () => {
+    const packDir = join(localDevRoot, 'my-pack');
+    writeFileSync(join(packDir, 'run.sh'), '#!/bin/sh\necho hello\n');
+    writeFileSync(join(packDir, 'setup.py'), 'print("hi")\n');
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/workbench/packs/local-dev/my-pack/validate',
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ valid: boolean; errors: { rule_id: string; category: string; file: string }[] }>();
+    expect(body.valid).toBe(false);
+    const secErrors = body.errors.filter((e) => e.rule_id === 'FORBIDDEN_FILE');
+    // Both forbidden files should be reported, not just the first one
+    expect(secErrors.length).toBeGreaterThanOrEqual(2);
+    expect(secErrors.every((e) => e.category === 'security')).toBe(true);
+  });
+
+  it('returns 404 for a non-existent pack', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/workbench/packs/official/does-not-exist/validate',
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('returns 400 for an invalid kind', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/workbench/packs/community/sample-pack/validate',
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('includes suggested_fix for each error', async () => {
+    const packDir = join(localDevRoot, 'my-pack');
+    writeFileSync(join(packDir, 'manifest.yaml'), `schema_version: "0.1"\npack_id: local.my_pack\n`);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/workbench/packs/local-dev/my-pack/validate',
+    });
+    const body = res.json<{ errors: { suggested_fix: string }[] }>();
+    expect(body.errors.every((e) => typeof e.suggested_fix === 'string' && e.suggested_fix.length > 0)).toBe(true);
   });
 });
 

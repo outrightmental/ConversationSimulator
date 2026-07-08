@@ -376,6 +376,150 @@ describe('CreatorWorkbench', () => {
     })
   })
 
+  it('groups validation errors by file', async () => {
+    stubFetch((url) => {
+      if (url.includes('/validate')) {
+        return okJson({
+          valid: false,
+          errors: [
+            { severity: 'error', rule_id: 'SCHEMA_VIOLATION', file: 'manifest.yaml', pointer: '/author', message: 'author is required', suggested_fix: 'Add author field' },
+            { severity: 'error', rule_id: 'SCHEMA_VIOLATION', file: 'scenarios/basic.yaml', pointer: '/summary', message: 'summary is required', suggested_fix: 'Add summary' },
+          ],
+          warnings: [],
+        })
+      }
+      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
+      return okJson([OFFICIAL_PACK, LOCAL_PACK])
+    })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+
+    await waitFor(() => {
+      const panel = screen.getByTestId('validation-panel')
+      expect(panel).toHaveTextContent('manifest.yaml')
+      expect(panel).toHaveTextContent('scenarios/basic.yaml')
+      expect(panel).toHaveTextContent('author is required')
+      expect(panel).toHaveTextContent('summary is required')
+    })
+  })
+
+  it('shows a clickable file link for yaml findings', async () => {
+    stubFetch((url) => {
+      if (url.includes('/validate')) {
+        return okJson({
+          valid: false,
+          errors: [
+            { severity: 'error', rule_id: 'SCHEMA_VIOLATION', file: 'manifest.yaml', pointer: '/author', message: 'author is required', suggested_fix: 'Add author' },
+          ],
+          warnings: [],
+        })
+      }
+      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
+      if (url.includes('/file?')) return okJson({ content: 'pack_id: x\n', editable: true })
+      return okJson([OFFICIAL_PACK, LOCAL_PACK])
+    })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+
+    const fileLink = await screen.findByTestId('validation-file-link-manifest.yaml')
+    expect(fileLink).toBeInTheDocument()
+
+    // Clicking the file link should open the file in the editor
+    fireEvent.click(fileLink)
+    await waitFor(() => {
+      expect(screen.getByTestId('file-editor')).toBeInTheDocument()
+    })
+  })
+
+  it('shows security badge and SECURITY label for forbidden file findings', async () => {
+    stubFetch((url) => {
+      if (url.includes('/validate')) {
+        return okJson({
+          valid: false,
+          errors: [
+            { severity: 'error', rule_id: 'FORBIDDEN_FILE', file: 'run.sh', pointer: '', message: "Executable file not allowed: 'run.sh'", suggested_fix: 'Remove this file', category: 'security' },
+          ],
+          warnings: [],
+        })
+      }
+      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
+      return okJson([OFFICIAL_PACK, LOCAL_PACK])
+    })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+
+    await waitFor(() => {
+      const panel = screen.getByTestId('validation-panel')
+      expect(panel).toHaveTextContent('SECURITY')
+      expect(screen.getByTestId('security-badge')).toBeInTheDocument()
+    })
+  })
+
+  it('shows suggested fix text for each finding', async () => {
+    stubFetch((url) => {
+      if (url.includes('/validate')) {
+        return okJson({
+          valid: false,
+          errors: [
+            { severity: 'error', rule_id: 'SCHEMA_VIOLATION', file: 'manifest.yaml', pointer: '/author', message: 'author required', suggested_fix: 'Add the author field to manifest.yaml' },
+          ],
+          warnings: [],
+        })
+      }
+      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
+      return okJson([OFFICIAL_PACK, LOCAL_PACK])
+    })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('validation-panel')).toHaveTextContent('Add the author field to manifest.yaml')
+    })
+  })
+
+  it('shows copy validation button', async () => {
+    stubFetch((url) => {
+      if (url.includes('/validate')) {
+        return okJson({
+          valid: false,
+          errors: [
+            { severity: 'error', rule_id: 'SCHEMA_VIOLATION', file: 'manifest.yaml', pointer: '/author', message: 'author required', suggested_fix: 'Fix it' },
+          ],
+          warnings: [],
+        })
+      }
+      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
+      return okJson([OFFICIAL_PACK, LOCAL_PACK])
+    })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('copy-validation-button')).toBeInTheDocument()
+    })
+  })
+
+  it('shows service error when validator API fails', async () => {
+    stubFetch((url) => {
+      if (url.includes('/validate')) return { ok: false, status: 500, text: () => Promise.resolve('Internal server error') }
+      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
+      return okJson([OFFICIAL_PACK, LOCAL_PACK])
+    })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+
+    await waitFor(() => {
+      const panel = screen.getByTestId('validation-panel')
+      expect(panel).toHaveTextContent(/validator unavailable/i)
+    })
+  })
+
   it('clears dirty state immediately when switching to a different file', async () => {
     const localContent = 'name: My Pack\n'
     // jsdom doesn't implement window.confirm; stub it to return true (user confirms discard)
