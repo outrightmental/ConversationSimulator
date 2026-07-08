@@ -208,6 +208,30 @@ async def test_start_raises_on_generic_oserror(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_start_raises_on_log_open_oserror(tmp_path):
+    """OSError from opening the log file must produce state=CRASHED and RuntimeError.
+
+    open(log_path, "ab") can fail with PermissionError, EMFILE, or similar.
+    Before the fix these propagated as raw OSError, bypassing the router's
+    (RuntimeError, TimeoutError) handler and returning 500 instead of 503.
+    """
+    from unittest.mock import patch
+
+    sidecar = LlamaCppSidecar(log_dir=str(tmp_path / "logs"))
+
+    with patch("builtins.open", side_effect=OSError(13, "Permission denied")):
+        with pytest.raises(RuntimeError, match="Failed to open log file"):
+            await sidecar.start(
+                "fake.gguf",
+                executable="/bin/true",
+                port=_free_port(),
+            )
+
+    assert sidecar.state == SidecarState.CRASHED
+    assert sidecar._log_fh is None
+
+
+@pytest.mark.asyncio
 async def test_stop_when_not_running_is_noop(tmp_path):
     sidecar = LlamaCppSidecar(log_dir=str(tmp_path / "logs"))
     await sidecar.stop()  # must not raise

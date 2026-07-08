@@ -177,7 +177,12 @@ class LlamaCppSidecar:
 
         self._log_dir.mkdir(parents=True, exist_ok=True)
         self._log_path = self._log_dir / "runtime.log"
-        log_fh: IO[bytes] = open(self._log_path, "ab")  # noqa: WPS515
+        try:
+            log_fh: IO[bytes] = open(self._log_path, "ab")  # noqa: WPS515
+        except OSError as exc:
+            self._state = SidecarState.CRASHED
+            self._error = f"Failed to open log file {self._log_path}: {exc}"
+            raise RuntimeError(self._error) from exc
         self._log_fh = log_fh
 
         self._state = SidecarState.STARTING
