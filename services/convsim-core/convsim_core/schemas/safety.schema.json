@@ -2,9 +2,9 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.convsim.dev/v0.1/safety.schema.json",
   "title": "ConvSim Safety Policy",
-  "description": "Validates a safety policy file that governs content boundaries for a scenario.",
+  "description": "Validates a safety policy file that governs content boundaries for a scenario. Categories listed here are enforced by the input router before the NPC runtime is called (SPEC §13.2).",
   "type": "object",
-  "required": ["schema_version", "policy_id", "content_categories", "redirect_message", "content_rating_cap"],
+  "required": ["schema_version", "policy_id", "content_categories", "content_rating_cap"],
   "additionalProperties": false,
   "properties": {
     "schema_version": {
@@ -20,48 +20,84 @@
     },
     "content_categories": {
       "type": "object",
-      "description": "Explicit allow/block rules per content category. Non-negotiable categories (nsfw_sexual, real_person_impersonation, instructional_criminal, crisis_content) must be declared.",
-      "required": [
-        "nsfw_sexual",
-        "real_person_impersonation",
-        "instructional_criminal",
-        "crisis_content"
-      ],
+      "description": "Explicit allow/block rules per content category. Global non-overridable categories (minors_romantic_or_sexual, self_harm_crisis) are enforced by the input router regardless of what is declared here.",
       "additionalProperties": false,
       "properties": {
-        "nsfw_sexual": {
+        "nsfw_sexual_content": {
           "type": "string",
-          "enum": ["block"],
-          "description": "NSFW sexual content must always be blocked."
+          "enum": ["stop", "redirect"],
+          "description": "NSFW sexual content."
         },
-        "violence_graphic": {
+        "minors_romantic_or_sexual": {
           "type": "string",
-          "enum": ["block", "redirect"]
+          "enum": ["stop"],
+          "description": "Romantic or sexual content involving minors. Global non-overridable — always stop."
         },
         "real_person_impersonation": {
           "type": "string",
+          "enum": ["stop", "redirect", "refuse", "block"],
+          "description": "Impersonation of an identifiable real person. 'block' is a legacy value that maps to 'stop'; prefer 'stop' in new policies."
+        },
+        "voice_cloning_request": {
+          "type": "string",
+          "enum": ["refuse", "stop"],
+          "description": "Requests to clone, copy, or deepfake a voice."
+        },
+        "medical_or_therapy_claim": {
+          "type": "string",
+          "enum": ["redirect", "refuse"],
+          "description": "Medical diagnosis, prescription, or therapy-as-treatment claims."
+        },
+        "legal_claim": {
+          "type": "string",
+          "enum": ["redirect", "refuse"],
+          "description": "Professional legal advice or opinion claims."
+        },
+        "criminal_instruction": {
+          "type": "string",
+          "enum": ["refuse", "stop"],
+          "description": "Instructions for criminal activity or physical harm."
+        },
+        "harassment_extreme": {
+          "type": "string",
+          "enum": ["redirect", "refuse", "stop"],
+          "description": "Extreme harassment, credible threats, or targeted abuse."
+        },
+        "self_harm_crisis": {
+          "type": "string",
+          "enum": ["stop_with_resource_message"],
+          "description": "Self-harm or suicidal ideation. Global non-overridable — always stop and surface real crisis resources."
+        },
+        "nsfw_sexual": {
+          "type": "string",
           "enum": ["block"],
-          "description": "Real-person impersonation must always be blocked."
+          "description": "Legacy alias for nsfw_sexual_content. Prefer nsfw_sexual_content in new policies."
+        },
+        "violence_graphic": {
+          "type": "string",
+          "enum": ["block", "redirect"],
+          "description": "Graphic violence. Enforced by the NPC output validator; not currently checked by the input router."
         },
         "instructional_criminal": {
           "type": "string",
           "enum": ["block"],
-          "description": "Instructional criminal content must always be blocked."
+          "description": "Legacy alias for criminal_instruction. Prefer criminal_instruction in new policies."
         },
         "medical_professional_advice": {
           "type": "string",
-          "enum": ["block", "redirect"]
+          "enum": ["block", "redirect"],
+          "description": "Legacy alias for medical_or_therapy_claim. Prefer medical_or_therapy_claim in new policies."
         },
         "crisis_content": {
           "type": "string",
           "enum": ["redirect"],
-          "description": "Crisis content must be redirected to real resources, not simulated."
+          "description": "Legacy alias for self_harm_crisis. Prefer self_harm_crisis in new policies."
         }
       }
     },
     "redirect_message": {
       "type": "string",
-      "description": "What the NPC says when redirecting away from blocked content."
+      "description": "Fallback redirect message displayed to the player when the category has no per-category message configured."
     },
     "allow_profanity": {
       "type": "boolean",
