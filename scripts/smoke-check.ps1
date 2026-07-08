@@ -105,6 +105,17 @@ Check-File "scripts\dev.ps1"
 Check-File "scripts\dev-desktop.sh"
 Check-File "scripts\dev-desktop.ps1"
 
+# First-run and release scripts
+Check-File "scripts\first-run-check.sh"
+Check-File "scripts\first-run-check.ps1"
+
+Write-Host ""
+
+# Release infrastructure
+Check-File ".github\workflows\release.yml"
+Check-File "docs\release-notes-template.md"
+Check-File "docs\platform-notes.md"
+
 Write-Host ""
 
 # Desktop Tauri wrapper

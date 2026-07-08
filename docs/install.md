@@ -6,7 +6,7 @@ Conversation Simulator runs entirely on your computer — no cloud inference, no
 Two install paths are available:
 
 - **Path A — developer install:** clone the source and run the dev services locally. Suitable for contributors and users who want full control.
-- **Path B — alpha app install:** download and run the pre-built desktop application (planned for a future milestone; see below).
+- **Path B — alpha app install:** download and run the pre-built desktop application (see below). Note that the alpha build wraps the web UI in a native window; the backend must still be started separately until the sidecar is bundled.
 
 ---
 
@@ -25,6 +25,26 @@ Two install paths are available:
 ---
 
 ## Path A — developer install
+
+### 0. Run the first-run check (optional)
+
+Before installing anything, confirm your system meets the requirements:
+
+**macOS / Linux:**
+
+```bash
+./scripts/first-run-check.sh
+```
+
+**Windows (PowerShell):**
+
+```powershell
+.\scripts\first-run-check.ps1
+```
+
+The check reports OS version, CPU architecture, RAM, disk space, audio device
+availability, and port conflicts. All items marked `FAIL` must be resolved
+before the app will work; `WARN` items are advisory.
 
 ### 1. Install system dependencies
 
@@ -127,28 +147,73 @@ The command exits 0 on success and prints an actionable error if any subsystem a
 
 ## Path B — alpha app install
 
-> **Status:** The packaged desktop application is planned for a future milestone. This section describes how to install it when it becomes available.
-
 When a release is published on the [GitHub releases page](https://github.com/outrightmental/ConversationSimulator/releases):
 
-1. Download the installer for your platform (`.dmg` on macOS, `.exe` on Windows, `.AppImage` on Linux).
-2. Open the installer and follow the prompts.
-3. Launch **Conversation Simulator** from your Applications folder or Start Menu.
-4. On first launch the app prompts you to install a local model. No model weights are bundled with the installer.
+### 1. Pre-flight check
 
-To verify the installer download before running it:
+Run the first-run check before downloading anything:
 
 ```bash
-# macOS / Linux — replace the filename and checksum with values from the release page
-shasum -a 256 ConversationSimulator-1.0.0.dmg
+./scripts/first-run-check.sh        # macOS / Linux
+.\scripts\first-run-check.ps1       # Windows PowerShell
+```
+
+### 2. Download and verify
+
+Download the installer for your platform:
+
+| Platform | File |
+|---|---|
+| macOS (Apple Silicon) | `ConversationSimulator_<version>_aarch64.dmg` |
+| macOS (Intel) | `ConversationSimulator_<version>_x64.dmg` |
+| Linux (x86_64) | `conversation-simulator_<version>_amd64.AppImage` |
+| Windows (x86_64) | `ConversationSimulator_<version>_x64-setup.exe` |
+
+Verify the download against the `checksums-sha256.txt` file on the release page:
+
+```bash
+# macOS / Linux
+shasum -a 256 ConversationSimulator_<version>_aarch64.dmg
 ```
 
 ```powershell
 # Windows PowerShell
-Get-FileHash "ConversationSimulator-1.0.0.exe" -Algorithm SHA256
+Get-FileHash "ConversationSimulator_<version>_x64-setup.exe" -Algorithm SHA256
 ```
 
-The expected checksum is listed on the GitHub release page alongside each download.
+### 3. Install and launch
+
+- **macOS:** open the `.dmg` and drag the app to `/Applications`. On first
+  launch, Gatekeeper may warn about an unidentified developer (alpha builds are
+  unsigned). Right-click the app → **Open** → **Open** to proceed.
+- **Windows:** run the `.exe` installer. SmartScreen may warn about an unrecognised
+  publisher — click **More info → Run anyway**.
+- **Linux:** `chmod +x *.AppImage` then run it directly. No installation needed.
+
+### 4. Start the backend
+
+> **Alpha limitation:** The desktop app wraps the browser UI but does not yet
+> launch the backend automatically. You must start `convsim-core` in a separate
+> terminal before using the app.
+
+```bash
+./scripts/dev.sh          # macOS / Linux
+.\scripts\dev.ps1         # Windows PowerShell
+```
+
+Then open the desktop app. The backend sidecar will be bundled in a future
+release, making this step unnecessary.
+
+### 5. Install a local model
+
+On first launch the app shows a **"No model loaded"** banner. Open **Settings →
+Models**, accept a model license, and start the download. No model weights are
+bundled with the installer.
+
+---
+
+> For platform-specific details (code signing, Gatekeeper, SmartScreen,
+> WebView2, audio permissions), see [platform-notes.md](platform-notes.md).
 
 ---
 

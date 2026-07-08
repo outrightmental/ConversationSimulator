@@ -103,6 +103,17 @@ check_file "scripts/dev.ps1"
 check_file "scripts/dev-desktop.sh"
 check_file "scripts/dev-desktop.ps1"
 
+# First-run and release scripts
+check_file "scripts/first-run-check.sh"
+check_file "scripts/first-run-check.ps1"
+
+echo ""
+
+# Release infrastructure
+check_file ".github/workflows/release.yml"
+check_file "docs/release-notes-template.md"
+check_file "docs/platform-notes.md"
+
 echo ""
 
 # Desktop Tauri wrapper
