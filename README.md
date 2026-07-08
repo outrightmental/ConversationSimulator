@@ -90,10 +90,27 @@ On Windows (PowerShell), use `scripts\dev.ps1` instead.
 ## Local-first promise
 
 > Conversation Simulator does not send your conversations, audio, prompts,
-> transcripts, or model outputs to any server. Model and pack downloads
-> happen only when you explicitly request them.
+> transcripts, or model outputs to any server during play. Model and pack
+> downloads happen only when you explicitly request them.
 
-You can verify this at any time with the built-in offline smoke test:
+**What this means in practice:**
+
+- LLM inference, speech-to-text, and text-to-speech all run on local models —
+  no cloud API calls during a session.
+- Transcripts are stored in a local SQLite database on your machine only, and
+  are never uploaded. Saving is on by default; you can turn it off in Settings.
+- Raw audio is never saved by default — only the transcribed text is processed.
+- TTS-synthesized audio is cached locally. Nothing is sent to external servers.
+- **Telemetry is absent from the MVP.** No usage data, analytics, or crash
+  reports are transmitted. A `telemetry_enabled` setting exists and defaults to
+  off, but the MVP ships no telemetry subsystem — nothing is sent regardless.
+- All services bind to `127.0.0.1` so no ports are reachable from other machines.
+
+See [`docs/privacy.md`](docs/privacy.md) for the full data-handling policy,
+including what is logged, how to export your data, and how to delete everything.
+
+You can verify the local-only guarantee at any time with the built-in offline
+smoke test:
 
 ```bash
 # Run against an official pack (no model download needed)

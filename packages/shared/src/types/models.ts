@@ -97,6 +97,25 @@ export interface InstallModelResponse {
   message: string | null;
 }
 
+export interface RegisterGgufRequest {
+  path: string;
+  display_name?: string | null;
+  family_guess?: string | null;
+  context_length?: number | null;
+}
+
+export interface RegisterGgufResponse {
+  profile_id: number;
+  file_path: string;
+  display_name: string;
+  filename: string;
+  family_guess: string | null;
+  context_length_default: number | null;
+  warnings: string[];
+  active_runtime_id: string;
+  active_model_id: string;
+}
+
 export interface BenchmarkRequest {
   model_id?: string | null;
 }

@@ -488,6 +488,174 @@ def test_benchmark_persisted_benchmarked_at_matches_response(client):
     assert saved["benchmarked_at"] == body["benchmarked_at"]
 
 
+# ── POST /api/models/register-gguf ───────────────────────────────────────────
+
+
+def test_register_gguf_rejects_empty_path(client):
+    resp = client.post("/api/models/register-gguf", json={"path": ""})
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "GGUF_PATH_EMPTY"
+
+
+def test_register_gguf_rejects_whitespace_only_path(client):
+    resp = client.post("/api/models/register-gguf", json={"path": "   "})
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "GGUF_PATH_EMPTY"
+
+
+def test_register_gguf_rejects_non_gguf_extension(client):
+    resp = client.post("/api/models/register-gguf", json={"path": "/tmp/model.bin"})
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "GGUF_INVALID_EXTENSION"
+
+
+def test_register_gguf_rejects_no_extension(client):
+    resp = client.post("/api/models/register-gguf", json={"path": "/tmp/model"})
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "GGUF_INVALID_EXTENSION"
+
+
+def test_register_gguf_rejects_missing_file(client):
+    resp = client.post("/api/models/register-gguf", json={"path": "/nonexistent/path/model.gguf"})
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "GGUF_FILE_NOT_FOUND"
+
+
+def test_register_gguf_error_message_includes_path(client):
+    path = "/nonexistent/path/model.gguf"
+    resp = client.post("/api/models/register-gguf", json={"path": path})
+    assert path in resp.json()["error"]["message"]
+
+
+def test_register_gguf_with_valid_file(client, tmp_path):
+    model_file = tmp_path / "my-model.gguf"
+    model_file.write_bytes(b"\x00" * 16)
+    resp = client.post("/api/models/register-gguf", json={"path": str(model_file)})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["file_path"] == str(model_file)
+    assert body["filename"] == "my-model.gguf"
+    assert body["active_runtime_id"] == "llama_cpp"
+    assert body["active_model_id"] == str(model_file)
+    assert isinstance(body["profile_id"], int)
+    assert body["warnings"] == []
+
+
+def test_register_gguf_sets_active_config(client, tmp_path):
+    model_file = tmp_path / "test.gguf"
+    model_file.write_bytes(b"\x00" * 16)
+    client.post("/api/models/register-gguf", json={"path": str(model_file)})
+    cfg = get_active_config(client.app.state.db.connection())
+    assert cfg["runtime_id"] == "llama_cpp"
+    assert cfg["model_id"] == str(model_file)
+
+
+def test_register_gguf_persists_to_installed_models(client, tmp_path):
+    model_file = tmp_path / "test.gguf"
+    model_file.write_bytes(b"\x00" * 16)
+    client.post("/api/models/register-gguf", json={"path": str(model_file)})
+    rows = get_installed_models(client.app.state.db.connection())
+    assert any(r["file_path"] == str(model_file) and r["install_status"] == "complete" for r in rows)
+
+
+def test_register_gguf_with_display_name(client, tmp_path):
+    model_file = tmp_path / "test.gguf"
+    model_file.write_bytes(b"\x00" * 16)
+    resp = client.post(
+        "/api/models/register-gguf",
+        json={"path": str(model_file), "display_name": "My Custom Model"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["display_name"] == "My Custom Model"
+
+
+def test_register_gguf_defaults_display_name_to_filename(client, tmp_path):
+    model_file = tmp_path / "my-model.gguf"
+    model_file.write_bytes(b"\x00" * 16)
+    resp = client.post("/api/models/register-gguf", json={"path": str(model_file)})
+    assert resp.status_code == 200
+    assert resp.json()["display_name"] == "my-model.gguf"
+
+
+def test_register_gguf_path_with_spaces(client, tmp_path):
+    spaced_dir = tmp_path / "my models"
+    spaced_dir.mkdir()
+    model_file = spaced_dir / "my model.gguf"
+    model_file.write_bytes(b"\x00" * 16)
+    resp = client.post("/api/models/register-gguf", json={"path": str(model_file)})
+    assert resp.status_code == 200
+    assert resp.json()["file_path"] == str(model_file)
+
+
+def test_register_gguf_with_family_guess(client, tmp_path):
+    model_file = tmp_path / "llama.gguf"
+    model_file.write_bytes(b"\x00" * 16)
+    resp = client.post(
+        "/api/models/register-gguf",
+        json={"path": str(model_file), "family_guess": "llama"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["family_guess"] == "llama"
+
+
+def test_register_gguf_with_context_length(client, tmp_path):
+    model_file = tmp_path / "model.gguf"
+    model_file.write_bytes(b"\x00" * 16)
+    resp = client.post(
+        "/api/models/register-gguf",
+        json={"path": str(model_file), "context_length": 8192},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["context_length_default"] == 8192
+
+
+def test_register_gguf_active_config_appears_in_models_response(client, tmp_path):
+    model_file = tmp_path / "model.gguf"
+    model_file.write_bytes(b"\x00" * 16)
+    client.post("/api/models/register-gguf", json={"path": str(model_file)})
+    body = client.get("/api/models").json()
+    assert body["active"]["runtime_id"] == "llama_cpp"
+    assert body["active"]["model_id"] == str(model_file)
+
+
+# ── model_manager_service: register_user_gguf ────────────────────────────────
+
+
+def test_register_user_gguf_stores_record(db, tmp_path):
+    from convsim_core.services.model_manager_service import register_user_gguf
+
+    model_file = tmp_path / "model.gguf"
+    model_file.write_bytes(b"\x00" * 16)
+    result = register_user_gguf(db.connection(), path=str(model_file))
+    assert result["file_path"] == str(model_file)
+    assert result["filename"] == "model.gguf"
+    assert result["display_name"] == "model.gguf"
+    assert result["install_status"] == "complete"
+    assert result["source"] == "user-supplied"
+    assert isinstance(result["id"], int)
+
+
+def test_register_user_gguf_with_custom_display_name(db, tmp_path):
+    from convsim_core.services.model_manager_service import register_user_gguf
+
+    model_file = tmp_path / "model.gguf"
+    model_file.write_bytes(b"\x00")
+    result = register_user_gguf(
+        db.connection(), path=str(model_file), display_name="Llama 3 8B"
+    )
+    assert result["display_name"] == "Llama 3 8B"
+
+
+def test_register_user_gguf_appears_in_installed_models(db, tmp_path):
+    from convsim_core.services.model_manager_service import register_user_gguf
+
+    model_file = tmp_path / "model.gguf"
+    model_file.write_bytes(b"\x00")
+    register_user_gguf(db.connection(), path=str(model_file))
+    rows = get_installed_models(db.connection())
+    assert any(r["file_path"] == str(model_file) for r in rows)
+
+
 def test_benchmark_runtime_unavailable_returns_503(client, monkeypatch):
     import convsim_core.routers.models as models_module
 

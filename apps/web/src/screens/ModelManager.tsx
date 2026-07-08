@@ -622,7 +622,7 @@ export default function ModelManager() {
         setGgufPathError('Please enter a file path.')
         return
       }
-      if (!trimmed.endsWith('.gguf')) {
+      if (!trimmed.toLowerCase().endsWith('.gguf')) {
         setGgufPathError('The file must have a .gguf extension.')
         return
       }
@@ -630,7 +630,15 @@ export default function ModelManager() {
       setActionLoading(true)
       setActionError(null)
       try {
-        await api.useModel({ runtime_id: 'llama_cpp', model_id: trimmed })
+        await api.registerGguf({ path: trimmed })
+        // Best-effort sidecar launch. Registration already made the model the
+        // active config, so a failed auto-start is non-fatal — proceed to home
+        // and let the user start the server manually. Log it for diagnostics.
+        try {
+          await api.startSidecar(trimmed)
+        } catch (sidecarErr) {
+          console.warn('GGUF registered, but the llama.cpp sidecar failed to start:', sidecarErr)
+        }
         navigate('/')
       } catch (err: unknown) {
         setActionError(
@@ -643,11 +651,29 @@ export default function ModelManager() {
     return (
       <div style={{ maxWidth: '640px' }}>
         <h1>Use a GGUF file</h1>
-        <p style={{ color: '#a1a1aa', fontSize: '0.9rem' }}>
-          Enter the absolute path to a <code>.gguf</code> model file already on your machine.
-        </p>
 
-        <div style={{ marginTop: '1rem' }}>
+        <div
+          role="note"
+          aria-label="license responsibility notice"
+          style={{
+            background: 'rgba(251,191,36,0.08)',
+            border: '1px solid rgba(251,191,36,0.35)',
+            borderRadius: '6px',
+            padding: '0.85rem 1rem',
+            marginTop: '1rem',
+          }}
+        >
+          <p style={{ margin: 0, fontWeight: 600, color: '#fbbf24', fontSize: '0.875rem' }}>
+            You are responsible for this model's license and hardware fit.
+          </p>
+          <p style={{ margin: '0.4rem 0 0', fontSize: '0.825rem', color: '#fde68a' }}>
+            This app does not claim the model you provide is official, licensed for redistribution,
+            or suitable for your hardware. Review the model's license before use. The file will
+            not be copied — only its path is stored.
+          </p>
+        </div>
+
+        <div style={{ marginTop: '1.25rem' }}>
           <label
             htmlFor="gguf-path"
             style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem' }}
@@ -680,7 +706,8 @@ export default function ModelManager() {
             }}
           />
           <p id="gguf-path-hint" style={{ fontSize: '0.8rem', color: '#71717a', marginTop: '0.3rem' }}>
-            The file must be a GGUF model compatible with llama.cpp.
+            Absolute path to a GGUF model file compatible with llama.cpp. Paths with spaces are
+            supported.
           </p>
           {ggufPathError && (
             <p role="alert" style={{ fontSize: '0.875rem', color: '#f87171', margin: '0.3rem 0 0' }}>

@@ -28,7 +28,7 @@ from convsim_core.services.model_manager_service import (
     get_active_config,
     get_install_record,
     get_installed_models,
-    mark_install_failed,
+    register_user_gguf,
     save_benchmark_result,
     set_active_config,
 )
@@ -121,6 +121,25 @@ class InstallModelResponse(BaseModel):
     registry_id: str
     status: str
     message: Optional[str] = None
+
+
+class RegisterGgufRequest(BaseModel):
+    path: str
+    display_name: Optional[str] = None
+    family_guess: Optional[str] = None
+    context_length: Optional[int] = None
+
+
+class RegisterGgufResponse(BaseModel):
+    profile_id: int
+    file_path: str
+    display_name: str
+    filename: str
+    family_guess: Optional[str] = None
+    context_length_default: Optional[int] = None
+    warnings: list[str]
+    active_runtime_id: str
+    active_model_id: str
 
 
 class BenchmarkRequest(BaseModel):
@@ -338,49 +357,64 @@ async def install_model(request: Request, body: InstallModelRequest) -> InstallM
     )
 
 
-@router.get("/api/models/install/{install_id}", response_model=InstalledModelInfo)
-async def get_install_status(request: Request, install_id: int) -> InstalledModelInfo:
-    """Return the current status and progress of a model install."""
-    conn = request.app.state.db.connection()
-    record = get_install_record(conn, install_id)
-    if record is None:
-        raise ConvsimError(
-            code="INSTALL_NOT_FOUND",
-            message=f"No install record with id {install_id}.",
-            status_code=404,
-        )
-    return InstalledModelInfo(**record)
+@router.post("/api/models/register-gguf", response_model=RegisterGgufResponse)
+async def register_gguf(request: Request, body: RegisterGgufRequest) -> RegisterGgufResponse:
+    """Register a user-supplied GGUF file as the active model.
 
-
-@router.delete("/api/models/install/{install_id}", status_code=204)
-async def cancel_install(request: Request, install_id: int) -> None:
-    """Cancel an in-progress model download.
-
-    If the download is already complete or was never started, returns 404.
-    Sets the cancel event so the download task stops cleanly between chunks.
+    Validates file existence and extension. The file is not copied or modified —
+    only the path is stored. The user is responsible for the model's license
+    and hardware requirements; the app makes no claims about redistribution.
     """
-    conn = request.app.state.db.connection()
-    record = get_install_record(conn, install_id)
-    if record is None:
+    path = body.path.strip()
+
+    if not path:
         raise ConvsimError(
-            code="INSTALL_NOT_FOUND",
-            message=f"No install record with id {install_id}.",
+            code="GGUF_PATH_EMPTY",
+            message="File path must not be empty.",
+            status_code=400,
+        )
+
+    if not path.lower().endswith(".gguf"):
+        raise ConvsimError(
+            code="GGUF_INVALID_EXTENSION",
+            message="The file must have a .gguf extension.",
+            status_code=400,
+        )
+
+    if not os.path.isfile(path):
+        raise ConvsimError(
+            code="GGUF_FILE_NOT_FOUND",
+            message=(
+                f"GGUF file not found: {path}. "
+                "Verify the path is correct and the file is accessible, then try again."
+            ),
             status_code=404,
         )
 
-    terminal_statuses = {"ready", "complete", "failed", "cancelled", "checksum_mismatch"}
-    if record["install_status"] in terminal_statuses:
-        raise ConvsimError(
-            code="INSTALL_NOT_CANCELLABLE",
-            message=f"Install {install_id} is in terminal state '{record['install_status']}' and cannot be cancelled.",
-            status_code=409,
-        )
+    db = request.app.state.db
+    conn = db.connection()
 
-    event = _cancel_events.get(install_id)
-    if event is not None:
-        event.set()
-    else:
-        mark_install_failed(conn, install_id, "Cancelled by user.", status="cancelled")
+    profile = register_user_gguf(
+        conn,
+        path=path,
+        display_name=body.display_name,
+        family_guess=body.family_guess,
+        context_length_default=body.context_length,
+    )
+
+    set_active_config(conn, runtime_id="llama_cpp", model_id=path)
+
+    return RegisterGgufResponse(
+        profile_id=profile["id"],
+        file_path=path,
+        display_name=profile["display_name"],
+        filename=profile["filename"],
+        family_guess=body.family_guess,
+        context_length_default=body.context_length,
+        warnings=[],
+        active_runtime_id="llama_cpp",
+        active_model_id=path,
+    )
 
 
 @router.post("/api/models/benchmark", response_model=BenchmarkResponse)

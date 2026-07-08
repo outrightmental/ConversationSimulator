@@ -10,13 +10,25 @@ vi.mock('../api/client', () => ({
     getModels: vi.fn(),
     useModel: vi.fn(),
     installModel: vi.fn(),
-    getInstallStatus: vi.fn(),
-    cancelInstall: vi.fn(),
+    registerGguf: vi.fn(),
+    startSidecar: vi.fn(),
   },
 }))
 
 import { api } from '../api/client'
 const mockApi = vi.mocked(api)
+
+const REGISTER_GGUF_RESPONSE = {
+  profile_id: 1,
+  file_path: '/home/user/models/my-model.gguf',
+  display_name: 'my-model.gguf',
+  filename: 'my-model.gguf',
+  family_guess: null,
+  context_length_default: null,
+  warnings: [],
+  active_runtime_id: 'llama_cpp',
+  active_model_id: '/home/user/models/my-model.gguf',
+}
 
 const REGISTRY_ENTRY = {
   id: 'qwen3-4b-instruct-q4_k_m',
@@ -92,20 +104,8 @@ beforeEach(() => {
     status: 'pending',
     message: 'Install queued.',
   })
-  // Default: stay in 'downloading' state so the installing step remains visible in tests.
-  mockApi.getInstallStatus.mockResolvedValue({
-    id: 1,
-    registry_id: 'qwen3-4b-instruct-q4_k_m',
-    filename: 'qwen3-4b-instruct-q4_k_m.gguf',
-    file_path: '',
-    size_bytes: null,
-    install_status: 'downloading',
-    progress_bytes: null,
-    error_message: null,
-    verified_sha256: null,
-    installed_at: '2026-01-01T00:00:00.000Z',
-  })
-  mockApi.cancelInstall.mockResolvedValue(undefined)
+  mockApi.registerGguf.mockResolvedValue(REGISTER_GGUF_RESPONSE)
+  mockApi.startSidecar.mockResolvedValue({ state: 'running', pid: 1234, log_path: '/tmp/sidecar.log', host: '127.0.0.1', port: 7356 })
 })
 
 // ── Loading state ────────────────────────────────────────────────────────────
@@ -369,6 +369,26 @@ describe('ModelManager — GGUF branch', () => {
     expect(screen.getByRole('button', { name: /use this file/i })).toBeInTheDocument()
   })
 
+  it('shows a license responsibility notice', async () => {
+    await goToGguf()
+    expect(screen.getByRole('note', { name: /license responsibility notice/i })).toBeInTheDocument()
+  })
+
+  it('states user is responsible for license and hardware fit', async () => {
+    await goToGguf()
+    expect(screen.getByText(/responsible for this model.*license/i)).toBeInTheDocument()
+  })
+
+  it('states the app does not claim the model is official or redistributable', async () => {
+    await goToGguf()
+    expect(screen.getByText(/does not claim/i)).toBeInTheDocument()
+  })
+
+  it('states the file will not be copied', async () => {
+    await goToGguf()
+    expect(screen.getByText(/file will not be copied/i)).toBeInTheDocument()
+  })
+
   it('shows a validation error when path is empty', async () => {
     await goToGguf()
     fireEvent.click(screen.getByRole('button', { name: /use this file/i }))
@@ -388,17 +408,40 @@ describe('ModelManager — GGUF branch', () => {
     )
   })
 
-  it('calls useModel with llama_cpp runtime and the path', async () => {
+  it('calls registerGguf with the provided path', async () => {
     await goToGguf()
     fireEvent.change(screen.getByRole('textbox', { name: /file path/i }), {
       target: { value: '/home/user/models/my-model.gguf' },
     })
     fireEvent.click(screen.getByRole('button', { name: /use this file/i }))
     await waitFor(() =>
-      expect(mockApi.useModel).toHaveBeenCalledWith({
-        runtime_id: 'llama_cpp',
-        model_id: '/home/user/models/my-model.gguf',
+      expect(mockApi.registerGguf).toHaveBeenCalledWith({
+        path: '/home/user/models/my-model.gguf',
       }),
+    )
+  })
+
+  it('calls registerGguf for paths that contain spaces', async () => {
+    await goToGguf()
+    fireEvent.change(screen.getByRole('textbox', { name: /file path/i }), {
+      target: { value: '/home/user/my models/my model.gguf' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /use this file/i }))
+    await waitFor(() =>
+      expect(mockApi.registerGguf).toHaveBeenCalledWith({
+        path: '/home/user/my models/my model.gguf',
+      }),
+    )
+  })
+
+  it('attempts to start the sidecar after successful registration', async () => {
+    await goToGguf()
+    fireEvent.change(screen.getByRole('textbox', { name: /file path/i }), {
+      target: { value: '/home/user/models/my-model.gguf' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /use this file/i }))
+    await waitFor(() =>
+      expect(mockApi.startSidecar).toHaveBeenCalledWith('/home/user/models/my-model.gguf'),
     )
   })
 
@@ -411,8 +454,18 @@ describe('ModelManager — GGUF branch', () => {
     await waitFor(() => expect(screen.getByTestId('home-page')).toBeInTheDocument())
   })
 
-  it('shows an error when useModel fails for the GGUF path', async () => {
-    mockApi.useModel.mockRejectedValue(new Error('file not found'))
+  it('still navigates to home when sidecar start fails', async () => {
+    mockApi.startSidecar.mockRejectedValue(new Error('llama-server not found'))
+    await goToGguf()
+    fireEvent.change(screen.getByRole('textbox', { name: /file path/i }), {
+      target: { value: '/home/user/models/my-model.gguf' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /use this file/i }))
+    await waitFor(() => expect(screen.getByTestId('home-page')).toBeInTheDocument())
+  })
+
+  it('shows an error when registerGguf fails for the GGUF path', async () => {
+    mockApi.registerGguf.mockRejectedValue(new Error('GGUF_FILE_NOT_FOUND: file not found'))
     await goToGguf()
     fireEvent.change(screen.getByRole('textbox', { name: /file path/i }), {
       target: { value: '/home/user/models/missing.gguf' },

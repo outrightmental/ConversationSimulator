@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
 from typing import Any
 
@@ -113,77 +114,41 @@ def save_benchmark_result(
     conn.commit()
 
 
-def get_install_record(conn: sqlite3.Connection, install_id: int) -> dict[str, Any] | None:
-    """Return the install record for *install_id*, or None if not found."""
-    row = conn.execute(
-        """
-        SELECT id, registry_id, filename, file_path, size_bytes,
-               install_status, progress_bytes, error_message, verified_sha256, installed_at
-        FROM installed_models WHERE id = ?
-        """,
-        (install_id,),
-    ).fetchone()
-    return dict(row) if row is not None else None
-
-
-def update_install_progress(
+def register_user_gguf(
     conn: sqlite3.Connection,
-    install_id: int,
-    progress_bytes: int,
-    size_bytes: int | None = None,
-) -> None:
-    """Update download progress counters for an in-progress install."""
-    conn.execute(
+    *,
+    path: str,
+    display_name: str | None = None,
+    family_guess: str | None = None,
+    context_length_default: int | None = None,
+) -> dict[str, Any]:
+    """Store a user-supplied GGUF file profile and return the created record.
+
+    The file is not copied or modified. The caller is responsible for validating
+    that the path exists and has a .gguf extension before calling this function.
+    """
+    filename = os.path.basename(path)
+    name = display_name or filename
+    cursor = conn.execute(
         """
-        UPDATE installed_models
-        SET progress_bytes = ?, size_bytes = COALESCE(?, size_bytes)
-        WHERE id = ?
+        INSERT INTO installed_models
+            (registry_id, filename, file_path, install_status,
+             display_name, family_guess, context_length_default, source)
+        VALUES (NULL, ?, ?, 'complete', ?, ?, ?, 'user-supplied')
         """,
-        (progress_bytes, size_bytes, install_id),
+        (filename, path, name, family_guess, context_length_default),
     )
     conn.commit()
-
-
-def mark_install_ready(
-    conn: sqlite3.Connection,
-    install_id: int,
-    size_bytes: int,
-    verified_sha256: str,
-    file_path: str,
-) -> None:
-    """Mark an install as ready after successful download and checksum verification."""
-    conn.execute(
-        """
-        UPDATE installed_models
-        SET install_status = 'ready',
-            size_bytes = ?,
-            verified_sha256 = ?,
-            file_path = ?,
-            error_message = NULL,
-            installed_at = datetime('now')
-        WHERE id = ?
-        """,
-        (size_bytes, verified_sha256, file_path, install_id),
-    )
-    conn.commit()
-
-
-def mark_install_failed(
-    conn: sqlite3.Connection,
-    install_id: int,
-    error_message: str,
-    status: str = "failed",
-) -> None:
-    """Mark an install as failed, cancelled, or checksum_mismatch."""
-    conn.execute(
-        """
-        UPDATE installed_models
-        SET install_status = ?, error_message = ?
-        WHERE id = ?
-        """,
-        (status, error_message, install_id),
-    )
-    conn.commit()
+    return {
+        "id": cursor.lastrowid,
+        "filename": filename,
+        "file_path": path,
+        "display_name": name,
+        "family_guess": family_guess,
+        "context_length_default": context_length_default,
+        "install_status": "complete",
+        "source": "user-supplied",
+    }
 
 
 def get_latest_benchmark(
