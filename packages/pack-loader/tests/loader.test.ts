@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, afterEach } from 'vitest';
@@ -487,6 +487,153 @@ describe('resolveRef', () => {
       resolveRef('/tmp/pack/scenarios', '/tmp/pack', '../../outside.yaml');
     } catch (e) {
       expect((e as PackLoaderError).code).toBe('PATH_TRAVERSAL');
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Security: executable file detection
+// ---------------------------------------------------------------------------
+
+describe('loadPack — security: executable files rejected', () => {
+  it('rejects a pack containing a file with a forbidden extension (.sh)', () => {
+    const dir = track(makeTempPackDir());
+    writeFileSync(join(dir, 'run_me.sh'), '#!/bin/sh\necho hi', 'utf8');
+    expect(() => loadPack(dir)).toThrowError(PackLoaderError);
+    try {
+      loadPack(dir);
+    } catch (e) {
+      expect((e as PackLoaderError).code).toBe('FORBIDDEN_FILE');
+    }
+  });
+
+  it('rejects a pack containing a .command file (macOS double-click script)', () => {
+    const dir = track(makeTempPackDir());
+    writeFileSync(join(dir, 'open.command'), '#!/bin/sh\necho hi', 'utf8');
+    expect(() => loadPack(dir)).toThrowError(PackLoaderError);
+    try {
+      loadPack(dir);
+    } catch (e) {
+      expect((e as PackLoaderError).code).toBe('FORBIDDEN_FILE');
+    }
+  });
+
+  it('rejects a pack containing a forbidden extension in a nested directory', () => {
+    const dir = track(makeTempPackDir());
+    mkdirSync(join(dir, 'assets', 'scripts'), { recursive: true });
+    writeFileSync(join(dir, 'assets', 'scripts', 'deploy.py'), 'print("hi")', 'utf8');
+    expect(() => loadPack(dir)).toThrowError(PackLoaderError);
+    try {
+      loadPack(dir);
+    } catch (e) {
+      expect((e as PackLoaderError).code).toBe('FORBIDDEN_FILE');
+    }
+  });
+
+  it('rejects an ELF binary disguised with a .png extension', () => {
+    const dir = track(makeTempPackDir());
+    mkdirSync(join(dir, 'assets'), { recursive: true });
+    writeFileSync(
+      join(dir, 'assets', 'image.png'),
+      Buffer.from([0x7f, 0x45, 0x4c, 0x46, 0x00, 0x00, 0x00, 0x00]),
+    );
+    expect(() => loadPack(dir)).toThrowError(PackLoaderError);
+    try {
+      loadPack(dir);
+    } catch (e) {
+      expect((e as PackLoaderError).code).toBe('FORBIDDEN_BINARY');
+    }
+  });
+
+  it('rejects a Windows PE binary disguised with a .jpg extension', () => {
+    const dir = track(makeTempPackDir());
+    mkdirSync(join(dir, 'assets'), { recursive: true });
+    writeFileSync(
+      join(dir, 'assets', 'icon.jpg'),
+      Buffer.from([0x4d, 0x5a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]),
+    );
+    expect(() => loadPack(dir)).toThrowError(PackLoaderError);
+    try {
+      loadPack(dir);
+    } catch (e) {
+      expect((e as PackLoaderError).code).toBe('FORBIDDEN_BINARY');
+    }
+  });
+
+  it('rejects a shebang script disguised with a .txt extension', () => {
+    const dir = track(makeTempPackDir());
+    writeFileSync(join(dir, 'readme.txt'), '#!/bin/bash\necho hello', 'utf8');
+    expect(() => loadPack(dir)).toThrowError(PackLoaderError);
+    try {
+      loadPack(dir);
+    } catch (e) {
+      expect((e as PackLoaderError).code).toBe('FORBIDDEN_BINARY');
+    }
+  });
+
+  it('rejects a WebAssembly module disguised with a .dat extension', () => {
+    const dir = track(makeTempPackDir());
+    writeFileSync(
+      join(dir, 'module.dat'),
+      Buffer.from([0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00]),
+    );
+    expect(() => loadPack(dir)).toThrowError(PackLoaderError);
+    try {
+      loadPack(dir);
+    } catch (e) {
+      expect((e as PackLoaderError).code).toBe('FORBIDDEN_BINARY');
+    }
+  });
+
+  it('rejects a Mach-O 64-bit binary disguised with a safe extension in a nested directory', () => {
+    const dir = track(makeTempPackDir());
+    mkdirSync(join(dir, 'assets', 'audio', 'hidden'), { recursive: true });
+    writeFileSync(
+      join(dir, 'assets', 'audio', 'hidden', 'payload.bin'),
+      Buffer.from([0xcf, 0xfa, 0xed, 0xfe, 0x00, 0x00, 0x00, 0x00]),
+    );
+    expect(() => loadPack(dir)).toThrowError(PackLoaderError);
+    try {
+      loadPack(dir);
+    } catch (e) {
+      expect((e as PackLoaderError).code).toBe('FORBIDDEN_BINARY');
+    }
+  });
+
+  it('does not reject a pack containing a real PNG image', () => {
+    const dir = track(makeTempPackDir());
+    mkdirSync(join(dir, 'assets'), { recursive: true });
+    // Real PNG magic: \x89PNG\r\n\x1a\n
+    writeFileSync(
+      join(dir, 'assets', 'portrait.png'),
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]),
+    );
+    expect(() => loadPack(dir)).not.toThrow();
+  });
+
+  it.skipIf(process.platform === 'win32')('rejects a pack containing a symlink', () => {
+    const dir = track(makeTempPackDir());
+    const externalFile = join(tmpdir(), `convsim-test-external-${Date.now()}.txt`);
+    writeFileSync(externalFile, 'secret content outside pack boundary', 'utf8');
+    _tempDirs.push(externalFile); // ensure cleanup
+    symlinkSync(externalFile, join(dir, 'evil_link'));
+
+    expect(() => loadPack(dir)).toThrowError(PackLoaderError);
+    try {
+      loadPack(dir);
+    } catch (e) {
+      expect((e as PackLoaderError).code).toBe('FORBIDDEN_FILE');
+    }
+  });
+
+  it('error messages mention that MVP packs are data, not code', () => {
+    const dir = track(makeTempPackDir());
+    writeFileSync(join(dir, 'hack.sh'), '#!/bin/sh', 'utf8');
+    expect(() => loadPack(dir)).toThrowError(PackLoaderError);
+    try {
+      loadPack(dir);
+    } catch (e) {
+      expect((e as PackLoaderError).message.toLowerCase()).toContain('mvp packs are data');
     }
   });
 });

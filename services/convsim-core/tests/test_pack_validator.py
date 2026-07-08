@@ -117,6 +117,95 @@ def test_executable_extensions_rejected(tmp_path):
         )
 
 
+def test_command_extension_rejected(tmp_path):
+    """.command files (macOS double-click scripts) must be rejected."""
+    pack_dir = make_pack_dir(
+        tmp_path,
+        extra_files={"open_me.command": b"#!/bin/sh\nopen /Applications/Terminal.app"},
+    )
+    result = validate_pack_dir(pack_dir)
+    assert _has_error(result, rule_id="FORBIDDEN_FILE", text="open_me.command")
+
+
+def test_forbidden_file_in_nested_directory_rejected(tmp_path):
+    """Executable files inside nested subdirectories must be detected."""
+    pack_dir = make_pack_dir(
+        tmp_path,
+        extra_files={"assets/scripts/deploy.sh": b"#!/bin/sh\necho hello"},
+    )
+    result = validate_pack_dir(pack_dir)
+    assert _has_error(result, rule_id="FORBIDDEN_FILE", text="deploy.sh")
+
+
+@pytest.mark.parametrize("filename,magic_bytes,desc", [
+    ("assets/image.png", b"\x7fELF\x00\x00\x00\x00", "ELF binary disguised as PNG"),
+    ("assets/icon.jpg", b"MZ\x00\x00\x00\x00\x00\x00", "Windows PE disguised as JPEG"),
+    ("docs/readme.txt", b"#!/bin/bash\necho hi", "shebang script disguised as text"),
+    ("data/module.dat", b"\x00asm\x01\x00\x00\x00", "WebAssembly module disguised as data file"),
+    ("assets/lib.bin", b"\xcf\xfa\xed\xfe\x00\x00", "Mach-O 64-bit LE disguised as binary"),
+    ("resources/lib.so.1", b"\xca\xfe\xba\xbe\x00\x00", "Mach-O universal binary with extra extension"),
+])
+def test_executable_magic_bytes_with_safe_extension_rejected(tmp_path, filename, magic_bytes, desc):
+    """Files with executable magic bytes must be rejected even with safe-looking extensions."""
+    pack_dir = make_pack_dir(tmp_path, extra_files={filename: magic_bytes})
+    result = validate_pack_dir(pack_dir)
+    assert _has_error(result, rule_id="FORBIDDEN_BINARY"), (
+        f"{desc} ('{filename}') should trigger FORBIDDEN_BINARY; got: {result.errors}"
+    )
+
+
+def test_executable_magic_bytes_in_nested_directory_rejected(tmp_path):
+    """Magic-byte detection must recurse into deeply nested directories."""
+    elf_header = b"\x7fELF\x00\x00\x00\x00"
+    pack_dir = make_pack_dir(
+        tmp_path,
+        extra_files={"assets/audio/tracks/hidden/payload": elf_header},
+    )
+    result = validate_pack_dir(pack_dir)
+    assert _has_error(result, rule_id="FORBIDDEN_BINARY"), (
+        f"ELF binary in deep nested dir should trigger FORBIDDEN_BINARY; got: {result.errors}"
+    )
+
+
+def test_forbidden_binary_error_message_mentions_mvp_packs(tmp_path):
+    """FORBIDDEN_BINARY errors must explain that MVP packs are data, not code."""
+    pe_header = b"MZ\x00\x00"
+    pack_dir = make_pack_dir(tmp_path, extra_files={"payload.dat": pe_header})
+    result = validate_pack_dir(pack_dir)
+    assert _has_error(result, rule_id="FORBIDDEN_BINARY")
+    binary_error = next(e for e in result.errors if e.rule_id == "FORBIDDEN_BINARY")
+    assert "mvp packs are data" in binary_error.message.lower(), (
+        f"Error message should mention MVP packs are data; got: {binary_error.message!r}"
+    )
+
+
+def test_forbidden_file_error_message_mentions_mvp_packs(tmp_path):
+    """FORBIDDEN_FILE errors must explain that MVP packs are data, not code."""
+    pack_dir = make_pack_dir(
+        tmp_path,
+        extra_files={"run_me.sh": b"#!/bin/bash\necho hi"},
+    )
+    result = validate_pack_dir(pack_dir)
+    assert _has_error(result, rule_id="FORBIDDEN_FILE")
+    file_error = next(e for e in result.errors if e.rule_id == "FORBIDDEN_FILE")
+    assert "mvp packs are data" in file_error.message.lower(), (
+        f"Error message should mention MVP packs are data; got: {file_error.message!r}"
+    )
+
+
+def test_valid_png_not_flagged_as_binary(tmp_path):
+    """A real PNG file must not be rejected by the magic-byte check."""
+    real_png_header = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"
+    pack_dir = make_pack_dir(
+        tmp_path,
+        extra_files={"assets/valid_icon.png": real_png_header + b"\x00" * 50},
+    )
+    result = validate_pack_dir(pack_dir)
+    assert not _has_error(result, rule_id="FORBIDDEN_BINARY"), (
+        f"Valid PNG header should not trigger FORBIDDEN_BINARY; got: {result.errors}"
+    )
+
+
 def test_bad_content_rating_returns_error(tmp_path):
     pack_dir = make_pack_dir(tmp_path, manifest={"content_rating": "NC-17"})
     result = validate_pack_dir(pack_dir)
