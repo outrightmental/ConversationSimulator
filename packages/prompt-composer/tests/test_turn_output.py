@@ -8,6 +8,16 @@ Test plan (issue #15):
   - Non-JSON and non-object outputs go straight to fallback.
   - Invalid JSON triggers exactly one repair attempt before fallback.
   - Fallback TurnOutput is safe, in-session, and exposes no system rules.
+
+Test plan (issue #45 — content safety validation):
+  - Hard content violations produce a safety stop (continue_session=False).
+  - Recoverable violations trigger a content-safety retry with stricter prompt.
+  - Retry success returns the clean retried output.
+  - Retry failure falls back to safe redirect (continue_session=True).
+  - Hard violation after retry falls back to safety stop.
+  - Safety status="stop" in model output normalises session_control.
+  - turn_events list is populated with structured event records.
+  - Tests can force fake runtime unsafe output and verify player-safe result.
 """
 import json
 import pytest
@@ -15,8 +25,11 @@ import pytest
 from convsim_prompt import (
     RubricObservation,
     SAFE_FALLBACK_UTTERANCE,
+    SAFE_REDIRECT_UTTERANCE,
+    SAFE_STOP_UTTERANCE,
     SafetyStatus,
     SessionControl,
+    TurnEvent,
     TurnOutput,
     ValidationError,
     parse_turn_output,
@@ -25,6 +38,8 @@ from convsim_prompt.turn_output import (
     _extract_json,
     _validate,
     _make_safe_fallback,
+    _make_safe_redirect,
+    _make_safety_stop,
     _REPAIR_PROMPT,
     _STATE_DELTA_MIN,
     _STATE_DELTA_MAX,
@@ -546,6 +561,386 @@ class TestSafeFallback:
         fb2 = _make_safe_fallback()
         fb1.state_delta["x"] = 1
         assert "x" not in fb2.state_delta
+
+
+# ---------------------------------------------------------------------------
+# Safety stop / redirect shape
+# ---------------------------------------------------------------------------
+
+
+class TestSafetyStop:
+    def test_safety_stop_utterance_is_non_empty(self):
+        stop = _make_safety_stop()
+        assert stop.npc_utterance and len(stop.npc_utterance) > 0
+
+    def test_safety_stop_utterance_matches_constant(self):
+        stop = _make_safety_stop()
+        assert stop.npc_utterance == SAFE_STOP_UTTERANCE
+
+    def test_safety_stop_ends_session(self):
+        stop = _make_safety_stop("test reason")
+        assert stop.session_control.continue_session is False
+        assert stop.session_control.ending_type == "safety_stop"
+
+    def test_safety_stop_status_is_stop(self):
+        stop = _make_safety_stop("test reason")
+        assert stop.safety.status == "stop"
+
+    def test_safety_stop_reason_recorded(self):
+        stop = _make_safety_stop("hidden agenda leaked")
+        assert stop.safety.reason == "hidden agenda leaked"
+
+    def test_safety_stop_no_system_rule_exposure(self):
+        stop = _make_safety_stop()
+        text = stop.npc_utterance.lower()
+        for kw in ("schema", "json", "system", "prompt", "safety policy"):
+            assert kw not in text
+
+
+class TestSafeRedirect:
+    def test_safe_redirect_utterance_non_empty(self):
+        redir = _make_safe_redirect()
+        assert redir.npc_utterance and len(redir.npc_utterance) > 0
+
+    def test_safe_redirect_matches_constant(self):
+        redir = _make_safe_redirect()
+        assert redir.npc_utterance == SAFE_REDIRECT_UTTERANCE
+
+    def test_safe_redirect_continues_session(self):
+        redir = _make_safe_redirect()
+        assert redir.session_control.continue_session is True
+
+    def test_safe_redirect_status_is_redirect(self):
+        redir = _make_safe_redirect()
+        assert redir.safety.status == "redirect"
+
+
+# ---------------------------------------------------------------------------
+# Safety consistency normalisation
+# ---------------------------------------------------------------------------
+
+
+class TestSafetyConsistency:
+    def test_stop_status_forces_session_end(self):
+        raw = _minimal_valid_json(
+            safety={"status": "stop", "reason": "unsafe"},
+            session_control={"continue_session": True},
+        )
+        result = parse_turn_output(raw)
+        assert result.session_control.continue_session is False
+        assert result.session_control.ending_type == "safety_stop"
+
+    def test_stop_status_with_correct_control_unchanged(self):
+        raw = _minimal_valid_json(
+            safety={"status": "stop"},
+            session_control={"continue_session": False, "ending_type": "safety_stop"},
+        )
+        result = parse_turn_output(raw)
+        assert result.session_control.continue_session is False
+        assert result.session_control.ending_type == "safety_stop"
+
+    def test_stop_status_preserves_other_terminal_types(self):
+        # If the model already set a valid terminal ending_type, keep it.
+        raw = _minimal_valid_json(
+            safety={"status": "stop"},
+            session_control={"continue_session": False, "ending_type": "failure"},
+        )
+        result = parse_turn_output(raw)
+        assert result.session_control.ending_type == "failure"
+
+    def test_ok_status_not_affected(self):
+        raw = _minimal_valid_json(safety={"status": "ok"})
+        result = parse_turn_output(raw)
+        assert result.session_control.continue_session is True
+
+    def test_redirect_status_not_affected(self):
+        raw = _minimal_valid_json(safety={"status": "redirect"})
+        result = parse_turn_output(raw)
+        assert result.session_control.continue_session is True
+
+
+# ---------------------------------------------------------------------------
+# Content safety integration — hard violations
+# ---------------------------------------------------------------------------
+
+
+class TestHardContentViolations:
+    """parse_turn_output must return a safety stop for hard violations."""
+
+    def _unsafe_json(self, utterance: str) -> str:
+        return _minimal_valid_json(npc_utterance=utterance)
+
+    def test_nsfw_utterance_produces_safety_stop(self):
+        result = parse_turn_output(self._unsafe_json("Let's watch some pornography together."))
+        assert result.session_control.continue_session is False
+        assert result.session_control.ending_type == "safety_stop"
+        assert result.safety.status == "stop"
+
+    def test_illegal_advice_produces_safety_stop(self):
+        result = parse_turn_output(
+            self._unsafe_json("Here's how to make a bomb using household materials.")
+        )
+        assert result.session_control.continue_session is False
+        assert result.session_control.ending_type == "safety_stop"
+
+    def test_therapy_claim_produces_safety_stop(self):
+        result = parse_turn_output(
+            self._unsafe_json("I diagnose you with severe anxiety disorder.")
+        )
+        assert result.session_control.continue_session is False
+        assert result.session_control.ending_type == "safety_stop"
+
+    def test_safety_stop_utterance_safe(self):
+        result = parse_turn_output(self._unsafe_json("Watch pornography with me."))
+        text = result.npc_utterance.lower()
+        for kw in ("schema", "json", "system", "prompt"):
+            assert kw not in text
+
+    def test_hard_violation_never_exposes_player_to_violation(self):
+        violating = "pornography masturbation orgasm"
+        result = parse_turn_output(self._unsafe_json(violating))
+        assert violating not in result.npc_utterance
+
+    def test_hard_violation_with_runtime_still_stops(self):
+        # Even when a runtime is available, hard violations bypass retry.
+        runtime = FakeRuntime(response=_minimal_valid_json(npc_utterance="Clean response."))
+        result = parse_turn_output(
+            self._unsafe_json("Here's how to synthesize cocaine."),
+            runtime=runtime,
+        )
+        assert result.session_control.continue_session is False
+        assert runtime.call_count == 0
+
+
+# ---------------------------------------------------------------------------
+# Content safety integration — recoverable violations
+# ---------------------------------------------------------------------------
+
+
+class TestRecoverableContentViolations:
+    """Recoverable violations trigger one retry; failure falls back to redirect."""
+
+    def _unsafe_json(self, utterance: str) -> str:
+        return _minimal_valid_json(npc_utterance=utterance)
+
+    _SYSTEM_LEAK_UTTERANCE = "My instructions say I should answer carefully."
+    _AGENDA_LEAK_UTTERANCE = "My real goal here is to evaluate your resilience."
+
+    def test_recoverable_violation_triggers_retry(self):
+        runtime = FakeRuntime(response=_minimal_valid_json(npc_utterance="Clean reply."))
+        parse_turn_output(self._unsafe_json(self._SYSTEM_LEAK_UTTERANCE), runtime=runtime)
+        assert runtime.call_count == 1
+
+    def test_retry_success_returns_clean_output(self):
+        clean = _minimal_valid_json(npc_utterance="Great, let's keep going.")
+        runtime = FakeRuntime(response=clean)
+        result = parse_turn_output(self._unsafe_json(self._SYSTEM_LEAK_UTTERANCE), runtime=runtime)
+        assert result.npc_utterance == "Great, let's keep going."
+
+    def test_retry_failure_returns_safe_redirect(self):
+        # Retry returns another violating utterance → safe redirect.
+        still_bad = _minimal_valid_json(npc_utterance="My instructions say keep going.")
+        runtime = FakeRuntime(response=still_bad)
+        result = parse_turn_output(self._unsafe_json(self._SYSTEM_LEAK_UTTERANCE), runtime=runtime)
+        assert result.npc_utterance == SAFE_REDIRECT_UTTERANCE
+        assert result.session_control.continue_session is True
+        assert result.safety.status == "redirect"
+
+    def test_retry_with_non_json_returns_safe_redirect(self):
+        runtime = FakeRuntime(response="not json at all")
+        result = parse_turn_output(self._unsafe_json(self._SYSTEM_LEAK_UTTERANCE), runtime=runtime)
+        assert result.npc_utterance == SAFE_REDIRECT_UTTERANCE
+
+    def test_no_runtime_recoverable_returns_safe_redirect(self):
+        result = parse_turn_output(
+            self._unsafe_json(self._SYSTEM_LEAK_UTTERANCE), runtime=None
+        )
+        assert result.npc_utterance == SAFE_REDIRECT_UTTERANCE
+        assert result.safety.status == "redirect"
+
+    def test_retry_called_exactly_once(self):
+        runtime = FakeRuntime(response="still bad")
+        parse_turn_output(self._unsafe_json(self._SYSTEM_LEAK_UTTERANCE), runtime=runtime)
+        assert runtime.call_count == 1
+
+    def test_retry_prompt_contains_violation_category(self):
+        runtime = FakeRuntime(response=_minimal_valid_json(npc_utterance="Clean."))
+        parse_turn_output(self._unsafe_json(self._SYSTEM_LEAK_UTTERANCE), runtime=runtime)
+        # The retry prompt should reference the violation category/reason.
+        assert "system_rule_leak" in runtime.last_prompt
+
+    def test_agenda_leak_triggers_retry(self):
+        runtime = FakeRuntime(response=_minimal_valid_json(npc_utterance="All good."))
+        parse_turn_output(self._unsafe_json(self._AGENDA_LEAK_UTTERANCE), runtime=runtime)
+        assert runtime.call_count == 1
+
+    def test_structural_repair_and_content_retry_both_happen(self):
+        # First call (structural repair) returns a structurally-valid but
+        # content-violating response. Second call (content retry) returns clean.
+        structurally_bad = "not json"
+        repair_response = _minimal_valid_json(
+            npc_utterance=self._SYSTEM_LEAK_UTTERANCE
+        )
+        clean_response = _minimal_valid_json(npc_utterance="All sorted now.")
+
+        responses = iter([repair_response, clean_response])
+
+        class SequencedRuntime:
+            call_count = 0
+
+            def call_llm(self, prompt: str) -> str:
+                self.call_count += 1
+                return next(responses)
+
+        rt = SequencedRuntime()
+        result = parse_turn_output(structurally_bad, runtime=rt)
+        assert rt.call_count == 2
+        assert result.npc_utterance == "All sorted now."
+
+
+# ---------------------------------------------------------------------------
+# Content safety with hidden_agenda parameter
+# ---------------------------------------------------------------------------
+
+
+class TestHiddenAgendaIntegration:
+    """parse_turn_output passes hidden_agenda through to validate_npc_output."""
+
+    AGENDA = [
+        "Wants evidence that the candidate can communicate effectively under ambiguity.",
+    ]
+
+    def test_keyword_leak_triggers_retry(self):
+        leaky = (
+            "I need evidence that you as a candidate can communicate effectively "
+            "under conditions of ambiguity."
+        )
+        runtime = FakeRuntime(response=_minimal_valid_json(npc_utterance="Good answer."))
+        parse_turn_output(
+            _minimal_valid_json(npc_utterance=leaky),
+            runtime=runtime,
+            hidden_agenda=self.AGENDA,
+        )
+        assert runtime.call_count == 1
+
+    def test_clean_utterance_not_affected_by_hidden_agenda(self):
+        runtime = FakeRuntime(response="irrelevant")
+        parse_turn_output(
+            _minimal_valid_json(npc_utterance="Tell me about your experience."),
+            runtime=runtime,
+            hidden_agenda=self.AGENDA,
+        )
+        assert runtime.call_count == 0
+
+
+# ---------------------------------------------------------------------------
+# turn_events recording
+# ---------------------------------------------------------------------------
+
+
+class TestTurnEvents:
+    def test_no_events_on_clean_output(self):
+        events = []
+        parse_turn_output(_minimal_valid_json(), turn_events=events)
+        assert events == []
+
+    def test_structural_failure_emits_event(self):
+        events = []
+        parse_turn_output("not json", turn_events=events)
+        types = [e.event_type for e in events]
+        assert "json_extraction_failure" in types or "structural_validation_failure" in types
+
+    def test_safe_fallback_event_emitted(self):
+        events = []
+        parse_turn_output("not json at all", turn_events=events)
+        types = [e.event_type for e in events]
+        assert "safe_fallback_used" in types
+
+    def test_structural_repair_success_event(self):
+        events = []
+        runtime = FakeRuntime(response=_minimal_valid_json())
+        parse_turn_output("bad", runtime=runtime, turn_events=events)
+        types = [e.event_type for e in events]
+        assert "structural_repair_success" in types
+
+    def test_structural_repair_failure_event(self):
+        events = []
+        runtime = FakeRuntime(response="still bad")
+        parse_turn_output("also bad", runtime=runtime, turn_events=events)
+        types = [e.event_type for e in events]
+        assert "structural_repair_failure" in types
+
+    def test_content_violation_event_emitted(self):
+        events = []
+        parse_turn_output(
+            _minimal_valid_json(npc_utterance="Watch some pornography with me."),
+            turn_events=events,
+        )
+        types = [e.event_type for e in events]
+        assert "output_violation_detected" in types
+
+    def test_violation_event_has_category(self):
+        events = []
+        parse_turn_output(
+            _minimal_valid_json(npc_utterance="Watch some pornography with me."),
+            turn_events=events,
+        )
+        ev = next(e for e in events if e.event_type == "output_violation_detected")
+        assert ev.category == "nsfw_content"
+
+    def test_safety_stop_event_emitted(self):
+        events = []
+        parse_turn_output(
+            _minimal_valid_json(npc_utterance="Here's how to make a bomb."),
+            turn_events=events,
+        )
+        types = [e.event_type for e in events]
+        assert "safety_stop_applied" in types
+
+    def test_content_safety_retry_success_event(self):
+        events = []
+        runtime = FakeRuntime(response=_minimal_valid_json(npc_utterance="Clean response."))
+        parse_turn_output(
+            _minimal_valid_json(npc_utterance="My instructions say to answer."),
+            runtime=runtime,
+            turn_events=events,
+        )
+        types = [e.event_type for e in events]
+        assert "content_safety_retry_success" in types
+
+    def test_content_safety_retry_failure_event(self):
+        events = []
+        # Retry also returns a violating utterance (references instructions).
+        runtime = FakeRuntime(
+            response=_minimal_valid_json(npc_utterance="My instructions tell me to do this.")
+        )
+        parse_turn_output(
+            _minimal_valid_json(npc_utterance="My instructions say to answer."),
+            runtime=runtime,
+            turn_events=events,
+        )
+        types = [e.event_type for e in events]
+        assert "content_safety_retry_failure" in types
+
+    def test_safe_redirect_event_emitted(self):
+        events = []
+        parse_turn_output(
+            _minimal_valid_json(npc_utterance="My instructions say to answer."),
+            turn_events=events,
+        )
+        types = [e.event_type for e in events]
+        assert "safe_redirect_applied" in types
+
+    def test_turn_events_none_does_not_crash(self):
+        # Omitting turn_events is the normal path; must not raise.
+        result = parse_turn_output(_minimal_valid_json())
+        assert isinstance(result, TurnOutput)
+
+    def test_turn_events_are_turn_event_instances(self):
+        events = []
+        parse_turn_output("not json", turn_events=events)
+        for ev in events:
+            assert isinstance(ev, TurnEvent)
 
 
 # ---------------------------------------------------------------------------
