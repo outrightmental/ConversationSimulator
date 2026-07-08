@@ -72,6 +72,31 @@ gate that will validate scenario packs once a validator is implemented.
 
 ---
 
+## Contributing a scenario pack
+
+Scenario packs are the most accessible way to contribute. A pack is a
+folder of YAML files — no code, no build step, no compilation.
+
+- **Tutorial:** [docs/scenario-authoring.md](docs/scenario-authoring.md) —
+  walks through the full workflow: open the Creator Workbench, copy an
+  official pack, edit the NPC and scenario, validate, quick-test, export,
+  and share.
+- **Quality bar:** [docs/official-pack-quality-bar.md](docs/official-pack-quality-bar.md) —
+  what makes a pack ready for the official repository, including the
+  contribution checklist and submission review rubric.
+- **Validation reference:** [docs/pack-validation.md](docs/pack-validation.md) —
+  full list of validator error codes and how to fix them.
+
+Before opening a pull request for a new pack, run both commands locally and
+confirm both exit `0`:
+
+```sh
+convsim validate-pack packs/official/my-pack/
+convsim test-pack packs/official/my-pack/
+```
+
+---
+
 ## For now
 
 If you want to contribute ideas or report issues, please use
@@ -83,6 +108,5 @@ This file will cover:
 
 - How to set up a local development environment
 - Code style and commit message conventions
-- How to propose a new scenario pack
 - Pull request review process
 - How to report security issues (see [SECURITY.md](SECURITY.md))

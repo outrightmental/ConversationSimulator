@@ -55,6 +55,9 @@ export default function Home() {
         <Link to="/workbench">Create / edit a scenario</Link>
         <Link to="/settings">Install model</Link>
         <Link to="/settings">Import pack</Link>
+        <a href="https://github.com/outrightmental/ConversationSimulator/blob/main/docs/scenario-authoring.md" target="_blank" rel="noreferrer">
+          Creator workbench guide
+        </a>
         <a href="https://github.com/outrightmental/ConversationSimulator/wiki" target="_blank" rel="noreferrer">
           Read docs
         </a>

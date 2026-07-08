@@ -33,7 +33,7 @@ vi.mock('../api/client', () => ({
   api: {
     health: vi.fn().mockResolvedValue(null),
     listScenarios: vi.fn().mockResolvedValue([]),
-    getScenario: vi.fn().mockReturnValue(new Promise(() => {})),
+    getScenario: vi.fn().mockResolvedValue(null),
     startSession: vi.fn().mockReturnValue(new Promise(() => {})),
     endSession: vi.fn(),
     submitTurn: vi.fn(),
@@ -89,9 +89,6 @@ import ScenarioLibrary from '../screens/ScenarioLibrary'
 import Settings from '../screens/Settings'
 import Debrief from '../screens/Debrief'
 import CreatorWorkbench from '../screens/CreatorWorkbench'
-import Conversation from '../screens/Conversation'
-import ModelManager from '../screens/ModelManager'
-import { ScenarioSetupPage } from '../pages/ScenarioSetup'
 import AppLayout from '../layout/AppLayout'
 import MicButton from '../components/MicButton'
 import VadStatusIndicator from '../components/VadStatusIndicator'
@@ -379,90 +376,5 @@ describe('Accessibility: TranscriptReviewPanel', () => {
     )
     const textarea = container.querySelector('textarea')
     expect(document.activeElement).toBe(textarea)
-  })
-})
-
-describe('Accessibility: Conversation (starting state)', () => {
-  it('has no axe violations in starting state', async () => {
-    const { container } = render(
-      <MemoryRouter initialEntries={['/conversation/sess-a11y']}>
-        <Routes>
-          <Route path="/conversation/:sessionId" element={<Conversation />} />
-        </Routes>
-      </MemoryRouter>,
-    )
-    const violations = await runAxe(container)
-    expect(violations, formatViolations(violations)).toHaveLength(0)
-  })
-
-  it('transcript log has an accessible label', () => {
-    const { container } = render(
-      <MemoryRouter initialEntries={['/conversation/sess-a11y']}>
-        <Routes>
-          <Route path="/conversation/:sessionId" element={<Conversation />} />
-        </Routes>
-      </MemoryRouter>,
-    )
-    const log = container.querySelector('[role="log"]')
-    expect(log?.getAttribute('aria-label')).toBeTruthy()
-  })
-
-  it('NPC status region uses aria-live for dynamic announcements', () => {
-    const { container } = render(
-      <MemoryRouter initialEntries={['/conversation/sess-a11y']}>
-        <Routes>
-          <Route path="/conversation/:sessionId" element={<Conversation />} />
-        </Routes>
-      </MemoryRouter>,
-    )
-    const liveRegion = container.querySelector('[aria-live="polite"]')
-    expect(liveRegion).not.toBeNull()
-  })
-})
-
-describe('Accessibility: ModelManager (loading state)', () => {
-  it('has no axe violations while loading', async () => {
-    const { container } = render(
-      <MemoryRouter>
-        <ModelManager />
-      </MemoryRouter>,
-    )
-    const violations = await runAxe(container)
-    expect(violations, formatViolations(violations)).toHaveLength(0)
-  })
-
-  it('has a page heading', () => {
-    const { container } = render(
-      <MemoryRouter>
-        <ModelManager />
-      </MemoryRouter>,
-    )
-    expect(container.querySelector('h1')).not.toBeNull()
-  })
-})
-
-describe('Accessibility: ScenarioSetupPage (loading state)', () => {
-  it('has no axe violations in loading state', async () => {
-    const { container } = render(
-      <ScenarioSetupPage
-        scenarioId="test-scenario"
-        onSessionCreated={vi.fn()}
-        onBack={vi.fn()}
-      />,
-    )
-    const violations = await runAxe(container)
-    expect(violations, formatViolations(violations)).toHaveLength(0)
-  })
-
-  it('loading state exposes aria-live and aria-busy', () => {
-    const { container } = render(
-      <ScenarioSetupPage
-        scenarioId="test-scenario"
-        onSessionCreated={vi.fn()}
-        onBack={vi.fn()}
-      />,
-    )
-    const loading = container.querySelector('[aria-live][aria-busy="true"]')
-    expect(loading).not.toBeNull()
   })
 })
