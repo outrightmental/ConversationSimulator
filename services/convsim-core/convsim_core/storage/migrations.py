@@ -235,19 +235,16 @@ ALTER TABLE scenarios ADD COLUMN voice_support INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE scenarios ADD COLUMN model_recommendation TEXT;
 ALTER TABLE scenarios ADD COLUMN rel_path TEXT;
 
-DROP TABLE scenario_fts;
-CREATE VIRTUAL TABLE scenario_fts USING fts5(title, summary, tags, pack_name, pack_readme);
+DROP TABLE IF EXISTS scenario_fts;
+DROP TABLE IF EXISTS pack_readme_fts;
 
-DROP TABLE pack_readme_fts;
-CREATE VIRTUAL TABLE pack_readme_fts USING fts5(name, description);
+CREATE VIRTUAL TABLE scenario_fts USING fts5(
+    title, summary, tags, pack_name, pack_readme
+);
 
-CREATE TRIGGER scenario_fts_ad AFTER DELETE ON scenarios BEGIN
-    DELETE FROM scenario_fts WHERE rowid = old.id;
-END;
-
-CREATE TRIGGER pack_readme_fts_ad AFTER DELETE ON packs BEGIN
-    DELETE FROM pack_readme_fts WHERE rowid = old.id;
-END;
+CREATE VIRTUAL TABLE pack_readme_fts USING fts5(
+    name, description
+);
 """
 
 MIGRATIONS: list[tuple[str, str]] = [

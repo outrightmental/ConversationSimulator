@@ -51,7 +51,7 @@ def create_app(config: ServiceConfig | None = None) -> FastAPI:
     app.include_router(sidecar_router.router)
     app.include_router(stt_router.router)
     app.include_router(packs_router.router)
-    app.include_router(sessions_router.router)
     app.include_router(scenarios_router.router)
+    app.include_router(sessions_router.router)
 
     return app
