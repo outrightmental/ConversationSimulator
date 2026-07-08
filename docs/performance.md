@@ -23,8 +23,10 @@ The app tracks the following timings locally. No data leaves your machine.
 | First token | Time from player turn to first streamed NPC token | > 3 s |
 | Full response | Time from player turn to complete NPC response | > 10 s |
 | STT final | Time for speech-to-text to return a transcript | — |
-| TTS first sentence | Time for first audio chunk to be ready | — |
+| TTS first sentence | Time for first audio chunk to be ready | — (captured once TTS sentence streaming lands) |
 | Debrief generation | Time for debrief to generate | — |
+
+> **Note:** TTS first-sentence latency is defined in the metrics schema and debug view but is only populated once local TTS sentence streaming is wired into the conversation screen; until then it is omitted rather than shown.
 
 Conversation-screen metrics (session start, first token, full response, STT final) are visible in the **Developer debug** panel; debrief-generation latency is shown on the debrief screen. Both require dev mode (enable it in Settings).
 
