@@ -80,4 +80,14 @@ __all__ = [
     "validate_npc_output",
     "OutputValidationResult",
     "OutputViolation",
+    # Debrief prompt composer and output parser
+    "compose_debrief_prompt",
+    "DebriefComposerInput",
+    "DebriefTurnRecord",
+    "DEBRIEF_NARRATIVE_SCHEMA",
+    "DEBRIEF_SYSTEM_PREAMBLE",
+    "DebriefNarrative",
+    "DebriefValidationError",
+    "TurningPoint",
+    "parse_debrief_narrative",
 ]
