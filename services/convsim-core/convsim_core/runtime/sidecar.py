@@ -222,6 +222,7 @@ class LlamaCppSidecar:
         """Terminate the managed process and release resources."""
         if self._state not in (SidecarState.RUNNING, SidecarState.STARTING):
             self._state = SidecarState.STOPPED
+            self._started_at = None
             return
         await self._terminate_process()
         self._close_log()

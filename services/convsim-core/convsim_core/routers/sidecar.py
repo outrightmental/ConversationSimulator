@@ -105,17 +105,12 @@ async def stop_sidecar(request: Request) -> SidecarStopResponse:
     """
     sidecar: LlamaCppSidecar = request.app.state.sidecar
 
-    if sidecar.state not in (SidecarState.RUNNING, SidecarState.STARTING):
-        return SidecarStopResponse(
-            state=sidecar.state.value,
-            message="No managed llama-server is running.",
-        )
-
+    was_running = sidecar.state in (SidecarState.RUNNING, SidecarState.STARTING)
     await sidecar.stop()
-    return SidecarStopResponse(
-        state=SidecarState.STOPPED.value,
-        message="Managed llama-server stopped.",
-    )
+
+    if was_running:
+        return SidecarStopResponse(state=SidecarState.STOPPED.value, message="Managed llama-server stopped.")
+    return SidecarStopResponse(state=SidecarState.STOPPED.value, message="No managed llama-server is running.")
 
 
 @router.get("/api/sidecar/status", response_model=SidecarStatusResponse)
