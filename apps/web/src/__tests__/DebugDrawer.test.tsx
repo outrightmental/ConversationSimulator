@@ -195,14 +195,30 @@ describe('DebugDrawer', () => {
       render(<DebugDrawer entries={[makeEntry()]} />)
       const btn = screen.getByRole('button', { name: /copy turn json/i })
       fireEvent.click(btn)
-      await waitFor(() => expect(screen.getByText('Copied!')).toBeInTheDocument())
+      await waitFor(() => expect(btn).toHaveTextContent('Copied!'))
     })
 
     it('handles clipboard failure gracefully', async () => {
       writeMock.mockRejectedValue(new Error('Permission denied'))
       render(<DebugDrawer entries={[makeEntry()]} />)
+      const btn = screen.getByRole('button', { name: /copy turn json/i })
+      fireEvent.click(btn)
+      await waitFor(() => expect(btn).toHaveTextContent('Copy failed'))
+    })
+
+    it('does not include the plain audio field in copied text', async () => {
+      const entry = makeEntry({
+        rawPayload: {
+          content: 'Hello.',
+          audio: 'base64rawpcm==',
+        },
+      })
+      render(<DebugDrawer entries={[entry]} />)
       fireEvent.click(screen.getByRole('button', { name: /copy turn json/i }))
-      await waitFor(() => expect(screen.getByText('Copy failed')).toBeInTheDocument())
+      await waitFor(() => expect(writeMock).toHaveBeenCalledOnce())
+      const copiedText: string = writeMock.mock.calls[0][0] as string
+      expect(copiedText).not.toContain('"audio"')
+      expect(copiedText).toContain('Hello.')
     })
   })
 

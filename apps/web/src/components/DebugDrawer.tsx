@@ -93,8 +93,24 @@ function CopyButton({ payload }: { payload: Record<string, unknown> }) {
       >
         {label}
       </button>
-      <span aria-live="polite" style={{ fontSize: '0.65rem', color: '#fbbf24' }}>
+      <span style={{ fontSize: '0.65rem', color: '#fbbf24' }}>
         Raw audio and secrets redacted from copy
+      </span>
+      {/* Announce copy result to screen readers without duplicating visible text */}
+      <span
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        style={{
+          position: 'absolute',
+          width: '1px',
+          height: '1px',
+          overflow: 'hidden',
+          clip: 'rect(0,0,0,0)',
+          whiteSpace: 'nowrap',
+        }}
+      >
+        {label !== 'Copy JSON' ? label : ''}
       </span>
     </div>
   )
