@@ -3,6 +3,14 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import Home from '../screens/Home'
+
+// @convsim/ui re-exports FormEditor which transitively imports @convsim/scenario-schema
+// (requires zod at runtime).  Stub the package to avoid that peer dependency in tests.
+vi.mock('@convsim/ui', () => ({
+  StatusBadge: ({ children, status }: { children: React.ReactNode; status: string }) => (
+    <span data-status={status}>{children}</span>
+  ),
+}))
 import type { HealthResponse } from '@convsim/shared'
 import type { PacksResponse } from '../api/client'
 
