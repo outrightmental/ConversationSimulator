@@ -12,6 +12,7 @@ import { sessionWsRoutes } from './routes/session-ws.js';
 import { privacyRoutes, setDataFolderPath } from './routes/privacy.js';
 import { workbenchRoutes, setWorkbenchRoots } from './routes/workbench.js';
 import { modelsRoutes } from './routes/models.js';
+import { runtimeSettingsRoutes } from './routes/runtime-settings.js';
 import { initDb } from './db.js';
 import { getListenConfig } from './config.js';
 
@@ -42,6 +43,7 @@ export async function buildApp() {
   await app.register(packRoutes);
   await app.register(workbenchRoutes);
   await app.register(modelsRoutes);
+  await app.register(runtimeSettingsRoutes);
 
   return app;
 }

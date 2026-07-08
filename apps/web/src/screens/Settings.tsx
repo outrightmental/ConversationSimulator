@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback, type ReactNode } from 'react'
 import { api } from '../api/client'
 import { readPrivacyPref, writePrivacyPref, PRIVACY_KEYS, isDevModeEnabled } from '../privacyPrefs'
+import RuntimeSettingsPanel from '../components/RuntimeSettingsPanel'
 
 type ClearState = 'idle' | 'confirming' | 'clearing' | 'done' | 'error'
 
@@ -216,6 +217,15 @@ export default function Settings() {
             Not saved — transcript will be lost when this session ends.
           </p>
         )}
+      </section>
+
+      {/* Runtime settings */}
+      <section style={{ marginBottom: '2rem' }}>
+        <SectionHeading>Runtime</SectionHeading>
+        <p style={{ fontSize: '0.875rem', color: '#a1a1aa', marginBottom: '0.75rem' }}>
+          Select the active AI provider and model. Advanced knobs are hidden by default.
+        </p>
+        <RuntimeSettingsPanel />
       </section>
 
       {/* TTS cache */}
