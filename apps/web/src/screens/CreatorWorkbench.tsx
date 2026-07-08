@@ -1169,6 +1169,7 @@ function TestChatPanel({ pack, validation }: TestChatPanelProps) {
         {/* State inspector */}
         <div
           data-testid="state-inspector"
+          role="group"
           aria-label="NPC state variables"
           style={{
             width: '180px',

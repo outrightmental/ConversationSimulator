@@ -842,7 +842,8 @@ export default function Conversation() {
 
       {allEventFlags.length > 0 && (
         <div
-          aria-label="Scenario event flags"
+          role="status"
+          aria-live="polite"
           style={{
             padding: '0.5rem 0.75rem',
             borderRadius: 6,
