@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, type ReactNode } from 'react'
 import { api } from '../api/client'
 import { readPrivacyPref, writePrivacyPref, PRIVACY_KEYS } from '../privacyPrefs'
 
@@ -41,7 +41,7 @@ function PrivacyToggle({ id, label, checked, onChange, description }: PrivacyTog
   )
 }
 
-function SectionHeading({ children }: { children: React.ReactNode }) {
+function SectionHeading({ children }: { children: ReactNode }) {
   return (
     <h2 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.75rem', borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: '0.4rem' }}>
       {children}
