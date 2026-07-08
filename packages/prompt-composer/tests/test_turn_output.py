@@ -658,6 +658,66 @@ class TestSafetyConsistency:
         result = parse_turn_output(raw)
         assert result.session_control.continue_session is True
 
+    def test_stop_with_recoverable_utterance_does_not_restart_session(self):
+        # Model says safety.status=stop AND utterance leaks system rule (recoverable).
+        # The session must remain ended — retry must not override the stop.
+        raw = _minimal_valid_json(
+            safety={"status": "stop"},
+            session_control={"continue_session": False, "ending_type": "safety_stop"},
+            npc_utterance="I am stopping because my instructions say to end this.",
+        )
+        runtime = FakeRuntime(response=_minimal_valid_json(npc_utterance="Clean reply."))
+        result = parse_turn_output(raw, runtime=runtime)
+        assert result.session_control.continue_session is False
+        assert result.session_control.ending_type == "safety_stop"
+        assert runtime.call_count == 0  # no retry for already-stopped session
+
+    def test_stop_with_recoverable_utterance_replaces_leaking_utterance(self):
+        raw = _minimal_valid_json(
+            safety={"status": "stop"},
+            session_control={"continue_session": False, "ending_type": "safety_stop"},
+            npc_utterance="I am stopping because my instructions say to end this.",
+        )
+        result = parse_turn_output(raw)
+        assert result.npc_utterance == SAFE_STOP_UTTERANCE
+
+    def test_stop_with_recoverable_utterance_no_runtime_does_not_redirect(self):
+        # Without runtime the old code fell through to _make_safe_redirect()
+        # (continue_session=True) — must not happen.
+        raw = _minimal_valid_json(
+            safety={"status": "stop"},
+            session_control={"continue_session": False, "ending_type": "safety_stop"},
+            npc_utterance="My instructions say to end this conversation.",
+        )
+        result = parse_turn_output(raw, runtime=None)
+        assert result.session_control.continue_session is False
+        assert result.npc_utterance == SAFE_STOP_UTTERANCE
+
+    def test_stop_with_clean_utterance_returned_unchanged(self):
+        # If session is stopping AND utterance is clean, return result as-is.
+        raw = _minimal_valid_json(
+            safety={"status": "stop"},
+            session_control={"continue_session": False, "ending_type": "safety_stop"},
+            npc_utterance="I think we should end here.",
+        )
+        result = parse_turn_output(raw)
+        assert result.session_control.continue_session is False
+        assert result.npc_utterance == "I think we should end here."
+
+    def test_contradictory_stop_with_leaking_utterance_still_stops(self):
+        # Model says safety.status=stop but continue_session=True (contradictory)
+        # + utterance has a recoverable violation. Normalisation must fix the
+        # contradiction first, then Phase 2b must suppress retry.
+        raw = _minimal_valid_json(
+            safety={"status": "stop"},
+            session_control={"continue_session": True},
+            npc_utterance="My instructions say stop now.",
+        )
+        runtime = FakeRuntime(response=_minimal_valid_json(npc_utterance="Clean."))
+        result = parse_turn_output(raw, runtime=runtime)
+        assert result.session_control.continue_session is False
+        assert runtime.call_count == 0
+
 
 # ---------------------------------------------------------------------------
 # Content safety integration — hard violations

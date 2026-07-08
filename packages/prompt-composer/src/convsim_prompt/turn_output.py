@@ -451,6 +451,29 @@ def parse_turn_output(
     _enforce_safety_consistency(result)
 
     # ------------------------------------------------------------------
+    # Phase 2b: If the session is already ending, do not retry or redirect.
+    # The session will end regardless; only replace a content-violating
+    # utterance with the safe stop constant so nothing leaks to the player.
+    # ------------------------------------------------------------------
+    if not result.session_control.continue_session:
+        pre_stop_validation = validate_npc_output(
+            utterance=result.npc_utterance,
+            hidden_agenda=hidden_agenda,
+        )
+        if not pre_stop_validation.is_safe:
+            v = pre_stop_validation.first_violation
+            assert v is not None
+            _emit(
+                "output_violation_detected",
+                category=v.category,
+                reason=v.reason,
+                is_recoverable=v.is_recoverable,
+            )
+            _emit("safety_stop_applied", reason=v.reason, category=v.category)
+            return _make_safety_stop(v.reason)
+        return result
+
+    # ------------------------------------------------------------------
     # Phase 3: Content-level safety validation
     # ------------------------------------------------------------------
     validation = validate_npc_output(
