@@ -8,7 +8,9 @@ export default function ScenarioSetup() {
   const navigate = useNavigate()
 
   function handleSessionCreated(session: SessionCreateResponse) {
-    navigate(`/conversation/${session.session_id}`)
+    navigate(`/conversation/${session.session_id}`, {
+      state: { language: session.setup.language },
+    })
   }
 
   function handleBack() {
