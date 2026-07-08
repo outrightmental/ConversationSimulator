@@ -183,9 +183,14 @@ describe('GET /api/sessions/:session_id/export', () => {
     expect(res.statusCode).toBe(404);
   });
 
-  it('save_transcript=false is honoured in the stored setup but export still works', async () => {
+  it('save_transcript=false — events are not persisted; start response still carries event for display', async () => {
     const { session_id } = await createSession({ save_transcript: false });
 
+    // The start response must still include the NPC opening so the UI can display it in real time.
+    const startRes = await app.inject({ method: 'POST', url: `/api/sessions/${session_id}/start` });
+    expect(startRes.json<{ events: unknown[] }>().events).toHaveLength(1);
+
+    // The export must return no events — the conversation was not persisted.
     const res = await app.inject({ method: 'GET', url: `/api/sessions/${session_id}/export` });
     expect(res.statusCode).toBe(200);
     const body = res.json<{
@@ -193,6 +198,7 @@ describe('GET /api/sessions/:session_id/export', () => {
       events: unknown[];
     }>();
     expect(body.session.setup.save_transcript).toBe(false);
+    expect(body.events).toHaveLength(0);
   });
 
   it('export is unavailable after the session is deleted', async () => {
