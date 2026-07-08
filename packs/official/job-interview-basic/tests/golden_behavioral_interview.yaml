@@ -1,0 +1,142 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: golden_behavioral_interview
+scenario_id: behavioral_interview
+description: >-
+  Golden transcript property test: verifies that a model candidate who gives
+  consistently strong STAR-method answers, builds rapport, and demonstrates
+  honest self-reflection causes impression to exceed the success threshold
+  before the session ends. Also verifies that rambling behavior triggers the
+  redirect event and that the high-specificity reward fires when earned.
+
+seed: 42
+input_mode: text
+difficulty: normal
+
+turns:
+  - turn: 1
+    player_input: >-
+      Sure. Eighteen months ago our payment processing service went down on a
+      Friday afternoon right before a long weekend. I was the on-call engineer.
+      I pulled up our runbooks immediately, traced the failure to a null pointer
+      introduced by a bad deploy an hour earlier, and rolled back within fifteen
+      minutes. Then I stayed through the weekend to write a post-mortem and
+      proposed adding pre-deploy smoke tests to our CI pipeline. We merged that
+      change the following Tuesday. We have not had a similar outage since.
+    expect:
+      state_delta_contains:
+        - impression
+        - specificity_score
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 2
+    player_input: >-
+      A colleague and I disagreed about whether to rewrite a legacy API endpoint
+      or build an adapter layer. I thought the rewrite was higher risk given our
+      timeline. We took it to the team. I made my case with a risk/effort matrix
+      I put together, they made theirs, and the team chose the adapter approach.
+      I committed fully to making that work and it shipped on time. The endpoint
+      is still running fine. I think I was right about the risk profile, but I've
+      learned that strong disagreement does not have to mean bad collaboration.
+    expect:
+      state_delta_contains:
+        - impression
+        - rapport
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 3
+    player_input: >-
+      My biggest growth area is stakeholder communication. Earlier in my career
+      I would just build the right thing and expect people to see it. I missed
+      the fact that some colleagues needed more context and alignment before they
+      felt safe with a change. I got direct feedback on this from my manager
+      two years ago. Since then I send a short written summary before any
+      significant change — just the problem, the approach, and what I need
+      from others. It adds maybe twenty minutes to my day and has made a
+      meaningful difference in how my work lands.
+    expect:
+      state_delta_contains:
+        - impression
+        - rapport
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 4
+    player_input: >-
+      I'm really interested in what the platform team is working on. The job
+      posting mentioned scalability work — are you in the middle of a specific
+      migration or is it more about building headroom for anticipated growth?
+      I ask because my last project was almost entirely scaling work and I would
+      love to understand what problems you are actually solving day to day.
+    expect:
+      state_delta_contains:
+        - rapport
+      session_control: continue_session
+      safety_status: ok
+
+static_assertions:
+  - description: Scenario opening line is non-empty
+    path: opening.npc_says
+    check: non_empty_string
+
+  - description: At least one event is defined
+    path: events
+    check: min_length_1
+
+  - description: rambling_redirect fires when rambling_count exceeds 2
+    path: events[id=rambling_redirect].when
+    check: "type=variable_above AND variable=rambling_count AND threshold=2"
+
+  - description: high_specificity_reward fires when specificity_score exceeds 75
+    path: events[id=high_specificity_reward].when
+    check: "type=variable_above AND variable=specificity_score AND threshold=75"
+
+  - description: high_specificity_reward fires only once
+    path: events[id=high_specificity_reward].repeat
+    check: "equals false"
+
+  - description: low_impression_warning fires only once
+    path: events[id=low_impression_warning].repeat
+    check: "equals false"
+
+  - description: Success ending targets impression above 70
+    path: ending_conditions.success
+    check: "type=variable_above AND variable=impression AND threshold=70"
+
+  - description: Failure ending targets impression below 15
+    path: ending_conditions.failure
+    check: "type=variable_below AND variable=impression AND threshold=15"
+
+  - description: impression variable is player-visible
+    path: state.variables.impression.visibility
+    check: "equals visible"
+
+  - description: rambling_count is hidden from player
+    path: state.variables.rambling_count.visibility
+    check: "equals hidden"
+
+  - description: specificity_score is hidden from player
+    path: state.variables.specificity_score.visibility
+    check: "equals hidden"
+
+  - description: NPC is marked fictional
+    path: npc.fictional
+    check: "equals true"
+
+  - description: Safety policy stops nsfw_sexual_content
+    path: safety.content_categories.nsfw_sexual_content
+    check: "equals stop"
+
+  - description: Safety policy fires stop_with_resource_message for self_harm_crisis
+    path: safety.content_categories.self_harm_crisis
+    check: "equals stop_with_resource_message"
+
+  - description: Pack manifest declares behavioral_interview as entry scenario
+    path: manifest.entry_scenarios
+    check: "contains scenarios/behavioral_interview.yaml"
+
+  - description: Hard difficulty applies a negative patience modifier
+    path: scenario.difficulty.options.hard.npc_patience_modifier
+    check: "equals -20"
