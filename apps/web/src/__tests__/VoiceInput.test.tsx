@@ -9,7 +9,7 @@ vi.mock('../hooks/useMicCapture', () => ({
 
 vi.mock('../api/client', () => ({
   apiClient: {
-    uploadAudio: vi.fn().mockResolvedValue({ transcript: null, status: 'received' }),
+    uploadAudio: vi.fn().mockResolvedValue({ transcript: null, status: 'unavailable' }),
   },
 }))
 
@@ -34,7 +34,7 @@ function makeMicState(overrides: Partial<ReturnType<typeof useMicCapture>> = {})
 beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(useMicCapture).mockReturnValue(makeMicState())
-  vi.mocked(apiClient.uploadAudio).mockResolvedValue({ transcript: null, status: 'received' })
+  vi.mocked(apiClient.uploadAudio).mockResolvedValue({ transcript: null, status: 'unavailable' })
 })
 
 describe('VoiceInput — global Space hotkey focus guard', () => {
@@ -285,7 +285,7 @@ describe('VoiceInput — audio upload flow', () => {
     })
 
     expect(vi.mocked(apiClient.uploadAudio)).toHaveBeenCalledOnce()
-    expect(vi.mocked(apiClient.uploadAudio)).toHaveBeenCalledWith(blob)
+    expect(vi.mocked(apiClient.uploadAudio)).toHaveBeenCalledWith(blob, undefined)
   })
 
   it('calls onSubmit with the transcript when uploadAudio returns one', async () => {
@@ -295,7 +295,7 @@ describe('VoiceInput — audio upload flow', () => {
       capturedOnAudioReady = cb
       return makeMicState()
     })
-    vi.mocked(apiClient.uploadAudio).mockResolvedValueOnce({ transcript: 'hello world', status: 'received' })
+    vi.mocked(apiClient.uploadAudio).mockResolvedValueOnce({ transcript: 'hello world', status: 'ok' })
 
     render(<VoiceInput onSubmit={onSubmit} />)
 
@@ -323,6 +323,40 @@ describe('VoiceInput — audio upload flow', () => {
     expect(onSubmit).not.toHaveBeenCalled()
   })
 
+  it('shows an error alert when uploadAudio resolves with status=error', async () => {
+    let capturedOnAudioReady: ((blob: Blob) => void) | undefined
+    vi.mocked(useMicCapture).mockImplementation((cb) => {
+      capturedOnAudioReady = cb
+      return makeMicState()
+    })
+    vi.mocked(apiClient.uploadAudio).mockResolvedValueOnce({ transcript: null, status: 'error' })
+
+    render(<VoiceInput />)
+
+    await act(async () => {
+      capturedOnAudioReady?.(new Blob(['audio'], { type: 'audio/webm' }))
+    })
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/could not be transcribed/i)
+  })
+
+  it('forwards the language prop to uploadAudio', async () => {
+    let capturedOnAudioReady: ((blob: Blob) => void) | undefined
+    vi.mocked(useMicCapture).mockImplementation((cb) => {
+      capturedOnAudioReady = cb
+      return makeMicState()
+    })
+
+    render(<VoiceInput language="fr" />)
+
+    const blob = new Blob(['audio'], { type: 'audio/webm' })
+    await act(async () => {
+      capturedOnAudioReady?.(blob)
+    })
+
+    expect(vi.mocked(apiClient.uploadAudio)).toHaveBeenCalledWith(blob, 'fr')
+  })
+
   it('shows an upload error alert when uploadAudio rejects', async () => {
     let capturedOnAudioReady: ((blob: Blob) => void) | undefined
     vi.mocked(useMicCapture).mockImplementation((cb) => {
@@ -347,7 +381,7 @@ describe('VoiceInput — audio upload flow', () => {
       capturedOnAudioReady = cb
       return makeMicState()
     })
-    vi.mocked(apiClient.uploadAudio).mockResolvedValueOnce({ transcript: 'hello world', status: 'received' })
+    vi.mocked(apiClient.uploadAudio).mockResolvedValueOnce({ transcript: 'hello world', status: 'ok' })
 
     render(<VoiceInput onSubmit={onSubmit} disabled />)
 
