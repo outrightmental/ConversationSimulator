@@ -1,0 +1,158 @@
+# SPDX-License-Identifier: Apache-2.0
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v0.1.0-alpha.1)'
+        required: true
+        type: string
+
+# Write permission needed to create GitHub releases and upload assets.
+permissions:
+  contents: write
+
+jobs:
+  # ── Smoke check ──────────────────────────────────────────────────────────────
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Smoke check
+        run: bash scripts/smoke-check.sh
+
+  # ── Cross-platform desktop builds ─────────────────────────────────────────────
+  build-desktop:
+    name: Desktop (${{ matrix.name }})
+    needs: validate
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Apple Silicon (arm64) — macos-latest is ARM since late 2024
+          - name: macOS-aarch64
+            runner: macos-latest
+          # Intel Mac — macos-13 is the last Intel runner
+          - name: macOS-x86_64
+            runner: macos-13
+          # Linux x86_64 — AppImage + .deb
+          - name: Linux-x86_64
+            runner: ubuntu-22.04
+          # Windows x86_64 — NSIS installer + MSI
+          - name: Windows-x86_64
+            runner: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Linux system packages required by Tauri / WebKitGTK ──────────────────
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      # ── Node.js / pnpm ───────────────────────────────────────────────────────
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+
+      # ── Rust toolchain ───────────────────────────────────────────────────────
+      - name: Install Rust stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri -> target
+
+      # ── Frontend build ───────────────────────────────────────────────────────
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared TypeScript packages
+        run: |
+          pnpm --filter @convsim/shared-types build
+          pnpm --filter @convsim/scenario-schema build
+
+      - name: Build web frontend
+        run: pnpm --filter @convsim/web build
+
+      # ── Tauri desktop build ──────────────────────────────────────────────────
+      - name: Build Tauri desktop
+        run: pnpm --filter @convsim/desktop build
+
+      # ── Collect installers ───────────────────────────────────────────────────
+      # Tauri v2 places bundles under target/release/bundle/<format>/.
+      - name: Upload desktop installer artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.name }}
+          # Glob patterns cover all known Tauri installer formats.
+          path: |
+            apps/desktop/src-tauri/target/release/bundle/**/*.dmg
+            apps/desktop/src-tauri/target/release/bundle/**/*.AppImage
+            apps/desktop/src-tauri/target/release/bundle/**/*.deb
+            apps/desktop/src-tauri/target/release/bundle/**/*.exe
+            apps/desktop/src-tauri/target/release/bundle/**/*.msi
+          if-no-files-found: warn
+          retention-days: 7
+
+  # ── Publish GitHub release ────────────────────────────────────────────────────
+  release:
+    name: Publish release
+    needs: build-desktop
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all desktop artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          pattern: desktop-*
+          merge-multiple: true
+
+      - name: List collected artifacts
+        run: find release-artifacts -type f | sort
+
+      - name: Generate SHA-256 checksums
+        # Record bare filenames (not the release-artifacts/... paths) so the
+        # manifest matches the flattened asset names on the release page and
+        # `sha256sum -c checksums-sha256.txt` works next to the downloads.
+        run: |
+          find release-artifacts -type f | sort | while IFS= read -r f; do
+            ( cd "$(dirname "$f")" && sha256sum "$(basename "$f")" )
+          done > checksums-sha256.txt
+          cat checksums-sha256.txt
+
+      - name: Create draft GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          name: >-
+            Conversation Simulator
+            ${{ github.event.inputs.tag || github.ref_name }}
+          body_path: docs/release-notes-template.md
+          draft: true
+          prerelease: true
+          files: |
+            release-artifacts/**
+            checksums-sha256.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
