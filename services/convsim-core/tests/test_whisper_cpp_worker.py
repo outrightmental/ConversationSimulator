@@ -257,7 +257,9 @@ def _make_mock_subprocess(json_output: dict, returncode: int = 0):
         # Find the --file argument in the command to know where to write the JSON.
         file_idx = list(args).index("--file") + 1
         audio_path = args[file_idx]
-        json_path = audio_path + ".json"
+        # whisper-cli strips the audio extension before appending .json:
+        # e.g. /tmp/tmpXXX.webm → /tmp/tmpXXX.json (mirrors whisper_cpp.py).
+        json_path = os.path.splitext(audio_path)[0] + ".json"
         with open(json_path, "w") as f:
             json.dump(json_output, f)
         return _FakeProcess(b"", b"", returncode)
@@ -295,7 +297,7 @@ async def test_transcribe_passes_language_to_command(tmp_path):
         captured_cmd.append(list(args))
         file_idx = list(args).index("--file") + 1
         audio_path = args[file_idx]
-        with open(audio_path + ".json", "w") as f:
+        with open(os.path.splitext(audio_path)[0] + ".json", "w") as f:
             json.dump({"transcription": [], "language": "fr"}, f)
         return _FakeProcess(b"", b"", 0)
 

@@ -137,8 +137,9 @@ class WhisperCppWorker(SttWorker):
             tmp.write(request.audio)
             audio_path = tmp.name
 
-        # whisper-cli --output-json writes a sidecar: {audio_path}.json
-        json_path = audio_path + ".json"
+        # whisper-cli --output-json writes a sidecar named after the input file
+        # stem (extension stripped), e.g. /tmp/tmpXXX.webm → /tmp/tmpXXX.json.
+        json_path = str(Path(audio_path).with_suffix("")) + ".json"
 
         try:
             cmd = self._build_command(audio_path, request.language)
