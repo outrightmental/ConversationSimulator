@@ -201,6 +201,26 @@ describe('GET /api/sessions/:session_id/export', () => {
     expect(body.events).toHaveLength(0);
   });
 
+  it('save_transcript=false — turn events are not persisted; turn response still carries events for display', async () => {
+    const { session_id } = await createSession({ save_transcript: false });
+    await app.inject({ method: 'POST', url: `/api/sessions/${session_id}/start` });
+
+    // The turn response must still include player_turn and npc_turn for real-time display.
+    const turnRes = await app.inject({
+      method: 'POST',
+      url: `/api/sessions/${session_id}/turn`,
+      payload: { content: 'Hello' },
+    });
+    const turnBody = turnRes.json<{ events: Array<{ event_type: string }> }>();
+    expect(turnBody.events).toHaveLength(2);
+    expect(turnBody.events[0].event_type).toBe('player_turn');
+    expect(turnBody.events[1].event_type).toBe('npc_turn');
+
+    // The export must return no events — the conversation was not persisted.
+    const exportRes = await app.inject({ method: 'GET', url: `/api/sessions/${session_id}/export` });
+    expect(exportRes.json<{ events: unknown[] }>().events).toHaveLength(0);
+  });
+
   it('export is unavailable after the session is deleted', async () => {
     const { session_id } = await createSession();
     await app.inject({ method: 'DELETE', url: `/api/sessions/${session_id}` });
