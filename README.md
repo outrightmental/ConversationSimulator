@@ -93,6 +93,22 @@ On Windows (PowerShell), use `scripts\dev.ps1` instead.
 > transcripts, or model outputs to any server. Model and pack downloads
 > happen only when you explicitly request them.
 
+You can verify this at any time with the built-in offline smoke test:
+
+```bash
+# Run against an official pack (no model download needed)
+npx convsim offline-smoke-test packs/official/job-interview-basic
+
+# Run with machine-readable output (for CI)
+npx convsim offline-smoke-test --json packs/official/job-interview-basic
+```
+
+The command loads the first scenario from the pack, runs a scripted
+conversation with a fake runtime, generates a local debrief, and confirms
+that no outbound TCP connection was attempted during play.  It exits
+**nonzero with an actionable error** if any subsystem (LLM inference, STT,
+TTS, telemetry, asset fetch) reaches out to an external host.
+
 ---
 
 ## Repository layout
