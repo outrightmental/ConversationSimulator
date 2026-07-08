@@ -578,3 +578,78 @@ async def test_log_file_closed_after_spontaneous_crash(tmp_path):
     assert sidecar.state == SidecarState.CRASHED
     assert sidecar._log_fh is None
     assert log_fh.closed
+
+
+# ---------------------------------------------------------------------------
+# No executable in PATH (executable=None, find_executable returns None)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_start_raises_when_no_executable_in_path(tmp_path):
+    """start() with executable=None and nothing in PATH must raise RuntimeError.
+
+    This exercises the find_executable() → None → RuntimeError("not found in PATH")
+    path, which is distinct from the explicit-bad-path path (FileNotFoundError from
+    create_subprocess_exec). State must remain STOPPED since no state changes happen
+    before this early-return error.
+    """
+    from unittest.mock import patch
+
+    sidecar = LlamaCppSidecar(log_dir=str(tmp_path / "logs"))
+
+    with patch("convsim_core.runtime.sidecar.find_executable", return_value=None):
+        with pytest.raises(RuntimeError, match="executable not found in PATH"):
+            await sidecar.start("fake.gguf", port=_free_port())
+
+    # No state change — sidecar was never touched
+    assert sidecar.state == SidecarState.STOPPED
+    assert sidecar._log_fh is None
+
+
+# ---------------------------------------------------------------------------
+# Timeout message includes HTTP status when server returns non-200 responses
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_wait_for_ready_timeout_message_includes_http_status(tmp_path):
+    """Timeout message must report last HTTP status, not 'Last error: None'.
+
+    When llama-server starts but keeps returning HTTP 503 (model still loading)
+    and the startup timeout elapses, the old code produced:
+        'Last error: None. Check log: ...'
+    which is not actionable. The fixed code must include the HTTP status code
+    so users know the server was reachable but still loading.
+    """
+    import httpx
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from convsim_core.runtime.sidecar import _wait_for_ready
+
+    fake_process = MagicMock()
+    fake_process.returncode = None
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 503
+
+    async def _return_503(*_a, **_kw):
+        return mock_resp
+
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+    mock_client.get = _return_503
+
+    with patch("httpx.AsyncClient", return_value=mock_client):
+        with pytest.raises(TimeoutError) as exc_info:
+            await _wait_for_ready(
+                fake_process,
+                "http://127.0.0.1:9999/health",
+                timeout=1.2,
+                log_path=tmp_path / "runtime.log",
+            )
+
+    assert "503" in str(exc_info.value), (
+        "Timeout message should include the last HTTP status (503), not 'Last error: None'"
+    )

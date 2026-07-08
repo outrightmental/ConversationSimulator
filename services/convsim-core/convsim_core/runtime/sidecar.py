@@ -86,6 +86,7 @@ async def _wait_for_ready(
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout
     last_error: Exception | None = None
+    last_status: int | None = None
 
     while loop.time() < deadline:
         if process.returncode is not None:
@@ -100,14 +101,23 @@ async def _wait_for_ready(
                 if resp.status_code == 200:
                     return
                 # 503 = model still loading; keep polling
+                last_status = resp.status_code
+                last_error = None
         except httpx.TransportError as exc:
             last_error = exc
+            last_status = None
 
         await asyncio.sleep(_HEALTH_POLL_INTERVAL)
 
+    if last_error is not None:
+        detail = f"Last error: {last_error}"
+    elif last_status is not None:
+        detail = f"Last HTTP status: {last_status} (server may still be loading the model)"
+    else:
+        detail = "no response received"
     raise TimeoutError(
         f"llama-server did not become ready within {timeout}s. "
-        f"Last error: {last_error}. Check log: {log_path}"
+        f"{detail}. Check log: {log_path}"
     )
 
 
