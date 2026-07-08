@@ -24,6 +24,7 @@ from convsim_core.services.model_manager_service import (
     create_install_record,
     get_active_config,
     get_installed_models,
+    get_most_recent_benchmark,
     register_user_gguf,
     save_benchmark_result,
     set_active_config,
@@ -80,15 +81,6 @@ class DetectedOllamaModel(BaseModel):
 class ActiveModelConfig(BaseModel):
     runtime_id: Optional[str] = None
     model_id: Optional[str] = None
-
-
-class ModelsResponse(BaseModel):
-    registry: list[ModelRegistryEntry]
-    installed: list[InstalledModelInfo]
-    ollama_models: list[DetectedOllamaModel]
-    active: ActiveModelConfig
-    runtime_health: RuntimeHealth
-    total: int
 
 
 class UseModelRequest(BaseModel):
@@ -148,6 +140,18 @@ class BenchmarkResponse(BaseModel):
     benchmarked_at: str
 
 
+# ModelsResponse embeds the most recent benchmark so the UI can display it
+# without a separate round-trip.
+class ModelsResponse(BaseModel):
+    registry: list[ModelRegistryEntry]
+    installed: list[InstalledModelInfo]
+    ollama_models: list[DetectedOllamaModel]
+    active: ActiveModelConfig
+    runtime_health: RuntimeHealth
+    total: int
+    last_benchmark: Optional[BenchmarkResponse] = None
+
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 
@@ -176,6 +180,43 @@ def _get_registry_row(conn: Any, registry_id: str) -> dict[str, Any] | None:
     return dict(row) if row is not None else None
 
 
+def _compute_warnings(
+    *,
+    original_output_tokens: int,
+    elapsed_sec: float,
+    tokens_per_sec: float,
+    context_length: int | None,
+) -> list[str]:
+    """Return warning messages for a benchmark result based on threshold rules."""
+    warnings: list[str] = []
+    if original_output_tokens == 0:
+        warnings.append("Output token count reported as 0; estimating from word count.")
+    if elapsed_sec < 0.001:
+        warnings.append(
+            "Benchmark completed in under 1 ms; "
+            "tokens/sec estimate may not reflect real-world performance."
+        )
+    else:
+        if tokens_per_sec < 1.0:
+            warnings.append(
+                f"Very slow generation ({tokens_per_sec:.1f} tok/s). "
+                "The model may be running on CPU only. "
+                "Enable GPU acceleration or try a smaller model."
+            )
+        elif tokens_per_sec < 3.0:
+            warnings.append(
+                f"Slow generation ({tokens_per_sec:.1f} tok/s). "
+                "Consider enabling GPU acceleration or using a smaller model."
+            )
+    if context_length is not None and context_length > 32768:
+        warnings.append(
+            f"Very large context window ({context_length:,} tokens). "
+            "This may require substantial RAM; "
+            "consider a lower context length if memory is limited."
+        )
+    return warnings
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 
@@ -196,6 +237,19 @@ async def list_models(request: Request) -> ModelsResponse:
     ollama_models = await _detect_ollama_models()
     runtime_health = await runtime.health()
 
+    bm_row = get_most_recent_benchmark(conn)
+    last_benchmark: BenchmarkResponse | None = None
+    if bm_row is not None:
+        last_benchmark = BenchmarkResponse(
+            model_id=bm_row["model_id"],
+            runtime_id=bm_row["runtime_id"],
+            tokens_per_sec=bm_row["tokens_per_sec"],
+            context_length=bm_row.get("context_length"),
+            warnings=bm_row.get("warnings", []),
+            output_tokens=bm_row.get("output_tokens") or 0,
+            benchmarked_at=bm_row["benchmarked_at"],
+        )
+
     return ModelsResponse(
         registry=registry_entries,
         installed=installed,
@@ -203,6 +257,7 @@ async def list_models(request: Request) -> ModelsResponse:
         active=ActiveModelConfig(**active_cfg),
         runtime_health=runtime_health,
         total=len(registry_entries),
+        last_benchmark=last_benchmark,
     )
 
 
@@ -403,7 +458,6 @@ async def benchmark_model(request: Request, body: BenchmarkRequest) -> Benchmark
         temperature=0.0,
     )
 
-    warnings: list[str] = []
     final: ChatFinal | None = None
     t0 = time.perf_counter()
 
@@ -427,15 +481,8 @@ async def benchmark_model(request: Request, body: BenchmarkRequest) -> Benchmark
             status_code=500,
         )
 
-    output_tokens = final.output_tokens
-    if output_tokens == 0:
-        warnings.append("Output token count reported as 0; estimating from word count.")
-        output_tokens = max(1, len(final.text.split()))
-
-    if elapsed_sec < 0.001:
-        warnings.append(
-            "Benchmark completed in under 1 ms; tokens/sec estimate may not reflect real-world performance."
-        )
+    original_output_tokens = final.output_tokens
+    output_tokens = original_output_tokens if original_output_tokens > 0 else max(1, len(final.text.split()))
 
     tokens_per_sec = round(output_tokens / elapsed_sec, 2) if elapsed_sec > 0 else 0.0
 
@@ -447,6 +494,13 @@ async def benchmark_model(request: Request, body: BenchmarkRequest) -> Benchmark
             context_length = matched.context_length
     except Exception:
         pass
+
+    warnings = _compute_warnings(
+        original_output_tokens=original_output_tokens,
+        elapsed_sec=elapsed_sec,
+        tokens_per_sec=tokens_per_sec,
+        context_length=context_length,
+    )
 
     benchmarked_at = datetime.now(timezone.utc).isoformat()
 
