@@ -130,3 +130,25 @@ export interface BenchmarkResponse {
   output_tokens: number;
   benchmarked_at: string;
 }
+
+export interface RuntimeSettings {
+  context_length: number | null;
+  gpu_layers: number | null;
+  threads: number | null;
+  temperature: number | null;
+  top_p: number | null;
+  repeat_penalty: number | null;
+}
+
+export interface RuntimeSettingsResponse {
+  settings: RuntimeSettings;
+  recommended: RuntimeSettings;
+  requires_restart: boolean;
+}
+
+export type RuntimeSettingsRequest = Partial<RuntimeSettings>;
+
+export interface RuntimeSettingsFieldError {
+  field: string;
+  message: string;
+}
