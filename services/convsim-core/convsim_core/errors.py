@@ -32,6 +32,25 @@ async def convsim_error_handler(request: Request, exc: ConvsimError) -> JSONResp
     )
 
 
+def _safe_validation_errors(errors: list) -> list:
+    """Convert Pydantic v2 error dicts to JSON-safe form.
+
+    Pydantic v2 field_validator errors include the original exception instance
+    under ctx["error"], which is not JSON-serializable. This converts any
+    exception to its string representation and strips the Pydantic URL.
+    """
+    safe = []
+    for err in errors:
+        entry: dict = {k: v for k, v in err.items() if k != "url"}
+        if "ctx" in entry and isinstance(entry["ctx"], dict):
+            ctx = dict(entry["ctx"])
+            if "error" in ctx and isinstance(ctx["error"], Exception):
+                ctx["error"] = str(ctx["error"])
+            entry["ctx"] = ctx
+        safe.append(entry)
+    return safe
+
+
 async def request_validation_error_handler(
     request: Request, exc: RequestValidationError
 ) -> JSONResponse:
@@ -41,7 +60,7 @@ async def request_validation_error_handler(
             "error": {
                 "code": "VALIDATION_ERROR",
                 "message": "Request validation failed",
-                "details": exc.errors(),
+                "details": _safe_validation_errors(exc.errors()),
             }
         },
     )
