@@ -66,6 +66,19 @@ describe('PerformanceWarningBanner', () => {
     expect(screen.getByTestId('perf-warning-reduce_context_length')).toBeInTheDocument()
   })
 
+  it('renders two warnings that share the same code (slow-hardware case)', () => {
+    // On slow hardware both the session-start and first-token thresholds trip,
+    // and both suggest `use_smaller_model`. Both entries must render distinctly
+    // without React key collisions.
+    renderBanner([
+      { code: 'use_smaller_model', title: 'Session startup is slow', detail: 'Session took 7.0s.' },
+      { code: 'use_smaller_model', title: 'NPC response is slow', detail: 'First token took 5.0s.' },
+    ])
+    expect(screen.getAllByTestId('perf-warning-use_smaller_model')).toHaveLength(2)
+    expect(screen.getByText(/session startup is slow/i)).toBeInTheDocument()
+    expect(screen.getByText(/npc response is slow/i)).toBeInTheDocument()
+  })
+
   it('has accessible role and label', () => {
     renderBanner([
       { code: 'disable_tts', title: 'TTS is slow', detail: 'First sentence took 8.0s.' },

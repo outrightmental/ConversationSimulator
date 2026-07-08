@@ -18,9 +18,11 @@ export default function PerformanceWarningBanner({ warnings }: PerformanceWarnin
       aria-label="Performance warnings"
       style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}
     >
-      {warnings.map((w) => (
+      {warnings.map((w, i) => (
         <div
-          key={w.code}
+          // Multiple warnings can share a `code` (e.g. slow session start and slow
+          // first token both suggest `use_smaller_model`), so the index keeps keys unique.
+          key={`${w.code}-${i}`}
           data-testid={`perf-warning-${w.code}`}
           style={{
             display: 'flex',
