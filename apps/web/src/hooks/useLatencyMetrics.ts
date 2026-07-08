@@ -25,6 +25,12 @@ export function useLatencyMetrics() {
     [],
   )
 
+  // Record a latency value that was measured outside the mark/interval flow
+  // (e.g. STT round-trip timed inside VoiceInput).
+  const recordValue = useCallback((field: keyof LatencySnapshot, ms: number): void => {
+    setSnapshot((prev) => ({ ...prev, [field]: Math.round(ms) }))
+  }, [])
+
   const reset = useCallback((): void => {
     markersRef.current = {}
     setSnapshot({})
@@ -56,5 +62,5 @@ export function useLatencyMetrics() {
     })
   }
 
-  return { snapshot, mark, recordInterval, reset, warnings }
+  return { snapshot, mark, recordInterval, recordValue, reset, warnings }
 }

@@ -96,7 +96,7 @@ export default function Conversation() {
   const [banners, setBanners] = useState<Banner[]>([])
   const [isSlowResponse, setIsSlowResponse] = useState(false)
 
-  const { snapshot: latencySnapshot, mark, recordInterval, warnings: perfWarnings } = useLatencyMetrics()
+  const { snapshot: latencySnapshot, mark, recordInterval, recordValue, warnings: perfWarnings } = useLatencyMetrics()
   const firstTokenMarkedRef = useRef(false)
   const turnTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const slowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -914,6 +914,7 @@ export default function Conversation() {
         <VoiceInput
           onSubmit={(text) => void handleSubmit(text)}
           onRawStt={devMode ? (meta) => { pendingRawSttRef.current = meta } : undefined}
+          onSttLatency={(ms) => recordValue('stt_final_ms', ms)}
           disabled={!isIdle}
           language={language}
         />

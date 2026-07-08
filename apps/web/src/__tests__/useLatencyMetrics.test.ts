@@ -86,6 +86,39 @@ describe('useLatencyMetrics', () => {
     })
   })
 
+  describe('recordValue', () => {
+    it('records a directly-measured latency value (e.g. STT round-trip)', () => {
+      const { result } = renderHook(() => useLatencyMetrics())
+
+      act(() => {
+        result.current.recordValue('stt_final_ms', 1234)
+      })
+
+      expect(result.current.snapshot.stt_final_ms).toBe(1234)
+    })
+
+    it('rounds fractional values', () => {
+      const { result } = renderHook(() => useLatencyMetrics())
+
+      act(() => {
+        result.current.recordValue('tts_first_sentence_ms', 842.6)
+      })
+
+      expect(result.current.snapshot.tts_first_sentence_ms).toBe(843)
+    })
+
+    it('overwrites a prior value for the same field', () => {
+      const { result } = renderHook(() => useLatencyMetrics())
+
+      act(() => {
+        result.current.recordValue('stt_final_ms', 1000)
+        result.current.recordValue('stt_final_ms', 2000)
+      })
+
+      expect(result.current.snapshot.stt_final_ms).toBe(2000)
+    })
+  })
+
   describe('reset', () => {
     it('clears the snapshot', () => {
       const { result } = renderHook(() => useLatencyMetrics())
