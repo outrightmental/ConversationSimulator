@@ -102,3 +102,17 @@ def test_health_stt_status_unavailable_when_no_runtime(client):
 def test_health_stt_checked_at_present(client):
     stt = client.get("/api/health").json()["stt"]
     assert stt["checked_at"]
+
+
+def test_health_last_benchmark_null_initially(client):
+    body = client.get("/api/health").json()
+    assert "last_benchmark" in body
+    assert body["last_benchmark"] is None
+
+
+def test_health_last_benchmark_populated_after_benchmark(client):
+    client.post("/api/models/benchmark", json={})
+    body = client.get("/api/health").json()
+    assert body["last_benchmark"] is not None
+    assert "tokens_per_sec" in body["last_benchmark"]
+    assert isinstance(body["last_benchmark"]["warnings"], list)

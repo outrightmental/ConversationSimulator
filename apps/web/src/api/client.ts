@@ -18,6 +18,8 @@ import type {
   InstalledModelInfo,
   RegisterGgufRequest,
   RegisterGgufResponse,
+  BenchmarkRequest,
+  BenchmarkResponse,
 } from '@convsim/shared';
 
 export type { HealthResponse };
@@ -272,6 +274,9 @@ export const api = {
   },
   startSidecar(model_path: string): Promise<{ state: string; pid: number | null; log_path: string; host: string; port: number }> {
     return post('/sidecar/start', { model_path })
+  },
+  benchmarkModel(request: BenchmarkRequest): Promise<BenchmarkResponse> {
+    return post<BenchmarkResponse>('/models/benchmark', request)
   },
   connectSession(
     sessionId: string,
