@@ -46,8 +46,9 @@ You need:
 
 ## Step 1: Open the Creator Workbench
 
-In the top navigation, click **Creator Workbench**, or navigate directly to
-`http://127.0.0.1:7354/workbench`.
+In the top navigation, click **Workbench**, or navigate directly to
+`http://127.0.0.1:7354/workbench`. The screen's heading reads
+**Creator Workbench**.
 
 [![Creator Workbench — three-panel view showing the pack list on the left,
 file tree below it, and the YAML editor on the right with a green validation
