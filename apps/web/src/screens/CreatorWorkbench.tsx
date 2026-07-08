@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState, useEffect, useCallback, useRef, type CSSProperties } from 'react'
 import { useBlocker } from 'react-router-dom'
-import { api, type WorkbenchPack, type FileNode, type WorkbenchValidation, type WorkbenchValidationIssue } from '../api/client'
+import { api, type WorkbenchPack, type FileNode, type WorkbenchValidation, type WorkbenchValidationIssue, type WorkbenchImportValidationError } from '../api/client'
 
 // A validation response is only usable if it carries the expected error/warning
 // arrays. Backends without a validator (or unexpected shapes) are treated as
@@ -60,6 +60,15 @@ const BTN_DISABLED: CSSProperties = {
   cursor: 'not-allowed',
 }
 
+function triggerDownload(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 // ---------------------------------------------------------------------------
 // PackList
 // ---------------------------------------------------------------------------
@@ -68,11 +77,17 @@ interface PackListProps {
   packs: WorkbenchPack[]
   selected: WorkbenchPack | null
   onSelect: (pack: WorkbenchPack) => void
+  onImport: (file: File) => void
+  importing: boolean
+  importError: string | null
+  importValidation: WorkbenchImportValidationError | null
+  importRenamed: string | null
 }
 
-function PackList({ packs, selected, onSelect }: PackListProps) {
+function PackList({ packs, selected, onSelect, onImport, importing, importError, importValidation, importRenamed }: PackListProps) {
   const official = packs.filter((p) => p.kind === 'official')
   const localDev = packs.filter((p) => p.kind === 'local-dev')
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   function group(label: string, items: WorkbenchPack[]) {
     if (items.length === 0) return null
@@ -115,18 +130,67 @@ function PackList({ packs, selected, onSelect }: PackListProps) {
     )
   }
 
-  if (packs.length === 0) {
-    return (
-      <p style={{ fontSize: '0.85rem', color: '#52525b', padding: '0.5rem 0.75rem' }}>
-        No packs found.
-      </p>
-    )
-  }
-
   return (
     <div>
+      {packs.length === 0 && (
+        <p style={{ fontSize: '0.85rem', color: '#52525b', padding: '0.5rem 0.75rem' }}>
+          No packs found.
+        </p>
+      )}
       {group('Official', official)}
       {group('Local Dev', localDev)}
+
+      {/* Import button */}
+      <div style={{ padding: '0.4rem 0.75rem', borderTop: '1px solid rgba(255,255,255,0.06)', marginTop: '0.25rem' }}>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".zip"
+          data-testid="import-file-input"
+          style={{ display: 'none' }}
+          onChange={(e) => {
+            const file = e.target.files?.[0]
+            if (file) onImport(file)
+            // Reset so the same file can be re-imported if needed
+            e.target.value = ''
+          }}
+        />
+        <button
+          data-testid="import-pack-button"
+          disabled={importing}
+          onClick={() => fileInputRef.current?.click()}
+          style={{ ...BTN, width: '100%', textAlign: 'center', ...(importing ? BTN_DISABLED : {}) }}
+          aria-label={importing ? 'Importing…' : 'Import pack from .zip'}
+        >
+          {importing ? 'Importing…' : '⬆ Import Pack (.zip)'}
+        </button>
+
+        {importError && (
+          <p role="alert" data-testid="import-error" style={{ fontSize: '0.75rem', color: '#f87171', marginTop: '0.4rem' }}>
+            {importError}
+          </p>
+        )}
+
+        {importRenamed && !importError && (
+          <p data-testid="import-renamed-notice" style={{ fontSize: '0.75rem', color: '#fbbf24', marginTop: '0.4rem' }}>
+            Imported as "{importRenamed}" (existing pack with that ID was kept).
+          </p>
+        )}
+
+        {importValidation && !importError && (
+          <div data-testid="import-validation-errors" role="alert" style={{ fontSize: '0.75rem', color: '#f87171', marginTop: '0.4rem' }}>
+            <strong>Import rejected — pack is invalid:</strong>
+            <ul style={{ margin: '0.25rem 0 0', paddingLeft: '1rem' }}>
+              {importValidation.errors.slice(0, 5).map((e, i) => (
+                <li key={i}>{e.file ? `${e.file}: ` : ''}{e.message}</li>
+              ))}
+              {importValidation.errors.length > 5 && (
+                <li>…and {importValidation.errors.length - 5} more error(s)</li>
+              )}
+            </ul>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -1250,6 +1314,15 @@ export default function CreatorWorkbench() {
   const [validationLoading, setValidationLoading] = useState(false)
   const [validationServiceError, setValidationServiceError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'edit' | 'test'>('edit')
+  // Import state
+  const [importing, setImporting] = useState(false)
+  const [importError, setImportError] = useState<string | null>(null)
+  const [importValidation, setImportValidation] = useState<WorkbenchImportValidationError | null>(null)
+  const [importRenamed, setImportRenamed] = useState<string | null>(null)
+  // Export state
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
+  const [exportFilename, setExportFilename] = useState<string | null>(null)
 
   const isDirty = selectedFile !== null && editorContent !== savedContent
 
@@ -1330,6 +1403,11 @@ export default function CreatorWorkbench() {
     setCopyError(null)
     setValidation(null)
     setActiveTab('edit')
+    setExportError(null)
+    setExportFilename(null)
+    setImportError(null)
+    setImportValidation(null)
+    setImportRenamed(null)
     await Promise.all([loadFileTree(pack), refreshValidation(pack)])
   }
 
@@ -1402,6 +1480,55 @@ export default function CreatorWorkbench() {
     }
   }
 
+  async function handleImport(file: File) {
+    setImporting(true)
+    setImportError(null)
+    setImportValidation(null)
+    setImportRenamed(null)
+    try {
+      const result = await api.workbench.importPack(file)
+      if (result.kind === 'validation') {
+        setImportValidation(result)
+        return
+      }
+      // Success: add the new pack to the list and select it
+      const newPack: WorkbenchPack = {
+        kind: result.kind,
+        slug: result.slug,
+        pack_id: result.pack_id,
+        name: result.name,
+        editable: result.editable,
+      }
+      setPacks((prev) => [...prev.filter((p) => !(p.kind === newPack.kind && p.slug === newPack.slug)), newPack])
+      // Select the new pack first: handleSelectPack resets the import notices,
+      // so the rename notice must be set *after* it or it would be cleared.
+      await handleSelectPack(newPack)
+      if (result.renamed_from) {
+        setImportRenamed(result.slug)
+      }
+    } catch (e: unknown) {
+      setImportError(e instanceof Error ? e.message : 'Failed to import pack')
+    } finally {
+      setImporting(false)
+    }
+  }
+
+  async function handleExport() {
+    if (!selectedPack) return
+    setExporting(true)
+    setExportError(null)
+    setExportFilename(null)
+    try {
+      const { blob, filename } = await api.workbench.exportPack(selectedPack.kind, selectedPack.slug)
+      triggerDownload(blob, filename)
+      setExportFilename(filename)
+    } catch (e: unknown) {
+      setExportError(e instanceof Error ? e.message : 'Failed to export pack')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   return (
     <div>
       <h1 style={{ marginBottom: '0.25rem' }}>Creator Workbench</h1>
@@ -1444,7 +1571,16 @@ export default function CreatorWorkbench() {
             <div style={{ fontSize: '0.7rem', fontWeight: 600, color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '0.25rem 0.75rem 0.5rem' }}>
               Packs
             </div>
-            <PackList packs={packs} selected={selectedPack} onSelect={handleSelectPack} />
+            <PackList
+              packs={packs}
+              selected={selectedPack}
+              onSelect={handleSelectPack}
+              onImport={handleImport}
+              importing={importing}
+              importError={importError}
+              importValidation={importValidation}
+              importRenamed={importRenamed}
+            />
           </div>
 
           {/* File tree */}
@@ -1487,6 +1623,7 @@ export default function CreatorWorkbench() {
             <div
               style={{
                 display: 'flex',
+                alignItems: 'center',
                 borderBottom: '1px solid rgba(255,255,255,0.08)',
                 background: 'rgba(0,0,0,0.1)',
                 flexShrink: 0,
@@ -1512,6 +1649,42 @@ export default function CreatorWorkbench() {
                   {tab === 'edit' ? 'Edit' : 'Test Chat'}
                 </button>
               ))}
+
+              {/* Export controls — pushed to the right */}
+              <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0 0.5rem' }}>
+                {exportFilename && !exportError && (
+                  <span
+                    data-testid="export-success"
+                    style={{ fontSize: '0.72rem', color: '#4ade80' }}
+                  >
+                    ✓ {exportFilename}
+                  </span>
+                )}
+                {exportError && (
+                  <span
+                    data-testid="export-error"
+                    role="alert"
+                    style={{ fontSize: '0.72rem', color: '#f87171', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    title={exportError}
+                  >
+                    {exportError}
+                  </span>
+                )}
+                <button
+                  data-testid="export-pack-button"
+                  onClick={() => { void handleExport() }}
+                  disabled={exporting}
+                  style={{
+                    ...BTN,
+                    fontSize: '0.75rem',
+                    padding: '0.25rem 0.6rem',
+                    ...(exporting ? BTN_DISABLED : {}),
+                  }}
+                  aria-label={exporting ? 'Exporting…' : 'Export pack as .zip'}
+                >
+                  {exporting ? 'Exporting…' : '⬇ Export .zip'}
+                </button>
+              </div>
             </div>
           )}
 
