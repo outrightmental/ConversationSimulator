@@ -466,9 +466,14 @@ async def create_debrief(session_id: str, request: Request) -> DebriefResponse:
                 generated_at=doc.get("generated_at", _now_iso()),
                 used_fallback=doc.get("used_fallback", False),
             )
+        # DebriefReady state with no persisted row — data inconsistency.
+        raise HTTPException(
+            status_code=500,
+            detail=f"Debrief record missing for session {session_id!r} in DebriefReady state",
+        )
 
-    # Must be in Ended (or DebriefGenerating — retry) to generate.
-    if current_state not in ("Ended", "DebriefGenerating"):
+    # Must be in Ended, DebriefGenerating (retry), or Error (retry after failure) to generate.
+    if current_state not in ("Ended", "DebriefGenerating", "Error"):
         raise _conflict(
             f"Cannot generate debrief from state {current_state!r}. "
             "Session must be in Ended state.",
