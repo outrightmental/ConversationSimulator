@@ -101,6 +101,119 @@ def test_fts_tables_created(tmp_path):
         db.close()
 
 
+def test_scenario_fts_backfill_indexes_pre_existing_scenarios(tmp_path):
+    """Scenarios inserted before migration 0009 must appear in scenario_fts after migration."""
+    import sqlite3
+    from convsim_core.storage.migrations import MIGRATIONS, _BOOTSTRAP_SQL
+
+    # Apply all migrations up to but not including 0009.
+    db_path = str(tmp_path / "db" / "app.db")
+    (tmp_path / "db").mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+
+    cutoff = "0009_scenario_library_schema"
+    conn.executescript(_BOOTSTRAP_SQL)
+    for name, sql in MIGRATIONS:
+        if name == cutoff:
+            break
+        conn.executescript(
+            f"BEGIN;\n{sql}\nINSERT INTO schema_migrations(name) VALUES('{name}');\nCOMMIT;\n"
+        )
+
+    # Insert a pack and scenario using the pre-0009 schema (no title/summary columns yet).
+    conn.execute(
+        "INSERT INTO packs (slug, name, version, description) VALUES ('old.pack', 'Old Pack', '1.0.0', 'Old description')"
+    )
+    pack_id = conn.execute("SELECT id FROM packs WHERE slug='old.pack'").fetchone()[0]
+    conn.execute(
+        "INSERT INTO scenarios (pack_id, slug, name, description) VALUES (?, 'old_scenario', 'Old Scenario', 'Old summary')",
+        (pack_id,),
+    )
+    conn.commit()
+
+    # Now apply migration 0009, which should backfill scenario_fts.
+    name, sql = next((n, s) for n, s in MIGRATIONS if n == cutoff)
+    conn.executescript(
+        f"BEGIN;\n{sql}\nINSERT INTO schema_migrations(name) VALUES('{name}');\nCOMMIT;\n"
+    )
+
+    rows = conn.execute(
+        "SELECT rowid FROM scenario_fts WHERE scenario_fts MATCH '\"Old\"*'"
+    ).fetchall()
+    assert len(rows) > 0, "Pre-existing scenario must be indexed in scenario_fts after migration 0009"
+    conn.close()
+
+
+def test_pack_readme_fts_backfill_indexes_pre_existing_packs(tmp_path):
+    """Packs inserted before migration 0009 must appear in pack_readme_fts after migration."""
+    import sqlite3
+    from convsim_core.storage.migrations import MIGRATIONS, _BOOTSTRAP_SQL
+
+    db_path = str(tmp_path / "db" / "app.db")
+    (tmp_path / "db").mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+
+    cutoff = "0009_scenario_library_schema"
+    conn.executescript(_BOOTSTRAP_SQL)
+    for name, sql in MIGRATIONS:
+        if name == cutoff:
+            break
+        conn.executescript(
+            f"BEGIN;\n{sql}\nINSERT INTO schema_migrations(name) VALUES('{name}');\nCOMMIT;\n"
+        )
+
+    conn.execute(
+        "INSERT INTO packs (slug, name, version, description) VALUES ('legacy.pack', 'Legacy Pack', '1.0.0', 'A legacy description')"
+    )
+    conn.commit()
+
+    name, sql = next((n, s) for n, s in MIGRATIONS if n == cutoff)
+    conn.executescript(
+        f"BEGIN;\n{sql}\nINSERT INTO schema_migrations(name) VALUES('{name}');\nCOMMIT;\n"
+    )
+
+    rows = conn.execute(
+        "SELECT rowid FROM pack_readme_fts WHERE pack_readme_fts MATCH '\"Legacy\"*'"
+    ).fetchall()
+    assert len(rows) > 0, "Pre-existing pack must be indexed in pack_readme_fts after migration 0009"
+    conn.close()
+
+
+def test_pack_readme_fts_delete_trigger_removes_entry_on_pack_delete(tmp_path):
+    """Deleting a pack must remove its pack_readme_fts entry to avoid ghost FTS results."""
+    from convsim_core.storage.database import Database
+
+    db = Database.open(str(tmp_path / "db"))
+    try:
+        conn = db.connection()
+        conn.execute(
+            "INSERT INTO packs (slug, name, version) VALUES ('ghost.pack', 'Ghost Pack', '1.0.0')"
+        )
+        pack_id = conn.execute("SELECT id FROM packs WHERE slug='ghost.pack'").fetchone()[0]
+        conn.execute(
+            "INSERT INTO pack_readme_fts(rowid, name, description) VALUES (?, ?, ?)",
+            (pack_id, "Ghost Pack", ""),
+        )
+        conn.commit()
+
+        before = conn.execute(
+            "SELECT rowid FROM pack_readme_fts WHERE pack_readme_fts MATCH '\"Ghost\"*'"
+        ).fetchall()
+        assert len(before) == 1
+
+        conn.execute("DELETE FROM packs WHERE id = ?", (pack_id,))
+        conn.commit()
+
+        after = conn.execute(
+            "SELECT rowid FROM pack_readme_fts WHERE pack_readme_fts MATCH '\"Ghost\"*'"
+        ).fetchall()
+        assert len(after) == 0, "pack_readme_fts must not retain entries for deleted packs"
+    finally:
+        db.close()
+
+
 def test_settings_persist_across_restarts(tmp_path):
     """Settings written to the DB survive a close/reopen cycle."""
     db_dir = str(tmp_path / "db")
