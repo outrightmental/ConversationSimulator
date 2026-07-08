@@ -11,6 +11,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@convsim/shared': path.resolve(__dirname, '../../packages/shared/src/index.ts'),
+      '@convsim/pack-loader': path.resolve(__dirname, '../../packages/pack-loader/src/index.ts'),
     },
   },
   test: {
