@@ -356,6 +356,25 @@ def test_validate_yaml_mapping_error_returns_invalid_manifest_yaml_rule(client, 
     assert "SCHEMA_VIOLATION" not in rule_ids
 
 
+def test_validate_missing_entry_scenario_returns_missing_entry_scenario_rule(client, tmp_path):
+    """Missing entry scenario file must produce MISSING_ENTRY_SCENARIO, not SCHEMA_VIOLATION."""
+    from convsim_core.packs.validator import errors_to_rule_ids
+    errors = ["Entry scenario file not found: 'scenarios/intro.yaml'"]
+    rule_ids = errors_to_rule_ids(errors)
+    assert "MISSING_ENTRY_SCENARIO" in rule_ids
+    assert "SCHEMA_VIOLATION" not in rule_ids
+
+
+def test_validate_missing_entry_scenario_not_confused_by_required_in_filename(client, tmp_path):
+    """MISSING_ENTRY_SCENARIO must not be misclassified as SCHEMA_VIOLATION when the
+    filename happens to contain the word 'required'."""
+    from convsim_core.packs.validator import errors_to_rule_ids
+    errors = ["Entry scenario file not found: 'scenarios/required_intro.yaml'"]
+    rule_ids = errors_to_rule_ids(errors)
+    assert "MISSING_ENTRY_SCENARIO" in rule_ids
+    assert "SCHEMA_VIOLATION" not in rule_ids
+
+
 # ── manifest.yaml format ──────────────────────────────────────────────────────
 
 

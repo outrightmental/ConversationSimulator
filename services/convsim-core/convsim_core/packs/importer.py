@@ -92,11 +92,15 @@ def safe_extract_zip(zip_bytes: bytes, dest: Path) -> None:
             status_code=422,
         ) from exc
     except Exception as exc:
+        # Truncated archives, negative-seek errors, and other unexpected I/O failures
+        # from the zipfile module must produce a 422 rather than a 500.
         raise ConvsimError(
             "INVALID_ZIP",
             f"Could not read zip archive: {type(exc).__name__}: {exc}",
             status_code=422,
         ) from exc
+    # Defense-in-depth: verify actual bytes written, because a malicious archive can set
+    # file_size to 0 in the central directory to bypass the pre-check above.
     actual_size = sum(f.stat().st_size for f in dest.rglob("*") if f.is_file())
     if actual_size > _MAX_UNCOMPRESSED_BYTES:
         raise ConvsimError(
@@ -214,6 +218,9 @@ def _install_from_dir(
         raise ConvsimError("PACK_INVALID", "Pack manifest could not be loaded.", status_code=422)
     manifest = validation.manifest
 
+    # Safety: ensure the computed install path stays within packs_base_dir and is not
+    # equal to packs_base_dir itself (which would happen with an empty safe_name, causing
+    # shutil.rmtree to wipe the entire packs directory before the atomic move).
     safe_name = manifest.pack_id.replace("/", "_").replace("\\", "_")
     if not safe_name:
         raise ConvsimError(
@@ -237,6 +244,8 @@ def _install_from_dir(
             status_code=422,
         )
 
+    # Conflict: any existing pack with the same id blocks import regardless of version.
+    # A pack directory is keyed by id, so a different version would silently overwrite it.
     existing = get_pack_by_slug(conn, manifest.pack_id)
     if existing is not None:
         raise PackConflictError(manifest.pack_id, existing.version)
@@ -256,6 +265,8 @@ def _install_from_dir(
             scenario_db_id = insert_scenario(conn, pack_db_id, scenario_data)
             slug_to_scenario_id[scenario_data.slug] = scenario_db_id
 
+        # Move staging copy to final destination before indexing so that
+        # absolute file_path values stored in asset_index reflect the real location.
         if pack_dest.exists():
             shutil.rmtree(pack_dest)
         pack_dest.parent.mkdir(parents=True, exist_ok=True)
@@ -283,6 +294,11 @@ def _install_from_dir(
         conn.rollback()
         if tmp_dest.exists():
             shutil.rmtree(tmp_dest, ignore_errors=True)
+        # If the move already completed, undo it to leave no partial install.
+        # Compare resolved paths: source_dir arrives resolved from the router but
+        # pack_dest is constructed from an unresolved config path, so a plain ==
+        # comparison fails on systems where packs_dir contains a symlink (e.g.
+        # macOS /tmp → /private/tmp), incorrectly deleting the source directory.
         if pack_dest.exists() and not (source_dir.resolve() == pack_dest.resolve()):
             shutil.rmtree(pack_dest, ignore_errors=True)
         raise
