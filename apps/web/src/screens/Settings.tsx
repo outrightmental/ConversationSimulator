@@ -484,6 +484,7 @@ export default function Settings() {
         <button
           onClick={() => setShowAdvanced((v) => !v)}
           aria-expanded={showAdvanced}
+          aria-controls="settings-advanced-section"
           style={{
             background: 'none',
             border: 'none',
@@ -494,11 +495,12 @@ export default function Settings() {
             marginBottom: '0.75rem',
           }}
         >
-          {showAdvanced ? '▾ Hide advanced' : '▸ Show advanced'}
+          <span aria-hidden="true">{showAdvanced ? '▾ ' : '▸ '}</span>
+          {showAdvanced ? 'Hide advanced' : 'Show advanced'}
         </button>
 
         {showAdvanced && (
-          <div>
+          <div id="settings-advanced-section">
             <SectionHeading>Advanced</SectionHeading>
             <PrivacyToggle
               id="save-raw-audio"
