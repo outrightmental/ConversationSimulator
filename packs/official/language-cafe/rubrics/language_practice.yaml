@@ -1,0 +1,117 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+rubric_id: language_practice
+title: Language Practice Rubric
+
+dimensions:
+  - id: comprehension
+    name: Comprehension
+    description: >-
+      Whether the player understood what the NPC said and responded on-topic.
+      Does the player's reply address what was actually asked or said, or does
+      it seem to miss the point? Assessed purely on communicative outcome, not
+      on grammatical accuracy.
+    scoring:
+      low: >-
+        The player's reply consistently misses what the NPC said — answering
+        a different question, ignoring the topic, or responding with something
+        unrelated. This suggests the player did not understand the input.
+      medium: >-
+        The player grasped the general meaning most of the time but missed some
+        specific details or nuances. Replies are mostly on-topic but occasionally
+        off-target in a way that required the NPC to repeat or rephrase.
+      high: >-
+        The player consistently understood what the NPC said and responded
+        directly and appropriately, even when the NPC used natural speed or
+        unfamiliar vocabulary.
+    weight: 0.25
+
+  - id: appropriateness
+    name: Appropriateness
+    description: >-
+      Whether the player's responses were culturally and contextually fitting
+      for the situation — including register (formal vs. casual), turn-taking,
+      and social conventions. Assessed on communicative fit, not grammar.
+    scoring:
+      low: >-
+        Responses were noticeably mismatched for the context — using an overly
+        casual or overly formal register, ignoring social conventions such as
+        greetings or leave-taking, or saying something that would be unusual
+        or awkward in a real interaction.
+      medium: >-
+        Responses were mostly appropriate for the context. There were minor
+        register mismatches or missing conventions (e.g. no greeting, no
+        thank-you), but they did not disrupt the flow of the conversation.
+      high: >-
+        Responses felt natural and well-matched to the social context. The
+        player used appropriate greetings, polite forms, and register without
+        being prompted, and turn-taking felt natural.
+    weight: 0.20
+
+  - id: vocabulary_use
+    name: Vocabulary Use
+    description: >-
+      Whether the player used varied and accurate vocabulary relevant to the
+      scenario. Includes choosing the right word for the context and attempting
+      more specific or idiomatic expressions rather than always falling back on
+      the most basic alternatives.
+    scoring:
+      low: >-
+        The player used a very narrow range of vocabulary, relied heavily on
+        the same few words throughout, or used words that were clearly wrong
+        for the context in ways that affected meaning.
+      medium: >-
+        The player used adequate vocabulary for basic communication. Some words
+        were imprecise or basic but did not prevent understanding. There was
+        some evidence of attempting context-relevant vocabulary.
+      high: >-
+        The player demonstrated varied, context-appropriate vocabulary. They
+        attempted scenario-specific words and phrases, and their word choices
+        were precise enough to communicate nuance, not just basic meaning.
+    weight: 0.25
+
+  - id: repair_strategies
+    name: Repair Strategies
+    description: >-
+      Whether the player managed communication breakdowns effectively. Did they
+      ask for repetition, request simpler language, or find a workaround when
+      they did not know a word? Repair strategies are a sign of communicative
+      competence, not weakness.
+    scoring:
+      low: >-
+        When the player did not understand or could not find a word, they
+        either went silent, gave a clearly unrelated reply, or abandoned the
+        topic without attempting to address the breakdown.
+      medium: >-
+        The player attempted at least one repair strategy — asking for
+        repetition, requesting the NPC to slow down, or substituting a
+        workaround — but did so only once or in a way that was unclear to
+        the NPC.
+      high: >-
+        The player used repair strategies actively and effectively. They asked
+        for clarification, used paraphrase or gesture descriptions to bridge
+        vocabulary gaps, or acknowledged non-understanding and worked toward
+        a resolution with the NPC.
+    weight: 0.15
+
+  - id: confidence
+    name: Confidence
+    description: >-
+      Whether the player engaged actively and maintained communicative momentum.
+      Did they initiate turns, volunteer information, and keep the conversation
+      moving, or did they wait passively and give minimal responses? Confidence
+      here means communicative initiative, not the absence of mistakes.
+    scoring:
+      low: >-
+        The player gave very short or passive responses throughout — mostly
+        single words or yes/no answers — and rarely initiated a new topic or
+        asked a question. The NPC had to do most of the conversational work.
+      medium: >-
+        The player engaged for most of the conversation but became noticeably
+        passive at times, falling back on short answers when the topic became
+        harder or when they were uncertain about vocabulary.
+      high: >-
+        The player actively drove the conversation — volunteering information,
+        asking follow-up questions, and sustaining turns even when they were
+        uncertain about the right word. They communicated with initiative.
+    weight: 0.15
