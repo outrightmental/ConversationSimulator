@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scene_id: london_cafe
+display_name: "The Corner Café — Hackney, London"
+description: >-
+  A busy independent café on a corner in Hackney, East London. Mismatched
+  wooden chairs and small marble-topped tables are packed in closely. Local
+  artwork dots the exposed-brick walls. The coffee counter runs along one
+  side, staffed by two baristas working a manual espresso machine. The
+  ambient noise is a comfortable blend of conversation, the hiss of steam,
+  and a softly played lo-fi playlist. Laptops and books sit open at several
+  tables. A hand-written board announces the day's specials — a flat white,
+  an oat-milk latte, and a slice of lemon drizzle cake. It is the kind of
+  place where it is perfectly normal for regulars to strike up a friendly
+  chat with someone at the next table.
+background: assets/backgrounds/london_cafe_placeholder.png
+ambient: cafe_ambience

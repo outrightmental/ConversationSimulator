@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scene_id: property_office
+display_name: Crestwood Realty — Management Office
+background: assets/backgrounds/property_office_placeholder.png
+description: >-
+  A small property management office on the ground floor of one of Crestwood
+  Realty's residential buildings. A desk holds lease files, a laptop, and a
+  framed floor plan of the building. Two comfortable chairs face the desk
+  across a low table. A wall calendar shows the current month highlighted.
+  Natural light filters through half-open venetian blinds. The hallway outside
+  is quiet except for the occasional sound of a passing elevator.
+ambient: quiet_office

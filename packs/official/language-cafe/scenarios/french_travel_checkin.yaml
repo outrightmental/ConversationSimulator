@@ -1,0 +1,124 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scenario_id: french_travel_checkin
+title: Checking In at Hôtel Lumière
+summary: >-
+  You have just arrived at a small hotel in Paris. Marie Dupont, the
+  receptionist, will handle your check-in and answer questions about the
+  neighbourhood. The target language is French (fr). Difficulty controls
+  language correction: easy = none, normal = light (implicit recasting),
+  hard = explicit correction with practice prompts.
+player_role:
+  label: Language Learner
+  brief: >-
+    You are a tourist checking into Hôtel Lumière after a long journey. Your
+    goal is to complete the check-in in French, ask about the neighbourhood,
+    and perhaps request something for your room. Marie is professional but
+    warm, and will appreciate any effort you make to speak French.
+npc:
+  ref: ../npcs/receptionist_marie.yaml
+scene:
+  ref: ../scenes/paris_hotel.yaml
+rubric:
+  ref: ../rubrics/language_practice.yaml
+duration:
+  max_turns: 16
+  soft_time_limit_minutes: 12
+opening:
+  npc_says: >-
+    Bonjour ! Bienvenue à l'Hôtel Lumière. Vous avez une réservation ?
+goals:
+  player_visible:
+    - "Complete the check-in in French (give your name, confirm the room)"
+    - "Ask at least one question about the hotel or the neighbourhood"
+    - "Use polite forms such as s'il vous plaît and merci"
+  hidden:
+    - "Marie notes whether the player uses vous correctly as the polite form"
+    - "Marie listens for culturally appropriate greetings and leave-taking phrases"
+    - "Marie notices when the player tries repair strategies such as asking her to repeat or speak more slowly"
+state:
+  variables:
+    comprehension:
+      min: 0
+      max: 100
+      default: 50
+      visibility: visible
+      max_delta_per_turn: 15
+    confidence:
+      min: 0
+      max: 100
+      default: 40
+      visibility: visible
+      max_delta_per_turn: 10
+    repair_count:
+      min: 0
+      max: 10
+      default: 0
+      visibility: hidden
+      max_delta_per_turn: 1
+    vocabulary_richness:
+      min: 0
+      max: 100
+      default: 50
+      visibility: hidden
+      max_delta_per_turn: 10
+difficulty:
+  default: normal
+  options:
+    easy:
+      correction_style: none
+      npc_patience_modifier: 20
+      challenge_frequency: low
+    normal:
+      correction_style: light
+      npc_patience_modifier: 0
+      challenge_frequency: medium
+    hard:
+      correction_style: strict
+      npc_patience_modifier: -10
+      challenge_frequency: high
+events:
+  - id: comprehension_low
+    when:
+      type: variable_below
+      variable: comprehension
+      threshold: 30
+    npc_instruction: >-
+      The player seems to have trouble following. Slow your speech, simplify
+      your vocabulary, and offer gentle support — for example: "Je parle
+      lentement pour vous — I will speak slowly for you." Stay professional
+      but kind. Do not make the player feel embarrassed.
+    repeat: false
+  - id: repair_strategy_used
+    when:
+      type: variable_above
+      variable: repair_count
+      threshold: 1
+    npc_instruction: >-
+      The player has used a repair strategy — asking you to repeat, slow down,
+      or rephrase. Respond graciously and naturally, honour their request, then
+      continue. This is excellent communicative behaviour to encourage.
+    repeat: true
+  - id: confidence_building
+    when:
+      type: variable_above
+      variable: confidence
+      threshold: 70
+    npc_instruction: >-
+      The player is growing in confidence. Expand the interaction naturally —
+      volunteer a recommendation for a nearby café or museum, or ask a friendly
+      question about the purpose of their visit.
+    repeat: false
+ending_conditions:
+  success:
+    type: variable_above
+    variable: comprehension
+    threshold: 65
+  failure:
+    type: variable_below
+    variable: comprehension
+    threshold: 20
+response_style:
+  max_words: 75
+  verbosity: moderate
+  formality: professional

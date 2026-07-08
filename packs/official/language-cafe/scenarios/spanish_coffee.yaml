@@ -1,0 +1,127 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scenario_id: spanish_coffee
+title: Coffee at Café Sol
+summary: >-
+  You are visiting Café Sol in Madrid. Rosa García, the barista, will greet
+  you and take your order in Spanish. Practice ordering a drink, asking
+  questions, and making small talk. The target language is Spanish (es).
+  Difficulty controls language correction: easy = none, normal = light
+  (implicit recasting), hard = explicit correction with practice prompts.
+player_role:
+  label: Language Learner
+  brief: >-
+    You are a tourist or language student visiting Madrid for the first time.
+    Your goal is to order a coffee and exchange a few friendly sentences with
+    Rosa in Spanish. Mistakes are fine — focus on communicating and building
+    confidence. Rosa is patient and genuinely happy when customers try Spanish.
+npc:
+  ref: ../npcs/barista_rosa.yaml
+scene:
+  ref: ../scenes/madrid_cafe.yaml
+rubric:
+  ref: ../rubrics/language_practice.yaml
+duration:
+  max_turns: 16
+  soft_time_limit_minutes: 12
+opening:
+  npc_says: >-
+    ¡Hola! Buenos días. ¿En qué te puedo ayudar? ¿Qué vas a tomar hoy?
+goals:
+  player_visible:
+    - "Order a coffee or other drink in Spanish"
+    - "Ask at least one question to keep the conversation going"
+    - "Try to use por favor and gracias naturally"
+  hidden:
+    - "Rosa tracks whether the player uses natural politeness markers"
+    - "Rosa notices when the player attempts repair strategies such as asking for repetition or offering a paraphrase"
+    - "Rosa rewards genuine attempts to communicate in Spanish even when grammar is imperfect"
+state:
+  variables:
+    comprehension:
+      min: 0
+      max: 100
+      default: 50
+      visibility: visible
+      max_delta_per_turn: 15
+    confidence:
+      min: 0
+      max: 100
+      default: 40
+      visibility: visible
+      max_delta_per_turn: 10
+    repair_count:
+      min: 0
+      max: 10
+      default: 0
+      visibility: hidden
+      max_delta_per_turn: 1
+    vocabulary_richness:
+      min: 0
+      max: 100
+      default: 50
+      visibility: hidden
+      max_delta_per_turn: 10
+difficulty:
+  default: normal
+  options:
+    easy:
+      correction_style: none
+      npc_patience_modifier: 20
+      challenge_frequency: low
+    normal:
+      correction_style: light
+      npc_patience_modifier: 0
+      challenge_frequency: medium
+    hard:
+      correction_style: strict
+      npc_patience_modifier: -10
+      challenge_frequency: high
+events:
+  - id: comprehension_low
+    when:
+      type: variable_below
+      variable: comprehension
+      threshold: 30
+    npc_instruction: >-
+      The player seems confused or lost. Slow down noticeably, use simpler
+      vocabulary, and gently offer support — you can briefly switch between
+      Spanish and a single English word to help them along, e.g. "¿Lo
+      entiendes? — understand?" Don't make them feel bad; be warm and
+      encouraging.
+    repeat: false
+  - id: repair_strategy_used
+    when:
+      type: variable_above
+      variable: repair_count
+      threshold: 1
+    npc_instruction: >-
+      The player has tried to manage a communication breakdown — by asking
+      you to repeat, slow down, or by restating their own meaning in a
+      different way. Respond warmly and naturally to their repair request,
+      then continue the conversation. This is great behaviour to reinforce.
+    repeat: true
+  - id: confidence_building
+    when:
+      type: variable_above
+      variable: confidence
+      threshold: 70
+    npc_instruction: >-
+      The player is engaging confidently. Match their energy — be a little
+      more expressive and natural. Expand the chat with a friendly follow-up
+      question about their visit, where they are from, or how long they are
+      staying in Madrid.
+    repeat: false
+ending_conditions:
+  success:
+    type: variable_above
+    variable: comprehension
+    threshold: 65
+  failure:
+    type: variable_below
+    variable: comprehension
+    threshold: 20
+response_style:
+  max_words: 60
+  verbosity: moderate
+  formality: casual

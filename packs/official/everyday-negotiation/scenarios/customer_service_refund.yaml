@@ -1,0 +1,133 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scenario_id: customer_service_refund
+title: The Defective Product Refund
+summary: >-
+  Your blender stopped working after four months of normal use. The store's
+  return window is 90 days, but the product carries a one-year manufacturer
+  defect warranty. Jordan Miles at customer service opens with a firm policy
+  refusal. Navigate the escalation path calmly, cite your warranty rights, and
+  secure a refund or replacement without losing your temper or jumping to
+  threats prematurely.
+player_role:
+  label: Customer
+  brief: >-
+    You paid $89.99 for a blender four months ago. It stopped working — the
+    motor grinds and produces no output. You have your receipt, the original
+    box, and the product manual open to the one-year defect warranty section.
+    You want a full refund or an equivalent replacement and know the warranty
+    covers manufacturing defects regardless of the store's return window.
+npc:
+  ref: ../npcs/customer_service_rep.yaml
+scene:
+  ref: ../scenes/customer_service_call.yaml
+rubric:
+  ref: ../rubrics/negotiation_rubric.yaml
+duration:
+  max_turns: 16
+  soft_time_limit_minutes: 10
+opening:
+  npc_says: >-
+    Thank you for calling RetailCo. This is Jordan. How can I help you today?
+goals:
+  player_visible:
+    - "Obtain a full refund or equivalent replacement for a defective blender purchased four months ago"
+    - "Cite the manufacturer's one-year defect warranty to distinguish this from a standard return request"
+    - "Stay calm and professional — escalate through proper channels rather than jumping straight to threats"
+  hidden:
+    - "Jordan has authority to approve refunds up to $150 without manager sign-off; $89.99 falls within this limit but only for clearly legitimate claims"
+    - "Jordan is trained to decline initially and then evaluate whether the customer knows their rights and will escalate appropriately — this determines whether Jordan engages the discretionary authority"
+    - "Explicitly mentioning the manufacturer's warranty, asking to speak with a manager, or citing consumer protection rights each unlock Jordan's willingness to pursue a resolution"
+    - "Threats made before Jordan has had a genuine chance to help backfire — they cause Jordan to become formal, defensive, and less willing to use discretionary authority"
+state:
+  variables:
+    deal_progress:
+      min: 0
+      max: 100
+      default: 0
+      visibility: visible
+      max_delta_per_turn: 20
+    perceived_fairness:
+      min: 0
+      max: 100
+      default: 55
+      visibility: hidden
+      max_delta_per_turn: 15
+    firmness:
+      min: 0
+      max: 100
+      default: 70
+      visibility: hidden
+      max_delta_per_turn: 15
+    concession_level:
+      min: 0
+      max: 100
+      default: 0
+      visibility: visible
+      max_delta_per_turn: 20
+    leverage:
+      min: 0
+      max: 100
+      default: 25
+      visibility: hidden
+      max_delta_per_turn: 20
+difficulty:
+  default: normal
+  options:
+    easy:
+      npc_patience_modifier: 20
+      challenge_frequency: low
+    normal:
+      npc_patience_modifier: 0
+      challenge_frequency: medium
+    hard:
+      npc_patience_modifier: -20
+      challenge_frequency: high
+events:
+  - id: warranty_recognition
+    when:
+      type: variable_above
+      variable: leverage
+      threshold: 50
+    npc_instruction: >-
+      The customer has clearly cited the manufacturer's one-year defect warranty
+      or has calmly requested to speak with a manager. Shift from policy-denial
+      to problem-solving: "You're right — a manufacturer defect is handled
+      separately from our standard return window. Let me look into what I can
+      do here." Begin working toward a resolution: offer a replacement or a
+      full refund.
+    repeat: false
+  - id: early_threat_backfire
+    when:
+      type: variable_below
+      variable: perceived_fairness
+      threshold: 30
+    npc_instruction: >-
+      The customer has jumped to threats — legal action, social media, or
+      regulatory complaints — before giving you a genuine chance to help.
+      Become noticeably more formal and guarded: "I understand you're
+      frustrated, but I need to keep this conversation professional. I'm happy
+      to help if we can do that." Do not make further concessions until the
+      customer's tone becomes calm and constructive.
+    repeat: true
+  - id: resolution_offer
+    when:
+      type: variable_above
+      variable: deal_progress
+      threshold: 50
+    npc_instruction: >-
+      Progress is being made and a resolution is in reach. Offer a concrete
+      path: "Based on what you've described, I can process a full refund of
+      $89.99 back to your original payment method, or issue a store credit if
+      you'd prefer to choose a replacement. Which would you prefer?" Wait for
+      their answer before proceeding.
+    repeat: false
+ending_conditions:
+  success:
+    type: variable_above
+    variable: deal_progress
+    threshold: 70
+  failure:
+    type: variable_below
+    variable: perceived_fairness
+    threshold: 15
