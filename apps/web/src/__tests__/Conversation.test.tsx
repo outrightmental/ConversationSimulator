@@ -7,7 +7,6 @@ import type {
   SessionStartResponse,
   TurnResponse,
   SessionEndResponse,
-  SessionDebriefResponse,
 } from '@convsim/shared'
 
 vi.mock('../api/client', () => ({
@@ -71,18 +70,6 @@ const endResponse: SessionEndResponse = {
   session_id: SESSION_ID,
   state: 'Ended',
   ending_type: 'player_exit',
-}
-
-const _debriefResponse: SessionDebriefResponse = {
-  session_id: SESSION_ID,
-  state: 'Ended',
-  summary: 'You completed 1 turn of "Behavioral Interview".',
-  outcome: 'player_exit',
-  turn_count: 1,
-  scenario_id: 'behavioral_interview',
-  strengths: ['Engaged with the scenario'],
-  improvements: ['Install a local LLM for real NPC responses'],
-  replay_suggestions: ['Try a different difficulty level'],
 }
 
 function renderConversation() {

@@ -106,6 +106,18 @@ export const api = {
   exportSession(sessionId: string): Promise<unknown> {
     return get<unknown>(`/sessions/${sessionId}/export`)
   },
+  startSession(sessionId: string): Promise<SessionStartResponse> {
+    return post<SessionStartResponse>(`/sessions/${sessionId}/start`)
+  },
+  submitTurn(sessionId: string, content: string): Promise<TurnResponse> {
+    return post<TurnResponse>(`/sessions/${sessionId}/turn`, { content })
+  },
+  endSession(sessionId: string): Promise<SessionEndResponse> {
+    return post<SessionEndResponse>(`/sessions/${sessionId}/end`)
+  },
+  generateDebrief(sessionId: string): Promise<SessionDebriefResponse> {
+    return post<SessionDebriefResponse>(`/sessions/${sessionId}/debrief`)
+  },
   connectSession(
     sessionId: string,
     onEvent: (event: WsEvent) => void,
