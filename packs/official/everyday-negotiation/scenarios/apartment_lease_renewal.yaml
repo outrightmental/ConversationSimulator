@@ -1,0 +1,136 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scenario_id: apartment_lease_renewal
+title: The Lease Renewal
+summary: >-
+  Your landlord has proposed a 12% rent increase on your renewal — double what
+  market data shows for comparable units nearby. Patricia Vance, the property
+  manager, is firm but has more flexibility than she shows. Your two-year
+  payment record and a credible alternative give you real leverage. Negotiate
+  a fair increase and lock in stable terms.
+player_role:
+  label: Tenant
+  brief: >-
+    You have lived in this apartment for two years and always paid on time.
+    Your current rent is $1,450 per month. The renewal notice proposes $1,624 —
+    a 12% increase. Comparable units in the neighbourhood list for $1,520–$1,560,
+    suggesting 5–7% is fair. You have a viewing scheduled at another building
+    and are willing to move if needed.
+npc:
+  ref: ../npcs/property_manager.yaml
+scene:
+  ref: ../scenes/property_office.yaml
+rubric:
+  ref: ../rubrics/negotiation_rubric.yaml
+duration:
+  max_turns: 18
+  soft_time_limit_minutes: 12
+opening:
+  npc_says: >-
+    Hi, thanks for coming in. So you received our renewal letter — good. As
+    I'm sure you saw, we're adjusting rents to current market rates. The new
+    rate would be sixteen-twenty-four starting the first of next month. Did you
+    have questions about the renewal terms?
+goals:
+  player_visible:
+    - "Negotiate the rent increase down to 5–7% (roughly $1,520–$1,560), or secure a longer lease at a lower rate"
+    - "Use your payment record and comparable market rents to make the case for a fair increase"
+    - "Stay professional — Patricia should want to keep you as a tenant, not dread the conversation"
+  hidden:
+    - "Patricia's instructions from ownership are to achieve at least a 7% increase — she can accept less only with documented justification"
+    - "Patricia genuinely prefers to keep reliable tenants over vacancy risk and turnover cost, but she will not volunteer this without prompting"
+    - "A longer lease term (18 or 24 months) gives Patricia a talking point with ownership and unlocks meaningful concessions"
+    - "Patricia's resistance softens measurably when the tenant cites specific comparable rents or mentions a credible alternative property"
+state:
+  variables:
+    deal_progress:
+      min: 0
+      max: 100
+      default: 0
+      visibility: visible
+      max_delta_per_turn: 20
+    perceived_fairness:
+      min: 0
+      max: 100
+      default: 50
+      visibility: hidden
+      max_delta_per_turn: 15
+    firmness:
+      min: 0
+      max: 100
+      default: 70
+      visibility: hidden
+      max_delta_per_turn: 12
+    concession_level:
+      min: 0
+      max: 100
+      default: 0
+      visibility: visible
+      max_delta_per_turn: 15
+    leverage:
+      min: 0
+      max: 100
+      default: 35
+      visibility: hidden
+      max_delta_per_turn: 18
+difficulty:
+  default: normal
+  options:
+    easy:
+      npc_patience_modifier: 20
+      challenge_frequency: low
+    normal:
+      npc_patience_modifier: 0
+      challenge_frequency: medium
+    hard:
+      npc_patience_modifier: -20
+      challenge_frequency: high
+events:
+  - id: market_data_reward
+    when:
+      type: variable_above
+      variable: leverage
+      threshold: 55
+    npc_instruction: >-
+      The tenant has cited specific comparable rents or mentioned a credible
+      alternative apartment they are actively considering. Acknowledge this
+      seriously: "I hear you — the market has been moving in different
+      directions depending on the area." Begin to show flexibility: offer to
+      meet in the middle, or propose a longer lease term at a lower rate. Make
+      it feel like a collaborative search for a solution rather than a
+      confrontation.
+    repeat: false
+  - id: aggression_lockdown
+    when:
+      type: variable_below
+      variable: perceived_fairness
+      threshold: 30
+    npc_instruction: >-
+      The tenant has become hostile, made ultimatums, or acted disrespectfully.
+      Remain professional and calm: "I understand this is frustrating, but I
+      need us to keep this conversation constructive. This is the rate ownership
+      has set and I can only work with you if we are talking reasonably."
+      Do not offer further concessions until the tone becomes genuinely
+      collaborative.
+    repeat: true
+  - id: longer_term_offer
+    when:
+      type: variable_above
+      variable: deal_progress
+      threshold: 45
+    npc_instruction: >-
+      Things are moving in the right direction. Float the longer-term
+      compromise: "What if we did an 18-month lease at fifteen-forty? That
+      gives you price stability and it gives ownership predictability — I
+      can usually make that case." Ask whether they would consider it and wait
+      for their response.
+    repeat: false
+ending_conditions:
+  success:
+    type: variable_above
+    variable: deal_progress
+    threshold: 70
+  failure:
+    type: variable_below
+    variable: perceived_fairness
+    threshold: 15
