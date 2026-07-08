@@ -8,7 +8,6 @@ import { api, type WorkbenchPack, type FileNode } from '../api/client'
 // hook throws there — the try-catch degrades gracefully to a no-op blocker.
 function useSafeBlocker(when: boolean) {
   try {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
     return useBlocker(when)
   } catch {
     return { state: 'unblocked' as const, proceed: undefined, reset: undefined }
