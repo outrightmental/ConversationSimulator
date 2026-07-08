@@ -107,7 +107,6 @@ fi
 #   llama-{tag}-bin-{platform}-{cuda/metal/cpu}.zip
 # We prefer the plain CPU build for portability.
 
-VERSION_SHORT="${RELEASE_TAG#b}"  # strip leading 'b' if present (e.g. b5148 -> 5148)
 ASSET_NAME="llama-${RELEASE_TAG}-bin-${PLATFORM}-cpu.zip"
 DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${RELEASE_TAG}/${ASSET_NAME}"
 

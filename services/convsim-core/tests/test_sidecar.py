@@ -7,6 +7,7 @@ temp directory; it is marked asyncio and relies on a free port found at runtime.
 """
 from __future__ import annotations
 
+import asyncio
 import os
 import socket
 import sys
@@ -363,3 +364,64 @@ async def test_start_twice_when_already_running_is_noop(tmp_path):
     assert sidecar.get_status()["pid"] == pid_before
 
     await sidecar.stop()
+
+
+@pytest.mark.asyncio
+async def test_restart_after_spontaneous_crash(tmp_path):
+    """start() must restart a crashed sidecar, not silently no-op.
+
+    Regression test: start() was checking self._state (raw field) instead of
+    self.state (property). A spontaneously crashed process leaves _state as
+    RUNNING until the property is called, so start() would return early without
+    restarting.
+    """
+    import signal
+
+    exe = _write_fake_server(tmp_path)
+    port1 = _free_port()
+    sidecar = LlamaCppSidecar(log_dir=str(tmp_path / "logs"))
+
+    await sidecar.start("fake.gguf", executable=exe, port=port1, startup_timeout=15.0)
+    assert sidecar.state == SidecarState.RUNNING
+    pid = sidecar.get_status()["pid"]
+
+    # Kill the child externally, bypassing stop()
+    os.kill(pid, signal.SIGKILL)
+    await asyncio.sleep(0.3)
+
+    # Calling start() directly (without first reading .state) must detect the
+    # crash via the property and proceed to restart, not silently return.
+    port2 = _free_port()
+    await sidecar.start("fake.gguf", executable=exe, port=port2, startup_timeout=15.0)
+
+    assert sidecar.state == SidecarState.RUNNING
+    assert sidecar.get_status()["pid"] != pid
+
+    await sidecar.stop()
+
+
+@pytest.mark.asyncio
+async def test_log_file_closed_after_spontaneous_crash(tmp_path):
+    """state property must close _log_fh when it detects a crash.
+
+    Regression test: the log file handle was leaked when a process exited
+    spontaneously because _close_log() was only called in the startup-failure
+    path, not in the state property's crash-detection branch.
+    """
+    import signal
+
+    exe = _write_fake_server(tmp_path)
+    port = _free_port()
+    sidecar = LlamaCppSidecar(log_dir=str(tmp_path / "logs"))
+
+    await sidecar.start("fake.gguf", executable=exe, port=port, startup_timeout=15.0)
+    log_fh = sidecar._log_fh
+    assert log_fh is not None
+
+    os.kill(sidecar.get_status()["pid"], signal.SIGKILL)
+    await asyncio.sleep(0.3)
+
+    # Accessing .state triggers crash detection; the log handle must be closed.
+    assert sidecar.state == SidecarState.CRASHED
+    assert sidecar._log_fh is None
+    assert log_fh.closed

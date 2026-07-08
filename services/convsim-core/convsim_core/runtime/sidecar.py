@@ -149,7 +149,7 @@ class LlamaCppSidecar:
         failure. Raises TimeoutError if startup_timeout elapses before /health
         returns 200.
         """
-        if self._state == SidecarState.RUNNING:
+        if self.state == SidecarState.RUNNING:
             return
 
         exe = executable or find_executable()
@@ -241,6 +241,7 @@ class LlamaCppSidecar:
                 f"llama-server exited unexpectedly with code {self._process.returncode}. "
                 f"Check log: {self._log_path}"
             )
+            self._close_log()
         return self._state
 
     def get_status(self) -> dict:
