@@ -93,7 +93,7 @@ export default function Conversation() {
     return () => {
       cancelled = true
     }
-  }, [sessionId])
+  }, [sessionId, devMode])
 
   useEffect(() => {
     const el = transcriptRef.current
