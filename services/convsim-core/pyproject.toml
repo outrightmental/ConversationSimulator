@@ -30,6 +30,7 @@ dev = [
 
 [project.scripts]
 convsim-core = "convsim_core.main:main"
+convsim-validate-pack = "convsim_core.packs.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
