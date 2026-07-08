@@ -169,11 +169,33 @@ describe('ScenarioSetupPage', () => {
       expect((select as HTMLSelectElement).value).toBe('en');
     });
 
-    it('enables TTS when TTS runtime is ready', async () => {
+    it('enables TTS when TTS runtime is ready and scenario supports voice', async () => {
       renderSetup();
       await waitFor(() => screen.getByText('Behavioral Interview'));
       const ttsCheckbox = screen.getByRole('checkbox', { name: /npc voice/i });
       expect(ttsCheckbox).toBeChecked();
+    });
+
+    it('disables TTS by default when scenario does not support voice even if TTS is ready', async () => {
+      mockApi.getScenario.mockResolvedValue({ ...mockScenario, voice_supported: false });
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      const ttsCheckbox = screen.getByRole('checkbox', { name: /npc voice/i });
+      expect(ttsCheckbox).not.toBeChecked();
+    });
+
+    it('shows a note when scenario is text-only but TTS is technically available', async () => {
+      mockApi.getScenario.mockResolvedValue({ ...mockScenario, voice_supported: false });
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      expect(screen.getByText(/designed for text/i)).toBeInTheDocument();
+    });
+
+    it('sets input mode to push-to-talk when STT is ready', async () => {
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      const pttRadio = screen.getByRole('radio', { name: /push-to-talk/i });
+      expect(pttRadio).toBeChecked();
     });
 
     it('enables transcript saving by default', async () => {
@@ -269,6 +291,51 @@ describe('ScenarioSetupPage', () => {
       fireEvent.change(nameInput, { target: { value: '' } });
       const submitBtn = screen.getByRole('button', { name: /start scenario/i });
       expect(submitBtn).toBeDisabled();
+    });
+  });
+
+  describe('voice selection', () => {
+    beforeEach(() => {
+      mockApi.getScenario.mockResolvedValue(mockScenario);
+      mockApi.health.mockResolvedValue(healthReady);
+    });
+
+    it('shows voice dropdown when TTS is enabled and voices are available', async () => {
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      expect(screen.getByRole('combobox', { name: /npc voice selection/i })).toBeInTheDocument();
+    });
+
+    it('hides voice dropdown when TTS is disabled', async () => {
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      const ttsCheckbox = screen.getByRole('checkbox', { name: /npc voice/i });
+      fireEvent.click(ttsCheckbox);
+      expect(screen.queryByRole('combobox', { name: /npc voice selection/i })).not.toBeInTheDocument();
+    });
+
+    it('populates voice dropdown with voices from the API', async () => {
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      const voiceSelect = screen.getByRole('combobox', { name: /npc voice selection/i });
+      expect(voiceSelect).toBeInTheDocument();
+      expect(screen.getByRole('option', { name: /Heart \(US female\)/i })).toBeInTheDocument();
+      expect(screen.getByRole('option', { name: /Adam \(US male\)/i })).toBeInTheDocument();
+    });
+
+    it('uses stored preferred voice from localStorage as the default', async () => {
+      localStorage.setItem('convsim.voice.preferredVoiceId', 'am_adam');
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      const voiceSelect = screen.getByRole('combobox', { name: /npc voice selection/i }) as HTMLSelectElement;
+      expect(voiceSelect.value).toBe('am_adam');
+    });
+
+    it('defaults to the first voice when no preference is stored', async () => {
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      const voiceSelect = screen.getByRole('combobox', { name: /npc voice selection/i }) as HTMLSelectElement;
+      expect(voiceSelect.value).toBe('af_heart');
     });
   });
 
