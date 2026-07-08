@@ -276,10 +276,11 @@ export default function VoiceInput({ onSubmit, onRawStt, onSttLatency, disabled 
                 type="button"
                 onClick={handleModeToggle}
                 aria-pressed={isHandsFree}
+                aria-label={isHandsFree ? 'Hands-free mode active — activate to switch to push-to-talk' : 'Push-to-talk mode active — activate to switch to hands-free (auto-stop on silence)'}
                 style={isHandsFree ? modeActiveStyle : modeInactiveStyle}
-                title={isHandsFree ? 'Switch to push-to-talk' : 'Switch to hands-free (auto-stop on silence)'}
               >
-                {isHandsFree ? '🤲 Hands-free' : '👆 Push-to-talk'}
+                <span aria-hidden="true">{isHandsFree ? '🤲 ' : '👆 '}</span>
+                {isHandsFree ? 'Hands-free' : 'Push-to-talk'}
               </button>
 
               {isHandsFree && (
@@ -288,8 +289,9 @@ export default function VoiceInput({ onSubmit, onRawStt, onSttLatency, disabled 
                   <button
                     type="button"
                     onClick={() => setShowCalibration((v) => !v)}
+                    aria-label={vad.settings.calibratedAt ? 'Recalibrate noise threshold' : 'Calibrate noise threshold'}
+                    aria-expanded={showCalibration}
                     style={calibrateBtnStyle}
-                    title="Calibrate noise threshold"
                   >
                     {vad.settings.calibratedAt ? 'Recalibrate' : 'Calibrate noise'}
                   </button>
