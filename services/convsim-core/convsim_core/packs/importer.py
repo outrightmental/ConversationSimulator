@@ -38,46 +38,55 @@ def safe_extract_zip(zip_bytes: bytes, dest: Path) -> None:
     land outside dest (zip-slip attack prevention).
     """
     dest_resolved = dest.resolve()
-    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
-        total_size = sum(m.file_size for m in zf.infolist())
-        if total_size > _MAX_UNCOMPRESSED_BYTES:
-            raise ConvsimError(
-                "ZIP_TOO_LARGE",
-                f"Archive expands to {total_size // (1024 * 1024)} MB, "
-                f"exceeding the {_MAX_UNCOMPRESSED_BYTES // (1024 * 1024)} MB limit.",
-                status_code=422,
-            )
-        for member in zf.infolist():
-            name = member.filename.replace("\\", "/")
-            parts = [p for p in name.split("/") if p]
-            if ".." in parts:
+    try:
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+            total_size = sum(m.file_size for m in zf.infolist())
+            if total_size > _MAX_UNCOMPRESSED_BYTES:
                 raise ConvsimError(
-                    "ZIP_SLIP",
-                    f"Directory traversal detected in archive: {member.filename!r}",
+                    "ZIP_TOO_LARGE",
+                    f"Archive expands to {total_size // (1024 * 1024)} MB, "
+                    f"exceeding the {_MAX_UNCOMPRESSED_BYTES // (1024 * 1024)} MB limit.",
                     status_code=422,
                 )
-            if name.startswith("/"):
-                raise ConvsimError(
-                    "ZIP_SLIP",
-                    f"Absolute path in archive: {member.filename!r}",
-                    status_code=422,
-                )
-            unix_mode = member.external_attr >> 16
-            if unix_mode and stat.S_ISLNK(unix_mode):
-                raise ConvsimError(
-                    "ZIP_SLIP",
-                    f"Symlinks are not permitted in pack archives: {member.filename!r}",
-                    status_code=422,
-                )
-            try:
-                (dest / name).resolve().relative_to(dest_resolved)
-            except ValueError:
-                raise ConvsimError(
-                    "ZIP_SLIP",
-                    f"Path escape detected in archive member: {member.filename!r}",
-                    status_code=422,
-                )
-        zf.extractall(dest)
+            for member in zf.infolist():
+                name = member.filename.replace("\\", "/")
+                parts = [p for p in name.split("/") if p]
+                if ".." in parts:
+                    raise ConvsimError(
+                        "ZIP_SLIP",
+                        f"Directory traversal detected in archive: {member.filename!r}",
+                        status_code=422,
+                    )
+                if name.startswith("/"):
+                    raise ConvsimError(
+                        "ZIP_SLIP",
+                        f"Absolute path in archive: {member.filename!r}",
+                        status_code=422,
+                    )
+                unix_mode = member.external_attr >> 16
+                if unix_mode and stat.S_ISLNK(unix_mode):
+                    raise ConvsimError(
+                        "ZIP_SLIP",
+                        f"Symlinks are not permitted in pack archives: {member.filename!r}",
+                        status_code=422,
+                    )
+                try:
+                    (dest / name).resolve().relative_to(dest_resolved)
+                except ValueError:
+                    raise ConvsimError(
+                        "ZIP_SLIP",
+                        f"Path escape detected in archive member: {member.filename!r}",
+                        status_code=422,
+                    )
+            zf.extractall(dest)
+    except ConvsimError:
+        raise
+    except zipfile.BadZipFile as exc:
+        raise ConvsimError(
+            "INVALID_ZIP",
+            f"Corrupt zip archive: {exc}",
+            status_code=422,
+        ) from exc
     # Defense-in-depth: verify actual bytes written, because a malicious archive can set
     # file_size to 0 in the central directory to bypass the pre-check above.
     actual_size = sum(f.stat().st_size for f in dest.rglob("*") if f.is_file())

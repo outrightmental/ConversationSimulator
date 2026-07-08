@@ -207,6 +207,27 @@ def test_import_bad_zip_raises(tmp_path):
     db.close()
 
 
+def test_import_corrupt_zip_raises_invalid_zip_not_500(tmp_path):
+    """A zip whose EOCD is intact (passes is_zipfile) but whose entry data is corrupt
+    must return INVALID_ZIP 422, not a 500 from an unhandled BadZipFile exception."""
+    db = _open_db(tmp_path)
+    packs_dir = tmp_path / "packs"
+    packs_dir.mkdir()
+
+    valid_zip = make_pack_zip(tmp_path / "src")
+    # Flip bytes in the middle of the archive (entry data region) while leaving the
+    # end-of-central-directory record at the end intact so is_zipfile() passes.
+    corrupted = bytearray(valid_zip)
+    mid = len(corrupted) // 2
+    corrupted[mid] ^= 0xFF
+    corrupted[mid + 1] ^= 0xFF
+
+    exc = pytest.raises(ConvsimError, import_from_zip, bytes(corrupted), packs_dir, db.connection())
+    assert exc.value.code == "INVALID_ZIP"
+    assert exc.value.status_code == 422
+    db.close()
+
+
 def test_import_invalid_zip_pack_no_partial_files(tmp_path):
     db = _open_db(tmp_path)
     zip_bytes = make_pack_zip(tmp_path / "src", extra_files={"virus.exe": b"MZ"})
