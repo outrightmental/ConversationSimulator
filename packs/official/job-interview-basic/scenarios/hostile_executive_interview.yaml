@@ -118,7 +118,7 @@ events:
     when:
       type: variable_above
       variable: credibility
-      threshold: 70
+      threshold: 55
     npc_instruction: >-
       Victor has been genuinely impressed by this answer — the candidate backed
       a claim with real specifics and held their ground. He pauses, then follows

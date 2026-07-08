@@ -89,7 +89,7 @@ respectfully when you are right.
 - **credibility_challenge** — fires repeatedly when `credibility < 50`; Victor demands concrete evidence for any claim
 - **escalate_pressure** — fires once when `pressure_level > 6`; Victor turns up the heat significantly
 - **capitulation_penalty** — fires once when `capitulation_count > 2`; Victor calls out the pattern directly
-- **grudging_respect** — fires once when `credibility > 70`; Victor acknowledges the answer and asks a harder follow-up
+- **grudging_respect** — fires once when `credibility > 55`; Victor acknowledges the answer and asks a harder follow-up before the candidate has fully cleared the bar
 
 **Endings:**
 
