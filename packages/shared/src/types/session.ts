@@ -69,6 +69,12 @@ export interface SessionEndResponse {
   ending_type: EndingType;
 }
 
+export interface DebriefTurningPoint {
+  turn_number: number;
+  description: string;
+  impact?: 'positive' | 'negative' | 'neutral';
+}
+
 export interface SessionDebriefResponse {
   session_id: string;
   state: SessionState;
@@ -79,6 +85,11 @@ export interface SessionDebriefResponse {
   strengths?: string[];
   improvements?: string[];
   replay_suggestions?: string[];
+  scores?: Record<string, number>;
+  overall_score?: number;
+  turning_points?: DebriefTurningPoint[];
+  used_fallback?: boolean;
+  transcript_saving_disabled?: boolean;
 }
 
 export interface SessionTransitionError {

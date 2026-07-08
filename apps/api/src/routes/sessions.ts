@@ -606,6 +606,11 @@ export async function sessionRoutes(app: FastifyInstance) {
         strengths,
         improvements,
         replay_suggestions: replaySuggestions,
+        scores: {} as Record<string, number>,
+        overall_score: 50,
+        turning_points: [],
+        used_fallback: true,
+        transcript_saving_disabled: !saveTranscript,
       };
     },
   );
