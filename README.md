@@ -97,7 +97,8 @@ On Windows (PowerShell), use `scripts\dev.ps1` instead.
 
 - LLM inference, speech-to-text, and text-to-speech all run on local models —
   no cloud API calls during a session.
-- Transcripts are stored in a local SQLite database only when you opt in.
+- Transcripts are stored in a local SQLite database on your machine only, and
+  are never uploaded. Saving is on by default; you can turn it off in Settings.
 - Raw audio is never saved by default — only the transcribed text is processed.
 - TTS-synthesized audio is cached locally. Nothing is sent to external servers.
 - **Telemetry is absent from the MVP.** No usage data, analytics, or crash

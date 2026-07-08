@@ -33,20 +33,21 @@ This is enforced at the code level, not just by policy:
 
 ### Conversation transcripts
 
-**Default:** not saved.
+**Default:** saved locally (on your machine only). You can turn this off.
 
-Transcripts are stored in a local SQLite database (`~/.convsim/db/sessions.db`)
-**only when you enable transcript saving in Settings.** If transcript saving is
-off (the default), no conversation text is written to disk after the session ends.
+Transcripts are stored in a local SQLite database (`~/.convsim/db/sessions.db`).
+Saving is **on by default** so you can review, export, and search past sessions.
+You can disable it under **Settings → Transcript → Save transcripts locally**;
+when saving is off, no conversation text is written to disk after the session ends.
 
-When transcript saving is on:
+Whether saving is on or off, transcripts are never transmitted anywhere:
 
 - The database contains the session metadata, turn-by-turn exchange text, and
   structured debrief results.
 - All data stays on your machine under `~/.convsim/`.
 - Nothing in the transcript is transmitted to any server.
 
-To clear all saved transcripts: **Settings → Privacy → Clear all transcripts**,
+To clear all saved transcripts: use **Clear all local data** in **Settings**,
 or call `POST /api/privacy/clear` on the local API.
 
 ### Raw audio
@@ -70,7 +71,7 @@ re-generating the same phrase twice.
 - The TTS cache is local only. No audio is sent to external servers.
 - Cache files contain synthesized voice output for short NPC phrases.
   They do not contain your voice or any player input.
-- To clear the TTS cache: **Settings → Privacy → Clear TTS cache**.
+- To clear the TTS cache, delete the cache directory: `rm -rf ~/.convsim/tts-cache/`.
 
 ### Runtime logs
 
@@ -155,7 +156,7 @@ uploaded or synchronized.
 
 ### Delete all conversation data
 
-**Settings → Privacy → Clear all transcripts**  
+Use the **Clear all local data** button in **Settings**  
 or  
 ```
 POST /api/privacy/clear
@@ -166,8 +167,6 @@ the local SQLite database. It cannot be undone.
 
 ### Delete TTS cache
 
-**Settings → Privacy → Clear TTS cache**  
-or  
 ```
 rm -rf ~/.convsim/tts-cache/
 ```
@@ -209,42 +208,39 @@ npx convsim offline-smoke-test --json packs/official/job-interview-basic
 **Expected output (success):**
 
 ```
-convsim offline-smoke-test
-  pack:     packs/official/job-interview-basic
-  scenario: behavioral-q1
-  turns:    3
-  network:  no outbound connections detected
-  result:   PASS
+✓ Offline smoke test passed
+  Pack:     job-interview-basic
+  Scenario: behavioral-q1
+  Turns:    3
+  Debrief:  generated
+  Network:  no outbound calls detected
 ```
 
 **Expected output (failure):**
 
 ```
-convsim offline-smoke-test
-  pack:     packs/official/job-interview-basic
-  scenario: behavioral-q1
-  network:  OUTBOUND CONNECTION DETECTED
-    subsystem: tts
-    host:      api.example.com
-    port:      443
-  result:   FAIL — subsystem 'tts' made an outbound connection during play.
-             Check that the TTS runtime is configured for local synthesis only.
+✗ Offline smoke test FAILED: outbound network detected during play (1 violation)
+  Subsystem: tts
+  URL: https://api.example.com/synthesize
+  Install a local runtime or check for background telemetry.
 ```
 
 The command exits nonzero on failure, making it suitable as a CI gate.
 
-The same verification is performed programmatically in
-`services/convsim-core/tests/test_network_policy.py` on every CI run.
+The same end-to-end verification runs on every CI build in
+`packages/convsim-cli/tests/offline-smoke-test.test.ts`, and the underlying
+network-policy guard is unit-tested in
+`services/convsim-core/tests/test_network_policy.py`.
 
 ---
 
 ## Privacy preferences reference
 
-The following preferences are available in **Settings → Privacy**:
+The following preferences are available in **Settings**:
 
 | Preference | Default | Effect |
 |---|---|---|
-| Save transcripts | Off | When on, conversation text is written to the local SQLite database. |
+| Save transcripts | On | When on, conversation text is written to the local SQLite database. Turn off to keep nothing after a session ends. |
 | Save raw audio | Off | When on (dev setting only), microphone audio is written to a local temp directory. |
 | Save TTS cache | On | When off, synthesized audio clips are discarded after each session. |
 
