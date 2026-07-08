@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scene_id: conference_room_small
+display_name: "Conference Room A — Late morning"
+description: >-
+  A small glass-walled conference room just off the main floor. Six chairs
+  around a rectangular table; only two are occupied. A whiteboard on the far
+  wall has some project notes that were not fully erased. The door is closed.
+  Colleagues walking past can see in through the glass but cannot hear. The
+  setting signals that this is a planned, deliberate conversation.
+ambient: quiet_office

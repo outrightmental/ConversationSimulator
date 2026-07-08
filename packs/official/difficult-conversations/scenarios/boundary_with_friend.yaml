@@ -1,0 +1,147 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scenario_id: boundary_with_friend
+title: Holding the Line
+summary: >-
+  Jamie Osei, one of your closest friends, has asked you to help coordinate
+  their birthday party weekend — a full two-day event involving logistics, venue
+  calls, and managing RSVPs from roughly forty people. You have said yes to the
+  last three big favors Jamie has asked and this time you genuinely cannot and
+  do not want to do it. You have asked to meet for coffee to talk it through.
+  Jamie already senses what is coming.
+player_role:
+  label: Friend
+  brief: >-
+    Jamie is a genuine friend and you care about the relationship. But this
+    request crosses a line for you and you have decided not to do it. Your
+    goal is to say no clearly, hold that position if Jamie pushes back, and
+    still leave the coffee feeling like the friendship is solid. You do not need
+    to convince Jamie that your reason is good enough — only that the answer
+    is no and the friendship is not on the table.
+npc:
+  ref: ../npcs/boundary_testing_friend.yaml
+scene:
+  ref: ../scenes/coffee_shop.yaml
+rubric:
+  ref: ../rubrics/boundary_rubric.yaml
+duration:
+  max_turns: 16
+  soft_time_limit_minutes: 10
+opening:
+  npc_says: >-
+    Hey! Okay, so I was a little nervous when you said you wanted to talk
+    before the birthday weekend stuff really kicks off. Is everything okay?
+    Because I was kind of counting on having you in my corner for all of this —
+    you're literally the only person I trust to actually make it happen.
+goals:
+  player_visible:
+    - "Say no clearly and without excessive qualification"
+    - "Hold the boundary if Jamie pushes back — expect at least two or three attempts"
+    - "Leave the conversation with the friendship clearly intact from your side"
+  hidden:
+    - "Jamie needs to hear that the boundary is about this specific thing, not a withdrawal of care — naming the friendship explicitly is the key to unlocking genuine acceptance"
+    - "If the player over-explains their reasons, Jamie will find the weakest part of the explanation and probe it — over-explanation signals ambivalence"
+    - "Jamie will test the boundary three times with different framings before genuinely standing down; a player who holds it calmly without escalating earns Jamie's reluctant respect"
+    - "Jamie is not trying to manipulate the player consciously — their persistence comes from anxiety about the friendship, not entitlement; a player who understands this will navigate it very differently"
+state:
+  variables:
+    rapport:
+      min: 0
+      max: 100
+      default: 70
+      visibility: visible
+      max_delta_per_turn: 12
+    boundary_clarity:
+      min: 0
+      max: 100
+      default: 0
+      visibility: visible
+      max_delta_per_turn: 20
+    pressure:
+      min: 0
+      max: 100
+      default: 55
+      visibility: hidden
+      max_delta_per_turn: 15
+    acceptance:
+      min: 0
+      max: 100
+      default: 0
+      visibility: hidden
+      max_delta_per_turn: 18
+difficulty:
+  default: normal
+  options:
+    easy:
+      npc_patience_modifier: 30
+      challenge_frequency: low
+    normal:
+      npc_patience_modifier: 0
+      challenge_frequency: medium
+    hard:
+      npc_patience_modifier: -20
+      challenge_frequency: high
+events:
+  - id: first_pushback
+    when:
+      type: variable_above
+      variable: pressure
+      threshold: 60
+    npc_instruction: >-
+      Jamie responds to the no with a reframe — not an outburst, a pivot. They
+      find a new angle: maybe the player can just handle one piece of it, or
+      surely they can find a few hours on Saturday. The energy is more hurt than
+      angry. A suggested line: "Okay, but — I mean, you don't have to do all of
+      it. Even just the venue coordination? That would take like three hours
+      tops. I really need someone I can trust on this."
+    repeat: false
+  - id: guilt_play
+    when:
+      type: variable_above
+      variable: pressure
+      threshold: 75
+    npc_instruction: >-
+      Jamie invokes the friendship history — not aggressively, but as emotional
+      leverage. They might reference a time they helped the player, or question
+      whether the friendship is what they thought it was. This is not malicious;
+      Jamie genuinely feels hurt. A suggested line: "I just... I thought we were
+      closer than that. I helped you move last year. I've showed up for you a
+      lot. I guess I just assumed that was mutual."
+    repeat: false
+  - id: reluctant_acceptance
+    when:
+      type: variable_above
+      variable: acceptance
+      threshold: 65
+    npc_instruction: >-
+      Jamie has heard the boundary held calmly for the third time and something
+      shifts. The pushback goes quiet. They sit with it for a beat, then accept —
+      not warmly, but genuinely. The tension releases. A suggested line: "Okay.
+      I hear you. I'm a little disappointed, honestly, but... I get it. I'll
+      figure it out." A player who then reaffirms the friendship (rather than
+      immediately moving on) will land this as a full repair.
+    repeat: false
+  - id: rapport_drop_warning
+    when:
+      type: variable_below
+      variable: rapport
+      threshold: 35
+    npc_instruction: >-
+      The conversation has damaged the friendship feeling. Jamie has pulled back
+      emotionally — shorter answers, a bit cooler. They have not ended the
+      friendship but the warmth that was there at the start is gone. The player
+      has failed to hold both the boundary and the relationship at the same time.
+    repeat: false
+ending_conditions:
+  success:
+    type: variable_above
+    variable: acceptance
+    threshold: 60
+  failure:
+    type: variable_below
+    variable: rapport
+    threshold: 20
+response_style:
+  max_words: 85
+  verbosity: moderate
+  formality: casual

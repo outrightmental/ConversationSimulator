@@ -1,0 +1,59 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: smoke_boundary_with_friend
+scenario_id: boundary_with_friend
+description: >-
+  Verifies that the boundary_with_friend scenario loads cleanly, produces a
+  non-empty opening line, and that a clear, warm boundary statement advances
+  the session without triggering a safety stop. Checks structural integrity
+  of state variables, events, and ending conditions.
+
+seed: 42
+input_mode: text
+difficulty: normal
+
+turns:
+  - turn: 1
+    player_input: >-
+      Everything's good between us — I want to say that right off the bat,
+      because I don't want this to feel weird. I care about our friendship
+      and that's not going anywhere. But I'm not going to be able to help
+      coordinate the birthday weekend. That's the thing I needed to tell
+      you in person. It's not about whether I want you to have an amazing
+      birthday — I really do. I just can't take on something that scale
+      right now.
+    expect:
+      state_delta_contains:
+        - rapport
+        - boundary_clarity
+      session_control: continue_session
+      safety_status: ok
+
+static_assertions:
+  - description: Scenario opening line is non-empty
+    path: opening.npc_says
+    check: non_empty_string
+  - description: NPC is marked fictional
+    path: npc.fictional
+    check: "equals true"
+  - description: Safety policy stops nsfw_sexual_content
+    path: safety.content_categories.nsfw_sexual_content
+    check: "equals stop"
+  - description: Safety policy has self_harm_crisis protection
+    path: safety.content_categories.self_harm_crisis
+    check: "equals stop_with_resource_message"
+  - description: At least one event is defined
+    path: events
+    check: min_length_1
+  - description: Success ending condition targets acceptance
+    path: ending_conditions.success
+    check: "type=variable_above AND variable=acceptance AND threshold=60"
+  - description: Failure ending condition targets rapport
+    path: ending_conditions.failure
+    check: "type=variable_below AND variable=rapport AND threshold=20"
+  - description: Pack manifest declares this scenario as an entry scenario
+    path: manifest.entry_scenarios
+    check: "contains scenarios/boundary_with_friend.yaml"
+  - description: guilt_play event fires when pressure exceeds 75
+    path: events[id=guilt_play].when
+    check: "type=variable_above AND variable=pressure AND threshold=75"

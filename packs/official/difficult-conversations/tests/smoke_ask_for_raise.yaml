@@ -1,0 +1,60 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: smoke_ask_for_raise
+scenario_id: ask_for_raise
+description: >-
+  Verifies that the ask_for_raise scenario loads cleanly, produces a non-empty
+  opening line, and that a well-structured business case advances the session
+  without triggering a safety stop. Checks structural integrity of state
+  variables, events, and ending conditions.
+
+seed: 42
+input_mode: text
+difficulty: normal
+
+turns:
+  - turn: 1
+    player_input: >-
+      Thanks for the time. I want to make the case for a salary adjustment.
+      When I joined, my role was primarily individual delivery on the payments
+      team. In the last six months I have led the cross-team API migration
+      initiative, onboarded two new engineers, and delivered the Q3 reporting
+      project three weeks early. That's meaningfully more scope than my current
+      compensation reflects. Based on comparable roles at similar-stage companies
+      in this market, I am looking at a target in the range of fifteen to eighteen
+      percent above my current base.
+    expect:
+      state_delta_contains:
+        - impression
+        - evidence_strength
+      session_control: continue_session
+      safety_status: ok
+
+static_assertions:
+  - description: Scenario opening line is non-empty
+    path: opening.npc_says
+    check: non_empty_string
+  - description: NPC is marked fictional
+    path: npc.fictional
+    check: "equals true"
+  - description: Safety policy stops nsfw_sexual_content
+    path: safety.content_categories.nsfw_sexual_content
+    check: "equals stop"
+  - description: Safety policy has self_harm_crisis protection
+    path: safety.content_categories.self_harm_crisis
+    check: "equals stop_with_resource_message"
+  - description: At least one event is defined
+    path: events
+    check: min_length_1
+  - description: Success ending condition targets case_clarity
+    path: ending_conditions.success
+    check: "type=variable_above AND variable=case_clarity AND threshold=65"
+  - description: Failure ending condition targets impression
+    path: ending_conditions.failure
+    check: "type=variable_below AND variable=impression AND threshold=15"
+  - description: Pack manifest declares this scenario as an entry scenario
+    path: manifest.entry_scenarios
+    check: "contains scenarios/ask_for_raise.yaml"
+  - description: vague_claim_probe event fires when evidence_strength is below 30
+    path: events[id=vague_claim_probe].when
+    check: "type=variable_below AND variable=evidence_strength AND threshold=30"
