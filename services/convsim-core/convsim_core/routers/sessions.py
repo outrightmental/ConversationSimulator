@@ -464,7 +464,7 @@ async def create_debrief(session_id: str, request: Request) -> DebriefResponse:
                 replay_suggestions=doc.get("replay_suggestions", []),
                 npc_final_state=doc.get("npc_final_state", {}),
                 generated_at=doc.get("generated_at", _now_iso()),
-                used_fallback=False,
+                used_fallback=doc.get("used_fallback", False),
             )
 
     # Must be in Ended (or DebriefGenerating — retry) to generate.

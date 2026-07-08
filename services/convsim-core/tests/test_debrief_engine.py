@@ -394,6 +394,7 @@ class TestDebriefEndpoint:
         assert res1.status_code == 200
         assert res2.status_code == 200
         assert res1.json()["session_id"] == res2.json()["session_id"]
+        assert res1.json()["used_fallback"] == res2.json()["used_fallback"]
 
     def test_debrief_on_not_started_session_returns_409(self, client):
         res = client.post("/api/sessions", json=_VALID_SETUP)

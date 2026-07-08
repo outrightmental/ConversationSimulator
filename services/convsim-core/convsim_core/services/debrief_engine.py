@@ -119,7 +119,6 @@ def _compute_overall_score(scores: Dict[str, float]) -> Optional[float]:
 
 
 def _identify_key_turns(
-    all_turns: List[sqlite3.Row],
     npc_turns: List[sqlite3.Row],
 ) -> List[Dict[str, Any]]:
     """Identify turns with significant state changes or notable events.
@@ -267,7 +266,7 @@ async def generate_debrief(
         overall_score = _compute_overall_score(scores)
 
         # Identify key turning points for fallback and for the LLM.
-        key_turns = _identify_key_turns(all_turn_rows, npc_turn_rows)
+        key_turns = _identify_key_turns(npc_turn_rows)
 
         # Build prompt.
         turn_records = _build_debrief_turn_records(all_turn_rows)
@@ -351,6 +350,7 @@ async def generate_debrief(
             "replay_suggestions": narrative.replay_suggestions,
             "npc_final_state": final_state,
             "generated_at": now,
+            "used_fallback": narrative.used_fallback,
         }
         if pack_id:
             debrief_doc["pack_id"] = pack_id
