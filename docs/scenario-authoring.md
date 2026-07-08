@@ -99,7 +99,10 @@ official pack opens it with a **Read-only** badge and a
 
 **In the UI:**
 
-1. In the **Packs** panel, click **job-interview-basic** under **Official**.
+1. In the **Packs** panel, click **Job Interview Basics** under **Official**.
+   The panel lists packs by their manifest `name`, so you see the
+   human-readable **Job Interview Basics** — the pack's folder on disk is
+   `job-interview-basic`.
 2. The **Files** panel fills with the pack's file tree.
 3. Click any `.yaml` file — for example `manifest.yaml`.
 4. In the editor toolbar, click **"Create local copy to edit"**.
@@ -610,9 +613,12 @@ When the pack validates (`✓ Pack is valid`) and Test Chat starts without
 errors:
 
 1. Click **⬇ Export .zip** in the top-right of the right panel.
-2. The workbench downloads `workplace-conversations.zip` to your browser's
-   default download folder.
-3. A `✓ workplace-conversations.zip` confirmation appears next to the button.
+2. The workbench downloads the pack to your browser's default download
+   folder. The filename is derived from the manifest — `<pack_id>-<version>.zip`
+   — so with the `pack_id` and `version` from Step 8 you get
+   `community.workplace_conversations-0.1.0.zip`.
+3. A `✓ community.workplace_conversations-0.1.0.zip` confirmation appears
+   next to the button.
 4. Send the `.zip` to another user, or host it anywhere.
 
 **Importing on another machine:**
