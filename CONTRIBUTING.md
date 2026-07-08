@@ -51,7 +51,7 @@ loader.
 The web app is React + TypeScript + Vite. The desktop wrapper is Tauri v2.
 
 - **Architecture overview:** [docs/architecture.md](docs/architecture.md)
-- **Package layout:** `apps/web/` (browser UI), `runtimes/desktop/` (Tauri),
+- **Package layout:** `apps/web/` (browser UI), `apps/desktop/` (Tauri),
   `packages/shared-types/` (shared TypeScript types).
 - **Run locally:**
 
