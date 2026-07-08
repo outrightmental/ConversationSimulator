@@ -45,8 +45,26 @@ FORBIDDEN_EXTENSIONS = frozenset({
     ".exe", ".bat", ".cmd", ".sh", ".ps1", ".py", ".js", ".mjs", ".cjs",
     ".ts", ".rb", ".pl", ".php", ".jar", ".class", ".so", ".dll", ".dylib",
     ".vbs", ".ws", ".wsf", ".com", ".scr", ".pif", ".msi", ".deb", ".rpm",
-    ".pkg", ".app",
+    ".pkg", ".app", ".command", ".wasm",
 })
+
+# Magic-byte signatures that identify executable/binary formats regardless of extension.
+# Checked against the first 8 bytes of every regular file whose extension is not
+# already covered by FORBIDDEN_EXTENSIONS.  Ordered from longest to shortest so that
+# the 4-byte Mach-O patterns are tested before the 2-byte "MZ" (PE) or "#!" patterns.
+_EXECUTABLE_MAGIC_SIGNATURES: tuple[tuple[bytes, str], ...] = (
+    (b"\x7fELF",          "ELF (Linux/Unix executable or shared library)"),
+    (b"\xfe\xed\xfa\xce", "Mach-O big-endian 32-bit"),
+    (b"\xce\xfa\xed\xfe", "Mach-O little-endian 32-bit"),
+    (b"\xfe\xed\xfa\xcf", "Mach-O big-endian 64-bit"),
+    (b"\xcf\xfa\xed\xfe", "Mach-O little-endian 64-bit"),
+    (b"\xca\xfe\xba\xbe", "Mach-O universal/fat binary"),
+    (b"\x00asm",          "WebAssembly module"),
+    (b"MZ",               "Windows PE (executable or DLL)"),
+    (b"#!",               "shebang (script interpreter directive)"),
+)
+
+_MAGIC_READ_BYTES = 8  # longest signature above is 4 bytes; 8 gives comfortable headroom
 
 # Recognised SPDX license identifiers.  An unrecognised value triggers a
 # WARNING so scenario authors know to use a standard identifier.
@@ -589,18 +607,56 @@ class _PackValidator:
                     f"Symlinks are not permitted in a pack: '{rel}'",
                     "Remove the symlink and include the file content directly.",
                 )
-            elif path.is_file() and path.suffix.lower() in FORBIDDEN_EXTENSIONS:
+            elif path.is_file():
                 rel = self._rel(path)
+                if path.suffix.lower() in FORBIDDEN_EXTENSIONS:
+                    self._error(
+                        "FORBIDDEN_FILE",
+                        rel,
+                        "(root)",
+                        (
+                            f"Executable or script file not allowed in pack: '{rel}'. "
+                            "MVP packs are data, not code."
+                        ),
+                        (
+                            f"Remove '{rel}'. Packs must contain only declarative data files "
+                            "(YAML, JSON, images, audio) — not executable code or scripts."
+                        ),
+                    )
+                else:
+                    self._check_executable_magic(path, rel)
+
+    def _check_executable_magic(self, path: Path, rel: str) -> None:
+        """Detect executable content by magic bytes even when the extension is safe.
+
+        Reads only the first few bytes of each file so the scan stays fast
+        even for large image or audio assets.  A disguised executable (e.g. an
+        ELF binary with a ``.png`` extension) is rejected because MVP packs
+        must contain only declarative data — never native code.
+        """
+        try:
+            header = path.read_bytes()[:_MAGIC_READ_BYTES]
+        except OSError:
+            return
+        for magic, fmt_name in _EXECUTABLE_MAGIC_SIGNATURES:
+            if header.startswith(magic):
                 self._error(
-                    "FORBIDDEN_FILE",
+                    "FORBIDDEN_BINARY",
                     rel,
                     "(root)",
-                    f"Executable or script file not allowed in pack: '{rel}'",
                     (
-                        f"Remove '{rel}'. Packs must contain only data files "
-                        "(YAML, JSON, images, audio)."
+                        f"File '{rel}' contains executable binary content "
+                        f"({fmt_name}, detected by magic-byte signature). "
+                        "MVP packs are data, not code — executable content is not permitted "
+                        "even when given a non-executable file extension."
+                    ),
+                    (
+                        f"Remove '{rel}'. Pack files must be declarative data only "
+                        "(YAML, JSON, images, audio). "
+                        "Renaming an executable to a safe extension does not make it safe."
                     ),
                 )
+                return
 
 
 # ---------------------------------------------------------------------------
