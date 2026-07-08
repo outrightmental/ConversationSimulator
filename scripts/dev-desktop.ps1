@@ -67,17 +67,20 @@ Test-PortInUse $WebPort  "convsim-ui"
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 
 Write-Host "Starting convsim-core on port $CorePort..."
+# Forward CONVSIM_LOG_DIR so uvicorn's ServiceConfig picks it up via env prefix.
+# Set it on the parent (children inherit) rather than Start-Process -Environment,
+# which only exists on PowerShell 7.4+ and would fail on Windows PowerShell 5.1.
+$env:CONVSIM_LOG_DIR = $LogDir
 $CoreProc = Start-Process -FilePath $Uvicorn `
     -ArgumentList "convsim_core.main:app", "--host", "127.0.0.1", "--port", $CorePort, "--reload" `
     -WorkingDirectory $CoreDir `
-    -Environment @{ CONVSIM_LOG_DIR = $LogDir } `
     -PassThru -NoNewWindow
 
 Write-Host "Waiting for convsim-core to be ready..."
 $ready = $false
 for ($i = 0; $i -lt 20; $i++) {
     try {
-        $resp = Invoke-WebRequest -Uri "http://127.0.0.1:$CorePort/health" -UseBasicParsing -TimeoutSec 1 -ErrorAction SilentlyContinue
+        $resp = Invoke-WebRequest -Uri "http://127.0.0.1:$CorePort/api/health" -UseBasicParsing -TimeoutSec 1 -ErrorAction SilentlyContinue
         if ($resp.StatusCode -eq 200) { $ready = $true; break }
     } catch {}
     Start-Sleep -Seconds 1

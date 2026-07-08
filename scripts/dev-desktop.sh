@@ -116,7 +116,7 @@ PIDS+=($!)
 
 echo "Waiting for convsim-core to be ready..."
 for _ in $(seq 1 20); do
-    if curl -sf "http://127.0.0.1:$CORE_PORT/health" >/dev/null 2>&1; then
+    if curl -sf "http://127.0.0.1:$CORE_PORT/api/health" >/dev/null 2>&1; then
         echo "  convsim-core ready."
         break
     fi

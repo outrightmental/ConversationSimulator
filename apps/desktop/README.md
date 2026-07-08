@@ -73,7 +73,7 @@ Model weights are **never** included in the bundle.
 | File open/save dialogs | `tauri-plugin-dialog` (`dialog:allow-open`, `dialog:allow-save`) |
 | Open data folder | `tauri-plugin-shell` (`shell:allow-open`) |
 | Local asset playback | WebView `<audio>`/`<video>` — no extra permission needed |
-| Filesystem reads | `tauri-plugin-fs` (`fs:allow-read-text-file`, `fs:allow-read-dir`) |
+| Filesystem read/write | `tauri-plugin-fs` (`fs:allow-read-text-file`, `fs:allow-read-dir`, `fs:allow-write-text-file`) |
 
 Capability definitions live in `src-tauri/capabilities/default.json`.
 
