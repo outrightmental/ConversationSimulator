@@ -99,8 +99,10 @@ Log files are rotated and stored locally only. They are never transmitted.
 **Telemetry is absent from the MVP.**
 
 No usage analytics, session counts, feature-use events, or performance
-metrics are sent to any server. There are no background pings, no anonymous
-reporting, and no opt-in or opt-out telemetry switches in the MVP release.
+metrics are sent to any server. There are no background pings and no anonymous
+reporting. The settings model carries a `telemetry_enabled` flag that defaults
+to off (exposed read-only on `/health`), but the MVP ships no telemetry
+subsystem to act on it — nothing is transmitted regardless of the flag.
 
 If telemetry is ever added in a future release, it will:
 

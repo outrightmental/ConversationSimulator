@@ -102,7 +102,8 @@ On Windows (PowerShell), use `scripts\dev.ps1` instead.
 - Raw audio is never saved by default — only the transcribed text is processed.
 - TTS-synthesized audio is cached locally. Nothing is sent to external servers.
 - **Telemetry is absent from the MVP.** No usage data, analytics, or crash
-  reports are transmitted. There is no opt-in or opt-out telemetry switch.
+  reports are transmitted. A `telemetry_enabled` setting exists and defaults to
+  off, but the MVP ships no telemetry subsystem — nothing is sent regardless.
 - All services bind to `127.0.0.1` so no ports are reachable from other machines.
 
 See [`docs/privacy.md`](docs/privacy.md) for the full data-handling policy,
