@@ -6,8 +6,9 @@
 Practice interviews, negotiations, language, and difficult social situations with AI
 NPCs — running **100% on your computer**, no account, no cloud, no telemetry.
 
-![Conversation Simulator demo](docs/assets/demo-placeholder.svg)
-<!-- Replace with animated GIF recording once Milestone 1 UI ships -->
+![Conversation Simulator demo — a mid-session conversation with NPC Victor Chen showing the player answering a technical question, the NPC challenging the trade-off, six colour-coded NPC state meters (trust, patience, pressure, rapport, openness, objective progress) below the transcript, and an amber banner announcing "Scenario event: grudging_respect triggered · Turn 4".](docs/assets/demo-placeholder.svg)
+<!-- Placeholder SVG — replace with an animated GIF or short video at Milestone 1 launch.
+     Recording guide and replacement checklist: docs/screenshots.md -->
 
 ```
 Scenario: The Executive Gauntlet  ·  Job Interview Basics pack
@@ -16,6 +17,23 @@ NPC:   "That's a headline number. Walk me through the specific trade-off you mad
         to get there. What did you give up, and was it the right call in hindsight?"
 State:  credibility +12  ·  pressure_level +1  ·  composure 65
 ```
+
+---
+
+## Screenshots
+
+| Screen | What you see |
+|--------|-------------|
+| [![Home screen showing system-ready status panel with green badges for Local runtime, LLM (Qwen3 8B), STT, TTS, and 4 packs installed.](docs/assets/screenshots/01-home.svg)](docs/assets/screenshots/01-home.svg) | **Home** — all services ready |
+| [![Scenario Library with the Job Interview Basics pack expanded, showing The Executive Gauntlet card with difficulty, rating, and tag chips alongside a Launch button.](docs/assets/screenshots/02-scenario-library.svg)](docs/assets/screenshots/02-scenario-library.svg) | **Scenario Library** — browse and filter packs |
+| [![Conversation screen mid-session with NPC Victor Chen. Amber banner announces "grudging_respect triggered". Transcript shows player and NPC turns. Six NPC state meters below show trust, patience, pressure, rapport, openness, and objective progress as colour-coded bars.](docs/assets/screenshots/03-conversation.svg)](docs/assets/screenshots/03-conversation.svg) | **Conversation** — live state meters and events |
+| [![Session Debrief showing score 74/100 with green Success badge. Scorecard has three labelled bars. Strengths listed in green; Key moments shows two turning points.](docs/assets/screenshots/04-debrief.svg)](docs/assets/screenshots/04-debrief.svg) | **Debrief** — score, strengths, turning points |
+| [![Creator Workbench three-panel view: pack list on left, file tree in centre, YAML editor on right with my_scenario.yaml open and a green validation banner.](docs/assets/screenshots/05-creator-workbench.svg)](docs/assets/screenshots/05-creator-workbench.svg) | **Creator Workbench** — YAML scenario editor |
+| [![Model Manager showing an installed Qwen3 8B card with a green Loaded badge, a Qwen3 14B download in progress at 3.2 of 9.0 GB, and a GGUF file-path field at the bottom.](docs/assets/screenshots/06-model-manager.svg)](docs/assets/screenshots/06-model-manager.svg) | **Model Manager** — install and manage local models |
+
+> Screenshots are SVG placeholders matching the current UI. They will be replaced with real
+> recordings at Milestone 1 launch. See [docs/screenshots.md](docs/screenshots.md) for the
+> replacement checklist and alt-text for each image.
 
 ---
 
