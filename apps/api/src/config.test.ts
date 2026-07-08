@@ -96,6 +96,17 @@ describe('getListenConfig host validation', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Host empty-string edge case
+// ---------------------------------------------------------------------------
+
+describe('getListenConfig host empty string', () => {
+  it('treats empty API_HOST as unset and defaults to 127.0.0.1', () => {
+    process.env['API_HOST'] = '';
+    expect(getListenConfig().host).toBe('127.0.0.1');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Port override
 // ---------------------------------------------------------------------------
 
@@ -112,6 +123,21 @@ describe('getListenConfig port override', () => {
 
   it('throws for out-of-range API_PORT', () => {
     process.env['API_PORT'] = '99999';
+    expect(() => getListenConfig()).toThrow(/API_PORT/);
+  });
+
+  it('treats empty API_PORT as unset and defaults to 7355', () => {
+    process.env['API_PORT'] = '';
+    expect(getListenConfig().port).toBe(7355);
+  });
+
+  it('throws for hex API_PORT', () => {
+    process.env['API_PORT'] = '0x1F90';
+    expect(() => getListenConfig()).toThrow(/API_PORT/);
+  });
+
+  it('throws for scientific-notation API_PORT', () => {
+    process.env['API_PORT'] = '1e3';
     expect(() => getListenConfig()).toThrow(/API_PORT/);
   });
 });

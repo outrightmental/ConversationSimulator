@@ -21,9 +21,10 @@ export interface ListenConfig {
  * API_LAN_ACCESS_ENABLED is not set to "true".
  */
 export function getListenConfig(): ListenConfig {
-  const host = process.env['API_HOST'] ?? '127.0.0.1';
+  // Use || so that an empty string falls back to the default, matching the
+  // behaviour of an unset variable.
+  const host = process.env['API_HOST'] || '127.0.0.1';
   const rawPort = process.env['API_PORT'];
-  const port = rawPort !== undefined ? Number(rawPort) : 7355;
   const lanEnabled = process.env['API_LAN_ACCESS_ENABLED'] === 'true';
 
   if ((host === '0.0.0.0' || host === '::') && !lanEnabled) {
@@ -34,7 +35,22 @@ export function getListenConfig(): ListenConfig {
     );
   }
 
-  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+  // Treat an absent or empty API_PORT as "use the default".  Reject anything
+  // that isn't a plain decimal integer string so that hex (0x…), scientific
+  // notation (1e3), and whitespace-padded values are caught early rather than
+  // silently resolving to an unexpected port number.
+  let port: number;
+  if (!rawPort) {
+    port = 7355;
+  } else if (!/^\d+$/.test(rawPort)) {
+    throw new Error(
+      `Invalid API_PORT "${rawPort}": must be an integer between 1 and 65535.`,
+    );
+  } else {
+    port = Number(rawPort);
+  }
+
+  if (port < 1 || port > 65535) {
     throw new Error(
       `Invalid API_PORT "${rawPort}": must be an integer between 1 and 65535.`,
     );
