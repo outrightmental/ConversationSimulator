@@ -478,7 +478,7 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
             <h3 className="setup-info-title">Runtime readiness</h3>
             <ul className="setup-info-list">
               <li>
-                <span className={`setup-status-dot ${runtime.llm_ready ? 'ready' : 'not-ready'}`} />
+                <span aria-hidden="true" className={`setup-status-dot ${runtime.llm_ready ? 'ready' : 'not-ready'}`} />
                 <span>
                   LLM:{' '}
                   {runtime.llm_ready
@@ -487,13 +487,13 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
                 </span>
               </li>
               <li>
-                <span className={`setup-status-dot ${runtime.stt_ready ? 'ready' : 'not-ready'}`} />
+                <span aria-hidden="true" className={`setup-status-dot ${runtime.stt_ready ? 'ready' : 'not-ready'}`} />
                 <span>
                   STT: {runtime.stt_ready ? 'ready' : 'not loaded — voice input unavailable'}
                 </span>
               </li>
               <li>
-                <span className={`setup-status-dot ${runtime.tts_ready ? 'ready' : 'not-ready'}`} />
+                <span aria-hidden="true" className={`setup-status-dot ${runtime.tts_ready ? 'ready' : 'not-ready'}`} />
                 <span>
                   TTS:{' '}
                   {runtime.tts_ready
@@ -502,13 +502,13 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
                 </span>
               </li>
               <li>
-                <span className={`setup-status-dot ${runtime.stt_ready ? 'ready' : 'not-ready'}`} />
+                <span aria-hidden="true" className={`setup-status-dot ${runtime.stt_ready ? 'ready' : 'not-ready'}`} />
                 <span>
                   VAD: {runtime.stt_ready ? 'available' : 'requires STT'}
                 </span>
               </li>
               <li>
-                <span className={`setup-status-dot ${runtime.network_required ? 'not-ready' : 'ready'}`} />
+                <span aria-hidden="true" className={`setup-status-dot ${runtime.network_required ? 'not-ready' : 'ready'}`} />
                 <span>Network required to play: {runtime.network_required ? 'Yes' : 'No'}</span>
               </li>
             </ul>
