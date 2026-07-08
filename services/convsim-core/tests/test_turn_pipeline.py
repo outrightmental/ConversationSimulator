@@ -265,7 +265,7 @@ class TestTurnPipelineIntegration:
 
 
 class TestTurnInputValidation:
-    def test_empty_content_returns_400(self, client):
+    def test_empty_content_returns_422(self, client):
         session_id = _create_and_start(client)
         res = client.post(
             f"/api/sessions/{session_id}/turn",
