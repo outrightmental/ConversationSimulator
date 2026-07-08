@@ -217,7 +217,11 @@ def _install_from_dir(
         if tmp_dest.exists():
             shutil.rmtree(tmp_dest, ignore_errors=True)
         # If the move already completed, undo it to leave no partial install.
-        if pack_dest.exists() and not (source_dir == pack_dest):
+        # Compare resolved paths: source_dir arrives resolved from the router but
+        # pack_dest is constructed from an unresolved config path, so a plain ==
+        # comparison fails on systems where packs_dir contains a symlink (e.g.
+        # macOS /tmp → /private/tmp), incorrectly deleting the source directory.
+        if pack_dest.exists() and not (source_dir.resolve() == pack_dest.resolve()):
             shutil.rmtree(pack_dest, ignore_errors=True)
         raise
 

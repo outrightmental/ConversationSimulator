@@ -137,6 +137,28 @@ def test_validate_not_a_zip(client):
     assert resp.json()["valid"] is False
 
 
+def test_validate_corrupt_zip_returns_valid_false(client, tmp_path):
+    """A zip that passes is_zipfile() but is corrupt mid-stream must return valid=False, not 500."""
+    import io as _io
+    valid_zip = make_pack_zip(tmp_path)
+    # Corrupt the body of the zip (leave the end-of-central-directory intact so
+    # is_zipfile() passes, but corrupt the actual entry data so extraction fails).
+    corrupted = bytearray(valid_zip)
+    # Flip bytes in the middle of the archive (entry data region).
+    mid = len(corrupted) // 2
+    corrupted[mid] ^= 0xFF
+    corrupted[mid + 1] ^= 0xFF
+
+    resp = client.post(
+        "/api/packs/validate",
+        files={"file": ("pack.zip", bytes(corrupted), "application/zip")},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["valid"] is False
+    assert len(body["errors"]) > 0
+
+
 def test_export_installed_pack(client, tmp_path):
     zip_bytes = make_pack_zip(tmp_path)
     client.post(

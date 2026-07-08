@@ -117,6 +117,8 @@ async def validate_pack(
             safe_extract_zip(zip_bytes, extract_dir)
         except ConvsimError as exc:
             return ValidationResult(valid=False, errors=[exc.message])
+        except zipfile.BadZipFile as exc:
+            return ValidationResult(valid=False, errors=[f"Corrupt zip archive: {exc}"])
 
         top_level = list(extract_dir.iterdir())
         pack_source = (
