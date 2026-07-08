@@ -4,6 +4,10 @@ import type {
   ScenarioInfo,
   SessionCreateRequest,
   SessionCreateResponse,
+  SessionStartResponse,
+  TurnResponse,
+  SessionEndResponse,
+  SessionDebriefResponse,
   WsEvent,
 } from '@convsim/shared';
 
@@ -37,8 +41,8 @@ async function parseErrorMessage(res: Response): Promise<string> {
   const text = await res.text()
   let message = text || `${res.status} ${res.statusText}`
   try {
-    const json = JSON.parse(text) as { message?: string }
-    if (json.message) message = json.message
+    const json = JSON.parse(text) as { message?: string; code?: string }
+    if (json.message) message = json.code ? `${json.code}: ${json.message}` : json.message
   } catch {
     // text is not JSON; use as-is
   }
@@ -146,29 +150,18 @@ export const api = {
   exportSession(sessionId: string): Promise<unknown> {
     return get<unknown>(`/sessions/${sessionId}/export`)
   },
-  workbench: {
-    listPacks(): Promise<WorkbenchPack[]> {
-      return get<WorkbenchPack[]>('/workbench/packs')
-    },
-    listFiles(kind: PackKind, slug: string): Promise<{ tree: FileNode[] }> {
-      return get<{ tree: FileNode[] }>(`/workbench/packs/${kind}/${slug}/files`)
-    },
-    readFile(kind: PackKind, slug: string, filePath: string): Promise<{ content: string; editable: boolean }> {
-      return get<{ content: string; editable: boolean }>(
-        `/workbench/packs/${kind}/${slug}/file?path=${encodeURIComponent(filePath)}`,
-      )
-    },
-    writeFile(kind: PackKind, slug: string, filePath: string, content: string): Promise<{ ok: boolean }> {
-      return put<{ ok: boolean }>(
-        `/workbench/packs/${kind}/${slug}/file?path=${encodeURIComponent(filePath)}`,
-        { content },
-      )
-    },
-    copyToLocal(kind: PackKind, slug: string): Promise<WorkbenchPack> {
-      return post<WorkbenchPack>(`/workbench/packs/${kind}/${slug}/copy-to-local`)
-    },
+  startSession(sessionId: string): Promise<SessionStartResponse> {
+    return post<SessionStartResponse>(`/sessions/${sessionId}/start`)
   },
-
+  submitTurn(sessionId: string, content: string): Promise<TurnResponse> {
+    return post<TurnResponse>(`/sessions/${sessionId}/turn`, { content })
+  },
+  endSession(sessionId: string): Promise<SessionEndResponse> {
+    return post<SessionEndResponse>(`/sessions/${sessionId}/end`)
+  },
+  generateDebrief(sessionId: string): Promise<SessionDebriefResponse> {
+    return post<SessionDebriefResponse>(`/sessions/${sessionId}/debrief`)
+  },
   connectSession(
     sessionId: string,
     onEvent: (event: WsEvent) => void,
