@@ -4,9 +4,10 @@ pack_id: official.language_cafe
 name: Language Café
 version: 0.1.0
 description: >-
-  Practice natural language conversations in a friendly café setting.
-  Build confidence speaking and listening in a new language through
-  low-stakes, everyday social interactions.
+  Practice natural conversations in Spanish, French, Japanese, and English
+  through friendly everyday interactions. Build confidence in a new language
+  with low-stakes scenarios and optional gentle correction — no romance, no
+  pressure, just real communicative practice.
 author: Outright Mental
 license: CC-BY-4.0
 content_rating: G
@@ -14,11 +15,17 @@ tags:
   - language-learning
   - conversation
   - social
+  - multilingual
 supported_languages:
   - en
   - es
   - fr
   - ja
+entry_scenarios:
+  - scenarios/spanish_coffee.yaml
+  - scenarios/french_travel_checkin.yaml
+  - scenarios/japanese_convenience_store.yaml
+  - scenarios/english_small_talk.yaml
 assets:
   allow_external_urls: false
 safety:

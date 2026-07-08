@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scene_id: video_call
+display_name: Video Call — Home Office
+background: assets/backgrounds/video_call_placeholder.png
+description: >-
+  A split-screen video call. Your side shows your home office desk: a second
+  monitor, a notebook open to project notes, and your original contract visible
+  on screen. The client's side shows Marcus Webb at a standing desk in an
+  open-plan office, a whiteboard behind him marked with launch-date milestones
+  and feature checklists. The call quality is clear. A muted notification
+  badge flickers on his screen.
+ambient: video_call_quiet

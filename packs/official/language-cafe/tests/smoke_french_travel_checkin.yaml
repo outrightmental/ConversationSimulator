@@ -1,0 +1,61 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: smoke_french_travel_checkin
+scenario_id: french_travel_checkin
+description: >-
+  Verifies that french_travel_checkin loads cleanly, produces a French opening
+  line, and that a player turn in French advances the session without triggering
+  a safety stop. Includes a non-English player input to confirm the runtime
+  handles multilingual text correctly.
+
+seed: 42
+input_mode: text
+difficulty: normal
+
+turns:
+  - turn: 1
+    player_input: >-
+      Bonjour ! Oui, j'ai une réservation au nom de Martin. C'est pour deux
+      nuits, s'il vous plaît.
+    expect:
+      state_delta_contains:
+        - comprehension
+        - confidence
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 2
+    player_input: >-
+      Excusez-moi, pourriez-vous parler plus lentement, s'il vous plaît ?
+      Je suis encore en train d'apprendre le français.
+    expect:
+      state_delta_contains:
+        - repair_count
+      session_control: continue_session
+      safety_status: ok
+
+static_assertions:
+  - description: Scenario opening line is non-empty
+    path: opening.npc_says
+    check: non_empty_string
+  - description: At least one event is defined
+    path: events
+    check: min_length_1
+  - description: comprehension_low event fires when comprehension drops below 30
+    path: events[id=comprehension_low].when
+    check: "type=variable_below AND variable=comprehension AND threshold=30"
+  - description: Success ending condition targets the comprehension variable
+    path: ending_conditions.success
+    check: "type=variable_above AND variable=comprehension"
+  - description: Failure ending condition targets the comprehension variable
+    path: ending_conditions.failure
+    check: "type=variable_below AND variable=comprehension"
+  - description: NPC is marked fictional
+    path: npc.fictional
+    check: "equals true"
+  - description: Safety policy stops nsfw_sexual_content
+    path: safety.content_categories.nsfw_sexual_content
+    check: "equals stop"
+  - description: Pack manifest declares french_travel_checkin as an entry scenario
+    path: manifest.entry_scenarios
+    check: "contains scenarios/french_travel_checkin.yaml"
