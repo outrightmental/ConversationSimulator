@@ -8,12 +8,14 @@ export function initDb(path = ':memory:'): Database.Database {
   db.pragma('foreign_keys = ON');
   db.exec(`
     CREATE TABLE IF NOT EXISTS sessions (
-      session_id   TEXT PRIMARY KEY,
-      scenario_id  TEXT NOT NULL,
-      state        TEXT NOT NULL DEFAULT 'NotStarted',
-      ending_type  TEXT,
-      created_at   TEXT NOT NULL,
-      setup_json   TEXT NOT NULL
+      session_id      TEXT PRIMARY KEY,
+      scenario_id     TEXT NOT NULL,
+      state           TEXT NOT NULL DEFAULT 'NotStarted',
+      ending_type     TEXT,
+      created_at      TEXT NOT NULL,
+      setup_json      TEXT NOT NULL,
+      state_vars_json TEXT NOT NULL DEFAULT '{}',
+      turn_count      INTEGER NOT NULL DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS session_events (

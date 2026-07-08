@@ -156,10 +156,39 @@ CREATE TABLE benchmark_results (
 );
 """
 
+_TURN_PIPELINE_SQL = """
+CREATE TABLE turn_sessions (
+    session_id        TEXT PRIMARY KEY,
+    scenario_id       TEXT NOT NULL,
+    flow_state        TEXT NOT NULL DEFAULT 'NotStarted',
+    ending_type       TEXT,
+    state_vars_json   TEXT NOT NULL DEFAULT '{}',
+    fired_events_json TEXT NOT NULL DEFAULT '[]',
+    turn_count        INTEGER NOT NULL DEFAULT 0,
+    setup_json        TEXT NOT NULL DEFAULT '{}',
+    created_at        TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE turn_session_turns (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id       TEXT NOT NULL REFERENCES turn_sessions(session_id) ON DELETE CASCADE,
+    turn_number      INTEGER NOT NULL,
+    role             TEXT NOT NULL,
+    content          TEXT NOT NULL,
+    emotion          TEXT,
+    state_delta_json TEXT,
+    event_flags_json TEXT,
+    safety_json      TEXT,
+    created_at       TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(session_id, turn_number)
+);
+"""
+
 MIGRATIONS: list[tuple[str, str]] = [
     ("0001_initial_schema", _INITIAL_SCHEMA_SQL),
     ("0002_model_registry_v2", _MODEL_REGISTRY_V2_SQL),
     ("0003_model_manager_api", _MODEL_MANAGER_API_SQL),
+    ("0004_turn_pipeline", _TURN_PIPELINE_SQL),
 ]
 
 
