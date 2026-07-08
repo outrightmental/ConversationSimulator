@@ -31,7 +31,6 @@ class ScenarioInfo:
 
     def get_scenario_data(self, difficulty: str) -> ScenarioData:
         """Return a ScenarioData with difficulty settings applied."""
-        from dataclasses import replace
         diff_settings = self.difficulty_options.get(
             difficulty,
             self.difficulty_options.get("normal", DifficultySettings()),

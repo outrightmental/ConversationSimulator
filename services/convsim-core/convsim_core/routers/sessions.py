@@ -23,7 +23,7 @@ from typing import Any, Dict, List, Literal, Optional
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, field_validator
 
-from convsim_core.scenarios import get_scenario_data, get_scenario_info
+from convsim_core.scenarios import get_scenario_info
 from convsim_core.services.turn_pipeline import MAX_TURN_CONTENT_CHARS, TurnInputError, process_turn
 
 logger = logging.getLogger(__name__)
@@ -133,22 +133,6 @@ def _row_to_response(row: Any) -> SessionResponse:
         state=row["flow_state"],
         created_at=row["created_at"],
         setup=json.loads(row["setup_json"]),
-    )
-
-
-def _make_event(session_id: str, event_type: str, payload: Dict[str, Any], conn: Any) -> SessionEventPayload:
-    now = _now_iso()
-    cursor = conn.execute(
-        "INSERT INTO turn_session_turns (session_id, turn_number, role, content, created_at) "
-        "VALUES (?, ?, ?, ?, ?)",
-        (session_id, 0, event_type, json.dumps(payload), now),
-    )
-    return SessionEventPayload(
-        event_id=cursor.lastrowid,
-        session_id=session_id,
-        event_type=event_type,
-        payload=payload,
-        created_at=now,
     )
 
 
@@ -299,14 +283,14 @@ async def submit_turn(session_id: str, body: TurnSubmitRequest, request: Request
 
     now = _now_iso()
     player_event = SessionEventPayload(
-        event_id=0,
+        event_id=result.player_event_id,
         session_id=session_id,
         event_type="player_turn",
         payload={"content": result.player_content},
         created_at=now,
     )
     npc_event = SessionEventPayload(
-        event_id=0,
+        event_id=result.npc_event_id,
         session_id=session_id,
         event_type="npc_turn",
         payload={
