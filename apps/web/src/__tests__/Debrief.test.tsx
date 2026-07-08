@@ -15,6 +15,12 @@ vi.mock('../api/client', () => ({
 import { api } from '../api/client'
 const mockApi = vi.mocked(api)
 
+vi.mock('../privacyPrefs', () => ({
+  isDevModeEnabled: vi.fn(() => false),
+}))
+import { isDevModeEnabled } from '../privacyPrefs'
+const mockIsDevModeEnabled = vi.mocked(isDevModeEnabled)
+
 const SESSION_ID = 'sess-debrief01'
 
 const fullDebriefResponse: SessionDebriefResponse = {
@@ -73,6 +79,7 @@ function renderDebrief() {
 beforeEach(() => {
   vi.clearAllMocks()
   mockApi.exportSession.mockResolvedValue(exportData)
+  mockIsDevModeEnabled.mockReturnValue(false)
 })
 
 describe('Debrief screen', () => {
@@ -305,6 +312,28 @@ describe('Debrief screen', () => {
         createElementSpy.mockRestore()
         vi.unstubAllGlobals()
       }
+    })
+  })
+
+  describe('debrief-generation latency (dev mode)', () => {
+    it('captures and shows debrief generation latency when dev mode is on', async () => {
+      mockIsDevModeEnabled.mockReturnValue(true)
+      mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
+      renderDebrief()
+      await waitFor(() =>
+        expect(screen.getByTestId('debrief-latency')).toBeInTheDocument(),
+      )
+      expect(screen.getByTestId('debrief-latency')).toHaveTextContent(/debrief generation:.*ms/i)
+    })
+
+    it('does not show debrief latency when dev mode is off', async () => {
+      mockIsDevModeEnabled.mockReturnValue(false)
+      mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
+      renderDebrief()
+      await waitFor(() =>
+        expect(screen.getByTestId('summary-section')).toBeInTheDocument(),
+      )
+      expect(screen.queryByTestId('debrief-latency')).not.toBeInTheDocument()
     })
   })
 

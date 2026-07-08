@@ -5,3 +5,4 @@ export * from './types/runtime.js';
 export * from './types/models.js';
 export * from './types/ws-events.js';
 export * from './types/voice.js';
+export * from './types/metrics.js';
