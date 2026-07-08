@@ -13,14 +13,28 @@ import type {
 
 const BASE = '/api'
 
+export interface SttHealthInfo {
+  worker_id: string
+  worker_name: string
+  status: 'unavailable' | 'starting' | 'ready' | 'degraded' | 'error'
+  model_path?: string | null
+  message?: string | null
+  checked_at: string
+}
+
 export interface HealthResponse {
   status: 'ok' | 'degraded' | 'unavailable'
   version?: string
+  stt?: SttHealthInfo
 }
 
 export interface SttUploadResponse {
   transcript: string | null
-  status: string
+  status: 'ok' | 'unavailable' | 'error'
+  language?: string | null
+  confidence?: number | null
+  duration_ms?: number | null
+  processing_ms?: number | null
 }
 
 async function parseErrorMessage(res: Response): Promise<string> {
@@ -69,10 +83,13 @@ export const apiClient = {
     return get<HealthResponse>('/health')
   },
 
-  uploadAudio(blob: Blob): Promise<SttUploadResponse> {
+  uploadAudio(blob: Blob, language?: string): Promise<SttUploadResponse> {
     const ext = blob.type.includes('ogg') ? 'ogg' : 'webm'
     const form = new FormData()
     form.append('audio', blob, `recording.${ext}`)
+    if (language) {
+      form.append('language', language)
+    }
     return postForm<SttUploadResponse>('/stt/upload', form)
   },
 }

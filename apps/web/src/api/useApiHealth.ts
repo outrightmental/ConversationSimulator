@@ -1,22 +1,41 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useState } from 'react'
-import { apiClient } from './client'
+import { apiClient, type HealthResponse, type SttHealthInfo } from './client'
 
 export type HealthState = 'loading' | 'healthy' | 'unavailable'
 
-export function useApiHealth(): { state: HealthState; healthy: boolean } {
-  const [state, setState] = useState<HealthState>('loading')
+export interface ApiHealth {
+  state: HealthState
+  healthy: boolean
+  stt: SttHealthInfo | null
+}
+
+export function useApiHealth(): ApiHealth {
+  const [result, setResult] = useState<ApiHealth>({
+    state: 'loading',
+    healthy: false,
+    stt: null,
+  })
 
   useEffect(() => {
     let cancelled = false
 
     apiClient
       .health()
-      .then(({ status }) => {
-        if (!cancelled) setState(status === 'ok' ? 'healthy' : 'unavailable')
+      .then((data: HealthResponse) => {
+        if (!cancelled) {
+          const state: HealthState = data.status === 'ok' ? 'healthy' : 'unavailable'
+          setResult({
+            state,
+            healthy: state === 'healthy',
+            stt: data.stt ?? null,
+          })
+        }
       })
       .catch(() => {
-        if (!cancelled) setState('unavailable')
+        if (!cancelled) {
+          setResult({ state: 'unavailable', healthy: false, stt: null })
+        }
       })
 
     return () => {
@@ -24,5 +43,5 @@ export function useApiHealth(): { state: HealthState; healthy: boolean } {
     }
   }, [])
 
-  return { state, healthy: state === 'healthy' }
+  return result
 }

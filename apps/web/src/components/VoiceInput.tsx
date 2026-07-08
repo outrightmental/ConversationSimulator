@@ -7,6 +7,7 @@ import MicButton from './MicButton'
 interface VoiceInputProps {
   onSubmit?: (text: string) => void
   disabled?: boolean
+  language?: string
 }
 
 function isInteractiveElement(el: Element | null): boolean {
@@ -15,7 +16,7 @@ function isInteractiveElement(el: Element | null): boolean {
   return tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'button' || tag === 'a'
 }
 
-export default function VoiceInput({ onSubmit, disabled = false }: VoiceInputProps) {
+export default function VoiceInput({ onSubmit, disabled = false, language }: VoiceInputProps) {
   const [textValue, setTextValue] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
@@ -25,9 +26,19 @@ export default function VoiceInput({ onSubmit, disabled = false }: VoiceInputPro
       setIsSubmitting(true)
       setUploadError(null)
       try {
-        const result = await apiClient.uploadAudio(blob)
-        if (result.transcript && !disabled) {
-          onSubmit?.(result.transcript)
+        const result = await apiClient.uploadAudio(blob, language)
+        if (result.status === 'error') {
+          setUploadError('Speech could not be transcribed. Please try again or type your response.')
+        } else if (result.status === 'unavailable') {
+          setUploadError('Speech-to-text is not installed. Please type your response.')
+        } else if (result.transcript) {
+          if (!disabled) {
+            onSubmit?.(result.transcript)
+          } else {
+            setTextValue(result.transcript)
+          }
+        } else if (result.status === 'ok' && !result.transcript) {
+          setUploadError('No speech detected. Please try again or type your response.')
         }
       } catch (err) {
         console.error('STT upload failed:', err)
@@ -36,7 +47,7 @@ export default function VoiceInput({ onSubmit, disabled = false }: VoiceInputPro
         setIsSubmitting(false)
       }
     },
-    [onSubmit, disabled],
+    [onSubmit, disabled, language],
   )
 
   const { permission, isRecording, recordingSeconds, error, requestPermission, startRecording, stopRecording } =

@@ -66,3 +66,5 @@ logs/
 # --- Local dev databases and caches ---
 *.sqlite
 *.db
+*.db-shm
+*.db-wal

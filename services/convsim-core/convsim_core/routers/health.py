@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from convsim_core import __version__
 from convsim_core.runtime.types import RuntimeHealth
 from convsim_core.services.model_manager_service import get_active_config
+from convsim_core.stt.types import SttHealth
 
 router = APIRouter()
 
@@ -42,6 +43,7 @@ class HealthResponse(BaseModel):
     runtime: RuntimeHealth
     active_model: _ActiveModelConfig
     privacy: _PrivacyPosture
+    stt: SttHealth
 
 
 @router.get("/api/health", response_model=HealthResponse)
@@ -68,4 +70,5 @@ async def health(request: Request) -> HealthResponse:
             save_raw_audio=app_settings.save_raw_audio,
             crash_logging_enabled=app_settings.crash_logging_enabled,
         ),
+        stt=await request.app.state.stt_worker.health(),
     )

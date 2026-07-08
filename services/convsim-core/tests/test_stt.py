@@ -1,5 +1,10 @@
 # SPDX-License-Identifier: Apache-2.0
 import io
+from unittest.mock import AsyncMock, patch
+
+import pytest
+
+from convsim_core.stt.types import SttError, SttResult
 
 
 def test_stt_upload_returns_200(client):
@@ -11,16 +16,18 @@ def test_stt_upload_returns_200(client):
     assert resp.status_code == 200
 
 
-def test_stt_upload_status_received(client):
+def test_stt_upload_status_unavailable_when_no_runtime(client):
+    # Default config uses whisper_cpp worker; in the test environment no binary
+    # is installed, so the worker returns status='unavailable' rather than failing.
     audio = io.BytesIO(b"\x00" * 100)
     body = client.post(
         "/api/stt/upload",
         files={"audio": ("recording.webm", audio, "audio/webm")},
     ).json()
-    assert body["status"] == "received"
+    assert body["status"] == "unavailable"
 
 
-def test_stt_upload_transcript_is_null(client):
+def test_stt_upload_transcript_is_null_when_unavailable(client):
     audio = io.BytesIO(b"\x00" * 100)
     body = client.post(
         "/api/stt/upload",
@@ -88,3 +95,92 @@ def test_stt_upload_accepts_empty_content_type(client):
 def test_stt_upload_requires_audio_field(client):
     resp = client.post("/api/stt/upload")
     assert resp.status_code == 422
+
+
+def test_stt_upload_response_has_status_field(client):
+    audio = io.BytesIO(b"\x00" * 100)
+    body = client.post(
+        "/api/stt/upload",
+        files={"audio": ("recording.webm", audio, "audio/webm")},
+    ).json()
+    assert "status" in body
+
+
+def test_stt_upload_accepts_language_form_field(client):
+    audio = io.BytesIO(b"\x00" * 100)
+    resp = client.post(
+        "/api/stt/upload",
+        files={"audio": ("recording.webm", audio, "audio/webm")},
+        data={"language": "fr"},
+    )
+    assert resp.status_code == 200
+
+
+def test_stt_upload_language_field_is_optional(client):
+    audio = io.BytesIO(b"\x00" * 100)
+    resp = client.post(
+        "/api/stt/upload",
+        files={"audio": ("recording.webm", audio, "audio/webm")},
+    )
+    assert resp.status_code == 200
+
+
+def test_stt_upload_status_error_on_worker_failure(client):
+    # Simulate whisper-cli crashing (e.g. bad audio, non-zero exit) — the router
+    # must return status='error' with null transcript rather than a 500.
+    audio = io.BytesIO(b"\x00" * 100)
+    with patch.object(
+        client.app.state.stt_worker,
+        "transcribe",
+        new=AsyncMock(side_effect=SttError("whisper-cli exited with code 1: error: bad input")),
+    ):
+        body = client.post(
+            "/api/stt/upload",
+            files={"audio": ("recording.webm", audio, "audio/webm")},
+        ).json()
+    assert body["status"] == "error"
+    assert body["transcript"] is None
+
+
+def test_stt_upload_status_ok_on_successful_transcription(client):
+    # Simulate a working STT worker returning a real transcript.
+    audio = io.BytesIO(b"\x00" * 100)
+    mock_result = SttResult(
+        transcript="Hello world",
+        language="en",
+        confidence=0.95,
+        duration_ms=1200.0,
+        processing_ms=350.0,
+    )
+    with patch.object(
+        client.app.state.stt_worker,
+        "transcribe",
+        new=AsyncMock(return_value=mock_result),
+    ):
+        body = client.post(
+            "/api/stt/upload",
+            files={"audio": ("recording.webm", audio, "audio/webm")},
+        ).json()
+    assert body["status"] == "ok"
+    assert body["transcript"] == "Hello world"
+    assert body["language"] == "en"
+    assert body["confidence"] == pytest.approx(0.95)
+
+
+def test_stt_upload_ok_response_passes_language_to_worker(client):
+    # Language form field should be forwarded to the STT worker.
+    audio = io.BytesIO(b"\x00" * 100)
+    mock_result = SttResult(transcript="Bonjour", language="fr")
+    captured: list = []
+
+    async def _capturing_transcribe(req):
+        captured.append(req)
+        return mock_result
+
+    with patch.object(client.app.state.stt_worker, "transcribe", side_effect=_capturing_transcribe):
+        client.post(
+            "/api/stt/upload",
+            files={"audio": ("recording.webm", audio, "audio/webm")},
+            data={"language": "fr"},
+        )
+    assert captured[0].language == "fr"
