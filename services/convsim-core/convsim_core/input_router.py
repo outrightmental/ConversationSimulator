@@ -129,7 +129,7 @@ _MINORS_PATTERN = _compile(
     r"\bpedophil",
     r"\bpedo\b",
     r"\b(?:minor|youth|teen|teenager)\s+(?:sex|sexual|nude|naked|porn|erotic|rape)",
-    r"\b\d{1,2}[- ]year[- ]old\s+(?:sex|sexual|nude|naked|porn|erotic)",
+    r"\b(?:1[0-7]|[0-9])[- ]year[- ]old\s+(?:sex|sexual|nude|naked|porn|erotic)",
 )
 
 # self_harm_crisis — GLOBAL NON-OVERRIDABLE → stop_with_resource_message
@@ -212,11 +212,11 @@ _LEGAL_PATTERN = _compile(
 # harassment_extreme
 _HARASSMENT_PATTERN = _compile(
     r"\b(?:kill|murder|rape|torture|assault)\s+(?:you|them|him|her)\b",
-    r"\bI'?(?:ll|will|m\s+going\s+to)\s+(?:kill|murder|hurt|attack|rape)\s+you\b",
+    r"\bI(?:'ll|'m\s+going\s+to|\s+will)\s+(?:kill|murder|hurt|attack|rape)\s+you\b",
     r"\byou\s+(?:deserve|should)\s+(?:to\s+)?die\b",
     r"\bI\s+know\s+where\s+you\s+live\b",
     r"\bsend\s+(?:me\s+)?nudes?\b",
-    r"\bI'?(?:ll|will)\s+find\s+you\b",
+    r"\bI(?:'ll|\s+will)\s+find\s+you\b",
 )
 
 # real_person_impersonation
@@ -254,7 +254,7 @@ _POLICY_RULE_ORDER: List[Tuple[re.Pattern[str], str]] = [
 ]
 
 # Legacy category names mapped to canonical MVP names for backward compat.
-_LEGACY_CATEGORY_ALIASES: Dict[str, str] = {
+LEGACY_CATEGORY_ALIASES: Dict[str, str] = {
     "nsfw_sexual": "nsfw_sexual_content",
     "instructional_criminal": "criminal_instruction",
     "medical_professional_advice": "medical_or_therapy_claim",
@@ -262,10 +262,10 @@ _LEGACY_CATEGORY_ALIASES: Dict[str, str] = {
 }
 
 # Reverse map: canonical name → legacy name (for looking up legacy keys in a policy).
-_CANONICAL_TO_LEGACY: Dict[str, str] = {v: k for k, v in _LEGACY_CATEGORY_ALIASES.items()}
+_CANONICAL_TO_LEGACY: Dict[str, str] = {v: k for k, v in LEGACY_CATEGORY_ALIASES.items()}
 
 # Legacy "block" action value mapped to RouteAction.
-_LEGACY_ACTION_MAP: Dict[str, RouteAction] = {
+LEGACY_ACTION_MAP: Dict[str, RouteAction] = {
     "block": RouteAction.STOP,
     "redirect": RouteAction.REDIRECT,
     "refuse": RouteAction.REFUSE,

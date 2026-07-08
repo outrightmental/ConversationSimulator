@@ -22,10 +22,10 @@ import yaml
 
 from convsim_core.input_router import (
     DEFAULT_REDIRECT_MESSAGE,
+    LEGACY_ACTION_MAP,
+    LEGACY_CATEGORY_ALIASES,
     RouteAction,
     SafetyPolicyConfig,
-    _LEGACY_ACTION_MAP,
-    _LEGACY_CATEGORY_ALIASES,
 )
 from convsim_core.schema_paths import get_schema
 
@@ -113,8 +113,8 @@ def build_safety_policy_config(
 
     for raw_name, raw_action in raw_categories.items():
         # Resolve legacy category aliases to canonical MVP names.
-        canonical_name = _LEGACY_CATEGORY_ALIASES.get(raw_name, raw_name)
-        action = _LEGACY_ACTION_MAP.get(str(raw_action))
+        canonical_name = LEGACY_CATEGORY_ALIASES.get(raw_name, raw_name)
+        action = LEGACY_ACTION_MAP.get(str(raw_action))
         if action is None:
             try:
                 action = RouteAction(str(raw_action))

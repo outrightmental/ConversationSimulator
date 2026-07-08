@@ -129,6 +129,21 @@ class TestMinorsCategory:
         result = route_player_input("child porn", _policy())
         assert result.message is None
 
+    def test_minor_age_in_sexual_context_triggers_stop(self):
+        result = route_player_input("17-year-old sex scene", _policy())
+        assert result.action == RouteAction.STOP
+
+    def test_adult_age_in_sexual_context_does_not_trigger_minors_rule(self):
+        # Age-based pattern must only catch 0–17, not adults. This is a
+        # global non-overridable rule so a false positive would permanently end
+        # an adult scenario session with no override possible.
+        result = route_player_input("the 28 year old sex scene", _policy())
+        assert result.action == RouteAction.OK
+
+    def test_18_year_old_does_not_trigger_minors_rule(self):
+        result = route_player_input("18 year old sex", _policy())
+        assert result.action == RouteAction.OK
+
 
 # ---------------------------------------------------------------------------
 # Category: self_harm_crisis — GLOBAL NON-OVERRIDABLE → stop_with_resource_message
@@ -418,6 +433,27 @@ class TestHarassmentExtreme:
             _policy(harassment_extreme="redirect"),
         )
         assert result.action == RouteAction.REDIRECT
+
+    def test_i_will_hurt_you_triggers_action(self):
+        result = route_player_input(
+            "I will hurt you",
+            _policy(harassment_extreme="refuse"),
+        )
+        assert result.action == RouteAction.REFUSE
+
+    def test_i_will_attack_you_triggers_action(self):
+        result = route_player_input(
+            "I will attack you",
+            _policy(harassment_extreme="stop"),
+        )
+        assert result.action == RouteAction.STOP
+
+    def test_i_will_find_you_triggers_action(self):
+        result = route_player_input(
+            "I will find you",
+            _policy(harassment_extreme="refuse"),
+        )
+        assert result.action == RouteAction.REFUSE
 
     def test_does_not_fire_without_category(self):
         result = route_player_input("I'll kill you", _policy())
