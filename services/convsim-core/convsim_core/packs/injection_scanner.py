@@ -35,7 +35,7 @@ example prompts without failing validation.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -444,8 +444,6 @@ def _scan_yaml_file(
     pack_dir: Path,
     extractor: Callable[[dict], list[tuple[str, str, bool]]],
     findings: list[InjectionFinding],
-    *,
-    readme_mode: bool = False,
 ) -> None:
     """Load a YAML file, apply the extractor, and append scanner findings."""
     data = _load_yaml_safe(path)
@@ -453,18 +451,7 @@ def _scan_yaml_file(
         return
     rel = _rel(pack_dir, path)
     for text, pointer, in_player_context in extractor(data):
-        file_findings = scan_text(
-            text, rel, pointer, in_player_context=in_player_context
-        )
-        if readme_mode:
-            # README findings are informational: cap at warning even for error rules.
-            file_findings = [
-                InjectionFinding(**{**f.__dict__, "severity": "warning"})
-                if f.severity == "error"
-                else f
-                for f in file_findings
-            ]
-        findings.extend(file_findings)
+        findings.extend(scan_text(text, rel, pointer, in_player_context=in_player_context))
 
 
 def _resolve_safety_path(pack_dir: Path) -> Optional[Path]:
@@ -551,9 +538,7 @@ def scan_pack_dir(pack_dir: Path) -> list[InjectionFinding]:
             rel = _rel(pack_dir, readme)
             for finding in scan_text(text, rel, "(document)"):
                 if finding.severity == "error":
-                    finding = InjectionFinding(
-                        **{**finding.__dict__, "severity": "warning"}
-                    )
+                    finding = replace(finding, severity="warning")
                 findings.append(finding)
 
     # Test fixtures (player_input turns are already in player context)
