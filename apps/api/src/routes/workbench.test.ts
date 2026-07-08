@@ -147,6 +147,14 @@ describe('GET /api/workbench/packs/:kind/:slug/file', () => {
     expect(res.statusCode).toBe(400);
   });
 
+  it('returns 400 when path resolves to a directory', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/workbench/packs/official/sample-pack/file?path=scenarios',
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
   it('returns 400 for path traversal attempt', async () => {
     const res = await app.inject({
       method: 'GET',

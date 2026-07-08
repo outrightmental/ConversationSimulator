@@ -204,9 +204,16 @@ export async function workbenchRoutes(app: FastifyInstance): Promise<void> {
       }
       const packRoot = getPackRoot(kind, slug, reply);
       const absPath = resolveFilePath(packRoot, relPath, reply);
-      if (!fs.existsSync(absPath)) {
+      let stat: fs.Stats;
+      try {
+        stat = fs.statSync(absPath);
+      } catch {
         reply.status(404);
         throw new Error(`File not found: ${relPath}`);
+      }
+      if (!stat.isFile()) {
+        reply.status(400);
+        throw new Error(`Path is not a file: ${relPath}`);
       }
       const content = fs.readFileSync(absPath, 'utf-8');
       return { content, editable: kind === 'local-dev' };
