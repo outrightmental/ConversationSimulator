@@ -25,6 +25,7 @@ from pydantic import BaseModel, field_validator
 
 from convsim_core.scenario_state import build_variable_defs, partition_state_by_visibility
 from convsim_core.scenarios import get_scenario_info
+from convsim_core.services.debrief_engine import generate_debrief
 from convsim_core.services.turn_pipeline import MAX_TURN_CONTENT_CHARS, TurnInputError, process_turn
 
 logger = logging.getLogger(__name__)
@@ -161,6 +162,30 @@ class SessionExportResponse(BaseModel):
     turns: List[TurnEntry]
     events: List[EventEntry]
     debrief: Optional[Dict[str, Any]] = None
+
+
+class DebriefTurningPoint(BaseModel):
+    turn_number: int
+    description: str
+    impact: str
+
+
+class DebriefResponse(BaseModel):
+    session_id: str
+    scenario_id: str
+    pack_id: Optional[str] = None
+    outcome: str
+    total_turns: int
+    scores: Dict[str, float]
+    overall_score: Optional[float] = None
+    summary: str
+    strengths: List[str]
+    improvements: List[str]
+    turning_points: List[DebriefTurningPoint]
+    replay_suggestions: List[str]
+    npc_final_state: Dict[str, int]
+    generated_at: str
+    used_fallback: bool
 
 
 # ---------------------------------------------------------------------------
@@ -401,6 +426,97 @@ async def end_session(session_id: str, request: Request) -> SessionEndResponse:
     )
 
 
+@router.post("/{session_id}/debrief", response_model=DebriefResponse)
+async def create_debrief(session_id: str, request: Request) -> DebriefResponse:
+    db = request.app.state.db
+    conn = db.connection()
+    row = conn.execute(
+        "SELECT * FROM turn_sessions WHERE session_id = ?", (session_id,)
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Session {session_id!r} not found")
+
+    current_state = row["flow_state"]
+
+    # If debrief already exists, return it.
+    if current_state == "DebriefReady":
+        existing = conn.execute(
+            "SELECT content_json FROM session_debriefs "
+            "WHERE session_id = ? ORDER BY id DESC LIMIT 1",
+            (session_id,),
+        ).fetchone()
+        if existing:
+            doc = json.loads(existing["content_json"])
+            return DebriefResponse(
+                session_id=doc["session_id"],
+                scenario_id=doc["scenario_id"],
+                pack_id=doc.get("pack_id"),
+                outcome=doc["outcome"],
+                total_turns=doc.get("total_turns", 0),
+                scores=doc.get("scores", {}),
+                overall_score=doc.get("overall_score"),
+                summary=doc.get("summary", ""),
+                strengths=doc.get("strengths", []),
+                improvements=doc.get("improvements", []),
+                turning_points=[
+                    DebriefTurningPoint(**tp) for tp in doc.get("turning_points", [])
+                ],
+                replay_suggestions=doc.get("replay_suggestions", []),
+                npc_final_state=doc.get("npc_final_state", {}),
+                generated_at=doc.get("generated_at", _now_iso()),
+                used_fallback=doc.get("used_fallback", False),
+            )
+
+    # Must be in Ended (or DebriefGenerating — retry) to generate.
+    if current_state not in ("Ended", "DebriefGenerating"):
+        raise _conflict(
+            f"Cannot generate debrief from state {current_state!r}. "
+            "Session must be in Ended state.",
+            current_state,
+        )
+
+    scenario_id = row["scenario_id"]
+    setup = json.loads(row["setup_json"])
+    difficulty = setup.get("difficulty", "normal")
+    info = get_scenario_info(scenario_id)
+    if info is None:
+        raise HTTPException(status_code=500, detail=f"Scenario {scenario_id!r} not found in registry")
+
+    scenario_data = info.get_scenario_data(difficulty)
+    runtime = request.app.state.runtime
+
+    try:
+        result = await generate_debrief(
+            session_row=row,
+            conn=conn,
+            runtime=runtime,
+            scenario_data=scenario_data,
+        )
+    except Exception as exc:
+        logger.error("Debrief generation failed for session %s: %s", session_id, exc)
+        raise HTTPException(status_code=500, detail="Debrief generation failed") from exc
+
+    return DebriefResponse(
+        session_id=result.session_id,
+        scenario_id=result.scenario_id,
+        pack_id=result.pack_id,
+        outcome=result.outcome,
+        total_turns=result.total_turns,
+        scores=result.scores,
+        overall_score=result.overall_score,
+        summary=result.summary,
+        strengths=result.strengths,
+        improvements=result.improvements,
+        turning_points=[
+            DebriefTurningPoint(**tp) for tp in result.turning_points
+        ],
+        replay_suggestions=result.replay_suggestions,
+        npc_final_state=result.npc_final_state,
+        generated_at=result.generated_at,
+        used_fallback=result.used_fallback,
+    )
+
+
 @router.delete("/{session_id}", status_code=204)
 async def delete_session(session_id: str, request: Request) -> None:
     db = request.app.state.db
@@ -507,6 +623,13 @@ async def export_session(session_id: str, request: Request) -> SessionExportResp
         (session_id,),
     ).fetchall()
 
+    debrief_row = conn.execute(
+        "SELECT content_json FROM session_debriefs "
+        "WHERE session_id = ? ORDER BY id DESC LIMIT 1",
+        (session_id,),
+    ).fetchone()
+    debrief_doc = json.loads(debrief_row["content_json"]) if debrief_row else None
+
     return SessionExportResponse(
         session_id=session_id,
         exported_at=_now_iso(),
@@ -529,5 +652,5 @@ async def export_session(session_id: str, request: Request) -> SessionExportResp
             )
             for e in event_rows
         ],
-        debrief=None,
+        debrief=debrief_doc,
     )
