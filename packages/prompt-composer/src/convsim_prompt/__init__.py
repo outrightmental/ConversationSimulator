@@ -1,6 +1,15 @@
 """convsim_prompt — Layered prompt composer for Conversation Simulator NPC turns."""
 
 from .composer import LAYER_ORDER, SYSTEM_LAYER_ORDER, compose_turn_prompt
+from .debrief_composer import DebriefComposerInput, DebriefTurnRecord, compose_debrief_prompt
+from .debrief_output import (
+    DEBRIEF_NARRATIVE_SCHEMA,
+    DEBRIEF_SYSTEM_PREAMBLE,
+    DebriefNarrative,
+    DebriefValidationError,
+    TurningPoint,
+    parse_debrief_narrative,
+)
 from .inspection import PromptInspector
 from .layers import UNTRUSTED_CONTENT_BEGIN, UNTRUSTED_CONTENT_END
 from .turn_output import (
@@ -56,4 +65,14 @@ __all__ = [
     "ValidationError",
     "RuntimeProtocol",
     "SAFE_FALLBACK_UTTERANCE",
+    # Debrief
+    "compose_debrief_prompt",
+    "DebriefComposerInput",
+    "DebriefTurnRecord",
+    "DEBRIEF_NARRATIVE_SCHEMA",
+    "DEBRIEF_SYSTEM_PREAMBLE",
+    "DebriefNarrative",
+    "DebriefValidationError",
+    "TurningPoint",
+    "parse_debrief_narrative",
 ]
