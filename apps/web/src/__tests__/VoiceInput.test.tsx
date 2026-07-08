@@ -314,7 +314,25 @@ describe('VoiceInput — audio upload flow', () => {
     expect(vi.mocked(apiClient.uploadAudio)).toHaveBeenCalledWith(blob, undefined)
   })
 
-  it('calls onSubmit with the transcript when uploadAudio returns one', async () => {
+  it('shows the transcript review panel when uploadAudio returns a transcript', async () => {
+    let capturedOnAudioReady: ((blob: Blob) => void) | undefined
+    vi.mocked(useMicCapture).mockImplementation((cb) => {
+      capturedOnAudioReady = cb
+      return makeMicState()
+    })
+    vi.mocked(apiClient.uploadAudio).mockResolvedValueOnce({ transcript: 'hello world', status: 'ok' })
+
+    render(<VoiceInput />)
+
+    await act(async () => {
+      capturedOnAudioReady?.(new Blob(['audio'], { type: 'audio/webm' }))
+    })
+
+    expect(screen.getByTestId('transcript-review-panel')).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: /edit transcript/i })).toHaveValue('hello world')
+  })
+
+  it('calls onSubmit with the transcript when user confirms in the review panel', async () => {
     const onSubmit = vi.fn()
     let capturedOnAudioReady: ((blob: Blob) => void) | undefined
     vi.mocked(useMicCapture).mockImplementation((cb) => {
@@ -329,7 +347,92 @@ describe('VoiceInput — audio upload flow', () => {
       capturedOnAudioReady?.(new Blob(['audio'], { type: 'audio/webm' }))
     })
 
+    fireEvent.click(screen.getByRole('button', { name: /submit transcript/i }))
+
     expect(onSubmit).toHaveBeenCalledWith('hello world')
+  })
+
+  it('calls onSubmit with edited text when user modifies the transcript before confirming', async () => {
+    const onSubmit = vi.fn()
+    let capturedOnAudioReady: ((blob: Blob) => void) | undefined
+    vi.mocked(useMicCapture).mockImplementation((cb) => {
+      capturedOnAudioReady = cb
+      return makeMicState()
+    })
+    vi.mocked(apiClient.uploadAudio).mockResolvedValueOnce({ transcript: 'hello world', status: 'ok' })
+
+    render(<VoiceInput onSubmit={onSubmit} />)
+
+    await act(async () => {
+      capturedOnAudioReady?.(new Blob(['audio'], { type: 'audio/webm' }))
+    })
+
+    const textarea = screen.getByRole('textbox', { name: /edit transcript/i })
+    fireEvent.change(textarea, { target: { value: 'hello there' } })
+    fireEvent.click(screen.getByRole('button', { name: /submit transcript/i }))
+
+    expect(onSubmit).toHaveBeenCalledWith('hello there')
+  })
+
+  it('cancels the review panel and returns to normal input when cancel is clicked', async () => {
+    let capturedOnAudioReady: ((blob: Blob) => void) | undefined
+    vi.mocked(useMicCapture).mockImplementation((cb) => {
+      capturedOnAudioReady = cb
+      return makeMicState()
+    })
+    vi.mocked(apiClient.uploadAudio).mockResolvedValueOnce({ transcript: 'hello world', status: 'ok' })
+
+    render(<VoiceInput />)
+
+    await act(async () => {
+      capturedOnAudioReady?.(new Blob(['audio'], { type: 'audio/webm' }))
+    })
+
+    expect(screen.getByTestId('transcript-review-panel')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /cancel and discard transcript/i }))
+
+    expect(screen.queryByTestId('transcript-review-panel')).not.toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument()
+  })
+
+  it('dismisses the review panel and returns to normal input when retry is clicked', async () => {
+    let capturedOnAudioReady: ((blob: Blob) => void) | undefined
+    vi.mocked(useMicCapture).mockImplementation((cb) => {
+      capturedOnAudioReady = cb
+      return makeMicState()
+    })
+    vi.mocked(apiClient.uploadAudio).mockResolvedValueOnce({ transcript: 'hello world', status: 'ok' })
+
+    render(<VoiceInput />)
+
+    await act(async () => {
+      capturedOnAudioReady?.(new Blob(['audio'], { type: 'audio/webm' }))
+    })
+
+    expect(screen.getByTestId('transcript-review-panel')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /retry recording/i }))
+
+    expect(screen.queryByTestId('transcript-review-panel')).not.toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument()
+  })
+
+  it('does not call onSubmit directly — it goes through review panel', async () => {
+    const onSubmit = vi.fn()
+    let capturedOnAudioReady: ((blob: Blob) => void) | undefined
+    vi.mocked(useMicCapture).mockImplementation((cb) => {
+      capturedOnAudioReady = cb
+      return makeMicState()
+    })
+    vi.mocked(apiClient.uploadAudio).mockResolvedValueOnce({ transcript: 'hello world', status: 'ok' })
+
+    render(<VoiceInput onSubmit={onSubmit} />)
+
+    await act(async () => {
+      capturedOnAudioReady?.(new Blob(['audio'], { type: 'audio/webm' }))
+    })
+
+    // onSubmit must not be called until user confirms in the review panel
+    expect(onSubmit).not.toHaveBeenCalled()
   })
 
   it('does not call onSubmit when transcript is null', async () => {
@@ -434,7 +537,7 @@ describe('VoiceInput — audio upload flow', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(/failed to process audio/i)
   })
 
-  it('does not call onSubmit with transcript when disabled, but populates the text input', async () => {
+  it('shows review panel when disabled, then populates text input after confirmation', async () => {
     const onSubmit = vi.fn()
     let capturedOnAudioReady: ((blob: Blob) => void) | undefined
     vi.mocked(useMicCapture).mockImplementation((cb) => {
@@ -449,8 +552,16 @@ describe('VoiceInput — audio upload flow', () => {
       capturedOnAudioReady?.(new Blob(['audio'], { type: 'audio/webm' }))
     })
 
+    // Review panel should appear even when disabled
+    expect(screen.getByTestId('transcript-review-panel')).toBeInTheDocument()
+
+    // Confirming while disabled should NOT call onSubmit — it populates the text box
+    fireEvent.click(screen.getByRole('button', { name: /submit transcript/i }))
+
     expect(onSubmit).not.toHaveBeenCalled()
-    expect(screen.getByRole('textbox')).toHaveValue('hello world')
+    expect(screen.queryByTestId('transcript-review-panel')).not.toBeInTheDocument()
+    // After confirm, the text input (the standard response field) gets the transcript value
+    expect(screen.getByRole('textbox', { name: /your response/i })).toHaveValue('hello world')
   })
 })
 

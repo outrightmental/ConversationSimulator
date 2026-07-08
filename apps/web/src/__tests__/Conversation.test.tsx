@@ -28,8 +28,9 @@ vi.mock('../api/client', () => ({
   },
 }))
 
-import { api } from '../api/client'
+import { api, apiClient } from '../api/client'
 const mockApi = vi.mocked(api)
+const mockApiClient = vi.mocked(apiClient)
 
 const SESSION_ID = 'sess-demo0001'
 const SCENARIO_ID = 'scenario-job-interview'
@@ -122,6 +123,7 @@ beforeEach(() => {
   // Default: connectSession returns a no-op connection; getScenario returns null
   mockApi.connectSession.mockReturnValue({ close: vi.fn() })
   mockApi.getScenario.mockResolvedValue(null as unknown as ScenarioInfo)
+  mockApiClient.uploadAudio.mockResolvedValue({ transcript: null, status: 'unavailable' })
 })
 
 describe('Conversation screen', () => {
@@ -800,7 +802,26 @@ describe('Conversation screen', () => {
       fireEvent.change(textarea, { target: { value: 'My answer.' } })
       fireEvent.click(screen.getByRole('button', { name: /submit/i }))
 
-      await waitFor(() => expect(screen.getByText('2 entries')).toBeInTheDocument())
+      // Opening entry + player entry + NPC entry = 3 entries
+      await waitFor(() => expect(screen.getByText('3 entries')).toBeInTheDocument())
+    })
+
+    it('creates a player debug entry when a turn is submitted in dev mode', async () => {
+      localStorage.setItem('convsim.devMode', 'true')
+      mockApi.startSession.mockResolvedValue(startResponse)
+      mockApi.submitTurn.mockResolvedValue(turnResponse)
+      renderConversation()
+      await waitFor(() =>
+        expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument(),
+      )
+
+      fireEvent.change(screen.getByRole('textbox', { name: /your response/i }), {
+        target: { value: 'My answer.' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+
+      // 3 entries: opening + player turn + NPC turn
+      await waitFor(() => expect(screen.getByText('3 entries')).toBeInTheDocument())
     })
 
     it('debug drawer is not rendered (not just hidden) in normal mode', async () => {
