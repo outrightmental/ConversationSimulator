@@ -62,8 +62,24 @@ async function parseErrorMessage(res: Response): Promise<string> {
   const text = await res.text()
   let message = text || `${res.status} ${res.statusText}`
   try {
-    const json = JSON.parse(text) as { message?: string; code?: string }
-    if (json.message) message = json.code ? `${json.code}: ${json.message}` : json.message
+    // convsim-core (Python) returns { error: { code, message } }; the interim
+    // convsim-api (TypeScript) returns { code?, message } at the top level.
+    // Accept either shape so error text is clean regardless of active backend.
+    const json = JSON.parse(text) as {
+      message?: string
+      code?: string
+      error?: { message?: string; code?: string } | string
+    }
+    // Prefer the top-level message (convsim-api shape, where `error` is a short
+    // status string), and fall back to a nested error object (convsim-core shape:
+    // { error: { code, message } }).
+    let msg = json.message
+    let code = json.code
+    if (!msg && json.error && typeof json.error === 'object') {
+      msg = json.error.message
+      code = json.error.code
+    }
+    if (msg) message = code ? `${code}: ${msg}` : msg
   } catch {
     // text is not JSON; use as-is
   }
@@ -81,6 +97,16 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
     method: 'POST',
     headers: body !== undefined ? { 'Content-Type': 'application/json' } : {},
     body: body !== undefined ? JSON.stringify(body) : undefined,
+  })
+  if (!res.ok) throw new Error(await parseErrorMessage(res))
+  return res.json() as Promise<T>
+}
+
+async function put<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
   })
   if (!res.ok) throw new Error(await parseErrorMessage(res))
   return res.json() as Promise<T>
@@ -128,6 +154,45 @@ export const apiClient = {
     form.append('audio', blob, `calibration.${ext}`)
     return postForm<VadCalibrateResponse>('/vad/calibrate', form)
   },
+}
+
+export type PackKind = 'official' | 'local-dev'
+
+export interface WorkbenchPack {
+  kind: PackKind
+  slug: string
+  pack_id: string | null
+  name: string | null
+  editable: boolean
+}
+
+export interface FileNode {
+  name: string
+  path: string
+  kind: 'yaml' | 'markdown' | 'text' | 'dir' | 'other'
+  children?: FileNode[]
+}
+
+export interface WorkbenchValidationIssue {
+  severity: 'error' | 'warning'
+  rule_id: string
+  file: string
+  pointer: string
+  message: string
+  suggested_fix: string
+}
+
+export interface WorkbenchValidation {
+  valid: boolean
+  errors: WorkbenchValidationIssue[]
+  warnings: WorkbenchValidationIssue[]
+}
+
+export interface WriteFileResult {
+  ok: boolean
+  // Present when the backend re-validates the pack after a save (convsim-core).
+  // The interim convsim-api backend has no validator and omits this field.
+  validation?: WorkbenchValidation | null
 }
 
 export interface WsConnection {
@@ -200,5 +265,31 @@ export const api = {
       onEvent(data)
     }
     return { close: () => ws.close() }
+  },
+
+  workbench: {
+    listPacks(): Promise<WorkbenchPack[]> {
+      return get<WorkbenchPack[]>('/workbench/packs')
+    },
+    listFiles(kind: PackKind, slug: string): Promise<{ tree: FileNode[] }> {
+      return get<{ tree: FileNode[] }>(`/workbench/packs/${kind}/${slug}/files`)
+    },
+    readFile(kind: PackKind, slug: string, filePath: string): Promise<{ content: string; editable: boolean }> {
+      return get<{ content: string; editable: boolean }>(
+        `/workbench/packs/${kind}/${slug}/file?path=${encodeURIComponent(filePath)}`,
+      )
+    },
+    writeFile(kind: PackKind, slug: string, filePath: string, content: string): Promise<WriteFileResult> {
+      return put<WriteFileResult>(
+        `/workbench/packs/${kind}/${slug}/file?path=${encodeURIComponent(filePath)}`,
+        { content },
+      )
+    },
+    validate(kind: PackKind, slug: string): Promise<WorkbenchValidation> {
+      return get<WorkbenchValidation>(`/workbench/packs/${kind}/${slug}/validate`)
+    },
+    copyToLocal(kind: PackKind, slug: string): Promise<WorkbenchPack> {
+      return post<WorkbenchPack>(`/workbench/packs/${kind}/${slug}/copy-to-local`)
+    },
   },
 }
