@@ -46,6 +46,11 @@ export function loadPack(packDir: string, kind: PackRootKind = 'local-dev'): Loa
   const safetyPath = resolveRef(normalPackDir, normalPackDir, manifest.safety.policy);
   const safety = parseAndValidate<RawSafety>(readPackFile(safetyPath), 'safety', safetyPath);
 
+  // ── entry_scenarios path traversal check ──────────────────────────────────
+  for (const entryPath of manifest.entry_scenarios ?? []) {
+    resolveRef(normalPackDir, normalPackDir, entryPath);
+  }
+
   // ── Scenarios ─────────────────────────────────────────────────────────────
   const scenariosDir = resolve(normalPackDir, 'scenarios');
   const scenarioFiles = discoverYamlFiles(scenariosDir);

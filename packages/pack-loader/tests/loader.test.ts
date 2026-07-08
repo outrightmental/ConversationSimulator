@@ -304,13 +304,13 @@ private_persona: {}
   });
 
   it('throws INVALID_YAML when a file contains invalid YAML syntax', () => {
-    const dir = track(makeTempPackDir({ manifestYaml: ': broken: yaml:' }));
+    // '{' is an unclosed flow mapping — js-yaml throws a YAMLException on parse.
+    const dir = track(makeTempPackDir({ manifestYaml: '{' }));
     expect(() => loadPack(dir)).toThrowError(PackLoaderError);
     try {
       loadPack(dir);
     } catch (e) {
-      const code = (e as PackLoaderError).code;
-      expect(['INVALID_YAML', 'SCHEMA_VALIDATION']).toContain(code);
+      expect((e as PackLoaderError).code).toBe('INVALID_YAML');
     }
   });
 
@@ -330,6 +330,18 @@ private_persona: {}
     const dir = track(makeTempPackDir({
       sceneYaml: VALID_SCENE_YAML + 'background: ../../outside.png\n',
       scenarioYamls: { 'scenario_with_scene.yaml': VALID_SCENARIO_WITH_SCENE_YAML },
+    }));
+    expect(() => loadPack(dir)).toThrowError(PackLoaderError);
+    try {
+      loadPack(dir);
+    } catch (e) {
+      expect((e as PackLoaderError).code).toBe('PATH_TRAVERSAL');
+    }
+  });
+
+  it('throws PATH_TRAVERSAL when an entry_scenario path escapes the pack root', () => {
+    const dir = track(makeTempPackDir({
+      manifestYaml: VALID_MANIFEST_YAML + 'entry_scenarios:\n  - ../../evil_scenario.yaml\n',
     }));
     expect(() => loadPack(dir)).toThrowError(PackLoaderError);
     try {
