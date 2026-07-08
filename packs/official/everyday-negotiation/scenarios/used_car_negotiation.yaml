@@ -1,0 +1,131 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scenario_id: used_car_negotiation
+title: The Used Car Deal
+summary: >-
+  A 2019 Honda Civic is listed at $15,500 at Riverside Auto. Your research
+  shows comparable cars sell for $13,500–$14,200 in the area. Ray Kowalski,
+  the sales rep, needs to move inventory this month — but he will not tell you
+  that. Anchor early, cite your research, and close a fair deal.
+player_role:
+  label: Car Buyer
+  brief: >-
+    You need a reliable used car and have been researching the market for three
+    weeks. You know what comparable Civics sell for locally. You are paying cash
+    and can walk away — but you genuinely want this car if the price is right.
+    Your target is under $14,000 out the door.
+npc:
+  ref: ../npcs/car_dealer.yaml
+scene:
+  ref: ../scenes/used_car_lot.yaml
+rubric:
+  ref: ../rubrics/negotiation_rubric.yaml
+duration:
+  max_turns: 18
+  soft_time_limit_minutes: 12
+opening:
+  npc_says: >-
+    Hey there! Welcome to Riverside Auto. I'm Ray. She's a beauty, right? Low
+    mileage, one owner, clean CarFax. We have her priced at fifteen-five —
+    honestly one of the sharpest deals on the lot right now. So, what were you
+    thinking? Did you want to talk numbers?
+goals:
+  player_visible:
+    - "Negotiate the final price to under $14,000 out the door, or secure meaningful concessions on price or extras"
+    - "Use your market research to anchor the conversation and justify your offer with specific comparable sales"
+    - "Keep the relationship positive — Ray should feel the deal is fair, not pressured into a loss"
+  hidden:
+    - "Ray's minimum acceptable price is $13,800 and he will not go below it under any circumstances — but he will never volunteer this floor"
+    - "Ray is watching to see whether you have done real research; buyers who cite specific comparable sales earn his respect and faster movement"
+    - "Ray becomes more resistant when he senses desperation or aggressive bullying; he warms to buyers who can credibly walk away"
+    - "Ray has a month-end quota and will move slightly more on price when the conversation stretches past his initial two-turn resistance"
+state:
+  variables:
+    deal_progress:
+      min: 0
+      max: 100
+      default: 0
+      visibility: visible
+      max_delta_per_turn: 20
+    perceived_fairness:
+      min: 0
+      max: 100
+      default: 50
+      visibility: hidden
+      max_delta_per_turn: 15
+    firmness:
+      min: 0
+      max: 100
+      default: 75
+      visibility: hidden
+      max_delta_per_turn: 12
+    concession_level:
+      min: 0
+      max: 100
+      default: 0
+      visibility: visible
+      max_delta_per_turn: 15
+    leverage:
+      min: 0
+      max: 100
+      default: 30
+      visibility: hidden
+      max_delta_per_turn: 20
+difficulty:
+  default: normal
+  options:
+    easy:
+      npc_patience_modifier: 20
+      challenge_frequency: low
+    normal:
+      npc_patience_modifier: 0
+      challenge_frequency: medium
+    hard:
+      npc_patience_modifier: -20
+      challenge_frequency: high
+events:
+  - id: research_anchor_reward
+    when:
+      type: variable_above
+      variable: leverage
+      threshold: 55
+    npc_instruction: >-
+      The buyer has demonstrated solid market knowledge or a credible walk-away
+      position. Acknowledge the research respectfully: "I can see you've done
+      your homework." Begin showing some price flexibility — offer to throw in
+      floor mats, a tank of gas, or a small price reduction. Signal that you
+      are open to working something out without completely abandoning your
+      position.
+    repeat: false
+  - id: aggression_pushback
+    when:
+      type: variable_below
+      variable: perceived_fairness
+      threshold: 30
+    npc_instruction: >-
+      The buyer has become dismissive, insulting, or unreasonably aggressive.
+      Hold your ground firmly but without anger: "I understand you want a good
+      deal — so do I. But I can't go there. This is a fair price for the car."
+      Do not make further concessions until the buyer returns to a respectful,
+      professional tone.
+    repeat: true
+  - id: close_the_gap
+    when:
+      type: variable_above
+      variable: deal_progress
+      threshold: 60
+    npc_instruction: >-
+      A deal is within reach. Help close it by floating a specific number or
+      package: "What if I did fourteen-two with a full tank and a six-month
+      warranty checkup included?" Ask directly whether that works for them and
+      pause for their answer.
+    repeat: false
+ending_conditions:
+  success:
+    type: variable_above
+    variable: deal_progress
+    threshold: 70
+  failure:
+    type: variable_below
+    variable: perceived_fairness
+    threshold: 15

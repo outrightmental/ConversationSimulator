@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scene_id: customer_service_call
+display_name: Customer Service Phone Call
+background: assets/backgrounds/customer_service_placeholder.png
+description: >-
+  You are standing at your kitchen counter, phone to your ear. The defective
+  blender sits in front of you — original box, receipt, and the product manual
+  open to the warranty page beside it. Hold music ends and a click signals the
+  connection. The room is quiet on your end. In the background on Jordan's
+  side, the faint ambient murmur of a call centre can just be heard.
+ambient: phone_call
