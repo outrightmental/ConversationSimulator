@@ -328,6 +328,28 @@ def test_import_links_scenario_scoped_assets(tmp_path):
     db.close()
 
 
+def test_truncated_zip_raises_invalid_zip_not_500(tmp_path):
+    """A zip whose EOCD is intact but local file data is truncated must return INVALID_ZIP 422.
+
+    Python's zipfile raises ValueError ('negative seek value') when extractall tries to read
+    file data that starts before offset 0.  The except-BadZipFile handler alone does not
+    catch this; the broader except-Exception handler is required.
+    """
+    db = _open_db(tmp_path)
+    packs_dir = tmp_path / "packs"
+    packs_dir.mkdir()
+
+    valid_zip = make_pack_zip(tmp_path / "src")
+    # Keep only the last ~100 bytes (EOCD + central directory) so is_zipfile() still passes
+    # but local file data is gone, causing a negative-seek ValueError during extractall.
+    truncated = valid_zip[-100:]
+
+    exc = pytest.raises(ConvsimError, import_from_zip, truncated, packs_dir, db.connection())
+    assert exc.value.code == "INVALID_ZIP"
+    assert exc.value.status_code == 422
+    db.close()
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="symlink creation requires elevated privileges on Windows")
 def test_import_folder_with_symlink_rejected(tmp_path):
     """Folder import of a pack containing a symlink must fail and leave no partial install.

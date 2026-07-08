@@ -87,6 +87,14 @@ def safe_extract_zip(zip_bytes: bytes, dest: Path) -> None:
             f"Corrupt zip archive: {exc}",
             status_code=422,
         ) from exc
+    except Exception as exc:
+        # Truncated archives, negative-seek errors, and other unexpected I/O failures
+        # from the zipfile module must produce a 422 rather than a 500.
+        raise ConvsimError(
+            "INVALID_ZIP",
+            f"Could not read zip archive: {type(exc).__name__}: {exc}",
+            status_code=422,
+        ) from exc
     # Defense-in-depth: verify actual bytes written, because a malicious archive can set
     # file_size to 0 in the central directory to bypass the pre-check above.
     actual_size = sum(f.stat().st_size for f in dest.rglob("*") if f.is_file())

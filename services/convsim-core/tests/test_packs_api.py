@@ -203,3 +203,30 @@ def test_import_folder_path_outside_allowed_dirs_rejected(client, tmp_path):
     )
     assert resp.status_code == 403
     assert resp.json()["error"]["code"] == "FORBIDDEN_PATH"
+
+
+def test_import_truncated_zip_returns_422(client, tmp_path):
+    """A zip whose EOCD is intact but local file data is gone must return 422, not 500."""
+    valid_zip = make_pack_zip(tmp_path)
+    # Keep only the tail so is_zipfile() still passes but extractall raises ValueError.
+    truncated = valid_zip[-100:]
+    resp = client.post(
+        "/api/packs/import/zip",
+        files={"file": ("pack.zip", truncated, "application/zip")},
+    )
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "INVALID_ZIP"
+
+
+def test_validate_truncated_zip_returns_valid_false(client, tmp_path):
+    """A truncated zip (EOCD intact, local data gone) must return valid=False, not 500."""
+    valid_zip = make_pack_zip(tmp_path)
+    truncated = valid_zip[-100:]
+    resp = client.post(
+        "/api/packs/validate",
+        files={"file": ("pack.zip", truncated, "application/zip")},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["valid"] is False
+    assert len(body["errors"]) > 0
