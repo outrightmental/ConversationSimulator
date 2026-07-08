@@ -34,6 +34,59 @@ const validRequest: SessionCreateRequest = {
 };
 
 // ---------------------------------------------------------------------------
+// GET /api/sessions
+// ---------------------------------------------------------------------------
+
+describe('GET /api/sessions', () => {
+  it('returns 200 with an empty sessions array when no sessions exist', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/sessions' });
+    expect(res.statusCode).toBe(200);
+    expect(res.json<{ sessions: unknown[] }>().sessions).toEqual([]);
+  });
+
+  it('returns all created sessions', async () => {
+    await app.inject({ method: 'POST', url: '/api/sessions', payload: validRequest });
+    await app.inject({ method: 'POST', url: '/api/sessions', payload: validRequest });
+
+    const res = await app.inject({ method: 'GET', url: '/api/sessions' });
+    expect(res.json<{ sessions: unknown[] }>().sessions).toHaveLength(2);
+  });
+
+  it('sessions include session_id, scenario_id, state, created_at, and setup', async () => {
+    const create = await app.inject({ method: 'POST', url: '/api/sessions', payload: validRequest });
+    const { session_id } = create.json<SessionCreateResponse>();
+
+    const res = await app.inject({ method: 'GET', url: '/api/sessions' });
+    const { sessions } = res.json<{ sessions: SessionCreateResponse[] }>();
+    expect(sessions[0].session_id).toBe(session_id);
+    expect(sessions[0].scenario_id).toBe('behavioral_interview');
+    expect(sessions[0].state).toBe('NotStarted');
+    expect(sessions[0].setup.player_role_name).toBe('Alice');
+  });
+
+  it('sessions are returned newest-first', async () => {
+    const r1 = await app.inject({ method: 'POST', url: '/api/sessions', payload: validRequest });
+    const r2 = await app.inject({ method: 'POST', url: '/api/sessions', payload: validRequest });
+    const id1 = r1.json<SessionCreateResponse>().session_id;
+    const id2 = r2.json<SessionCreateResponse>().session_id;
+
+    const res = await app.inject({ method: 'GET', url: '/api/sessions' });
+    const { sessions } = res.json<{ sessions: SessionCreateResponse[] }>();
+    expect(sessions[0].session_id).toBe(id2);
+    expect(sessions[1].session_id).toBe(id1);
+  });
+
+  it('does not include deleted sessions', async () => {
+    const r = await app.inject({ method: 'POST', url: '/api/sessions', payload: validRequest });
+    const { session_id } = r.json<SessionCreateResponse>();
+    await app.inject({ method: 'DELETE', url: `/api/sessions/${session_id}` });
+
+    const res = await app.inject({ method: 'GET', url: '/api/sessions' });
+    expect(res.json<{ sessions: unknown[] }>().sessions).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // POST /api/sessions
 // ---------------------------------------------------------------------------
 

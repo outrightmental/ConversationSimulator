@@ -51,14 +51,19 @@ async function get<T>(path: string): Promise<T> {
   return res.json() as Promise<T>
 }
 
-async function post<T>(path: string, body: unknown): Promise<T> {
+async function post<T>(path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    headers: body !== undefined ? { 'Content-Type': 'application/json' } : {},
+    body: body !== undefined ? JSON.stringify(body) : undefined,
   })
   if (!res.ok) throw new Error(await parseErrorMessage(res))
   return res.json() as Promise<T>
+}
+
+async function del(path: string): Promise<void> {
+  const res = await fetch(`${BASE}${path}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error(await parseErrorMessage(res))
 }
 
 async function postForm<T>(path: string, body: FormData): Promise<T> {
@@ -96,8 +101,23 @@ export const api = {
   getScenario(scenarioId: string): Promise<ScenarioInfo> {
     return get<ScenarioInfo>(`/scenarios/${scenarioId}`)
   },
+  listSessions(): Promise<{ sessions: SessionCreateResponse[] }> {
+    return get<{ sessions: SessionCreateResponse[] }>('/sessions')
+  },
   createSession(request: SessionCreateRequest): Promise<SessionCreateResponse> {
     return post<SessionCreateResponse>('/sessions', request)
+  },
+  getDataFolder(): Promise<{ path: string }> {
+    return get<{ path: string }>('/privacy/data-folder')
+  },
+  clearLocalData(): Promise<{ deleted_sessions: number }> {
+    return post<{ deleted_sessions: number }>('/privacy/clear')
+  },
+  deleteSession(sessionId: string): Promise<void> {
+    return del(`/sessions/${sessionId}`)
+  },
+  exportSession(sessionId: string): Promise<unknown> {
+    return get<unknown>(`/sessions/${sessionId}/export`)
   },
   connectSession(
     sessionId: string,
