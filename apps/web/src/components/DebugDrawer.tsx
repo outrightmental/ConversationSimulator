@@ -141,7 +141,7 @@ function DebugTurnItem({ entry, index }: { entry: DebugTurnEntry; index: number 
           gap: '0.4rem',
         }}
       >
-        <span style={{ color: '#71717a' }}>▶</span>
+        <span aria-hidden="true" style={{ color: '#71717a' }}>▶</span>
         <span>Turn {index + 1}</span>
         <span style={{ color: '#52525b' }}>({entry.role})</span>
         {agendaFields.length > 0 && (
@@ -271,7 +271,7 @@ interface DebugDrawerProps {
 
 export default function DebugDrawer({ entries }: DebugDrawerProps) {
   return (
-    <details data-testid="debug-drawer">
+    <details data-testid="debug-drawer" aria-label="Developer debug drawer">
       <summary
         style={{
           cursor: 'pointer',
@@ -284,7 +284,7 @@ export default function DebugDrawer({ entries }: DebugDrawerProps) {
           gap: '0.5rem',
         }}
       >
-        <span>▶</span>
+        <span aria-hidden="true">▶</span>
         <span>Developer debug</span>
         <span
           style={{

@@ -734,6 +734,11 @@ export default function Conversation() {
                 <span style={{ color: '#a1a1aa', marginBottom: 2 }}>{key}</span>
                 <span style={{ color: '#f4f4f5', fontWeight: 600 }}>{value}</span>
                 <div
+                  role="meter"
+                  aria-label={`${key.replace(/_/g, ' ')}: ${value} out of 100`}
+                  aria-valuenow={value}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
                   style={{
                     width: '100%',
                     height: 4,
@@ -743,6 +748,7 @@ export default function Conversation() {
                   }}
                 >
                   <div
+                    aria-hidden="true"
                     style={{
                       width: `${value}%`,
                       height: '100%',
@@ -759,6 +765,7 @@ export default function Conversation() {
 
       {allEventFlags.length > 0 && (
         <div
+          aria-label="Scenario event flags"
           style={{
             padding: '0.5rem 0.75rem',
             borderRadius: 6,

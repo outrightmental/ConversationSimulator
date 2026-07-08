@@ -1008,9 +1008,17 @@ function TestChatPanel({ pack, validation }: TestChatPanelProps) {
         }}
       >
         <span
+          aria-hidden="true"
           style={{ width: '6px', height: '6px', borderRadius: '50%', background: statusColor, flexShrink: 0 }}
         />
-        <span style={{ fontSize: '0.8rem', color: statusColor, flex: 1 }}>{statusLabel}</span>
+        <span
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          style={{ fontSize: '0.8rem', color: statusColor, flex: 1 }}
+        >
+          {statusLabel}
+        </span>
         {turnError && (
           <span
             data-testid="turn-error"
@@ -1046,6 +1054,9 @@ function TestChatPanel({ pack, validation }: TestChatPanelProps) {
         <div
           ref={transcriptRef}
           data-testid="test-transcript"
+          role="log"
+          aria-label="Test chat transcript"
+          aria-live="polite"
           style={{
             flex: 2,
             overflowY: 'auto',
@@ -1158,6 +1169,7 @@ function TestChatPanel({ pack, validation }: TestChatPanelProps) {
         {/* State inspector */}
         <div
           data-testid="state-inspector"
+          aria-label="NPC state variables"
           style={{
             width: '180px',
             flexShrink: 0,
@@ -1208,6 +1220,11 @@ function TestChatPanel({ pack, validation }: TestChatPanelProps) {
                   </span>
                 </div>
                 <div
+                  role="meter"
+                  aria-label={`${key.replace(/_/g, ' ')}: ${value} out of 100`}
+                  aria-valuenow={value}
+                  aria-valuemin={0}
+                  aria-valuemax={100}
                   style={{
                     height: '4px',
                     background: 'rgba(255,255,255,0.1)',
@@ -1216,6 +1233,7 @@ function TestChatPanel({ pack, validation }: TestChatPanelProps) {
                   }}
                 >
                   <div
+                    aria-hidden="true"
                     style={{
                       height: '100%',
                       width: `${value}%`,
@@ -1250,6 +1268,7 @@ function TestChatPanel({ pack, validation }: TestChatPanelProps) {
         >
           <textarea
             data-testid="test-chat-input"
+            aria-label="Test chat message"
             value={inputText}
             onChange={e => setInputText(e.target.value)}
             onKeyDown={handleKeyDown}
@@ -1629,9 +1648,13 @@ export default function CreatorWorkbench() {
                 flexShrink: 0,
               }}
             >
+              <div role="tablist" aria-label="Workbench panels" style={{ display: 'flex' }}>
               {(['edit', 'test'] as const).map((tab) => (
                 <button
                   key={tab}
+                  role="tab"
+                  id={`workbench-tab-${tab}`}
+                  aria-controls={`workbench-panel-${tab}`}
                   onClick={() => setActiveTab(tab)}
                   data-testid={`tab-${tab}`}
                   aria-selected={activeTab === tab}
@@ -1649,6 +1672,7 @@ export default function CreatorWorkbench() {
                   {tab === 'edit' ? 'Edit' : 'Test Chat'}
                 </button>
               ))}
+              </div>
 
               {/* Export controls — pushed to the right */}
               <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '0.4rem', padding: '0 0.5rem' }}>
@@ -1690,6 +1714,9 @@ export default function CreatorWorkbench() {
 
           {/* Edit panel */}
           <div
+            id="workbench-panel-edit"
+            role="tabpanel"
+            aria-labelledby="workbench-tab-edit"
             style={{
               flex: 1,
               display: activeTab === 'edit' ? 'flex' : 'none',
@@ -1748,6 +1775,9 @@ export default function CreatorWorkbench() {
           {/* Test chat panel — keeps session alive while editing (display:none, not unmounted) */}
           {selectedPack && (
             <div
+              id="workbench-panel-test"
+              role="tabpanel"
+              aria-labelledby="workbench-tab-test"
               key={`${selectedPack.kind}/${selectedPack.slug}`}
               style={{
                 flex: 1,
