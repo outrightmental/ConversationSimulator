@@ -61,6 +61,7 @@ vi.mock('../api/client', () => ({
     getScenario: vi.fn(),
     health: vi.fn(),
     createSession: vi.fn(),
+    listVoices: vi.fn(),
   },
 }));
 
@@ -81,8 +82,17 @@ function renderSetup(overrides?: Partial<Parameters<typeof ScenarioSetupPage>[0]
   return { onSessionCreated, onBack };
 }
 
+const STUB_VOICES = {
+  voices: [
+    { voice_id: 'af_heart', display_name: 'Heart (US female)', engine: 'kokoro', gender: 'female' as const, locale: 'en-US' },
+    { voice_id: 'am_adam', display_name: 'Adam (US male)', engine: 'kokoro', gender: 'male' as const, locale: 'en-US' },
+  ],
+};
+
 beforeEach(() => {
   vi.clearAllMocks();
+  localStorage.clear();
+  mockApi.listVoices.mockResolvedValue(STUB_VOICES);
 });
 
 describe('ScenarioSetupPage', () => {
@@ -359,6 +369,7 @@ describe('ScenarioSetupPage', () => {
           language: 'en',
           input_mode: 'push-to-talk',
           tts_enabled: true,
+          voice_id: 'af_heart',
           show_state_meters: false,
           save_transcript: true,
           seed: null,
@@ -380,6 +391,7 @@ describe('ScenarioSetupPage', () => {
           language: 'en',
           input_mode: 'push-to-talk',
           tts_enabled: true,
+          voice_id: 'af_heart',
           show_state_meters: false,
           save_transcript: true,
           seed: null,

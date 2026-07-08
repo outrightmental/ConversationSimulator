@@ -6,6 +6,7 @@ import type {
   InputMode,
   RuntimeReadiness,
   SessionCreateResponse,
+  VoiceInfo,
 } from '@convsim/shared';
 import { validateSetup, randomSeed } from '@convsim/shared';
 import { api } from '../api/client';
@@ -44,6 +45,7 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
     tts_voice_name: null,
     network_required: false,
   });
+  const [voices, setVoices] = useState<VoiceInfo[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -54,6 +56,7 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
     language: 'en',
     input_mode: 'text-only',
     tts_enabled: false,
+    voice_id: localStorage.getItem('convsim.voice.preferredVoiceId') ?? null,
     show_state_meters: false,
     save_transcript: readPrivacyPref(PRIVACY_KEYS.saveTranscripts, true),
     seed: null,
@@ -65,10 +68,12 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
     Promise.all([
       api.getScenario(scenarioId),
       api.health().catch(() => null),
+      api.listVoices().catch(() => ({ voices: [] })),
     ]).then(
-      ([scenarioData, healthResult]) => {
+      ([scenarioData, healthResult, voicesResult]) => {
         if (cancelled) return;
         setScenario(scenarioData);
+        setVoices(voicesResult.voices);
         const rt = healthResult?.runtime ?? {
           llm_ready: false,
           llm_model_name: null,
@@ -78,15 +83,26 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
           network_required: false,
         };
         setRuntime(rt);
-        setForm((prev) => ({
-          ...prev,
-          difficulty: scenarioData.difficulty.default,
-          player_role_name: scenarioData.player_role.label,
-          language: scenarioData.supported_languages[0] ?? 'en',
-          tts_enabled: rt.tts_ready,
-          input_mode: rt.stt_ready ? 'push-to-talk' : 'text-only',
-          show_state_meters: scenarioData.state_meters_permitted ? prev.show_state_meters : false,
-        }));
+        setForm((prev) => {
+          // Pick a default voice: honour stored preference if valid, else first available.
+          const storedVoiceId = localStorage.getItem('convsim.voice.preferredVoiceId');
+          const defaultVoiceId =
+            storedVoiceId && voicesResult.voices.some((v) => v.voice_id === storedVoiceId)
+              ? storedVoiceId
+              : voicesResult.voices[0]?.voice_id ?? null;
+          return {
+            ...prev,
+            difficulty: scenarioData.difficulty.default,
+            player_role_name: scenarioData.player_role.label,
+            language: scenarioData.supported_languages[0] ?? 'en',
+            tts_enabled: rt.tts_ready,
+            voice_id: prev.voice_id && voicesResult.voices.some((v) => v.voice_id === prev.voice_id)
+              ? prev.voice_id
+              : defaultVoiceId,
+            input_mode: rt.stt_ready ? 'push-to-talk' : 'text-only',
+            show_state_meters: scenarioData.state_meters_permitted ? prev.show_state_meters : false,
+          };
+        });
       },
       (err: unknown) => {
         if (!cancelled) setLoadError(err instanceof Error ? err.message : String(err));
@@ -327,6 +343,23 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
                 Text-only is always available. Install a TTS model to enable voice output.
               </p>
             )}
+            {form.tts_enabled && voices.length > 0 && (
+              <label className="setup-field" style={{ marginTop: '0.75rem' }}>
+                <span className="setup-label">NPC voice</span>
+                <select
+                  className="setup-select"
+                  value={form.voice_id ?? ''}
+                  onChange={(e) => setField('voice_id', e.target.value || null)}
+                  aria-label="NPC voice selection"
+                >
+                  {voices.map((v) => (
+                    <option key={v.voice_id} value={v.voice_id}>
+                      {v.display_name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
           </section>
 
           <section className="setup-section" aria-labelledby="privacy-heading">
@@ -444,7 +477,9 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
               </li>
               <li>
                 <span className={`setup-status-dot ${runtime.stt_ready ? 'ready' : 'not-ready'}`} />
-                <span>STT: {runtime.stt_ready ? 'ready' : 'not loaded'}</span>
+                <span>
+                  STT: {runtime.stt_ready ? 'ready' : 'not loaded — voice input unavailable'}
+                </span>
               </li>
               <li>
                 <span className={`setup-status-dot ${runtime.tts_ready ? 'ready' : 'not-ready'}`} />
@@ -452,7 +487,13 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
                   TTS:{' '}
                   {runtime.tts_ready
                     ? runtime.tts_voice_name ?? 'ready'
-                    : 'not loaded'}
+                    : 'not loaded — text-only available'}
+                </span>
+              </li>
+              <li>
+                <span className={`setup-status-dot ${runtime.stt_ready ? 'ready' : 'not-ready'}`} />
+                <span>
+                  VAD: {runtime.stt_ready ? 'available' : 'requires STT'}
                 </span>
               </li>
               <li>
