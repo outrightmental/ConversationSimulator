@@ -10,6 +10,8 @@ vi.mock('../api/client', () => ({
     getModels: vi.fn(),
     useModel: vi.fn(),
     installModel: vi.fn(),
+    getInstallStatus: vi.fn(),
+    cancelInstall: vi.fn(),
     registerGguf: vi.fn(),
     startSidecar: vi.fn(),
   },
@@ -104,6 +106,19 @@ beforeEach(() => {
     status: 'pending',
     message: 'Install queued.',
   })
+  mockApi.getInstallStatus.mockResolvedValue({
+    id: 1,
+    registry_id: 'qwen3-4b-instruct-q4_k_m',
+    filename: 'qwen3-4b-instruct-q4_k_m.gguf',
+    file_path: '',
+    size_bytes: null,
+    install_status: 'downloading',
+    progress_bytes: null,
+    error_message: null,
+    verified_sha256: null,
+    installed_at: '2026-01-01T00:00:00Z',
+  })
+  mockApi.cancelInstall.mockResolvedValue(undefined)
   mockApi.registerGguf.mockResolvedValue(REGISTER_GGUF_RESPONSE)
   mockApi.startSidecar.mockResolvedValue({ state: 'running', pid: 1234, log_path: '/tmp/sidecar.log', host: '127.0.0.1', port: 7356 })
 })
@@ -274,6 +289,121 @@ describe('ModelManager — installing step', () => {
     fireEvent.click(screen.getByRole('button', { name: /confirm & install/i }))
     await screen.findByRole('heading', { name: /installing model/i })
     expect(screen.getByRole('heading', { name: /installing model/i })).toBeInTheDocument()
+  })
+})
+
+// ── Installing step: download progress polling ───────────────────────────────
+
+describe('ModelManager — download progress', () => {
+  async function goToInstalling() {
+    renderModelManager()
+    await screen.findByRole('button', { name: /install qwen3/i })
+    fireEvent.click(screen.getByRole('button', { name: /install qwen3/i }))
+    await screen.findByRole('button', { name: /confirm & install/i })
+    fireEvent.click(screen.getByRole('button', { name: /confirm & install/i }))
+    await screen.findByRole('heading', { name: /installing model/i })
+  }
+
+  it('polls install status and renders a progress bar with percentage', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      await goToInstalling()
+      mockApi.getInstallStatus.mockResolvedValue({
+        id: 1,
+        registry_id: 'qwen3-4b-instruct-q4_k_m',
+        filename: 'qwen3-4b-instruct-q4_k_m.gguf',
+        file_path: '',
+        size_bytes: 1_000_000_000,
+        install_status: 'downloading',
+        progress_bytes: 500_000_000,
+        error_message: null,
+        verified_sha256: null,
+        installed_at: '2026-01-01T00:00:00Z',
+      })
+
+      await vi.advanceTimersByTimeAsync(2000)
+
+      expect(mockApi.getInstallStatus).toHaveBeenCalledWith(1)
+      const bar = screen.getByRole('progressbar')
+      expect(bar.getAttribute('aria-valuenow')).toBe('50')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('navigates home when the download reaches ready', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      await goToInstalling()
+      mockApi.getInstallStatus.mockResolvedValue({
+        id: 1,
+        registry_id: 'qwen3-4b-instruct-q4_k_m',
+        filename: 'qwen3-4b-instruct-q4_k_m.gguf',
+        file_path: '/home/user/.convsim/models/llm/qwen3-4b-instruct-q4_k_m.gguf',
+        size_bytes: 1_000_000_000,
+        install_status: 'ready',
+        progress_bytes: 1_000_000_000,
+        error_message: null,
+        verified_sha256: 'a'.repeat(64),
+        installed_at: '2026-01-01T00:00:00Z',
+      })
+
+      await vi.advanceTimersByTimeAsync(2000)
+
+      await waitFor(() => expect(screen.getByTestId('home-page')).toBeInTheDocument())
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('surfaces the error and returns to confirm on checksum mismatch', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      await goToInstalling()
+      mockApi.getInstallStatus.mockResolvedValue({
+        id: 1,
+        registry_id: 'qwen3-4b-instruct-q4_k_m',
+        filename: 'qwen3-4b-instruct-q4_k_m.gguf',
+        file_path: '',
+        size_bytes: 1_000_000_000,
+        install_status: 'checksum_mismatch',
+        progress_bytes: 1_000_000_000,
+        error_message: 'SHA-256 checksum mismatch. The downloaded file has been deleted.',
+        verified_sha256: null,
+        installed_at: '2026-01-01T00:00:00Z',
+      })
+
+      await vi.advanceTimersByTimeAsync(2000)
+
+      await screen.findByRole('heading', { name: /confirm model install/i })
+      expect(screen.getByText(/checksum mismatch/i)).toBeInTheDocument()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('keeps polling through transient status errors', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      await goToInstalling()
+      mockApi.getInstallStatus.mockRejectedValueOnce(new Error('network blip'))
+
+      await vi.advanceTimersByTimeAsync(2000)
+      // Still on the installing screen; the poll swallowed the error.
+      expect(screen.getByRole('heading', { name: /installing model/i })).toBeInTheDocument()
+
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(mockApi.getInstallStatus.mock.calls.length).toBeGreaterThanOrEqual(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('cancels the install when Cancel and go home is clicked', async () => {
+    await goToInstalling()
+    fireEvent.click(screen.getByRole('button', { name: /cancel and go home/i }))
+    await waitFor(() => expect(mockApi.cancelInstall).toHaveBeenCalledWith(1))
+    await waitFor(() => expect(screen.getByTestId('home-page')).toBeInTheDocument())
   })
 })
 
