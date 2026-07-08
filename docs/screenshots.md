@@ -13,11 +13,11 @@ live, how they are licensed, and what to replace them with when the Milestone 1 
 | Used in | `README.md` |
 | License | CC0-1.0 |
 | Shows | Mid-session conversation: player turn → NPC challenge → state-variable meters → scenario event banner (`grudging_respect` triggered) — the full simulator loop in one frame |
-| Fictional content | NPC "Victor Chen" (hostile executive, job-interview scenario) — no real person |
+| Fictional content | NPC "Victor Hargrove" (hostile executive, job-interview scenario) — no real person |
 | Replace with | Animated GIF or short video (≤ 5 MB) recorded from the live app at Milestone 1 launch |
 
 **Alt text used in README:**
-> Conversation Simulator demo — a mid-session conversation with NPC Victor Chen. The player answers a technical question; the NPC challenges the trade-off. State meters below the transcript show trust at 62, patience at 48, pressure at 72. An amber banner reads "Scenario event: grudging_respect triggered · Turn 4".
+> Conversation Simulator demo — a mid-session conversation with NPC Victor Hargrove. The player answers a technical question; the NPC challenges the trade-off. State meters below the transcript show trust at 62, patience at 48, pressure at 72. An amber banner reads "Scenario event: grudging_respect triggered · Turn 4".
 
 ---
 
@@ -58,7 +58,7 @@ Applicant, 12–15 min, Hard, EN, interview, negotiation), and a Launch button.
 
 ### 03-conversation.svg — Conversation (mid-session with state meters)
 
-**What it shows:** An active conversation session. NPC panel shows Victor Chen (skeptical
+**What it shows:** An active conversation session. NPC panel shows Victor Hargrove (skeptical
 emotion, currently Listening). An amber event banner reports "grudging_respect triggered ·
 Turn 4". The transcript shows turns 2–5 (NPC turn in dark green, player turn in deep
 purple, NPC streaming response faded). Below the transcript, the NPC state variables panel
@@ -66,7 +66,7 @@ shows six meters: trust 62 (green), patience 48 (orange), pressure 72 (green), r
 (green), openness 38 (orange), obj. progress 35 (orange).
 
 **Alt text:**
-> Conversation screen mid-session. NPC Victor Chen is shown as "skeptical" and "Listening".
+> Conversation screen mid-session. NPC Victor Hargrove is shown as "skeptical" and "Listening".
 > An amber banner announces "Scenario event: grudging_respect triggered · Turn 4". The
 > transcript shows the player explaining an event-driven pipeline; the NPC's streaming
 > response is partially visible. Below, NPC state variable meters show trust, patience,

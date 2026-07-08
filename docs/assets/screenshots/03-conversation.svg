@@ -1,6 +1,6 @@
 <!-- SPDX-License-Identifier: CC0-1.0 -->
 <!-- Screenshot placeholder: Conversation screen — mid-session with NPC state meters and event banner.
-     Licensed CC0-1.0. No real people or private data. Fictional NPC: Victor Chen. -->
+     Licensed CC0-1.0. No real people or private data. Fictional NPC: Victor Hargrove. -->
 <svg xmlns="http://www.w3.org/2000/svg" width="900" height="620" viewBox="0 0 900 620">
   <rect width="900" height="620" fill="#09090b" rx="8"/>
   <rect x="1" y="1" width="898" height="618" fill="none" stroke="#27272a" stroke-width="1" rx="8"/>
@@ -28,7 +28,7 @@
   <circle cx="64" cy="138" r="18" fill="#27272a" stroke="#3f3f46" stroke-width="1.5"/>
   <circle cx="64" cy="132" r="7" fill="#52525b"/>
   <path d="M49 152 Q49 142 64 142 Q79 142 79 152" fill="#52525b"/>
-  <text x="90" y="128" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="#e4e4e7">Victor Chen</text>
+  <text x="90" y="128" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="#e4e4e7">Victor Hargrove</text>
   <text x="90" y="142" font-family="system-ui,sans-serif" font-size="10" fill="#6ee7b7">skeptical</text>
   <text x="90" y="156" font-family="system-ui,sans-serif" font-size="10" fill="#71717a">Listening</text>
 

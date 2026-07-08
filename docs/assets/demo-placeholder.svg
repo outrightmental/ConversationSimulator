@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: CC0-1.0 -->
 <!-- Placeholder demo asset — shows the simulator loop (conversation → state change → event → debrief).
      Replace with an animated GIF or video recording at launch.
-     Licensed CC0-1.0. No real people, voices, or private data. Fictional NPC: Victor Chen. -->
+     Licensed CC0-1.0. No real people, voices, or private data. Fictional NPC: Victor Hargrove. -->
 <svg xmlns="http://www.w3.org/2000/svg" width="820" height="500" viewBox="0 0 820 500">
   <!-- Background -->
   <rect width="820" height="500" fill="#09090b" rx="8"/>
@@ -26,7 +26,7 @@
   <circle cx="52" cy="121" r="18" fill="#27272a" stroke="#3f3f46" stroke-width="1.5"/>
   <circle cx="52" cy="115" r="7" fill="#52525b"/>
   <path d="M37 138 Q37 128 52 128 Q67 128 67 138" fill="#52525b"/>
-  <text x="78" y="116" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="#e4e4e7">Victor Chen</text>
+  <text x="78" y="116" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="#e4e4e7">Victor Hargrove</text>
   <text x="78" y="130" font-family="system-ui,sans-serif" font-size="10" fill="#6ee7b7">skeptical</text>
   <text x="78" y="143" font-family="system-ui,sans-serif" font-size="10" fill="#71717a">Listening</text>
 
