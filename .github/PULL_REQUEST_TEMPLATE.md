@@ -32,7 +32,7 @@ Closes #
 
 ### Scenario pack requirements (if adding or modifying a pack)
 
-- [ ] Pack contains only YAML/JSON files — no scripts, executables, or symlinks
+- [ ] Pack contains only data and asset files (YAML/JSON, images, audio, docs) — no executables, scripts, or symlinks
 - [ ] `manifest.yaml` includes a `license` field with an SPDX identifier
 - [ ] All NPCs are clearly fictional (no named real persons)
 - [ ] A safety policy YAML is present and referenced from `manifest.yaml`

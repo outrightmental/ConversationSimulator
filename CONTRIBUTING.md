@@ -209,7 +209,7 @@ Before opening a PR, confirm every applicable item:
 - [ ] Schema changes are validated (`node packages/scenario-schema/tests/validate-schemas.js`)
 - [ ] Official packs still validate (`node packages/scenario-schema/tests/validate-packs.js packs/official`)
 - [ ] Offline smoke test passes where possible (`bash scripts/smoke-check.sh`)
-- [ ] Pack files contain only YAML/JSON — no scripts, executables, or symlinks
+- [ ] Pack files are data and assets only (YAML/JSON, images, audio, docs) — no executables, scripts, or symlinks
 - [ ] New pack files include `license` metadata in `manifest.yaml`
 - [ ] `SPDX-License-Identifier` header added to new documentation files
 - [ ] NPC characters are clearly fictional (no named real persons)
