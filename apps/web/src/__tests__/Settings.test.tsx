@@ -210,6 +210,36 @@ describe('clear local data', () => {
       expect(screen.getByRole('alert')).toHaveTextContent(/disk full/i),
     )
   })
+
+  it('clicking clear again after success re-enters the confirmation flow', async () => {
+    mockApi.clearLocalData.mockResolvedValue({ deleted_sessions: 1 })
+    renderSettings()
+    fireEvent.click(screen.getByRole('button', { name: /clear all local data/i }))
+    await waitFor(() => screen.getByRole('button', { name: /confirm.*delete everything/i }))
+    fireEvent.click(screen.getByRole('button', { name: /confirm.*delete everything/i }))
+    await waitFor(() => screen.getByText(/1 session deleted/i))
+
+    // Second click should restart the two-step flow, not be a no-op
+    fireEvent.click(screen.getByRole('button', { name: /clear all local data/i }))
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /confirm.*delete everything/i })).toBeInTheDocument(),
+    )
+  })
+
+  it('clicking clear again after an error re-enters the confirmation flow', async () => {
+    mockApi.clearLocalData.mockRejectedValue(new Error('disk full'))
+    renderSettings()
+    fireEvent.click(screen.getByRole('button', { name: /clear all local data/i }))
+    await waitFor(() => screen.getByRole('button', { name: /confirm.*delete everything/i }))
+    fireEvent.click(screen.getByRole('button', { name: /confirm.*delete everything/i }))
+    await waitFor(() => screen.getByRole('alert'))
+
+    // Second click should restart the two-step flow, not be a no-op
+    fireEvent.click(screen.getByRole('button', { name: /clear all local data/i }))
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /confirm.*delete everything/i })).toBeInTheDocument(),
+    )
+  })
 })
 
 // ---------------------------------------------------------------------------

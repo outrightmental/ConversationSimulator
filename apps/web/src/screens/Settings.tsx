@@ -77,7 +77,7 @@ export default function Settings() {
   }, [])
 
   async function handleClearLocalData() {
-    if (clearState === 'idle') {
+    if (clearState === 'idle' || clearState === 'done' || clearState === 'error') {
       setClearState('confirming')
       return
     }
