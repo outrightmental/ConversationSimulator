@@ -1,5 +1,10 @@
 import Database from 'better-sqlite3';
 
+// Scenario id used for temporary workbench test sessions. These sessions are
+// created with save_transcript: false and must never appear in the normal
+// player session history (GET /api/sessions).
+export const WORKBENCH_TEST_SCENARIO_ID = 'workbench_test';
+
 let _db: Database.Database | null = null;
 
 export function initDb(path = ':memory:'): Database.Database {
