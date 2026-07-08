@@ -427,6 +427,22 @@ export default function Conversation() {
             Back to library
           </button>
         </div>
+      ) : phase === 'error' ? (
+        <div style={{ textAlign: 'center' }}>
+          <button
+            onClick={() => navigate('/library')}
+            style={{
+              padding: '0.5rem 1rem',
+              borderRadius: 6,
+              border: '1px solid #52525b',
+              background: 'transparent',
+              color: '#a1a1aa',
+              cursor: 'pointer',
+            }}
+          >
+            Back to library
+          </button>
+        </div>
       ) : (
         <form onSubmit={(e) => void handleSubmit(e)} style={{ display: 'flex', gap: '0.5rem' }}>
           <textarea

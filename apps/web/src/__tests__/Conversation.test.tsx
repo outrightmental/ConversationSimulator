@@ -139,6 +139,14 @@ describe('Conversation screen', () => {
       )
     })
 
+    it('shows a back-to-library button when startSession fails fatally', async () => {
+      mockApi.startSession.mockRejectedValue(new Error('Connection refused'))
+      renderConversation()
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: /back to library/i })).toBeInTheDocument(),
+      )
+    })
+
     it('recovers gracefully when session was already started (409)', async () => {
       mockApi.startSession.mockRejectedValue(new Error('INVALID_TRANSITION'))
       renderConversation()
