@@ -22,9 +22,17 @@ Licensing summary by content type (SPDX identifiers):
     SPDX-License-Identifier: CC-BY-4.0
     https://creativecommons.org/licenses/by/4.0/
 
-  Placeholder assets (portrait placeholders, background placeholders):
+  Placeholder assets (demo asset, screenshots, portrait placeholders, background placeholders):
     SPDX-License-Identifier: CC0-1.0
     https://creativecommons.org/publicdomain/zero/1.0/
+    Files: docs/assets/demo-placeholder.svg
+           docs/assets/screenshots/01-home.svg
+           docs/assets/screenshots/02-scenario-library.svg
+           docs/assets/screenshots/03-conversation.svg
+           docs/assets/screenshots/04-debrief.svg
+           docs/assets/screenshots/05-creator-workbench.svg
+           docs/assets/screenshots/06-model-manager.svg
+    Content: All fictional NPCs and scenario data. No real people, voices, or private data.
 
   Model weights:
     Not bundled in this repository.
