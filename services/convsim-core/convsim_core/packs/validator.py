@@ -42,6 +42,16 @@ _VALIDATORS: dict[str, jsonschema.Draft202012Validator] = {
 
 CONTENT_RATINGS = frozenset({"G", "PG", "PG-13"})
 
+# NPC archetype slugs that indicate companion or romantic-partner framing.
+# Packs using these archetypes receive a COMPANION_FRAMING warning because
+# the MVP does not support AI-companion or dating-by-default experiences.
+# See docs/dating-confidence-boundaries.md for the permitted PG-13 scope.
+_COMPANION_ARCHETYPES = frozenset({
+    "girlfriend", "boyfriend", "romantic_partner", "lover",
+    "wife", "husband", "ai_companion", "ai_girlfriend", "ai_boyfriend",
+    "waifu", "husbando",
+})
+
 # File extensions that are never permitted inside a pack directory or archive.
 FORBIDDEN_EXTENSIONS = frozenset({
     ".exe", ".bat", ".cmd", ".sh", ".ps1", ".py", ".js", ".mjs", ".cjs",
@@ -430,6 +440,20 @@ class _PackValidator:
                 f"NPC '{npc_id}' is missing 'fictional: true'. All NPCs must be declared fictional.",
                 "Add 'fictional: true' to this NPC file. "
                 "Impersonating real people is not permitted.",
+            )
+        archetype = npc_data.get("archetype", "")
+        if archetype in _COMPANION_ARCHETYPES:
+            npc_id = npc_data.get("npc_id", rel)
+            self._warning(
+                "COMPANION_FRAMING",
+                rel,
+                "/archetype",
+                f"NPC '{npc_id}' uses archetype '{archetype}', which frames the NPC as a "
+                "romantic or AI companion. Companion-framing archetypes are not permitted "
+                "in MVP packs.",
+                "Change the archetype to a non-romantic role (e.g. 'barista', 'classmate', "
+                "'coworker'). For dating-confidence scenarios, see "
+                "docs/dating-confidence-boundaries.md for permitted scope.",
             )
         self._validated_content.add(npc_path.resolve())
 
