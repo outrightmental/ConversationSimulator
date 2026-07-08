@@ -122,8 +122,64 @@ def make_pack_dir(base: Path, manifest: dict | None = None, extra_files: dict | 
 
     scenarios_dir = pack_dir / "scenarios"
     scenarios_dir.mkdir(exist_ok=True)
-    (scenarios_dir / "intro.yaml").write_text("scenario_id: intro\ntitle: Intro\n", encoding="utf-8")
-    (scenarios_dir / "advanced.yaml").write_text("scenario_id: advanced\ntitle: Advanced\n", encoding="utf-8")
+    (scenarios_dir / "intro.yaml").write_text(
+        "schema_version: '0.1'\n"
+        "scenario_id: intro\n"
+        "title: Introduction Scenario\n"
+        "summary: Practice introductory conversation skills with a friendly partner.\n"
+        "player_role:\n"
+        "  label: Participant\n"
+        "  brief: You are attending a first meeting.\n"
+        "npc:\n"
+        "  ref: ../npcs/host.yaml\n"
+        "rubric:\n"
+        "  ref: ../rubrics/intro_rubric.yaml\n"
+        "duration:\n"
+        "  max_turns: 10\n"
+        "  soft_time_limit_minutes: 8\n"
+        "opening:\n"
+        "  npc_says: Hello! Welcome to the session.\n"
+        "goals:\n"
+        "  player_visible:\n"
+        "    - Build rapport with the host\n"
+        "    - Demonstrate active listening\n"
+        "  hidden:\n"
+        "    - Host is evaluating your communication style\n"
+        "difficulty:\n"
+        "  default: easy\n"
+        "  options:\n"
+        "    easy:\n"
+        "      npc_patience_modifier: 10\n"
+        "    normal:\n"
+        "      npc_patience_modifier: 0\n",
+        encoding="utf-8",
+    )
+    (scenarios_dir / "advanced.yaml").write_text(
+        "schema_version: '0.1'\n"
+        "scenario_id: advanced\n"
+        "title: Advanced Challenge\n"
+        "summary: A high-pressure scenario for experienced participants.\n"
+        "player_role:\n"
+        "  label: Senior Participant\n"
+        "  brief: You are the lead responder.\n"
+        "npc:\n"
+        "  ref: ../npcs/host.yaml\n"
+        "rubric:\n"
+        "  ref: ../rubrics/intro_rubric.yaml\n"
+        "duration:\n"
+        "  max_turns: 20\n"
+        "  soft_time_limit_minutes: 15\n"
+        "opening:\n"
+        "  npc_says: Let us begin the advanced session.\n"
+        "goals:\n"
+        "  player_visible:\n"
+        "    - Demonstrate expertise under pressure\n"
+        "  hidden:\n"
+        "    - Evaluating leadership qualities\n"
+        "difficulty:\n"
+        "  default: hard\n",
+        encoding="utf-8",
+    )
 
     portraits_dir = pack_dir / "assets" / "portraits"
     portraits_dir.mkdir(parents=True, exist_ok=True)
