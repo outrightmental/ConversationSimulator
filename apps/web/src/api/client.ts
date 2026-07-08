@@ -187,6 +187,8 @@ export interface WorkbenchValidationIssue {
   pointer: string
   message: string
   suggested_fix: string
+  category?: 'security' | 'schema' | 'structure' | 'syntax'
+  line?: number
 }
 
 export interface WorkbenchValidation {
