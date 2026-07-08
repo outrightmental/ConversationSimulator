@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 _DEFAULT_MODEL_PATH = str(Path.home() / ".convsim" / "models" / "vad" / "silero_vad.onnx")
 _SILERO_SAMPLE_RATE = 16000
 _FRAME_SAMPLES = 512  # 32 ms at 16 kHz — the frame size Silero expects
+_CONTEXT_SAMPLES = 64  # v5 prepends the previous frame's tail as context (576 = 64 + 512)
 
 
 class SileroVadConfig(BaseSettings):
@@ -142,21 +143,29 @@ def _frame_energies(samples: list[float]) -> list[float]:
 
 
 def _run_silero_sync(session, samples: list[float]) -> list[float]:
-    """Run the Silero ONNX model on samples, returning per-frame confidence scores."""
+    """Run the Silero VAD v5 ONNX model on samples, returning per-frame confidences.
+
+    The v5 model (the one download-model.sh fetches from master) expects, per
+    512-sample frame at 16 kHz, an input window of 576 samples: 64 samples of
+    context (the tail of the previous frame, zeros for the first) followed by
+    the current frame.  A single ``(2, 1, 128)`` recurrent ``state`` tensor is
+    threaded across frames.  (Older v4 models used separate ``h``/``c`` inputs.)
+    """
     import numpy as np  # only imported here; onnxruntime users have numpy transitively
 
-    h = np.zeros((2, 1, 64), dtype=np.float32)
-    c = np.zeros((2, 1, 64), dtype=np.float32)
-    audio = np.array(samples, dtype=np.float32)
+    state = np.zeros((2, 1, 128), dtype=np.float32)
     sr = np.array([_SILERO_SAMPLE_RATE], dtype=np.int64)
+    audio = np.array(samples, dtype=np.float32)
+    context = np.zeros(_CONTEXT_SAMPLES, dtype=np.float32)
     confidences: list[float] = []
 
     for start in range(0, len(audio) - _FRAME_SAMPLES + 1, _FRAME_SAMPLES):
-        frame = audio[start : start + _FRAME_SAMPLES][np.newaxis, :]  # (1, 512)
-        outs = session.run(None, {"input": frame, "h": h, "c": c, "sr": sr})
+        frame = audio[start : start + _FRAME_SAMPLES]
+        window = np.concatenate((context, frame))[np.newaxis, :]  # (1, 576)
+        outs = session.run(None, {"input": window, "state": state, "sr": sr})
         confidences.append(float(outs[0].squeeze()))
-        h = outs[1]
-        c = outs[2]
+        state = outs[1]
+        context = frame[-_CONTEXT_SAMPLES:]
 
     return confidences
 

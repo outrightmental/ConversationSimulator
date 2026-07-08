@@ -9,10 +9,13 @@ import pytest
 
 from convsim_core.runtime.types import RuntimeStatus
 from convsim_core.vad.silero import (
+    _CONTEXT_SAMPLES,
+    _FRAME_SAMPLES,
     SileroVadConfig,
     SileroVadWorker,
     _frame_energies,
     _rms,
+    _run_silero_sync,
     _try_wav_to_pcm,
 )
 from convsim_core.vad.types import VadRequest
@@ -118,6 +121,38 @@ def test_try_wav_to_pcm_handles_stereo_by_mixing_to_mono():
     assert samples is not None
     assert len(samples) == n
     assert all(abs(s - 0.3) < 0.02 for s in samples)
+
+
+# ---------------------------------------------------------------------------
+# _run_silero_sync — ONNX invocation contract (guards against v4/v5 mismatch)
+# ---------------------------------------------------------------------------
+
+
+def test_run_silero_sync_uses_v5_input_contract():
+    """The window fed to session.run must match the v5 model signature the
+    download script fetches: inputs named input/state/sr, a 576-sample window
+    (64 context + 512 frame), and a (2,1,128) state — not the v4 h/c inputs."""
+    np = pytest.importorskip("numpy")  # ships with the optional [vad] extra
+
+    calls: list[dict] = []
+
+    class _FakeSession:
+        def run(self, _outputs, feeds):
+            calls.append(feeds)
+            # Mimic v5 outputs: (confidence, next_state)
+            return [np.array([[0.5]], dtype=np.float32), feeds["state"]]
+
+    samples = [0.01] * (_FRAME_SAMPLES * 3)
+    confidences = _run_silero_sync(_FakeSession(), samples)
+
+    assert len(confidences) == 3  # one score per full 512-sample frame
+    assert len(calls) == 3
+    for feed in calls:
+        assert set(feed.keys()) == {"input", "state", "sr"}
+        assert feed["input"].shape == (1, _CONTEXT_SAMPLES + _FRAME_SAMPLES)
+        assert feed["state"].shape == (2, 1, 128)
+    # First frame's context is zeros; later frames carry the prior frame's tail.
+    assert np.allclose(calls[0]["input"][0, :_CONTEXT_SAMPLES], 0.0)
 
 
 # ---------------------------------------------------------------------------
