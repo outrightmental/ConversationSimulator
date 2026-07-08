@@ -311,6 +311,7 @@ MIGRATIONS: list[tuple[str, str]] = [
     ("0008_session_debriefs_unique_idx", _DEBRIEF_UNIQUE_IDX_SQL),
     ("0009_scenario_library_schema", _SCENARIO_LIBRARY_SCHEMA_SQL),
     ("0010_user_gguf_profiles", _USER_GGUF_PROFILES_SQL),
+    ("0011_model_download_verified", _MODEL_DOWNLOAD_VERIFIED_SQL),
 ]
 
 

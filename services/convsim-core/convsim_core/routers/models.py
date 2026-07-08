@@ -28,6 +28,7 @@ from convsim_core.services.model_manager_service import (
     get_active_config,
     get_install_record,
     get_installed_models,
+    mark_install_failed,
     register_user_gguf,
     save_benchmark_result,
     set_active_config,
@@ -355,6 +356,49 @@ async def install_model(request: Request, body: InstallModelRequest) -> InstallM
         status="pending",
         message=f"Downloading '{model['name']}'. Poll GET /api/models/install/{install_id} for progress.",
     )
+
+
+@router.get("/api/models/install/{install_id}", response_model=InstalledModelInfo)
+async def get_install_status(request: Request, install_id: int) -> InstalledModelInfo:
+    """Return the current status and progress of an install record."""
+    conn = request.app.state.db.connection()
+    record = get_install_record(conn, install_id)
+    if record is None:
+        raise ConvsimError(
+            code="INSTALL_NOT_FOUND",
+            message=f"Install record {install_id} not found.",
+            status_code=404,
+        )
+    return InstalledModelInfo(**record)
+
+
+@router.delete("/api/models/install/{install_id}", status_code=204)
+async def cancel_install(request: Request, install_id: int) -> None:
+    """Cancel an in-progress download, or return 409 if already in a terminal state."""
+    conn = request.app.state.db.connection()
+    record = get_install_record(conn, install_id)
+    if record is None:
+        raise ConvsimError(
+            code="INSTALL_NOT_FOUND",
+            message=f"Install record {install_id} not found.",
+            status_code=404,
+        )
+
+    _TERMINAL = {"ready", "complete", "failed", "cancelled", "checksum_mismatch"}
+    if record["install_status"] in _TERMINAL:
+        raise ConvsimError(
+            code="INSTALL_NOT_CANCELLABLE",
+            message=f"Install {install_id} is already in terminal state '{record['install_status']}'.",
+            status_code=409,
+        )
+
+    # Signal the background download task if one is running.
+    event = _cancel_events.get(install_id)
+    if event is not None:
+        event.set()
+    else:
+        # No active download task; mark as cancelled directly.
+        mark_install_failed(conn, install_id, "Cancelled by user.", status="cancelled")
 
 
 @router.post("/api/models/register-gguf", response_model=RegisterGgufResponse)
