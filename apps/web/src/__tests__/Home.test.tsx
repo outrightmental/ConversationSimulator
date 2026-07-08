@@ -150,6 +150,22 @@ describe('Home — no-model state', () => {
   })
 })
 
+describe('Home — no-model links lead to model manager', () => {
+  it('GGUF model link goes to /model-manager', async () => {
+    stubFetches(makeHealth(), makePacks(0))
+    renderHome()
+    const link = await screen.findByRole('link', { name: /install a gguf model/i })
+    expect(link).toHaveAttribute('href', '/model-manager')
+  })
+
+  it('Ollama link goes to /model-manager', async () => {
+    stubFetches(makeHealth(), makePacks(0))
+    renderHome()
+    const link = await screen.findByRole('link', { name: /connect ollama/i })
+    expect(link).toHaveAttribute('href', '/model-manager')
+  })
+})
+
 describe('Home — no-pack state', () => {
   it('shows None installed when pack count is zero', async () => {
     stubFetches(makeHealth(), makePacks(0))
