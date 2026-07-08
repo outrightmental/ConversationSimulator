@@ -97,6 +97,11 @@ def test_host_config_rejects_ipv6_wildcard():
         ServiceConfig(host="::", lan_access_enabled=False)
 
 
+def test_host_config_allows_ipv6_wildcard_with_lan_access():
+    config = ServiceConfig(host="::", lan_access_enabled=True)
+    assert config.host == "::"
+
+
 def test_host_config_allows_localhost():
     config = ServiceConfig(host="127.0.0.1", lan_access_enabled=False)
     assert config.host == "127.0.0.1"
