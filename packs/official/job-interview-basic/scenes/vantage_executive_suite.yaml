@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scene_id: vantage_executive_suite
+display_name: "Vantage Fintech — VP's Corner Office"
+background: assets/backgrounds/executive_suite_placeholder.png
+description: >-
+  A large corner office on the thirty-first floor of a downtown financial
+  district tower. Floor-to-ceiling windows frame a view of the city skyline.
+  The desk is immaculate — a single closed laptop, a legal pad with neat
+  handwriting, and nothing else. Two low chairs face the desk at a deliberate
+  distance that makes the power dynamic visible. The room is quiet except for
+  the faint hum of climate control.
+ambient: quiet_office

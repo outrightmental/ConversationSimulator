@@ -1,0 +1,53 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+rubric_id: blue_collar_rubric
+title: Supervisor Interview Practical Fit Rubric
+dimensions:
+  - id: practicality
+    name: Practicality
+    description: >-
+      Whether the player's answers demonstrate knowledge of how hands-on work
+      actually operates — logistics, physical demands, crew dynamics, shift
+      realities — rather than abstract management theory.
+    scoring:
+      low: Answers are generic or rely on corporate-speak; player shows little evidence of understanding what the day-to-day work involves.
+      medium: Player demonstrates some understanding of the practical context but slips into theoretical framing or misses important operational specifics.
+      high: Answers are grounded in real operational detail; player speaks fluently about crew coordination, shift realities, and the practical demands of the role.
+    weight: 0.30
+
+  - id: reliability
+    name: Reliability
+    description: >-
+      Whether the player demonstrates a track record of showing up, following
+      through, and being dependable over time. Are there specific examples of
+      consistency under difficult circumstances?
+    scoring:
+      low: Player gives no concrete examples of reliability, or examples reveal inconsistency, frequent job changes without explanation, or avoidance of difficult situations.
+      medium: Player cites some evidence of reliability but answers are vague, short on specifics, or focus only on ideal conditions.
+      high: Player names specific situations where they showed up, followed through, or stayed dependable under real pressure — with concrete, verifiable-sounding detail.
+    weight: 0.30
+
+  - id: crew_awareness
+    name: Crew Awareness
+    description: >-
+      Whether the player shows an understanding that leading a crew is relational
+      and context-dependent. Does the player recognize that respect is earned,
+      not assigned by title? Do they think about how decisions affect the team?
+    scoring:
+      low: Player focuses exclusively on task outcomes with no reference to team dynamics, morale, or how leadership affects the people being led.
+      medium: Player acknowledges the human element but in vague or abstract terms; does not give a specific example of adapting leadership to a crew situation.
+      high: Player gives a specific example of understanding crew dynamics — earning trust, handling conflict, or adapting their style to the needs of individual team members.
+    weight: 0.25
+
+  - id: motivation_fit
+    name: Motivation Fit
+    description: >-
+      Whether the player's stated reasons for wanting the role are credible and
+      consistent with actually wanting to do this specific job. Does the player
+      seem genuinely motivated, or are they treating this as a stepping stone
+      or fallback?
+    scoring:
+      low: Player's motivation seems disconnected from the actual work — focuses on title, pay, or advancement without referencing the job itself.
+      medium: Player expresses some genuine interest but in generic terms that could apply to any job; nothing specific to this role or environment.
+      high: Player articulates a specific, credible reason for wanting this role in this environment that is consistent with the actual demands of the work.
+    weight: 0.15

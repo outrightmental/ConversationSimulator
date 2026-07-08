@@ -8,14 +8,14 @@ export interface DocBundle {
   manifest: Record<string, unknown>;
 }
 
-const TOP_LEVEL_DOCS = new Set(['npc', 'safety', 'manifest', 'rubric']);
+const TOP_LEVEL_DOCS = new Set(['scenario', 'npc', 'safety', 'manifest', 'rubric']);
 
 /**
  * Resolve a dot-path expression against the document bundle.
  *
  * The first segment selects the root document when it matches a top-level key
- * (npc, safety, manifest, rubric). All other paths are resolved against the
- * scenario document.
+ * (scenario, npc, safety, manifest, rubric). All other paths are resolved
+ * against the scenario document.
  *
  * Bracket selectors within a segment select an array element by a key=value
  * match: `events[id=rambling_redirect]` finds the first item in the `events`

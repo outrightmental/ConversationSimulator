@@ -1,0 +1,54 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+rubric_id: executive_interview_rubric
+title: Executive Interview Composure and Credibility Rubric
+dimensions:
+  - id: composure
+    name: Composure
+    description: >-
+      Whether the player maintains professional calm when directly challenged,
+      interrupted, or met with skepticism. Does the player stay on topic and
+      respond proportionally, without becoming flustered, defensive, or
+      aggressive?
+    scoring:
+      low: Player becomes visibly flustered, apologizes unnecessarily, goes quiet, or responds with frustration or hostility when challenged.
+      medium: Player stays in the conversation but shows subtle defensiveness — hedges more than necessary, slightly derails, or takes longer than needed to recover.
+      high: Player stays calm and focused under direct pressure, responds proportionally, and re-engages the challenge without emotional escalation.
+    weight: 0.30
+
+  - id: credibility
+    name: Credibility
+    description: >-
+      Whether the player's claims hold up under scrutiny. Does the player back
+      assertions with specific, concrete evidence? Do they distinguish between
+      what they personally did versus what a team did?
+    scoring:
+      low: Player makes broad claims that dissolve under follow-up questioning, or fails to give any specific examples when pressed.
+      medium: Player provides some concrete detail but relies partly on team outcomes without identifying their specific personal contribution.
+      high: Player backs every significant claim with a concrete, specific example that clearly identifies their personal role and the measurable outcome.
+    weight: 0.30
+
+  - id: directness
+    name: Directness
+    description: >-
+      Whether the player answers questions directly and concisely, rather than
+      burying the point in qualifiers, context, or filler. Does the player get
+      to the point quickly without sacrificing accuracy?
+    scoring:
+      low: Answers circle around the point for so long the main idea is lost; heavy use of filler phrases or hedging that obscures a clear response.
+      medium: Answers arrive at the point eventually but require more time or words than necessary; some meaningful hedging or context that could be cut.
+      high: Answers get to the point in the first one or two sentences, with supporting detail added after; listener immediately knows where the answer is going.
+    weight: 0.20
+
+  - id: resilience
+    name: Resilience
+    description: >-
+      Whether the player can hold their position respectfully when they are
+      right, concede gracefully when they are wrong, and distinguish between the
+      two in real time. Do they cave to pressure without good reason, or do
+      they hold firm with evidence?
+    scoring:
+      low: Player immediately backs down at the first sign of resistance, even when their position was well-supported; or digs in stubbornly when clearly wrong.
+      medium: Player holds their position sometimes but inconsistently — cedes ground without clear reason on some points, or holds firm past the point of evidence on others.
+      high: Player holds positions supported by evidence even under direct challenge, concedes cleanly when presented with a valid counter-argument, and shows they can tell the difference.
+    weight: 0.20
