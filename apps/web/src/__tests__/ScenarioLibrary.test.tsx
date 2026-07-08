@@ -42,6 +42,7 @@ const SCENARIO_BEHAVIORAL: ScenarioInfo = {
   safety_summary: 'PG content only.',
   estimated_length_label: '15–20 minutes',
   tags: ['interview', 'professional'],
+  recommended_model: ['claude-opus-4-8', 'claude-sonnet-4-6'],
 }
 
 const SCENARIO_HOSTILE: ScenarioInfo = {
@@ -66,6 +67,7 @@ const SCENARIO_HOSTILE: ScenarioInfo = {
   safety_summary: 'PG content only.',
   estimated_length_label: '12–18 minutes',
   tags: ['interview', 'professional', 'pressure'],
+  recommended_model: ['claude-opus-4-8', 'claude-sonnet-4-6'],
 }
 
 const SCENARIO_SPANISH: ScenarioInfo = {
@@ -263,6 +265,24 @@ describe('scenario card rendering', () => {
     // 'language' tag appears on the Spanish scenario card (also in the filter option)
     expect(screen.getAllByText('language').length).toBeGreaterThan(0)
   })
+
+  it('shows recommended model chips when scenario has recommended_model', async () => {
+    renderLibrary()
+    await waitFor(() => screen.getByText('Behavioral Interview'))
+    // Both job-interview scenarios have recommended_model set
+    expect(screen.getAllByText('claude-opus-4-8').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('claude-sonnet-4-6').length).toBeGreaterThan(0)
+  })
+
+  it('does not show model chips for scenarios without recommended_model', async () => {
+    renderLibrary()
+    await waitFor(() => screen.getByText('Spanish Coffee Conversation'))
+    // SCENARIO_SPANISH has no recommended_model — its card section should have no model chips
+    // We can't assert model text is absent globally since other cards show them, but
+    // the Spanish pack section has exactly 1 scenario
+    const spanishSection = screen.getByRole('heading', { name: /language café/i }).closest('section')!
+    expect(spanishSection.textContent).not.toMatch(/claude-opus/)
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -434,6 +454,24 @@ describe('filters', () => {
     })
     await waitFor(() => expect(screen.queryByText('Behavioral Interview')).not.toBeInTheDocument())
     expect(screen.getByText('Spanish Coffee Conversation')).toBeInTheDocument()
+  })
+
+  it('filter by recommended model shows only matching scenarios', async () => {
+    renderLibrary()
+    await waitFor(() => screen.getByText('Behavioral Interview'))
+    fireEvent.change(screen.getByRole('combobox', { name: /filter by recommended model/i }), {
+      target: { value: 'claude-opus-4-8' },
+    })
+    await waitFor(() => expect(screen.queryByText('Spanish Coffee Conversation')).not.toBeInTheDocument())
+    expect(screen.getByText('Behavioral Interview')).toBeInTheDocument()
+    expect(screen.getByText('Hostile Executive Interview')).toBeInTheDocument()
+  })
+
+  it('model filter dropdown is hidden when no scenarios have recommended_model', async () => {
+    mockApi.listScenarios.mockResolvedValue([SCENARIO_SPANISH])
+    renderLibrary()
+    await waitFor(() => screen.getByText('Spanish Coffee Conversation'))
+    expect(screen.queryByRole('combobox', { name: /filter by recommended model/i })).not.toBeInTheDocument()
   })
 
   it('shows no-results message when filters produce zero matches', async () => {
