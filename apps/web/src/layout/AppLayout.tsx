@@ -18,16 +18,20 @@ const linkStyle = ({ isActive }: { isActive: boolean }): React.CSSProperties => 
   color: '#e8e8ea',
 })
 
-const skipLinkStyle: React.CSSProperties = {
-  position: 'absolute',
-  left: '-9999px',
-  top: 'auto',
-  width: 1,
-  height: 1,
-  overflow: 'hidden',
-}
-
+// Both the hidden base state and the focus reveal live in this stylesheet.
+// Applying the base styles inline instead would defeat the reveal: inline
+// styles always beat stylesheet rules, so `.skip-link:focus` could never
+// override an inline `position`/`left`/`width`, and the link would stay hidden
+// even when focused.
 const skipLinkFocusStyle = `
+  .skip-link {
+    position: absolute;
+    left: -9999px;
+    top: auto;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+  }
   .skip-link:focus {
     position: static;
     width: auto;
@@ -62,7 +66,7 @@ export default function AppLayout() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       <style>{skipLinkFocusStyle}</style>
-      <a href="#main-content" className="skip-link" style={skipLinkStyle}>
+      <a href="#main-content" className="skip-link">
         Skip to main content
       </a>
 
