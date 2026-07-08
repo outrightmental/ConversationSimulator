@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import type { SessionCreateRequest } from '@convsim/shared'
 import Settings from '../screens/Settings'
 
 vi.mock('../api/client', () => ({
@@ -19,17 +20,17 @@ const mockApi = vi.mocked(api)
 const SESSION_A = {
   session_id: 'sess-aaa',
   scenario_id: 'behavioral_interview',
-  state: 'Ended',
+  state: 'Ended' as const,
   created_at: '2026-01-01T00:00:00.000Z',
-  setup: {},
+  setup: {} as unknown as SessionCreateRequest,
 }
 
 const SESSION_B = {
   session_id: 'sess-bbb',
   scenario_id: 'sales_call',
-  state: 'NotStarted',
+  state: 'NotStarted' as const,
   created_at: '2026-01-02T00:00:00.000Z',
-  setup: {},
+  setup: {} as unknown as SessionCreateRequest,
 }
 
 function renderSettings() {
@@ -331,7 +332,7 @@ describe('your sessions', () => {
 
   it('clicking Export calls exportSession', async () => {
     mockApi.listSessions.mockResolvedValue({ sessions: [SESSION_A] })
-    mockApi.exportSession.mockResolvedValue({ session: SESSION_A, events: [] })
+    mockApi.exportSession.mockResolvedValue({ session: { ...SESSION_A, ending_type: null, state_vars: {}, turn_count: 0 }, events: [] })
     // Stub URL.createObjectURL/revokeObjectURL which jsdom does not implement.
     const origURL = globalThis.URL
     Object.defineProperty(globalThis, 'URL', {
