@@ -137,9 +137,18 @@ export default function Conversation() {
         })
 
         if (devMode) {
+          // Split the model's requested delta into entries that target tracked
+          // state variables (applied) and entries for unknown variables that the
+          // reducer below silently drops (rejected) — surfacing model drift.
+          const appliedDelta: Record<string, number> = {}
+          const rejectedDelta: Record<string, number> = {}
+          for (const [k, d] of Object.entries(delta)) {
+            if (k in BASELINE_STATE_VARS) appliedDelta[k] = d
+            else rejectedDelta[k] = d
+          }
           setDebugEntries((prev) => [
             ...prev,
-            { turnId: uid, role: 'npc', rawPayload: payload, appliedDelta: delta },
+            { turnId: uid, role: 'npc', rawPayload: payload, appliedDelta, rejectedDelta },
           ])
         }
 

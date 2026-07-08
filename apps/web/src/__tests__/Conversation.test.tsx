@@ -361,6 +361,36 @@ describe('Conversation screen', () => {
       expect(document.body.innerHTML).not.toContain(HIDDEN_AGENDA)
       expect(document.body.innerHTML).not.toContain('suspicious')
     })
+
+    it('surfaces model deltas for unknown variables as rejected in dev mode', async () => {
+      localStorage.setItem('convsim.devMode', 'true')
+      mockApi.submitTurn.mockResolvedValue({
+        ...turnResponse,
+        events: [
+          turnResponse.events[0],
+          {
+            ...turnResponse.events[1],
+            payload: {
+              ...turnResponse.events[1].payload,
+              // trust is a tracked variable; made_up_var is not and must be rejected
+              state_delta: { trust: 5, made_up_var: 9 },
+            },
+          },
+        ],
+      })
+      renderConversation()
+      await waitFor(() =>
+        expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument(),
+      )
+
+      const textarea = screen.getByRole('textbox', { name: /your response/i })
+      fireEvent.change(textarea, { target: { value: 'My answer.' } })
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+
+      await waitFor(() =>
+        expect(screen.getByLabelText('Contains rejected state delta')).toBeInTheDocument(),
+      )
+    })
   })
 
   describe('session ends via max turns', () => {

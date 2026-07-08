@@ -5,7 +5,10 @@ export interface DebugTurnEntry {
   turnId: number
   role: 'npc_opening' | 'npc'
   rawPayload: Record<string, unknown>
+  /** Delta entries that were committed to tracked NPC state variables. */
   appliedDelta: Record<string, number>
+  /** Delta entries the model requested for unknown variables — dropped, never applied. */
+  rejectedDelta?: Record<string, number>
 }
 
 // Fields that may contain hidden NPC agenda — highlighted so they can't be missed
@@ -119,6 +122,8 @@ function CopyButton({ payload }: { payload: Record<string, unknown> }) {
 function DebugTurnItem({ entry, index }: { entry: DebugTurnEntry; index: number }) {
   const agendaFields = Object.keys(entry.rawPayload).filter((k) => AGENDA_FIELDS.has(k))
   const hasDelta = Object.keys(entry.appliedDelta).length > 0
+  const rejectedDelta = entry.rejectedDelta ?? {}
+  const hasRejected = Object.keys(rejectedDelta).length > 0
 
   return (
     <details style={{ borderBottom: '1px solid #1c1c1e', padding: '0.4rem 0' }}>
@@ -166,6 +171,21 @@ function DebugTurnItem({ entry, index }: { entry: DebugTurnEntry; index: number 
             Δ state
           </span>
         )}
+        {hasRejected && (
+          <span
+            aria-label="Contains rejected state delta"
+            style={{
+              fontSize: '0.6rem',
+              padding: '0 0.3rem',
+              background: 'rgba(239,68,68,0.12)',
+              border: '1px solid rgba(239,68,68,0.35)',
+              borderRadius: 3,
+              color: '#fca5a5',
+            }}
+          >
+            ⊘ rejected
+          </span>
+        )}
       </summary>
 
       <div style={{ marginTop: '0.4rem', display: 'flex', flexDirection: 'column', gap: '0.4rem', paddingLeft: '0.5rem' }}>
@@ -197,6 +217,19 @@ function DebugTurnItem({ entry, index }: { entry: DebugTurnEntry; index: number 
               Applied state delta
             </div>
             <JsonBlock data={entry.appliedDelta} />
+          </div>
+        )}
+
+        {hasRejected && (
+          <div>
+            <div
+              role="note"
+              aria-label="Rejected state delta"
+              style={{ fontSize: '0.65rem', color: '#fca5a5', marginBottom: 2 }}
+            >
+              Rejected state delta (unknown variables — not applied)
+            </div>
+            <JsonBlock data={rejectedDelta} />
           </div>
         )}
 

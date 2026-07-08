@@ -30,7 +30,8 @@ The conversation screen includes a collapsible debug drawer that shows raw model
 **What the drawer shows per turn:**
 
 - Raw model JSON payload (the full `npc_opening` / `npc_turn` event payload as returned by the backend).
-- Applied state delta for that turn (the numeric changes actually committed to NPC state variables).
+- Applied state delta for that turn (the numeric changes actually committed to tracked NPC state variables).
+- Rejected state delta (a red `⊘ rejected` badge and section) when the model requests changes to variables the simulator does not track — these are dropped, never applied. This is a common model-drift signal.
 - An amber `agenda` badge and highlighted field list when the payload contains hidden NPC fields (`agenda`, `hidden_state`, `prompt_metadata`, etc.).
 
 **Copy to clipboard:** each entry has a copy button. Raw audio fields (`audio`, `audio_data`, `tts_audio`, `raw_audio`) and `secret` fields are redacted before writing to the clipboard. A persistent warning label marks this redaction.

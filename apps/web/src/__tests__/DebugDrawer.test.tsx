@@ -92,6 +92,21 @@ describe('DebugDrawer', () => {
       render(<DebugDrawer entries={[makeEntry({ role: 'npc_opening' })]} />)
       expect(screen.getByText('(npc_opening)')).toBeInTheDocument()
     })
+
+    it('shows rejected delta badge and section when rejectedDelta is non-empty', () => {
+      render(
+        <DebugDrawer
+          entries={[makeEntry({ appliedDelta: { trust: 5 }, rejectedDelta: { made_up_var: 3 } })]}
+        />,
+      )
+      expect(screen.getByLabelText('Contains rejected state delta')).toBeInTheDocument()
+      expect(screen.getByLabelText('Rejected state delta')).toBeInTheDocument()
+    })
+
+    it('does not show rejected delta badge when rejectedDelta is empty or absent', () => {
+      render(<DebugDrawer entries={[makeEntry({ appliedDelta: { trust: 5 } })]} />)
+      expect(screen.queryByLabelText('Contains rejected state delta')).not.toBeInTheDocument()
+    })
   })
 
   describe('hidden NPC agenda fields', () => {
