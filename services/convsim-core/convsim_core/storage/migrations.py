@@ -225,7 +225,12 @@ CREATE TABLE session_debriefs (
     content_json TEXT    NOT NULL,
     generated_at TEXT    NOT NULL DEFAULT (datetime('now'))
 );
-CREATE INDEX session_debriefs_session_id ON session_debriefs(session_id);
+CREATE UNIQUE INDEX session_debriefs_session_id ON session_debriefs(session_id);
+"""
+
+_DEBRIEF_UNIQUE_IDX_SQL = """
+DROP INDEX IF EXISTS session_debriefs_session_id;
+CREATE UNIQUE INDEX session_debriefs_session_id ON session_debriefs(session_id);
 """
 
 _SCENARIO_LIBRARY_SCHEMA_SQL = """
@@ -263,7 +268,7 @@ MIGRATIONS: list[tuple[str, str]] = [
     ("0005_turn_pipeline", _TURN_PIPELINE_SQL),
     ("0006_turn_transcript_and_events", _TURN_TRANSCRIPT_AND_EVENTS_SQL),
     ("0007_session_debriefs", _DEBRIEF_TABLE_SQL),
-    ("0008_scenario_library_schema", _SCENARIO_LIBRARY_SCHEMA_SQL),
+    ("0008_session_debriefs_unique_idx", _DEBRIEF_UNIQUE_IDX_SQL),
 ]
 
 
