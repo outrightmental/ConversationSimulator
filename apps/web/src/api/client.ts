@@ -25,7 +25,7 @@ export interface HealthResponse {
 
 export interface SttUploadResponse {
   transcript: string | null
-  status: string
+  status: 'ok' | 'unavailable' | 'error'
   language?: string | null
   confidence?: number | null
   duration_ms?: number | null
