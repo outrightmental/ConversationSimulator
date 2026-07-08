@@ -166,7 +166,9 @@ export type PackLoaderErrorCode =
   | 'SCHEMA_VALIDATION'
   | 'PATH_TRAVERSAL'
   | 'DUPLICATE_ID'
-  | 'UNSUPPORTED_VERSION';
+  | 'UNSUPPORTED_VERSION'
+  | 'FORBIDDEN_FILE'
+  | 'FORBIDDEN_BINARY';
 
 export class PackLoaderError extends Error {
   readonly code: PackLoaderErrorCode;
