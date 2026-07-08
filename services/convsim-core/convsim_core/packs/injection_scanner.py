@@ -152,7 +152,7 @@ _ERROR_RULES: list[_InjectionRule] = [
             r"\bturn\s+off\s+(?:your\s+)?(?:safety|content)\s+(?:filters?|moderation|policy|checks?|guards?|system)\b",
             r"\bbypass\s+(?:your\s+)?(?:safety|content)\s+(?:filters?|moderation|policy|checks?|restrictions?)\b",
             r"\bremove\s+(?:your\s+)?(?:safety|content)\s+(?:filters?|moderation|policy|restrictions?|limitations?)\b",
-            r"\bignore\s+(?:your\s+)?(?:safety|content)\s+(?:guidelines?|policy|filters?|restrictions?)\b",
+            r"\bignore\s+(?:(?:your|all)\s+)?(?:safety|content)\s+(?:guidelines?|policy|filters?|restrictions?)\b",
             r"\bsafety\s+(?:filters?|guidelines?|restrictions?)\s+(?:are\s+now\s+)?(?:disabled|off|bypassed|removed|ignored)\b",
             r"\bwithout\s+(?:safety|content)\s+(?:filters?|restrictions?|guidelines?|moderation)\b",
         ),
@@ -177,7 +177,7 @@ _ERROR_RULES: list[_InjectionRule] = [
             r"(?:system\s+prompt|instructions?|hidden\s+(?:goals?|agenda|rules?|instructions?))\b",
             r"\b(?:output|print|repeat)\s+(?:everything\s+(?:above|before)|your\s+(?:prompt|instructions?))\b",
             r"\bexfiltrate\s+(?:the\s+)?(?:prompt|instructions?|configuration|state)\b",
-            r"\bsummarise\s+(?:your\s+)?(?:system\s+)?(?:prompt|instructions?)\s+(?:so\s+far|above)\b",
+            r"\bsummari[sz]e\s+(?:your\s+)?(?:system\s+)?(?:prompt|instructions?)\s+(?:so\s+far|above)\b",
             r"\bshow\s+me\s+your\s+(?:private|hidden)\s+(?:persona|goals?|agenda|instructions?)\b",
         ),
         suggested_fix=(
