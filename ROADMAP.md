@@ -45,7 +45,7 @@ criteria.
 
 ## Status
 
-### Done
+### Done — shipped in v0.1.0-alpha.1
 
 - [x] Monorepo skeleton — directory structure, licensing, tooling
 - [x] Developer scripts (`setup.sh`, `dev.sh`, PowerShell equivalents)
@@ -54,26 +54,31 @@ criteria.
 - [x] Text-only workbench — chat panel + live state inspector
 - [x] Four official packs — Job Interview Basics, Everyday Negotiation, Language Café, Difficult Conversations (four playable scenarios each)
 - [x] README rewritten for instant GitHub comprehension
+- [x] Core conversation loop: player turn → LLM inference → NPC response → state update
+- [x] Debrief generation from rubric scores
+- [x] Browser UI connected to Python backend via WebSocket
+- [x] JSON Schema covering scenarios, NPCs, rubrics, scenes, safety policies
+- [x] Pack validator CLI (`convsim validate-pack <path>`)
+- [x] Pack import/export flow in the browser workbench
+- [x] Offline smoke test CI gate
+- [x] Whisper STT integration (voice input, local — requires whisper.cpp runtime)
+- [x] Full TTS playback connected to scenario engine (Kokoro — requires local server)
+- [x] Workbench: state inspector, pack editor, validation, export
+- [x] Layered safety system with global non-overridable rules and per-pack policies
+- [x] Cross-platform CI pipeline with acceptance tests, pack validation, and release smoke matrix
+- [x] Contribution guide, code of conduct, security policy, issue templates
+- [x] Full documentation set (architecture, install, safety, privacy, scenario authoring, troubleshooting)
 
-### In progress — Milestone 1 (text conversation loop)
+### Remaining polish — before Milestone 1 tag
 
-- [ ] Core conversation loop: player turn → LLM inference → NPC response → state update
-- [ ] Debrief generation from rubric scores
-- [ ] Browser UI connected to Python backend via WebSocket
+- [ ] Real UI screenshots (replace SVG placeholders in README)
+- [ ] Desktop app with bundled backend (Tauri sidecar for `convsim-core`)
+- [ ] Automated real-model CI smoke test
 
-### Next — Milestone 2 (schema, validator, pack tooling)
+### Post-alpha — Milestone 2+
 
-- [ ] JSON Schema covering scenarios, NPCs, rubrics, scenes, safety policies
-- [ ] Pack validator CLI (`npx convsim validate-pack <path>`)
-- [ ] Pack import flow in the browser workbench
-- [ ] Offline smoke test CI gate
-
-### After that — Milestones 3–5
-
-- [ ] Whisper STT integration (voice input, local, no audio uploads)
-- [ ] Full TTS playback connected to scenario engine (voice output)
-- [ ] Workbench: turn replay, state diff, rubric live preview
-- [ ] Polished demo GIF and README launch assets
+See [docs/post-alpha-issues.md](docs/post-alpha-issues.md) for the full
+triaged list with reasons and milestone assignments.
 
 ---
 

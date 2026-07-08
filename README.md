@@ -266,7 +266,8 @@ Every session runs through a layered safety system before and after the model is
 deliberately out of scope, and links to the acceptance criteria and docs.
 
 > [GitHub Milestones](https://github.com/outrightmental/ConversationSimulator/milestones) &nbsp;·&nbsp;
-> [Full specification](docs/SPEC.md)
+> [Full specification](docs/SPEC.md) &nbsp;·&nbsp;
+> [Post-alpha issues](docs/post-alpha-issues.md)
 
 ---
 
@@ -277,7 +278,8 @@ improvements, or new runtime adapters.
 
 > [CONTRIBUTING.md](CONTRIBUTING.md) &nbsp;·&nbsp;
 > [CODE\_OF\_CONDUCT.md](CODE_OF_CONDUCT.md) &nbsp;·&nbsp;
-> [SECURITY.md](SECURITY.md)
+> [SECURITY.md](SECURITY.md) &nbsp;·&nbsp;
+> [RELEASE\_NOTES.md](RELEASE_NOTES.md)
 
 ---
 
