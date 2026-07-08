@@ -1,0 +1,53 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+rubric_id: stretch_role_rubric
+title: Stretch Role Interview Potential and Readiness Rubric
+dimensions:
+  - id: self_awareness
+    name: Self-Awareness
+    description: >-
+      Whether the player honestly acknowledges the experience gap without being
+      dismissive or defensive about it. Does the player name specific things
+      they will need to learn and demonstrate that they have thought about how
+      they will learn them?
+    scoring:
+      low: Player avoids or deflects the experience gap, claims to already be ready, or responds to gap-focused questions with generic reassurances.
+      medium: Player acknowledges the gap in general terms but does not name specific skill or knowledge areas they will need to develop.
+      high: Player clearly names the specific areas where they have less experience, explains what they plan to do to develop in those areas, and demonstrates they have already started.
+    weight: 0.30
+
+  - id: transferable_evidence
+    name: Transferable Evidence
+    description: >-
+      Whether the player provides specific, concrete examples from adjacent
+      experience that demonstrate the underlying skills the role requires.
+      Are the parallels genuine, or is the player stretching a thin analogy?
+    scoring:
+      low: Player claims experience is transferable but provides only vague analogies without concrete examples; the parallels are unconvincing.
+      medium: Player provides some specific examples but the connection to the target role's actual requirements feels partial or overstated.
+      high: Player gives specific examples from past work that clearly demonstrate a skill the role requires, and explains the connection explicitly and credibly.
+    weight: 0.30
+
+  - id: preparation
+    name: Preparation
+    description: >-
+      Whether the player has done genuine research on the role, the company, and
+      the challenges the team faces. Is their enthusiasm backed by specific
+      knowledge, or is it generic?
+    scoring:
+      low: Player's knowledge of the role and company is superficial; can only speak in generalities that apply to any PM role at any startup.
+      medium: Player demonstrates awareness of the company's product or market but misses specifics about the team's actual challenges or roadmap priorities.
+      high: Player references specific, accurate details about the company, its product, customers, or competitive dynamics that demonstrate genuine pre-interview research.
+    weight: 0.25
+
+  - id: learning_velocity
+    name: Learning Velocity
+    description: >-
+      Whether the player can demonstrate from past experience that they learn
+      new domains quickly. Is there a specific example of going from unfamiliar
+      to competent in a compressed timeframe?
+    scoring:
+      low: Player cannot give a specific example of rapid skill acquisition; falls back on general claims about being "a fast learner."
+      medium: Player gives an example of learning something new but the timeframe, stakes, or specificity make the claim unconvincing for a stretch hire.
+      high: Player gives a specific, concrete example of jumping into an unfamiliar area, accelerating their learning deliberately, and achieving measurable progress within a defined period.
+    weight: 0.15

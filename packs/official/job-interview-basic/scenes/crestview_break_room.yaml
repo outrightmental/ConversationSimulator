@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scene_id: crestview_break_room
+display_name: "Crestview Distribution — Break Room"
+background: assets/backgrounds/break_room_placeholder.png
+description: >-
+  A functional break room attached to the warehouse floor at Crestview
+  Distribution Co. Fluorescent lights, a folding table with four plastic chairs,
+  and a corkboard covered in safety notices and shift schedules. A faint smell
+  of coffee and cardboard. Through the window in the door, the distribution
+  floor is visible — forklifts, rows of shelving, and the low rumble of
+  conveyor belts.
+ambient: industrial_background
