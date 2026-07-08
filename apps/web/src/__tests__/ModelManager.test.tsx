@@ -18,18 +18,6 @@ import { api } from '../api/client'
 import type { BenchmarkResponse } from '@convsim/shared'
 const mockApi = vi.mocked(api)
 
-const REGISTER_GGUF_RESPONSE = {
-  profile_id: 1,
-  file_path: '/home/user/models/my-model.gguf',
-  display_name: 'my-model.gguf',
-  filename: 'my-model.gguf',
-  family_guess: null,
-  context_length_default: null,
-  warnings: [],
-  active_runtime_id: 'llama_cpp',
-  active_model_id: '/home/user/models/my-model.gguf',
-}
-
 const REGISTRY_ENTRY = {
   id: 'qwen3-4b-instruct-q4_k_m',
   name: 'Qwen3 4B Instruct Q4_K_M',
