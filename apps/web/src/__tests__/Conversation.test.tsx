@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import Conversation from '../screens/Conversation'
@@ -270,6 +270,64 @@ describe('Conversation screen', () => {
       await waitFor(() =>
         expect(screen.getByRole('alert')).toHaveTextContent('End failed'),
       )
+    })
+  })
+
+  describe('developer debug drawer', () => {
+    beforeEach(() => {
+      mockApi.startSession.mockResolvedValue(startResponse)
+      localStorage.removeItem('convsim.devMode')
+    })
+
+    afterEach(() => {
+      localStorage.removeItem('convsim.devMode')
+    })
+
+    it('does not render the debug drawer in normal mode', async () => {
+      renderConversation()
+      await waitFor(() =>
+        expect(screen.getByText('Thanks for coming in. Tell me about yourself.')).toBeInTheDocument(),
+      )
+      expect(screen.queryByTestId('debug-drawer')).not.toBeInTheDocument()
+    })
+
+    it('renders the debug drawer when dev mode is enabled via localStorage', async () => {
+      localStorage.setItem('convsim.devMode', 'true')
+      renderConversation()
+      await waitFor(() =>
+        expect(screen.getByTestId('debug-drawer')).toBeInTheDocument(),
+      )
+    })
+
+    it('shows a debug entry for the npc_opening event in dev mode', async () => {
+      localStorage.setItem('convsim.devMode', 'true')
+      renderConversation()
+      await waitFor(() => expect(screen.getByTestId('debug-drawer')).toBeInTheDocument())
+      expect(screen.getByText('1 entry')).toBeInTheDocument()
+    })
+
+    it('accumulates debug entries as turns are submitted in dev mode', async () => {
+      localStorage.setItem('convsim.devMode', 'true')
+      mockApi.submitTurn.mockResolvedValue(turnResponse)
+      renderConversation()
+      await waitFor(() =>
+        expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument(),
+      )
+
+      const textarea = screen.getByRole('textbox', { name: /your response/i })
+      fireEvent.change(textarea, { target: { value: 'My answer.' } })
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+
+      await waitFor(() => expect(screen.getByText('2 entries')).toBeInTheDocument())
+    })
+
+    it('debug drawer is not rendered (not just hidden) in normal mode', async () => {
+      renderConversation()
+      await waitFor(() =>
+        expect(screen.getByTestId('state-vars')).toBeInTheDocument(),
+      )
+      // The debug drawer must be absent from DOM, not merely invisible
+      expect(screen.queryByText('Developer debug')).not.toBeInTheDocument()
     })
   })
 

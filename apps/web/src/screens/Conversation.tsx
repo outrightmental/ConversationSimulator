@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { api } from '../api/client'
 import VoiceInput from '../components/VoiceInput'
+import DebugDrawer, { type DebugTurnEntry } from '../components/DebugDrawer'
+import { isDevModeEnabled } from '../privacyPrefs'
 
 const BASELINE_STATE_VARS: Record<string, number> = {
   trust: 50,
@@ -36,6 +38,8 @@ export default function Conversation() {
   const [stateVars, setStateVars] = useState<Record<string, number>>(BASELINE_STATE_VARS)
   const [allEventFlags, setAllEventFlags] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [devMode] = useState(() => isDevModeEnabled())
+  const [debugEntries, setDebugEntries] = useState<DebugTurnEntry[]>([])
 
   const transcriptRef = useRef<HTMLDivElement>(null)
   const turnUidRef = useRef(0)
@@ -49,11 +53,20 @@ export default function Conversation() {
         if (cancelled) return
         const opening = res.events.find((e) => e.event_type === 'npc_opening')
         if (opening) {
+          const uid = ++turnUidRef.current
           setTurns([
             {
-              id: ++turnUidRef.current,
+              id: uid,
               role: 'npc_opening',
               content: opening.payload['content'] as string,
+            },
+          ])
+          setDebugEntries([
+            {
+              turnId: uid,
+              role: 'npc_opening',
+              rawPayload: opening.payload,
+              appliedDelta: {},
             },
           ])
         }
@@ -112,13 +125,19 @@ export default function Conversation() {
         const delta = (payload['state_delta'] ?? {}) as Record<string, number>
         const flags = (payload['event_flags'] ?? []) as string[]
 
+        const uid = ++turnUidRef.current
         newTurns.push({
-          id: ++turnUidRef.current,
+          id: uid,
           role: 'npc',
           content: payload['content'] as string,
           emotion: payload['emotion'] as string | undefined,
           eventFlags: flags.length > 0 ? flags : undefined,
         })
+
+        setDebugEntries((prev) => [
+          ...prev,
+          { turnId: uid, role: 'npc', rawPayload: payload, appliedDelta: delta },
+        ])
 
         if (Object.keys(delta).length > 0) {
           setStateVars((prev) => {
@@ -377,6 +396,8 @@ export default function Conversation() {
           Event flags: {allEventFlags.join(', ')}
         </div>
       )}
+
+      {devMode && <DebugDrawer entries={debugEntries} />}
 
       {/* Input / end section */}
       {isEnded ? (
