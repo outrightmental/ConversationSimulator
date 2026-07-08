@@ -570,7 +570,14 @@ export async function sessionRoutes(app: FastifyInstance) {
         );
       }
 
-      const summary = 'Stub debrief: the session has completed. Full analysis is not yet available.';
+      const outcome = (row.ending_type as string | null) ?? 'player_exit';
+      const turnCount = row.turn_count;
+      const turnWord = turnCount === 1 ? 'turn' : 'turns';
+      const scenarioTitle = row.scenario_id.replace(/_/g, ' ');
+      const summary = `You completed ${turnCount} ${turnWord} of "${scenarioTitle}". Session outcome: ${outcome.replace(/_/g, ' ')}.`;
+      const strengths: string[] = ['Engaged with the scenario'];
+      const improvements: string[] = ['Install a local LLM for real NPC responses'];
+      const replaySuggestions: string[] = ['Try a different difficulty level'];
       const saveTranscript = shouldSaveTranscript(row.setup_json);
 
       db.transaction(() => {
