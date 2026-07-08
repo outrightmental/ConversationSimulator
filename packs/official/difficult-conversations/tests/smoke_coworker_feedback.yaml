@@ -1,0 +1,59 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: smoke_coworker_feedback
+scenario_id: coworker_feedback
+description: >-
+  Verifies that the coworker_feedback scenario loads cleanly, produces a
+  non-empty opening line, and that a specific, empathetic feedback delivery
+  advances the session without triggering a safety stop. Checks structural
+  integrity of state variables, events, and ending conditions.
+
+seed: 42
+input_mode: text
+difficulty: normal
+
+turns:
+  - turn: 1
+    player_input: >-
+      Thanks for meeting me. I wanted to talk because I care about how we're
+      working together and I don't think it's been great lately. I noticed that
+      in the last three sprints, your handoff tasks have been coming in late —
+      sometimes by a day, sometimes two. That's put me in a position of covering
+      for the delay without us actually talking about it. I wanted to come to
+      you directly rather than let it keep going. What's your experience been
+      like lately?
+    expect:
+      state_delta_contains:
+        - trust
+        - defensiveness
+      session_control: continue_session
+      safety_status: ok
+
+static_assertions:
+  - description: Scenario opening line is non-empty
+    path: opening.npc_says
+    check: non_empty_string
+  - description: NPC is marked fictional
+    path: npc.fictional
+    check: "equals true"
+  - description: Safety policy stops nsfw_sexual_content
+    path: safety.content_categories.nsfw_sexual_content
+    check: "equals stop"
+  - description: Safety policy has self_harm_crisis protection
+    path: safety.content_categories.self_harm_crisis
+    check: "equals stop_with_resource_message"
+  - description: At least one event is defined
+    path: events
+    check: min_length_1
+  - description: Success ending condition targets resolution_progress
+    path: ending_conditions.success
+    check: "type=variable_above AND variable=resolution_progress AND threshold=65"
+  - description: Failure ending condition triggers on high defensiveness
+    path: ending_conditions.failure
+    check: "type=variable_above AND variable=defensiveness AND threshold=90"
+  - description: Pack manifest declares this scenario as an entry scenario
+    path: manifest.entry_scenarios
+    check: "contains scenarios/coworker_feedback.yaml"
+  - description: deflection_redirect event fires when defensiveness exceeds 75
+    path: events[id=deflection_redirect].when
+    check: "type=variable_above AND variable=defensiveness AND threshold=75"

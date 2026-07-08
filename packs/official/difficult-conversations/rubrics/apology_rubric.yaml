@@ -1,0 +1,52 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+rubric_id: apology_rubric
+title: Missed Deadline Apology Rubric
+dimensions:
+  - id: ownership
+    name: Ownership
+    description: >-
+      Whether the player acknowledges their specific role in the missed deadline
+      without minimizing it, over-explaining it, or deflecting to external
+      factors before owning their own part.
+    scoring:
+      low: Player leads with external factors ("the requirements kept changing", "the tooling was broken"), minimizes the impact ("it was only a few hours late"), or uses passive framing ("the deadline was missed") without naming their own role.
+      medium: Player acknowledges the miss but immediately follows it with context or explanation before completing the ownership, giving the impression they are managing Priya's reaction rather than genuinely owning it.
+      high: Player names their own specific failure clearly and first ("I underestimated the scope and didn't flag it early enough — that's on me") before providing any context, and does not use the context to walk back the ownership.
+    weight: 0.35
+
+  - id: impact_acknowledgment
+    name: Impact Acknowledgment
+    description: >-
+      Whether the player demonstrates awareness of the concrete downstream
+      effects the missed deadline created — for Priya, for the client, or for
+      the team — rather than treating it as an abstract inconvenience.
+    scoring:
+      low: Player does not reference any impact, or describes the impact in abstract terms ("I know this was inconvenient").
+      medium: Player acknowledges an impact but keeps it vague or stops at Priya's frustration without naming the downstream consequences to the client or project timeline.
+      high: Player names a specific downstream consequence ("this pushed the client demo by a week and put Priya in a position to explain it upward") and demonstrates that they understand the weight of that, not just the existence of it.
+    weight: 0.25
+
+  - id: concrete_remedy
+    name: Concrete Remedy
+    description: >-
+      Whether the player proposes a specific, actionable next step to repair
+      the situation and prevent recurrence, rather than offering general
+      assurances.
+    scoring:
+      low: Player offers only general reassurance ("it won't happen again", "I'll be more careful") with no specifics.
+      medium: Player proposes a remedy but at an abstract level ("I'll communicate earlier next time") without naming what specifically they will do differently or by when.
+      high: Player names a specific behavior change with sufficient detail that Priya could hold them to it ("I'll flag scope uncertainty within 24 hours of discovering it and give you a revised estimate, not a reassurance").
+    weight: 0.25
+
+  - id: composure
+    name: Composure
+    description: >-
+      Whether the player stays regulated and present through Priya's disappointment
+      rather than becoming defensive, over-apologetic, or visibly anxious in
+      a way that makes Priya feel she has to manage their emotions.
+    scoring:
+      low: Player becomes defensive when challenged, deflects feedback, or apologizes so excessively that Priya's focus shifts to reassuring them rather than resolving the situation.
+      medium: Player stays mostly composed but shows some slippage — hedging after a direct challenge, retreating to explanation when Priya expresses continued disappointment.
+      high: Player accepts Priya's disappointment without shrinking or pushing back, acknowledges each concern she raises directly, and remains steady and engaged throughout.
+    weight: 0.15
