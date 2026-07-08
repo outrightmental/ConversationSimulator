@@ -1,0 +1,10 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: smoke_placeholder
+scenario_id: placeholder
+description: >-
+  Placeholder smoke test. Replace with a real fixture once the first
+  scenario is added to this pack.
+turns:
+  - turn: 1
+    player_input: Hello.

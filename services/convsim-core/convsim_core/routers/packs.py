@@ -13,7 +13,7 @@ from pydantic import BaseModel
 from convsim_core.errors import ConvsimError
 from convsim_core.packs.exporter import export_to_zip
 from convsim_core.packs.importer import safe_extract_zip, import_from_folder, import_from_zip
-from convsim_core.packs.models import ImportResult, PackSummary, ValidationResult
+from convsim_core.packs.models import ImportResult, PackSummary, ValidationIssue, ValidationResult, ValidationSeverity
 from convsim_core.packs.validator import validate_pack_dir
 from convsim_core.storage.repositories.pack_repo import list_packs
 
@@ -99,15 +99,28 @@ async def validate_pack(
     file: Annotated[UploadFile, File(description="Pack zip archive to validate")],
 ) -> ValidationResult:
     """Validate a zip pack without installing it. Returns a list of validation errors."""
-    zip_bytes = await file.read()
-    if len(zip_bytes) > _MAX_UPLOAD_BYTES:
+    def _zip_error(message: str, rule_id: str = "INVALID_ZIP") -> ValidationResult:
         return ValidationResult(
             valid=False,
-            errors=[f"Uploaded file exceeds the {_MAX_UPLOAD_BYTES // (1024 * 1024)} MB limit."],
+            errors=[ValidationIssue(
+                severity=ValidationSeverity.ERROR,
+                rule_id=rule_id,
+                file=".",
+                pointer="(root)",
+                message=message,
+                suggested_fix="Provide a valid pack zip archive.",
+            )],
+        )
+
+    zip_bytes = await file.read()
+    if len(zip_bytes) > _MAX_UPLOAD_BYTES:
+        return _zip_error(
+            f"Uploaded file exceeds the {_MAX_UPLOAD_BYTES // (1024 * 1024)} MB limit.",
+            rule_id="FILE_TOO_LARGE",
         )
 
     if not zipfile.is_zipfile(io.BytesIO(zip_bytes)):
-        return ValidationResult(valid=False, errors=["Not a valid zip archive"])
+        return _zip_error("Not a valid zip archive.")
 
     with tempfile.TemporaryDirectory(prefix="convsim_validate_") as tmp_root:
         extract_dir = Path(tmp_root) / "extracted"
@@ -116,7 +129,7 @@ async def validate_pack(
         try:
             safe_extract_zip(zip_bytes, extract_dir)
         except ConvsimError as exc:
-            return ValidationResult(valid=False, errors=[exc.message])
+            return _zip_error(exc.message)
 
         top_level = list(extract_dir.iterdir())
         pack_source = (
@@ -125,15 +138,7 @@ async def validate_pack(
             else extract_dir
         )
 
-        manifest, errors = validate_pack_dir(pack_source)
-
-    return ValidationResult(
-        valid=len(errors) == 0,
-        pack_id=manifest.pack_id if manifest else None,
-        name=manifest.name if manifest else None,
-        version=manifest.version if manifest else None,
-        errors=errors,
-    )
+        return validate_pack_dir(pack_source)
 
 
 @router.get("/{pack_slug}/export")

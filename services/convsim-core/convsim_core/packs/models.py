@@ -1,11 +1,28 @@
 # SPDX-License-Identifier: Apache-2.0
+from enum import Enum
 from typing import Optional
 
 from pydantic import BaseModel
 
 
+class ValidationSeverity(str, Enum):
+    ERROR = "error"
+    WARNING = "warning"
+
+
+class ValidationIssue(BaseModel):
+    """A single validation finding with enough detail for a human to act on."""
+
+    severity: ValidationSeverity
+    rule_id: str
+    file: str
+    pointer: str
+    message: str
+    suggested_fix: str
+
+
 class PackManifest(BaseModel):
-    """Parsed contents of a pack's pack.json manifest file."""
+    """Parsed contents of a pack's manifest (manifest.yaml or pack.json)."""
 
     schema_version: str
     pack_id: str
@@ -38,13 +55,21 @@ class PackSummary(BaseModel):
 
 
 class ValidationResult(BaseModel):
-    """Result of pack validation without installation."""
+    """Result of pack validation.
+
+    ``errors`` block import; ``warnings`` allow local use but block official
+    contribution.  ``valid`` is True when there are no errors (warnings are OK).
+    ``manifest`` is populated whenever the manifest file could be parsed,
+    regardless of other validation failures.
+    """
 
     valid: bool
     pack_id: Optional[str] = None
     name: Optional[str] = None
     version: Optional[str] = None
-    errors: list[str] = []
+    errors: list[ValidationIssue] = []
+    warnings: list[ValidationIssue] = []
+    manifest: Optional[PackManifest] = None
 
 
 class ImportResult(BaseModel):
