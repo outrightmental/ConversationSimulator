@@ -77,6 +77,11 @@ jobs:
 
       # ── Run CI smoke subset ────────────────────────────────────────────────────
       - name: Run release smoke (CI subset)
+        env:
+          # Write artifacts under runner.temp so the upload step below finds
+          # them. The script default ($TMPDIR/$TEMP) is not runner.temp on
+          # GitHub-hosted runners, so pin it here to keep the two in sync.
+          CONVSIM_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/convsim-release-smoke-ci
         run: bash scripts/release-smoke.sh --ci
 
       # ── Capture artifacts on failure ───────────────────────────────────────────
@@ -138,6 +143,8 @@ jobs:
           pnpm --filter @convsim/scenario-schema build
 
       - name: Run release smoke (CI subset)
+        env:
+          CONVSIM_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/convsim-release-smoke-ci
         run: bash scripts/release-smoke.sh --ci
 
       - name: Upload smoke artifacts
@@ -189,6 +196,8 @@ jobs:
 
       - name: Run release smoke (CI subset)
         shell: pwsh
+        env:
+          CONVSIM_SMOKE_ARTIFACT_DIR: ${{ runner.temp }}/convsim-release-smoke-ci
         run: .\scripts\release-smoke.ps1
 
       - name: Upload smoke artifacts
