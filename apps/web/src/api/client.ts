@@ -40,8 +40,24 @@ async function parseErrorMessage(res: Response): Promise<string> {
   const text = await res.text()
   let message = text || `${res.status} ${res.statusText}`
   try {
-    const json = JSON.parse(text) as { message?: string; code?: string }
-    if (json.message) message = json.code ? `${json.code}: ${json.message}` : json.message
+    // convsim-core (Python) returns { error: { code, message } }; the interim
+    // convsim-api (TypeScript) returns { code?, message } at the top level.
+    // Accept either shape so error text is clean regardless of active backend.
+    const json = JSON.parse(text) as {
+      message?: string
+      code?: string
+      error?: { message?: string; code?: string } | string
+    }
+    // Prefer the top-level message (convsim-api shape, where `error` is a short
+    // status string), and fall back to a nested error object (convsim-core shape:
+    // { error: { code, message } }).
+    let msg = json.message
+    let code = json.code
+    if (!msg && json.error && typeof json.error === 'object') {
+      msg = json.error.message
+      code = json.error.code
+    }
+    if (msg) message = code ? `${code}: ${msg}` : msg
   } catch {
     // text is not JSON; use as-is
   }
