@@ -646,14 +646,15 @@ export async function modelsRoutes(app: FastifyInstance): Promise<void> {
             const data = (await res.json()) as {
               eval_count?: number;
               eval_duration?: number;
-              context?: number[];
             };
             outputTokens = data.eval_count ?? 0;
             const durationNs = data.eval_duration ?? 0;
             if (outputTokens > 0 && durationNs > 0) {
               tokensPerSec = Math.round((outputTokens / (durationNs / 1e9)) * 10) / 10;
             }
-            contextLength = data.context?.length ?? null;
+            // Ollama's `context` array is the tokenized conversation state, not the
+            // model's context window, so its length is meaningless as a benchmark
+            // metric. Leave context_length null rather than report a misleading value.
           } else {
             warnings.push('Ollama returned an error. Ensure the model is loaded.');
           }
