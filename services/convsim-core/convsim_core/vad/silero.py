@@ -257,6 +257,13 @@ class SileroVadWorker(VadWorker):
         except (VadUnavailableError, VadError) as exc:
             silero_message = str(exc)
             logger.info("Silero VAD not available; using energy-only calibration: %s", exc)
+        except Exception as exc:
+            silero_message = str(exc)
+            logger.warning(
+                "Unexpected error during Silero inference; falling back to energy-only calibration: %s",
+                exc,
+                exc_info=True,
+            )
 
         if silero_confidences is not None:
             # Identify frames the model classifies as silence (confidence < 0.3).

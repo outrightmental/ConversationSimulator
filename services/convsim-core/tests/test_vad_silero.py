@@ -249,6 +249,23 @@ async def test_calibrate_uses_silero_confidences_to_identify_silence():
     assert result.message is None  # no fallback message when Silero succeeds
 
 
+@pytest.mark.asyncio
+async def test_calibrate_falls_back_when_silero_inference_raises_unexpected_error():
+    """A non-VadError from _run_silero_sync (e.g. OrtException) triggers energy-only
+    fallback rather than propagating as a 500."""
+    worker = _make_worker()
+    wav = _make_wav_bytes(n_frames=16000, amplitude=0.01)
+
+    with patch("convsim_core.vad.silero._try_ffmpeg_to_pcm", return_value=None), \
+         patch("convsim_core.vad.silero._run_silero_sync", side_effect=RuntimeError("ORT internal error")), \
+         patch.object(worker, "_load_session", return_value=MagicMock()):
+        result = await worker.calibrate(VadRequest(audio=wav, audio_format="wav"))
+
+    assert 0.0 < result.recommended_threshold <= 1.0
+    assert result.message is not None
+    assert "ORT internal error" in result.message
+
+
 # ---------------------------------------------------------------------------
 # SileroVadConfig
 # ---------------------------------------------------------------------------
