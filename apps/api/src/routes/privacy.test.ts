@@ -231,4 +231,31 @@ describe('GET /api/sessions/:session_id/export', () => {
     });
     expect(res.statusCode).toBe(404);
   });
+
+  it('save_transcript=false — session_ended event is not persisted when session ends', async () => {
+    const { session_id } = await createSession({ save_transcript: false });
+    await app.inject({ method: 'POST', url: `/api/sessions/${session_id}/start` });
+    await app.inject({ method: 'POST', url: `/api/sessions/${session_id}/end` });
+
+    const res = await app.inject({ method: 'GET', url: `/api/sessions/${session_id}/export` });
+    const body = res.json<{ session: { state: string }; events: unknown[] }>();
+    expect(body.session.state).toBe('Ended');
+    expect(body.events).toHaveLength(0);
+  });
+
+  it('save_transcript=false — debrief_generated event is not persisted when debrief is requested', async () => {
+    const { session_id } = await createSession({ save_transcript: false });
+    await app.inject({ method: 'POST', url: `/api/sessions/${session_id}/start` });
+    await app.inject({ method: 'POST', url: `/api/sessions/${session_id}/turn`, payload: { content: 'Hello' } });
+    // Force session into DebriefReady state to allow debrief
+    getDb()
+      .prepare("UPDATE sessions SET state = 'DebriefReady' WHERE session_id = ?")
+      .run(session_id);
+    await app.inject({ method: 'POST', url: `/api/sessions/${session_id}/debrief` });
+
+    const res = await app.inject({ method: 'GET', url: `/api/sessions/${session_id}/export` });
+    const body = res.json<{ session: { state: string }; events: unknown[] }>();
+    expect(body.session.state).toBe('Ended');
+    expect(body.events).toHaveLength(0);
+  });
 });
