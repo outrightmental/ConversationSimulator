@@ -127,7 +127,11 @@ async def execute_download(
         # Write final progress before verifying.
         update_install_progress(conn, install_id, bytes_written, bytes_written or None)
 
-        if not verify_sha256(part_path, expected_sha256):
+        # Hashing a multi-GB file is a synchronous, CPU/IO-bound operation; run it
+        # off the event loop so backend request handling (e.g. the progress-polling
+        # endpoint) stays responsive while the checksum is computed.
+        checksum_ok = await asyncio.to_thread(verify_sha256, part_path, expected_sha256)
+        if not checksum_ok:
             logger.warning(
                 "download: checksum mismatch for install_id=%d; deleting partial file", install_id
             )
