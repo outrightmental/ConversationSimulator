@@ -141,6 +141,9 @@ async def process_turn(
     max_turns: int,
     runtime: ChatRuntime,
     conn: sqlite3.Connection,
+    *,
+    save_transcript: bool = True,
+    source_mode: str = "text-only",
 ) -> TurnPipelineResult:
     """Execute the full player-turn pipeline and persist results.
 
@@ -255,14 +258,15 @@ async def process_turn(
     with conn:
         player_cursor = conn.execute(
             "INSERT INTO turn_session_turns "
-            "(session_id, turn_number, role, content, created_at) "
-            "VALUES (?, ?, 'player', ?, ?)",
-            (session_id, player_turn_number, normalized, now),
+            "(session_id, turn_number, role, content, source_mode, flow_state_after, created_at) "
+            "VALUES (?, ?, 'player', ?, ?, ?, ?)",
+            (session_id, player_turn_number, normalized, source_mode, new_flow_state, now),
         )
         npc_cursor = conn.execute(
             "INSERT INTO turn_session_turns "
-            "(session_id, turn_number, role, content, emotion, state_delta_json, event_flags_json, safety_json, created_at) "
-            "VALUES (?, ?, 'npc', ?, ?, ?, ?, ?, ?)",
+            "(session_id, turn_number, role, content, emotion, state_delta_json, event_flags_json, "
+            "safety_json, raw_output_json, flow_state_after, created_at) "
+            "VALUES (?, ?, 'npc', ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 session_id,
                 npc_turn_number,
@@ -274,9 +278,70 @@ async def process_turn(
                     "status": turn_output.safety.status,
                     "reason": turn_output.safety.reason,
                 }),
+                raw_text,
+                new_flow_state,
                 now,
             ),
         )
+
+        # Persist discrete turn events.
+        events_to_insert: List[tuple] = []
+        events_to_insert.append((
+            session_id,
+            turn_number,
+            "state_delta",
+            json.dumps({
+                "actual_changes": dict(delta_result.actual_changes),
+                "rejected_keys": delta_result.rejected_keys,
+            }),
+            now,
+        ))
+        for event_id in triggered_events:
+            events_to_insert.append((
+                session_id, turn_number, "scenario_event",
+                json.dumps({"event_id": event_id}), now,
+            ))
+        if turn_output.safety.status == "redirect":
+            events_to_insert.append((
+                session_id, turn_number, "safety_redirect",
+                json.dumps({"reason": turn_output.safety.reason}), now,
+            ))
+        elif turn_output.safety.status == "stop":
+            events_to_insert.append((
+                session_id, turn_number, "safety_stop",
+                json.dumps({"reason": turn_output.safety.reason}), now,
+            ))
+        if ending_type:
+            events_to_insert.append((
+                session_id, turn_number, "session_ending",
+                json.dumps({
+                    "ending_type": ending_type,
+                    "summary": turn_output.session_control.ending_summary,
+                }),
+                now,
+            ))
+        events_to_insert.append((
+            session_id, turn_number, "debug",
+            json.dumps({"used_fallback": used_fallback}), now,
+        ))
+        conn.executemany(
+            "INSERT INTO turn_session_events "
+            "(session_id, turn_number, event_type, payload_json, occurred_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            events_to_insert,
+        )
+
+        # Populate FTS only when transcript saving is enabled for this session.
+        if save_transcript:
+            conn.executemany(
+                "INSERT INTO session_transcript_fts(session_id, turn_number, role, content) "
+                "VALUES (?, ?, ?, ?)",
+                [
+                    (session_id, player_turn_number, "player", normalized),
+                    (session_id, npc_turn_number, "npc", turn_output.npc_utterance),
+                ],
+            )
+
         conn.execute(
             "UPDATE turn_sessions SET "
             "state_vars_json = ?, fired_events_json = ?, turn_count = ?, "
