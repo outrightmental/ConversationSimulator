@@ -85,8 +85,7 @@ export class PackIndex {
         tags               = excluded.tags,
         requirements       = excluded.requirements,
         scenario_count     = excluded.scenario_count,
-        entry_scenarios    = excluded.entry_scenarios,
-        installed_at       = excluded.installed_at
+        entry_scenarios    = excluded.entry_scenarios
     `);
 
     const deleteScenarios = this.db.prepare(
