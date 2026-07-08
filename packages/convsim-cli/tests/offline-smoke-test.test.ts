@@ -225,15 +225,10 @@ describe('installNetworkGuard — outbound calls are blocked and recorded', () =
 describe('installNetworkGuard — localhost is allowed', () => {
   it('does not record a violation for a request to 127.0.0.1', () => {
     const guard = installNetworkGuard();
-    // Spin up a real local server so the connection can complete.
-    const server = http.createServer((_, res) => { res.writeHead(200); res.end(); });
-    server.listen(0, () => {
-      const port = (server.address() as { port: number }).port;
-      const req = http.request({ hostname: '127.0.0.1', port, path: '/' });
-      req.on('error', () => {});
-      req.end();
-    });
-    server.close();
+    // The connection will fail (no server), but the guard should not record it as a violation.
+    const req = http.request({ hostname: '127.0.0.1', port: 19998, path: '/' });
+    req.on('error', () => {});
+    req.end();
     guard.restore();
     expect(guard.violations).toHaveLength(0);
   });
