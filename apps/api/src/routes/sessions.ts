@@ -300,13 +300,15 @@ export async function sessionRoutes(app: FastifyInstance) {
 
       // Initialize state vars from baseline defaults and transition to PlayerTurnListening.
       const openingContent = 'Hello! I am ready to begin our conversation. Please go ahead.';
+      const openingPayload = { content: openingContent };
+      const openingAt = new Date().toISOString();
+      const saveTranscript = shouldSaveTranscript(row.setup_json);
       const openingRow = db.transaction(() => {
         db.prepare(
           "UPDATE sessions SET state = 'PlayerTurnListening', state_vars_json = ? WHERE session_id = ?",
         ).run(JSON.stringify(BASELINE_STATE_VARS), req.params.session_id);
-        return insertEvent(req.params.session_id, 'npc_opening', {
-          content: openingContent,
-        });
+        if (!saveTranscript) return null;
+        return insertEvent(req.params.session_id, 'npc_opening', openingPayload);
       })();
 
       broadcast(req.params.session_id, 'session.state', {
@@ -416,6 +418,7 @@ export async function sessionRoutes(app: FastifyInstance) {
 
       // 7. Persist atomically.
       const saveTranscript = shouldSaveTranscript(row.setup_json);
+      const turnAt = new Date().toISOString();
       const playerPayload = { content: normalized };
       const npcPayload = {
         content: npc.npc_utterance,
