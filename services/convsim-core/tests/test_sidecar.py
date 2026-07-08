@@ -10,7 +10,6 @@ from __future__ import annotations
 import asyncio
 import os
 import socket
-import sys
 import textwrap
 from pathlib import Path
 
@@ -218,6 +217,35 @@ def test_sidecar_stop_when_not_running_returns_200(client):
     data = resp.json()
     assert data["state"] == "stopped"
     assert "No managed" in data["message"]
+
+
+def test_sidecar_stop_when_crashed_returns_stopped(client):
+    """POST /api/sidecar/stop must return state=stopped even when sidecar has crashed.
+
+    Without this, the endpoint returned state="crashed" — contradicting the
+    "No managed llama-server is running" message and leaving the sidecar in a
+    non-STOPPED state that prevented clean status queries.
+    """
+    client.app.state.sidecar._state = SidecarState.CRASHED
+
+    resp = client.post("/api/sidecar/stop")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["state"] == "stopped"
+    assert "No managed" in data["message"]
+
+    status = client.get("/api/sidecar/status").json()
+    assert status["state"] == "stopped"
+    assert status["started_at"] is None
+
+
+def test_sidecar_stop_when_port_conflict_returns_stopped(client):
+    """POST /api/sidecar/stop must return state=stopped for PORT_CONFLICT state."""
+    client.app.state.sidecar._state = SidecarState.PORT_CONFLICT
+
+    resp = client.post("/api/sidecar/stop")
+    assert resp.status_code == 200
+    assert resp.json()["state"] == "stopped"
 
 
 def test_sidecar_start_missing_executable_returns_503(client):
