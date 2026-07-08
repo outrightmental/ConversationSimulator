@@ -52,7 +52,7 @@ export interface ScenarioInfo {
 }
 
 export interface PackValidationError {
-  rule_id: string;
+  rule_id?: string;
   file_path?: string;
   message: string;
 }
