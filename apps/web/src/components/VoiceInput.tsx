@@ -6,9 +6,24 @@ import { useVad } from '../hooks/useVad'
 import MicButton from './MicButton'
 import VadStatusIndicator from './VadStatusIndicator'
 import VadCalibration from './VadCalibration'
+import TranscriptReviewPanel from './TranscriptReviewPanel'
+
+export interface SttReviewMeta {
+  rawTranscript: string
+  finalTranscript: string
+  language?: string | null
+  confidence?: number | null
+}
+
+type ReviewState = {
+  transcript: string
+  language?: string | null
+  confidence?: number | null
+}
 
 interface VoiceInputProps {
   onSubmit?: (text: string) => void
+  onRawStt?: (meta: SttReviewMeta) => void
   disabled?: boolean
   language?: string
 }
@@ -19,11 +34,12 @@ function isInteractiveElement(el: Element | null): boolean {
   return tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'button' || tag === 'a'
 }
 
-export default function VoiceInput({ onSubmit, disabled = false, language }: VoiceInputProps) {
+export default function VoiceInput({ onSubmit, onRawStt, disabled = false, language }: VoiceInputProps) {
   const [textValue, setTextValue] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [showCalibration, setShowCalibration] = useState(false)
+  const [reviewState, setReviewState] = useState<ReviewState | null>(null)
 
   const vad = useVad()
   const isHandsFree = vad.settings.mode === 'hands-free'
@@ -40,11 +56,11 @@ export default function VoiceInput({ onSubmit, disabled = false, language }: Voi
         } else if (result.status === 'unavailable') {
           setUploadError('Speech-to-text is not installed. Please type your response.')
         } else if (result.transcript) {
-          if (!disabled) {
-            onSubmit?.(result.transcript)
-          } else {
-            setTextValue(result.transcript)
-          }
+          setReviewState({
+            transcript: result.transcript,
+            language: result.language,
+            confidence: result.confidence,
+          })
         } else if (result.status === 'ok' && !result.transcript) {
           setUploadError('No speech detected. Please try again or type your response.')
         }
@@ -55,7 +71,7 @@ export default function VoiceInput({ onSubmit, disabled = false, language }: Voi
         setIsSubmitting(false)
       }
     },
-    [onSubmit, disabled, language],
+    [language],
   )
 
   const {
@@ -96,6 +112,32 @@ export default function VoiceInput({ onSubmit, disabled = false, language }: Voi
     if (!isRecording) stopSilenceDetection()
   }, [isRecording, stopSilenceDetection])
 
+  function handleReviewConfirm(finalText: string) {
+    const raw = reviewState
+    setReviewState(null)
+    if (raw) {
+      onRawStt?.({
+        rawTranscript: raw.transcript,
+        finalTranscript: finalText,
+        language: raw.language,
+        confidence: raw.confidence,
+      })
+    }
+    if (!disabled) {
+      onSubmit?.(finalText)
+    } else {
+      setTextValue(finalText)
+    }
+  }
+
+  function handleReviewCancel() {
+    setReviewState(null)
+  }
+
+  function handleReviewRetry() {
+    setReviewState(null)
+  }
+
   // Global Space hotkey for PTT — skips when any interactive element is focused, mic is
   // unavailable, a prior recording is still being uploaded, or the component is disabled.
   useEffect(() => {
@@ -103,6 +145,8 @@ export default function VoiceInput({ onSubmit, disabled = false, language }: Voi
       if (e.code !== 'Space' || e.repeat) return
       if (isInteractiveElement(document.activeElement)) return
       if (permission !== 'granted' || isSubmitting || disabled) return
+      // Don't start recording while the transcript review panel is open.
+      if (reviewState !== null) return
       // In hands-free mode Space starts recording; once recording, VAD drives the stop so
       // we ignore further presses to avoid resetting the auto-stop countdown.
       if (isHandsFree && isRecording) return
@@ -125,7 +169,7 @@ export default function VoiceInput({ onSubmit, disabled = false, language }: Voi
       document.removeEventListener('keydown', handleKeyDown)
       document.removeEventListener('keyup', handleKeyUp)
     }
-  }, [startRecording, stopRecording, permission, isRecording, isSubmitting, disabled, isHandsFree])
+  }, [startRecording, stopRecording, permission, isRecording, isSubmitting, disabled, isHandsFree, reviewState])
 
   const handleTextSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -171,85 +215,98 @@ export default function VoiceInput({ onSubmit, disabled = false, language }: Voi
         </p>
       )}
 
-      <div style={inputRowStyle}>
-        <MicButton
-          permission={permission}
-          isRecording={isRecording}
-          recordingSeconds={recordingSeconds}
-          isSubmitting={isSubmitting}
-          disabled={disabled}
-          isHandsFree={isHandsFree}
-          onRequestPermission={requestPermission}
-          onRecordStart={startRecording}
-          onRecordStop={isHandsFree ? () => {} : stopRecording}
+      {reviewState ? (
+        <TranscriptReviewPanel
+          transcript={reviewState.transcript}
+          language={reviewState.language}
+          confidence={reviewState.confidence}
+          onConfirm={handleReviewConfirm}
+          onCancel={handleReviewCancel}
+          onRetry={handleReviewRetry}
         />
+      ) : (
+        <>
+          <div style={inputRowStyle}>
+            <MicButton
+              permission={permission}
+              isRecording={isRecording}
+              recordingSeconds={recordingSeconds}
+              isSubmitting={isSubmitting}
+              disabled={disabled}
+              isHandsFree={isHandsFree}
+              onRequestPermission={requestPermission}
+              onRecordStart={startRecording}
+              onRecordStop={isHandsFree ? () => {} : stopRecording}
+            />
 
-        <form onSubmit={handleTextSubmit} style={{ display: 'flex', flex: 1, gap: '0.5rem' }}>
-          <input
-            type="text"
-            value={textValue}
-            onChange={(e) => setTextValue(e.target.value)}
-            placeholder={
-              permission === 'denied' || permission === 'unsupported'
-                ? 'Type your response…'
-                : isHandsFree
-                  ? 'Type or press the mic to record (auto-stops on silence)'
-                  : 'Type or hold the mic button to record'
-            }
-            disabled={disabled || isRecording}
-            aria-label="Your response"
-            style={textInputStyle}
-          />
-          <button
-            type="submit"
-            disabled={disabled || !textValue.trim() || isRecording}
-            style={sendButtonStyle}
-          >
-            Submit
-          </button>
-        </form>
-      </div>
+            <form onSubmit={handleTextSubmit} style={{ display: 'flex', flex: 1, gap: '0.5rem' }}>
+              <input
+                type="text"
+                value={textValue}
+                onChange={(e) => setTextValue(e.target.value)}
+                placeholder={
+                  permission === 'denied' || permission === 'unsupported'
+                    ? 'Type your response…'
+                    : isHandsFree
+                      ? 'Type or press the mic to record (auto-stops on silence)'
+                      : 'Type or hold the mic button to record'
+                }
+                disabled={disabled || isRecording}
+                aria-label="Your response"
+                style={textInputStyle}
+              />
+              <button
+                type="submit"
+                disabled={disabled || !textValue.trim() || isRecording}
+                style={sendButtonStyle}
+              >
+                Submit
+              </button>
+            </form>
+          </div>
 
-      {/* Hands-free controls row */}
-      {permission === 'granted' && (
-        <div style={hfRowStyle}>
-          <button
-            type="button"
-            onClick={handleModeToggle}
-            aria-pressed={isHandsFree}
-            style={isHandsFree ? modeActiveStyle : modeInactiveStyle}
-            title={isHandsFree ? 'Switch to push-to-talk' : 'Switch to hands-free (auto-stop on silence)'}
-          >
-            {isHandsFree ? '🤲 Hands-free' : '👆 Push-to-talk'}
-          </button>
-
-          {isHandsFree && (
-            <>
-              <VadStatusIndicator state={vad.vadState} />
+          {/* Hands-free controls row */}
+          {permission === 'granted' && (
+            <div style={hfRowStyle}>
               <button
                 type="button"
-                onClick={() => setShowCalibration((v) => !v)}
-                style={calibrateBtnStyle}
-                title="Calibrate noise threshold"
+                onClick={handleModeToggle}
+                aria-pressed={isHandsFree}
+                style={isHandsFree ? modeActiveStyle : modeInactiveStyle}
+                title={isHandsFree ? 'Switch to push-to-talk' : 'Switch to hands-free (auto-stop on silence)'}
               >
-                {vad.settings.calibratedAt ? 'Recalibrate' : 'Calibrate noise'}
+                {isHandsFree ? '🤲 Hands-free' : '👆 Push-to-talk'}
               </button>
-            </>
-          )}
-        </div>
-      )}
 
-      {/* Calibration panel */}
-      {showCalibration && isHandsFree && (
-        <VadCalibration
-          vad={vad}
-          stream={stream}
-          onDone={() => setShowCalibration(false)}
-        />
+              {isHandsFree && (
+                <>
+                  <VadStatusIndicator state={vad.vadState} />
+                  <button
+                    type="button"
+                    onClick={() => setShowCalibration((v) => !v)}
+                    style={calibrateBtnStyle}
+                    title="Calibrate noise threshold"
+                  >
+                    {vad.settings.calibratedAt ? 'Recalibrate' : 'Calibrate noise'}
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+
+          {/* Calibration panel */}
+          {showCalibration && isHandsFree && (
+            <VadCalibration
+              vad={vad}
+              stream={stream}
+              onDone={() => setShowCalibration(false)}
+            />
+          )}
+        </>
       )}
 
       {/* PTT hint */}
-      {permission === 'granted' && !isRecording && !isSubmitting && !isHandsFree && (
+      {permission === 'granted' && !isRecording && !isSubmitting && !isHandsFree && !reviewState && (
         <p style={hintStyle}>
           Press <kbd style={kbdStyle}>Space</kbd> to record when not typing, or hold the mic
           button. Max {MAX_RECORDING_SECONDS}s.
@@ -257,7 +314,7 @@ export default function VoiceInput({ onSubmit, disabled = false, language }: Voi
       )}
 
       {/* Hands-free hint */}
-      {permission === 'granted' && !isRecording && !isSubmitting && isHandsFree && (
+      {permission === 'granted' && !isRecording && !isSubmitting && isHandsFree && !reviewState && (
         <p style={hintStyle}>
           Press <kbd style={kbdStyle}>Space</kbd> or tap the mic — recording stops automatically
           after silence.{' '}
