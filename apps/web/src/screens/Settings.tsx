@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState, useEffect } from 'react'
 import { api } from '../api/client'
+import { readPrivacyPref, writePrivacyPref, PRIVACY_KEYS } from '../privacyPrefs'
 
 type ClearState = 'idle' | 'confirming' | 'clearing' | 'done' | 'error'
 
@@ -42,10 +43,25 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
 }
 
 export default function Settings() {
-  const [saveTranscripts, setSaveTranscripts] = useState(true)
-  const [saveTtsCache, setSaveTtsCache] = useState(true)
+  const [saveTranscripts, setSaveTranscripts] = useState(() => readPrivacyPref(PRIVACY_KEYS.saveTranscripts, true))
+  const [saveTtsCache, setSaveTtsCache] = useState(() => readPrivacyPref(PRIVACY_KEYS.saveTtsCache, true))
   const [showAdvanced, setShowAdvanced] = useState(false)
-  const [saveRawAudio, setSaveRawAudio] = useState(false)
+  const [saveRawAudio, setSaveRawAudio] = useState(() => readPrivacyPref(PRIVACY_KEYS.saveRawAudio, false))
+
+  function handleSaveTranscriptsChange(v: boolean) {
+    setSaveTranscripts(v)
+    writePrivacyPref(PRIVACY_KEYS.saveTranscripts, v)
+  }
+
+  function handleSaveTtsCacheChange(v: boolean) {
+    setSaveTtsCache(v)
+    writePrivacyPref(PRIVACY_KEYS.saveTtsCache, v)
+  }
+
+  function handleSaveRawAudioChange(v: boolean) {
+    setSaveRawAudio(v)
+    writePrivacyPref(PRIVACY_KEYS.saveRawAudio, v)
+  }
 
   const [dataFolder, setDataFolder] = useState<string | null>(null)
   const [dataFolderError, setDataFolderError] = useState(false)
@@ -120,7 +136,7 @@ export default function Settings() {
           id="save-transcripts"
           label="Save transcripts locally"
           checked={saveTranscripts}
-          onChange={setSaveTranscripts}
+          onChange={handleSaveTranscriptsChange}
           description={
             saveTranscripts
               ? 'Conversation transcripts are saved to your local data folder only — never uploaded anywhere.'
@@ -144,7 +160,7 @@ export default function Settings() {
           id="save-tts-cache"
           label="Cache TTS audio locally"
           checked={saveTtsCache}
-          onChange={setSaveTtsCache}
+          onChange={handleSaveTtsCacheChange}
           description="Caching generated speech speeds up repeated phrases. Cached audio stays on your device and is never shared."
         />
       </section>
@@ -280,7 +296,7 @@ export default function Settings() {
               id="save-raw-audio"
               label="Save raw audio recordings (advanced)"
               checked={saveRawAudio}
-              onChange={setSaveRawAudio}
+              onChange={handleSaveRawAudioChange}
               description="Off by default. When enabled, unprocessed microphone recordings are saved to your data folder for debugging voice input. Enable only if you are diagnosing STT accuracy issues."
             />
             {saveRawAudio && (

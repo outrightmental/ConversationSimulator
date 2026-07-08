@@ -9,6 +9,7 @@ import type {
 } from '@convsim/shared';
 import { validateSetup, randomSeed } from '@convsim/shared';
 import { api } from '../api/client';
+import { readPrivacyPref, PRIVACY_KEYS } from '../privacyPrefs';
 
 const LANGUAGE_LABELS: Record<string, string> = {
   en: 'English',
@@ -54,7 +55,7 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
     input_mode: 'text-only',
     tts_enabled: false,
     show_state_meters: false,
-    save_transcript: true,
+    save_transcript: readPrivacyPref(PRIVACY_KEYS.saveTranscripts, true),
     seed: null,
   });
 

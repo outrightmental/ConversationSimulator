@@ -19,6 +19,7 @@ function renderSettings() {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  localStorage.clear()
   mockApi.getDataFolder.mockResolvedValue({ path: '/home/user/.convsim/db' })
 })
 
