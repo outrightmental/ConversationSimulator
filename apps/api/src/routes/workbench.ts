@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import { getDb, WORKBENCH_TEST_SCENARIO_ID } from '../db.js';
+import { loadPack, PackLoaderError } from '@convsim/pack-loader';
 
 let _officialRoot = '';
 let _localDevRoot = '';
@@ -424,10 +425,10 @@ export async function workbenchRoutes(app: FastifyInstance): Promise<void> {
     },
   );
 
-  // GET /api/workbench/packs/:kind/:slug/validate — stub validation (real validator is in convsim-core)
+  // GET /api/workbench/packs/:kind/:slug/validate — validate a pack's files and schema
   app.get<{ Params: { kind: string; slug: string } }>(
     '/api/workbench/packs/:kind/:slug/validate',
-    async (req, reply): Promise<{ valid: boolean; errors: unknown[]; warnings: unknown[] }> => {
+    async (req, reply): Promise<WorkbenchValidationResponse> => {
       const { kind, slug } = req.params;
       assertValidKind(kind, reply);
       const packRoot = getPackRoot(kind, slug, reply);
@@ -435,7 +436,35 @@ export async function workbenchRoutes(app: FastifyInstance): Promise<void> {
         reply.status(404);
         throw new Error(`Pack "${slug}" not found`);
       }
-      return { valid: true, errors: [], warnings: [] };
+
+      const issues: WorkbenchValidationIssue[] = [];
+
+      // Phase 1: security scan — collect ALL forbidden files/symlinks up front,
+      // rather than stopping at the first one like the pack loader does.
+      issues.push(...scanForbiddenFiles(packRoot));
+      const hasSecurityIssue = issues.length > 0;
+
+      // Phase 2: structural/schema validation via the pack loader. It throws on
+      // the first PackLoaderError it encounters; convert that into one or more
+      // findings (SCHEMA_VALIDATION is exploded into per-field issues).
+      try {
+        loadPack(packRoot, kind);
+      } catch (e) {
+        if (e instanceof PackLoaderError) {
+          for (const issue of convertPackLoaderError(e, packRoot)) {
+            // The loader's own security scan re-reports a forbidden file/symlink
+            // that phase 1 already collected — skip the duplicate.
+            if (hasSecurityIssue && issue.category === 'security') continue;
+            issues.push(issue);
+          }
+        } else {
+          throw e;
+        }
+      }
+
+      const errors = issues.filter((i) => i.severity === 'error');
+      const warnings = issues.filter((i) => i.severity === 'warning');
+      return { valid: errors.length === 0, errors, warnings };
     },
   );
 
