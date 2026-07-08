@@ -171,11 +171,9 @@ async def process_turn(
     turn_number: int = int(session_row["turn_count"]) + 1
 
     # If state_vars is empty (first turn), initialize from baseline.
+    var_defs = build_variable_defs()
     if not state_vars:
-        var_defs = build_variable_defs()
         state_vars = initialize_state(var_defs)
-    else:
-        var_defs = build_variable_defs()
 
     # 4. Get recent transcript.
     recent_transcript = _load_recent_turns(session_id, conn)
@@ -247,50 +245,52 @@ async def process_turn(
 
     new_flow_state = "Ended" if ending_type else "PlayerTurnListening"
 
-    # 12. Persist atomically.
+    # 12. Persist atomically. Use `with conn:` so a mid-transaction failure
+    # triggers an automatic rollback instead of leaving a dirty open transaction
+    # on the singleton connection.
     now = datetime.now(timezone.utc).isoformat()
     player_turn_number = turn_number * 2 - 1
     npc_turn_number = turn_number * 2
 
-    player_cursor = conn.execute(
-        "INSERT INTO turn_session_turns "
-        "(session_id, turn_number, role, content, created_at) "
-        "VALUES (?, ?, 'player', ?, ?)",
-        (session_id, player_turn_number, normalized, now),
-    )
-    npc_cursor = conn.execute(
-        "INSERT INTO turn_session_turns "
-        "(session_id, turn_number, role, content, emotion, state_delta_json, event_flags_json, safety_json, created_at) "
-        "VALUES (?, ?, 'npc', ?, ?, ?, ?, ?, ?)",
-        (
-            session_id,
-            npc_turn_number,
-            turn_output.npc_utterance,
-            turn_output.npc_emotion,
-            json.dumps(dict(delta_result.actual_changes)),
-            json.dumps(turn_output.event_flags),
-            json.dumps({
-                "status": turn_output.safety.status,
-                "reason": turn_output.safety.reason,
-            }),
-            now,
-        ),
-    )
-    conn.execute(
-        "UPDATE turn_sessions SET "
-        "state_vars_json = ?, fired_events_json = ?, turn_count = ?, "
-        "flow_state = ?, ending_type = ? "
-        "WHERE session_id = ?",
-        (
-            json.dumps(delta_result.new_state),
-            json.dumps(list(fired_event_ids)),
-            turn_number,
-            new_flow_state,
-            ending_type,
-            session_id,
-        ),
-    )
-    conn.commit()
+    with conn:
+        player_cursor = conn.execute(
+            "INSERT INTO turn_session_turns "
+            "(session_id, turn_number, role, content, created_at) "
+            "VALUES (?, ?, 'player', ?, ?)",
+            (session_id, player_turn_number, normalized, now),
+        )
+        npc_cursor = conn.execute(
+            "INSERT INTO turn_session_turns "
+            "(session_id, turn_number, role, content, emotion, state_delta_json, event_flags_json, safety_json, created_at) "
+            "VALUES (?, ?, 'npc', ?, ?, ?, ?, ?, ?)",
+            (
+                session_id,
+                npc_turn_number,
+                turn_output.npc_utterance,
+                turn_output.npc_emotion,
+                json.dumps(dict(delta_result.actual_changes)),
+                json.dumps(turn_output.event_flags),
+                json.dumps({
+                    "status": turn_output.safety.status,
+                    "reason": turn_output.safety.reason,
+                }),
+                now,
+            ),
+        )
+        conn.execute(
+            "UPDATE turn_sessions SET "
+            "state_vars_json = ?, fired_events_json = ?, turn_count = ?, "
+            "flow_state = ?, ending_type = ? "
+            "WHERE session_id = ?",
+            (
+                json.dumps(delta_result.new_state),
+                json.dumps(list(fired_event_ids)),
+                turn_number,
+                new_flow_state,
+                ending_type,
+                session_id,
+            ),
+        )
 
     visible, _ = partition_state_by_visibility(delta_result.new_state, var_defs)
 

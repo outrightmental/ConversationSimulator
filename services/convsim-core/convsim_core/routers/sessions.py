@@ -103,7 +103,7 @@ class TurnSubmitRequest(BaseModel):
     def content_not_empty(cls, v: str) -> str:
         if not v.strip():
             raise ValueError("Turn content cannot be blank")
-        if len(v) > MAX_TURN_CONTENT_CHARS:
+        if len(v.strip()) > MAX_TURN_CONTENT_CHARS:
             raise ValueError(f"Turn content exceeds {MAX_TURN_CONTENT_CHARS} characters")
         return v
 
@@ -215,16 +215,16 @@ async def start_session(session_id: str, request: Request) -> SessionStartRespon
     )
 
     now = _now_iso()
-    conn.execute(
-        "UPDATE turn_sessions SET flow_state = 'PlayerTurnListening' WHERE session_id = ?",
-        (session_id,),
-    )
-    cursor = conn.execute(
-        "INSERT INTO turn_session_turns "
-        "(session_id, turn_number, role, content, created_at) VALUES (?, 0, 'npc_opening', ?, ?)",
-        (session_id, opening_text, now),
-    )
-    conn.commit()
+    with conn:
+        conn.execute(
+            "UPDATE turn_sessions SET flow_state = 'PlayerTurnListening' WHERE session_id = ?",
+            (session_id,),
+        )
+        cursor = conn.execute(
+            "INSERT INTO turn_session_turns "
+            "(session_id, turn_number, role, content, created_at) VALUES (?, 0, 'npc_opening', ?, ?)",
+            (session_id, opening_text, now),
+        )
 
     event = SessionEventPayload(
         event_id=cursor.lastrowid,
