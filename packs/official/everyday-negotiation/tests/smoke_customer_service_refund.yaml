@@ -1,0 +1,54 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: smoke_customer_service_refund
+scenario_id: customer_service_refund
+description: >-
+  Verifies that the customer_service_refund scenario loads cleanly, produces a
+  non-empty opening line, and that a calm, warranty-citing customer response
+  advances the session without triggering a safety stop.
+
+seed: 42
+input_mode: text
+difficulty: normal
+
+turns:
+  - turn: 1
+    player_input: >-
+      Hi Jordan, I purchased a blender here about four months ago and the motor
+      has stopped working — it grinds and produces nothing. I understand the
+      store return window has passed, but I wanted to raise this as a
+      manufacturer defect. The product manual lists a one-year defect warranty.
+      I have my receipt and the original packaging with me. I'd like to request
+      a refund or replacement under that warranty.
+    expect:
+      state_delta_contains:
+        - deal_progress
+        - leverage
+      session_control: continue_session
+      safety_status: ok
+
+static_assertions:
+  - description: Scenario opening line is non-empty
+    path: opening.npc_says
+    check: non_empty_string
+  - description: At least one event is defined
+    path: events
+    check: min_length_1
+  - description: warranty_recognition event fires when leverage exceeds 50
+    path: events[id=warranty_recognition].when
+    check: "type=variable_above AND variable=leverage AND threshold=50"
+  - description: Success ending condition targets deal_progress
+    path: ending_conditions.success
+    check: "type=variable_above AND variable=deal_progress"
+  - description: Failure ending condition targets perceived_fairness
+    path: ending_conditions.failure
+    check: "type=variable_below AND variable=perceived_fairness"
+  - description: NPC is marked fictional
+    path: npc.fictional
+    check: "equals true"
+  - description: Safety policy stops nsfw_sexual_content
+    path: safety.content_categories.nsfw_sexual_content
+    check: "equals stop"
+  - description: Pack manifest declares the customer service entry scenario
+    path: manifest.entry_scenarios
+    check: "contains scenarios/customer_service_refund.yaml"

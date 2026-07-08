@@ -1,0 +1,52 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: smoke_used_car_negotiation
+scenario_id: used_car_negotiation
+description: >-
+  Verifies that the used_car_negotiation scenario loads cleanly, produces a
+  non-empty opening line, and that a well-researched anchor offer citing
+  comparable sales advances the session without triggering a safety stop.
+
+seed: 42
+input_mode: text
+difficulty: normal
+
+turns:
+  - turn: 1
+    player_input: >-
+      Thanks Ray. I've been researching the market for the past few weeks and
+      I'm seeing comparable 2019 Civics with similar mileage selling for
+      thirteen-four to thirteen-eight in this area. I'd like to offer thirteen-
+      five out the door — and I'm paying cash, so no financing paperwork needed.
+    expect:
+      state_delta_contains:
+        - deal_progress
+        - leverage
+      session_control: continue_session
+      safety_status: ok
+
+static_assertions:
+  - description: Scenario opening line is non-empty
+    path: opening.npc_says
+    check: non_empty_string
+  - description: At least one event is defined
+    path: events
+    check: min_length_1
+  - description: research_anchor_reward event fires when leverage exceeds 55
+    path: events[id=research_anchor_reward].when
+    check: "type=variable_above AND variable=leverage AND threshold=55"
+  - description: Success ending condition targets deal_progress
+    path: ending_conditions.success
+    check: "type=variable_above AND variable=deal_progress"
+  - description: Failure ending condition targets perceived_fairness
+    path: ending_conditions.failure
+    check: "type=variable_below AND variable=perceived_fairness"
+  - description: NPC is marked fictional
+    path: npc.fictional
+    check: "equals true"
+  - description: Safety policy stops nsfw_sexual_content
+    path: safety.content_categories.nsfw_sexual_content
+    check: "equals stop"
+  - description: Pack manifest declares the used car entry scenario
+    path: manifest.entry_scenarios
+    check: "contains scenarios/used_car_negotiation.yaml"
