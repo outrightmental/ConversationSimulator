@@ -73,6 +73,12 @@ export interface SessionDebriefResponse {
   session_id: string;
   state: SessionState;
   summary: string;
+  outcome?: string;
+  turn_count?: number;
+  scenario_id?: string;
+  strengths?: string[];
+  improvements?: string[];
+  replay_suggestions?: string[];
 }
 
 export interface SessionTransitionError {
