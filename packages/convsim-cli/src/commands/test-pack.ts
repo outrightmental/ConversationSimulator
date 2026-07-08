@@ -88,7 +88,8 @@ function renderHuman(result: PackTestRunResult): void {
     const parts: string[] = [];
     if (result.passed > 0) parts.push(`${result.passed} passed`);
     if (result.skipped > 0) parts.push(`${result.skipped} skipped`);
-    writeLine(`✓ ${parts.join(', ')} (${total} fixture${total !== 1 ? 's' : ''} total)`);
+    const summary = parts.length > 0 ? `${parts.join(', ')} ` : '';
+    writeLine(`✓ ${summary}(${total} fixture${total !== 1 ? 's' : ''} total)`);
   } else {
     writeErrorLine(
       `✗ ${result.failed} failed, ${result.passed} passed` +
