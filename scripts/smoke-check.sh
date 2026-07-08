@@ -100,6 +100,19 @@ check_file "scripts/setup.sh"
 check_file "scripts/dev.sh"
 check_file "scripts/setup.ps1"
 check_file "scripts/dev.ps1"
+check_file "scripts/dev-desktop.sh"
+check_file "scripts/dev-desktop.ps1"
+
+echo ""
+
+# Desktop Tauri wrapper
+check_dir  "apps/desktop/src-tauri"
+check_file "apps/desktop/src-tauri/Cargo.toml"
+check_file "apps/desktop/src-tauri/tauri.conf.json"
+check_file "apps/desktop/src-tauri/build.rs"
+check_file "apps/desktop/src-tauri/src/main.rs"
+check_file "apps/desktop/src-tauri/src/lib.rs"
+check_file "apps/desktop/src-tauri/capabilities/default.json"
 
 echo ""
 
