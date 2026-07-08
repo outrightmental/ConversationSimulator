@@ -403,6 +403,8 @@ async def test_transcribe_raises_stt_error_on_timeout(tmp_path):
     class _SlowProcess:
         # Non-coroutine return is fine: asyncio.wait_for is patched to raise
         # before it awaits anything, so no "coroutine never awaited" warning.
+        returncode: int | None = None
+
         def communicate(self):
             return MagicMock()
 

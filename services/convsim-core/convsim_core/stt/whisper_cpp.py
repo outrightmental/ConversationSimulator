@@ -124,9 +124,13 @@ class WhisperCppWorker(SttWorker):
             )
 
         suffix = f".{request.audio_format}" if request.audio_format else ".bin"
-        # audio_path is captured before the write so the finally block can always
-        # clean up, even if the write itself raises (e.g. disk-full).
+        # All three resources are tracked as None so the finally block can clean
+        # up on every exit path — including asyncio.CancelledError (task cancelled
+        # mid-transcription), which the inner except handlers don't catch.
         audio_path: str | None = None
+        json_path: str | None = None
+        proc: asyncio.subprocess.Process | None = None
+        result: SttResult | None = None
         try:
             with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
                 audio_path = tmp.name
@@ -155,24 +159,34 @@ class WhisperCppWorker(SttWorker):
             except asyncio.TimeoutError as exc:
                 proc.kill()
                 await proc.wait()
-                _try_unlink(json_path)
                 raise SttError(
                     f"whisper-cli timed out after {self._timeout}s", recoverable=True
                 ) from exc
             processing_ms = (time.monotonic() - t0) * 1000.0
+
+            if proc.returncode != 0:
+                err_text = stderr.decode(errors="replace")[:500]
+                raise SttError(
+                    f"whisper-cli exited with code {proc.returncode}: {err_text}",
+                    recoverable=True,
+                )
+
+            result = _read_result(json_path, stdout.decode(errors="replace"), processing_ms)
         finally:
             if audio_path is not None:
                 _try_unlink(audio_path)
+            if json_path is not None and result is None:
+                # _read_result handles json_path cleanup on the success path.
+                # On any error or cancellation, clean it here.
+                _try_unlink(json_path)
+            if proc is not None and proc.returncode is None:
+                try:
+                    proc.kill()
+                except OSError:
+                    pass
 
-        if proc.returncode != 0:
-            _try_unlink(json_path)
-            err_text = stderr.decode(errors="replace")[:500]
-            raise SttError(
-                f"whisper-cli exited with code {proc.returncode}: {err_text}",
-                recoverable=True,
-            )
-
-        return _read_result(json_path, stdout.decode(errors="replace"), processing_ms)
+        assert result is not None  # guaranteed: no exception → _read_result ran
+        return result
 
     async def health(self) -> SttHealth:
         checked_at = datetime.now(timezone.utc).isoformat()

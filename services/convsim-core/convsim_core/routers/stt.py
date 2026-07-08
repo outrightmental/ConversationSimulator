@@ -12,15 +12,6 @@ router = APIRouter()
 
 _MAX_AUDIO_BYTES = 25 * 1024 * 1024  # 25 MB hard cap
 
-_ALLOWED_CONTENT_TYPES = {
-    "audio/webm",
-    "audio/ogg",
-    "audio/wav",
-    "audio/mpeg",
-    "audio/mp4",
-    "application/octet-stream",
-}
-
 _MIME_TO_EXT: dict[str, str] = {
     "audio/webm": "webm",
     "audio/ogg": "ogg",
@@ -29,6 +20,9 @@ _MIME_TO_EXT: dict[str, str] = {
     "audio/mp4": "mp4",
     "application/octet-stream": "bin",
 }
+
+# Derived from _MIME_TO_EXT so the allowlist and extension map never drift apart.
+_ALLOWED_CONTENT_TYPES = set(_MIME_TO_EXT)
 
 
 class SttUploadResponse(BaseModel):
