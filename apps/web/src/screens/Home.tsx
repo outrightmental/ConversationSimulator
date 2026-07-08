@@ -74,11 +74,15 @@ export default function Home() {
           </li>
           <li>
             STT:{' '}
-            <StatusBadge status={sttBadgeProps.status}>{sttBadgeProps.label}</StatusBadge>
+            <Link to="/settings" style={{ textDecoration: 'none' }}>
+              <StatusBadge status={sttBadgeProps.status}>{sttBadgeProps.label}</StatusBadge>
+            </Link>
           </li>
           <li>
             TTS:{' '}
-            <StatusBadge status={ttsBadgeProps.status}>{ttsBadgeProps.label}</StatusBadge>
+            <Link to="/settings" style={{ textDecoration: 'none' }}>
+              <StatusBadge status={ttsBadgeProps.status}>{ttsBadgeProps.label}</StatusBadge>
+            </Link>
           </li>
           <li>
             Network required to play:{' '}
