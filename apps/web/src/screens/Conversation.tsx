@@ -439,15 +439,20 @@ export default function Conversation() {
                 {npcEmotion}
               </div>
             )}
-            {npcStatus && (
-              <div
-                data-testid="npc-status"
-                aria-live="polite"
-                style={{ fontSize: '0.75rem', color: '#71717a', marginTop: 2 }}
-              >
-                {npcStatus}
-              </div>
-            )}
+            {/* Always mounted so screen readers announce status transitions;
+                a conditionally-rendered live region is re-inserted rather than
+                updated and often goes unannounced. */}
+            <div
+              data-testid="npc-status"
+              aria-live="polite"
+              style={{
+                fontSize: '0.75rem',
+                color: '#71717a',
+                marginTop: npcStatus ? 2 : 0,
+              }}
+            >
+              {npcStatus}
+            </div>
           </div>
         </div>
 
