@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import Conversation from '../screens/Conversation'
@@ -275,6 +275,126 @@ describe('Conversation screen', () => {
 
       await waitFor(() =>
         expect(screen.getByRole('alert')).toHaveTextContent('End failed'),
+      )
+    })
+  })
+
+  describe('developer debug drawer', () => {
+    beforeEach(() => {
+      mockApi.startSession.mockResolvedValue(startResponse)
+      localStorage.removeItem('convsim.devMode')
+    })
+
+    afterEach(() => {
+      localStorage.removeItem('convsim.devMode')
+      vi.unstubAllEnvs()
+    })
+
+    it('does not render the debug drawer in normal mode', async () => {
+      renderConversation()
+      await waitFor(() =>
+        expect(screen.getByText('Thanks for coming in. Tell me about yourself.')).toBeInTheDocument(),
+      )
+      expect(screen.queryByTestId('debug-drawer')).not.toBeInTheDocument()
+    })
+
+    it('renders the debug drawer when dev mode is enabled via localStorage', async () => {
+      localStorage.setItem('convsim.devMode', 'true')
+      renderConversation()
+      await waitFor(() =>
+        expect(screen.getByTestId('debug-drawer')).toBeInTheDocument(),
+      )
+    })
+
+    it('renders the debug drawer when VITE_DEV_TOOLS=true build flag is set', async () => {
+      vi.stubEnv('VITE_DEV_TOOLS', 'true')
+      renderConversation()
+      await waitFor(() =>
+        expect(screen.getByTestId('debug-drawer')).toBeInTheDocument(),
+      )
+    })
+
+    it('shows a debug entry for the npc_opening event in dev mode', async () => {
+      localStorage.setItem('convsim.devMode', 'true')
+      renderConversation()
+      await waitFor(() => expect(screen.getByTestId('debug-drawer')).toBeInTheDocument())
+      expect(screen.getByText('1 entry')).toBeInTheDocument()
+    })
+
+    it('accumulates debug entries as turns are submitted in dev mode', async () => {
+      localStorage.setItem('convsim.devMode', 'true')
+      mockApi.submitTurn.mockResolvedValue(turnResponse)
+      renderConversation()
+      await waitFor(() =>
+        expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument(),
+      )
+
+      const textarea = screen.getByRole('textbox', { name: /your response/i })
+      fireEvent.change(textarea, { target: { value: 'My answer.' } })
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+
+      await waitFor(() => expect(screen.getByText('2 entries')).toBeInTheDocument())
+    })
+
+    it('debug drawer is not rendered (not just hidden) in normal mode', async () => {
+      renderConversation()
+      await waitFor(() =>
+        expect(screen.getByTestId('state-vars')).toBeInTheDocument(),
+      )
+      // The debug drawer must be absent from DOM, not merely invisible
+      expect(screen.queryByText('Developer debug')).not.toBeInTheDocument()
+    })
+
+    it('hidden NPC agenda field values do not appear in the DOM in normal mode', async () => {
+      const HIDDEN_AGENDA = 'HIDDEN_AGENDA_VALUE_abc123'
+      mockApi.startSession.mockResolvedValue({
+        ...startResponse,
+        events: [
+          {
+            ...startResponse.events[0],
+            payload: {
+              content: "Thanks for coming in. Tell me about yourself.",
+              agenda: HIDDEN_AGENDA,
+              hidden_state: 'suspicious',
+            },
+          },
+        ],
+      })
+      renderConversation()
+      await waitFor(() =>
+        expect(screen.getByText('Thanks for coming in. Tell me about yourself.')).toBeInTheDocument(),
+      )
+      expect(document.body.innerHTML).not.toContain(HIDDEN_AGENDA)
+      expect(document.body.innerHTML).not.toContain('suspicious')
+    })
+
+    it('surfaces model deltas for unknown variables as rejected in dev mode', async () => {
+      localStorage.setItem('convsim.devMode', 'true')
+      mockApi.submitTurn.mockResolvedValue({
+        ...turnResponse,
+        events: [
+          turnResponse.events[0],
+          {
+            ...turnResponse.events[1],
+            payload: {
+              ...turnResponse.events[1].payload,
+              // trust is a tracked variable; made_up_var is not and must be rejected
+              state_delta: { trust: 5, made_up_var: 9 },
+            },
+          },
+        ],
+      })
+      renderConversation()
+      await waitFor(() =>
+        expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument(),
+      )
+
+      const textarea = screen.getByRole('textbox', { name: /your response/i })
+      fireEvent.change(textarea, { target: { value: 'My answer.' } })
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+
+      await waitFor(() =>
+        expect(screen.getByLabelText('Contains rejected state delta')).toBeInTheDocument(),
       )
     })
   })

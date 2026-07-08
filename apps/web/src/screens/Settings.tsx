@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState, useEffect, useCallback, type ReactNode } from 'react'
 import { api } from '../api/client'
-import { readPrivacyPref, writePrivacyPref, PRIVACY_KEYS } from '../privacyPrefs'
+import { readPrivacyPref, writePrivacyPref, PRIVACY_KEYS, isDevModeEnabled } from '../privacyPrefs'
 
 type ClearState = 'idle' | 'confirming' | 'clearing' | 'done' | 'error'
 
@@ -54,6 +54,7 @@ export default function Settings() {
   const [saveTtsCache, setSaveTtsCache] = useState(() => readPrivacyPref(PRIVACY_KEYS.saveTtsCache, true))
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [saveRawAudio, setSaveRawAudio] = useState(() => readPrivacyPref(PRIVACY_KEYS.saveRawAudio, false))
+  const [devMode, setDevMode] = useState(() => isDevModeEnabled())
 
   function handleSaveTranscriptsChange(v: boolean) {
     setSaveTranscripts(v)
@@ -68,6 +69,11 @@ export default function Settings() {
   function handleSaveRawAudioChange(v: boolean) {
     setSaveRawAudio(v)
     writePrivacyPref(PRIVACY_KEYS.saveRawAudio, v)
+  }
+
+  function handleDevModeChange(v: boolean) {
+    setDevMode(v)
+    writePrivacyPref(PRIVACY_KEYS.devMode, v)
   }
 
   const [dataFolder, setDataFolder] = useState<string | null>(null)
@@ -495,6 +501,21 @@ export default function Settings() {
                 style={{ fontSize: '0.85rem', color: '#fbbf24', margin: '0 0 0 1.5rem' }}
               >
                 Raw audio saving is on. Recordings will be stored locally until you clear local data.
+              </p>
+            )}
+            <PrivacyToggle
+              id="dev-mode"
+              label="Developer debug mode"
+              checked={devMode}
+              onChange={handleDevModeChange}
+              description="Shows a debug drawer in the conversation screen with raw model output, state deltas, event evaluations, and hidden NPC fields. For developers diagnosing model drift or scenario behaviour. Reload the conversation screen after toggling."
+            />
+            {devMode && (
+              <p
+                aria-live="polite"
+                style={{ fontSize: '0.85rem', color: '#fbbf24', margin: '0 0 0 1.5rem' }}
+              >
+                Developer debug drawer is active. Internal model data is visible on the conversation screen. Disable before sharing your screen.
               </p>
             )}
           </div>
