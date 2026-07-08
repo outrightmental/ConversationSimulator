@@ -26,6 +26,7 @@ export interface SessionCreateRequest {
   language: string;
   input_mode: InputMode;
   tts_enabled: boolean;
+  voice_id: string | null;
   show_state_meters: boolean;
   save_transcript: boolean;
   seed: number | null;
