@@ -1,0 +1,54 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: smoke_apartment_lease_renewal
+scenario_id: apartment_lease_renewal
+description: >-
+  Verifies that the apartment_lease_renewal scenario loads cleanly, produces a
+  non-empty opening line, and that a prepared tenant response citing comparable
+  rents and a payment record advances the session without triggering a safety
+  stop.
+
+seed: 42
+input_mode: text
+difficulty: normal
+
+turns:
+  - turn: 1
+    player_input: >-
+      Thanks Patricia. I've been looking at this carefully. I've paid on time
+      every month for two years without a single late payment. I've also been
+      checking comparable units in this neighbourhood — similar two-bedrooms
+      are listing for fifteen-twenty to fifteen-sixty, which puts a fair
+      increase closer to five or six percent. I'd like to discuss that range.
+    expect:
+      state_delta_contains:
+        - deal_progress
+        - leverage
+      session_control: continue_session
+      safety_status: ok
+
+static_assertions:
+  - description: Scenario opening line is non-empty
+    path: opening.npc_says
+    check: non_empty_string
+  - description: At least one event is defined
+    path: events
+    check: min_length_1
+  - description: market_data_reward event fires when leverage exceeds 55
+    path: events[id=market_data_reward].when
+    check: "type=variable_above AND variable=leverage AND threshold=55"
+  - description: Success ending condition targets deal_progress
+    path: ending_conditions.success
+    check: "type=variable_above AND variable=deal_progress"
+  - description: Failure ending condition targets perceived_fairness
+    path: ending_conditions.failure
+    check: "type=variable_below AND variable=perceived_fairness"
+  - description: NPC is marked fictional
+    path: npc.fictional
+    check: "equals true"
+  - description: Safety policy stops nsfw_sexual_content
+    path: safety.content_categories.nsfw_sexual_content
+    check: "equals stop"
+  - description: Pack manifest declares the lease renewal entry scenario
+    path: manifest.entry_scenarios
+    check: "contains scenarios/apartment_lease_renewal.yaml"

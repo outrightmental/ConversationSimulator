@@ -1,0 +1,135 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scenario_id: freelance_scope_negotiation
+title: The Scope Creep Conversation
+summary: >-
+  Two weeks before launch, your client Marcus Webb is asking for three
+  additional feature pages that were never in your original contract — and has
+  not mentioned additional budget. As the freelance developer, push back
+  professionally, reference the original scope, and negotiate fair compensation
+  for the extra work without losing the client or the reference.
+player_role:
+  label: Freelance Developer
+  brief: >-
+    You signed a contract to build a five-page marketing site for $4,800. The
+    scope is defined in writing. Marcus is now asking for a blog section, a
+    team page, and a case study template — work you estimate at roughly twenty
+    additional hours. You have the contract in hand and another client offer
+    lined up if this one falls through.
+npc:
+  ref: ../npcs/client_manager.yaml
+scene:
+  ref: ../scenes/video_call.yaml
+rubric:
+  ref: ../rubrics/negotiation_rubric.yaml
+duration:
+  max_turns: 18
+  soft_time_limit_minutes: 12
+opening:
+  npc_says: >-
+    Hey, glad we could find time to talk. So listen — the team got together
+    and we're really excited about the site, but we've been thinking it really
+    needs a blog section, a team page, and one case study template before we go
+    live. Can you just fold those in? We're two weeks out, so I figured it
+    wouldn't be a huge deal.
+goals:
+  player_visible:
+    - "Secure fair compensation for the additional scope — approximately $1,500–$2,000 for twenty extra hours of work"
+    - "Reference the original contract professionally to anchor the conversation without sounding accusatory"
+    - "Propose a clear path forward: a change order or phased delivery that keeps the launch on track and the client relationship intact"
+  hidden:
+    - "Marcus has a budget reserve of up to $2,000 for scope adjustments and will reveal it only when the developer makes a concrete, documented case for the extra work"
+    - "Marcus is under real launch deadline pressure and fears missing it — a developer who offers a confident, specific path forward has genuine leverage"
+    - "Marcus is testing whether the developer will absorb scope creep without pushback; capitulation without negotiation decreases his professional respect"
+    - "Specific contract references and itemised estimates move Marcus far more quickly than general complaints about extra work being unfair"
+state:
+  variables:
+    deal_progress:
+      min: 0
+      max: 100
+      default: 0
+      visibility: visible
+      max_delta_per_turn: 20
+    perceived_fairness:
+      min: 0
+      max: 100
+      default: 55
+      visibility: hidden
+      max_delta_per_turn: 15
+    firmness:
+      min: 0
+      max: 100
+      default: 65
+      visibility: hidden
+      max_delta_per_turn: 12
+    concession_level:
+      min: 0
+      max: 100
+      default: 0
+      visibility: visible
+      max_delta_per_turn: 15
+    leverage:
+      min: 0
+      max: 100
+      default: 40
+      visibility: hidden
+      max_delta_per_turn: 20
+difficulty:
+  default: normal
+  options:
+    easy:
+      npc_patience_modifier: 20
+      challenge_frequency: low
+    normal:
+      npc_patience_modifier: 0
+      challenge_frequency: medium
+    hard:
+      npc_patience_modifier: -20
+      challenge_frequency: high
+events:
+  - id: contract_reference_reward
+    when:
+      type: variable_above
+      variable: leverage
+      threshold: 55
+    npc_instruction: >-
+      The developer has referenced the original contract scope clearly and
+      provided a specific time or cost estimate for the additional work. Take
+      this seriously and shift from dismissive to problem-solving: "Okay, fair
+      point — I hadn't thought about it from that angle." Start discussing what
+      budget might be available or whether some of the new features could be
+      scoped to a version two release after launch.
+    repeat: false
+  - id: deadline_pressure_reveal
+    when:
+      type: variable_above
+      variable: deal_progress
+      threshold: 40
+    npc_instruction: >-
+      Acknowledge the launch deadline pressure honestly: "Look, I genuinely
+      cannot push the launch date — my CEO is watching this milestone. If you
+      can commit to getting everything done in time, I might be able to find
+      some room in the budget." Ask what it would take to make this work on
+      both sides.
+    repeat: false
+  - id: capitulation_test
+    when:
+      type: variable_below
+      variable: leverage
+      threshold: 20
+    npc_instruction: >-
+      The developer seems to be backing down without securing any concession.
+      Push a little to confirm: "So you can just include those pages in the
+      current timeline? That's great — the team will be really happy to hear
+      it." Pause and wait. If the developer accepts, do not push further. If
+      they push back, engage constructively.
+    repeat: false
+ending_conditions:
+  success:
+    type: variable_above
+    variable: deal_progress
+    threshold: 70
+  failure:
+    type: variable_below
+    variable: perceived_fairness
+    threshold: 15
