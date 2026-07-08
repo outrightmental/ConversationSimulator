@@ -3,12 +3,15 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import shutil
 import tempfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -199,11 +202,9 @@ class WhisperCppWorker(SttWorker):
     async def health(self) -> SttHealth:
         checked_at = datetime.now(timezone.utc).isoformat()
 
-        # Re-check PATH on each call when binary was absent at startup, so a
-        # newly-installed whisper-cli is reflected without a server restart.
-        # Once found, the cached path is reused for performance.
-        if self._binary is None:
-            self._binary = _find_binary(self._configured_binary_path)
+        # Re-check binary on every health call so that installs and removals
+        # after startup are reflected without a server restart.
+        self._binary = _find_binary(self._configured_binary_path)
 
         if self._binary is None:
             return SttHealth(
@@ -264,8 +265,10 @@ def _read_result(json_path: str, stdout: str, processing_ms: float) -> SttResult
     try:
         return _parse_json_output(data, processing_ms)
     except Exception:
-        # Unexpected structure in otherwise-valid JSON (e.g. offset field is a
-        # string instead of int): fall back to stdout rather than HTTP 500.
+        logger.warning(
+            "Failed to parse whisper-cli JSON sidecar; falling back to stdout text.",
+            exc_info=True,
+        )
         return SttResult(transcript=stdout.strip(), processing_ms=processing_ms)
 
 

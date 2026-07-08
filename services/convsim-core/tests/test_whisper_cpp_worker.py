@@ -256,7 +256,8 @@ async def test_health_detects_binary_installed_after_startup():
 @pytest.mark.asyncio
 async def test_health_unavailable_when_model_missing(tmp_path):
     worker = _make_worker(binary=_FAKE_BINARY, model="/nonexistent/model.bin")
-    h = await worker.health()
+    with patch("convsim_core.stt.whisper_cpp._find_binary", return_value=_FAKE_BINARY):
+        h = await worker.health()
     assert h.status == RuntimeStatus.UNAVAILABLE
     assert "/nonexistent/model.bin" in (h.message or "")
 
@@ -266,7 +267,7 @@ async def test_health_ready_when_binary_and_model_exist(tmp_path):
     model_file = tmp_path / "ggml-base.en.bin"
     model_file.write_bytes(b"\x00" * 64)
     worker = _make_worker(binary=_FAKE_BINARY, model=str(model_file))
-    with patch("os.path.isfile", return_value=True):
+    with patch("convsim_core.stt.whisper_cpp._find_binary", return_value=_FAKE_BINARY):
         h = await worker.health()
     assert h.status == RuntimeStatus.READY
     assert h.checked_at
@@ -276,8 +277,20 @@ async def test_health_ready_when_binary_and_model_exist(tmp_path):
 async def test_health_returns_model_path_when_unavailable(tmp_path):
     missing_model = "/tmp/no-such-model.bin"
     worker = _make_worker(binary=_FAKE_BINARY, model=missing_model)
-    h = await worker.health()
+    with patch("convsim_core.stt.whisper_cpp._find_binary", return_value=_FAKE_BINARY):
+        h = await worker.health()
     assert h.model_path == missing_model
+
+
+@pytest.mark.asyncio
+async def test_health_detects_binary_removed_after_startup():
+    """Binary removed after server startup must be detected on the next health call."""
+    worker = _make_worker(binary=_FAKE_BINARY)
+    assert worker._binary == _FAKE_BINARY
+    with patch("convsim_core.stt.whisper_cpp._find_binary", return_value=None):
+        h = await worker.health()
+    assert h.status == RuntimeStatus.UNAVAILABLE
+    assert worker._binary is None
 
 
 # ---------------------------------------------------------------------------
