@@ -167,8 +167,18 @@ describe('useVad — calibrate', () => {
   it('sets backendAvailable=false when vadCalibrate throws', async () => {
     vi.mocked(apiClient.vadCalibrate).mockRejectedValueOnce(new Error('fail'))
     const { result } = renderHook(() => useVad())
-    await act(async () => { await result.current.calibrate(new Blob()) })
+    await act(async () => {
+      await expect(result.current.calibrate(new Blob())).rejects.toThrow('fail')
+    })
     expect(result.current.backendAvailable).toBe(false)
+  })
+
+  it('propagates the error to the caller when vadCalibrate throws', async () => {
+    vi.mocked(apiClient.vadCalibrate).mockRejectedValueOnce(new Error('network'))
+    const { result } = renderHook(() => useVad())
+    await act(async () => {
+      await expect(result.current.calibrate(new Blob())).rejects.toThrow('network')
+    })
   })
 })
 

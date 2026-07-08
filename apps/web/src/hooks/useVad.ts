@@ -179,8 +179,9 @@ export function useVad(): UseVadReturn {
         const result = await apiClient.vadCalibrate(blob)
         update({ threshold: result.recommended_threshold, calibratedAt: new Date().toISOString() })
         setBackendAvailable(true)
-      } catch {
+      } catch (err) {
         setBackendAvailable(false)
+        throw err
       } finally {
         setIsCalibrating(false)
       }
