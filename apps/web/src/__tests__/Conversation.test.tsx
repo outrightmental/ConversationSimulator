@@ -20,6 +20,12 @@ vi.mock('../api/client', () => ({
     connectSession: vi.fn(),
     getScenario: vi.fn(),
   },
+  apiClient: {
+    health: vi.fn(),
+    uploadAudio: vi.fn(),
+    vadHealth: vi.fn().mockResolvedValue({}),
+    vadCalibrate: vi.fn(),
+  },
 }))
 
 import { api } from '../api/client'
