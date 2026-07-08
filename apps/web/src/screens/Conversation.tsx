@@ -61,14 +61,16 @@ export default function Conversation() {
               content: opening.payload['content'] as string,
             },
           ])
-          setDebugEntries([
-            {
-              turnId: uid,
-              role: 'npc_opening',
-              rawPayload: opening.payload,
-              appliedDelta: {},
-            },
-          ])
+          if (devMode) {
+            setDebugEntries([
+              {
+                turnId: uid,
+                role: 'npc_opening',
+                rawPayload: opening.payload,
+                appliedDelta: {},
+              },
+            ])
+          }
         }
         setSessionState(res.state)
         setStateVars({ ...BASELINE_STATE_VARS })
@@ -134,10 +136,12 @@ export default function Conversation() {
           eventFlags: flags.length > 0 ? flags : undefined,
         })
 
-        setDebugEntries((prev) => [
-          ...prev,
-          { turnId: uid, role: 'npc', rawPayload: payload, appliedDelta: delta },
-        ])
+        if (devMode) {
+          setDebugEntries((prev) => [
+            ...prev,
+            { turnId: uid, role: 'npc', rawPayload: payload, appliedDelta: delta },
+          ])
+        }
 
         if (Object.keys(delta).length > 0) {
           setStateVars((prev) => {
