@@ -354,27 +354,27 @@ def test_npc_not_fictional_reported_exactly_once(tmp_path):
 # Official pack smoke-test presence
 # ---------------------------------------------------------------------------
 
-def test_official_pack_without_smoke_tests_returns_warning(tmp_path):
+def test_official_pack_without_smoke_tests_returns_error(tmp_path):
     official_manifest = _VALID_MANIFEST_YAML_OFFICIAL()
     pack_dir = make_yaml_pack_dir(tmp_path, manifest_yaml=official_manifest)
     result = validate_pack_dir(pack_dir)
-    assert _has_warning(result, rule_id="MISSING_SMOKE_TESTS")
-    assert result.valid is True  # warning, not error
+    assert _has_error(result, rule_id="MISSING_SMOKE_TESTS")
+    assert result.valid is False  # blocks import; official packs must have smoke tests
 
 
-def test_official_pack_with_smoke_tests_no_warning(tmp_path):
+def test_official_pack_with_smoke_tests_no_error(tmp_path):
     official_manifest = _VALID_MANIFEST_YAML_OFFICIAL()
     pack_dir = make_yaml_pack_dir(
         tmp_path, manifest_yaml=official_manifest, include_tests=True
     )
     result = validate_pack_dir(pack_dir)
-    assert not _has_warning(result, rule_id="MISSING_SMOKE_TESTS")
+    assert not _has_error(result, rule_id="MISSING_SMOKE_TESTS")
 
 
-def test_community_pack_without_smoke_tests_no_warning(tmp_path):
+def test_community_pack_without_smoke_tests_no_error(tmp_path):
     pack_dir = make_yaml_pack_dir(tmp_path)  # pack_id: test.yaml_pack (not official.)
     result = validate_pack_dir(pack_dir)
-    assert not _has_warning(result, rule_id="MISSING_SMOKE_TESTS")
+    assert not _has_error(result, rule_id="MISSING_SMOKE_TESTS")
 
 
 def _VALID_MANIFEST_YAML_OFFICIAL() -> str:

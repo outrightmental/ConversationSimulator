@@ -556,13 +556,13 @@ class _PackValidator:
         test_files = list(tests_dir.glob("*.yaml")) if tests_dir.is_dir() else []
 
         if not test_files:
-            self._warning(
+            self._error(
                 "MISSING_SMOKE_TESTS",
                 manifest_file,
                 "/pack_id",
                 (
                     f"Official pack '{pack_id}' has no smoke tests in the tests/ directory. "
-                    "Smoke tests are required before contributing to the official collection."
+                    "At least one smoke test is required for all official packs."
                 ),
                 "Add at least one test fixture YAML file in the 'tests/' directory. "
                 "See schemas/pack-test.schema.json for the required format.",
