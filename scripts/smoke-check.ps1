@@ -108,13 +108,17 @@ Check-File "scripts\dev-desktop.ps1"
 # First-run and release scripts
 Check-File "scripts\first-run-check.sh"
 Check-File "scripts\first-run-check.ps1"
+Check-File "scripts\release-smoke.sh"
+Check-File "scripts\release-smoke.ps1"
 
 Write-Host ""
 
 # Release infrastructure
 Check-File ".github\workflows\release.yml"
+Check-File ".github\workflows\release-smoke.yml"
 Check-File "docs\release-notes-template.md"
 Check-File "docs\platform-notes.md"
+Check-File "docs\release-checklist.md"
 
 Write-Host ""
 

@@ -106,13 +106,17 @@ check_file "scripts/dev-desktop.ps1"
 # First-run and release scripts
 check_file "scripts/first-run-check.sh"
 check_file "scripts/first-run-check.ps1"
+check_file "scripts/release-smoke.sh"
+check_file "scripts/release-smoke.ps1"
 
 echo ""
 
 # Release infrastructure
 check_file ".github/workflows/release.yml"
+check_file ".github/workflows/release-smoke.yml"
 check_file "docs/release-notes-template.md"
 check_file "docs/platform-notes.md"
+check_file "docs/release-checklist.md"
 
 echo ""
 
