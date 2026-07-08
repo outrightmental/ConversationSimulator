@@ -114,7 +114,7 @@ accessibility specialist. The automated `accessibility.test.tsx` covers
 obvious violations; manual audit is needed for full compliance.
 
 **Milestone:** 1 (polish) / 2 (hardening)  
-**Tracking:** `apps/web/src/tests/accessibility.test.tsx`
+**Tracking:** `apps/web/src/__tests__/accessibility.test.tsx`
 
 ---
 
