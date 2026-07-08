@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+pack_id: official.difficult_conversations
+name: Difficult Conversations
+version: 0.1.0
+description: >-
+  Practice real-life conversations that most people avoid or handle poorly.
+  Build confidence giving feedback, setting boundaries, and owning mistakes
+  with clarity and composure.
+author: Outright Mental
+license: CC-BY-4.0
+content_rating: PG
+tags:
+  - communication
+  - workplace
+  - relationships
+  - emotional-intelligence
+supported_languages:
+  - en
+assets:
+  allow_external_urls: false
+safety:
+  policy: safety/default.yaml

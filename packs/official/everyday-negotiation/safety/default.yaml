@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+policy_id: everyday_negotiation_safety
+description: >-
+  Safety policy for the Everyday Negotiation pack. Allows realistic adversarial
+  but non-violent negotiation dynamics while prohibiting harmful or inappropriate
+  content.
+content_categories:
+  nsfw_sexual_content: stop
+  minors_romantic_or_sexual: stop
+  real_person_impersonation: refuse
+  voice_cloning_request: refuse
+  medical_or_therapy_claim: redirect
+  legal_claim: redirect
+  criminal_instruction: refuse
+  harassment_extreme: redirect
+  self_harm_crisis: stop_with_resource_message
+redirect_message: >-
+  That's outside the scope of this negotiation scenario. Let's keep the
+  conversation focused on the matter at hand.
+allow_profanity: false
+content_rating_cap: PG
