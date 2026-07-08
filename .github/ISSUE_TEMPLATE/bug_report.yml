@@ -1,7 +1,5 @@
 name: Bug report
 description: Something is broken or behaving unexpectedly.
-labels:
-  - bug
 body:
   - type: markdown
     attributes:

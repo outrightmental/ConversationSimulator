@@ -1,7 +1,7 @@
 name: Scenario pack idea
 description: Propose a new scenario pack concept before building it.
 labels:
-  - scenario-pack
+  - scenario-packs
 body:
   - type: markdown
     attributes:

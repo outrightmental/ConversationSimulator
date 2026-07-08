@@ -1,7 +1,5 @@
 name: Feature proposal
 description: Suggest a new feature or improvement to the simulator.
-labels:
-  - enhancement
 body:
   - type: markdown
     attributes:

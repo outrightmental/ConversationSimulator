@@ -1,7 +1,7 @@
 name: Model compatibility report
 description: Report a model that works well, has issues, or is not yet listed in the model registry.
 labels:
-  - model-compat
+  - ai-runtime
 body:
   - type: markdown
     attributes:
