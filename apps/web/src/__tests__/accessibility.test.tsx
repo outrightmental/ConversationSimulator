@@ -1,0 +1,361 @@
+// SPDX-License-Identifier: Apache-2.0
+/**
+ * Automated accessibility checks using axe-core.
+ *
+ * These tests catch common WCAG 2.1 violations (missing labels, landmark
+ * structure, ARIA contract mismatches, etc.) at the component level.  They
+ * complement—not replace—manual keyboard and screen-reader passes.
+ *
+ * Known limitations:
+ * - Colour-contrast rules depend on computed CSS which jsdom cannot evaluate
+ *   from inline styles.  Browser-level contrast checks (e.g. Playwright + axe)
+ *   are tracked as a follow-up item.
+ * - Dynamic ARIA states that require user interaction (recording, submitting)
+ *   are covered in the per-component interaction test suites.
+ */
+import React from 'react'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render } from '@testing-library/react'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import axe from 'axe-core'
+
+// ── Mocks ────────────────────────────────────────────────────────────────────
+
+// @convsim/ui re-exports FormEditor which pulls in @convsim/scenario-schema
+// (needs zod at runtime).  Stub the package to avoid that dependency in tests.
+vi.mock('@convsim/ui', () => ({
+  StatusBadge: ({ children, status }: { children: React.ReactNode; status: string }) => (
+    <span data-status={status}>{children}</span>
+  ),
+}))
+
+vi.mock('../api/client', () => ({
+  api: {
+    health: vi.fn().mockResolvedValue(null),
+    listScenarios: vi.fn().mockResolvedValue([]),
+    getScenario: vi.fn().mockResolvedValue(null),
+    startSession: vi.fn().mockReturnValue(new Promise(() => {})),
+    endSession: vi.fn(),
+    submitTurn: vi.fn(),
+    generateDebrief: vi.fn().mockReturnValue(new Promise(() => {})),
+    exportSession: vi.fn(),
+    connectSession: vi.fn().mockReturnValue({ close: vi.fn() }),
+    listSessions: vi.fn().mockResolvedValue({ sessions: [] }),
+    getDataFolder: vi.fn().mockResolvedValue({ path: '/tmp/data' }),
+    clearLocalData: vi.fn(),
+    deleteSession: vi.fn(),
+    listVoices: vi.fn().mockResolvedValue({ voices: [] }),
+    // RuntimeSettingsPanel
+    getModels: vi.fn().mockReturnValue(new Promise(() => {})),
+    getRuntimeSettings: vi.fn().mockReturnValue(new Promise(() => {})),
+    useModel: vi.fn(),
+    updateRuntimeSettings: vi.fn(),
+    resetRuntimeSettings: vi.fn(),
+    // VoiceSettingsPanel
+    getTtsCacheSize: vi.fn().mockReturnValue(new Promise(() => {})),
+    clearTtsCache: vi.fn(),
+    vadHealth: vi.fn().mockReturnValue(new Promise(() => {})),
+    workbench: {
+      listPacks: vi.fn().mockResolvedValue([]),
+      listFiles: vi.fn().mockResolvedValue({ tree: [] }),
+      validate: vi.fn().mockResolvedValue(null),
+      readFile: vi.fn(),
+      writeFile: vi.fn(),
+      copyToLocal: vi.fn(),
+      importPack: vi.fn(),
+      exportPack: vi.fn(),
+    },
+  },
+  apiClient: {
+    health: vi.fn(),
+    uploadAudio: vi.fn().mockResolvedValue({ transcript: null, status: 'unavailable' }),
+    vadHealth: vi.fn().mockResolvedValue({}),
+    vadCalibrate: vi.fn(),
+  },
+}))
+
+vi.mock('../api/useApiHealth', () => ({
+  useApiHealth: vi.fn().mockReturnValue({ state: 'loading', healthy: false, runtime: null }),
+}))
+
+vi.mock('../api/usePackCount', () => ({
+  usePackCount: vi.fn().mockReturnValue(0),
+}))
+
+// ── Screen imports ────────────────────────────────────────────────────────────
+
+import Home from '../screens/Home'
+import ScenarioLibrary from '../screens/ScenarioLibrary'
+import Settings from '../screens/Settings'
+import Debrief from '../screens/Debrief'
+import CreatorWorkbench from '../screens/CreatorWorkbench'
+import AppLayout from '../layout/AppLayout'
+import MicButton from '../components/MicButton'
+import VadStatusIndicator from '../components/VadStatusIndicator'
+import DebugDrawer from '../components/DebugDrawer'
+import TranscriptReviewPanel from '../components/TranscriptReviewPanel'
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/**
+ * Run axe on `container`, disabling colour-contrast (not computable in jsdom).
+ */
+async function runAxe(container: HTMLElement) {
+  const results = await axe.run(container, {
+    rules: {
+      'color-contrast': { enabled: false },
+    },
+  })
+  return results.violations
+}
+
+function renderInRouter(ui: React.ReactElement) {
+  const { container } = render(
+    <MemoryRouter initialEntries={['/']}>
+      <Routes>
+        <Route path="*" element={ui} />
+      </Routes>
+    </MemoryRouter>,
+  )
+  return container
+}
+
+function formatViolations(violations: axe.Result[]): string {
+  if (violations.length === 0) return ''
+  return violations
+    .map(
+      (v) =>
+        `[${v.impact}] ${v.id}: ${v.description}\n  ` +
+        v.nodes
+          .slice(0, 2)
+          .map((n) => n.html)
+          .join('\n  '),
+    )
+    .join('\n')
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
+
+beforeEach(() => {
+  vi.clearAllMocks()
+})
+
+describe('Accessibility: AppLayout', () => {
+  it('has no axe violations', async () => {
+    const { container } = render(
+      <MemoryRouter>
+        <Routes>
+          <Route element={<AppLayout />}>
+            <Route index element={<div><h1>Test page</h1></div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    )
+    const violations = await runAxe(container)
+    expect(violations, formatViolations(violations)).toHaveLength(0)
+  })
+
+  it('includes a skip-to-main-content link', () => {
+    const { container } = render(
+      <MemoryRouter>
+        <Routes>
+          <Route element={<AppLayout />}>
+            <Route index element={<div><h1>Test page</h1></div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    )
+    expect(container.querySelector('a[href="#main-content"]')).not.toBeNull()
+  })
+
+  it('has a labelled main navigation landmark', () => {
+    const { container } = render(
+      <MemoryRouter>
+        <Routes>
+          <Route element={<AppLayout />}>
+            <Route index element={<div><h1>Test page</h1></div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    )
+    expect(container.querySelector('nav[aria-label]')).not.toBeNull()
+  })
+
+  it('main element has the id targeted by the skip link', () => {
+    const { container } = render(
+      <MemoryRouter>
+        <Routes>
+          <Route element={<AppLayout />}>
+            <Route index element={<div><h1>Test page</h1></div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    )
+    expect(container.querySelector('#main-content')).not.toBeNull()
+  })
+})
+
+describe('Accessibility: Home', () => {
+  it('has no axe violations', async () => {
+    const container = renderInRouter(<Home />)
+    const violations = await runAxe(container)
+    expect(violations, formatViolations(violations)).toHaveLength(0)
+  })
+})
+
+describe('Accessibility: ScenarioLibrary', () => {
+  it('has no axe violations in loading state', async () => {
+    const container = renderInRouter(<ScenarioLibrary />)
+    const violations = await runAxe(container)
+    expect(violations, formatViolations(violations)).toHaveLength(0)
+  })
+})
+
+describe('Accessibility: Settings', () => {
+  it('has no axe violations', async () => {
+    const container = renderInRouter(<Settings />)
+    const violations = await runAxe(container)
+    expect(violations, formatViolations(violations)).toHaveLength(0)
+  })
+
+  it('advanced toggle button exposes aria-controls pointing to its panel', () => {
+    const { container } = render(
+      <MemoryRouter><Settings /></MemoryRouter>,
+    )
+    const btn = container.querySelector('button[aria-expanded]')
+    expect(btn?.getAttribute('aria-controls')).toBe('settings-advanced-section')
+  })
+})
+
+describe('Accessibility: Debrief (loading state)', () => {
+  it('has no axe violations while loading', async () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={['/debrief/sess-001']}>
+        <Routes>
+          <Route path="/debrief/:sessionId" element={<Debrief />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    const violations = await runAxe(container)
+    expect(violations, formatViolations(violations)).toHaveLength(0)
+  })
+})
+
+describe('Accessibility: CreatorWorkbench', () => {
+  it('has no axe violations in initial state (no pack selected)', async () => {
+    const container = renderInRouter(<CreatorWorkbench />)
+    const violations = await runAxe(container)
+    expect(violations, formatViolations(violations)).toHaveLength(0)
+  })
+})
+
+describe('Accessibility: MicButton', () => {
+  it('has no axe violations when permission is granted and not recording', async () => {
+    const { container } = render(
+      <MicButton
+        permission="granted"
+        isRecording={false}
+        recordingSeconds={0}
+        isSubmitting={false}
+        onRequestPermission={vi.fn()}
+        onRecordStart={vi.fn()}
+        onRecordStop={vi.fn()}
+      />,
+    )
+    const violations = await runAxe(container)
+    expect(violations, formatViolations(violations)).toHaveLength(0)
+  })
+
+  it('has no axe violations while recording', async () => {
+    const { container } = render(
+      <MicButton
+        permission="granted"
+        isRecording={true}
+        recordingSeconds={5}
+        isSubmitting={false}
+        onRequestPermission={vi.fn()}
+        onRecordStart={vi.fn()}
+        onRecordStop={vi.fn()}
+      />,
+    )
+    const violations = await runAxe(container)
+    expect(violations, formatViolations(violations)).toHaveLength(0)
+  })
+
+  it('sets aria-pressed=true on the record button while recording', () => {
+    const { container } = render(
+      <MicButton
+        permission="granted"
+        isRecording={true}
+        recordingSeconds={3}
+        isSubmitting={false}
+        onRequestPermission={vi.fn()}
+        onRecordStart={vi.fn()}
+        onRecordStop={vi.fn()}
+      />,
+    )
+    expect(container.querySelector('button[aria-pressed="true"]')).not.toBeNull()
+  })
+})
+
+describe('Accessibility: VadStatusIndicator', () => {
+  const states = ['idle', 'listening', 'speech', 'silence', 'stopping'] as const
+
+  for (const state of states) {
+    it(`has no axe violations in ${state} state`, async () => {
+      const { container } = render(<VadStatusIndicator state={state} />)
+      const violations = await runAxe(container)
+      expect(violations, formatViolations(violations)).toHaveLength(0)
+    })
+  }
+
+  it('exposes an aria-label that names the current VAD state', () => {
+    const { container } = render(<VadStatusIndicator state="listening" />)
+    const el = container.querySelector('[aria-label]')
+    expect(el?.getAttribute('aria-label')).toMatch(/listening/i)
+  })
+})
+
+describe('Accessibility: DebugDrawer', () => {
+  it('has no axe violations with no entries', async () => {
+    const { container } = render(<DebugDrawer entries={[]} />)
+    const violations = await runAxe(container)
+    expect(violations, formatViolations(violations)).toHaveLength(0)
+  })
+
+  it('the details element carries an aria-label', () => {
+    const { container } = render(<DebugDrawer entries={[]} />)
+    const details = container.querySelector('details')
+    expect(details?.getAttribute('aria-label')).toBeTruthy()
+  })
+})
+
+describe('Accessibility: TranscriptReviewPanel', () => {
+  it('has no axe violations', async () => {
+    const { container } = render(
+      <TranscriptReviewPanel
+        transcript="Hello, how are you?"
+        language="en"
+        confidence={0.92}
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    )
+    const violations = await runAxe(container)
+    expect(violations, formatViolations(violations)).toHaveLength(0)
+  })
+
+  it('moves focus to the transcript textarea on mount', () => {
+    const { container } = render(
+      <TranscriptReviewPanel
+        transcript="Test transcript."
+        onConfirm={vi.fn()}
+        onCancel={vi.fn()}
+        onRetry={vi.fn()}
+      />,
+    )
+    const textarea = container.querySelector('textarea')
+    expect(document.activeElement).toBe(textarea)
+  })
+})
