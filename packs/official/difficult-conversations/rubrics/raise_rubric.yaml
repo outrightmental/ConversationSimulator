@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+rubric_id: raise_rubric
+title: Raise Request Rubric
+dimensions:
+  - id: business_case
+    name: Business Case
+    description: >-
+      Whether the player builds the argument for a raise around demonstrated
+      business value and impact rather than personal need, tenure, or general
+      enthusiasm.
+    scoring:
+      low: Player relies primarily on personal need ("I've been here two years", "my rent went up"), general loyalty ("I'm really committed to this company"), or comparisons to unnamed peers, with no concrete business impact.
+      medium: Player references their work and contributions but keeps the framing general ("I've taken on a lot more responsibility") without naming specific outcomes or scope changes.
+      high: Player cites specific outcomes they delivered, names the expanded scope of their current role relative to their job description or compensation band, or articulates a concrete cost to the company of not retaining them — framing the ask as a business decision, not a personal favor.
+    weight: 0.35
+
+  - id: specificity
+    name: Specificity
+    description: >-
+      Whether the player names a specific number or range, backed by reasoning,
+      rather than asking Diane to name a figure or stating they deserve "more"
+      without anchoring to anything.
+    scoring:
+      low: Player does not name any number, or asks Diane what she thinks is fair without providing their own anchor.
+      medium: Player names a number but does not connect it to any evidence (market data, expanded scope, comparable roles) — it lands as a wish, not an argument.
+      high: Player names a specific figure or range and connects it to at least one concrete data point: a market rate reference, an expanded scope they can point to, or a specific outcome that warrants the adjustment.
+    weight: 0.30
+
+  - id: composure
+    name: Composure
+    description: >-
+      Whether the player stays grounded and professional under Diane's probing
+      and skepticism, without becoming either meek or aggressive.
+    scoring:
+      low: Player becomes visibly flustered when Diane probes ("I just thought... I mean, if you don't think it's fair..."), makes threats (implicit or explicit references to leaving), or overcorrects into aggression.
+      medium: Player holds their position under light pressure but softens significantly when Diane expresses skepticism — repeating their case in a less confident voice rather than standing behind it.
+      high: Player maintains the same steady, professional register throughout, accepts Diane's probing questions as legitimate rather than as attacks, and continues engaging with the evidence without either backing down or escalating.
+    weight: 0.20
+
+  - id: listening
+    name: Listening
+    description: >-
+      Whether the player genuinely engages with what Diane says rather than
+      delivering a rehearsed monologue, and adjusts their approach based on
+      the signals she gives.
+    scoring:
+      low: Player ignores Diane's questions or concerns and continues with their prepared points regardless of what she has said.
+      medium: Player responds to Diane's questions but at a surface level — answering what was asked without picking up on what the question signals about her concerns.
+      high: Player tracks what Diane's questions reveal about her underlying concern (budget justification, process requirements, evidence standards) and adapts their argument to address that concern specifically rather than recycling earlier points.
+    weight: 0.15

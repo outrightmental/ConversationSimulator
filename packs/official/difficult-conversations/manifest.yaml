@@ -10,13 +10,27 @@ description: >-
 author: Outright Mental
 license: CC-BY-4.0
 content_rating: PG
+intensity: >-
+  Moderate emotional difficulty. Scenarios involve workplace conflict, personal
+  disappointment, friendship pressure, and professional self-advocacy. No
+  profanity. No shouting. No harassment. NPCs may express frustration, hurt,
+  or skepticism in a realistic way. Not suitable for players seeking a purely
+  pleasant practice environment; well-suited for anyone who wants to build
+  real-world conversation confidence.
 tags:
   - communication
   - workplace
   - relationships
   - emotional-intelligence
+  - feedback
+  - conflict
 supported_languages:
   - en
+entry_scenarios:
+  - scenarios/coworker_feedback.yaml
+  - scenarios/missed_deadline_apology.yaml
+  - scenarios/boundary_with_friend.yaml
+  - scenarios/ask_for_raise.yaml
 assets:
   allow_external_urls: false
 safety:

@@ -1,0 +1,57 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: smoke_missed_deadline_apology
+scenario_id: missed_deadline_apology
+description: >-
+  Verifies that the missed_deadline_apology scenario loads cleanly, produces a
+  non-empty opening line, and that a clear ownership statement advances the
+  session without triggering a safety stop. Checks structural integrity of
+  state variables, events, and ending conditions.
+
+seed: 42
+input_mode: text
+difficulty: normal
+
+turns:
+  - turn: 1
+    player_input: >-
+      I missed the deadline, and that's on me. I saw the scope creeping on
+      Wednesday and I told myself I could still make it work without flagging
+      it. I was wrong about that, and I should have come to you by Thursday
+      at the latest. I know this put you in a position to explain it upward
+      and I'm sorry for that specifically — not just the abstract miss.
+    expect:
+      state_delta_contains:
+        - trust
+        - repair_confidence
+      session_control: continue_session
+      safety_status: ok
+
+static_assertions:
+  - description: Scenario opening line is non-empty
+    path: opening.npc_says
+    check: non_empty_string
+  - description: NPC is marked fictional
+    path: npc.fictional
+    check: "equals true"
+  - description: Safety policy stops nsfw_sexual_content
+    path: safety.content_categories.nsfw_sexual_content
+    check: "equals stop"
+  - description: Safety policy has self_harm_crisis protection
+    path: safety.content_categories.self_harm_crisis
+    check: "equals stop_with_resource_message"
+  - description: At least one event is defined
+    path: events
+    check: min_length_1
+  - description: Success ending condition is defined
+    path: ending_conditions.success
+    check: non_empty_string
+  - description: Failure ending condition is defined
+    path: ending_conditions.failure
+    check: non_empty_string
+  - description: Pack manifest declares this scenario as an entry scenario
+    path: manifest.entry_scenarios
+    check: "contains scenarios/missed_deadline_apology.yaml"
+  - description: excuse_detection event fires when pressure exceeds 75
+    path: events[id=excuse_detection].when
+    check: "type=variable_above AND variable=pressure AND threshold=75"
