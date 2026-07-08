@@ -112,8 +112,9 @@ class MyRuntime(ChatRuntime):
 ```
 
 The active runtime id is chosen by the `CONVSIM_RUNTIME_ID` environment
-variable (default: `"llama_cpp"`). Valid values are the ids of all
-registered runtimes.
+variable (default: `"fake"`, so the app runs with no model installed).
+Set `CONVSIM_RUNTIME_ID=llama_cpp` (or `ollama`) to use a real local model.
+Valid values are the ids of all registered runtimes.
 
 ---
 

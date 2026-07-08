@@ -28,8 +28,8 @@ user explicitly enables LAN access (`CONVSIM_LAN_ACCESS_ENABLED=true`).
 │  ┌──────────────────────┐   SQLite                              │
 │  │  convsim-core :7355  │◄──────────────────┐                   │
 │  │  Python / FastAPI    │                   │                   │
-│  └──────────┬───────────┘             ~/.convsim/               │
-│             │                          convsim.db               │
+│  └──────────┬───────────┘          ~/.convsim/db/               │
+│             │                       convsim.sqlite              │
 │    ┌────────┼─────────────────┐                                 │
 │    ▼        ▼                 ▼                                 │
 │  :7356    :7357             :7358                               │
@@ -93,10 +93,13 @@ Player text (HTTP POST /api/sessions/{id}/turn)
         ▼ 1. Normalize & validate
         │     strip whitespace, reject empty, reject > 2000 chars
         │
-        ▼ 2. Safety precheck  (input_router.route_player_input)
-        │     global non-overridable rules → minors, self-harm crisis
-        │     policy-configurable rules   → NSFW, criminal, etc.
-        │     → ok | redirect | refuse | stop | stop_with_resource
+        ▼ 2. Input safety precheck  (turn_pipeline._safety_precheck)
+        │     currently a placeholder no-op (accepts all input).
+        │     The intended enforcement point is input_router.route_player_input,
+        │     which classifies input against global non-overridable rules
+        │     (minors, self-harm crisis) and policy-configurable rules
+        │     (NSFW, criminal, etc.) into ok | redirect | refuse | stop |
+        │     stop_with_resource. It is not yet wired into this pipeline.
         │
         ▼ 3. Build prompt  (convsim_prompt.compose_turn_prompt)
         │     scenario context, NPC persona, state variables,
@@ -107,7 +110,7 @@ Player text (HTTP POST /api/sessions/{id}/turn)
         │
         ▼ 5. Validate / repair / fallback  (convsim_prompt.parse_turn_output)
         │     JSON schema validation; fallback utterance on parse failure:
-        │     "I didn't quite catch that. Can you say that again?"
+        │     "I'm not sure what to say right now. Could you repeat that?"
         │
         ▼ 6. Apply bounded state deltas  (scenario_state.apply_state_delta)
         │     reject unknown keys, clamp per-turn delta, clamp to [min,max]
@@ -127,7 +130,7 @@ Player text (HTTP POST /api/sessions/{id}/turn)
               → HTTP response with events array
 ```
 
-**Error policy.** `TurnInputError` (steps 1–2) surfaces as HTTP 400.
+**Error policy.** `TurnInputError` (raised in step 1) surfaces as HTTP 400.
 Model errors (step 4) are absorbed; the safe fallback utterance is used
 instead and `used_fallback=true` is set in the result.
 
@@ -226,7 +229,8 @@ was already recorded.
 
 ## WebSocket events
 
-The WebSocket endpoint is at `ws://127.0.0.1:7355/ws/sessions/{id}`.
+The WebSocket endpoint is at `ws://127.0.0.1:7355/ws/session/{id}`.
+On reconnect, pass `?after_seq={seq}` to resume after the last received event.
 
 Every message is a JSON object with these base fields:
 
@@ -361,7 +365,7 @@ guarantees, and invented quotes. Evidence is cited by turn number only.
 
 ## Database schema (SQLite)
 
-The database lives at `~/.convsim/convsim.db` with WAL mode and
+The database lives at `~/.convsim/db/convsim.sqlite` with WAL mode and
 `PRAGMA foreign_keys = ON`.
 
 | Table                  | Purpose                                              |
@@ -395,7 +399,8 @@ The following areas are planned but not implemented in the current milestone:
 - **Pack marketplace.** Import currently supports local folders and zip
   uploads. A curated marketplace with signed packs is planned.
 - **Model classifier safety hook.** The `_safety_precheck` function in
-  `turn_pipeline.py` is a placeholder; a local model classifier will
-  replace the regex-only approach.
+  `turn_pipeline.py` is a no-op placeholder today. The deterministic
+  `input_router.route_player_input` classifier plus a future local model
+  classifier will be wired in as the real input-safety enforcement point.
 - **LAN multiplayer.** `CONVSIM_LAN_ACCESS_ENABLED=true` unlocks LAN
   binding, but multi-user session management is not yet implemented.
