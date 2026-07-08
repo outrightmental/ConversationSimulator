@@ -96,7 +96,7 @@ _WARNING_RULES: list[_InjectionRule] = [
             "Text attempts to replace the AI persona with one that has no restrictions"
         ),
         pattern=_compile(
-            r"\bact\s+as\s+(?:DAN|an?\s+(?:unrestricted|uncensored|unfiltered|unmoderated)\b)",
+            r"\bact\s+as\s+(?:DAN\b|an?\s+(?:unrestricted|uncensored|unfiltered|unmoderated)\b)",
             r"\bdo\s+anything\s+now\b",
             r"\bpretend\s+(?:you\s+have\s+no\s+restrictions|you\s+are\s+(?:unrestricted|uncensored|unfiltered))\b",
             r"\byou\s+are\s+now\s+(?:an?\s+)?(?:unrestricted|uncensored|unfiltered|DAN|jailbroken)\b",

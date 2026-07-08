@@ -60,6 +60,9 @@ def _severity(findings: list[InjectionFinding], *, rule_id: str) -> str | None:
     "How should I handle a technical interview with multiple rounds?",
     "Instructions for the exercise are printed on the card.",  # not 'ignore instructions'
     "Reset the conversation if you make a mistake.",
+    # NPC names starting with "DAN" must not trigger the DAN jailbreak rule
+    "The player will act as Dana, the HR manager.",
+    "Act as Daniel and introduce yourself to the candidate.",
 ])
 def test_benign_text_no_findings(text):
     assert scan_text(text, "test.yaml", "/field") == []
