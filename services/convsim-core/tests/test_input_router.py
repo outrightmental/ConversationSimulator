@@ -144,6 +144,32 @@ class TestMinorsCategory:
         result = route_player_input("18 year old sex", _policy())
         assert result.action == RouteAction.OK
 
+    # Reverse-order: sexual/illegal act appears before the minor-related subject.
+    def test_sex_with_minor_reverse_order_triggers_stop(self):
+        result = route_player_input("sex with a minor", _policy())
+        assert result.action == RouteAction.STOP
+
+    def test_sex_with_teen_reverse_order_triggers_stop(self):
+        result = route_player_input("sex with a teen", _policy())
+        assert result.action == RouteAction.STOP
+
+    def test_rape_a_child_with_article_triggers_stop(self):
+        # Regression: "rape child" already caught but "rape a child" was not.
+        result = route_player_input("rape a child", _policy())
+        assert result.action == RouteAction.STOP
+
+    def test_molest_a_teenager_triggers_stop(self):
+        result = route_player_input("molest a teenager", _policy())
+        assert result.action == RouteAction.STOP
+
+    def test_sex_with_age_based_minor_triggers_stop(self):
+        result = route_player_input("sex with a 16-year-old", _policy())
+        assert result.action == RouteAction.STOP
+
+    def test_adult_age_in_reverse_order_does_not_trigger(self):
+        result = route_player_input("sex with a 25-year-old", _policy())
+        assert result.action == RouteAction.OK
+
 
 # ---------------------------------------------------------------------------
 # Category: self_harm_crisis — GLOBAL NON-OVERRIDABLE → stop_with_resource_message

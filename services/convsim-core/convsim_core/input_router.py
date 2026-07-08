@@ -120,7 +120,6 @@ def _compile(*patterns: str) -> re.Pattern[str]:
 # minors_romantic_or_sexual — GLOBAL NON-OVERRIDABLE → stop
 _MINORS_PATTERN = _compile(
     r"\bchild(?:ren)?\s+(?:sex|sexual|porn|naked|nude|erotic|rape|molest)",
-    r"(?:sex|sexual|porn|naked|nude|erotic|rape|molest)\s+\bchild(?:ren)?",
     r"\bkid[s]?\s+(?:sex|sexual|naked|nude|porn|erotic|rape|molest)",
     r"\b(?:under\s*age|underage)\s+(?:sex|sexual|porn|nude|erotic)",
     r"\bpre\s*teen\s+(?:sex|sexual|nude|naked|erotic|porn)",
@@ -130,6 +129,12 @@ _MINORS_PATTERN = _compile(
     r"\bpedo\b",
     r"\b(?:minor|youth|teen|teenager)\s+(?:sex|sexual|nude|naked|porn|erotic|rape)",
     r"\b(?:1[0-7]|[0-9])[- ]year[- ]old\s+(?:sex|sexual|nude|naked|porn|erotic)",
+    # Reverse-order: sexual/illegal act described before the minor-related subject.
+    # .{0,10} covers articles and prepositions ("rape a child", "sex with a minor")
+    # without a window wide enough to cause false positives on educational phrases.
+    r"(?:sex|sexual|porn|naked|nude|erotic|rape|molest).{0,10}\bchild(?:ren)?\b",
+    r"(?:sex|sexual|porn|naked|nude|erotic|rape|molest).{0,10}\b(?:minor|youth|teen|teenager|kid[s]?)\b",
+    r"(?:sex|sexual|porn|naked|nude|erotic|rape|molest).{0,15}\b(?:1[0-7]|[0-9])[- ]year[- ]old\b",
 )
 
 # self_harm_crisis — GLOBAL NON-OVERRIDABLE → stop_with_resource_message
