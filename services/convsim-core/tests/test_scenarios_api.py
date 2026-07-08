@@ -302,6 +302,15 @@ def test_fts_search_works_without_network(client, tmp_path):
     assert resp.status_code == 200
 
 
+def test_fts_search_query_of_only_quotes_returns_all(client, tmp_path):
+    """A search query consisting only of quote characters should behave like no query."""
+    _import_pack(client, tmp_path)
+    resp = client.get('/api/scenarios?q="')
+    assert resp.status_code == 200
+    all_resp = client.get("/api/scenarios")
+    assert resp.json() == all_resp.json()
+
+
 # ── validation rule_ids ───────────────────────────────────────────────────────
 
 
