@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import crypto from 'node:crypto';
 import { Readable } from 'node:stream';
 import { buildApp } from '../index.js';
-import { resetDb, getDb } from '../db.js';
+import { initDb, resetDb, getDb } from '../db.js';
 import type { FastifyInstance } from 'fastify';
 import type { InstalledModelInfo, ModelsResponse } from '@convsim/shared';
 import { runDownload } from './models.js';
@@ -694,6 +694,47 @@ describe('verify_sha256 (crypto.createHash)', () => {
     hash.update(chunk1);
     hash.update(chunk2);
     expect(hash.digest('hex')).toBe(hashCombined);
+  });
+});
+
+// ── Crash recovery: interrupted downloads must not survive a restart ──────────
+
+describe('startup crash recovery', () => {
+  it('marks pending and downloading rows failed on restart, leaving terminal rows untouched', () => {
+    const dbDir = mkdtempSync(join(tmpdir(), 'convsim-db-test-'));
+    const dbPath = join(dbDir, 'convsim.db');
+    try {
+      // First "session": records left mid-flight when the server dies.
+      let db = initDb(dbPath);
+      const insert = db.prepare(
+        "INSERT INTO installed_models (filename, install_status, installed_at) VALUES (?, ?, '2026-01-01T00:00:00Z')",
+      );
+      insert.run('downloading.gguf', 'downloading');
+      insert.run('pending.gguf', 'pending');
+      insert.run('ready.gguf', 'ready');
+      insert.run('cancelled.gguf', 'cancelled');
+      db.close();
+
+      // Restart: re-opening the same DB runs the crash-recovery migration.
+      db = initDb(dbPath);
+      const rows = db
+        .prepare<[], { filename: string; install_status: string }>(
+          'SELECT filename, install_status FROM installed_models',
+        )
+        .all();
+      const status = (name: string) =>
+        rows.find((r) => r.filename === name)!.install_status;
+
+      // Interrupted in-flight downloads become 'failed' — never left 'ready'.
+      expect(status('downloading.gguf')).toBe('failed');
+      expect(status('pending.gguf')).toBe('failed');
+      // Already-terminal rows are untouched.
+      expect(status('ready.gguf')).toBe('ready');
+      expect(status('cancelled.gguf')).toBe('cancelled');
+      db.close();
+    } finally {
+      rmSync(dbDir, { recursive: true, force: true });
+    }
   });
 });
 
