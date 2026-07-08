@@ -43,7 +43,7 @@ def _fmt_schema_err(exc: jsonschema.ValidationError) -> str:
     return f"pack.json: {exc.message}"
 
 
-def _errors_to_rule_ids(errors: list[str]) -> list[str]:
+def errors_to_rule_ids(errors: list[str]) -> list[str]:
     """Derive unique rule IDs from error message strings."""
     ids: set[str] = set()
     for e in errors:
@@ -52,7 +52,7 @@ def _errors_to_rule_ids(errors: list[str]) -> list[str]:
             ids.add(RULE_MISSING_MANIFEST)
         elif "not valid json" in el:
             ids.add(RULE_INVALID_MANIFEST_JSON)
-        elif "not valid yaml" in el:
+        elif "not valid yaml" in el or "must be a yaml mapping" in el:
             ids.add(RULE_INVALID_MANIFEST_YAML)
         elif "pack.json [" in el or "pack.json:" in el or "schema" in el or "required" in el:
             ids.add(RULE_SCHEMA_VIOLATION)
@@ -68,8 +68,9 @@ def _errors_to_rule_ids(errors: list[str]) -> list[str]:
             ids.add(RULE_SYMLINK_DETECTED)
         elif "executable" in el or "not allowed" in el or "forbidden" in el:
             ids.add(RULE_FORBIDDEN_EXTENSION)
-        elif "null byte" in el or "null" in el:
-            ids.add(RULE_INVALID_PACK_ID)
+        elif "null byte" in el:
+            # Null bytes in entry scenario paths are an unsafe path error, not a pack_id error.
+            ids.add(RULE_UNSAFE_ENTRY_SCENARIO)
         else:
             ids.add(RULE_SCHEMA_VIOLATION)
     return sorted(ids)

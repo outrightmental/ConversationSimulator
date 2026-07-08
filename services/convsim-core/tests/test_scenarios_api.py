@@ -3,10 +3,29 @@
 import pytest
 from fastapi.testclient import TestClient
 
+from convsim_core.app import create_app
+from convsim_core.config import ServiceConfig
 from tests.helpers import make_pack_zip, make_pack_dir
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture()
+def dev_client(tmp_path):
+    config = ServiceConfig(
+        host="127.0.0.1",
+        port=7355,
+        data_dir=str(tmp_path / "data"),
+        log_dir=str(tmp_path / "logs"),
+        db_dir=str(tmp_path / "db"),
+        packs_dir=str(tmp_path / "packs"),
+        local_dev_packs_dir=str(tmp_path),
+        dev_debug=True,
+    )
+    app = create_app(config)
+    with TestClient(app) as c:
+        yield c
 
 
 def _import_pack(client: TestClient, tmp_path, manifest: dict | None = None) -> None:
@@ -122,6 +141,26 @@ def test_hidden_goals_not_returned_even_when_requested_without_dev_mode(client, 
     """include_hidden=1 must be ignored when dev_debug is False (the default)."""
     _import_pack(client, tmp_path)
     resp = client.get("/api/scenarios/intro?include_hidden=true")
+    assert resp.status_code == 200
+    detail = resp.json()
+    assert detail.get("hidden_goals") is None
+
+
+def test_hidden_goals_returned_in_dev_mode_with_flag(dev_client, tmp_path):
+    """Hidden agenda must be returned when dev_debug=True and include_hidden=true."""
+    _import_pack(dev_client, tmp_path)
+    resp = dev_client.get("/api/scenarios/intro?include_hidden=true")
+    assert resp.status_code == 200
+    detail = resp.json()
+    assert isinstance(detail.get("hidden_goals"), list)
+    assert len(detail["hidden_goals"]) > 0
+    assert "Host is evaluating your communication style" in detail["hidden_goals"]
+
+
+def test_hidden_goals_not_returned_in_dev_mode_without_flag(dev_client, tmp_path):
+    """In dev mode, hidden agenda must still be withheld unless include_hidden=true."""
+    _import_pack(dev_client, tmp_path)
+    resp = dev_client.get("/api/scenarios/intro")
     assert resp.status_code == 200
     detail = resp.json()
     assert detail.get("hidden_goals") is None
@@ -288,6 +327,24 @@ def test_validate_invalid_pack_returns_rule_ids(client, tmp_path):
     body = resp.json()
     assert body["valid"] is False
     assert "FORBIDDEN_EXTENSION" in body["rule_ids"]
+
+
+def test_validate_pack_with_null_byte_entry_scenario_returns_unsafe_rule(client, tmp_path):
+    """Null byte in an entry scenario path must produce UNSAFE_ENTRY_SCENARIO, not INVALID_PACK_ID."""
+    from convsim_core.packs.validator import errors_to_rule_ids
+    errors = ["Entry scenario path contains null byte: 'scenarios/foo\x00bar.yaml'"]
+    rule_ids = errors_to_rule_ids(errors)
+    assert "UNSAFE_ENTRY_SCENARIO" in rule_ids
+    assert "INVALID_PACK_ID" not in rule_ids
+
+
+def test_validate_yaml_mapping_error_returns_invalid_manifest_yaml_rule(client, tmp_path):
+    """'manifest.yaml must be a YAML mapping' must produce INVALID_MANIFEST_YAML, not SCHEMA_VIOLATION."""
+    from convsim_core.packs.validator import errors_to_rule_ids
+    errors = ["manifest.yaml must be a YAML mapping"]
+    rule_ids = errors_to_rule_ids(errors)
+    assert "INVALID_MANIFEST_YAML" in rule_ids
+    assert "SCHEMA_VIOLATION" not in rule_ids
 
 
 # ── manifest.yaml format ──────────────────────────────────────────────────────
