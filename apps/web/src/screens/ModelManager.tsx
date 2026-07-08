@@ -624,7 +624,10 @@ export default function ModelManager() {
     async function handleConfirmDemo() {
       setActionLoading(true)
       try {
-        await api.useModel({ runtime_id: 'demo', model_id: null })
+        // The text-only demo is served by the deterministic "fake" runtime, which
+        // always reports ready and streams scripted responses. There is no separate
+        // "demo" runtime registered in the backend.
+        await api.useModel({ runtime_id: 'fake', model_id: null })
       } catch {
         // Demo mode activation is best-effort; proceed to the library regardless.
       } finally {

@@ -455,11 +455,11 @@ describe('ModelManager — text-only demo branch', () => {
     await screen.findByRole('heading', { name: /set up your model/i })
   })
 
-  it('calls useModel with demo runtime when confirmed', async () => {
+  it('calls useModel with the fake runtime when confirmed', async () => {
     mockApi.useModel.mockResolvedValue({
-      runtime_id: 'demo',
+      runtime_id: 'fake',
       model_id: null,
-      runtime_name: 'Text-only demo',
+      runtime_name: 'Fake (deterministic)',
       status: 'ready',
       message: null,
     })
@@ -467,7 +467,7 @@ describe('ModelManager — text-only demo branch', () => {
     fireEvent.click(screen.getByRole('button', { name: /i understand/i }))
     await waitFor(() =>
       expect(mockApi.useModel).toHaveBeenCalledWith({
-        runtime_id: 'demo',
+        runtime_id: 'fake',
         model_id: null,
       }),
     )
