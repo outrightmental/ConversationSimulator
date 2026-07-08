@@ -15,7 +15,8 @@ class ServiceConfig(BaseSettings):
     """Runtime configuration for the convsim-core process.
 
     All values can be overridden via CONVSIM_* environment variables or a .env file.
-    Binding to 0.0.0.0 is rejected unless lan_access_enabled is explicitly set.
+    Binding to wildcard addresses (0.0.0.0 or ::) is rejected unless lan_access_enabled
+    is explicitly set.
     """
 
     model_config = SettingsConfigDict(
@@ -41,9 +42,9 @@ class ServiceConfig(BaseSettings):
 
     @model_validator(mode="after")
     def _reject_wildcard_bind(self) -> "ServiceConfig":
-        if self.host == "0.0.0.0" and not self.lan_access_enabled:
+        if self.host in ("0.0.0.0", "::") and not self.lan_access_enabled:
             raise ValueError(
-                "Binding to 0.0.0.0 is not allowed in default mode. "
+                f"Binding to {self.host} is not allowed in default mode. "
                 "Set CONVSIM_LAN_ACCESS_ENABLED=true to enable LAN access "
                 "and specify an explicit LAN IP address."
             )
