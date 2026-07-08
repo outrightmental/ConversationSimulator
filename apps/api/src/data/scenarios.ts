@@ -28,6 +28,7 @@ export const SCENARIOS: Record<string, ScenarioInfo> = {
     safety_summary:
       'PG content only. No NSFW content, no real-person impersonation. Professional conversation only.',
     estimated_length_label: '15–20 minutes',
+    tags: ['interview', 'professional', 'career'],
   },
 
   hostile_executive_interview: {
@@ -55,6 +56,7 @@ export const SCENARIOS: Record<string, ScenarioInfo> = {
     safety_summary:
       'PG content only. The NPC may be blunt or dismissive but never hostile beyond professional boundaries.',
     estimated_length_label: '12–18 minutes',
+    tags: ['interview', 'professional', 'career', 'pressure'],
   },
 
   used_car_negotiation: {
@@ -82,6 +84,7 @@ export const SCENARIOS: Record<string, ScenarioInfo> = {
     voice_supported: true,
     safety_summary: 'PG content only. No personal attacks. Adversarial but civil negotiation.',
     estimated_length_label: '12–18 minutes',
+    tags: ['negotiation', 'everyday'],
   },
 
   spanish_coffee: {
@@ -110,6 +113,7 @@ export const SCENARIOS: Record<string, ScenarioInfo> = {
     safety_summary:
       'G-rated. Friendly social conversation only. No dating scenarios. Language correction is gentle.',
     estimated_length_label: '15–25 minutes',
+    tags: ['language', 'social', 'spanish'],
   },
 
   coworker_feedback: {
@@ -138,5 +142,6 @@ export const SCENARIOS: Record<string, ScenarioInfo> = {
     safety_summary:
       'PG content only. Interpersonal workplace conversation. No harassment. Constructive tone required.',
     estimated_length_label: '12–18 minutes',
+    tags: ['feedback', 'workplace', 'professional'],
   },
 };
