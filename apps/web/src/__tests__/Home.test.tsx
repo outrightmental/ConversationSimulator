@@ -134,10 +134,12 @@ describe('Home — no-model state', () => {
     expect(await screen.findByRole('link', { name: /connect ollama/i })).toBeInTheDocument()
   })
 
-  it('offers text-only demo option', async () => {
+  it('offers text-only demo option linking to the library', async () => {
     stubFetches(makeHealth(), makePacks(0))
     renderHome()
-    expect(await screen.findByRole('link', { name: /text-only demo/i })).toBeInTheDocument()
+    const link = await screen.findByRole('link', { name: /text-only demo/i })
+    expect(link).toBeInTheDocument()
+    expect(link).toHaveAttribute('href', '/library')
   })
 
   it('hides no-model section when LLM is ready', async () => {
