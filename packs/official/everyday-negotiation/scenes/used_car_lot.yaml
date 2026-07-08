@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scene_id: used_car_lot
+display_name: Riverside Auto — Sales Floor
+background: assets/backgrounds/used_car_lot_placeholder.png
+description: >-
+  The sales floor at Riverside Auto, a tidy independent dealership on a busy
+  commercial strip. A ring of vehicles fills the forecourt outside; inside, a
+  small office features a desk with a computer showing current inventory, a
+  whiteboard with recent sales figures, and two chairs across a low coffee
+  table. The smell of new seat covers and coffee mingles in the air. A price
+  tag hangs in the window of the Civic parked just outside the glass door.
+ambient: indoor_showroom
