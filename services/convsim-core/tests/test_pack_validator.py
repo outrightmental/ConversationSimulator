@@ -502,10 +502,17 @@ def test_broken_pack_golden_snapshot(tmp_path):
         assert issue.message, "message must not be empty"
         assert issue.suggested_fix, "suggested_fix must not be empty"
 
-    assert "INVALID_CONTENT_RATING" in error_rule_ids
-    assert "MISSING_FILE" in error_rule_ids       # missing safety policy
-    assert "NPC_NOT_FICTIONAL" in error_rule_ids
-    assert "UNKNOWN_LICENSE" in warning_rule_ids
+    # Exact snapshot: two SCHEMA_VIOLATIONs come from JSON Schema itself
+    # (content_rating enum and fictional const:true), plus the dedicated
+    # semantic checks that produce actionable rule_ids and messages.
+    assert error_rule_ids == sorted([
+        "INVALID_CONTENT_RATING",  # content_rating: Adult — semantic check
+        "MISSING_FILE",             # safety/default.yaml removed
+        "NPC_NOT_FICTIONAL",        # fictional: false — semantic check
+        "SCHEMA_VIOLATION",         # content_rating: Adult violates pack schema enum
+        "SCHEMA_VIOLATION",         # fictional: false violates npc schema const: true
+    ])
+    assert warning_rule_ids == ["UNKNOWN_LICENSE"]
     assert result.valid is False
 
 
