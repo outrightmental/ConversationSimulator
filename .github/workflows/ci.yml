@@ -91,6 +91,14 @@ jobs:
         run: |
           echo "Local: pnpm --filter @convsim/web test"
           pnpm --filter @convsim/web test
+      - name: Run pack-loader tests
+        run: |
+          echo "Local: pnpm --filter @convsim/pack-loader test"
+          pnpm --filter @convsim/pack-loader test
+      - name: Run CLI tests
+        run: |
+          echo "Local: pnpm --filter @convsim/cli test"
+          pnpm --filter @convsim/cli test
 
   schemas:
     name: Schema validation tests

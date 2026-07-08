@@ -1,10 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
-import Ajv2020 from 'ajv/dist/2020';
+// ajv ships as CJS with no `exports` map.  Deep-path imports like
+// `ajv/dist/2020` need the CJS file-resolver (which appends .js automatically)
+// to work from a Node.js ESM context.  `createRequire` provides that resolver.
+import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { load as yamlLoad } from 'js-yaml';
 import { PackLoaderError, SUPPORTED_SCHEMA_VERSION } from './types.js';
+import type Ajv2020Type from 'ajv/dist/2020';
+
+const _require = createRequire(import.meta.url);
+// The CJS module exports { default: class Ajv2020, ... } because ajv uses
+// `exports.default = Ajv2020` (commonjs interop with __esModule marker).
+type Ajv2020Ctor = typeof Ajv2020Type;
+const Ajv2020 = (_require('ajv/dist/2020') as { default: Ajv2020Ctor }).default;
 
 const _dir = dirname(fileURLToPath(import.meta.url));
 const schemasDir = resolve(_dir, '..', '..', '..', 'schemas');

@@ -2,6 +2,7 @@
 import type {
   HealthResponse as SharedHealthResponse,
   ScenarioInfo,
+  PackValidationResult,
   SessionCreateRequest,
   SessionCreateResponse,
   SessionStartResponse,
@@ -130,8 +131,14 @@ export const api = {
   health(): Promise<SharedHealthResponse> {
     return get<SharedHealthResponse>('/health')
   },
+  listScenarios(): Promise<ScenarioInfo[]> {
+    return get<ScenarioInfo[]>('/scenarios')
+  },
   getScenario(scenarioId: string): Promise<ScenarioInfo> {
     return get<ScenarioInfo>(`/scenarios/${scenarioId}`)
+  },
+  validatePack(packId: string): Promise<PackValidationResult> {
+    return post<PackValidationResult>(`/packs/${packId}/validate`)
   },
   listSessions(): Promise<{ sessions: SessionCreateResponse[] }> {
     return get<{ sessions: SessionCreateResponse[] }>('/sessions')
