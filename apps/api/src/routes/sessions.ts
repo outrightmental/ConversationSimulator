@@ -49,7 +49,7 @@ type Action = 'start' | 'turn' | 'end' | 'debrief';
 
 // Returns true when the action is a legal next step from the given state.
 function canTransition(state: SessionState, action: Action): boolean {
-  if (state === 'Ended') return false;
+  if (state === 'Ended') return action === 'debrief';
   if (state === 'Error') return action === 'end';
   if (action === 'end') return true;
   if (action === 'start') return state === 'NotStarted';
@@ -566,11 +566,18 @@ export async function sessionRoutes(app: FastifyInstance) {
         rejectTransition(
           reply,
           currentState,
-          `Cannot generate debrief from state '${currentState}'. Session must be in DebriefReady state.`,
+          `Cannot generate debrief from state '${currentState}'. Session must be in Ended or DebriefReady state.`,
         );
       }
 
-      const summary = 'Stub debrief: the session has completed. Full analysis is not yet available.';
+      const outcome = (row.ending_type as string | null) ?? 'player_exit';
+      const turnCount = row.turn_count;
+      const turnWord = turnCount === 1 ? 'turn' : 'turns';
+      const scenarioTitle = row.scenario_id.replace(/_/g, ' ');
+      const summary = `You completed ${turnCount} ${turnWord} of "${scenarioTitle}". Session outcome: ${outcome.replace(/_/g, ' ')}.`;
+      const strengths: string[] = ['Engaged with the scenario'];
+      const improvements: string[] = ['Install a local LLM for real NPC responses'];
+      const replaySuggestions: string[] = ['Try a different difficulty level'];
       const saveTranscript = shouldSaveTranscript(row.setup_json);
 
       db.transaction(() => {
@@ -584,7 +591,7 @@ export async function sessionRoutes(app: FastifyInstance) {
 
       broadcast(req.params.session_id, 'session.state', {
         state: 'Ended',
-        ending_type: (row.ending_type as EndingType | null) ?? null,
+        ending_type: outcome,
         state_vars: JSON.parse(row.state_vars_json || '{}') as Record<string, number>,
       });
       closeSessionSockets(req.params.session_id);
@@ -593,6 +600,12 @@ export async function sessionRoutes(app: FastifyInstance) {
         session_id: req.params.session_id,
         state: 'Ended',
         summary,
+        outcome,
+        turn_count: turnCount,
+        scenario_id: row.scenario_id,
+        strengths,
+        improvements,
+        replay_suggestions: replaySuggestions,
       };
     },
   );

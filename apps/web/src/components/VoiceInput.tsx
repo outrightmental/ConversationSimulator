@@ -191,16 +191,15 @@ export default function VoiceInput({ onSubmit, disabled = false, language }: Voi
                   : 'Type or hold the mic button to record'
             }
             disabled={disabled || isRecording}
-            aria-label="Text input for conversation response"
+            aria-label="Your response"
             style={textInputStyle}
           />
           <button
             type="submit"
             disabled={disabled || !textValue.trim() || isRecording}
-            aria-label="Send text response"
             style={sendButtonStyle}
           >
-            Send
+            Submit
           </button>
         </form>
       </div>
