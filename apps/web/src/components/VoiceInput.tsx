@@ -73,17 +73,25 @@ export default function VoiceInput({ onSubmit, disabled = false, language }: Voi
   const startRecording = useCallback(() => {
     if (isHandsFree && stream) {
       startSilenceDetection(stream, () => {
-        stopSilenceDetection()
+        // Don't call stopSilenceDetection here — it would reset vadState to 'idle' in the
+        // same React batch as 'stopping', preventing the auto-stopping state from rendering.
+        // The effect below cleans up the AudioContext once isRecording becomes false.
         stopPttRecording()
       })
     }
     startPttRecording()
-  }, [isHandsFree, stream, startSilenceDetection, stopSilenceDetection, startPttRecording, stopPttRecording])
+  }, [isHandsFree, stream, startSilenceDetection, startPttRecording, stopPttRecording])
 
   const stopRecording = useCallback(() => {
     stopSilenceDetection()
     stopPttRecording()
   }, [stopSilenceDetection, stopPttRecording])
+
+  // Close the AudioContext after auto-stop. The onSilence callback only calls stopPttRecording
+  // so that the 'stopping' vadState survives its React render before being cleaned up here.
+  useEffect(() => {
+    if (!isRecording) stopSilenceDetection()
+  }, [isRecording, stopSilenceDetection])
 
   // Global Space hotkey for PTT — skips when any interactive element is focused, mic is
   // unavailable, a prior recording is still being uploaded, or the component is disabled.
