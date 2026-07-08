@@ -585,7 +585,16 @@ export default function ModelManager() {
       setActionLoading(true)
       setActionError(null)
       try {
-        await api.useModel({ runtime_id: 'llama_cpp', model_id: trimmed })
+        await api.registerGguf({ path: trimmed })
+        // Best-effort sidecar launch. Registration already made the model the
+        // active config, so a failed auto-start is non-fatal — proceed to the
+        // benchmark step and let the user start the server manually if needed.
+        // Log it for diagnostics.
+        try {
+          await api.startSidecar(trimmed)
+        } catch (sidecarErr) {
+          console.warn('GGUF registered, but the llama.cpp sidecar failed to start:', sidecarErr)
+        }
         setStep('benchmark')
       } catch (err: unknown) {
         setActionError(
