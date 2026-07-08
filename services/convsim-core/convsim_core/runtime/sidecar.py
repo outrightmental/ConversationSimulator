@@ -149,7 +149,7 @@ class LlamaCppSidecar:
         failure. Raises TimeoutError if startup_timeout elapses before /health
         returns 200.
         """
-        if self.state == SidecarState.RUNNING:
+        if self.state in (SidecarState.RUNNING, SidecarState.STARTING):
             return
 
         exe = executable or find_executable()

@@ -249,6 +249,34 @@ def test_sidecar_start_timeout_returns_503(client):
     assert resp.json()["error"]["code"] == "SIDECAR_START_FAILED"
 
 
+def test_sidecar_start_returns_409_when_already_running(client):
+    """POST /api/sidecar/start must return 409 if the sidecar is RUNNING."""
+    client.app.state.sidecar._state = SidecarState.RUNNING
+
+    resp = client.post(
+        "/api/sidecar/start",
+        json={"model_path": "/path/to/model.gguf"},
+    )
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "SIDECAR_ALREADY_RUNNING"
+
+
+def test_sidecar_start_returns_409_when_starting(client):
+    """POST /api/sidecar/start must return 409 if the sidecar is still STARTING.
+
+    Without this guard, a second concurrent request would slip through the RUNNING
+    check, spawn a second process, and overwrite the open log file handle.
+    """
+    client.app.state.sidecar._state = SidecarState.STARTING
+
+    resp = client.post(
+        "/api/sidecar/start",
+        json={"model_path": "/path/to/model.gguf"},
+    )
+    assert resp.status_code == 409
+    assert resp.json()["error"]["code"] == "SIDECAR_ALREADY_RUNNING"
+
+
 # ---------------------------------------------------------------------------
 # Integration test — real fake executable
 # ---------------------------------------------------------------------------
