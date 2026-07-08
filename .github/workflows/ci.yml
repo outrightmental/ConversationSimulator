@@ -46,19 +46,19 @@ jobs:
           cache-dependency-path: |
             services/convsim-core/pyproject.toml
             packages/prompt-composer/pyproject.toml
-      - name: Install convsim-core
-        run: pip install -e "services/convsim-core[dev]"
-      - name: Test convsim-core
-        working-directory: services/convsim-core
-        run: |
-          echo "Local: cd services/convsim-core && python -m pytest"
-          python -m pytest
       - name: Install prompt-composer
         run: pip install -e "packages/prompt-composer[dev]"
       - name: Test prompt-composer
         working-directory: packages/prompt-composer
         run: |
           echo "Local: cd packages/prompt-composer && python -m pytest"
+          python -m pytest
+      - name: Install convsim-core
+        run: pip install -e "services/convsim-core[dev]"
+      - name: Test convsim-core
+        working-directory: services/convsim-core
+        run: |
+          echo "Local: cd services/convsim-core && python -m pytest"
           python -m pytest
 
   frontend:
