@@ -36,8 +36,8 @@ export type ValidatePackResult =
  *
  * Exit codes:
  *   0 — pack is valid
- *   1 — pack has validation errors
- *   3 — unexpected system error (e.g. path does not exist)
+ *   1 — pack is invalid or cannot be found (PackLoaderError)
+ *   3 — unexpected system error (OS error, out of memory, etc.)
  */
 export function runValidatePack(packPath: string, json: boolean): number {
   const absPath = resolve(packPath);

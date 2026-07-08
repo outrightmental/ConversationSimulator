@@ -109,6 +109,67 @@ function makeBrokenPackDir(): string {
   return root;
 }
 
+/**
+ * Write a minimal ZIP file that contains a single entry whose name is the
+ * raw string `../../evil.txt` — bypassing AdmZip's `addFile()` which calls
+ * `zipnamefix()` and normalises away `..` components.  This is the only way
+ * to create a test zip that exercises `assertNoZipSlip`, which reads the raw
+ * entry names from the central directory.
+ */
+function makePathTraversalZip(zipPath: string): void {
+  const filenameBytes = Buffer.from('../../evil.txt');
+  const content = Buffer.from('pwned');
+
+  // Local file header (30 bytes) + filename + data
+  const localHdr = Buffer.alloc(30);
+  localHdr.writeUInt32LE(0x04034b50, 0);           // PK\x03\x04
+  localHdr.writeUInt16LE(20, 4);                    // version needed: 2.0
+  localHdr.writeUInt16LE(0, 6);                     // flags
+  localHdr.writeUInt16LE(0, 8);                     // method: stored
+  localHdr.writeUInt16LE(0, 10);                    // mod time
+  localHdr.writeUInt16LE(0, 12);                    // mod date
+  localHdr.writeUInt32LE(0, 14);                    // crc32 (dummy — not checked before extraction)
+  localHdr.writeUInt32LE(content.length, 18);       // compressed size
+  localHdr.writeUInt32LE(content.length, 22);       // uncompressed size
+  localHdr.writeUInt16LE(filenameBytes.length, 26); // filename length
+  localHdr.writeUInt16LE(0, 28);                    // extra field length
+  const localEntry = Buffer.concat([localHdr, filenameBytes, content]);
+
+  // Central directory file header (46 bytes) + filename
+  const cdHdr = Buffer.alloc(46);
+  cdHdr.writeUInt32LE(0x02014b50, 0);               // PK\x01\x02
+  cdHdr.writeUInt16LE(20, 4);                        // version made by
+  cdHdr.writeUInt16LE(20, 6);                        // version needed
+  cdHdr.writeUInt16LE(0, 8);                         // flags
+  cdHdr.writeUInt16LE(0, 10);                        // method: stored
+  cdHdr.writeUInt16LE(0, 12);                        // mod time
+  cdHdr.writeUInt16LE(0, 14);                        // mod date
+  cdHdr.writeUInt32LE(0, 16);                        // crc32 (dummy)
+  cdHdr.writeUInt32LE(content.length, 20);           // compressed size
+  cdHdr.writeUInt32LE(content.length, 24);           // uncompressed size
+  cdHdr.writeUInt16LE(filenameBytes.length, 28);     // filename length
+  cdHdr.writeUInt16LE(0, 30);                        // extra field length
+  cdHdr.writeUInt16LE(0, 32);                        // file comment length
+  cdHdr.writeUInt16LE(0, 34);                        // disk number start
+  cdHdr.writeUInt16LE(0, 36);                        // internal file attributes
+  cdHdr.writeUInt32LE(0, 38);                        // external file attributes
+  cdHdr.writeUInt32LE(0, 42);                        // relative offset of local header
+  const centralDir = Buffer.concat([cdHdr, filenameBytes]);
+
+  // End of central directory record (22 bytes)
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);                 // PK\x05\x06
+  eocd.writeUInt16LE(0, 4);                           // disk number
+  eocd.writeUInt16LE(0, 6);                           // disk with start of CD
+  eocd.writeUInt16LE(1, 8);                           // entries on this disk
+  eocd.writeUInt16LE(1, 10);                          // total entries
+  eocd.writeUInt32LE(centralDir.length, 12);          // size of central directory
+  eocd.writeUInt32LE(localEntry.length, 16);          // offset of central directory
+  eocd.writeUInt16LE(0, 20);                          // comment length
+
+  writeFileSync(zipPath, Buffer.concat([localEntry, centralDir, eocd]));
+}
+
 // ---------------------------------------------------------------------------
 // Output capture
 // ---------------------------------------------------------------------------
@@ -376,14 +437,17 @@ describe('import-pack — from zip', () => {
   });
 
   it('rejects a zip with path-traversal entries (zip-slip)', () => {
+    // AdmZip.addFile() calls zipnamefix() which normalises '../../evil.txt'
+    // to 'evil.txt', so we must craft raw ZIP bytes to preserve the raw
+    // entry name and actually exercise assertNoZipSlip.
     const tmp = track(mkdtempSync(join(tmpdir(), 'convsim-zip-slip-')));
     const zipPath = join(tmp, 'slip.zip');
-    const zip = new AdmZip();
-    zip.addFile('../../evil.txt', Buffer.from('pwned'));
-    zip.writeZip(zipPath);
+    makePathTraversalZip(zipPath);
     const dataDir = track(mkdtempSync(join(tmpdir(), 'convsim-data-')));
-    const code = runImportPack(zipPath, false, dataDir);
+    let code = -1;
+    const { stderr } = capture(() => { code = runImportPack(zipPath, false, dataDir); });
     expect(code).toBe(1);
+    expect(stderr).toContain('UNSAFE_ZIP');
   });
 });
 
