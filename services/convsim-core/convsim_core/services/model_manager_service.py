@@ -14,7 +14,7 @@ def get_installed_models(conn: sqlite3.Connection) -> list[dict[str, Any]]:
     rows = conn.execute(
         """
         SELECT id, registry_id, filename, file_path, size_bytes,
-               install_status, progress_bytes, error_message, installed_at
+               install_status, progress_bytes, error_message, verified_sha256, installed_at
         FROM installed_models
         ORDER BY id DESC
         """
@@ -149,6 +149,85 @@ def register_user_gguf(
         "install_status": "complete",
         "source": "user-supplied",
     }
+
+
+def get_install_record(
+    conn: sqlite3.Connection, install_id: int
+) -> dict[str, Any] | None:
+    """Return a single install record by id, or None if not found."""
+    row = conn.execute(
+        """
+        SELECT id, registry_id, filename, file_path, size_bytes,
+               install_status, progress_bytes, error_message, verified_sha256, installed_at
+        FROM installed_models
+        WHERE id = ?
+        """,
+        (install_id,),
+    ).fetchone()
+    return dict(row) if row is not None else None
+
+
+def update_install_progress(
+    conn: sqlite3.Connection,
+    install_id: int,
+    bytes_written: int,
+    size_bytes: int | None,
+) -> None:
+    """Update progress_bytes (and optionally size_bytes) for an in-progress install."""
+    conn.execute(
+        """
+        UPDATE installed_models
+        SET progress_bytes = ?,
+            size_bytes = COALESCE(?, size_bytes)
+        WHERE id = ?
+        """,
+        (bytes_written, size_bytes, install_id),
+    )
+    conn.commit()
+
+
+def mark_install_ready(
+    conn: sqlite3.Connection,
+    install_id: int,
+    size_bytes: int,
+    verified_sha256: str,
+    file_path: str,
+) -> None:
+    """Mark an install record as 'ready' with the verified checksum and final file path."""
+    conn.execute(
+        """
+        UPDATE installed_models
+        SET install_status = 'ready',
+            size_bytes = ?,
+            verified_sha256 = ?,
+            file_path = ?,
+            progress_bytes = ?,
+            error_message = NULL
+        WHERE id = ?
+        """,
+        (size_bytes, verified_sha256, file_path, size_bytes, install_id),
+    )
+    conn.commit()
+
+
+def mark_install_failed(
+    conn: sqlite3.Connection,
+    install_id: int,
+    error_message: str,
+    *,
+    status: str = "failed",
+) -> None:
+    """Mark an install record with a terminal failure status."""
+    conn.execute(
+        """
+        UPDATE installed_models
+        SET install_status = ?,
+            error_message = ?
+        WHERE id = ?
+        """,
+        (status, error_message, install_id),
+    )
+    conn.commit()
 
 
 def get_latest_benchmark(
