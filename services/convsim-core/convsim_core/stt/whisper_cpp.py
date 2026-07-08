@@ -104,6 +104,7 @@ class WhisperCppWorker(SttWorker):
             "--model", self._model_path,
             "--file", audio_path,
             "--output-json",
+            "--no-timestamps",
         ]
         if language:
             cmd += ["--language", language]

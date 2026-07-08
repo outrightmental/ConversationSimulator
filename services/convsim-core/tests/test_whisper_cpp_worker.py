@@ -134,6 +134,14 @@ def test_build_command_includes_threads_when_set():
     assert "4" in cmd
 
 
+def test_build_command_includes_no_timestamps():
+    # --no-timestamps suppresses whisper-cli's "[HH:MM:SS --> HH:MM:SS]  text"
+    # markers in stdout, keeping the stdout fallback path clean for older binaries.
+    worker = _make_worker()
+    cmd = worker._build_command("/tmp/audio.wav", None)
+    assert "--no-timestamps" in cmd
+
+
 def test_build_command_raises_when_binary_missing():
     worker = _make_worker(binary=None)
     with pytest.raises(SttUnavailableError):
