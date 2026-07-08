@@ -153,6 +153,7 @@ class TestValidateSafetyPolicy:
         data = {
             "policy_id": "test",
             "content_categories": {},
+            "content_rating_cap": "PG",
         }
         with pytest.raises(SafetyPolicyValidationError):
             validate_safety_policy(data)
@@ -161,14 +162,26 @@ class TestValidateSafetyPolicy:
         data = {
             "schema_version": "0.1",
             "content_categories": {},
+            "content_rating_cap": "PG",
+        }
+        with pytest.raises(SafetyPolicyValidationError):
+            validate_safety_policy(data)
+
+    def test_missing_content_rating_cap_raises(self):
+        data = {
+            "schema_version": "0.1",
+            "policy_id": "test",
+            "content_categories": {},
         }
         with pytest.raises(SafetyPolicyValidationError):
             validate_safety_policy(data)
 
     def test_invalid_action_value_raises(self):
+        # All required fields present so the only error is the invalid enum value.
         data = {
             "schema_version": "0.1",
             "policy_id": "test",
+            "content_rating_cap": "PG",
             "content_categories": {
                 "nsfw_sexual_content": "allow",  # not a valid enum value
             },
