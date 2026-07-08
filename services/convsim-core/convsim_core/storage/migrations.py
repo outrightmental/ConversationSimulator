@@ -196,12 +196,35 @@ CREATE TABLE turn_session_turns (
 );
 """
 
+_TURN_TRANSCRIPT_AND_EVENTS_SQL = """
+ALTER TABLE turn_session_turns ADD COLUMN source_mode TEXT;
+ALTER TABLE turn_session_turns ADD COLUMN raw_output_json TEXT;
+ALTER TABLE turn_session_turns ADD COLUMN flow_state_after TEXT;
+
+CREATE TABLE turn_session_events (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id   TEXT    NOT NULL REFERENCES turn_sessions(session_id) ON DELETE CASCADE,
+    turn_number  INTEGER,
+    event_type   TEXT    NOT NULL,
+    payload_json TEXT    NOT NULL DEFAULT '{}',
+    occurred_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE VIRTUAL TABLE session_transcript_fts USING fts5(
+    session_id UNINDEXED,
+    turn_number UNINDEXED,
+    role UNINDEXED,
+    content
+);
+"""
+
 MIGRATIONS: list[tuple[str, str]] = [
     ("0001_initial_schema", _INITIAL_SCHEMA_SQL),
     ("0002_model_registry_v2", _MODEL_REGISTRY_V2_SQL),
     ("0003_model_manager_api", _MODEL_MANAGER_API_SQL),
     ("0004_extend_pack_assets", _EXTEND_PACK_ASSETS_SQL),
     ("0005_turn_pipeline", _TURN_PIPELINE_SQL),
+    ("0006_turn_transcript_and_events", _TURN_TRANSCRIPT_AND_EVENTS_SQL),
 ]
 
 
