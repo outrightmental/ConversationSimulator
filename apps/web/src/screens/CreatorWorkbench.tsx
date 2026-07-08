@@ -1,10 +1,625 @@
 // SPDX-License-Identifier: Apache-2.0
-export default function CreatorWorkbench() {
+import { useState, useEffect, useCallback, type CSSProperties } from 'react'
+import { useBlocker } from 'react-router-dom'
+import { api, type WorkbenchPack, type FileNode } from '../api/client'
+
+// useBlocker requires a data router (createBrowserRouter / createMemoryRouter).
+// Under MemoryRouter (tests, Storybook) it throws before registering any hooks,
+// so wrapping in try-catch is safe and consistent across renders.
+function useSafeBlocker(when: boolean) {
+  try {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    return useBlocker(when)
+  } catch {
+    return { state: 'unblocked' as const, proceed: undefined, reset: undefined }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Styles
+// ---------------------------------------------------------------------------
+
+const PANEL_STYLE: CSSProperties = {
+  background: 'rgba(255,255,255,0.03)',
+  border: '1px solid rgba(255,255,255,0.08)',
+  borderRadius: '6px',
+  overflow: 'auto',
+}
+
+const BTN: CSSProperties = {
+  padding: '0.35rem 0.8rem',
+  borderRadius: '4px',
+  border: '1px solid rgba(255,255,255,0.15)',
+  cursor: 'pointer',
+  background: 'transparent',
+  color: '#e8e8ea',
+  fontSize: '0.8rem',
+}
+
+const BTN_PRIMARY: CSSProperties = {
+  ...BTN,
+  background: 'rgba(99,102,241,0.2)',
+  border: '1px solid rgba(99,102,241,0.5)',
+  color: '#a5b4fc',
+}
+
+const BTN_DANGER: CSSProperties = {
+  ...BTN,
+  background: 'rgba(239,68,68,0.1)',
+  border: '1px solid rgba(239,68,68,0.3)',
+  color: '#f87171',
+}
+
+const BTN_DISABLED: CSSProperties = {
+  opacity: 0.45,
+  cursor: 'not-allowed',
+}
+
+// ---------------------------------------------------------------------------
+// PackList
+// ---------------------------------------------------------------------------
+
+interface PackListProps {
+  packs: WorkbenchPack[]
+  selected: WorkbenchPack | null
+  onSelect: (pack: WorkbenchPack) => void
+}
+
+function PackList({ packs, selected, onSelect }: PackListProps) {
+  const official = packs.filter((p) => p.kind === 'official')
+  const localDev = packs.filter((p) => p.kind === 'local-dev')
+
+  function group(label: string, items: WorkbenchPack[]) {
+    if (items.length === 0) return null
+    return (
+      <div style={{ marginBottom: '0.75rem' }}>
+        <div style={{ fontSize: '0.7rem', fontWeight: 600, color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '0.25rem 0.75rem' }}>
+          {label}
+        </div>
+        {items.map((p) => {
+          const isSelected = selected?.kind === p.kind && selected.slug === p.slug
+          return (
+            <button
+              key={`${p.kind}/${p.slug}`}
+              onClick={() => onSelect(p)}
+              style={{
+                display: 'block',
+                width: '100%',
+                textAlign: 'left',
+                padding: '0.4rem 0.75rem',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                background: isSelected ? 'rgba(99,102,241,0.15)' : 'transparent',
+                color: isSelected ? '#a5b4fc' : '#d4d4d8',
+                fontSize: '0.85rem',
+                fontWeight: isSelected ? 600 : 400,
+              }}
+              aria-pressed={isSelected}
+            >
+              <span>{p.name ?? p.slug}</span>
+              {!p.editable && (
+                <span style={{ fontSize: '0.7rem', color: '#52525b', marginLeft: '0.4rem' }}>
+                  official
+                </span>
+              )}
+            </button>
+          )
+        })}
+      </div>
+    )
+  }
+
+  if (packs.length === 0) {
+    return (
+      <p style={{ fontSize: '0.85rem', color: '#52525b', padding: '0.5rem 0.75rem' }}>
+        No packs found.
+      </p>
+    )
+  }
+
   return (
     <div>
-      <h1>Creator Workbench</h1>
-      <p>Edit scenario packs, validate YAML, and quick-test with text.</p>
-      <p><em>Pack explorer, YAML editor, validator, and test chat will appear here.</em></p>
+      {group('Official', official)}
+      {group('Local Dev', localDev)}
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// FileTree
+// ---------------------------------------------------------------------------
+
+const FILE_ICONS: Record<string, string> = {
+  yaml: '📄',
+  markdown: '📝',
+  text: '📃',
+  dir: '📁',
+  other: '📎',
+}
+
+interface FileTreeProps {
+  nodes: FileNode[]
+  selected: string | null
+  onSelect: (path: string, kind: FileNode['kind']) => void
+  depth?: number
+}
+
+function FileTree({ nodes, selected, onSelect, depth = 0 }: FileTreeProps) {
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+
+  function toggleDir(path: string) {
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (next.has(path)) next.delete(path)
+      else next.add(path)
+      return next
+    })
+  }
+
+  return (
+    <ul
+      role={depth === 0 ? 'tree' : 'group'}
+      aria-label={depth === 0 ? 'Pack files' : undefined}
+      style={{ listStyle: 'none', padding: 0, margin: 0 }}
+    >
+      {nodes.map((node) => {
+        const isDir = node.kind === 'dir'
+        const isSelected = selected === node.path
+        const isCollapsed = collapsed.has(node.path)
+        const isEditable = node.kind === 'yaml' || node.kind === 'markdown' || node.kind === 'text'
+        const icon = FILE_ICONS[node.kind] ?? '📎'
+
+        return (
+          <li
+            key={node.path}
+            role="treeitem"
+            aria-selected={isSelected}
+            aria-expanded={isDir ? !isCollapsed : undefined}
+            style={{ paddingLeft: `${depth * 0.875}rem` }}
+          >
+            <button
+              onClick={() => {
+                if (isDir) {
+                  toggleDir(node.path)
+                } else if (isEditable) {
+                  onSelect(node.path, node.kind)
+                }
+              }}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.35rem',
+                width: '100%',
+                textAlign: 'left',
+                padding: '0.25rem 0.5rem',
+                border: 'none',
+                borderRadius: '3px',
+                cursor: isDir || isEditable ? 'pointer' : 'default',
+                background: isSelected ? 'rgba(99,102,241,0.15)' : 'transparent',
+                color: isSelected ? '#a5b4fc' : isEditable ? '#d4d4d8' : '#52525b',
+                fontSize: '0.8rem',
+                fontFamily: 'inherit',
+              }}
+              aria-label={`${isDir ? (isCollapsed ? 'Expand' : 'Collapse') : 'Open'} ${node.name}`}
+            >
+              <span>{isDir ? (isCollapsed ? '▶' : '▼') : icon}</span>
+              <span>{node.name}</span>
+              {node.kind === 'other' && (
+                <span style={{ fontSize: '0.7rem', color: '#3f3f46', marginLeft: 'auto' }}>
+                  unsupported
+                </span>
+              )}
+            </button>
+            {isDir && !isCollapsed && node.children && node.children.length > 0 && (
+              <FileTree
+                nodes={node.children}
+                selected={selected}
+                onSelect={onSelect}
+                depth={depth + 1}
+              />
+            )}
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// FileEditor
+// ---------------------------------------------------------------------------
+
+interface FileEditorProps {
+  filePath: string
+  content: string
+  editable: boolean
+  isDirty: boolean
+  saving: boolean
+  saveError: string | null
+  copying: boolean
+  copyError: string | null
+  onChange: (v: string) => void
+  onSave: () => void
+  onCopyToLocal?: () => void
+}
+
+function FileEditor({
+  filePath,
+  content,
+  editable,
+  isDirty,
+  saving,
+  saveError,
+  copying,
+  copyError,
+  onChange,
+  onSave,
+  onCopyToLocal,
+}: FileEditorProps) {
+  const ext = filePath.split('.').pop()?.toLowerCase() ?? ''
+  const isMarkdown = ext === 'md'
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      {/* Toolbar */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '0.5rem',
+          padding: '0.5rem 0.75rem',
+          borderBottom: '1px solid rgba(255,255,255,0.08)',
+          background: 'rgba(0,0,0,0.15)',
+          flexShrink: 0,
+        }}
+      >
+        <code style={{ fontSize: '0.8rem', color: '#a1a1aa', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {filePath}
+        </code>
+
+        {!editable && (
+          <span
+            data-testid="read-only-badge"
+            style={{
+              fontSize: '0.7rem',
+              color: '#fbbf24',
+              background: 'rgba(251,191,36,0.1)',
+              border: '1px solid rgba(251,191,36,0.25)',
+              borderRadius: '3px',
+              padding: '0.1rem 0.4rem',
+            }}
+          >
+            Read-only
+          </span>
+        )}
+
+        {isDirty && (
+          <span
+            data-testid="dirty-indicator"
+            style={{ fontSize: '0.75rem', color: '#fb923c' }}
+          >
+            Unsaved changes
+          </span>
+        )}
+
+        {editable && (
+          <button
+            onClick={onSave}
+            disabled={saving || !isDirty}
+            data-testid="save-button"
+            style={{
+              ...BTN_PRIMARY,
+              ...(saving || !isDirty ? BTN_DISABLED : {}),
+            }}
+            aria-label={saving ? 'Saving…' : 'Save file'}
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        )}
+
+        {!editable && onCopyToLocal && (
+          <button
+            onClick={onCopyToLocal}
+            disabled={copying}
+            data-testid="copy-to-local-button"
+            style={{ ...BTN, ...(copying ? BTN_DISABLED : {}) }}
+            aria-label={copying ? 'Copying…' : 'Create local copy to edit'}
+          >
+            {copying ? 'Copying…' : 'Create local copy to edit'}
+          </button>
+        )}
+      </div>
+
+      {saveError && (
+        <p role="alert" style={{ margin: '0.5rem 0.75rem', fontSize: '0.8rem', color: '#f87171' }}>
+          Save failed: {saveError}
+        </p>
+      )}
+
+      {copyError && (
+        <p role="alert" style={{ margin: '0.5rem 0.75rem', fontSize: '0.8rem', color: '#f87171' }}>
+          Copy failed: {copyError}
+        </p>
+      )}
+
+      {/* Editor */}
+      <textarea
+        data-testid="file-editor"
+        aria-label={`${isMarkdown ? 'Markdown' : 'YAML'} editor: ${filePath}`}
+        readOnly={!editable}
+        value={content}
+        onChange={(e) => onChange(e.target.value)}
+        spellCheck={false}
+        style={{
+          flex: 1,
+          padding: '0.75rem',
+          background: editable ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.15)',
+          color: editable ? '#e8e8ea' : '#71717a',
+          border: 'none',
+          outline: 'none',
+          fontFamily: 'monospace',
+          fontSize: '0.85rem',
+          lineHeight: 1.6,
+          resize: 'none',
+          cursor: editable ? 'text' : 'default',
+        }}
+      />
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// CreatorWorkbench (main screen)
+// ---------------------------------------------------------------------------
+
+export default function CreatorWorkbench() {
+  const [packs, setPacks] = useState<WorkbenchPack[]>([])
+  const [packsError, setPacksError] = useState<string | null>(null)
+  const [selectedPack, setSelectedPack] = useState<WorkbenchPack | null>(null)
+  const [fileTree, setFileTree] = useState<FileNode[]>([])
+  const [treeLoading, setTreeLoading] = useState(false)
+  const [treeError, setTreeError] = useState<string | null>(null)
+  const [selectedFile, setSelectedFile] = useState<string | null>(null)
+  const [editorContent, setEditorContent] = useState('')
+  const [savedContent, setSavedContent] = useState('')
+  const [editorEditable, setEditorEditable] = useState(false)
+  const [fileLoading, setFileLoading] = useState(false)
+  const [fileError, setFileError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  const [copying, setCopying] = useState(false)
+  const [copyError, setCopyError] = useState<string | null>(null)
+
+  const isDirty = selectedFile !== null && editorContent !== savedContent
+
+  // Block in-app navigation when there are unsaved edits
+  const blocker = useSafeBlocker(isDirty)
+  useEffect(() => {
+    if (blocker.state === 'blocked') {
+      if (window.confirm('You have unsaved changes. Leave this page?')) {
+        blocker.proceed?.()
+      } else {
+        blocker.reset?.()
+      }
+    }
+  }, [blocker])
+
+  // Warn on browser/tab close
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (isDirty) {
+        e.preventDefault()
+        e.returnValue = ''
+      }
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [isDirty])
+
+  // Load pack list on mount
+  useEffect(() => {
+    api.workbench.listPacks()
+      .then((ps) => { setPacks(ps); setPacksError(null) })
+      .catch((e: unknown) => setPacksError(e instanceof Error ? e.message : 'Failed to load packs'))
+  }, [])
+
+  const loadFileTree = useCallback(async (pack: WorkbenchPack) => {
+    setTreeLoading(true)
+    setTreeError(null)
+    setFileTree([])
+    try {
+      const { tree } = await api.workbench.listFiles(pack.kind, pack.slug)
+      setFileTree(tree)
+    } catch (e: unknown) {
+      setTreeError(e instanceof Error ? e.message : 'Failed to load file tree')
+    } finally {
+      setTreeLoading(false)
+    }
+  }, [])
+
+  async function handleSelectPack(pack: WorkbenchPack) {
+    if (isDirty && !window.confirm('You have unsaved changes. Discard them?')) return
+    setSelectedPack(pack)
+    setSelectedFile(null)
+    setEditorContent('')
+    setSavedContent('')
+    setSaveError(null)
+    setCopyError(null)
+    await loadFileTree(pack)
+  }
+
+  async function handleSelectFile(filePath: string) {
+    if (!selectedPack) return
+    if (isDirty && !window.confirm('You have unsaved changes. Discard them?')) return
+    setSelectedFile(filePath)
+    setSaveError(null)
+    setFileError(null)
+    setFileLoading(true)
+    try {
+      const { content, editable } = await api.workbench.readFile(selectedPack.kind, selectedPack.slug, filePath)
+      setEditorContent(content)
+      setSavedContent(content)
+      setEditorEditable(editable)
+    } catch (e: unknown) {
+      setFileError(e instanceof Error ? e.message : 'Failed to load file')
+    } finally {
+      setFileLoading(false)
+    }
+  }
+
+  async function handleSave() {
+    if (!selectedPack || !selectedFile) return
+    setSaving(true)
+    setSaveError(null)
+    try {
+      await api.workbench.writeFile(selectedPack.kind, selectedPack.slug, selectedFile, editorContent)
+      setSavedContent(editorContent)
+    } catch (e: unknown) {
+      setSaveError(e instanceof Error ? e.message : 'Failed to save file')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleCopyToLocal() {
+    if (!selectedPack) return
+    setCopying(true)
+    setCopyError(null)
+    try {
+      const newPack = await api.workbench.copyToLocal(selectedPack.kind, selectedPack.slug)
+      setPacks((prev) => [...prev.filter((p) => !(p.kind === newPack.kind && p.slug === newPack.slug)), newPack])
+      // Switch to the new local-dev copy
+      setSelectedPack(newPack)
+      setSelectedFile(null)
+      setEditorContent('')
+      setSavedContent('')
+      await loadFileTree(newPack)
+    } catch (e: unknown) {
+      setCopyError(e instanceof Error ? e.message : 'Failed to copy pack to local-dev')
+    } finally {
+      setCopying(false)
+    }
+  }
+
+  return (
+    <div>
+      <h1 style={{ marginBottom: '0.25rem' }}>Creator Workbench</h1>
+      <p style={{ color: '#71717a', fontSize: '0.875rem', marginBottom: '1.5rem' }}>
+        Inspect and edit scenario packs. Official packs are read-only — create a local copy to modify them.
+      </p>
+
+      {packsError && (
+        <p role="alert" style={{ fontSize: '0.875rem', color: '#f87171', marginBottom: '1rem' }}>
+          Could not load packs: {packsError}
+        </p>
+      )}
+
+      <div style={{ display: 'flex', gap: '1rem', height: 'calc(100vh - 220px)', minHeight: '400px' }}>
+        {/* Left panel: pack selector + file tree */}
+        <div
+          style={{
+            width: '220px',
+            flexShrink: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.75rem',
+          }}
+        >
+          {/* Pack selector */}
+          <div
+            data-testid="pack-selector"
+            style={{ ...PANEL_STYLE, padding: '0.5rem 0', flexShrink: 0, maxHeight: '45%', overflow: 'auto' }}
+          >
+            <div style={{ fontSize: '0.7rem', fontWeight: 600, color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.06em', padding: '0.25rem 0.75rem 0.5rem' }}>
+              Packs
+            </div>
+            <PackList packs={packs} selected={selectedPack} onSelect={handleSelectPack} />
+          </div>
+
+          {/* File tree */}
+          <div
+            data-testid="file-tree"
+            style={{ ...PANEL_STYLE, padding: '0.5rem 0.25rem', flex: 1, overflow: 'auto' }}
+          >
+            {!selectedPack && (
+              <p style={{ fontSize: '0.8rem', color: '#52525b', padding: '0.5rem' }}>
+                Select a pack above.
+              </p>
+            )}
+            {selectedPack && treeLoading && (
+              <p style={{ fontSize: '0.8rem', color: '#71717a', padding: '0.5rem' }}>Loading…</p>
+            )}
+            {selectedPack && treeError && (
+              <p role="alert" style={{ fontSize: '0.8rem', color: '#f87171', padding: '0.5rem' }}>
+                {treeError}
+              </p>
+            )}
+            {selectedPack && !treeLoading && !treeError && fileTree.length === 0 && (
+              <p style={{ fontSize: '0.8rem', color: '#52525b', padding: '0.5rem' }}>
+                Empty pack directory.
+              </p>
+            )}
+            {selectedPack && !treeLoading && fileTree.length > 0 && (
+              <FileTree
+                nodes={fileTree}
+                selected={selectedFile}
+                onSelect={handleSelectFile}
+              />
+            )}
+          </div>
+        </div>
+
+        {/* Right panel: editor */}
+        <div style={{ flex: 1, ...PANEL_STYLE, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          {!selectedFile && !fileLoading && (
+            <div
+              style={{
+                flex: 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#52525b',
+                fontSize: '0.875rem',
+              }}
+            >
+              {selectedPack
+                ? 'Select a YAML or Markdown file from the tree.'
+                : 'Select a pack to get started.'}
+            </div>
+          )}
+
+          {fileLoading && (
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#71717a', fontSize: '0.875rem' }}>
+              Loading file…
+            </div>
+          )}
+
+          {fileError && !fileLoading && (
+            <div style={{ flex: 1, padding: '1rem' }}>
+              <p role="alert" style={{ fontSize: '0.875rem', color: '#f87171' }}>
+                {fileError}
+              </p>
+            </div>
+          )}
+
+          {selectedFile && !fileLoading && !fileError && (
+            <FileEditor
+              filePath={selectedFile}
+              content={editorContent}
+              editable={editorEditable}
+              isDirty={isDirty}
+              saving={saving}
+              saveError={saveError}
+              copying={copying}
+              copyError={copyError}
+              onChange={setEditorContent}
+              onSave={handleSave}
+              onCopyToLocal={!editorEditable ? handleCopyToLocal : undefined}
+            />
+          )}
+        </div>
+      </div>
     </div>
   )
 }

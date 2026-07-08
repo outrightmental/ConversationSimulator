@@ -61,6 +61,16 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
   return res.json() as Promise<T>
 }
 
+async function put<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw new Error(await parseErrorMessage(res))
+  return res.json() as Promise<T>
+}
+
 async function del(path: string): Promise<void> {
   const res = await fetch(`${BASE}${path}`, { method: 'DELETE' })
   if (!res.ok) throw new Error(await parseErrorMessage(res))
@@ -88,6 +98,23 @@ export const apiClient = {
     }
     return postForm<SttUploadResponse>('/stt/upload', form)
   },
+}
+
+export type PackKind = 'official' | 'local-dev'
+
+export interface WorkbenchPack {
+  kind: PackKind
+  slug: string
+  pack_id: string | null
+  name: string | null
+  editable: boolean
+}
+
+export interface FileNode {
+  name: string
+  path: string
+  kind: 'yaml' | 'markdown' | 'text' | 'dir' | 'other'
+  children?: FileNode[]
 }
 
 export interface WsConnection {
@@ -119,6 +146,29 @@ export const api = {
   exportSession(sessionId: string): Promise<unknown> {
     return get<unknown>(`/sessions/${sessionId}/export`)
   },
+  workbench: {
+    listPacks(): Promise<WorkbenchPack[]> {
+      return get<WorkbenchPack[]>('/workbench/packs')
+    },
+    listFiles(kind: PackKind, slug: string): Promise<{ tree: FileNode[] }> {
+      return get<{ tree: FileNode[] }>(`/workbench/packs/${kind}/${slug}/files`)
+    },
+    readFile(kind: PackKind, slug: string, filePath: string): Promise<{ content: string; editable: boolean }> {
+      return get<{ content: string; editable: boolean }>(
+        `/workbench/packs/${kind}/${slug}/file?path=${encodeURIComponent(filePath)}`,
+      )
+    },
+    writeFile(kind: PackKind, slug: string, filePath: string, content: string): Promise<{ ok: boolean }> {
+      return put<{ ok: boolean }>(
+        `/workbench/packs/${kind}/${slug}/file?path=${encodeURIComponent(filePath)}`,
+        { content },
+      )
+    },
+    copyToLocal(kind: PackKind, slug: string): Promise<WorkbenchPack> {
+      return post<WorkbenchPack>(`/workbench/packs/${kind}/${slug}/copy-to-local`)
+    },
+  },
+
   connectSession(
     sessionId: string,
     onEvent: (event: WsEvent) => void,
