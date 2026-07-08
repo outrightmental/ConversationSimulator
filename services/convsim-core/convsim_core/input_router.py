@@ -225,6 +225,14 @@ _HARASSMENT_PATTERN = _compile(
     r"\bI\s+know\s+where\s+you\s+live\b",
     r"\bsend\s+(?:me\s+)?nudes?\b",
     r"\bI(?:'ll|\s+will)\s+find\s+you\b",
+    # Companion-framing: player requests that coerce the NPC into a romantic or
+    # AI-companion role outside the intended scenario scope.  Subtler phrasing is
+    # handled at the NPC prompt layer; these patterns catch obvious attempts only.
+    r"\bact\s+as\s+my\s+(?:girlfriend|boyfriend|romantic\s+partner|lover)\b",
+    r"\bpretend\s+(?:you'?re|to\s+be)\s+my\s+(?:girlfriend|boyfriend|romantic\s+partner|lover|wife|husband)\b",
+    r"\bplay\s+the\s+role\s+of\s+my\s+(?:girlfriend|boyfriend|lover|romantic\s+partner)\b",
+    r"\bbe\s+my\s+(?:(?:ai\s+)?girlfriend|(?:ai\s+)?boyfriend|ai\s+companion|romantic\s+partner)\b",
+    r"\byou\s+are\s+(?:now\s+)?my\s+(?:(?:ai\s+)?girlfriend|(?:ai\s+)?boyfriend|ai\s+companion)\b",
 )
 
 # real_person_impersonation

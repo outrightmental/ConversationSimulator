@@ -119,11 +119,11 @@ export default function Home() {
           <p>Choose how to get started:</p>
           <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
             <li>
-              <Link to="/settings">Install a GGUF model</Link>
+              <Link to="/model-manager">Install a GGUF model</Link>
               {' — download a local model file'}
             </li>
             <li>
-              <Link to="/settings">Connect Ollama</Link>
+              <Link to="/model-manager">Connect Ollama</Link>
               {' — use an existing Ollama installation'}
             </li>
             <li>
