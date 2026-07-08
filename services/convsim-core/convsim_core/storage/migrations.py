@@ -138,9 +138,28 @@ ALTER TABLE model_registry ADD COLUMN recommended_vram_gb REAL;
 ALTER TABLE model_registry ADD COLUMN context_length INTEGER;
 """
 
+_MODEL_MANAGER_API_SQL = """
+ALTER TABLE installed_models ADD COLUMN install_status TEXT NOT NULL DEFAULT 'complete';
+ALTER TABLE installed_models ADD COLUMN progress_bytes INTEGER;
+ALTER TABLE installed_models ADD COLUMN error_message TEXT;
+
+CREATE TABLE benchmark_results (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    model_id       TEXT    NOT NULL,
+    runtime_id     TEXT    NOT NULL,
+    tokens_per_sec REAL    NOT NULL,
+    context_length INTEGER,
+    warnings_json  TEXT    NOT NULL DEFAULT '[]',
+    prompt_used    TEXT,
+    output_tokens  INTEGER,
+    benchmarked_at TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+"""
+
 MIGRATIONS: list[tuple[str, str]] = [
     ("0001_initial_schema", _INITIAL_SCHEMA_SQL),
     ("0002_model_registry_v2", _MODEL_REGISTRY_V2_SQL),
+    ("0003_model_manager_api", _MODEL_MANAGER_API_SQL),
 ]
 
 
