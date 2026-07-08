@@ -49,15 +49,21 @@ pnpm install   # installs @tauri-apps/cli into apps/desktop
 ## Production build
 
 ```bash
-# Generate app icons from a 1024×1024 source PNG first:
-pnpm --filter @convsim/desktop tauri icon assets/icon.png
-
-# Then build the installer:
 pnpm --filter @convsim/desktop build
 ```
 
 The built installer is placed in `apps/desktop/src-tauri/target/release/bundle/`.
 Model weights are **never** included in the bundle.
+
+The repo ships **placeholder** app icons in `src-tauri/icons/` so the app
+compiles out of the box — Tauri embeds the window icon at compile time, so both
+`tauri dev` and `tauri build` fail if the referenced icons are missing. Replace
+them with real branding before shipping a distributable:
+
+```bash
+# Regenerate the full icon set from a 1024×1024 source PNG:
+pnpm --filter @convsim/desktop tauri icon assets/icon.png
+```
 
 > **Alpha note:** `convsim-core` lifecycle is not yet managed by the desktop
 > shell. Run it manually before launching the app (the dev script handles
@@ -109,7 +115,7 @@ apps/desktop/
     ├── tauri.conf.json          # Product name, window, bundle settings
     ├── capabilities/
     │   └── default.json         # Window permission grants
-    ├── icons/                   # App icons (generate with `tauri icon`)
+    ├── icons/                   # Placeholder app icons (replace with `tauri icon`)
     └── src/
         ├── main.rs              # OS entry point
         └── lib.rs               # Tauri Builder with plugins
@@ -131,5 +137,5 @@ so the production build consumes the output of `pnpm --filter @convsim/web build
 - **Auto-update** is not configured.
 - **Code signing** is not configured — macOS Gatekeeper will warn on unsigned
   builds unless you sign with a Developer ID certificate.
-- **App icons** are not included in the repo. Run `pnpm tauri icon <source.png>`
-  to generate them before building a distributable.
+- **App icons** are placeholders. Run `pnpm tauri icon <source.png>` to replace
+  them with real branding before building a distributable.

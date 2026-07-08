@@ -115,6 +115,13 @@ Check-File "apps\desktop\src-tauri\build.rs"
 Check-File "apps\desktop\src-tauri\src\main.rs"
 Check-File "apps\desktop\src-tauri\src\lib.rs"
 Check-File "apps\desktop\src-tauri\capabilities\default.json"
+# Icons referenced by tauri.conf.json are embedded at compile time; a missing
+# file breaks `tauri dev`/`tauri build`, so verify the placeholder set is present.
+Check-File "apps\desktop\src-tauri\icons\32x32.png"
+Check-File "apps\desktop\src-tauri\icons\128x128.png"
+Check-File "apps\desktop\src-tauri\icons\128x128@2x.png"
+Check-File "apps\desktop\src-tauri\icons\icon.icns"
+Check-File "apps\desktop\src-tauri\icons\icon.ico"
 
 Write-Host ""
 
