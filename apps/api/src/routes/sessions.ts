@@ -11,7 +11,7 @@ import type {
   EndingType,
 } from '@convsim/shared';
 import { SCENARIOS } from '../data/scenarios.js';
-import { getDb } from '../db.js';
+import { getDb, WORKBENCH_TEST_SCENARIO_ID } from '../db.js';
 import { broadcast, closeSessionSockets } from '../ws/session-events.js';
 
 const MAX_TURN_CONTENT_LENGTH = 2000;
@@ -125,9 +125,14 @@ export async function sessionRoutes(app: FastifyInstance) {
   // GET /api/sessions
   app.get('/api/sessions', async (): Promise<{ sessions: SessionCreateResponse[] }> => {
     const db = getDb();
+    // Exclude temporary workbench test sessions so they never pollute the
+    // player's session history (they are cleaned up on discard/reset/unmount,
+    // but a lingering row must not surface here either).
     const rows = db
-      .prepare<[], SessionRow>('SELECT * FROM sessions ORDER BY created_at DESC, rowid DESC')
-      .all();
+      .prepare<[string], SessionRow>(
+        'SELECT * FROM sessions WHERE scenario_id != ? ORDER BY created_at DESC, rowid DESC',
+      )
+      .all(WORKBENCH_TEST_SCENARIO_ID);
     return {
       sessions: rows.map((row) => ({
         session_id: row.session_id,
