@@ -208,4 +208,18 @@ describe('Home — runtime-error state', () => {
     expect(alert).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: /no model configured/i })).toBeNull()
   })
+
+  it('shows last_error from the runtime when present', async () => {
+    stubFetches(makeHealth({ last_error: 'Model failed to load: out of memory' }), makePacks(0))
+    renderHome()
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/model failed to load: out of memory/i)
+  })
+
+  it('does not show a last_error alert when last_error is null', async () => {
+    stubFetches(makeHealth({ last_error: null }), makePacks(0))
+    renderHome()
+    await screen.findByText(liText('Local runtime: Ready'))
+    expect(screen.queryByRole('alert')).toBeNull()
+  })
 })
