@@ -3,12 +3,14 @@ import { useState } from 'react'
 
 export interface DebugTurnEntry {
   turnId: number
-  role: 'npc_opening' | 'npc'
+  role: 'npc_opening' | 'npc' | 'player'
   rawPayload: Record<string, unknown>
   /** Delta entries that were committed to tracked NPC state variables. */
-  appliedDelta: Record<string, number>
+  appliedDelta?: Record<string, number>
   /** Delta entries the model requested for unknown variables — dropped, never applied. */
   rejectedDelta?: Record<string, number>
+  /** Raw STT transcript before user edits (player turns only, when transcript was corrected). */
+  rawStt?: string
 }
 
 // Fields that may contain hidden NPC agenda — highlighted so they can't be missed
@@ -121,7 +123,7 @@ function CopyButton({ payload }: { payload: Record<string, unknown> }) {
 
 function DebugTurnItem({ entry, index }: { entry: DebugTurnEntry; index: number }) {
   const agendaFields = Object.keys(entry.rawPayload).filter((k) => AGENDA_FIELDS.has(k))
-  const hasDelta = Object.keys(entry.appliedDelta).length > 0
+  const hasDelta = Object.keys(entry.appliedDelta ?? {}).length > 0
   const rejectedDelta = entry.rejectedDelta ?? {}
   const hasRejected = Object.keys(rejectedDelta).length > 0
 
@@ -186,6 +188,21 @@ function DebugTurnItem({ entry, index }: { entry: DebugTurnEntry; index: number 
             ⊘ rejected
           </span>
         )}
+        {entry.rawStt !== undefined && (
+          <span
+            aria-label="Contains raw STT transcript"
+            style={{
+              fontSize: '0.6rem',
+              padding: '0 0.3rem',
+              background: 'rgba(167,139,250,0.12)',
+              border: '1px solid rgba(167,139,250,0.35)',
+              borderRadius: 3,
+              color: '#a78bfa',
+            }}
+          >
+            STT
+          </span>
+        )}
       </summary>
 
       <div style={{ marginTop: '0.4rem', display: 'flex', flexDirection: 'column', gap: '0.4rem', paddingLeft: '0.5rem' }}>
@@ -210,6 +227,15 @@ function DebugTurnItem({ entry, index }: { entry: DebugTurnEntry; index: number 
           <div style={{ fontSize: '0.65rem', color: '#52525b', marginBottom: 2 }}>Raw payload</div>
           <JsonBlock data={entry.rawPayload} />
         </div>
+
+        {entry.rawStt !== undefined && (
+          <div>
+            <div style={{ fontSize: '0.65rem', color: '#a78bfa', marginBottom: 2 }}>
+              Raw STT (before user edits)
+            </div>
+            <JsonBlock data={entry.rawStt} />
+          </div>
+        )}
 
         {hasDelta && (
           <div>
