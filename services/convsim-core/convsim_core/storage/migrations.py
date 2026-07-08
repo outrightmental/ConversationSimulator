@@ -239,6 +239,14 @@ DROP TABLE IF EXISTS scenario_fts;
 CREATE VIRTUAL TABLE scenario_fts USING fts5(
     title, summary, tags, pack_name, pack_readme
 );
+
+CREATE TRIGGER scenario_fts_delete AFTER DELETE ON scenarios BEGIN
+    DELETE FROM scenario_fts WHERE rowid = OLD.id;
+END;
+
+CREATE TRIGGER pack_readme_fts_delete AFTER DELETE ON packs BEGIN
+    DELETE FROM pack_readme_fts WHERE rowid = OLD.id;
+END;
 """
 
 MIGRATIONS: list[tuple[str, str]] = [

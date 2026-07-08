@@ -492,3 +492,11 @@ def test_pack_list_includes_tags(client, tmp_path):
     resp = client.get("/api/packs")
     packs = resp.json()
     assert "test" in packs[0]["tags"]
+
+
+def test_validate_yaml_manifest_schema_violation_returns_schema_violation_rule(client, tmp_path):
+    """Schema errors from a manifest.yaml pack must produce SCHEMA_VIOLATION, not fall through to other rules."""
+    from convsim_core.packs.validator import errors_to_rule_ids
+    errors = ["manifest.yaml [name]: 'Foo Bar' does not match '^[a-z]'"]
+    rule_ids = errors_to_rule_ids(errors)
+    assert "SCHEMA_VIOLATION" in rule_ids

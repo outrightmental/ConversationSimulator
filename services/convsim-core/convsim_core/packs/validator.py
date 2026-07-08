@@ -36,11 +36,11 @@ RULE_SYMLINK_DETECTED = "SYMLINK_DETECTED"
 RULE_FORBIDDEN_EXTENSION = "FORBIDDEN_EXTENSION"
 
 
-def _fmt_schema_err(exc: jsonschema.ValidationError) -> str:
+def _fmt_schema_err(exc: jsonschema.ValidationError, filename: str = "pack.json") -> str:
     path = list(exc.absolute_path)
     if path:
-        return f"pack.json [{'.'.join(str(p) for p in path)}]: {exc.message}"
-    return f"pack.json: {exc.message}"
+        return f"{filename} [{'.'.join(str(p) for p in path)}]: {exc.message}"
+    return f"{filename}: {exc.message}"
 
 
 def errors_to_rule_ids(errors: list[str]) -> list[str]:
@@ -54,7 +54,7 @@ def errors_to_rule_ids(errors: list[str]) -> list[str]:
             ids.add(RULE_INVALID_MANIFEST_JSON)
         elif "not valid yaml" in el or "must be a yaml mapping" in el:
             ids.add(RULE_INVALID_MANIFEST_YAML)
-        elif "pack.json [" in el or "pack.json:" in el or "schema" in el:
+        elif "pack.json [" in el or "pack.json:" in el or "manifest.yaml [" in el or "manifest.yaml:" in el or "schema" in el:
             ids.add(RULE_SCHEMA_VIOLATION)
         elif "content_rating" in el:
             ids.add(RULE_INVALID_CONTENT_RATING)
@@ -87,12 +87,14 @@ def load_manifest(pack_dir: Path) -> tuple[Optional[PackManifest], list[str]]:
     json_path = pack_dir / "pack.json"
     yaml_path = pack_dir / "manifest.yaml"
 
+    manifest_filename = "pack.json"
     if json_path.exists():
         try:
             raw = json.loads(json_path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as exc:
             return None, [f"pack.json is not valid JSON: {exc}"]
     elif yaml_path.exists():
+        manifest_filename = "manifest.yaml"
         try:
             raw = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
         except yaml.YAMLError as exc:
@@ -103,12 +105,12 @@ def load_manifest(pack_dir: Path) -> tuple[Optional[PackManifest], list[str]]:
         return None, ["Missing pack.json or manifest.yaml at pack root"]
 
     # Validate against the authoritative JSON Schema.
-    schema_errs = [_fmt_schema_err(e) for e in _PACK_SCHEMA_VALIDATOR.iter_errors(raw)]
+    schema_errs = [_fmt_schema_err(e, manifest_filename) for e in _PACK_SCHEMA_VALIDATOR.iter_errors(raw)]
 
     try:
         manifest = PackManifest.model_validate(raw)
     except Exception as exc:
-        return None, schema_errs + [f"pack.json failed schema validation: {exc}"]
+        return None, schema_errs + [f"{manifest_filename} failed schema validation: {exc}"]
 
     return manifest, schema_errs
 
