@@ -81,6 +81,8 @@ export default function Settings() {
   const [sessionsError, setSessionsError] = useState(false)
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [exportError, setExportError] = useState<string | null>(null)
 
   const loadSessions = useCallback(() => {
     api.listSessions()
@@ -123,9 +125,12 @@ export default function Settings() {
 
   async function handleDeleteSession(sessionId: string) {
     setDeletingId(sessionId)
+    setDeleteError(null)
     try {
       await api.deleteSession(sessionId)
       setSessions((prev) => prev?.filter((s) => s.session_id !== sessionId) ?? null)
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Failed to delete session')
     } finally {
       setDeletingId(null)
       setDeleteConfirmId(null)
@@ -133,14 +138,19 @@ export default function Settings() {
   }
 
   async function handleExportSession(sessionId: string) {
-    const data = await api.exportSession(sessionId)
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `session-${sessionId}.json`
-    a.click()
-    URL.revokeObjectURL(url)
+    setExportError(null)
+    try {
+      const data = await api.exportSession(sessionId)
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `session-${sessionId}.json`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : 'Failed to export session')
+    }
   }
 
   const clearButtonLabel =
@@ -322,6 +332,16 @@ export default function Settings() {
         </p>
         {sessionsError && (
           <p style={{ fontSize: '0.875rem', color: '#f87171' }}>Could not load sessions.</p>
+        )}
+        {deleteError && (
+          <p role="alert" style={{ fontSize: '0.875rem', color: '#f87171', marginBottom: '0.5rem' }}>
+            {deleteError}
+          </p>
+        )}
+        {exportError && (
+          <p role="alert" style={{ fontSize: '0.875rem', color: '#f87171', marginBottom: '0.5rem' }}>
+            {exportError}
+          </p>
         )}
         {!sessionsError && sessions === null && (
           <p style={{ fontSize: '0.875rem', color: '#a1a1aa' }}>Loading…</p>

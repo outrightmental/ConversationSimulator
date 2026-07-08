@@ -349,6 +349,32 @@ describe('your sessions', () => {
     await waitFor(() => expect(mockApi.exportSession).toHaveBeenCalledWith('sess-aaa'))
     Object.defineProperty(globalThis, 'URL', { value: origURL, writable: true, configurable: true })
   })
+
+  it('shows an error when deleteSession API fails', async () => {
+    mockApi.listSessions.mockResolvedValue({ sessions: [SESSION_A] })
+    mockApi.deleteSession.mockRejectedValue(new Error('network error'))
+    renderSettings()
+    await waitFor(() => screen.getByRole('button', { name: /delete session sess-aaa/i }))
+    fireEvent.click(screen.getByRole('button', { name: /delete session sess-aaa/i }))
+    await waitFor(() => screen.getByRole('button', { name: /confirm delete session sess-aaa/i }))
+    fireEvent.click(screen.getByRole('button', { name: /confirm delete session sess-aaa/i }))
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(/network error/i),
+    )
+    // Session row should still be present after a failed delete
+    expect(screen.getByRole('button', { name: /delete session sess-aaa/i })).toBeInTheDocument()
+  })
+
+  it('shows an error when exportSession API fails', async () => {
+    mockApi.listSessions.mockResolvedValue({ sessions: [SESSION_A] })
+    mockApi.exportSession.mockRejectedValue(new Error('export failed'))
+    renderSettings()
+    await waitFor(() => screen.getByRole('button', { name: /export session sess-aaa/i }))
+    fireEvent.click(screen.getByRole('button', { name: /export session sess-aaa/i }))
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(/export failed/i),
+    )
+  })
 })
 
 // ---------------------------------------------------------------------------
