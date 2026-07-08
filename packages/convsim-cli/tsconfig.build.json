@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "paths": {}
+  },
+  "include": ["src", "../pack-loader/src/vendor-ajv2020.d.ts"]
+}
