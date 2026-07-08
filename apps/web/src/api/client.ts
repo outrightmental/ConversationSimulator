@@ -15,6 +15,7 @@ import type {
   UseModelResponse,
   InstallModelRequest,
   InstallModelResponse,
+  InstalledModelInfo,
   RegisterGgufRequest,
   RegisterGgufResponse,
 } from '@convsim/shared';
@@ -262,6 +263,12 @@ export const api = {
   },
   registerGguf(request: RegisterGgufRequest): Promise<RegisterGgufResponse> {
     return post<RegisterGgufResponse>('/models/register-gguf', request)
+  },
+  getInstallStatus(installId: number): Promise<InstalledModelInfo> {
+    return get<InstalledModelInfo>(`/models/install/${installId}`)
+  },
+  cancelInstall(installId: number): Promise<void> {
+    return del(`/models/install/${installId}`)
   },
   startSidecar(model_path: string): Promise<{ state: string; pid: number | null; log_path: string; host: string; port: number }> {
     return post('/sidecar/start', { model_path })

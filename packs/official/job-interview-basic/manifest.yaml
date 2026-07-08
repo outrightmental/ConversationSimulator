@@ -2,11 +2,12 @@
 schema_version: "0.1"
 pack_id: official.job_interview_basic
 name: Job Interview Basics
-version: 0.1.0
+version: 0.2.0
 description: >-
-  Practice realistic behavioral job interviews with a professional hiring manager.
-  Build confidence answering structured questions about your past experience,
-  handling pressure, and communicating clearly.
+  Practice four realistic job interview scenarios spanning behavioral questions,
+  hostile executive pressure, blue-collar supervisor practicality, and making
+  the case for a stretch role. Build confidence, composure, and the ability to
+  give specific, well-structured answers across very different interview styles.
 author: Outright Mental
 license: CC-BY-4.0
 content_rating: PG
@@ -15,10 +16,15 @@ tags:
   - professional
   - behavioral
   - career
+  - pressure
+  - leadership
 supported_languages:
   - en
 entry_scenarios:
   - scenarios/behavioral_interview.yaml
+  - scenarios/hostile_executive_interview.yaml
+  - scenarios/blue_collar_supervisor_interview.yaml
+  - scenarios/stretch_role_interview.yaml
 assets:
   allow_external_urls: false
 safety:

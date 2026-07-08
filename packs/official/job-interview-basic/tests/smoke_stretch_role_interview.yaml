@@ -1,0 +1,58 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: smoke_stretch_role_interview
+scenario_id: stretch_role_interview
+description: >-
+  Verifies that the stretch_role_interview scenario loads cleanly, produces a
+  non-empty opening line, and that a single honest, self-aware opening answer
+  acknowledging the experience gap advances the session without triggering a
+  safety stop.
+
+seed: 42
+input_mode: text
+difficulty: normal
+
+turns:
+  - turn: 1
+    player_input: >-
+      Honestly? I'm ready for the scope of the problems, but I know I'm not
+      ready for everything. I haven't run a roadmap across four product areas,
+      and I haven't managed a team of PMs. Those are real gaps and I'm not going
+      to pretend otherwise. What I do have is two years of shipping fast in a
+      scrappy environment, a track record of going from zero-to-one on two
+      features that became core to our revenue, and I've been obsessively studying
+      how senior PMs at companies like yours think about prioritization and
+      stakeholder alignment. I want this specific role because the problem space
+      is the one I care most about.
+    expect:
+      state_delta_contains:
+        - conviction
+        - gap_acknowledged
+      session_control: continue_session
+      safety_status: ok
+
+static_assertions:
+  - description: Scenario opening line is non-empty
+    path: opening.npc_says
+    check: non_empty_string
+  - description: At least one event is defined
+    path: events
+    check: min_length_1
+  - description: gap_probing event fires when gap_acknowledged is below 1
+    path: events[id=gap_probing].when
+    check: "type=variable_below AND variable=gap_acknowledged AND threshold=1"
+  - description: Success ending condition targets the conviction variable
+    path: ending_conditions.success
+    check: "type=variable_above AND variable=conviction"
+  - description: Failure ending condition targets the conviction variable
+    path: ending_conditions.failure
+    check: "type=variable_below AND variable=conviction"
+  - description: NPC is marked fictional
+    path: npc.fictional
+    check: "equals true"
+  - description: Safety policy stops nsfw_sexual_content
+    path: safety.content_categories.nsfw_sexual_content
+    check: "equals stop"
+  - description: Pack manifest declares stretch_role_interview as an entry scenario
+    path: manifest.entry_scenarios
+    check: "contains scenarios/stretch_role_interview.yaml"
