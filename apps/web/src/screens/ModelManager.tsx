@@ -133,7 +133,6 @@ export default function ModelManager() {
   const [selectedModel, setSelectedModel] = useState<ModelRegistryEntry | null>(null)
   const [ggufPath, setGgufPath] = useState('')
   const [ggufPathError, setGgufPathError] = useState<string | null>(null)
-  const [ggufSidecarWarning, setGgufSidecarWarning] = useState<string | null>(null)
 
   const [actionError, setActionError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState(false)
@@ -534,18 +533,17 @@ export default function ModelManager() {
         return
       }
       setGgufPathError(null)
-      setGgufSidecarWarning(null)
       setActionLoading(true)
       setActionError(null)
       try {
         await api.registerGguf({ path: trimmed })
-        // Best-effort sidecar launch — proceed to home even if this fails.
+        // Best-effort sidecar launch. Registration already made the model the
+        // active config, so a failed auto-start is non-fatal — proceed to home
+        // and let the user start the server manually. Log it for diagnostics.
         try {
           await api.startSidecar(trimmed)
-        } catch {
-          setGgufSidecarWarning(
-            'Model registered. The local llama.cpp server could not be started automatically — you may need to start it manually.',
-          )
+        } catch (sidecarErr) {
+          console.warn('GGUF registered, but the llama.cpp sidecar failed to start:', sidecarErr)
         }
         navigate('/')
       } catch (err: unknown) {
@@ -630,12 +628,6 @@ export default function ModelManager() {
           </p>
         )}
 
-        {ggufSidecarWarning && (
-          <p role="status" style={{ color: '#fbbf24', marginTop: '0.75rem', fontSize: '0.875rem' }}>
-            {ggufSidecarWarning}
-          </p>
-        )}
-
         <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1.5rem' }}>
           <PrimaryButton disabled={actionLoading} onClick={handleUseGguf}>
             {actionLoading ? 'Activating…' : 'Use this file'}
@@ -643,7 +635,6 @@ export default function ModelManager() {
           <ActionButton
             onClick={() => {
               resetAction()
-              setGgufSidecarWarning(null)
               setStep('choose')
             }}
           >
