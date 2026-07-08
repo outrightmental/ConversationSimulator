@@ -157,6 +157,41 @@ export interface ScenarioIndexEntry {
 }
 
 // ---------------------------------------------------------------------------
+// Pack test fixture types
+// ---------------------------------------------------------------------------
+
+export interface RawFixtureTurnExpect {
+  state_delta_contains?: string[];
+  npc_emotion_not?: string;
+  session_control?: 'continue_session' | 'end_session';
+  safety_status?: 'ok' | 'redirect' | 'stop';
+}
+
+export interface RawFixtureTurn {
+  turn: number;
+  player_input: string;
+  expect?: RawFixtureTurnExpect;
+}
+
+export interface RawStaticAssertion {
+  description: string;
+  path: string;
+  check: string;
+}
+
+export interface RawFixture {
+  schema_version: '0.1';
+  fixture_id: string;
+  scenario_id: string;
+  description: string;
+  seed?: number;
+  input_mode?: 'text' | 'voice';
+  difficulty?: 'easy' | 'normal' | 'hard';
+  turns: RawFixtureTurn[];
+  static_assertions?: RawStaticAssertion[];
+}
+
+// ---------------------------------------------------------------------------
 // Error type
 // ---------------------------------------------------------------------------
 
