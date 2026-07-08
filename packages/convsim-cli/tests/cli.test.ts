@@ -580,7 +580,7 @@ describe('export-pack', () => {
     runExportPack(packDir, false, outputPath);
     const zip = new AdmZip(outputPath);
     const entries = zip.getEntries().map((e) => e.entryName);
-    expect(entries.some((e) => e === 'manifest.yaml' || e.endsWith('/manifest.yaml'))).toBe(true);
+    expect(entries).toContain('manifest.yaml');
     // No entry should start with '/' or contain an absolute Windows path
     for (const e of entries) {
       expect(e.startsWith('/')).toBe(false);
