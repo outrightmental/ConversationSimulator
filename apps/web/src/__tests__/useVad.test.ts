@@ -44,6 +44,32 @@ function stubAudioContext(rmsValue: number) {
   return { analyser, mockCtx }
 }
 
+// Stub AudioContext with a mutable RMS plus a manual requestAnimationFrame driver
+// so tests can step the silence-detection loop one frame at a time.
+function stubMutableAudio() {
+  const audioState = { rms: 0 }
+  const analyser = {
+    fftSize: 512,
+    frequencyBinCount: 256,
+    smoothingTimeConstant: 0,
+    connect: vi.fn(),
+    getFloatTimeDomainData: (buf: Float32Array) => buf.fill(audioState.rms),
+  } as unknown as AnalyserNode
+  const mockCtx = {
+    createAnalyser: () => analyser,
+    createMediaStreamSource: () => ({ connect: vi.fn() }),
+    close: vi.fn().mockResolvedValue(undefined),
+  }
+  vi.stubGlobal('AudioContext', vi.fn(() => mockCtx))
+
+  const pending: FrameRequestCallback[] = []
+  vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => pending.push(cb))
+  vi.stubGlobal('cancelAnimationFrame', vi.fn())
+  const flushFrame = () => pending.splice(0).forEach((cb) => cb(0))
+
+  return { audioState, flushFrame }
+}
+
 beforeEach(() => {
   localStorage.clear()
   vi.clearAllMocks()
@@ -215,6 +241,57 @@ describe('useVad — startSilenceDetection VAD states', () => {
     const { result } = renderHook(() => useVad())
     expect(() => act(() => result.current.stopSilenceDetection())).not.toThrow()
     expect(result.current.vadState).toBe('idle')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Auto-stop only arms after speech (regression: an initial pause before the
+// user speaks must not trigger a premature auto-stop).
+// ---------------------------------------------------------------------------
+
+describe('useVad — auto-stop arms only after speech', () => {
+  it('does not fire onSilence while quiet before any speech is detected', () => {
+    const { audioState, flushFrame } = stubMutableAudio()
+    const { result } = renderHook(() => useVad())
+    act(() => result.current.setThreshold(0.05))
+    const onSilence = vi.fn()
+
+    audioState.rms = 0.001 // below threshold from the very start
+    act(() => result.current.startSilenceDetection(makeStream(), onSilence))
+
+    // Step several frames while silent, then advance well past silenceDurationMs.
+    act(() => { for (let i = 0; i < 5; i++) flushFrame() })
+    act(() => { vi.advanceTimersByTime(5000) })
+
+    expect(onSilence).not.toHaveBeenCalled()
+    expect(result.current.vadState).toBe('listening')
+  })
+
+  it('fires onSilence after speech is followed by sustained silence', () => {
+    const { audioState, flushFrame } = stubMutableAudio()
+    const { result } = renderHook(() => useVad())
+    act(() => {
+      result.current.setThreshold(0.05)
+      result.current.setSilenceDurationMs(1000)
+    })
+    const onSilence = vi.fn()
+    act(() => result.current.startSilenceDetection(makeStream(), onSilence))
+
+    // Speech frame.
+    audioState.rms = 0.2
+    act(() => flushFrame())
+    expect(result.current.vadState).toBe('speech')
+
+    // Silence begins — timer arms but has not yet elapsed.
+    audioState.rms = 0.001
+    act(() => flushFrame())
+    expect(result.current.vadState).toBe('silence')
+    expect(onSilence).not.toHaveBeenCalled()
+
+    // Silence persists past the configured duration → auto-stop.
+    act(() => { vi.advanceTimersByTime(1000) })
+    expect(onSilence).toHaveBeenCalledOnce()
+    expect(result.current.vadState).toBe('stopping')
   })
 })
 

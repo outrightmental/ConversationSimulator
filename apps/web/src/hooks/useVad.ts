@@ -136,6 +136,11 @@ export function useVad(): UseVadReturn {
 
       const buf = new Float32Array(analyser.fftSize)
       setVadState('listening')
+      // Only arm the silence auto-stop after speech has been detected at least
+      // once. Otherwise an initial pause (user gathering their thoughts before
+      // speaking) would auto-stop the recording within silenceDurationMs and
+      // send near-silent audio to STT.
+      let hasSpeech = false
 
       const tick = () => {
         const a = analyserRef.current
@@ -149,12 +154,13 @@ export function useVad(): UseVadReturn {
         const { threshold, silenceDurationMs } = settingsRef.current
 
         if (rms >= threshold) {
+          hasSpeech = true
           if (silenceTimerRef.current !== null) {
             clearTimeout(silenceTimerRef.current)
             silenceTimerRef.current = null
           }
           setVadState('speech')
-        } else if (silenceTimerRef.current === null) {
+        } else if (hasSpeech && silenceTimerRef.current === null) {
           setVadState('silence')
           silenceTimerRef.current = setTimeout(() => {
             silenceTimerRef.current = null
