@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scene_id: madrid_cafe
+display_name: "Café Sol — Malasaña, Madrid"
+description: >-
+  A compact neighbourhood café tucked into a narrow street in the Malasaña
+  district of Madrid. The counter is lined with a gleaming espresso machine,
+  a glass case of pastries, and hand-written daily specials in chalk. Wooden
+  stools face the bar; a few small tables with mismatched chairs fill the rest
+  of the space. Morning light filters through the open front door. The smell
+  of fresh coffee and pan tostado fills the air. Soft pop music plays at low
+  volume in the background. It is busy but unhurried — the kind of place
+  where a friendly exchange with the barista is perfectly natural.
+background: assets/backgrounds/madrid_cafe_placeholder.png
+ambient: cafe_ambience

@@ -1,0 +1,126 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scenario_id: japanese_convenience_store
+title: At the Convenience Store
+summary: >-
+  You are shopping at a konbini in Tokyo. Kenji Yamamoto, the store clerk,
+  will greet you and help you find items. Practice polite everyday Japanese
+  in a low-pressure service context. The target language is Japanese (ja).
+  Difficulty controls language correction: easy = none, normal = light
+  (implicit recasting), hard = explicit correction with practice prompts.
+player_role:
+  label: Language Learner
+  brief: >-
+    You are visiting Japan and have stopped at a convenience store near your
+    hotel. Your goal is to ask for an item, complete a small transaction, and
+    exchange polite thanks with Kenji. Japanese service workers use formal
+    language — matching their register, even imperfectly, will be warmly
+    received. Simple, polite sentences work best.
+npc:
+  ref: ../npcs/conbini_worker_kenji.yaml
+scene:
+  ref: ../scenes/tokyo_conbini.yaml
+rubric:
+  ref: ../rubrics/language_practice.yaml
+duration:
+  max_turns: 14
+  soft_time_limit_minutes: 10
+opening:
+  npc_says: >-
+    いらっしゃいませ！何かお探しですか？どうぞ、ゆっくりご覧ください。
+goals:
+  player_visible:
+    - "Ask where to find an item or request something from the counter"
+    - "Use sumimasen (すみません) to get attention politely"
+    - "Complete the interaction with a thank-you (arigatou gozaimasu)"
+  hidden:
+    - "Kenji notices whether the player uses polite sentence endings (-masu/-desu forms)"
+    - "Kenji tracks whether the player attempts to ask for clarification when they do not understand"
+    - "Kenji rewards any genuine attempt to communicate in Japanese, however simple"
+state:
+  variables:
+    comprehension:
+      min: 0
+      max: 100
+      default: 50
+      visibility: visible
+      max_delta_per_turn: 15
+    confidence:
+      min: 0
+      max: 100
+      default: 40
+      visibility: visible
+      max_delta_per_turn: 10
+    repair_count:
+      min: 0
+      max: 10
+      default: 0
+      visibility: hidden
+      max_delta_per_turn: 1
+    vocabulary_richness:
+      min: 0
+      max: 100
+      default: 50
+      visibility: hidden
+      max_delta_per_turn: 10
+difficulty:
+  default: normal
+  options:
+    easy:
+      correction_style: none
+      npc_patience_modifier: 20
+      challenge_frequency: low
+    normal:
+      correction_style: light
+      npc_patience_modifier: 0
+      challenge_frequency: medium
+    hard:
+      correction_style: strict
+      npc_patience_modifier: -10
+      challenge_frequency: high
+events:
+  - id: comprehension_low
+    when:
+      type: variable_below
+      variable: comprehension
+      threshold: 30
+    npc_instruction: >-
+      The player looks confused. Slow down and use simple, clear Japanese.
+      You may gesture or offer a helpful phrase such as "Eigo, daijoubu desu
+      yo — English is OK too." Keep your tone warm and unhurried; the customer
+      should never feel embarrassed for not understanding.
+    repeat: false
+  - id: repair_strategy_used
+    when:
+      type: variable_above
+      variable: repair_count
+      threshold: 1
+    npc_instruction: >-
+      The player has attempted to manage a misunderstanding — perhaps by asking
+      you to repeat (もう一度お願いします), to speak slowly (ゆっくりお願いします), or by
+      restating their request differently. Respond warmly, honour the repair
+      request, and continue. This is excellent communicative initiative.
+    repeat: true
+  - id: confidence_building
+    when:
+      type: variable_above
+      variable: confidence
+      threshold: 70
+    npc_instruction: >-
+      The player is communicating confidently. Engage a little more naturally —
+      you might volunteer that a popular item is on sale today, or ask if they
+      are visiting the area, to extend the friendly interaction.
+    repeat: false
+ending_conditions:
+  success:
+    type: variable_above
+    variable: comprehension
+    threshold: 65
+  failure:
+    type: variable_below
+    variable: comprehension
+    threshold: 20
+response_style:
+  max_words: 40
+  verbosity: terse
+  formality: formal
