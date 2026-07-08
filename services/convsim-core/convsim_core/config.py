@@ -48,6 +48,7 @@ class ServiceConfig(BaseSettings):
     # Workbench also uses it as the editable local-dev pack root, falling back
     # to <packs_dir>/local-dev when unset.
     local_dev_packs_dir: Optional[str] = None
+    models_dir: str = str(Path.home() / ".convsim" / "models" / "llm")
     lan_access_enabled: bool = False
     runtime_id: str = "fake"
     stt_worker_id: str = "whisper_cpp"
