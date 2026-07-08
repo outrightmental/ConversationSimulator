@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import type { ScenarioInfo, PackValidationResult } from '@convsim/shared'
 import ScenarioLibrary from '../screens/ScenarioLibrary'
@@ -134,7 +134,7 @@ beforeEach(() => {
 describe('page heading', () => {
   it('renders the Scenario Library heading', async () => {
     renderLibrary()
-    expect(screen.getByRole('heading', { name: /scenario library/i })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: /scenario library/i })).toBeInTheDocument()
   })
 })
 
@@ -546,7 +546,7 @@ describe('pack validation', () => {
         /validating/i,
       ),
     )
-    resolve!(VALID_RESULT)
+    await act(async () => { resolve!(VALID_RESULT) })
   })
 })
 
