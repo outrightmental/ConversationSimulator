@@ -380,3 +380,36 @@ async def test_transcribe_raises_stt_error_when_exec_raises_os_error(tmp_path):
             await worker.transcribe(SttRequest(audio=b"\x00" * 100, audio_format="wav"))
 
     assert exc_info.value.recoverable is True
+
+
+@pytest.mark.asyncio
+async def test_transcribe_raises_stt_error_on_timeout(tmp_path):
+    """Subprocess timeout should kill the process and raise a recoverable SttError."""
+    model_file = tmp_path / "model.bin"
+    model_file.write_bytes(b"\x00")
+
+    worker = _make_worker(binary=_FAKE_BINARY, model=str(model_file))
+
+    class _SlowProcess:
+        # Non-coroutine return is fine: asyncio.wait_for is patched to raise
+        # before it awaits anything, so no "coroutine never awaited" warning.
+        def communicate(self):
+            return MagicMock()
+
+        def kill(self) -> None:
+            pass
+
+        async def wait(self) -> None:
+            pass
+
+    async def _slow_exec(*args, **kwargs):
+        return _SlowProcess()
+
+    with patch("os.path.isfile", return_value=True), \
+         patch("asyncio.create_subprocess_exec", side_effect=_slow_exec), \
+         patch("asyncio.wait_for", side_effect=asyncio.TimeoutError):
+        with pytest.raises(SttError) as exc_info:
+            await worker.transcribe(SttRequest(audio=b"\x00" * 100, audio_format="wav"))
+
+    assert "timed out" in str(exc_info.value)
+    assert exc_info.value.recoverable is True
