@@ -43,6 +43,7 @@ the API level and are documented separately in docs/voice-smoke-tests.md.
 from __future__ import annotations
 
 import io
+import os
 
 import pytest
 from fastapi.testclient import TestClient
@@ -76,8 +77,9 @@ _SILENT_WAV: bytes = (
     + (0).to_bytes(4, "little")      # 0 PCM samples
 )
 
-# Scripted player inputs matching the language-cafe smoke fixtures (smoke_spanish_coffee.yaml
-# and smoke_english_small_talk.yaml) so manual inspection is easy.
+# Scripted player inputs for each path: a behavioral-interview answer for the
+# English job-interview scenario and a café order matching smoke_spanish_coffee.yaml
+# for the Spanish language-cafe scenario.
 _ENGLISH_PLAYER_TURN = (
     "I handled a major production outage by rolling back a bad deploy within fifteen minutes "
     "and writing a post-mortem that prevented recurrence."
@@ -85,6 +87,29 @@ _ENGLISH_PLAYER_TURN = (
 _SPANISH_PLAYER_TURN = (
     "Hola, buenos días. Quiero un café con leche, por favor. ¿Tiene también croissants?"
 )
+
+# Optional real-audio fixture overrides. When set, the language path uploads the
+# referenced WAV instead of the built-in silent fixture (see docs/voice-smoke-tests.md).
+_FIXTURE_ENV_BY_LANGUAGE = {
+    "en": "CONVSIM_VOICE_SMOKE_FIXTURE_EN",
+    "es": "CONVSIM_VOICE_SMOKE_FIXTURE_ES",
+}
+
+
+def _audio_for(language: str | None) -> bytes:
+    """Return the audio bytes to upload for a given language.
+
+    Uses the real WAV referenced by ``CONVSIM_VOICE_SMOKE_FIXTURE_EN`` /
+    ``CONVSIM_VOICE_SMOKE_FIXTURE_ES`` when set (real-runtime mode); otherwise
+    falls back to the built-in silent WAV so CI needs no external assets.
+    """
+    env_var = _FIXTURE_ENV_BY_LANGUAGE.get(language or "")
+    if env_var:
+        fixture_path = os.environ.get(env_var)
+        if fixture_path:
+            with open(fixture_path, "rb") as fh:
+                return fh.read()
+    return _SILENT_WAV
 
 
 # ---------------------------------------------------------------------------
@@ -102,6 +127,10 @@ def voice_client(tmp_path):
 
         CONVSIM_STT_WORKER_ID=whisper_cpp CONVSIM_TTS_WORKER_ID=kokoro pytest
     """
+    # Default to the fake workers so CI needs no binaries, but honor the
+    # documented env-var overrides so real-runtime mode actually switches
+    # workers. Explicit kwargs win over env in pydantic-settings, so only
+    # pass "fake" when the corresponding env var is absent.
     config = ServiceConfig(
         host="127.0.0.1",
         port=7355,
@@ -109,8 +138,8 @@ def voice_client(tmp_path):
         log_dir=str(tmp_path / "logs"),
         db_dir=str(tmp_path / "db"),
         packs_dir=str(tmp_path / "packs"),
-        stt_worker_id="fake",
-        tts_worker_id="fake",
+        stt_worker_id=os.environ.get("CONVSIM_STT_WORKER_ID", "fake"),
+        tts_worker_id=os.environ.get("CONVSIM_TTS_WORKER_ID", "fake"),
     )
     app = create_app(config)
     with TestClient(app) as c:
@@ -289,7 +318,7 @@ class TestEnglishVoiceSmoke:
 
     def test_stt_produces_transcript(self, voice_client):
         """Stage stt: audio fixture transcribes to a non-empty string."""
-        body = _upload_audio(voice_client, _SILENT_WAV, language=self._LANGUAGE)
+        body = _upload_audio(voice_client, _audio_for(self._LANGUAGE), language=self._LANGUAGE)
         assert body["status"] == "ok", f"[stage: stt] Status not ok: {body}"
         assert body["transcript"], f"[stage: stt] Empty transcript: {body}"
 
@@ -300,7 +329,7 @@ class TestEnglishVoiceSmoke:
         raw STT output and replaces it with their intended utterance before
         submitting.  The corrected text is non-empty and ready for the turn.
         """
-        body = _upload_audio(voice_client, _SILENT_WAV, language=self._LANGUAGE)
+        body = _upload_audio(voice_client, _audio_for(self._LANGUAGE), language=self._LANGUAGE)
         raw_transcript = body["transcript"]
         corrected = _ENGLISH_PLAYER_TURN
         # Verify the edit path is actually exercised (raw != corrected).
@@ -376,7 +405,7 @@ class TestEnglishVoiceSmoke:
         assert opening["payload"].get("content"), "[stage: npc_opening] Empty NPC opening"
 
         # Stage: stt — microphone audio → raw transcript
-        stt = _upload_audio(voice_client, _SILENT_WAV, language=self._LANGUAGE)
+        stt = _upload_audio(voice_client, _audio_for(self._LANGUAGE), language=self._LANGUAGE)
         assert stt["status"] == "ok", f"[stage: stt] {stt}"
         raw_transcript = stt["transcript"]
         assert raw_transcript, "[stage: stt] Empty transcript"
@@ -436,7 +465,7 @@ class TestSpanishVoiceSmoke:
 
     def test_stt_passes_spanish_language_hint(self, voice_client):
         """Stage stt: language='es' is preserved through the full STT round-trip."""
-        body = _upload_audio(voice_client, _SILENT_WAV, language=self._LANGUAGE)
+        body = _upload_audio(voice_client, _audio_for(self._LANGUAGE), language=self._LANGUAGE)
         assert body["status"] == "ok", f"[stage: stt] Status not ok: {body}"
         assert body["transcript"], f"[stage: stt] Empty transcript: {body}"
         assert body["language"] == "es", (
@@ -445,7 +474,7 @@ class TestSpanishVoiceSmoke:
 
     def test_transcript_can_be_corrected_to_spanish(self, voice_client):
         """Stage text_correction: player replaces raw transcript with Spanish utterance."""
-        body = _upload_audio(voice_client, _SILENT_WAV, language=self._LANGUAGE)
+        body = _upload_audio(voice_client, _audio_for(self._LANGUAGE), language=self._LANGUAGE)
         raw_transcript = body["transcript"]
         corrected = _SPANISH_PLAYER_TURN
         assert corrected != raw_transcript, (
@@ -507,7 +536,7 @@ class TestSpanishVoiceSmoke:
         assert opening["payload"].get("content"), "[stage: npc_opening] Empty"
 
         # Stage: stt — audio with Spanish language hint
-        stt = _upload_audio(voice_client, _SILENT_WAV, language=self._LANGUAGE)
+        stt = _upload_audio(voice_client, _audio_for(self._LANGUAGE), language=self._LANGUAGE)
         assert stt["status"] == "ok", f"[stage: stt] {stt}"
         raw_transcript = stt["transcript"]
         assert raw_transcript, "[stage: stt] Empty transcript"
