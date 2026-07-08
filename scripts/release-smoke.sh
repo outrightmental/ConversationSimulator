@@ -271,8 +271,10 @@ smoke_backend_health() {
         fail "health" "GET $CORE_URL/api/health failed — is convsim-core running?"
         return
     }
-    http_code="$(echo "$resp" | tail -1)"
-    body="$(echo "$resp" | head -n -1)"
+    # curl -w appends "\n<code>"; split on the final newline. Use parameter
+    # expansion (not `head -n -1`, which BSD/macOS head does not support).
+    http_code="${resp##*$'\n'}"
+    body="${resp%$'\n'*}"
 
     if [[ "$http_code" != "200" ]]; then
         fail "health" "GET /api/health returned HTTP $http_code (expected 200)"
@@ -451,9 +453,9 @@ smoke_text_session() {
         fail "text-session" "POST /api/sessions failed"
         return
     }
-    http_code="$(echo "$create_resp" | tail -1)"
+    http_code="${create_resp##*$'\n'}"
     local body
-    body="$(echo "$create_resp" | head -n -1)"
+    body="${create_resp%$'\n'*}"
     if [[ "$http_code" != "201" ]]; then
         fail "text-session" "POST /api/sessions returned HTTP $http_code (expected 201)"
         echo "$body" >> "$ARTIFACT_DIR/text-session-error.txt"
@@ -478,10 +480,10 @@ smoke_text_session() {
         fail "text-session" "POST /api/sessions/$session_id/turns failed"
         return
     }
-    turn_code="$(echo "$turn_resp" | tail -1)"
+    turn_code="${turn_resp##*$'\n'}"
     if [[ "$turn_code" != "200" ]]; then
         fail "text-session" "POST /api/sessions/$session_id/turns returned HTTP $turn_code"
-        echo "$turn_resp" | head -n -1 >> "$ARTIFACT_DIR/text-session-error.txt"
+        printf '%s\n' "${turn_resp%$'\n'*}" >> "$ARTIFACT_DIR/text-session-error.txt"
         _ARTIFACTS_WRITTEN=1
         return
     fi
