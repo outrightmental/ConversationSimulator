@@ -12,6 +12,12 @@ body:
         See [docs/voice-smoke-tests.md](https://github.com/outrightmental/ConversationSimulator/blob/main/docs/voice-smoke-tests.md) for
         the manual test suite.
 
+        **Privacy note:** Do not attach audio recordings from personal
+        sessions or paste transcripts of private conversations. If you need
+        to include speech content to illustrate the issue, record a short
+        neutral phrase specifically for this report (e.g. "testing one two
+        three") rather than sharing real session audio.
+
   - type: textarea
     id: what-happened
     attributes:
