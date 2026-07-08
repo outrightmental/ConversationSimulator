@@ -130,7 +130,7 @@ async def validate_pack(
         try:
             safe_extract_zip(zip_bytes, extract_dir)
         except ConvsimError as exc:
-            return _zip_error(exc.message)
+            return _zip_error(exc.message, rule_id=exc.code)
 
         top_level = list(extract_dir.iterdir())
         pack_source = (

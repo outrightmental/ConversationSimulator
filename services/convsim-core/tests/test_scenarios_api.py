@@ -338,6 +338,26 @@ def test_validate_invalid_pack_returns_rule_ids(client, tmp_path):
     assert "FORBIDDEN_EXTENSION" in body["rule_ids"]
 
 
+def test_validate_zip_slip_returns_zip_slip_rule_id(client, tmp_path):
+    """A zip with a path traversal entry must return rule_id ZIP_SLIP, not INVALID_ZIP."""
+    import io as _io
+    import zipfile as _zipfile
+
+    buf = _io.BytesIO()
+    with _zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("../escape.txt", "evil")
+    zip_bytes = buf.getvalue()
+
+    resp = client.post(
+        "/api/packs/validate",
+        files={"file": ("pack.zip", zip_bytes, "application/zip")},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["valid"] is False
+    assert body["rule_ids"] == ["ZIP_SLIP"]
+
+
 def test_validate_pack_with_null_byte_entry_scenario_returns_unsafe_rule(client, tmp_path):
     """Null byte in an entry scenario path must produce UNSAFE_ENTRY_SCENARIO, not INVALID_PACK_ID."""
     from convsim_core.packs.validator import errors_to_rule_ids
