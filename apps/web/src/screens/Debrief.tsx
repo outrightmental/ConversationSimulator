@@ -460,13 +460,20 @@ export default function Debrief() {
 
 function OverallScore({ score }: { score: number }) {
   const color = score >= 70 ? '#86efac' : score >= 40 ? '#fbbf24' : '#fca5a5'
+  const rounded = Math.round(score)
+  const grade = rounded >= 70 ? 'Good' : rounded >= 40 ? 'Fair' : 'Needs improvement'
   return (
     <div
       data-testid="overall-score"
+      aria-label={`Overall score: ${rounded} out of 100 — ${grade}`}
+      role="meter"
+      aria-valuenow={rounded}
+      aria-valuemin={0}
+      aria-valuemax={100}
       style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1 }}
     >
-      <span style={{ fontSize: '1.5rem', fontWeight: 700, color }}>{Math.round(score)}</span>
-      <span style={{ fontSize: '0.65rem', color: '#71717a', marginTop: 2 }}>/ 100</span>
+      <span aria-hidden="true" style={{ fontSize: '1.5rem', fontWeight: 700, color }}>{rounded}</span>
+      <span aria-hidden="true" style={{ fontSize: '0.65rem', color: '#71717a', marginTop: 2 }}>/ 100</span>
     </div>
   )
 }
@@ -474,6 +481,7 @@ function OverallScore({ score }: { score: number }) {
 function DimensionRow({ dimension, score }: { dimension: string; score: number }) {
   const label = dimension.replace(/_/g, ' ')
   const barColor = score >= 70 ? '#22c55e' : score >= 40 ? '#f97316' : '#ef4444'
+  const rounded = Math.round(score)
   return (
     <div
       data-testid={`dimension-row-${dimension}`}
@@ -490,6 +498,11 @@ function DimensionRow({ dimension, score }: { dimension: string; score: number }
         {label}
       </span>
       <div
+        role="meter"
+        aria-label={`${label}: ${rounded} out of 100`}
+        aria-valuenow={rounded}
+        aria-valuemin={0}
+        aria-valuemax={100}
         style={{
           flex: 1,
           height: 6,
@@ -499,6 +512,7 @@ function DimensionRow({ dimension, score }: { dimension: string; score: number }
         }}
       >
         <div
+          aria-hidden="true"
           style={{ width: `${score}%`, height: '100%', borderRadius: 3, background: barColor }}
         />
       </div>
@@ -511,7 +525,7 @@ function DimensionRow({ dimension, score }: { dimension: string; score: number }
           textAlign: 'right',
         }}
       >
-        {Math.round(score)}
+        {rounded}
       </span>
     </div>
   )
@@ -585,8 +599,10 @@ function TurningPointCard({
         </p>
         {point.impact && (
           <span
+            aria-label={`Impact: ${point.impact}`}
             style={{ fontSize: '0.75rem', color: impactColor, textTransform: 'capitalize' }}
           >
+            {point.impact === 'positive' ? '▲ ' : point.impact === 'negative' ? '▼ ' : ''}
             {point.impact}
           </span>
         )}
@@ -656,10 +672,19 @@ function OutcomeBadge({ outcome, testId }: { outcome?: string; testId?: string }
     safety_stop: '#7c2d12',
     player_exit: '#1e3a5f',
   }
+  const icons: Record<string, string> = {
+    success: '✓ ',
+    failure: '✕ ',
+    timeout: '⏱ ',
+    safety_stop: '⛔ ',
+    player_exit: '→ ',
+  }
   const bg = colors[outcome] ?? '#27272a'
+  const icon = icons[outcome] ?? ''
   return (
     <span
       data-testid={testId}
+      aria-label={`Outcome: ${outcome.replace(/_/g, ' ')}`}
       style={{
         padding: '0.2rem 0.7rem',
         borderRadius: 12,
@@ -670,6 +695,7 @@ function OutcomeBadge({ outcome, testId }: { outcome?: string; testId?: string }
         textTransform: 'capitalize',
       }}
     >
+      <span aria-hidden="true">{icon}</span>
       {outcome.replace(/_/g, ' ')}
     </span>
   )
