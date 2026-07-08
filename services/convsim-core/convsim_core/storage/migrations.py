@@ -225,7 +225,7 @@ CREATE TABLE session_debriefs (
     content_json TEXT    NOT NULL,
     generated_at TEXT    NOT NULL DEFAULT (datetime('now'))
 );
-CREATE INDEX session_debriefs_session_id ON session_debriefs(session_id);
+CREATE UNIQUE INDEX session_debriefs_session_id ON session_debriefs(session_id);
 """
 
 MIGRATIONS: list[tuple[str, str]] = [
