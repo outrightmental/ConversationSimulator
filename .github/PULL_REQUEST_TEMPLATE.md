@@ -45,6 +45,19 @@ Closes #
 - [ ] New source files include `# SPDX-License-Identifier: Apache-2.0` header
 - [ ] Links in new or modified docs resolve correctly
 
+### Security (complete if this PR touches safety logic, pack loading, runtime binaries, or networking)
+
+- [ ] Global non-overridable safety rules (`minors_romantic_or_sexual`, `self_harm_crisis`) remain unconditionally enforced
+- [ ] No code path allows a pack to weaken a non-overridable rule
+- [ ] Safety layer is still injected after the NPC persona in the prompt construction pipeline
+- [ ] Pack validator still rejects `scripts` fields, path-traversal asset references, `allow_external_urls: true`, and symlinks
+- [ ] All service bindings use `127.0.0.1` (not `0.0.0.0` or an interface name)
+- [ ] No new outbound network calls are made during a session
+- [ ] Runtime binary version pins and checksums in `model-registry/registry.yaml` are updated if binaries changed
+- [ ] No player text, transcripts, or audio is written outside `~/.convsim/` or sent to a remote endpoint
+
+See [SECURITY.md](../SECURITY.md) for the full maintainer security checklist.
+
 ---
 
 ## Testing notes

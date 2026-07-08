@@ -7,6 +7,11 @@ body:
         Thanks for taking the time to report a bug. Please fill in as much
         detail as you can — it helps us reproduce and fix the issue faster.
 
+        **Privacy note:** Do not paste private conversation transcripts,
+        personal NPC session logs, or audio recordings in this issue. If
+        reproducing the bug requires transcript content, use a made-up
+        example or describe the content in general terms instead.
+
   - type: textarea
     id: what-happened
     attributes:
@@ -72,7 +77,10 @@ body:
     id: logs
     attributes:
       label: Relevant logs or error messages
-      description: Paste any console output, terminal errors, or browser console errors.
+      description: >
+        Paste console output, terminal errors, or browser console errors.
+        Do not paste conversation transcripts or session content here — use
+        a made-up example if the bug is transcript-specific.
       render: text
     validations:
       required: false
