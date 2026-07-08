@@ -238,6 +238,7 @@ ALTER TABLE scenarios ADD COLUMN rel_path TEXT;
 DROP TABLE IF EXISTS scenario_fts;
 DROP TABLE IF EXISTS pack_readme_fts;
 
+
 CREATE VIRTUAL TABLE scenario_fts USING fts5(
     title, summary, tags, pack_name, pack_readme
 );
@@ -245,6 +246,7 @@ CREATE VIRTUAL TABLE scenario_fts USING fts5(
 CREATE VIRTUAL TABLE pack_readme_fts USING fts5(
     name, description
 );
+
 
 
 CREATE TRIGGER scenario_fts_delete AFTER DELETE ON scenarios BEGIN
