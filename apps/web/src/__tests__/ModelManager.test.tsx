@@ -10,8 +10,6 @@ vi.mock('../api/client', () => ({
     getModels: vi.fn(),
     useModel: vi.fn(),
     installModel: vi.fn(),
-    registerGguf: vi.fn(),
-    startSidecar: vi.fn(),
     benchmarkModel: vi.fn(),
   },
 }))
@@ -107,8 +105,6 @@ beforeEach(() => {
     status: 'pending',
     message: 'Install queued.',
   })
-  mockApi.registerGguf.mockResolvedValue(REGISTER_GGUF_RESPONSE)
-  mockApi.startSidecar.mockResolvedValue({ state: 'running', pid: 1234, log_path: '/tmp/sidecar.log', host: '127.0.0.1', port: 7356 })
   mockApi.benchmarkModel.mockResolvedValue({
     model_id: 'llama3:latest',
     runtime_id: 'ollama',
