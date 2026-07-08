@@ -393,6 +393,28 @@ describe('reconnect and event replay', () => {
     // At most 2 npc.final events (opening + one turn), never more.
     expect(npcFinals.length).toBeLessThanOrEqual(2);
   });
+
+  it('non-zero after_seq is treated as no replay — receives only current session.state', async () => {
+    const session_id = await createSession();
+    await startSession(session_id);
+    await app.inject({
+      method: 'POST',
+      url: `/api/sessions/${session_id}/turn`,
+      payload: { content: 'Some turn.' },
+    });
+
+    // after_seq=1 (non-zero) should NOT trigger replay — only the initial state.
+    const conn = await connectWs(`/ws/session/${session_id}?after_seq=1`);
+    await conn.take(1); // consume initial session.state
+
+    // Request more events. Closing the socket causes take() to resolve with
+    // whatever is buffered — an empty array proves no replay events were sent.
+    const extraP = conn.take(5);
+    conn.close();
+    const extra = await extraP;
+
+    expect(extra.length).toBe(0);
+  });
 });
 
 // ---------------------------------------------------------------------------

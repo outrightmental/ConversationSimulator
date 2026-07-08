@@ -111,20 +111,19 @@ export async function sessionWsRoutes(app: FastifyInstance): Promise<void> {
         },
       });
 
-      // Replay durable events since the client's last known position.
-      // NOTE: `after_seq` is compared against the DB `event_id` column, not
-      // the WebSocket `seq` field. These are different number spaces. Pass
-      // `after_seq=0` to replay all durable events for the session (the only
-      // supported value in this MVP). Proper seq-mapped replay requires storing
-      // the WS seq in session_events, which is deferred to a future issue.
+      // Replay durable events when the client passes after_seq=0.
+      // Only after_seq=0 (replay all) is supported in this MVP. Non-zero values
+      // are silently ignored because `after_seq` is intended to map to the WS
+      // `seq` field, but the DB only has `event_id`, which is a different number
+      // space. Proper seq-mapped replay requires storing the WS seq in
+      // session_events and is deferred to a future issue.
       const rawAfterSeq = req.query?.['after_seq'];
-      const afterSeq = rawAfterSeq !== undefined ? parseInt(rawAfterSeq, 10) : null;
-      if (afterSeq !== null && !isNaN(afterSeq)) {
+      if (rawAfterSeq === '0') {
         const recentEvents = db
-          .prepare<[string, number, number], EventRow>(
-            'SELECT event_id, event_type, payload_json, created_at FROM session_events WHERE session_id = ? AND event_id > ? ORDER BY event_id LIMIT ?',
+          .prepare<[string, number], EventRow>(
+            'SELECT event_id, event_type, payload_json, created_at FROM session_events WHERE session_id = ? AND event_id > 0 ORDER BY event_id LIMIT ?',
           )
-          .all(session_id, afterSeq, REPLAY_LIMIT);
+          .all(session_id, REPLAY_LIMIT);
 
         for (const evt of recentEvents) {
           const payload = JSON.parse(evt.payload_json) as Record<string, unknown>;
