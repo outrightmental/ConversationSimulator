@@ -464,9 +464,13 @@ def test_install_accepted_model_creates_install_record(client):
     )
     conn.commit()
 
+    # Suppress the fire-and-forget download so the freshly created record is
+    # observed deterministically without racing (or making a real network call
+    # from) the background task.
     with patch(
-        "convsim_core.routers.models.execute_download", new_callable=AsyncMock
-    ) as mock_dl:
+        "convsim_core.routers.models._spawn_download_task",
+        side_effect=lambda coro: coro.close(),
+    ):
         resp = client.post("/api/models/install", json={"registry_id": "valid-model"})
 
     assert resp.status_code == 200

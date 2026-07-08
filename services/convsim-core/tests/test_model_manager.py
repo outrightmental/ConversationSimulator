@@ -33,6 +33,16 @@ from convsim_core.storage.database import Database
 _REGISTRY_PATH = Path(__file__).parent.parent.parent.parent / "model-registry" / "registry.yaml"
 
 
+def _suppress_download(coro):
+    """Drop the background download coroutine without scheduling it.
+
+    Patched over ``_spawn_download_task`` so install-endpoint tests observe the
+    freshly created record deterministically instead of racing (and triggering
+    a real network call from) the fire-and-forget download task.
+    """
+    coro.close()
+
+
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
 
@@ -319,7 +329,7 @@ def test_install_accepted_when_license_and_sha256_present(client):
     )
     conn.commit()
     with patch(
-        "convsim_core.routers.models.execute_download", new_callable=AsyncMock
+        "convsim_core.routers.models._spawn_download_task", side_effect=_suppress_download
     ):
         resp = client.post("/api/models/install", json={"registry_id": "test-valid-model"})
     assert resp.status_code == 200
@@ -339,11 +349,11 @@ def test_install_creates_record_in_installed_models(client):
     )
     conn.commit()
     with patch(
-        "convsim_core.routers.models.execute_download", new_callable=AsyncMock
+        "convsim_core.routers.models._spawn_download_task", side_effect=_suppress_download
     ):
         client.post("/api/models/install", json={"registry_id": "valid-m"})
     rows = get_installed_models(conn)
-    # execute_download is patched out, so the record stays in its initial state.
+    # The background download is suppressed, so the record stays in its initial state.
     assert any(r["registry_id"] == "valid-m" and r["install_status"] == "pending" for r in rows)
 
 

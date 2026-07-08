@@ -40,6 +40,24 @@ router = APIRouter()
 # Maps install_id → asyncio.Event; setting the event signals cancel to the download task.
 _cancel_events: dict[int, asyncio.Event] = {}
 
+# Strong references to in-flight download tasks. asyncio only keeps a weak
+# reference to tasks created via create_task, so without this the download task
+# can be garbage-collected mid-download and silently cancelled, leaving the
+# install record stuck in 'downloading'. Tasks remove themselves when done.
+_download_tasks: set[asyncio.Task[None]] = set()
+
+
+def _spawn_download_task(coro: Any) -> "asyncio.Task[None]":
+    """Schedule *coro* as a background task and hold a strong reference to it.
+
+    Extracted so tests can suppress background execution deterministically
+    instead of racing the fire-and-forget task against their assertions.
+    """
+    task = asyncio.create_task(coro)
+    _download_tasks.add(task)
+    task.add_done_callback(_download_tasks.discard)
+    return task
+
 _BENCHMARK_PROMPT = "Say hello in exactly three words."
 _BENCHMARK_SYSTEM = "You are a helpful assistant. Be brief and literal."
 _OLLAMA_DETECT_TIMEOUT = 3.0
@@ -348,7 +366,7 @@ async def install_model(request: Request, body: InstallModelRequest) -> InstallM
         finally:
             _cancel_events.pop(install_id, None)
 
-    asyncio.create_task(_run_download())
+    _spawn_download_task(_run_download())
 
     return InstallModelResponse(
         install_id=install_id,
