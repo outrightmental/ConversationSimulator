@@ -63,8 +63,11 @@ class KokoroTtsWorker(TtsWorker):
         cfg = config or KokoroConfig()
         self._base_url = cfg.base_url.rstrip("/")
         self._timeout = cfg.timeout
+        # Resolve the cache dir but do not create it here: constructing a worker
+        # (which happens at every app startup and in every test that builds the
+        # app) should not have a filesystem side effect. The directory is created
+        # lazily in synthesize() right before the first cache write.
         self._cache_dir = Path(cfg.cache_dir)
-        self._cache_dir.mkdir(parents=True, exist_ok=True)
 
     @property
     def id(self) -> str:
@@ -117,6 +120,7 @@ class KokoroTtsWorker(TtsWorker):
                 recoverable=True,
             )
 
+        self._cache_dir.mkdir(parents=True, exist_ok=True)
         cache_path.write_bytes(resp.content)
         return TtsResult(
             audio_path=str(cache_path),

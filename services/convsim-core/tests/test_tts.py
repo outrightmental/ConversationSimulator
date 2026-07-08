@@ -483,6 +483,16 @@ async def test_kokoro_synthesize_rejects_unknown_voice_before_http(tmp_path):
     assert fake.post_calls == []
 
 
+def test_kokoro_construction_does_not_create_cache_dir(tmp_path):
+    from convsim_core.tts.kokoro import KokoroConfig, KokoroTtsWorker
+
+    cache_dir = tmp_path / "tts_cache"
+    # Constructing the worker must not touch the filesystem — the cache dir is
+    # created lazily on the first successful synthesis, not at startup.
+    KokoroTtsWorker(KokoroConfig(cache_dir=str(cache_dir)))
+    assert not cache_dir.exists()
+
+
 @pytest.mark.asyncio
 async def test_kokoro_health_unavailable_when_server_unreachable(tmp_path):
     import httpx
