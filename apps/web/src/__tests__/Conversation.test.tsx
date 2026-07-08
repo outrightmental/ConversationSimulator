@@ -329,6 +329,29 @@ describe('Conversation screen', () => {
       // The debug drawer must be absent from DOM, not merely invisible
       expect(screen.queryByText('Developer debug')).not.toBeInTheDocument()
     })
+
+    it('hidden NPC agenda field values do not appear in the DOM in normal mode', async () => {
+      const HIDDEN_AGENDA = 'HIDDEN_AGENDA_VALUE_abc123'
+      mockApi.startSession.mockResolvedValue({
+        ...startResponse,
+        events: [
+          {
+            ...startResponse.events[0],
+            payload: {
+              content: "Thanks for coming in. Tell me about yourself.",
+              agenda: HIDDEN_AGENDA,
+              hidden_state: 'suspicious',
+            },
+          },
+        ],
+      })
+      renderConversation()
+      await waitFor(() =>
+        expect(screen.getByText('Thanks for coming in. Tell me about yourself.')).toBeInTheDocument(),
+      )
+      expect(document.body.innerHTML).not.toContain(HIDDEN_AGENDA)
+      expect(document.body.innerHTML).not.toContain('suspicious')
+    })
   })
 
   describe('session ends via max turns', () => {

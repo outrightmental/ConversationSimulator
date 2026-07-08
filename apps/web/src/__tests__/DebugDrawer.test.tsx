@@ -169,6 +169,23 @@ describe('DebugDrawer', () => {
       expect(copiedText).toContain('Hello.')
     })
 
+    it('does not include secret fields in copied text', async () => {
+      const entry = makeEntry({
+        rawPayload: {
+          content: 'Hello.',
+          secret: 'api-key-12345',
+          tts_audio: 'base64audio==',
+        },
+      })
+      render(<DebugDrawer entries={[entry]} />)
+      fireEvent.click(screen.getByRole('button', { name: /copy turn json/i }))
+      await waitFor(() => expect(writeMock).toHaveBeenCalledOnce())
+      const copiedText: string = writeMock.mock.calls[0][0] as string
+      expect(copiedText).not.toContain('secret')
+      expect(copiedText).not.toContain('tts_audio')
+      expect(copiedText).toContain('Hello.')
+    })
+
     it('shows redaction warning label', () => {
       render(<DebugDrawer entries={[makeEntry()]} />)
       expect(screen.getByText(/raw audio and secrets redacted/i)).toBeInTheDocument()

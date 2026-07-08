@@ -452,3 +452,63 @@ describe('advanced: raw audio saving', () => {
     ).not.toBeInTheDocument()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Advanced — developer debug mode
+// ---------------------------------------------------------------------------
+
+describe('advanced: developer debug mode', () => {
+  afterEach(() => {
+    localStorage.removeItem('convsim.devMode')
+  })
+
+  it('developer debug toggle is hidden behind Show advanced', async () => {
+    await renderSettings()
+    expect(
+      screen.queryByRole('checkbox', { name: /developer debug mode/i }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('developer debug toggle appears after clicking Show advanced', async () => {
+    await renderSettings()
+    fireEvent.click(screen.getByRole('button', { name: /show advanced/i }))
+    await waitFor(() =>
+      expect(
+        screen.getByRole('checkbox', { name: /developer debug mode/i }),
+      ).toBeInTheDocument(),
+    )
+  })
+
+  it('developer debug mode is off by default', async () => {
+    await renderSettings()
+    fireEvent.click(screen.getByRole('button', { name: /show advanced/i }))
+    await waitFor(() => screen.getByRole('checkbox', { name: /developer debug mode/i }))
+    expect(screen.getByRole('checkbox', { name: /developer debug mode/i })).not.toBeChecked()
+  })
+
+  it('shows a warning when developer debug mode is enabled', async () => {
+    await renderSettings()
+    fireEvent.click(screen.getByRole('button', { name: /show advanced/i }))
+    await waitFor(() => screen.getByRole('checkbox', { name: /developer debug mode/i }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /developer debug mode/i }))
+    await waitFor(() =>
+      expect(screen.getByText(/developer debug drawer is active/i)).toBeInTheDocument(),
+    )
+  })
+
+  it('writes devMode to localStorage when toggled on', async () => {
+    await renderSettings()
+    fireEvent.click(screen.getByRole('button', { name: /show advanced/i }))
+    await waitFor(() => screen.getByRole('checkbox', { name: /developer debug mode/i }))
+    fireEvent.click(screen.getByRole('checkbox', { name: /developer debug mode/i }))
+    expect(localStorage.getItem('convsim.devMode')).toBe('true')
+  })
+
+  it('initialises as checked when convsim.devMode is set in localStorage', async () => {
+    localStorage.setItem('convsim.devMode', 'true')
+    await renderSettings()
+    fireEvent.click(screen.getByRole('button', { name: /show advanced/i }))
+    await waitFor(() => screen.getByRole('checkbox', { name: /developer debug mode/i }))
+    expect(screen.getByRole('checkbox', { name: /developer debug mode/i })).toBeChecked()
+  })
+})
