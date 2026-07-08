@@ -48,4 +48,17 @@ export interface ScenarioInfo {
   voice_supported: boolean;
   safety_summary: string;
   estimated_length_label: string;
+  tags?: string[];
+}
+
+export interface PackValidationError {
+  rule_id?: string;
+  file_path?: string;
+  message: string;
+}
+
+export interface PackValidationResult {
+  pack_id: string;
+  valid: boolean;
+  errors: PackValidationError[];
 }
