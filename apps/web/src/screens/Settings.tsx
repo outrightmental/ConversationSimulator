@@ -111,6 +111,8 @@ export default function Settings() {
         setDeletedCount(result.deleted_sessions)
         setDeleteError(null)
         setExportError(null)
+        setSessions([])
+        setDeleteConfirmId(null)
         setClearState('done')
         loadSessions()
       } catch (err) {
@@ -148,7 +150,9 @@ export default function Settings() {
       const a = document.createElement('a')
       a.href = url
       a.download = `session-${sessionId}.json`
+      document.body.appendChild(a)
       a.click()
+      document.body.removeChild(a)
       URL.revokeObjectURL(url)
     } catch (err) {
       setExportError(err instanceof Error ? err.message : 'Failed to export session')
