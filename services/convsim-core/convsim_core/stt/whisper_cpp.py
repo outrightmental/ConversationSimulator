@@ -154,7 +154,7 @@ class WhisperCppWorker(SttWorker):
                 )
             except asyncio.TimeoutError as exc:
                 proc.kill()
-                await proc.communicate()
+                await proc.wait()
                 _try_unlink(json_path)
                 raise SttError(
                     f"whisper-cli timed out after {self._timeout}s", recoverable=True
@@ -227,17 +227,20 @@ def _read_result(json_path: str, stdout: str, processing_ms: float) -> SttResult
     try:
         with open(json_path) as f:
             data = json.load(f)
-        _try_unlink(json_path)
-        return _parse_json_output(data, processing_ms)
     except (OSError, json.JSONDecodeError):
         # OSError: sidecar absent (normal for older binaries).
         # JSONDecodeError: sidecar written but malformed; clean it up so it
         # doesn't accumulate in the temp directory.
         _try_unlink(json_path)
+        return SttResult(transcript=stdout.strip(), processing_ms=processing_ms)
 
-    # Fallback: plain-text stdout — no timing or confidence metadata
-    text = stdout.strip()
-    return SttResult(transcript=text, processing_ms=processing_ms)
+    _try_unlink(json_path)
+    try:
+        return _parse_json_output(data, processing_ms)
+    except Exception:
+        # Unexpected structure in otherwise-valid JSON (e.g. offset field is a
+        # string instead of int): fall back to stdout rather than HTTP 500.
+        return SttResult(transcript=stdout.strip(), processing_ms=processing_ms)
 
 
 def _parse_json_output(data: dict, processing_ms: float) -> SttResult:
