@@ -31,7 +31,7 @@ const FAKE_NPC_RESPONSE = {
   npc_emotion: 'neutral',
   state_delta: {} as Record<string, number>,
   event_flags: [] as string[],
-  safety: { status: 'ok' as const },
+  safety: { status: 'ok' as 'ok' | 'redirect' | 'stop' },
   session_control: { continue_session: true },
 };
 
