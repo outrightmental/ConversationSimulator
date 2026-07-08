@@ -36,6 +36,7 @@ _BASE_QUERY = f"""
 def _fts_query(q: str) -> str:
     """Convert user search text to a safe FTS5 query with prefix matching."""
     words = [w.replace('"', "").strip() for w in q.split() if w.strip()]
+    words = [w for w in words if w]  # drop words that became empty after stripping quotes
     if not words:
         return ""
     return " ".join(f'"{w}"*' for w in words)
