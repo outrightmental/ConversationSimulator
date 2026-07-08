@@ -1,0 +1,60 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: smoke_spanish_coffee
+scenario_id: spanish_coffee
+description: >-
+  Verifies that spanish_coffee loads cleanly, produces a Spanish opening line,
+  and that a player turn in Spanish advances the session without triggering a
+  safety stop. Includes a non-English player input to confirm the runtime
+  handles multilingual text correctly.
+
+seed: 42
+input_mode: text
+difficulty: normal
+
+turns:
+  - turn: 1
+    player_input: >-
+      Hola, buenos días. Quiero un café con leche, por favor. ¿Tiene también
+      croissants?
+    expect:
+      state_delta_contains:
+        - comprehension
+        - confidence
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 2
+    player_input: >-
+      Perdón, ¿puede repetir más despacio, por favor? No entendí bien.
+    expect:
+      state_delta_contains:
+        - repair_count
+      session_control: continue_session
+      safety_status: ok
+
+static_assertions:
+  - description: Scenario opening line is non-empty
+    path: opening.npc_says
+    check: non_empty_string
+  - description: At least one event is defined
+    path: events
+    check: min_length_1
+  - description: comprehension_low event fires when comprehension drops below 30
+    path: events[id=comprehension_low].when
+    check: "type=variable_below AND variable=comprehension AND threshold=30"
+  - description: Success ending condition targets the comprehension variable
+    path: ending_conditions.success
+    check: "type=variable_above AND variable=comprehension"
+  - description: Failure ending condition targets the comprehension variable
+    path: ending_conditions.failure
+    check: "type=variable_below AND variable=comprehension"
+  - description: NPC is marked fictional
+    path: npc.fictional
+    check: "equals true"
+  - description: Safety policy stops nsfw_sexual_content
+    path: safety.content_categories.nsfw_sexual_content
+    check: "equals stop"
+  - description: Pack manifest declares spanish_coffee as an entry scenario
+    path: manifest.entry_scenarios
+    check: "contains scenarios/spanish_coffee.yaml"

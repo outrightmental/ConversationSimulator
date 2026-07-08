@@ -1,0 +1,128 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scenario_id: english_small_talk
+title: Small Talk at the Corner Café
+summary: >-
+  You are a non-native English speaker who has just sat down at a busy café
+  in London. Alex Chen, a friendly regular, strikes up a casual conversation.
+  Practice natural English small talk, turn-taking, and keeping a conversation
+  going comfortably. The target language is English (en). Difficulty controls
+  language correction: easy = none, normal = light (implicit recasting),
+  hard = explicit correction with practice prompts.
+player_role:
+  label: Language Learner
+  brief: >-
+    You are living or visiting London and your English is still developing.
+    Alex is chatty and welcoming — this is a low-stakes social conversation,
+    not a test. Your goal is to keep the chat going naturally, ask questions,
+    and express yourself even when you are not sure of the perfect word. It
+    is fine to paraphrase or ask Alex to clarify.
+npc:
+  ref: ../npcs/cafe_regular_alex.yaml
+scene:
+  ref: ../scenes/london_cafe.yaml
+rubric:
+  ref: ../rubrics/language_practice.yaml
+duration:
+  max_turns: 18
+  soft_time_limit_minutes: 14
+opening:
+  npc_says: >-
+    Oh, hi there! Sorry — is this seat taken? It's so busy in here today.
+    Do you come here often?
+goals:
+  player_visible:
+    - "Keep the conversation going for several turns without letting it drop"
+    - "Ask Alex at least one question to show you are interested"
+    - "Try to express yourself even when you can't find the perfect word"
+  hidden:
+    - "Alex notices whether the player picks up on conversational cues and builds on them"
+    - "Alex tracks whether the player uses repair strategies such as asking for clarification or paraphrasing"
+    - "Alex rewards genuine communicative effort over grammatically perfect sentences"
+state:
+  variables:
+    comprehension:
+      min: 0
+      max: 100
+      default: 50
+      visibility: visible
+      max_delta_per_turn: 15
+    confidence:
+      min: 0
+      max: 100
+      default: 40
+      visibility: visible
+      max_delta_per_turn: 10
+    repair_count:
+      min: 0
+      max: 10
+      default: 0
+      visibility: hidden
+      max_delta_per_turn: 1
+    vocabulary_richness:
+      min: 0
+      max: 100
+      default: 50
+      visibility: hidden
+      max_delta_per_turn: 10
+difficulty:
+  default: normal
+  options:
+    easy:
+      correction_style: none
+      npc_patience_modifier: 20
+      challenge_frequency: low
+    normal:
+      correction_style: light
+      npc_patience_modifier: 0
+      challenge_frequency: medium
+    hard:
+      correction_style: strict
+      npc_patience_modifier: -10
+      challenge_frequency: high
+events:
+  - id: comprehension_low
+    when:
+      type: variable_below
+      variable: comprehension
+      threshold: 30
+    npc_instruction: >-
+      The player seems unsure or has gone quiet. Slow down your speech
+      naturally, keep your sentences short and clear, and offer an easy
+      opening: "Sorry, did I talk too fast? What I meant was..." Stay
+      relaxed and warm — you want them to feel comfortable, not pressured.
+    repeat: false
+  - id: repair_strategy_used
+    when:
+      type: variable_above
+      variable: repair_count
+      threshold: 1
+    npc_instruction: >-
+      The player has asked you to clarify, slow down, or repeated something
+      in a different way to check understanding. Respond naturally — honour
+      the request without drawing attention to it, and move the conversation
+      forward warmly.
+    repeat: true
+  - id: confidence_building
+    when:
+      type: variable_above
+      variable: confidence
+      threshold: 70
+    npc_instruction: >-
+      The player is engaging well. Be more spontaneous — share something
+      slightly personal about yourself, use a British idiom, or ask a
+      more open-ended question about their life or plans in London.
+    repeat: false
+ending_conditions:
+  success:
+    type: variable_above
+    variable: comprehension
+    threshold: 65
+  failure:
+    type: variable_below
+    variable: comprehension
+    threshold: 20
+response_style:
+  max_words: 80
+  verbosity: moderate
+  formality: casual
