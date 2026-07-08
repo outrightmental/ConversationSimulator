@@ -1,0 +1,202 @@
+# SPDX-License-Identifier: Apache-2.0
+# Release smoke matrix — CI-required subset.
+#
+# Covers the automated smoke checks that must pass before a release is
+# published.  No large model downloads are performed; the fake runtime and
+# mocked STT/TTS workers are used throughout.
+#
+# Subsystems tested:
+#   setup        — monorepo structure and expected paths
+#   pack-valid   — official pack schema validation
+#   voice        — TTS-disabled (voice unavailable) fallback path
+#   health       — backend /api/health unit tests (fake runtime)
+#   model-mgr    — model manager unit tests (no downloads)
+#   scenario-lib — scenario library API unit tests
+#   text-session — session create + turn pipeline unit tests
+#   debrief      — debrief engine unit tests
+#   offline      — network policy (no outbound calls during play)
+#   web          — web frontend typecheck
+#
+# Failures record the subsystem label and platform in the job name so
+# the root cause is visible in the GitHub UI without reading full logs.
+# Artifact uploads capture error detail files for post-mortem inspection.
+
+name: Release smoke
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Linux (primary CI target) ────────────────────────────────────────────────
+  smoke-linux:
+    name: Release smoke / Linux x86_64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Python (convsim-core) ────────────────────────────────────────────────
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            services/convsim-core/pyproject.toml
+            packages/prompt-composer/pyproject.toml
+
+      - name: Install prompt-composer
+        run: pip install -e "packages/prompt-composer[dev]"
+
+      - name: Install convsim-core
+        run: pip install -e "services/convsim-core[dev]"
+
+      # ── Node.js / pnpm (frontend) ─────────────────────────────────────────────
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared TypeScript packages
+        run: |
+          pnpm --filter @convsim/shared-types build
+          pnpm --filter @convsim/scenario-schema build
+
+      # ── Run CI smoke subset ────────────────────────────────────────────────────
+      - name: Run release smoke (CI subset)
+        run: bash scripts/release-smoke.sh --ci
+
+      # ── Capture artifacts on failure ───────────────────────────────────────────
+      - name: Upload smoke artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-smoke-linux-x86_64
+          path: ${{ runner.temp }}/convsim-release-smoke-*
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # ── macOS (source path) ──────────────────────────────────────────────────────
+  smoke-macos:
+    name: Release smoke / macOS ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Apple Silicon — macos-latest is ARM since late 2024
+          - arch: aarch64
+            runner: macos-latest
+          # Intel Mac — macos-13 is the last Intel runner
+          - arch: x86_64
+            runner: macos-13
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            services/convsim-core/pyproject.toml
+            packages/prompt-composer/pyproject.toml
+
+      - name: Install prompt-composer
+        run: pip install -e "packages/prompt-composer[dev]"
+
+      - name: Install convsim-core
+        run: pip install -e "services/convsim-core[dev]"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared TypeScript packages
+        run: |
+          pnpm --filter @convsim/shared-types build
+          pnpm --filter @convsim/scenario-schema build
+
+      - name: Run release smoke (CI subset)
+        run: bash scripts/release-smoke.sh --ci
+
+      - name: Upload smoke artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-smoke-macos-${{ matrix.arch }}
+          path: /tmp/convsim-release-smoke-*
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # ── Windows (source path) ────────────────────────────────────────────────────
+  smoke-windows:
+    name: Release smoke / Windows x86_64
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            services/convsim-core/pyproject.toml
+            packages/prompt-composer/pyproject.toml
+
+      - name: Install prompt-composer
+        run: pip install -e "packages/prompt-composer[dev]"
+
+      - name: Install convsim-core
+        run: pip install -e "services/convsim-core[dev]"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build shared TypeScript packages
+        run: |
+          pnpm --filter @convsim/shared-types build
+          pnpm --filter @convsim/scenario-schema build
+
+      - name: Run release smoke (CI subset)
+        shell: pwsh
+        run: .\scripts\release-smoke.ps1
+
+      - name: Upload smoke artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-smoke-windows-x86_64
+          path: ${{ runner.temp }}\convsim-release-smoke-*
+          retention-days: 7
+          if-no-files-found: ignore
