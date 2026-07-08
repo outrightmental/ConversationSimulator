@@ -50,6 +50,7 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
     path.join(os.homedir(), '.convsim', 'db', 'packs.db');
   const listenConfig = getListenConfig();
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+  fs.mkdirSync(path.dirname(packsDbPath), { recursive: true });
   initDb(dbPath);
   setDataFolderPath(path.dirname(dbPath));
   setPacksDbPath(packsDbPath);
