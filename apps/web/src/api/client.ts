@@ -4,6 +4,7 @@ import type {
   ScenarioInfo,
   SessionCreateRequest,
   SessionCreateResponse,
+  WsEvent,
 } from '@convsim/shared';
 
 const BASE = '/api'
@@ -84,6 +85,10 @@ export const apiClient = {
   },
 }
 
+export interface WsConnection {
+  close(): void;
+}
+
 export const api = {
   health(): Promise<SharedHealthResponse> {
     return get<SharedHealthResponse>('/health')
@@ -93,5 +98,20 @@ export const api = {
   },
   createSession(request: SessionCreateRequest): Promise<SessionCreateResponse> {
     return post<SessionCreateResponse>('/sessions', request)
+  },
+  connectSession(
+    sessionId: string,
+    onEvent: (event: WsEvent) => void,
+    opts?: { afterSeq?: number },
+  ): WsConnection {
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    let url = `${proto}//${window.location.host}/ws/session/${sessionId}`
+    if (opts?.afterSeq != null) url += `?after_seq=${opts.afterSeq}`
+    const ws = new WebSocket(url)
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data as string) as WsEvent
+      onEvent(data)
+    }
+    return { close: () => ws.close() }
   },
 }
