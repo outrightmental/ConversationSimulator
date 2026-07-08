@@ -454,6 +454,12 @@ def parse_turn_output(
     # Phase 2b: If the session is already ending, do not retry or redirect.
     # The session will end regardless; only replace a content-violating
     # utterance with the safe stop constant so nothing leaks to the player.
+    #
+    # Hard violations override the session outcome (the content is dangerous
+    # regardless of how the session was meant to end).  Recoverable violations
+    # only sanitize the utterance — the original ending_type (success, failure,
+    # timeout, player_exit) is preserved because overwriting it with
+    # "safety_stop" would corrupt the player's scored outcome.
     # ------------------------------------------------------------------
     if not result.session_control.continue_session:
         pre_stop_validation = validate_npc_output(
@@ -469,8 +475,18 @@ def parse_turn_output(
                 reason=v.reason,
                 is_recoverable=v.is_recoverable,
             )
+            if pre_stop_validation.has_hard_violation:
+                hard_v = next(
+                    viol for viol in pre_stop_validation.violations
+                    if not viol.is_recoverable
+                )
+                _emit("safety_stop_applied", reason=hard_v.reason, category=hard_v.category)
+                return _make_safety_stop(hard_v.reason)
+            # Recoverable only: sanitize the utterance but preserve the session
+            # outcome so success/failure endings are not mislabelled safety_stop.
             _emit("safety_stop_applied", reason=v.reason, category=v.category)
-            return _make_safety_stop(v.reason)
+            result.npc_utterance = SAFE_STOP_UTTERANCE
+            return result
         return result
 
     # ------------------------------------------------------------------
@@ -540,13 +556,14 @@ def parse_turn_output(
                 _emit(
                     "content_safety_retry_failure",
                     reason="Retry returned non-JSON",
+                    category=violation.category,
                 )
         except ValidationError as exc:
             logger.warning("Content-safety retry produced invalid output: %s", exc)
-            _emit("content_safety_retry_failure", reason=str(exc))
+            _emit("content_safety_retry_failure", reason=str(exc), category=violation.category)
         except Exception as exc:
             logger.warning("Content-safety retry raised: %s", exc)
-            _emit("content_safety_retry_failure", reason=f"Runtime error: {exc}")
+            _emit("content_safety_retry_failure", reason=f"Runtime error: {exc}", category=violation.category)
 
     # ------------------------------------------------------------------
     # Phase 5: Fallback — stop (hard) or redirect (recoverable after retry)

@@ -718,6 +718,47 @@ class TestSafetyConsistency:
         assert result.session_control.continue_session is False
         assert runtime.call_count == 0
 
+    def test_success_session_with_recoverable_utterance_preserves_success(self):
+        # Session ends successfully (ending_type="success") but the NPC's final
+        # utterance has a recoverable system_rule_leak.
+        # Phase 2b must sanitize the utterance WITHOUT overwriting the success
+        # outcome — the player's scored result must not become "safety_stop".
+        raw = _minimal_valid_json(
+            safety={"status": "ok"},
+            session_control={"continue_session": False, "ending_type": "success"},
+            npc_utterance="My instructions say congratulations on completing this.",
+        )
+        result = parse_turn_output(raw)
+        assert result.session_control.continue_session is False
+        assert result.session_control.ending_type == "success"
+        assert result.npc_utterance == SAFE_STOP_UTTERANCE
+
+    def test_failure_session_with_recoverable_utterance_preserves_failure(self):
+        # Same as above for ending_type="failure" — the outcome is preserved.
+        raw = _minimal_valid_json(
+            safety={"status": "ok"},
+            session_control={"continue_session": False, "ending_type": "failure"},
+            npc_utterance="According to my guidelines, the session is now over.",
+        )
+        result = parse_turn_output(raw)
+        assert result.session_control.ending_type == "failure"
+        assert result.npc_utterance == SAFE_STOP_UTTERANCE
+
+    def test_success_session_with_hard_utterance_overrides_to_safety_stop(self):
+        # A hard violation (NSFW) in the terminal utterance of a success session
+        # must override the outcome to safety_stop — dangerous content is never
+        # allowed through regardless of the session outcome.
+        raw = _minimal_valid_json(
+            safety={"status": "ok"},
+            session_control={"continue_session": False, "ending_type": "success"},
+            npc_utterance="Let's watch some pornography together to celebrate.",
+        )
+        result = parse_turn_output(raw)
+        assert result.session_control.continue_session is False
+        assert result.session_control.ending_type == "safety_stop"
+        assert result.safety.status == "stop"
+        assert result.npc_utterance == SAFE_STOP_UTTERANCE
+
 
 # ---------------------------------------------------------------------------
 # Content safety integration — hard violations

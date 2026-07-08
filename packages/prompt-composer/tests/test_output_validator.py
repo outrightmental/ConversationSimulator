@@ -251,14 +251,13 @@ class TestNsfwContent:
         result = _validate("Watch some porn.")
         assert result.has_hard_violation
 
-    def test_professional_context_clean(self):
-        # "arousal" in a non-sexual context — but if matched, it's still a hit.
-        # Verify the word "aroused" is not present (different word).
+    def test_aroused_triggers_nsfw_as_conservative_false_positive(self):
+        # "aroused" matches the NSFW pattern even in a non-sexual context —
+        # intentionally high-recall.  In real usage the NPC prompt prevents
+        # sexual framing; borderline hits go through the retry path.
         result = _validate("The topic aroused my curiosity.")
-        # "aroused" matches the NSFW pattern; this is intentionally conservative.
-        # In real usage, the NPC prompt prevents sexual framing; borderline hits
-        # go through the retry path.
-        # No assert — this test documents known conservative behavior.
+        assert result.has_hard_violation
+        assert result.first_violation.category == "nsfw_content"
 
 
 # ---------------------------------------------------------------------------
