@@ -112,6 +112,7 @@ if [[ ! -d "$CORE_DIR/.venv" ]]; then
     "$PY_CMD" -m venv "$CORE_DIR/.venv"
 fi
 "$CORE_DIR/.venv/bin/pip" install -q --upgrade pip
+"$CORE_DIR/.venv/bin/pip" install -q -e "$REPO_ROOT/packages/prompt-composer"
 "$CORE_DIR/.venv/bin/pip" install -q -e "${CORE_DIR}[dev]"
 echo "  Python packages installed."
 
