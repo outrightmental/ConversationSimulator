@@ -569,6 +569,33 @@ describe('CreatorWorkbench', () => {
     })
   })
 
+  it('import with slug conflict shows the rename notice', async () => {
+    const renamedPack = { kind: 'local-dev', slug: 'local.imported_pack-2', pack_id: 'local.imported_pack', name: 'Imported Pack', editable: true, renamed_from: 'local.imported_pack' }
+    const importSpy = vi.fn().mockReturnValue(okJson(renamedPack))
+
+    stubFetch((url, opts) => {
+      if (url.includes('/import') && opts?.method === 'POST') return importSpy()
+      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
+      if (url.includes('/validate')) return okJson({ valid: true, errors: [], warnings: [] })
+      return okJson([OFFICIAL_PACK, LOCAL_PACK])
+    })
+
+    renderWorkbench()
+    await screen.findByTestId('import-pack-button')
+
+    const fileInput = screen.getByTestId('import-file-input') as HTMLInputElement
+    const zipFile = new File(['PK\x03\x04'], 'dup.zip', { type: 'application/zip' })
+    Object.defineProperty(fileInput, 'files', { value: [zipFile], writable: false })
+    fireEvent.change(fileInput)
+
+    // The rename notice must survive the pack-selection that follows a
+    // successful import (handleSelectPack resets import notices).
+    await waitFor(() => {
+      expect(screen.getByTestId('import-renamed-notice')).toBeInTheDocument()
+      expect(screen.getByTestId('import-renamed-notice')).toHaveTextContent('local.imported_pack-2')
+    })
+  })
+
   it('import validation failure shows errors without crashing', async () => {
     const validationError = {
       valid: false,

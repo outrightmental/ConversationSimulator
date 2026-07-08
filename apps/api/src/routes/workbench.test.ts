@@ -850,7 +850,7 @@ describe('POST /api/workbench/packs/import', () => {
     expect(res.statusCode).toBe(422);
   });
 
-  it('returns 400 when the body is not a zip', async () => {
+  it('returns 422 when the body is not a valid zip archive', async () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/workbench/packs/import',

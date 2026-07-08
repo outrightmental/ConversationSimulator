@@ -1500,10 +1500,12 @@ export default function CreatorWorkbench() {
         editable: result.editable,
       }
       setPacks((prev) => [...prev.filter((p) => !(p.kind === newPack.kind && p.slug === newPack.slug)), newPack])
+      // Select the new pack first: handleSelectPack resets the import notices,
+      // so the rename notice must be set *after* it or it would be cleared.
+      await handleSelectPack(newPack)
       if (result.renamed_from) {
         setImportRenamed(result.slug)
       }
-      await handleSelectPack(newPack)
     } catch (e: unknown) {
       setImportError(e instanceof Error ? e.message : 'Failed to import pack')
     } finally {
