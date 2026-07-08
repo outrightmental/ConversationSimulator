@@ -35,3 +35,11 @@ class TtsWorker(ABC):
     @abstractmethod
     async def health(self) -> TtsHealth:
         """Return a point-in-time health snapshot for this worker."""
+
+    @abstractmethod
+    async def clear_cache(self) -> int:
+        """Delete all locally cached audio files for this worker.
+
+        Called by the privacy 'clear cache' action.  Returns the number of
+        files deleted.  Must not raise — callers do not expect failures here.
+        """

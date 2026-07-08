@@ -11,11 +11,54 @@ vi.mock('../api/client', () => ({
     listSessions: vi.fn(),
     deleteSession: vi.fn(),
     exportSession: vi.fn(),
+    getModels: vi.fn(),
+    getRuntimeSettings: vi.fn(),
+    useModel: vi.fn(),
+    updateRuntimeSettings: vi.fn(),
+    resetRuntimeSettings: vi.fn(),
   },
 }))
 
 import { api } from '../api/client'
 const mockApi = vi.mocked(api)
+
+const STUB_MODELS = {
+  registry: [],
+  installed: [],
+  ollama_models: [],
+  active: { runtime_id: 'llama_cpp', model_id: null },
+  runtime_health: {
+    runtime_id: 'llama_cpp',
+    runtime_name: 'llama.cpp',
+    status: 'unavailable' as const,
+    model_id: null,
+    latency_ms: null,
+    message: 'No model configured',
+    checked_at: '2026-01-01T00:00:00.000Z',
+  },
+  total: 0,
+  last_benchmark: null,
+}
+
+const STUB_RUNTIME_SETTINGS = {
+  settings: {
+    context_length: null,
+    gpu_layers: null,
+    threads: null,
+    temperature: null,
+    top_p: null,
+    repeat_penalty: null,
+  },
+  recommended: {
+    context_length: null,
+    gpu_layers: null,
+    threads: null,
+    temperature: null,
+    top_p: null,
+    repeat_penalty: null,
+  },
+  requires_restart: false,
+}
 
 const SESSION_A = {
   session_id: 'sess-aaa',
@@ -35,12 +78,12 @@ const SESSION_B = {
 
 async function renderSettings() {
   render(<Settings />)
-  // Wait for both mount effects (getDataFolder + listSessions) to fire and
-  // flush their state updates inside act(), preventing act() warnings in tests
-  // that don't otherwise await async work.
+  // Wait for all mount effects to fire and flush state updates.
   await waitFor(() => {
     expect(mockApi.getDataFolder).toHaveBeenCalled()
     expect(mockApi.listSessions).toHaveBeenCalled()
+    expect(mockApi.getModels).toHaveBeenCalled()
+    expect(mockApi.getRuntimeSettings).toHaveBeenCalled()
   })
 }
 
@@ -50,6 +93,11 @@ beforeEach(() => {
   localStorage.clear()
   mockApi.getDataFolder.mockResolvedValue({ path: '/home/user/.convsim/db' })
   mockApi.listSessions.mockResolvedValue({ sessions: [] })
+  mockApi.getModels.mockResolvedValue(STUB_MODELS)
+  mockApi.getRuntimeSettings.mockResolvedValue(STUB_RUNTIME_SETTINGS)
+  mockApi.useModel.mockResolvedValue({ runtime_id: 'llama_cpp', model_id: null, runtime_name: 'llama.cpp', status: 'unavailable', message: null })
+  mockApi.updateRuntimeSettings.mockResolvedValue(STUB_RUNTIME_SETTINGS)
+  mockApi.resetRuntimeSettings.mockResolvedValue(STUB_RUNTIME_SETTINGS)
 })
 
 // ---------------------------------------------------------------------------

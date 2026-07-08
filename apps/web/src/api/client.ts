@@ -20,6 +20,8 @@ import type {
   RegisterGgufResponse,
   BenchmarkRequest,
   BenchmarkResponse,
+  RuntimeSettingsResponse,
+  RuntimeSettingsRequest,
 } from '@convsim/shared';
 
 export type { HealthResponse };
@@ -291,6 +293,15 @@ export const api = {
   },
   benchmarkModel(request: BenchmarkRequest): Promise<BenchmarkResponse> {
     return post<BenchmarkResponse>('/models/benchmark', request)
+  },
+  getRuntimeSettings(): Promise<RuntimeSettingsResponse> {
+    return get<RuntimeSettingsResponse>('/runtime/settings')
+  },
+  updateRuntimeSettings(request: RuntimeSettingsRequest): Promise<RuntimeSettingsResponse> {
+    return put<RuntimeSettingsResponse>('/runtime/settings', request)
+  },
+  resetRuntimeSettings(): Promise<RuntimeSettingsResponse> {
+    return post<RuntimeSettingsResponse>('/runtime/settings/reset')
   },
   connectSession(
     sessionId: string,

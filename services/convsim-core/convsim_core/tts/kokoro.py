@@ -129,6 +129,18 @@ class KokoroTtsWorker(TtsWorker):
             voice_id=request.voice_id,
         )
 
+    async def clear_cache(self) -> int:
+        if not self._cache_dir.exists():
+            return 0
+        count = 0
+        for entry in self._cache_dir.glob("*.wav"):
+            try:
+                entry.unlink()
+                count += 1
+            except OSError:
+                pass
+        return count
+
     async def health(self) -> TtsHealth:
         checked_at = datetime.now(timezone.utc).isoformat()
         try:
