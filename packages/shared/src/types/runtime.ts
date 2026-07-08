@@ -5,6 +5,7 @@ export interface RuntimeReadiness {
   tts_ready: boolean;
   tts_voice_name: string | null;
   network_required: boolean;
+  last_error?: string | null;
 }
 
 export interface HealthResponse {
