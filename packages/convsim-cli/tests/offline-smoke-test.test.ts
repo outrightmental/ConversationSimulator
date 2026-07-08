@@ -203,6 +203,20 @@ describe('installNetworkGuard — outbound calls are blocked and recorded', () =
     expect(guard.violations[0]!.url).toContain('api.example.com');
   });
 
+  it('records a violation for an outbound built-in fetch() call', async () => {
+    // Node's global fetch (undici) ultimately opens its TCP connection through
+    // net.Socket.prototype.connect, so the guard must catch it too — this is the
+    // path a cloud LLM/transcription client would most likely use. Subsystem
+    // attribution for fetch relies on the hostname (undici does not expose the
+    // request path at the socket layer), so use a host that carries the signal.
+    const guard = installNetworkGuard();
+    await fetch('https://llm-inference.example.com/v1/completions').catch(() => {});
+    guard.restore();
+    expect(guard.violations).toHaveLength(1);
+    expect(guard.violations[0]!.url).toContain('llm-inference.example.com');
+    expect(guard.violations[0]!.subsystem).toBe('llm-inference');
+  });
+
   it('accumulates multiple violations', () => {
     const guard = installNetworkGuard();
     makeOutboundCall('https://llm.cloud.example.com/v1/completions');

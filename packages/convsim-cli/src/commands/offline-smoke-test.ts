@@ -99,6 +99,16 @@ function parseConnectArgs(args: unknown[]): { host: string; url: string } {
   return { host: '', url: '' };
 }
 
+/**
+ * Best-effort mapping of a blocked connection to the subsystem that made it.
+ *
+ * Note: the URL available at the socket layer depends on the HTTP client. The
+ * legacy `http`/`https` agents pass the request path/href, so path keywords
+ * (e.g. `/v1/completions`) are visible. Built-in `fetch` (undici) exposes only
+ * host/port at connect time, so subsystem attribution for fetch relies on the
+ * hostname alone and may fall back to `'unknown'` for a generically-named host.
+ * Detection of the violation itself is unaffected — only the label.
+ */
 function identifySubsystem(url: string, stack: string): string {
   const s = (url + ' ' + stack).toLowerCase();
   if (
