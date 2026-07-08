@@ -23,6 +23,15 @@
 
 set -euo pipefail
 
+# ── Early --help / -h (platform-agnostic) ────────────────────────────────────
+
+for _arg in "$@"; do
+  if [[ "$_arg" == "--help" || "$_arg" == "-h" ]]; then
+    sed -n '2,/^set /p' "$0" | grep '^#' | sed 's/^# \?//'
+    exit 0
+  fi
+done
+
 RELEASE_TAG="${LLAMA_CPP_VERSION:-}"  # empty = auto-detect latest
 DEST_DIR="${LLAMA_CPP_DEST:-$HOME/.convsim/bin}"
 BINARY_NAME="llama-server"
@@ -73,10 +82,6 @@ while [[ $# -gt 0 ]]; do
     --dest)
       DEST_DIR="$2"
       shift 2
-      ;;
-    --help|-h)
-      sed -n '2,/^set /p' "$0" | grep '^#' | sed 's/^# \?//'
-      exit 0
       ;;
     *)
       echo "Unknown option: $1" >&2
@@ -144,7 +149,7 @@ echo "Extracting..."
 unzip -q "$ZIP_PATH" -d "$TMP_DIR/extracted"
 
 # The binary may be at the root or in a subdirectory
-EXTRACTED_BIN="$(find "$TMP_DIR/extracted" -name "llama-server" -o -name "llama-server.exe" | head -1)"
+EXTRACTED_BIN="$(find "$TMP_DIR/extracted" \( -name "llama-server" -o -name "llama-server.exe" \) -type f | head -1)"
 if [[ -z "$EXTRACTED_BIN" ]]; then
   echo "llama-server binary not found in archive. Contents:" >&2
   find "$TMP_DIR/extracted" -type f >&2
