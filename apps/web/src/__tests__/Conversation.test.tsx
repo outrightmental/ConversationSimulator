@@ -281,6 +281,7 @@ describe('Conversation screen', () => {
 
     afterEach(() => {
       localStorage.removeItem('convsim.devMode')
+      vi.unstubAllEnvs()
     })
 
     it('does not render the debug drawer in normal mode', async () => {
@@ -293,6 +294,14 @@ describe('Conversation screen', () => {
 
     it('renders the debug drawer when dev mode is enabled via localStorage', async () => {
       localStorage.setItem('convsim.devMode', 'true')
+      renderConversation()
+      await waitFor(() =>
+        expect(screen.getByTestId('debug-drawer')).toBeInTheDocument(),
+      )
+    })
+
+    it('renders the debug drawer when VITE_DEV_TOOLS=true build flag is set', async () => {
+      vi.stubEnv('VITE_DEV_TOOLS', 'true')
       renderConversation()
       await waitFor(() =>
         expect(screen.getByTestId('debug-drawer')).toBeInTheDocument(),
