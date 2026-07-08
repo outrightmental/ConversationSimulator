@@ -1,0 +1,71 @@
+name: Feature proposal
+description: Suggest a new feature or improvement to the simulator.
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template to propose a new feature or improvement. Include
+        enough detail that maintainers and contributors can evaluate the idea
+        and pick it up without needing to ask basic follow-up questions.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or motivation
+      description: What need or gap does this address?
+      placeholder: "Example: There is no way to replay a scenario from a specific turn without restarting the whole session."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-solution
+    attributes:
+      label: Proposed solution
+      description: Describe your preferred approach.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What other approaches did you consider, and why did you prefer the one above?
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which area does this touch?
+      options:
+        - Conversation / NPC turn
+        - Debrief / scoring
+        - Creator Workbench
+        - Pack format / schema
+        - Model / runtime integration
+        - Voice / STT
+        - Voice / TTS
+        - Desktop app (Tauri)
+        - Developer experience / CI
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Mockups, links, related issues, or anything else that helps.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this has not already been proposed.
+          required: true

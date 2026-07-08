@@ -1,0 +1,129 @@
+name: Scenario pack submission
+description: Submit a completed scenario pack for inclusion in the official repository.
+labels:
+  - scenario-pack
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template when your pack is complete and ready for review.
+
+        Before submitting:
+        - Run `node packages/scenario-schema/tests/validate-packs.js <path-to-your-pack>`
+        - Run `convsim-validate-pack <path-to-your-pack>` (requires convsim-core)
+        - Read [docs/official-pack-quality-bar.md](../docs/official-pack-quality-bar.md)
+        - Read [docs/safety-policy.md](../docs/safety-policy.md)
+
+        You will also need to open a pull request containing the pack files.
+        Link this issue in the PR body.
+
+  - type: input
+    id: pack-name
+    attributes:
+      label: Pack name
+      placeholder: "Example: Workplace Conversations"
+    validations:
+      required: true
+
+  - type: input
+    id: pr-link
+    attributes:
+      label: Pull request URL
+      description: Link the open PR that adds this pack to packs/official/.
+      placeholder: "https://github.com/outrightmental/ConversationSimulator/pull/NNN"
+    validations:
+      required: false
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Pack summary
+      description: >
+        What does this pack help users practice? Who is the target audience?
+        List the scenarios and NPCs included.
+    validations:
+      required: true
+
+  - type: input
+    id: license
+    attributes:
+      label: License
+      description: >
+        What license does this pack use? Official packs must use CC BY 4.0.
+        Include the SPDX identifier.
+      placeholder: "CC-BY-4.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: content-rating
+    attributes:
+      label: Content rating
+      description: Declared in manifest.yaml. See docs/safety-policy.md for definitions.
+      options:
+        - G — suitable for all audiences
+        - PG — mild mature themes, suitable for teens and adults
+        - PG-13 — moderate mature themes, adults and older teens
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: fictional-npcs
+    attributes:
+      label: NPC confirmation
+      options:
+        - label: >
+            All NPCs in this pack are clearly fictional characters. No NPC is
+            named after, or intended to represent, a real identifiable living
+            or recently deceased person.
+          required: true
+
+  - type: textarea
+    id: safety-policy
+    attributes:
+      label: Safety policy
+      description: >
+        Summarise the safety policy YAML included in the pack.
+        Which content categories are permitted/prohibited?
+        How does the pack handle sensitive topics or crisis moments?
+    validations:
+      required: true
+
+  - type: textarea
+    id: tests
+    attributes:
+      label: Tests
+      description: >
+        Describe the smoke tests included in the pack's `tests/` directory.
+        Paste the output of `convsim-validate-pack` and
+        `node packages/scenario-schema/tests/validate-packs.js` for this pack.
+      render: text
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Submission checklist
+      options:
+        - label: >
+            `node packages/scenario-schema/tests/validate-packs.js <path>` exits 0.
+          required: true
+        - label: "`convsim-validate-pack <path>` exits 0."
+          required: true
+        - label: >
+            Pack contains only YAML/JSON files — no scripts, executables,
+            or symlinks.
+          required: true
+        - label: "`manifest.yaml` includes a `license` field with an SPDX identifier."
+          required: true
+        - label: All NPCs are clearly fictional.
+          required: true
+        - label: A safety policy YAML is present and referenced from `manifest.yaml`.
+          required: true
+        - label: At least one smoke test per entry scenario exists in `tests/`.
+          required: true
+        - label: I have read docs/official-pack-quality-bar.md.
+          required: true
+        - label: I have read docs/safety-policy.md.
+          required: true
