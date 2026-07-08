@@ -46,8 +46,11 @@ export function broadcast(
   payload: Record<string, unknown>,
 ): void {
   const state = sessions.get(sessionId);
-  if (!state || state.connections.size === 0) return;
+  if (!state) return;
+  // Always advance seq so reconnecting clients can detect gaps even when
+  // the event fires with no clients currently connected.
   const seq = ++state.seq;
+  if (state.connections.size === 0) return;
   const msg = JSON.stringify({
     seq,
     session_id: sessionId,
