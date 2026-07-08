@@ -14,6 +14,7 @@ def tmp_config(tmp_path):
         data_dir=str(tmp_path / "data"),
         log_dir=str(tmp_path / "logs"),
         db_dir=str(tmp_path / "db"),
+        stt_worker_id="whisper_cpp",
     )
 
 

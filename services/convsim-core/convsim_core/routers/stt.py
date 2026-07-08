@@ -83,7 +83,8 @@ async def upload_audio(
             duration_ms=result.duration_ms,
             processing_ms=result.processing_ms,
         )
-    except SttUnavailableError:
+    except SttUnavailableError as exc:
+        logger.info("STT worker unavailable (binary or model not installed): %s", exc)
         return SttUploadResponse(transcript=None, status="unavailable")
     except SttError as exc:
         logger.warning("STT worker error during transcription: %s", exc, exc_info=True)

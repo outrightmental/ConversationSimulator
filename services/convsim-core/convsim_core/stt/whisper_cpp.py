@@ -133,15 +133,18 @@ class WhisperCppWorker(SttWorker):
             )
 
         suffix = f".{request.audio_format}" if request.audio_format else ".bin"
-        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-            tmp.write(request.audio)
-            audio_path = tmp.name
-
-        # whisper-cli --output-json writes a sidecar named after the input file
-        # stem (extension stripped), e.g. /tmp/tmpXXX.webm → /tmp/tmpXXX.json.
-        json_path = str(Path(audio_path).with_suffix("")) + ".json"
-
+        # audio_path is captured before the write so the finally block can always
+        # clean up, even if the write itself raises (e.g. disk-full).
+        audio_path: str | None = None
         try:
+            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+                audio_path = tmp.name
+                tmp.write(request.audio)
+
+            # whisper-cli --output-json writes a sidecar named after the input file
+            # stem (extension stripped), e.g. /tmp/tmpXXX.webm → /tmp/tmpXXX.json.
+            json_path = str(Path(audio_path).with_suffix("")) + ".json"
+
             cmd = self._build_command(audio_path, request.language)
             t0 = time.monotonic()
             proc = await asyncio.create_subprocess_exec(
@@ -162,10 +165,8 @@ class WhisperCppWorker(SttWorker):
                 ) from exc
             processing_ms = (time.monotonic() - t0) * 1000.0
         finally:
-            try:
-                os.unlink(audio_path)
-            except OSError:
-                pass
+            if audio_path is not None:
+                _try_unlink(audio_path)
 
         if proc.returncode != 0:
             _try_unlink(json_path)

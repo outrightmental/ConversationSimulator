@@ -73,10 +73,13 @@ export const apiClient = {
     return get<HealthResponse>('/health')
   },
 
-  uploadAudio(blob: Blob): Promise<SttUploadResponse> {
+  uploadAudio(blob: Blob, language?: string): Promise<SttUploadResponse> {
     const ext = blob.type.includes('ogg') ? 'ogg' : 'webm'
     const form = new FormData()
     form.append('audio', blob, `recording.${ext}`)
+    if (language) {
+      form.append('language', language)
+    }
     return postForm<SttUploadResponse>('/stt/upload', form)
   },
 }
