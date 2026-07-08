@@ -70,6 +70,19 @@ async def synthesize(request: Request, body: TtsSynthesizeRequest) -> TtsSynthes
         return TtsSynthesizeResponse(status="error", message=str(exc))
 
 
+@router.post("/api/tts/cache/clear")
+async def clear_tts_cache(request: Request) -> dict:
+    """Delete all locally cached TTS audio files.
+
+    Called by the privacy settings 'clear cache' action.  Removes every cached
+    WAV file from the local TTS cache directory so future synthesis requests
+    re-synthesize from scratch.  Returns the number of files deleted.
+    """
+    tts_worker = request.app.state.tts_worker
+    deleted = await tts_worker.clear_cache()
+    return {"deleted_files": deleted}
+
+
 @router.get("/api/tts/voices")
 async def list_voices() -> dict:
     """Return the approved built-in voice list.

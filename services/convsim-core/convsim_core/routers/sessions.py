@@ -26,6 +26,7 @@ from pydantic import BaseModel, field_validator
 from convsim_core.scenario_state import build_variable_defs, partition_state_by_visibility
 from convsim_core.scenarios import get_scenario_info
 from convsim_core.services.debrief_engine import generate_debrief
+from convsim_core.services.tts_queue import synthesize_utterance
 from convsim_core.services.turn_pipeline import MAX_TURN_CONTENT_CHARS, TurnInputError, process_turn
 
 logger = logging.getLogger(__name__)
@@ -55,6 +56,9 @@ def _conflict(detail: str, current_state: str) -> HTTPException:
 # ---------------------------------------------------------------------------
 
 
+_DEFAULT_TTS_VOICE_ID = "af_heart"
+
+
 class SessionCreateRequest(BaseModel):
     scenario_id: str
     difficulty: Literal["easy", "normal", "hard"] = "normal"
@@ -62,6 +66,7 @@ class SessionCreateRequest(BaseModel):
     language: str = "en"
     input_mode: Literal["text-only", "push-to-talk", "hands-free"] = "text-only"
     tts_enabled: bool = False
+    tts_voice_id: str = _DEFAULT_TTS_VOICE_ID
     show_state_meters: bool = False
     save_transcript: bool = True
     seed: Optional[int] = None
@@ -71,6 +76,17 @@ class SessionCreateRequest(BaseModel):
     def player_role_name_not_blank(cls, v: str) -> str:
         if not v.strip():
             raise ValueError("player_role_name cannot be blank")
+        return v
+
+    @field_validator("tts_voice_id")
+    @classmethod
+    def tts_voice_id_must_be_approved(cls, v: str) -> str:
+        from convsim_core.tts.voices import validate_voice_id
+        from convsim_core.tts.types import TtsVoiceValidationError
+        try:
+            validate_voice_id(v)
+        except TtsVoiceValidationError as exc:
+            raise ValueError(str(exc)) from exc
         return v
 
 
@@ -193,6 +209,57 @@ class DebriefResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+async def _run_tts_for_utterance(
+    utterance: str,
+    session_id: str,
+    turn_number: int,
+    voice_id: str,
+    tts_worker: Any,
+    conn: Any,
+    now: str,
+) -> List[SessionEventPayload]:
+    """Synthesize *utterance* sentence-by-sentence and persist tts_audio_chunk events.
+
+    Returns an ordered list of SessionEventPayload for the caller to include in
+    the HTTP response.  Any TTS failure is captured per-chunk and does not raise.
+    """
+    try:
+        chunks = await synthesize_utterance(
+            utterance=utterance,
+            voice_id=voice_id,
+            tts_worker=tts_worker,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("TTS queue failed for session %s: %s", session_id, exc, exc_info=True)
+        return []
+
+    events: List[SessionEventPayload] = []
+    for chunk in chunks:
+        payload: Dict[str, Any] = {
+            "chunk_index": chunk.chunk_index,
+            "total_chunks": chunk.total_chunks,
+            "text": chunk.text,
+            "voice_id": chunk.voice_id,
+            "cache_path": chunk.audio_path,
+            "error": chunk.error,
+        }
+        cursor = conn.execute(
+            "INSERT INTO turn_session_events "
+            "(session_id, turn_number, event_type, payload_json, occurred_at) "
+            "VALUES (?, ?, 'tts_audio_chunk', ?, ?)",
+            (session_id, turn_number, json.dumps(payload), now),
+        )
+        conn.commit()
+        events.append(SessionEventPayload(
+            event_id=cursor.lastrowid,
+            session_id=session_id,
+            event_type="tts_audio_chunk",
+            payload=payload,
+            created_at=now,
+        ))
+    return events
+
+
 def _row_to_response(row: Any) -> SessionResponse:
     return SessionResponse(
         session_id=row["session_id"],
@@ -302,17 +369,32 @@ async def start_session(session_id: str, request: Request) -> SessionStartRespon
                 (session_id, 0, "npc_opening", opening_text),
             )
 
-    event = SessionEventPayload(
+    opening_event = SessionEventPayload(
         event_id=cursor.lastrowid,
         session_id=session_id,
         event_type="npc_opening",
         payload={"content": opening_text},
         created_at=now,
     )
+
+    tts_enabled = setup.get("tts_enabled", False)
+    tts_events: List[SessionEventPayload] = []
+    if tts_enabled:
+        voice_id = setup.get("tts_voice_id", _DEFAULT_TTS_VOICE_ID)
+        tts_events = await _run_tts_for_utterance(
+            utterance=opening_text,
+            session_id=session_id,
+            turn_number=0,
+            voice_id=voice_id,
+            tts_worker=request.app.state.tts_worker,
+            conn=conn,
+            now=now,
+        )
+
     return SessionStartResponse(
         session_id=session_id,
         state="PlayerTurnListening",
-        events=[event],
+        events=[opening_event] + tts_events,
     )
 
 
@@ -387,10 +469,24 @@ async def submit_turn(session_id: str, body: TurnSubmitRequest, request: Request
         created_at=now,
     )
 
+    tts_events: List[SessionEventPayload] = []
+    tts_enabled = setup.get("tts_enabled", False)
+    if tts_enabled and not result.used_fallback:
+        voice_id = setup.get("tts_voice_id", _DEFAULT_TTS_VOICE_ID)
+        tts_events = await _run_tts_for_utterance(
+            utterance=result.npc_utterance,
+            session_id=session_id,
+            turn_number=result.turn_number,
+            voice_id=voice_id,
+            tts_worker=request.app.state.tts_worker,
+            conn=conn,
+            now=now,
+        )
+
     return TurnResponse(
         session_id=session_id,
         state=result.new_flow_state,
-        events=[player_event, npc_event],
+        events=[player_event, npc_event] + tts_events,
         ending_type=result.ending_type,
     )
 
