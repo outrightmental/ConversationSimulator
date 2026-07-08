@@ -24,6 +24,7 @@ from convsim_core.services.model_manager_service import (
     create_install_record,
     get_active_config,
     get_installed_models,
+    register_user_gguf,
     save_benchmark_result,
     set_active_config,
 )
@@ -112,6 +113,25 @@ class InstallModelResponse(BaseModel):
     registry_id: str
     status: str
     message: Optional[str] = None
+
+
+class RegisterGgufRequest(BaseModel):
+    path: str
+    display_name: Optional[str] = None
+    family_guess: Optional[str] = None
+    context_length: Optional[int] = None
+
+
+class RegisterGgufResponse(BaseModel):
+    profile_id: int
+    file_path: str
+    display_name: str
+    filename: str
+    family_guess: Optional[str] = None
+    context_length_default: Optional[int] = None
+    warnings: list[str]
+    active_runtime_id: str
+    active_model_id: str
 
 
 class BenchmarkRequest(BaseModel):
@@ -293,6 +313,66 @@ async def install_model(request: Request, body: InstallModelRequest) -> InstallM
         registry_id=body.registry_id,
         status="pending",
         message=f"Install queued for '{model['name']}'. Download will proceed in the background.",
+    )
+
+
+@router.post("/api/models/register-gguf", response_model=RegisterGgufResponse)
+async def register_gguf(request: Request, body: RegisterGgufRequest) -> RegisterGgufResponse:
+    """Register a user-supplied GGUF file as the active model.
+
+    Validates file existence and extension. The file is not copied or modified —
+    only the path is stored. The user is responsible for the model's license
+    and hardware requirements; the app makes no claims about redistribution.
+    """
+    path = body.path.strip()
+
+    if not path:
+        raise ConvsimError(
+            code="GGUF_PATH_EMPTY",
+            message="File path must not be empty.",
+            status_code=400,
+        )
+
+    if not path.lower().endswith(".gguf"):
+        raise ConvsimError(
+            code="GGUF_INVALID_EXTENSION",
+            message="The file must have a .gguf extension.",
+            status_code=400,
+        )
+
+    if not os.path.isfile(path):
+        raise ConvsimError(
+            code="GGUF_FILE_NOT_FOUND",
+            message=(
+                f"GGUF file not found: {path}. "
+                "Verify the path is correct and the file is accessible, then try again."
+            ),
+            status_code=404,
+        )
+
+    db = request.app.state.db
+    conn = db.connection()
+
+    profile = register_user_gguf(
+        conn,
+        path=path,
+        display_name=body.display_name,
+        family_guess=body.family_guess,
+        context_length_default=body.context_length,
+    )
+
+    set_active_config(conn, runtime_id="llama_cpp", model_id=path)
+
+    return RegisterGgufResponse(
+        profile_id=profile["id"],
+        file_path=path,
+        display_name=profile["display_name"],
+        filename=profile["filename"],
+        family_guess=body.family_guess,
+        context_length_default=body.context_length,
+        warnings=[],
+        active_runtime_id="llama_cpp",
+        active_model_id=path,
     )
 
 
