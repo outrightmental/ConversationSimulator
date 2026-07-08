@@ -307,6 +307,29 @@ class TestIllegalAdvice:
         )
         assert result.is_safe
 
+    def test_innocent_make_phrase_not_illegal_advice(self):
+        # "make" without an illegal object must not trigger — "make a strong case"
+        # is common NPC feedback and must not hard-stop the session.
+        result = _validate("I can show you how to make a strong case for yourself.")
+        assert result.is_safe
+
+    def test_innocent_build_phrase_not_illegal_advice(self):
+        result = _validate("I'll tell you how to build a stronger portfolio.")
+        assert result.is_safe
+
+    def test_make_with_illegal_object_still_flagged(self):
+        v = _first("I'll show you how to make explosives at home.")
+        assert v.category == "illegal_advice"
+        assert v.is_recoverable is False
+
+    def test_instructions_to_make_with_illegal_object_flagged(self):
+        v = _first("Step-by-step instructions to build a bomb.")
+        assert v.category == "illegal_advice"
+
+    def test_instructions_to_make_innocent_not_flagged(self):
+        result = _validate("Step-by-step instructions to make your pitch more compelling.")
+        assert result.is_safe
+
 
 # ---------------------------------------------------------------------------
 # Therapy or diagnosis (hard)

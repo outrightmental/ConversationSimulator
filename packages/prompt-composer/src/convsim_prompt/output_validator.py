@@ -77,8 +77,14 @@ _NSFW = _compile(
 # Illegal advice claims — NPC offering step-by-step illegal instructions (hard).
 _ILLEGAL_ADVICE = _compile(
     r"\bhere'?s?\s+how\s+(?:to|you\s+can)\s+(?:make|build|create|assemble).{0,40}\b(?:bombs?|explosives?|weapons?)\b",
-    r"\bI(?:'ll|\s+will|\s+can)\s+(?:show|teach|tell)\s+you\s+how\s+to\s+(?:make|build|synthesize|hack)\b",
-    r"\b(?:step[- ]by[- ]step\s+)?(?:instructions?\s+(?:for|to)|guide\s+(?:for|to))\s+(?:make|build|hack|murder|kill|synthesize)\b",
+    # "synthesize" and "hack" alone are specific enough to flag without an object.
+    r"\bI(?:'ll|\s+will|\s+can)\s+(?:show|teach|tell)\s+you\s+how\s+to\s+(?:synthesize|hack)\b",
+    # "make"/"build" are common verbs — only flag when followed by an illegal object.
+    r"\bI(?:'ll|\s+will|\s+can)\s+(?:show|teach|tell)\s+you\s+how\s+to\s+(?:make|build).{0,30}\b(?:bombs?|explosives?|weapons?|drugs?|poison|virus(?:es)?)\b",
+    # "instructions/guide to [inherently illegal verb]" — no object needed.
+    r"\b(?:step[- ]by[- ]step\s+)?(?:instructions?\s+(?:for|to)|guide\s+(?:for|to))\s+(?:hack|murder|kill|synthesize)\b",
+    # "instructions/guide to make/build [illegal object]" — object required.
+    r"\b(?:step[- ]by[- ]step\s+)?(?:instructions?\s+(?:for|to)|guide\s+(?:for|to))\s+(?:make|build|create|assemble).{0,30}\b(?:bombs?|explosives?|weapons?|drugs?|poison|virus(?:es)?)\b",
     r"\bhow\s+to\s+(?:synthesiz|manufactur|produc|cook).{0,25}\b(?:drugs?|meth(?:amphetamine)?|cocaine|heroin|fentanyl|crack)\b",
     r"\bhow\s+to\s+launder\s+money\b",
     r"\bhow\s+to\s+(?:hack|crack|break\s+into).{0,25}\b(?:computer|system|network|account)\b",
