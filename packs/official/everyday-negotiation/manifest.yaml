@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+pack_id: official.everyday_negotiation
+name: Everyday Negotiation
+version: 0.1.0
+description: >-
+  Practice realistic everyday negotiation conversations with configurable NPCs.
+  Build confidence navigating competing goals and advocating for yourself
+  in common real-world situations.
+author: Outright Mental
+license: CC-BY-4.0
+content_rating: PG
+tags:
+  - negotiation
+  - communication
+  - persuasion
+  - professional
+supported_languages:
+  - en
+assets:
+  allow_external_urls: false
+safety:
+  policy: safety/default.yaml
