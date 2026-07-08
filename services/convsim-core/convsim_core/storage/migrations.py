@@ -19,7 +19,7 @@ CREATE TABLE packs (
     source_path TEXT,
     installed_at TEXT   NOT NULL DEFAULT (datetime('now'))
 );
--- license and tags added in 0003_extend_pack_assets
+-- license and tags added in 0004_extend_pack_assets
 
 CREATE TABLE scenarios (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
