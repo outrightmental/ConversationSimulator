@@ -132,9 +132,12 @@ jobs:
         run: find release-artifacts -type f | sort
 
       - name: Generate SHA-256 checksums
+        # Record bare filenames (not the release-artifacts/... paths) so the
+        # manifest matches the flattened asset names on the release page and
+        # `sha256sum -c checksums-sha256.txt` works next to the downloads.
         run: |
           find release-artifacts -type f | sort | while IFS= read -r f; do
-            sha256sum "$f"
+            ( cd "$(dirname "$f")" && sha256sum "$(basename "$f")" )
           done > checksums-sha256.txt
           cat checksums-sha256.txt
 
