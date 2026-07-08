@@ -12,6 +12,7 @@ import type {
 } from '@convsim/shared';
 import { SCENARIOS } from '../data/scenarios.js';
 import { getDb } from '../db.js';
+import { broadcast, closeSessionSockets } from '../ws/session-events.js';
 
 const MAX_TURN_CONTENT_LENGTH = 2000;
 
@@ -269,6 +270,7 @@ export async function sessionRoutes(app: FastifyInstance) {
       }
 
       db.prepare('DELETE FROM sessions WHERE session_id = ?').run(req.params.session_id);
+      closeSessionSockets(req.params.session_id);
       reply.status(204);
     },
   );
@@ -297,20 +299,28 @@ export async function sessionRoutes(app: FastifyInstance) {
       }
 
       // Initialize state vars from baseline defaults and transition to PlayerTurnListening.
-      const saveTranscript = shouldSaveTranscript(row.setup_json);
-      const openingPayload = {
-        content: 'Hello! I am ready to begin our conversation. Please go ahead.',
-      };
+      const openingContent = 'Hello! I am ready to begin our conversation. Please go ahead.';
       const openingRow = db.transaction(() => {
         db.prepare(
           "UPDATE sessions SET state = 'PlayerTurnListening', state_vars_json = ? WHERE session_id = ?",
         ).run(JSON.stringify(BASELINE_STATE_VARS), req.params.session_id);
-        return saveTranscript
-          ? insertEvent(req.params.session_id, 'npc_opening', openingPayload)
-          : null;
+        return insertEvent(req.params.session_id, 'npc_opening', {
+          content: openingContent,
+        });
       })();
 
-      const openingAt = new Date().toISOString();
+      broadcast(req.params.session_id, 'session.state', {
+        state: 'PlayerTurnListening',
+        state_vars: BASELINE_STATE_VARS,
+        ending_type: null,
+      });
+      broadcast(req.params.session_id, 'npc.final', {
+        content: openingContent,
+        emotion: 'neutral',
+        state_delta: {},
+        event_flags: [],
+      });
+
       return {
         session_id: req.params.session_id,
         state: 'PlayerTurnListening',
@@ -434,7 +444,41 @@ export async function sessionRoutes(app: FastifyInstance) {
         return [player, npcEvent] as const;
       })();
 
-      const turnAt = new Date().toISOString();
+      // 8. Emit WebSocket events for all connected clients.
+      // Simulate token streaming with a single npc.token before npc.final.
+      broadcast(req.params.session_id, 'npc.token', { text: npc.npc_utterance });
+      broadcast(req.params.session_id, 'npc.final', {
+        content: npc.npc_utterance,
+        emotion: npc.npc_emotion,
+        state_delta: npc.state_delta,
+        event_flags: npc.event_flags,
+      });
+
+      if (Object.keys(npc.state_delta).length > 0) {
+        broadcast(req.params.session_id, 'scenario.state_delta', {
+          delta: npc.state_delta,
+          state_vars: newStateVars,
+        });
+      }
+
+      if (npc.event_flags.length > 0) {
+        broadcast(req.params.session_id, 'scenario.event', { flags: npc.event_flags });
+      }
+
+      if (safetyStatus === 'redirect') {
+        broadcast(req.params.session_id, 'safety.redirect', { reason: 'Input safety redirect' });
+      }
+
+      broadcast(req.params.session_id, 'session.state', {
+        state: nextState,
+        state_vars: newStateVars,
+        ending_type: endingType ?? null,
+      });
+
+      if (nextState === 'Ended') {
+        closeSessionSockets(req.params.session_id);
+      }
+
       return {
         session_id: req.params.session_id,
         state: nextState,
@@ -485,6 +529,13 @@ export async function sessionRoutes(app: FastifyInstance) {
         }
       })();
 
+      broadcast(req.params.session_id, 'session.state', {
+        state: 'Ended',
+        ending_type: endingType,
+        state_vars: JSON.parse(row.state_vars_json || '{}') as Record<string, number>,
+      });
+      closeSessionSockets(req.params.session_id);
+
       return {
         session_id: req.params.session_id,
         state: 'Ended',
@@ -527,6 +578,13 @@ export async function sessionRoutes(app: FastifyInstance) {
           insertEvent(req.params.session_id, 'debrief_generated', { summary });
         }
       })();
+
+      broadcast(req.params.session_id, 'session.state', {
+        state: 'Ended',
+        ending_type: (row.ending_type as EndingType | null) ?? null,
+        state_vars: JSON.parse(row.state_vars_json || '{}') as Record<string, number>,
+      });
+      closeSessionSockets(req.params.session_id);
 
       return {
         session_id: req.params.session_id,

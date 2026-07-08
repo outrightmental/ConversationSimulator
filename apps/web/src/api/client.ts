@@ -4,6 +4,7 @@ import type {
   ScenarioInfo,
   SessionCreateRequest,
   SessionCreateResponse,
+  WsEvent,
 } from '@convsim/shared';
 
 const BASE = '/api'
@@ -72,24 +73,8 @@ export const apiClient = {
   },
 }
 
-export interface SessionExport {
-  session: {
-    session_id: string
-    scenario_id: string
-    state: string
-    ending_type: string | null
-    created_at: string
-    setup: SessionCreateRequest
-    state_vars: Record<string, number>
-    turn_count: number
-  }
-  events: Array<{
-    event_id: number
-    session_id: string
-    event_type: string
-    payload: Record<string, unknown>
-    created_at: string
-  }>
+export interface WsConnection {
+  close(): void;
 }
 
 export const api = {
@@ -105,16 +90,19 @@ export const api = {
   createSession(request: SessionCreateRequest): Promise<SessionCreateResponse> {
     return post<SessionCreateResponse>('/sessions', request)
   },
-  deleteSession(sessionId: string): Promise<void> {
-    return del(`/sessions/${sessionId}`)
-  },
-  exportSession(sessionId: string): Promise<SessionExport> {
-    return get<SessionExport>(`/sessions/${sessionId}/export`)
-  },
-  getDataFolder(): Promise<{ path: string }> {
-    return get<{ path: string }>('/privacy/data-folder')
-  },
-  clearLocalData(): Promise<{ deleted_sessions: number }> {
-    return post<{ deleted_sessions: number }>('/privacy/clear')
+  connectSession(
+    sessionId: string,
+    onEvent: (event: WsEvent) => void,
+    opts?: { afterSeq?: number },
+  ): WsConnection {
+    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    let url = `${proto}//${window.location.host}/ws/session/${sessionId}`
+    if (opts?.afterSeq != null) url += `?after_seq=${opts.afterSeq}`
+    const ws = new WebSocket(url)
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data as string) as WsEvent
+      onEvent(data)
+    }
+    return { close: () => ws.close() }
   },
 }
