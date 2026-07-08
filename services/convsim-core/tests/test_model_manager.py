@@ -336,7 +336,10 @@ def test_install_creates_record_in_installed_models(client):
     conn.commit()
     client.post("/api/models/install", json={"registry_id": "valid-m"})
     rows = get_installed_models(conn)
-    assert any(r["registry_id"] == "valid-m" and r["install_status"] == "pending" for r in rows)
+    # The background download task may have already advanced the status (e.g. to
+    # 'downloading' or 'failed' with an empty URL), so only assert that a record
+    # was created — not that it's still 'pending'.
+    assert any(r["registry_id"] == "valid-m" for r in rows)
 
 
 # ── POST /api/models/use ─────────────────────────────────────────────────────
