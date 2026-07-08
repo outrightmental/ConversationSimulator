@@ -1,0 +1,99 @@
+name: Scenario pack idea
+description: Propose a new scenario pack concept before building it.
+labels:
+  - scenario-packs
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template to pitch a scenario pack idea and get early feedback
+        before investing time in authoring. It is not required — you can build
+        and submit directly — but it is a good way to check that the concept
+        fits the project's scope and safety policy.
+
+        Read [docs/safety-policy.md](https://github.com/outrightmental/ConversationSimulator/blob/main/docs/safety-policy.md) and
+        [docs/official-pack-quality-bar.md](https://github.com/outrightmental/ConversationSimulator/blob/main/docs/official-pack-quality-bar.md)
+        before submitting.
+
+  - type: input
+    id: pack-name
+    attributes:
+      label: Proposed pack name
+      placeholder: "Example: Workplace Conversations"
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: >
+        What skill or situation does this pack help users practice?
+        Who is the target audience?
+      placeholder: |
+        This pack helps early-career professionals practice difficult but
+        common workplace conversations: giving peer feedback, raising concerns
+        with a manager, and navigating a performance review.
+    validations:
+      required: true
+
+  - type: textarea
+    id: scenarios
+    attributes:
+      label: Proposed scenarios
+      description: List the scenarios you have in mind (even rough ideas).
+      placeholder: |
+        - The Peer Feedback Conversation — tell a colleague their work is
+          blocking the team without damaging the relationship
+        - The Skip-Level Check-in — raise a concern about your manager with
+          their manager
+        - The Performance Review — negotiate your self-assessment score
+    validations:
+      required: true
+
+  - type: textarea
+    id: npcs
+    attributes:
+      label: Proposed NPC characters
+      description: Describe the fictional NPC(s). All characters must be clearly fictional.
+      placeholder: |
+        - Jordan Ellis, Senior Engineer — blunt but fair, values directness
+        - Sam Reyes, Engineering Director — experienced at navigating org politics
+    validations:
+      required: true
+
+  - type: dropdown
+    id: content-rating
+    attributes:
+      label: Intended content rating
+      description: See docs/safety-policy.md for rating definitions.
+      options:
+        - G — suitable for all audiences
+        - PG — mild mature themes, suitable for teens and adults
+        - PG-13 — moderate mature themes, adults and older teens
+    validations:
+      required: true
+
+  - type: textarea
+    id: safety
+    attributes:
+      label: Safety considerations
+      description: >
+        Any content that approaches the edge of the safety policy?
+        How will the pack handle sensitive topics?
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before submitting
+      options:
+        - label: All NPCs are clearly fictional (no named real persons).
+          required: true
+        - label: >
+            The content fits within G / PG / PG-13 — no NSFW, no adult
+            content, no real-person impersonation.
+          required: true
+        - label: I have read docs/safety-policy.md.
+          required: true
