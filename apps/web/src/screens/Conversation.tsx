@@ -199,7 +199,7 @@ export default function Conversation() {
             <code>{sessionState}</code>
             {endingType && (
               <span style={{ marginLeft: '0.5rem', color: '#a1a1aa' }}>
-                ({endingType.replace('_', ' ')})
+                ({endingType.replace(/_/g, ' ')})
               </span>
             )}
           </p>
@@ -396,7 +396,7 @@ export default function Conversation() {
           }}
         >
           <p style={{ margin: '0 0 0.75rem', color: '#a1a1aa' }}>
-            Session ended.{endingType ? ` Outcome: ${endingType.replace('_', ' ')}.` : ''}
+            Session ended.{endingType ? ` Outcome: ${endingType.replace(/_/g, ' ')}.` : ''}
           </p>
           <button
             onClick={() => navigate(`/debrief/${sessionId}`)}

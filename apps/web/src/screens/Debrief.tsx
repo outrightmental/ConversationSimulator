@@ -252,7 +252,7 @@ function OutcomeBadge({ outcome, testId }: { outcome?: string; testId?: string }
         textTransform: 'capitalize',
       }}
     >
-      {outcome.replace('_', ' ')}
+      {outcome.replace(/_/g, ' ')}
     </span>
   )
 }
