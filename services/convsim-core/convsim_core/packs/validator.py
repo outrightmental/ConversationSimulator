@@ -31,6 +31,7 @@ from convsim_core.packs.models import (
     ValidationSeverity,
 )
 from convsim_core.schema_paths import get_schema
+from convsim_core.tts.voices import APPROVED_VOICES
 
 # ---------------------------------------------------------------------------
 # Schema validators — compiled once at import time (schemas are immutable).
@@ -455,7 +456,36 @@ class _PackValidator:
                 "'coworker'). For dating-confidence scenarios, see "
                 "docs/dating-confidence-boundaries.md for permitted scope.",
             )
+        self._validate_npc_voice(npc_data, rel)
         self._validated_content.add(npc_path.resolve())
+
+    def _validate_npc_voice(self, npc_data: dict, rel: str) -> None:
+        """Reject NPC voice ids that are not in the approved built-in voice list.
+
+        The approved list is the sole source of synthesizable voices; validating
+        it at import time prevents a pack from shipping a cloned, imported, or
+        otherwise arbitrary voice id that would only be caught later at synthesis.
+        """
+        voice = npc_data.get("voice")
+        if not isinstance(voice, dict):
+            return
+        voice_id = voice.get("voice_id")
+        # A voice block with engine 'none' (or no voice_id) opts out of TTS.
+        if not voice_id:
+            return
+        if voice_id not in APPROVED_VOICES:
+            npc_id = npc_data.get("npc_id", rel)
+            approved = sorted(APPROVED_VOICES)
+            self._error(
+                "VOICE_NOT_APPROVED",
+                rel,
+                "/voice/voice_id",
+                f"NPC '{npc_id}' uses voice id '{voice_id}', which is not in the "
+                f"approved built-in voice list. Voice cloning, voice import, and "
+                f"real-person voice flows are not permitted.",
+                f"Use one of the approved built-in voices: {approved}. "
+                "See runtimes/kokoro/README.md for the voice policy.",
+            )
 
     # ------------------------------------------------------------------
     # Entry scenario path checks (JSON-format packs)
