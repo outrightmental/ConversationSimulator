@@ -614,7 +614,7 @@ class _PackValidator:
                 rel = self._rel(path)
                 if path.suffix.lower() in FORBIDDEN_EXTENSIONS:
                     self._error(
-                        "FORBIDDEN_FILE",
+                        "FORBIDDEN_EXTENSION",
                         rel,
                         "(root)",
                         (
