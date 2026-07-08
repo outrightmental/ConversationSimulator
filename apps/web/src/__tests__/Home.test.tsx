@@ -33,13 +33,12 @@ function liText(expected: string) {
     el?.tagName === 'LI' && el.textContent?.trim() === expected
 }
 
-// Stub fetch so the first call returns healthResp and subsequent calls return packsResp.
+// Stub fetch: routes /health → healthResp and /packs → packsResp by URL.
 function stubFetches(healthResp: object, packsResp: object) {
-  let calls = 0
   vi.stubGlobal(
     'fetch',
-    vi.fn(() => {
-      const body = calls++ === 0 ? healthResp : packsResp
+    vi.fn((url: string) => {
+      const body = url.includes('/packs') ? packsResp : healthResp
       return Promise.resolve({ ok: true, json: () => Promise.resolve(body) })
     }),
   )
