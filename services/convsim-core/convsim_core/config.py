@@ -52,6 +52,7 @@ class ServiceConfig(BaseSettings):
     runtime_id: str = "fake"
     stt_worker_id: str = "whisper_cpp"
     vad_worker_id: str = "silero_vad"
+    tts_worker_id: str = "kokoro"
     ollama_base_url: str = "http://127.0.0.1:11434"
     # Set CONVSIM_DEV_DEBUG=true to enable DEBUG-level logging.
     # Even in debug mode callers must use convsim_core.redaction helpers

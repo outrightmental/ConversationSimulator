@@ -9,6 +9,7 @@ from convsim_core import __version__
 from convsim_core.runtime.types import RuntimeHealth
 from convsim_core.services.model_manager_service import get_active_config
 from convsim_core.stt.types import SttHealth
+from convsim_core.tts.types import TtsHealth
 
 router = APIRouter()
 
@@ -44,6 +45,7 @@ class HealthResponse(BaseModel):
     active_model: _ActiveModelConfig
     privacy: _PrivacyPosture
     stt: SttHealth
+    tts: TtsHealth
 
 
 @router.get("/api/health", response_model=HealthResponse)
@@ -71,4 +73,5 @@ async def health(request: Request) -> HealthResponse:
             crash_logging_enabled=app_settings.crash_logging_enabled,
         ),
         stt=await request.app.state.stt_worker.health(),
+        tts=await request.app.state.tts_worker.health(),
     )
