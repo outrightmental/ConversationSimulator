@@ -1,0 +1,64 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+rubric_id: negotiation_rubric
+title: Everyday Negotiation Rubric
+dimensions:
+  - id: clarity
+    name: Clarity
+    description: >-
+      How clearly the player states their position and ask. Does the player
+      name a specific number, term, or outcome? Does the NPC know exactly
+      what is being requested and why?
+    scoring:
+      low: Player's requests are vague ("I want a better deal"), never names a specific ask, and the NPC is left guessing what would constitute success.
+      medium: Player names an ask at some point but inconsistently — the ask shifts, is buried in other statements, or is not reinforced when the NPC challenges it.
+      high: Player states a clear and specific ask early, maintains it consistently through NPC resistance, and the NPC always knows precisely what the player is seeking and why.
+    weight: 0.20
+
+  - id: preparation
+    name: Preparation
+    description: >-
+      Whether the player uses research, documentation, or specific data to
+      support their position. Does the player cite comparable prices, contract
+      terms, warranty provisions, or other concrete benchmarks at key moments?
+    scoring:
+      low: Player relies on general complaints or emotion with no supporting data ("this seems way too expensive"), leaving the NPC free to dismiss the position without engaging it.
+      medium: Player references relevant data at least once but does not deploy it strategically or fails to connect it directly to their specific ask.
+      high: Player cites specific and concrete data (comparable prices, contract clauses, warranty terms, market figures) at key moments and links each data point directly to their negotiating position.
+    weight: 0.25
+
+  - id: empathy
+    name: Empathy
+    description: >-
+      Whether the player acknowledges the NPC's perspective and constraints.
+      Does the player demonstrate they understand the NPC's position even while
+      disagreeing with it?
+    scoring:
+      low: Player treats the NPC as an obstacle, ignores their stated constraints, or escalates to personal attacks and threats early in the conversation before the NPC has had a chance to respond.
+      medium: Player is polite and non-hostile but does not make any visible effort to acknowledge the NPC's perspective, constraints, or interests during the exchange.
+      high: Player explicitly acknowledges the NPC's constraints ("I understand you have guidelines to follow"), demonstrates interest in a solution that works for both sides, and treats the NPC as a collaborator rather than an adversary.
+    weight: 0.20
+
+  - id: holding_firm
+    name: Holding Firm
+    description: >-
+      Whether the player maintains their core position under pressure. Does the
+      player hold firm on key terms when the NPC resists, or do they immediately
+      concede the moment the NPC pushes back?
+    scoring:
+      low: Player abandons their position immediately when challenged, agrees to unfavorable terms without resistance, or concedes before the NPC has made any effort to meet them partway.
+      medium: Player holds their position initially but caves under moderate pressure without extracting any meaningful concession in return for what they gave up.
+      high: Player maintains their core position calmly through one or more rounds of NPC resistance, making only calibrated concessions and ensuring each one is paired with a corresponding concession from the NPC.
+    weight: 0.20
+
+  - id: outcome_framing
+    name: Win-Win Framing
+    description: >-
+      Whether the player frames proposals as mutually beneficial rather than
+      zero-sum. Does the player help the NPC see how an agreement serves their
+      interests too, making it easier for the NPC to say yes?
+    scoring:
+      low: Player frames every proposal as a demand or personal victory with no acknowledgment of the NPC's interests, making agreement feel like capitulation to the NPC.
+      medium: Player occasionally uses language that gestures at mutual benefit but does not articulate what the NPC gains from agreement in specific, concrete terms.
+      high: Player consistently frames proposals in terms of what both sides gain ("a two-year lease gives you stability and gives me a fair rate"), making it genuinely easier for the NPC to say yes without feeling they have lost.
+    weight: 0.15
