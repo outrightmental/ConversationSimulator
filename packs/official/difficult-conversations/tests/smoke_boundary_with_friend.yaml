@@ -45,12 +45,12 @@ static_assertions:
   - description: At least one event is defined
     path: events
     check: min_length_1
-  - description: Success ending condition is defined
+  - description: Success ending condition targets acceptance
     path: ending_conditions.success
-    check: non_empty_string
-  - description: Failure ending condition is defined
+    check: "type=variable_above AND variable=acceptance AND threshold=60"
+  - description: Failure ending condition targets rapport
     path: ending_conditions.failure
-    check: non_empty_string
+    check: "type=variable_below AND variable=rapport AND threshold=20"
   - description: Pack manifest declares this scenario as an entry scenario
     path: manifest.entry_scenarios
     check: "contains scenarios/boundary_with_friend.yaml"

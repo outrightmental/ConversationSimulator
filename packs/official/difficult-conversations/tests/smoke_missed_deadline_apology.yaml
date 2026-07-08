@@ -43,12 +43,12 @@ static_assertions:
   - description: At least one event is defined
     path: events
     check: min_length_1
-  - description: Success ending condition is defined
+  - description: Success ending condition targets repair_confidence
     path: ending_conditions.success
-    check: non_empty_string
-  - description: Failure ending condition is defined
+    check: "type=variable_above AND variable=repair_confidence AND threshold=65"
+  - description: Failure ending condition targets trust
     path: ending_conditions.failure
-    check: non_empty_string
+    check: "type=variable_below AND variable=trust AND threshold=15"
   - description: Pack manifest declares this scenario as an entry scenario
     path: manifest.entry_scenarios
     check: "contains scenarios/missed_deadline_apology.yaml"

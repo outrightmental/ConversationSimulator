@@ -24,7 +24,10 @@ dimensions:
     scoring:
       low: Player does not name any number, or asks Diane what she thinks is fair without providing their own anchor.
       medium: Player names a number but does not connect it to any evidence (market data, expanded scope, comparable roles) — it lands as a wish, not an argument.
-      high: Player names a specific figure or range and connects it to at least one concrete data point: a market rate reference, an expanded scope they can point to, or a specific outcome that warrants the adjustment.
+      high: >-
+        Player names a specific figure or range and connects it to at least one
+        concrete data point: a market rate reference, an expanded scope they can
+        point to, or a specific outcome that warrants the adjustment.
     weight: 0.30
 
   - id: composure

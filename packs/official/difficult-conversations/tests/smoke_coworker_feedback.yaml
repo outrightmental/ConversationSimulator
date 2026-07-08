@@ -45,12 +45,12 @@ static_assertions:
   - description: At least one event is defined
     path: events
     check: min_length_1
-  - description: Success ending condition is defined
+  - description: Success ending condition targets resolution_progress
     path: ending_conditions.success
-    check: non_empty_string
-  - description: Failure ending condition is defined
+    check: "type=variable_above AND variable=resolution_progress AND threshold=65"
+  - description: Failure ending condition triggers on high defensiveness
     path: ending_conditions.failure
-    check: non_empty_string
+    check: "type=variable_above AND variable=defensiveness AND threshold=90"
   - description: Pack manifest declares this scenario as an entry scenario
     path: manifest.entry_scenarios
     check: "contains scenarios/coworker_feedback.yaml"
