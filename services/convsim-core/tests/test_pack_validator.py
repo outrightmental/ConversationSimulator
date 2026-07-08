@@ -104,7 +104,7 @@ def test_schema_violation_returns_error(tmp_path):
 def test_forbidden_extension_rejected(tmp_path):
     pack_dir = make_pack_dir(tmp_path, extra_files={"run_me.sh": b"#!/bin/bash\necho hi"})
     result = validate_pack_dir(pack_dir)
-    assert _has_error(result, rule_id="FORBIDDEN_FILE", text="run_me.sh")
+    assert _has_error(result, rule_id="FORBIDDEN_EXTENSION", text="run_me.sh")
 
 
 def test_executable_extensions_rejected(tmp_path):
@@ -112,8 +112,8 @@ def test_executable_extensions_rejected(tmp_path):
         sub = tmp_path / f"test_{ext.lstrip('.')}"
         pack_dir = make_pack_dir(sub, extra_files={f"bad{ext}": b""})
         result = validate_pack_dir(pack_dir)
-        assert _has_error(result, rule_id="FORBIDDEN_FILE"), (
-            f"Expected {ext!r} to trigger FORBIDDEN_FILE"
+        assert _has_error(result, rule_id="FORBIDDEN_EXTENSION"), (
+            f"Expected {ext!r} to trigger FORBIDDEN_EXTENSION"
         )
 
 
@@ -124,7 +124,7 @@ def test_command_extension_rejected(tmp_path):
         extra_files={"open_me.command": b"#!/bin/sh\nopen /Applications/Terminal.app"},
     )
     result = validate_pack_dir(pack_dir)
-    assert _has_error(result, rule_id="FORBIDDEN_FILE", text="open_me.command")
+    assert _has_error(result, rule_id="FORBIDDEN_EXTENSION", text="open_me.command")
 
 
 def test_forbidden_file_in_nested_directory_rejected(tmp_path):
@@ -134,7 +134,7 @@ def test_forbidden_file_in_nested_directory_rejected(tmp_path):
         extra_files={"assets/scripts/deploy.sh": b"#!/bin/sh\necho hello"},
     )
     result = validate_pack_dir(pack_dir)
-    assert _has_error(result, rule_id="FORBIDDEN_FILE", text="deploy.sh")
+    assert _has_error(result, rule_id="FORBIDDEN_EXTENSION", text="deploy.sh")
 
 
 @pytest.mark.parametrize("filename,magic_bytes,desc", [
@@ -179,17 +179,17 @@ def test_forbidden_binary_error_message_mentions_mvp_packs(tmp_path):
     )
 
 
-def test_forbidden_file_error_message_mentions_mvp_packs(tmp_path):
-    """FORBIDDEN_FILE errors must explain that MVP packs are data, not code."""
+def test_forbidden_extension_error_message_mentions_mvp_packs(tmp_path):
+    """FORBIDDEN_EXTENSION errors must explain that MVP packs are data, not code."""
     pack_dir = make_pack_dir(
         tmp_path,
         extra_files={"run_me.sh": b"#!/bin/bash\necho hi"},
     )
     result = validate_pack_dir(pack_dir)
-    assert _has_error(result, rule_id="FORBIDDEN_FILE")
-    file_error = next(e for e in result.errors if e.rule_id == "FORBIDDEN_FILE")
-    assert "mvp packs are data" in file_error.message.lower(), (
-        f"Error message should mention MVP packs are data; got: {file_error.message!r}"
+    assert _has_error(result, rule_id="FORBIDDEN_EXTENSION")
+    ext_error = next(e for e in result.errors if e.rule_id == "FORBIDDEN_EXTENSION")
+    assert "mvp packs are data" in ext_error.message.lower(), (
+        f"Error message should mention MVP packs are data; got: {ext_error.message!r}"
     )
 
 
@@ -529,13 +529,13 @@ def test_multiple_errors_reported_in_one_pass(tmp_path):
             "content_rating": "Adult",                     # INVALID_CONTENT_RATING
             "entry_scenarios": ["scenarios/missing.yaml"],  # MISSING_FILE
         },
-        extra_files={"hack.sh": b"#!/bin/sh"},             # FORBIDDEN_FILE
+        extra_files={"hack.sh": b"#!/bin/sh"},             # FORBIDDEN_EXTENSION
     )
     result = validate_pack_dir(pack_dir)
     rule_ids = {e.rule_id for e in result.errors}
     assert "INVALID_CONTENT_RATING" in rule_ids
     assert "MISSING_FILE" in rule_ids
-    assert "FORBIDDEN_FILE" in rule_ids
+    assert "FORBIDDEN_EXTENSION" in rule_ids
 
 
 # ---------------------------------------------------------------------------
