@@ -835,6 +835,10 @@ export default function CreatorWorkbench() {
       // fall back to a dedicated refresh if the backend omitted it.
       if (isValidation(result.validation)) {
         setValidation(result.validation)
+        // The save re-validated successfully, so any earlier service error is
+        // stale — clear it so it doesn't mask the fresh result (the service-error
+        // branch of ValidationPanel renders ahead of the validation branch).
+        setValidationServiceError(null)
       } else {
         await refreshValidation(selectedPack)
       }

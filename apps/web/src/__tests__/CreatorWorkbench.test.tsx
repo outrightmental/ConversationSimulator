@@ -376,6 +376,41 @@ describe('CreatorWorkbench', () => {
     })
   })
 
+  it('clears a prior service error when a save returns fresh validation', async () => {
+    const localContent = 'name: My Pack\n'
+    stubFetch((url, opts) => {
+      // Save returns a clean validation once the validator has recovered.
+      if (url.includes('/file?') && opts?.method === 'PUT') {
+        return okJson({ ok: true, validation: { valid: true, errors: [], warnings: [] } })
+      }
+      if (url.includes('/file?')) return okJson({ content: localContent, editable: true })
+      // Initial on-select validation fails: the validator is down.
+      if (url.includes('/validate')) return { ok: false, status: 500, text: () => Promise.resolve('boom') }
+      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
+      return okJson([OFFICIAL_PACK, LOCAL_PACK])
+    })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /open manifest\.yaml/i }))
+    await waitFor(() => expect(screen.getByTestId('file-editor')).toBeInTheDocument())
+
+    // Panel first reports the validator is unavailable.
+    await waitFor(() =>
+      expect(screen.getByTestId('validation-panel')).toHaveTextContent(/validator unavailable/i),
+    )
+
+    fireEvent.change(screen.getByTestId('file-editor'), { target: { value: 'name: Fixed\n' } })
+    fireEvent.click(screen.getByTestId('save-button'))
+
+    // The fresh, valid save result must replace the stale service error.
+    await waitFor(() => {
+      const panel = screen.getByTestId('validation-panel')
+      expect(panel).toHaveTextContent(/pack is valid/i)
+      expect(panel).not.toHaveTextContent(/validator unavailable/i)
+    })
+  })
+
   it('groups validation errors by file', async () => {
     stubFetch((url) => {
       if (url.includes('/validate')) {
