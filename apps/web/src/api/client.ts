@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import type {
-  HealthResponse as SharedHealthResponse,
+  HealthResponse,
   ScenarioInfo,
   PackValidationResult,
   SessionCreateRequest,
@@ -12,21 +12,19 @@ import type {
   WsEvent,
 } from '@convsim/shared';
 
+export type { HealthResponse };
+
 const BASE = '/api'
 
-export interface SttHealthInfo {
-  worker_id: string
-  worker_name: string
-  status: 'unavailable' | 'starting' | 'ready' | 'degraded' | 'error'
-  model_path?: string | null
-  message?: string | null
-  checked_at: string
+export interface PackSummary {
+  pack_id: string
+  name: string
+  scenario_count: number
 }
 
-export interface HealthResponse {
-  status: 'ok' | 'degraded' | 'unavailable'
-  version?: string
-  stt?: SttHealthInfo
+export interface PacksResponse {
+  packs: PackSummary[]
+  total: number
 }
 
 export interface SttUploadResponse {
@@ -94,6 +92,10 @@ export const apiClient = {
     return get<HealthResponse>('/health')
   },
 
+  packs(): Promise<PacksResponse> {
+    return get<PacksResponse>('/packs')
+  },
+
   uploadAudio(blob: Blob, language?: string): Promise<SttUploadResponse> {
     const ext = blob.type.includes('ogg') ? 'ogg' : 'webm'
     const form = new FormData()
@@ -127,8 +129,8 @@ export interface WsConnection {
 }
 
 export const api = {
-  health(): Promise<SharedHealthResponse> {
-    return get<SharedHealthResponse>('/health')
+  health(): Promise<HealthResponse> {
+    return get<HealthResponse>('/health')
   },
   listScenarios(): Promise<ScenarioInfo[]> {
     return get<ScenarioInfo[]>('/scenarios')
