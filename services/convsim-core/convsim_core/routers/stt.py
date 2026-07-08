@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import logging
+from typing import Literal
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel
@@ -27,7 +28,7 @@ _ALLOWED_CONTENT_TYPES = set(_MIME_TO_EXT)
 
 class SttUploadResponse(BaseModel):
     transcript: str | None = None
-    status: str  # "ok" | "unavailable" | "error"
+    status: Literal["ok", "unavailable", "error"]
     language: str | None = None
     confidence: float | None = None
     duration_ms: float | None = None
