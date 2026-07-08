@@ -129,7 +129,6 @@ export default function ModelManager() {
   const [loadError, setLoadError] = useState<string | null>(null)
 
   const [selectedModel, setSelectedModel] = useState<ModelRegistryEntry | null>(null)
-  const [selectedOllama, setSelectedOllama] = useState<DetectedOllamaModel | null>(null)
   const [ggufPath, setGgufPath] = useState('')
   const [ggufPathError, setGgufPathError] = useState<string | null>(null)
 
@@ -421,7 +420,6 @@ export default function ModelManager() {
     const ollamaModels = modelsData?.ollama_models ?? []
 
     async function handleSelectOllama(m: DetectedOllamaModel) {
-      setSelectedOllama(m)
       setActionLoading(true)
       setActionError(null)
       try {
@@ -506,7 +504,6 @@ export default function ModelManager() {
         <div style={{ marginTop: '1.5rem' }}>
           <ActionButton
             onClick={() => {
-              setSelectedOllama(null)
               resetAction()
               setStep('choose')
             }}
