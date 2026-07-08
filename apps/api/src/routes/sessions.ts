@@ -104,6 +104,14 @@ function insertEvent(
     .get(Number(result.lastInsertRowid))!;
 }
 
+function shouldSaveTranscript(setup_json: string): boolean {
+  try {
+    return (JSON.parse(setup_json) as { save_transcript?: boolean }).save_transcript !== false;
+  } catch {
+    return true;
+  }
+}
+
 function rejectTransition(reply: { status: (code: number) => void }, state: SessionState, msg: string): never {
   reply.status(409);
   const err = new Error(msg) as Error & { statusCode: number; code: string; current_state: string };
@@ -114,6 +122,23 @@ function rejectTransition(reply: { status: (code: number) => void }, state: Sess
 }
 
 export async function sessionRoutes(app: FastifyInstance) {
+  // GET /api/sessions
+  app.get('/api/sessions', async (): Promise<{ sessions: SessionCreateResponse[] }> => {
+    const db = getDb();
+    const rows = db
+      .prepare<[], SessionRow>('SELECT * FROM sessions ORDER BY created_at DESC, rowid DESC')
+      .all();
+    return {
+      sessions: rows.map((row) => ({
+        session_id: row.session_id,
+        scenario_id: row.scenario_id,
+        state: row.state as SessionState,
+        created_at: row.created_at,
+        setup: JSON.parse(row.setup_json) as SessionCreateRequest,
+      })),
+    };
+  });
+
   // POST /api/sessions
   app.post<{ Body: SessionCreateRequest }>(
     '/api/sessions',
@@ -275,13 +300,15 @@ export async function sessionRoutes(app: FastifyInstance) {
 
       // Initialize state vars from baseline defaults and transition to PlayerTurnListening.
       const openingContent = 'Hello! I am ready to begin our conversation. Please go ahead.';
+      const openingPayload = { content: openingContent };
+      const openingAt = new Date().toISOString();
+      const saveTranscript = shouldSaveTranscript(row.setup_json);
       const openingRow = db.transaction(() => {
         db.prepare(
           "UPDATE sessions SET state = 'PlayerTurnListening', state_vars_json = ? WHERE session_id = ?",
         ).run(JSON.stringify(BASELINE_STATE_VARS), req.params.session_id);
-        return insertEvent(req.params.session_id, 'npc_opening', {
-          content: openingContent,
-        });
+        if (!saveTranscript) return null;
+        return insertEvent(req.params.session_id, 'npc_opening', openingPayload);
       })();
 
       broadcast(req.params.session_id, 'session.state', {
@@ -299,7 +326,9 @@ export async function sessionRoutes(app: FastifyInstance) {
       return {
         session_id: req.params.session_id,
         state: 'PlayerTurnListening',
-        events: [rowToEvent(openingRow)],
+        events: openingRow
+          ? [rowToEvent(openingRow)]
+          : [{ event_id: 0, session_id: req.params.session_id, event_type: 'npc_opening', payload: openingPayload, created_at: openingAt }],
       };
     },
   );
@@ -388,7 +417,19 @@ export async function sessionRoutes(app: FastifyInstance) {
       }
 
       // 7. Persist atomically.
-      const [playerRow, npcRow] = db.transaction(() => {
+      const saveTranscript = shouldSaveTranscript(row.setup_json);
+      const turnAt = new Date().toISOString();
+      const playerPayload = { content: normalized };
+      const npcPayload = {
+        content: npc.npc_utterance,
+        emotion: npc.npc_emotion,
+        state_delta: npc.state_delta,
+        event_flags: npc.event_flags,
+        safety: { status: safetyStatus },
+        ending_type: endingType,
+      };
+
+      const persistedRows = db.transaction(() => {
         db.prepare(
           'UPDATE sessions SET turn_count = ?, state_vars_json = ?, state = ?, ending_type = ? WHERE session_id = ?',
         ).run(
@@ -399,17 +440,10 @@ export async function sessionRoutes(app: FastifyInstance) {
           req.params.session_id,
         );
 
-        const player = insertEvent(req.params.session_id, 'player_turn', {
-          content: normalized,
-        });
-        const npcEvent = insertEvent(req.params.session_id, 'npc_turn', {
-          content: npc.npc_utterance,
-          emotion: npc.npc_emotion,
-          state_delta: npc.state_delta,
-          event_flags: npc.event_flags,
-          safety: { status: safetyStatus },
-          ending_type: endingType,
-        });
+        if (!saveTranscript) return null;
+
+        const player = insertEvent(req.params.session_id, 'player_turn', playerPayload);
+        const npcEvent = insertEvent(req.params.session_id, 'npc_turn', npcPayload);
         return [player, npcEvent] as const;
       })();
 
@@ -451,7 +485,12 @@ export async function sessionRoutes(app: FastifyInstance) {
       return {
         session_id: req.params.session_id,
         state: nextState,
-        events: [rowToEvent(playerRow), rowToEvent(npcRow)],
+        events: persistedRows
+          ? [rowToEvent(persistedRows[0]), rowToEvent(persistedRows[1])]
+          : [
+              { event_id: 0, session_id: req.params.session_id, event_type: 'player_turn', payload: playerPayload as Record<string, unknown>, created_at: turnAt },
+              { event_id: 0, session_id: req.params.session_id, event_type: 'npc_turn', payload: npcPayload as Record<string, unknown>, created_at: turnAt },
+            ],
       };
     },
   );
@@ -483,11 +522,14 @@ export async function sessionRoutes(app: FastifyInstance) {
       // fall back to player_exit when none is recorded.
       const endingType: EndingType = (row.ending_type as EndingType | null) ?? 'player_exit';
 
+      const saveTranscript = shouldSaveTranscript(row.setup_json);
       db.transaction(() => {
         db.prepare(
           "UPDATE sessions SET state = 'Ended', ending_type = ? WHERE session_id = ?",
         ).run(endingType, req.params.session_id);
-        insertEvent(req.params.session_id, 'session_ended', { ending_type: endingType });
+        if (saveTranscript) {
+          insertEvent(req.params.session_id, 'session_ended', { ending_type: endingType });
+        }
       })();
 
       broadcast(req.params.session_id, 'session.state', {
@@ -528,38 +570,16 @@ export async function sessionRoutes(app: FastifyInstance) {
         );
       }
 
-      const scenario = SCENARIOS[row.scenario_id];
-      const turnCount = row.turn_count;
-      const outcome = (row.ending_type as EndingType | null) ?? 'player_exit';
-      const scenarioTitle = scenario?.title ?? row.scenario_id;
-
-      const summary =
-        turnCount > 0
-          ? `You completed ${turnCount} turn${turnCount !== 1 ? 's' : ''} of "${scenarioTitle}". ` +
-            `Session outcome: ${outcome.replace('_', ' ')}. ` +
-            `This demo uses the fake runtime — install a local LLM for full personalized analysis.`
-          : `The session ended without any turns. No analysis is available.`;
-
-      const strengths =
-        turnCount > 0
-          ? ['Engaged with the scenario', 'Completed the session flow']
-          : ['Session was created successfully'];
-
-      const improvements = [
-        'Install a local LLM model for real NPC responses and personalized feedback',
-        'Try a different difficulty level for more variety',
-      ];
-
-      const replaySuggestions = [
-        'Replay with a different approach and compare outcomes',
-        'Try the hard difficulty to push your skills further',
-      ];
+      const summary = 'Stub debrief: the session has completed. Full analysis is not yet available.';
+      const saveTranscript = shouldSaveTranscript(row.setup_json);
 
       db.transaction(() => {
         db.prepare("UPDATE sessions SET state = 'Ended' WHERE session_id = ?").run(
           req.params.session_id,
         );
-        insertEvent(req.params.session_id, 'debrief_generated', { summary, outcome, turn_count: turnCount });
+        if (saveTranscript) {
+          insertEvent(req.params.session_id, 'debrief_generated', { summary });
+        }
       })();
 
       broadcast(req.params.session_id, 'session.state', {
