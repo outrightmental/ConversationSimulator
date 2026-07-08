@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: CC-BY-4.0
+# Reference safety policy for PG-13 dating-confidence scenario packs.
+# Copy this file into your pack's safety/ directory and customise the
+# redirect_message to match your NPC's voice and scenario context.
+#
+# See docs/dating-confidence-boundaries.md for the full boundary spec.
+schema_version: "0.1"
+policy_id: dating_confidence_pg13_safety
+description: >-
+  Reference safety policy for PG-13 dating-confidence packs. Intercepts
+  sexual escalation, age-ambiguous content, coercion, stalking, and
+  companion framing while allowing respectful social-confidence practice.
+content_categories:
+  nsfw_sexual_content: stop
+  minors_romantic_or_sexual: stop
+  real_person_impersonation: refuse
+  voice_cloning_request: refuse
+  medical_or_therapy_claim: redirect
+  legal_claim: redirect
+  criminal_instruction: refuse
+  harassment_extreme: redirect
+  self_harm_crisis: stop_with_resource_message
+redirect_message: >-
+  That's outside what we can explore here. Let's keep our conversation
+  respectful and on track.
+allow_profanity: false
+content_rating_cap: PG-13
