@@ -15,7 +15,8 @@ class ServiceConfig(BaseSettings):
     """Runtime configuration for the convsim-core process.
 
     All values can be overridden via CONVSIM_* environment variables or a .env file.
-    Binding to 0.0.0.0 is rejected unless lan_access_enabled is explicitly set.
+    Binding to wildcard addresses (0.0.0.0 or ::) is rejected unless lan_access_enabled
+    is explicitly set.
     """
 
     model_config = SettingsConfigDict(
