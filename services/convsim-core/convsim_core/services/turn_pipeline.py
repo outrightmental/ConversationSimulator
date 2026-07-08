@@ -128,6 +128,7 @@ async def _collect_runtime_output(runtime: ChatRuntime, request: ChatRequest) ->
     async for chunk in runtime.chat_stream(request):
         if isinstance(chunk, ChatFinal):
             raw_text = chunk.text
+            break  # ChatFinal is authoritative; trailing tokens must not append to it.
         elif isinstance(chunk, ChatToken):
             raw_text += chunk.text
     return raw_text
