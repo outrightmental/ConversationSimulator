@@ -14,7 +14,7 @@ from convsim_core.errors import ConvsimError
 from convsim_core.packs.exporter import export_to_zip
 from convsim_core.packs.importer import safe_extract_zip, import_from_folder, import_from_zip
 from convsim_core.packs.models import ImportResult, PackSummary, ValidationResult
-from convsim_core.packs.validator import validate_pack_dir
+from convsim_core.packs.validator import validate_pack_dir, _errors_to_rule_ids
 from convsim_core.storage.repositories.pack_repo import list_packs
 
 router = APIRouter(prefix="/api/packs", tags=["packs"])
@@ -133,6 +133,7 @@ async def validate_pack(
         name=manifest.name if manifest else None,
         version=manifest.version if manifest else None,
         errors=errors,
+        rule_ids=_errors_to_rule_ids(errors),
     )
 
 

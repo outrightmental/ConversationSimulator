@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Safe pack import from folder or zip archive with atomic rollback on failure."""
 import io
+import json
 import logging
 import shutil
 import sqlite3
@@ -8,10 +9,13 @@ import stat
 import tempfile
 import zipfile
 from pathlib import Path
+from typing import Optional
+
+import yaml
 
 from convsim_core.errors import ConvsimError
 from convsim_core.packs.asset_indexer import index_pack_assets
-from convsim_core.packs.models import ImportResult, PackManifest
+from convsim_core.packs.models import ImportResult, PackManifest, ScenarioInsertData
 from convsim_core.packs.validator import validate_pack_dir
 from convsim_core.storage.repositories.pack_repo import get_pack_by_slug, insert_pack, insert_scenario
 
@@ -88,15 +92,11 @@ def safe_extract_zip(zip_bytes: bytes, dest: Path) -> None:
             status_code=422,
         ) from exc
     except Exception as exc:
-        # Truncated archives, negative-seek errors, and other unexpected I/O failures
-        # from the zipfile module must produce a 422 rather than a 500.
         raise ConvsimError(
             "INVALID_ZIP",
             f"Could not read zip archive: {type(exc).__name__}: {exc}",
             status_code=422,
         ) from exc
-    # Defense-in-depth: verify actual bytes written, because a malicious archive can set
-    # file_size to 0 in the central directory to bypass the pre-check above.
     actual_size = sum(f.stat().st_size for f in dest.rglob("*") if f.is_file())
     if actual_size > _MAX_UNCOMPRESSED_BYTES:
         raise ConvsimError(
@@ -107,29 +107,85 @@ def safe_extract_zip(zip_bytes: bytes, dest: Path) -> None:
         )
 
 
-def _discover_scenarios(pack_dir: Path, manifest: PackManifest) -> list[tuple[str, str]]:
-    """Return (slug, name) pairs for scenario files found in the pack."""
+def _parse_scenario_yaml(path: Path) -> dict:
+    """Load a scenario YAML file, returning {} on any parse error."""
+    try:
+        raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        return raw if isinstance(raw, dict) else {}
+    except Exception:
+        return {}
+
+
+def _discover_scenarios(
+    pack_dir: Path,
+    manifest: PackManifest,
+) -> list[ScenarioInsertData]:
+    """Return ScenarioInsertData list for scenario files found in the pack."""
     seen: set[str] = set()
-    scenarios: list[tuple[str, str]] = []
+    scenarios: list[ScenarioInsertData] = []
+
+    def _process_file(path: Path, rel_path: str) -> None:
+        slug = path.stem
+        if slug in seen:
+            return
+        seen.add(slug)
+        raw = _parse_scenario_yaml(path)
+        scenarios.append(_scenario_data_from_raw(raw, slug, rel_path, manifest))
 
     for ref in manifest.entry_scenarios:
         path = pack_dir / ref
         if path.is_file():
-            slug = path.stem
-            if slug not in seen:
-                seen.add(slug)
-                scenarios.append((slug, _slug_to_name(slug)))
+            rel = ref.replace("\\", "/")
+            _process_file(path, rel)
 
     scenarios_dir = pack_dir / "scenarios"
     if scenarios_dir.is_dir():
         for f in sorted(scenarios_dir.iterdir()):
             if f.is_file() and f.suffix.lower() in (".yaml", ".yml", ".json"):
-                slug = f.stem
-                if slug not in seen:
-                    seen.add(slug)
-                    scenarios.append((slug, _slug_to_name(slug)))
+                rel = "scenarios/" + f.name
+                _process_file(f, rel)
 
     return scenarios
+
+
+def _scenario_data_from_raw(
+    raw: dict,
+    slug: str,
+    rel_path: str,
+    manifest: PackManifest,
+) -> ScenarioInsertData:
+    """Build a ScenarioInsertData from parsed YAML content and pack manifest."""
+    title: Optional[str] = raw.get("title")
+    summary: Optional[str] = raw.get("summary")
+
+    duration = raw.get("duration") or {}
+    max_turns: Optional[int] = duration.get("max_turns")
+    soft_time_limit: Optional[int] = duration.get("soft_time_limit_minutes")
+
+    difficulty = raw.get("difficulty") or {}
+    difficulty_default: Optional[str] = difficulty.get("default")
+
+    requirements = raw.get("requirements") or manifest.requirements or {}
+    voice_support: bool = bool(requirements.get("voice_support", False))
+    model_recommendation: Optional[str] = requirements.get("model_recommendation")
+
+    return ScenarioInsertData(
+        slug=slug,
+        name=_slug_to_name(slug),
+        title=title,
+        summary=summary,
+        content_rating=manifest.content_rating,
+        difficulty_default=difficulty_default,
+        max_turns=max_turns,
+        soft_time_limit_minutes=soft_time_limit,
+        tags_json=json.dumps(manifest.tags) if manifest.tags else None,
+        voice_support=voice_support,
+        model_recommendation=model_recommendation,
+        rel_path=rel_path,
+        pack_name=manifest.name,
+        pack_description=manifest.description,
+        pack_tags=manifest.tags,
+    )
 
 
 def _slug_to_name(slug: str) -> str:
@@ -157,9 +213,6 @@ def _install_from_dir(
     if manifest is None:
         raise ConvsimError("PACK_INVALID", "Pack manifest could not be loaded.", status_code=422)
 
-    # Safety: ensure the computed install path stays within packs_base_dir and is not
-    # equal to packs_base_dir itself (which would happen with an empty safe_name, causing
-    # shutil.rmtree to wipe the entire packs directory before the atomic move).
     safe_name = manifest.pack_id.replace("/", "_").replace("\\", "_")
     if not safe_name:
         raise ConvsimError(
@@ -183,8 +236,6 @@ def _install_from_dir(
             status_code=422,
         )
 
-    # Conflict: any existing pack with the same id blocks import regardless of version.
-    # A pack directory is keyed by id, so a different version would silently overwrite it.
     existing = get_pack_by_slug(conn, manifest.pack_id)
     if existing is not None:
         raise PackConflictError(manifest.pack_id, existing.version)
@@ -198,14 +249,12 @@ def _install_from_dir(
 
         pack_db_id = insert_pack(conn, manifest, str(pack_dest))
 
-        scenarios = _discover_scenarios(tmp_dest, manifest)
+        scenario_list = _discover_scenarios(tmp_dest, manifest)
         slug_to_scenario_id: dict[str, int] = {}
-        for slug, name in scenarios:
-            scenario_db_id = insert_scenario(conn, pack_db_id, slug, name)
-            slug_to_scenario_id[slug] = scenario_db_id
+        for scenario_data in scenario_list:
+            scenario_db_id = insert_scenario(conn, pack_db_id, scenario_data)
+            slug_to_scenario_id[scenario_data.slug] = scenario_db_id
 
-        # Move staging copy to final destination before indexing so that
-        # absolute file_path values stored in asset_index reflect the real location.
         if pack_dest.exists():
             shutil.rmtree(pack_dest)
         pack_dest.parent.mkdir(parents=True, exist_ok=True)
@@ -218,14 +267,14 @@ def _install_from_dir(
             "Installed pack '%s' v%s (%d scenarios, %d assets)",
             manifest.pack_id,
             manifest.version,
-            len(scenarios),
+            len(scenario_list),
             assets_count,
         )
         return ImportResult(
             pack_slug=manifest.pack_id,
             pack_name=manifest.name,
             pack_version=manifest.version,
-            scenarios_indexed=len(scenarios),
+            scenarios_indexed=len(scenario_list),
             assets_indexed=assets_count,
         )
 
@@ -233,11 +282,6 @@ def _install_from_dir(
         conn.rollback()
         if tmp_dest.exists():
             shutil.rmtree(tmp_dest, ignore_errors=True)
-        # If the move already completed, undo it to leave no partial install.
-        # Compare resolved paths: source_dir arrives resolved from the router but
-        # pack_dest is constructed from an unresolved config path, so a plain ==
-        # comparison fails on systems where packs_dir contains a symlink (e.g.
-        # macOS /tmp → /private/tmp), incorrectly deleting the source directory.
         if pack_dest.exists() and not (source_dir.resolve() == pack_dest.resolve()):
             shutil.rmtree(pack_dest, ignore_errors=True)
         raise

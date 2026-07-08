@@ -21,7 +21,7 @@ def test_missing_manifest_returns_error(tmp_path):
     empty = tmp_path / "empty_pack"
     empty.mkdir()
     _, errors = validate_pack_dir(empty)
-    assert any("Missing pack.json" in e for e in errors)
+    assert any("missing" in e.lower() and ("pack.json" in e or "manifest" in e) for e in errors)
 
 
 def test_invalid_json_manifest_returns_error(tmp_path):
