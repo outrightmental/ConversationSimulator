@@ -11,8 +11,6 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
-
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from convsim_core.runtime.types import RuntimeStatus
@@ -26,6 +24,8 @@ from convsim_core.stt.types import (
     SttSegment,
     SttUnavailableError,
 )
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_MODEL_PATH = str(Path.home() / ".convsim" / "models" / "stt" / "ggml-base.en.bin")
 # Binary name search order — newer releases use "whisper-cli"; older use "whisper".
