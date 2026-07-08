@@ -75,6 +75,7 @@ class ValidationResult(BaseModel):
     version: Optional[str] = None
     errors: list[ValidationIssue] = []
     warnings: list[ValidationIssue] = []
+    rule_ids: list[str] = []
     manifest: Optional[PackManifest] = None
 
 

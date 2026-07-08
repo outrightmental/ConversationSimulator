@@ -110,6 +110,7 @@ async def validate_pack(
                 message=message,
                 suggested_fix="Provide a valid pack zip archive.",
             )],
+            rule_ids=[rule_id],
         )
 
     zip_bytes = await file.read()

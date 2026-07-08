@@ -16,6 +16,7 @@ ERROR   — blocks import and contribution.
 WARNING — allows local development; blocks official-pack contribution.
 """
 import json
+import re as _re
 from pathlib import Path
 from typing import Optional
 
@@ -224,6 +225,7 @@ class _PackValidator:
     def _build_result(self, manifest: Optional[PackManifest]) -> ValidationResult:
         errors = [i for i in self._issues if i.severity == ValidationSeverity.ERROR]
         warnings = [i for i in self._issues if i.severity == ValidationSeverity.WARNING]
+        rule_ids = list(dict.fromkeys(e.rule_id for e in errors))
         return ValidationResult(
             valid=len(errors) == 0,
             pack_id=manifest.pack_id if manifest else None,
@@ -231,6 +233,7 @@ class _PackValidator:
             version=manifest.version if manifest else None,
             errors=errors,
             warnings=warnings,
+            rule_ids=rule_ids,
             manifest=manifest,
         )
 
@@ -592,7 +595,7 @@ class _PackValidator:
             elif path.is_file() and path.suffix.lower() in FORBIDDEN_EXTENSIONS:
                 rel = self._rel(path)
                 self._error(
-                    "FORBIDDEN_FILE",
+                    "FORBIDDEN_EXTENSION",
                     rel,
                     "(root)",
                     f"Executable or script file not allowed in pack: '{rel}'",
@@ -622,6 +625,48 @@ def validate_pack_dir(pack_dir: Path) -> ValidationResult:
         validation failures.
     """
     return _PackValidator(pack_dir).validate()
+
+
+def errors_to_rule_ids(errors: list[str]) -> list[str]:
+    """Map a list of error message strings to unique rule ID strings.
+
+    Classifies error messages (from string-based validation output or CLI tools)
+    into structured rule IDs for API and CLI responses.  Order is preserved;
+    duplicates are removed.
+    """
+    seen: set[str] = set()
+    result: list[str] = []
+    for error in errors:
+        rule_id = _classify_error_message(error)
+        if rule_id not in seen:
+            seen.add(rule_id)
+            result.append(rule_id)
+    return result
+
+
+def _classify_error_message(error: str) -> str:
+    """Return the rule ID for a single validation error message string."""
+    # Null byte in an entry scenario path — checked before generic path checks.
+    if "null byte" in error and (
+        "entry scenario" in error.lower() or "scenarios/" in error.lower()
+    ):
+        return "UNSAFE_ENTRY_SCENARIO"
+    # Manifest YAML must be a mapping (top-level element is not a dict).
+    if "must be a YAML mapping" in error:
+        return "INVALID_MANIFEST_YAML"
+    # Missing entry scenario file — checked BEFORE schema-violation patterns so
+    # that filenames containing the word 'required' are not misclassified.
+    if "Entry scenario file not found:" in error:
+        return "MISSING_ENTRY_SCENARIO"
+    # Forbidden file extension (executable/script in pack).
+    if "not allowed in pack" in error:
+        return "FORBIDDEN_EXTENSION"
+    # JSON Schema violations (e.g. "[field]: value does not match", "is a required property").
+    if "does not match" in error or _re.search(r"\[[\w_-]+\]:", error):
+        return "SCHEMA_VIOLATION"
+    if "is a required property" in error:
+        return "SCHEMA_VIOLATION"
+    return "UNKNOWN"
 
 
 # Module-level in-memory cache keyed by (resolved_path, version, max_mtime).

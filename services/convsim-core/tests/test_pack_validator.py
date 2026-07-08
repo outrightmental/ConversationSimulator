@@ -104,7 +104,7 @@ def test_schema_violation_returns_error(tmp_path):
 def test_forbidden_extension_rejected(tmp_path):
     pack_dir = make_pack_dir(tmp_path, extra_files={"run_me.sh": b"#!/bin/bash\necho hi"})
     result = validate_pack_dir(pack_dir)
-    assert _has_error(result, rule_id="FORBIDDEN_FILE", text="run_me.sh")
+    assert _has_error(result, rule_id="FORBIDDEN_EXTENSION", text="run_me.sh")
 
 
 def test_executable_extensions_rejected(tmp_path):
@@ -112,8 +112,8 @@ def test_executable_extensions_rejected(tmp_path):
         sub = tmp_path / f"test_{ext.lstrip('.')}"
         pack_dir = make_pack_dir(sub, extra_files={f"bad{ext}": b""})
         result = validate_pack_dir(pack_dir)
-        assert _has_error(result, rule_id="FORBIDDEN_FILE"), (
-            f"Expected {ext!r} to trigger FORBIDDEN_FILE"
+        assert _has_error(result, rule_id="FORBIDDEN_EXTENSION"), (
+            f"Expected {ext!r} to trigger FORBIDDEN_EXTENSION"
         )
 
 
@@ -440,13 +440,13 @@ def test_multiple_errors_reported_in_one_pass(tmp_path):
             "content_rating": "Adult",                     # INVALID_CONTENT_RATING
             "entry_scenarios": ["scenarios/missing.yaml"],  # MISSING_FILE
         },
-        extra_files={"hack.sh": b"#!/bin/sh"},             # FORBIDDEN_FILE
+        extra_files={"hack.sh": b"#!/bin/sh"},             # FORBIDDEN_EXTENSION
     )
     result = validate_pack_dir(pack_dir)
     rule_ids = {e.rule_id for e in result.errors}
     assert "INVALID_CONTENT_RATING" in rule_ids
     assert "MISSING_FILE" in rule_ids
-    assert "FORBIDDEN_FILE" in rule_ids
+    assert "FORBIDDEN_EXTENSION" in rule_ids
 
 
 # ---------------------------------------------------------------------------

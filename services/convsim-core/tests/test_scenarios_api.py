@@ -411,11 +411,46 @@ def test_import_manifest_yaml_pack(client, tmp_path):
         "scenario_id: yaml_intro\n"
         "title: YAML Intro\n"
         "summary: A scenario loaded from a manifest.yaml pack.\n"
+        "player_role:\n  label: Tester\n  brief: You are testing the YAML pack import.\n"
         "npc:\n  ref: ../npcs/host.yaml\n"
-        "rubric:\n  ref: ../rubrics/default.yaml\n"
+        "rubric:\n  ref: ../rubrics/intro_rubric.yaml\n"
         "duration:\n  max_turns: 5\n  soft_time_limit_minutes: 4\n"
         "opening:\n  npc_says: Hello from YAML pack.\n"
         "goals:\n  player_visible:\n    - Test YAML import\n",
+        encoding="utf-8",
+    )
+
+    npcs_dir = pack_dir / "npcs"
+    npcs_dir.mkdir()
+    (npcs_dir / "host.yaml").write_text(
+        "schema_version: '0.1'\n"
+        "npc_id: host\n"
+        "display_name: Host\n"
+        "archetype: generic\n"
+        "fictional: true\n"
+        "age_band: adult\n"
+        "public_persona:\n"
+        "  occupation: Test host for YAML pack\n"
+        "  speaking_style: Neutral and direct\n"
+        "  demeanor: Professional\n"
+        "private_persona: {}\n",
+        encoding="utf-8",
+    )
+
+    rubrics_dir = pack_dir / "rubrics"
+    rubrics_dir.mkdir()
+    (rubrics_dir / "intro_rubric.yaml").write_text(
+        "schema_version: '0.1'\n"
+        "rubric_id: intro_rubric\n"
+        "title: Intro Rubric\n"
+        "dimensions:\n"
+        "  - id: quality\n"
+        "    name: Response Quality\n"
+        "    description: How well the player responded\n"
+        "    scoring:\n"
+        "      low: Poor response\n"
+        "      medium: Adequate response\n"
+        "      high: Excellent response\n",
         encoding="utf-8",
     )
 
