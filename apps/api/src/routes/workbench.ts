@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { FastifyInstance } from 'fastify';
 import fs from 'node:fs';
+import os from 'node:os';
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
+import AdmZip from 'adm-zip';
 import { getDb, WORKBENCH_TEST_SCENARIO_ID } from '../db.js';
 import { loadPack, PackLoaderError } from '@convsim/pack-loader';
 
@@ -35,9 +37,10 @@ function rootForKind(kind: PackKind): string {
   return kind === 'official' ? _officialRoot : _localDevRoot;
 }
 
-function readManifestBasics(packDir: string): { pack_id: string | null; name: string | null } {
+function readManifestBasics(packDir: string): { pack_id: string | null; name: string | null; version: string | null } {
   let pack_id: string | null = null;
   let name: string | null = null;
+  let version: string | null = null;
   try {
     const content = fs.readFileSync(path.join(packDir, 'manifest.yaml'), 'utf-8');
     for (const line of content.split('\n')) {
@@ -49,12 +52,16 @@ function readManifestBasics(packDir: string): { pack_id: string | null; name: st
         const m = /^name:\s*['"]?([^'"\n]+)['"]?\s*$/.exec(line);
         if (m) name = m[1].trim();
       }
-      if (pack_id && name) break;
+      if (!version) {
+        const m = /^version:\s*['"]?([^'"\n]+)['"]?\s*$/.exec(line);
+        if (m) version = m[1].trim();
+      }
+      if (pack_id && name && version) break;
     }
   } catch {
     // ignore — manifest may be missing or malformed
   }
-  return { pack_id, name };
+  return { pack_id, name, version };
 }
 
 function scanRoot(kind: PackKind): WorkbenchPackSummary[] {
@@ -328,7 +335,19 @@ function scanForbiddenFiles(packRoot: string): WorkbenchValidationIssue[] {
   return issues;
 }
 
+export interface WorkbenchImportResponse extends WorkbenchPackSummary {
+  /** Present when the pack was installed under a different slug than its pack_id to avoid a collision. */
+  renamed_from?: string;
+}
+
 export async function workbenchRoutes(app: FastifyInstance): Promise<void> {
+  // Register binary content-type parser for zip uploads (scoped to this plugin's routes).
+  app.addContentTypeParser(
+    'application/zip',
+    { parseAs: 'buffer' },
+    (_req, body, done) => { done(null, body as Buffer); },
+  );
+
   // GET /api/workbench/packs — list all packs from official and local-dev roots
   app.get('/api/workbench/packs', async (): Promise<WorkbenchPackSummary[]> => {
     return [...scanRoot('official'), ...scanRoot('local-dev')];
@@ -540,6 +559,195 @@ export async function workbenchRoutes(app: FastifyInstance): Promise<void> {
         npc_opening: 'Ready to test. Send a message to begin the conversation.',
         state_vars: baselineStateVars,
       };
+    },
+  );
+
+  // GET /api/workbench/packs/:kind/:slug/export — export a pack as a .zip archive
+  // Runs validation preflight; returns 422 with full issue list if the pack is invalid.
+  // No absolute local paths are included — all zip entries are relative to the pack root.
+  app.get<{ Params: { kind: string; slug: string } }>(
+    '/api/workbench/packs/:kind/:slug/export',
+    async (req, reply) => {
+      const { kind, slug } = req.params;
+      assertValidKind(kind, reply);
+      const packRoot = getPackRoot(kind, slug, reply);
+      if (!fs.existsSync(packRoot)) {
+        reply.status(404);
+        throw new Error(`Pack "${slug}" not found`);
+      }
+
+      // Validation preflight — identical two-phase approach as the validate endpoint.
+      const issues: WorkbenchValidationIssue[] = scanForbiddenFiles(packRoot);
+      const reportedSecurityFiles = new Set(issues.map((i) => i.file));
+      try {
+        loadPack(packRoot, kind);
+      } catch (e) {
+        if (e instanceof PackLoaderError) {
+          for (const issue of convertPackLoaderError(e, packRoot)) {
+            if (issue.category === 'security' && reportedSecurityFiles.has(issue.file)) continue;
+            issues.push(issue);
+          }
+        } else {
+          throw e;
+        }
+      }
+
+      const errors = issues.filter((i) => i.severity === 'error');
+      if (errors.length > 0) {
+        reply.status(422);
+        return reply.send({
+          valid: false,
+          errors,
+          warnings: issues.filter((i) => i.severity === 'warning'),
+        });
+      }
+
+      // Build the zip with paths relative to the pack root — no absolute paths leak out.
+      const { pack_id, version } = readManifestBasics(packRoot);
+      const safeName = (pack_id ?? slug).replace(/[^a-zA-Z0-9._-]/g, '_');
+      const filename = version ? `${safeName}-${version}.zip` : `${safeName}.zip`;
+
+      const zip = new AdmZip();
+      zip.addLocalFolder(packRoot, '');
+      const zipBuffer = zip.toBuffer();
+
+      return reply
+        .header('Content-Type', 'application/zip')
+        .header('Content-Disposition', `attachment; filename="${filename}"`)
+        .header('Content-Length', String(zipBuffer.length))
+        .send(zipBuffer);
+    },
+  );
+
+  // POST /api/workbench/packs/import — import a .zip file into local-dev
+  // Accepts a raw zip binary body (Content-Type: application/zip).
+  // Validates the pack; rejects with 422 + full issue list on failure.
+  // Handles slug conflicts by renaming (default) or overwriting (?conflict=overwrite).
+  app.post<{
+    Querystring: { conflict?: string };
+    Body: Buffer;
+  }>(
+    '/api/workbench/packs/import',
+    async (req, reply): Promise<WorkbenchImportResponse> => {
+      const body = req.body;
+      if (!Buffer.isBuffer(body) || body.length === 0) {
+        reply.status(400);
+        throw new Error('Request body must be a non-empty .zip file (Content-Type: application/zip)');
+      }
+
+      if (!_localDevRoot) {
+        reply.status(503);
+        throw new Error('Local-dev root is not configured');
+      }
+
+      const tmpDir = path.join(os.tmpdir(), `convsim-import-${randomBytes(4).toString('hex')}`);
+      try {
+        fs.mkdirSync(tmpDir, { recursive: true });
+
+        // Parse zip and check for zip-slip attacks before extracting anything.
+        let zip: AdmZip;
+        try {
+          zip = new AdmZip(body);
+        } catch {
+          reply.status(422);
+          throw new Error('Uploaded file is not a valid .zip archive');
+        }
+
+        const extractDir = path.join(tmpDir, 'extracted');
+        fs.mkdirSync(extractDir);
+        const normalExtract = path.normalize(extractDir);
+
+        for (const entry of zip.getEntries()) {
+          const entryPath = path.normalize(path.join(normalExtract, entry.entryName));
+          if (!entryPath.startsWith(normalExtract + path.sep) && entryPath !== normalExtract) {
+            reply.status(422);
+            throw new Error(`Unsafe path in zip: "${entry.entryName}"`);
+          }
+        }
+
+        zip.extractAllTo(extractDir, /* overwrite */ true);
+
+        // Single-subdir unwrap: if the zip contains exactly one top-level directory,
+        // treat that directory as the pack root (common convention for exported packs).
+        let packDir = extractDir;
+        const topEntries = fs.readdirSync(extractDir);
+        if (topEntries.length === 1) {
+          const candidate = path.join(extractDir, topEntries[0]);
+          if (fs.statSync(candidate).isDirectory()) {
+            packDir = candidate;
+          }
+        }
+
+        // Two-phase validation (mirrors the validate endpoint).
+        const issues: WorkbenchValidationIssue[] = scanForbiddenFiles(packDir);
+        const reportedSecurityFiles = new Set(issues.filter((i) => i.category === 'security').map((i) => i.file));
+        try {
+          loadPack(packDir, 'local-dev');
+        } catch (e) {
+          if (e instanceof PackLoaderError) {
+            for (const issue of convertPackLoaderError(e, packDir)) {
+              if (issue.category === 'security' && reportedSecurityFiles.has(issue.file)) continue;
+              issues.push(issue);
+            }
+          } else {
+            throw e;
+          }
+        }
+
+        const errors = issues.filter((i) => i.severity === 'error');
+        if (errors.length > 0) {
+          reply.status(422);
+          return reply.send({
+            valid: false,
+            errors,
+            warnings: issues.filter((i) => i.severity === 'warning'),
+          });
+        }
+
+        // Determine destination slug from pack_id, falling back to the extracted dir name.
+        const { pack_id, name } = readManifestBasics(packDir);
+        const baseSlug = (pack_id ?? path.basename(packDir))
+          .replace(/[^a-zA-Z0-9._-]/g, '-')
+          .replace(/^[.-]+/, '')
+          || 'imported-pack';
+
+        fs.mkdirSync(_localDevRoot, { recursive: true });
+
+        const conflictMode = req.query.conflict === 'overwrite' ? 'overwrite' : 'rename';
+        let destSlug = baseSlug;
+        let destPath = path.join(_localDevRoot, destSlug);
+        let renamedFrom: string | undefined;
+
+        if (fs.existsSync(destPath)) {
+          if (conflictMode === 'overwrite') {
+            fs.rmSync(destPath, { recursive: true, force: true });
+          } else {
+            // Find a free slug with a numeric suffix.
+            let n = 2;
+            while (fs.existsSync(path.join(_localDevRoot, `${baseSlug}-${n}`))) n++;
+            renamedFrom = baseSlug;
+            destSlug = `${baseSlug}-${n}`;
+            destPath = path.join(_localDevRoot, destSlug);
+          }
+        }
+
+        copyDirRecursive(packDir, destPath);
+
+        const { pack_id: finalPackId, name: finalName } = readManifestBasics(destPath);
+        const result: WorkbenchImportResponse = {
+          kind: 'local-dev',
+          slug: destSlug,
+          pack_id: finalPackId,
+          name: finalName ?? destSlug,
+          editable: true,
+          ...(renamedFrom !== undefined ? { renamed_from: renamedFrom } : {}),
+        };
+
+        reply.status(201);
+        return result;
+      } finally {
+        try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ignore cleanup */ }
+      }
     },
   );
 
