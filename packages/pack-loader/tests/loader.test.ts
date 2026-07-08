@@ -156,6 +156,22 @@ describe('resolveBundle', () => {
       expect((e as PackLoaderError).code).toBe('MISSING_FILE');
     }
   });
+
+  it('throws MISSING_FILE when pack.scenes is missing a scene that the scenario references', () => {
+    const dir = track(makeTempPackDir({
+      sceneYaml: VALID_SCENE_YAML,
+      scenarioYamls: { 'scenario.yaml': VALID_SCENARIO_WITH_SCENE_YAML },
+    }));
+    const pack = loadPack(dir);
+    // Simulate a stale/corrupted LoadedPack where scenes weren't loaded.
+    pack.scenes.clear();
+    expect(() => resolveBundle(pack, 'test_scenario_scene')).toThrow(PackLoaderError);
+    try {
+      resolveBundle(pack, 'test_scenario_scene');
+    } catch (e) {
+      expect((e as PackLoaderError).code).toBe('MISSING_FILE');
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------

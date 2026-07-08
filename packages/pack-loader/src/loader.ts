@@ -188,6 +188,12 @@ export function resolveBundle(pack: LoadedPack, scenarioId: string): ResolvedBun
   if (scenario.scene?.ref) {
     const scenePath = resolveRef(scenarioDir, pack.packRoot, scenario.scene.ref);
     scene = pack.scenes.get(scenePath) ?? null;
+    if (!scene) {
+      throw new PackLoaderError(
+        'MISSING_FILE',
+        `Scene not loaded for scenario "${scenarioId}" in pack "${pack.manifest.pack_id}"`,
+      );
+    }
   }
 
   return {
