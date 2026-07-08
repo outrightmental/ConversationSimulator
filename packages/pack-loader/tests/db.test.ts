@@ -115,6 +115,20 @@ describe('PackIndex.importPack — replace', () => {
     expect(packs[0]?.name).toBe('Updated Test Pack');
   });
 
+  it('preserves installed_at timestamp when pack is re-imported', () => {
+    const v1Dir = tempPackDir();
+    index.importPack(loadPack(v1Dir, 'official'));
+    const originalEntry = index.getPack('test.minimal_pack');
+    const originalInstalledAt = originalEntry?.installed_at;
+
+    const updatedManifest = VALID_MANIFEST_YAML.replace('version: 0.1.0', 'version: 0.2.0');
+    const v2Dir = tempPackDir({ manifestYaml: updatedManifest });
+    index.importPack(loadPack(v2Dir, 'official'));
+
+    const updatedEntry = index.getPack('test.minimal_pack');
+    expect(updatedEntry?.installed_at).toBe(originalInstalledAt);
+  });
+
   it('replaces the scenario list when pack is updated', () => {
     const v1Dir = tempPackDir();
     index.importPack(loadPack(v1Dir));
