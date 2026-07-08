@@ -9,6 +9,7 @@ import Conversation from './screens/Conversation'
 import Debrief from './screens/Debrief'
 import CreatorWorkbench from './screens/CreatorWorkbench'
 import Settings from './screens/Settings'
+import ModelManager from './screens/ModelManager'
 
 export default function App() {
   return (
@@ -22,6 +23,7 @@ export default function App() {
           <Route path="/debrief/:sessionId" element={<Debrief />} />
           <Route path="/workbench" element={<CreatorWorkbench />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/model-manager" element={<ModelManager />} />
         </Route>
       </Routes>
     </ErrorBoundary>
