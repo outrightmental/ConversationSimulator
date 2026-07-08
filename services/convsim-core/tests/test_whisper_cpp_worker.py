@@ -44,7 +44,9 @@ _SAMPLE_JSON_OUTPUT = {
             ],
         },
     ],
-    "language": "en",
+    # Modern whisper-cli (ggml-org/whisper.cpp ≥ 1.x) places detected language
+    # under result.language — match that format in the canonical fixture.
+    "result": {"language": "en"},
 }
 
 
@@ -189,6 +191,14 @@ def test_parse_json_output_empty_transcription():
     result = _parse_json_output({"transcription": []}, processing_ms=0.0)
     assert result.transcript == ""
     assert result.segments is None
+
+
+def test_parse_json_output_detected_language_top_level_fallback():
+    # Some older or custom whisper.cpp builds emit language as a top-level key
+    # rather than under result.language — verify both paths work.
+    data = {"transcription": [], "language": "fr"}
+    result = _parse_json_output(data, processing_ms=0.0)
+    assert result.language == "fr"
 
 
 # ---------------------------------------------------------------------------

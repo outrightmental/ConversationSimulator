@@ -281,7 +281,11 @@ def _parse_json_output(data: dict, processing_ms: float) -> SttResult:
     transcript = " ".join(full_texts)
     duration_ms = segments[-1].end_ms if segments else None
     avg_confidence = total_confidence / confidence_count if confidence_count else None
-    detected_language: str | None = data.get("language")
+    # whisper-cli places the detected language under data["result"]["language"] in
+    # modern releases (ggml-org/whisper.cpp ≥ 1.x). Older or forked binaries may
+    # emit it as a top-level key; check both so the fallback path still works.
+    result_section = data.get("result") or {}
+    detected_language: str | None = result_section.get("language") or data.get("language")
 
     return SttResult(
         transcript=transcript,
