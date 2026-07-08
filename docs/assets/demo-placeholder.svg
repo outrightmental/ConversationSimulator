@@ -1,62 +1,90 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="800" height="400" viewBox="0 0 800 400">
-  <rect width="800" height="400" fill="#0d1117" rx="8"/>
-  <rect x="1" y="1" width="798" height="398" fill="none" stroke="#30363d" stroke-width="2" rx="8"/>
+<!-- SPDX-License-Identifier: CC0-1.0 -->
+<!-- Placeholder demo asset — shows the simulator loop (conversation → state change → event → debrief).
+     Replace with an animated GIF or video recording at launch.
+     Licensed CC0-1.0. No real people, voices, or private data. Fictional NPC: Victor Hargrove. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="500" viewBox="0 0 820 500">
+  <!-- Background -->
+  <rect width="820" height="500" fill="#09090b" rx="8"/>
+  <rect x="1" y="1" width="818" height="498" fill="none" stroke="#27272a" stroke-width="1" rx="8"/>
 
-  <!-- Terminal-style header bar -->
-  <rect x="0" y="0" width="800" height="32" fill="#161b22" rx="8"/>
-  <rect x="0" y="16" width="800" height="16" fill="#161b22"/>
-  <circle cx="20" cy="16" r="6" fill="#ff5f56"/>
-  <circle cx="40" cy="16" r="6" fill="#ffbd2e"/>
-  <circle cx="60" cy="16" r="6" fill="#27c93f"/>
-  <text x="400" y="21" font-family="monospace" font-size="12" fill="#8b949e" text-anchor="middle">Conversation Simulator</text>
+  <!-- App header -->
+  <rect x="0" y="0" width="820" height="44" fill="#18181b" rx="8"/>
+  <rect x="0" y="30" width="820" height="14" fill="#18181b"/>
+  <line x1="0" y1="44" x2="820" y2="44" stroke="#27272a" stroke-width="1"/>
+  <text x="20" y="28" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="#e8e8ea">Conversation Simulator</text>
+  <rect x="218" y="10" width="78" height="24" rx="4" fill="#252528"/>
+  <text x="258" y="26" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="#e8e8ea" text-anchor="middle">Scenarios</text>
+  <text x="315" y="26" font-family="system-ui,sans-serif" font-size="12" fill="#71717a">Workbench</text>
+  <text x="406" y="26" font-family="system-ui,sans-serif" font-size="12" fill="#71717a">Settings</text>
 
-  <!-- Scenario label -->
-  <text x="32" y="68" font-family="monospace" font-size="13" fill="#58a6ff">Scenario:</text>
-  <text x="120" y="68" font-family="monospace" font-size="13" fill="#e6edf3">The Executive Gauntlet  ·  Job Interview Basics</text>
+  <!-- Page title + session info -->
+  <text x="20" y="68" font-family="system-ui,sans-serif" font-size="16" font-weight="700" fill="#f4f4f5">Conversation</text>
+  <text x="20" y="84" font-family="system-ui,sans-serif" font-size="10" fill="#71717a">Session: d4f9a2c1  ·  State: PlayerTurnListening  ·  The Executive Gauntlet  ·  Job Interview Basics</text>
 
-  <!-- Divider -->
-  <line x1="32" y1="80" x2="768" y2="80" stroke="#21262d" stroke-width="1"/>
+  <!-- NPC panel -->
+  <rect x="20" y="95" width="176" height="52" rx="6" fill="#18181b" stroke="#27272a" stroke-width="1"/>
+  <circle cx="52" cy="121" r="18" fill="#27272a" stroke="#3f3f46" stroke-width="1.5"/>
+  <circle cx="52" cy="115" r="7" fill="#52525b"/>
+  <path d="M37 138 Q37 128 52 128 Q67 128 67 138" fill="#52525b"/>
+  <text x="78" y="116" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="#e4e4e7">Victor Hargrove</text>
+  <text x="78" y="130" font-family="system-ui,sans-serif" font-size="10" fill="#6ee7b7">skeptical</text>
+  <text x="78" y="143" font-family="system-ui,sans-serif" font-size="10" fill="#71717a">Listening</text>
 
-  <!-- Turn 1 -->
-  <text x="32" y="112" font-family="monospace" font-size="12" fill="#3fb950">You:</text>
-  <text x="80" y="112" font-family="monospace" font-size="12" fill="#e6edf3">"I led the data platform redesign — cut nightly processing from 4 hours to 40 minutes."</text>
+  <!-- Scene card -->
+  <rect x="206" y="95" width="594" height="52" rx="6" fill="#18181b" stroke="#27272a" stroke-width="1"/>
+  <text x="222" y="115" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="#e4e4e7">The Executive Gauntlet</text>
+  <text x="222" y="130" font-family="system-ui,sans-serif" font-size="11" fill="#71717a">You are interviewing for a senior engineering role. Victor has a reputation for</text>
+  <text x="222" y="143" font-family="system-ui,sans-serif" font-size="11" fill="#71717a">stress-testing candidates. Objective: earn his grudging respect.</text>
 
-  <!-- NPC response -->
-  <text x="32" y="138" font-family="monospace" font-size="12" fill="#f78166">Victor:</text>
-  <text x="90" y="138" font-family="monospace" font-size="12" fill="#e6edf3">"That's a headline number. Walk me through the specific trade-off you made to get</text>
-  <text x="90" y="154" font-family="monospace" font-size="12" fill="#e6edf3">there. What did you give up, and was it the right call in hindsight?"</text>
+  <!-- Event banner — the scenario event fired -->
+  <rect x="20" y="157" width="780" height="26" rx="4" fill="#1c0a00" stroke="#451a03" stroke-width="1"/>
+  <text x="34" y="174" font-family="system-ui,sans-serif" font-size="11" fill="#fbbf24">Scenario event:  grudging_respect  triggered  ·  Turn 4</text>
+  <text x="794" y="174" font-family="system-ui,sans-serif" font-size="13" fill="#fbbf24" text-anchor="end">×</text>
 
-  <!-- State line -->
-  <rect x="32" y="170" width="736" height="28" fill="#161b22" rx="4"/>
-  <text x="48" y="189" font-family="monospace" font-size="12" fill="#8b949e">State:</text>
-  <text x="98" y="189" font-family="monospace" font-size="12" fill="#3fb950">credibility +12</text>
-  <text x="210" y="189" font-family="monospace" font-size="12" fill="#8b949e">·</text>
-  <text x="224" y="189" font-family="monospace" font-size="12" fill="#f78166">pressure_level +1</text>
-  <text x="350" y="189" font-family="monospace" font-size="12" fill="#8b949e">·</text>
-  <text x="364" y="189" font-family="monospace" font-size="12" fill="#e6edf3">composure 65</text>
+  <!-- Transcript -->
+  <rect x="20" y="192" width="780" height="188" rx="6" fill="#0c0a09" stroke="#27272a" stroke-width="1"/>
 
-  <!-- Divider -->
-  <line x1="32" y1="214" x2="768" y2="214" stroke="#21262d" stroke-width="1"/>
+  <!-- Turn 3 · NPC -->
+  <text x="34" y="214" font-family="system-ui,sans-serif" font-size="10" fill="#6ee7b7" letter-spacing="0.05em">TURN 3  ·  NPC  (skeptical)</text>
+  <rect x="34" y="220" width="748" height="42" rx="4" fill="#052e16"/>
+  <text x="46" y="236" font-family="system-ui,sans-serif" font-size="12" fill="#f4f4f5">"That's a headline number. Walk me through the specific trade-off you made to get there.</text>
+  <text x="46" y="252" font-family="system-ui,sans-serif" font-size="12" fill="#f4f4f5">What did you give up, and was it the right call in hindsight?"</text>
 
-  <!-- Turn 2 -->
-  <text x="32" y="244" font-family="monospace" font-size="12" fill="#3fb950">You:</text>
-  <text x="80" y="244" font-family="monospace" font-size="12" fill="#e6edf3">"We moved from monolithic batch jobs to an event-driven pipeline. We traded</text>
-  <text x="80" y="260" font-family="monospace" font-size="12" fill="#e6edf3">strict ordering for parallelism — acceptable for analytics, not for billing."</text>
+  <!-- Turn 4 · Player -->
+  <text x="34" y="278" font-family="system-ui,sans-serif" font-size="10" fill="#a78bfa" letter-spacing="0.05em">TURN 4  ·  YOU</text>
+  <rect x="34" y="284" width="748" height="42" rx="4" fill="#1e1b4b"/>
+  <text x="46" y="300" font-family="system-ui,sans-serif" font-size="12" fill="#f4f4f5">"We moved from monolithic batch jobs to an event-driven pipeline. We traded strict ordering</text>
+  <text x="46" y="316" font-family="system-ui,sans-serif" font-size="12" fill="#f4f4f5">for parallelism — acceptable for analytics, not for billing."</text>
 
-  <!-- NPC response -->
-  <text x="32" y="286" font-family="monospace" font-size="12" fill="#f78166">Victor:</text>
-  <text x="90" y="286" font-family="monospace" font-size="12" fill="#e6edf3">"All right. Let's say you're right about that. How does it hold up if you scale</text>
-  <text x="90" y="302" font-family="monospace" font-size="12" fill="#e6edf3">from a hundred thousand to ten million users in eighteen months?"</text>
+  <!-- Turn 5 · NPC streaming -->
+  <text x="34" y="342" font-family="system-ui,sans-serif" font-size="10" fill="#6ee7b7" letter-spacing="0.05em">TURN 5  ·  NPC  ·  Responding…</text>
+  <rect x="34" y="348" width="748" height="24" rx="4" fill="#052e16" opacity="0.7"/>
+  <text x="46" y="364" font-family="system-ui,sans-serif" font-size="12" fill="#f4f4f5" opacity="0.8">"All right. How does it hold up if you scale from a hundred thousand to ten million users…</text>
 
-  <!-- State line -->
-  <rect x="32" y="318" width="736" height="28" fill="#161b22" rx="4"/>
-  <text x="48" y="337" font-family="monospace" font-size="12" fill="#8b949e">State:</text>
-  <text x="98" y="337" font-family="monospace" font-size="12" fill="#3fb950">credibility +20</text>
-  <text x="210" y="337" font-family="monospace" font-size="12" fill="#8b949e">·</text>
-  <text x="224" y="337" font-family="monospace" font-size="12" fill="#3fb950">grudging_respect triggered</text>
-  <text x="430" y="337" font-family="monospace" font-size="12" fill="#8b949e">·</text>
-  <text x="444" y="337" font-family="monospace" font-size="12" fill="#e6edf3">composure 70</text>
+  <!-- State variables panel -->
+  <rect x="20" y="390" width="780" height="78" rx="6" fill="#0c0a09" stroke="#27272a" stroke-width="1"/>
+  <text x="34" y="408" font-family="system-ui,sans-serif" font-size="10" fill="#71717a">NPC state variables</text>
 
-  <!-- Bottom label -->
-  <text x="400" y="380" font-family="monospace" font-size="11" fill="#484f58" text-anchor="middle">[ Demo GIF — replace with animated recording at launch ]</text>
+  <!-- credibility 58 / 100 -->
+  <text x="34" y="430" font-family="system-ui,sans-serif" font-size="10" fill="#a1a1aa">credibility</text>
+  <text x="34" y="448" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="#f4f4f5">58<tspan font-size="9" font-weight="400" fill="#71717a"> / 100</tspan></text>
+  <rect x="34" y="453" width="120" height="4" rx="2" fill="#27272a"/>
+  <rect x="34" y="453" width="70" height="4" rx="2" fill="#22c55e"/>
+
+  <!-- composure 66 / 100 -->
+  <text x="200" y="430" font-family="system-ui,sans-serif" font-size="10" fill="#a1a1aa">composure</text>
+  <text x="200" y="448" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="#f4f4f5">66<tspan font-size="9" font-weight="400" fill="#71717a"> / 100</tspan></text>
+  <rect x="200" y="453" width="120" height="4" rx="2" fill="#27272a"/>
+  <rect x="200" y="453" width="79" height="4" rx="2" fill="#22c55e"/>
+
+  <!-- pressure_level 5 / 10 -->
+  <text x="366" y="430" font-family="system-ui,sans-serif" font-size="10" fill="#a1a1aa">pressure_level</text>
+  <text x="366" y="448" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="#f4f4f5">5<tspan font-size="9" font-weight="400" fill="#71717a"> / 10</tspan></text>
+  <rect x="366" y="453" width="120" height="4" rx="2" fill="#27272a"/>
+  <rect x="366" y="453" width="60" height="4" rx="2" fill="#f97316"/>
+
+  <!-- Event flags -->
+  <rect x="700" y="420" width="86" height="40" rx="4" fill="#1c0a00" stroke="#451a03" stroke-width="1"/>
+  <text x="712" y="436" font-family="system-ui,sans-serif" font-size="10" fill="#fbbf24">Event flags:</text>
+  <text x="712" y="452" font-family="system-ui,sans-serif" font-size="10" fill="#fbbf24">grudging_respect</text>
 </svg>
