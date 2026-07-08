@@ -503,6 +503,11 @@ def parse_turn_output(
     # Phase 4: Content-safety retry (recoverable violations only)
     # Any hard violation bypasses retry and goes straight to safety stop.
     # ------------------------------------------------------------------
+    # If the retry itself returns a hard violation we must stop rather than
+    # redirect; track the worst-case violation found during retry here so
+    # Phase 5 can use it even when the original was recoverable-only.
+    retry_hard_violation: Optional[OutputViolation] = None
+
     if not validation.has_hard_violation and runtime is not None:
         logger.debug("Requesting content-safety retry from runtime")
         try:
@@ -521,6 +526,10 @@ def parse_turn_output(
                         category=violation.category,
                     )
                     return retry_result
+                if retry_validation.has_hard_violation:
+                    retry_hard_violation = next(
+                        v for v in retry_validation.violations if not v.is_recoverable
+                    )
                 retry_v = retry_validation.first_violation
                 _emit(
                     "content_safety_retry_failure",
@@ -546,6 +555,14 @@ def parse_turn_output(
         hard_v = next(v for v in validation.violations if not v.is_recoverable)
         _emit("safety_stop_applied", reason=hard_v.reason, category=hard_v.category)
         return _make_safety_stop(hard_v.reason)
+
+    if retry_hard_violation is not None:
+        _emit(
+            "safety_stop_applied",
+            reason=retry_hard_violation.reason,
+            category=retry_hard_violation.category,
+        )
+        return _make_safety_stop(retry_hard_violation.reason)
 
     _emit("safe_redirect_applied", reason=violation.reason, category=violation.category)
     return _make_safe_redirect()

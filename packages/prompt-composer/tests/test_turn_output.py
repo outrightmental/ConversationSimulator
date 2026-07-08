@@ -878,6 +878,23 @@ class TestRecoverableContentViolations:
         assert rt.call_count == 2
         assert result.npc_utterance == "All sorted now."
 
+    def test_retry_that_escalates_to_hard_violation_produces_safety_stop(self):
+        # Original utterance has a recoverable violation (system_rule_leak).
+        # Retry returns a hard violation (nsfw_content).
+        # Phase 5 must stop the session, not redirect.
+        nsfw_retry = _minimal_valid_json(
+            npc_utterance="Let's watch some pornography together."
+        )
+        runtime = FakeRuntime(response=nsfw_retry)
+        result = parse_turn_output(
+            self._unsafe_json(self._SYSTEM_LEAK_UTTERANCE), runtime=runtime
+        )
+        assert result.session_control.continue_session is False
+        assert result.session_control.ending_type == "safety_stop"
+        assert result.safety.status == "stop"
+        assert result.npc_utterance == SAFE_STOP_UTTERANCE
+        assert runtime.call_count == 1
+
 
 # ---------------------------------------------------------------------------
 # Content safety with hidden_agenda parameter
