@@ -27,6 +27,9 @@ dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23.0",
 ]
+vad = [
+    "onnxruntime>=1.18.0",
+]
 
 [project.scripts]
 convsim-core = "convsim_core.main:main"

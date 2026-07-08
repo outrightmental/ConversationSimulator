@@ -8,6 +8,8 @@ interface MicButtonProps {
   recordingSeconds: number
   isSubmitting: boolean
   disabled?: boolean
+  /** When true, button triggers start only; VAD drives the stop. */
+  isHandsFree?: boolean
   onRequestPermission: () => void
   onRecordStart: () => void
   onRecordStop: () => void
@@ -37,6 +39,7 @@ export default function MicButton({
   recordingSeconds,
   isSubmitting,
   disabled = false,
+  isHandsFree = false,
   onRequestPermission,
   onRecordStart,
   onRecordStop,
@@ -74,8 +77,12 @@ export default function MicButton({
   }
 
   const label = isRecording
-    ? `Recording ${formatDuration(recordingSeconds)} of ${MAX_RECORDING_SECONDS}s — release to stop`
-    : 'Hold to record (or press Space when not typing)'
+    ? isHandsFree
+      ? `Recording ${formatDuration(recordingSeconds)} — auto-stops on silence`
+      : `Recording ${formatDuration(recordingSeconds)} of ${MAX_RECORDING_SECONDS}s — release to stop`
+    : isHandsFree
+      ? 'Tap to start recording (auto-stops on silence)'
+      : 'Hold to record (or press Space when not typing)'
 
   return (
     <>
@@ -85,8 +92,8 @@ export default function MicButton({
         aria-pressed={isRecording}
         disabled={disabled && !isRecording}
         onPointerDown={onRecordStart}
-        onPointerUp={onRecordStop}
-        onPointerLeave={onRecordStop}
+        onPointerUp={isHandsFree ? undefined : onRecordStop}
+        onPointerLeave={isHandsFree ? undefined : onRecordStop}
         onKeyDown={(e) => {
           if (e.code === 'Space' && !e.repeat) {
             e.preventDefault()
@@ -94,14 +101,18 @@ export default function MicButton({
           }
         }}
         onKeyUp={(e) => {
-          if (e.code === 'Space') {
+          if (e.code === 'Space' && !isHandsFree) {
             e.preventDefault()
             onRecordStop()
           }
         }}
         style={isRecording ? recordingStyle : readyStyle}
       >
-        {isRecording ? `● ${formatDuration(recordingSeconds)}` : '🎙 Hold'}
+        {isRecording
+          ? `● ${formatDuration(recordingSeconds)}`
+          : isHandsFree
+            ? '🎙 Tap'
+            : '🎙 Hold'}
       </button>
       <span role="status" aria-live="polite" style={srOnly}>
         {isRecording ? `Recording ${formatDuration(recordingSeconds)}` : ''}

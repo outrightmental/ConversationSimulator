@@ -10,13 +10,21 @@ vi.mock('../hooks/useMicCapture', () => ({
 vi.mock('../api/client', () => ({
   apiClient: {
     uploadAudio: vi.fn().mockResolvedValue({ transcript: null, status: 'unavailable' }),
+    vadHealth: vi.fn().mockResolvedValue({ status: 'unavailable', worker_id: 'fake', worker_name: 'Fake VAD', checked_at: '' }),
+    vadCalibrate: vi.fn().mockResolvedValue({ recommended_threshold: 0.05, noise_floor: 0.01, worker_id: 'fake', status: 'ok' }),
   },
 }))
 
+vi.mock('../hooks/useVad', () => ({
+  useVad: vi.fn(),
+}))
+
 import { useMicCapture } from '../hooks/useMicCapture'
+import { useVad } from '../hooks/useVad'
 import { apiClient } from '../api/client'
 import VoiceInput from '../components/VoiceInput'
 import type { MicPermission } from '../hooks/useMicCapture'
+import type { UseVadReturn } from '../hooks/useVad'
 
 function makeMicState(overrides: Partial<ReturnType<typeof useMicCapture>> = {}) {
   return {
@@ -24,6 +32,7 @@ function makeMicState(overrides: Partial<ReturnType<typeof useMicCapture>> = {})
     isRecording: false,
     recordingSeconds: 0,
     error: null,
+    stream: null,
     requestPermission: vi.fn(),
     startRecording: vi.fn(),
     stopRecording: vi.fn(),
@@ -31,9 +40,26 @@ function makeMicState(overrides: Partial<ReturnType<typeof useMicCapture>> = {})
   }
 }
 
+function makeVadState(overrides: Partial<UseVadReturn> = {}): UseVadReturn {
+  return {
+    settings: { mode: 'ptt', threshold: 0.05, silenceDurationMs: 1500, calibratedAt: null },
+    vadState: 'idle',
+    isCalibrating: false,
+    backendAvailable: false,
+    setMode: vi.fn(),
+    setThreshold: vi.fn(),
+    setSilenceDurationMs: vi.fn(),
+    startSilenceDetection: vi.fn(),
+    stopSilenceDetection: vi.fn(),
+    calibrate: vi.fn().mockResolvedValue(undefined),
+    ...overrides,
+  }
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(useMicCapture).mockReturnValue(makeMicState())
+  vi.mocked(useVad).mockReturnValue(makeVadState())
   vi.mocked(apiClient.uploadAudio).mockResolvedValue({ transcript: null, status: 'unavailable' })
 })
 
@@ -425,6 +451,67 @@ describe('VoiceInput — audio upload flow', () => {
 
     expect(onSubmit).not.toHaveBeenCalled()
     expect(screen.getByRole('textbox')).toHaveValue('hello world')
+  })
+})
+
+describe('VoiceInput — hands-free Space key re-entry guard', () => {
+  it('does not call startSilenceDetection again when Space is pressed while already recording in hands-free mode', () => {
+    const startSilenceDetection = vi.fn()
+    vi.mocked(useVad).mockReturnValue(
+      makeVadState({
+        settings: { mode: 'hands-free', threshold: 0.05, silenceDurationMs: 1500, calibratedAt: null },
+        vadState: 'listening',
+        startSilenceDetection,
+      }),
+    )
+    vi.mocked(useMicCapture).mockReturnValue(
+      makeMicState({ isRecording: true, stream: {} as MediaStream }),
+    )
+
+    render(<VoiceInput />)
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+
+    // Space pressed while already recording — must not reset VAD silence detection
+    fireEvent.keyDown(document, { code: 'Space' })
+
+    expect(startSilenceDetection).not.toHaveBeenCalled()
+  })
+})
+
+describe('VoiceInput — VAD status indicator', () => {
+  it('shows stopping state even when isRecording=false (auto-stop moment)', () => {
+    // When the silence timer fires, React 18 batches vadState='stopping' together with
+    // isRecording=false. The indicator must not gate on isRecording or the state is invisible.
+    vi.mocked(useVad).mockReturnValue(
+      makeVadState({ settings: { mode: 'hands-free', threshold: 0.05, silenceDurationMs: 1500, calibratedAt: null }, vadState: 'stopping' }),
+    )
+    vi.mocked(useMicCapture).mockReturnValue(makeMicState({ isRecording: false }))
+
+    render(<VoiceInput />)
+
+    expect(screen.getByRole('status', { name: /vad status: auto-stopping/i })).toBeInTheDocument()
+  })
+
+  it('shows listening state during hands-free recording', () => {
+    vi.mocked(useVad).mockReturnValue(
+      makeVadState({ settings: { mode: 'hands-free', threshold: 0.05, silenceDurationMs: 1500, calibratedAt: null }, vadState: 'listening' }),
+    )
+    vi.mocked(useMicCapture).mockReturnValue(makeMicState({ isRecording: true }))
+
+    render(<VoiceInput />)
+
+    expect(screen.getByRole('status', { name: /vad status: listening/i })).toBeInTheDocument()
+  })
+
+  it('shows idle state between recordings in hands-free mode', () => {
+    vi.mocked(useVad).mockReturnValue(
+      makeVadState({ settings: { mode: 'hands-free', threshold: 0.05, silenceDurationMs: 1500, calibratedAt: null }, vadState: 'idle' }),
+    )
+    vi.mocked(useMicCapture).mockReturnValue(makeMicState({ isRecording: false }))
+
+    render(<VoiceInput />)
+
+    expect(screen.getByRole('status', { name: /vad status: idle/i })).toBeInTheDocument()
   })
 })
 
