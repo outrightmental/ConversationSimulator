@@ -96,20 +96,22 @@ describe('loadPack — valid pack', () => {
     expect(pack.scenarios).toHaveLength(2);
   });
 
-  it('accepts a portrait path using ../ relative to the NPC file directory', () => {
-    // npcs/test_npc.yaml with portrait: ../assets/portrait.png
+  it('accepts a portrait path relative to the pack root', () => {
+    // Portrait paths are pack-root-relative per the NPC schema ("within the pack").
+    // npcs/test_npc.yaml with portrait: assets/portrait.png
     // resolves to <packRoot>/assets/portrait.png — inside the pack root.
     const dir = track(makeTempPackDir({
-      npcYaml: VALID_NPC_YAML + 'portrait: ../assets/portrait.png\n',
+      npcYaml: VALID_NPC_YAML + 'portrait: assets/portrait.png\n',
     }));
     expect(() => loadPack(dir)).not.toThrow();
   });
 
-  it('accepts a scene background path using ../ relative to the scene file directory', () => {
-    // scenes/test_scene.yaml with background: ../assets/bg.png
+  it('accepts a scene background path relative to the pack root', () => {
+    // Background paths are pack-root-relative per the scene schema ("within the pack assets directory").
+    // scenes/test_scene.yaml with background: assets/bg.png
     // resolves to <packRoot>/assets/bg.png — inside the pack root.
     const dir = track(makeTempPackDir({
-      sceneYaml: VALID_SCENE_YAML + 'background: ../assets/bg.png\n',
+      sceneYaml: VALID_SCENE_YAML + 'background: assets/bg.png\n',
       scenarioYamls: { 'scenario_with_scene.yaml': VALID_SCENARIO_WITH_SCENE_YAML },
     }));
     expect(() => loadPack(dir)).not.toThrow();

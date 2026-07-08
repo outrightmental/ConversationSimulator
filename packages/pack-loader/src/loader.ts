@@ -77,7 +77,8 @@ export function loadPack(packDir: string, kind: PackRootKind = 'local-dev'): Loa
     if (!npcs.has(npcAbsPath)) {
       const npc = parseAndValidate<RawNpc>(readPackFile(npcAbsPath), 'npc', npcAbsPath);
       if (npc.portrait !== undefined) {
-        resolveRef(dirname(npcAbsPath), normalPackDir, npc.portrait);
+        // Portrait paths are pack-root-relative per the NPC schema ("within the pack").
+        resolveRef(normalPackDir, normalPackDir, npc.portrait);
       }
       npcs.set(npcAbsPath, npc);
     }
@@ -99,7 +100,8 @@ export function loadPack(packDir: string, kind: PackRootKind = 'local-dev'): Loa
       if (!scenes.has(sceneAbsPath)) {
         const scene = parseAndValidate<RawScene>(readPackFile(sceneAbsPath), 'scene', sceneAbsPath);
         if (scene.background !== undefined) {
-          resolveRef(dirname(sceneAbsPath), normalPackDir, scene.background);
+          // Background paths are pack-root-relative per the scene schema ("within the pack assets directory").
+          resolveRef(normalPackDir, normalPackDir, scene.background);
         }
         scenes.set(sceneAbsPath, scene);
       }
