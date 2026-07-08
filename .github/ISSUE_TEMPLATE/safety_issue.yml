@@ -14,12 +14,12 @@ body:
         that escapes the sandbox, privilege escalation, or data exfiltration),
         please use
         [GitHub private vulnerability reporting](https://github.com/outrightmental/ConversationSimulator/security/advisories/new)
-        or follow the process in [SECURITY.md](../SECURITY.md) instead.
+        or follow the process in [SECURITY.md](https://github.com/outrightmental/ConversationSimulator/blob/main/SECURITY.md) instead.
 
         For general safety content concerns, this public issue template is
         appropriate. For concerns that require confidential handling, contact
         the maintainers directly as described in
-        [CODE_OF_CONDUCT.md](../CODE_OF_CONDUCT.md).
+        [CODE_OF_CONDUCT.md](https://github.com/outrightmental/ConversationSimulator/blob/main/CODE_OF_CONDUCT.md).
 
   - type: dropdown
     id: concern-type

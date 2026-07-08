@@ -11,8 +11,8 @@ body:
         Before submitting:
         - Run `node packages/scenario-schema/tests/validate-packs.js <path-to-your-pack>`
         - Run `convsim-validate-pack <path-to-your-pack>` (requires convsim-core)
-        - Read [docs/official-pack-quality-bar.md](../docs/official-pack-quality-bar.md)
-        - Read [docs/safety-policy.md](../docs/safety-policy.md)
+        - Read [docs/official-pack-quality-bar.md](https://github.com/outrightmental/ConversationSimulator/blob/main/docs/official-pack-quality-bar.md)
+        - Read [docs/safety-policy.md](https://github.com/outrightmental/ConversationSimulator/blob/main/docs/safety-policy.md)
 
         You will also need to open a pull request containing the pack files.
         Link this issue in the PR body.

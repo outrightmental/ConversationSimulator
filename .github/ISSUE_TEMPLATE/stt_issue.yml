@@ -9,7 +9,7 @@ body:
         Use this template for issues with microphone input, transcription
         accuracy, silence detection, or the STT service.
 
-        See [docs/voice-smoke-tests.md](../docs/voice-smoke-tests.md) for
+        See [docs/voice-smoke-tests.md](https://github.com/outrightmental/ConversationSimulator/blob/main/docs/voice-smoke-tests.md) for
         the manual test suite.
 
   - type: textarea
