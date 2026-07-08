@@ -75,3 +75,30 @@ def test_health_privacy_posture_has_all_fields(client):
     assert "save_transcripts" in privacy
     assert "save_raw_audio" in privacy
     assert "crash_logging_enabled" in privacy
+
+
+def test_health_stt_field_present(client):
+    body = client.get("/api/health").json()
+    assert "stt" in body
+
+
+def test_health_stt_worker_id(client):
+    stt = client.get("/api/health").json()["stt"]
+    # Default config uses whisper_cpp; no binary in test env → unavailable.
+    assert stt["worker_id"] == "whisper_cpp"
+
+
+def test_health_stt_worker_name(client):
+    stt = client.get("/api/health").json()["stt"]
+    assert "whisper" in stt["worker_name"].lower()
+
+
+def test_health_stt_status_unavailable_when_no_runtime(client):
+    stt = client.get("/api/health").json()["stt"]
+    # No binary installed in the test environment.
+    assert stt["status"] == "unavailable"
+
+
+def test_health_stt_checked_at_present(client):
+    stt = client.get("/api/health").json()["stt"]
+    assert stt["checked_at"]

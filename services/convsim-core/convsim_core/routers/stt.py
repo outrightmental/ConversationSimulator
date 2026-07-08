@@ -1,35 +1,53 @@
 # SPDX-License-Identifier: Apache-2.0
-from fastapi import APIRouter, File, HTTPException, Request, UploadFile
+import logging
+from typing import Literal
+
+from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel
+
+from convsim_core.stt.types import SttError, SttRequest, SttUnavailableError
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 _MAX_AUDIO_BYTES = 25 * 1024 * 1024  # 25 MB hard cap
 
-_ALLOWED_CONTENT_TYPES = {
-    "audio/webm",
-    "audio/ogg",
-    "audio/wav",
-    "audio/mpeg",
-    "audio/mp4",
-    "application/octet-stream",
+_MIME_TO_EXT: dict[str, str] = {
+    "audio/webm": "webm",
+    "audio/ogg": "ogg",
+    "audio/wav": "wav",
+    "audio/mpeg": "mp3",
+    "audio/mp4": "mp4",
+    "application/octet-stream": "bin",
 }
+
+# Derived from _MIME_TO_EXT so the allowlist and extension map never drift apart.
+_ALLOWED_CONTENT_TYPES = set(_MIME_TO_EXT)
 
 
 class SttUploadResponse(BaseModel):
     transcript: str | None = None
-    status: str
+    status: Literal["ok", "unavailable", "error"]
+    language: str | None = None
+    confidence: float | None = None
+    duration_ms: float | None = None
+    processing_ms: float | None = None
 
 
 @router.post("/api/stt/upload", response_model=SttUploadResponse)
-async def upload_audio(request: Request, audio: UploadFile = File(...)) -> SttUploadResponse:
-    """Accept a local audio recording and return a transcript.
+async def upload_audio(
+    request: Request,
+    audio: UploadFile = File(...),
+    language: str | None = Form(None),
+) -> SttUploadResponse:
+    """Accept a local audio recording and return a transcript via whisper.cpp.
 
-    Audio is read into memory and immediately discarded — it is never written to
-    disk unless save_raw_audio is explicitly enabled in settings (future).  The
-    actual transcript is produced by the local whisper.cpp runtime once that
-    integration is wired up; for now the endpoint returns status='received' with
-    a null transcript as a placeholder.
+    Audio is processed locally and never sent to remote services. If the STT
+    runtime or model is unavailable, the endpoint returns status='unavailable'
+    with a null transcript (text-only fallback) rather than an HTTP error.
+    The optional `language` form field passes a BCP-47 / whisper language code
+    from scenario setup to the STT worker when provided.
     """
     app_settings = request.app.state.app_settings
 
@@ -43,7 +61,26 @@ async def upload_audio(request: Request, audio: UploadFile = File(...)) -> SttUp
 
     # Raw audio is intentionally not persisted unless the user opts in.
     if app_settings.save_raw_audio:
-        # Future: pass `data` to local storage or the STT runtime here.
-        pass
+        pass  # Future: pass data to local storage here.
 
-    return SttUploadResponse(transcript=None, status="received")
+    stt_worker = request.app.state.stt_worker
+    audio_format = _MIME_TO_EXT.get(content_type, "bin")
+
+    try:
+        result = await stt_worker.transcribe(
+            SttRequest(audio=data, audio_format=audio_format, language=language)
+        )
+        return SttUploadResponse(
+            transcript=result.transcript,
+            status="ok",
+            language=result.language,
+            confidence=result.confidence,
+            duration_ms=result.duration_ms,
+            processing_ms=result.processing_ms,
+        )
+    except SttUnavailableError as exc:
+        logger.info("STT worker unavailable (binary or model not installed): %s", exc)
+        return SttUploadResponse(transcript=None, status="unavailable")
+    except SttError as exc:
+        logger.warning("STT worker error during transcription: %s", exc, exc_info=True)
+        return SttUploadResponse(transcript=None, status="error")
