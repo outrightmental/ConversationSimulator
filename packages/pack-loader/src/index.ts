@@ -4,3 +4,4 @@ export * from './types.js';
 export * from './resolver.js';
 export * from './loader.js';
 export { PackIndex } from './db.js';
+export * from './fixture-loader.js';

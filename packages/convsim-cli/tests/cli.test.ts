@@ -325,29 +325,238 @@ describe('validate-pack — path handling', () => {
 // test-pack
 // ===========================================================================
 
-describe('test-pack', () => {
-  it('returns exit code 1 (not implemented)', () => {
-    const code = runTestPack('/some/path', false);
-    expect(code).toBe(1);
+describe('test-pack — valid pack with no test fixtures', () => {
+  it('returns exit code 0 when the pack has no fixtures', () => {
+    const packDir = track(makeValidPackDir());
+    const code = runTestPack(packDir, false);
+    expect(code).toBe(0);
   });
 
-  it('human output mentions the runner is not yet implemented', () => {
-    const { stderr } = capture(() => runTestPack('/some/path', false));
-    expect(stderr).toContain('not yet implemented');
-    expect(stderr).toContain('validate-pack');
+  it('human output shows 0 fixtures total', () => {
+    const packDir = track(makeValidPackDir());
+    const { stdout } = capture(() => runTestPack(packDir, false));
+    expect(stdout).toContain('0 fixtures');
   });
 
-  it('JSON output has status not_implemented', () => {
+  it('JSON output has pack_id and zero failed fixtures', () => {
+    const packDir = track(makeValidPackDir());
     let captured = '';
     const spy = vi.spyOn(process.stdout, 'write').mockImplementation((d) => {
       captured += String(d);
       return true;
     });
-    runTestPack('/some/path', true);
+    runTestPack(packDir, true);
     spy.mockRestore();
     const result = JSON.parse(captured) as Record<string, unknown>;
-    expect(result['status']).toBe('not_implemented');
-    expect(typeof result['message']).toBe('string');
+    expect(result['pack_id']).toBe('test.cli_pack');
+    expect(result['failed']).toBe(0);
+    expect(result['fixture_count']).toBe(0);
+  });
+});
+
+describe('test-pack — pack with a passing fixture', () => {
+  function makePackWithPassingFixture(): string {
+    const packDir = makeValidPackDir();
+    mkdirSync(join(packDir, 'tests'), { recursive: true });
+    writeFileSync(
+      join(packDir, 'tests', 'smoke_cli_test.yaml'),
+      [
+        'schema_version: "0.1"',
+        'fixture_id: smoke_cli_test',
+        'scenario_id: cli_test_scenario',
+        'description: Smoke test for CLI test scenario.',
+        'turns:',
+        '  - turn: 1',
+        '    player_input: Hello.',
+        '    expect:',
+        '      session_control: continue_session',
+        '      safety_status: ok',
+        'static_assertions:',
+        '  - description: Opening line is non-empty',
+        '    path: opening.npc_says',
+        '    check: non_empty_string',
+      ].join('\n'),
+    );
+    return packDir;
+  }
+
+  it('returns exit code 0', () => {
+    const packDir = track(makePackWithPassingFixture());
+    const code = runTestPack(packDir, false);
+    expect(code).toBe(0);
+  });
+
+  it('human output shows the fixture as passed', () => {
+    const packDir = track(makePackWithPassingFixture());
+    const { stdout } = capture(() => runTestPack(packDir, false));
+    expect(stdout).toContain('✓');
+    expect(stdout).toContain('smoke_cli_test');
+    expect(stdout).toContain('1 passed');
+  });
+
+  it('JSON output shows fixture_count=1, passed=1, failed=0', () => {
+    const packDir = track(makePackWithPassingFixture());
+    let captured = '';
+    const spy = vi.spyOn(process.stdout, 'write').mockImplementation((d) => {
+      captured += String(d);
+      return true;
+    });
+    runTestPack(packDir, true);
+    spy.mockRestore();
+    const result = JSON.parse(captured) as Record<string, unknown>;
+    expect(result['fixture_count']).toBe(1);
+    expect(result['passed']).toBe(1);
+    expect(result['failed']).toBe(0);
+    const fixtures = result['fixtures'] as unknown[];
+    expect(fixtures.length).toBe(1);
+    expect((fixtures[0] as Record<string, unknown>)['status']).toBe('passed');
+  });
+});
+
+describe('test-pack — pack with a failing static assertion', () => {
+  function makePackWithFailingFixture(): string {
+    const packDir = makeValidPackDir();
+    mkdirSync(join(packDir, 'tests'), { recursive: true });
+    writeFileSync(
+      join(packDir, 'tests', 'bad_fixture.yaml'),
+      [
+        'schema_version: "0.1"',
+        'fixture_id: bad_fixture',
+        'scenario_id: cli_test_scenario',
+        'description: Fixture with a failing static assertion.',
+        'turns:',
+        '  - turn: 1',
+        '    player_input: Hi.',
+        'static_assertions:',
+        '  - description: This will always fail',
+        '    path: opening.npc_says',
+        '    check: "equals this_value_does_not_exist"',
+      ].join('\n'),
+    );
+    return packDir;
+  }
+
+  it('returns exit code 1', () => {
+    const packDir = track(makePackWithFailingFixture());
+    const code = runTestPack(packDir, false);
+    expect(code).toBe(1);
+  });
+
+  it('human output shows the fixture as failed with details', () => {
+    const packDir = track(makePackWithFailingFixture());
+    const { stdout, stderr } = capture(() => runTestPack(packDir, false));
+    expect(stdout + stderr).toContain('✗');
+    expect(stdout + stderr).toContain('bad_fixture');
+  });
+
+  it('JSON output shows failed=1 and failure details', () => {
+    const packDir = track(makePackWithFailingFixture());
+    let captured = '';
+    const spy = vi.spyOn(process.stdout, 'write').mockImplementation((d) => {
+      captured += String(d);
+      return true;
+    });
+    runTestPack(packDir, true);
+    spy.mockRestore();
+    const result = JSON.parse(captured) as Record<string, unknown>;
+    expect(result['failed']).toBe(1);
+    const fixtures = result['fixtures'] as Array<Record<string, unknown>>;
+    expect(fixtures[0]?.['status']).toBe('failed');
+    const failures = fixtures[0]?.['failures'] as unknown[];
+    expect(failures.length).toBeGreaterThan(0);
+  });
+});
+
+describe('test-pack — fixture references non-existent scenario (placeholder)', () => {
+  function makePackWithPlaceholderFixture(): string {
+    const packDir = makeValidPackDir();
+    mkdirSync(join(packDir, 'tests'), { recursive: true });
+    writeFileSync(
+      join(packDir, 'tests', 'smoke_placeholder.yaml'),
+      [
+        'schema_version: "0.1"',
+        'fixture_id: smoke_placeholder',
+        'scenario_id: placeholder',
+        'description: Placeholder smoke test.',
+        'turns:',
+        '  - turn: 1',
+        '    player_input: Hello.',
+      ].join('\n'),
+    );
+    return packDir;
+  }
+
+  it('returns exit code 0 (skipped counts as success)', () => {
+    const packDir = track(makePackWithPlaceholderFixture());
+    const code = runTestPack(packDir, false);
+    expect(code).toBe(0);
+  });
+
+  it('JSON output shows skipped=1, failed=0', () => {
+    const packDir = track(makePackWithPlaceholderFixture());
+    let captured = '';
+    const spy = vi.spyOn(process.stdout, 'write').mockImplementation((d) => {
+      captured += String(d);
+      return true;
+    });
+    runTestPack(packDir, true);
+    spy.mockRestore();
+    const result = JSON.parse(captured) as Record<string, unknown>;
+    expect(result['skipped']).toBe(1);
+    expect(result['failed']).toBe(0);
+    const fixtures = result['fixtures'] as Array<Record<string, unknown>>;
+    expect(fixtures[0]?.['status']).toBe('skipped');
+  });
+});
+
+describe('test-pack — non-existent pack path', () => {
+  it('returns exit code 1', () => {
+    const code = runTestPack('/tmp/this-does-not-exist-convsim-test-pack', false);
+    expect(code).toBe(1);
+  });
+
+  it('JSON output has error status', () => {
+    let captured = '';
+    const spy = vi.spyOn(process.stdout, 'write').mockImplementation((d) => {
+      captured += String(d);
+      return true;
+    });
+    runTestPack('/tmp/this-does-not-exist-convsim-test-pack', true);
+    spy.mockRestore();
+    const result = JSON.parse(captured) as Record<string, unknown>;
+    expect(result['status']).toBe('error');
+  });
+});
+
+// ===========================================================================
+// test-pack — official packs (acceptance: deterministic tests pass without model)
+// ===========================================================================
+
+describe('test-pack — official packs', () => {
+  const repoRoot = fileURLToPath(new URL('../../../', import.meta.url));
+  const officialPacksDir = join(repoRoot, 'packs', 'official');
+  const officialPacks = readdirSync(officialPacksDir).filter((name) =>
+    statSync(join(officialPacksDir, name)).isDirectory(),
+  );
+
+  it.each(officialPacks)('returns exit code 0 for official pack: %s', (packName) => {
+    const code = runTestPack(join(officialPacksDir, packName), false);
+    expect(code).toBe(0);
+  });
+
+  it.each(officialPacks)('JSON output is well-formed for official pack: %s', (packName) => {
+    let captured = '';
+    const spy = vi.spyOn(process.stdout, 'write').mockImplementation((d) => {
+      captured += String(d);
+      return true;
+    });
+    const code = runTestPack(join(officialPacksDir, packName), true);
+    spy.mockRestore();
+    expect(code).toBe(0);
+    const result = JSON.parse(captured) as Record<string, unknown>;
+    expect(result['failed']).toBe(0);
+    expect(typeof result['pack_id']).toBe('string');
+    expect(typeof result['fixture_count']).toBe('number');
   });
 });
 
