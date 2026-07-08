@@ -136,7 +136,7 @@ workplace-conversations/
 ├── safety/
 │   └── interview_safety.yaml            # Safety policy
 ├── scenes/
-│   └── conference_room.yaml             # Optional — scene/setting context
+│   └── meridian_conference_room.yaml    # Optional — scene/setting context
 ├── tests/
 │   └── smoke_behavioral_interview.yaml  # Smoke test per entry scenario
 └── assets/
