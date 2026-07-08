@@ -157,6 +157,33 @@ describe('Home — no-pack state', () => {
   })
 })
 
+describe('Home — offline readiness', () => {
+  it('shows network required as No when network_required is false', async () => {
+    stubFetches(makeHealth({ network_required: false }), makePacks(0))
+    renderHome()
+    expect(await screen.findByText(liText('Network required to play: No'))).toBeInTheDocument()
+  })
+
+  it('shows network required as Yes when network_required is true', async () => {
+    stubFetches(makeHealth({ network_required: true }), makePacks(0))
+    renderHome()
+    expect(await screen.findByText(liText('Network required to play: Yes'))).toBeInTheDocument()
+  })
+})
+
+describe('Home — status card links', () => {
+  it('has at least five links to /settings covering LLM, STT, TTS, install, and import', async () => {
+    stubFetches(makeHealth(), makePacks(0))
+    renderHome()
+    await screen.findByText(liText('Local runtime: Ready'))
+    const settingsLinks = screen
+      .getAllByRole('link')
+      .filter((el) => el.getAttribute('href') === '/settings')
+    // Install model, Import pack, LLM badge, STT badge, TTS badge = 5
+    expect(settingsLinks.length).toBeGreaterThanOrEqual(5)
+  })
+})
+
 describe('Home — runtime-error state', () => {
   it('shows Local runtime: Unavailable list item when API is unreachable', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('Network error'))))
