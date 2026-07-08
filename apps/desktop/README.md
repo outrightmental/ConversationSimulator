@@ -62,6 +62,16 @@ Model weights are **never** included in the bundle.
 > **Alpha note:** `convsim-core` lifecycle is not yet managed by the desktop
 > shell. Run it manually before launching the app (the dev script handles
 > this automatically). A sidecar process will be added in a future milestone.
+>
+> **The production build cannot reach the backend yet.** The web UI calls the
+> API via relative paths (`/api`, `/ws` — see `apps/web/src/api/client.ts`).
+> In dev mode the Vite dev server proxies those to `convsim-core` on port 7355,
+> but a `tauri build` bundle serves the frontend from `tauri://localhost` with
+> no such proxy, so backend-dependent screens (Model Manager, Scenario Library,
+> Conversation, Debrief, Settings) will fail to load data even if `convsim-core`
+> is running. **Dev mode (`./scripts/dev-desktop.sh`) is the only supported
+> alpha path.** Wiring the production bundle to the backend (sidecar + absolute
+> API base or a Tauri-side proxy) is tracked as future work.
 
 ---
 
@@ -114,6 +124,10 @@ so the production build consumes the output of `pnpm --filter @convsim/web build
 
 - **convsim-core sidecar** is not yet bundled. The core server must be started
   separately. See `./scripts/dev-desktop.sh` for the reference flow.
+- **Production builds cannot reach the backend.** The web UI uses relative
+  `/api` and `/ws` requests that only the Vite dev proxy resolves; a `tauri
+  build` bundle has no proxy, so only dev mode is functional in the alpha.
+  See the alpha note under "Production build" above.
 - **Auto-update** is not configured.
 - **Code signing** is not configured — macOS Gatekeeper will warn on unsigned
   builds unless you sign with a Developer ID certificate.
