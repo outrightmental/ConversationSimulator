@@ -2,7 +2,9 @@
 import io
 from unittest.mock import AsyncMock, patch
 
-from convsim_core.stt.types import SttError
+import pytest
+
+from convsim_core.stt.types import SttError, SttResult
 
 
 def test_stt_upload_returns_200(client):
@@ -138,3 +140,47 @@ def test_stt_upload_status_error_on_worker_failure(client):
         ).json()
     assert body["status"] == "error"
     assert body["transcript"] is None
+
+
+def test_stt_upload_status_ok_on_successful_transcription(client):
+    # Simulate a working STT worker returning a real transcript.
+    audio = io.BytesIO(b"\x00" * 100)
+    mock_result = SttResult(
+        transcript="Hello world",
+        language="en",
+        confidence=0.95,
+        duration_ms=1200.0,
+        processing_ms=350.0,
+    )
+    with patch.object(
+        client.app.state.stt_worker,
+        "transcribe",
+        new=AsyncMock(return_value=mock_result),
+    ):
+        body = client.post(
+            "/api/stt/upload",
+            files={"audio": ("recording.webm", audio, "audio/webm")},
+        ).json()
+    assert body["status"] == "ok"
+    assert body["transcript"] == "Hello world"
+    assert body["language"] == "en"
+    assert body["confidence"] == pytest.approx(0.95)
+
+
+def test_stt_upload_ok_response_passes_language_to_worker(client):
+    # Language form field should be forwarded to the STT worker.
+    audio = io.BytesIO(b"\x00" * 100)
+    mock_result = SttResult(transcript="Bonjour", language="fr")
+    captured: list = []
+
+    async def _capturing_transcribe(req):
+        captured.append(req)
+        return mock_result
+
+    with patch.object(client.app.state.stt_worker, "transcribe", side_effect=_capturing_transcribe):
+        client.post(
+            "/api/stt/upload",
+            files={"audio": ("recording.webm", audio, "audio/webm")},
+            data={"language": "fr"},
+        )
+    assert captured[0].language == "fr"
