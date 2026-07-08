@@ -16,6 +16,44 @@ import { broadcast, closeSessionSockets } from '../ws/session-events.js';
 
 const MAX_TURN_CONTENT_LENGTH = 2000;
 
+function getLlmTimeoutMs(): number {
+  const v = process.env['CONVSIM_LLM_TIMEOUT_MS'];
+  const parsed = v ? parseInt(v, 10) : NaN;
+  return isNaN(parsed) ? 60_000 : parsed;
+}
+
+function getFakeDelayMs(): number {
+  const v = process.env['CONVSIM_FAKE_DELAY_MS'];
+  const parsed = v ? parseInt(v, 10) : NaN;
+  return isNaN(parsed) ? 0 : parsed;
+}
+
+async function runFakeNpc(): Promise<typeof FAKE_NPC_RESPONSE> {
+  const delay = getFakeDelayMs();
+  if (delay > 0) await new Promise<void>((r) => setTimeout(r, delay));
+  return FAKE_NPC_RESPONSE;
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(
+        Object.assign(
+          new Error(
+            'LLM response timed out. Suggested fixes: use a smaller model, reduce context ' +
+              'length, increase GPU layers, or check that the runtime is running in Runtime Settings.',
+          ),
+          { code: 'TURN_TIMEOUT' },
+        ),
+      );
+    }, ms);
+    promise.then(
+      (v) => { clearTimeout(timer); resolve(v); },
+      (e: unknown) => { clearTimeout(timer); reject(e); },
+    );
+  });
+}
+
 // Baseline state variable defaults (mirrors convsim_core/scenario_state.py).
 const BASELINE_STATE_VARS: Record<string, number> = {
   trust: 50,
@@ -391,7 +429,15 @@ export async function sessionRoutes(app: FastifyInstance) {
       const maxTurns = scenario?.duration.max_turns ?? 20;
 
       // 3. Apply NPC response (fake runtime — same structured response as Python fake.py).
-      const npc = FAKE_NPC_RESPONSE;
+      // Wrapped with a configurable timeout so the UI is never stuck indefinitely.
+      let npc: typeof FAKE_NPC_RESPONSE;
+      try {
+        npc = await withTimeout(runFakeNpc(), getLlmTimeoutMs());
+      } catch (err: unknown) {
+        const isTimeout = err instanceof Error && (err as Error & { code?: string }).code === 'TURN_TIMEOUT';
+        reply.status(isTimeout ? 504 : 500);
+        throw err;
+      }
 
       // 4. Apply state delta (empty from fake runtime).
       const currentStateVars: Record<string, number> = JSON.parse(row.state_vars_json || '{}');
