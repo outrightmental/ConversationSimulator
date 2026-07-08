@@ -15,8 +15,8 @@
  */
 import React from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { render, fireEvent } from '@testing-library/react'
+import { Link, MemoryRouter, Route, Routes } from 'react-router-dom'
 import axe from 'axe-core'
 
 // ── Mocks ────────────────────────────────────────────────────────────────────
@@ -192,6 +192,25 @@ describe('Accessibility: AppLayout', () => {
       </MemoryRouter>,
     )
     expect(container.querySelector('#main-content')).not.toBeNull()
+  })
+
+  it('moves focus to the main landmark on route change (but not on initial mount)', () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={['/']}>
+        <Routes>
+          <Route element={<AppLayout />}>
+            <Route index element={<div><h1>Home</h1><Link to="/next">Next</Link></div>} />
+            <Route path="next" element={<h1>Next page</h1>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    )
+    const main = container.querySelector('#main-content')
+    // Initial mount must not steal focus.
+    expect(document.activeElement).not.toBe(main)
+
+    fireEvent.click(container.querySelector('a[href="/next"]')!)
+    expect(document.activeElement).toBe(main)
   })
 })
 

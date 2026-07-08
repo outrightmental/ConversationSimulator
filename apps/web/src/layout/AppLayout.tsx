@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-import { NavLink, Outlet } from 'react-router-dom'
+import { useEffect, useRef } from 'react'
+import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import OfflineIndicator from '../components/OfflineIndicator'
 
 const NAV_LINKS = [
@@ -43,6 +44,21 @@ const skipLinkFocusStyle = `
 `
 
 export default function AppLayout() {
+  const location = useLocation()
+  const mainRef = useRef<HTMLElement>(null)
+  const isInitialMount = useRef(true)
+
+  // Move keyboard/screen-reader focus to the main landmark on route changes so
+  // navigation is announced and the user lands at the new page's content.  Skip
+  // the initial mount to avoid stealing focus (and scroll) on first paint.
+  useEffect(() => {
+    if (isInitialMount.current) {
+      isInitialMount.current = false
+      return
+    }
+    mainRef.current?.focus()
+  }, [location.pathname])
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       <style>{skipLinkFocusStyle}</style>
@@ -73,7 +89,12 @@ export default function AppLayout() {
         <OfflineIndicator />
       </header>
 
-      <main id="main-content" tabIndex={-1} style={{ flex: 1, padding: '2rem 1.5rem' }}>
+      <main
+        id="main-content"
+        ref={mainRef}
+        tabIndex={-1}
+        style={{ flex: 1, padding: '2rem 1.5rem', outline: 'none' }}
+      >
         <Outlet />
       </main>
     </div>
