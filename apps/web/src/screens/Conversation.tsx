@@ -13,7 +13,7 @@ const BASELINE_STATE_VARS: Record<string, number> = {
 }
 
 type TurnEntry = {
-  id: number
+  id: number  // client-side sequential id used as React key; NOT the server event_id
   role: 'npc_opening' | 'npc' | 'player'
   content: string
   emotion?: string
@@ -37,6 +37,7 @@ export default function Conversation() {
 
   const transcriptRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const turnUidRef = useRef(0)
 
   useEffect(() => {
     if (!sessionId) return
@@ -49,7 +50,7 @@ export default function Conversation() {
         if (opening) {
           setTurns([
             {
-              id: opening.event_id,
+              id: ++turnUidRef.current,
               role: 'npc_opening',
               content: opening.payload['content'] as string,
             },
@@ -108,7 +109,7 @@ export default function Conversation() {
       const newTurns: TurnEntry[] = []
       if (playerEvent) {
         newTurns.push({
-          id: playerEvent.event_id,
+          id: ++turnUidRef.current,
           role: 'player',
           content: playerEvent.payload['content'] as string,
         })
@@ -119,7 +120,7 @@ export default function Conversation() {
         const flags = (payload['event_flags'] ?? []) as string[]
 
         newTurns.push({
-          id: npcEvent.event_id,
+          id: ++turnUidRef.current,
           role: 'npc',
           content: payload['content'] as string,
           emotion: payload['emotion'] as string | undefined,
