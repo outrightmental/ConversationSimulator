@@ -239,7 +239,7 @@ Every session runs through a layered safety system before and after the model is
 | 5 | Polished playable alpha | Planned |
 
 **[ROADMAP.md](ROADMAP.md)** — MVP acceptance criteria, build order, what is
-deliberately out of scope, and links to the acceptance suite and docs.
+deliberately out of scope, and links to the acceptance criteria and docs.
 
 > [GitHub Milestones](https://github.com/outrightmental/ConversationSimulator/milestones) &nbsp;·&nbsp;
 > [Full specification](docs/SPEC.md)

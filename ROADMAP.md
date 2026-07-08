@@ -137,7 +137,7 @@ must not compromise offline-first, local-model, or open-source principles.
 
 ## Links
 
-- [Acceptance suite](docs/acceptance-suite.md) — runnable tests that gate each milestone
+- [Acceptance criteria](docs/SPEC.md#24-mvp-acceptance-criteria) — the player, creator, developer, and concept tests that gate the MVP
 - [Architecture](docs/architecture.md) — service layout and port assignments
 - [Scenario authoring guide](docs/scenario-authoring.md) — how to write a pack
 - [Pack validation](docs/pack-validation.md) — schema rules and the validator CLI
