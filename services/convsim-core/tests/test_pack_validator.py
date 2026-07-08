@@ -320,6 +320,18 @@ def test_npc_fictional_true_no_error(tmp_path):
     assert not _has_error(result, rule_id="NPC_NOT_FICTIONAL")
 
 
+def test_npc_not_fictional_reported_exactly_once(tmp_path):
+    """NPC in npcs/ is covered by both _validate_all_npcs and _check_scenario_ref;
+    the error must appear exactly once, not twice."""
+    non_fictional_npc = _VALID_NPC_YAML.replace("fictional: true", "fictional: false")
+    pack_dir = make_yaml_pack_dir(tmp_path, npc_yaml=non_fictional_npc)
+    result = validate_pack_dir(pack_dir)
+    npc_errors = [e for e in result.errors if e.rule_id == "NPC_NOT_FICTIONAL"]
+    assert len(npc_errors) == 1, (
+        f"Expected exactly 1 NPC_NOT_FICTIONAL error, got {len(npc_errors)}"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Official pack smoke-test presence
 # ---------------------------------------------------------------------------

@@ -71,6 +71,10 @@ class _PackValidator:
     def __init__(self, pack_dir: Path) -> None:
         self._pack_dir = pack_dir.resolve()
         self._issues: list[ValidationIssue] = []
+        # Track resolved paths whose content has already been validated so that
+        # _check_scenario_ref does not re-emit errors for files already covered
+        # by _validate_all_npcs (or any future bulk scan).
+        self._validated_content: set[Path] = set()
 
     # ------------------------------------------------------------------
     # Issue builders
@@ -405,6 +409,7 @@ class _PackValidator:
                 "Add 'fictional: true' to this NPC file. "
                 "Impersonating real people is not permitted.",
             )
+        self._validated_content.add(npc_path.resolve())
 
     # ------------------------------------------------------------------
     # Entry scenario path checks (JSON-format packs)
@@ -472,9 +477,9 @@ class _PackValidator:
             return
         rel = self._rel(scenario_path)
         self._schema_errors(scenario_data, "scenario", rel)
-        self._check_scenario_ref(scenario_data, scenario_path, "npc", "npc", required=True)
-        self._check_scenario_ref(scenario_data, scenario_path, "rubric", "rubric", required=True)
-        self._check_scenario_ref(scenario_data, scenario_path, "scene", "scene", required=False)
+        self._check_scenario_ref(scenario_data, scenario_path, "npc", "npc")
+        self._check_scenario_ref(scenario_data, scenario_path, "rubric", "rubric")
+        self._check_scenario_ref(scenario_data, scenario_path, "scene", "scene")
 
     def _check_scenario_ref(
         self,
@@ -482,7 +487,6 @@ class _PackValidator:
         scenario_path: Path,
         section_key: str,
         schema_key: str,
-        required: bool,
     ) -> None:
         rel = self._rel(scenario_path)
         section = scenario_data.get(section_key)
@@ -515,12 +519,19 @@ class _PackValidator:
             )
             return
 
+        # Skip content validation if the file was already validated by a bulk
+        # scan (e.g. _validate_all_npcs) — avoids duplicate errors for files
+        # that appear both in a named directory and as scenario refs.
+        if ref_path in self._validated_content:
+            return
+
         ref_data = self._load_yaml(ref_path)
         if ref_data is None:
             return
 
         ref_rel = self._rel(ref_path)
         self._schema_errors(ref_data, schema_key, ref_rel)
+        self._validated_content.add(ref_path)
 
         if schema_key == "npc" and ref_data.get("fictional") is not True:
             npc_id = ref_data.get("npc_id", ref_rel)
