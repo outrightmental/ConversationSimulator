@@ -71,7 +71,10 @@ export default function VoiceInput({ onSubmit, disabled = false, language }: Voi
 
   // Wrap start/stop to hook in VAD silence detection for hands-free mode.
   const startRecording = useCallback(() => {
-    if (isHandsFree && stream) {
+    // Guard against re-triggering while already recording: startSilenceDetection calls
+    // stopSilenceDetection() internally, which cancels any pending silence timer and resets
+    // the auto-stop countdown — defeating the hands-free behaviour.
+    if (!isRecording && isHandsFree && stream) {
       startSilenceDetection(stream, () => {
         // Don't call stopSilenceDetection here — it would reset vadState to 'idle' in the
         // same React batch as 'stopping', preventing the auto-stopping state from rendering.
@@ -80,7 +83,7 @@ export default function VoiceInput({ onSubmit, disabled = false, language }: Voi
       })
     }
     startPttRecording()
-  }, [isHandsFree, stream, startSilenceDetection, startPttRecording, stopPttRecording])
+  }, [isRecording, isHandsFree, stream, startSilenceDetection, startPttRecording, stopPttRecording])
 
   const stopRecording = useCallback(() => {
     stopSilenceDetection()
@@ -100,6 +103,9 @@ export default function VoiceInput({ onSubmit, disabled = false, language }: Voi
       if (e.code !== 'Space' || e.repeat) return
       if (isInteractiveElement(document.activeElement)) return
       if (permission !== 'granted' || isSubmitting || disabled) return
+      // In hands-free mode Space starts recording; once recording, VAD drives the stop so
+      // we ignore further presses to avoid resetting the auto-stop countdown.
+      if (isHandsFree && isRecording) return
       e.preventDefault()
       startRecording()
     }

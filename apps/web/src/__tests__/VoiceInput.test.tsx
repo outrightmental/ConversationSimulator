@@ -454,6 +454,30 @@ describe('VoiceInput — audio upload flow', () => {
   })
 })
 
+describe('VoiceInput — hands-free Space key re-entry guard', () => {
+  it('does not call startSilenceDetection again when Space is pressed while already recording in hands-free mode', () => {
+    const startSilenceDetection = vi.fn()
+    vi.mocked(useVad).mockReturnValue(
+      makeVadState({
+        settings: { mode: 'hands-free', threshold: 0.05, silenceDurationMs: 1500, calibratedAt: null },
+        vadState: 'listening',
+        startSilenceDetection,
+      }),
+    )
+    vi.mocked(useMicCapture).mockReturnValue(
+      makeMicState({ isRecording: true, stream: {} as MediaStream }),
+    )
+
+    render(<VoiceInput />)
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+
+    // Space pressed while already recording — must not reset VAD silence detection
+    fireEvent.keyDown(document, { code: 'Space' })
+
+    expect(startSilenceDetection).not.toHaveBeenCalled()
+  })
+})
+
 describe('VoiceInput — VAD status indicator', () => {
   it('shows stopping state even when isRecording=false (auto-stop moment)', () => {
     // When the silence timer fires, React 18 batches vadState='stopping' together with
