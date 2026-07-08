@@ -1,0 +1,67 @@
+<!-- SPDX-License-Identifier: CC0-1.0 -->
+<!-- Screenshot placeholder: Home screen — system-ready state with status panel.
+     Licensed CC0-1.0. No real people or private data. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="540" viewBox="0 0 900 540">
+  <rect width="900" height="540" fill="#09090b" rx="8"/>
+  <rect x="1" y="1" width="898" height="538" fill="none" stroke="#27272a" stroke-width="1" rx="8"/>
+
+  <!-- App header -->
+  <rect x="0" y="0" width="900" height="44" fill="#18181b" rx="8"/>
+  <rect x="0" y="30" width="900" height="14" fill="#18181b"/>
+  <line x1="0" y1="44" x2="900" y2="44" stroke="#27272a" stroke-width="1"/>
+  <text x="20" y="28" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="#e8e8ea">Conversation Simulator</text>
+  <!-- Home active -->
+  <rect x="218" y="10" width="46" height="24" rx="4" fill="#252528"/>
+  <text x="241" y="26" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="#e8e8ea" text-anchor="middle">Home</text>
+  <text x="282" y="26" font-family="system-ui,sans-serif" font-size="12" fill="#71717a">Scenarios</text>
+  <text x="362" y="26" font-family="system-ui,sans-serif" font-size="12" fill="#71717a">Workbench</text>
+  <text x="452" y="26" font-family="system-ui,sans-serif" font-size="12" fill="#71717a">Settings</text>
+  <!-- Offline indicator -->
+  <rect x="854" y="14" width="30" height="16" rx="8" fill="rgba(34,197,94,0.15)"/>
+  <text x="869" y="25" font-family="system-ui,sans-serif" font-size="9" fill="#86efac" text-anchor="middle">local</text>
+
+  <!-- Main content -->
+  <text x="32" y="92" font-family="system-ui,sans-serif" font-size="22" font-weight="700" fill="#f4f4f5">Conversation Simulator</text>
+  <text x="32" y="114" font-family="system-ui,sans-serif" font-size="14" fill="#a1a1aa">Flight Simulator for conversations.</text>
+
+  <!-- Primary navigation links -->
+  <text x="32" y="158" font-family="system-ui,sans-serif" font-size="13" fill="#a5b4fc">→  Start a scenario</text>
+  <text x="32" y="182" font-family="system-ui,sans-serif" font-size="13" fill="#a5b4fc">→  Create / edit a scenario</text>
+  <text x="32" y="206" font-family="system-ui,sans-serif" font-size="13" fill="#a5b4fc">→  Install model</text>
+  <text x="32" y="230" font-family="system-ui,sans-serif" font-size="13" fill="#a5b4fc">→  Import pack</text>
+  <text x="32" y="254" font-family="system-ui,sans-serif" font-size="13" fill="#a5b4fc">→  Read docs ↗</text>
+
+  <!-- Status section -->
+  <text x="32" y="300" font-family="system-ui,sans-serif" font-size="16" font-weight="600" fill="#f4f4f5">Status</text>
+
+  <!-- Status items with badges -->
+  <!-- Local runtime: Ready -->
+  <text x="32" y="330" font-family="system-ui,sans-serif" font-size="13" fill="#e8e8ea">Local runtime:</text>
+  <rect x="142" y="316" width="52" height="20" rx="10" fill="rgba(34,197,94,0.12)" stroke="rgba(34,197,94,0.25)" stroke-width="1"/>
+  <text x="168" y="330" font-family="system-ui,sans-serif" font-size="11" fill="#86efac" text-anchor="middle">Ready</text>
+
+  <!-- LLM: Qwen3 8B -->
+  <text x="32" y="358" font-family="system-ui,sans-serif" font-size="13" fill="#e8e8ea">LLM:</text>
+  <rect x="70" y="344" width="210" height="20" rx="10" fill="rgba(34,197,94,0.12)" stroke="rgba(34,197,94,0.25)" stroke-width="1"/>
+  <text x="175" y="358" font-family="system-ui,sans-serif" font-size="11" fill="#86efac" text-anchor="middle">Qwen3 8B Instruct Q4_K_M</text>
+
+  <!-- STT: Ready -->
+  <text x="32" y="386" font-family="system-ui,sans-serif" font-size="13" fill="#e8e8ea">STT:</text>
+  <rect x="66" y="372" width="52" height="20" rx="10" fill="rgba(34,197,94,0.12)" stroke="rgba(34,197,94,0.25)" stroke-width="1"/>
+  <text x="92" y="386" font-family="system-ui,sans-serif" font-size="11" fill="#86efac" text-anchor="middle">Ready</text>
+
+  <!-- TTS: Ready -->
+  <text x="32" y="414" font-family="system-ui,sans-serif" font-size="13" fill="#e8e8ea">TTS:</text>
+  <rect x="66" y="400" width="52" height="20" rx="10" fill="rgba(34,197,94,0.12)" stroke="rgba(34,197,94,0.25)" stroke-width="1"/>
+  <text x="92" y="414" font-family="system-ui,sans-serif" font-size="11" fill="#86efac" text-anchor="middle">Ready</text>
+
+  <!-- Network required: No -->
+  <text x="32" y="442" font-family="system-ui,sans-serif" font-size="13" fill="#e8e8ea">Network required to play:</text>
+  <rect x="236" y="428" width="34" height="20" rx="10" fill="rgba(34,197,94,0.12)" stroke="rgba(34,197,94,0.25)" stroke-width="1"/>
+  <text x="253" y="442" font-family="system-ui,sans-serif" font-size="11" fill="#86efac" text-anchor="middle">No</text>
+
+  <!-- Packs: 4 installed -->
+  <text x="32" y="470" font-family="system-ui,sans-serif" font-size="13" fill="#e8e8ea">Packs:</text>
+  <rect x="80" y="456" width="94" height="20" rx="10" fill="rgba(34,197,94,0.12)" stroke="rgba(34,197,94,0.25)" stroke-width="1"/>
+  <text x="127" y="470" font-family="system-ui,sans-serif" font-size="11" fill="#86efac" text-anchor="middle">4 installed</text>
+</svg>
