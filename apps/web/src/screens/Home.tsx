@@ -3,9 +3,11 @@ import { Link } from 'react-router-dom'
 import { StatusBadge } from '@convsim/ui'
 import { useApiHealth } from '../api/useApiHealth'
 
-function sttBadgeStatus(sttStatus: string | undefined): 'online' | 'offline' {
+function sttBadgeStatus(sttStatus: string | undefined): 'online' | 'offline' | 'loading' {
   if (!sttStatus) return 'offline'
-  return sttStatus === 'ready' ? 'online' : 'offline'
+  if (sttStatus === 'ready') return 'online'
+  if (sttStatus === 'starting') return 'loading'
+  return 'offline'
 }
 
 function sttBadgeLabel(sttStatus: string | undefined, loading: boolean): string {
