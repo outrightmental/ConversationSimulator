@@ -94,6 +94,10 @@
         "maximum": 100
       }
     },
+    "summary": {
+      "type": "string",
+      "description": "Short paragraph summarising the session outcome and overall performance."
+    },
     "generated_at": {
       "type": "string",
       "description": "ISO 8601 timestamp when debrief was generated."
