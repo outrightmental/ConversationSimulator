@@ -218,6 +218,29 @@ CREATE VIRTUAL TABLE session_transcript_fts USING fts5(
 );
 """
 
+_PACK_SCENARIO_LIBRARY_SCHEMA_SQL = """
+ALTER TABLE packs ADD COLUMN content_rating TEXT;
+ALTER TABLE packs ADD COLUMN supported_languages_json TEXT;
+ALTER TABLE packs ADD COLUMN validation_status TEXT;
+ALTER TABLE packs ADD COLUMN last_validated_at TEXT;
+
+ALTER TABLE scenarios ADD COLUMN title TEXT;
+ALTER TABLE scenarios ADD COLUMN summary TEXT;
+ALTER TABLE scenarios ADD COLUMN content_rating TEXT;
+ALTER TABLE scenarios ADD COLUMN difficulty_default TEXT;
+ALTER TABLE scenarios ADD COLUMN max_turns INTEGER;
+ALTER TABLE scenarios ADD COLUMN soft_time_limit_minutes INTEGER;
+ALTER TABLE scenarios ADD COLUMN tags_json TEXT;
+ALTER TABLE scenarios ADD COLUMN voice_support INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE scenarios ADD COLUMN model_recommendation TEXT;
+ALTER TABLE scenarios ADD COLUMN rel_path TEXT;
+
+DROP TABLE IF EXISTS scenario_fts;
+CREATE VIRTUAL TABLE scenario_fts USING fts5(
+    title, summary, tags, pack_name, pack_readme
+);
+"""
+
 MIGRATIONS: list[tuple[str, str]] = [
     ("0001_initial_schema", _INITIAL_SCHEMA_SQL),
     ("0002_model_registry_v2", _MODEL_REGISTRY_V2_SQL),
@@ -225,6 +248,7 @@ MIGRATIONS: list[tuple[str, str]] = [
     ("0004_extend_pack_assets", _EXTEND_PACK_ASSETS_SQL),
     ("0005_turn_pipeline", _TURN_PIPELINE_SQL),
     ("0006_turn_transcript_and_events", _TURN_TRANSCRIPT_AND_EVENTS_SQL),
+    ("0007_pack_scenario_library_schema", _PACK_SCENARIO_LIBRARY_SCHEMA_SQL),
 ]
 
 
