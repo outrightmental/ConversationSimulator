@@ -196,12 +196,42 @@ CREATE TABLE turn_session_turns (
 );
 """
 
+_SCENARIO_LIBRARY_SQL = """
+ALTER TABLE packs ADD COLUMN content_rating TEXT;
+ALTER TABLE packs ADD COLUMN supported_languages_json TEXT;
+ALTER TABLE packs ADD COLUMN validation_status TEXT NOT NULL DEFAULT 'unknown';
+ALTER TABLE packs ADD COLUMN last_validated_at TEXT;
+
+ALTER TABLE scenarios ADD COLUMN title TEXT;
+ALTER TABLE scenarios ADD COLUMN summary TEXT;
+ALTER TABLE scenarios ADD COLUMN content_rating TEXT;
+ALTER TABLE scenarios ADD COLUMN difficulty_default TEXT;
+ALTER TABLE scenarios ADD COLUMN max_turns INTEGER;
+ALTER TABLE scenarios ADD COLUMN soft_time_limit_minutes INTEGER;
+ALTER TABLE scenarios ADD COLUMN tags_json TEXT;
+ALTER TABLE scenarios ADD COLUMN voice_support INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE scenarios ADD COLUMN model_recommendation TEXT;
+ALTER TABLE scenarios ADD COLUMN rel_path TEXT;
+
+DROP TABLE IF EXISTS scenario_fts;
+DROP TABLE IF EXISTS pack_readme_fts;
+
+CREATE VIRTUAL TABLE scenario_fts USING fts5(
+    title, summary, tags, pack_name, pack_readme
+);
+
+CREATE VIRTUAL TABLE pack_readme_fts USING fts5(
+    name, description
+);
+"""
+
 MIGRATIONS: list[tuple[str, str]] = [
     ("0001_initial_schema", _INITIAL_SCHEMA_SQL),
     ("0002_model_registry_v2", _MODEL_REGISTRY_V2_SQL),
     ("0003_model_manager_api", _MODEL_MANAGER_API_SQL),
     ("0004_extend_pack_assets", _EXTEND_PACK_ASSETS_SQL),
     ("0005_turn_pipeline", _TURN_PIPELINE_SQL),
+    ("0006_scenario_library", _SCENARIO_LIBRARY_SQL),
 ]
 
 
