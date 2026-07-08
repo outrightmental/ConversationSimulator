@@ -297,6 +297,85 @@ describe('CreatorWorkbench', () => {
     })
   })
 
+  it('shows a valid badge when the pack validates cleanly', async () => {
+    stubFetch((url) => {
+      if (url.includes('/validate')) return okJson({ valid: true, errors: [], warnings: [] })
+      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
+      return okJson([OFFICIAL_PACK, LOCAL_PACK])
+    })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('validation-panel')).toHaveTextContent(/valid/i)
+    })
+  })
+
+  it('lists validation errors when the pack is invalid', async () => {
+    stubFetch((url) => {
+      if (url.includes('/validate')) {
+        return okJson({
+          valid: false,
+          errors: [
+            { severity: 'error', rule_id: 'SCHEMA_VIOLATION', file: 'manifest.yaml', pointer: '/author', message: "'author' is a required property", suggested_fix: 'Add author' },
+          ],
+          warnings: [],
+        })
+      }
+      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
+      return okJson([OFFICIAL_PACK, LOCAL_PACK])
+    })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+
+    await waitFor(() => {
+      const panel = screen.getByTestId('validation-panel')
+      expect(panel).toHaveTextContent(/1 validation error/i)
+      expect(panel).toHaveTextContent(/required property/i)
+    })
+  })
+
+  it('refreshes validation from the save response', async () => {
+    const localContent = 'name: My Pack\n'
+    stubFetch((url, opts) => {
+      if (url.includes('/file?') && opts?.method === 'PUT') {
+        return okJson({
+          valid: false,
+          ok: true,
+          validation: {
+            valid: false,
+            errors: [
+              { severity: 'error', rule_id: 'INVALID_MANIFEST_YAML', file: 'manifest.yaml', pointer: '', message: 'manifest.yaml must be a YAML mapping', suggested_fix: 'Fix YAML' },
+            ],
+            warnings: [],
+          },
+        })
+      }
+      if (url.includes('/file?')) return okJson({ content: localContent, editable: true })
+      if (url.includes('/validate')) return okJson({ valid: true, errors: [], warnings: [] })
+      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
+      return okJson([OFFICIAL_PACK, LOCAL_PACK])
+    })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /open manifest\.yaml/i }))
+    await waitFor(() => expect(screen.getByTestId('file-editor')).toBeInTheDocument())
+
+    // Pack initially validates clean.
+    await waitFor(() => expect(screen.getByTestId('validation-panel')).toHaveTextContent(/valid/i))
+
+    fireEvent.change(screen.getByTestId('file-editor'), { target: { value: 'broken: [' } })
+    fireEvent.click(screen.getByTestId('save-button'))
+
+    // After save, the validation panel reflects the newly-returned errors.
+    await waitFor(() => {
+      expect(screen.getByTestId('validation-panel')).toHaveTextContent(/must be a YAML mapping/i)
+    })
+  })
+
   it('clears dirty state immediately when switching to a different file', async () => {
     const localContent = 'name: My Pack\n'
     // jsdom doesn't implement window.confirm; stub it to return true (user confirms discard)

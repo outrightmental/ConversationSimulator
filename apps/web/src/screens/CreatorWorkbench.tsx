@@ -1,7 +1,20 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState, useEffect, useCallback, type CSSProperties } from 'react'
 import { useBlocker } from 'react-router-dom'
-import { api, type WorkbenchPack, type FileNode } from '../api/client'
+import { api, type WorkbenchPack, type FileNode, type WorkbenchValidation } from '../api/client'
+
+// A validation response is only usable if it carries the expected error/warning
+// arrays. Backends without a validator (or unexpected shapes) are treated as
+// "no validation available" rather than crashing the screen.
+function isValidation(v: unknown): v is WorkbenchValidation {
+  return (
+    typeof v === 'object' &&
+    v !== null &&
+    typeof (v as WorkbenchValidation).valid === 'boolean' &&
+    Array.isArray((v as WorkbenchValidation).errors) &&
+    Array.isArray((v as WorkbenchValidation).warnings)
+  )
+}
 
 // useBlocker requires a data router. Production uses createBrowserRouter (see main.tsx)
 // which provides this. Tests and Storybook use MemoryRouter which does not, so the
@@ -362,6 +375,74 @@ function FileEditor({
 }
 
 // ---------------------------------------------------------------------------
+// ValidationPanel — pack-level validation status, refreshed after each save
+// ---------------------------------------------------------------------------
+
+interface ValidationPanelProps {
+  validation: WorkbenchValidation | null
+  loading: boolean
+}
+
+function ValidationPanel({ validation, loading }: ValidationPanelProps) {
+  if (loading) {
+    return (
+      <p data-testid="validation-panel" style={{ fontSize: '0.8rem', color: '#71717a', margin: '0 0 1rem' }}>
+        Validating pack…
+      </p>
+    )
+  }
+  if (!validation) return null
+
+  const errorCount = validation.errors.length
+  const warningCount = validation.warnings.length
+
+  if (validation.valid && warningCount === 0) {
+    return (
+      <p
+        data-testid="validation-panel"
+        role="status"
+        style={{ fontSize: '0.8rem', color: '#4ade80', margin: '0 0 1rem' }}
+      >
+        ✓ Pack is valid
+      </p>
+    )
+  }
+
+  const issues = [...validation.errors, ...validation.warnings]
+  return (
+    <div
+      data-testid="validation-panel"
+      role="status"
+      style={{
+        fontSize: '0.8rem',
+        margin: '0 0 1rem',
+        padding: '0.5rem 0.75rem',
+        borderRadius: '4px',
+        border: '1px solid rgba(251,191,36,0.25)',
+        background: 'rgba(251,191,36,0.06)',
+      }}
+    >
+      <div style={{ color: errorCount > 0 ? '#f87171' : '#fbbf24', fontWeight: 600, marginBottom: issues.length ? '0.4rem' : 0 }}>
+        {errorCount > 0
+          ? `${errorCount} validation error${errorCount === 1 ? '' : 's'}`
+          : `${warningCount} validation warning${warningCount === 1 ? '' : 's'}`}
+        {errorCount > 0 && warningCount > 0 && `, ${warningCount} warning${warningCount === 1 ? '' : 's'}`}
+      </div>
+      <ul style={{ margin: 0, paddingLeft: '1.1rem', color: '#a1a1aa' }}>
+        {issues.slice(0, 8).map((issue, i) => (
+          <li key={`${issue.rule_id}-${issue.file}-${issue.pointer}-${i}`} style={{ color: issue.severity === 'error' ? '#fca5a5' : '#fcd34d' }}>
+            <code style={{ color: '#a1a1aa' }}>{issue.file}</code>: {issue.message}
+          </li>
+        ))}
+        {issues.length > 8 && (
+          <li style={{ color: '#71717a' }}>…and {issues.length - 8} more</li>
+        )}
+      </ul>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
 // CreatorWorkbench (main screen)
 // ---------------------------------------------------------------------------
 
@@ -382,6 +463,8 @@ export default function CreatorWorkbench() {
   const [saveError, setSaveError] = useState<string | null>(null)
   const [copying, setCopying] = useState(false)
   const [copyError, setCopyError] = useState<string | null>(null)
+  const [validation, setValidation] = useState<WorkbenchValidation | null>(null)
+  const [validationLoading, setValidationLoading] = useState(false)
 
   const isDirty = selectedFile !== null && editorContent !== savedContent
 
@@ -430,6 +513,20 @@ export default function CreatorWorkbench() {
     }
   }, [])
 
+  // Refresh the pack's validation state. Best-effort: the interim convsim-api
+  // backend has no validator, so a failure just clears the panel silently.
+  const refreshValidation = useCallback(async (pack: WorkbenchPack) => {
+    setValidationLoading(true)
+    try {
+      const result = await api.workbench.validate(pack.kind, pack.slug)
+      setValidation(isValidation(result) ? result : null)
+    } catch {
+      setValidation(null)
+    } finally {
+      setValidationLoading(false)
+    }
+  }, [])
+
   async function handleSelectPack(pack: WorkbenchPack) {
     if (isDirty && !window.confirm('You have unsaved changes. Discard them?')) return
     setSelectedPack(pack)
@@ -438,7 +535,8 @@ export default function CreatorWorkbench() {
     setSavedContent('')
     setSaveError(null)
     setCopyError(null)
-    await loadFileTree(pack)
+    setValidation(null)
+    await Promise.all([loadFileTree(pack), refreshValidation(pack)])
   }
 
   async function handleSelectFile(filePath: string) {
@@ -468,8 +566,15 @@ export default function CreatorWorkbench() {
     setSaving(true)
     setSaveError(null)
     try {
-      await api.workbench.writeFile(selectedPack.kind, selectedPack.slug, selectedFile, editorContent)
+      const result = await api.workbench.writeFile(selectedPack.kind, selectedPack.slug, selectedFile, editorContent)
       setSavedContent(editorContent)
+      // The save re-validates the pack. Prefer the validation the write returned;
+      // fall back to a dedicated refresh if the backend omitted it.
+      if (isValidation(result.validation)) {
+        setValidation(result.validation)
+      } else {
+        await refreshValidation(selectedPack)
+      }
     } catch (e: unknown) {
       setSaveError(e instanceof Error ? e.message : 'Failed to save file')
     } finally {
@@ -489,7 +594,8 @@ export default function CreatorWorkbench() {
       setSelectedFile(null)
       setEditorContent('')
       setSavedContent('')
-      await loadFileTree(newPack)
+      setValidation(null)
+      await Promise.all([loadFileTree(newPack), refreshValidation(newPack)])
     } catch (e: unknown) {
       setCopyError(e instanceof Error ? e.message : 'Failed to copy pack to local-dev')
     } finally {
@@ -509,6 +615,8 @@ export default function CreatorWorkbench() {
           Could not load packs: {packsError}
         </p>
       )}
+
+      {selectedPack && <ValidationPanel validation={validation} loading={validationLoading} />}
 
       <div style={{ display: 'flex', gap: '1rem', height: 'calc(100vh - 220px)', minHeight: '400px' }}>
         {/* Left panel: pack selector + file tree */}

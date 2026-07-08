@@ -173,6 +173,28 @@ export interface FileNode {
   children?: FileNode[]
 }
 
+export interface WorkbenchValidationIssue {
+  severity: 'error' | 'warning'
+  rule_id: string
+  file: string
+  pointer: string
+  message: string
+  suggested_fix: string
+}
+
+export interface WorkbenchValidation {
+  valid: boolean
+  errors: WorkbenchValidationIssue[]
+  warnings: WorkbenchValidationIssue[]
+}
+
+export interface WriteFileResult {
+  ok: boolean
+  // Present when the backend re-validates the pack after a save (convsim-core).
+  // The interim convsim-api backend has no validator and omits this field.
+  validation?: WorkbenchValidation | null
+}
+
 export interface WsConnection {
   close(): void;
 }
@@ -257,11 +279,14 @@ export const api = {
         `/workbench/packs/${kind}/${slug}/file?path=${encodeURIComponent(filePath)}`,
       )
     },
-    writeFile(kind: PackKind, slug: string, filePath: string, content: string): Promise<{ ok: boolean }> {
-      return put<{ ok: boolean }>(
+    writeFile(kind: PackKind, slug: string, filePath: string, content: string): Promise<WriteFileResult> {
+      return put<WriteFileResult>(
         `/workbench/packs/${kind}/${slug}/file?path=${encodeURIComponent(filePath)}`,
         { content },
       )
+    },
+    validate(kind: PackKind, slug: string): Promise<WorkbenchValidation> {
+      return get<WorkbenchValidation>(`/workbench/packs/${kind}/${slug}/validate`)
     },
     copyToLocal(kind: PackKind, slug: string): Promise<WorkbenchPack> {
       return post<WorkbenchPack>(`/workbench/packs/${kind}/${slug}/copy-to-local`)

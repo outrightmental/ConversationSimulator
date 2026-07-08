@@ -275,3 +275,47 @@ def test_copy_avoids_slug_collision(client):
         "/api/workbench/packs/official/sample-pack/copy-to-local"
     ).json()["slug"]
     assert slug1 != slug2
+
+
+# ---------------------------------------------------------------------------
+# GET /api/workbench/packs/{kind}/{slug}/validate + save-triggered refresh
+# ---------------------------------------------------------------------------
+
+def test_validate_pack_returns_result(client):
+    resp = client.get("/api/workbench/packs/local-dev/my-pack/validate")
+    assert resp.status_code == 200
+    body = resp.json()
+    # A well-formed ValidationResult is returned regardless of validity.
+    assert isinstance(body["valid"], bool)
+    assert isinstance(body["errors"], list)
+    assert isinstance(body["warnings"], list)
+    # The minimal fixture pack is missing required manifest fields, proving the
+    # validator actually ran rather than short-circuiting.
+    assert body["valid"] is False
+    assert len(body["errors"]) > 0
+
+
+def test_validate_invalid_kind_returns_400(client):
+    resp = client.get("/api/workbench/packs/community/my-pack/validate")
+    assert resp.status_code == 400
+
+
+def test_validate_unknown_pack_returns_404(client):
+    resp = client.get("/api/workbench/packs/local-dev/does-not-exist/validate")
+    assert resp.status_code == 404
+
+
+def test_write_refreshes_validation(client):
+    # Writing a syntactically-broken manifest surfaces errors in the save
+    # response's validation payload — the save "triggers validation refresh".
+    resp = client.put(
+        "/api/workbench/packs/local-dev/my-pack/file",
+        params={"path": "manifest.yaml"},
+        json={"content": "schema_version: [unterminated\n"},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["ok"] is True
+    assert body["validation"] is not None
+    assert body["validation"]["valid"] is False
+    assert len(body["validation"]["errors"]) > 0

@@ -20,6 +20,8 @@ from pydantic import BaseModel
 
 from convsim_core.config import ServiceConfig
 from convsim_core.errors import ConvsimError
+from convsim_core.packs.models import ValidationResult
+from convsim_core.packs.validator import validate_pack_cached
 
 router = APIRouter(prefix="/api/workbench", tags=["workbench"])
 
@@ -61,6 +63,9 @@ class WriteFileBody(BaseModel):
 
 class WriteFileResponse(BaseModel):
     ok: bool
+    # Validation is re-run against the whole pack after a successful save so the
+    # editor can surface schema/policy problems introduced by the edit.
+    validation: Optional[ValidationResult] = None
 
 
 def _official_root(config: ServiceConfig) -> Path:
@@ -271,7 +276,30 @@ async def write_file(
     except OSError:
         tmp_path.unlink(missing_ok=True)
         raise
-    return WriteFileResponse(ok=True)
+    # Re-run validation so the save "refreshes" the pack's validation state.
+    # validate_pack_cached keys on file mtimes, so the just-written change forces
+    # a fresh pass. Never let a validation failure mask a successful write.
+    validation: Optional[ValidationResult] = None
+    try:
+        validation = validate_pack_cached(pack_root)
+    except Exception:  # noqa: BLE001 — validation is best-effort feedback
+        validation = None
+    return WriteFileResponse(ok=True, validation=validation)
+
+
+@router.get("/packs/{kind}/{slug}/validate", response_model=ValidationResult)
+async def validate_pack(request: Request, kind: str, slug: str) -> ValidationResult:
+    """Validate a pack directory and return schema/policy findings.
+
+    Used by the workbench to show a pack's validation state when it is opened
+    and to refresh it after a save.
+    """
+    config = _config(request)
+    valid_kind = _assert_valid_kind(kind)
+    pack_root = _pack_root(config, valid_kind, slug)
+    if not pack_root.exists():
+        raise ConvsimError("PACK_NOT_FOUND", f'Pack "{slug}" not found', status_code=404)
+    return validate_pack_cached(pack_root)
 
 
 @router.post("/packs/{kind}/{slug}/copy-to-local", response_model=WorkbenchPackSummary)
