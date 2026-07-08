@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { api } from '../api/client'
+import type { ScenarioInfo, WsEvent } from '@convsim/shared'
 import VoiceInput from '../components/VoiceInput'
 
 const BASELINE_STATE_VARS: Record<string, number> = {
@@ -14,20 +15,64 @@ const BASELINE_STATE_VARS: Record<string, number> = {
 }
 
 type TurnEntry = {
-  id: number  // client-side sequential id used as React key; NOT the server event_id
+  id: number
   role: 'npc_opening' | 'npc' | 'player'
   content: string
   emotion?: string
   eventFlags?: string[]
+  turnNum: number
 }
 
 type Phase = 'starting' | 'active' | 'submitting' | 'ending' | 'ended' | 'error'
+
+type Banner = { id: number; kind: 'event' | 'safety'; text: string }
+
+function NpcAvatar() {
+  return (
+    <div
+      style={{
+        width: 52,
+        height: 52,
+        borderRadius: '50%',
+        background: '#27272a',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        flexShrink: 0,
+        border: '2px solid #3f3f46',
+      }}
+      aria-hidden="true"
+    >
+      <svg width="30" height="30" viewBox="0 0 30 30" fill="none">
+        <circle cx="15" cy="10" r="6" fill="#71717a" />
+        <path d="M2 28c0-7.2 5.8-13 13-13s13 5.8 13 13" fill="#71717a" />
+      </svg>
+    </div>
+  )
+}
+
+function npcStatusLabel(sessionState: string, phase: Phase): string {
+  if (phase === 'submitting') return 'Thinking…'
+  if (sessionState === 'NpcThinking') return 'Thinking…'
+  if (sessionState === 'NpcSpeaking') return 'Speaking…'
+  if (sessionState === 'ScenarioEvent') return 'Event in progress…'
+  if (sessionState === 'PlayerTurnListening') return 'Listening'
+  return ''
+}
 
 export default function Conversation() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const navigate = useNavigate()
   const { state } = useLocation()
-  const language = (state as { language?: string } | null)?.language
+  const routeState = state as {
+    language?: string
+    show_state_meters?: boolean
+    scenario_id?: string
+  } | null
+
+  const language = routeState?.language
+  const showStateMeters = routeState?.show_state_meters ?? true
+  const scenarioIdFromRoute = routeState?.scenario_id
 
   const [phase, setPhase] = useState<Phase>('starting')
   const [sessionState, setSessionState] = useState('NotStarted')
@@ -36,10 +81,29 @@ export default function Conversation() {
   const [stateVars, setStateVars] = useState<Record<string, number>>(BASELINE_STATE_VARS)
   const [allEventFlags, setAllEventFlags] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [npcEmotion, setNpcEmotion] = useState<string>('neutral')
+  const [scenario, setScenario] = useState<ScenarioInfo | null>(null)
+  const [streamingText, setStreamingText] = useState('')
+  const [banners, setBanners] = useState<Banner[]>([])
 
   const transcriptRef = useRef<HTMLDivElement>(null)
   const turnUidRef = useRef(0)
+  const turnNumRef = useRef(0)
+  const bannerUidRef = useRef(0)
+  const streamingRef = useRef('')
 
+  // Fetch scenario for NPC panel and scene card — best effort
+  useEffect(() => {
+    if (!scenarioIdFromRoute) return
+    let cancelled = false
+    api.getScenario(scenarioIdFromRoute).then(
+      (s) => { if (!cancelled) setScenario(s) },
+      () => {},
+    )
+    return () => { cancelled = true }
+  }, [scenarioIdFromRoute])
+
+  // Start session
   useEffect(() => {
     if (!sessionId) return
     let cancelled = false
@@ -49,13 +113,17 @@ export default function Conversation() {
         if (cancelled) return
         const opening = res.events.find((e) => e.event_type === 'npc_opening')
         if (opening) {
+          const emotion = opening.payload['emotion'] as string | undefined
           setTurns([
             {
               id: ++turnUidRef.current,
               role: 'npc_opening',
               content: opening.payload['content'] as string,
+              emotion,
+              turnNum: ++turnNumRef.current,
             },
           ])
+          if (emotion) setNpcEmotion(emotion)
         }
         setSessionState(res.state)
         setStateVars({ ...BASELINE_STATE_VARS })
@@ -80,18 +148,79 @@ export default function Conversation() {
     }
   }, [sessionId])
 
+  // WebSocket connection — best effort; REST fallback continues to work
+  useEffect(() => {
+    if (!sessionId) return
+
+    let conn: ReturnType<typeof api.connectSession> | null = null
+    try {
+      conn = api.connectSession(sessionId, (event: WsEvent) => {
+        switch (event.type) {
+          case 'session.state':
+            setSessionState(event.payload.state)
+            if (event.payload.state_vars) {
+              setStateVars((prev) => {
+                const next = { ...prev }
+                for (const [k, v] of Object.entries(event.payload.state_vars!)) {
+                  if (k in next) next[k] = v
+                }
+                return next
+              })
+            }
+            break
+          case 'npc.token':
+            streamingRef.current += event.payload.text
+            setStreamingText(streamingRef.current)
+            break
+          case 'npc.final':
+            setNpcEmotion(event.payload.emotion)
+            streamingRef.current = ''
+            setStreamingText('')
+            break
+          case 'scenario.event':
+            if (event.payload.flags.length > 0) {
+              setBanners((prev) => [
+                ...prev,
+                {
+                  id: ++bannerUidRef.current,
+                  kind: 'event',
+                  text: event.payload.flags.join(' · '),
+                },
+              ])
+            }
+            break
+          case 'safety.redirect':
+            setBanners((prev) => [
+              ...prev,
+              { id: ++bannerUidRef.current, kind: 'safety', text: event.payload.reason },
+            ])
+            break
+        }
+      })
+    } catch {
+      // WS unavailable — REST-only mode
+    }
+
+    return () => {
+      conn?.close()
+    }
+  }, [sessionId])
+
+  // Auto-scroll transcript
   useEffect(() => {
     const el = transcriptRef.current
     if (el && typeof el.scrollTo === 'function') {
       el.scrollTo(0, el.scrollHeight)
     }
-  }, [turns])
+  }, [turns, streamingText])
 
   async function handleSubmit(text: string) {
     if (!text || phase !== 'active') return
 
     setPhase('submitting')
     setError(null)
+    streamingRef.current = ''
+    setStreamingText('')
 
     try {
       const res = await api.submitTurn(sessionId!, text)
@@ -105,19 +234,24 @@ export default function Conversation() {
           id: ++turnUidRef.current,
           role: 'player',
           content: playerEvent.payload['content'] as string,
+          turnNum: ++turnNumRef.current,
         })
       }
       if (npcEvent) {
         const payload = npcEvent.payload
         const delta = (payload['state_delta'] ?? {}) as Record<string, number>
         const flags = (payload['event_flags'] ?? []) as string[]
+        const emotion = payload['emotion'] as string | undefined
+
+        if (emotion) setNpcEmotion(emotion)
 
         newTurns.push({
           id: ++turnUidRef.current,
           role: 'npc',
           content: payload['content'] as string,
-          emotion: payload['emotion'] as string | undefined,
+          emotion,
           eventFlags: flags.length > 0 ? flags : undefined,
+          turnNum: ++turnNumRef.current,
         })
 
         if (Object.keys(delta).length > 0) {
@@ -136,6 +270,8 @@ export default function Conversation() {
 
       setTurns((prev) => [...prev, ...newTurns])
       setSessionState(res.state)
+      streamingRef.current = ''
+      setStreamingText('')
 
       if (res.state === 'Ended') {
         const npcPayload = npcEvent?.payload
@@ -167,15 +303,21 @@ export default function Conversation() {
     }
   }
 
+  function dismissBanner(id: number) {
+    setBanners((prev) => prev.filter((b) => b.id !== id))
+  }
+
   const isIdle = phase === 'active'
   const isBusy = phase === 'submitting' || phase === 'ending'
   const isEnded = phase === 'ended'
+  const npcStatus = npcStatusLabel(sessionState, phase)
 
   return (
     <div
       data-testid="conversation-page"
       style={{ display: 'flex', flexDirection: 'column', gap: '1rem', maxWidth: 760 }}
     >
+      {/* Header */}
       <div
         style={{
           display: 'flex',
@@ -216,6 +358,72 @@ export default function Conversation() {
         )}
       </div>
 
+      {/* NPC panel + scene card */}
+      <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <div
+          data-testid="npc-panel"
+          style={{
+            display: 'flex',
+            gap: '0.75rem',
+            alignItems: 'center',
+            padding: '0.75rem',
+            borderRadius: 8,
+            border: '1px solid #27272a',
+            background: '#18181b',
+            minWidth: 180,
+          }}
+        >
+          <NpcAvatar />
+          <div>
+            <div style={{ fontWeight: 600, color: '#e4e4e7', fontSize: '0.95rem' }}>NPC</div>
+            {npcEmotion && npcEmotion !== 'neutral' && (
+              <div
+                data-testid="npc-emotion"
+                style={{
+                  fontSize: '0.8rem',
+                  color: '#6ee7b7',
+                  textTransform: 'capitalize',
+                  marginTop: 2,
+                }}
+              >
+                {npcEmotion}
+              </div>
+            )}
+            {npcStatus && (
+              <div
+                data-testid="npc-status"
+                aria-live="polite"
+                style={{ fontSize: '0.75rem', color: '#71717a', marginTop: 2 }}
+              >
+                {npcStatus}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {scenario && (
+          <div
+            data-testid="scene-card"
+            style={{
+              flex: 1,
+              padding: '0.75rem',
+              borderRadius: 8,
+              border: '1px solid #27272a',
+              background: '#18181b',
+              minWidth: 160,
+            }}
+          >
+            <div style={{ fontWeight: 600, color: '#e4e4e7', fontSize: '0.9rem', marginBottom: 4 }}>
+              {scenario.title}
+            </div>
+            <div style={{ fontSize: '0.8rem', color: '#71717a', lineHeight: 1.4 }}>
+              {scenario.summary}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Error alert */}
       {error && (
         <div
           role="alert"
@@ -231,6 +439,47 @@ export default function Conversation() {
           {error}
         </div>
       )}
+
+      {/* Event and safety banners */}
+      {banners.map((banner) => (
+        <div
+          key={banner.id}
+          role="status"
+          data-testid={`banner-${banner.kind}`}
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '0.6rem 1rem',
+            borderRadius: 6,
+            border: `1px solid ${banner.kind === 'safety' ? '#7f1d1d' : '#451a03'}`,
+            background: banner.kind === 'safety' ? '#450a0a' : '#1c0a00',
+            color: banner.kind === 'safety' ? '#fca5a5' : '#fbbf24',
+            fontSize: '0.85rem',
+          }}
+        >
+          <span>
+            {banner.kind === 'safety' ? 'Safety redirect: ' : 'Scenario event: '}
+            {banner.text}
+          </span>
+          <button
+            onClick={() => dismissBanner(banner.id)}
+            aria-label="Dismiss"
+            style={{
+              background: 'none',
+              border: 'none',
+              color: 'inherit',
+              cursor: 'pointer',
+              padding: '0 0 0 0.75rem',
+              opacity: 0.7,
+              fontSize: '1rem',
+              lineHeight: 1,
+            }}
+          >
+            ×
+          </button>
+        </div>
+      ))}
 
       {phase === 'starting' && (
         <p aria-live="polite" aria-busy="true" style={{ color: '#71717a' }}>
@@ -270,7 +519,9 @@ export default function Conversation() {
                 letterSpacing: '0.05em',
               }}
             >
-              {turn.role === 'player' ? 'You' : 'NPC'}
+              <span>Turn {turn.turnNum}</span>
+              {' · '}
+              <span>{turn.role === 'player' ? 'You' : 'NPC'}</span>
               {turn.emotion && turn.emotion !== 'neutral' && (
                 <span style={{ marginLeft: 6, opacity: 0.7 }}>({turn.emotion})</span>
               )}
@@ -294,7 +545,38 @@ export default function Conversation() {
             )}
           </div>
         ))}
-        {isBusy && (
+
+        {/* Live streaming NPC response */}
+        {streamingText && (
+          <div data-testid="streaming-turn">
+            <div
+              style={{
+                fontSize: '0.7rem',
+                color: '#6ee7b7',
+                marginBottom: 2,
+                textTransform: 'uppercase',
+                letterSpacing: '0.05em',
+              }}
+            >
+              NPC · Responding…
+            </div>
+            <div
+              style={{
+                padding: '0.5rem 0.75rem',
+                borderRadius: 6,
+                background: '#052e16',
+                color: '#f4f4f5',
+                fontSize: '0.9rem',
+                lineHeight: 1.5,
+                opacity: 0.85,
+              }}
+            >
+              {streamingText}
+            </div>
+          </div>
+        )}
+
+        {isBusy && !streamingText && (
           <div
             aria-live="polite"
             aria-busy="true"
@@ -305,63 +587,65 @@ export default function Conversation() {
         )}
       </div>
 
-      {/* State variables panel */}
-      <details open>
-        <summary
-          style={{ cursor: 'pointer', fontSize: '0.8rem', color: '#71717a', userSelect: 'none' }}
-        >
-          NPC state variables
-        </summary>
-        <div
-          data-testid="state-vars"
-          style={{
-            display: 'flex',
-            flexWrap: 'wrap',
-            gap: '0.5rem',
-            marginTop: '0.5rem',
-            padding: '0.5rem',
-            borderRadius: 6,
-            border: '1px solid #27272a',
-          }}
-        >
-          {Object.entries(stateVars).map(([key, value]) => (
-            <div
-              key={key}
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                alignItems: 'center',
-                minWidth: 80,
-                padding: '0.4rem 0.5rem',
-                borderRadius: 4,
-                background: '#18181b',
-                fontSize: '0.8rem',
-              }}
-            >
-              <span style={{ color: '#a1a1aa', marginBottom: 2 }}>{key}</span>
-              <span style={{ color: '#f4f4f5', fontWeight: 600 }}>{value}</span>
+      {/* State meters — shown only when enabled in setup */}
+      {showStateMeters && (
+        <details open>
+          <summary
+            style={{ cursor: 'pointer', fontSize: '0.8rem', color: '#71717a', userSelect: 'none' }}
+          >
+            NPC state variables
+          </summary>
+          <div
+            data-testid="state-vars"
+            style={{
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: '0.5rem',
+              marginTop: '0.5rem',
+              padding: '0.5rem',
+              borderRadius: 6,
+              border: '1px solid #27272a',
+            }}
+          >
+            {Object.entries(stateVars).map(([key, value]) => (
               <div
+                key={key}
                 style={{
-                  width: '100%',
-                  height: 4,
-                  borderRadius: 2,
-                  background: '#27272a',
-                  marginTop: 4,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  minWidth: 80,
+                  padding: '0.4rem 0.5rem',
+                  borderRadius: 4,
+                  background: '#18181b',
+                  fontSize: '0.8rem',
                 }}
               >
+                <span style={{ color: '#a1a1aa', marginBottom: 2 }}>{key}</span>
+                <span style={{ color: '#f4f4f5', fontWeight: 600 }}>{value}</span>
                 <div
                   style={{
-                    width: `${value}%`,
-                    height: '100%',
+                    width: '100%',
+                    height: 4,
                     borderRadius: 2,
-                    background: value >= 50 ? '#22c55e' : '#f97316',
+                    background: '#27272a',
+                    marginTop: 4,
                   }}
-                />
+                >
+                  <div
+                    style={{
+                      width: `${value}%`,
+                      height: '100%',
+                      borderRadius: 2,
+                      background: value >= 50 ? '#22c55e' : '#f97316',
+                    }}
+                  />
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
-      </details>
+            ))}
+          </div>
+        </details>
+      )}
 
       {allEventFlags.length > 0 && (
         <div
@@ -378,7 +662,7 @@ export default function Conversation() {
         </div>
       )}
 
-      {/* Input / end section */}
+      {/* Input / ended / error section */}
       {isEnded ? (
         <div
           style={{
@@ -389,7 +673,8 @@ export default function Conversation() {
           }}
         >
           <p style={{ margin: '0 0 0.75rem', color: '#a1a1aa' }}>
-            Session ended.{endingType ? ` Outcome: ${endingType.replace(/_/g, ' ')}.` : ''}
+            Session ended.
+            {endingType ? ` Outcome: ${endingType.replace(/_/g, ' ')}.` : ''}
           </p>
           <button
             onClick={() => navigate(`/debrief/${sessionId}`)}
@@ -442,6 +727,36 @@ export default function Conversation() {
           disabled={!isIdle}
           language={language}
         />
+      )}
+
+      {/* Debug drawer — visible in dev mode only */}
+      {import.meta.env.DEV && (
+        <details>
+          <summary
+            style={{ cursor: 'pointer', fontSize: '0.75rem', color: '#52525b', userSelect: 'none' }}
+          >
+            Debug
+          </summary>
+          <pre
+            data-testid="debug-drawer"
+            style={{
+              padding: '0.75rem',
+              borderRadius: 6,
+              border: '1px solid #27272a',
+              background: '#09090b',
+              color: '#71717a',
+              fontSize: '0.7rem',
+              overflowX: 'auto',
+              marginTop: '0.5rem',
+            }}
+          >
+            {JSON.stringify(
+              { phase, sessionState, endingType, turnCount: turns.length, stateVars, allEventFlags, banners },
+              null,
+              2,
+            )}
+          </pre>
+        </details>
       )}
     </div>
   )
