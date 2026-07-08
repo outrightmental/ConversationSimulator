@@ -147,11 +147,18 @@ export function installNetworkGuard(): NetworkGuard {
       const stack = new Error().stack ?? '';
       const subsystem = identifySubsystem(url, stack);
       violations.push({ url: url || `tcp://${host}`, subsystem });
-      // Errors on a socket go through the event system, not synchronous throws.
       const err = new Error(
         `[offline-smoke-test] NETWORK_BLOCKED: connection to ${host} blocked (subsystem: ${subsystem}). Play mode must not use outbound network.`,
       );
       (err as NodeJS.ErrnoException).code = 'ENETWORK_BLOCKED';
+      // The HTTP/TLS layer wires up socket error listeners asynchronously
+      // (inside the `oncreate` callback, which fires only on successful
+      // TCP/TLS connect).  Since we are blocking the connection, `oncreate`
+      // never fires and the socket has no error listeners when the nextTick
+      // below runs — causing an unhandled-error crash.  Adding a noop here
+      // ensures the error is always consumed at the socket level; violations
+      // are already recorded synchronously above so callers need not await it.
+      this.once('error', () => {});
       process.nextTick(() => this.emit('error', err));
       return this;
     }
