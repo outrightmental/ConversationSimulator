@@ -5,7 +5,6 @@ from typing import Literal
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 
-from convsim_core.runtime.types import RuntimeStatus
 from convsim_core.vad.types import VadCalibrationResult, VadError, VadHealth, VadRequest, VadUnavailableError
 
 logger = logging.getLogger(__name__)

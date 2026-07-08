@@ -250,7 +250,7 @@ class SileroVadWorker(VadWorker):
         silero_confidences: list[float] | None = None
         silero_message: str | None = None
         try:
-            session = self._load_session()
+            session = await loop.run_in_executor(None, self._load_session)
             silero_confidences = await loop.run_in_executor(
                 None, _run_silero_sync, session, samples
             )

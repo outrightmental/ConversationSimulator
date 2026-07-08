@@ -19,27 +19,27 @@ export default function VadCalibration({ vad, stream, onDone }: VadCalibrationPr
 
   const recorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
+  const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const stopTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Keep local settings preview in sync with saved settings.
   useEffect(() => {
     setLocalSettings(vad.settings)
   }, [vad.settings])
 
-  const startCalibration = useCallback(() => {
-    if (!stream) return
-    setPhase('countdown')
-    setCountdown(CALIBRATION_SECONDS)
-
-    let remaining = CALIBRATION_SECONDS
-    const tick = setInterval(() => {
-      remaining -= 1
-      setCountdown(remaining)
-      if (remaining <= 0) {
-        clearInterval(tick)
-        beginRecording()
-      }
-    }, 1000)
-  }, [stream]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Stop any in-progress recording and clear timers when the panel unmounts.
+  useEffect(() => () => {
+    if (countdownTimerRef.current !== null) {
+      clearInterval(countdownTimerRef.current)
+      countdownTimerRef.current = null
+    }
+    if (stopTimerRef.current !== null) {
+      clearTimeout(stopTimerRef.current)
+      stopTimerRef.current = null
+    }
+    const rec = recorderRef.current
+    if (rec && rec.state === 'recording') rec.stop()
+  }, [])
 
   const beginRecording = useCallback(() => {
     if (!stream) return
@@ -69,10 +69,33 @@ export default function VadCalibration({ vad, stream, onDone }: VadCalibrationPr
 
     setPhase('recording')
     rec.start(250)
-    setTimeout(() => {
+    stopTimerRef.current = setTimeout(() => {
+      stopTimerRef.current = null
       if (rec.state === 'recording') rec.stop()
     }, CALIBRATION_SECONDS * 1000)
   }, [stream, vad])
+
+  // Always-current ref so startCalibration doesn't need beginRecording as a dep.
+  const beginRecordingRef = useRef(beginRecording)
+  beginRecordingRef.current = beginRecording
+
+  const startCalibration = useCallback(() => {
+    if (!stream) return
+    setPhase('countdown')
+    setCountdown(CALIBRATION_SECONDS)
+
+    let remaining = CALIBRATION_SECONDS
+    const tick = setInterval(() => {
+      remaining -= 1
+      setCountdown(remaining)
+      if (remaining <= 0) {
+        clearInterval(tick)
+        countdownTimerRef.current = null
+        beginRecordingRef.current()
+      }
+    }, 1000)
+    countdownTimerRef.current = tick
+  }, [stream])
 
   const handleThresholdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const t = Number(e.target.value)
