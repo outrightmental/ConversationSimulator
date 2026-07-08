@@ -3,128 +3,255 @@
 
 > Flight Simulator for conversations.
 
-A local-first, open-source simulator for practicing interviews, negotiations,
-language conversations, and difficult social situations with AI NPCs running
-on your own computer.
+Practice interviews, negotiations, language, and difficult social situations with AI
+NPCs — running **100% on your computer**, no account, no cloud, no telemetry.
 
----
-
-## What is this?
-
-Choose a scenario. Talk naturally. The NPC reacts. The situation evolves.
-Review what happened. Remix the scenario.
-
-Every conversation runs **100% on your computer** — no cloud inference, no
-transcription API calls, no telemetry.
+![Conversation Simulator demo](docs/assets/demo-placeholder.svg)
+<!-- Replace with animated GIF recording once Milestone 1 UI ships -->
 
 ```
-Scenario: Hostile Executive Interview
-Player:   "I think my background in product operations prepares me well..."
-NPC:      "That sounds broad. Give me one measurable result."
-State:    pressure +8 | patience -3 | specificity challenge triggered
+Scenario: The Executive Gauntlet  ·  Job Interview Basics pack
+You:   "I led the data platform redesign — cut nightly processing from 4 hours to 40 minutes."
+NPC:   "That's a headline number. Walk me through the specific trade-off you made
+        to get there. What did you give up, and was it the right call in hindsight?"
+State:  credibility +12  ·  pressure_level +1  ·  composure 65
 ```
 
 ---
 
-## First implementation target
-
-The first milestone is a **text-only local simulator** — no voice, no desktop
-packaging yet. The scenario engine, structured NPC output, local model
-integration, and debrief loop come first. Voice input (Whisper) and Tauri
-desktop packaging come in later milestones.
-
-See the [full spec](docs/SPEC.md) and the
-[GitHub milestones](https://github.com/outrightmental/ConversationSimulator/milestones)
-for the build order.
-
----
-
-## Developer quickstart
-
-### Requirements
-
-- Python 3.10+
-- Node.js 18+
-- npm or pnpm
-
-### Setup
+## Quickstart
 
 ```bash
 git clone https://github.com/outrightmental/ConversationSimulator
 cd ConversationSimulator
-./scripts/setup.sh
+./scripts/setup.sh     # check env, install packages, create ~/.convsim/
+./scripts/dev.sh       # start all services
 ```
 
-The setup script checks your environment, installs frontend packages, creates
-the Python virtual environment for `convsim-core`, and creates local data
-directories under `~/.convsim/`. It does **not** modify global state or
-download model files.
+Then open **http://127.0.0.1:7354** in your browser.
 
-On Windows (PowerShell), use `scripts\setup.ps1` instead.
+**Windows:** use `scripts\setup.ps1` and `scripts\dev.ps1` instead.
 
-### Start local dev
+On first launch you will be prompted to download a local model. The recommended
+starter is **Qwen3 4B Instruct Q4\_K\_M** (~2.6 GB, Apache-2.0). No model is
+bundled — you decide what to install and when.
 
-```bash
-./scripts/dev.sh
+> Full install guide: [docs/install.md](docs/install.md) &nbsp;·&nbsp;
+> Troubleshooting: [docs/troubleshooting.md](docs/troubleshooting.md)
+
+---
+
+## Your first scenario
+
+1. Complete the quickstart above.
+2. In the browser, pick **Job Interview Basics → The Executive Gauntlet**.
+3. Read the player brief, then start typing.
+4. When the conversation ends, open the debrief — scores, turning points, and
+   coaching notes are all generated locally.
+5. Adjust difficulty or edit the scenario YAML and run it again.
+
+---
+
+## Starter scenario packs
+
+| Pack | Scenarios |
+| ---- | --------- |
+| **Job Interview Basics** | Behavioral, hostile executive, blue-collar trade, stretch role |
+| **Everyday Negotiation** | Used car, apartment lease, freelance scope, customer service refund |
+| **Language Café** | Spanish coffee shop, French hotel check-in, Japanese convenience store, English small talk |
+| **Difficult Conversations** | Coworker feedback, missed-deadline apology, boundary with a friend, ask for a raise |
+
+All official packs are CC BY 4.0. Fork them, remix them, or create your own from scratch.
+
+---
+
+## Building a scenario pack
+
+A pack is a folder of YAML files — no code, no build step, no compilation.
+
+```
+packs/
+  my-pack/
+    manifest.yaml          # pack id, title, author, content rating
+    scenarios/
+      my_scenario.yaml     # opening line, goals, state variables, events
+    npcs/
+      my_npc.yaml          # persona, tone, backstory, goals
+    rubrics/
+      my_rubric.yaml       # scoring dimensions and weights for the debrief
+    safety/
+      my_policy.yaml       # content categories and per-category actions
+    scenes/
+      my_scene.yaml        # visual and atmospheric context
 ```
 
-This starts both services and prints their URLs. Press **Ctrl-C** to stop
-everything cleanly.
+Minimal `scenarios/my_scenario.yaml`:
 
-| Service       | URL                   | Responsibility              |
-| ------------- | --------------------- | --------------------------- |
-| convsim-ui    | http://127.0.0.1:7354 | Browser UI (dev mode)       |
-| convsim-core  | http://127.0.0.1:7355 | Main server, API, WebSocket |
-| convsim-llm   | http://127.0.0.1:7356 | Local LLM server            |
-| convsim-stt   | http://127.0.0.1:7357 | Speech-to-text worker       |
-| convsim-tts   | http://127.0.0.1:7358 | Text-to-speech worker       |
+```yaml
+schema_version: "0.1"
+scenario_id: my_scenario
+title: My First Scenario
+summary: A one-line description of the situation the player faces.
+player_role:
+  label: Your Role
+  brief: What the player is trying to accomplish in this conversation.
+npc:
+  ref: ../npcs/my_npc.yaml
+rubric:
+  ref: ../rubrics/my_rubric.yaml
+duration:
+  max_turns: 12
+opening:
+  npc_says: "Let's begin."
+goals:
+  player_visible:
+    - "Reach a clear agreement without giving up your core need"
+state:
+  variables:
+    rapport:
+      min: 0
+      max: 100
+      default: 50
+      visibility: visible
+      max_delta_per_turn: 15
+```
 
-Runtime logs are written to `~/.convsim/logs/` (override with
-`CONVSIM_LOG_DIR`). If a port is already occupied the script reports which
-process is blocking it.
+Add events, endings, difficulty modifiers, and extra rubric dimensions as you go.
+The JSON Schema in `schemas/` validates everything at import time.
 
-On Windows (PowerShell), use `scripts\dev.ps1` instead.
+> Authoring guide: [docs/scenario-authoring.md](docs/scenario-authoring.md) &nbsp;·&nbsp;
+> Pack validation: [docs/pack-validation.md](docs/pack-validation.md)
 
 ---
 
 ## Local-first promise
 
 > Conversation Simulator does not send your conversations, audio, prompts,
-> transcripts, or model outputs to any server during play. Model and pack
-> downloads happen only when you explicitly request them.
+> transcripts, or model outputs to any server during play.
 
-**What this means in practice:**
+| What | Where it runs |
+| ---- | ------------- |
+| LLM inference | Local model via llama.cpp — stays on your machine |
+| Speech-to-text | whisper.cpp — local, no audio uploads |
+| Text-to-speech | Kokoro / sherpa-onnx — local, TTS audio cached on disk |
+| Transcripts | SQLite at `~/.convsim/db/` — never uploaded |
+| Telemetry | None — `telemetry_enabled` defaults off and the MVP ships no telemetry subsystem |
+| Model downloads | Only when you explicitly request them; license shown before every download |
 
-- LLM inference, speech-to-text, and text-to-speech all run on local models —
-  no cloud API calls during a session.
-- Transcripts are stored in a local SQLite database on your machine only, and
-  are never uploaded. Saving is on by default; you can turn it off in Settings.
-- Raw audio is never saved by default — only the transcribed text is processed.
-- TTS-synthesized audio is cached locally. Nothing is sent to external servers.
-- **Telemetry is absent from the MVP.** No usage data, analytics, or crash
-  reports are transmitted. A `telemetry_enabled` setting exists and defaults to
-  off, but the MVP ships no telemetry subsystem — nothing is sent regardless.
-- All services bind to `127.0.0.1` so no ports are reachable from other machines.
+All services bind to `127.0.0.1`. Nothing is reachable from other machines by default.
 
-See [`docs/privacy.md`](docs/privacy.md) for the full data-handling policy,
-including what is logged, how to export your data, and how to delete everything.
-
-You can verify the local-only guarantee at any time with the built-in offline
-smoke test:
+Verify the offline guarantee at any time:
 
 ```bash
-# Run against an official pack (no model download needed)
 npx convsim offline-smoke-test packs/official/job-interview-basic
-
-# Run with machine-readable output (for CI)
-npx convsim offline-smoke-test --json packs/official/job-interview-basic
 ```
 
-The command loads the first scenario from the pack, runs a scripted
-conversation with a fake runtime, generates a local debrief, and confirms
-that no outbound TCP connection was attempted during play.  It exits
-**nonzero with an actionable error** if any subsystem (LLM inference, STT,
-TTS, telemetry, asset fetch) reaches out to an external host.
+The command runs a scripted conversation with a fake runtime and confirms no
+outbound TCP connection was made. It exits nonzero with an actionable error if
+any subsystem attempts to reach an external host.
+
+> Full data policy: [docs/privacy.md](docs/privacy.md) &nbsp;·&nbsp;
+> Network security: [docs/network-security.md](docs/network-security.md)
+
+---
+
+## Architecture
+
+Five services, all on localhost. The browser never talks to the internet.
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│                        Your machine                          │
+│                                                              │
+│  Browser (React / Vite)                                      │
+│  convsim-ui  :7354                                           │
+│       │  HTTP REST + WebSocket (localhost only)              │
+│       ▼                                                      │
+│  convsim-core  :7355  (Python / FastAPI)                     │
+│       │                   SQLite  ~/.convsim/db/             │
+│   ┌───┼──────────┐                                           │
+│   ▼   ▼          ▼                                           │
+│  :7356 :7357   :7358                                         │
+│  LLM   STT     TTS                                           │
+│ llama  whisper Kokoro / sherpa-onnx                          │
+└──────────────────────────────────────────────────────────────┘
+```
+
+| Service | Port | Responsibility |
+| ------- | ---- | -------------- |
+| convsim-ui | 7354 | Browser UI (Vite dev server) |
+| convsim-core | 7355 | Scenario engine, REST API, WebSocket |
+| convsim-llm | 7356 | Local LLM (llama-server) |
+| convsim-stt | 7357 | Speech-to-text (whisper.cpp) |
+| convsim-tts | 7358 | Text-to-speech (Kokoro / sherpa-onnx) |
+
+> Architecture deep-dive: [docs/architecture.md](docs/architecture.md) &nbsp;·&nbsp;
+> Runtime adapters: [docs/runtime-adapters.md](docs/runtime-adapters.md)
+
+---
+
+## Model requirements
+
+No model is bundled. The app shows license information and size before each download.
+
+| Model | Size | VRAM | License | Role |
+| ----- | ---- | ---- | ------- | ---- |
+| Qwen3 4B Instruct Q4\_K\_M | 2.6 GB | 4 GB+ | Apache-2.0 | Starter (lower-spec machines) |
+| Qwen3 8B Instruct Q4\_K\_M | 5.0 GB | 6 GB+ | Apache-2.0 | Standard (recommended for most) |
+| Qwen3 14B Instruct Q4\_K\_M | 9.0 GB | 10 GB+ | Apache-2.0 | High quality |
+| Mistral Small 3.1 24B Q4\_K\_M | 14.8 GB | 16 GB+ | Apache-2.0 | High quality, long context |
+
+You can also load any llama.cpp-compatible GGUF file from your own filesystem.
+The full model registry with checksums is in `model-registry/registry.yaml`.
+
+> Local models guide: [docs/local-models.md](docs/local-models.md)
+
+---
+
+## Safety
+
+Every session runs through a layered safety system before and after the model is called.
+
+- Two categories are **global and cannot be disabled by any pack**: content
+  involving minors in a romantic or sexual context always stops the session;
+  self-harm crisis language always stops the session and surfaces real crisis resources.
+- Input is checked deterministically before the NPC runtime is invoked.
+- Packs are **declarative YAML only** — no executable code. The validator blocks
+  scripts, binary files, symlink attacks, and prompt-injection patterns at import time.
+- Community packs can tighten safety rules for their scenario; they cannot weaken
+  the global non-overridable rules.
+- Content cap: the platform supports G, PG, and PG-13 ratings. Nothing above PG-13
+  is permitted in any pack.
+
+> Full safety policy: [docs/safety-policy.md](docs/safety-policy.md)
+
+---
+
+## Roadmap
+
+| Milestone | Goal | Status |
+| --------- | ---- | ------ |
+| 0 | Monorepo skeleton, dev setup, official scenario packs | Complete |
+| 1 | Text-only local simulator (browser UI + Python backend + local LLM) | In progress |
+| 2 | Scenario pack system (import, validate, browse community packs) | Planned |
+| 3 | Local voice input (Whisper speech-to-text) | Planned |
+| 4 | Local voice output (TTS with Kokoro / sherpa-onnx) | Planned |
+| 5 | Polished playable alpha | Planned |
+
+> [ROADMAP.md](ROADMAP.md) &nbsp;·&nbsp;
+> [GitHub Milestones](https://github.com/outrightmental/ConversationSimulator/milestones) &nbsp;·&nbsp;
+> [Full specification](docs/SPEC.md)
+
+---
+
+## Contributing
+
+All contributions are welcome — new scenario packs, bug fixes, documentation
+improvements, or new runtime adapters.
+
+> [CONTRIBUTING.md](CONTRIBUTING.md) &nbsp;·&nbsp;
+> [CODE\_OF\_CONDUCT.md](CODE_OF_CONDUCT.md) &nbsp;·&nbsp;
+> [SECURITY.md](SECURITY.md)
 
 ---
 
@@ -132,56 +259,45 @@ TTS, telemetry, asset fetch) reaches out to an external host.
 
 ```
 apps/
-  desktop/       Tauri desktop wrapper (future)
-  web/           React/TypeScript browser UI
+  web/             React / TypeScript browser UI
+  desktop/         Tauri desktop wrapper (future milestone)
 
 packages/
-  ui/            Shared UI component library
-  scenario-schema/   TypeScript types for scenario packs
-  shared-types/  Shared TypeScript types across apps
+  ui/              Shared UI component library
+  scenario-schema/ TypeScript types for scenario packs
+  shared-types/    Shared TypeScript types across apps and services
 
 services/
-  convsim-core/  Python FastAPI server — scenario engine, API, WebSocket
+  convsim-core/    Python / FastAPI — scenario engine, REST API, WebSocket
 
 runtimes/
-  llama_cpp/     llama.cpp integration and binary management
-  whisper_cpp/   whisper.cpp integration for local speech-to-text
+  llama_cpp/       llama.cpp integration and binary management
+  whisper_cpp/     whisper.cpp speech-to-text integration
 
 packs/
-  official/      First-party scenario packs (CC BY 4.0)
+  official/        First-party scenario packs (CC BY 4.0)
     job-interview-basic/
     everyday-negotiation/
     language-cafe/
     difficult-conversations/
 
-schemas/         JSON schemas for packs, scenarios, NPCs, rubrics
-model-registry/  Curated registry of supported local models
-docs/            Documentation (CC BY 4.0) — start with docs/SPEC.md
-scripts/         Developer setup and launch scripts
+schemas/           JSON Schema definitions for packs, scenarios, NPCs, rubrics
+model-registry/    Curated registry of supported local models with checksums
+docs/              Documentation (CC BY 4.0)
+scripts/           Developer setup and launch scripts
 ```
-
----
-
-## Starter scenarios (planned)
-
-| Pack                    | Scenarios                                          |
-| ----------------------- | -------------------------------------------------- |
-| Job Interview Basics    | Behavioral, hostile executive, blue-collar, stretch |
-| Everyday Negotiation    | Used car, lease renewal, freelance, customer service |
-| Language Café           | Spanish, French, Japanese, English small talk      |
-| Difficult Conversations | Feedback, apology, boundary, raise request         |
 
 ---
 
 ## Licensing
 
-| Content                 | License    |
-| ----------------------- | ---------- |
-| Application code        | Apache-2.0 |
-| Official scenario packs | CC BY 4.0  |
-| Placeholder assets      | CC0-1.0    |
-| Documentation           | CC BY 4.0  |
-| Model weights           | Not bundled; user downloads with license disclosure |
+| Content | License |
+| ------- | ------- |
+| Application code | Apache-2.0 |
+| Official scenario packs | CC BY 4.0 |
+| Documentation | CC BY 4.0 |
+| Placeholder assets | CC0-1.0 |
+| Model weights | Not bundled — user-installed with full license disclosure |
 
-See `LICENSE` for the full Apache-2.0 text.
-See `NOTICE` for copyright notices and per-artifact license details.
+`LICENSE` contains the full Apache-2.0 text.  
+`NOTICE` lists copyright notices and per-artifact license details.

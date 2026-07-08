@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import fs from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
+import { getDb, WORKBENCH_TEST_SCENARIO_ID } from '../db.js';
 
 let _officialRoot = '';
 let _localDevRoot = '';
@@ -261,6 +262,89 @@ export async function workbenchRoutes(app: FastifyInstance): Promise<void> {
         throw err;
       }
       return { ok: true };
+    },
+  );
+
+  // GET /api/workbench/packs/:kind/:slug/validate — stub validation (real validator is in convsim-core)
+  app.get<{ Params: { kind: string; slug: string } }>(
+    '/api/workbench/packs/:kind/:slug/validate',
+    async (req, reply): Promise<{ valid: boolean; errors: unknown[]; warnings: unknown[] }> => {
+      const { kind, slug } = req.params;
+      assertValidKind(kind, reply);
+      const packRoot = getPackRoot(kind, slug, reply);
+      if (!fs.existsSync(packRoot)) {
+        reply.status(404);
+        throw new Error(`Pack "${slug}" not found`);
+      }
+      return { valid: true, errors: [], warnings: [] };
+    },
+  );
+
+  // POST /api/workbench/packs/:kind/:slug/test-session — create+start a temporary test session
+  app.post<{ Params: { kind: string; slug: string } }>(
+    '/api/workbench/packs/:kind/:slug/test-session',
+    async (req, reply): Promise<{
+      session_id: string;
+      state: string;
+      npc_opening: string;
+      state_vars: Record<string, number>;
+    }> => {
+      const { kind, slug } = req.params;
+      assertValidKind(kind, reply);
+      const packRoot = getPackRoot(kind, slug, reply);
+      if (!fs.existsSync(packRoot)) {
+        reply.status(404);
+        throw new Error(`Pack "${slug}" not found`);
+      }
+
+      const db = getDb();
+      const now = new Date().toISOString();
+      const bytes = Array.from({ length: 8 }, () =>
+        Math.floor(Math.random() * 256).toString(16).padStart(2, '0'),
+      );
+      const session_id = `test-${bytes.join('')}`;
+
+      const baselineStateVars: Record<string, number> = {
+        trust: 50,
+        patience: 75,
+        pressure: 25,
+        rapport: 50,
+        openness: 50,
+        objective_progress: 0,
+      };
+
+      const setupJson = JSON.stringify({
+        scenario_id: WORKBENCH_TEST_SCENARIO_ID,
+        difficulty: 'normal',
+        player_role_name: 'Creator',
+        language: 'en',
+        input_mode: 'text-only',
+        tts_enabled: false,
+        show_state_meters: true,
+        save_transcript: false,
+        seed: null,
+        workbench_pack_kind: kind,
+        workbench_pack_slug: slug,
+      });
+
+      db.prepare(
+        'INSERT INTO sessions (session_id, scenario_id, state, created_at, setup_json, state_vars_json) VALUES (?, ?, ?, ?, ?, ?)',
+      ).run(
+        session_id,
+        WORKBENCH_TEST_SCENARIO_ID,
+        'PlayerTurnListening',
+        now,
+        setupJson,
+        JSON.stringify(baselineStateVars),
+      );
+
+      reply.status(201);
+      return {
+        session_id,
+        state: 'PlayerTurnListening',
+        npc_opening: 'Ready to test. Send a message to begin the conversation.',
+        state_vars: baselineStateVars,
+      };
     },
   );
 
