@@ -408,6 +408,22 @@ describe('import-pack — from directory', () => {
     // Security scan must reject before any files reach the data directory.
     expect(existsSync(join(dataDir, 'packs'))).toBe(false);
   });
+
+  it('JSON output has status error and error code on broken pack', () => {
+    const brokenDir = track(makeBrokenPackDir());
+    const dataDir = track(mkdtempSync(join(tmpdir(), 'convsim-data-')));
+    let captured = '';
+    const spy = vi.spyOn(process.stdout, 'write').mockImplementation((d) => {
+      captured += String(d);
+      return true;
+    });
+    const code = runImportPack(brokenDir, true, dataDir);
+    spy.mockRestore();
+    expect(code).toBe(1);
+    const result = JSON.parse(captured) as Record<string, unknown>;
+    expect(result['status']).toBe('error');
+    expect(typeof (result['error'] as Record<string, unknown>)['code']).toBe('string');
+  });
 });
 
 describe('import-pack — from zip', () => {
@@ -466,6 +482,24 @@ describe('import-pack — from zip', () => {
     const { stderr } = capture(() => { code = runImportPack(zipPath, false, dataDir); });
     expect(code).toBe(1);
     expect(stderr).toContain('UNSAFE_ZIP');
+  });
+
+  it('JSON output has status error for a zip-slip rejection', () => {
+    const tmp = track(mkdtempSync(join(tmpdir(), 'convsim-zip-slip-json-')));
+    const zipPath = join(tmp, 'slip.zip');
+    makePathTraversalZip(zipPath);
+    const dataDir = track(mkdtempSync(join(tmpdir(), 'convsim-data-')));
+    let captured = '';
+    const spy = vi.spyOn(process.stdout, 'write').mockImplementation((d) => {
+      captured += String(d);
+      return true;
+    });
+    const code = runImportPack(zipPath, true, dataDir);
+    spy.mockRestore();
+    expect(code).toBe(1);
+    const result = JSON.parse(captured) as Record<string, unknown>;
+    expect(result['status']).toBe('error');
+    expect((result['error'] as Record<string, unknown>)['code']).toBe('UNSAFE_ZIP');
   });
 });
 
@@ -592,11 +626,31 @@ describe('export-pack', () => {
     expect(String(result['output'])).toContain('test.cli_pack-0.2.0.zip');
   });
 
-  it('returns exit code 1 for a broken pack', () => {
+  it('returns exit code 1 and writes to stderr for a broken pack (human mode)', () => {
     const brokenDir = track(makeBrokenPackDir());
     const outDir = track(mkdtempSync(join(tmpdir(), 'convsim-export-')));
     const outputPath = join(outDir, 'out.zip');
-    const code = runExportPack(brokenDir, false, outputPath);
+    let code = -1;
+    const { stderr } = capture(() => { code = runExportPack(brokenDir, false, outputPath); });
     expect(code).toBe(1);
+    expect(stderr).toContain('✗');
+    expect(stderr).toContain('Export failed');
+  });
+
+  it('JSON output has status error and error code for a broken pack', () => {
+    const brokenDir = track(makeBrokenPackDir());
+    const outDir = track(mkdtempSync(join(tmpdir(), 'convsim-export-')));
+    const outputPath = join(outDir, 'out.zip');
+    let captured = '';
+    const spy = vi.spyOn(process.stdout, 'write').mockImplementation((d) => {
+      captured += String(d);
+      return true;
+    });
+    const code = runExportPack(brokenDir, true, outputPath);
+    spy.mockRestore();
+    expect(code).toBe(1);
+    const result = JSON.parse(captured) as Record<string, unknown>;
+    expect(result['status']).toBe('error');
+    expect(typeof (result['error'] as Record<string, unknown>)['code']).toBe('string');
   });
 });
