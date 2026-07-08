@@ -468,6 +468,34 @@ describe('import-pack — from zip', () => {
   });
 });
 
+describe('import-pack — installation verification', () => {
+  it('copies pack files to the data directory on success', () => {
+    const packDir = track(makeValidPackDir());
+    const dataDir = track(mkdtempSync(join(tmpdir(), 'convsim-data-')));
+    runImportPack(packDir, false, dataDir);
+    // The manifest must be present at the installed location.
+    expect(existsSync(join(dataDir, 'packs', 'test.cli_pack', 'manifest.yaml'))).toBe(true);
+  });
+
+  it('replaces an already-installed pack on re-import', () => {
+    const packDir = track(makeValidPackDir());
+    const dataDir = track(mkdtempSync(join(tmpdir(), 'convsim-data-')));
+
+    // First import.
+    expect(runImportPack(packDir, false, dataDir)).toBe(0);
+
+    // Add a sentinel file to the installed copy to verify it gets replaced.
+    const sentinelPath = join(dataDir, 'packs', 'test.cli_pack', 'stale-file.txt');
+    writeFileSync(sentinelPath, 'old content');
+
+    // Second import must succeed and remove the stale sentinel.
+    expect(runImportPack(packDir, false, dataDir)).toBe(0);
+    expect(existsSync(sentinelPath)).toBe(false);
+    // The manifest should still be present.
+    expect(existsSync(join(dataDir, 'packs', 'test.cli_pack', 'manifest.yaml'))).toBe(true);
+  });
+});
+
 // ===========================================================================
 // export-pack
 // ===========================================================================

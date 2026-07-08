@@ -3,6 +3,10 @@
     "target": "ES2022",
     "module": "Node16",
     "moduleResolution": "Node16",
+    "baseUrl": ".",
+    "paths": {
+      "@convsim/pack-loader": ["../pack-loader/src/index.ts"]
+    },
     "outDir": "dist",
     "declaration": true,
     "declarationMap": true,
@@ -16,6 +20,6 @@
     "resolveJsonModule": true,
     "skipLibCheck": true
   },
-  "include": ["src"],
+  "include": ["src", "../pack-loader/src/vendor-ajv2020.d.ts"],
   "exclude": ["node_modules", "dist"]
 }
