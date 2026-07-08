@@ -312,7 +312,10 @@ def _make_injected_yaml_pack(tmp_path, *, field: str, text: str) -> Path:
         (pack_dir / "npcs" / "test_npc.yaml").write_text(npc, encoding="utf-8")
         scenario = _VALID_SCENARIO_YAML
     elif field == "safety_redirect_message":
-        safety = _VALID_SAFETY_YAML + f"redirect_message: \"{text}\"\n"
+        safety = _VALID_SAFETY_YAML.replace(
+            "redirect_message: \"I can't help with that in this context.\"",
+            f"redirect_message: \"{text}\"",
+        )
         (pack_dir / "safety" / "default.yaml").write_text(safety, encoding="utf-8")
         scenario = _VALID_SCENARIO_YAML
     elif field == "readme":
@@ -565,10 +568,6 @@ def test_injection_snapshot_scenario(tmp_path):
     pack_dir = make_yaml_pack_dir(tmp_path, extra_files={
         "scenarios/intro.yaml": _INJECTED_SCENARIO_YAML,
     })
-    # Override the auto-created intro.yaml:
-    (pack_dir / "scenarios" / "intro.yaml").write_text(
-        _INJECTED_SCENARIO_YAML, encoding="utf-8"
-    )
     findings = scan_pack_dir(pack_dir)
     rule_ids = sorted(f.rule_id for f in findings)
 
