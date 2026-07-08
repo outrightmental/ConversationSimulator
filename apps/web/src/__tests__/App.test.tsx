@@ -4,6 +4,14 @@ import { render, screen } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import App from '../App'
 
+// @convsim/ui re-exports FormEditor which transitively imports @convsim/scenario-schema
+// (requires zod at runtime).  Stub the package to avoid that peer dependency in tests.
+vi.mock('@convsim/ui', () => ({
+  StatusBadge: ({ children, status }: { children: React.ReactNode; status: string }) => (
+    <span data-status={status}>{children}</span>
+  ),
+}))
+
 function mockFetch(response: object) {
   vi.stubGlobal('fetch', vi.fn(() =>
     Promise.resolve({ ok: true, json: () => Promise.resolve(response) }),
