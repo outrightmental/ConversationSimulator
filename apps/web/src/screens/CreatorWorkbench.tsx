@@ -43,13 +43,6 @@ const BTN_PRIMARY: CSSProperties = {
   color: '#a5b4fc',
 }
 
-const BTN_DANGER: CSSProperties = {
-  ...BTN,
-  background: 'rgba(239,68,68,0.1)',
-  border: '1px solid rgba(239,68,68,0.3)',
-  color: '#f87171',
-}
-
 const BTN_DISABLED: CSSProperties = {
   opacity: 0.45,
   cursor: 'not-allowed',

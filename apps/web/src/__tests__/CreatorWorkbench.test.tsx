@@ -273,7 +273,7 @@ describe('CreatorWorkbench', () => {
     const newPack: WorkbenchPack = { kind: 'local-dev', slug: 'job-interview-copy', pack_id: 'local.job_interview_copy', name: 'Job Interview', editable: true }
     const copySpy = vi.fn().mockReturnValue(okJson(newPack))
 
-    stubFetch((url, opts) => {
+    stubFetch((url) => {
       if (url.includes('/copy-to-local')) return copySpy()
       if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
       if (url.includes('/file?')) return okJson({ content: MANIFEST_CONTENT, editable: false })
