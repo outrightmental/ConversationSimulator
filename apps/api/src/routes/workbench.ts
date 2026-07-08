@@ -288,10 +288,26 @@ function scanForbiddenFiles(packRoot: string): WorkbenchValidationIssue[] {
     for (const entry of entries) {
       const fullPath = path.join(dir, entry);
       let stat: fs.Stats;
-      try { stat = fs.statSync(fullPath); } catch { continue; }
+      // lstat (not stat) so symlinks are never followed. Following them would
+      // let a symlink escape the pack root — scanning arbitrary directories —
+      // and a symlink cycle would recurse forever, hanging the request. This
+      // matches the pack-loader's own scanner, which rejects symlinks outright.
+      try { stat = fs.lstatSync(fullPath); } catch { continue; }
+      const relPath = path.relative(packRoot, fullPath).replace(/\\/g, '/');
+      if (stat.isSymbolicLink()) {
+        issues.push({
+          severity: 'error',
+          rule_id: 'FORBIDDEN_FILE',
+          file: relPath,
+          pointer: '',
+          message: `Symlinks are not permitted in a pack: '${relPath}'. Remove the symlink and include the file content directly.`,
+          suggested_fix: getSuggestedFix('FORBIDDEN_FILE'),
+          category: 'security',
+        });
+        continue;
+      }
       if (stat.isDirectory()) { scan(fullPath); continue; }
       if (!stat.isFile()) continue;
-      const relPath = path.relative(packRoot, fullPath).replace(/\\/g, '/');
       const ext = path.extname(entry).toLowerCase();
       if (FORBIDDEN_EXTENSIONS.has(ext)) {
         issues.push({

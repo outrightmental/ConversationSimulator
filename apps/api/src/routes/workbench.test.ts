@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdirSync, writeFileSync, rmSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import type { FastifyInstance } from 'fastify';
@@ -336,6 +336,26 @@ describe('GET /api/workbench/packs/:kind/:slug/validate', () => {
     // Both forbidden files should be reported, not just the first one
     expect(secErrors.length).toBeGreaterThanOrEqual(2);
     expect(secErrors.every((e) => e.category === 'security')).toBe(true);
+  });
+
+  it('flags symlinks as forbidden without following them', async () => {
+    const packDir = join(localDevRoot, 'my-pack');
+    // A symlink pointing outside the pack — must be reported, never followed.
+    symlinkSync(tmpBase, join(packDir, 'escape-link'));
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/workbench/packs/local-dev/my-pack/validate',
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ valid: boolean; errors: { rule_id: string; category: string; file: string }[] }>();
+    expect(body.valid).toBe(false);
+    const link = body.errors.find((e) => e.file === 'escape-link');
+    expect(link).toBeDefined();
+    expect(link?.rule_id).toBe('FORBIDDEN_FILE');
+    expect(link?.category).toBe('security');
+    // No error should reference a path outside the pack (i.e. the symlink was not followed).
+    expect(body.errors.every((e) => !e.file.startsWith('..'))).toBe(true);
   });
 
   it('returns 404 for a non-existent pack', async () => {
