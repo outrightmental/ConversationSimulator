@@ -2,7 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
-import type { ModelsResponse, ModelRegistryEntry, DetectedOllamaModel, InstalledModelInfo } from '@convsim/shared'
+import type { ModelsResponse, ModelRegistryEntry, DetectedOllamaModel, InstalledModelInfo, BenchmarkResponse } from '@convsim/shared'
 
 const SETUP_DOCS_URL = 'https://github.com/outrightmental/ConversationSimulator/wiki'
 
@@ -14,6 +14,7 @@ type WizardStep =
   | 'ollama-select'
   | 'gguf-path'
   | 'demo-warning'
+  | 'benchmark'
   | 'load-error'
 
 function SectionCard({ children }: { children: React.ReactNode }) {
@@ -141,6 +142,11 @@ export default function ModelManager() {
   const [installRecord, setInstallRecord] = useState<InstalledModelInfo | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
+  const [benchmarkRunning, setBenchmarkRunning] = useState(false)
+  const [benchmarkResult, setBenchmarkResult] = useState<BenchmarkResponse | null>(null)
+  const [benchmarkError, setBenchmarkError] = useState<string | null>(null)
+  const benchmarkStartedRef = useRef(false)
+
   useEffect(() => {
     api
       .getModels()
@@ -189,6 +195,28 @@ export default function ModelManager() {
     return stopPoll
   }, [step, installId, navigate])
 
+  // Auto-run the benchmark once when entering the 'benchmark' step. The prompt is
+  // fixed server-side and contains no user transcript. A failure is non-fatal —
+  // the model is already active, so we surface the error and still allow Continue.
+  useEffect(() => {
+    if (step !== 'benchmark' || benchmarkStartedRef.current) return
+    benchmarkStartedRef.current = true
+    setBenchmarkRunning(true)
+    setBenchmarkResult(null)
+    setBenchmarkError(null)
+    api
+      .benchmarkModel({})
+      .then((result) => {
+        setBenchmarkResult(result)
+      })
+      .catch((err: unknown) => {
+        setBenchmarkError(err instanceof Error ? err.message : 'Benchmark failed.')
+      })
+      .finally(() => {
+        setBenchmarkRunning(false)
+      })
+  }, [step])
+
   const recommendedModel = modelsData?.registry.find((m) => m.role === 'starter') ?? null
 
   function resetAction() {
@@ -233,12 +261,42 @@ export default function ModelManager() {
   // ── Choose ───────────────────────────────────────────────────────────────────
 
   if (step === 'choose') {
+    const lb = modelsData?.last_benchmark ?? null
     return (
       <div style={{ maxWidth: '640px' }}>
         <h1>Set up your model</h1>
         <p style={{ color: '#a1a1aa', fontSize: '0.9rem' }}>
           Choose how to get started. You can change this later in Settings.
         </p>
+
+        {lb && (
+          <div
+            aria-label="last benchmark result"
+            style={{
+              marginTop: '1rem',
+              padding: '0.6rem 0.9rem',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: '6px',
+              fontSize: '0.85rem',
+              color: '#a1a1aa',
+            }}
+          >
+            Last benchmark:{' '}
+            <span style={{ color: 'inherit', fontWeight: 500 }}>
+              {lb.tokens_per_sec.toFixed(1)} tok/s
+            </span>
+            {lb.context_length != null && (
+              <span style={{ marginLeft: '0.75rem' }}>
+                · context {lb.context_length.toLocaleString()} tokens
+              </span>
+            )}
+            {lb.warnings.length > 0 && (
+              <span style={{ color: '#fbbf24', marginLeft: '0.75rem' }}>
+                · {lb.warnings.length} warning{lb.warnings.length !== 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
+        )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1.5rem' }}>
           {recommendedModel && (
@@ -522,7 +580,7 @@ export default function ModelManager() {
       setActionError(null)
       try {
         await api.useModel({ runtime_id: 'ollama', model_id: m.id })
-        navigate('/')
+        setStep('benchmark')
       } catch (err: unknown) {
         setActionError(
           err instanceof Error ? err.message : 'Failed to activate Ollama model.',
@@ -632,14 +690,15 @@ export default function ModelManager() {
       try {
         await api.registerGguf({ path: trimmed })
         // Best-effort sidecar launch. Registration already made the model the
-        // active config, so a failed auto-start is non-fatal — proceed to home
-        // and let the user start the server manually. Log it for diagnostics.
+        // active config, so a failed auto-start is non-fatal — proceed to the
+        // benchmark step and let the user start the server manually if needed.
+        // Log it for diagnostics.
         try {
           await api.startSidecar(trimmed)
         } catch (sidecarErr) {
           console.warn('GGUF registered, but the llama.cpp sidecar failed to start:', sidecarErr)
         }
-        navigate('/')
+        setStep('benchmark')
       } catch (err: unknown) {
         setActionError(
           err instanceof Error ? err.message : 'Failed to activate the GGUF file.',
@@ -795,6 +854,99 @@ export default function ModelManager() {
           >
             Cancel
           </ActionButton>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Benchmark ────────────────────────────────────────────────────────────────
+
+  if (step === 'benchmark') {
+    return (
+      <div style={{ maxWidth: '640px' }}>
+        <h1>Model benchmark</h1>
+        <p style={{ color: '#a1a1aa', fontSize: '0.9rem' }}>
+          Running a short benchmark to measure generation speed and check hardware compatibility.
+        </p>
+
+        {benchmarkRunning && (
+          <p role="status" style={{ marginTop: '1rem' }}>
+            Running benchmark…
+          </p>
+        )}
+
+        {benchmarkResult && !benchmarkRunning && (
+          <div>
+            <table style={{ marginTop: '1rem', borderCollapse: 'collapse' }}>
+              <tbody>
+                <DetailRow label="Speed">
+                  {benchmarkResult.tokens_per_sec.toFixed(1)} tokens/sec
+                </DetailRow>
+                {benchmarkResult.context_length != null && (
+                  <DetailRow label="Context window">
+                    {benchmarkResult.context_length.toLocaleString()} tokens
+                  </DetailRow>
+                )}
+                <DetailRow label="Runtime">{benchmarkResult.runtime_id}</DetailRow>
+              </tbody>
+            </table>
+
+            {benchmarkResult.warnings.length > 0 && (
+              <div
+                role="alert"
+                aria-label="benchmark warnings"
+                style={{
+                  marginTop: '1rem',
+                  background: 'rgba(251,191,36,0.08)',
+                  border: '1px solid rgba(251,191,36,0.35)',
+                  borderRadius: '6px',
+                  padding: '0.75rem 1rem',
+                }}
+              >
+                <p style={{ margin: '0 0 0.5rem', fontWeight: 600, color: '#fbbf24', fontSize: '0.875rem' }}>
+                  Performance warnings
+                </p>
+                <ul style={{ margin: 0, paddingLeft: '1.25rem', fontSize: '0.875rem', color: '#fde68a' }}>
+                  {benchmarkResult.warnings.map((w, i) => (
+                    <li key={i} style={{ marginBottom: '0.3rem' }}>{w}</li>
+                  ))}
+                </ul>
+                <p style={{ margin: '0.5rem 0 0', fontSize: '0.8rem', color: '#a1a1aa' }}>
+                  If generation is slow, try a smaller model or check that GPU acceleration is
+                  enabled in your runtime settings.{' '}
+                  <a href={SETUP_DOCS_URL} target="_blank" rel="noreferrer">
+                    Setup docs
+                  </a>
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {benchmarkError && !benchmarkRunning && (
+          <div
+            role="alert"
+            style={{
+              marginTop: '1rem',
+              padding: '0.75rem 1rem',
+              background: 'rgba(239,68,68,0.08)',
+              border: '1px solid rgba(239,68,68,0.3)',
+              borderRadius: '6px',
+            }}
+          >
+            <p style={{ margin: '0 0 0.4rem', color: '#f87171', fontSize: '0.875rem' }}>
+              Benchmark failed: {benchmarkError}
+            </p>
+            <p style={{ margin: 0, fontSize: '0.8rem', color: '#a1a1aa' }}>
+              Your model is still selected and ready to use. The benchmark is optional.
+            </p>
+          </div>
+        )}
+
+        <div style={{ marginTop: '1.5rem' }}>
+          <PrimaryButton disabled={benchmarkRunning} onClick={() => navigate('/')}>
+            {benchmarkRunning ? 'Running…' : 'Continue to Home'}
+          </PrimaryButton>
         </div>
       </div>
     )
