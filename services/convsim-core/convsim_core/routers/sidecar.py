@@ -78,8 +78,7 @@ async def start_sidecar(request: Request, body: SidecarStartRequest) -> SidecarS
             gpu_layers=body.gpu_layers,
             startup_timeout=body.startup_timeout,
         )
-    except RuntimeError as exc:
-        current = sidecar.get_status()
+    except (RuntimeError, TimeoutError) as exc:
         raise ConvsimError(
             code="SIDECAR_START_FAILED",
             message=str(exc),

@@ -233,6 +233,21 @@ def test_sidecar_start_missing_executable_returns_503(client):
     assert body["error"]["code"] == "SIDECAR_START_FAILED"
 
 
+def test_sidecar_start_timeout_returns_503(client):
+    """Startup timeout (TimeoutError, not RuntimeError) must map to 503, not 500."""
+    async def _raise_timeout(*_args, **_kwargs):
+        raise TimeoutError("llama-server did not become ready within 1s")
+
+    client.app.state.sidecar.start = _raise_timeout
+
+    resp = client.post(
+        "/api/sidecar/start",
+        json={"model_path": "/fake/model.gguf", "startup_timeout": 1.0},
+    )
+    assert resp.status_code == 503
+    assert resp.json()["error"]["code"] == "SIDECAR_START_FAILED"
+
+
 # ---------------------------------------------------------------------------
 # Integration test — real fake executable
 # ---------------------------------------------------------------------------
