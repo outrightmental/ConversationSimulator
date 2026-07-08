@@ -246,6 +246,7 @@ CREATE VIRTUAL TABLE pack_readme_fts USING fts5(
     name, description
 );
 
+
 CREATE TRIGGER scenario_fts_delete AFTER DELETE ON scenarios BEGIN
     DELETE FROM scenario_fts WHERE rowid = OLD.id;
 END;
