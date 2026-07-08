@@ -41,8 +41,8 @@ async function parseErrorMessage(res: Response): Promise<string> {
   const text = await res.text()
   let message = text || `${res.status} ${res.statusText}`
   try {
-    const json = JSON.parse(text) as { message?: string }
-    if (json.message) message = json.message
+    const json = JSON.parse(text) as { message?: string; code?: string }
+    if (json.message) message = json.code ? `${json.code}: ${json.message}` : json.message
   } catch {
     // text is not JSON; use as-is
   }
