@@ -246,6 +246,19 @@ class TestSelfHarmCrisis:
         result = route_player_input("I don't want to be alive", _policy())
         assert result.action == RouteAction.STOP_WITH_RESOURCE
 
+    def test_killing_myself_gerund_triggers_stop_with_resource(self):
+        # "killing myself" (gerund) must fire, consistent with cut(?:ting)?.
+        result = route_player_input("I've been killing myself", _policy())
+        assert result.action == RouteAction.STOP_WITH_RESOURCE
+
+    def test_hurting_myself_gerund_triggers_stop_with_resource(self):
+        result = route_player_input("I've been hurting myself", _policy())
+        assert result.action == RouteAction.STOP_WITH_RESOURCE
+
+    def test_ending_my_life_gerund_triggers_stop_with_resource(self):
+        result = route_player_input("I've been thinking about ending my life", _policy())
+        assert result.action == RouteAction.STOP_WITH_RESOURCE
+
 
 # ---------------------------------------------------------------------------
 # Category: criminal_instruction → refuse (configurable; default added by service)

@@ -142,9 +142,9 @@ _MINORS_PATTERN = _compile(
 # self_harm_crisis — GLOBAL NON-OVERRIDABLE → stop_with_resource_message
 _SELF_HARM_PATTERN = _compile(
     r"\bsuicid",
-    r"\bkill\s+my\s*self\b",
-    r"\bend\s+my\s+(?:own\s+)?life\b",
-    r"\bhurt\s+my\s*self\b",
+    r"\bkill(?:ing)?\s+my\s*self\b",
+    r"\bend(?:ing)?\s+my\s+(?:own\s+)?life\b",
+    r"\bhurt(?:ing)?\s+my\s*self\b",
     r"\bself[- ]harm\b",
     r"\bcut(?:ting)?\s+my\s*self\b",
     r"\bover\s*dos",
