@@ -228,6 +228,11 @@ CREATE TABLE session_debriefs (
 CREATE UNIQUE INDEX session_debriefs_session_id ON session_debriefs(session_id);
 """
 
+_DEBRIEF_UNIQUE_IDX_SQL = """
+DROP INDEX IF EXISTS session_debriefs_session_id;
+CREATE UNIQUE INDEX session_debriefs_session_id ON session_debriefs(session_id);
+"""
+
 MIGRATIONS: list[tuple[str, str]] = [
     ("0001_initial_schema", _INITIAL_SCHEMA_SQL),
     ("0002_model_registry_v2", _MODEL_REGISTRY_V2_SQL),
@@ -236,6 +241,7 @@ MIGRATIONS: list[tuple[str, str]] = [
     ("0005_turn_pipeline", _TURN_PIPELINE_SQL),
     ("0006_turn_transcript_and_events", _TURN_TRANSCRIPT_AND_EVENTS_SQL),
     ("0007_session_debriefs", _DEBRIEF_TABLE_SQL),
+    ("0008_session_debriefs_unique_idx", _DEBRIEF_UNIQUE_IDX_SQL),
 ]
 
 
