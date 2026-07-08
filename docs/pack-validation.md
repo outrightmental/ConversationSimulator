@@ -124,8 +124,11 @@ convsim test-pack <pack-dir>
 ```
 
 This runs every `tests/*.yaml` fixture file against the fake runtime and
-checks that assertions pass. The fake runtime uses a deterministic
-pseudo-random sequence seeded from each fixture's `seed` field.
+checks that assertions pass. The fake runtime is fully deterministic: it
+invokes no model and produces the same structural output every run. A fixture
+may declare an optional `seed` field for forward compatibility, but the current
+fake runtime does not consume it — it is reserved for reproducible results once
+a real runtime is wired in.
 
 ### Fixture structure
 
@@ -144,7 +147,7 @@ For each turn, the test runner checks:
 | `state_delta_contains` | Listed variable names appear in the turn's `state_delta` output |
 | `session_control` | Turn's `session_control` equals the expected `continue_session` or `end_session` |
 | `safety_status` | Turn's `safety_status` equals the expected `ok`, `redirect`, or `stop` |
-| `npc_emotion_not` | Turn's `npc_emotion` does not equal the listed value |
+| `npc_emotion_not` | Reserved. Accepted in fixtures but not evaluated by the fake runtime (emotion is always `null`), so it trivially passes today. Will assert that the turn's `npc_emotion` does not equal the listed value once a real runtime is wired in. |
 
 > **Fake-runtime limitation.** `test-pack` runs against a deterministic fake
 > runtime that requires no model weights. It populates `state_delta` with every
@@ -153,9 +156,10 @@ For each turn, the test runner checks:
 > `safety_status=ok`, and `npc_emotion=null`. In practice this means CI smoke
 > tests verify structure — that a variable is declared and the session proceeds
 > without an unexpected end — rather than dynamic behaviour. A turn assertion
-> expecting `end_session`, `safety_status: redirect`/`stop`, or a specific
-> emotion cannot pass under the fake runtime; those assertions are reserved for
-> when a real runtime is wired in. Assert `session_control: continue_session`
+> expecting `end_session` or `safety_status: redirect`/`stop` cannot pass under
+> the fake runtime, and `npc_emotion_not` is accepted but not evaluated (it
+> trivially passes); those assertions are reserved for when a real runtime is
+> wired in. Assert `session_control: continue_session`
 > and `safety_status: ok` in smoke tests.
 
 #### Static assertions
@@ -263,6 +267,28 @@ not code — remove the offending file and inline any needed content as data.
 
 Two scenarios share a `scenario_id`, or two NPCs share an `npc_id`. IDs must
 be unique within a pack. Rename one of them.
+
+### UNSUPPORTED_VERSION
+
+```
+✗ Pack validation failed: UNSUPPORTED_VERSION
+  Unsupported schema_version "0.2" in my-pack/manifest.yaml. Expected "0.1".
+```
+
+A file declares a `schema_version` the loader does not support. MVP supports
+`"0.1"` only. Set every file's `schema_version` to `"0.1"`.
+
+### PATH_TRAVERSAL
+
+```
+✗ Pack validation failed: PATH_TRAVERSAL
+  Ref "../../etc/passwd" escapes the pack root "my-pack"
+```
+
+A `ref` (or other referenced path) resolves outside the pack directory, or
+contains a null byte. References must stay within the pack root — a ref that
+escapes it fails with `PATH_TRAVERSAL` rather than `MISSING_FILE`. Keep all
+paths relative to the pack and pointing at files inside it.
 
 ### Test fixture failure (`convsim test-pack`)
 

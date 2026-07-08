@@ -473,8 +473,9 @@ response_style:
   teaching.
 - Include a rubric dimension for language accuracy/complexity alongside
   content dimensions (e.g. communication effectiveness).
-- Set `supported_languages` to the language being practiced (not `en` unless
-  the scenario is in English).
+- Set `supported_languages` in `manifest.yaml` to the language being practiced
+  (not `en` unless the scenario is in English). This field lives on the pack
+  manifest, not on individual scenario files.
 - Vocabulary difficulty and grammar complexity should vary across difficulty
   levels.
 
