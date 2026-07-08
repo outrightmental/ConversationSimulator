@@ -91,6 +91,9 @@ export default function Conversation() {
   const turnNumRef = useRef(0)
   const bannerUidRef = useRef(0)
   const streamingRef = useRef('')
+  const phaseRef = useRef<Phase>('starting')
+  const npcTurnCommittedRef = useRef(false)
+  phaseRef.current = phase
 
   // Fetch scenario for NPC panel and scene card — best effort
   useEffect(() => {
@@ -176,6 +179,37 @@ export default function Conversation() {
             setNpcEmotion(event.payload.emotion)
             streamingRef.current = ''
             setStreamingText('')
+            // During an active turn submission, commit the NPC response immediately
+            // so the transcript is populated as soon as streaming finishes rather
+            // than waiting for the REST round-trip to complete.
+            if (phaseRef.current === 'submitting' && !npcTurnCommittedRef.current) {
+              npcTurnCommittedRef.current = true
+              const { content, emotion: npcEmotion, state_delta, event_flags } = event.payload
+              const flags = event_flags ?? []
+              setTurns((prev) => [
+                ...prev,
+                {
+                  id: ++turnUidRef.current,
+                  role: 'npc',
+                  content,
+                  emotion: npcEmotion !== 'neutral' ? npcEmotion : undefined,
+                  eventFlags: flags.length > 0 ? flags : undefined,
+                  turnNum: ++turnNumRef.current,
+                },
+              ])
+              if (Object.keys(state_delta ?? {}).length > 0) {
+                setStateVars((prev) => {
+                  const next = { ...prev }
+                  for (const [k, d] of Object.entries(state_delta)) {
+                    if (k in next) next[k] = Math.max(0, Math.min(100, next[k] + d))
+                  }
+                  return next
+                })
+              }
+              if (flags.length > 0) {
+                setAllEventFlags((prev) => [...prev, ...flags])
+              }
+            }
             break
           case 'scenario.event':
             if (event.payload.flags.length > 0) {
@@ -217,27 +251,33 @@ export default function Conversation() {
   async function handleSubmit(text: string) {
     if (!text || phase !== 'active') return
 
+    // Add the player turn immediately so it appears before the NPC response
+    // regardless of whether the NPC turn is committed by WebSocket or REST.
+    setTurns((prev) => [
+      ...prev,
+      {
+        id: ++turnUidRef.current,
+        role: 'player',
+        content: text,
+        turnNum: ++turnNumRef.current,
+      },
+    ])
+
     setPhase('submitting')
     setError(null)
     streamingRef.current = ''
     setStreamingText('')
+    npcTurnCommittedRef.current = false
 
     try {
       const res = await api.submitTurn(sessionId!, text)
 
-      const playerEvent = res.events.find((e) => e.event_type === 'player_turn')
       const npcEvent = res.events.find((e) => e.event_type === 'npc_turn')
 
-      const newTurns: TurnEntry[] = []
-      if (playerEvent) {
-        newTurns.push({
-          id: ++turnUidRef.current,
-          role: 'player',
-          content: playerEvent.payload['content'] as string,
-          turnNum: ++turnNumRef.current,
-        })
-      }
-      if (npcEvent) {
+      // Only commit the NPC turn from REST if the WebSocket npc.final handler
+      // has not already done so (to avoid duplicate transcript entries).
+      if (npcEvent && !npcTurnCommittedRef.current) {
+        npcTurnCommittedRef.current = true
         const payload = npcEvent.payload
         const delta = (payload['state_delta'] ?? {}) as Record<string, number>
         const flags = (payload['event_flags'] ?? []) as string[]
@@ -245,14 +285,17 @@ export default function Conversation() {
 
         if (emotion) setNpcEmotion(emotion)
 
-        newTurns.push({
-          id: ++turnUidRef.current,
-          role: 'npc',
-          content: payload['content'] as string,
-          emotion,
-          eventFlags: flags.length > 0 ? flags : undefined,
-          turnNum: ++turnNumRef.current,
-        })
+        setTurns((prev) => [
+          ...prev,
+          {
+            id: ++turnUidRef.current,
+            role: 'npc',
+            content: payload['content'] as string,
+            emotion,
+            eventFlags: flags.length > 0 ? flags : undefined,
+            turnNum: ++turnNumRef.current,
+          },
+        ])
 
         if (Object.keys(delta).length > 0) {
           setStateVars((prev) => {
@@ -268,7 +311,6 @@ export default function Conversation() {
         }
       }
 
-      setTurns((prev) => [...prev, ...newTurns])
       setSessionState(res.state)
       streamingRef.current = ''
       setStreamingText('')

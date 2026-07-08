@@ -353,6 +353,25 @@ describe('Conversation screen', () => {
       )
       expect(screen.getByText(/Turn 1/)).toBeInTheDocument()
     })
+
+    it('shows the player message immediately after submit without waiting for REST', async () => {
+      // submitTurn never resolves — simulates slow network
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      renderConversation()
+      await waitFor(() =>
+        expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument(),
+      )
+
+      fireEvent.change(screen.getByRole('textbox', { name: /your response/i }), {
+        target: { value: 'Fast message.' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+
+      // Player turn must appear before REST resolves
+      await waitFor(() =>
+        expect(screen.getByText('Fast message.')).toBeInTheDocument(),
+      )
+    })
   })
 
   describe('state variables panel', () => {
@@ -497,6 +516,64 @@ describe('Conversation screen', () => {
         expect(screen.getByTestId('streaming-turn')).toBeInTheDocument(),
       )
       expect(screen.getByTestId('streaming-turn')).toHaveTextContent('Great question!')
+    })
+
+    it('commits npc turn to transcript when npc.final arrives before REST completes', async () => {
+      let wsCallback: ((event: WsEvent) => void) | null = null
+      mockApi.connectSession.mockImplementation((_id, cb) => {
+        wsCallback = cb
+        return { close: vi.fn() }
+      })
+      mockApi.startSession.mockResolvedValue(startResponse)
+      // submitTurn never resolves — simulates LLM streaming finishing before REST returns
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      renderConversation()
+      await waitFor(() =>
+        expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument(),
+      )
+
+      fireEvent.change(screen.getByRole('textbox', { name: /your response/i }), {
+        target: { value: 'Tell me more.' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+
+      // Deliver streaming tokens then the final event via WebSocket
+      act(() => {
+        wsCallback?.({
+          type: 'npc.token',
+          seq: 1,
+          session_id: SESSION_ID,
+          ts: '2026-07-01T00:01:00Z',
+          payload: { text: 'Great ' },
+        })
+        wsCallback?.({
+          type: 'npc.token',
+          seq: 2,
+          session_id: SESSION_ID,
+          ts: '2026-07-01T00:01:00Z',
+          payload: { text: 'question!' },
+        })
+        wsCallback?.({
+          type: 'npc.final',
+          seq: 3,
+          session_id: SESSION_ID,
+          ts: '2026-07-01T00:01:01Z',
+          payload: {
+            content: 'Great question!',
+            emotion: 'curious',
+            state_delta: {},
+            event_flags: [],
+          },
+        })
+      })
+
+      // NPC turn committed from WS — streaming bubble gone, committed turn present
+      await waitFor(() =>
+        expect(screen.queryByTestId('streaming-turn')).not.toBeInTheDocument(),
+      )
+      expect(screen.getByText('Great question!')).toBeInTheDocument()
+      // Emotion update from npc.final should show in the NPC panel
+      expect(screen.getByTestId('npc-emotion')).toHaveTextContent('curious')
     })
 
     it('clears streaming text when REST turn completes', async () => {
