@@ -27,7 +27,7 @@ def _classify_asset(path: Path) -> str:
         return "image"
     if ext in (".mp3", ".ogg", ".wav", ".flac", ".aac"):
         return "audio"
-    if path.name == "pack.json":
+    if path.name in ("pack.json", "manifest.yaml"):
         return "manifest"
     if ext in (".yaml", ".yml", ".json"):
         return "data"

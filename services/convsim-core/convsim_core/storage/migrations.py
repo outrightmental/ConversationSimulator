@@ -233,6 +233,62 @@ DROP INDEX IF EXISTS session_debriefs_session_id;
 CREATE UNIQUE INDEX session_debriefs_session_id ON session_debriefs(session_id);
 """
 
+_SCENARIO_LIBRARY_SCHEMA_SQL = """
+ALTER TABLE packs ADD COLUMN content_rating TEXT;
+ALTER TABLE packs ADD COLUMN supported_languages_json TEXT;
+ALTER TABLE packs ADD COLUMN validation_status TEXT NOT NULL DEFAULT 'unknown';
+ALTER TABLE packs ADD COLUMN last_validated_at TEXT;
+
+ALTER TABLE scenarios ADD COLUMN title TEXT;
+ALTER TABLE scenarios ADD COLUMN summary TEXT;
+ALTER TABLE scenarios ADD COLUMN content_rating TEXT;
+ALTER TABLE scenarios ADD COLUMN difficulty_default TEXT;
+ALTER TABLE scenarios ADD COLUMN max_turns INTEGER;
+ALTER TABLE scenarios ADD COLUMN soft_time_limit_minutes INTEGER;
+ALTER TABLE scenarios ADD COLUMN tags_json TEXT;
+ALTER TABLE scenarios ADD COLUMN voice_support INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE scenarios ADD COLUMN model_recommendation TEXT;
+ALTER TABLE scenarios ADD COLUMN rel_path TEXT;
+
+DROP TABLE IF EXISTS scenario_fts;
+CREATE VIRTUAL TABLE scenario_fts USING fts5(
+    title, summary, tags, pack_name, pack_readme
+);
+
+CREATE TRIGGER scenario_fts_delete AFTER DELETE ON scenarios BEGIN
+    DELETE FROM scenario_fts WHERE rowid = OLD.id;
+END;
+
+-- Backfill scenario_fts for any scenarios already in the DB before this migration.
+-- Uses name/description as fallbacks because title/summary are NULL on pre-existing rows.
+INSERT INTO scenario_fts(rowid, title, summary, tags, pack_name, pack_readme)
+SELECT s.id,
+       COALESCE(s.title, s.name, ''),
+       COALESCE(s.summary, s.description, ''),
+       '',
+       COALESCE(p.name, ''),
+       COALESCE(p.description, '')
+FROM scenarios s
+JOIN packs p ON s.pack_id = p.id;
+
+-- Keep pack_readme_fts in sync when packs are deleted.  The insert path (insert_pack)
+-- adds a row manually; we need a matching delete trigger so the FTS index doesn't
+-- accumulate ghost entries for removed packs.
+-- pack_readme_fts uses content='packs', so we must use the FTS5 'delete' command
+-- (providing the old column values) instead of a plain DELETE, because by the time
+-- an AFTER DELETE trigger fires the content-table row is already gone and SQLite
+-- can no longer read the indexed terms from it.
+CREATE TRIGGER pack_readme_fts_delete AFTER DELETE ON packs BEGIN
+    INSERT INTO pack_readme_fts(pack_readme_fts, rowid, name, description)
+    VALUES('delete', OLD.id, OLD.name, COALESCE(OLD.description, ''));
+END;
+
+-- Backfill pack_readme_fts for packs imported before this migration (the old
+-- insert_pack did not insert into pack_readme_fts).
+INSERT INTO pack_readme_fts(rowid, name, description)
+SELECT id, name, COALESCE(description, '') FROM packs;
+"""
+
 MIGRATIONS: list[tuple[str, str]] = [
     ("0001_initial_schema", _INITIAL_SCHEMA_SQL),
     ("0002_model_registry_v2", _MODEL_REGISTRY_V2_SQL),
@@ -242,6 +298,7 @@ MIGRATIONS: list[tuple[str, str]] = [
     ("0006_turn_transcript_and_events", _TURN_TRANSCRIPT_AND_EVENTS_SQL),
     ("0007_session_debriefs", _DEBRIEF_TABLE_SQL),
     ("0008_session_debriefs_unique_idx", _DEBRIEF_UNIQUE_IDX_SQL),
+    ("0009_scenario_library_schema", _SCENARIO_LIBRARY_SCHEMA_SQL),
 ]
 
 
