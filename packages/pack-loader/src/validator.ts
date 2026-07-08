@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { Ajv } from 'ajv';
+import Ajv2020 from 'ajv/dist/2020';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -9,7 +9,7 @@ import { PackLoaderError, SUPPORTED_SCHEMA_VERSION } from './types.js';
 const _dir = dirname(fileURLToPath(import.meta.url));
 const schemasDir = resolve(_dir, '..', '..', '..', 'schemas');
 
-const ajv = new Ajv({ strict: false, validateSchema: false, allErrors: true });
+const ajv = new Ajv2020({ strict: false, validateSchema: false, allErrors: true });
 
 function loadSchema(name: string): object {
   return JSON.parse(readFileSync(resolve(schemasDir, name), 'utf8')) as object;
