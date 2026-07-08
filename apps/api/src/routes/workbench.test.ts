@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, writeFileSync, rmSync, symlinkSync } from 'node:fs';
+import { mkdirSync, writeFileSync, rmSync, symlinkSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import AdmZip from 'adm-zip';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../index.js';
 import { setWorkbenchRoots } from './workbench.js';
@@ -617,5 +618,284 @@ describe('GET /api/workbench/packs/:kind/:slug/validate', () => {
       url: '/api/workbench/packs/official/does-not-exist/validate',
     });
     expect(res.statusCode).toBe(404);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Helper: build a valid zip from the fixture pack in a temp directory
+// ---------------------------------------------------------------------------
+
+function buildValidZip(packDir: string): Buffer {
+  const zip = new AdmZip();
+  zip.addLocalFolder(packDir, '');
+  return zip.toBuffer();
+}
+
+// ---------------------------------------------------------------------------
+// GET /api/workbench/packs/:kind/:slug/export
+// ---------------------------------------------------------------------------
+
+describe('GET /api/workbench/packs/:kind/:slug/export', () => {
+  it('returns a zip binary for a valid local-dev pack', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/workbench/packs/local-dev/my-pack/export',
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toContain('application/zip');
+    expect(res.headers['content-disposition']).toContain('.zip');
+    expect(res.rawPayload.length).toBeGreaterThan(0);
+
+    // Verify the zip is actually readable and contains key pack files.
+    const zip = new AdmZip(res.rawPayload);
+    const names = zip.getEntries().map((e) => e.entryName);
+    expect(names).toContain('manifest.yaml');
+    expect(names).toContain('README.md');
+  });
+
+  it('returns a zip for an official pack too', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/workbench/packs/official/sample-pack/export',
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toContain('application/zip');
+  });
+
+  it('zip entries use relative paths only — no absolute paths', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/workbench/packs/local-dev/my-pack/export',
+    });
+    expect(res.statusCode).toBe(200);
+    const zip = new AdmZip(res.rawPayload);
+    for (const entry of zip.getEntries()) {
+      // Entry names must be relative (never start with / or a Windows drive letter).
+      expect(entry.entryName).not.toMatch(/^[/\\]/);
+      expect(entry.entryName).not.toMatch(/^[A-Za-z]:\\/);
+    }
+  });
+
+  it('returns 422 with validation errors when the pack is invalid', async () => {
+    // Corrupt the manifest so validation fails.
+    writeFileSync(
+      join(localDevRoot, 'my-pack', 'manifest.yaml'),
+      `schema_version: "0.1"\npack_id: local.my_pack\n`,
+    );
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/workbench/packs/local-dev/my-pack/export',
+    });
+    expect(res.statusCode).toBe(422);
+    const body = res.json<{ valid: boolean; errors: unknown[] }>();
+    expect(body.valid).toBe(false);
+    expect(body.errors.length).toBeGreaterThan(0);
+  });
+
+  it('returns 404 for a non-existent pack', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/workbench/packs/local-dev/ghost/export',
+    });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('returns 400 for an invalid kind', async () => {
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/workbench/packs/community/sample-pack/export',
+    });
+    expect(res.statusCode).toBe(400);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/workbench/packs/import
+// ---------------------------------------------------------------------------
+
+describe('POST /api/workbench/packs/import', () => {
+  it('imports a valid zip and returns the new pack summary', async () => {
+    const packDir = join(officialRoot, 'sample-pack');
+    const zipBuffer = buildValidZip(packDir);
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workbench/packs/import',
+      headers: { 'content-type': 'application/zip' },
+      payload: zipBuffer,
+    });
+
+    expect(res.statusCode).toBe(201);
+    const body = res.json<{ kind: string; slug: string; editable: boolean; pack_id: string }>();
+    expect(body.kind).toBe('local-dev');
+    expect(body.editable).toBe(true);
+    expect(body.pack_id).toBe('official.sample_pack');
+
+    // Verify the pack actually landed in local-dev.
+    expect(existsSync(join(localDevRoot, body.slug))).toBe(true);
+    expect(existsSync(join(localDevRoot, body.slug, 'manifest.yaml'))).toBe(true);
+  });
+
+  it('appears in the pack list after import', async () => {
+    const zipBuffer = buildValidZip(join(officialRoot, 'sample-pack'));
+    await app.inject({
+      method: 'POST',
+      url: '/api/workbench/packs/import',
+      headers: { 'content-type': 'application/zip' },
+      payload: zipBuffer,
+    });
+
+    const listRes = await app.inject({ method: 'GET', url: '/api/workbench/packs' });
+    const packs = listRes.json<{ kind: string; slug: string }[]>();
+    expect(packs.some((p) => p.kind === 'local-dev' && p.slug.startsWith('official.sample_pack'))).toBe(true);
+  });
+
+  it('renames slug on conflict by default', async () => {
+    const zipBuffer = buildValidZip(join(officialRoot, 'sample-pack'));
+
+    const res1 = await app.inject({
+      method: 'POST',
+      url: '/api/workbench/packs/import',
+      headers: { 'content-type': 'application/zip' },
+      payload: zipBuffer,
+    });
+    const slug1 = res1.json<{ slug: string }>().slug;
+
+    const res2 = await app.inject({
+      method: 'POST',
+      url: '/api/workbench/packs/import',
+      headers: { 'content-type': 'application/zip' },
+      payload: zipBuffer,
+    });
+    expect(res2.statusCode).toBe(201);
+    const body2 = res2.json<{ slug: string; renamed_from?: string }>();
+    expect(body2.slug).not.toBe(slug1);
+    expect(body2.renamed_from).toBe(slug1);
+  });
+
+  it('overwrites existing pack when conflict=overwrite', async () => {
+    const zipBuffer = buildValidZip(join(officialRoot, 'sample-pack'));
+
+    const res1 = await app.inject({
+      method: 'POST',
+      url: '/api/workbench/packs/import',
+      headers: { 'content-type': 'application/zip' },
+      payload: zipBuffer,
+    });
+    const slug1 = res1.json<{ slug: string }>().slug;
+
+    const res2 = await app.inject({
+      method: 'POST',
+      url: '/api/workbench/packs/import?conflict=overwrite',
+      headers: { 'content-type': 'application/zip' },
+      payload: zipBuffer,
+    });
+    expect(res2.statusCode).toBe(201);
+    const body2 = res2.json<{ slug: string; renamed_from?: string }>();
+    // Same slug — no rename needed.
+    expect(body2.slug).toBe(slug1);
+    expect(body2.renamed_from).toBeUndefined();
+  });
+
+  it('returns 422 with validation errors for an invalid zip', async () => {
+    // Build a zip with an invalid manifest (missing required fields).
+    const zip = new AdmZip();
+    zip.addFile('manifest.yaml', Buffer.from(`schema_version: "0.1"\npack_id: bad.pack\n`));
+    const zipBuffer = zip.toBuffer();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workbench/packs/import',
+      headers: { 'content-type': 'application/zip' },
+      payload: zipBuffer,
+    });
+    expect(res.statusCode).toBe(422);
+    const body = res.json<{ valid: boolean; errors: unknown[] }>();
+    expect(body.valid).toBe(false);
+    expect(body.errors.length).toBeGreaterThan(0);
+  });
+
+  it('rejects a zip containing a forbidden executable file', async () => {
+    const zip = new AdmZip();
+    zip.addFile('run.sh', Buffer.from('#!/bin/sh\necho hi\n'));
+    // Also add a plausible manifest so the zip extracts to something
+    zip.addFile('manifest.yaml', Buffer.from('schema_version: "0.1"\npack_id: evil.pack\n'));
+    const zipBuffer = zip.toBuffer();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workbench/packs/import',
+      headers: { 'content-type': 'application/zip' },
+      payload: zipBuffer,
+    });
+    expect(res.statusCode).toBe(422);
+    const body = res.json<{ valid: boolean; errors: { rule_id: string }[] }>();
+    expect(body.valid).toBe(false);
+    const forbidden = body.errors.find((e) => e.rule_id === 'FORBIDDEN_FILE');
+    expect(forbidden).toBeDefined();
+  });
+
+  it('rejects a zip containing a zip-slip path', async () => {
+    const zip = new AdmZip();
+    zip.addFile('../escape.yaml', Buffer.from('evil: true\n'));
+    const zipBuffer = zip.toBuffer();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workbench/packs/import',
+      headers: { 'content-type': 'application/zip' },
+      payload: zipBuffer,
+    });
+    expect(res.statusCode).toBe(422);
+  });
+
+  it('returns 400 when the body is not a zip', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workbench/packs/import',
+      headers: { 'content-type': 'application/zip' },
+      payload: Buffer.from('not a zip file'),
+    });
+    expect(res.statusCode).toBe(422);
+  });
+
+  it('returns 400 when the body is empty', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workbench/packs/import',
+      headers: { 'content-type': 'application/zip' },
+      payload: Buffer.alloc(0),
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('export then import round-trip produces an equivalent pack', async () => {
+    // Export the local-dev my-pack, then re-import it.
+    const exportRes = await app.inject({
+      method: 'GET',
+      url: '/api/workbench/packs/local-dev/my-pack/export',
+    });
+    expect(exportRes.statusCode).toBe(200);
+
+    const importRes = await app.inject({
+      method: 'POST',
+      url: '/api/workbench/packs/import',
+      headers: { 'content-type': 'application/zip' },
+      payload: exportRes.rawPayload,
+    });
+    expect(importRes.statusCode).toBe(201);
+    const imported = importRes.json<{ kind: string; pack_id: string; editable: boolean }>();
+    expect(imported.kind).toBe('local-dev');
+    expect(imported.pack_id).toBe('local.my_pack');
+    expect(imported.editable).toBe(true);
+
+    // The imported copy should validate cleanly.
+    const validateRes = await app.inject({
+      method: 'GET',
+      url: `/api/workbench/packs/local-dev/${importRes.json<{ slug: string }>().slug}/validate`,
+    });
+    expect(validateRes.statusCode).toBe(200);
+    expect(validateRes.json<{ valid: boolean }>().valid).toBe(true);
   });
 });

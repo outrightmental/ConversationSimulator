@@ -520,6 +520,138 @@ describe('CreatorWorkbench', () => {
     })
   })
 
+  // ---------------------------------------------------------------------------
+  // Import / Export
+  // ---------------------------------------------------------------------------
+
+  it('shows import pack button in pack list', async () => {
+    renderWorkbench()
+    expect(await screen.findByTestId('import-pack-button')).toBeInTheDocument()
+  })
+
+  it('shows export pack button when a pack is selected', async () => {
+    stubFetch((url) => {
+      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
+      if (url.includes('/validate')) return okJson({ valid: true, errors: [], warnings: [] })
+      return okJson([OFFICIAL_PACK, LOCAL_PACK])
+    })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('export-pack-button')).toBeInTheDocument()
+    })
+  })
+
+  it('import success adds new pack to list and shows it as selected', async () => {
+    const newPack: WorkbenchPack = { kind: 'local-dev', slug: 'imported-pack', pack_id: 'local.imported_pack', name: 'Imported Pack', editable: true }
+    const importSpy = vi.fn().mockReturnValue(okJson(newPack))
+
+    stubFetch((url, opts) => {
+      if (url.includes('/import') && opts?.method === 'POST') return importSpy()
+      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
+      if (url.includes('/validate')) return okJson({ valid: true, errors: [], warnings: [] })
+      return okJson([OFFICIAL_PACK, LOCAL_PACK])
+    })
+
+    renderWorkbench()
+    await screen.findByTestId('import-pack-button')
+
+    // Simulate file input change via the hidden input
+    const fileInput = screen.getByTestId('import-file-input') as HTMLInputElement
+    const zipFile = new File(['PK\x03\x04'], 'my-pack.zip', { type: 'application/zip' })
+    Object.defineProperty(fileInput, 'files', { value: [zipFile], writable: false })
+    fireEvent.change(fileInput)
+
+    await waitFor(() => {
+      expect(importSpy).toHaveBeenCalledOnce()
+    })
+  })
+
+  it('import validation failure shows errors without crashing', async () => {
+    const validationError = {
+      valid: false,
+      errors: [
+        { severity: 'error', rule_id: 'SCHEMA_VIOLATION', file: 'manifest.yaml', pointer: '/author', message: 'author is required', suggested_fix: 'Add author' },
+      ],
+      warnings: [],
+    }
+    const importSpy = vi.fn().mockReturnValue({ ok: false, status: 422, json: () => Promise.resolve(validationError), text: () => Promise.resolve(JSON.stringify(validationError)) })
+
+    stubFetch((url, opts) => {
+      if (url.includes('/import') && opts?.method === 'POST') return importSpy()
+      return okJson([OFFICIAL_PACK, LOCAL_PACK])
+    })
+
+    renderWorkbench()
+    await screen.findByTestId('import-pack-button')
+
+    const fileInput = screen.getByTestId('import-file-input') as HTMLInputElement
+    const zipFile = new File(['PK\x03\x04'], 'bad.zip', { type: 'application/zip' })
+    Object.defineProperty(fileInput, 'files', { value: [zipFile], writable: false })
+    fireEvent.change(fileInput)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('import-validation-errors')).toBeInTheDocument()
+      expect(screen.getByTestId('import-validation-errors')).toHaveTextContent(/author is required/i)
+    })
+  })
+
+  it('export success shows filename confirmation', async () => {
+    const zipBlob = new Blob(['PK\x03\x04'], { type: 'application/zip' })
+    const exportSpy = vi.fn().mockReturnValue({
+      ok: true,
+      status: 200,
+      blob: () => Promise.resolve(zipBlob),
+      headers: { get: (h: string) => h === 'Content-Disposition' ? 'attachment; filename="my-pack-0.1.0.zip"' : null },
+    })
+
+    // jsdom does not implement URL.createObjectURL; stub it so triggerDownload doesn't throw.
+    const createObjectURL = vi.fn().mockReturnValue('blob:test')
+    const revokeObjectURL = vi.fn()
+    vi.spyOn(URL, 'createObjectURL').mockImplementation(createObjectURL)
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(revokeObjectURL)
+
+    stubFetch((url) => {
+      if (url.includes('/export')) return exportSpy()
+      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
+      if (url.includes('/validate')) return okJson({ valid: true, errors: [], warnings: [] })
+      return okJson([OFFICIAL_PACK, LOCAL_PACK])
+    })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+
+    const exportBtn = await screen.findByTestId('export-pack-button')
+    fireEvent.click(exportBtn)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('export-success')).toBeInTheDocument()
+      expect(screen.getByTestId('export-success')).toHaveTextContent('my-pack-0.1.0.zip')
+    })
+  })
+
+  it('export validation failure shows error message', async () => {
+    const validationError = { valid: false, errors: [{ rule_id: 'SCHEMA_VIOLATION', file: 'manifest.yaml', message: 'name is required', suggested_fix: '' }] }
+    const exportSpy = vi.fn().mockReturnValue({ ok: false, status: 422, json: () => Promise.resolve(validationError), text: () => Promise.resolve(JSON.stringify(validationError)) })
+
+    stubFetch((url) => {
+      if (url.includes('/export')) return exportSpy()
+      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
+      if (url.includes('/validate')) return okJson({ valid: true, errors: [], warnings: [] })
+      return okJson([OFFICIAL_PACK, LOCAL_PACK])
+    })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+    fireEvent.click(await screen.findByTestId('export-pack-button'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('export-error')).toBeInTheDocument()
+    })
+  })
+
   it('shows links to authoring docs alongside findings', async () => {
     stubFetch((url) => {
       if (url.includes('/validate')) {

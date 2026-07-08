@@ -209,6 +209,18 @@ export interface WorkbenchTestSession {
   state_vars: Record<string, number>
 }
 
+export interface WorkbenchImportResult extends WorkbenchPack {
+  /** Present when the slug was changed to avoid a collision with an existing pack. */
+  renamed_from?: string
+}
+
+export interface WorkbenchImportValidationError {
+  kind: 'validation'
+  valid: false
+  errors: WorkbenchValidationIssue[]
+  warnings: WorkbenchValidationIssue[]
+}
+
 export interface WsConnection {
   close(): void;
 }
@@ -322,6 +334,45 @@ export const api = {
     },
     startTestSession(kind: PackKind, slug: string): Promise<WorkbenchTestSession> {
       return post<WorkbenchTestSession>(`/workbench/packs/${kind}/${slug}/test-session`)
+    },
+    async importPack(
+      file: File,
+      conflict?: 'rename' | 'overwrite',
+    ): Promise<WorkbenchImportResult | WorkbenchImportValidationError> {
+      const url = conflict
+        ? `${BASE}/workbench/packs/import?conflict=${conflict}`
+        : `${BASE}/workbench/packs/import`
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/zip' },
+        body: file,
+      })
+      if (res.status === 422) {
+        // Validation failure: the backend returns the full issue list.
+        const data = await res.json() as { valid: false; errors: WorkbenchValidationIssue[]; warnings: WorkbenchValidationIssue[] }
+        return { kind: 'validation', ...data }
+      }
+      if (!res.ok) throw new Error(await parseErrorMessage(res))
+      return res.json() as Promise<WorkbenchImportResult>
+    },
+    async exportPack(kind: PackKind, slug: string): Promise<{ blob: Blob; filename: string }> {
+      const res = await fetch(`${BASE}/workbench/packs/${kind}/${slug}/export`)
+      if (res.status === 422) {
+        // Validation preflight failed — surface the first error message.
+        const data = await res.json() as { errors: WorkbenchValidationIssue[] }
+        const first = data.errors[0]
+        throw new Error(
+          first
+            ? `Export blocked: ${first.message} (${first.rule_id})`
+            : 'Pack validation failed before export',
+        )
+      }
+      if (!res.ok) throw new Error(await parseErrorMessage(res))
+      const blob = await res.blob()
+      const disposition = res.headers.get('Content-Disposition') ?? ''
+      const match = /filename="([^"]+)"/.exec(disposition)
+      const filename = match?.[1] ?? `${slug}.zip`
+      return { blob, filename }
     },
   },
 }
