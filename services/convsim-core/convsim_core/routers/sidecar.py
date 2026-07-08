@@ -62,10 +62,10 @@ async def start_sidecar(request: Request, body: SidecarStartRequest) -> SidecarS
     """
     sidecar: LlamaCppSidecar = request.app.state.sidecar
 
-    if sidecar.state == SidecarState.RUNNING:
+    if sidecar.state in (SidecarState.RUNNING, SidecarState.STARTING):
         raise ConvsimError(
             code="SIDECAR_ALREADY_RUNNING",
-            message="A managed llama-server is already running. Stop it first via POST /api/sidecar/stop.",
+            message="A managed llama-server is already running or starting. Stop it first via POST /api/sidecar/stop.",
             status_code=409,
         )
 
