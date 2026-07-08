@@ -85,6 +85,10 @@ export default function Conversation() {
   const [error, setError] = useState<string | null>(null)
   const [devMode] = useState(() => isDevModeEnabled())
   const [debugEntries, setDebugEntries] = useState<DebugTurnEntry[]>([])
+  const [scenario, setScenario] = useState<ScenarioInfo | null>(null)
+  const [npcEmotion, setNpcEmotion] = useState<string | null>(null)
+  const [streamingText, setStreamingText] = useState('')
+  const [banners, setBanners] = useState<Banner[]>([])
 
   const transcriptRef = useRef<HTMLDivElement>(null)
   const turnUidRef = useRef(0)
@@ -122,7 +126,7 @@ export default function Conversation() {
               id: uid,
               role: 'npc_opening',
               content: opening.payload['content'] as string,
-              emotion,
+              emotion: opening.payload['emotion'] as string | undefined,
               turnNum: ++turnNumRef.current,
             },
           ])
@@ -293,15 +297,20 @@ export default function Conversation() {
         const delta = (payload['state_delta'] ?? {}) as Record<string, number>
         const flags = (payload['event_flags'] ?? []) as string[]
         const emotion = payload['emotion'] as string | undefined
+        setNpcEmotion(emotion ?? null)
 
         const uid = ++turnUidRef.current
-        newTurns.push({
-          id: uid,
-          role: 'npc',
-          content: payload['content'] as string,
-          emotion: payload['emotion'] as string | undefined,
-          eventFlags: flags.length > 0 ? flags : undefined,
-        })
+        setTurns((prev) => [
+          ...prev,
+          {
+            id: uid,
+            role: 'npc',
+            content: payload['content'] as string,
+            emotion: emotion !== 'neutral' ? emotion : undefined,
+            eventFlags: flags.length > 0 ? flags : undefined,
+            turnNum: ++turnNumRef.current,
+          },
+        ])
 
         if (devMode) {
           // Split the model's requested delta into entries that target tracked
@@ -806,35 +815,6 @@ export default function Conversation() {
         />
       )}
 
-      {/* Debug drawer — visible in dev mode only */}
-      {import.meta.env.DEV && (
-        <details>
-          <summary
-            style={{ cursor: 'pointer', fontSize: '0.75rem', color: '#52525b', userSelect: 'none' }}
-          >
-            Debug
-          </summary>
-          <pre
-            data-testid="debug-drawer"
-            style={{
-              padding: '0.75rem',
-              borderRadius: 6,
-              border: '1px solid #27272a',
-              background: '#09090b',
-              color: '#71717a',
-              fontSize: '0.7rem',
-              overflowX: 'auto',
-              marginTop: '0.5rem',
-            }}
-          >
-            {JSON.stringify(
-              { phase, sessionState, endingType, turnCount: turns.length, stateVars, allEventFlags, banners },
-              null,
-              2,
-            )}
-          </pre>
-        </details>
-      )}
     </div>
   )
 }

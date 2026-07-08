@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import Conversation from '../screens/Conversation'
 import type {
@@ -651,11 +651,15 @@ describe('Conversation screen', () => {
   })
 
   describe('debug drawer', () => {
+    afterEach(() => {
+      localStorage.removeItem('convsim.devMode')
+    })
+
     it('renders the debug drawer in dev mode', async () => {
+      localStorage.setItem('convsim.devMode', 'true')
       mockApi.startSession.mockResolvedValue(startResponse)
       renderConversation()
-      await waitFor(() => expect(screen.getByTestId('npc-panel')).toBeInTheDocument())
-      expect(screen.getByTestId('debug-drawer')).toBeInTheDocument()
+      await waitFor(() => expect(screen.getByTestId('debug-drawer')).toBeInTheDocument())
     })
   })
 
