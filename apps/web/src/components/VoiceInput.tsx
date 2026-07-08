@@ -276,7 +276,7 @@ export default function VoiceInput({ onSubmit, onRawStt, onSttLatency, disabled 
                 type="button"
                 onClick={handleModeToggle}
                 aria-pressed={isHandsFree}
-                aria-label={isHandsFree ? 'Switch to push-to-talk mode' : 'Switch to hands-free mode (auto-stop on silence)'}
+                aria-label={isHandsFree ? 'Hands-free mode active — activate to switch to push-to-talk' : 'Push-to-talk mode active — activate to switch to hands-free (auto-stop on silence)'}
                 style={isHandsFree ? modeActiveStyle : modeInactiveStyle}
               >
                 <span aria-hidden="true">{isHandsFree ? '🤲 ' : '👆 '}</span>
