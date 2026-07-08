@@ -114,6 +114,7 @@ export interface LoadedPack {
 export interface ResolvedBundle {
   scenarioId: string;
   packId: string;
+  packRoot: string;
   scenario: RawScenario;
   npc: RawNpc;
   rubric: RawRubric;

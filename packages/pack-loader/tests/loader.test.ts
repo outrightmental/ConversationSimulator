@@ -130,6 +130,7 @@ describe('resolveBundle', () => {
     const bundle = resolveBundle(pack, 'test_scenario_scene');
     expect(bundle.scenarioId).toBe('test_scenario_scene');
     expect(bundle.packId).toBe('test.minimal_pack');
+    expect(bundle.packRoot).toBe(pack.packRoot);
     expect(bundle.npc.npc_id).toBe('test_npc');
     expect(bundle.rubric.rubric_id).toBe('test_rubric');
     expect(bundle.scene?.scene_id).toBe('test_scene');
@@ -348,6 +349,18 @@ private_persona: {}
       loadPack(dir);
     } catch (e) {
       expect((e as PackLoaderError).code).toBe('PATH_TRAVERSAL');
+    }
+  });
+
+  it('throws MISSING_FILE when an entry_scenario path points to a non-existent scenario', () => {
+    const dir = track(makeTempPackDir({
+      manifestYaml: VALID_MANIFEST_YAML + 'entry_scenarios:\n  - scenarios/nonexistent_scenario.yaml\n',
+    }));
+    expect(() => loadPack(dir)).toThrowError(PackLoaderError);
+    try {
+      loadPack(dir);
+    } catch (e) {
+      expect((e as PackLoaderError).code).toBe('MISSING_FILE');
     }
   });
 

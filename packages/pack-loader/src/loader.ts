@@ -46,11 +46,6 @@ export function loadPack(packDir: string, kind: PackRootKind = 'local-dev'): Loa
   const safetyPath = resolveRef(normalPackDir, normalPackDir, manifest.safety.policy);
   const safety = parseAndValidate<RawSafety>(readPackFile(safetyPath), 'safety', safetyPath);
 
-  // ── entry_scenarios path traversal check ──────────────────────────────────
-  for (const entryPath of manifest.entry_scenarios ?? []) {
-    resolveRef(normalPackDir, normalPackDir, entryPath);
-  }
-
   // ── Scenarios ─────────────────────────────────────────────────────────────
   const scenariosDir = resolve(normalPackDir, 'scenarios');
   const scenarioFiles = discoverYamlFiles(scenariosDir);
@@ -108,6 +103,20 @@ export function loadPack(packDir: string, kind: PackRootKind = 'local-dev'): Loa
         }
         scenes.set(sceneAbsPath, scene);
       }
+    }
+  }
+
+  // ── entry_scenarios: path traversal + existence check ─────────────────────
+  // Done after discovery so we can verify each ref points to a loaded file.
+  const scenarioFileSet = new Set(scenarioFiles);
+  for (const entryPath of manifest.entry_scenarios ?? []) {
+    const absEntryPath = resolveRef(normalPackDir, normalPackDir, entryPath);
+    if (!scenarioFileSet.has(absEntryPath)) {
+      throw new PackLoaderError(
+        'MISSING_FILE',
+        `entry_scenario "${entryPath}" not found in scenarios for pack "${manifest.pack_id}"`,
+        absEntryPath,
+      );
     }
   }
 
@@ -182,6 +191,7 @@ export function resolveBundle(pack: LoadedPack, scenarioId: string): ResolvedBun
   return {
     scenarioId,
     packId: pack.manifest.pack_id,
+    packRoot: pack.packRoot,
     scenario,
     npc,
     rubric,
