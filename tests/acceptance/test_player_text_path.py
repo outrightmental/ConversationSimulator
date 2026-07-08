@@ -279,7 +279,7 @@ class _StateDeltaRuntime(FakeChatRuntime):
             "npc_emotion": "impressed",
             "state_delta": {"trust": 15, "rapport": 8},
             "event_flags": [],
-            "rubric_observations": [{"dimension": "clarity", "observation": "Clear answer", "delta": 5}],
+            "rubric_observations": [{"rubric_id": "clarity", "observation": "Clear answer", "score_delta": 3}],
             "safety": {"status": "ok"},
             "session_control": {"continue_session": True},
         }
