@@ -17,7 +17,7 @@ live, how they are licensed, and what to replace them with when the Milestone 1 
 | Replace with | Animated GIF or short video (≤ 5 MB) recorded from the live app at Milestone 1 launch |
 
 **Alt text used in README:**
-> Conversation Simulator demo — a mid-session conversation with NPC Victor Hargrove. The player answers a technical question; the NPC challenges the trade-off. State meters below the transcript show trust at 62, patience at 48, pressure at 72. An amber banner reads "Scenario event: grudging_respect triggered · Turn 4".
+> Conversation Simulator demo — a mid-session conversation with NPC Victor Hargrove. The player answers a technical question; the NPC challenges the trade-off. State meters below the transcript show credibility at 58, composure at 66, and pressure_level at 5 of 10. An amber banner reads "Scenario event: grudging_respect triggered · Turn 4".
 
 ---
 
@@ -62,16 +62,16 @@ Applicant, 12–15 min, Hard, EN, interview, negotiation), and a Launch button.
 emotion, currently Listening). An amber event banner reports "grudging_respect triggered ·
 Turn 4". The transcript shows turns 2–5 (NPC turn in dark green, player turn in deep
 purple, NPC streaming response faded). Below the transcript, the NPC state variables panel
-shows six meters: trust 62 (green), patience 48 (orange), pressure 72 (green), rapport 57
-(green), openness 38 (orange), obj. progress 35 (orange).
+shows three meters (matching the scenario's own state variables): credibility 58 / 100
+(green), composure 66 / 100 (green), pressure_level 5 / 10 (orange).
 
 **Alt text:**
 > Conversation screen mid-session. NPC Victor Hargrove is shown as "skeptical" and "Listening".
 > An amber banner announces "Scenario event: grudging_respect triggered · Turn 4". The
 > transcript shows the player explaining an event-driven pipeline; the NPC's streaming
-> response is partially visible. Below, NPC state variable meters show trust, patience,
-> pressure, rapport, openness, and objective progress as numeric gauges with colour-coded
-> progress bars — green for values above 50, orange for below.
+> response is partially visible. Below, NPC state variable meters show credibility, composure,
+> and pressure_level as numeric gauges with colour-coded progress bars — green for higher
+> values, orange for lower.
 
 ---
 

@@ -65,41 +65,23 @@
   <rect x="20" y="390" width="780" height="78" rx="6" fill="#0c0a09" stroke="#27272a" stroke-width="1"/>
   <text x="34" y="408" font-family="system-ui,sans-serif" font-size="10" fill="#71717a">NPC state variables</text>
 
-  <!-- trust 62 -->
-  <text x="34" y="430" font-family="system-ui,sans-serif" font-size="10" fill="#a1a1aa">trust</text>
-  <text x="34" y="448" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="#f4f4f5">62</text>
-  <rect x="34" y="453" width="88" height="4" rx="2" fill="#27272a"/>
-  <rect x="34" y="453" width="55" height="4" rx="2" fill="#22c55e"/>
+  <!-- credibility 58 / 100 -->
+  <text x="34" y="430" font-family="system-ui,sans-serif" font-size="10" fill="#a1a1aa">credibility</text>
+  <text x="34" y="448" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="#f4f4f5">58<tspan font-size="9" font-weight="400" fill="#71717a"> / 100</tspan></text>
+  <rect x="34" y="453" width="120" height="4" rx="2" fill="#27272a"/>
+  <rect x="34" y="453" width="70" height="4" rx="2" fill="#22c55e"/>
 
-  <!-- patience 48 -->
-  <text x="146" y="430" font-family="system-ui,sans-serif" font-size="10" fill="#a1a1aa">patience</text>
-  <text x="146" y="448" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="#f4f4f5">48</text>
-  <rect x="146" y="453" width="88" height="4" rx="2" fill="#27272a"/>
-  <rect x="146" y="453" width="42" height="4" rx="2" fill="#f97316"/>
+  <!-- composure 66 / 100 -->
+  <text x="200" y="430" font-family="system-ui,sans-serif" font-size="10" fill="#a1a1aa">composure</text>
+  <text x="200" y="448" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="#f4f4f5">66<tspan font-size="9" font-weight="400" fill="#71717a"> / 100</tspan></text>
+  <rect x="200" y="453" width="120" height="4" rx="2" fill="#27272a"/>
+  <rect x="200" y="453" width="79" height="4" rx="2" fill="#22c55e"/>
 
-  <!-- pressure 72 -->
-  <text x="258" y="430" font-family="system-ui,sans-serif" font-size="10" fill="#a1a1aa">pressure</text>
-  <text x="258" y="448" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="#f4f4f5">72</text>
-  <rect x="258" y="453" width="88" height="4" rx="2" fill="#27272a"/>
-  <rect x="258" y="453" width="63" height="4" rx="2" fill="#22c55e"/>
-
-  <!-- rapport 57 -->
-  <text x="370" y="430" font-family="system-ui,sans-serif" font-size="10" fill="#a1a1aa">rapport</text>
-  <text x="370" y="448" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="#f4f4f5">57</text>
-  <rect x="370" y="453" width="88" height="4" rx="2" fill="#27272a"/>
-  <rect x="370" y="453" width="50" height="4" rx="2" fill="#22c55e"/>
-
-  <!-- openness 38 -->
-  <text x="482" y="430" font-family="system-ui,sans-serif" font-size="10" fill="#a1a1aa">openness</text>
-  <text x="482" y="448" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="#f4f4f5">38</text>
-  <rect x="482" y="453" width="88" height="4" rx="2" fill="#27272a"/>
-  <rect x="482" y="453" width="33" height="4" rx="2" fill="#f97316"/>
-
-  <!-- obj. progress 35 -->
-  <text x="594" y="430" font-family="system-ui,sans-serif" font-size="10" fill="#a1a1aa">obj. progress</text>
-  <text x="594" y="448" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="#f4f4f5">35</text>
-  <rect x="594" y="453" width="88" height="4" rx="2" fill="#27272a"/>
-  <rect x="594" y="453" width="31" height="4" rx="2" fill="#f97316"/>
+  <!-- pressure_level 5 / 10 -->
+  <text x="366" y="430" font-family="system-ui,sans-serif" font-size="10" fill="#a1a1aa">pressure_level</text>
+  <text x="366" y="448" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="#f4f4f5">5<tspan font-size="9" font-weight="400" fill="#71717a"> / 10</tspan></text>
+  <rect x="366" y="453" width="120" height="4" rx="2" fill="#27272a"/>
+  <rect x="366" y="453" width="60" height="4" rx="2" fill="#f97316"/>
 
   <!-- Event flags -->
   <rect x="700" y="420" width="86" height="40" rx="4" fill="#1c0a00" stroke="#451a03" stroke-width="1"/>

@@ -73,47 +73,26 @@
   <text x="46" y="482" font-family="system-ui,sans-serif" font-size="11" fill="#71717a">▾  NPC state variables</text>
 
   <!-- Meters row -->
-  <!-- trust 62 -->
-  <rect x="46" y="492" width="100" height="44" rx="4" fill="#18181b"/>
-  <text x="96" y="508" font-family="system-ui,sans-serif" font-size="10" fill="#a1a1aa" text-anchor="middle">trust</text>
-  <text x="96" y="522" font-family="system-ui,sans-serif" font-size="13" font-weight="600" fill="#f4f4f5" text-anchor="middle">62</text>
-  <rect x="56" y="527" width="80" height="4" rx="2" fill="#27272a"/>
-  <rect x="56" y="527" width="50" height="4" rx="2" fill="#22c55e"/>
+  <!-- credibility 58 / 100 -->
+  <rect x="46" y="492" width="150" height="44" rx="4" fill="#18181b"/>
+  <text x="121" y="508" font-family="system-ui,sans-serif" font-size="10" fill="#a1a1aa" text-anchor="middle">credibility</text>
+  <text x="121" y="522" font-family="system-ui,sans-serif" font-size="13" font-weight="600" fill="#f4f4f5" text-anchor="middle">58<tspan font-size="10" font-weight="400" fill="#71717a"> / 100</tspan></text>
+  <rect x="56" y="527" width="130" height="4" rx="2" fill="#27272a"/>
+  <rect x="56" y="527" width="75" height="4" rx="2" fill="#22c55e"/>
 
-  <!-- patience 48 -->
-  <rect x="156" y="492" width="100" height="44" rx="4" fill="#18181b"/>
-  <text x="206" y="508" font-family="system-ui,sans-serif" font-size="10" fill="#a1a1aa" text-anchor="middle">patience</text>
-  <text x="206" y="522" font-family="system-ui,sans-serif" font-size="13" font-weight="600" fill="#f4f4f5" text-anchor="middle">48</text>
-  <rect x="166" y="527" width="80" height="4" rx="2" fill="#27272a"/>
-  <rect x="166" y="527" width="38" height="4" rx="2" fill="#f97316"/>
+  <!-- composure 66 / 100 -->
+  <rect x="206" y="492" width="150" height="44" rx="4" fill="#18181b"/>
+  <text x="281" y="508" font-family="system-ui,sans-serif" font-size="10" fill="#a1a1aa" text-anchor="middle">composure</text>
+  <text x="281" y="522" font-family="system-ui,sans-serif" font-size="13" font-weight="600" fill="#f4f4f5" text-anchor="middle">66<tspan font-size="10" font-weight="400" fill="#71717a"> / 100</tspan></text>
+  <rect x="216" y="527" width="130" height="4" rx="2" fill="#27272a"/>
+  <rect x="216" y="527" width="86" height="4" rx="2" fill="#22c55e"/>
 
-  <!-- pressure 72 -->
-  <rect x="266" y="492" width="100" height="44" rx="4" fill="#18181b"/>
-  <text x="316" y="508" font-family="system-ui,sans-serif" font-size="10" fill="#a1a1aa" text-anchor="middle">pressure</text>
-  <text x="316" y="522" font-family="system-ui,sans-serif" font-size="13" font-weight="600" fill="#f4f4f5" text-anchor="middle">72</text>
-  <rect x="276" y="527" width="80" height="4" rx="2" fill="#27272a"/>
-  <rect x="276" y="527" width="58" height="4" rx="2" fill="#22c55e"/>
-
-  <!-- rapport 57 -->
-  <rect x="376" y="492" width="100" height="44" rx="4" fill="#18181b"/>
-  <text x="426" y="508" font-family="system-ui,sans-serif" font-size="10" fill="#a1a1aa" text-anchor="middle">rapport</text>
-  <text x="426" y="522" font-family="system-ui,sans-serif" font-size="13" font-weight="600" fill="#f4f4f5" text-anchor="middle">57</text>
-  <rect x="386" y="527" width="80" height="4" rx="2" fill="#27272a"/>
-  <rect x="386" y="527" width="46" height="4" rx="2" fill="#22c55e"/>
-
-  <!-- openness 38 -->
-  <rect x="486" y="492" width="100" height="44" rx="4" fill="#18181b"/>
-  <text x="536" y="508" font-family="system-ui,sans-serif" font-size="10" fill="#a1a1aa" text-anchor="middle">openness</text>
-  <text x="536" y="522" font-family="system-ui,sans-serif" font-size="13" font-weight="600" fill="#f4f4f5" text-anchor="middle">38</text>
-  <rect x="496" y="527" width="80" height="4" rx="2" fill="#27272a"/>
-  <rect x="496" y="527" width="30" height="4" rx="2" fill="#f97316"/>
-
-  <!-- obj_progress 35 -->
-  <rect x="596" y="492" width="114" height="44" rx="4" fill="#18181b"/>
-  <text x="653" y="508" font-family="system-ui,sans-serif" font-size="10" fill="#a1a1aa" text-anchor="middle">obj. progress</text>
-  <text x="653" y="522" font-family="system-ui,sans-serif" font-size="13" font-weight="600" fill="#f4f4f5" text-anchor="middle">35</text>
-  <rect x="606" y="527" width="94" height="4" rx="2" fill="#27272a"/>
-  <rect x="606" y="527" width="33" height="4" rx="2" fill="#f97316"/>
+  <!-- pressure_level 5 / 10 -->
+  <rect x="366" y="492" width="150" height="44" rx="4" fill="#18181b"/>
+  <text x="441" y="508" font-family="system-ui,sans-serif" font-size="10" fill="#a1a1aa" text-anchor="middle">pressure_level</text>
+  <text x="441" y="522" font-family="system-ui,sans-serif" font-size="13" font-weight="600" fill="#f4f4f5" text-anchor="middle">5<tspan font-size="10" font-weight="400" fill="#71717a"> / 10</tspan></text>
+  <rect x="376" y="527" width="130" height="4" rx="2" fill="#27272a"/>
+  <rect x="376" y="527" width="65" height="4" rx="2" fill="#f97316"/>
 
   <!-- Event flags -->
   <rect x="726" y="492" width="126" height="44" rx="4" fill="#1c0a00" stroke="#451a03" stroke-width="1"/>
