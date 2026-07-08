@@ -306,6 +306,25 @@ describe('WebSocket events from the text loop', () => {
 // ---------------------------------------------------------------------------
 
 describe('reconnect and event replay', () => {
+  it('seq is monotonically increasing across reconnects — does not reset to 1', async () => {
+    const session_id = await createSession();
+
+    // First connection: receive initial state (seq=1) and start events (seq=2,3).
+    const conn1 = await connectWs(`/ws/session/${session_id}`);
+    await conn1.take(1); // initial state, seq=1
+    await startSession(session_id);
+    await conn1.take(2); // start events, seq=2,3
+    conn1.close();
+
+    // Reconnect without replay — the initial session.state must have seq > 3,
+    // proving the counter survived the disconnect rather than resetting to 1.
+    const conn2 = await connectWs(`/ws/session/${session_id}`);
+    const [reconnectEvt] = await conn2.take(1);
+    conn2.close();
+
+    expect(reconnectEvt.seq).toBeGreaterThan(3);
+  });
+
   it('reconnecting without after_seq receives current session.state only', async () => {
     const session_id = await createSession();
 

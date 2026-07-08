@@ -26,9 +26,10 @@ export function removeConnection(sessionId: string, ws: WebSocket): void {
   const state = sessions.get(sessionId);
   if (!state) return;
   state.connections.delete(ws);
-  if (state.connections.size === 0) {
-    sessions.delete(sessionId);
-  }
+  // Do NOT delete the Map entry when the last client leaves. The seq counter
+  // must survive reconnects so clients can detect missed events by comparing
+  // against the seq they last saw. The entry is removed only in
+  // closeSessionSockets() when the session reaches a terminal state.
 }
 
 export function nextSeq(sessionId: string): number {

@@ -111,7 +111,12 @@ export async function sessionWsRoutes(app: FastifyInstance): Promise<void> {
         },
       });
 
-      // Replay durable events since the client's last known sequence number.
+      // Replay durable events since the client's last known position.
+      // NOTE: `after_seq` is compared against the DB `event_id` column, not
+      // the WebSocket `seq` field. These are different number spaces. Pass
+      // `after_seq=0` to replay all durable events for the session (the only
+      // supported value in this MVP). Proper seq-mapped replay requires storing
+      // the WS seq in session_events, which is deferred to a future issue.
       const rawAfterSeq = req.query?.['after_seq'];
       const afterSeq = rawAfterSeq !== undefined ? parseInt(rawAfterSeq, 10) : null;
       if (afterSeq !== null && !isNaN(afterSeq)) {
