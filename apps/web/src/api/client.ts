@@ -10,6 +10,11 @@ import type {
   SessionEndResponse,
   SessionDebriefResponse,
   WsEvent,
+  ModelsResponse,
+  UseModelRequest,
+  UseModelResponse,
+  InstallModelRequest,
+  InstallModelResponse,
 } from '@convsim/shared';
 
 export type { HealthResponse };
@@ -171,6 +176,15 @@ export const api = {
   },
   generateDebrief(sessionId: string): Promise<SessionDebriefResponse> {
     return post<SessionDebriefResponse>(`/sessions/${sessionId}/debrief`)
+  },
+  getModels(): Promise<ModelsResponse> {
+    return get<ModelsResponse>('/models')
+  },
+  useModel(request: UseModelRequest): Promise<UseModelResponse> {
+    return post<UseModelResponse>('/models/use', request)
+  },
+  installModel(request: InstallModelRequest): Promise<InstallModelResponse> {
+    return post<InstallModelResponse>('/models/install', request)
   },
   connectSession(
     sessionId: string,
