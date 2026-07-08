@@ -3,9 +3,9 @@ import { useState, useEffect, useCallback, type CSSProperties } from 'react'
 import { useBlocker } from 'react-router-dom'
 import { api, type WorkbenchPack, type FileNode } from '../api/client'
 
-// useBlocker requires a data router (createBrowserRouter / createMemoryRouter).
-// Under MemoryRouter (tests, Storybook) it throws before registering any hooks,
-// so wrapping in try-catch is safe and consistent across renders.
+// useBlocker requires a data router. Production uses createBrowserRouter (see main.tsx)
+// which provides this. Tests and Storybook use MemoryRouter which does not, so the
+// hook throws there — the try-catch degrades gracefully to a no-op blocker.
 function useSafeBlocker(when: boolean) {
   try {
     // eslint-disable-next-line react-hooks/rules-of-hooks
