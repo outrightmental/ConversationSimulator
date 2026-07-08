@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync, statSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, basename } from 'node:path';
 import { tmpdir } from 'node:os';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import AdmZip from 'adm-zip';
@@ -291,10 +291,26 @@ describe('validate-pack — broken pack', () => {
 });
 
 describe('validate-pack — path handling', () => {
-  it('resolves paths relative to process.cwd()', () => {
-    // Use an absolute path — the function must resolve it regardless of cwd.
+  it('accepts an absolute path', () => {
     const packDir = track(makeValidPackDir());
     const code = runValidatePack(packDir, true);
+    expect(code).toBe(0);
+  });
+
+  it('resolves a relative path against process.cwd()', () => {
+    // Create a temp dir and put the pack inside it as a subdirectory named
+    // 'pack' (makeValidPackDir with a parent always uses that name).
+    const tmp = track(mkdtempSync(join(tmpdir(), 'convsim-relpath-')));
+    track(makeValidPackDir(tmp));
+    // Point cwd at tmp so that 'pack' resolves to tmp/pack.
+    const origCwd = process.cwd;
+    process.cwd = () => tmp;
+    let code = -1;
+    try {
+      code = runValidatePack('pack', false);
+    } finally {
+      process.cwd = origCwd;
+    }
     expect(code).toBe(0);
   });
 
@@ -548,6 +564,23 @@ describe('import-pack — installation verification', () => {
     expect(existsSync(sentinelPath)).toBe(false);
     // The manifest should still be present.
     expect(existsSync(join(dataDir, 'packs', 'test.cli_pack', 'manifest.yaml'))).toBe(true);
+  });
+
+  it('succeeds when importing from the already-installed location (self-import)', () => {
+    const packDir = track(makeValidPackDir());
+    const dataDir = track(mkdtempSync(join(tmpdir(), 'convsim-data-')));
+
+    // First import installs the pack to dataDir/packs/test.cli_pack/.
+    expect(runImportPack(packDir, false, dataDir)).toBe(0);
+
+    // The installed directory uses the pack_id as its name, so importing from
+    // it is a self-import: source === destination.  Without a guard, rmSync
+    // would delete the source before cpSync could read it.
+    const installedDir = join(dataDir, 'packs', 'test.cli_pack');
+    expect(runImportPack(installedDir, false, dataDir)).toBe(0);
+
+    // Pack must survive the self-import.
+    expect(existsSync(join(installedDir, 'manifest.yaml'))).toBe(true);
   });
 });
 

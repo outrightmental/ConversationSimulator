@@ -134,9 +134,13 @@ export function runImportPack(
     const destDir = join(packsDir, pack.manifest.pack_id);
 
     // Atomically replace any previous installation.
+    // Guard against self-import: if the source is already the installed location
+    // (packDir === destDir), rmSync would delete the source before cpSync runs.
     mkdirSync(packsDir, { recursive: true });
-    rmSync(destDir, { recursive: true, force: true });
-    cpSync(packDir, destDir, { recursive: true });
+    if (resolve(packDir) !== resolve(destDir)) {
+      rmSync(destDir, { recursive: true, force: true });
+      cpSync(packDir, destDir, { recursive: true });
+    }
 
     // Register in the SQLite index from the installed location.
     const dbPath = dataDir ? join(dataDir, 'index.db') : getDbPath();
