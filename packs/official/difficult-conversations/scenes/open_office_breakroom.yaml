@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scene_id: open_office_breakroom
+display_name: "Office — Breakroom, end of day"
+description: >-
+  A small breakroom on the third floor of a shared office building. The main
+  floor is mostly empty; people are packing up at their desks nearby. A counter
+  with a coffee machine, a round table with four mismatched chairs, and a
+  window overlooking the parking lot. Late-afternoon light, low ambient noise.
+  Semi-private — colleagues could walk in, which adds a mild tension to the
+  conversation.
+ambient: quiet_office

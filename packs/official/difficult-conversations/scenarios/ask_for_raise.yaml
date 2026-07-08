@@ -1,0 +1,142 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scenario_id: ask_for_raise
+title: Making the Case
+summary: >-
+  You have been at your current company for two years. In the last six months
+  you have taken on scope well beyond your original role — leading a cross-team
+  initiative, onboarding two new hires, and delivering a project that shipped
+  three weeks early. Your current compensation has not changed. You have
+  scheduled thirty minutes with your manager, Diane Kowalczyk, to make the case
+  for a salary adjustment.
+player_role:
+  label: Employee
+  brief: >-
+    You are asking your manager for a raise. You have done the work and you
+    believe you have a case. Your goal is to present it clearly and confidently,
+    grounded in specific impact and scope changes — not just tenure or loyalty.
+    Diane will probe; be ready to defend your argument with evidence, not
+    just enthusiasm.
+npc:
+  ref: ../npcs/skeptical_manager.yaml
+scene:
+  ref: ../scenes/conference_room_small.yaml
+rubric:
+  ref: ../rubrics/raise_rubric.yaml
+duration:
+  max_turns: 18
+  soft_time_limit_minutes: 12
+opening:
+  npc_says: >-
+    Come in, sit down. You mentioned you wanted to talk through your
+    compensation. I've got about thirty minutes. Walk me through where
+    you're coming from.
+goals:
+  player_visible:
+    - "Make a clear, specific business case for a raise grounded in your demonstrated impact"
+    - "Name a specific number or range and explain the reasoning behind it"
+    - "Stay confident and professional if Diane pushes back or probes your evidence"
+  hidden:
+    - "Diane will not be moved by personal need, tenure, or general enthusiasm alone — she needs a business case she can take to her own manager"
+    - "The player who names the cost to the company of not adjusting compensation will shift Diane's posture significantly; almost no one does this"
+    - "Diane will probe any unsubstantiated claim — if the player asserts market rate without data, she will ask where that number comes from; if they cannot answer, her confidence in their judgment drops"
+    - "Diane is watching whether the player tracks her questions closely enough to realize she is looking for budget justification language, not personal validation"
+state:
+  variables:
+    impression:
+      min: 0
+      max: 100
+      default: 45
+      visibility: visible
+      max_delta_per_turn: 12
+    rapport:
+      min: 0
+      max: 100
+      default: 40
+      visibility: visible
+      max_delta_per_turn: 10
+    evidence_strength:
+      min: 0
+      max: 100
+      default: 0
+      visibility: hidden
+      max_delta_per_turn: 20
+    case_clarity:
+      min: 0
+      max: 100
+      default: 10
+      visibility: hidden
+      max_delta_per_turn: 18
+difficulty:
+  default: normal
+  options:
+    easy:
+      npc_patience_modifier: 25
+      challenge_frequency: low
+    normal:
+      npc_patience_modifier: 0
+      challenge_frequency: medium
+    hard:
+      npc_patience_modifier: -20
+      challenge_frequency: high
+events:
+  - id: vague_claim_probe
+    when:
+      type: variable_below
+      variable: evidence_strength
+      threshold: 30
+    npc_instruction: >-
+      The player has made a claim without supporting evidence. Diane probes it
+      directly: "When you say you've taken on more scope — can you give me
+      something specific? What was in your original role description and what
+      are you actually doing now?" She is not hostile; she genuinely needs
+      specifics to work with.
+    repeat: true
+  - id: no_number_anchor
+    when:
+      type: variable_below
+      variable: case_clarity
+      threshold: 25
+    npc_instruction: >-
+      The player has been talking about deserving more without naming a number.
+      Diane cuts in: "You've told me about the work. What number are you
+      thinking about? Give me a range." She is giving the player an opening,
+      not a challenge — but she will not keep the conversation moving until
+      there is a concrete ask on the table.
+    repeat: false
+  - id: strong_case_acknowledged
+    when:
+      type: variable_above
+      variable: evidence_strength
+      threshold: 70
+    npc_instruction: >-
+      The player has presented a solid, specific case. Diane's affect shifts —
+      she is still not committing to anything, but she engages more
+      substantively: "Okay. I'm going to need to look at what we have in the
+      band, and I'll want to talk to HR about the process. What you've laid out
+      is a legitimate conversation. Let me come back to you by end of week."
+    repeat: false
+  - id: deflation_signal
+    when:
+      type: variable_below
+      variable: impression
+      threshold: 25
+    npc_instruction: >-
+      Diane has lost confidence in the player's case. She begins closing the
+      conversation professionally but without encouragement: "I appreciate you
+      bringing this to me. I don't have anything actionable for you right now,
+      but I'll flag it for the next review cycle." This is a polite no.
+    repeat: false
+ending_conditions:
+  success:
+    type: variable_above
+    variable: case_clarity
+    threshold: 65
+  failure:
+    type: variable_below
+    variable: impression
+    threshold: 15
+response_style:
+  max_words: 80
+  verbosity: moderate
+  formality: professional
