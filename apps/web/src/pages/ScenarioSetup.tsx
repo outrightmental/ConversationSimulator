@@ -95,7 +95,7 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
             difficulty: scenarioData.difficulty.default,
             player_role_name: scenarioData.player_role.label,
             language: scenarioData.supported_languages[0] ?? 'en',
-            tts_enabled: rt.tts_ready,
+            tts_enabled: rt.tts_ready && (scenarioData.voice_supported !== false),
             voice_id: prev.voice_id && voicesResult.voices.some((v) => v.voice_id === prev.voice_id)
               ? prev.voice_id
               : defaultVoiceId,
@@ -346,6 +346,12 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
             {!runtime.tts_ready && (
               <p className="setup-fallback-note" id="tts-status">
                 Text-only is always available. Install a TTS model to enable voice output.
+              </p>
+            )}
+            {runtime.tts_ready && scenario != null && !scenario.voice_supported && (
+              <p className="setup-fallback-note">
+                This scenario is designed for text — TTS can still be enabled but the script
+                was not written with voice in mind.
               </p>
             )}
             {form.tts_enabled && voices.length > 0 && (
