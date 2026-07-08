@@ -164,7 +164,6 @@ export type PackLoaderErrorCode =
   | 'MISSING_FILE'
   | 'INVALID_YAML'
   | 'SCHEMA_VALIDATION'
-  | 'INVALID_REF'
   | 'PATH_TRAVERSAL'
   | 'DUPLICATE_ID'
   | 'UNSUPPORTED_VERSION';
