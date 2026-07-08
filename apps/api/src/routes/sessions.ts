@@ -13,6 +13,28 @@ import type {
 import { SCENARIOS } from '../data/scenarios.js';
 import { getDb } from '../db.js';
 
+const MAX_TURN_CONTENT_LENGTH = 2000;
+
+// Baseline state variable defaults (mirrors convsim_core/scenario_state.py).
+const BASELINE_STATE_VARS: Record<string, number> = {
+  trust: 50,
+  patience: 75,
+  pressure: 25,
+  rapport: 50,
+  openness: 50,
+  objective_progress: 0,
+};
+
+// Fake structured NPC response (mirrors fake.py _STRUCTURED_RESPONSE).
+const FAKE_NPC_RESPONSE = {
+  npc_utterance: 'Hello there. I am a simulated NPC.',
+  npc_emotion: 'neutral',
+  state_delta: {} as Record<string, number>,
+  event_flags: [] as string[],
+  safety: { status: 'ok' as 'ok' | 'redirect' | 'stop' },
+  session_control: { continue_session: true },
+};
+
 function generateSessionId(): string {
   const bytes = Array.from({ length: 8 }, () =>
     Math.floor(Math.random() * 256)
@@ -42,6 +64,8 @@ interface SessionRow {
   ending_type: string | null;
   created_at: string;
   setup_json: string;
+  state_vars_json: string;
+  turn_count: number;
 }
 
 interface EventRow {
@@ -247,12 +271,11 @@ export async function sessionRoutes(app: FastifyInstance) {
         );
       }
 
-      // Stub: skip loading states and emit an NPC opening placeholder.
-      // Wrapped in a transaction so the state update and event insert are atomic.
+      // Initialize state vars from baseline defaults and transition to PlayerTurnListening.
       const openingRow = db.transaction(() => {
-        db.prepare("UPDATE sessions SET state = 'PlayerTurnListening' WHERE session_id = ?").run(
-          req.params.session_id,
-        );
+        db.prepare(
+          "UPDATE sessions SET state = 'PlayerTurnListening', state_vars_json = ? WHERE session_id = ?",
+        ).run(JSON.stringify(BASELINE_STATE_VARS), req.params.session_id);
         return insertEvent(req.params.session_id, 'npc_opening', {
           content: 'Hello! I am ready to begin our conversation. Please go ahead.',
         });
@@ -275,12 +298,23 @@ export async function sessionRoutes(app: FastifyInstance) {
           type: 'object',
           required: ['content'],
           properties: {
-            content: { type: 'string', minLength: 1 },
+            content: {
+              type: 'string',
+              minLength: 1,
+              maxLength: MAX_TURN_CONTENT_LENGTH,
+            },
           },
         },
       },
     },
     async (req, reply): Promise<TurnResponse> => {
+      // 1. Normalize player text and reject whitespace-only input.
+      const normalized = req.body.content.trim();
+      if (!normalized) {
+        reply.status(400);
+        throw new Error('Turn content cannot be blank after trimming whitespace');
+      }
+
       const db = getDb();
       const row = db
         .prepare<[string], SessionRow>('SELECT * FROM sessions WHERE session_id = ?')
@@ -300,21 +334,73 @@ export async function sessionRoutes(app: FastifyInstance) {
         );
       }
 
-      // Both event inserts are atomic so a partial failure doesn't leave an
-      // orphaned player_turn without its corresponding npc_turn.
+      // 2. Input safety precheck — placeholder hook, always passes.
+      // A production implementation would call a safety classifier here.
+
+      const scenario = SCENARIOS[row.scenario_id];
+      const newTurnCount = row.turn_count + 1;
+      const maxTurns = scenario?.duration.max_turns ?? 20;
+
+      // 3. Apply NPC response (fake runtime — same structured response as Python fake.py).
+      const npc = FAKE_NPC_RESPONSE;
+
+      // 4. Apply state delta (empty from fake runtime).
+      const currentStateVars: Record<string, number> = JSON.parse(row.state_vars_json || '{}');
+      const newStateVars = { ...currentStateVars };
+      for (const [key, delta] of Object.entries(npc.state_delta)) {
+        if (key in newStateVars) {
+          newStateVars[key] = Math.max(0, Math.min(100, newStateVars[key] + delta));
+        }
+      }
+
+      // 5. Evaluate safety status.
+      const safetyStatus = npc.safety.status;
+      const safetyStop = safetyStatus === 'stop';
+
+      // 6. Evaluate ending condition.
+      let endingType: EndingType | null = null;
+      let nextState: SessionState = 'PlayerTurnListening';
+
+      if (safetyStop) {
+        endingType = 'safety_stop';
+        nextState = 'Ended';
+      } else if (!npc.session_control.continue_session) {
+        endingType = 'player_exit';
+        nextState = 'Ended';
+      } else if (newTurnCount >= maxTurns) {
+        endingType = 'timeout';
+        nextState = 'Ended';
+      }
+
+      // 7. Persist atomically.
       const [playerRow, npcRow] = db.transaction(() => {
+        db.prepare(
+          'UPDATE sessions SET turn_count = ?, state_vars_json = ?, state = ?, ending_type = ? WHERE session_id = ?',
+        ).run(
+          newTurnCount,
+          JSON.stringify(newStateVars),
+          nextState,
+          endingType,
+          req.params.session_id,
+        );
+
         const player = insertEvent(req.params.session_id, 'player_turn', {
-          content: req.body.content,
+          content: normalized,
         });
-        const npc = insertEvent(req.params.session_id, 'npc_turn', {
-          content: 'Thank you for your response. Please continue.',
+        const npcEvent = insertEvent(req.params.session_id, 'npc_turn', {
+          content: npc.npc_utterance,
+          emotion: npc.npc_emotion,
+          state_delta: npc.state_delta,
+          event_flags: npc.event_flags,
+          safety: { status: safetyStatus },
+          ending_type: endingType,
         });
-        return [player, npc] as const;
+        return [player, npcEvent] as const;
       })();
 
       return {
         session_id: req.params.session_id,
-        state: 'PlayerTurnListening',
+        state: nextState,
         events: [rowToEvent(playerRow), rowToEvent(npcRow)],
       };
     },
