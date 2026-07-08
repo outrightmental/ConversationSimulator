@@ -185,6 +185,25 @@ class TestSelfHarmCrisis:
         result = route_player_input("I'm feeling suicidal", _full_policy())
         assert result.action == RouteAction.STOP_WITH_RESOURCE
 
+    def test_cutting_myself_gerund_triggers_stop_with_resource(self):
+        # "cutting myself" (gerund) must fire as well as "cut myself".
+        result = route_player_input("I've been cutting myself", _policy())
+        assert result.action == RouteAction.STOP_WITH_RESOURCE
+
+    def test_dont_want_to_live_in_city_does_not_trigger(self):
+        # Housing preference ("live in [location]") must not fire the non-overridable rule.
+        result = route_player_input("I don't want to live in this city", _policy())
+        assert result.action == RouteAction.OK
+
+    def test_dont_want_to_live_alone_triggers(self):
+        # Without a location preposition this is genuinely ambiguous — keep high recall.
+        result = route_player_input("I don't want to live anymore", _policy())
+        assert result.action == RouteAction.STOP_WITH_RESOURCE
+
+    def test_dont_want_to_be_alive_triggers(self):
+        result = route_player_input("I don't want to be alive", _policy())
+        assert result.action == RouteAction.STOP_WITH_RESOURCE
+
 
 # ---------------------------------------------------------------------------
 # Category: criminal_instruction → refuse (configurable; default added by service)
