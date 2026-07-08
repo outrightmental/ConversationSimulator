@@ -21,7 +21,6 @@ MODEL_DIR="${HOME}/.convsim/models/stt"
 MODEL_FILE="${MODEL_DIR}/ggml-${MODEL_NAME}.bin"
 MODEL_URL="https://huggingface.co/ggml-org/whisper.cpp/resolve/main/ggml-${MODEL_NAME}.bin"
 
-INSTALL_DIR="${HOME}/.local/bin"
 BINARY_NAME="whisper-cli"
 
 # ---------------------------------------------------------------------------
