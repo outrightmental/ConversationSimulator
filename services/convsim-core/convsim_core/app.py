@@ -17,6 +17,7 @@ from convsim_core.runtime import build_runtime
 from convsim_core.runtime.sidecar import LlamaCppSidecar
 from convsim_core.storage.database import Database
 from convsim_core.storage.repositories.settings_repo import load_settings
+from convsim_core.stt import build_stt_worker
 
 
 def create_app(config: ServiceConfig | None = None) -> FastAPI:
@@ -33,6 +34,7 @@ def create_app(config: ServiceConfig | None = None) -> FastAPI:
         app.state.db = db
         app.state.app_settings = load_settings(db.connection(), config.data_dir, config.log_dir)
         app.state.runtime = build_runtime(config.runtime_id)
+        app.state.stt_worker = build_stt_worker(config.stt_worker_id)
         app.state.sidecar = LlamaCppSidecar(log_dir=config.log_dir)
         yield
         await app.state.sidecar.stop()

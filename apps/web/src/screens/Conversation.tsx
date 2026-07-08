@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useParams } from 'react-router-dom'
+import { useLocation, useParams } from 'react-router-dom'
 import VoiceInput from '../components/VoiceInput'
 
 export default function Conversation() {
   const { sessionId } = useParams<{ sessionId: string }>()
+  const { state } = useLocation()
+  const language = (state as { language?: string } | null)?.language
 
   const handleSubmit = (text: string) => {
     // Conversation turn submission — LLM integration will be wired here.
@@ -33,7 +35,7 @@ export default function Conversation() {
         <em>Conversation transcript will appear here.</em>
       </div>
 
-      <VoiceInput onSubmit={handleSubmit} />
+      <VoiceInput onSubmit={handleSubmit} language={language} />
     </div>
   )
 }
