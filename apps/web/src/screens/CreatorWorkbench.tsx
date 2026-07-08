@@ -446,7 +446,10 @@ export default function CreatorWorkbench() {
     if (!selectedPack) return
     if (isDirty && !window.confirm('You have unsaved changes. Discard them?')) return
     setSelectedFile(filePath)
+    setEditorContent('')
+    setSavedContent('')
     setSaveError(null)
+    setCopyError(null)
     setFileError(null)
     setFileLoading(true)
     try {

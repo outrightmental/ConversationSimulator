@@ -296,4 +296,34 @@ describe('CreatorWorkbench', () => {
       expect(screen.queryByTestId('file-editor')).not.toBeInTheDocument()
     })
   })
+
+  it('clears dirty state immediately when switching to a different file', async () => {
+    const localContent = 'name: My Pack\n'
+    // jsdom doesn't implement window.confirm; stub it to return true (user confirms discard)
+    vi.stubGlobal('confirm', vi.fn().mockReturnValue(true))
+
+    stubFetch((url) => {
+      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
+      if (url.includes('/file?')) return okJson({ content: localContent, editable: true })
+      return okJson([OFFICIAL_PACK, LOCAL_PACK])
+    })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /open manifest\.yaml/i }))
+    await waitFor(() => expect(screen.getByTestId('file-editor')).toBeInTheDocument())
+
+    // Make the editor dirty
+    fireEvent.change(screen.getByTestId('file-editor'), { target: { value: 'name: Changed\n' } })
+    expect(screen.getByTestId('dirty-indicator')).toBeInTheDocument()
+
+    // Switch to another file — dirty state must clear immediately (not wait for load to finish)
+    fireEvent.click(await screen.findByRole('button', { name: /open README\.md/i }))
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('dirty-indicator')).not.toBeInTheDocument()
+    })
+
+    vi.unstubAllGlobals()
+  })
 })
