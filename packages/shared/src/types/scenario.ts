@@ -49,6 +49,8 @@ export interface ScenarioInfo {
   safety_summary: string;
   estimated_length_label: string;
   tags?: string[];
+  /** LLM model IDs recommended by the pack author (from pack manifest requirements.recommended_llm). */
+  recommended_model?: string[];
 }
 
 export interface PackValidationError {

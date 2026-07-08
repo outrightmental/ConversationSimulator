@@ -42,6 +42,7 @@ const SCENARIO_BEHAVIORAL: ScenarioInfo = {
   safety_summary: 'PG content only.',
   estimated_length_label: '15–20 minutes',
   tags: ['interview', 'professional'],
+  recommended_model: ['llama-3-8b-instruct'],
 }
 
 const SCENARIO_HOSTILE: ScenarioInfo = {
@@ -444,6 +445,28 @@ describe('filters', () => {
     })
     await waitFor(() => screen.getByTestId('no-results'))
     expect(screen.getByTestId('no-results')).toBeInTheDocument()
+  })
+
+  it('filter by recommended model shows only matching scenarios', async () => {
+    renderLibrary()
+    await waitFor(() => screen.getByText('Behavioral Interview'))
+    // SCENARIO_BEHAVIORAL has recommended_model: ['llama-3-8b-instruct']
+    // SCENARIO_HOSTILE and SCENARIO_SPANISH do not
+    fireEvent.change(screen.getByRole('combobox', { name: /filter by recommended model/i }), {
+      target: { value: 'llama-3-8b-instruct' },
+    })
+    await waitFor(() =>
+      expect(screen.queryByText('Spanish Coffee Conversation')).not.toBeInTheDocument(),
+    )
+    expect(screen.getByText('Behavioral Interview')).toBeInTheDocument()
+  })
+
+  it('model filter dropdown is present when scenarios have recommended_model', async () => {
+    renderLibrary()
+    await waitFor(() => screen.getByText('Behavioral Interview'))
+    expect(
+      screen.getByRole('combobox', { name: /filter by recommended model/i }),
+    ).toBeInTheDocument()
   })
 })
 

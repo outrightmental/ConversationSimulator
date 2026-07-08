@@ -29,6 +29,7 @@ export const SCENARIOS: Record<string, ScenarioInfo> = {
       'PG content only. No NSFW content, no real-person impersonation. Professional conversation only.',
     estimated_length_label: '15–20 minutes',
     tags: ['interview', 'professional', 'career'],
+    recommended_model: ['llama-3-8b-instruct', 'mistral-7b-instruct'],
   },
 
   hostile_executive_interview: {
@@ -57,6 +58,7 @@ export const SCENARIOS: Record<string, ScenarioInfo> = {
       'PG content only. The NPC may be blunt or dismissive but never hostile beyond professional boundaries.',
     estimated_length_label: '12–18 minutes',
     tags: ['interview', 'professional', 'career', 'pressure'],
+    recommended_model: ['llama-3-8b-instruct', 'mistral-7b-instruct'],
   },
 
   used_car_negotiation: {
