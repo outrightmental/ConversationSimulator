@@ -95,7 +95,7 @@ Write-Host "Logs: $LogDir"
 Write-Host "Press Ctrl-C to stop all services."
 Write-Host ""
 
-$TauriArgs = if ($PkgManager -eq "pnpm") { @("tauri", "dev") } else { @("x", "tauri", "dev") }
+$TauriArgs = @("tauri", "dev")
 $TauriCmd  = if ($PkgManager -eq "pnpm") { "pnpm" } else { "npx" }
 
 $TauriProc = Start-Process -FilePath $TauriCmd `
