@@ -218,6 +218,16 @@ CREATE VIRTUAL TABLE session_transcript_fts USING fts5(
 );
 """
 
+_DEBRIEF_TABLE_SQL = """
+CREATE TABLE session_debriefs (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id   TEXT    NOT NULL REFERENCES turn_sessions(session_id) ON DELETE CASCADE,
+    content_json TEXT    NOT NULL,
+    generated_at TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX session_debriefs_session_id ON session_debriefs(session_id);
+"""
+
 MIGRATIONS: list[tuple[str, str]] = [
     ("0001_initial_schema", _INITIAL_SCHEMA_SQL),
     ("0002_model_registry_v2", _MODEL_REGISTRY_V2_SQL),
@@ -225,6 +235,7 @@ MIGRATIONS: list[tuple[str, str]] = [
     ("0004_extend_pack_assets", _EXTEND_PACK_ASSETS_SQL),
     ("0005_turn_pipeline", _TURN_PIPELINE_SQL),
     ("0006_turn_transcript_and_events", _TURN_TRANSCRIPT_AND_EVENTS_SQL),
+    ("0007_session_debriefs", _DEBRIEF_TABLE_SQL),
 ]
 
 
