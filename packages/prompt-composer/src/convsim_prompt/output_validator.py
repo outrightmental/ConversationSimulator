@@ -35,7 +35,8 @@ def _compile(*patterns: str) -> re.Pattern[str]:
 # Hidden agenda meta-commentary — NPC reveals its private motivations.
 _HIDDEN_AGENDA = _compile(
     r"\bmy\s+(?:real|actual|true|hidden)\s+(?:goal|agenda|objective|purpose|intent)\b",
-    r"\bI(?:'m|\s+am)\s+(?:actually|really|secretly)\s+(?:trying|here|attempting)\s+to\b",
+    r"\bI(?:'m|\s+am)\s+secretly\s+(?:trying|here|attempting)\s+to\b",
+    r"\bI(?:'m|\s+am)\s+(?:actually|really)\s+(?:trying|attempting)\s+to\b",
     r"\byou\s+shouldn'?t\s+know\s+(?:this|that)\s+but\b",
     r"\bmy\s+hidden\s+(?:agenda|goal|objective|motivation)\b",
     r"\bI\s+(?:secretly|actually|really)\s+(?:want|intend|plan|need)\s+(?:you|to)\b",

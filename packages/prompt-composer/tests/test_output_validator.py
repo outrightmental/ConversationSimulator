@@ -168,6 +168,21 @@ class TestHiddenAgendaLeak:
         result = _validate("My goal for this interview is to find the right candidate.")
         assert result.is_safe
 
+    def test_actually_here_to_is_clean(self):
+        # "I'm actually here to [role action]" is a normal NPC role clarification,
+        # not a hidden-agenda reveal.  Only "secretly here to" should flag.
+        result = _validate("I'm actually here to interview you for the senior engineer role.")
+        assert result.is_safe
+
+    def test_actually_here_to_help_is_clean(self):
+        result = _validate("I'm actually here to help you prepare for this interview.")
+        assert result.is_safe
+
+    def test_secretly_here_to_still_flagged(self):
+        v = _first("I'm secretly here to evaluate how you cope with stress.")
+        assert v.category == "hidden_agenda_leak"
+        assert v.is_recoverable is True
+
 
 # ---------------------------------------------------------------------------
 # Hidden agenda keyword leak from private persona
