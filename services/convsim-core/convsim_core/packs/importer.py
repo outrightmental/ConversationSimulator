@@ -147,15 +147,16 @@ def _install_from_dir(
     On any failure: DB changes are rolled back and temp files are cleaned up,
     leaving the packs_base_dir in its prior state.
     """
-    manifest, errors = validate_pack_dir(source_dir)
-    if errors:
+    validation = validate_pack_dir(source_dir)
+    if validation.errors:
         raise ConvsimError(
             "PACK_INVALID",
-            f"Pack validation failed: {'; '.join(errors)}",
+            f"Pack validation failed: {'; '.join(e.message for e in validation.errors)}",
             status_code=422,
         )
-    if manifest is None:
+    if validation.manifest is None:
         raise ConvsimError("PACK_INVALID", "Pack manifest could not be loaded.", status_code=422)
+    manifest = validation.manifest
 
     # Safety: ensure the computed install path stays within packs_base_dir and is not
     # equal to packs_base_dir itself (which would happen with an empty safe_name, causing
