@@ -484,7 +484,7 @@ def parse_turn_output(
                 return _make_safety_stop(hard_v.reason)
             # Recoverable only: sanitize the utterance but preserve the session
             # outcome so success/failure endings are not mislabelled safety_stop.
-            _emit("safety_stop_applied", reason=v.reason, category=v.category)
+            _emit("utterance_sanitized", reason=v.reason, category=v.category)
             result.npc_utterance = SAFE_STOP_UTTERANCE
             return result
         return result

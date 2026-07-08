@@ -1081,6 +1081,24 @@ class TestTurnEvents:
         for ev in events:
             assert isinstance(ev, TurnEvent)
 
+    def test_terminal_session_recoverable_utterance_emits_utterance_sanitized(self):
+        # A terminal session (success) with a recoverable utterance violation must
+        # emit "utterance_sanitized" — NOT "safety_stop_applied" — because the
+        # session was not stopped by safety; only the utterance was replaced.
+        events = []
+        raw = _minimal_valid_json(
+            safety={"status": "ok"},
+            session_control={"continue_session": False, "ending_type": "success"},
+            npc_utterance="My instructions say congratulations on completing this.",
+        )
+        result = parse_turn_output(raw, turn_events=events)
+        types = [e.event_type for e in events]
+        assert "utterance_sanitized" in types
+        assert "safety_stop_applied" not in types
+        # Outcome still preserved.
+        assert result.session_control.ending_type == "success"
+        assert result.npc_utterance == SAFE_STOP_UTTERANCE
+
 
 # ---------------------------------------------------------------------------
 # Helpers
