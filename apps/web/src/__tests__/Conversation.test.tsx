@@ -648,6 +648,42 @@ describe('Conversation screen', () => {
       // Final NPC content from REST should be present
       expect(screen.getByText('Hello there. I am a simulated NPC.')).toBeInTheDocument()
     })
+
+    it('clears streaming text when the turn fails', async () => {
+      let wsCallback: ((event: WsEvent) => void) | null = null
+      mockApi.connectSession.mockImplementation((_id, cb) => {
+        wsCallback = cb
+        return { close: vi.fn() }
+      })
+      mockApi.startSession.mockResolvedValue(startResponse)
+      mockApi.submitTurn.mockRejectedValue(new Error('Turn failed'))
+      renderConversation()
+      await waitFor(() =>
+        expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument(),
+      )
+
+      fireEvent.change(screen.getByRole('textbox', { name: /your response/i }), {
+        target: { value: 'Tell me more.' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+
+      // Partial tokens stream in before the REST call rejects.
+      act(() => {
+        wsCallback?.({
+          type: 'npc.token',
+          seq: 1,
+          session_id: SESSION_ID,
+          ts: '2026-07-01T00:01:00Z',
+          payload: { text: 'Partial…' },
+        })
+      })
+
+      await waitFor(() =>
+        expect(screen.getByRole('alert')).toHaveTextContent('Turn failed'),
+      )
+      // No phantom streaming bubble should linger next to the error.
+      expect(screen.queryByTestId('streaming-turn')).not.toBeInTheDocument()
+    })
   })
 
   describe('debug drawer', () => {

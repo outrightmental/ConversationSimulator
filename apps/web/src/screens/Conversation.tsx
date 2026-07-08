@@ -356,6 +356,10 @@ export default function Conversation() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       setError(msg)
+      // Discard any partial streamed tokens so a failed turn doesn't leave a
+      // phantom "Responding…" bubble alongside the error.
+      streamingRef.current = ''
+      setStreamingText('')
       // Roll back the optimistic player turn if the NPC never responded, so a
       // retry doesn't leave an orphaned failed message or skip a turn number.
       if (!npcTurnCommittedRef.current) {
