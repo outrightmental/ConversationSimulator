@@ -615,9 +615,7 @@ function ValidationPanel({ validation, loading, serviceError, onSelectFile, onRe
               <ul style={{ margin: 0, paddingLeft: '1rem', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
                 {issues.map((issue, i) => {
                   const isSec = isSecurityIssue(issue)
-                  const issueColor = issue.severity === 'error'
-                    ? (isSec ? '#fca5a5' : '#fca5a5')
-                    : '#fcd34d'
+                  const issueColor = issue.severity === 'error' ? '#fca5a5' : '#fcd34d'
 
                   return (
                     <li
