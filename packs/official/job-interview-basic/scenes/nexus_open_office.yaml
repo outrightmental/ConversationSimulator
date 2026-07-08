@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scene_id: nexus_open_office
+display_name: "Nexus Analytics — Product Team Area"
+background: assets/backgrounds/open_office_placeholder.png
+description: >-
+  A bright, open-plan workspace on the second floor of a converted warehouse
+  building. Exposed ductwork overhead, a cluster of standing desks with monitors
+  showing dashboards and Figma prototypes, and a long whiteboard wall covered in
+  sticky notes and user-journey diagrams. Elena has pulled two chairs into a
+  small alcove near a tall window. The ambient noise of conversation and keystrokes
+  is present but not loud enough to intrude.
+ambient: open_office

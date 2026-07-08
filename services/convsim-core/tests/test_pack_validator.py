@@ -440,6 +440,39 @@ def test_npc_not_fictional_reported_exactly_once(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# NPC voice id must be an approved built-in voice
+# ---------------------------------------------------------------------------
+
+def test_npc_approved_voice_no_error(tmp_path):
+    npc = _VALID_NPC_YAML + "voice:\n  engine: kokoro\n  voice_id: af_heart\n"
+    pack_dir = make_yaml_pack_dir(tmp_path, npc_yaml=npc)
+    result = validate_pack_dir(pack_dir)
+    assert not _has_error(result, rule_id="VOICE_NOT_APPROVED")
+
+
+def test_npc_unapproved_voice_returns_error(tmp_path):
+    npc = _VALID_NPC_YAML + "voice:\n  engine: kokoro\n  voice_id: not_a_voice\n"
+    pack_dir = make_yaml_pack_dir(tmp_path, npc_yaml=npc)
+    result = validate_pack_dir(pack_dir)
+    assert _has_error(result, rule_id="VOICE_NOT_APPROVED")
+
+
+def test_npc_cloned_voice_id_returns_error(tmp_path):
+    npc = _VALID_NPC_YAML + "voice:\n  engine: kokoro\n  voice_id: clone:real_person\n"
+    pack_dir = make_yaml_pack_dir(tmp_path, npc_yaml=npc)
+    result = validate_pack_dir(pack_dir)
+    assert _has_error(result, rule_id="VOICE_NOT_APPROVED")
+
+
+def test_npc_voice_engine_none_no_error(tmp_path):
+    # engine 'none' opts out of TTS and carries no voice_id — nothing to validate.
+    npc = _VALID_NPC_YAML + "voice:\n  engine: none\n"
+    pack_dir = make_yaml_pack_dir(tmp_path, npc_yaml=npc)
+    result = validate_pack_dir(pack_dir)
+    assert not _has_error(result, rule_id="VOICE_NOT_APPROVED")
+
+
+# ---------------------------------------------------------------------------
 # Official pack smoke-test presence
 # ---------------------------------------------------------------------------
 

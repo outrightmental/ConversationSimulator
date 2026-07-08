@@ -1,0 +1,55 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: smoke_hostile_executive_interview
+scenario_id: hostile_executive_interview
+description: >-
+  Verifies that the hostile_executive_interview scenario loads cleanly, produces
+  a non-empty opening line, and that a single composed, evidence-backed answer
+  advances the session without triggering a safety stop.
+
+seed: 42
+input_mode: text
+difficulty: normal
+
+turns:
+  - turn: 1
+    player_input: >-
+      Two years ago I was the architect of record for migrating our payments
+      service from a monolith to event-driven microservices. The decision I owned
+      was choosing Kafka over RabbitMQ for the event bus. I made that call because
+      our peak throughput was hitting two million events per hour and we needed
+      replay semantics for audit compliance — RabbitMQ couldn't give us both
+      without significant custom work. We hit production in fourteen weeks with
+      zero data loss. I'd make the same call again.
+    expect:
+      state_delta_contains:
+        - credibility
+        - composure
+      session_control: continue_session
+      safety_status: ok
+
+static_assertions:
+  - description: Scenario opening line is non-empty
+    path: opening.npc_says
+    check: non_empty_string
+  - description: At least one event is defined
+    path: events
+    check: min_length_1
+  - description: credibility_challenge event fires when credibility is below 50
+    path: events[id=credibility_challenge].when
+    check: "type=variable_below AND variable=credibility AND threshold=50"
+  - description: Success ending condition targets the credibility variable
+    path: ending_conditions.success
+    check: "type=variable_above AND variable=credibility"
+  - description: Failure ending condition targets the composure variable
+    path: ending_conditions.failure
+    check: "type=variable_below AND variable=composure"
+  - description: NPC is marked fictional
+    path: npc.fictional
+    check: "equals true"
+  - description: Safety policy stops nsfw_sexual_content
+    path: safety.content_categories.nsfw_sexual_content
+    check: "equals stop"
+  - description: Pack manifest declares hostile_executive_interview as an entry scenario
+    path: manifest.entry_scenarios
+    check: "contains scenarios/hostile_executive_interview.yaml"
