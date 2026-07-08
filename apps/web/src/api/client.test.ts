@@ -71,6 +71,30 @@ describe('api.createSession error handling', () => {
     expect(thrownMessage).not.toContain('"statusCode"');
   });
 
+  it('extracts the message from a convsim-core nested error object', async () => {
+    mockFetch(404, { error: { code: 'PACK_NOT_FOUND', message: 'Pack "ghost" not found' } });
+
+    let thrownMessage = '';
+    try {
+      await api.createSession({
+        scenario_id: 'behavioral_interview',
+        difficulty: 'normal',
+        player_role_name: 'Alice',
+        language: 'en',
+        input_mode: 'text-only',
+        tts_enabled: false,
+        show_state_meters: false,
+        save_transcript: true,
+        seed: null,
+      });
+    } catch (e) {
+      thrownMessage = e instanceof Error ? e.message : String(e);
+    }
+
+    expect(thrownMessage).toBe('PACK_NOT_FOUND: Pack "ghost" not found');
+    expect(thrownMessage).not.toContain('{');
+  });
+
   it('falls back to raw text when response is not JSON', async () => {
     mockFetch(500, 'Internal server error (plain text)');
 

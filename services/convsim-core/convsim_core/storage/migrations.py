@@ -233,6 +233,13 @@ DROP INDEX IF EXISTS session_debriefs_session_id;
 CREATE UNIQUE INDEX session_debriefs_session_id ON session_debriefs(session_id);
 """
 
+_USER_GGUF_PROFILES_SQL = """
+ALTER TABLE installed_models ADD COLUMN display_name TEXT;
+ALTER TABLE installed_models ADD COLUMN family_guess TEXT;
+ALTER TABLE installed_models ADD COLUMN context_length_default INTEGER;
+ALTER TABLE installed_models ADD COLUMN source TEXT NOT NULL DEFAULT 'registry';
+"""
+
 _SCENARIO_LIBRARY_SCHEMA_SQL = """
 ALTER TABLE packs ADD COLUMN content_rating TEXT;
 ALTER TABLE packs ADD COLUMN supported_languages_json TEXT;
@@ -299,6 +306,7 @@ MIGRATIONS: list[tuple[str, str]] = [
     ("0007_session_debriefs", _DEBRIEF_TABLE_SQL),
     ("0008_session_debriefs_unique_idx", _DEBRIEF_UNIQUE_IDX_SQL),
     ("0009_scenario_library_schema", _SCENARIO_LIBRARY_SCHEMA_SQL),
+    ("0010_user_gguf_profiles", _USER_GGUF_PROFILES_SQL),
 ]
 
 

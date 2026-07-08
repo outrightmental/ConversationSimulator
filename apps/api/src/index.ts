@@ -10,6 +10,7 @@ import { scenarioRoutes } from './routes/scenarios.js';
 import { sessionRoutes } from './routes/sessions.js';
 import { sessionWsRoutes } from './routes/session-ws.js';
 import { privacyRoutes, setDataFolderPath } from './routes/privacy.js';
+import { workbenchRoutes, setWorkbenchRoots } from './routes/workbench.js';
 import { initDb } from './db.js';
 import { getListenConfig } from './config.js';
 
@@ -38,6 +39,7 @@ export async function buildApp() {
   await app.register(sessionWsRoutes);
   await app.register(privacyRoutes);
   await app.register(packRoutes);
+  await app.register(workbenchRoutes);
 
   return app;
 }
@@ -55,6 +57,10 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
   initDb(dbPath);
   setDataFolderPath(path.dirname(dbPath));
   setPacksDbPath(packsDbPath);
+  setWorkbenchRoots(
+    process.env['PACKS_OFFICIAL_ROOT'] ?? path.join(process.cwd(), 'packs', 'official'),
+    process.env['PACKS_LOCAL_DEV_ROOT'] ?? path.join(os.homedir(), '.convsim', 'packs', 'local-dev'),
+  );
   const app = await buildApp();
   await app.listen(listenConfig);
 }
