@@ -68,7 +68,7 @@ describe('App shell', () => {
   it('shows navigation links on every screen', () => {
     renderAt('/')
     expect(screen.getByRole('link', { name: /scenarios/i })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: /workbench/i })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Workbench' })).toBeInTheDocument()
     expect(screen.getByRole('link', { name: /settings/i })).toBeInTheDocument()
   })
 
