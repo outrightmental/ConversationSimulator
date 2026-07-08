@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -33,6 +33,16 @@ from convsim_core.services.model_registry_service import load_and_persist_regist
 from convsim_core.storage.database import Database
 
 _REGISTRY_PATH = Path(__file__).parent.parent.parent.parent / "model-registry" / "registry.yaml"
+
+
+def _suppress_download(coro):
+    """Drop the background download coroutine without scheduling it.
+
+    Patched over ``_spawn_download_task`` so install-endpoint tests observe the
+    freshly created record deterministically instead of racing (and triggering
+    a real network call from) the fire-and-forget download task.
+    """
+    coro.close()
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -435,8 +445,8 @@ def test_install_accepted_when_license_and_sha256_present(client):
     conn.execute(
         """
         INSERT INTO model_registry
-            (id, name, provider, license_spdx, sha256, source_type)
-        VALUES (?, ?, ?, ?, ?, ?)
+            (id, name, provider, license_spdx, sha256, source_type, download_url)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
         (
             "test-valid-model",
@@ -445,10 +455,14 @@ def test_install_accepted_when_license_and_sha256_present(client):
             "MIT",
             "a" * 64,
             "registry",
+            "http://example.test/m.gguf",
         ),
     )
     conn.commit()
-    resp = client.post("/api/models/install", json={"registry_id": "test-valid-model"})
+    with patch(
+        "convsim_core.routers.models._spawn_download_task", side_effect=_suppress_download
+    ):
+        resp = client.post("/api/models/install", json={"registry_id": "test-valid-model"})
     assert resp.status_code == 200
     body = resp.json()
     assert body["status"] == "pending"
@@ -460,13 +474,17 @@ def test_install_creates_record_in_installed_models(client):
     _load_registry(client)
     conn = client.app.state.db.connection()
     conn.execute(
-        """INSERT INTO model_registry (id, name, provider, license_spdx, sha256, source_type)
-           VALUES ('valid-m', 'V', 'p', 'MIT', ?, 'registry')""",
+        """INSERT INTO model_registry (id, name, provider, license_spdx, sha256, source_type, download_url)
+           VALUES ('valid-m', 'V', 'p', 'MIT', ?, 'registry', 'http://example.test/m.gguf')""",
         ("b" * 64,),
     )
     conn.commit()
-    client.post("/api/models/install", json={"registry_id": "valid-m"})
+    with patch(
+        "convsim_core.routers.models._spawn_download_task", side_effect=_suppress_download
+    ):
+        client.post("/api/models/install", json={"registry_id": "valid-m"})
     rows = get_installed_models(conn)
+    # The background download is suppressed, so the record stays in its initial state.
     assert any(r["registry_id"] == "valid-m" and r["install_status"] == "pending" for r in rows)
 
 

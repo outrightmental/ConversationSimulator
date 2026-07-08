@@ -296,6 +296,10 @@ INSERT INTO pack_readme_fts(rowid, name, description)
 SELECT id, name, COALESCE(description, '') FROM packs;
 """
 
+_MODEL_DOWNLOAD_VERIFIED_SQL = """
+ALTER TABLE installed_models ADD COLUMN verified_sha256 TEXT;
+"""
+
 MIGRATIONS: list[tuple[str, str]] = [
     ("0001_initial_schema", _INITIAL_SCHEMA_SQL),
     ("0002_model_registry_v2", _MODEL_REGISTRY_V2_SQL),
@@ -307,6 +311,7 @@ MIGRATIONS: list[tuple[str, str]] = [
     ("0008_session_debriefs_unique_idx", _DEBRIEF_UNIQUE_IDX_SQL),
     ("0009_scenario_library_schema", _SCENARIO_LIBRARY_SCHEMA_SQL),
     ("0010_user_gguf_profiles", _USER_GGUF_PROFILES_SQL),
+    ("0011_model_download_verified", _MODEL_DOWNLOAD_VERIFIED_SQL),
 ]
 
 

@@ -1,9 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 from __future__ import annotations
 
+import asyncio
 import os
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Optional
 
 import httpx
@@ -20,11 +22,13 @@ from convsim_core.runtime.types import (
     RuntimeHealth,
     RuntimeStatus,
 )
+from convsim_core.services.model_download_service import execute_download
 from convsim_core.services.model_manager_service import (
     create_install_record,
     get_active_config,
+    get_install_record,
     get_installed_models,
-    get_most_recent_benchmark,
+    mark_install_failed,
     register_user_gguf,
     save_benchmark_result,
     set_active_config,
@@ -32,6 +36,27 @@ from convsim_core.services.model_manager_service import (
 from convsim_core.services.model_registry_service import list_registry_models
 
 router = APIRouter()
+
+# Maps install_id → asyncio.Event; setting the event signals cancel to the download task.
+_cancel_events: dict[int, asyncio.Event] = {}
+
+# Strong references to in-flight download tasks. asyncio only keeps a weak
+# reference to tasks created via create_task, so without this the download task
+# can be garbage-collected mid-download and silently cancelled, leaving the
+# install record stuck in 'downloading'. Tasks remove themselves when done.
+_download_tasks: set[asyncio.Task[None]] = set()
+
+
+def _spawn_download_task(coro: Any) -> "asyncio.Task[None]":
+    """Schedule *coro* as a background task and hold a strong reference to it.
+
+    Extracted so tests can suppress background execution deterministically
+    instead of racing the fire-and-forget task against their assertions.
+    """
+    task = asyncio.create_task(coro)
+    _download_tasks.add(task)
+    task.add_done_callback(_download_tasks.discard)
+    return task
 
 _BENCHMARK_PROMPT = "Say hello in exactly three words."
 _BENCHMARK_SYSTEM = "You are a helpful assistant. Be brief and literal."
@@ -69,6 +94,7 @@ class InstalledModelInfo(BaseModel):
     install_status: str
     progress_bytes: Optional[int] = None
     error_message: Optional[str] = None
+    verified_sha256: Optional[str] = None
     installed_at: str
 
 
@@ -174,7 +200,7 @@ async def _detect_ollama_models() -> list[DetectedOllamaModel]:
 
 def _get_registry_row(conn: Any, registry_id: str) -> dict[str, Any] | None:
     row = conn.execute(
-        "SELECT id, name, license_spdx, sha256, source_type FROM model_registry WHERE id = ?",
+        "SELECT id, name, license_spdx, sha256, source_type, download_url FROM model_registry WHERE id = ?",
         (registry_id,),
     ).fetchone()
     return dict(row) if row is not None else None
@@ -312,12 +338,14 @@ async def use_model(request: Request, body: UseModelRequest) -> UseModelResponse
 
 @router.post("/api/models/install", response_model=InstallModelResponse)
 async def install_model(request: Request, body: InstallModelRequest) -> InstallModelResponse:
-    """Queue an explicit model download.
+    """Start an explicit model download.
 
-    Rejects registry entries that lack license or verified checksum metadata,
-    ensuring the API never downloads unverified weights.
+    Validates license and checksum metadata before creating the install record,
+    then kicks off a background download task.  The install_id returned can be
+    polled via GET /api/models/install/{install_id}.
     """
     conn = request.app.state.db.connection()
+    models_dir = Path(getattr(request.app.state, "models_dir", ""))
 
     model = _get_registry_row(conn, body.registry_id)
     if model is None:
@@ -358,16 +386,150 @@ async def install_model(request: Request, body: InstallModelRequest) -> InstallM
             status_code=400,
         )
 
+    download_url = (model.get("download_url") or "").strip()
+    if not download_url:
+        raise ConvsimError(
+            code="MISSING_DOWNLOAD_URL",
+            message=(
+                f"Registry entry '{body.registry_id}' has no download URL. "
+                "Cannot start a download without a source URL."
+            ),
+            status_code=400,
+        )
+
     filename = f"{body.registry_id}.gguf"
     install_id = create_install_record(
         conn, registry_id=body.registry_id, filename=filename, file_path=""
     )
 
+    # Register a cancel event before launching the task so DELETE can signal it.
+    cancel_event = asyncio.Event()
+    _cancel_events[install_id] = cancel_event
+
+    async def _run_download() -> None:
+        try:
+            await execute_download(
+                conn,
+                install_id,
+                download_url,
+                sha256,
+                models_dir,
+                filename,
+                cancel_event=cancel_event,
+            )
+        finally:
+            _cancel_events.pop(install_id, None)
+
+    _spawn_download_task(_run_download())
+
     return InstallModelResponse(
         install_id=install_id,
         registry_id=body.registry_id,
         status="pending",
-        message=f"Install queued for '{model['name']}'. Download will proceed in the background.",
+        message=f"Downloading '{model['name']}'. Poll GET /api/models/install/{install_id} for progress.",
+    )
+
+
+@router.get("/api/models/install/{install_id}", response_model=InstalledModelInfo)
+async def get_install_status(request: Request, install_id: int) -> InstalledModelInfo:
+    """Return the current status and progress of an install record."""
+    conn = request.app.state.db.connection()
+    record = get_install_record(conn, install_id)
+    if record is None:
+        raise ConvsimError(
+            code="INSTALL_NOT_FOUND",
+            message=f"Install record {install_id} not found.",
+            status_code=404,
+        )
+    return InstalledModelInfo(**record)
+
+
+@router.delete("/api/models/install/{install_id}", status_code=204)
+async def cancel_install(request: Request, install_id: int) -> None:
+    """Cancel an in-progress download, or return 409 if already in a terminal state."""
+    conn = request.app.state.db.connection()
+    record = get_install_record(conn, install_id)
+    if record is None:
+        raise ConvsimError(
+            code="INSTALL_NOT_FOUND",
+            message=f"Install record {install_id} not found.",
+            status_code=404,
+        )
+
+    _TERMINAL = {"ready", "complete", "failed", "cancelled", "checksum_mismatch"}
+    if record["install_status"] in _TERMINAL:
+        raise ConvsimError(
+            code="INSTALL_NOT_CANCELLABLE",
+            message=f"Install {install_id} is already in terminal state '{record['install_status']}'.",
+            status_code=409,
+        )
+
+    # Signal the background download task if one is running.
+    event = _cancel_events.get(install_id)
+    if event is not None:
+        event.set()
+    else:
+        # No active download task; mark as cancelled directly.
+        mark_install_failed(conn, install_id, "Cancelled by user.", status="cancelled")
+
+
+@router.post("/api/models/register-gguf", response_model=RegisterGgufResponse)
+async def register_gguf(request: Request, body: RegisterGgufRequest) -> RegisterGgufResponse:
+    """Register a user-supplied GGUF file as the active model.
+
+    Validates file existence and extension. The file is not copied or modified —
+    only the path is stored. The user is responsible for the model's license
+    and hardware requirements; the app makes no claims about redistribution.
+    """
+    path = body.path.strip()
+
+    if not path:
+        raise ConvsimError(
+            code="GGUF_PATH_EMPTY",
+            message="File path must not be empty.",
+            status_code=400,
+        )
+
+    if not path.lower().endswith(".gguf"):
+        raise ConvsimError(
+            code="GGUF_INVALID_EXTENSION",
+            message="The file must have a .gguf extension.",
+            status_code=400,
+        )
+
+    if not os.path.isfile(path):
+        raise ConvsimError(
+            code="GGUF_FILE_NOT_FOUND",
+            message=(
+                f"GGUF file not found: {path}. "
+                "Verify the path is correct and the file is accessible, then try again."
+            ),
+            status_code=404,
+        )
+
+    db = request.app.state.db
+    conn = db.connection()
+
+    profile = register_user_gguf(
+        conn,
+        path=path,
+        display_name=body.display_name,
+        family_guess=body.family_guess,
+        context_length_default=body.context_length,
+    )
+
+    set_active_config(conn, runtime_id="llama_cpp", model_id=path)
+
+    return RegisterGgufResponse(
+        profile_id=profile["id"],
+        file_path=path,
+        display_name=profile["display_name"],
+        filename=profile["filename"],
+        family_guess=body.family_guess,
+        context_length_default=body.context_length,
+        warnings=[],
+        active_runtime_id="llama_cpp",
+        active_model_id=path,
     )
 
 

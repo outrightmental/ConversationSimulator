@@ -1,0 +1,141 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scenario_id: stretch_role_interview
+title: Making the Case
+summary: >-
+  You are applying for a Senior Product Manager role at Nexus Analytics with
+  only two years of relevant experience. Elena Vasquez, the Head of Product,
+  is genuinely open to a stretch hire — but only if you acknowledge the gap
+  honestly, show transferable skills with specific examples, and demonstrate you
+  have done real homework on what the role requires.
+player_role:
+  label: Job Candidate
+  brief: >-
+    You are applying for a Senior PM role that typically requires five or more
+    years of experience. You have two. Elena is intrigued but skeptical. The
+    worst move is to pretend the gap does not exist. Acknowledge it clearly,
+    name what you will need to learn, and back your readiness with specific
+    evidence from adjacent experience. Generic enthusiasm will not be enough.
+npc:
+  ref: ../npcs/product_head.yaml
+scene:
+  ref: ../scenes/nexus_open_office.yaml
+rubric:
+  ref: ../rubrics/stretch_role_rubric.yaml
+duration:
+  max_turns: 20
+  soft_time_limit_minutes: 15
+opening:
+  npc_says: >-
+    Hi — thanks for making the trip out. I'm Elena. I should be upfront with
+    you: I read your application carefully, and I want to have an honest
+    conversation. You have two years of experience and we posted for five-plus.
+    That gap is real, and I'm not going to pretend it isn't. But I've made
+    stretch hires before and some of them have been the best PMs I've ever
+    worked with. So the question I want to answer today is whether you're one of
+    those. Start by telling me — what makes you think you're ready for this?
+goals:
+  player_visible:
+    - "Acknowledge the experience gap honestly — do not avoid or minimize it"
+    - "Show Elena concrete evidence from past work that transfers to what this role requires"
+    - "Demonstrate that you have researched the company, product, and what the job actually involves"
+  hidden:
+    - "Elena is deciding whether this candidate has enough self-awareness to know what they don't yet know"
+    - "Elena is looking for specific past examples of rapid skill acquisition — not claims of being a 'fast learner'"
+    - "Elena needs to see that the candidate's motivation is the work itself, not just the title or the salary"
+state:
+  variables:
+    conviction:
+      min: 0
+      max: 100
+      default: 35
+      visibility: visible
+      max_delta_per_turn: 15
+    preparation_score:
+      min: 0
+      max: 100
+      default: 45
+      visibility: visible
+      max_delta_per_turn: 15
+    stretch_potential:
+      min: 0
+      max: 100
+      default: 40
+      visibility: hidden
+      max_delta_per_turn: 15
+    gap_acknowledged:
+      min: 0
+      max: 1
+      default: 0
+      visibility: hidden
+      max_delta_per_turn: 1
+difficulty:
+  default: normal
+  options:
+    easy:
+      npc_patience_modifier: 20
+      challenge_frequency: low
+    normal:
+      npc_patience_modifier: 0
+      challenge_frequency: medium
+    hard:
+      npc_patience_modifier: -15
+      challenge_frequency: high
+events:
+  - id: gap_probing
+    when:
+      type: variable_below
+      variable: gap_acknowledged
+      threshold: 1
+    npc_instruction: >-
+      The candidate has not yet addressed the experience gap directly. Elena
+      brings it up herself: "I want to come back to the experience question,
+      because I think it matters. The gap between two years and five years isn't
+      just time — it's a specific set of situations you haven't been in yet.
+      What's one area where you know you'd be starting from behind, and what
+      would you do about it in the first ninety days?"
+    repeat: false
+  - id: evidence_boost
+    when:
+      type: variable_above
+      variable: stretch_potential
+      threshold: 70
+    npc_instruction: >-
+      That was a genuinely impressive answer — specific, honest, and grounded in
+      real experience. Elena leans in and follows up with a harder question that
+      shows real engagement: "Okay, that's the kind of thing I was hoping to
+      hear. Here's a real challenge we're facing — we have four product areas
+      competing for Q3 roadmap slots and stakeholder alignment is a mess. How
+      would you approach prioritizing in that environment?"
+    repeat: false
+  - id: hesitation_signal
+    when:
+      type: variable_below
+      variable: conviction
+      threshold: 30
+    npc_instruction: >-
+      Elena is concerned that this candidate may not be ready. She gently raises
+      it: "I want to be honest with you — I'm hearing good intentions, but I'm
+      not yet convinced about the readiness. Help me understand: what would you
+      point to as the strongest evidence that you can operate at this level?"
+    repeat: false
+  - id: preparation_challenge
+    when:
+      type: variable_below
+      variable: preparation_score
+      threshold: 35
+    npc_instruction: >-
+      Elena notices the candidate's answers have been generic. She tests whether
+      they have done the homework: "Tell me something specific about our
+      product or our market that surprised you when you were preparing for
+      today — something that changed how you thought about this role."
+    repeat: false
+ending_conditions:
+  success:
+    type: variable_above
+    variable: conviction
+    threshold: 65
+  failure:
+    type: variable_below
+    variable: conviction
+    threshold: 15

@@ -19,7 +19,14 @@ export interface ModelRegistryEntry {
   registered_at: string;
 }
 
-export type InstallStatus = 'pending' | 'downloading' | 'complete' | 'failed';
+export type InstallStatus =
+  | 'pending'
+  | 'downloading'
+  | 'complete'
+  | 'ready'
+  | 'failed'
+  | 'cancelled'
+  | 'checksum_mismatch';
 
 export interface InstalledModelInfo {
   id: number;
@@ -30,6 +37,7 @@ export interface InstalledModelInfo {
   install_status: InstallStatus;
   progress_bytes: number | null;
   error_message: string | null;
+  verified_sha256: string | null;
   installed_at: string;
 }
 
