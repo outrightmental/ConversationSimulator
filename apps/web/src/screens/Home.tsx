@@ -121,7 +121,7 @@ export default function Home() {
               {' — use an existing Ollama installation'}
             </li>
             <li>
-              <Link to="/settings">Try text-only demo</Link>
+              <Link to="/library">Try text-only demo</Link>
               {' — run without a model using the fake runtime'}
             </li>
           </ul>
