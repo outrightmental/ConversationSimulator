@@ -142,9 +142,14 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
       setSubmitting(true);
       setSubmitError(null);
       try {
+        // `voice_id` is the UI form field; the backend expects `tts_voice_id`
+        // (a non-null approved voice id). Omit it when no voice is selected so
+        // the backend applies its default rather than rejecting a null value.
+        const { voice_id, ...rest } = form;
         const session = await api.createSession({
           scenario_id: scenarioId,
-          ...form,
+          ...rest,
+          ...(voice_id ? { tts_voice_id: voice_id } : {}),
         });
         onSessionCreated(session);
       } catch (err: unknown) {
