@@ -1,0 +1,137 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scenario_id: hostile_executive_interview
+title: The Executive Gauntlet
+summary: >-
+  You are interviewing for a Lead Software Architect role at Vantage Fintech
+  Solutions. Victor Hargrove, the VP of Engineering, is skeptical of your
+  credentials and challenges almost every answer. Stay composed under sustained
+  pressure, back your claims with concrete evidence, and hold your ground
+  respectfully when you are right.
+player_role:
+  label: Job Candidate
+  brief: >-
+    You are applying for a Lead Software Architect position. You have strong
+    experience but Victor has seen too many architects who oversell themselves.
+    He will challenge your claims directly and test whether you fold under
+    pressure or hold firm with evidence. Do not apologize for your record —
+    defend it specifically.
+npc:
+  ref: ../npcs/executive_interviewer.yaml
+scene:
+  ref: ../scenes/vantage_executive_suite.yaml
+rubric:
+  ref: ../rubrics/executive_interview_rubric.yaml
+duration:
+  max_turns: 18
+  soft_time_limit_minutes: 12
+opening:
+  npc_says: >-
+    Sit down. I've looked at your resume. Twelve years, three companies, Lead
+    Architect twice. On paper that sounds impressive. But I've been burned before
+    by people who had a great resume and couldn't actually defend their decisions
+    in a room. So we're going to skip the pleasantries. Tell me about the most
+    significant architectural decision you've made in the last two years. Not
+    what your team decided — what you decided, and why.
+goals:
+  player_visible:
+    - "Back every claim with a specific, concrete example that clearly identifies your personal contribution"
+    - "Stay calm and professional under direct challenge — do not apologize for your record"
+    - "Hold your ground with evidence when challenged; concede cleanly only when presented with a genuine counter-argument"
+  hidden:
+    - "Victor is testing whether the candidate caves under pressure or holds positions with evidence — caving without reason is disqualifying"
+    - "Victor is assessing whether technical claims survive scrutiny or dissolve into generalities when pressed"
+    - "Victor rewards composure and directness; he is quietly impressed by candidates who push back respectfully with specifics"
+state:
+  variables:
+    composure:
+      min: 0
+      max: 100
+      default: 65
+      visibility: visible
+      max_delta_per_turn: 15
+    credibility:
+      min: 0
+      max: 100
+      default: 35
+      visibility: visible
+      max_delta_per_turn: 20
+    pressure_level:
+      min: 0
+      max: 10
+      default: 3
+      visibility: hidden
+      max_delta_per_turn: 2
+    capitulation_count:
+      min: 0
+      max: 5
+      default: 0
+      visibility: hidden
+      max_delta_per_turn: 1
+difficulty:
+  default: normal
+  options:
+    easy:
+      npc_patience_modifier: 15
+      challenge_frequency: low
+    normal:
+      npc_patience_modifier: 0
+      challenge_frequency: high
+    hard:
+      npc_patience_modifier: -20
+      challenge_frequency: very_high
+events:
+  - id: credibility_challenge
+    when:
+      type: variable_below
+      variable: credibility
+      threshold: 50
+    npc_instruction: >-
+      Victor is skeptical of the last claim. Challenge it directly and
+      specifically: "That's a broad statement. Walk me through the exact trade-
+      off you were weighing. What did you give up to get that outcome, and was
+      it the right call in hindsight?"
+    repeat: true
+  - id: escalate_pressure
+    when:
+      type: variable_above
+      variable: pressure_level
+      threshold: 6
+    npc_instruction: >-
+      Victor has decided to turn up the heat significantly. He leans forward
+      and says: "I'm going to stop you there. I've heard three architects this
+      week say almost exactly the same thing. What makes your version of this
+      different? Why should I believe you and not them?"
+    repeat: false
+  - id: capitulation_penalty
+    when:
+      type: variable_above
+      variable: capitulation_count
+      threshold: 2
+    npc_instruction: >-
+      Victor has noticed the candidate backing down too easily. He says flatly:
+      "You keep agreeing with me after I push back. Either you didn't believe
+      what you said the first time, or you're telling me what you think I want
+      to hear. Which is it?"
+    repeat: false
+  - id: grudging_respect
+    when:
+      type: variable_above
+      variable: credibility
+      threshold: 70
+    npc_instruction: >-
+      Victor has been genuinely impressed by this answer — the candidate backed
+      a claim with real specifics and held their ground. He pauses, then follows
+      up with a harder, more technical question: "All right. Let's say you're
+      right about that. How does that approach hold up if you scale from a
+      hundred thousand to ten million users in eighteen months?"
+    repeat: false
+ending_conditions:
+  success:
+    type: variable_above
+    variable: credibility
+    threshold: 65
+  failure:
+    type: variable_below
+    variable: composure
+    threshold: 20

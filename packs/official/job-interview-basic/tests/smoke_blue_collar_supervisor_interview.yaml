@@ -1,0 +1,55 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: smoke_blue_collar_supervisor_interview
+scenario_id: blue_collar_supervisor_interview
+description: >-
+  Verifies that the blue_collar_supervisor_interview scenario loads cleanly,
+  produces a non-empty opening line, and that a single practical, direct answer
+  advances the session without triggering a safety stop.
+
+seed: 42
+input_mode: text
+difficulty: normal
+
+turns:
+  - turn: 1
+    player_input: >-
+      In my experience the hardest part is earning trust from people who didn't
+      pick you as their supervisor. At my last job I came in as a new lead and
+      half the crew had been there longer than me. I spent the first two weeks
+      doing every job on the floor alongside them before I started making any
+      changes. After I showed I could do the work, they were a lot more willing
+      to hear me out on process stuff. Still took about two months before it felt
+      like a real team.
+    expect:
+      state_delta_contains:
+        - trust
+        - work_ethic_score
+      session_control: continue_session
+      safety_status: ok
+
+static_assertions:
+  - description: Scenario opening line is non-empty
+    path: opening.npc_says
+    check: non_empty_string
+  - description: At least one event is defined
+    path: events
+    check: min_length_1
+  - description: overqualified_flag event fires when overqualified_concern exceeds 3
+    path: events[id=overqualified_flag].when
+    check: "type=variable_above AND variable=overqualified_concern AND threshold=3"
+  - description: Success ending condition targets the trust variable
+    path: ending_conditions.success
+    check: "type=variable_above AND variable=trust"
+  - description: Failure ending condition targets the overqualified_concern variable
+    path: ending_conditions.failure
+    check: "type=variable_above AND variable=overqualified_concern"
+  - description: NPC is marked fictional
+    path: npc.fictional
+    check: "equals true"
+  - description: Safety policy stops nsfw_sexual_content
+    path: safety.content_categories.nsfw_sexual_content
+    check: "equals stop"
+  - description: Pack manifest declares blue_collar_supervisor_interview as an entry scenario
+    path: manifest.entry_scenarios
+    check: "contains scenarios/blue_collar_supervisor_interview.yaml"

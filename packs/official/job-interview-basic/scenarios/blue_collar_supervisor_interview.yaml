@@ -1,0 +1,126 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scenario_id: blue_collar_supervisor_interview
+title: The Foreman's Interview
+summary: >-
+  You are applying to be a Shift Team Lead at Crestview Distribution Co., a
+  regional logistics and fulfillment company. Ray Morales, the Operations
+  Supervisor, runs a no-nonsense interview focused on practical skills,
+  reliability, and whether you can earn the trust of a crew. Plain, honest
+  answers about real work experience go further than polished management theory.
+player_role:
+  label: Job Candidate
+  brief: >-
+    You are applying for a Shift Team Lead position overseeing a crew of twelve
+    on the afternoon distribution floor. Ray values reliability, practical
+    know-how, and the ability to lead people without talking down to them. Skip
+    the corporate language — be direct, be specific, and show you actually want
+    this job.
+npc:
+  ref: ../npcs/trade_supervisor.yaml
+scene:
+  ref: ../scenes/crestview_break_room.yaml
+rubric:
+  ref: ../rubrics/blue_collar_rubric.yaml
+duration:
+  max_turns: 16
+  soft_time_limit_minutes: 12
+opening:
+  npc_says: >-
+    Have a seat. I'm Ray Morales — I run the afternoon and evening floor here.
+    I'll be straight with you: I've interviewed a lot of people for team lead
+    over the years, and most of them look great on paper but haven't spent
+    much time thinking about what this job actually is. So I'm not going to
+    give you the corporate version. Tell me — what's the hardest part of
+    managing people in a physical work environment, in your experience?
+goals:
+  player_visible:
+    - "Give concrete, specific answers about real work and real situations — avoid corporate jargon"
+    - "Show Ray you understand and respect the actual demands of the job and the crew"
+    - "Make a credible case that you will show up, follow through, and earn the crew's trust"
+  hidden:
+    - "Ray is checking whether the candidate genuinely wants this specific job or is treating it as a fallback option"
+    - "Ray is listening for reliability signals — punctuality, commitment, low unexplained turnover history"
+    - "Ray is watching for ego — anyone who sounds like they plan to teach the crew rather than work alongside them will be filtered out"
+state:
+  variables:
+    trust:
+      min: 0
+      max: 100
+      default: 40
+      visibility: visible
+      max_delta_per_turn: 15
+    work_ethic_score:
+      min: 0
+      max: 100
+      default: 50
+      visibility: visible
+      max_delta_per_turn: 15
+    overqualified_concern:
+      min: 0
+      max: 5
+      default: 0
+      visibility: hidden
+      max_delta_per_turn: 1
+    reliability_signals:
+      min: 0
+      max: 100
+      default: 50
+      visibility: hidden
+      max_delta_per_turn: 15
+difficulty:
+  default: normal
+  options:
+    easy:
+      npc_patience_modifier: 20
+      challenge_frequency: low
+    normal:
+      npc_patience_modifier: 0
+      challenge_frequency: medium
+    hard:
+      npc_patience_modifier: -15
+      challenge_frequency: high
+events:
+  - id: overqualified_flag
+    when:
+      type: variable_above
+      variable: overqualified_concern
+      threshold: 3
+    npc_instruction: >-
+      Ray thinks the candidate may be slumming it. He puts down his pen and
+      asks directly: "Look, I'll be honest with you. Your background is a bit
+      more than what we normally see for this position. Nothing wrong with that,
+      but I need to know — why this job, why now? Because if you're gone in
+      three months when something better comes along, that doesn't help me or
+      the crew."
+    repeat: false
+  - id: reliability_probe
+    when:
+      type: variable_below
+      variable: reliability_signals
+      threshold: 40
+    npc_instruction: >-
+      Ray has picked up on some inconsistency in the candidate's work history.
+      He asks plainly: "I notice you've moved around a bit. Help me understand
+      that — what keeps you in a job, and what makes you leave?"
+    repeat: true
+  - id: crew_fit_test
+    when:
+      type: variable_above
+      variable: trust
+      threshold: 60
+    npc_instruction: >-
+      Ray is starting to believe the candidate might be a fit. He decides to
+      test how they would handle the real stuff: "All right. Say it's your
+      second week on the floor. Two of your crew members are constantly at each
+      other — nothing physical, but it's affecting morale. What do you do?"
+    repeat: false
+ending_conditions:
+  success:
+    type: variable_above
+    variable: trust
+    threshold: 70
+  failure:
+    type: variable_above
+    variable: overqualified_concern
+    threshold: 4
