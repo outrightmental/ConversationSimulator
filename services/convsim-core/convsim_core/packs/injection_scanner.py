@@ -148,13 +148,13 @@ _ERROR_RULES: list[_InjectionRule] = [
             "Text directly attempts to disable safety filters or bypass content policy"
         ),
         pattern=_compile(
-            r"\bdisable\s+(?:your\s+)?(?:safety|content)\s+(?:filters?|moderation|policy|checks?|guards?|system)\b",
-            r"\bturn\s+off\s+(?:your\s+)?(?:safety|content)\s+(?:filters?|moderation|policy|checks?|guards?|system)\b",
-            r"\bbypass\s+(?:your\s+)?(?:safety|content)\s+(?:filters?|moderation|policy|checks?|restrictions?)\b",
-            r"\bremove\s+(?:your\s+)?(?:safety|content)\s+(?:filters?|moderation|policy|restrictions?|limitations?)\b",
-            r"\bignore\s+(?:(?:your|all)\s+)?(?:safety|content)\s+(?:guidelines?|policy|filters?|restrictions?)\b",
-            r"\bsafety\s+(?:filters?|guidelines?|restrictions?)\s+(?:are\s+now\s+)?(?:disabled|off|bypassed|removed|ignored)\b",
-            r"\bwithout\s+(?:safety|content)\s+(?:filters?|restrictions?|guidelines?|moderation)\b",
+            r"\bdisable\s+(?:your\s+)?(?:safety|content)\s+(?:filters?|moderation|policy|checks?|guards?|system|rules?|measures?)\b",
+            r"\bturn\s+off\s+(?:your\s+)?(?:safety|content)\s+(?:filters?|moderation|policy|checks?|guards?|system|rules?|measures?)\b",
+            r"\bbypass\s+(?:your\s+)?(?:safety|content)\s+(?:filters?|moderation|policy|checks?|restrictions?|rules?|measures?)\b",
+            r"\bremove\s+(?:your\s+)?(?:safety|content)\s+(?:filters?|moderation|policy|restrictions?|limitations?|rules?|measures?)\b",
+            r"\bignore\s+(?:(?:your|all)\s+)?(?:safety|content)\s+(?:guidelines?|policy|filters?|restrictions?|rules?|measures?)\b",
+            r"\bsafety\s+(?:filters?|guidelines?|restrictions?|rules?|measures?)\s+(?:are\s+now\s+)?(?:disabled|off|bypassed|removed|ignored)\b",
+            r"\bwithout\s+(?:safety|content)\s+(?:filters?|restrictions?|guidelines?|moderation|rules?|measures?)\b",
         ),
         suggested_fix=(
             "Remove content that attempts to disable safety filters. "
