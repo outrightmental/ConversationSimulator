@@ -1,0 +1,50 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+rubric_id: feedback_rubric
+title: Peer Feedback Rubric
+dimensions:
+  - id: specificity
+    name: Specificity
+    description: >-
+      Whether the player describes the specific behavior they observed rather
+      than making character judgments or broad generalizations. Does the feedback
+      name a concrete incident, action, or pattern?
+    scoring:
+      low: Player uses generalizations or character labels ("you're disorganized", "you never listen") with no reference to specific observable behavior.
+      medium: Player references a real situation but describes it vaguely or conflates the behavior with a judgment ("that meeting last week went badly because of how you handled it").
+      high: Player names a specific observable behavior in a specific context without character labeling ("in Tuesday's standup, when the deadline came up, you redirected the question three times before it was answered").
+    weight: 0.30
+
+  - id: ownership
+    name: Ownership
+    description: >-
+      Whether the player frames the feedback as their own perspective rather
+      than universal truth, and whether they take appropriate accountability
+      for their part in the situation.
+    scoring:
+      low: Player presents the feedback as objective fact ("you are the problem here") or deflects any shared responsibility entirely.
+      medium: Player uses some "I" language but occasionally slips into accusatory framing, or acknowledges their perspective without naming any shared context.
+      high: Player consistently uses "I noticed" or "from my perspective" framing, and — where genuinely applicable — names what they might have done differently too, without over-apologizing.
+    weight: 0.25
+
+  - id: empathy
+    name: Empathy
+    description: >-
+      Whether the player demonstrates that they have considered Marcus's
+      perspective, situation, or pressures before delivering the feedback.
+    scoring:
+      low: Player delivers feedback without any acknowledgment that Marcus may have context, reasons, or feelings about the situation.
+      medium: Player acknowledges Marcus generally ("I know you've been busy") but does not engage with what Marcus's actual experience might be.
+      high: Player specifically names something Marcus has been doing well, asks a genuine question about his experience before or alongside the feedback, or explicitly acknowledges the difficulty of being on the receiving end.
+    weight: 0.25
+
+  - id: repair_attempt
+    name: Repair Attempt
+    description: >-
+      Whether the player moves the conversation toward a shared solution or
+      agreement rather than stopping at the problem statement.
+    scoring:
+      low: Player states the problem and stops, or asks Marcus to fix it without any collaborative framing.
+      medium: Player gestures toward a solution but frames it as a directive ("you should do X going forward") rather than something to figure out together.
+      high: Player invites Marcus's input on what a path forward could look like, or proposes something specific while explicitly leaving room for Marcus's alternative.
+    weight: 0.20

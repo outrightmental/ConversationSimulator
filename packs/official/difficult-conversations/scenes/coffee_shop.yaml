@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scene_id: coffee_shop
+display_name: "Coffee Shop — Weekend afternoon"
+description: >-
+  A mid-range coffee shop on a quiet side street. The lunch rush has cleared
+  and the place is about half full. Jamie and the player are seated at a small
+  table near the window. Ambient noise is present but not intrusive — this
+  conversation is private enough for candor but public enough that neither
+  person can raise their voice without being noticed.
+ambient: coffee_shop

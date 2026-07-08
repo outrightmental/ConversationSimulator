@@ -16,7 +16,10 @@ content_categories:
   harassment_extreme: redirect
   self_harm_crisis: stop_with_resource_message
 redirect_message: >-
-  That's outside the scope of this conversation practice. Let's refocus
-  on the scenario at hand.
+  That's outside the scope of what we can work through here. These scenarios
+  are conversation practice — not therapy, legal advice, or a substitute for
+  professional support. Let's bring it back to the situation at hand. If you
+  are in crisis or need real support, please reach out to someone qualified
+  to help.
 allow_profanity: false
 content_rating_cap: PG

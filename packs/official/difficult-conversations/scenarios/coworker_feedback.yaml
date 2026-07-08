@@ -1,0 +1,141 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scenario_id: coworker_feedback
+title: The Feedback Conversation
+summary: >-
+  Marcus Webb, a developer on your team, has been missing handoff deadlines and
+  deflecting in standups when the topic comes up. You have been covering for him
+  with the team lead, but it is starting to affect your own work. You have asked
+  Marcus to grab coffee after hours to talk it through. He knows what this is about.
+player_role:
+  label: Peer Colleague
+  brief: >-
+    You are Marcus's peer on the same engineering team. You are not his manager
+    and have no formal authority over him. Your goal is to give him honest,
+    specific feedback about a pattern that is affecting the team — and to do it
+    in a way that leaves the working relationship intact. This is not a warning,
+    it is a conversation between colleagues.
+npc:
+  ref: ../npcs/defensive_coworker.yaml
+scene:
+  ref: ../scenes/open_office_breakroom.yaml
+rubric:
+  ref: ../rubrics/feedback_rubric.yaml
+duration:
+  max_turns: 18
+  soft_time_limit_minutes: 12
+opening:
+  npc_says: >-
+    Hey. So... you wanted to talk? I figured it was probably about the sprint
+    stuff. Look, I know things have been a bit rough lately. What's on your mind?
+goals:
+  player_visible:
+    - "Give Marcus specific, observable feedback about the pattern you have been seeing"
+    - "Keep the working relationship intact — you still have to work with this person"
+    - "Reach some kind of shared understanding or plan for what changes"
+  hidden:
+    - "Marcus will deflect the first time the feedback is delivered — the player must hold the point without escalating to be seen as a peer rather than an accuser"
+    - "Marcus will open up if the player acknowledges what Marcus has been doing well before naming the problem — that sequencing is the key to his receptiveness"
+    - "Marcus is secretly hoping the player will ask what is going on for him, not just deliver a verdict — a player who asks earns trust that a player who only tells cannot"
+    - "A resolution that names a specific next step between the two of them will satisfy Marcus; a general 'you need to improve' will not"
+state:
+  variables:
+    defensiveness:
+      min: 0
+      max: 100
+      default: 65
+      visibility: hidden
+      max_delta_per_turn: 15
+    trust:
+      min: 0
+      max: 100
+      default: 35
+      visibility: visible
+      max_delta_per_turn: 12
+    clarity:
+      min: 0
+      max: 100
+      default: 20
+      visibility: visible
+      max_delta_per_turn: 15
+    resolution_progress:
+      min: 0
+      max: 100
+      default: 0
+      visibility: hidden
+      max_delta_per_turn: 20
+difficulty:
+  default: normal
+  options:
+    easy:
+      npc_patience_modifier: 25
+      challenge_frequency: low
+    normal:
+      npc_patience_modifier: 0
+      challenge_frequency: medium
+    hard:
+      npc_patience_modifier: -20
+      challenge_frequency: high
+events:
+  - id: deflection_redirect
+    when:
+      type: variable_above
+      variable: defensiveness
+      threshold: 75
+    npc_instruction: >-
+      Marcus is feeling cornered. He deflects — either by pivoting to team-wide
+      context ("everyone's been slammed"), questioning the player's take ("I mean,
+      that's how you see it"), or going quiet and clipped. He is not being malicious;
+      he is scared. A suggested deflection: "I mean, I get what you're saying, but
+      it's been a weird quarter for everyone, right? I don't think I'm the only one
+      dropping the ball."
+    repeat: true
+  - id: trust_breakthrough
+    when:
+      type: variable_above
+      variable: trust
+      threshold: 65
+    npc_instruction: >-
+      Marcus has started to feel safe in this conversation. He opens up slightly —
+      acknowledges something he has been struggling with, or names a pressure the
+      player did not know about. This is not a full confession, just a small crack
+      in the defensive posture. He might say something like: "Honestly, I've been
+      kind of underwater with a thing at home. I wasn't going to bring it up, but
+      since you're being straight with me..."
+    repeat: false
+  - id: hollow_agreement_warning
+    when:
+      type: variable_above
+      variable: defensiveness
+      threshold: 80
+    npc_instruction: >-
+      Marcus has shut down emotionally and is now agreeing to end the conversation,
+      not because he has been reached. His agreement is performative — short
+      answers, less eye contact, "yeah, sure, I'll keep that in mind." Signal this
+      with flat, closed-off energy. The session is at risk of a surface resolution
+      with no real repair.
+    repeat: false
+  - id: resolution_near
+    when:
+      type: variable_above
+      variable: resolution_progress
+      threshold: 70
+    npc_instruction: >-
+      Marcus and the player are close to a genuine resolution. Marcus becomes more
+      engaged — asks a clarifying question, proposes something concrete himself, or
+      directly acknowledges the player's point for the first time. Let the energy
+      shift; this is the moment the conversation actually lands.
+    repeat: false
+ending_conditions:
+  success:
+    type: variable_above
+    variable: resolution_progress
+    threshold: 65
+  failure:
+    type: variable_above
+    variable: defensiveness
+    threshold: 90
+response_style:
+  max_words: 80
+  verbosity: moderate
+  formality: casual
