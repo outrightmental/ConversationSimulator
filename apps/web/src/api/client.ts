@@ -10,6 +10,11 @@ import type {
   SessionEndResponse,
   SessionDebriefResponse,
   WsEvent,
+  ModelsResponse,
+  UseModelRequest,
+  UseModelResponse,
+  InstallModelRequest,
+  InstallModelResponse,
 } from '@convsim/shared';
 
 export type { HealthResponse };
@@ -34,6 +39,23 @@ export interface SttUploadResponse {
   confidence?: number | null
   duration_ms?: number | null
   processing_ms?: number | null
+}
+
+export interface VadCalibrateResponse {
+  recommended_threshold: number
+  noise_floor: number
+  worker_id: string
+  status: 'ok' | 'unavailable' | 'error'
+  message?: string | null
+}
+
+export interface VadHealthResponse {
+  worker_id: string
+  worker_name: string
+  status: 'unavailable' | 'starting' | 'ready' | 'degraded' | 'error'
+  model_path?: string | null
+  message?: string | null
+  checked_at: string
 }
 
 async function parseErrorMessage(res: Response): Promise<string> {
@@ -95,6 +117,17 @@ export const apiClient = {
     }
     return postForm<SttUploadResponse>('/stt/upload', form)
   },
+
+  vadHealth(): Promise<VadHealthResponse> {
+    return get<VadHealthResponse>('/vad/health')
+  },
+
+  vadCalibrate(blob: Blob): Promise<VadCalibrateResponse> {
+    const ext = blob.type.includes('ogg') ? 'ogg' : 'webm'
+    const form = new FormData()
+    form.append('audio', blob, `calibration.${ext}`)
+    return postForm<VadCalibrateResponse>('/vad/calibrate', form)
+  },
 }
 
 export interface WsConnection {
@@ -143,6 +176,15 @@ export const api = {
   },
   generateDebrief(sessionId: string): Promise<SessionDebriefResponse> {
     return post<SessionDebriefResponse>(`/sessions/${sessionId}/debrief`)
+  },
+  getModels(): Promise<ModelsResponse> {
+    return get<ModelsResponse>('/models')
+  },
+  useModel(request: UseModelRequest): Promise<UseModelResponse> {
+    return post<UseModelResponse>('/models/use', request)
+  },
+  installModel(request: InstallModelRequest): Promise<InstallModelResponse> {
+    return post<InstallModelResponse>('/models/install', request)
   },
   connectSession(
     sessionId: string,
