@@ -58,9 +58,10 @@ Instances of abusive, harassing, or otherwise unacceptable behaviour may be
 reported to the maintainers. **Do not use public GitHub Issues for CoC
 reports** — they are visible to everyone and require confidential handling.
 
-Contact the maintainers directly via the email listed in
-[SECURITY.md](SECURITY.md) or through GitHub's private messaging. All
-complaints will be reviewed and investigated promptly and fairly.
+Contact the maintainers privately using the reporting channels described in
+[SECURITY.md](SECURITY.md) — maintainer email or GitHub's private
+vulnerability reporting for this repository. All complaints will be reviewed
+and investigated promptly and fairly.
 
 Maintainers are obligated to respect the privacy and security of the reporter
 of any incident.
