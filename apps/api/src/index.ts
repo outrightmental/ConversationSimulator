@@ -5,6 +5,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
 import { healthRoutes } from './routes/health.js';
+import { packsRoutes, setPacksDbPath } from './routes/packs.js';
 import { scenarioRoutes } from './routes/scenarios.js';
 import { sessionRoutes } from './routes/sessions.js';
 import { sessionWsRoutes } from './routes/session-ws.js';
@@ -31,6 +32,7 @@ export async function buildApp() {
   });
 
   await app.register(healthRoutes);
+  await app.register(packsRoutes);
   await app.register(scenarioRoutes);
   await app.register(sessionRoutes);
   await app.register(sessionWsRoutes);
@@ -43,10 +45,14 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
   const dbPath =
     process.env['SESSION_DB_PATH'] ??
     path.join(os.homedir(), '.convsim', 'db', 'sessions.db');
+  const packsDbPath =
+    process.env['PACKS_DB_PATH'] ??
+    path.join(os.homedir(), '.convsim', 'db', 'packs.db');
   const listenConfig = getListenConfig();
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   initDb(dbPath);
   setDataFolderPath(path.dirname(dbPath));
+  setPacksDbPath(packsDbPath);
   const app = await buildApp();
   await app.listen(listenConfig);
 }
