@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import type { DebriefTurningPoint, SessionDebriefResponse } from '@convsim/shared'
 import { api } from '../api/client'
+import { isDevModeEnabled } from '../privacyPrefs'
 
 type TranscriptEvent = {
   event_id: number
@@ -19,6 +20,9 @@ export default function Debrief() {
   const [error, setError] = useState<string | null>(null)
   const [transcript, setTranscript] = useState<TranscriptEvent[]>([])
   const [exporting, setExporting] = useState(false)
+  // Debrief-generation latency (ms), captured locally for the dev debug view. No telemetry.
+  const [debriefMs, setDebriefMs] = useState<number | null>(null)
+  const devMode = isDevModeEnabled()
 
   const turnRefs = useRef<Map<number, HTMLElement>>(new Map())
 
@@ -26,9 +30,11 @@ export default function Debrief() {
     if (!sessionId) return
     let cancelled = false
 
+    const debriefStart = performance.now()
     api.generateDebrief(sessionId).then(
       (result) => {
         if (cancelled) return
+        setDebriefMs(Math.round(performance.now() - debriefStart))
         setDebrief(result)
         setPhase('loaded')
 
@@ -147,6 +153,15 @@ export default function Debrief() {
           }}
         >
           <strong>Failed to generate debrief:</strong> {error}
+        </div>
+      )}
+
+      {devMode && debriefMs !== null && (
+        <div
+          data-testid="debrief-latency"
+          style={{ fontSize: '0.7rem', color: '#6ee7b7' }}
+        >
+          Debrief generation: {debriefMs.toLocaleString()} ms
         </div>
       )}
 

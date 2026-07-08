@@ -26,7 +26,7 @@ The app tracks the following timings locally. No data leaves your machine.
 | TTS first sentence | Time for first audio chunk to be ready | — |
 | Debrief generation | Time for debrief to generate | — |
 
-Latency metrics are visible in the **Developer debug** panel (enable dev mode in Settings).
+Conversation-screen metrics (session start, first token, full response, STT final) are visible in the **Developer debug** panel; debrief-generation latency is shown on the debrief screen. Both require dev mode (enable it in Settings).
 
 ## What to do when the app is slow
 
