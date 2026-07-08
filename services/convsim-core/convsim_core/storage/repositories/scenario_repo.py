@@ -191,7 +191,9 @@ def _load_scenario_yaml(pack_source_path: Optional[str], rel_path: Optional[str]
     if not pack_source_path or not rel_path:
         return {}
     try:
-        path = Path(pack_source_path) / rel_path
+        base = Path(pack_source_path).resolve()
+        path = (base / rel_path).resolve()
+        path.relative_to(base)  # raises ValueError if outside pack directory
         raw = yaml.safe_load(path.read_text(encoding="utf-8"))
         return raw if isinstance(raw, dict) else {}
     except Exception:
