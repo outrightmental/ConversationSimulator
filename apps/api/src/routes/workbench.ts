@@ -3,7 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import fs from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
-import { getDb } from '../db.js';
+import { getDb, WORKBENCH_TEST_SCENARIO_ID } from '../db.js';
 
 let _officialRoot = '';
 let _localDevRoot = '';
@@ -314,7 +314,7 @@ export async function workbenchRoutes(app: FastifyInstance): Promise<void> {
       };
 
       const setupJson = JSON.stringify({
-        scenario_id: 'workbench_test',
+        scenario_id: WORKBENCH_TEST_SCENARIO_ID,
         difficulty: 'normal',
         player_role_name: 'Creator',
         language: 'en',
@@ -331,7 +331,7 @@ export async function workbenchRoutes(app: FastifyInstance): Promise<void> {
         'INSERT INTO sessions (session_id, scenario_id, state, created_at, setup_json, state_vars_json) VALUES (?, ?, ?, ?, ?, ?)',
       ).run(
         session_id,
-        'workbench_test',
+        WORKBENCH_TEST_SCENARIO_ID,
         'PlayerTurnListening',
         now,
         setupJson,

@@ -377,10 +377,9 @@ describe('POST /api/workbench/packs/:kind/:slug/test-session', () => {
     expect(turnRes.json<{ state: string }>().state).toBe('PlayerTurnListening');
   });
 
-  it('session is not included in the normal GET /api/sessions history (save_transcript=false)', async () => {
-    // Test sessions must not appear in the regular sessions list because they
-    // are created with save_transcript: false — the DB row still exists but the
-    // setup indicates it's a temporary workbench session.
+  it('session is not included in the normal GET /api/sessions history', async () => {
+    // Temporary workbench test sessions must not pollute the player's session
+    // history list, even though they are stored as real session rows.
     const createRes = await app.inject({
       method: 'POST',
       url: '/api/workbench/packs/local-dev/my-pack/test-session',
@@ -394,6 +393,12 @@ describe('POST /api/workbench/packs/:kind/:slug/test-session', () => {
     // Verify it has save_transcript: false in setup
     const session = getRes.json<{ setup: { save_transcript: boolean } }>();
     expect(session.setup.save_transcript).toBe(false);
+
+    // ...but it must NOT appear in the GET /api/sessions history list.
+    const listRes = await app.inject({ method: 'GET', url: '/api/sessions' });
+    expect(listRes.statusCode).toBe(200);
+    const { sessions } = listRes.json<{ sessions: { session_id: string }[] }>();
+    expect(sessions.some((s) => s.session_id === session_id)).toBe(false);
   });
 
   it('test session can be deleted via DELETE /api/sessions/:id', async () => {
