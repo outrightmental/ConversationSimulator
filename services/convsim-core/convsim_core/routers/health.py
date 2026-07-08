@@ -56,6 +56,7 @@ class HealthResponse(BaseModel):
     privacy: _PrivacyPosture
     stt: SttHealth
     tts: TtsHealth
+    last_benchmark: Optional[_BenchmarkSummary] = None
 
 
 @router.get("/api/health", response_model=HealthResponse)
@@ -99,4 +100,5 @@ async def health(request: Request) -> HealthResponse:
         ),
         stt=await request.app.state.stt_worker.health(),
         tts=await request.app.state.tts_worker.health(),
+        last_benchmark=last_benchmark,
     )
