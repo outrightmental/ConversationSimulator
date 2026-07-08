@@ -339,3 +339,159 @@ def test_health_tts_unavailable_when_kokoro_not_running(client):
     tts = client.get("/api/health").json()["tts"]
     assert tts["worker_id"] == "kokoro"
     assert tts["status"] == "unavailable"
+
+
+# ---------------------------------------------------------------------------
+# Kokoro TTS worker — mocked backend (httpx) integration tests
+#
+# These exercise the real KokoroTtsWorker HTTP path (payload, caching, and
+# error mapping) with a fake httpx client, since the endpoint tests above mock
+# worker.synthesize wholesale and never reach the Kokoro adapter itself.
+# ---------------------------------------------------------------------------
+
+
+class _FakeResponse:
+    def __init__(self, status_code: int, content: bytes = b"", text: str = ""):
+        self.status_code = status_code
+        self.content = content
+        self.text = text
+
+
+class _FakeAsyncClient:
+    """Minimal async-context-manager stand-in for httpx.AsyncClient."""
+
+    def __init__(self, *, response=None, post_exc=None, get_exc=None):
+        self._response = response
+        self._post_exc = post_exc
+        self._get_exc = get_exc
+        self.post_calls = []
+        self.get_calls = []
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *exc):
+        return False
+
+    async def post(self, url, json=None):
+        self.post_calls.append((url, json))
+        if self._post_exc is not None:
+            raise self._post_exc
+        return self._response
+
+    async def get(self, url):
+        self.get_calls.append(url)
+        if self._get_exc is not None:
+            raise self._get_exc
+        return self._response
+
+
+def _make_kokoro(tmp_path):
+    from convsim_core.tts.kokoro import KokoroConfig, KokoroTtsWorker
+
+    return KokoroTtsWorker(KokoroConfig(cache_dir=str(tmp_path / "tts_cache")))
+
+
+@pytest.mark.asyncio
+async def test_kokoro_synthesize_connect_error_maps_to_unavailable(tmp_path):
+    import httpx
+
+    from convsim_core.tts.types import TtsRequest
+
+    worker = _make_kokoro(tmp_path)
+    fake = _FakeAsyncClient(post_exc=httpx.ConnectError("connection refused"))
+    with patch("convsim_core.tts.kokoro.httpx.AsyncClient", lambda **kw: fake):
+        with pytest.raises(TtsUnavailableError):
+            await worker.synthesize(TtsRequest(text="Hi", voice_id="af_heart"))
+
+
+@pytest.mark.asyncio
+async def test_kokoro_synthesize_writes_cache_file_under_cache_dir(tmp_path):
+    from convsim_core.tts.kokoro import KokoroConfig, KokoroTtsWorker
+    from convsim_core.tts.types import TtsRequest
+
+    cache_dir = tmp_path / "tts_cache"
+    worker = KokoroTtsWorker(KokoroConfig(cache_dir=str(cache_dir)))
+    fake = _FakeAsyncClient(response=_FakeResponse(200, content=b"RIFFfake-wav-bytes"))
+    with patch("convsim_core.tts.kokoro.httpx.AsyncClient", lambda **kw: fake):
+        result = await worker.synthesize(TtsRequest(text="Hi", voice_id="af_heart"))
+
+    # Generated audio must stay under the local cache directory.
+    assert os.path.commonpath([str(cache_dir), result.audio_path]) == str(cache_dir)
+    assert os.path.isfile(result.audio_path)
+    with open(result.audio_path, "rb") as f:
+        assert f.read() == b"RIFFfake-wav-bytes"
+    assert result.voice_id == "af_heart"
+
+
+@pytest.mark.asyncio
+async def test_kokoro_synthesize_sends_expected_payload(tmp_path):
+    from convsim_core.tts.types import TtsRequest
+
+    worker = _make_kokoro(tmp_path)
+    fake = _FakeAsyncClient(response=_FakeResponse(200, content=b"wav"))
+    with patch("convsim_core.tts.kokoro.httpx.AsyncClient", lambda **kw: fake):
+        await worker.synthesize(TtsRequest(text="Hello", voice_id="am_adam", speed=1.25))
+
+    assert len(fake.post_calls) == 1
+    url, payload = fake.post_calls[0]
+    assert url.endswith("/v1/audio/speech")
+    assert payload["voice"] == "am_adam"
+    assert payload["input"] == "Hello"
+    assert payload["response_format"] == "wav"
+    assert payload["speed"] == pytest.approx(1.25)
+
+
+@pytest.mark.asyncio
+async def test_kokoro_synthesize_reuses_cache_without_second_request(tmp_path):
+    from convsim_core.tts.types import TtsRequest
+
+    worker = _make_kokoro(tmp_path)
+    fake = _FakeAsyncClient(response=_FakeResponse(200, content=b"wav"))
+    req = TtsRequest(text="Same text", voice_id="af_heart")
+    with patch("convsim_core.tts.kokoro.httpx.AsyncClient", lambda **kw: fake):
+        first = await worker.synthesize(req)
+        second = await worker.synthesize(req)
+
+    assert first.audio_path == second.audio_path
+    # Second call is served from cache, so the backend is hit only once.
+    assert len(fake.post_calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_kokoro_synthesize_non_200_raises_error(tmp_path):
+    from convsim_core.tts.types import TtsError, TtsRequest
+
+    worker = _make_kokoro(tmp_path)
+    fake = _FakeAsyncClient(response=_FakeResponse(500, content=b"", text="boom"))
+    with patch("convsim_core.tts.kokoro.httpx.AsyncClient", lambda **kw: fake):
+        with pytest.raises(TtsError) as exc_info:
+            await worker.synthesize(TtsRequest(text="Hi", voice_id="af_heart"))
+    # Non-200 is a recoverable backend error, not an unavailability signal.
+    assert not isinstance(exc_info.value, TtsUnavailableError)
+
+
+@pytest.mark.asyncio
+async def test_kokoro_synthesize_rejects_unknown_voice_before_http(tmp_path):
+    from convsim_core.tts.types import TtsRequest
+
+    worker = _make_kokoro(tmp_path)
+    fake = _FakeAsyncClient(response=_FakeResponse(200, content=b"wav"))
+    with patch("convsim_core.tts.kokoro.httpx.AsyncClient", lambda **kw: fake):
+        with pytest.raises(TtsVoiceValidationError):
+            await worker.synthesize(TtsRequest(text="Hi", voice_id="clone:stolen_voice"))
+    assert fake.post_calls == []
+
+
+@pytest.mark.asyncio
+async def test_kokoro_health_unavailable_when_server_unreachable(tmp_path):
+    import httpx
+
+    from convsim_core.runtime.types import RuntimeStatus
+
+    worker = _make_kokoro(tmp_path)
+    fake = _FakeAsyncClient(get_exc=httpx.ConnectError("refused"))
+    with patch("convsim_core.tts.kokoro.httpx.AsyncClient", lambda **kw: fake):
+        health = await worker.health()
+    assert health.status == RuntimeStatus.UNAVAILABLE
+    assert health.worker_id == "kokoro"
