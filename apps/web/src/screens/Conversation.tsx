@@ -444,7 +444,7 @@ export default function Conversation() {
       {banners.map((banner) => (
         <div
           key={banner.id}
-          role="status"
+          role={banner.kind === 'safety' ? 'alert' : 'status'}
           data-testid={`banner-${banner.kind}`}
           style={{
             display: 'flex',

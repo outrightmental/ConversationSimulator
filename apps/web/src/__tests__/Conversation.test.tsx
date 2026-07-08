@@ -201,6 +201,25 @@ describe('Conversation screen', () => {
       )
     })
 
+    it('disables text input and submit button while NPC is thinking', async () => {
+      mockApi.startSession.mockResolvedValue(startResponse)
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      renderConversation()
+      await waitFor(() =>
+        expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument(),
+      )
+
+      const textarea = screen.getByRole('textbox', { name: /your response/i })
+      fireEvent.change(textarea, { target: { value: 'Hello' } })
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+
+      await waitFor(() =>
+        expect(screen.getByTestId('npc-status')).toHaveTextContent('Thinking…'),
+      )
+      expect(screen.getByRole('textbox', { name: /your response/i })).toBeDisabled()
+      expect(screen.getByRole('button', { name: /submit/i })).toBeDisabled()
+    })
+
     it('updates npc emotion when turn has non-neutral emotion', async () => {
       const emotionalTurnResponse: TurnResponse = {
         ...turnResponse,
