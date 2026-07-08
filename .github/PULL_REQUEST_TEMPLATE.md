@@ -28,7 +28,7 @@ Closes #
 
 - [ ] Official packs pass schema validation: `node packages/scenario-schema/tests/validate-packs.js packs/official`
 - [ ] Official packs pass full policy check: `for d in packs/official/*/; do convsim-validate-pack "$d"; done`
-- [ ] Offline smoke test runs where possible: `convsim offline-smoke-test`
+- [ ] Offline smoke test runs where possible: `for d in packs/official/*/; do npx convsim offline-smoke-test "$d"; done`
 
 ### Scenario pack requirements (if adding or modifying a pack)
 
