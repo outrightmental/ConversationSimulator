@@ -625,6 +625,33 @@ describe('CreatorWorkbench', () => {
     })
   })
 
+  it('import of a corrupt/unsafe zip shows an error instead of crashing', async () => {
+    // Corrupt zip and zip-slip rejections come back as a 422 without a
+    // structured `errors` array (a plain thrown-Error body). The UI must render
+    // this as an error message, not crash trying to map over undefined errors.
+    const plainError = { statusCode: 422, error: 'Unprocessable Entity', message: 'Uploaded file is not a valid .zip archive' }
+    const importSpy = vi.fn().mockReturnValue({ ok: false, status: 422, json: () => Promise.resolve(plainError), text: () => Promise.resolve(JSON.stringify(plainError)) })
+
+    stubFetch((url, opts) => {
+      if (url.includes('/import') && opts?.method === 'POST') return importSpy()
+      return okJson([OFFICIAL_PACK, LOCAL_PACK])
+    })
+
+    renderWorkbench()
+    await screen.findByTestId('import-pack-button')
+
+    const fileInput = screen.getByTestId('import-file-input') as HTMLInputElement
+    const zipFile = new File(['not a zip'], 'corrupt.zip', { type: 'application/zip' })
+    Object.defineProperty(fileInput, 'files', { value: [zipFile], writable: false })
+    fireEvent.change(fileInput)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('import-error')).toBeInTheDocument()
+      expect(screen.getByTestId('import-error')).toHaveTextContent(/not a valid \.zip archive/i)
+    })
+    expect(screen.queryByTestId('import-validation-errors')).not.toBeInTheDocument()
+  })
+
   it('export success shows filename confirmation', async () => {
     const zipBlob = new Blob(['PK\x03\x04'], { type: 'application/zip' })
     const exportSpy = vi.fn().mockReturnValue({

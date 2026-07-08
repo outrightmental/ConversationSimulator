@@ -359,9 +359,19 @@ export const api = {
         body: file,
       })
       if (res.status === 422) {
-        // Validation failure: the backend returns the full issue list.
-        const data = await res.json() as { valid: false; errors: WorkbenchValidationIssue[]; warnings: WorkbenchValidationIssue[] }
-        return { kind: 'validation', ...data }
+        // A 422 is either a structured validation failure (carrying the full
+        // issue list) or a plain error — e.g. a corrupt zip or a zip-slip path,
+        // which the backend rejects with a thrown Error (no issue list). Only
+        // treat it as a validation result when an errors array is actually
+        // present; otherwise surface the message so the UI shows it as an error
+        // rather than crashing on an undefined `errors`.
+        const data = await res.json().catch(() => null) as
+          | { valid?: false; errors?: WorkbenchValidationIssue[]; warnings?: WorkbenchValidationIssue[]; message?: string }
+          | null
+        if (data && Array.isArray(data.errors)) {
+          return { kind: 'validation', valid: false, errors: data.errors, warnings: data.warnings ?? [] }
+        }
+        throw new Error(data?.message ?? 'Import failed: the uploaded file could not be processed')
       }
       if (!res.ok) throw new Error(await parseErrorMessage(res))
       return res.json() as Promise<WorkbenchImportResult>
