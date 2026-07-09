@@ -82,6 +82,8 @@ async def import_pack_from_folder(
     allowed_dirs = [packs_dir.resolve()]
     if config.local_dev_packs_dir:
         allowed_dirs.append(Path(config.local_dev_packs_dir).resolve())
+    if config.official_packs_dir:
+        allowed_dirs.append(Path(config.official_packs_dir).resolve())
 
     if not any(_is_within(folder_path, d) for d in allowed_dirs):
         raise ConvsimError(
