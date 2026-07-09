@@ -302,9 +302,27 @@ async def use_model(request: Request, body: UseModelRequest) -> UseModelResponse
         )
 
     test_runtime = None
+    _ollama_model_error: ConvsimError | None = None
+
     try:
         test_runtime = build_runtime(body.runtime_id)
         health = await test_runtime.health()
+
+        # When an Ollama model is explicitly selected, verify it is installed locally.
+        # list_models() returns [] silently on connection failure, so this only fires
+        # when Ollama is reachable but the model tag is missing.
+        if body.runtime_id == "ollama" and body.model_id is not None:
+            available = {m.id for m in await test_runtime.list_models()}
+            if body.model_id not in available:
+                _ollama_model_error = ConvsimError(
+                    code="OLLAMA_MODEL_NOT_FOUND",
+                    message=(
+                        f"Model '{body.model_id}' is not installed in your local Ollama. "
+                        f"Run 'ollama pull {body.model_id}' to install it, "
+                        "or select a different model from the list."
+                    ),
+                    status_code=404,
+                )
     except Exception as exc:
         raise ConvsimError(
             code="RUNTIME_UNAVAILABLE",
@@ -325,6 +343,9 @@ async def use_model(request: Request, body: UseModelRequest) -> UseModelResponse
             message=health.message or f"Runtime '{body.runtime_id}' is not available.",
             status_code=503,
         )
+
+    if _ollama_model_error is not None:
+        raise _ollama_model_error
 
     set_active_config(db.connection(), runtime_id=body.runtime_id, model_id=body.model_id)
 

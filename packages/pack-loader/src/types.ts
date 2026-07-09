@@ -100,6 +100,19 @@ export interface LoadedScenario {
   data: RawScenario;
 }
 
+/**
+ * Non-fatal validation finding produced by content analysis.
+ * Warnings do not block pack loading but must be surfaced to creators.
+ */
+export interface ValidationWarning {
+  /** Stable code for programmatic handling. */
+  code: 'EXTERNAL_URL' | 'PROMPT_INJECTION_RISK' | 'MISSING_ASSET';
+  /** Human-readable explanation with enough detail to fix the issue. */
+  message: string;
+  /** Dot-path to the problematic field within the pack (e.g. "npcs/my_npc/private_persona/hidden_agenda[0]"). */
+  field: string;
+}
+
 export interface LoadedPack {
   manifest: RawManifest;
   packRoot: string;
@@ -109,6 +122,8 @@ export interface LoadedPack {
   rubrics: Map<string, RawRubric>;
   scenes: Map<string, RawScene>;
   safety: RawSafety;
+  /** Non-fatal warnings from content analysis. Empty for a clean pack. */
+  warnings: ValidationWarning[];
 }
 
 export interface ResolvedBundle {
