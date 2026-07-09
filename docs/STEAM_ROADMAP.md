@@ -59,9 +59,8 @@ files. Pack downloads follow the same rules.
 The Steam release does not include a paid content marketplace. Community packs
 may be distributed outside the app (GitHub, itch.io, direct links), but the
 in-app experience ships no payment rails, no premium pack tier, and no
-microtransactions in v1. Post-launch marketplace exploration is recorded in
-[Post-launch: marketplace exploration](#post-launch-marketplace-exploration)
-and is explicitly deferred.
+microtransactions in v1. Post-launch marketplace exploration is recorded as
+stage 5 of the [release train](#release-train) and is explicitly deferred.
 
 ---
 
