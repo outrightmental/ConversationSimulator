@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { initDb, resetDb, getDb } from './db.js';
-import type Database from 'better-sqlite3';
+import Database from 'better-sqlite3';
 
 function tableNames(db: Database.Database): string[] {
   return (
@@ -107,6 +110,90 @@ describe('schema_migrations tracking', () => {
     const names = appliedMigrations(getDb());
     expect(names.length).toBeGreaterThan(0);
     expect(tableNames(getDb())).toContain('sessions');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Migration idempotency across restarts (persistent database)
+//
+// The in-memory suites above cannot exercise the core promise of the migration
+// system — that already-applied migrations are skipped when an existing player
+// database is re-opened. These tests use a real file-backed database, close it,
+// and re-open it to simulate a server restart.
+// ---------------------------------------------------------------------------
+
+describe('migration idempotency across restarts', () => {
+  it('does not re-run applied migrations and preserves data when a persistent db is re-opened', () => {
+    const dbDir = mkdtempSync(join(tmpdir(), 'convsim-db-migrations-'));
+    const dbPath = join(dbDir, 'convsim.db');
+    try {
+      // First start: schema is created and migration 0001 is recorded.
+      let db = initDb(dbPath);
+      expect(
+        (db.prepare('SELECT name FROM schema_migrations').all() as { name: string }[]).map(
+          (r) => r.name,
+        ),
+      ).toEqual(['0001_initial_schema']);
+      db.prepare(
+        'INSERT INTO sessions (session_id, scenario_id, state, created_at, setup_json) VALUES (?, ?, ?, ?, ?)',
+      ).run('sess-persist-01', 'behavioral_interview', 'NotStarted', new Date().toISOString(), '{}');
+      db.close();
+
+      // Restart: re-opening the same file must not re-apply the migration
+      // (which would throw on the PRIMARY KEY) and must keep existing rows.
+      db = initDb(dbPath);
+      const applied = (
+        db.prepare('SELECT name FROM schema_migrations').all() as { name: string }[]
+      ).map((r) => r.name);
+      expect(applied).toEqual(['0001_initial_schema']);
+      const row = db
+        .prepare('SELECT session_id FROM sessions WHERE session_id = ?')
+        .get('sess-persist-01') as { session_id: string } | undefined;
+      expect(row?.session_id).toBe('sess-persist-01');
+      db.close();
+    } finally {
+      rmSync(dbDir, { recursive: true, force: true });
+    }
+  });
+
+  it('backfills state_vars_json and turn_count onto a pre-migration sessions table', () => {
+    const dbDir = mkdtempSync(join(tmpdir(), 'convsim-db-legacy-'));
+    const dbPath = join(dbDir, 'convsim.db');
+    try {
+      // Simulate a legacy database that predates the migration system: the
+      // sessions table exists without the newer columns and there is no
+      // schema_migrations table.
+      const raw = new Database(dbPath);
+      raw.exec(`
+        CREATE TABLE sessions (
+          session_id  TEXT PRIMARY KEY,
+          scenario_id TEXT NOT NULL,
+          state       TEXT NOT NULL DEFAULT 'NotStarted',
+          ending_type TEXT,
+          created_at  TEXT NOT NULL,
+          setup_json  TEXT NOT NULL
+        );
+      `);
+      raw.prepare(
+        'INSERT INTO sessions (session_id, scenario_id, state, created_at, setup_json) VALUES (?, ?, ?, ?, ?)',
+      ).run('legacy-01', 'behavioral_interview', 'NotStarted', new Date().toISOString(), '{}');
+      raw.close();
+
+      // Opening it through initDb runs migration 0001, which backfills the
+      // missing columns without dropping the existing row.
+      const db = initDb(dbPath);
+      const cols = (db.pragma('table_info(sessions)') as { name: string }[]).map((r) => r.name);
+      expect(cols).toContain('state_vars_json');
+      expect(cols).toContain('turn_count');
+      const row = db
+        .prepare('SELECT state_vars_json, turn_count FROM sessions WHERE session_id = ?')
+        .get('legacy-01') as { state_vars_json: string; turn_count: number };
+      expect(row.state_vars_json).toBe('{}');
+      expect(row.turn_count).toBe(0);
+      db.close();
+    } finally {
+      rmSync(dbDir, { recursive: true, force: true });
+    }
   });
 });
 
