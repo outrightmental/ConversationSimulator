@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { FastifyInstance } from 'fastify';
+import type { SessionCreateRequest, SessionExportResponse } from '@convsim/shared';
 import { getDb } from '../db.js';
 
 let _dataFolderPath = ':memory:';
@@ -55,19 +56,7 @@ export async function privacyRoutes(app: FastifyInstance) {
   // Returns a full JSON export of the session and all its events.
   app.get<{ Params: { session_id: string } }>(
     '/api/sessions/:session_id/export',
-    async (req, reply): Promise<{
-      session: {
-        session_id: string;
-        scenario_id: string;
-        state: string;
-        ending_type: string | null;
-        created_at: string;
-        turn_count: number;
-        setup: unknown;
-        state_vars: unknown;
-      };
-      events: Array<{ event_id: number; session_id: string; event_type: string; payload: unknown; created_at: string }>;
-    }> => {
+    async (req, reply): Promise<SessionExportResponse> => {
       const db = getDb();
       const row = db
         .prepare<[string], SessionRow>('SELECT * FROM sessions WHERE session_id = ?')
@@ -92,14 +81,14 @@ export async function privacyRoutes(app: FastifyInstance) {
           ending_type: row.ending_type,
           created_at: row.created_at,
           turn_count: row.turn_count,
-          setup: JSON.parse(row.setup_json) as unknown,
-          state_vars: JSON.parse(row.state_vars_json) as unknown,
+          setup: JSON.parse(row.setup_json) as SessionCreateRequest,
+          state_vars: JSON.parse(row.state_vars_json) as Record<string, number>,
         },
         events: events.map((e) => ({
           event_id: e.event_id,
           session_id: e.session_id,
           event_type: e.event_type,
-          payload: JSON.parse(e.payload_json) as unknown,
+          payload: JSON.parse(e.payload_json) as Record<string, unknown>,
           created_at: e.created_at,
         })),
       };

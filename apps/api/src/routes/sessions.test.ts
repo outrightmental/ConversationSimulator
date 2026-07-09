@@ -8,6 +8,7 @@ import type {
   SessionStartResponse,
   TurnResponse,
   SessionEndResponse,
+  SessionTranscriptResponse,
 } from '@convsim/shared';
 
 let app: FastifyInstance;
@@ -801,6 +802,80 @@ describe('state machine transitions', () => {
     // State must still be NotStarted
     const getRes = await app.inject({ method: 'GET', url: `/api/sessions/${session_id}` });
     expect(getRes.json().state).toBe('NotStarted');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/sessions/:id/transcript
+// ---------------------------------------------------------------------------
+
+describe('GET /api/sessions/:id/transcript', () => {
+  it('returns 404 for unknown session', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/sessions/sess-unknown/transcript' });
+    expect(res.statusCode).toBe(404);
+  });
+
+  it('returns empty events list with message when save_transcript is false', async () => {
+    const { session_id } = (
+      await app.inject({
+        method: 'POST',
+        url: '/api/sessions',
+        payload: { ...validRequest, save_transcript: false },
+      })
+    ).json<SessionCreateResponse>();
+
+    const res = await app.inject({ method: 'GET', url: `/api/sessions/${session_id}/transcript` });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<SessionTranscriptResponse>();
+    expect(body.session_id).toBe(session_id);
+    expect(body.transcript_saved).toBe(false);
+    expect(typeof body.message).toBe('string');
+    expect(body.events).toHaveLength(0);
+  });
+
+  it('returns transcript_saved true for a session with save_transcript enabled', async () => {
+    const { session_id } = (
+      await app.inject({ method: 'POST', url: '/api/sessions', payload: validRequest })
+    ).json<SessionCreateResponse>();
+
+    const res = await app.inject({ method: 'GET', url: `/api/sessions/${session_id}/transcript` });
+    expect(res.statusCode).toBe(200);
+    expect(res.json<SessionTranscriptResponse>().transcript_saved).toBe(true);
+  });
+
+  it('returns ordered events after start and turns', async () => {
+    const { session_id } = (
+      await app.inject({ method: 'POST', url: '/api/sessions', payload: validRequest })
+    ).json<SessionCreateResponse>();
+    await app.inject({ method: 'POST', url: `/api/sessions/${session_id}/start` });
+    await app.inject({
+      method: 'POST',
+      url: `/api/sessions/${session_id}/turn`,
+      payload: { content: 'Hello.' },
+    });
+
+    const res = await app.inject({ method: 'GET', url: `/api/sessions/${session_id}/transcript` });
+    expect(res.statusCode).toBe(200);
+    const { events } = res.json<SessionTranscriptResponse>();
+    // npc_opening + player_turn + npc_turn
+    expect(events.length).toBeGreaterThanOrEqual(3);
+    expect(events[0].event_type).toBe('npc_opening');
+    expect(events[1].event_type).toBe('player_turn');
+    expect(events[2].event_type).toBe('npc_turn');
+    // Events are in ascending order
+    for (let i = 1; i < events.length; i++) {
+      expect(events[i].event_id).toBeGreaterThan(events[i - 1].event_id);
+    }
+  });
+
+  it('returns no events for a NotStarted session (no turns submitted)', async () => {
+    const { session_id } = (
+      await app.inject({ method: 'POST', url: '/api/sessions', payload: validRequest })
+    ).json<SessionCreateResponse>();
+
+    const res = await app.inject({ method: 'GET', url: `/api/sessions/${session_id}/transcript` });
+    expect(res.statusCode).toBe(200);
+    expect(res.json<SessionTranscriptResponse>().events).toHaveLength(0);
   });
 });
 

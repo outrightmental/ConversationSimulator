@@ -96,6 +96,30 @@ export interface SessionDebriefResponse {
   transcript_saving_disabled?: boolean;
 }
 
+export interface SessionTranscriptResponse {
+  session_id: string;
+  scenario_id: string;
+  transcript_saved: boolean;
+  message?: string;
+  events: SessionEvent[];
+}
+
+export interface SessionExportSession {
+  session_id: string;
+  scenario_id: string;
+  state: string;
+  ending_type: string | null;
+  created_at: string;
+  turn_count: number;
+  setup: SessionCreateRequest;
+  state_vars: Record<string, number>;
+}
+
+export interface SessionExportResponse {
+  session: SessionExportSession;
+  events: SessionEvent[];
+}
+
 export interface SessionTransitionError {
   code: 'INVALID_TRANSITION' | 'SESSION_NOT_FOUND' | 'VALIDATION_ERROR';
   message: string;
