@@ -77,21 +77,27 @@ jobs:
       # ── Resolve build description ──────────────────────────────────────────
       - name: Resolve build description
         id: desc
+        # Inputs are passed through env vars — never interpolated directly into
+        # the shell — to avoid GitHub Actions expression injection (CWE-94).
+        env:
+          BUILD_DESCRIPTION: ${{ inputs.build_description }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
-          if [ -n "${{ inputs.build_description }}" ]; then
-            printf 'value=%s\n' "${{ inputs.build_description }}" >> "$GITHUB_OUTPUT"
+          if [ -n "$BUILD_DESCRIPTION" ]; then
+            printf 'value=%s\n' "$BUILD_DESCRIPTION" >> "$GITHUB_OUTPUT"
           else
-            printf 'value=Conversation Simulator %s\n' "${{ inputs.release_tag }}" >> "$GITHUB_OUTPUT"
+            printf 'value=Conversation Simulator %s\n' "$RELEASE_TAG" >> "$GITHUB_OUTPUT"
           fi
 
       # ── Download GitHub release assets ─────────────────────────────────────
       - name: Download release artifacts
-        run: |
-          gh release download "${{ inputs.release_tag }}" \
-            --dir release-artifacts \
-            --skip-errors
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          gh release download "$RELEASE_TAG" \
+            --dir release-artifacts \
+            --skip-errors
 
       - name: List downloaded artifacts
         run: find release-artifacts -type f | sort
