@@ -150,8 +150,7 @@ describe('voice readiness cards', () => {
   it('shows VAD as unavailable when vadHealth returns unavailable', async () => {
     mockApi.vadHealth.mockResolvedValue(STUB_VAD_UNAVAILABLE)
     render(<VoiceSettingsPanel />)
-    await waitFor(() => expect(screen.getByTestId('readiness-vad')).toBeInTheDocument())
-    expect(screen.getByTestId('readiness-vad')).toHaveTextContent('not available')
+    await waitFor(() => expect(screen.getByTestId('readiness-vad')).toHaveTextContent('not available'))
   })
 
   it('shows mic denied guidance when permission is denied', async () => {
