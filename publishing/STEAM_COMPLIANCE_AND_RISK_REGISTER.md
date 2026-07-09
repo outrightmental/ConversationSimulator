@@ -180,7 +180,7 @@
 | **Area** | Safety |
 | **Risk** | A malicious community pack includes a `scripts` field or an embedded executable that runs on the player's machine at load time or during a session. |
 | **Owner** | Platform team / Content team |
-| **Mitigation** | Pack schema (`schemas/pack.schema.json`) explicitly rejects any manifest declaring a `scripts` field. Packs are declarative YAML/JSON — no evaluated expressions, no network calls. The pack validator (`convsim-validate-pack`) runs at load time and rejects non-conforming packs. See `docs/safety-policy.md` — Pack sandboxing. |
+| **Mitigation** | Pack schema (`schemas/pack.schema.json`) explicitly rejects any manifest declaring a `scripts` field. Packs are declarative YAML/JSON — no evaluated expressions, no network calls. The pack validator (`convsim validate-pack`) runs at load time and rejects non-conforming packs. See `docs/safety-policy.md` — Pack sandboxing. |
 | **Release-blocking** | YES |
 | **Status** | MITIGATED |
 
@@ -377,7 +377,7 @@ gate (Stage 3) or the public release gate (Stage 4).
 - [ ] Pack validator rejects any pack setting `allow_external_urls: true`.
 - [ ] Safety policy blocks `nsfw_sexual_content` at the input router level (can be tested with a synthetic input).
 - [ ] Global non-overridable rules (`minors_romantic_or_sexual`, `self_harm_crisis`) cannot be weakened by any pack policy.
-- [ ] All four official packs pass `convsim-validate-pack` with no warnings.
+- [ ] All four official packs pass `convsim validate-pack` with no warnings.
 
 ### SR-06 — Licensing audit
 
