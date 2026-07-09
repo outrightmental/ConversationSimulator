@@ -1,11 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 import { resolve } from 'node:path';
 import { loadPack, PackLoaderError } from '@convsim/pack-loader';
+import type { ValidationWarning } from '@convsim/pack-loader';
 import { writeJson, writeLine, writeErrorLine } from '../output.js';
 
 // ---------------------------------------------------------------------------
 // Result shape (stable contract for --json mode and CI)
 // ---------------------------------------------------------------------------
+
+export type ValidatePackWarning = {
+  code: string;
+  message: string;
+  field: string;
+};
 
 export type ValidatePackResult =
   | {
@@ -13,10 +20,14 @@ export type ValidatePackResult =
       pack_id: string;
       name: string;
       version: string;
+      content_rating: string;
+      license: string;
       scenario_count: number;
       npc_count: number;
       rubric_count: number;
       scene_count: number;
+      warning_count: number;
+      warnings: ValidatePackWarning[];
     }
   | {
       status: 'error';
@@ -35,7 +46,7 @@ export type ValidatePackResult =
  * Validate a pack directory and report the result.
  *
  * Exit codes:
- *   0 — pack is valid
+ *   0 — pack is valid (warnings may be present)
  *   1 — pack is invalid or cannot be found (PackLoaderError)
  *   3 — unexpected system error (OS error, out of memory, etc.)
  */
@@ -45,15 +56,25 @@ export function runValidatePack(packPath: string, json: boolean): number {
   try {
     const pack = loadPack(absPath, 'local-dev');
 
+    const warnings: ValidatePackWarning[] = pack.warnings.map((w: ValidationWarning) => ({
+      code: w.code,
+      message: w.message,
+      field: w.field,
+    }));
+
     const result: ValidatePackResult = {
       status: 'ok',
       pack_id: pack.manifest.pack_id,
       name: pack.manifest.name,
       version: pack.manifest.version,
+      content_rating: pack.manifest.content_rating,
+      license: pack.manifest.license,
       scenario_count: pack.scenarios.length,
       npc_count: pack.npcs.size,
       rubric_count: pack.rubrics.size,
       scene_count: pack.scenes.size,
+      warning_count: warnings.length,
+      warnings,
     };
 
     if (json) {
@@ -71,6 +92,14 @@ export function runValidatePack(packPath: string, json: boolean): number {
         parts.push(`${pack.scenes.size} scene${pack.scenes.size !== 1 ? 's' : ''}`);
       }
       writeLine(`  ${parts.join(' · ')}`);
+      writeLine(`  License: ${pack.manifest.license}  Rating: ${pack.manifest.content_rating}`);
+      if (warnings.length > 0) {
+        writeLine(`  ${warnings.length} warning${warnings.length !== 1 ? 's' : ''}:`);
+        for (const w of warnings) {
+          writeLine(`  ⚠ [${w.code}] ${w.field}`);
+          writeLine(`    ${w.message}`);
+        }
+      }
     }
 
     return 0;
