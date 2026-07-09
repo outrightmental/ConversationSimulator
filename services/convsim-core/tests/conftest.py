@@ -22,6 +22,9 @@ def tmp_config(tmp_path, monkeypatch):
         # Allow folder imports from tmp_path so integration tests can use
         # make_pack_dir() without placing packs inside packs_dir itself.
         local_dev_packs_dir=str(tmp_path),
+        # Point away from the real official packs directory so the startup
+        # seeder does not populate the test database on every test run.
+        official_packs_dir=str(tmp_path / "no-official-packs"),
     )
 
 
