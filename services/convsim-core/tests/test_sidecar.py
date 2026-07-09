@@ -41,8 +41,8 @@ def test_build_command_minimal():
 
 
 def test_build_command_custom_host_port():
-    cmd = build_command("/bin/llama-server", "model.gguf", host="0.0.0.0", port=9999)
-    assert "0.0.0.0" in cmd
+    cmd = build_command("/bin/llama-server", "model.gguf", host="127.0.0.1", port=9999)
+    assert "127.0.0.1" in cmd
     assert "9999" in cmd
 
 
@@ -371,6 +371,7 @@ def test_sidecar_start_forwards_custom_host_and_port(client):
 
     The port-conflict error message tells users to "configure a different port",
     so the API must actually accept host/port fields and forward them.
+    Only localhost addresses are accepted; non-localhost is rejected by start().
     """
     from unittest.mock import AsyncMock, patch
 
@@ -385,18 +386,18 @@ def test_sidecar_start_forwards_custom_host_and_port(client):
             client.app.state.sidecar, "get_status",
             return_value={
                 "state": "running", "pid": 42, "model_path": "/m.gguf",
-                "log_path": "/tmp/runtime.log", "host": "0.0.0.0", "port": 9000,
+                "log_path": "/tmp/runtime.log", "host": "127.0.0.1", "port": 9001,
                 "error": None, "started_at": "2026-01-01T00:00:00+00:00",
             },
         ):
             resp = client.post(
                 "/api/sidecar/start",
-                json={"model_path": "/m.gguf", "host": "0.0.0.0", "port": 9000},
+                json={"model_path": "/m.gguf", "host": "127.0.0.1", "port": 9001},
             )
 
     assert resp.status_code == 200
-    assert captured["host"] == "0.0.0.0"
-    assert captured["port"] == 9000
+    assert captured["host"] == "127.0.0.1"
+    assert captured["port"] == 9001
 
 
 # ---------------------------------------------------------------------------

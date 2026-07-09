@@ -15,6 +15,7 @@ from convsim_core.logging_setup import configure_logging
 from convsim_core.routers import diag as diag_router, health, models as models_router, packs as packs_router, scenarios as scenarios_router, sessions as sessions_router, settings as settings_router, sidecar as sidecar_router, stt as stt_router, tts as tts_router, vad as vad_router, workbench as workbench_router
 from convsim_core.runtime import build_runtime
 from convsim_core.runtime.sidecar import LlamaCppSidecar
+from convsim_core.runtime.supervisor import ProcessSupervisor
 from convsim_core.storage.database import Database
 from convsim_core.storage.repositories.settings_repo import load_settings
 from convsim_core.stt import build_stt_worker
@@ -40,9 +41,13 @@ def create_app(config: ServiceConfig | None = None) -> FastAPI:
         app.state.stt_worker = build_stt_worker(config.stt_worker_id)
         app.state.tts_worker = build_tts_worker(config.tts_worker_id)
         app.state.vad_worker = build_vad_worker(config.vad_worker_id)
-        app.state.sidecar = LlamaCppSidecar(log_dir=config.log_dir)
+        sidecar = LlamaCppSidecar(log_dir=config.log_dir)
+        supervisor = ProcessSupervisor()
+        supervisor.register(sidecar)
+        app.state.sidecar = sidecar
+        app.state.supervisor = supervisor
         yield
-        await app.state.sidecar.stop()
+        await supervisor.stop_all()
         db.close()
 
     app = FastAPI(title="convsim-core", version="0.1.0", lifespan=lifespan)

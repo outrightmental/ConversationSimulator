@@ -16,6 +16,8 @@ from enum import Enum
 from pathlib import Path
 from typing import IO
 
+from convsim_core.runtime.supervisor import SidecarProcess, assert_localhost
+
 
 class SidecarState(str, Enum):
     STOPPED = "stopped"
@@ -121,13 +123,24 @@ async def _wait_for_ready(
     )
 
 
-class LlamaCppSidecar:
+class LlamaCppSidecar(SidecarProcess):
     """Owns the lifecycle of a single managed llama-server child process.
+
+    Implements SidecarProcess so the ProcessSupervisor can stop it at exit
+    alongside any future sidecars (whisper.cpp, kokoro, …).
 
     One instance lives on ``app.state.sidecar`` for the duration of the
     server process. External llama.cpp users never call start(); the
     LlamaCppRuntime HTTP adapter connects directly to their server.
     """
+
+    @property
+    def sidecar_id(self) -> str:
+        return "llama_cpp"
+
+    @property
+    def display_name(self) -> str:
+        return "llama.cpp (llama-server)"
 
     def __init__(self, log_dir: str) -> None:
         self._log_dir = Path(log_dir)
@@ -161,6 +174,8 @@ class LlamaCppSidecar:
         """
         if self.state in (SidecarState.RUNNING, SidecarState.STARTING):
             return
+
+        assert_localhost(host)
 
         exe = executable or find_executable()
         if exe is None:
