@@ -150,7 +150,11 @@ const EXTERNAL_URL_RE = /https?:\/\/[^\s"',;<>)]+/gi;
 // Prompt-injection patterns: strings that attempt to override the system
 // prompt or re-assign the model's role. Each entry is [regex, label].
 const INJECTION_PATTERNS: Array<[RegExp, string]> = [
-  [/ignore\s+(previous|prior|all|above)\s+(instructions?|prompts?|directives?|rules?)/i, 'instruction-override'],
+  // Instruction-override phrasings such as "ignore previous instructions",
+  // "ignore all previous instructions", "disregard the above rules", etc.
+  // Allow up to three qualifier words (all/the/previous/prior/above/…) between
+  // the verb and the target noun so multi-qualifier phrasings are still caught.
+  [/(?:ignore|disregard|override|forget)\s+(?:\w+\s+){0,3}(?:instructions?|prompts?|directives?|rules?|context|system\s+prompt)/i, 'instruction-override'],
   [/forget\s+everything\s+(you|i|we)/i, 'forget-directive'],
   [/\{\{[^}]{1,500}\}\}/,                                                               'template-injection'],
   [/\$\{[^}]{1,500}\}/,                                                                 'expression-injection'],
