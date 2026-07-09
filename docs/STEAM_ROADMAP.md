@@ -219,6 +219,7 @@ issue must not be started until the upstream issue is merged and closed.
 | [[Steam Roadmap] Add Steam edition roadmap addendum and release principles](https://github.com/outrightmental/ConversationSimulator/issues?q=is%3Aissue+steam-roadmap-addendum+in%3Atitle) | [docs/STEAM_ROADMAP.md](STEAM_ROADMAP.md) | Stage 1 prerequisite |
 | [[Steam Roadmap] Create Steam compliance and risk register for local-AI distribution](https://github.com/outrightmental/ConversationSimulator/issues?q=is%3Aissue+steam-compliance-risk-register+in%3Atitle) | [publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md](../publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md) | Stage 3 prerequisite |
 | [[Steam Roadmap] Define Steam MVP scope and release gates](https://github.com/outrightmental/ConversationSimulator/issues?q=is%3Aissue+steam-mvp-scope+in%3Atitle) | [docs/steam-mvp-scope.md](steam-mvp-scope.md) | Stage 2 prerequisite |
+| [[Steam Roadmap] Add issue templates for Steam QA, platform bugs, and content-pack bugs](https://github.com/outrightmental/ConversationSimulator/issues/185) | [docs/steam-triage.md](steam-triage.md) | Stage 3 prerequisite |
 
 All open and closed issues in this work stream:
 [GitHub — issues with `[Steam Roadmap]` prefix](https://github.com/outrightmental/ConversationSimulator/issues?q=is%3Aissue+%5BSteam+Roadmap%5D+in%3Atitle)
@@ -229,6 +230,7 @@ All open and closed issues in this work stream:
 
 - [ROADMAP.md](../ROADMAP.md) — base project roadmap (MVP acceptance criteria, build order, status)
 - [steam-mvp-scope.md](steam-mvp-scope.md) — minimum playable release features, optional targeted features, pass/fail gates, and post-launch deferrals
+- [steam-triage.md](steam-triage.md) — issue triage flow for private beta and public launch
 - [post-alpha-issues.md](post-alpha-issues.md) — triaged items deferred from the alpha
 - [privacy.md](privacy.md) — local-first promise and data handling details
 - [network-security.md](network-security.md) — runtime network enforcement
