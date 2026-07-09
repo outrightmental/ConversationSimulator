@@ -25,7 +25,7 @@ missing item is a blocker, not a deferral.
 | F-03 | At least one polished text scenario | At least one scenario from the official packs produces a coherent NPC conversation, state transitions, and a scored debrief within normal latency bounds (≤ 60 s per turn on the reference hardware defined in the release checklist). |
 | F-04 | Four official packs | All four official packs — Job Interview Basics, Everyday Negotiation, Language Café, Difficult Conversations — are pre-installed and selectable without additional setup or download. |
 | F-05 | Complete debrief loop | Every session can be ended by the player and produces a debrief screen with rubric scores and an export option. A session with zero scored turns must still produce a debrief (not an error). |
-| F-06 | Privacy controls | The Settings UI exposes: transcript history view, one-click history clear (`POST /api/privacy/clear`), and a displayed local data-path (`~/.convsim/`). The player must be able to delete all session data without touching the filesystem manually. |
+| F-06 | Privacy controls | The Settings UI exposes: transcript history view, one-click clear of all saved session history (deleting stored sessions, e.g. via `DELETE /api/sessions/{id}` per session), and a displayed local data-path (`~/.convsim/`). The player must be able to delete all session data without touching the filesystem manually. |
 | F-07 | No network requirement during installed play | The offline smoke test passes from the installed app binary (not the source checkout) on all three target platforms. No DNS lookup, TCP connection, or HTTP request occurs during a play session. |
 
 ### Features not required for the minimum playable release
