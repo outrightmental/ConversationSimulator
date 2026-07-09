@@ -47,7 +47,7 @@
 | **Area** | Privacy |
 | **Risk** | Raw microphone audio is written to disk or transmitted, creating a privacy violation and potential GDPR/CCPA exposure. |
 | **Owner** | Platform team |
-| **Mitigation** | Raw audio is processed in memory by the local Whisper runtime. Audio is never written to disk in the default configuration. The `convsim.privacy.saveRawAudio` developer flag is `false` by default and absent from all production build configurations. See `docs/privacy.md` — Raw audio section. |
+| **Mitigation** | Raw audio is processed in memory by the local Whisper runtime; only transcribed text is passed to the scenario engine. Audio is never written to disk in the default configuration. The `convsim.privacy.saveRawAudio` developer setting (Settings UI) is `false` by default; when enabled it writes audio to a local temporary directory for debugging only and never transmits it. A pre-release check must confirm it defaults to `false` (see SR-02). See `docs/privacy.md` — Raw audio section. |
 | **Release-blocking** | YES |
 | **Status** | MITIGATED |
 
