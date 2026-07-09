@@ -52,6 +52,17 @@ body:
     validations:
       required: false
 
+  - type: input
+    id: pack
+    attributes:
+      label: Installed pack (if the install was prompted by a pack)
+      description: >
+        Some packs recommend a specific model — note the pack here if the
+        install was triggered while setting up or playing a pack.
+      placeholder: "Example: Job Interview Basics 1.2.0"
+    validations:
+      required: false
+
   - type: dropdown
     id: runtime
     attributes:
