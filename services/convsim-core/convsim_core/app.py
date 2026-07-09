@@ -42,7 +42,11 @@ def create_app(config: ServiceConfig | None = None) -> FastAPI:
         app.state.stt_worker = build_stt_worker(config.stt_worker_id)
         app.state.tts_worker = build_tts_worker(config.tts_worker_id)
         app.state.vad_worker = build_vad_worker(config.vad_worker_id)
-        app.state.sidecar = LlamaCppSidecar(log_dir=config.log_dir)
+        sidecar = LlamaCppSidecar(log_dir=config.log_dir)
+        app.state.sidecar = sidecar
+        supervisor = ProcessSupervisor()
+        supervisor.register(sidecar)
+        app.state.supervisor = supervisor
         seed_official_packs(config, db.connection())
         yield
         await supervisor.stop_all()
