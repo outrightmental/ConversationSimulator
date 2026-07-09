@@ -8,13 +8,17 @@ the LlamaCppRuntime HTTP adapter works against any reachable llama-server.
 from __future__ import annotations
 
 import asyncio
+import os
 import shutil
 import socket
 import subprocess
+import sys
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
 from typing import IO
+
+from convsim_core.runtime.supervisor import SidecarProcess, assert_localhost
 
 
 class SidecarState(str, Enum):
@@ -62,8 +66,38 @@ def build_command(
     return cmd
 
 
+_EXECUTABLE_ENV_VAR = "CONVSIM_LLAMA_CPP_EXECUTABLE"
+_BUNDLED_RUNTIME_DIR_ENV_VAR = "CONVSIM_BUNDLED_RUNTIME_DIR"
+_BUNDLED_BINARY_NAME = "llama-server"
+
+
 def find_executable() -> str | None:
-    """Return the path to llama-server if found in PATH, else None."""
+    """Resolve the llama-server binary using the Steam bundling convention.
+
+    Resolution order (first hit wins), matching docs/sidecar-bundling.md:
+
+    1. Explicit override — the ``CONVSIM_LLAMA_CPP_EXECUTABLE`` environment
+       variable. Used by developer builds and tests to point at any binary.
+       The value is returned verbatim (existence is validated when the process
+       is spawned) so an explicit override always wins.
+    2. Bundled path — ``<CONVSIM_BUNDLED_RUNTIME_DIR>/llama-server`` (Steam
+       depot builds). The ``.exe`` suffix is appended on Windows. Only used
+       when the file exists and is executable.
+    3. PATH lookup — ``shutil.which("llama-server")`` (developer builds).
+
+    Returns None when no candidate resolves.
+    """
+    override = os.environ.get(_EXECUTABLE_ENV_VAR)
+    if override:
+        return override
+
+    bundled_dir = os.environ.get(_BUNDLED_RUNTIME_DIR_ENV_VAR)
+    if bundled_dir:
+        suffix = ".exe" if sys.platform == "win32" else ""
+        candidate = Path(bundled_dir) / f"{_BUNDLED_BINARY_NAME}{suffix}"
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+
     return shutil.which("llama-server") or shutil.which("llama_server")
 
 
@@ -121,13 +155,24 @@ async def _wait_for_ready(
     )
 
 
-class LlamaCppSidecar:
+class LlamaCppSidecar(SidecarProcess):
     """Owns the lifecycle of a single managed llama-server child process.
+
+    Implements SidecarProcess so the ProcessSupervisor can stop it at exit
+    alongside any future sidecars (whisper.cpp, kokoro, …).
 
     One instance lives on ``app.state.sidecar`` for the duration of the
     server process. External llama.cpp users never call start(); the
     LlamaCppRuntime HTTP adapter connects directly to their server.
     """
+
+    @property
+    def sidecar_id(self) -> str:
+        return "llama_cpp"
+
+    @property
+    def display_name(self) -> str:
+        return "llama.cpp (llama-server)"
 
     def __init__(self, log_dir: str) -> None:
         self._log_dir = Path(log_dir)
@@ -161,6 +206,8 @@ class LlamaCppSidecar:
         """
         if self.state in (SidecarState.RUNNING, SidecarState.STARTING):
             return
+
+        assert_localhost(host)
 
         exe = executable or find_executable()
         if exe is None:

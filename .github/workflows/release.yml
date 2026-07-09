@@ -35,12 +35,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Apple Silicon (arm64) — macos-latest is ARM since late 2024
+          # macOS is ARM64-only via GitHub-hosted runners: macos-13 (the last
+          # Intel/x86_64 runner) was deprecated by GitHub and is no longer
+          # available. macos-latest is Apple Silicon (ARM64) since late 2024.
           - name: macOS-aarch64
             runner: macos-latest
-          # Intel Mac — macos-13 is the last Intel runner
-          - name: macOS-x86_64
-            runner: macos-13
           # Linux x86_64 — AppImage + .deb
           - name: Linux-x86_64
             runner: ubuntu-22.04
