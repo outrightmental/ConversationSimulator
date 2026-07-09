@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import os
 import socket
+import sys
 import textwrap
 from pathlib import Path
 
@@ -246,6 +247,33 @@ async def test_stop_when_not_running_is_noop(tmp_path):
 def test_find_executable_returns_none_or_str():
     result = find_executable()
     assert result is None or isinstance(result, str)
+
+
+def test_find_executable_env_override_wins(monkeypatch):
+    """CONVSIM_LLAMA_CPP_EXECUTABLE takes precedence over PATH and bundled dir."""
+    monkeypatch.setenv("CONVSIM_LLAMA_CPP_EXECUTABLE", "/custom/llama-server")
+    monkeypatch.setenv("CONVSIM_BUNDLED_RUNTIME_DIR", "/somewhere/runtimes")
+    assert find_executable() == "/custom/llama-server"
+
+
+def test_find_executable_uses_bundled_dir(monkeypatch, tmp_path):
+    """When no override is set, an executable bundled binary is resolved."""
+    monkeypatch.delenv("CONVSIM_LLAMA_CPP_EXECUTABLE", raising=False)
+    binary_name = "llama-server.exe" if sys.platform == "win32" else "llama-server"
+    binary = tmp_path / binary_name
+    binary.write_text("#!/bin/sh\n")
+    binary.chmod(0o755)
+    monkeypatch.setenv("CONVSIM_BUNDLED_RUNTIME_DIR", str(tmp_path))
+    assert find_executable() == str(binary)
+
+
+def test_find_executable_bundled_dir_missing_binary_falls_through(monkeypatch, tmp_path):
+    """A bundled dir without the binary must not short-circuit to a bad path."""
+    monkeypatch.delenv("CONVSIM_LLAMA_CPP_EXECUTABLE", raising=False)
+    monkeypatch.setenv("CONVSIM_BUNDLED_RUNTIME_DIR", str(tmp_path))  # empty dir
+    from unittest.mock import patch
+    with patch("convsim_core.runtime.sidecar.shutil.which", return_value=None):
+        assert find_executable() is None
 
 
 # ---------------------------------------------------------------------------

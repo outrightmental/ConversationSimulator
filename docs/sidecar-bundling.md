@@ -96,10 +96,14 @@ import os
 import sys
 from pathlib import Path
 
-def find_sidecar_executable(name: str) -> str | None:
-    """Resolve a sidecar binary using the Steam bundling convention."""
+def find_sidecar_executable(env_key: str, binary_name: str) -> str | None:
+    """Resolve a sidecar binary using the Steam bundling convention.
+
+    ``env_key`` is the override variable keyed on the sidecar id, e.g.
+    ``CONVSIM_LLAMA_CPP_EXECUTABLE`` for the ``llama_cpp`` sidecar.
+    ``binary_name`` is the on-disk filename, e.g. ``llama-server``.
+    """
     # 1. Explicit env-var override always wins.
-    env_key = f"CONVSIM_{name.upper().replace('-', '_')}_EXECUTABLE"
     if override := os.environ.get(env_key):
         return override
 
@@ -107,18 +111,19 @@ def find_sidecar_executable(name: str) -> str | None:
     bundled_dir = os.environ.get("CONVSIM_BUNDLED_RUNTIME_DIR")
     if bundled_dir:
         suffix = ".exe" if sys.platform == "win32" else ""
-        candidate = Path(bundled_dir) / f"{name}{suffix}"
+        candidate = Path(bundled_dir) / f"{binary_name}{suffix}"
         if candidate.is_file() and os.access(candidate, os.X_OK):
             return str(candidate)
 
     # 3. PATH (developer builds).
     import shutil
-    return shutil.which(name)
+    return shutil.which(binary_name)
 ```
 
 The actual implementation lives in each sidecar's module
-(`convsim_core/runtime/sidecar.py` for llama.cpp) and uses `find_executable()`
-from that module.
+(`find_executable()` in `convsim_core/runtime/sidecar.py` for llama.cpp, which
+resolves `CONVSIM_LLAMA_CPP_EXECUTABLE` → `CONVSIM_BUNDLED_RUNTIME_DIR/llama-server`
+→ PATH).
 
 ---
 
@@ -140,9 +145,9 @@ When implementing a new sidecar (e.g. `WhisperCppSidecar`):
 2. Implement `sidecar_id`, `display_name`, `stop()`, and `get_status()`.
 3. Add a typed `start()` method that calls `assert_localhost(host)` before
    spawning the child process.
-4. Implement executable resolution using the three-step order described above,
-   checking `CONVSIM_<NAME>_BUNDLED_PATH` when `CONVSIM_BUNDLED_RUNTIME_DIR`
-   is set.
+4. Implement executable resolution using the three-step order described above:
+   `CONVSIM_<SIDECAR_ID>_EXECUTABLE` override → the bundled binary under
+   `CONVSIM_BUNDLED_RUNTIME_DIR` → PATH.
 5. Register the sidecar with `ProcessSupervisor` in `app.py`'s `lifespan`.
 6. Add tests covering: missing binary, port conflict, crash, restart, and
    graceful shutdown. See `tests/test_sidecar.py` for the llama.cpp reference
