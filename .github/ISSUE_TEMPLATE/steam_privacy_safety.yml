@@ -1,0 +1,177 @@
+name: Steam — privacy or safety report
+description: >
+  Report a concern about local data handling, unexpected network activity, or
+  content safety in the Steam edition.
+labels:
+  - steam
+  - privacy
+  - safety
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template to report a concern about data privacy, unexpected
+        network activity, or content safety in the Steam edition of Conversation
+        Simulator.
+
+        **When to use private reporting instead:**
+        - If your report involves a **security vulnerability** (e.g. prompt
+          injection that escapes the sandbox, privilege escalation, data
+          exfiltration, or network traffic that should not occur), please use
+          [GitHub private vulnerability reporting](https://github.com/outrightmental/ConversationSimulator/security/advisories/new)
+          or follow the process in
+          [SECURITY.md](https://github.com/outrightmental/ConversationSimulator/blob/main/SECURITY.md).
+        - For concerns that require **confidential handling**, contact the
+          maintainers directly as described in
+          [CODE_OF_CONDUCT.md](https://github.com/outrightmental/ConversationSimulator/blob/main/CODE_OF_CONDUCT.md).
+
+        **Privacy note:** This is a public issue. Do not paste conversation
+        transcripts, NPC session logs, or audio recordings here unless you
+        intentionally choose to make that content public. The app stores all
+        session data on your machine — there is no need to share it to report a
+        privacy or safety concern. Describe the concern in general terms.
+
+        See [docs/privacy.md](https://github.com/outrightmental/ConversationSimulator/blob/main/docs/privacy.md)
+        and [docs/network-security.md](https://github.com/outrightmental/ConversationSimulator/blob/main/docs/network-security.md)
+        for the local-first data guarantees.
+
+  - type: dropdown
+    id: concern-type
+    attributes:
+      label: Type of concern
+      options:
+        - Unexpected network activity during a session (data should stay local)
+        - Session data (transcripts, audio, model output) written outside ~/.convsim/
+        - Model or pack downloaded without explicit player confirmation
+        - Content safety — NPC output crossed a content boundary
+        - Content safety — safety validator accepted something it should reject
+        - Content safety — safety validator rejected something that should be allowed
+        - Privacy — personal information collected or logged unexpectedly
+        - Other (describe below)
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: >
+        Describe the concern. Do not include verbatim transcripts or audio
+        unless you intentionally choose to make that content public — describe
+        content issues in general terms or with a made-up example.
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence (network trace, file path, log excerpt)
+      description: >
+        For network concerns: a sanitized packet-capture summary or proxy log
+        showing the unexpected traffic. For file-location concerns: the path
+        where data appeared (redact your username as `<user>`). For content
+        concerns: the shortest paraphrase necessary to describe the issue.
+      render: text
+    validations:
+      required: false
+
+  - type: input
+    id: pack-name
+    attributes:
+      label: Pack and scenario (if applicable)
+      placeholder: "Example: Job Interview Basics — The Executive Gauntlet, turn 7"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Windows 10
+        - Windows 11
+        - macOS 13 (Ventura)
+        - macOS 14 (Sonoma)
+        - macOS 15 (Sequoia)
+        - Linux (specify distro below)
+        - Steam Deck / SteamOS
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: steam-deck
+    attributes:
+      label: Steam Deck
+      options:
+        - label: This concern occurs on or is specific to Steam Deck / SteamOS.
+
+  - type: textarea
+    id: hardware
+    attributes:
+      label: Hardware (CPU / GPU / RAM)
+      placeholder: |
+        CPU: Intel Core i9-14900K
+        GPU: NVIDIA RTX 4090 (driver 560.xx)
+        RAM: 64 GB
+        OS: Windows 11 23H2
+    validations:
+      required: true
+
+  - type: input
+    id: app-version
+    attributes:
+      label: App version
+      description: Shown in the app footer or About screen.
+      placeholder: "Example: 0.9.1-steam-beta.3"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: runtime
+    attributes:
+      label: Runtime backend in use
+      options:
+        - llama.cpp (built-in)
+        - ollama
+        - Not applicable
+        - Other (describe below)
+    validations:
+      required: false
+
+  - type: input
+    id: model
+    attributes:
+      label: Model in use (if applicable)
+      placeholder: "Example: Qwen3 4B Instruct Q4_K_M"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: disclosure-preference
+    attributes:
+      label: Disclosure preference
+      description: >
+        Public issues are visible to everyone. Select private if this concern
+        requires confidential handling — a maintainer will contact you.
+      options:
+        - Public — I am comfortable with this being visible on GitHub
+        - Private — please contact me directly for confidential handling
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before submitting
+      options:
+        - label: >
+            This is not a security vulnerability requiring private disclosure.
+            (For security issues, use GitHub private vulnerability reporting or
+            SECURITY.md.)
+          required: true
+        - label: I have read docs/privacy.md and docs/network-security.md.
+          required: false
+        - label: >
+            I have not pasted conversation transcripts or session audio in this
+            issue unless I intentionally chose to make that content public.
+          required: true
