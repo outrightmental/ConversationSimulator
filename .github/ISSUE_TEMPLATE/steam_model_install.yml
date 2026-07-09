@@ -1,0 +1,156 @@
+name: Steam — local model install failure
+description: >
+  Report a failure to download, verify, or load a local AI model through the
+  Steam edition Model Manager.
+labels:
+  - steam
+  - model-install
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template when the Model Manager in the Steam edition fails to
+        download, verify (SHA-256 checksum), or load a local AI model.
+
+        **Privacy note:** Do not paste conversation transcripts, NPC session
+        logs, or audio recordings in this issue. Conversation Simulator keeps
+        all session data on your machine; please keep it there. Model install
+        failures should not involve any session content — if they do, describe
+        the content in general terms only.
+
+        See [docs/local-models.md](https://github.com/outrightmental/ConversationSimulator/blob/main/docs/local-models.md)
+        and [docs/troubleshooting.md](https://github.com/outrightmental/ConversationSimulator/blob/main/docs/troubleshooting.md)
+        before filing — common download and runtime issues are documented there.
+
+  - type: dropdown
+    id: failure-stage
+    attributes:
+      label: At which stage did the install fail?
+      options:
+        - Download did not start
+        - Download started but stalled or was incomplete
+        - Download completed but checksum verification failed
+        - Model downloaded successfully but failed to load / initialise
+        - Model loaded but produces no output or crashes on first inference
+        - Other (describe below)
+    validations:
+      required: true
+
+  - type: input
+    id: model-name
+    attributes:
+      label: Model name and variant
+      placeholder: "Example: Qwen3 4B Instruct Q4_K_M"
+    validations:
+      required: true
+
+  - type: input
+    id: model-source
+    attributes:
+      label: Model source shown in the Model Manager
+      placeholder: "Example: Hugging Face — Qwen/Qwen3-4B-GGUF"
+    validations:
+      required: false
+
+  - type: dropdown
+    id: runtime
+    attributes:
+      label: Runtime backend
+      options:
+        - llama.cpp (built-in)
+        - ollama
+        - Other (describe below)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Windows 10
+        - Windows 11
+        - macOS 13 (Ventura)
+        - macOS 14 (Sonoma)
+        - macOS 15 (Sequoia)
+        - Linux (specify distro below)
+        - Steam Deck / SteamOS
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: steam-deck
+    attributes:
+      label: Steam Deck
+      options:
+        - label: This failure occurs on or is specific to Steam Deck / SteamOS.
+
+  - type: textarea
+    id: hardware
+    attributes:
+      label: Hardware (CPU / GPU / RAM)
+      description: >
+        GPU details matter for inference failures — include the driver version
+        if you know it.
+      placeholder: |
+        CPU: AMD Ryzen 9 7950X
+        GPU: AMD RX 7900 XTX (ROCm 6.1)
+        RAM: 64 GB
+        OS: Ubuntu 24.04 LTS
+    validations:
+      required: true
+
+  - type: input
+    id: app-version
+    attributes:
+      label: App version
+      description: Shown in the app footer or About screen.
+      placeholder: "Example: 0.9.1-steam-beta.3"
+    validations:
+      required: true
+
+  - type: textarea
+    id: error-message
+    attributes:
+      label: Error message shown in the app
+      description: Copy the exact error text from the Model Manager UI.
+      placeholder: >
+        Example: "Checksum mismatch — expected a3b1c2… got f9e7d1…
+        Download has been removed. Please try again."
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized logs or crash bundle path
+      description: >
+        Paste sanitized console output or the path to a crash bundle on your
+        machine. Redact any personal file-path prefixes (e.g. replace your
+        username with `<user>`). Do not include conversation transcripts or
+        session audio.
+      render: text
+    validations:
+      required: false
+
+  - type: input
+    id: disk-space
+    attributes:
+      label: Free disk space at time of failure
+      placeholder: "Example: 12 GB free on C:\\"
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this has not been reported before.
+          required: true
+        - label: I checked docs/troubleshooting.md for known model-install issues.
+          required: false
+        - label: >
+            I have not pasted any conversation transcripts or session audio in
+            this issue.
+          required: true

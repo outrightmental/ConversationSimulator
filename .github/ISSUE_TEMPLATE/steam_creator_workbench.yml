@@ -1,0 +1,175 @@
+name: Steam — Creator Workbench bug
+description: >
+  Report a bug in the Creator Workbench when running under the Steam edition:
+  pack authoring, scenario editing, asset management, schema validation, or
+  workbench-specific UI issues.
+labels:
+  - steam
+  - creator-workbench
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template to report a bug in the Creator Workbench UI or pack
+        tooling when running under the Steam edition. This covers pack and
+        scenario authoring, NPC editing, asset management, schema validation
+        inside the Workbench, and Workbench-specific crashes or UI problems.
+
+        For pack content bugs that appear during *play* (not authoring), use
+        the **Steam — pack validation or content bug** template instead.
+
+        **Privacy note:** Do not paste conversation transcripts, NPC session
+        logs, or audio recordings in this issue. If describing a bug requires
+        showing pack content, use a minimal made-up example rather than a real
+        pack in progress. Do not include any personally identifying information.
+
+  - type: dropdown
+    id: workbench-area
+    attributes:
+      label: Which area of the Creator Workbench?
+      options:
+        - Pack creation / manifest editing
+        - Scenario editor
+        - NPC editor
+        - Asset manager (images, audio)
+        - Schema validation panel
+        - Pack preview / test-run
+        - Export / publish flow
+        - Workbench UI / layout / navigation
+        - Other (describe below)
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug.
+      placeholder: >
+        Example: The schema validation panel shows "valid" for a scenario that
+        is missing a required `npc_id` field. Saving the pack and loading it
+        in the player then fails with a schema error.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+      placeholder: >
+        Example: The validation panel should highlight the missing `npc_id`
+        field and prevent saving until it is filled in.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps using a made-up pack if possible.
+      placeholder: |
+        1. Open Creator Workbench → New Pack
+        2. Add a scenario, leave `npc_id` blank
+        3. Click "Validate pack" — shows green "Valid"
+        4. Save pack and load it in the player — error: "npc_id is required"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - Windows 10
+        - Windows 11
+        - macOS 13 (Ventura)
+        - macOS 14 (Sonoma)
+        - macOS 15 (Sequoia)
+        - Linux (specify distro below)
+        - Steam Deck / SteamOS
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: steam-deck
+    attributes:
+      label: Steam Deck
+      options:
+        - label: This bug occurs on or is specific to Steam Deck / SteamOS.
+
+  - type: textarea
+    id: hardware
+    attributes:
+      label: Hardware (CPU / GPU / RAM)
+      placeholder: |
+        CPU: AMD Ryzen 7 7700X
+        GPU: AMD RX 6700 XT (driver 23.11)
+        RAM: 32 GB
+        OS: Fedora 40
+    validations:
+      required: true
+
+  - type: input
+    id: app-version
+    attributes:
+      label: App version
+      description: Shown in the app footer or About screen.
+      placeholder: "Example: 0.9.1-steam-beta.3"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: runtime
+    attributes:
+      label: Runtime backend in use (if relevant to the bug)
+      options:
+        - llama.cpp (built-in)
+        - ollama
+        - Not applicable / Workbench-only bug
+        - Other (describe below)
+    validations:
+      required: true
+
+  - type: input
+    id: model
+    attributes:
+      label: Model loaded at time of bug (if any)
+      placeholder: "Example: Qwen3 4B Instruct Q4_K_M"
+    validations:
+      required: false
+
+  - type: input
+    id: pack
+    attributes:
+      label: Pack being edited (if applicable)
+      description: Use a made-up name if the pack is not yet published.
+      placeholder: "Example: My Test Pack (in progress)"
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Sanitized logs or crash bundle path
+      description: >
+        Paste sanitized console output or the path to a crash bundle on your
+        machine. Redact any personal file-path prefixes (e.g. replace your
+        username with `<user>`). Do not include conversation transcripts or
+        session audio.
+      render: text
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this has not been reported before.
+          required: true
+        - label: I am running the latest Steam build (check for updates in Steam).
+          required: false
+        - label: >
+            I have not pasted any conversation transcripts or session audio in
+            this issue.
+          required: true
