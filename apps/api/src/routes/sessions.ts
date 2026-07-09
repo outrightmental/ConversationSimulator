@@ -8,6 +8,7 @@ import type {
   TurnResponse,
   SessionEndResponse,
   SessionDebriefResponse,
+  SessionTranscriptResponse,
   EndingType,
 } from '@convsim/shared';
 import { SCENARIOS } from '../data/scenarios.js';
@@ -665,4 +666,48 @@ export async function sessionRoutes(app: FastifyInstance) {
       };
     },
   );
+
+  // GET /api/sessions/:session_id/transcript
+  // Returns the ordered sequence of conversation events saved for this session.
+  // When save_transcript is false for the session, returns an empty events list
+  // and a descriptive message. Raw microphone audio is never stored here.
+  app.get<{ Params: { session_id: string } }>(
+    '/api/sessions/:session_id/transcript',
+    async (req, reply): Promise<SessionTranscriptResponse> => {
+      const db = getDb();
+      const row = db
+        .prepare<[string], SessionRow>('SELECT * FROM sessions WHERE session_id = ?')
+        .get(req.params.session_id);
+
+      if (!row) {
+        reply.status(404);
+        throw new Error(`Session '${req.params.session_id}' not found`);
+      }
+
+      const saveTranscript = shouldSaveTranscript(row.setup_json);
+      if (!saveTranscript) {
+        return {
+          session_id: req.params.session_id,
+          scenario_id: row.scenario_id,
+          transcript_saved: false,
+          message: 'Transcript saving is disabled for this session.',
+          events: [],
+        };
+      }
+
+      const events = db
+        .prepare<[string], EventRow>(
+          'SELECT * FROM session_events WHERE session_id = ? ORDER BY event_id ASC',
+        )
+        .all(req.params.session_id);
+
+      return {
+        session_id: req.params.session_id,
+        scenario_id: row.scenario_id,
+        transcript_saved: true,
+        events: events.map(rowToEvent),
+      };
+    },
+  );
+
 }
