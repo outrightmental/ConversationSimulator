@@ -259,6 +259,16 @@ function analyzePackContent(
         add(scanTextForInjection(g, field));
       });
     }
+    // Hidden goals are covert objectives fed into the NPC system prompt but
+    // never shown to the player — the prime place to conceal an injection
+    // payload, so they must be scanned too.
+    if (data.goals.hidden) {
+      data.goals.hidden.forEach((g, i) => {
+        const field = `${prefix}/goals/hidden[${i}]`;
+        add(scanTextForExternalUrl(g, field));
+        add(scanTextForInjection(g, field));
+      });
+    }
   }
 
   // ── Scenes ────────────────────────────────────────────────────────────────
