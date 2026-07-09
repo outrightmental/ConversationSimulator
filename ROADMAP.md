@@ -148,5 +148,6 @@ must not compromise offline-first, local-model, or open-source principles.
 - [Safety policy](docs/safety-policy.md) — content boundaries and the layered safety system
 - [Privacy and data policy](docs/privacy.md) — what stays local and how to verify it
 - [Steam edition roadmap](docs/STEAM_ROADMAP.md) — release principles, release train, and platform targets for the free Steam edition
+- [Steam MVP scope and release gates](docs/steam-mvp-scope.md) — minimum playable release features, optional targeted features, pass/fail gates, and post-launch deferrals
 - [GitHub Milestones](https://github.com/outrightmental/ConversationSimulator/milestones) — issue tracking
 - [Full specification](docs/SPEC.md) — technical requirements per milestone
