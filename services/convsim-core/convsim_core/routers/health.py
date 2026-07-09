@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 import os
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
@@ -12,6 +12,87 @@ from convsim_core.stt.types import SttHealth
 from convsim_core.tts.types import TtsHealth
 
 router = APIRouter()
+
+
+# ---------------------------------------------------------------------------
+# Sidecar diagnostics helpers
+# ---------------------------------------------------------------------------
+
+
+def _user_message_for_sidecar(state: str, error: Optional[str]) -> str:
+    """Return an actionable one-sentence message for non-technical users."""
+    if state == "running":
+        return "Running."
+    if state == "starting":
+        return "Starting — this may take a minute while the model loads."
+    if state == "stopped":
+        return "Not started. Select a model in Settings to enable AI responses."
+    if state == "crashed":
+        hint = f": {error}" if error else "."
+        return f"Crashed unexpectedly{hint} Try restarting from Settings."
+    if state == "port_conflict":
+        return (
+            "Cannot start: another application is using the required port. "
+            "Close competing applications and try again from Settings."
+        )
+    return f"Unknown state ({state})."
+
+
+def _build_sidecar_diagnostics(
+    supervisor: Any,
+) -> "_SidecarDiagnostics":
+    """Build a SidecarDiagnostics object from the ProcessSupervisor."""
+    if supervisor is None:
+        return _SidecarDiagnostics(all_ready=False, user_message="Supervisor not available.", sidecars=[])
+
+    entries: list[_SidecarEntry] = []
+    for item in supervisor.health_summary():
+        state = item.get("state", "stopped")
+        error = item.get("error")
+        entries.append(
+            _SidecarEntry(
+                sidecar_id=item["sidecar_id"],
+                display_name=item["display_name"],
+                state=state,
+                pid=item.get("pid"),
+                error=error,
+                user_message=_user_message_for_sidecar(state, error),
+            )
+        )
+
+    all_ready = all(e.state == "running" for e in entries) if entries else True
+    if all_ready:
+        user_message = "All sidecars are running." if entries else "No sidecars registered."
+    else:
+        not_ready = [e for e in entries if e.state != "running"]
+        if len(not_ready) == 1:
+            user_message = not_ready[0].user_message
+        else:
+            user_message = f"{len(not_ready)} sidecars are not ready. Check Settings for details."
+
+    return _SidecarDiagnostics(all_ready=all_ready, user_message=user_message, sidecars=entries)
+
+
+class _SidecarEntry(BaseModel):
+    sidecar_id: str
+    display_name: str
+    state: str
+    pid: Optional[int] = None
+    error: Optional[str] = None
+    user_message: str
+
+
+class _SidecarDiagnostics(BaseModel):
+    """Aggregate health view of all registered sidecar processes.
+
+    ``all_ready`` is True when every sidecar is in the ``running`` state (or
+    when no sidecars are registered). ``user_message`` is a single sentence
+    suitable for display in the non-technical health panel.
+    """
+
+    all_ready: bool
+    user_message: str
+    sidecars: list[_SidecarEntry]
 
 
 class _DatabaseStatus(BaseModel):
@@ -56,6 +137,7 @@ class HealthResponse(BaseModel):
     privacy: _PrivacyPosture
     stt: SttHealth
     tts: TtsHealth
+    sidecar_diagnostics: _SidecarDiagnostics
     last_benchmark: Optional[_BenchmarkSummary] = None
 
 
@@ -80,6 +162,8 @@ async def health(request: Request) -> HealthResponse:
             benchmarked_at=bm_row["benchmarked_at"],
         )
 
+    supervisor = getattr(request.app.state, "supervisor", None)
+
     return HealthResponse(
         status="ok",
         version=__version__,
@@ -100,5 +184,6 @@ async def health(request: Request) -> HealthResponse:
         ),
         stt=await request.app.state.stt_worker.health(),
         tts=await request.app.state.tts_worker.health(),
+        sidecar_diagnostics=_build_sidecar_diagnostics(supervisor),
         last_benchmark=last_benchmark,
     )

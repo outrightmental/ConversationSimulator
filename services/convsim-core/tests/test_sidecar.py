@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import os
 import socket
+import sys
 import textwrap
 from pathlib import Path
 
@@ -41,8 +42,8 @@ def test_build_command_minimal():
 
 
 def test_build_command_custom_host_port():
-    cmd = build_command("/bin/llama-server", "model.gguf", host="0.0.0.0", port=9999)
-    assert "0.0.0.0" in cmd
+    cmd = build_command("/bin/llama-server", "model.gguf", host="127.0.0.1", port=9999)
+    assert "127.0.0.1" in cmd
     assert "9999" in cmd
 
 
@@ -248,6 +249,33 @@ def test_find_executable_returns_none_or_str():
     assert result is None or isinstance(result, str)
 
 
+def test_find_executable_env_override_wins(monkeypatch):
+    """CONVSIM_LLAMA_CPP_EXECUTABLE takes precedence over PATH and bundled dir."""
+    monkeypatch.setenv("CONVSIM_LLAMA_CPP_EXECUTABLE", "/custom/llama-server")
+    monkeypatch.setenv("CONVSIM_BUNDLED_RUNTIME_DIR", "/somewhere/runtimes")
+    assert find_executable() == "/custom/llama-server"
+
+
+def test_find_executable_uses_bundled_dir(monkeypatch, tmp_path):
+    """When no override is set, an executable bundled binary is resolved."""
+    monkeypatch.delenv("CONVSIM_LLAMA_CPP_EXECUTABLE", raising=False)
+    binary_name = "llama-server.exe" if sys.platform == "win32" else "llama-server"
+    binary = tmp_path / binary_name
+    binary.write_text("#!/bin/sh\n")
+    binary.chmod(0o755)
+    monkeypatch.setenv("CONVSIM_BUNDLED_RUNTIME_DIR", str(tmp_path))
+    assert find_executable() == str(binary)
+
+
+def test_find_executable_bundled_dir_missing_binary_falls_through(monkeypatch, tmp_path):
+    """A bundled dir without the binary must not short-circuit to a bad path."""
+    monkeypatch.delenv("CONVSIM_LLAMA_CPP_EXECUTABLE", raising=False)
+    monkeypatch.setenv("CONVSIM_BUNDLED_RUNTIME_DIR", str(tmp_path))  # empty dir
+    from unittest.mock import patch
+    with patch("convsim_core.runtime.sidecar.shutil.which", return_value=None):
+        assert find_executable() is None
+
+
 # ---------------------------------------------------------------------------
 # API endpoint tests via TestClient
 # ---------------------------------------------------------------------------
@@ -371,6 +399,7 @@ def test_sidecar_start_forwards_custom_host_and_port(client):
 
     The port-conflict error message tells users to "configure a different port",
     so the API must actually accept host/port fields and forward them.
+    Only localhost addresses are accepted; non-localhost is rejected by start().
     """
     from unittest.mock import AsyncMock, patch
 
@@ -385,18 +414,18 @@ def test_sidecar_start_forwards_custom_host_and_port(client):
             client.app.state.sidecar, "get_status",
             return_value={
                 "state": "running", "pid": 42, "model_path": "/m.gguf",
-                "log_path": "/tmp/runtime.log", "host": "0.0.0.0", "port": 9000,
+                "log_path": "/tmp/runtime.log", "host": "127.0.0.1", "port": 9001,
                 "error": None, "started_at": "2026-01-01T00:00:00+00:00",
             },
         ):
             resp = client.post(
                 "/api/sidecar/start",
-                json={"model_path": "/m.gguf", "host": "0.0.0.0", "port": 9000},
+                json={"model_path": "/m.gguf", "host": "127.0.0.1", "port": 9001},
             )
 
     assert resp.status_code == 200
-    assert captured["host"] == "0.0.0.0"
-    assert captured["port"] == 9000
+    assert captured["host"] == "127.0.0.1"
+    assert captured["port"] == 9001
 
 
 # ---------------------------------------------------------------------------
