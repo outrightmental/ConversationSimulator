@@ -220,6 +220,7 @@ issue must not be started until the upstream issue is merged and closed.
 | [[Steam Roadmap] Create Steam compliance and risk register for local-AI distribution](https://github.com/outrightmental/ConversationSimulator/issues?q=is%3Aissue+steam-compliance-risk-register+in%3Atitle) | [publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md](../publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md) | Stage 3 prerequisite |
 | [[Steam Roadmap] Define Steam MVP scope and release gates](https://github.com/outrightmental/ConversationSimulator/issues?q=is%3Aissue+steam-mvp-scope+in%3Atitle) | [docs/steam-mvp-scope.md](steam-mvp-scope.md) | Stage 2 prerequisite |
 | [[Steam Roadmap] Add issue templates for Steam QA, platform bugs, and content-pack bugs](https://github.com/outrightmental/ConversationSimulator/issues/185) | [docs/steam-triage.md](steam-triage.md) | Stage 3 prerequisite |
+| [[Steamworks] Register Steam app, depots, packages, and free-to-play configuration](https://github.com/outrightmental/ConversationSimulator/issues/226) | [publishing/STEAM_APP_REGISTRATION.md](../publishing/STEAM_APP_REGISTRATION.md), [`steam/`](../steam/), [`.github/workflows/steam-deploy.yml`](../.github/workflows/steam-deploy.yml) | Stage 3 prerequisite (must be complete before first depot submission) |
 
 All open and closed issues in this work stream:
 [GitHub — issues with `[Steam Roadmap]` prefix](https://github.com/outrightmental/ConversationSimulator/issues?q=is%3Aissue+%5BSteam+Roadmap%5D+in%3Atitle)
