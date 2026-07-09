@@ -147,5 +147,6 @@ must not compromise offline-first, local-model, or open-source principles.
 - [Pack validation](docs/pack-validation.md) — schema rules and the validator CLI
 - [Safety policy](docs/safety-policy.md) — content boundaries and the layered safety system
 - [Privacy and data policy](docs/privacy.md) — what stays local and how to verify it
+- [Steam edition roadmap](docs/STEAM_ROADMAP.md) — release principles, release train, and platform targets for the free Steam edition
 - [GitHub Milestones](https://github.com/outrightmental/ConversationSimulator/milestones) — issue tracking
 - [Full specification](docs/SPEC.md) — technical requirements per milestone
