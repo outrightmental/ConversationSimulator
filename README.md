@@ -1,3 +1,6 @@
+[![CI](https://github.com/outrightmental/ConversationSimulator/actions/workflows/ci.yml/badge.svg)](https://github.com/outrightmental/ConversationSimulator/actions/workflows/ci.yml)
+[![Release](https://github.com/outrightmental/ConversationSimulator/actions/workflows/release.yml/badge.svg)](https://github.com/outrightmental/ConversationSimulator/actions/workflows/release.yml)
+
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 # Conversation Simulator
 
