@@ -1,0 +1,201 @@
+# SPDX-License-Identifier: Apache-2.0
+# Steam deploy workflow.
+#
+# Uploads a tagged GitHub release to Steam via SteamPipe (steamcmd).
+# This workflow is triggered manually — it does not run on every push.
+#
+# ── One-time setup required ──────────────────────────────────────────────────
+#
+# Repository variables (Settings → Secrets and variables → Actions → Variables):
+#   STEAM_APP_ID              Valve-assigned App ID (non-secret, assigned at registration)
+#   STEAM_DEPOT_WINDOWS_ID    Windows x86-64 depot ID
+#   STEAM_DEPOT_MACOS_ID      macOS depot ID
+#   STEAM_DEPOT_LINUX_ID      Linux / SteamOS depot ID
+#
+# Repository secrets (Settings → Secrets and variables → Actions → Secrets):
+#   STEAM_USERNAME            Steam username of the dedicated CI build account
+#   STEAM_CONFIG_VDF          Base64-encoded config.vdf from an authenticated Steam
+#                             session on the build account (bypasses SteamGuard in CI)
+#
+# See publishing/STEAM_APP_REGISTRATION.md for how to obtain and rotate these values.
+#
+# ── Release gate reminder ────────────────────────────────────────────────────
+#
+# Stage 3 (private beta): set_live_branch = "beta"
+#   All Stage 3 gate criteria in docs/steam-mvp-scope.md must pass first,
+#   including G3-01 (code signing and notarisation) and G3-02 (depot audit).
+#
+# Stage 4 (public release): set_live_branch = "default"
+#   All Stage 4 gate criteria must pass first, including G4-01 (Valve review
+#   approval) and G4-02 (Steam Deck Verified tier).
+#
+# When set_live_branch is empty, the build is staged in Steamworks but no
+# branch goes live — use this for dry runs or when manual sign-off is needed.
+name: Steam Deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'GitHub release tag to upload (e.g. v0.1.0)'
+        required: true
+        type: string
+      build_description:
+        description: >
+          Human-readable build description shown in Steamworks partner portal.
+          Defaults to "Conversation Simulator <tag>" if left empty.
+        required: false
+        default: ''
+        type: string
+      set_live_branch:
+        description: >
+          Steam branch to set live after upload.
+          Leave empty to stage the build without making it live.
+          Use "beta" for Stage 3 private beta.
+          Use "default" only for a Stage 4 public release — all gate criteria
+          in docs/steam-mvp-scope.md must be met before selecting "default".
+        required: false
+        default: ''
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  steam-upload:
+    name: Upload to Steam (${{ inputs.release_tag }})
+    runs-on: ubuntu-latest
+
+    # The steam-release environment gates this job behind a manual approval step.
+    # Create it in GitHub → Settings → Environments → New environment.
+    # Add required reviewers so no Steam credential is exposed without sign-off.
+    environment: steam-release
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Resolve build description ──────────────────────────────────────────
+      - name: Resolve build description
+        id: desc
+        run: |
+          if [ -n "${{ inputs.build_description }}" ]; then
+            printf 'value=%s\n' "${{ inputs.build_description }}" >> "$GITHUB_OUTPUT"
+          else
+            printf 'value=Conversation Simulator %s\n' "${{ inputs.release_tag }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # ── Download GitHub release assets ─────────────────────────────────────
+      - name: Download release artifacts
+        run: |
+          gh release download "${{ inputs.release_tag }}" \
+            --dir release-artifacts \
+            --skip-errors
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: List downloaded artifacts
+        run: find release-artifacts -type f | sort
+
+      # ── Organise artifacts into per-platform depot content directories ──────
+      #
+      # Steam depots contain application files, not installer packages.
+      # The current release.yml produces installers (.exe, .msi, .dmg,
+      # .AppImage, .deb). Until a separate "raw binary" build step is added,
+      # these installer assets are placed in the depot directories as a
+      # placeholder. Update these patterns when the Tauri build produces
+      # a portable application directory alongside the installers.
+      - name: Organise depot content
+        run: |
+          mkdir -p steam-content/windows steam-content/macos steam-content/linux
+
+          find release-artifacts -name "*.exe" \
+            -exec cp -v {} steam-content/windows/ \;
+          find release-artifacts -name "*.msi" \
+            -exec cp -v {} steam-content/windows/ \;
+
+          find release-artifacts -name "*.dmg" \
+            -exec cp -v {} steam-content/macos/ \;
+
+          find release-artifacts -name "*.AppImage" \
+            -exec cp -v {} steam-content/linux/ \;
+          find release-artifacts -name "*.deb" \
+            -exec cp -v {} steam-content/linux/ \;
+
+          echo "--- Depot content summary ---"
+          find steam-content -type f | sort
+
+      # ── Verify no model weight files are staged ────────────────────────────
+      # Enforces depot content exclusion rule MD-04 from the compliance register.
+      - name: Audit depot content for model weight files
+        run: |
+          bad=$(find steam-content -type f \( \
+            -name "*.gguf" -o -name "*.safetensors" -o -name "*.bin" \
+          \))
+          if [ -n "$bad" ]; then
+            echo "ERROR: model weight files found in depot content — remove before uploading:"
+            echo "$bad"
+            exit 1
+          fi
+          echo "Depot audit passed: no model weight files detected."
+
+      # ── Generate SteamPipe build scripts from VDF templates ────────────────
+      - name: Generate SteamPipe VDF files
+        env:
+          STEAM_APP_ID:            ${{ vars.STEAM_APP_ID }}
+          STEAM_DEPOT_WINDOWS_ID:  ${{ vars.STEAM_DEPOT_WINDOWS_ID }}
+          STEAM_DEPOT_MACOS_ID:    ${{ vars.STEAM_DEPOT_MACOS_ID }}
+          STEAM_DEPOT_LINUX_ID:    ${{ vars.STEAM_DEPOT_LINUX_ID }}
+          STEAM_BUILD_DESCRIPTION: ${{ steps.desc.outputs.value }}
+          STEAM_SET_LIVE_BRANCH:   ${{ inputs.set_live_branch }}
+        run: |
+          mkdir -p steam-build/output
+          envsubst < steam/app_build.vdf.tpl     > steam-build/app_build.vdf
+          envsubst < steam/depot_windows.vdf.tpl > steam-build/depot_windows.vdf
+          envsubst < steam/depot_macos.vdf.tpl   > steam-build/depot_macos.vdf
+          envsubst < steam/depot_linux.vdf.tpl   > steam-build/depot_linux.vdf
+
+          # Log the generated app_build.vdf with numeric IDs redacted for safety.
+          echo "--- Generated app_build.vdf (IDs redacted) ---"
+          sed 's/[0-9]\{6,\}/[REDACTED]/g' steam-build/app_build.vdf
+
+      # ── Install steamcmd ───────────────────────────────────────────────────
+      - name: Install steamcmd
+        run: |
+          sudo add-apt-repository multiverse
+          sudo dpkg --add-architecture i386
+          sudo apt-get update -qq
+          echo steamcmd steam/question select "I AGREE" | sudo debconf-set-selections
+          sudo apt-get install -y steamcmd
+
+      # ── Restore SteamGuard config ──────────────────────────────────────────
+      # Decodes the base64-encoded config.vdf from the STEAM_CONFIG_VDF secret.
+      # This bypasses the interactive SteamGuard prompt in headless CI.
+      - name: Restore Steam config
+        env:
+          STEAM_CONFIG_VDF: ${{ secrets.STEAM_CONFIG_VDF }}
+        run: |
+          mkdir -p "$HOME/.steam/steam/config"
+          printf '%s' "$STEAM_CONFIG_VDF" | base64 --decode \
+            > "$HOME/.steam/steam/config/config.vdf"
+          chmod 600 "$HOME/.steam/steam/config/config.vdf"
+
+      # ── Upload to Steam ────────────────────────────────────────────────────
+      - name: Upload build to Steam
+        env:
+          STEAM_USERNAME: ${{ secrets.STEAM_USERNAME }}
+        run: |
+          steamcmd \
+            +login "$STEAM_USERNAME" \
+            +run_app_build "$(pwd)/steam-build/app_build.vdf" \
+            +quit
+
+      # ── Log build output ───────────────────────────────────────────────────
+      - name: Show steamcmd build output
+        if: always()
+        run: |
+          if [ -d steam-build/output ]; then
+            find steam-build/output -type f | sort
+            for f in steam-build/output/*.log; do
+              [ -f "$f" ] && { echo "--- $f ---"; cat "$f"; }
+            done
+          fi
