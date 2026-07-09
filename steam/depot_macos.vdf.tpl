@@ -26,8 +26,10 @@
         "Recursive"     "1"
     }
 
-    // Exclude debug symbol bundles.
-    "FileExclusion" "*.dSYM"
+    // Exclude debug symbol bundles. A .dSYM is a directory bundle, so the
+    // pattern must match the files inside it — SteamPipe FileExclusion is
+    // matched per file path, not against directory entries.
+    "FileExclusion" "*.dSYM/*"
 
     // Exclude model weight files — see risk MD-04 in
     // publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md.
