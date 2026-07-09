@@ -95,7 +95,7 @@
 | **Area** | Privacy / Platform |
 | **Risk** | On macOS and Windows, the OS microphone permission prompt is dismissed or denied, and the app crashes or enters a broken state instead of gracefully falling back to text-only mode. |
 | **Owner** | Platform team |
-| **Mitigation** | Voice fallback path is tested in CI (`tests/test_voice_smoke.py -k fallback`). App must detect STT unavailability and offer text-only mode without error. Tested in Part B.10 of the release checklist. |
+| **Mitigation** | Voice fallback path is tested in CI (`services/convsim-core/tests/test_voice_smoke.py -k fallback`). App must detect STT unavailability and offer text-only mode without error. Tested in Part B.10 of the release checklist. |
 | **Release-blocking** | YES |
 | **Status** | OPEN |
 
