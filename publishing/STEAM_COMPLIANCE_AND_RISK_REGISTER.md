@@ -23,7 +23,7 @@
 | **Owner** | Team or individual accountable for mitigation. |
 | **Mitigation** | Controls already in place or planned. |
 | **Release-blocking** | `YES` — must be resolved before private beta. `NO` — can ship with open risk. `DEFERRED` — intentionally deferred to a post-launch milestone. |
-| **Status** | `OPEN`, `IN PROGRESS`, `MITIGATED`, `ACCEPTED`, or `CLOSED`. |
+| **Status** | `OPEN`, `IN PROGRESS`, `MITIGATED`, `ACCEPTED`, `DEFERRED`, or `CLOSED`. |
 
 ---
 
