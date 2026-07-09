@@ -157,7 +157,7 @@ class KokoroTtsWorker(TtsWorker):
     async def health(self) -> TtsHealth:
         checked_at = datetime.now(timezone.utc).isoformat()
         try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
+            async with httpx.AsyncClient(timeout=httpx.Timeout(5.0, connect=0.5)) as client:
                 resp = await client.get(f"{self._base_url}/health")
             if resp.status_code == 200:
                 return TtsHealth(

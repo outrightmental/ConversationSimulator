@@ -61,7 +61,7 @@ def _spawn_download_task(coro: Any) -> "asyncio.Task[None]":
 
 _BENCHMARK_PROMPT = "Say hello in exactly three words."
 _BENCHMARK_SYSTEM = "You are a helpful assistant. Be brief and literal."
-_OLLAMA_DETECT_TIMEOUT = 3.0
+_OLLAMA_DETECT_TIMEOUT = httpx.Timeout(3.0, connect=0.5)
 
 
 # ── Request / response schemas ────────────────────────────────────────────────
