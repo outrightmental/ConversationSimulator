@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { readdirSync, statSync, lstatSync, openSync, readSync, closeSync } from 'node:fs';
+import { readdirSync, statSync, lstatSync, existsSync, openSync, readSync, closeSync } from 'node:fs';
 import { resolve, join, relative, dirname, normalize, extname } from 'node:path';
 import { resolveRef, readPackFile } from './resolver.js';
 import { parseAndValidate } from './validator.js';
@@ -14,6 +14,7 @@ import type {
   RawScene,
   RawScenario,
   ResolvedBundle,
+  ValidationWarning,
 } from './types.js';
 import { PackLoaderError } from './types.js';
 
@@ -139,6 +140,148 @@ function scanPackForForbiddenContent(packDir: string): void {
 }
 
 // ---------------------------------------------------------------------------
+// Content analysis: external URLs and prompt-injection risk detection
+// ---------------------------------------------------------------------------
+
+// Matches http:// or https:// URLs embedded in plain text.
+// External URLs violate the offline-first requirement.
+const EXTERNAL_URL_RE = /https?:\/\/[^\s"',;<>)]+/gi;
+
+// Prompt-injection patterns: strings that attempt to override the system
+// prompt or re-assign the model's role. Each entry is [regex, label].
+const INJECTION_PATTERNS: Array<[RegExp, string]> = [
+  // Instruction-override phrasings such as "ignore previous instructions",
+  // "ignore all previous instructions", "disregard the above rules", etc.
+  // Allow up to three qualifier words (all/the/previous/prior/above/…) between
+  // the verb and the target noun so multi-qualifier phrasings are still caught.
+  [/(?:ignore|disregard|override|forget)\s+(?:\w+\s+){0,3}(?:instructions?|prompts?|directives?|rules?|context|system\s+prompt)/i, 'instruction-override'],
+  [/forget\s+everything\s+(you|i|we)/i, 'forget-directive'],
+  [/\{\{[^}]{1,500}\}\}/,                                                               'template-injection'],
+  [/\$\{[^}]{1,500}\}/,                                                                 'expression-injection'],
+  [/<\s*(system|assistant|im_start)\s*>/i,                                               'role-tag'],
+  [/\[INST\]|\[\/INST\]/i,                                                               'llama-instruction-tag'],
+  [/###\s*(system|assistant|instruction)\s*:/i,                                          'markdown-role-heading'],
+];
+
+function scanTextForExternalUrl(text: string, field: string): ValidationWarning | null {
+  EXTERNAL_URL_RE.lastIndex = 0;
+  const match = EXTERNAL_URL_RE.exec(text);
+  if (!match) return null;
+  return {
+    code: 'EXTERNAL_URL',
+    message:
+      `"${field}" contains external URL "${match[0]}". ` +
+      'Packs must be offline-first — external URLs in content fields are not loaded at runtime ' +
+      'but may mislead players or cause confusion. Remove or replace with a local asset.',
+    field,
+  };
+}
+
+function scanTextForInjection(text: string, field: string): ValidationWarning | null {
+  for (const [re, label] of INJECTION_PATTERNS) {
+    if (re.test(text)) {
+      return {
+        code: 'PROMPT_INJECTION_RISK',
+        message:
+          `"${field}" contains a pattern that resembles prompt injection (${label}). ` +
+          'Review this text carefully before publishing — it may interfere with the NPC ' +
+          'runtime system prompt and produce unpredictable behaviour.',
+        field,
+      };
+    }
+  }
+  return null;
+}
+
+/**
+ * Scan loaded pack content for non-fatal issues: external URLs and
+ * prompt-injection-like patterns in text that will be embedded in LLM prompts.
+ */
+function analyzePackContent(
+  scenarios: LoadedScenario[],
+  npcs: Map<string, RawNpc>,
+  scenes: Map<string, RawScene>,
+): ValidationWarning[] {
+  const warnings: ValidationWarning[] = [];
+
+  function add(w: ValidationWarning | null): void {
+    if (w) warnings.push(w);
+  }
+
+  // ── NPCs ──────────────────────────────────────────────────────────────────
+  for (const npc of npcs.values()) {
+    const id = npc.npc_id;
+    for (const [key, text] of Object.entries({
+      'public_persona.occupation':    npc.public_persona.occupation,
+      'public_persona.speaking_style': npc.public_persona.speaking_style,
+      'public_persona.demeanor':       npc.public_persona.demeanor,
+    })) {
+      const field = `npcs/${id}/${key}`;
+      add(scanTextForExternalUrl(text, field));
+      add(scanTextForInjection(text, field));
+    }
+
+    // Private persona is the highest-risk injection surface.
+    const pp = npc.private_persona as Record<string, unknown>;
+    for (const [ppKey, ppVal] of Object.entries(pp)) {
+      if (Array.isArray(ppVal)) {
+        ppVal.forEach((item, i) => {
+          if (typeof item === 'string') {
+            const field = `npcs/${id}/private_persona/${ppKey}[${i}]`;
+            add(scanTextForExternalUrl(item, field));
+            add(scanTextForInjection(item, field));
+          }
+        });
+      } else if (typeof ppVal === 'string') {
+        const field = `npcs/${id}/private_persona/${ppKey}`;
+        add(scanTextForExternalUrl(ppVal, field));
+        add(scanTextForInjection(ppVal, field));
+      }
+    }
+  }
+
+  // ── Scenarios ─────────────────────────────────────────────────────────────
+  for (const { relPath, data } of scenarios) {
+    const prefix = `scenarios/${relPath}`;
+    for (const [key, text] of Object.entries({
+      'summary':            data.summary,
+      'player_role.brief':  data.player_role.brief,
+      'opening.npc_says':   data.opening.npc_says,
+    })) {
+      const field = `${prefix}/${key}`;
+      add(scanTextForExternalUrl(text, field));
+      add(scanTextForInjection(text, field));
+    }
+    if (data.goals.player_visible) {
+      data.goals.player_visible.forEach((g, i) => {
+        const field = `${prefix}/goals/player_visible[${i}]`;
+        add(scanTextForExternalUrl(g, field));
+        add(scanTextForInjection(g, field));
+      });
+    }
+    // Hidden goals are covert objectives fed into the NPC system prompt but
+    // never shown to the player — the prime place to conceal an injection
+    // payload, so they must be scanned too.
+    if (data.goals.hidden) {
+      data.goals.hidden.forEach((g, i) => {
+        const field = `${prefix}/goals/hidden[${i}]`;
+        add(scanTextForExternalUrl(g, field));
+        add(scanTextForInjection(g, field));
+      });
+    }
+  }
+
+  // ── Scenes ────────────────────────────────────────────────────────────────
+  for (const scene of scenes.values()) {
+    const field = `scenes/${scene.scene_id}/description`;
+    add(scanTextForExternalUrl(scene.description, field));
+    add(scanTextForInjection(scene.description, field));
+  }
+
+  return warnings;
+}
+
+// ---------------------------------------------------------------------------
 // Single-pack loader
 // ---------------------------------------------------------------------------
 
@@ -204,6 +347,7 @@ export function loadPack(packDir: string, kind: PackRootKind = 'local-dev'): Loa
       const npc = parseAndValidate<RawNpc>(readPackFile(npcAbsPath), 'npc', npcAbsPath);
       if (npc.portrait !== undefined) {
         // Portrait paths are pack-root-relative per the NPC schema ("within the pack").
+        // resolveRef checks path-traversal; existence is a soft warning (assets may be placeholder).
         resolveRef(normalPackDir, normalPackDir, npc.portrait);
       }
       npcs.set(npcAbsPath, npc);
@@ -227,6 +371,7 @@ export function loadPack(packDir: string, kind: PackRootKind = 'local-dev'): Loa
         const scene = parseAndValidate<RawScene>(readPackFile(sceneAbsPath), 'scene', sceneAbsPath);
         if (scene.background !== undefined) {
           // Background paths are pack-root-relative per the scene schema ("within the pack assets directory").
+          // resolveRef checks path-traversal; existence is a soft warning (assets may be placeholder).
           resolveRef(normalPackDir, normalPackDir, scene.background);
         }
         scenes.set(sceneAbsPath, scene);
@@ -260,6 +405,45 @@ export function loadPack(packDir: string, kind: PackRootKind = 'local-dev'): Loa
     npcIds.add(npc.npc_id);
   }
 
+  // ── Asset existence warnings ───────────────────────────────────────────────
+  // Portrait and background files are optional cosmetic assets.  Their absence
+  // is a warning rather than an error so that packs with placeholder paths can
+  // still load and run during development.
+  const assetWarnings: ValidationWarning[] = [];
+
+  for (const npc of npcs.values()) {
+    if (npc.portrait !== undefined) {
+      const portraitAbs = resolveRef(normalPackDir, normalPackDir, npc.portrait);
+      if (!existsSync(portraitAbs)) {
+        assetWarnings.push({
+          code: 'MISSING_ASSET',
+          message:
+            `NPC "${npc.npc_id}" declares portrait "${npc.portrait}" but the file does not exist. ` +
+            'Add the image file or remove the portrait field before publishing.',
+          field: `npcs/${npc.npc_id}/portrait`,
+        });
+      }
+    }
+  }
+
+  for (const scene of scenes.values()) {
+    if (scene.background !== undefined) {
+      const bgAbs = resolveRef(normalPackDir, normalPackDir, scene.background);
+      if (!existsSync(bgAbs)) {
+        assetWarnings.push({
+          code: 'MISSING_ASSET',
+          message:
+            `Scene "${scene.scene_id}" declares background "${scene.background}" but the file does not exist. ` +
+            'Add the image file or remove the background field before publishing.',
+          field: `scenes/${scene.scene_id}/background`,
+        });
+      }
+    }
+  }
+
+  // ── Content analysis: external URLs and injection patterns ─────────────────
+  const contentWarnings = analyzePackContent(scenarios, npcs, scenes);
+
   return {
     manifest,
     packRoot: normalPackDir,
@@ -269,6 +453,7 @@ export function loadPack(packDir: string, kind: PackRootKind = 'local-dev'): Loa
     rubrics,
     scenes,
     safety,
+    warnings: [...assetWarnings, ...contentWarnings],
   };
 }
 
