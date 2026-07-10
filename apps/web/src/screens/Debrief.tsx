@@ -108,7 +108,9 @@ export default function Debrief() {
     return () => {
       cancelled = true
     }
-  }, [sessionId, retryKey])
+    // unlock/incrementStat are stable useCallbacks from useSteamAchievements;
+    // listed to satisfy exhaustive-deps without triggering re-runs.
+  }, [sessionId, retryKey, unlock, incrementStat])
 
   const scrollToTurn = useCallback((turnNumber: number) => {
     const el = turnRefs.current.get(turnNumber)
