@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: CC0-1.0
+# Hello Conversation — a minimal sample pack for learning the Creator Workbench.
+# This pack is public domain (CC0-1.0). Fork it, remix it, use it as a
+# starting point for your own packs with no conditions.
+schema_version: "0.1"
+pack_id: sample.hello_conversation
+name: Hello Conversation (Sample)
+version: 0.1.0
+description: >-
+  A minimal one-scenario sample pack for learning the Creator Workbench.
+  Sam Chen is a developer at the same professional event as you. Practise
+  the art of a warm, clear introduction — the skill that opens every door.
+author: Outright Mental
+license: CC0-1.0
+content_rating: G
+tags:
+  - sample
+  - networking
+  - social
+supported_languages:
+  - en
+entry_scenarios:
+  - scenarios/friendly_introduction.yaml
+assets:
+  allow_external_urls: false
+safety:
+  policy: safety/hello_safety.yaml

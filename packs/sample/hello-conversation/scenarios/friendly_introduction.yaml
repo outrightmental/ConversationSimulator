@@ -1,0 +1,107 @@
+# SPDX-License-Identifier: CC0-1.0
+schema_version: "0.1"
+scenario_id: friendly_introduction
+title: The Friendly Introduction
+summary: >-
+  You are at a small local tech meetup. Sam Chen is standing near the drinks
+  table, looking approachable. You have not met before. Strike up a
+  conversation — introduce yourself, find a point of connection, and leave
+  Sam with a positive impression.
+
+player_role:
+  label: Event Attendee
+  brief: >-
+    You are a professional attending a local tech meetup. You want to make a
+    good impression on Sam Chen and come away with a genuine connection, not
+    just an exchanged business card.
+
+npc:
+  ref: ../npcs/sam_chen.yaml
+
+rubric:
+  ref: ../rubrics/introduction_rubric.yaml
+
+duration:
+  max_turns: 10
+  soft_time_limit_minutes: 8
+
+opening:
+  npc_says: >-
+    Hey, first time at one of these? I always forget how small the venue is
+    until I'm here.
+
+goals:
+  player_visible:
+    - "Introduce yourself clearly — name, what you do, and why you are here"
+    - "Find at least one thing you and Sam have in common or can genuinely talk about beyond job titles"
+  hidden:
+    - "Sam is assessing whether this feels like a real conversation or a networking ritual — a specific personal detail is the difference"
+    - "Sam warms up significantly when the player asks a genuine question about Sam's work or experience, rather than waiting to talk about themselves"
+
+state:
+  variables:
+    rapport:
+      min: 0
+      max: 100
+      default: 40          # Sam starts open but not yet engaged
+      visibility: visible  # Player can see rapport changing during the session
+      max_delta_per_turn: 15
+    genuine_interest:
+      min: 0
+      max: 100
+      default: 30
+      visibility: hidden   # Internal signal; the player has to infer it from Sam's tone
+      max_delta_per_turn: 20
+
+events:
+  - id: rehearsed_intro_nudge
+    when:
+      type: variable_below
+      variable: genuine_interest
+      threshold: 20
+    npc_instruction: >-
+      The player's introduction felt generic or transactional. React with
+      polite but noticeably lower energy: "Sure, good to meet you." Then
+      glance briefly at the room, signalling mild disengagement without
+      being rude.
+    repeat: false
+
+  - id: connection_moment
+    when:
+      type: variable_above
+      variable: genuine_interest
+      threshold: 65
+    npc_instruction: >-
+      The player has said something genuinely interesting or shown real
+      curiosity. Light up: lean in, ask a specific follow-up, and share a
+      relevant detail from your own experience. This should feel like the
+      moment the conversation actually starts.
+    repeat: false
+
+ending_conditions:
+  success:
+    type: variable_above
+    variable: rapport
+    threshold: 68
+  failure:
+    type: variable_below
+    variable: rapport
+    threshold: 10
+
+response_style:
+  max_words: 60
+  verbosity: moderate
+  formality: casual
+
+difficulty:
+  default: normal
+  options:
+    easy:
+      npc_patience_modifier: 20
+      challenge_frequency: low
+    normal:
+      npc_patience_modifier: 0
+      challenge_frequency: medium
+    hard:
+      npc_patience_modifier: -15
+      challenge_frequency: high

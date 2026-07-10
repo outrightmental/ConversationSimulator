@@ -1,0 +1,62 @@
+# SPDX-License-Identifier: CC0-1.0
+schema_version: "0.1"
+fixture_id: smoke_friendly_introduction
+scenario_id: friendly_introduction
+description: >-
+  Verifies friendly_introduction loads correctly and a warm, specific
+  first introduction advances the session without triggering a safety stop.
+seed: 42
+input_mode: text
+difficulty: normal
+turns:
+  - turn: 1
+    player_input: >-
+      Hi, I'm Alex — I work in product at a fintech startup downtown. I came
+      tonight because I've been trying to meet more people outside my company
+      bubble. What brings you here?
+    expect:
+      state_delta_contains:
+        - rapport
+        - genuine_interest
+      session_control: continue_session
+      safety_status: ok
+static_assertions:
+  - description: Scenario opening line is non-empty
+    path: opening.npc_says
+    check: non_empty_string
+  - description: NPC is marked fictional
+    path: npc.fictional
+    check: "equals true"
+  - description: NPC age band is adult
+    path: npc.age_band
+    check: "equals adult"
+  - description: Safety policy stops nsfw_sexual_content
+    path: safety.content_categories.nsfw_sexual_content
+    check: "equals stop"
+  - description: Safety policy fires stop_with_resource_message for self_harm_crisis
+    path: safety.content_categories.self_harm_crisis
+    check: "equals stop_with_resource_message"
+  - description: Safety policy stops minors_romantic_or_sexual
+    path: safety.content_categories.minors_romantic_or_sexual
+    check: "equals stop"
+  - description: Pack manifest declares friendly_introduction as an entry scenario
+    path: manifest.entry_scenarios
+    check: "contains scenarios/friendly_introduction.yaml"
+  - description: rapport variable is visible to the player
+    path: state.variables.rapport.visibility
+    check: "equals visible"
+  - description: genuine_interest variable is hidden from the player
+    path: state.variables.genuine_interest.visibility
+    check: "equals hidden"
+  - description: connection_moment event fires when genuine_interest exceeds 65
+    path: events[id=connection_moment].when
+    check: "type=variable_above AND variable=genuine_interest AND threshold=65"
+  - description: connection_moment fires only once
+    path: events[id=connection_moment].repeat
+    check: "equals false"
+  - description: Success ending condition targets rapport above threshold
+    path: ending_conditions.success
+    check: "type=variable_above AND variable=rapport"
+  - description: Failure ending condition targets rapport below threshold
+    path: ending_conditions.failure
+    check: "type=variable_below AND variable=rapport"

@@ -39,6 +39,12 @@ You need:
 3. At least one official pack installed (they ship with the repo under
    `packs/official/`).
 
+> **Just want a starting point?** `packs/sample/hello-conversation/` is a
+> minimal one-scenario pack (CC0-1.0, public domain) that you can copy and
+> remix without any conditions. Import it into local-dev with
+> `cp -r packs/sample/hello-conversation packs/local-dev/my-pack` and start
+> editing. The `README.md` inside explains every file.
+
 > **CLI fallback.** Every step in this guide has a CLI equivalent.
 > CLI commands are shown in `code blocks` throughout.
 
@@ -698,6 +704,127 @@ convsim test-pack packs/local-dev/workplace-conversations/
 
 Both `convsim validate-pack` and `convsim test-pack` must exit `0` before
 the pack is ready to share or submit.
+
+---
+
+## Adding a golden transcript test
+
+A **golden transcript test** is an extended fixture that scripts a multi-turn
+conversation and asserts structural properties across the whole scenario
+design: event wiring, state variable visibility, ending condition targets,
+difficulty settings, and manifest entries.
+
+While a smoke test checks that the pack loads and a single benign turn
+does not crash the session, a golden test documents the *intended behavioural
+design* of your scenario. Official packs include both.
+
+Add a golden test alongside your smoke test in `tests/`:
+
+```yaml
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: golden_raise_conversation
+scenario_id: raise_conversation
+description: >-
+  Property test: verifies that a player who opens with concrete evidence
+  and frames the ask professionally causes receptiveness to advance
+  through the event sequence without triggering a safety stop.
+
+seed: 42
+input_mode: text
+difficulty: normal
+
+turns:
+  - turn: 1
+    player_input: >-
+      Thanks for meeting with me. I'd like to discuss a merit increase.
+      Last quarter I led the pipeline migration that cut nightly processing
+      from six hours to forty minutes and unblocked three product teams.
+      I believe that level of impact justifies revisiting my compensation.
+    expect:
+      state_delta_contains:
+        - receptiveness
+        - evidence_score
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 2
+    player_input: >-
+      I've also checked market rates for my role and experience level in
+      this city — the median is about twelve percent above where I am now.
+      I'm asking for a ten percent increase, which I think is fair given
+      both my track record and where the market is.
+    expect:
+      state_delta_contains:
+        - receptiveness
+        - evidence_score
+      session_control: continue_session
+      safety_status: ok
+
+static_assertions:
+  - description: Opening line is non-empty
+    path: opening.npc_says
+    check: non_empty_string
+
+  - description: vague_request_nudge fires when evidence_score drops below 20
+    path: events[id=vague_request_nudge].when
+    check: "type=variable_below AND variable=evidence_score AND threshold=20"
+
+  - description: vague_request_nudge fires only once
+    path: events[id=vague_request_nudge].repeat
+    check: "equals false"
+
+  - description: strong_case_acknowledgement fires when evidence_score exceeds 70
+    path: events[id=strong_case_acknowledgement].when
+    check: "type=variable_above AND variable=evidence_score AND threshold=70"
+
+  - description: Success ending condition targets receptiveness above threshold
+    path: ending_conditions.success
+    check: "type=variable_above AND variable=receptiveness"
+
+  - description: Failure ending condition targets receptiveness below threshold
+    path: ending_conditions.failure
+    check: "type=variable_below AND variable=receptiveness"
+
+  - description: receptiveness is visible to the player
+    path: state.variables.receptiveness.visibility
+    check: "equals visible"
+
+  - description: evidence_score is hidden from the player
+    path: state.variables.evidence_score.visibility
+    check: "equals hidden"
+
+  - description: NPC is marked fictional
+    path: npc.fictional
+    check: "equals true"
+
+  - description: Safety policy stops nsfw_sexual_content
+    path: safety.content_categories.nsfw_sexual_content
+    check: "equals stop"
+
+  - description: Hard difficulty applies a negative patience modifier
+    path: scenario.difficulty.options.hard.npc_patience_modifier
+    check: "equals -20"
+
+  - description: Pack manifest declares raise_conversation as an entry scenario
+    path: manifest.entry_scenarios
+    check: "contains scenarios/raise_conversation.yaml"
+```
+
+**What distinguishes a golden test from a smoke test:**
+
+| | Smoke test | Golden transcript test |
+|--|------------|----------------------|
+| Turn count | 1 (minimal) | 2–6 (scripted ideal strategy) |
+| Turn assertions | Structural — variable declared, no crash | Same as smoke |
+| Static assertions | Minimum: opening line, `npc.fictional`, one safety category | Full: all events, all state variable visibility, all endings, difficulty, manifest |
+| Goal | Prove the pack loads cleanly | Document the *design* of the scenario in executable assertions |
+| Required for | All packs | Official packs and any pack intended for wide sharing |
+
+Both fixture types run with `convsim test-pack` and must exit `0`.
+
+See [`docs/pack-validation.md`](pack-validation.md) for the full static
+assertion syntax reference.
 
 ---
 

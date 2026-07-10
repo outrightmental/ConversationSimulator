@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: CC0-1.0
+schema_version: "0.1"
+policy_id: hello_conversation_safety
+content_categories:
+  nsfw_sexual_content: stop
+  criminal_instruction: refuse
+  self_harm_crisis: stop_with_resource_message
+  minors_romantic_or_sexual: stop
+  harassment_extreme: redirect
+  real_person_impersonation: refuse
+redirect_message: >-
+  Let's keep this friendly — what were you hoping to talk about at this
+  event?
+allow_profanity: false
+content_rating_cap: G
