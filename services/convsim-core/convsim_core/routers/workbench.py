@@ -595,7 +595,7 @@ async def start_test_session(request: Request, kind: str, slug: str) -> Workbenc
 
     setup = {
         "scenario_id": dynamic_id,
-        "difficulty": "normal",
+        "difficulty": "standard",
         "player_role_name": "Workbench Tester",
         "language": "en",
         "input_mode": "text-only",

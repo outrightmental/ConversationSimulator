@@ -5,14 +5,22 @@
  *
  * Supported check forms:
  *   non_empty_string           — value is a non-empty string
+ *   non_null                   — value is not null or undefined
  *   min_length_1               — value is an array with length >= 1
  *   equals <literal>           — value === literal (true/false parsed as boolean, numbers as number)
  *   contains <needle>          — array or string includes needle
+ *   lte <number>               — numeric value <= threshold
+ *   gte <number>               — numeric value >= threshold
+ *   between <lo> <hi>          — numeric value >= lo and <= hi (inclusive)
  *   k=v AND k=v ...            — object has all key=value pairs (numeric values auto-parsed)
  */
 export function evaluateCheck(value: unknown, check: string): boolean {
   if (check === 'non_empty_string') {
     return typeof value === 'string' && value.length > 0;
+  }
+
+  if (check === 'non_null') {
+    return value !== null && value !== undefined;
   }
 
   if (check === 'min_length_1') {
@@ -29,6 +37,23 @@ export function evaluateCheck(value: unknown, check: string): boolean {
     if (Array.isArray(value)) return value.includes(needle);
     if (typeof value === 'string') return value.includes(needle);
     return false;
+  }
+
+  if (check.startsWith('lte ')) {
+    const threshold = Number(check.slice('lte '.length).trim());
+    return typeof value === 'number' && value <= threshold;
+  }
+
+  if (check.startsWith('gte ')) {
+    const threshold = Number(check.slice('gte '.length).trim());
+    return typeof value === 'number' && value >= threshold;
+  }
+
+  if (check.startsWith('between ')) {
+    const parts = check.slice('between '.length).trim().split(/\s+/);
+    const lo = Number(parts[0]);
+    const hi = Number(parts[1]);
+    return typeof value === 'number' && value >= lo && value <= hi;
   }
 
   if (check.includes(' AND ') || check.includes('=')) {
