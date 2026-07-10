@@ -215,7 +215,7 @@ def test_packs_seeded_fails_when_zero_packs(client):
     # Default test env has no official packs (official_packs_dir points to nonexistent dir).
     assert check["status"] == "fail"
     assert check["fix_action"] is not None
-    assert check["fix_action"]["href"] == "/scenarios"
+    assert check["fix_action"]["href"] == "/library"
 
 
 def test_packs_seeded_warns_with_few_packs():
