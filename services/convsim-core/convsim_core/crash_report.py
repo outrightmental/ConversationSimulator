@@ -23,7 +23,7 @@ from pathlib import Path
 
 from convsim_core import __version__
 from convsim_core.models import AppSettings
-from convsim_core.redaction import redact_path
+from convsim_core.redaction import redact_path, redact_paths_in_text
 
 _MAX_LOG_TAIL_LINES = 500
 _SENSITIVE_SETTINGS_FIELDS: frozenset[str] = frozenset({"data_dir", "log_dir"})
@@ -62,6 +62,22 @@ def _safe_settings(settings: AppSettings) -> dict:
         if field in d:
             d[field] = redact_path(str(d[field]))
     return d
+
+
+def _redact_preflight(value):
+    """Recursively strip home-directory prefixes from preflight data.
+
+    Preflight check messages quote absolute paths (data dir, binary location),
+    which embed the OS username.  The crash bundle promises those are replaced
+    with ~, so redact every string before the snapshot is written to the ZIP.
+    """
+    if isinstance(value, dict):
+        return {k: _redact_preflight(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_redact_preflight(v) for v in value]
+    if isinstance(value, str):
+        return redact_paths_in_text(value)
+    return value
 
 
 _ERROR_LEVELS: frozenset[str] = frozenset({"WARNING", "ERROR", "CRITICAL"})
@@ -133,7 +149,10 @@ def create_crash_bundle(
         zf.writestr("recent_errors.txt", recent_errors)
         zf.writestr("system.txt", json.dumps(system_info, indent=2))
         if preflight_data is not None:
-            zf.writestr("preflight.json", json.dumps(preflight_data, indent=2))
+            zf.writestr(
+                "preflight.json",
+                json.dumps(_redact_preflight(preflight_data), indent=2),
+            )
         zf.writestr("README.txt", _BUNDLE_README)
 
     return bundle_path
