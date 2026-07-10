@@ -336,7 +336,9 @@ On first launch, the Model Manager wizard should appear automatically.
 
 Select **Job Interview Basics → Behavioral Interview** and run a session.
 
-- [ ] Scenario library loads and all four official packs are listed
+- [ ] Scenario library loads and all five official packs are listed
+  (Job Interview Basics, Everyday Negotiation, Language Café,
+  Difficult Conversations, Dating — Confidence & Boundaries)
 - [ ] Session starts without errors; NPC opening line is delivered
 - [ ] Player can submit a text turn; NPC responds within 60 seconds (CPU-only)
 - [ ] Session ends cleanly via the Stop / End Session button
