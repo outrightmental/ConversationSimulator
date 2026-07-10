@@ -20,7 +20,9 @@ function mockFetch(response: object) {
 
 // Prevent real fetch calls; return a promise that never resolves so the
 // pending-state async health check never triggers a post-render state update.
+// Simulate a returning user so the FirstRunGuard allows access to all routes.
 beforeEach(() => {
+  localStorage.setItem('convsim.setup.complete', 'true')
   vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})))
 })
 
