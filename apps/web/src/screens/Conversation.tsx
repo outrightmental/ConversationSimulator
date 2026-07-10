@@ -175,8 +175,15 @@ export default function Conversation() {
     const url = `/api/tts/audio/${filename}`
     ttsQueueRef.current.push(url)
     if (ttsPlayingRef.current === null && ttsHoldTimerRef.current === null) {
-      // Apply the NPC thinking pause before starting the first chunk.
-      const pause = thinkingPauseMs && thinkingPauseMs > 0 ? thinkingPauseMs : 0
+      // Apply the NPC thinking pause before starting the first chunk, but only
+      // when the player has left the "NPC thinking pause" setting enabled. The
+      // backend always sends thinking_pause_ms (its own toggle is not wired
+      // through session setup), so this client-side gate is what actually
+      // honors the Voice settings toggle.
+      const pause =
+        voiceTimingPrefs.thinkingPauseEnabled && thinkingPauseMs && thinkingPauseMs > 0
+          ? thinkingPauseMs
+          : 0
       if (pause > 0) {
         ttsHoldTimerRef.current = setTimeout(() => {
           ttsHoldTimerRef.current = null
