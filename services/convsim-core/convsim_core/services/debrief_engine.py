@@ -20,8 +20,9 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import sqlite3
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -45,6 +46,24 @@ _SCORE_BASELINE = 50.0
 _SCORE_MIN = 0.0
 _SCORE_MAX = 100.0
 
+# Filler words detected in voice-mode transcripts (STT tokens).
+_FILLER_WORDS: frozenset = frozenset([
+    "um", "uh", "uhm", "err", "er",
+    "like", "basically", "literally", "actually",
+    "you", "know", "i", "mean",
+    "so", "right", "okay",
+])
+
+# First words (lowercased) that introduce an open-ended question.
+_OPEN_QUESTION_STARTERS: frozenset = frozenset([
+    "what", "why", "how", "who", "when", "where", "which",
+    "tell", "describe", "explain", "elaborate", "share",
+    "could", "can", "would", "walk",
+])
+
+# Sanity ceiling for a single NPC latency measurement (5 minutes).
+_LATENCY_MAX_MS = 300_000.0
+
 
 @dataclass
 class DebriefResult:
@@ -64,6 +83,139 @@ class DebriefResult:
     npc_final_state: Dict[str, int]
     generated_at: str
     used_fallback: bool = False
+    metrics: Dict[str, Any] = field(default_factory=dict)
+
+
+def _count_words(text: str) -> int:
+    return len(text.split()) if text else 0
+
+
+def _parse_iso_timestamp(ts: str) -> Optional[float]:
+    """Return a Unix-epoch float from an ISO 8601 string, or None on error."""
+    if not ts:
+        return None
+    try:
+        return datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return None
+
+
+def compute_metrics(
+    all_turns: List[sqlite3.Row],
+    source_mode: str = "text-only",
+) -> Dict[str, Any]:
+    """Compute session telemetry metrics from stored transcript rows.
+
+    Pure function — deterministic given the same rows.  Does not read from the
+    database or call any external service.
+
+    Args:
+        all_turns: Ordered rows from turn_session_turns for one session.
+        source_mode: The session input_mode ("text-only", "push-to-talk", "hands-free").
+    """
+    player_turns = [t for t in all_turns if t["role"] == "player"]
+    # NPC response turns only (not the opening monologue) for per-turn metrics.
+    npc_turns = [t for t in all_turns if t["role"] == "npc"]
+    all_npc_speech = [t for t in all_turns if t["role"] in ("npc", "npc_opening")]
+
+    # --- Talk ratio and words per turn ---
+    player_word_total = sum(_count_words(t["content"] or "") for t in player_turns)
+    npc_word_total = sum(_count_words(t["content"] or "") for t in all_npc_speech)
+    grand_total = player_word_total + npc_word_total
+    talk_ratio = round(player_word_total / grand_total, 3) if grand_total > 0 else 0.0
+    words_per_turn_player = (
+        round(player_word_total / len(player_turns), 1) if player_turns else 0.0
+    )
+    words_per_turn_npc = (
+        round(npc_word_total / len(all_npc_speech), 1) if all_npc_speech else 0.0
+    )
+
+    # --- Question counts (heuristic: sentence ends with "?") ---
+    open_questions = 0
+    closed_questions = 0
+    for turn in player_turns:
+        content = turn["content"] or ""
+        # Split on whitespace following a "?" so multi-question turns are handled.
+        fragments = re.split(r"(?<=[?])\s+", content)
+        for fragment in fragments:
+            fragment = fragment.strip()
+            if not fragment.endswith("?"):
+                continue
+            first_word = fragment.split()[0].lower() if fragment.split() else ""
+            if first_word in _OPEN_QUESTION_STARTERS:
+                open_questions += 1
+            else:
+                closed_questions += 1
+
+    # --- Filler word count (voice sessions only) ---
+    filler_word_count = 0
+    if source_mode in ("push-to-talk", "hands-free"):
+        for turn in player_turns:
+            tokens = re.findall(r"\b\w+\b", (turn["content"] or "").lower())
+            filler_word_count += sum(1 for tok in tokens if tok in _FILLER_WORDS)
+
+    # --- Response latency (player turn submitted → NPC turn persisted) ---
+    # Turn numbering: player turn N is at row turn_number=2N-1, NPC at 2N.
+    ts_by_num: Dict[int, str] = {t["turn_number"]: t["created_at"] for t in all_turns}
+    latencies_ms: List[float] = []
+    for p_turn in player_turns:
+        p_num = p_turn["turn_number"]
+        npc_ts_raw = ts_by_num.get(p_num + 1)
+        p_ts_raw = p_turn["created_at"]
+        if not npc_ts_raw or not p_ts_raw:
+            continue
+        p_time = _parse_iso_timestamp(p_ts_raw)
+        n_time = _parse_iso_timestamp(npc_ts_raw)
+        if p_time is None or n_time is None:
+            continue
+        delta_ms = (n_time - p_time) * 1000.0
+        if 0 < delta_ms < _LATENCY_MAX_MS:
+            latencies_ms.append(delta_ms)
+
+    p50_ms: Optional[int] = None
+    p95_ms: Optional[int] = None
+    if latencies_ms:
+        sorted_lat = sorted(latencies_ms)
+        n = len(sorted_lat)
+        p50_ms = round(sorted_lat[n // 2])
+        p95_idx = min(int(0.95 * n + 0.5), n - 1)
+        p95_ms = round(sorted_lat[p95_idx])
+
+    # --- State arc: cumulative state after each NPC response turn ---
+    # state_delta_json stores incremental changes; accumulate them into running_state.
+    state_arc: List[Dict[str, Any]] = []
+    running_state: Dict[str, int] = {}
+    for turn in all_turns:
+        if turn["state_delta_json"]:
+            try:
+                delta = json.loads(turn["state_delta_json"])
+                if isinstance(delta, dict):
+                    for var_name, var_delta in delta.items():
+                        if isinstance(var_delta, (int, float)):
+                            running_state[var_name] = (
+                                running_state.get(var_name, 0) + int(var_delta)
+                            )
+            except json.JSONDecodeError:
+                pass
+        if turn["role"] == "npc":
+            state_arc.append({
+                "turn_number": turn["turn_number"],
+                "state": dict(running_state),
+            })
+
+    return {
+        "metrics_version": "1",
+        "talk_ratio": talk_ratio,
+        "words_per_turn_player": words_per_turn_player,
+        "words_per_turn_npc": words_per_turn_npc,
+        "open_questions": open_questions,
+        "closed_questions": closed_questions,
+        "filler_word_count": filler_word_count,
+        "interruption_count": 0,  # reserved: VAD overlap events not yet stored
+        "response_latency_p50_ms": p50_ms,
+        "response_latency_p95_ms": p95_ms,
+        "state_arc": state_arc,
+    }
 
 
 def _parse_rubric_observations(raw_output_json: Optional[str]) -> List[Dict[str, Any]]:
@@ -254,7 +406,7 @@ async def generate_debrief(
         # Load all turns for transcript.
         all_turn_rows = conn.execute(
             "SELECT turn_number, role, content, emotion, state_delta_json, "
-            "event_flags_json, safety_json, raw_output_json "
+            "event_flags_json, safety_json, raw_output_json, source_mode, created_at "
             "FROM turn_session_turns WHERE session_id = ? ORDER BY turn_number ASC",
             (session_id,),
         ).fetchall()
@@ -265,6 +417,10 @@ async def generate_debrief(
         # Compute scores.
         scores = _compute_scores(npc_turn_rows)
         overall_score = _compute_overall_score(scores)
+
+        # Compute telemetry metrics (pure, deterministic over this transcript).
+        source_mode = setup.get("input_mode", "text-only")
+        metrics = compute_metrics(all_turn_rows, source_mode=source_mode)
 
         # Identify key turning points for fallback and for the LLM.
         key_turns = _identify_key_turns(npc_turn_rows)
@@ -353,6 +509,7 @@ async def generate_debrief(
             "npc_final_state": final_state,
             "generated_at": now,
             "used_fallback": narrative.used_fallback,
+            "metrics": metrics,
         }
         if pack_id:
             debrief_doc["pack_id"] = pack_id
@@ -360,9 +517,9 @@ async def generate_debrief(
         # Persist and transition to DebriefReady.
         with conn:
             conn.execute(
-                "INSERT INTO session_debriefs (session_id, content_json, generated_at) "
-                "VALUES (?, ?, ?)",
-                (session_id, json.dumps(debrief_doc), now),
+                "INSERT INTO session_debriefs (session_id, content_json, metrics_json, generated_at) "
+                "VALUES (?, ?, ?, ?)",
+                (session_id, json.dumps(debrief_doc), json.dumps(metrics), now),
             )
             conn.execute(
                 "UPDATE turn_sessions SET flow_state = 'DebriefReady' WHERE session_id = ?",
@@ -388,6 +545,7 @@ async def generate_debrief(
             npc_final_state=final_state,
             generated_at=now,
             used_fallback=narrative.used_fallback,
+            metrics=metrics,
         )
 
     except Exception as exc:
