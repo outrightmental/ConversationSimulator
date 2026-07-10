@@ -184,12 +184,30 @@ jobs:
               exit 0
             }
 
+            # Resolve signtool.exe.  It ships with the Windows SDK but is not on
+            # PATH on GitHub-hosted Windows runners, so fall back to searching
+            # the Windows Kits install directory for the newest x64 build.
+            $signtool = (Get-Command signtool.exe -ErrorAction SilentlyContinue).Source
+            if (-not $signtool) {
+              $signtool = Get-ChildItem `
+                -Path "${env:ProgramFiles(x86)}\Windows Kits\10\bin" `
+                -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
+                Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
+                Sort-Object FullName -Descending |
+                Select-Object -First 1 -ExpandProperty FullName
+            }
+            if (-not $signtool) {
+              Write-Error "signtool.exe not found on PATH or under the Windows SDK; cannot sign installers."
+              exit 1
+            }
+            Write-Host "  Using signtool: $signtool"
+
             foreach ($installer in $installers) {
               Write-Host "  Signing: $($installer.FullName)"
               # /tr  — RFC 3161 timestamp server (DigiCert, always free to use)
               # /td  — timestamp digest algorithm
               # /fd  — file digest algorithm
-              signtool.exe sign `
+              & $signtool sign `
                 /f $pfxPath `
                 /p $env:CERT_PASSWORD `
                 /tr http://timestamp.digicert.com `
