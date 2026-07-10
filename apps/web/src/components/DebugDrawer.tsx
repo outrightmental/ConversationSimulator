@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from 'react'
+import { LATENCY_BUDGETS } from '@convsim/shared'
 import type { LatencySnapshot } from '@convsim/shared'
 
 export interface DebugTurnEntry {
@@ -299,9 +300,12 @@ function LatencyTable({ snapshot }: { snapshot: LatencySnapshot }) {
         <tbody>
           {entries.map((k) => {
             const ms = snapshot[k]!
-            const isWarn = (k === 'first_token_ms' && ms > 3000) ||
-              (k === 'full_response_ms' && ms > 10000) ||
-              (k === 'session_start_ms' && ms > 5000)
+            const isWarn =
+              (k === 'first_token_ms' && ms > LATENCY_BUDGETS.TTFT_MS) ||
+              (k === 'full_response_ms' && ms > LATENCY_BUDGETS.FULL_RESPONSE_MS) ||
+              (k === 'session_start_ms' && ms > LATENCY_BUDGETS.COLD_START_MS) ||
+              (k === 'tts_first_sentence_ms' && ms > LATENCY_BUDGETS.TTS_FIRST_AUDIO_MS) ||
+              (k === 'stt_final_ms' && ms > LATENCY_BUDGETS.STT_ROUND_TRIP_MS)
             return (
               <tr key={k}>
                 <td style={{ color: '#71717a', paddingRight: '0.75rem', paddingBottom: 2 }}>
