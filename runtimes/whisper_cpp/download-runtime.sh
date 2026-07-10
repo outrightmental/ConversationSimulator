@@ -46,19 +46,17 @@ DISCLOSURE
 # Approximate model sizes (for user awareness before download)
 # ---------------------------------------------------------------------------
 
-declare -A MODEL_SIZES=(
-  ["tiny"]="~77 MB"
-  ["tiny.en"]="~77 MB"
-  ["base"]="~148 MB"
-  ["base.en"]="~147 MB"
-  ["small"]="~488 MB"
-  ["small.en"]="~488 MB"
-  ["medium"]="~1.5 GB"
-  ["medium.en"]="~1.5 GB"
-  ["large-v3"]="~3.1 GB"
-)
-
-APPROX_SIZE="${MODEL_SIZES[$MODEL_NAME]:-unknown size}"
+# A case statement (rather than an associative array) keeps this portable to
+# bash 3.2, which still ships as /bin/bash on macOS — a supported platform here.
+case "${MODEL_NAME}" in
+  tiny | tiny.en)     APPROX_SIZE="~77 MB" ;;
+  base)               APPROX_SIZE="~148 MB" ;;
+  base.en)            APPROX_SIZE="~147 MB" ;;
+  small | small.en)   APPROX_SIZE="~488 MB" ;;
+  medium | medium.en) APPROX_SIZE="~1.5 GB" ;;
+  large-v3)           APPROX_SIZE="~3.1 GB" ;;
+  *)                  APPROX_SIZE="unknown size" ;;
+esac
 echo "Model   : ggml-${MODEL_NAME}"
 echo "Size    : ${APPROX_SIZE} (approximate)"
 echo "Dest    : ${MODEL_FILE}"
