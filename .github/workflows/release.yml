@@ -31,6 +31,14 @@ jobs:
     name: Desktop (${{ matrix.name }})
     needs: validate
     runs-on: ${{ matrix.runner }}
+    # The `secrets` context cannot be referenced from a step `if:` conditional
+    # (it evaluates to empty and the condition is always false). Expose only a
+    # boolean presence flag at the job level so the import step can gate on
+    # `env` — deliberately NOT the certificate itself, which must stay scoped to
+    # the import step (leaking APPLE_CERTIFICATE into the Tauri build step would
+    # make Tauri attempt its own keychain import without the password).
+    env:
+      HAS_APPLE_CERT: ${{ secrets.APPLE_CERTIFICATE != '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -110,7 +118,7 @@ jobs:
       # this step is skipped and the build produces an unsigned artifact — suitable
       # for development and internal testing but not for Stage 3/4 Steam release.
       - name: Import Apple Developer certificate (macOS only)
-        if: runner.os == 'macOS' && secrets.APPLE_CERTIFICATE != ''
+        if: runner.os == 'macOS' && env.HAS_APPLE_CERT == 'true'
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -329,11 +337,38 @@ jobs:
           find "$BUNDLE_ROOT" \( -name "*.AppImage" -o -name "*.deb" \) | \
             sort | xargs sha256sum
 
+      # ── Package the macOS .app bundle for the Steam depot ────────────────────
+      # Tauri only emits `.dmg` (installer) and the raw `.app` bundle directory
+      # here; the `.app.tar.gz` updater artifact is NOT produced because the
+      # updater is not configured (no bundle.createUpdaterArtifacts / signing
+      # key).  Steam depots need the raw application files, so we tarball the
+      # signed & notarised `.app` ourselves.  Using `tar` (bsdtar) preserves the
+      # code signature and stapled notarisation ticket, and archiving with the
+      # bundle directory as CWD keeps `<name>.app` at the archive root so
+      # steam-deploy can extract it straight into steam-content/macos/.
+      - name: Package macOS .app bundle for Steam depot (macOS only)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -eu
+          BUNDLE_DIR=apps/desktop/src-tauri/target/release/bundle/macos
+          APP_PATH="$(find "$BUNDLE_DIR" -maxdepth 1 -name '*.app' | head -n1)"
+          if [ -z "$APP_PATH" ]; then
+            echo "ERROR: no .app bundle found under $BUNDLE_DIR" >&2
+            exit 1
+          fi
+          APP_NAME="$(basename "$APP_PATH")"
+          TARBALL="$BUNDLE_DIR/${APP_NAME%.app}.app.tar.gz"
+          echo "Packaging $APP_PATH -> $TARBALL"
+          tar -czf "$TARBALL" -C "$BUNDLE_DIR" "$APP_NAME"
+          ls -lh "$TARBALL"
+
       # ── Collect installers ───────────────────────────────────────────────────
       # Tauri v2 places bundles under target/release/bundle/<format>/.
-      # The .app.tar.gz (macOS) is the raw app bundle in a tarball — Steam depots
-      # require application files directly, not the .dmg installer, so the
-      # steam-deploy workflow extracts this tarball into steam-content/macos/.
+      # The .app.tar.gz (macOS) is the raw app bundle in a tarball, produced by
+      # the packaging step above — Steam depots require application files
+      # directly, not the .dmg installer, so the steam-deploy workflow extracts
+      # this tarball into steam-content/macos/.
       - name: Upload desktop installer artifacts
         uses: actions/upload-artifact@v4
         with:
