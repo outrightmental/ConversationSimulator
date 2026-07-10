@@ -30,6 +30,11 @@ export default function Home() {
 
   const [isRestartingSidecar, setIsRestartingSidecar] = useState(false)
 
+  // Wait for both the logbook profile and the scenario list before showing any
+  // recommendations, so we never flash cold-start suggestions computed from a
+  // still-loading (null) profile while the "Loading…" text is also on screen.
+  const trainingPlanLoading =
+    logbook.state === 'loading' || scenariosResult.state === 'loading'
 
   const recommendations = recommendNext(
     logbook.profile,
@@ -236,13 +241,13 @@ export default function Home() {
         <h2 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.75rem' }}>
           {t('home.trainingPlan.heading')}
         </h2>
-        {(logbook.state === 'loading' || scenariosResult.state === 'loading') && (
+        {trainingPlanLoading && (
           <p style={{ color: '#71717a', fontSize: '0.875rem' }}>{t('home.trainingPlan.loading')}</p>
         )}
-        {logbook.state !== 'loading' && scenariosResult.state !== 'loading' && recommendations.length === 0 && (
+        {!trainingPlanLoading && recommendations.length === 0 && (
           <p style={{ color: '#71717a', fontSize: '0.875rem' }}>{t('home.trainingPlan.noSuggestions')}</p>
         )}
-        {recommendations.length > 0 && (
+        {!trainingPlanLoading && recommendations.length > 0 && (
           <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
             {recommendations.map((rec) => (
               <li
