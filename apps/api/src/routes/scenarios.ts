@@ -68,7 +68,11 @@ function packScenarioToScenarioInfo(
       soft_time_limit_minutes: softLimit,
     },
     state_meters_permitted: false,
-    voice_supported: false,
+    // Voice is a runtime TTS/STT capability applied to every scenario, not a
+    // per-pack content flag (the pack schema has no voice field). Match the
+    // built-in scenarios (all voice_supported) so the library's "Voice only"
+    // filter and "Voice supported" chip treat imported packs consistently.
+    voice_supported: true,
     safety_summary: `${m.content_rating} rated. Content cap: ${pack.safety.content_rating_cap}.`,
     estimated_length_label: estimatedLengthLabel,
     tags: m.tags ?? [],

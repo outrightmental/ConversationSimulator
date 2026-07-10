@@ -188,6 +188,10 @@ describe('GET /api/scenarios — dynamic pack merge', () => {
     expect(dynamic.duration.max_turns).toBe(10);
     expect(dynamic.duration.soft_time_limit_minutes).toBe(12);
     expect(dynamic.estimated_length_label).toMatch(/minutes/);
+    // Voice is a runtime capability applied to every scenario, so imported
+    // pack scenarios must be voice_supported like the built-ins — otherwise
+    // the library's voice filter/chip would silently exclude them.
+    expect(dynamic.voice_supported).toBe(true);
   });
 
   it('does not double-serve a scenario whose id also exists as a static built-in', async () => {
