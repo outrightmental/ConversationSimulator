@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import type { DebriefTurningPoint, SessionDebriefResponse } from '@convsim/shared'
+import type { DebriefTurningPoint, SessionDebriefResponse, SessionCreateRequest } from '@convsim/shared'
 import { api } from '../api/client'
 import { isDevModeEnabled } from '../privacyPrefs'
 
@@ -15,12 +15,16 @@ export default function Debrief() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const navigate = useNavigate()
 
-  const [phase, setPhase] = useState<'loading' | 'loaded' | 'error'>('loading')
+  const [phase, setPhase] = useState<'loading' | 'loaded' | 'error' | 'transcript_only'>('loading')
   const [debrief, setDebrief] = useState<SessionDebriefResponse | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [transcript, setTranscript] = useState<TranscriptEvent[]>([])
   const [exporting, setExporting] = useState(false)
   const [exportingText, setExportingText] = useState(false)
+  const [retryKey, setRetryKey] = useState(0)
+  const [sessionSetup, setSessionSetup] = useState<SessionCreateRequest | null>(null)
+  const [exportedScenarioId, setExportedScenarioId] = useState<string | null>(null)
+  const [replayingSameSetup, setReplayingSameSetup] = useState(false)
   // Debrief-generation latency (ms), captured locally for the dev debug view. No telemetry.
   const [debriefMs, setDebriefMs] = useState<number | null>(null)
   const devMode = isDevModeEnabled()
@@ -43,7 +47,16 @@ export default function Debrief() {
           api.exportSession(sessionId).then(
             (data) => {
               if (cancelled) return
-              const exportData = data as { events?: TranscriptEvent[] }
+              const exportData = data as {
+                session?: { setup?: SessionCreateRequest; scenario_id?: string }
+                events?: TranscriptEvent[]
+              }
+              if (exportData.session?.setup) {
+                setSessionSetup(exportData.session.setup)
+              }
+              if (exportData.session?.scenario_id) {
+                setExportedScenarioId(exportData.session.scenario_id)
+              }
               const turns = (exportData.events ?? []).filter(
                 (e) =>
                   e.event_type === 'player_turn' ||
@@ -66,12 +79,65 @@ export default function Debrief() {
     return () => {
       cancelled = true
     }
-  }, [sessionId])
+  }, [sessionId, retryKey])
 
   const scrollToTurn = useCallback((turnNumber: number) => {
     const el = turnRefs.current.get(turnNumber)
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
   }, [])
+
+  function handleRetry() {
+    setPhase('loading')
+    setError(null)
+    setDebrief(null)
+    setRetryKey((k) => k + 1)
+  }
+
+  async function handleShowTranscriptOnly() {
+    if (!sessionId) return
+    setPhase('loading')
+    try {
+      const data = await api.exportSession(sessionId)
+      const exportData = data as {
+        session?: { setup?: SessionCreateRequest; scenario_id?: string }
+        events?: TranscriptEvent[]
+      }
+      if (exportData.session?.setup) setSessionSetup(exportData.session.setup)
+      if (exportData.session?.scenario_id) setExportedScenarioId(exportData.session.scenario_id)
+      const turns = (exportData.events ?? []).filter(
+        (e) =>
+          e.event_type === 'player_turn' ||
+          e.event_type === 'npc_turn' ||
+          e.event_type === 'npc_opening',
+      )
+      setTranscript(turns)
+      setPhase('transcript_only')
+    } catch {
+      setPhase('error')
+    }
+  }
+
+  async function handleReplaySameSetup() {
+    if (!sessionSetup) {
+      handleReplayVariation()
+      return
+    }
+    setReplayingSameSetup(true)
+    try {
+      const newSession = await api.createSession(sessionSetup)
+      navigate(`/conversation/${newSession.session_id}`, {
+        state: {
+          language: newSession.setup.language,
+          show_state_meters: newSession.setup.show_state_meters,
+          scenario_id: newSession.scenario_id,
+        },
+      })
+    } catch {
+      handleReplayVariation()
+    } finally {
+      setReplayingSameSetup(false)
+    }
+  }
 
   async function handleExport() {
     if (!sessionId) return
@@ -107,12 +173,13 @@ export default function Debrief() {
     }
   }
 
-  function handleReplay() {
-    if (!debrief?.scenario_id) {
+  function handleReplayVariation() {
+    const scenarioId = debrief?.scenario_id ?? exportedScenarioId
+    if (!scenarioId) {
       navigate('/library')
       return
     }
-    navigate(`/setup/${debrief.scenario_id}`)
+    navigate(`/setup/${scenarioId}`)
   }
 
   return (
@@ -171,7 +238,165 @@ export default function Debrief() {
           }}
         >
           <strong>Failed to generate debrief:</strong> {error}
+          <div style={{ marginTop: '0.75rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <button
+              data-testid="retry-btn"
+              onClick={handleRetry}
+              style={{
+                padding: '0.35rem 0.9rem',
+                borderRadius: 5,
+                border: 'none',
+                background: '#4f46e5',
+                color: '#fff',
+                fontWeight: 600,
+                cursor: 'pointer',
+                fontSize: '0.8rem',
+              }}
+            >
+              Try again
+            </button>
+            <button
+              data-testid="transcript-only-btn"
+              onClick={() => void handleShowTranscriptOnly()}
+              style={{
+                padding: '0.35rem 0.9rem',
+                borderRadius: 5,
+                border: '1px solid #7f1d1d',
+                background: 'transparent',
+                color: '#fca5a5',
+                cursor: 'pointer',
+                fontSize: '0.8rem',
+              }}
+            >
+              Show transcript only
+            </button>
+          </div>
         </div>
+      )}
+
+      {phase === 'transcript_only' && (
+        <>
+          <div
+            data-testid="transcript-only-notice"
+            style={{
+              padding: '0.6rem 1rem',
+              borderRadius: 6,
+              border: '1px solid #78350f',
+              background: '#1c0a00',
+              color: '#fbbf24',
+              fontSize: '0.8rem',
+            }}
+          >
+            Debrief generation failed. Showing transcript only.
+          </div>
+
+          {transcript.length > 0 ? (
+            <section aria-labelledby="transcript-heading-fallback" data-testid="transcript-section">
+              <h2
+                id="transcript-heading-fallback"
+                style={{ marginBottom: '0.5rem', fontSize: '1.1rem' }}
+              >
+                Transcript
+              </h2>
+              <div
+                role="log"
+                aria-label="Conversation transcript"
+                style={{
+                  maxHeight: 400,
+                  overflowY: 'auto',
+                  padding: '1rem',
+                  borderRadius: 8,
+                  border: '1px solid #27272a',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.75rem',
+                }}
+              >
+                {transcript.map((event, idx) => (
+                  <TranscriptTurn
+                    key={event.event_id > 0 ? event.event_id : idx}
+                    event={event}
+                    turnNumber={idx + 1}
+                    registerRef={(el) => {
+                      if (el) turnRefs.current.set(idx + 1, el)
+                      else turnRefs.current.delete(idx + 1)
+                    }}
+                  />
+                ))}
+              </div>
+            </section>
+          ) : (
+            <p style={{ color: '#71717a', fontSize: '0.875rem' }}>
+              No transcript was saved for this session.
+            </p>
+          )}
+
+          <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+            <button
+              data-testid="retry-btn"
+              onClick={handleRetry}
+              style={{
+                padding: '0.5rem 1.5rem',
+                borderRadius: 6,
+                border: 'none',
+                background: '#4f46e5',
+                color: '#fff',
+                fontWeight: 600,
+                cursor: 'pointer',
+              }}
+            >
+              Retry debrief
+            </button>
+            <button
+              data-testid="replay-btn"
+              onClick={handleReplayVariation}
+              style={{
+                padding: '0.5rem 1rem',
+                borderRadius: 6,
+                border: '1px solid #52525b',
+                background: 'transparent',
+                color: '#a1a1aa',
+                cursor: 'pointer',
+              }}
+            >
+              Replay variation
+            </button>
+            <button
+              data-testid="export-text-btn"
+              onClick={() => void handleExportText()}
+              disabled={exportingText}
+              style={{
+                padding: '0.5rem 1rem',
+                borderRadius: 6,
+                border: '1px solid #52525b',
+                background: 'transparent',
+                color: '#a1a1aa',
+                cursor: exportingText ? 'default' : 'pointer',
+              }}
+            >
+              {exportingText ? 'Exporting…' : 'Export transcript (Markdown)'}
+            </button>
+            <button
+              onClick={() => navigate('/library')}
+              style={{
+                padding: '0.5rem 1rem',
+                borderRadius: 6,
+                border: '1px solid #52525b',
+                background: 'transparent',
+                color: '#a1a1aa',
+                cursor: 'pointer',
+              }}
+            >
+              Try another scenario
+            </button>
+          </div>
+          <p
+            data-testid="export-privacy-notice"
+            style={{ fontSize: '0.75rem', color: '#52525b', margin: 0 }}
+          >
+            Exported files are saved to your local download folder and never leave your device.
+          </p>
+        </>
       )}
 
       {devMode && debriefMs !== null && (
@@ -442,7 +667,7 @@ export default function Debrief() {
           <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
             <button
               data-testid="replay-btn"
-              onClick={handleReplay}
+              onClick={handleReplayVariation}
               style={{
                 padding: '0.5rem 1.5rem',
                 borderRadius: 6,
@@ -453,7 +678,22 @@ export default function Debrief() {
                 cursor: 'pointer',
               }}
             >
-              Replay scenario
+              Replay variation
+            </button>
+            <button
+              data-testid="replay-same-btn"
+              onClick={() => void handleReplaySameSetup()}
+              disabled={replayingSameSetup}
+              style={{
+                padding: '0.5rem 1rem',
+                borderRadius: 6,
+                border: '1px solid #52525b',
+                background: 'transparent',
+                color: '#a1a1aa',
+                cursor: replayingSameSetup ? 'default' : 'pointer',
+              }}
+            >
+              {replayingSameSetup ? 'Starting…' : 'Replay same setup'}
             </button>
             <button
               data-testid="export-btn"
@@ -499,6 +739,12 @@ export default function Debrief() {
               Try another scenario
             </button>
           </div>
+          <p
+            data-testid="export-privacy-notice"
+            style={{ fontSize: '0.75rem', color: '#52525b', margin: 0 }}
+          >
+            Exported files are saved to your local download folder and never leave your device.
+          </p>
         </>
       )}
     </div>

@@ -95,10 +95,14 @@ jobs:
         run: |
           echo "Local: pnpm --filter @convsim/pack-loader test"
           pnpm --filter @convsim/pack-loader test
-      - name: Run CLI tests
+      - name: Run offline smoke tests (mock runtime)
         run: |
-          echo "Local: pnpm --filter @convsim/cli test"
-          pnpm --filter @convsim/cli test
+          echo "Local: pnpm --filter @convsim/cli exec vitest run tests/offline-smoke-test.test.ts tests/runner.test.ts"
+          pnpm --filter @convsim/cli exec vitest run tests/offline-smoke-test.test.ts tests/runner.test.ts
+      - name: Run CLI unit tests
+        run: |
+          echo "Local: pnpm --filter @convsim/cli exec vitest run tests/cli.test.ts"
+          pnpm --filter @convsim/cli exec vitest run tests/cli.test.ts
 
   schemas:
     name: Schema validation tests
