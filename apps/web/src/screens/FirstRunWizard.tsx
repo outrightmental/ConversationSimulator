@@ -11,11 +11,12 @@ import type {
   BenchmarkResponse,
 } from '@convsim/shared'
 
-export { SETUP_KEYS }
-
 const SETUP_DOCS_URL = 'https://github.com/outrightmental/ConversationSimulator/wiki'
 
-export function markFirstRunComplete(): void {
+// Marks the one-time setup wizard complete so the FirstRunGuard stops redirecting here.
+// Used only within this module; kept unexported so the file exports only its component
+// (satisfies react-refresh/only-export-components).
+function markFirstRunComplete(): void {
   try {
     localStorage.setItem(SETUP_KEYS.firstRunComplete, 'true')
   } catch {
