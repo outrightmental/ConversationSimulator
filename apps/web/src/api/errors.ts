@@ -53,6 +53,15 @@ export const ERROR_COPY: Record<ErrorKind, ErrorCopy> = {
   },
 }
 
+// A single-line, plain-language headline for an error, used by compact inline
+// surfaces that render their own markup instead of a full ApiErrorView. Mirrors
+// ApiErrorView's logic: an http-error carries a clean server message worth
+// showing; every other kind maps to its designed title (never a raw string).
+export function errorHeadline(error: ApiError): string {
+  if (error.kind === 'http-error' && error.message) return error.message
+  return ERROR_COPY[error.kind].title
+}
+
 export function buildDiagnosticsText(error: ApiError, context?: string): string {
   const lines: string[] = ['ConversationSimulator diagnostics', `kind: ${error.kind}`]
   if (error.status !== undefined) lines.push(`status: ${error.status}`)

@@ -267,8 +267,20 @@ export default function Conversation() {
       const startResult = await api.startSession(sessionId)
       if (cancelled) return
       if (!startResult.ok) {
-        setError(startResult.error)
-        setPhase('error')
+        // A 409 / INVALID_TRANSITION means the session was already started
+        // (e.g. a reload). That is recoverable: surface the notice but keep the
+        // conversation interactive rather than dropping into the dead-end error
+        // state, so the player can continue.
+        const e = startResult.error
+        const alreadyStarted =
+          e.status === 409 || e.message.includes('INVALID_TRANSITION')
+        setError(e)
+        if (alreadyStarted) {
+          setSessionState('PlayerTurnListening')
+          setPhase('active')
+        } else {
+          setPhase('error')
+        }
         return
       }
       const startData = startResult.data
@@ -602,8 +614,12 @@ export default function Conversation() {
       setSessionState(endResult.data.state)
       setEndingType(endResult.data.ending_type)
       setPhase('ended')
+    } else {
+      // Surface the failure and return to the active conversation rather than
+      // leaving the UI stuck in the 'ending' (busy) phase.
+      setError(endResult.error)
+      setPhase('active')
     }
-    // silently continue even if endSession fails
   }
 
   function dismissBanner(id: number) {
