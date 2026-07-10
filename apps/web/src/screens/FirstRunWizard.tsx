@@ -954,14 +954,14 @@ export default function FirstRunWizard() {
     async function handleSelectOllama(m: DetectedOllamaModel) {
       setActionLoading(true)
       setActionError(null)
-      try {
-        await api.useModel({ runtime_id: 'ollama', model_id: m.id })
-        benchmarkStartedRef.current = false
-        setStep('benchmark')
-      } catch (err: unknown) {
-        setActionError(err instanceof Error ? err.message : 'Failed to activate Ollama model.')
+      const r = await api.useModel({ runtime_id: 'ollama', model_id: m.id })
+      if (!r.ok) {
+        setActionError(r.error.message)
         setActionLoading(false)
+        return
       }
+      benchmarkStartedRef.current = false
+      setStep('benchmark')
     }
 
     return (
@@ -1064,19 +1064,18 @@ export default function FirstRunWizard() {
       setGgufPathError(null)
       setActionLoading(true)
       setActionError(null)
-      try {
-        await api.registerGguf({ path: trimmed })
-        try {
-          await api.startSidecar(trimmed)
-        } catch (sidecarErr) {
-          console.warn('GGUF registered, but the llama.cpp sidecar failed to start:', sidecarErr)
-        }
-        benchmarkStartedRef.current = false
-        setStep('benchmark')
-      } catch (err: unknown) {
-        setActionError(err instanceof Error ? err.message : 'Failed to activate the GGUF file.')
+      const reg = await api.registerGguf({ path: trimmed })
+      if (!reg.ok) {
+        setActionError(reg.error.message)
         setActionLoading(false)
+        return
       }
+      const sidecar = await api.startSidecar(trimmed)
+      if (!sidecar.ok) {
+        console.warn('GGUF registered, but the llama.cpp sidecar failed to start:', sidecar.error.message)
+      }
+      benchmarkStartedRef.current = false
+      setStep('benchmark')
     }
 
     return (
