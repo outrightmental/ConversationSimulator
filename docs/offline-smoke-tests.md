@@ -11,12 +11,14 @@ scripted session runs.
 
 ## CI path (automatic — mock runtime, no model required)
 
-Every pull request runs two explicit CI steps:
+Every pull request runs several explicit CI steps:
 
 | CI step | What it covers |
 |---|---|
-| **Run offline smoke tests (mock runtime)** | Loads all four official packs, plays scripted turns with the fake runtime, confirms no network violations. Also validates all golden transcript fixtures. |
+| **Run offline smoke tests (mock runtime)** | Loads all four official packs, plays scripted turns with the fake runtime, confirms no network violations (TypeScript/TCP guard). Also validates all golden transcript fixtures. |
 | **Run CLI unit tests** | CLI argument parsing and command dispatch. |
+| **Run acceptance tests** | Full player text-path journey including `TestNoCloudInference` (LOCAL_MODE=True guard). |
+| **Run network guard acceptance tests** | Four explicit guard scenarios: text-only gameplay+debrief+export (G-1), STT-enabled audio upload (G-2), TTS-enabled synthesis (G-3), pack import and play (G-4), and explicit-download always permitted (G-5). |
 
 These run automatically on every PR and merge to `main`.  No hardware or model
 downloads are needed.
@@ -32,7 +34,7 @@ pnpm install --frozen-lockfile
 pnpm --filter @convsim/shared-types build
 pnpm --filter @convsim/scenario-schema build
 
-# All offline smoke tests + golden transcript tests:
+# All offline smoke tests + golden transcript tests (TypeScript, TCP-level guard):
 pnpm --filter @convsim/cli exec vitest run tests/offline-smoke-test.test.ts tests/runner.test.ts
 
 # Or run everything in the CLI package:
@@ -49,6 +51,30 @@ A pass produces output like:
 ✓ golden — job-interview-basic smoke test > passes all fixtures with the fake runtime
 ...
 ```
+
+### Python acceptance tests (multi-path guard)
+
+Run the network guard acceptance tests to verify STT, TTS, debrief, and pack-import
+paths all complete without outbound calls:
+
+```bash
+pip install -e "packages/prompt-composer[dev]"
+pip install -e "services/convsim-core[dev]"
+
+# All acceptance tests (includes G-1 through G-5 guard scenarios):
+python -m pytest tests/acceptance/ -v
+
+# Network guard tests only:
+python -m pytest tests/acceptance/test_network_guard.py -v
+```
+
+| Guard scenario | What is tested |
+|---|---|
+| **G-1** Text-only | create → start → turn → end → debrief → transcript export |
+| **G-2** STT-enabled | health check → audio upload → turn submitted as text → end |
+| **G-3** TTS-enabled | turn → NPC utterance synthesised to local WAV → debrief |
+| **G-4** Pack import | zip import → scenario listed → session created and played |
+| **G-5** Explicit-download | `NetworkMode.EXPLICIT_DOWNLOAD` always passes through LOCAL_MODE |
 
 ---
 
@@ -191,6 +217,8 @@ Any `network_violation` result is a regression and should be reported immediatel
 
 ## How the network guard works
 
+### TypeScript / Node.js (CLI guard)
+
 The guard patches `net.Socket.prototype.connect` — the lowest-level hook in
 Node.js's network stack.  Every HTTP, HTTPS, and `fetch()` call eventually calls
 this function to open a TCP connection.  The patch checks whether the target host
@@ -204,3 +232,69 @@ This approach catches:
 
 It does **not** prevent connections to other local processes (e.g. the llama.cpp
 sidecar listening on `127.0.0.1:8080`), which are intentional during real play.
+
+### Python / FastAPI (policy gate)
+
+The Python service enforces the policy through `convsim_core.network_policy`.
+Any code path that would contact a remote network service during play must call
+`require_network(NetworkMode.PLAY)` before opening a connection.  In test
+environments, setting `LOCAL_MODE = True` makes this call raise
+`NetworkBlockedError` immediately, failing the test.
+
+User-initiated downloads (model files, pack bundles) use
+`require_network(NetworkMode.EXPLICIT_DOWNLOAD)`, which always passes through
+regardless of `LOCAL_MODE`.
+
+---
+
+## Known limitations
+
+| Limitation | Why | Workaround |
+|---|---|---|
+| The TypeScript TCP guard cannot intercept Rust/C process syscalls. | The Tauri shell and llama.cpp sidecar are native processes — `net.Socket.prototype.connect` only covers the Node.js process. | Run `lsof -i` during a manual session to check sidecar outbound activity. |
+| The Python LOCAL_MODE guard only activates when call sites explicitly invoke `require_network(PLAY)`. | A call site that bypasses the policy gate is invisible to LOCAL_MODE. | Use the TypeScript TCP guard for end-to-end verification; the Python gate is a defence-in-depth ratchet. |
+| Fake workers (FakeSttWorker, FakeTtsWorker) are used in CI. | Real whisper.cpp and Kokoro binaries are not available in the CI environment. | See "Manual verification with real voice workers" below for how to test with real models. |
+| Mic capture and VAD hardware cannot be tested at the API level. | Microphone input requires a physical device and browser permission. | Tested manually as part of the beta sign-off checklist. |
+| WebSocket session paths are not covered by the acceptance tests. | FastAPI `TestClient` does not exercise the WebSocket session endpoint. | The WebSocket handler delegates to the same turn pipeline as the REST endpoint; REST coverage is sufficient for the network policy ratchet. |
+
+---
+
+## Manual verification with real voice workers
+
+To verify the complete voice pipeline (whisper.cpp STT + Kokoro TTS) makes no
+unexpected outbound network calls during a real session:
+
+### 1. Install and start the voice workers
+
+Follow `docs/runtime-adapters.md` to install whisper.cpp and Kokoro, then start
+the full service stack:
+
+```bash
+./scripts/dev.sh
+```
+
+### 2. Run the Python network guard tests against the real workers
+
+```bash
+CONVSIM_STT_WORKER_ID=whisper_cpp CONVSIM_TTS_WORKER_ID=kokoro \
+  python -m pytest tests/acceptance/test_network_guard.py -v
+```
+
+The guard test fixture wires `LOCAL_MODE = True` for the entire test client
+lifetime.  Any attempt by whisper.cpp or Kokoro to contact a remote server
+during a test session will raise `NetworkBlockedError` — but both are
+expected to pass, since they process audio locally.
+
+### 3. Record and report results
+
+Capture output to a file:
+
+```bash
+CONVSIM_STT_WORKER_ID=whisper_cpp CONVSIM_TTS_WORKER_ID=kokoro \
+  python -m pytest tests/acceptance/test_network_guard.py -v \
+  > /tmp/network-guard-$(uname -m).txt 2>&1
+echo "Exit: $?"
+```
+
+Attach `/tmp/network-guard-*.txt` to the beta feedback issue along with your
+OS, Python version (`python --version`), and whisper.cpp / Kokoro versions.
