@@ -254,13 +254,15 @@ type "$env:LOCALAPPDATA\outrightmental\convsim\steam_cloud_settings.json"
 #### B.11.2 Verify subdirectory exclusion markers
 
 ```bash
-# macOS / Linux (check each subdirectory for .nosteamcloudpath)
-for d in db logs models packs exports cache crashes; do
+# macOS / Linux (check each subdirectory for .nosteamcloudpath).
+# Note: the model marker lives at models/llm/ — models_dir resolves to
+# {data_root}/models/llm, so the marker is placed there, not at models/.
+for d in data db logs models/llm packs exports cache crashes; do
     echo "$d: $(ls "$HOME/Library/Application Support/com.outrightmental.convsim/$d/.nosteamcloudpath" 2>/dev/null && echo PRESENT || echo MISSING)"
 done
 ```
 
-- [ ] `.nosteamcloudpath` is present in every subdirectory (`db/`, `logs/`, `models/`, `packs/`, `exports/`, `cache/`, `crashes/`)
+- [ ] `.nosteamcloudpath` is present in every marked subdirectory (`data/`, `db/`, `logs/`, `models/llm/`, `packs/`, `exports/`, `cache/`, `crashes/`)
 - [ ] No `.nosteamcloudpath` marker exists at the data root itself (that would prevent the cloud settings file from syncing)
 
 #### B.11.3 Cross-device sync test
