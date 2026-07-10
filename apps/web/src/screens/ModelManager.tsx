@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { ModelsResponse, ModelRegistryEntry, DetectedOllamaModel, InstalledModelInfo, BenchmarkResponse } from '@convsim/shared'
 import type { ApiError } from '../api/errors'
+import { errorHeadline } from '../api/errors'
 import { ApiErrorView } from '../components/ApiErrorView'
 
 const SETUP_DOCS_URL = 'https://github.com/outrightmental/ConversationSimulator/wiki'
@@ -167,7 +168,7 @@ export default function ModelManager() {
 
   const [benchmarkRunning, setBenchmarkRunning] = useState(false)
   const [benchmarkResult, setBenchmarkResult] = useState<BenchmarkResponse | null>(null)
-  const [benchmarkError, setBenchmarkError] = useState<string | null>(null)
+  const [benchmarkError, setBenchmarkError] = useState<ApiError | null>(null)
   const benchmarkStartedRef = useRef(false)
 
   // The registry ID synced across devices via Steam Cloud (may be null). Used to
@@ -242,7 +243,7 @@ export default function ModelManager() {
       .benchmarkModel({})
       .then((r) => {
         if (r.ok) setBenchmarkResult(r.data)
-        else setBenchmarkError(r.error.message)
+        else setBenchmarkError(r.error)
       })
       .finally(() => {
         setBenchmarkRunning(false)
@@ -946,7 +947,7 @@ export default function ModelManager() {
             }}
           >
             <p style={{ margin: '0 0 0.4rem', color: '#f87171', fontSize: '0.875rem' }}>
-              Benchmark failed: {benchmarkError}
+              Benchmark failed: {errorHeadline(benchmarkError)}
             </p>
             <p style={{ margin: 0, fontSize: '0.8rem', color: '#a1a1aa' }}>
               Your model is still selected and ready to use. The benchmark is optional.

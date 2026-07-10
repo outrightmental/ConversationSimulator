@@ -103,6 +103,10 @@ export default function Debrief() {
     setPhase('loading')
     const r = await api.exportSession(sessionId!)
     if (!r.ok) {
+      // Surface the actual export failure — otherwise the error phase would show
+      // a stale cause left over from the debrief-generation failure (or nothing
+      // at all), with no Copy diagnostics for what really went wrong here.
+      setError(r.error)
       setPhase('error')
       return
     }
