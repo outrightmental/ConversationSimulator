@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+pack_id: official.dating_confidence_boundaries
+name: Dating — Confidence & Boundaries
+version: 0.1.0
+description: >-
+  Practice the social skills that make dating feel less daunting and more
+  human: starting a conversation, asking someone out, accepting a no with
+  grace, setting a clear boundary, and building genuine first-date connection.
+  Every scenario rewards honesty and respect over tactics and pressure.
+author: Outright Mental
+license: CC-BY-4.0
+content_rating: PG-13
+tags:
+  - dating
+  - social-skills
+  - confidence
+  - boundaries
+  - rejection-handling
+  - communication
+supported_languages:
+  - en
+entry_scenarios:
+  - scenarios/the_ask.yaml
+  - scenarios/graceful_exit.yaml
+  - scenarios/holding_your_ground.yaml
+  - scenarios/first_date_chemistry.yaml
+assets:
+  allow_external_urls: false
+safety:
+  policy: safety/dating_safety.yaml
+content_note: >-
+  PG-13 social-confidence practice. Scenarios explore asking someone out,
+  handling rejection, setting boundaries, and first-date conversation. No
+  sexual content, no coercion, no minors. Disengage-gracefully endings are
+  first-class wins.

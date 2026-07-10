@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scene_id: campus_coffee_cart
+display_name: "Campus Coffee Cart — Morning"
+description: >-
+  An outdoor coffee cart near the science building, busy with the pre-class
+  rush. The line moves slowly. Students stand close together with their bags
+  and phones, most in their own worlds. The cart operator calls out names
+  over the hiss of the espresso machine. This is a public, casual space
+  where brief conversations happen naturally and no one stays long.
+ambient: outdoor_crowd_morning

@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scene_id: community_gallery
+display_name: "Community Gallery — Evening Opening"
+description: >-
+  A small independent gallery during a weekend opening. Wine glasses on a
+  table near the door, clusters of people moving slowly between prints and
+  photographs. The lighting is warm and the noise is ambient rather than
+  loud. Two people can talk privately without being overheard but are clearly
+  not alone — the social context makes the conversation feel stakes-appropriate
+  rather than high-pressure.
+ambient: gallery_ambient
