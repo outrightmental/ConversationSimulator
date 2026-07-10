@@ -108,17 +108,17 @@ No language model weights are included. On first launch, the app opens the
 requirements. You must accept the model license before a download begins. The
 downloaded file is verified against its SHA-256 checksum before loading.
 
-The recommended starter model is **Qwen3 4B Instruct Q4\_K\_M** (~2.6 GB,
+The recommended starter model is **Qwen3 4B Instruct Q4\_K\_M** (~2.5 GB,
 Apache-2.0). The app is fully functional with the built-in fake runtime —
 responses are scripted rather than generated, useful for testing and development
 without any download.
 
 | Model | Size | VRAM | License |
 |---|---|---|---|
-| Qwen3 4B Instruct Q4\_K\_M | 2.6 GB | 4 GB+ | Apache-2.0 |
+| Qwen3 4B Instruct Q4\_K\_M | 2.5 GB | 4 GB+ | Apache-2.0 |
 | Qwen3 8B Instruct Q4\_K\_M | 5.0 GB | 6 GB+ | Apache-2.0 |
 | Qwen3 14B Instruct Q4\_K\_M | 9.0 GB | 10 GB+ | Apache-2.0 |
-| Mistral Small 3.1 24B Q4\_K\_M | 14.8 GB | 16 GB+ | Apache-2.0 |
+| Mistral Small 3.1 24B Q4\_K\_M | 14.3 GB | 16 GB+ | Apache-2.0 |
 
 ---
 
@@ -171,7 +171,7 @@ node packages/convsim-cli/dist/index.js offline-smoke-test packs/official/job-in
   The Qwen3 4B starter model is significantly faster and recommended for
   CPU-only setups.
 - **Real-model smoke testing is manual.** CI runs all acceptance tests with the
-  fake runtime. A real-model playthrough requires downloading a model (~2.6 GB
+  fake runtime. A real-model playthrough requires downloading a model (~2.5 GB
   minimum) and is not yet automated in CI.
 
 For a full list of post-alpha work items, see

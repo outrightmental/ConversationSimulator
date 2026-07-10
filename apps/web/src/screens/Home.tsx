@@ -3,27 +3,17 @@ import { Link } from 'react-router-dom'
 import { StatusBadge } from '@convsim/ui'
 import { useApiHealth } from '../api/useApiHealth'
 import { usePackCount } from '../api/usePackCount'
+import { useTranslation } from '../i18n'
 import type { BadgeStatus } from '@convsim/ui'
 
 const DOCS_URL = 'https://github.com/outrightmental/ConversationSimulator/wiki'
 const ISSUES_URL = 'https://github.com/outrightmental/ConversationSimulator/issues/new/choose'
 
-function runtimeBadge(loading: boolean, healthy: boolean): { status: BadgeStatus; label: string } {
-  if (loading) return { status: 'loading', label: 'Checking…' }
-  return healthy
-    ? { status: 'online', label: 'Ready' }
-    : { status: 'offline', label: 'Unavailable' }
-}
-
-function readinessBadge(loading: boolean, ready: boolean, offLabel = 'Not installed'): { status: BadgeStatus; label: string } {
-  if (loading) return { status: 'loading', label: 'Checking…' }
-  return ready ? { status: 'online', label: 'Ready' } : { status: 'offline', label: offLabel }
-}
-
 export default function Home() {
   const health = useApiHealth()
   const packCount = usePackCount()
   const loading = health.state === 'loading'
+  const { t } = useTranslation()
 
   const runtime = health.runtime
   const llmReady = runtime?.llm_ready ?? false
@@ -33,12 +23,33 @@ export default function Home() {
   const networkRequired = runtime?.network_required ?? false
   const lastError = runtime?.last_error ?? null
 
+  function runtimeBadge(
+    isLoading: boolean,
+    healthy: boolean,
+  ): { status: BadgeStatus; label: string } {
+    if (isLoading) return { status: 'loading', label: t('home.status.checking') }
+    return healthy
+      ? { status: 'online', label: t('home.status.ready') }
+      : { status: 'offline', label: t('home.status.unavailable') }
+  }
+
+  function readinessBadge(
+    isLoading: boolean,
+    ready: boolean,
+    offLabel = t('home.status.notInstalled'),
+  ): { status: BadgeStatus; label: string } {
+    if (isLoading) return { status: 'loading', label: t('home.status.checking') }
+    return ready
+      ? { status: 'online', label: t('home.status.ready') }
+      : { status: 'offline', label: offLabel }
+  }
+
   const runtimeBadgeProps = runtimeBadge(loading, health.healthy)
   const llmBadgeProps = loading
-    ? { status: 'loading' as BadgeStatus, label: 'Checking…' }
+    ? { status: 'loading' as BadgeStatus, label: t('home.status.checking') }
     : llmReady
-    ? { status: 'online' as BadgeStatus, label: llmName ?? 'Ready' }
-    : { status: 'offline' as BadgeStatus, label: 'Not installed' }
+    ? { status: 'online' as BadgeStatus, label: llmName ?? t('home.status.ready') }
+    : { status: 'offline' as BadgeStatus, label: t('home.status.notInstalled') }
   const sttBadgeProps = readinessBadge(loading, sttReady)
   const ttsBadgeProps = readinessBadge(loading, ttsReady)
 
@@ -51,64 +62,68 @@ export default function Home() {
       lastError,
     )
 
+  const packsBadgeStatus: BadgeStatus = packCount > 0 ? 'online' : 'offline'
+  const packsBadgeLabel =
+    packCount > 0
+      ? t('home.status.packsInstalledCount', { count: packCount })
+      : t('home.status.noneInstalled')
+
   return (
     <div>
-      <h1>Conversation Simulator</h1>
-      <p>Practice interviews, negotiations, language, and difficult conversations.</p>
+      <h1>{t('home.title')}</h1>
+      <p>{t('home.tagline')}</p>
 
       <nav
-        aria-label="Primary actions"
+        aria-label={t('home.primaryActions')}
         style={{ marginTop: '2rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', maxWidth: '20rem' }}
       >
-        <Link to="/library">Start a scenario</Link>
-        <Link to="/workbench">Create / edit a scenario</Link>
-        <Link to="/settings">Install model</Link>
-        <Link to="/settings">Import pack</Link>
+        <Link to="/library">{t('home.startScenario')}</Link>
+        <Link to="/workbench">{t('home.createEdit')}</Link>
+        <Link to="/settings">{t('home.installModel')}</Link>
+        <Link to="/settings">{t('home.importPack')}</Link>
         <a href="https://github.com/outrightmental/ConversationSimulator/blob/main/docs/scenario-authoring.md" target="_blank" rel="noreferrer">
-          Creator workbench guide
+          {t('home.creatorWorkbenchGuide')}
         </a>
         <a href="https://github.com/outrightmental/ConversationSimulator/wiki" target="_blank" rel="noreferrer">
-          Read docs
+          {t('home.readDocs')}
         </a>
       </nav>
 
-      <section aria-label="System readiness" style={{ marginTop: '2rem' }}>
-        <h2>Status</h2>
+      <section aria-label={t('home.readinessSection')} style={{ marginTop: '2rem' }}>
+        <h2>{t('home.status.heading')}</h2>
         <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           <li>
-            Local runtime:{' '}
+            {t('home.status.localRuntime')}:{' '}
             <StatusBadge status={runtimeBadgeProps.status}>{runtimeBadgeProps.label}</StatusBadge>
           </li>
           <li>
-            LLM:{' '}
+            {t('home.status.llm')}:{' '}
             <Link to="/settings" style={{ textDecoration: 'none' }}>
               <StatusBadge status={llmBadgeProps.status}>{llmBadgeProps.label}</StatusBadge>
             </Link>
           </li>
           <li>
-            STT:{' '}
+            {t('home.status.stt')}:{' '}
             <Link to="/settings" style={{ textDecoration: 'none' }}>
               <StatusBadge status={sttBadgeProps.status}>{sttBadgeProps.label}</StatusBadge>
             </Link>
           </li>
           <li>
-            TTS:{' '}
+            {t('home.status.tts')}:{' '}
             <Link to="/settings" style={{ textDecoration: 'none' }}>
               <StatusBadge status={ttsBadgeProps.status}>{ttsBadgeProps.label}</StatusBadge>
             </Link>
           </li>
           <li>
-            Network required to play:{' '}
+            {t('home.status.networkRequired')}:{' '}
             <StatusBadge status={networkRequired ? 'offline' : 'online'}>
-              {networkRequired ? 'Yes' : 'No'}
+              {networkRequired ? t('home.status.yes') : t('home.status.no')}
             </StatusBadge>
           </li>
           <li>
-            Packs:{' '}
+            {t('home.status.packs')}:{' '}
             <Link to="/library" style={{ textDecoration: 'none' }}>
-              <StatusBadge status={packCount > 0 ? 'online' : 'offline'}>
-                {packCount > 0 ? `${packCount} installed` : 'None installed'}
-              </StatusBadge>
+              <StatusBadge status={packsBadgeStatus}>{packsBadgeLabel}</StatusBadge>
             </Link>
           </li>
         </ul>
@@ -125,19 +140,18 @@ export default function Home() {
             }}
           >
             <p style={{ margin: '0 0 0.3rem', fontWeight: 600, color: '#f87171', fontSize: '0.875rem' }}>
-              Cannot reach the local runtime
+              {t('home.unreachable.title')}
             </p>
             <p style={{ margin: '0 0 0.75rem', fontSize: '0.825rem', color: '#a1a1aa' }}>
-              Ensure the API server is running. If this persists, check the logs folder or report
-              an issue.
+              {t('home.unreachable.message')}
             </p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', fontSize: '0.8rem' }}>
               <a href={DOCS_URL} target="_blank" rel="noreferrer" style={{ color: '#71717a' }}>
-                Troubleshooting docs
+                {t('home.unreachable.troubleshootingDocs')}
               </a>
               <span style={{ color: '#52525b' }}>·</span>
               <a href={ISSUES_URL} target="_blank" rel="noreferrer" style={{ color: '#71717a' }}>
-                Report an issue
+                {t('home.unreachable.reportIssue')}
               </a>
             </div>
           </div>
@@ -156,29 +170,28 @@ export default function Home() {
             {isPortConflict ? (
               <>
                 <p style={{ margin: '0 0 0.3rem', fontWeight: 600, color: '#f87171', fontSize: '0.875rem' }}>
-                  Port conflict
+                  {t('home.portConflict.title')}
                 </p>
                 <p style={{ margin: '0 0 0.4rem', fontSize: '0.825rem', color: '#a1a1aa' }}>
-                  A required port is already in use by another process. Try closing other apps,
-                  then restart Conversation Simulator.
+                  {t('home.portConflict.message')}
                 </p>
                 <p style={{ margin: '0 0 0.75rem', fontSize: '0.8rem', color: '#71717a' }}>
-                  Details: {lastError}
+                  {t('home.portConflict.details', { error: lastError })}
                 </p>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', fontSize: '0.8rem' }}>
                   <a href={DOCS_URL} target="_blank" rel="noreferrer" style={{ color: '#71717a' }}>
-                    Port troubleshooting
+                    {t('home.portConflict.portTroubleshooting')}
                   </a>
                   <span style={{ color: '#52525b' }}>·</span>
                   <a href={ISSUES_URL} target="_blank" rel="noreferrer" style={{ color: '#71717a' }}>
-                    Report an issue
+                    {t('home.portConflict.reportIssue')}
                   </a>
                 </div>
               </>
             ) : (
               <>
                 <p style={{ margin: '0 0 0.3rem', fontSize: '0.875rem', color: '#f87171' }}>
-                  Last error: {lastError}
+                  {t('home.lastError.message', { error: lastError })}
                 </p>
                 <a
                   href={ISSUES_URL}
@@ -186,7 +199,7 @@ export default function Home() {
                   rel="noreferrer"
                   style={{ fontSize: '0.8rem', color: '#71717a' }}
                 >
-                  Report an issue
+                  {t('home.lastError.reportIssue')}
                 </a>
               </>
             )}
@@ -195,11 +208,10 @@ export default function Home() {
       </section>
 
       {showNoModelPrompt && (
-        <section aria-label="Get started without a model" style={{ marginTop: '2rem' }}>
-          <h2>No model configured</h2>
+        <section aria-label={t('home.getStartedSection')} style={{ marginTop: '2rem' }}>
+          <h2>{t('home.noModel.heading')}</h2>
           <p style={{ color: '#a1a1aa', fontSize: '0.875rem', marginBottom: '1rem' }}>
-            Choose how to get started. You can change this at any time from{' '}
-            <Link to="/settings" style={{ color: '#71717a' }}>Settings</Link>.
+            {t('home.noModel.description')}
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             <div
@@ -210,10 +222,10 @@ export default function Home() {
               }}
             >
               <p style={{ margin: '0 0 0.25rem', fontWeight: 600, fontSize: '0.875rem' }}>
-                Install a GGUF model
+                {t('home.noModel.gguf.title')}
               </p>
               <p style={{ margin: '0 0 0.6rem', fontSize: '0.825rem', color: '#a1a1aa' }}>
-                Download a local model file. Works offline after the initial download.
+                {t('home.noModel.gguf.description')}
               </p>
               <Link
                 to="/model-manager"
@@ -227,7 +239,7 @@ export default function Home() {
                   display: 'inline-block',
                 }}
               >
-                Install a GGUF model →
+                {t('home.noModel.gguf.action')}
               </Link>
             </div>
 
@@ -239,10 +251,10 @@ export default function Home() {
               }}
             >
               <p style={{ margin: '0 0 0.25rem', fontWeight: 600, fontSize: '0.875rem' }}>
-                Connect Ollama
+                {t('home.noModel.ollama.title')}
               </p>
               <p style={{ margin: '0 0 0.6rem', fontSize: '0.825rem', color: '#a1a1aa' }}>
-                Use an existing Ollama installation. No additional download required.
+                {t('home.noModel.ollama.description')}
               </p>
               <Link
                 to="/model-manager"
@@ -256,7 +268,7 @@ export default function Home() {
                   display: 'inline-block',
                 }}
               >
-                Connect Ollama →
+                {t('home.noModel.ollama.action')}
               </Link>
             </div>
 
@@ -268,11 +280,10 @@ export default function Home() {
               }}
             >
               <p style={{ margin: '0 0 0.25rem', fontWeight: 600, fontSize: '0.875rem' }}>
-                Try text-only demo
+                {t('home.noModel.demo.title')}
               </p>
               <p style={{ margin: '0 0 0.6rem', fontSize: '0.825rem', color: '#a1a1aa' }}>
-                Explore the interface now using scripted NPC responses — no model needed.
-                Response quality is limited compared to a real AI model.
+                {t('home.noModel.demo.description')}
               </p>
               <Link
                 to="/library"
@@ -286,7 +297,7 @@ export default function Home() {
                   display: 'inline-block',
                 }}
               >
-                Try text-only demo →
+                {t('home.noModel.demo.action')}
               </Link>
             </div>
           </div>
@@ -295,7 +306,7 @@ export default function Home() {
 
       {showMissingPack && (
         <section
-          aria-label="No scenario packs installed"
+          aria-label={t('home.missingPack.title')}
           role="status"
           style={{
             marginTop: '2rem',
@@ -306,11 +317,10 @@ export default function Home() {
           }}
         >
           <p style={{ margin: '0 0 0.3rem', fontWeight: 600, color: '#fbbf24', fontSize: '0.875rem' }}>
-            No scenario packs installed
+            {t('home.missingPack.title')}
           </p>
           <p style={{ margin: '0 0 0.6rem', fontSize: '0.825rem', color: '#a1a1aa' }}>
-            Your model is ready but there are no packs to play. Import a pack or browse the
-            scenario library.
+            {t('home.missingPack.description')}
           </p>
           <Link
             to="/library"
@@ -324,33 +334,35 @@ export default function Home() {
               display: 'inline-block',
             }}
           >
-            Go to library →
+            {t('home.missingPack.action')}
           </Link>
         </section>
       )}
 
-      <section aria-label="Help and resources" style={{ marginTop: '2.5rem', borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: '1.5rem' }}>
-        <h2 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.75rem' }}>Help</h2>
+      <section aria-label={t('home.helpSection')} style={{ marginTop: '2.5rem', borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: '1.5rem' }}>
+        <h2 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.75rem' }}>
+          {t('home.help.heading')}
+        </h2>
         <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: '0.875rem' }}>
           <li>
             <a href={DOCS_URL} target="_blank" rel="noreferrer" style={{ color: '#71717a' }}>
-              Documentation
+              {t('home.help.documentation')}
             </a>
           </li>
           <li>
             <a href={ISSUES_URL} target="_blank" rel="noreferrer" style={{ color: '#71717a' }}>
-              Report an issue
+              {t('home.help.reportIssue')}
             </a>
           </li>
           <li style={{ color: '#52525b' }}>
-            Logs folder:{' '}
-            <code style={{ fontSize: '0.8rem', color: '#71717a' }}>~/.convsim/logs</code>
-            {' (exact path shown in the local folders panel)'}
+            {t('home.help.logsFolder')}{' '}
+            <code style={{ fontSize: '0.8rem', color: '#71717a' }}>{t('home.help.logsPath')}</code>
+            {' '}{t('home.help.logsContext')}
           </li>
           <li style={{ color: '#52525b' }}>
-            Data folder:{' '}
-            <code style={{ fontSize: '0.8rem', color: '#71717a' }}>~/.convsim</code>
-            {' (exact path shown in the local folders panel)'}
+            {t('home.help.dataFolder')}{' '}
+            <code style={{ fontSize: '0.8rem', color: '#71717a' }}>{t('home.help.dataPath')}</code>
+            {' '}{t('home.help.dataContext')}
           </li>
         </ul>
       </section>
