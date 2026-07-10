@@ -111,6 +111,89 @@
     "used_fallback": {
       "type": "boolean",
       "description": "True if the narrative was generated from a template rather than an LLM call."
+    },
+    "metrics": {
+      "type": "object",
+      "description": "Telemetry metrics computed from the session transcript. Pure, deterministic over the same transcript.",
+      "required": ["metrics_version", "talk_ratio", "words_per_turn_player", "words_per_turn_npc", "open_questions", "closed_questions", "filler_word_count", "interruption_count", "state_arc"],
+      "additionalProperties": false,
+      "properties": {
+        "metrics_version": {
+          "type": "string",
+          "enum": ["1"],
+          "description": "Schema version for the metrics block."
+        },
+        "talk_ratio": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Fraction of total words spoken by the player (0 = player said nothing, 1 = NPC said nothing)."
+        },
+        "words_per_turn_player": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Mean word count per player turn."
+        },
+        "words_per_turn_npc": {
+          "type": "number",
+          "minimum": 0,
+          "description": "Mean word count per NPC turn (including the opening monologue)."
+        },
+        "open_questions": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of open-ended questions asked by the player."
+        },
+        "closed_questions": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of closed (yes/no) questions asked by the player."
+        },
+        "filler_word_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Total filler word tokens in player turns. Non-zero only for voice sessions (push-to-talk or hands-free) where STT tokens are available."
+        },
+        "interruption_count": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Number of VAD-detected overlaps where the player began speaking before the NPC finished. Reserved; always 0 until VAD overlap events are stored."
+        },
+        "response_latency_p50_ms": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "description": "Median NPC response latency in milliseconds (player turn submitted → NPC turn persisted). Null when fewer than one complete turn pair exists."
+        },
+        "response_latency_p95_ms": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "description": "95th-percentile NPC response latency in milliseconds. Null when fewer than one complete turn pair exists."
+        },
+        "state_arc": {
+          "type": "array",
+          "description": "Ordered per-turn snapshots of cumulative scenario state variable values after each NPC response.",
+          "items": {
+            "type": "object",
+            "required": ["turn_number", "state"],
+            "additionalProperties": false,
+            "properties": {
+              "turn_number": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "state": {
+                "type": "object",
+                "description": "Map of state variable name to current value (0–100 integer).",
+                "additionalProperties": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 100
+                }
+              }
+            }
+          }
+        }
+      }
     }
   }
 }
