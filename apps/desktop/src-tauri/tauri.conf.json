@@ -31,7 +31,7 @@
     "active": true,
     "targets": "all",
     "resources": [
-      "resources/**"
+      "resources/**/*"
     ],
     "publisher": "Outright Mental",
     "copyright": "Copyright © 2024 Outright Mental",
