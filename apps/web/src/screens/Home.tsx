@@ -4,6 +4,8 @@ import { StatusBadge } from '@convsim/ui'
 import { useApiHealth } from '../api/useApiHealth'
 import { usePackCount } from '../api/usePackCount'
 import { useTranslation } from '../i18n'
+import { useAppUpdate } from '../hooks/useAppUpdate'
+import UpdateBanner from '../components/UpdateBanner'
 import type { BadgeStatus } from '@convsim/ui'
 
 const DOCS_URL = 'https://github.com/outrightmental/ConversationSimulator/wiki'
@@ -14,6 +16,7 @@ export default function Home() {
   const packCount = usePackCount()
   const loading = health.state === 'loading'
   const { t } = useTranslation()
+  const { update, dismiss, install } = useAppUpdate()
 
   const runtime = health.runtime
   const llmReady = runtime?.llm_ready ?? false
@@ -70,6 +73,15 @@ export default function Home() {
 
   return (
     <div>
+      {update.status === 'available' && update.version && update.releaseUrl && (
+        <UpdateBanner
+          version={update.version}
+          releaseUrl={update.releaseUrl}
+          onViewNotes={dismiss}
+          onInstall={install}
+          onDismiss={dismiss}
+        />
+      )}
       <h1>{t('home.title')}</h1>
       <p>{t('home.tagline')}</p>
 
