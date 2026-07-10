@@ -245,4 +245,6 @@ error:
 - [`.github/workflows/steam-deploy.yml`](../.github/workflows/steam-deploy.yml) — Steam deploy workflow
 - [`docs/STEAM_ROADMAP.md`](../docs/STEAM_ROADMAP.md) — Release train and release principles
 - [`docs/steam-mvp-scope.md`](../docs/steam-mvp-scope.md) — Stage gate criteria
+- [`publishing/STEAM_STORE_PAGE.md`](STEAM_STORE_PAGE.md) — Canonical store copy, system requirements, genres/tags, age disclosures, and store review checklist
+- [`publishing/STEAM_ASSETS_SPEC.md`](STEAM_ASSETS_SPEC.md) — Capsule art, screenshot, and trailer production briefs
 - [`publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md`](STEAM_COMPLIANCE_AND_RISK_REGISTER.md) — Risk register (MD-04, SR-08)
