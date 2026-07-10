@@ -161,8 +161,7 @@ describe('voice readiness cards', () => {
       configurable: true,
     })
     render(<VoiceSettingsPanel />)
-    await waitFor(() => expect(screen.getByTestId('readiness-mic')).toBeInTheDocument())
-    expect(screen.getByTestId('readiness-mic')).toHaveTextContent('permission denied')
+    await waitFor(() => expect(screen.getByTestId('readiness-mic')).toHaveTextContent('permission denied'))
     expect(screen.getByText(/Allow microphone access/i)).toBeInTheDocument()
   })
 })
