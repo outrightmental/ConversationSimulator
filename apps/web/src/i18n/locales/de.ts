@@ -64,10 +64,8 @@ export const de: LocaleMessages = {
     },
     trainingPlan: {
       heading: 'Trainingsplan',
-      nextUp: 'Als Nächstes',
       noSuggestions: 'Installieren Sie ein Szenario-Paket für personalisierte Empfehlungen.',
       loading: 'Empfehlungen werden geladen…',
-      difficulty: 'Empfohlene Schwierigkeit',
     },
     readinessSection: 'Systembereitschaft',
     getStartedSection: 'Ohne Modell loslegen',
@@ -364,8 +362,6 @@ export const de: LocaleMessages = {
     },
     nextUp: {
       heading: 'Als Nächstes',
-      cta: 'Jetzt üben →',
-      difficulty: '{{difficulty}}',
     },
   },
 }

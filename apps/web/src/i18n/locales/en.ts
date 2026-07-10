@@ -58,10 +58,8 @@ export const en = {
     },
     trainingPlan: {
       heading: 'Training plan',
-      nextUp: 'Next up',
       noSuggestions: 'Install a scenario pack to get personalized recommendations.',
       loading: 'Loading recommendations…',
-      difficulty: 'Recommended difficulty',
     },
     readinessSection: 'System readiness',
     getStartedSection: 'Get started without a model',
@@ -354,8 +352,6 @@ export const en = {
     },
     nextUp: {
       heading: 'Next up',
-      cta: 'Practice this →',
-      difficulty: '{{difficulty}}',
     },
   },
 }
