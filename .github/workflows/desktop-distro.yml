@@ -283,9 +283,15 @@ jobs:
           # macos-13 (last Intel/x86_64 runner) was deprecated by GitHub.
           - name: macOS-aarch64
             runner: macos-latest
-          # Linux x86_64 — AppImage + .deb
+          # Linux x86_64 — AppImage + .deb.  Pinned to ubuntu-22.04 (glibc 2.35)
+          # rather than ubuntu-latest: the AppImage/.deb link against the build
+          # machine's glibc, and the documented compatibility floor is glibc
+          # ≥ 2.35 (Ubuntu 22.04+, Debian 12+, SteamOS 3.x — see
+          # docs/platform-notes.md).  Building on ubuntu-latest (24.04, glibc
+          # 2.39) would raise that floor and break the release on SteamOS and
+          # every LTS distro we promise to support.  Matches release.yml.
           - name: Linux-x86_64
-            runner: ubuntu-latest
+            runner: ubuntu-22.04
           # Windows x86_64 — NSIS installer + MSI
           - name: Windows-x86_64
             runner: windows-latest
