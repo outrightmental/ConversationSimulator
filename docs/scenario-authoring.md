@@ -670,7 +670,7 @@ description: >-
   advances the session without triggering a safety stop.
 seed: 42
 input_mode: text
-difficulty: normal
+difficulty: standard
 turns:
   - turn: 1
     player_input: >-
@@ -732,7 +732,7 @@ description: >-
 
 seed: 42
 input_mode: text
-difficulty: normal
+difficulty: standard
 
 turns:
   - turn: 1

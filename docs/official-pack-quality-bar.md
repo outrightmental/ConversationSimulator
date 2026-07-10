@@ -343,7 +343,7 @@ purposes. Omit it in production scenarios unless the scenario explicitly calls
 for a fixed sequence — varied LLM sampling produces the natural replay
 variation that makes the scenario worth practicing more than once.
 
-Difficulty levels (easy/normal/hard) should produce meaningfully different
+Difficulty levels (warm/standard/hard/adversarial) should produce meaningfully different
 challenges, not just cosmetic variation:
 
 - `easy`: Lower expectations, more patience from the NPC.

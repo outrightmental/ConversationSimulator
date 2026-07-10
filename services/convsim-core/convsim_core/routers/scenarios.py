@@ -20,7 +20,7 @@ async def get_scenarios(
     tag: Annotated[Optional[str], Query(description="Filter by tag")] = None,
     language: Annotated[Optional[str], Query(description="Filter by supported language code")] = None,
     content_rating: Annotated[Optional[str], Query(description="Filter by content rating (G, PG, PG-13)")] = None,
-    difficulty: Annotated[Optional[str], Query(description="Filter by default difficulty (easy, normal, hard)")] = None,
+    difficulty: Annotated[Optional[str], Query(description="Filter by default difficulty (warm, standard, hard, adversarial)")] = None,
     voice_support: Annotated[Optional[bool], Query(description="Filter to scenarios with voice support")] = None,
 ) -> list[ScenarioCard]:
     """List installed scenarios with optional filters and full-text search."""
