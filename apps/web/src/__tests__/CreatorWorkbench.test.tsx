@@ -5,6 +5,19 @@ import { MemoryRouter } from 'react-router-dom'
 import CreatorWorkbench from '../screens/CreatorWorkbench'
 import type { WorkbenchPack, FileNode } from '../api/client'
 
+vi.mock('@convsim/ui', () => ({
+  FormEditor: ({ initialYaml, onChange }: { fileType: string; initialYaml: string; onChange?: (yaml: string) => void }) => (
+    <div data-testid="form-editor">
+      <textarea
+        data-testid="form-editor-yaml"
+        aria-label="Form editor YAML"
+        defaultValue={initialYaml}
+        onChange={(e) => onChange?.(e.target.value)}
+      />
+    </div>
+  ),
+}))
+
 const OFFICIAL_PACK: WorkbenchPack = {
   kind: 'official',
   slug: 'job-interview',
@@ -1117,6 +1130,60 @@ describe('CreatorWorkbench — Test Chat', () => {
     await waitFor(() => {
       const editor = screen.getByTestId('file-editor') as HTMLTextAreaElement
       expect(editor.value).toContain('name: My Pack')
+    })
+  })
+
+  it('shows form editor mode toggle for editable recognized YAML files', async () => {
+    const localContent = 'pack_id: local.my_pack\nname: My Pack\n'
+    stubFetch((url) => {
+      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
+      if (url.includes('/file?')) return okJson({ content: localContent, editable: true })
+      return okJson([OFFICIAL_PACK, LOCAL_PACK])
+    })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /open manifest\.yaml/i }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('editor-mode-toggle')).toBeInTheDocument()
+      expect(screen.getByTestId('editor-mode-yaml')).toBeInTheDocument()
+      expect(screen.getByTestId('editor-mode-form')).toBeInTheDocument()
+    })
+  })
+
+  it('switches to form editor when form mode button is clicked', async () => {
+    const localContent = 'pack_id: local.my_pack\nname: My Pack\n'
+    stubFetch((url) => {
+      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
+      if (url.includes('/file?')) return okJson({ content: localContent, editable: true })
+      return okJson([OFFICIAL_PACK, LOCAL_PACK])
+    })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /open manifest\.yaml/i }))
+
+    await waitFor(() => expect(screen.getByTestId('editor-mode-form')).toBeInTheDocument())
+
+    // Default is YAML mode — raw textarea is visible
+    expect(screen.getByTestId('file-editor')).toBeInTheDocument()
+    expect(screen.queryByTestId('form-editor')).not.toBeInTheDocument()
+
+    // Switch to form mode
+    fireEvent.click(screen.getByTestId('editor-mode-form'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('form-editor')).toBeInTheDocument()
+      expect(screen.queryByTestId('file-editor')).not.toBeInTheDocument()
+    })
+
+    // Switch back to YAML mode
+    fireEvent.click(screen.getByTestId('editor-mode-yaml'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('file-editor')).toBeInTheDocument()
+      expect(screen.queryByTestId('form-editor')).not.toBeInTheDocument()
     })
   })
 })
