@@ -135,3 +135,4 @@ ending_conditions:
     type: variable_below
     variable: composure
     threshold: 20
+replay_seed: 73

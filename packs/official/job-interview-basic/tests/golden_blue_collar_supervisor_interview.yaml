@@ -1,0 +1,159 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: golden_blue_collar_supervisor_interview
+scenario_id: blue_collar_supervisor_interview
+description: >-
+  Golden transcript property test: verifies that a candidate who speaks plainly,
+  gives concrete reliability examples, and shows genuine respect for the crew
+  causes trust to exceed the success threshold before the session ends. Also
+  verifies that the overqualified_flag event fires when overqualified_concern
+  rises, and that the crew_fit_test event fires when trust is earned.
+
+seed: 17
+input_mode: text
+difficulty: normal
+
+turns:
+  - turn: 1
+    player_input: >-
+      In my experience the hardest part is earning trust from people who didn't
+      pick you and don't owe you anything. I came into my last lead role at a
+      packaging plant and half the crew had been there over five years — they
+      knew the floor better than I did. I spent the first two weeks working
+      every station alongside them before I changed a single thing. When I
+      finally did make a change, a couple of people pushed back on it, and I
+      listened because they had a point I hadn't thought of. That's what made
+      the difference. By month two we were running the smoothest shift in the
+      building and I wasn't the one who made that happen — the crew did.
+    expect:
+      state_delta_contains:
+        - trust
+        - work_ethic_score
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 2
+    player_input: >-
+      I've had the same job for the last four years. Before that I was at a
+      distribution center for three years — I left because the facility shut
+      down, not because I wanted to go. I've never called out sick on a peak
+      day. I've covered extra shifts when we were short-staffed, including
+      a stretch of three consecutive Saturdays last November when two of our
+      team leads were out. I'm not saying that to brag — that's just what the
+      job requires sometimes and I knew that when I took it.
+    expect:
+      state_delta_contains:
+        - trust
+        - reliability_signals
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 3
+    player_input: >-
+      I want this job because distribution and logistics is the work I know
+      and like. I've looked into Crestview — you run afternoon and evening
+      shifts for regional fulfillment, which is exactly the environment I'm
+      good at. I'm not looking for something with my name on a door. I want
+      to be on a floor that runs well and be part of the reason it does.
+      This isn't a stepping stone for me — this is the kind of work I've
+      been doing and plan to keep doing.
+    expect:
+      state_delta_contains:
+        - trust
+        - work_ethic_score
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 4
+    player_input: >-
+      Two people like that, I'd deal with it fast and in private. I'd talk
+      to each of them separately first to understand what's going on — not
+      to make a judgment, just to hear both sides. Then I'd bring them
+      together and make clear that whatever the issue is between them, it
+      stays off the floor during shift. If they can't work it out, I'd
+      separate their stations and adjust assignments to minimize contact. I
+      wouldn't let it sit because that kind of thing spreads and it affects
+      people who have nothing to do with it.
+    expect:
+      state_delta_contains:
+        - trust
+        - work_ethic_score
+      session_control: continue_session
+      safety_status: ok
+
+static_assertions:
+  - description: Scenario opening line is non-empty
+    path: opening.npc_says
+    check: non_empty_string
+
+  - description: At least one event is defined
+    path: events
+    check: min_length_1
+
+  - description: overqualified_flag fires when overqualified_concern exceeds 3
+    path: events[id=overqualified_flag].when
+    check: "type=variable_above AND variable=overqualified_concern AND threshold=3"
+
+  - description: overqualified_flag fires only once
+    path: events[id=overqualified_flag].repeat
+    check: "equals false"
+
+  - description: reliability_probe fires when reliability_signals is below 40
+    path: events[id=reliability_probe].when
+    check: "type=variable_below AND variable=reliability_signals AND threshold=40"
+
+  - description: reliability_probe repeats
+    path: events[id=reliability_probe].repeat
+    check: "equals true"
+
+  - description: crew_fit_test fires when trust exceeds 60
+    path: events[id=crew_fit_test].when
+    check: "type=variable_above AND variable=trust AND threshold=60"
+
+  - description: crew_fit_test fires only once
+    path: events[id=crew_fit_test].repeat
+    check: "equals false"
+
+  - description: Success ending targets trust above 70
+    path: ending_conditions.success
+    check: "type=variable_above AND variable=trust AND threshold=70"
+
+  - description: Failure ending targets overqualified_concern above 4
+    path: ending_conditions.failure
+    check: "type=variable_above AND variable=overqualified_concern AND threshold=4"
+
+  - description: trust is player-visible
+    path: state.variables.trust.visibility
+    check: "equals visible"
+
+  - description: work_ethic_score is player-visible
+    path: state.variables.work_ethic_score.visibility
+    check: "equals visible"
+
+  - description: overqualified_concern is hidden from player
+    path: state.variables.overqualified_concern.visibility
+    check: "equals hidden"
+
+  - description: reliability_signals is hidden from player
+    path: state.variables.reliability_signals.visibility
+    check: "equals hidden"
+
+  - description: NPC is marked fictional
+    path: npc.fictional
+    check: "equals true"
+
+  - description: Safety policy stops nsfw_sexual_content
+    path: safety.content_categories.nsfw_sexual_content
+    check: "equals stop"
+
+  - description: Safety policy fires stop_with_resource_message for self_harm_crisis
+    path: safety.content_categories.self_harm_crisis
+    check: "equals stop_with_resource_message"
+
+  - description: Pack manifest declares blue_collar_supervisor_interview as entry scenario
+    path: manifest.entry_scenarios
+    check: "contains scenarios/blue_collar_supervisor_interview.yaml"
+
+  - description: Hard difficulty applies a negative patience modifier
+    path: scenario.difficulty.options.hard.npc_patience_modifier
+    check: "equals -15"
