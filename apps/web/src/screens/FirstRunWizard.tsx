@@ -12,6 +12,7 @@ import type {
 } from '@convsim/shared'
 
 const SETUP_DOCS_URL = 'https://github.com/outrightmental/ConversationSimulator/wiki'
+const ISSUES_URL = 'https://github.com/outrightmental/ConversationSimulator/issues/new/choose'
 
 // Marks the one-time setup wizard complete so the FirstRunGuard stops redirecting here.
 // Used only within this module; kept unexported so the file exports only its component
@@ -284,13 +285,78 @@ export default function FirstRunWizard() {
           </p>
         </div>
 
-        <p style={{ marginTop: '1.5rem', color: '#a1a1aa', fontSize: '0.9rem' }}>
-          This one-time setup wizard will help you choose a local AI model and get ready to play.
-          It takes about a minute plus download time.
+        <div style={{ marginTop: '1.5rem' }}>
+          <p style={{ fontWeight: 600, color: '#e8e8ea', margin: '0 0 0.75rem' }}>How it works</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.65rem' }}>
+            <div
+              aria-label="local model explanation"
+              style={{
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: '8px',
+                padding: '0.85rem 1rem',
+              }}
+            >
+              <p style={{ margin: 0, fontWeight: 600, fontSize: '0.875rem' }}>
+                A local AI model powers the conversations
+              </p>
+              <p style={{ margin: '0.35rem 0 0', fontSize: '0.825rem', color: '#a1a1aa' }}>
+                The app uses a small language model that runs entirely on your machine. After a
+                one-time download it works without internet — and nothing is ever sent to a server.
+              </p>
+            </div>
+            <div
+              aria-label="packs explanation"
+              style={{
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: '8px',
+                padding: '0.85rem 1rem',
+              }}
+            >
+              <p style={{ margin: 0, fontWeight: 600, fontSize: '0.875rem' }}>
+                Packs give you scenarios to practise
+              </p>
+              <p style={{ margin: '0.35rem 0 0', fontSize: '0.825rem', color: '#a1a1aa' }}>
+                Scenario packs are collections of practice conversations. A starter pack is already
+                installed. You can download more from the library or create your own in the Creator
+                Workbench.
+              </p>
+            </div>
+            <div
+              aria-label="text-only demo explanation"
+              style={{
+                border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: '8px',
+                padding: '0.85rem 1rem',
+              }}
+            >
+              <p style={{ margin: 0, fontWeight: 600, fontSize: '0.875rem' }}>
+                No download? Try the text-only demo
+              </p>
+              <p style={{ margin: '0.35rem 0 0', fontSize: '0.825rem', color: '#a1a1aa' }}>
+                Want to explore the interface first? Choose{' '}
+                <strong>Continue without a model</strong> in the next step. NPC responses are
+                scripted, not AI-generated, but you can try every screen immediately.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <p style={{ marginTop: '1.25rem', color: '#a1a1aa', fontSize: '0.875rem' }}>
+          This one-time setup wizard helps you choose a local AI model and get ready to play. It
+          takes about a minute plus download time. You can change your model at any time from{' '}
+          <strong>Settings → Runtime</strong>.
         </p>
 
-        <div style={{ marginTop: '1.5rem' }}>
+        <div style={{ marginTop: '1.25rem', display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
           <PrimaryButton onClick={() => setStep('loading')}>Get started</PrimaryButton>
+          <a
+            href={SETUP_DOCS_URL}
+            target="_blank"
+            rel="noreferrer"
+            style={{ fontSize: '0.825rem', color: '#71717a' }}
+          >
+            Read setup docs
+          </a>
         </div>
       </div>
     )
@@ -316,16 +382,43 @@ export default function FirstRunWizard() {
         <p role="alert" style={{ color: '#f87171' }}>
           {loadError ?? 'Something went wrong loading model information. Please try again.'}
         </p>
-        <p style={{ fontSize: '0.875rem', color: '#a1a1aa' }}>
-          The local runtime may be unavailable. Check that it is running, then reload this page.
-          If your hardware cannot run a full model, the text-only demo works without one — or see
-          the{' '}
-          <a href={SETUP_DOCS_URL} target="_blank" rel="noreferrer">
-            setup docs
-          </a>{' '}
-          for smaller-model and troubleshooting guidance.
-        </p>
-        <ActionButton onClick={() => setStep('welcome')}>Back to welcome</ActionButton>
+        <div
+          style={{
+            marginTop: '0.5rem',
+            padding: '0.85rem 1rem',
+            background: 'rgba(239,68,68,0.08)',
+            border: '1px solid rgba(239,68,68,0.3)',
+            borderRadius: '6px',
+          }}
+        >
+          <p style={{ margin: '0 0 0.4rem', fontWeight: 600, color: '#f87171', fontSize: '0.875rem' }}>
+            Could not connect to the local runtime
+          </p>
+          <p style={{ margin: '0 0 0.75rem', fontSize: '0.825rem', color: '#a1a1aa' }}>
+            The API server may not be running. Make sure you launched the app correctly, then try
+            again. If your hardware cannot run a full model, the text-only demo works without one.
+          </p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.75rem' }}>
+            <a
+              href={SETUP_DOCS_URL}
+              target="_blank"
+              rel="noreferrer"
+              style={{ fontSize: '0.825rem', color: '#a1a1aa' }}
+            >
+              Troubleshooting docs
+            </a>
+            <span style={{ color: '#52525b', fontSize: '0.825rem' }}>·</span>
+            <a
+              href={ISSUES_URL}
+              target="_blank"
+              rel="noreferrer"
+              style={{ fontSize: '0.825rem', color: '#a1a1aa' }}
+            >
+              Report an issue
+            </a>
+          </div>
+          <ActionButton onClick={() => setStep('welcome')}>Back to welcome</ActionButton>
+        </div>
       </div>
     )
   }

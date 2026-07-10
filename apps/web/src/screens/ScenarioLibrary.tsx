@@ -447,8 +447,21 @@ export default function ScenarioLibrary() {
           }}
         >
           <p style={{ fontSize: '1.1rem', marginBottom: '0.5rem' }}>No scenario packs installed.</p>
-          <p style={{ fontSize: '0.9rem', color: '#a1a1aa', marginBottom: '1.25rem' }}>
-            Import a pack using the button above, or install an official starter pack to begin.
+          <p style={{ fontSize: '0.9rem', color: '#a1a1aa', marginBottom: '0.5rem' }}>
+            Packs are collections of practice conversations. Import a pack zip file using the
+            button above, or install an official starter pack to begin.
+          </p>
+          <p style={{ fontSize: '0.875rem', color: '#71717a', marginBottom: '1.25rem' }}>
+            You can also{' '}
+            <a
+              href="https://github.com/outrightmental/ConversationSimulator/wiki"
+              target="_blank"
+              rel="noreferrer"
+              style={{ color: '#71717a' }}
+            >
+              browse the docs
+            </a>{' '}
+            for a link to official packs or the pack authoring guide.
           </p>
           <button
             onClick={() => fileInputRef.current?.click()}
@@ -639,6 +652,18 @@ export default function ScenarioLibrary() {
                         </li>
                       ))}
                     </ul>
+                    <p style={{ margin: '0.6rem 0 0', fontSize: '0.8rem', color: '#a1a1aa' }}>
+                      Fix the errors above in the pack source files, then re-import the pack.{' '}
+                      <a
+                        href="https://github.com/outrightmental/ConversationSimulator/wiki"
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ color: '#94a3b8' }}
+                        aria-label="Pack authoring guide"
+                      >
+                        Pack authoring guide
+                      </a>
+                    </p>
                   </>
                 )}
               </div>

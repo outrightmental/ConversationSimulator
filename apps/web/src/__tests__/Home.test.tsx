@@ -245,4 +245,126 @@ describe('Home — runtime-error state', () => {
     await screen.findByText(liText('Local runtime: Ready'))
     expect(screen.queryByRole('alert')).toBeNull()
   })
+
+  it('shows a port conflict card when last_error mentions EADDRINUSE', async () => {
+    stubFetches(makeHealth({ last_error: 'EADDRINUSE: address already in use :::7355' }), makePacks(0))
+    renderHome()
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/port conflict/i)
+  })
+
+  it('shows port troubleshooting guidance for port conflict errors', async () => {
+    stubFetches(makeHealth({ last_error: 'EADDRINUSE port 7356 in use' }), makePacks(0))
+    renderHome()
+    await screen.findByRole('alert')
+    expect(screen.getByText(/a required port is already in use/i)).toBeInTheDocument()
+  })
+
+  it('shows the unreachable alert with troubleshooting docs link', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('Network error'))))
+    renderHome()
+    await screen.findByRole('alert')
+    expect(screen.getByRole('link', { name: /troubleshooting docs/i })).toBeInTheDocument()
+  })
+
+  it('shows a report-an-issue link in the unreachable alert', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('Network error'))))
+    renderHome()
+    await screen.findByRole('alert')
+    const links = screen.getAllByRole('link', { name: /report an issue/i })
+    expect(links.length).toBeGreaterThanOrEqual(1)
+  })
+})
+
+describe('Home — no-model recovery cards', () => {
+  it('shows Install a GGUF model as a styled recovery card', async () => {
+    stubFetches(makeHealth(), makePacks(0))
+    renderHome()
+    await screen.findByRole('heading', { name: /no model configured/i })
+    expect(screen.getByText(/download a local model file/i)).toBeInTheDocument()
+  })
+
+  it('shows Connect Ollama as a styled recovery card', async () => {
+    stubFetches(makeHealth(), makePacks(0))
+    renderHome()
+    await screen.findByRole('heading', { name: /no model configured/i })
+    expect(screen.getByText(/use an existing ollama installation/i)).toBeInTheDocument()
+  })
+
+  it('shows text-only demo as a styled recovery card', async () => {
+    stubFetches(makeHealth(), makePacks(0))
+    renderHome()
+    await screen.findByRole('heading', { name: /no model configured/i })
+    expect(screen.getByText(/explore the interface now/i)).toBeInTheDocument()
+  })
+})
+
+describe('Home — missing-pack section', () => {
+  it('shows missing-pack notice when model is ready but no packs installed', async () => {
+    stubFetches(makeHealth({ llm_ready: true, llm_model_name: 'TestModel' }), makePacks(0))
+    renderHome()
+    await screen.findByText('TestModel')
+    expect(
+      await screen.findByRole('status', { name: /no scenario packs installed/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('hides missing-pack notice when packs are installed', async () => {
+    stubFetches(makeHealth({ llm_ready: true, llm_model_name: 'TestModel' }), makePacks(3))
+    renderHome()
+    await screen.findByText('TestModel')
+    expect(
+      screen.queryByRole('status', { name: /no scenario packs installed/i }),
+    ).toBeNull()
+  })
+
+  it('hides missing-pack notice when no model is configured', async () => {
+    stubFetches(makeHealth({ llm_ready: false }), makePacks(0))
+    renderHome()
+    await screen.findByText(liText('LLM: Not installed'))
+    expect(
+      screen.queryByRole('status', { name: /no scenario packs installed/i }),
+    ).toBeNull()
+  })
+
+  it('links to the library from the missing-pack section', async () => {
+    stubFetches(makeHealth({ llm_ready: true, llm_model_name: 'TestModel' }), makePacks(0))
+    renderHome()
+    await screen.findByText('TestModel')
+    const section = await screen.findByRole('status', { name: /no scenario packs installed/i })
+    const link = section.querySelector('a, [href]')
+    expect(link).not.toBeNull()
+  })
+})
+
+describe('Home — help section', () => {
+  it('shows a Help section heading', () => {
+    renderHome()
+    expect(screen.getByRole('heading', { name: /^help$/i })).toBeInTheDocument()
+  })
+
+  it('shows a Documentation link', () => {
+    renderHome()
+    const link = screen.getByRole('link', { name: /^documentation$/i })
+    expect(link).toBeInTheDocument()
+    expect(link).toHaveAttribute('target', '_blank')
+  })
+
+  it('shows a Report an issue link', () => {
+    renderHome()
+    // may be multiple (also appears in alerts); check at least one exists
+    const links = screen.getAllByRole('link', { name: /report an issue/i })
+    expect(links.length).toBeGreaterThanOrEqual(1)
+    expect(links[0]).toHaveAttribute('target', '_blank')
+  })
+
+  it('shows the logs folder path', () => {
+    renderHome()
+    expect(screen.getByText(/\.convsim\/logs/)).toBeInTheDocument()
+  })
+
+  it('shows the data folder path', () => {
+    renderHome()
+    expect(screen.getByText(/~\/\.convsim$/)).toBeInTheDocument()
+  })
 })
