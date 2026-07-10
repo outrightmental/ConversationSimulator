@@ -324,6 +324,13 @@ _BARGE_IN_SQL = """
 ALTER TABLE turn_session_turns ADD COLUMN barged_in INTEGER NOT NULL DEFAULT 0;
 """
 
+# The Logbook (issue #307): record when a session terminated so practice time
+# can be measured. Set by the /end and /debrief handlers via
+# COALESCE(ended_at, datetime('now')).
+_SESSION_ENDED_AT_SQL = """
+ALTER TABLE turn_sessions ADD COLUMN ended_at TEXT;
+"""
+
 MIGRATIONS: list[tuple[str, str]] = [
     ("0001_initial_schema", _INITIAL_SCHEMA_SQL),
     ("0002_model_registry_v2", _MODEL_REGISTRY_V2_SQL),
@@ -339,6 +346,7 @@ MIGRATIONS: list[tuple[str, str]] = [
     ("0012_session_metrics", _SESSION_METRICS_SQL),
     ("0013_branch_sessions", _BRANCH_SESSIONS_SQL),
     ("0014_barge_in", _BARGE_IN_SQL),
+    ("0015_turn_sessions_ended_at", _SESSION_ENDED_AT_SQL),
 ]
 
 

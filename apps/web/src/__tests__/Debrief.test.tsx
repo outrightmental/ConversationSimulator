@@ -23,6 +23,21 @@ vi.mock('../privacyPrefs', () => ({
 import { isDevModeEnabled } from '../privacyPrefs'
 const mockIsDevModeEnabled = vi.mocked(isDevModeEnabled)
 
+const mockUnlock = vi.fn(() => Promise.resolve(false))
+const mockIncrementStat = vi.fn(() => Promise.resolve(false))
+vi.mock('../hooks/useSteamAchievements', () => ({
+  useSteamAchievements: () => ({ unlock: mockUnlock, incrementStat: mockIncrementStat }),
+  SteamAchievement: {
+    FIRST_SCENARIO: 'ACH_FIRST_SCENARIO',
+    FIRST_DEBRIEF: 'ACH_FIRST_DEBRIEF',
+    PRACTICE_STREAK: 'ACH_PRACTICE_STREAK',
+  },
+  SteamStat: {
+    SCENARIOS_COMPLETED: 'STAT_SCENARIOS_COMPLETED',
+    DEBRIEFS_GENERATED: 'STAT_DEBRIEFS_GENERATED',
+  },
+}))
+
 const SESSION_ID = 'sess-debrief01'
 
 const sampleSetup = {
@@ -201,6 +216,23 @@ describe('Debrief screen', () => {
     await waitFor(() =>
       expect(screen.getByTestId('debrief-json')).toBeInTheDocument(),
     )
+  })
+
+  describe('steam achievements', () => {
+    it('credits scenario completion even when the session ends via player_exit', async () => {
+      // fullDebriefResponse.outcome is 'player_exit' — the "manually ended"
+      // case the shipped framework (#230) explicitly counts. FIRST_SCENARIO and
+      // the SCENARIOS_COMPLETED stat must fire regardless of a 'success' outcome.
+      mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
+      renderDebrief()
+      await waitFor(() =>
+        expect(screen.getByTestId('summary-section')).toBeInTheDocument(),
+      )
+      expect(mockUnlock).toHaveBeenCalledWith('ACH_FIRST_DEBRIEF')
+      expect(mockUnlock).toHaveBeenCalledWith('ACH_FIRST_SCENARIO')
+      expect(mockIncrementStat).toHaveBeenCalledWith('STAT_DEBRIEFS_GENERATED')
+      expect(mockIncrementStat).toHaveBeenCalledWith('STAT_SCENARIOS_COMPLETED')
+    })
   })
 
   describe('scorecard', () => {
