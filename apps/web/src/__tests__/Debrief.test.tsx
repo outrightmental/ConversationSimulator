@@ -499,8 +499,7 @@ describe('Debrief screen', () => {
     })
 
     it('does not render missed opportunities section when field is absent', async () => {
-      const rest = { ...fullDebriefResponse }
-      delete (rest as Partial<typeof rest>).missed_opportunities
+      const { missed_opportunities: _omit, ...rest } = fullDebriefResponse
       mockApi.generateDebrief.mockResolvedValue({ ok: true, data: rest })
       renderDebrief()
       await waitFor(() => expect(screen.getByTestId('summary-section')).toBeInTheDocument())
