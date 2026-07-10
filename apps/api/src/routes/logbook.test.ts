@@ -212,6 +212,7 @@ describe('GET /api/logbook/profile', () => {
     expect(clarity!.trajectory).toEqual([60, 80]);
   });
 
+
   it('sets strongest_dimension and weakest_dimension from debrief scores', async () => {
     const s1 = await createAndDebrief();
     getDb()
