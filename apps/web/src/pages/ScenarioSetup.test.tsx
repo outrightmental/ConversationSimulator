@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { ScenarioSetupPage } from './ScenarioSetup';
 import type { ScenarioInfo, HealthResponse, SessionCreateResponse } from '@convsim/shared';
+import type { ApiResult } from '../api/errors';
 
 const mockScenario: ScenarioInfo = {
   scenario_id: 'behavioral_interview',
@@ -92,7 +93,7 @@ const STUB_VOICES = {
 beforeEach(() => {
   vi.clearAllMocks();
   localStorage.clear();
-  mockApi.listVoices.mockResolvedValue(STUB_VOICES);
+  mockApi.listVoices.mockResolvedValue({ ok: true as const, data: STUB_VOICES });
 });
 
 describe('ScenarioSetupPage', () => {
@@ -105,8 +106,8 @@ describe('ScenarioSetupPage', () => {
     });
 
     it('renders the form after data loads', async () => {
-      mockApi.getScenario.mockResolvedValue(mockScenario);
-      mockApi.health.mockResolvedValue(healthReady);
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: mockScenario });
+      mockApi.health.mockResolvedValue({ ok: true as const, data: healthReady });
       renderSetup();
       await waitFor(() =>
         expect(screen.getByText('Behavioral Interview')).toBeInTheDocument(),
@@ -116,8 +117,8 @@ describe('ScenarioSetupPage', () => {
     });
 
     it('shows load error when API fails', async () => {
-      mockApi.getScenario.mockRejectedValue(new Error('Network error'));
-      mockApi.health.mockResolvedValue(healthReady);
+      mockApi.getScenario.mockResolvedValue({ ok: false as const, error: { kind: 'network' as const, message: 'Network error' } });
+      mockApi.health.mockResolvedValue({ ok: true as const, data: healthReady });
       renderSetup();
       await waitFor(() =>
         expect(screen.getByText(/failed to load scenario/i)).toBeInTheDocument(),
@@ -125,8 +126,8 @@ describe('ScenarioSetupPage', () => {
     });
 
     it('renders the form in text-only mode when health endpoint fails', async () => {
-      mockApi.getScenario.mockResolvedValue(mockScenario);
-      mockApi.health.mockRejectedValue(new Error('Health unavailable'));
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: mockScenario });
+      mockApi.health.mockResolvedValue({ ok: false as const, error: { kind: 'network' as const, message: 'Health unavailable' } });
       renderSetup();
       await waitFor(() =>
         expect(screen.getByText('Behavioral Interview')).toBeInTheDocument(),
@@ -140,8 +141,8 @@ describe('ScenarioSetupPage', () => {
 
   describe('defaults', () => {
     beforeEach(() => {
-      mockApi.getScenario.mockResolvedValue(mockScenario);
-      mockApi.health.mockResolvedValue(healthReady);
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: mockScenario });
+      mockApi.health.mockResolvedValue({ ok: true as const, data: healthReady });
     });
 
     it('sets difficulty to the scenario default', async () => {
@@ -177,7 +178,7 @@ describe('ScenarioSetupPage', () => {
     });
 
     it('disables TTS by default when scenario does not support voice even if TTS is ready', async () => {
-      mockApi.getScenario.mockResolvedValue({ ...mockScenario, voice_supported: false });
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: { ...mockScenario, voice_supported: false } });
       renderSetup();
       await waitFor(() => screen.getByText('Behavioral Interview'));
       const ttsCheckbox = screen.getByRole('checkbox', { name: /npc voice/i });
@@ -185,7 +186,7 @@ describe('ScenarioSetupPage', () => {
     });
 
     it('shows a note when scenario is text-only but TTS is technically available', async () => {
-      mockApi.getScenario.mockResolvedValue({ ...mockScenario, voice_supported: false });
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: { ...mockScenario, voice_supported: false } });
       renderSetup();
       await waitFor(() => screen.getByText('Behavioral Interview'));
       expect(screen.getByText(/designed for text/i)).toBeInTheDocument();
@@ -210,8 +211,8 @@ describe('ScenarioSetupPage', () => {
 
   describe('difficulty selection', () => {
     beforeEach(() => {
-      mockApi.getScenario.mockResolvedValue(mockScenario);
-      mockApi.health.mockResolvedValue(healthReady);
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: mockScenario });
+      mockApi.health.mockResolvedValue({ ok: true as const, data: healthReady });
     });
 
     it('renders all difficulty options from the scenario', async () => {
@@ -233,8 +234,8 @@ describe('ScenarioSetupPage', () => {
 
   describe('validation', () => {
     beforeEach(() => {
-      mockApi.getScenario.mockResolvedValue(mockScenario);
-      mockApi.health.mockResolvedValue(healthTextOnly);
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: mockScenario });
+      mockApi.health.mockResolvedValue({ ok: true as const, data: healthTextOnly });
     });
 
     it('disables TTS checkbox when TTS is not available', async () => {
@@ -281,8 +282,8 @@ describe('ScenarioSetupPage', () => {
     });
 
     it('shows error when player name is cleared', async () => {
-      mockApi.getScenario.mockResolvedValue(mockScenario);
-      mockApi.health.mockResolvedValue(healthReady);
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: mockScenario });
+      mockApi.health.mockResolvedValue({ ok: true as const, data: healthReady });
       renderSetup();
       await waitFor(() => screen.getByText('Behavioral Interview'));
       const nameInput = screen.getByRole('textbox', {
@@ -296,8 +297,8 @@ describe('ScenarioSetupPage', () => {
 
   describe('voice selection', () => {
     beforeEach(() => {
-      mockApi.getScenario.mockResolvedValue(mockScenario);
-      mockApi.health.mockResolvedValue(healthReady);
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: mockScenario });
+      mockApi.health.mockResolvedValue({ ok: true as const, data: healthReady });
     });
 
     it('shows voice dropdown when TTS is enabled and voices are available', async () => {
@@ -341,8 +342,8 @@ describe('ScenarioSetupPage', () => {
 
   describe('seed controls', () => {
     beforeEach(() => {
-      mockApi.getScenario.mockResolvedValue(mockScenario);
-      mockApi.health.mockResolvedValue(healthReady);
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: mockScenario });
+      mockApi.health.mockResolvedValue({ ok: true as const, data: healthReady });
     });
 
     it('shows auto placeholder when seed is null', async () => {
@@ -419,8 +420,8 @@ describe('ScenarioSetupPage', () => {
 
   describe('session creation', () => {
     beforeEach(() => {
-      mockApi.getScenario.mockResolvedValue(mockScenario);
-      mockApi.health.mockResolvedValue(healthReady);
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: mockScenario });
+      mockApi.health.mockResolvedValue({ ok: true as const, data: healthReady });
     });
 
     it('calls createSession with all setup fields on submit', async () => {
@@ -442,7 +443,7 @@ describe('ScenarioSetupPage', () => {
           seed: null,
         },
       };
-      mockApi.createSession.mockResolvedValue(mockSession);
+      mockApi.createSession.mockResolvedValue({ ok: true as const, data: mockSession });
 
       const { onSessionCreated } = renderSetup();
       await waitFor(() => screen.getByText('Behavioral Interview'));
@@ -471,13 +472,13 @@ describe('ScenarioSetupPage', () => {
     });
 
     it('sends seed in the payload when set', async () => {
-      mockApi.createSession.mockResolvedValue({
+      mockApi.createSession.mockResolvedValue({ ok: true as const, data: {
         session_id: 'sess-456',
         scenario_id: 'behavioral_interview',
         state: 'NotStarted',
         created_at: '2026-06-30T00:00:00Z',
         setup: {} as SessionCreateResponse['setup'],
-      });
+      } });
 
       renderSetup();
       await waitFor(() => screen.getByText('Behavioral Interview'));
@@ -498,7 +499,7 @@ describe('ScenarioSetupPage', () => {
     });
 
     it('shows error message when createSession fails', async () => {
-      mockApi.createSession.mockRejectedValue(new Error('Server error'));
+      mockApi.createSession.mockResolvedValue({ ok: false as const, error: { kind: 'http-error' as const, message: 'Server error', status: 500 } });
 
       renderSetup();
       await waitFor(() => screen.getByText('Behavioral Interview'));
@@ -507,14 +508,12 @@ describe('ScenarioSetupPage', () => {
       fireEvent.click(submitBtn);
 
       await waitFor(() =>
-        expect(screen.getByRole('alert')).toHaveTextContent(/Server error/),
+        expect(screen.getByRole('alert')).toHaveTextContent(/Request failed/i),
       );
     });
 
-    it('shows human-readable message not raw JSON when error has a message field', async () => {
-      mockApi.createSession.mockRejectedValue(
-        new Error('Unknown scenario_id: behavioral_interview'),
-      );
+    it('shows designed error state not raw JSON when createSession fails', async () => {
+      mockApi.createSession.mockResolvedValue({ ok: false as const, error: { kind: 'http-error' as const, message: 'Unknown scenario_id: behavioral_interview', status: 400 } });
 
       renderSetup();
       await waitFor(() => screen.getByText('Behavioral Interview'));
@@ -524,15 +523,15 @@ describe('ScenarioSetupPage', () => {
 
       await waitFor(() => {
         const alert = screen.getByRole('alert');
-        expect(alert).toHaveTextContent('Unknown scenario_id: behavioral_interview');
+        expect(alert).toHaveTextContent(/Request failed/i);
         expect(alert).not.toHaveTextContent('"statusCode"');
       });
     });
 
     it('disables submit button while submitting', async () => {
-      let resolveSession!: (v: SessionCreateResponse) => void;
+      let resolveSession!: (v: ApiResult<SessionCreateResponse>) => void;
       mockApi.createSession.mockReturnValue(
-        new Promise<SessionCreateResponse>((resolve) => {
+        new Promise<ApiResult<SessionCreateResponse>>((resolve) => {
           resolveSession = resolve;
         }),
       );
@@ -548,21 +547,21 @@ describe('ScenarioSetupPage', () => {
       );
 
       await act(async () => {
-        resolveSession({
+        resolveSession({ ok: true as const, data: {
           session_id: 'sess-789',
           scenario_id: 'behavioral_interview',
           state: 'NotStarted',
           created_at: '2026-06-30T00:00:00Z',
           setup: {} as SessionCreateResponse['setup'],
-        });
+        } });
       });
     });
   });
 
   describe('runtime readiness panel', () => {
     it('shows all runtime statuses', async () => {
-      mockApi.getScenario.mockResolvedValue(mockScenario);
-      mockApi.health.mockResolvedValue(healthReady);
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: mockScenario });
+      mockApi.health.mockResolvedValue({ ok: true as const, data: healthReady });
       renderSetup();
       await waitFor(() => screen.getByTestId('runtime-readiness'));
       expect(screen.getByText(/LLM:/)).toBeInTheDocument();
@@ -571,19 +570,19 @@ describe('ScenarioSetupPage', () => {
     });
 
     it('shows network required as No when runtime reports false', async () => {
-      mockApi.getScenario.mockResolvedValue(mockScenario);
-      mockApi.health.mockResolvedValue(healthReady);
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: mockScenario });
+      mockApi.health.mockResolvedValue({ ok: true as const, data: healthReady });
       renderSetup();
       await waitFor(() => screen.getByTestId('runtime-readiness'));
       expect(screen.getByText(/network required to play: no/i)).toBeInTheDocument();
     });
 
     it('shows network required as Yes when runtime reports true', async () => {
-      mockApi.getScenario.mockResolvedValue(mockScenario);
-      mockApi.health.mockResolvedValue({
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: mockScenario });
+      mockApi.health.mockResolvedValue({ ok: true as const, data: {
         ...healthReady,
         runtime: { ...healthReady.runtime, network_required: true },
-      });
+      } });
       renderSetup();
       await waitFor(() => screen.getByTestId('runtime-readiness'));
       expect(screen.getByText(/network required to play: yes/i)).toBeInTheDocument();
@@ -592,8 +591,8 @@ describe('ScenarioSetupPage', () => {
 
   describe('privacy', () => {
     beforeEach(() => {
-      mockApi.getScenario.mockResolvedValue(mockScenario);
-      mockApi.health.mockResolvedValue(healthReady);
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: mockScenario });
+      mockApi.health.mockResolvedValue({ ok: true as const, data: healthReady });
     });
 
     it('shows transcript saving toggle explicitly', async () => {
@@ -629,10 +628,10 @@ describe('ScenarioSetupPage', () => {
     });
 
     it('hides state meters toggle and shows note when scenario does not permit it', async () => {
-      mockApi.getScenario.mockResolvedValue({
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: {
         ...mockScenario,
         state_meters_permitted: false,
-      });
+      } });
       renderSetup();
       await waitFor(() => screen.getByText('Behavioral Interview'));
       expect(
@@ -659,8 +658,8 @@ describe('ScenarioSetupPage', () => {
     };
 
     it('shows a missing-runtime block when no LLM model is loaded', async () => {
-      mockApi.getScenario.mockResolvedValue(mockScenario);
-      mockApi.health.mockResolvedValue(healthNoLlm);
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: mockScenario });
+      mockApi.health.mockResolvedValue({ ok: true as const, data: healthNoLlm });
       renderSetup();
       await waitFor(() => screen.getByText('Behavioral Interview'));
       expect(screen.getByTestId('missing-runtime-block')).toBeInTheDocument();
@@ -668,24 +667,24 @@ describe('ScenarioSetupPage', () => {
     });
 
     it('disables the start button when no LLM model is loaded', async () => {
-      mockApi.getScenario.mockResolvedValue(mockScenario);
-      mockApi.health.mockResolvedValue(healthNoLlm);
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: mockScenario });
+      mockApi.health.mockResolvedValue({ ok: true as const, data: healthNoLlm });
       renderSetup();
       await waitFor(() => screen.getByText('Behavioral Interview'));
       expect(screen.getByRole('button', { name: /start scenario/i })).toBeDisabled();
     });
 
     it('shows a model manager hint in the missing-runtime block', async () => {
-      mockApi.getScenario.mockResolvedValue(mockScenario);
-      mockApi.health.mockResolvedValue(healthNoLlm);
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: mockScenario });
+      mockApi.health.mockResolvedValue({ ok: true as const, data: healthNoLlm });
       renderSetup();
       await waitFor(() => screen.getByText('Behavioral Interview'));
       expect(screen.getByTestId('missing-runtime-block')).toHaveTextContent(/model manager/i);
     });
 
     it('does not show the missing-runtime block when LLM is ready', async () => {
-      mockApi.getScenario.mockResolvedValue(mockScenario);
-      mockApi.health.mockResolvedValue(healthReady);
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: mockScenario });
+      mockApi.health.mockResolvedValue({ ok: true as const, data: healthReady });
       renderSetup();
       await waitFor(() => screen.getByText('Behavioral Interview'));
       expect(screen.queryByTestId('missing-runtime-block')).not.toBeInTheDocument();
@@ -694,8 +693,8 @@ describe('ScenarioSetupPage', () => {
 
   describe('back navigation', () => {
     it('calls onBack when the back button is clicked', async () => {
-      mockApi.getScenario.mockResolvedValue(mockScenario);
-      mockApi.health.mockResolvedValue(healthReady);
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: mockScenario });
+      mockApi.health.mockResolvedValue({ ok: true as const, data: healthReady });
       const { onBack } = renderSetup();
       await waitFor(() => screen.getByText('Behavioral Interview'));
       fireEvent.click(screen.getByRole('button', { name: /back to library/i }));
