@@ -282,6 +282,9 @@ export const de: LocaleMessages = {
       description: 'Wählen Sie die Sprache der Benutzeroberfläche.',
       label: 'Oberflächensprache',
     },
+    relationshipMemory: {
+      deleteLabel: 'Erinnerung für {{npc}} löschen',
+    },
   },
   debrief: {
     title: 'Sitzungsnachbesprechung',

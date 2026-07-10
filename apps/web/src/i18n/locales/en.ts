@@ -273,6 +273,9 @@ export const en = {
       description: 'Select the language for the user interface.',
       label: 'Interface language',
     },
+    relationshipMemory: {
+      deleteLabel: 'Delete memory for {{npc}}',
+    },
   },
   debrief: {
     title: 'Session Debrief',

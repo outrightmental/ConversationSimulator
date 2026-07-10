@@ -919,7 +919,7 @@ export default function Settings() {
                       )}
                     </div>
                     <button
-                      aria-label={`Delete memory for ${r.npc_id}`}
+                      aria-label={t('settings.relationshipMemory.deleteLabel', { npc: r.npc_id })}
                       onClick={() => void handleDeleteRecap(r.npc_id, r.pack_id)}
                       disabled={isDeleting}
                       style={{
