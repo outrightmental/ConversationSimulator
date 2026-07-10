@@ -94,3 +94,29 @@ describe('App shell', () => {
     expect(await screen.findByText('Local runtime: Unavailable')).toBeInTheDocument()
   })
 })
+
+describe('First-run guard', () => {
+  it('redirects a first-time user from a protected route to the setup wizard', () => {
+    // A fresh install has no completion flag; beforeEach sets it, so clear it here.
+    localStorage.removeItem('convsim.setup.complete')
+    renderAt('/')
+    // The wizard renders outside AppLayout, so no nav chrome is present…
+    expect(screen.queryByRole('link', { name: /settings/i })).not.toBeInTheDocument()
+    // …and the welcome step's "Get started" call to action is shown instead.
+    expect(screen.getByRole('button', { name: /get started/i })).toBeInTheDocument()
+  })
+
+  it('redirects a first-time user away from a deep protected route too', () => {
+    localStorage.removeItem('convsim.setup.complete')
+    renderAt('/settings')
+    expect(screen.getByRole('button', { name: /get started/i })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /^settings$/i })).not.toBeInTheDocument()
+  })
+
+  it('lets a returning user reach protected routes without the wizard', () => {
+    // beforeEach already set the completion flag.
+    renderAt('/settings')
+    expect(screen.getByRole('heading', { name: /settings/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /get started/i })).not.toBeInTheDocument()
+  })
+})
