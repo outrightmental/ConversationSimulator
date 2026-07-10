@@ -46,6 +46,9 @@ _DEBRIEF_NARRATIVE_RESPONSE: dict = {
     "improvements": [
         "Consider exploring different conversational strategies in a replay.",
     ],
+    "missed_opportunities": [
+        "Look for moments where asking a follow-up question could have deepened the dialogue.",
+    ],
     "turning_points": [],
     "replay_suggestions": [
         "Try adjusting your opening approach to set a different tone.",

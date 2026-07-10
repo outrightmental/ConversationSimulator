@@ -58,6 +58,7 @@ class DebriefResult:
     summary: str
     strengths: List[str]
     improvements: List[str]
+    missed_opportunities: List[str]
     turning_points: List[Dict[str, Any]]
     replay_suggestions: List[str]
     npc_final_state: Dict[str, int]
@@ -339,6 +340,7 @@ async def generate_debrief(
             "summary": narrative.summary,
             "strengths": narrative.strengths,
             "improvements": narrative.improvements,
+            "missed_opportunities": narrative.missed_opportunities,
             "turning_points": [
                 {
                     "turn_number": tp.turn_number,
@@ -380,6 +382,7 @@ async def generate_debrief(
             summary=narrative.summary,
             strengths=narrative.strengths,
             improvements=narrative.improvements,
+            missed_opportunities=narrative.missed_opportunities,
             turning_points=debrief_doc["turning_points"],
             replay_suggestions=narrative.replay_suggestions,
             npc_final_state=final_state,
