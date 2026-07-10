@@ -71,7 +71,7 @@ done
 if [[ "$(uname -s)" != "Linux" ]]; then
     echo "ERROR: This script must run on Linux. Current platform: $(uname -s)" >&2
     echo "       For macOS, use: pnpm --filter @convsim/desktop build" >&2
-    echo "       For Windows, use: .\\scripts\\build-core.ps1 then pnpm --filter @convsim/desktop build" >&2
+    printf '%s\n' "       For Windows, use: .\\scripts\\build-core.ps1 then pnpm --filter @convsim/desktop build" >&2
     exit 1
 fi
 
