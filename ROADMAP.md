@@ -110,6 +110,8 @@ work in these areas needs its own proposal, design, and acceptance criteria.
 - Pack signing and trust tiers
 - Hosted pack registry (CDN or P2P distribution)
 
+See [`docs/marketplace-architecture.md`](docs/marketplace-architecture.md) for the post-launch marketplace design baseline — entry gate criteria, distribution path comparison, and scope of schema, signing, moderation, payment, and reporting changes required before any paid content ships.
+
 ### Education and enterprise
 
 - Classroom dashboard (instructor sees student session aggregates)
