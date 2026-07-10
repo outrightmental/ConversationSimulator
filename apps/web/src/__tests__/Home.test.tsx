@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import Home from '../screens/Home'
 
@@ -376,6 +376,44 @@ describe('Home — missing-pack section', () => {
     expect(
       screen.getByRole('button', { name: /restore official packs/i }),
     ).toBeInTheDocument()
+  })
+
+  it('clears the missing-pack notice after a successful restore', async () => {
+    // /packs starts at 0, then reports 1 after the reseed POST succeeds.
+    let packsTotal = 0
+    const mockFetch = vi.fn((url: string, init?: RequestInit) => {
+      let body: object
+      if (url.includes('/packs/reseed')) {
+        packsTotal = 1
+        body = { seeded: 1 }
+      } else if (url.includes('/packs')) {
+        body = { packs: [], total: packsTotal }
+      } else if (url.includes('/logbook')) {
+        body = makeLogbook()
+      } else {
+        body = makeHealth({ llm_ready: true, llm_model_name: 'TestModel' })
+      }
+      void init
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve(body),
+        text: () => Promise.resolve(JSON.stringify(body)),
+      })
+    })
+    vi.stubGlobal('fetch', mockFetch)
+
+    renderHome()
+    await screen.findByText('TestModel')
+    await screen.findByRole('status', { name: /no scenario packs installed/i })
+
+    fireEvent.click(screen.getByRole('button', { name: /restore official packs/i }))
+
+    // Once the refreshed count reports a pack, the notice must disappear.
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('status', { name: /no scenario packs installed/i }),
+      ).toBeNull()
+    })
   })
 })
 

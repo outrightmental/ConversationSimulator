@@ -14,7 +14,7 @@ const ISSUES_URL = 'https://github.com/outrightmental/ConversationSimulator/issu
 
 export default function Home() {
   const health = useApiHealth()
-  const packCount = usePackCount()
+  const { count: packCount, refetch: refetchPackCount } = usePackCount()
   const logbook = useLogbookProfile()
   const loading = health.state === 'loading'
   const { t } = useTranslation()
@@ -438,7 +438,12 @@ export default function Home() {
                 setReseedDone(false)
                 void apiClient.reseedOfficialPacks().then((r) => {
                   setReseeding(false)
-                  if (r.ok) setReseedDone(true)
+                  if (r.ok) {
+                    setReseedDone(true)
+                    // Refresh the pack count so the "None installed" badge and
+                    // this missing-pack notice clear once packs are restored.
+                    refetchPackCount()
+                  }
                 })
               }}
               disabled={reseeding}
