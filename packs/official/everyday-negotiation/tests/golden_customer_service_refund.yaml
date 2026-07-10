@@ -144,6 +144,6 @@ static_assertions:
     path: scenario.difficulty.options.hard.patience
     check: "lte 33"
 
-  - description: Easy difficulty applies a positive patience modifier
+  - description: Warm difficulty sets a high patience knob
     path: scenario.difficulty.options.warm.patience
     check: "gte 67"

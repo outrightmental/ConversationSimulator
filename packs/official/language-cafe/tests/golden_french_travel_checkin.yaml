@@ -100,11 +100,11 @@ static_assertions:
     path: state.variables.repair_count.visibility
     check: "equals hidden"
 
-  - description: Easy difficulty uses no correction
+  - description: Warm difficulty uses no correction
     path: scenario.difficulty.options.warm.disclosure
     check: "gte 67"
 
-  - description: Normal difficulty uses light (silent recast) correction
+  - description: Standard difficulty uses light (silent recast) correction
     path: scenario.difficulty.options.standard.disclosure
     check: "between 34 66"
 
