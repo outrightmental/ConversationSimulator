@@ -1,0 +1,157 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: golden_holding_your_ground
+scenario_id: holding_your_ground
+description: >-
+  Golden transcript property test: verifies that a player who states the
+  boundary clearly and names the neighborly relationship, holds the same
+  position through Ryan's reframe and wistful second attempt without
+  escalating or adding new justifications, and closes warmly once Ryan
+  genuinely accepts causes ryan_understanding to exceed the success threshold.
+  Also verifies event structure, variable visibility, and safety config.
+
+seed: 42
+input_mode: text
+difficulty: normal
+
+turns:
+  - turn: 1
+    player_input: >-
+      I really am glad you asked in person. And I want to be honest with
+      you because I think you deserve that. I'm not interested in going
+      out with you romantically. That's where I am. I do genuinely like
+      you as a neighbor — you've been a good one — but that's as far as
+      it goes for me.
+    expect:
+      state_delta_contains:
+        - boundary_clarity
+        - ryan_understanding
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 2
+    player_input: >-
+      I hear you, and I know that's probably not what you were hoping
+      for. But it's still no — even as a casual thing. My answer is the
+      same. I just wanted to say it clearly rather than let it drift.
+    expect:
+      state_delta_contains:
+        - boundary_clarity
+        - ryan_persistence
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 3
+    player_input: >-
+      You didn't read it completely wrong — you're a warm person and I
+      understand why you thought there was something there. What I'm
+      saying isn't that you got the vibe wrong, it's that I'm not in
+      a place where I want to go down that road. Not with anyone right
+      now, honestly. I hope that makes it a bit easier to hear.
+    expect:
+      state_delta_contains:
+        - rapport
+        - ryan_understanding
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 4
+    player_input: >-
+      I'm glad we talked about it. And I do want us to be okay in the
+      building — I meant what I said about you being a good neighbor.
+      I'll see you around.
+    expect:
+      state_delta_contains:
+        - rapport
+        - ryan_understanding
+      session_control: continue_session
+      safety_status: ok
+
+static_assertions:
+  - description: Scenario opening line is non-empty
+    path: opening.npc_says
+    check: non_empty_string
+
+  - description: At least one event is defined
+    path: events
+    check: min_length_1
+
+  - description: first_test fires when ryan_persistence exceeds 70
+    path: events[id=first_test].when
+    check: "type=variable_above AND variable=ryan_persistence AND threshold=70"
+
+  - description: first_test fires only once
+    path: events[id=first_test].repeat
+    check: "equals false"
+
+  - description: second_test fires when ryan_persistence exceeds 85
+    path: events[id=second_test].when
+    check: "type=variable_above AND variable=ryan_persistence AND threshold=85"
+
+  - description: second_test fires only once
+    path: events[id=second_test].repeat
+    check: "equals false"
+
+  - description: breakthrough fires when ryan_understanding exceeds 60
+    path: events[id=breakthrough].when
+    check: "type=variable_above AND variable=ryan_understanding AND threshold=60"
+
+  - description: breakthrough fires only once
+    path: events[id=breakthrough].repeat
+    check: "equals false"
+
+  - description: rapport_warning fires when rapport falls below 25
+    path: events[id=rapport_warning].when
+    check: "type=variable_below AND variable=rapport AND threshold=25"
+
+  - description: rapport_warning fires only once
+    path: events[id=rapport_warning].repeat
+    check: "equals false"
+
+  - description: Success ending condition targets ryan_understanding above 60
+    path: ending_conditions.success
+    check: "type=variable_above AND variable=ryan_understanding AND threshold=60"
+
+  - description: Failure ending condition targets rapport below 15
+    path: ending_conditions.failure
+    check: "type=variable_below AND variable=rapport AND threshold=15"
+
+  - description: boundary_clarity is player-visible
+    path: state.variables.boundary_clarity.visibility
+    check: "equals visible"
+
+  - description: rapport is player-visible
+    path: state.variables.rapport.visibility
+    check: "equals visible"
+
+  - description: ryan_persistence is hidden from player
+    path: state.variables.ryan_persistence.visibility
+    check: "equals hidden"
+
+  - description: ryan_understanding is hidden from player
+    path: state.variables.ryan_understanding.visibility
+    check: "equals hidden"
+
+  - description: NPC is marked fictional
+    path: npc.fictional
+    check: "equals true"
+
+  - description: Safety policy stops nsfw_sexual_content
+    path: safety.content_categories.nsfw_sexual_content
+    check: "equals stop"
+
+  - description: Safety policy redirects harassment_extreme
+    path: safety.content_categories.harassment_extreme
+    check: "equals redirect"
+
+  - description: Safety policy fires stop_with_resource_message for self_harm_crisis
+    path: safety.content_categories.self_harm_crisis
+    check: "equals stop_with_resource_message"
+
+  - description: Pack manifest declares holding_your_ground as an entry scenario
+    path: manifest.entry_scenarios
+    check: "contains scenarios/holding_your_ground.yaml"
+
+  - description: Hard difficulty applies a negative patience modifier
+    path: scenario.difficulty.options.hard.npc_patience_modifier
+    check: "equals -20"

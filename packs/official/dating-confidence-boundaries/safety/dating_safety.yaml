@@ -1,0 +1,24 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+policy_id: dating_confidence_boundaries_safety
+description: >-
+  Safety policy for the Dating — Confidence & Boundaries pack. Intercepts
+  sexual escalation, age-ambiguous content, coercion, stalking, and companion
+  framing while allowing respectful social-confidence practice. Harassment
+  redirects rather than stops so NPCs can steer the player back on course
+  with a contextually appropriate response.
+content_categories:
+  nsfw_sexual_content: stop
+  minors_romantic_or_sexual: stop
+  real_person_impersonation: refuse
+  voice_cloning_request: refuse
+  medical_or_therapy_claim: redirect
+  legal_claim: redirect
+  criminal_instruction: refuse
+  harassment_extreme: redirect
+  self_harm_crisis: stop_with_resource_message
+redirect_message: >-
+  That's not where this conversation is going. Let's keep things respectful
+  and bring it back to what we were actually talking about.
+allow_profanity: false
+content_rating_cap: PG-13

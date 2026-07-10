@@ -1,0 +1,143 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scenario_id: the_ask
+title: The Coffee Cart
+summary: >-
+  Jordan Chen is ahead of you in line at the campus coffee cart — a classmate
+  you have exchanged nods with for weeks but never actually spoken to. They
+  have a research paper open on their phone and earbuds around their neck.
+  This is the moment you have been waiting for. Your goal is to start a real
+  conversation and, if it is going well, ask if they would want to get coffee
+  sometime.
+player_role:
+  label: Student
+  brief: >-
+    You are waiting in line behind Jordan, a classmate you find genuinely
+    interesting. You want to start a conversation and, at the right moment,
+    ask them out. There is no script — just see where the conversation goes
+    and read the room before you make any kind of ask.
+npc:
+  ref: ../npcs/jordan_chen.yaml
+scene:
+  ref: ../scenes/campus_coffee_cart.yaml
+rubric:
+  ref: ../rubrics/dating_confidence_rubric.yaml
+duration:
+  max_turns: 14
+  soft_time_limit_minutes: 10
+opening:
+  npc_says: >-
+    Oh — hey. Sorry, I didn't hear you come up. The line is moving so
+    slowly today. Do you know if the flat white is actually good here or is
+    it one of those things where you just get used to it?
+goals:
+  player_visible:
+    - "Start a genuine conversation with Jordan — not a script, just something real"
+    - "Read the signals as the conversation develops and decide whether the moment is right"
+    - "If it feels right, ask Jordan if they would want to get coffee sometime"
+  hidden:
+    - "Jordan is evaluating whether the player is genuinely curious about them or running through a script — authentic follow-up questions earn far more than smooth openers"
+    - "Jordan gives positive signals before the natural ask window: a returned question, a small laugh, a longer answer than necessary — a player who notices these will time the ask better"
+    - "Asking Jordan out before the conversation has established real contact will get a soft non-answer; asking after it has will get a genuine response"
+    - "Jordan is not going to flirt — the player has to do the work of reading engagement signals without a clear green light"
+state:
+  variables:
+    rapport:
+      min: 0
+      max: 100
+      default: 25
+      visibility: visible
+      max_delta_per_turn: 15
+    confidence:
+      min: 0
+      max: 100
+      default: 40
+      visibility: visible
+      max_delta_per_turn: 12
+    jordan_interest:
+      min: 0
+      max: 100
+      default: 35
+      visibility: hidden
+      max_delta_per_turn: 18
+    jordan_comfort:
+      min: 0
+      max: 100
+      default: 65
+      visibility: hidden
+      max_delta_per_turn: 15
+difficulty:
+  default: normal
+  options:
+    easy:
+      npc_patience_modifier: 25
+      challenge_frequency: low
+    normal:
+      npc_patience_modifier: 0
+      challenge_frequency: medium
+    hard:
+      npc_patience_modifier: -20
+      challenge_frequency: high
+events:
+  - id: positive_signal
+    when:
+      type: variable_above
+      variable: jordan_interest
+      threshold: 60
+    npc_instruction: >-
+      Jordan has started to genuinely enjoy this conversation. Show it:
+      a slightly longer answer, a real follow-up question back at the player,
+      or a small, unguarded laugh at something the player said. The body
+      language shifts — they put their phone in their pocket or turn a little
+      more toward the player. Do not announce it; let the player notice.
+    repeat: false
+  - id: natural_ask_window
+    when:
+      type: variable_above
+      variable: rapport
+      threshold: 55
+    npc_instruction: >-
+      The conversation has reached a natural pause — a moment of easy silence
+      after something genuine was said, or the line is about to move and the
+      interaction is about to end naturally. Signal this with a brief settling
+      moment: Jordan smiles, glances ahead at the line, and does not immediately
+      launch a new topic. This is the moment a player with good timing will
+      use to make an ask.
+    repeat: false
+  - id: comfort_warning
+    when:
+      type: variable_below
+      variable: jordan_comfort
+      threshold: 30
+    npc_instruction: >-
+      Jordan is starting to feel like this interaction has run longer than
+      they wanted or that the player is angling somewhere. Signal mild
+      discomfort without hostility: shorter answers, a glance toward the
+      front of the line, an "oh, I should probably..." trailing sentence that
+      does not finish. The player has one or two turns to read this correctly.
+    repeat: false
+  - id: disengagement
+    when:
+      type: variable_below
+      variable: jordan_interest
+      threshold: 20
+    npc_instruction: >-
+      Jordan has checked out. They are not rude but they are done with the
+      interaction. Offer a polite close: "Hey, it was nice chatting — I
+      should grab my order and find a seat before my lecture." Let the player
+      respond but do not re-open the conversation after this.
+    repeat: false
+ending_conditions:
+  success:
+    type: variable_above
+    variable: jordan_interest
+    threshold: 68
+  failure:
+    type: variable_below
+    variable: jordan_comfort
+    threshold: 12
+response_style:
+  max_words: 75
+  verbosity: moderate
+  formality: casual
+replay_seed: 42
