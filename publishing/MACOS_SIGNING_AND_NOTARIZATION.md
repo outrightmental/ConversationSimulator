@@ -344,7 +344,7 @@ for notary service outages.
 - [`apps/desktop/src-tauri/tauri.conf.json`](../apps/desktop/src-tauri/tauri.conf.json) — Tauri bundle configuration
 - [`docs/platform-notes.md` — macOS section](../docs/platform-notes.md#macos) — system requirements, supported versions, build prerequisites
 - [`docs/steam-mvp-scope.md` — G3-01](../docs/steam-mvp-scope.md) — Stage 3 gate: notarised macOS build required
-- [`publishing/STEAM_DEPOT_CONTENTS.md` — macOS depot](STEAM_DEPOT_CONTENTS.md#macos-depot) — macOS depot layout and notarisation requirement
+- [`publishing/STEAM_DEPOT_CONTENTS.md` — macOS depot](STEAM_DEPOT_CONTENTS.md#macos-depot-depot_macosvdftpl) — macOS depot layout and notarisation requirement
 - [`publishing/STEAM_PUBLISHING_AND_DEPLOYMENT.md`](STEAM_PUBLISHING_AND_DEPLOYMENT.md) — Steam deploy workflow and troubleshooting
 - [Tauri macOS signing docs](https://tauri.app/distribute/sign/macos) — upstream reference for `tauri build` signing variables
 - [Apple Developer — Developer ID](https://developer.apple.com/developer-id/) — official certificate documentation
