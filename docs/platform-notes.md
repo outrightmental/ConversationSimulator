@@ -60,8 +60,11 @@ pnpm --filter @convsim/desktop tauri build --target aarch64-apple-darwin
 
 ### Installer format
 
-Tauri produces a `.dmg` disk image and a `.app.tar.gz` archive.
-The `.dmg` is the primary distributable for macOS.
+Tauri produces a `.dmg` disk image and a raw `.app` bundle. The `.dmg` is the
+primary distributable for macOS. For the Steam depot, the release CI tarballs
+the `.app` bundle into a `.app.tar.gz` (Steam ships the raw application, not the
+installer); Tauri itself only emits `.app.tar.gz` when the updater is
+configured, which this project does not use.
 
 ### Code signing and Gatekeeper
 
