@@ -1514,3 +1514,479 @@ class TestInputSafetyGate:
         assert get_res.status_code == 200
         state = get_res.json()["state"]
         assert state == "Ended"
+
+
+# ---------------------------------------------------------------------------
+# Issue #201: state variables, scenario events, endings, and rubrics
+# ---------------------------------------------------------------------------
+
+
+def _insert_unit_session_with_state(
+    conn: sqlite3.Connection,
+    session_id: str = "sess-unit",
+    state_vars: dict = None,
+) -> sqlite3.Row:
+    """Like _insert_unit_session but allows pre-seeding state_vars_json."""
+    import json as _json
+    state_json = _json.dumps(state_vars or {})
+    conn.execute(
+        "INSERT INTO turn_sessions "
+        "(session_id, scenario_id, flow_state, state_vars_json, fired_events_json, "
+        "turn_count, setup_json) "
+        "VALUES (?, 'behavioral_interview', 'PlayerTurnListening', ?, '[]', 0, '{}')",
+        (session_id, state_json),
+    )
+    conn.commit()
+    return conn.execute(
+        "SELECT * FROM turn_sessions WHERE session_id = ?", (session_id,)
+    ).fetchone()
+
+
+class _SpecificDeltaRuntime(FakeChatRuntime):
+    """Runtime that returns a configurable state_delta."""
+
+    def __init__(self, state_delta: dict = None, rubric_obs: list = None) -> None:
+        super().__init__()
+        self._delta = state_delta or {}
+        self._rubric_obs = rubric_obs or []
+
+    def chat_stream(self, request: ChatRequest):
+        return self._stream(request)
+
+    async def _stream(self, request: ChatRequest):
+        import json as _json
+        from convsim_core.runtime.types import ChatFinal
+        response = {
+            "npc_utterance": "Understood.",
+            "npc_emotion": "neutral",
+            "state_delta": self._delta,
+            "event_flags": [],
+            "rubric_observations": self._rubric_obs,
+            "safety": {"status": "ok"},
+            "session_control": {"continue_session": True},
+        }
+        text = _json.dumps(response)
+        yield ChatFinal(
+            text=text,
+            model_id="fake-small",
+            input_tokens=10,
+            output_tokens=len(text.split()),
+            structured=response,
+        )
+
+
+class TestScenarioStateIntegration:
+    """Integration tests for scenario state variables, events, endings, and rubrics (issue #201)."""
+
+    # ------------------------------------------------------------------
+    # Clamping and invalid variable rejection
+    # ------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_custom_variable_overrides_constrain_delta(self):
+        """A custom max_delta_per_turn override is respected; delta cannot exceed it."""
+        conn = _make_unit_db()
+        row = _insert_unit_session(conn)
+
+        # trust starts at 50 (baseline default); runtime requests +20
+        # but we cap max_delta_per_turn at 5, so only +5 should be applied.
+        result = await process_turn(
+            session_row=row,
+            player_text="Hello.",
+            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            max_turns=10,
+            runtime=_SpecificDeltaRuntime(state_delta={"trust": 20}),
+            conn=conn,
+            state_variable_overrides={"trust": {"max_delta_per_turn": 5}},
+        )
+
+        assert result.state_delta.get("trust") == 5
+        assert result.new_state_vars["trust"] == 55  # 50 + 5
+
+    @pytest.mark.asyncio
+    async def test_invalid_variable_key_rejected_in_pipeline(self):
+        """An unknown variable key proposed by the model is rejected; not applied."""
+        conn = _make_unit_db()
+        row = _insert_unit_session(conn)
+
+        result = await process_turn(
+            session_row=row,
+            player_text="Hello.",
+            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            max_turns=10,
+            runtime=_SpecificDeltaRuntime(state_delta={"ghost_key": 10, "trust": 5}),
+            conn=conn,
+        )
+
+        assert "ghost_key" not in result.new_state_vars
+        assert result.state_delta.get("trust") == 5
+
+    # ------------------------------------------------------------------
+    # Ending conditions
+    # ------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_success_ending_fires_from_ending_conditions(self):
+        """ending_type='success' is set when the success variable condition is met."""
+        conn = _make_unit_db()
+        # Pre-seed objective_progress near the threshold (50); delta +15 pushes to 65 > 60.
+        row = _insert_unit_session_with_state(
+            conn, state_vars={"trust": 50, "patience": 75, "pressure": 25,
+                              "rapport": 50, "openness": 50, "objective_progress": 50}
+        )
+
+        result = await process_turn(
+            session_row=row,
+            player_text="I agree completely.",
+            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            max_turns=20,
+            runtime=_SpecificDeltaRuntime(state_delta={"objective_progress": 15}),
+            conn=conn,
+            ending_conditions={
+                "success": {
+                    "type": "variable_above",
+                    "variable": "objective_progress",
+                    "threshold": 60,
+                }
+            },
+        )
+
+        assert result.ending_type == "success"
+        assert result.new_flow_state == "Ended"
+
+    @pytest.mark.asyncio
+    async def test_failure_ending_fires_from_ending_conditions(self):
+        """ending_type='failure' is set when the failure variable condition is met."""
+        conn = _make_unit_db()
+        # Pre-seed patience near the failure threshold (20); delta -15 pushes to 5 < 10.
+        row = _insert_unit_session_with_state(
+            conn, state_vars={"trust": 50, "patience": 20, "pressure": 25,
+                              "rapport": 50, "openness": 50, "objective_progress": 0}
+        )
+
+        result = await process_turn(
+            session_row=row,
+            player_text="That's not right at all.",
+            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            max_turns=20,
+            runtime=_SpecificDeltaRuntime(state_delta={"patience": -15}),
+            conn=conn,
+            ending_conditions={
+                "failure": {
+                    "type": "variable_below",
+                    "variable": "patience",
+                    "threshold": 10,
+                }
+            },
+        )
+
+        assert result.ending_type == "failure"
+        assert result.new_flow_state == "Ended"
+
+    @pytest.mark.asyncio
+    async def test_timeout_ending_fires_when_max_turns_reached(self):
+        """ending_type='timeout' fires when turn_number >= max_turns (pipeline unit)."""
+        conn = _make_unit_db()
+        row = _insert_unit_session(conn)
+
+        result = await process_turn(
+            session_row=row,
+            player_text="Last turn.",
+            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            max_turns=1,
+            runtime=FakeChatRuntime(),
+            conn=conn,
+        )
+
+        assert result.ending_type == "timeout"
+        assert result.new_flow_state == "Ended"
+
+    @pytest.mark.asyncio
+    async def test_success_takes_priority_over_timeout(self):
+        """When success and timeout both fire on the same turn, success wins."""
+        conn = _make_unit_db()
+        row = _insert_unit_session_with_state(
+            conn, state_vars={"trust": 50, "patience": 75, "pressure": 25,
+                              "rapport": 50, "openness": 50, "objective_progress": 50}
+        )
+
+        result = await process_turn(
+            session_row=row,
+            player_text="Final answer.",
+            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            max_turns=1,  # timeout would fire
+            runtime=_SpecificDeltaRuntime(state_delta={"objective_progress": 15}),
+            conn=conn,
+            ending_conditions={
+                "success": {
+                    "type": "variable_above",
+                    "variable": "objective_progress",
+                    "threshold": 60,
+                }
+            },
+        )
+
+        assert result.ending_type == "success"
+
+    # ------------------------------------------------------------------
+    # Scenario events
+    # ------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_scenario_event_fires_and_returned(self):
+        """An event whose condition is met appears in triggered_scenario_events."""
+        from convsim_core.scenario_state import ScenarioEvent
+        conn = _make_unit_db()
+        # rapport starts at 60; delta +15 pushes to 75 which is > 70 — event fires.
+        row = _insert_unit_session_with_state(
+            conn, state_vars={"trust": 50, "patience": 75, "pressure": 25,
+                              "rapport": 60, "openness": 50, "objective_progress": 0}
+        )
+
+        evt = ScenarioEvent(
+            id="rapport_high",
+            when={"type": "variable_above", "variable": "rapport", "threshold": 70},
+            npc_instruction="Acknowledge the improved atmosphere.",
+        )
+
+        result = await process_turn(
+            session_row=row,
+            player_text="I appreciate your perspective.",
+            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            max_turns=20,
+            runtime=_SpecificDeltaRuntime(state_delta={"rapport": 15}),
+            conn=conn,
+            scenario_events=[evt],
+        )
+
+        assert "rapport_high" in result.triggered_scenario_events
+
+    @pytest.mark.asyncio
+    async def test_scenario_event_does_not_fire_when_condition_not_met(self):
+        """An event whose condition is not met is absent from triggered_scenario_events."""
+        from convsim_core.scenario_state import ScenarioEvent
+        conn = _make_unit_db()
+        row = _insert_unit_session(conn)
+
+        evt = ScenarioEvent(
+            id="trust_very_high",
+            when={"type": "variable_above", "variable": "trust", "threshold": 90},
+            npc_instruction="NPC becomes very open.",
+        )
+
+        result = await process_turn(
+            session_row=row,
+            player_text="Hello.",
+            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            max_turns=20,
+            runtime=FakeChatRuntime(),
+            conn=conn,
+            scenario_events=[evt],
+        )
+
+        assert "trust_very_high" not in result.triggered_scenario_events
+
+    # ------------------------------------------------------------------
+    # Visible vs. hidden state meters
+    # ------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_visible_state_in_pipeline_result(self):
+        """result.visible_state contains visible variables and excludes hidden ones."""
+        conn = _make_unit_db()
+        row = _insert_unit_session(conn)
+
+        result = await process_turn(
+            session_row=row,
+            player_text="Hello.",
+            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            max_turns=10,
+            runtime=FakeChatRuntime(),
+            conn=conn,
+        )
+
+        # Baseline visible variables must be present.
+        assert "trust" in result.visible_state
+        assert "patience" in result.visible_state
+        assert "rapport" in result.visible_state
+        assert "openness" in result.visible_state
+        assert "objective_progress" in result.visible_state
+        # pressure is HIDDEN — must not appear.
+        assert "pressure" not in result.visible_state
+
+    @pytest.mark.asyncio
+    async def test_custom_hidden_variable_excluded_from_visible_state(self):
+        """A variable declared hidden in state_variable_overrides is not in visible_state."""
+        conn = _make_unit_db()
+        row = _insert_unit_session(conn)
+
+        result = await process_turn(
+            session_row=row,
+            player_text="Hello.",
+            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            max_turns=10,
+            runtime=FakeChatRuntime(),
+            conn=conn,
+            state_variable_overrides={"trust": {"visibility": "hidden"}},
+        )
+
+        assert "trust" not in result.visible_state
+
+    def test_visible_state_in_turn_api_response(self, client):
+        """The /turn HTTP response includes visible_state in the npc_turn payload."""
+        session_id = _create_and_start(client)
+
+        res = client.post(
+            f"/api/sessions/{session_id}/turn",
+            json={"content": "Good morning."},
+        )
+        assert res.status_code == 200
+        npc_payload = res.json()["events"][1]["payload"]
+        assert "visible_state" in npc_payload
+        assert isinstance(npc_payload["visible_state"], dict)
+        # trust is a visible baseline variable — must appear.
+        assert "trust" in npc_payload["visible_state"]
+        # pressure is hidden — must not appear.
+        assert "pressure" not in npc_payload["visible_state"]
+
+    # ------------------------------------------------------------------
+    # Rubric observations persistence
+    # ------------------------------------------------------------------
+
+    @pytest.mark.asyncio
+    async def test_rubric_observations_persisted_in_events(self):
+        """Rubric observations from the NPC turn are stored in turn_session_events."""
+        conn = _make_unit_db()
+        row = _insert_unit_session(conn)
+
+        runtime = _SpecificDeltaRuntime(
+            rubric_obs=[
+                {"rubric_id": "clarity", "observation": "Clear explanation.", "score_delta": 2},
+                {"rubric_id": "empathy", "observation": "Showed empathy.", "score_delta": 1},
+            ]
+        )
+
+        await process_turn(
+            session_row=row,
+            player_text="Let me be clear.",
+            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            max_turns=10,
+            runtime=runtime,
+            conn=conn,
+        )
+
+        events = _get_event_payloads(conn, "sess-unit", "rubric_observations")
+        assert len(events) == 1
+        obs_list = events[0]
+        assert isinstance(obs_list, list)
+        assert len(obs_list) == 2
+        rubric_ids = {o["rubric_id"] for o in obs_list}
+        assert rubric_ids == {"clarity", "empathy"}
+
+    @pytest.mark.asyncio
+    async def test_rubric_observations_in_pipeline_result(self):
+        """result.rubric_observations contains the NPC's rubric observations."""
+        conn = _make_unit_db()
+        row = _insert_unit_session(conn)
+
+        runtime = _SpecificDeltaRuntime(
+            rubric_obs=[
+                {"rubric_id": "structure", "observation": "Well-structured.", "score_delta": 3},
+            ]
+        )
+
+        result = await process_turn(
+            session_row=row,
+            player_text="Here is my reasoning.",
+            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            max_turns=10,
+            runtime=runtime,
+            conn=conn,
+        )
+
+        assert len(result.rubric_observations) == 1
+        assert result.rubric_observations[0]["rubric_id"] == "structure"
+        assert result.rubric_observations[0]["score_delta"] == 3
+
+    @pytest.mark.asyncio
+    async def test_empty_rubric_observations_not_persisted(self):
+        """No rubric_observations event is written when the NPC returns an empty list."""
+        conn = _make_unit_db()
+        row = _insert_unit_session(conn)
+
+        await process_turn(
+            session_row=row,
+            player_text="Hello.",
+            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            max_turns=10,
+            runtime=FakeChatRuntime(),
+            conn=conn,
+        )
+
+        events = _get_event_payloads(conn, "sess-unit", "rubric_observations")
+        assert events == []
+
+    def test_rubric_observations_in_turn_api_response(self, client):
+        """The /turn HTTP response includes rubric_observations in the npc_turn payload."""
+        session_id = _create_and_start(client)
+
+        res = client.post(
+            f"/api/sessions/{session_id}/turn",
+            json={"content": "Hello."},
+        )
+        assert res.status_code == 200
+        npc_payload = res.json()["events"][1]["payload"]
+        assert "rubric_observations" in npc_payload
+        assert isinstance(npc_payload["rubric_observations"], list)
+
+    # ------------------------------------------------------------------
+    # scenario_events wired from ScenarioInfo (coworker_feedback)
+    # ------------------------------------------------------------------
+
+    def test_coworker_feedback_scenario_has_state_variable_overrides(self):
+        """coworker_feedback ScenarioInfo ships with state_variable_overrides."""
+        from convsim_core.scenarios import get_scenario_info
+        info = get_scenario_info("coworker_feedback")
+        assert info is not None
+        assert info.state_variable_overrides is not None
+        assert "rapport" in info.state_variable_overrides
+
+    def test_coworker_feedback_scenario_has_events(self):
+        """coworker_feedback ScenarioInfo ships with at least one event."""
+        from convsim_core.scenarios import get_scenario_info
+        info = get_scenario_info("coworker_feedback")
+        assert info is not None
+        assert info.events is not None
+        assert len(info.events) > 0
+        assert info.events[0].id == "npc_defensive"
+
+    def test_coworker_feedback_scenario_has_ending_conditions(self):
+        """coworker_feedback ScenarioInfo ships with both success and failure endings."""
+        from convsim_core.scenarios import get_scenario_info
+        info = get_scenario_info("coworker_feedback")
+        assert info is not None
+        assert info.ending_conditions is not None
+        assert "success" in info.ending_conditions
+        assert "failure" in info.ending_conditions
+
+    def test_coworker_feedback_rapport_starts_at_30(self):
+        """The coworker_feedback rapport override (default=30) is applied on first turn."""
+        from convsim_core.scenario_state import build_variable_defs, initialize_state
+        from convsim_core.scenarios import get_scenario_info
+        info = get_scenario_info("coworker_feedback")
+        defs = build_variable_defs(info.state_variable_overrides)
+        state = initialize_state(defs)
+        assert state["rapport"] == 30
+
+    def test_triggered_scenario_events_in_turn_api_response(self, client):
+        """triggered_scenario_events is present in the npc_turn payload."""
+        session_id = _create_and_start(client)
+
+        res = client.post(
+            f"/api/sessions/{session_id}/turn",
+            json={"content": "Hello."},
+        )
+        assert res.status_code == 200
+        npc_payload = res.json()["events"][1]["payload"]
+        assert "triggered_scenario_events" in npc_payload
+        assert isinstance(npc_payload["triggered_scenario_events"], list)
