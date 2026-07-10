@@ -4,8 +4,8 @@ import { renderHook, act } from '@testing-library/react'
 
 vi.mock('../api/client', () => ({
   apiClient: {
-    vadHealth: vi.fn().mockResolvedValue({ status: 'ready', worker_id: 'silero_vad', worker_name: 'Silero VAD', checked_at: '' }),
-    vadCalibrate: vi.fn().mockResolvedValue({ recommended_threshold: 0.08, noise_floor: 0.02, worker_id: 'silero_vad', status: 'ok' }),
+    vadHealth: vi.fn().mockResolvedValue({ ok: true, data: { status: 'ready', worker_id: 'silero_vad', worker_name: 'Silero VAD', checked_at: '' } }),
+    vadCalibrate: vi.fn().mockResolvedValue({ ok: true, data: { recommended_threshold: 0.08, noise_floor: 0.02, worker_id: 'silero_vad', status: 'ok' } }),
   },
 }))
 
@@ -181,7 +181,7 @@ describe('useVad — calibrate', () => {
   it('sets isCalibrating=true while in progress', async () => {
     let resolve: () => void
     vi.mocked(apiClient.vadCalibrate).mockReturnValueOnce(
-      new Promise((r) => { resolve = () => r({ recommended_threshold: 0.05, noise_floor: 0.01, worker_id: 'silero_vad', status: 'ok' }) })
+      new Promise((r) => { resolve = () => r({ ok: true, data: { recommended_threshold: 0.05, noise_floor: 0.01, worker_id: 'silero_vad', status: 'ok' } }) })
     )
     const { result } = renderHook(() => useVad())
     act(() => { void result.current.calibrate(new Blob()) })

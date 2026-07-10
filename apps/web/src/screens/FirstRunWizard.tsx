@@ -187,9 +187,14 @@ export default function FirstRunWizard() {
     if (step !== 'loading') return
     api
       .getModels()
-      .then((data) => {
-        setModelsData(data)
-        setStep('choose')
+      .then((r) => {
+        if (r.ok) {
+          setModelsData(r.data)
+          setStep('choose')
+        } else {
+          setLoadError(r.error.message)
+          setStep('load-error')
+        }
       })
       .catch((err: unknown) => {
         setLoadError(err instanceof Error ? err.message : 'Failed to load model information.')
@@ -211,7 +216,9 @@ export default function FirstRunWizard() {
     pollRef.current = setInterval(() => {
       api
         .getInstallStatus(installId)
-        .then((record) => {
+        .then((r) => {
+          if (!r.ok) { /* Ignore transient polling errors; keep polling. */ return }
+          const record = r.data
           setInstallRecord(record)
           const terminal = ['ready', 'complete', 'failed', 'cancelled', 'checksum_mismatch']
           if (terminal.includes(record.install_status)) {
@@ -224,9 +231,6 @@ export default function FirstRunWizard() {
               setActionError(record.error_message ?? 'Download failed. Please try again.')
             }
           }
-        })
-        .catch(() => {
-          // Ignore transient polling errors; keep polling.
         })
     }, 2000)
 
@@ -242,8 +246,12 @@ export default function FirstRunWizard() {
     setBenchmarkError(null)
     api
       .benchmarkModel({})
-      .then((result) => {
-        setBenchmarkResult(result)
+      .then((r) => {
+        if (r.ok) {
+          setBenchmarkResult(r.data)
+        } else {
+          setBenchmarkError(r.error.message)
+        }
       })
       .catch((err: unknown) => {
         setBenchmarkError(err instanceof Error ? err.message : 'Benchmark failed.')
@@ -673,15 +681,13 @@ export default function FirstRunWizard() {
               setActionError(null)
               try {
                 const resp = await api.installModel({ registry_id: selectedModel.id })
-                // Record this choice for cross-device sync (Steam Cloud). Only the
-                // opaque registry ID is stored — never a filesystem path — so no
-                // locally-identifiable data leaves the machine. Best-effort.
-                api.putCloudSettings({ last_model_id: selectedModel.id }).catch(() => {
-                  /* non-fatal: model install proceeds regardless */
-                })
-                setInstallId(resp.install_id)
-                setInstallRecord(null)
-                setStep('installing')
+                if (!resp.ok) {
+                  setActionError(resp.error.message)
+                } else {
+                  setInstallId(resp.data.install_id)
+                  setInstallRecord(null)
+                  setStep('installing')
+                }
               } catch (err: unknown) {
                 setActionError(
                   err instanceof Error ? err.message : 'Install failed. Please try again.',
@@ -948,14 +954,14 @@ export default function FirstRunWizard() {
     async function handleSelectOllama(m: DetectedOllamaModel) {
       setActionLoading(true)
       setActionError(null)
-      try {
-        await api.useModel({ runtime_id: 'ollama', model_id: m.id })
-        benchmarkStartedRef.current = false
-        setStep('benchmark')
-      } catch (err: unknown) {
-        setActionError(err instanceof Error ? err.message : 'Failed to activate Ollama model.')
+      const r = await api.useModel({ runtime_id: 'ollama', model_id: m.id })
+      if (!r.ok) {
+        setActionError(r.error.message)
         setActionLoading(false)
+        return
       }
+      benchmarkStartedRef.current = false
+      setStep('benchmark')
     }
 
     return (
@@ -1058,19 +1064,18 @@ export default function FirstRunWizard() {
       setGgufPathError(null)
       setActionLoading(true)
       setActionError(null)
-      try {
-        await api.registerGguf({ path: trimmed })
-        try {
-          await api.startSidecar(trimmed)
-        } catch (sidecarErr) {
-          console.warn('GGUF registered, but the llama.cpp sidecar failed to start:', sidecarErr)
-        }
-        benchmarkStartedRef.current = false
-        setStep('benchmark')
-      } catch (err: unknown) {
-        setActionError(err instanceof Error ? err.message : 'Failed to activate the GGUF file.')
+      const reg = await api.registerGguf({ path: trimmed })
+      if (!reg.ok) {
+        setActionError(reg.error.message)
         setActionLoading(false)
+        return
       }
+      const sidecar = await api.startSidecar(trimmed)
+      if (!sidecar.ok) {
+        console.warn('GGUF registered, but the llama.cpp sidecar failed to start:', sidecar.error.message)
+      }
+      benchmarkStartedRef.current = false
+      setStep('benchmark')
     }
 
     return (

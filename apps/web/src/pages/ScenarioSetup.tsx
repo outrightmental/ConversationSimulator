@@ -11,6 +11,8 @@ import type {
 } from '@convsim/shared';
 import { validateSetup, randomSeed } from '@convsim/shared';
 import { api } from '../api/client';
+import type { ApiError } from '../api/errors';
+import { ApiErrorView } from '../components/ApiErrorView';
 import { readPrivacyPref, PRIVACY_KEYS } from '../privacyPrefs';
 
 const DIFFICULTY_LABELS: Record<ScenarioDifficulty, string> = {
@@ -69,9 +71,9 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
     network_required: false,
   });
   const [voices, setVoices] = useState<VoiceInfo[]>([]);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<ApiError | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<ApiError | null>(null);
 
   const [form, setForm] = useState<SetupFormValues>({
     difficulty: 'standard',
@@ -88,49 +90,55 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
   useEffect(() => {
     let cancelled = false;
 
-    Promise.all([
-      api.getScenario(scenarioId),
-      api.health().catch(() => null),
-      api.listVoices().catch(() => ({ voices: [] })),
-    ]).then(
-      ([scenarioData, healthResult, voicesResult]) => {
-        if (cancelled) return;
-        setScenario(scenarioData);
-        setVoices(voicesResult.voices);
-        const rt = healthResult?.runtime ?? {
-          llm_ready: false,
-          llm_model_name: null,
-          stt_ready: false,
-          tts_ready: false,
-          tts_voice_name: null,
-          network_required: false,
-        };
-        setRuntime(rt);
-        setForm((prev) => {
-          // Pick a default voice: honour stored preference if valid, else first available.
-          const storedVoiceId = localStorage.getItem('convsim.voice.preferredVoiceId');
-          const defaultVoiceId =
-            storedVoiceId && voicesResult.voices.some((v) => v.voice_id === storedVoiceId)
-              ? storedVoiceId
-              : voicesResult.voices[0]?.voice_id ?? null;
-          return {
-            ...prev,
-            difficulty: scenarioData.difficulty.default,
-            player_role_name: scenarioData.player_role.label,
-            language: scenarioData.supported_languages[0] ?? 'en',
-            tts_enabled: rt.tts_ready && (scenarioData.voice_supported !== false),
-            voice_id: prev.voice_id && voicesResult.voices.some((v) => v.voice_id === prev.voice_id)
-              ? prev.voice_id
-              : defaultVoiceId,
-            input_mode: rt.stt_ready ? 'push-to-talk' : 'text-only',
-            show_state_meters: scenarioData.state_meters_permitted ? prev.show_state_meters : false,
-          };
-        });
-      },
-      (err: unknown) => {
-        if (!cancelled) setLoadError(err instanceof Error ? err.message : String(err));
-      },
-    );
+    void (async () => {
+      const [scenarioR, healthR, voicesR] = await Promise.all([
+        api.getScenario(scenarioId),
+        api.health(),
+        api.listVoices(),
+      ])
+      if (cancelled) return
+      if (!scenarioR.ok) { setLoadError(scenarioR.error); return }
+      const scenarioData = scenarioR.data
+      const voiceList = voicesR.ok ? voicesR.data.voices : []
+      const rt = healthR.ok ? (healthR.data.runtime ?? {
+        llm_ready: false,
+        llm_model_name: null,
+        stt_ready: false,
+        tts_ready: false,
+        tts_voice_name: null,
+        network_required: false,
+      }) : {
+        llm_ready: false,
+        llm_model_name: null,
+        stt_ready: false,
+        tts_ready: false,
+        tts_voice_name: null,
+        network_required: false,
+      }
+      setScenario(scenarioData)
+      setVoices(voiceList)
+      setRuntime(rt)
+      setForm((prev) => {
+        // Pick a default voice: honour stored preference if valid, else first available.
+        const storedVoiceId = localStorage.getItem('convsim.voice.preferredVoiceId')
+        const defaultVoiceId =
+          storedVoiceId && voiceList.some((v) => v.voice_id === storedVoiceId)
+            ? storedVoiceId
+            : voiceList[0]?.voice_id ?? null
+        return {
+          ...prev,
+          difficulty: scenarioData.difficulty.default,
+          player_role_name: scenarioData.player_role.label,
+          language: scenarioData.supported_languages[0] ?? 'en',
+          tts_enabled: rt.tts_ready && (scenarioData.voice_supported !== false),
+          voice_id: prev.voice_id && voiceList.some((v) => v.voice_id === prev.voice_id)
+            ? prev.voice_id
+            : defaultVoiceId,
+          input_mode: rt.stt_ready ? 'push-to-talk' : 'text-only',
+          show_state_meters: scenarioData.state_meters_permitted ? prev.show_state_meters : false,
+        }
+      })
+    })();
 
     return () => {
       cancelled = true;
@@ -164,22 +172,21 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
 
       setSubmitting(true);
       setSubmitError(null);
-      try {
-        // `voice_id` is the UI form field; the backend expects `tts_voice_id`
-        // (a non-null approved voice id). Omit it when no voice is selected so
-        // the backend applies its default rather than rejecting a null value.
-        const { voice_id, ...rest } = form;
-        const session = await api.createSession({
-          scenario_id: scenarioId,
-          ...rest,
-          ...(voice_id ? { tts_voice_id: voice_id } : {}),
-        });
-        onSessionCreated(session);
-      } catch (err: unknown) {
-        setSubmitError(err instanceof Error ? err.message : String(err));
-      } finally {
-        setSubmitting(false);
+      // `voice_id` is the UI form field; the backend expects `tts_voice_id`
+      // (a non-null approved voice id). Omit it when no voice is selected so
+      // the backend applies its default rather than rejecting a null value.
+      const { voice_id, ...rest } = form;
+      const r = await api.createSession({
+        scenario_id: scenarioId,
+        ...rest,
+        ...(voice_id ? { tts_voice_id: voice_id } : {}),
+      });
+      if (r.ok) {
+        onSessionCreated(r.data);
+      } else {
+        setSubmitError(r.error);
       }
+      setSubmitting(false);
     },
     [form, scenarioId, scenario, validationResult.valid, onSessionCreated],
   );
@@ -187,10 +194,10 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
   if (loadError) {
     return (
       <div className="setup-page" data-testid="setup-page">
-        <div className="setup-error" role="alert">
+        <div className="setup-error">
           <h2>Failed to load scenario</h2>
-          <p>{loadError}</p>
-          <button onClick={onBack}>Go back</button>
+          <ApiErrorView error={loadError} context="ScenarioSetup" />
+          <button onClick={onBack} style={{ marginTop: '0.75rem' }}>Go back</button>
         </div>
       </div>
     );
@@ -508,8 +515,8 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
           </section>
 
           {submitError && (
-            <div className="setup-submit-error" role="alert">
-              {submitError}
+            <div className="setup-submit-error">
+              <ApiErrorView error={submitError} compact context="ScenarioSetup-Submit" />
             </div>
           )}
 

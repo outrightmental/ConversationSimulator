@@ -4,6 +4,9 @@ import { Link } from 'react-router-dom'
 import type { ScenarioInfo, PackValidationResult } from '@convsim/shared'
 import { api } from '../api/client'
 import type { PackSummary, ImportPackResponse } from '../api/client'
+import type { ApiError } from '../api/errors'
+import { errorHeadline } from '../api/errors'
+import { ApiErrorView } from '../components/ApiErrorView'
 
 interface PackGroup {
   pack_id: string
@@ -28,13 +31,13 @@ type ValidationState =
   | { status: 'idle' }
   | { status: 'loading' }
   | { status: 'done'; result: PackValidationResult }
-  | { status: 'error'; message: string }
+  | { status: 'error'; error: ApiError }
 
 type ImportState = 'idle' | 'uploading' | 'success' | 'error'
 
 export default function ScenarioLibrary() {
   const [scenarios, setScenarios] = useState<ScenarioInfo[] | null>(null)
-  const [loadError, setLoadError] = useState(false)
+  const [loadError, setLoadError] = useState<ApiError | null>(null)
   const [search, setSearch] = useState('')
   const [filterRating, setFilterRating] = useState('')
   const [filterLanguage, setFilterLanguage] = useState('')
@@ -51,7 +54,7 @@ export default function ScenarioLibrary() {
 
   // Import pack state
   const [importState, setImportState] = useState<ImportState>('idle')
-  const [importError, setImportError] = useState<string | null>(null)
+  const [importError, setImportError] = useState<ApiError | null>(null)
   const [importedPack, setImportedPack] = useState<ImportPackResponse | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -66,34 +69,32 @@ export default function ScenarioLibrary() {
   const modelId = useId()
 
   function loadScenarios() {
-    api
-      .listScenarios()
-      .then((s) => setScenarios(s))
-      .catch(() => setLoadError(true))
+    void api.listScenarios().then((r) => {
+      if (r.ok) { setScenarios(r.data); setLoadError(null) }
+      else setLoadError(r.error)
+    })
   }
 
   function loadIndexedPacks() {
-    api
-      .listPacks()
-      .then(({ packs }) => {
+    void api.listPacks().then((r) => {
+      if (r.ok) {
         const map: Record<string, PackSummary> = {}
-        for (const p of packs) map[p.pack_id] = p
+        for (const p of r.data.packs) map[p.pack_id] = p
         setIndexedPacks(map)
-      })
-      .catch(() => {})
+      }
+    })
   }
 
   useEffect(() => {
     loadScenarios()
     loadIndexedPacks()
 
-    api
-      .getModels()
-      .then((r) => {
-        const { status } = r.runtime_health
+    void api.getModels().then((r) => {
+      if (r.ok) {
+        const { status } = r.data.runtime_health
         setModelMissing(status !== 'ready' && status !== 'degraded')
-      })
-      .catch(() => {})
+      }
+    })
   }, [])
 
   const { allRatings, allLanguages, allDifficulties, allTags, allModels } = useMemo(() => {
@@ -143,17 +144,11 @@ export default function ScenarioLibrary() {
   async function handleValidate(packId: string) {
     setValidations((prev) => ({ ...prev, [packId]: { status: 'loading' } }))
     setExpandedValidation(packId)
-    try {
-      const result = await api.validatePack(packId)
-      setValidations((prev) => ({ ...prev, [packId]: { status: 'done', result } }))
-    } catch (err) {
-      setValidations((prev) => ({
-        ...prev,
-        [packId]: {
-          status: 'error',
-          message: err instanceof Error ? err.message : 'Validation failed',
-        },
-      }))
+    const r = await api.validatePack(packId)
+    if (r.ok) {
+      setValidations((prev) => ({ ...prev, [packId]: { status: 'done', result: r.data } }))
+    } else {
+      setValidations((prev) => ({ ...prev, [packId]: { status: 'error', error: r.error } }))
     }
   }
 
@@ -161,14 +156,14 @@ export default function ScenarioLibrary() {
     setImportState('uploading')
     setImportError(null)
     setImportedPack(null)
-    try {
-      const result = await api.importPack(file)
-      setImportedPack(result)
+    const r = await api.importPack(file)
+    if (r.ok) {
+      setImportedPack(r.data)
       setImportState('success')
       loadScenarios()
       loadIndexedPacks()
-    } catch (err) {
-      setImportError(err instanceof Error ? err.message : 'Import failed')
+    } else {
+      setImportError(r.error)
       setImportState('error')
     }
   }
@@ -199,7 +194,7 @@ export default function ScenarioLibrary() {
               data-testid="import-error"
               style={{ fontSize: '0.85rem', color: '#f87171' }}
             >
-              {importError}
+              {errorHeadline(importError)}
             </span>
           )}
           <input
@@ -429,9 +424,11 @@ export default function ScenarioLibrary() {
       )}
 
       {loadError && (
-        <p role="alert" style={{ color: '#f87171' }}>
-          Could not load scenarios. Make sure the local runtime is running.
-        </p>
+        <ApiErrorView
+          error={loadError}
+          onRetry={() => { loadScenarios(); loadIndexedPacks() }}
+          context="ScenarioLibrary"
+        />
       )}
 
       {scenarios !== null && scenarios.length === 0 && (
@@ -674,7 +671,7 @@ export default function ScenarioLibrary() {
                 role="alert"
                 style={{ fontSize: '0.85rem', color: '#f87171', marginBottom: '0.75rem' }}
               >
-                {validation.message}
+                {errorHeadline(validation.error)}
               </p>
             )}
 

@@ -18,3 +18,12 @@ export interface TtsCacheSizeResponse {
 export interface TtsCacheClearResponse {
   deleted_files: number;
 }
+
+export interface BackchannelInfo {
+  text: string;
+  cache_path: string;
+}
+
+export interface BackchannelsResponse {
+  backchannels: BackchannelInfo[];
+}

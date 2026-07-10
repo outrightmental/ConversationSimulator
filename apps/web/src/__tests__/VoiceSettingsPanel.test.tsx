@@ -77,11 +77,11 @@ beforeEach(() => {
   localStorage.clear()
 
   // Default: all ready
-  mockApi.listVoices.mockResolvedValue(STUB_VOICES)
-  mockApi.getTtsCacheSize.mockResolvedValue(STUB_CACHE_SIZE)
-  mockApi.clearTtsCache.mockResolvedValue({ deleted_files: 4 })
-  mockApi.health.mockResolvedValue(STUB_HEALTH_READY)
-  mockApi.vadHealth.mockResolvedValue(STUB_VAD_READY)
+  mockApi.listVoices.mockResolvedValue({ ok: true, data: STUB_VOICES })
+  mockApi.getTtsCacheSize.mockResolvedValue({ ok: true, data: STUB_CACHE_SIZE })
+  mockApi.clearTtsCache.mockResolvedValue({ ok: true, data: { deleted_files: 4 } })
+  mockApi.health.mockResolvedValue({ ok: true, data: STUB_HEALTH_READY })
+  mockApi.vadHealth.mockResolvedValue({ ok: true, data: STUB_VAD_READY })
 
   // Stub navigator.permissions so tests don't depend on browser
   Object.defineProperty(navigator, 'permissions', {
@@ -120,8 +120,7 @@ describe('voice readiness cards', () => {
 
   it('shows VAD as ready when vadHealth returns ready', async () => {
     render(<VoiceSettingsPanel />)
-    await waitFor(() => expect(screen.getByTestId('readiness-vad')).toBeInTheDocument())
-    expect(screen.getByTestId('readiness-vad')).toHaveTextContent('ready')
+    await waitFor(() => expect(screen.getByTestId('readiness-vad')).toHaveTextContent('ready'))
   })
 
   it('shows Microphone as ready when permission is granted', async () => {
@@ -131,14 +130,14 @@ describe('voice readiness cards', () => {
   })
 
   it('shows STT as unavailable when health reports stt_ready=false', async () => {
-    mockApi.health.mockResolvedValue(STUB_HEALTH_NO_VOICE)
+    mockApi.health.mockResolvedValue({ ok: true, data: STUB_HEALTH_NO_VOICE })
     render(<VoiceSettingsPanel />)
     await waitFor(() => expect(screen.getByTestId('readiness-stt')).toBeInTheDocument())
     expect(screen.getByTestId('readiness-stt')).toHaveTextContent('no model loaded')
   })
 
   it('shows TTS as unavailable when health reports tts_ready=false', async () => {
-    mockApi.health.mockResolvedValue(STUB_HEALTH_NO_VOICE)
+    mockApi.health.mockResolvedValue({ ok: true, data: STUB_HEALTH_NO_VOICE })
     render(<VoiceSettingsPanel />)
     await waitFor(() => expect(screen.getByTestId('readiness-tts')).toBeInTheDocument())
     expect(screen.getByTestId('readiness-tts')).toHaveTextContent('no model loaded')
@@ -147,7 +146,7 @@ describe('voice readiness cards', () => {
   })
 
   it('shows VAD as unavailable when vadHealth returns unavailable', async () => {
-    mockApi.vadHealth.mockResolvedValue(STUB_VAD_UNAVAILABLE)
+    mockApi.vadHealth.mockResolvedValue({ ok: true, data: STUB_VAD_UNAVAILABLE })
     render(<VoiceSettingsPanel />)
     await waitFor(() => expect(screen.getByTestId('readiness-vad')).toHaveTextContent('not available'))
   })
@@ -213,10 +212,10 @@ describe('voice selection', () => {
   })
 
   it('shows an error when voice list fails to load', async () => {
-    mockApi.listVoices.mockRejectedValue(new Error('network error'))
+    mockApi.listVoices.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'network error' } })
     render(<VoiceSettingsPanel />)
     await waitFor(() =>
-      expect(screen.getByText(/could not load voice list/i)).toBeInTheDocument(),
+      expect(screen.getByText(/Connection failed/i)).toBeInTheDocument(),
     )
   })
 
@@ -240,7 +239,7 @@ describe('TTS cache', () => {
   })
 
   it('shows "Empty" when cache has zero files', async () => {
-    mockApi.getTtsCacheSize.mockResolvedValue(STUB_CACHE_EMPTY)
+    mockApi.getTtsCacheSize.mockResolvedValue({ ok: true, data: STUB_CACHE_EMPTY })
     render(<VoiceSettingsPanel />)
     await waitFor(() =>
       expect(screen.getByTestId('cache-size-label')).toHaveTextContent('Empty'),
@@ -248,7 +247,7 @@ describe('TTS cache', () => {
   })
 
   it('disables clear button when cache is empty', async () => {
-    mockApi.getTtsCacheSize.mockResolvedValue(STUB_CACHE_EMPTY)
+    mockApi.getTtsCacheSize.mockResolvedValue({ ok: true, data: STUB_CACHE_EMPTY })
     render(<VoiceSettingsPanel />)
     await waitFor(() => screen.getByRole('button', { name: /clear tts cache/i }))
     expect(screen.getByRole('button', { name: /clear tts cache/i })).toBeDisabled()
@@ -286,12 +285,12 @@ describe('TTS cache', () => {
   })
 
   it('shows error message when clear fails', async () => {
-    mockApi.clearTtsCache.mockRejectedValue(new Error('disk full'))
+    mockApi.clearTtsCache.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'disk full' } })
     render(<VoiceSettingsPanel />)
     await waitFor(() => screen.getByRole('button', { name: /clear tts cache/i }))
     fireEvent.click(screen.getByRole('button', { name: /clear tts cache/i }))
     await waitFor(() =>
-      expect(screen.getByRole('alert')).toHaveTextContent(/disk full/i),
+      expect(screen.getByRole('alert')).toHaveTextContent(/Connection failed/i),
     )
   })
 })
