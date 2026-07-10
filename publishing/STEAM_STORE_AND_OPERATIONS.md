@@ -26,6 +26,10 @@
 | Risk register and compliance checklists (SR-01 through SR-09) | [`publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md`](STEAM_COMPLIANCE_AND_RISK_REGISTER.md) |
 | Depot contents and exclusions | [`publishing/STEAM_DEPOT_CONTENTS.md`](STEAM_DEPOT_CONTENTS.md) |
 | SteamPipe build, CI deploy, and troubleshooting | [`publishing/STEAM_PUBLISHING_AND_DEPLOYMENT.md`](STEAM_PUBLISHING_AND_DEPLOYMENT.md) |
+| **Steam review submission runbook** (store page, assets, content survey, release date, IARC) | [`publishing/STEAM_REVIEW_SUBMISSION.md`](STEAM_REVIEW_SUBMISSION.md) |
+| **Launch day runbook** (branch promotion, announcement, monitoring, rollback, known issues, triage owners) | [`publishing/LAUNCH_DAY_RUNBOOK.md`](LAUNCH_DAY_RUNBOOK.md) |
+| **Private beta feedback summary and accepted launch risks** | [`publishing/BETA_FEEDBACK_AND_LAUNCH_RISKS.md`](BETA_FEEDBACK_AND_LAUNCH_RISKS.md) |
+| **Rollback path and player support messaging** | [`publishing/ROLLBACK_AND_SUPPORT_MESSAGING.md`](ROLLBACK_AND_SUPPORT_MESSAGING.md) |
 | Steam API integration and fallback behaviour | [`docs/STEAM_INTEGRATION.md`](../docs/STEAM_INTEGRATION.md) |
 | macOS signing and notarisation | [`publishing/MACOS_SIGNING_AND_NOTARIZATION.md`](MACOS_SIGNING_AND_NOTARIZATION.md) |
 | Windows Authenticode signing | [`publishing/WINDOWS_CODE_SIGNING.md`](WINDOWS_CODE_SIGNING.md) |
@@ -120,6 +124,15 @@ before submitting to Valve.
 
 ## Launch operations
 
+> **Detailed runbook:** The complete launch-day operations sequence — including
+> branch promotion, announcement, support monitoring, rollback procedure, known
+> issues, and triage owner assignments — is in
+> [`publishing/LAUNCH_DAY_RUNBOOK.md`](LAUNCH_DAY_RUNBOOK.md). The Steamworks
+> store review submission procedure (content survey, IARC questionnaire, release
+> date settings) is in
+> [`publishing/STEAM_REVIEW_SUBMISSION.md`](STEAM_REVIEW_SUBMISSION.md).
+> The summary below is a condensed reference.
+
 ### Pre-launch checklist (Stage 4 gate)
 
 Complete these steps in the order listed. Do not set the `default` branch live
@@ -147,8 +160,16 @@ until every item is checked.
 - [ ] Gameplay trailer uploaded and approved.
 - [ ] All capsule art uploaded: header, small, library, main.
 - [ ] Genres and tags set correctly (primary: Simulation; secondary: Casual).
-- [ ] IARC questionnaire complete; content descriptors applied (Mild Language only).
-- [ ] Store page has been submitted to Valve and received approval.
+- [ ] IARC content survey complete; resulting content descriptors reviewed and
+      approved by Outright Mental (see
+      [`publishing/STEAM_REVIEW_SUBMISSION.md` — Content survey](STEAM_REVIEW_SUBMISSION.md#6-content-survey-iarc-questionnaire)).
+- [ ] Release date field set correctly — specific date if confirmed; otherwise a
+      quarter or `Coming Soon` (see
+      [`publishing/STEAM_REVIEW_SUBMISSION.md` — Release date](STEAM_REVIEW_SUBMISSION.md#7-release-date-settings)).
+- [ ] Steam Cloud configured in Steamworks portal; B.11 sync verification passed.
+- [ ] Store page has been submitted to Valve and received approval (see full
+      submission checklist in
+      [`publishing/STEAM_REVIEW_SUBMISSION.md`](STEAM_REVIEW_SUBMISSION.md)).
 
 #### Platform and QA
 
@@ -177,20 +198,26 @@ until every item is checked.
 
 ### Launch day
 
-1. **Set the beta branch live first** (if not already done at Stage 3):
+The full step-by-step launch sequence — including Stage 4 gate confirmation,
+branch promotion, announcement, fresh-account install verification, and
+monitoring setup — is in
+[`publishing/LAUNCH_DAY_RUNBOOK.md`](LAUNCH_DAY_RUNBOOK.md). Use that document
+as the live checklist on launch day. The condensed sequence is:
+
+1. **Stage 4 gate check** — all G4-01 through G4-05 criteria must be green before proceeding.
+2. **Set the beta branch live first** (if not already done at Stage 3):
    trigger the deploy workflow with `set_live_branch: beta`.
-2. Confirm beta builds install correctly on at least one machine per platform
+3. Confirm beta builds install correctly on at least one machine per platform
    via a fresh Steam install (log out, remove game, reinstall).
-3. **Set the default branch live:**
+4. **Set the default branch live:**
    trigger the deploy workflow with `set_live_branch: default` and the launch tag.
-4. Wait 10–15 minutes for Steam CDN propagation.
-5. Verify the app is publicly visible on its store page and that the install
+5. Wait 10–15 minutes for Steam CDN propagation.
+6. Verify the app is publicly visible on its store page and that the install
    button is active and set to `Free`.
-6. Install from a fresh account (not the partner account) on each required
+7. Install from a fresh account (not the partner account) on each required
    platform to confirm end-to-end installation.
-7. Confirm all Stage 4 gates (G4-01 through G4-05 in
-   [`docs/steam-mvp-scope.md`](../docs/steam-mvp-scope.md)) remain satisfied on
-   the shipped build, then begin the post-launch monitoring below.
+8. **Publish the announcement** — Steam community post and any external channels.
+9. Begin the 72-hour post-launch monitoring window.
 
 ### Post-launch monitoring
 
@@ -239,6 +266,10 @@ for the full policy.
 
 ## Links
 
+- [`publishing/STEAM_REVIEW_SUBMISSION.md`](STEAM_REVIEW_SUBMISSION.md) — Steamworks store review submission runbook (store page, assets, content survey, release date)
+- [`publishing/LAUNCH_DAY_RUNBOOK.md`](LAUNCH_DAY_RUNBOOK.md) — launch-day operations (branch promotion, announcement, monitoring, rollback, triage owners)
+- [`publishing/BETA_FEEDBACK_AND_LAUNCH_RISKS.md`](BETA_FEEDBACK_AND_LAUNCH_RISKS.md) — private beta feedback summary and accepted launch risks
+- [`publishing/ROLLBACK_AND_SUPPORT_MESSAGING.md`](ROLLBACK_AND_SUPPORT_MESSAGING.md) — rollback path and player support message templates
 - [`publishing/STEAM_STORE_PAGE.md`](STEAM_STORE_PAGE.md) — canonical store copy, system requirements, genres/tags, age disclosures, store review checklist, sign-off table
 - [`publishing/STEAM_ASSETS_SPEC.md`](STEAM_ASSETS_SPEC.md) — capsule art, screenshot, and trailer production briefs
 - [`publishing/STEAM_APP_REGISTRATION.md`](STEAM_APP_REGISTRATION.md) — app identity, depot IDs, CI credentials, branch strategy, partner permissions
