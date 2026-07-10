@@ -38,6 +38,8 @@ import type {
   VoicesResponse,
   TtsCacheSizeResponse,
   TtsCacheClearResponse,
+  LogbookProfile,
+  LogbookExport,
 } from '@convsim/shared';
 
 export type { HealthResponse };
@@ -302,6 +304,12 @@ export const api = {
   },
   listSessions(): Promise<{ sessions: SessionCreateResponse[] }> {
     return get<{ sessions: SessionCreateResponse[] }>('/sessions')
+  },
+  getLogbookProfile(): Promise<LogbookProfile> {
+    return get<LogbookProfile>('/logbook/profile')
+  },
+  exportLogbook(): Promise<LogbookExport> {
+    return get<LogbookExport>('/logbook/export')
   },
   createSession(request: SessionCreateRequest): Promise<SessionCreateResponse> {
     return post<SessionCreateResponse>('/sessions', request)

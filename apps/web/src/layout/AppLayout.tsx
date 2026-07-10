@@ -6,6 +6,7 @@ import OfflineIndicator from '../components/OfflineIndicator'
 const NAV_LINKS = [
   { to: '/', label: 'Home', end: true },
   { to: '/library', label: 'Scenarios', end: false },
+  { to: '/logbook', label: 'Logbook', end: false },
   { to: '/workbench', label: 'Workbench', end: false },
   { to: '/settings', label: 'Settings', end: false },
   { to: '/support', label: 'Support', end: false },

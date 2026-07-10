@@ -103,6 +103,7 @@ interface SessionRow {
   state: string;
   ending_type: string | null;
   created_at: string;
+  ended_at: string | null;
   setup_json: string;
   state_vars_json: string;
   turn_count: number;
@@ -178,6 +179,9 @@ export async function sessionRoutes(app: FastifyInstance) {
         scenario_id: row.scenario_id,
         state: row.state as SessionState,
         created_at: row.created_at,
+        ending_type: (row.ending_type as EndingType | null) ?? null,
+        turn_count: row.turn_count,
+        ended_at: row.ended_at ?? null,
         setup: JSON.parse(row.setup_json) as SessionCreateRequest,
       })),
     };
@@ -579,10 +583,11 @@ export async function sessionRoutes(app: FastifyInstance) {
       const endingType: EndingType = (row.ending_type as EndingType | null) ?? 'player_exit';
 
       const saveTranscript = shouldSaveTranscript(row.setup_json);
+      const now = new Date().toISOString();
       db.transaction(() => {
         db.prepare(
-          "UPDATE sessions SET state = 'Ended', ending_type = ? WHERE session_id = ?",
-        ).run(endingType, req.params.session_id);
+          "UPDATE sessions SET state = 'Ended', ending_type = ?, ended_at = ? WHERE session_id = ?",
+        ).run(endingType, now, req.params.session_id);
         if (saveTranscript) {
           insertEvent(req.params.session_id, 'session_ended', { ending_type: endingType });
         }
@@ -636,13 +641,20 @@ export async function sessionRoutes(app: FastifyInstance) {
       const missedOpportunities: string[] = ['Consider replaying with a different strategy to see how the NPC responds.'];
       const replaySuggestions: string[] = ['Try a different difficulty level'];
       const saveTranscript = shouldSaveTranscript(row.setup_json);
+      const debriefNow = new Date().toISOString();
 
       db.transaction(() => {
-        db.prepare("UPDATE sessions SET state = 'Ended' WHERE session_id = ?").run(
-          req.params.session_id,
-        );
+        // Preserve ended_at if already set by /end; only fill it in when debrief
+        // is the first action that terminates the session (DebriefReady path).
+        db.prepare(
+          "UPDATE sessions SET state = 'Ended', ended_at = COALESCE(ended_at, ?) WHERE session_id = ?",
+        ).run(debriefNow, req.params.session_id);
         if (saveTranscript) {
-          insertEvent(req.params.session_id, 'debrief_generated', { summary });
+          insertEvent(req.params.session_id, 'debrief_generated', {
+            summary,
+            scores: {},
+            overall_score: 50,
+          });
         }
       })();
 

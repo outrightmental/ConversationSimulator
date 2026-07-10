@@ -4,6 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import type { DebriefTurningPoint, DebriefMetrics, SessionDebriefResponse, SessionCreateRequest } from '@convsim/shared'
 import { api } from '../api/client'
 import { isDevModeEnabled } from '../privacyPrefs'
+import { useSteamAchievements, SteamAchievement, SteamStat } from '../hooks/useSteamAchievements'
 
 type TranscriptEvent = {
   event_id: number
@@ -30,6 +31,8 @@ export default function Debrief() {
   const devMode = isDevModeEnabled()
 
   const turnRefs = useRef<Map<number, HTMLElement>>(new Map())
+  const { unlock, incrementStat } = useSteamAchievements()
+  const achievementsGranted = useRef(false)
 
   useEffect(() => {
     if (!sessionId) return
@@ -42,6 +45,15 @@ export default function Debrief() {
         setDebriefMs(Math.round(performance.now() - debriefStart))
         setDebrief(result)
         setPhase('loaded')
+
+        if (!achievementsGranted.current) {
+          achievementsGranted.current = true
+          void unlock(SteamAchievement.FIRST_DEBRIEF)
+          void incrementStat(SteamStat.DEBRIEFS_GENERATED)
+          if (result.outcome === 'success') {
+            void unlock(SteamAchievement.FIRST_SCENARIO)
+          }
+        }
 
         if (!result.transcript_saving_disabled) {
           api.exportSession(sessionId).then(
