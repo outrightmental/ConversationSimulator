@@ -1,0 +1,68 @@
+# SPDX-License-Identifier: Apache-2.0
+schema_version: "0.1"
+fixture_id: smoke_first_words_tutorial
+scenario_id: first_words_tutorial
+description: >-
+  Verifies that the First Words tutorial scenario loads correctly and that
+  three scripted turns advance the session state without triggering safety
+  stops.  No model is required — uses the scripted runtime.
+seed: 1
+input_mode: text
+difficulty: standard
+turns:
+  - turn: 1
+    player_input: "Hello! I'm excited to learn how this works."
+    expect:
+      state_delta_contains:
+        - engagement
+        - confidence
+      session_control: continue_session
+      safety_status: ok
+  - turn: 2
+    player_input: "I want to practise job interviews and difficult conversations."
+    expect:
+      state_delta_contains:
+        - engagement
+      session_control: continue_session
+      safety_status: ok
+  - turn: 3
+    player_input: "I see the engagement meter went up. That's interesting!"
+    expect:
+      state_delta_contains:
+        - engagement
+      session_control: continue_session
+      safety_status: ok
+static_assertions:
+  - description: Scenario opening line is non-empty
+    path: opening.npc_says
+    check: non_empty_string
+  - description: NPC is marked fictional
+    path: npc.fictional
+    check: "equals true"
+  - description: NPC age band is adult
+    path: npc.age_band
+    check: "equals adult"
+  - description: engagement variable is visible to the player
+    path: state.variables.engagement.visibility
+    check: "equals visible"
+  - description: confidence variable is visible to the player
+    path: state.variables.confidence.visibility
+    check: "equals visible"
+  - description: warm_moment event fires when engagement exceeds 60
+    path: events[id=warm_moment].when
+    check: "type=variable_above AND variable=engagement AND threshold=60"
+  - description: warm_moment fires only once
+    path: events[id=warm_moment].repeat
+    check: "equals false"
+  - description: Success ending condition targets engagement above threshold
+    path: ending_conditions.success
+    check: "type=variable_above AND variable=engagement"
+  - description: Safety policy stops nsfw_sexual_content
+    path: safety.content_categories.nsfw_sexual_content
+    check: "equals stop"
+  - description: Safety policy fires stop_with_resource_message for self_harm_crisis
+    path: safety.content_categories.self_harm_crisis
+    check: "equals stop_with_resource_message"
+  - description: Pack manifest declares first_words_tutorial as an entry scenario
+    path: manifest.entry_scenarios
+    check: "contains scenarios/first_words_tutorial.yaml"

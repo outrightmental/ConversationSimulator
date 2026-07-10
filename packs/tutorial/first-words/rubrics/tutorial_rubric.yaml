@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: Apache-2.0
+schema_version: "0.1"
+rubric_id: tutorial_rubric
+title: Tutorial Completion Rubric
+dimensions:
+  - id: engagement
+    name: Engagement
+    description: >-
+      Whether the player actively engaged with the tutorial prompts rather
+      than submitting empty or dismissive responses. Engagement measures
+      willingness to participate, not communication skill.
+    scoring:
+      low: "Player submitted one-word or empty responses most of the time, suggesting disengagement."
+      medium: "Player responded to most prompts but did not elaborate or ask follow-up questions."
+      high: "Player wrote substantive responses and showed curiosity about the mechanics being demonstrated."
+
+  - id: comprehension
+    name: Comprehension
+    description: >-
+      Whether the player's responses suggest they understood the mechanic
+      being demonstrated in each turn: meters, events, ending conditions,
+      and the debrief rubric.
+    scoring:
+      low: "Responses did not reflect any of the mechanics explained (e.g. ignored meter references entirely)."
+      medium: "Player acknowledged some mechanics but seemed uncertain about how they connect."
+      high: "Player's responses referenced or engaged with the specific mechanic demonstrated in each turn."
