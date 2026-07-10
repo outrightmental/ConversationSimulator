@@ -214,15 +214,7 @@ export default function ModelManager() {
       })
   }, [step])
 
-  // Prefer the model the user last selected on another device (synced via Steam
-  // Cloud) when it is a still-available registry entry; otherwise fall back to
-  // the default starter model.
   const recommendedModel =
-    (cloudLastModelId != null
-      ? modelsData?.registry.find(
-          (m) => m.id === cloudLastModelId && m.source_type === 'registry',
-        )
-      : undefined) ??
     modelsData?.registry.find((m) => m.role === 'starter') ??
     null
 
