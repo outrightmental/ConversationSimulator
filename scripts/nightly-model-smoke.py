@@ -2,10 +2,17 @@
 # SPDX-License-Identifier: Apache-2.0
 """Nightly real-model smoke test for latency budget regression.
 
-Downloads the pinned starter model (if not already cached), spins up the
-convsim-core server against it, runs a scripted two-turn session, measures
-TTFT and full-response latency, and fails if any metric exceeds the
-documented budget multiplied by ``--ci-hardware-factor``.
+Downloads the pinned starter model (if not already cached), starts a local
+llama-server (llama-cpp-python's OpenAI-compatible server) against it, starts
+convsim-core wired to that server, runs a scripted end-to-end session through
+convsim-core's REST API, measures full-response latency, and fails if it
+exceeds the documented budget multiplied by ``--ci-hardware-factor``.
+
+convsim-core's turn endpoint is synchronous — it returns the completed NPC
+turn in a single response rather than streaming ``npc.token`` events (token
+streaming is added by the ``apps/api`` gateway, which is not exercised here).
+The smoke therefore measures full end-to-end turn latency (which subsumes
+time-to-first-token) against the ``FULL_RESPONSE_MS`` budget.
 
 A budget regression is defined as measured_ms > ci_budget_ms * 1.20.
 
@@ -43,6 +50,7 @@ import sys
 import tempfile
 import threading
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Optional
@@ -51,8 +59,10 @@ REPO_ROOT = Path(__file__).parent.parent
 
 # Documented latency budgets (ms) from packages/shared/src/types/metrics.ts.
 # Keep in sync manually; the script is intentionally not importing TS source.
+# Only full_response_ms is measurable through convsim-core's synchronous REST
+# turn API; TTFT requires token streaming (apps/api gateway), which this smoke
+# does not stand up.
 BUDGETS_MS = {
-    "ttft_ms": 2_500,
     "full_response_ms": 10_000,
 }
 
@@ -60,6 +70,10 @@ BUDGETS_MS = {
 REGRESSION_TOLERANCE = 1.20
 
 MODELS_DIR = Path.home() / ".convsim" / "models" / "llm"
+
+# Ports for the two local processes started during a smoke run.
+LLAMA_SERVER_PORT = 7356  # convsim-core's default CONVSIM_LLAMA_CPP_BASE_URL port
+CORE_PORT = 7399
 
 # A simple scripted player turn that any instruct model can answer in <30 tokens.
 SMOKE_PLAYER_TURN = "Reply with exactly one sentence: Hello, I am ready."
@@ -122,23 +136,41 @@ def _find_model_path(model_id: str) -> Path:
     return path
 
 
-def _start_server(model_path: Path, data_dir: Path, port: int = 7399) -> subprocess.Popen:
-    """Start convsim-core with the given model via environment overrides."""
+def _start_llama_server(model_path: Path, port: int) -> subprocess.Popen:
+    """Start llama-cpp-python's OpenAI-compatible server on the given port.
+
+    convsim-core's ``llama_cpp`` runtime adapter talks to this server over
+    ``/v1/chat/completions`` (see services/convsim-core/.../runtime/llama_cpp.py).
+    """
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "llama_cpp.server",
+         "--model", str(model_path),
+         "--host", "127.0.0.1", "--port", str(port),
+         "--n_ctx", "8192"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    return proc
+
+
+def _start_core(data_dir: Path, port: int, llama_port: int) -> subprocess.Popen:
+    """Start convsim-core wired to the local llama-server via env overrides."""
     env = os.environ.copy()
     env.update({
-        "CONVSIM_LLAMA_CPP_MODEL_PATH": str(model_path),
-        "CONVSIM_RUNTIME": "llama_cpp",
+        # Select the real llama.cpp runtime (default is the deterministic fake).
+        "CONVSIM_RUNTIME_ID": "llama_cpp",
+        # Point the adapter at the llama-server started above.
+        "CONVSIM_LLAMA_CPP_BASE_URL": f"http://127.0.0.1:{llama_port}",
+        "CONVSIM_LLAMA_CPP_CONTEXT_LENGTH": "8192",
         "CONVSIM_DATA_DIR": str(data_dir),
         "CONVSIM_LOG_DIR": str(data_dir / "logs"),
         "CONVSIM_DB_DIR": str(data_dir / "db"),
         "CONVSIM_PACKS_DIR": str(data_dir / "packs"),
         "CONVSIM_PORT": str(port),
         "CONVSIM_HOST": "127.0.0.1",
-        # Suppress verbose llama.cpp output
-        "LLAMA_LOG_LEVEL": "ERROR",
     })
     proc = subprocess.Popen(
-        [sys.executable, "-m", "uvicorn", "convsim_core.app:app",
+        [sys.executable, "-m", "uvicorn", "convsim_core.main:app",
          "--host", "127.0.0.1", "--port", str(port), "--log-level", "warning"],
         env=env,
         stdout=subprocess.PIPE,
@@ -147,15 +179,21 @@ def _start_server(model_path: Path, data_dir: Path, port: int = 7399) -> subproc
     return proc
 
 
-def _wait_for_server(port: int, timeout_s: float = 120.0) -> None:
+def _wait_for_http(url: str, timeout_s: float, label: str) -> None:
+    """Poll ``url`` until it returns any HTTP response, or raise on timeout."""
     deadline = time.monotonic() + timeout_s
+    last_err: Optional[Exception] = None
     while time.monotonic() < deadline:
         try:
-            with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/health", timeout=2):
+            with urllib.request.urlopen(url, timeout=2):
                 return
-        except Exception:
+        except urllib.error.HTTPError:
+            # A response (even 4xx) means the server is up and routing.
+            return
+        except Exception as exc:  # noqa: BLE001 — connection refused while booting
+            last_err = exc
             time.sleep(1)
-    raise TimeoutError(f"Server did not become ready within {timeout_s:.0f} s")
+    raise TimeoutError(f"{label} did not become ready within {timeout_s:.0f} s ({last_err})")
 
 
 # ── Session helpers ───────────────────────────────────────────────────────────
@@ -178,43 +216,24 @@ def _get_json(url: str, timeout: float = 30.0) -> dict:
         return json.loads(resp.read())
 
 
-def _read_sse_until_final(
-    url: str,
-    timeout_s: float = 120.0,
-) -> tuple[float, float]:
-    """
-    Open an SSE stream and return (ttft_ms, full_response_ms).
-
-    The server streams ``npc.token`` events followed by a ``npc.final`` event.
-    """
-    req = urllib.request.Request(url, method="GET")
-    ttft_ms: Optional[float] = None
-    t_start = time.monotonic()
-
-    with urllib.request.urlopen(req, timeout=timeout_s) as resp:
-        for raw_line in resp:
-            line = raw_line.decode(errors="replace").rstrip("\n\r")
-            if not line.startswith("data:"):
-                continue
-            payload_str = line[5:].strip()
-            if not payload_str:
-                continue
-            try:
-                event = json.loads(payload_str)
-            except json.JSONDecodeError:
-                continue
-            event_type = event.get("type", "")
-            elapsed = (time.monotonic() - t_start) * 1000
-            if event_type == "npc.token" and ttft_ms is None:
-                ttft_ms = elapsed
-            if event_type == "npc.final":
-                full_ms = elapsed
-                return (ttft_ms if ttft_ms is not None else full_ms, full_ms)
-
-    raise RuntimeError("SSE stream ended without npc.final event")
+def _npc_turn_content(events: list) -> str:
+    """Return the NPC utterance from a turn/start response's events, or ''."""
+    for ev in events:
+        if ev.get("event_type") in ("npc_turn", "npc_opening"):
+            return ev.get("payload", {}).get("content", "")
+    return ""
 
 
 # ── Smoke run ─────────────────────────────────────────────────────────────────
+
+
+def _drain(stream: object) -> None:
+    """Consume a subprocess pipe in the background to avoid a full-buffer deadlock."""
+    try:
+        for _ in stream:  # type: ignore[attr-defined]
+            pass
+    except Exception:
+        pass
 
 
 def run_smoke(
@@ -224,7 +243,6 @@ def run_smoke(
 ) -> bool:
     """Run the scripted smoke session and check budgets.  Returns True on pass."""
     model_path = _find_model_path(model_id)
-    port = 7399
     results: dict = {
         "model_id": model_id,
         "ci_hardware_factor": ci_hardware_factor,
@@ -238,26 +256,44 @@ def run_smoke(
 
     with tempfile.TemporaryDirectory(prefix="convsim-smoke-") as tmp:
         data_dir = Path(tmp)
-        print(f"\n[smoke] Starting convsim-core on port {port} with model: {model_path.name}")
-        proc = _start_server(model_path, data_dir, port=port)
+        print(f"\n[smoke] Starting llama-server on port {LLAMA_SERVER_PORT} with model: {model_path.name}")
+        llama_proc = _start_llama_server(model_path, LLAMA_SERVER_PORT)
+        threading.Thread(target=_drain, args=(llama_proc.stderr,), daemon=True).start()
+        threading.Thread(target=_drain, args=(llama_proc.stdout,), daemon=True).start()
 
-        # Drain stderr in background to avoid pipe deadlock
-        def _drain(stream: object) -> None:
-            try:
-                for _ in stream:  # type: ignore[attr-defined]
-                    pass
-            except Exception:
-                pass
-
-        threading.Thread(target=_drain, args=(proc.stderr,), daemon=True).start()
-
+        core_proc: Optional[subprocess.Popen] = None
         try:
-            print("[smoke] Waiting for server…")
-            _wait_for_server(port, timeout_s=120.0)
-            print("[smoke] Server ready.")
+            print("[smoke] Waiting for llama-server (model load)…")
+            _wait_for_http(
+                f"http://127.0.0.1:{LLAMA_SERVER_PORT}/v1/models",
+                timeout_s=300.0,
+                label="llama-server",
+            )
+            print("[smoke] llama-server ready.")
 
-            # Start session with the built-in behavioral_interview scenario
-            base = f"http://127.0.0.1:{port}/api"
+            print(f"[smoke] Starting convsim-core on port {CORE_PORT}…")
+            core_proc = _start_core(data_dir, CORE_PORT, LLAMA_SERVER_PORT)
+            threading.Thread(target=_drain, args=(core_proc.stderr,), daemon=True).start()
+            threading.Thread(target=_drain, args=(core_proc.stdout,), daemon=True).start()
+
+            _wait_for_http(
+                f"http://127.0.0.1:{CORE_PORT}/api/health",
+                timeout_s=120.0,
+                label="convsim-core",
+            )
+            base = f"http://127.0.0.1:{CORE_PORT}/api"
+
+            # Sanity-check that the real runtime is wired (not the fake default).
+            health = _get_json(f"{base}/health")
+            runtime_id = health.get("runtime", {}).get("runtime_id")
+            print(f"[smoke] convsim-core ready (runtime_id={runtime_id}).")
+            if runtime_id != "llama_cpp":
+                raise RuntimeError(
+                    f"Expected runtime_id 'llama_cpp' but core reports {runtime_id!r}. "
+                    "Check CONVSIM_RUNTIME_ID wiring."
+                )
+
+            # Create → start → turn against the built-in behavioral_interview scenario.
             session = _post_json(f"{base}/sessions", {
                 "scenario_id": "behavioral_interview",
                 "difficulty": "standard",
@@ -270,28 +306,24 @@ def run_smoke(
                 "seed": 42,
             })
             session_id = session["session_id"]
-            print(f"[smoke] Session {session_id} created. Waiting for NPC opening…")
-
-            # Wait for the NPC opening via SSE
-            open_url = f"{base}/sessions/{session_id}/stream"
-            _read_sse_until_final(open_url, timeout_s=120.0)
+            print(f"[smoke] Session {session_id} created. Starting session…")
+            _post_json(f"{base}/sessions/{session_id}/start", {})
             print("[smoke] NPC opening received. Submitting player turn…")
 
-            # Submit a player turn and measure TTFT + full response
-            _post_json(f"{base}/sessions/{session_id}/turn", {
-                "content": SMOKE_PLAYER_TURN,
-                "input_mode": "text-only",
-            })
-            ttft_ms, full_ms = _read_sse_until_final(
-                f"{base}/sessions/{session_id}/stream",
-                timeout_s=120.0,
+            # Submit a player turn and time the synchronous end-to-end response.
+            t_start = time.monotonic()
+            turn = _post_json(
+                f"{base}/sessions/{session_id}/turn",
+                {"content": SMOKE_PLAYER_TURN},
+                timeout=180.0,
             )
-            print(f"[smoke] TTFT: {ttft_ms:.0f} ms | Full response: {full_ms:.0f} ms")
+            full_ms = (time.monotonic() - t_start) * 1000
+            npc_text = _npc_turn_content(turn.get("events", []))
+            print(f"[smoke] Full response: {full_ms:.0f} ms | NPC said: {npc_text[:80]!r}")
+            if not npc_text:
+                raise RuntimeError("Turn completed but no npc_turn content was returned")
 
-            results["measured_ms"] = {
-                "ttft_ms": round(ttft_ms),
-                "full_response_ms": round(full_ms),
-            }
+            results["measured_ms"] = {"full_response_ms": round(full_ms)}
 
             # Check budgets
             failures = []
@@ -317,11 +349,14 @@ def run_smoke(
             results["verdict"] = "pass" if not failures else "fail"
 
         finally:
-            proc.terminate()
-            try:
-                proc.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                proc.kill()
+            for proc in (core_proc, llama_proc):
+                if proc is None:
+                    continue
+                proc.terminate()
+                try:
+                    proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
 
     if report_path:
         report_path.parent.mkdir(parents=True, exist_ok=True)

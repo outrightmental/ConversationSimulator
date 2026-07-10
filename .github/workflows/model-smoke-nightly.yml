@@ -1,10 +1,15 @@
 # SPDX-License-Identifier: Apache-2.0
 # Nightly real-model smoke test.
 #
-# Downloads the pinned starter model from the registry, runs a scripted
-# end-to-end session via the convsim-core API, measures TTFT and full-
-# response latency, and fails if any metric regresses more than 20 % above
-# the documented budget.
+# Downloads the pinned starter model from the registry, starts a local
+# llama-server (llama-cpp-python's OpenAI-compatible server) plus convsim-core
+# wired to it, runs a scripted end-to-end session through convsim-core's REST
+# API, measures full-response latency, and fails if it regresses more than
+# 20 % above the documented budget.
+#
+# convsim-core's turn endpoint is synchronous (token streaming lives in the
+# apps/api gateway, which is not stood up here), so the smoke measures full
+# end-to-end turn latency against the FULL_RESPONSE_MS budget (10 s).
 #
 # The model file (~2.5 GB) is cached by its registry SHA-256 so repeated
 # nightly runs skip the download.  The first run after a pinned-URL change
@@ -16,8 +21,9 @@
 #
 #   CI budget = documented budget × CI_HARDWARE_FACTOR (default 6)
 #
-# i.e. on a 2-vCPU runner the TTFT budget is 2.5 s × 6 = 15 s.  Any nightly
-# run faster than this passes; a run exceeding 120 % of the CI budget fails.
+# i.e. on a 2-vCPU runner the full-response budget is 10 s × 6 = 60 s.  Any
+# nightly run faster than this passes; a run exceeding 120 % of the CI budget
+# fails.
 
 name: Model smoke nightly
 
@@ -52,9 +58,9 @@ jobs:
       - name: Install convsim-core
         run: pip install -e "services/convsim-core[dev]"
 
-      - name: Install llama-cpp-python (CPU-only prebuilt wheel)
+      - name: Install llama-cpp-python with server extra (CPU-only prebuilt wheel)
         run: |
-          pip install llama-cpp-python \
+          pip install "llama-cpp-python[server]" \
             --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
 
       - name: Read starter model metadata from registry
