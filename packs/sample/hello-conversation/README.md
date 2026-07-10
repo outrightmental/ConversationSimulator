@@ -45,9 +45,9 @@ convsim test-pack packs/local-dev/my-new-pack/
 
 ## Next steps
 
-- [Scenario authoring guide](../../docs/scenario-authoring.md) — full
+- [Scenario authoring guide](../../../docs/scenario-authoring.md) — full
   step-by-step tutorial that builds a pack from scratch using the Workbench.
-- [Pack validation reference](../../docs/pack-validation.md) — error codes,
+- [Pack validation reference](../../../docs/pack-validation.md) — error codes,
   smoke tests, golden transcript tests, and CI integration.
-- [Official quality bar](../../docs/official-pack-quality-bar.md) — what
+- [Official quality bar](../../../docs/official-pack-quality-bar.md) — what
   makes a pack ready to submit as an official pack.
