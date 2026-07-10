@@ -151,9 +151,12 @@ export default function VoiceInput({ onSubmit, onRawStt, onSttLatency, disabled 
       if (permission !== 'granted' || isSubmitting || disabled) return
       // Don't start recording while the transcript review panel is open.
       if (reviewState !== null) return
-      // In hands-free mode Space starts recording; once recording, VAD drives the stop so
-      // we ignore further presses to avoid resetting the auto-stop countdown.
-      if (isHandsFree && isRecording) return
+      // In hands-free mode: Space toggles — starts if idle, manually stops if already recording.
+      if (isHandsFree && isRecording) {
+        e.preventDefault()
+        stopRecording()
+        return
+      }
       e.preventDefault()
       startRecording()
     }
@@ -162,8 +165,7 @@ export default function VoiceInput({ onSubmit, onRawStt, onSttLatency, disabled 
       if (e.code !== 'Space') return
       if (isInteractiveElement(document.activeElement)) return
       if (permission !== 'granted' || isSubmitting || (disabled && !isRecording)) return
-      // In hands-free mode, Space also starts/stops but VAD drives the stop.
-      // Releasing Space should always stop when PTT is active.
+      // PTT only: release Space to stop. In hands-free mode, stop is handled on keydown.
       if (!isHandsFree) stopRecording()
     }
 
@@ -240,7 +242,7 @@ export default function VoiceInput({ onSubmit, onRawStt, onSttLatency, disabled 
               isHandsFree={isHandsFree}
               onRequestPermission={requestPermission}
               onRecordStart={startRecording}
-              onRecordStop={isHandsFree ? () => {} : stopRecording}
+              onRecordStop={stopRecording}
             />
 
             <form onSubmit={handleTextSubmit} style={{ display: 'flex', flex: 1, gap: '0.5rem' }}>
@@ -322,8 +324,8 @@ export default function VoiceInput({ onSubmit, onRawStt, onSttLatency, disabled 
       {/* Hands-free hint */}
       {permission === 'granted' && !isRecording && !isSubmitting && isHandsFree && !reviewState && (
         <p style={hintStyle}>
-          Press <kbd style={kbdStyle}>Space</kbd> or tap the mic — recording stops automatically
-          after silence.{' '}
+          Press <kbd style={kbdStyle}>Space</kbd> or tap the mic — auto-stops on silence; press
+          again to stop manually.{' '}
           {!vad.settings.calibratedAt && (
             <span style={{ color: '#fbbf24' }}>Calibrate noise for best results.</span>
           )}
