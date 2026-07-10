@@ -684,7 +684,7 @@ export default function FirstRunWizard() {
                 if (!resp.ok) {
                   setActionError(resp.error.message)
                 } else {
-                  // Record this choice for cross-device sync (Steam Cloud). Only the
+// Record this choice for cross-device sync (Steam Cloud). Only the
                   // opaque registry ID is stored — never a filesystem path — so no
                   // locally-identifiable data leaves the machine. Best-effort.
                   api.putCloudSettings({ last_model_id: selectedModel.id }).catch(() => {
