@@ -1,0 +1,156 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: golden_the_ask
+scenario_id: the_ask
+description: >-
+  Golden transcript property test: verifies that a player who opens with
+  genuine curiosity about Jordan, builds real conversational rapport before
+  making any move, reads the positive signal correctly, and makes a direct
+  but low-pressure ask causes jordan_interest to exceed the success threshold.
+  Also verifies event structure, state variable visibility, and safety config.
+
+seed: 42
+input_mode: text
+difficulty: normal
+
+turns:
+  - turn: 1
+    player_input: >-
+      Honestly, I've been getting the oat-milk flat white for three weeks
+      and I'm still not sure if it's good or just familiar. I think we
+      might be in the same Thursday afternoon seminar — I'm almost sure I
+      saw you ask a question about the Haber-Bosch process last week?
+    expect:
+      state_delta_contains:
+        - rapport
+        - jordan_interest
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 2
+    player_input: >-
+      That's wild — I had no idea that was actually still open for debate.
+      What's your research on? Is it something in that direction or
+      completely different?
+    expect:
+      state_delta_contains:
+        - rapport
+        - jordan_comfort
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 3
+    player_input: >-
+      That sounds genuinely interesting. I feel like everyone in the
+      seminar is working on something that sounds dull until you actually
+      ask about it. I'm glad I asked. Hey — I know this is a little bit
+      of a coffee cart conversation to be having this in, but would you
+      want to grab actual coffee sometime? Like, on purpose and not in
+      a line?
+    expect:
+      state_delta_contains:
+        - confidence
+        - jordan_interest
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 4
+    player_input: >-
+      Great! No pressure on timing at all — I know the end of term is
+      chaos. Here, let me give you my number and we can figure it out
+      whenever. It was really nice actually talking to you.
+    expect:
+      state_delta_contains:
+        - rapport
+        - jordan_interest
+      session_control: continue_session
+      safety_status: ok
+
+static_assertions:
+  - description: Scenario opening line is non-empty
+    path: opening.npc_says
+    check: non_empty_string
+
+  - description: At least one event is defined
+    path: events
+    check: min_length_1
+
+  - description: positive_signal fires when jordan_interest exceeds 60
+    path: events[id=positive_signal].when
+    check: "type=variable_above AND variable=jordan_interest AND threshold=60"
+
+  - description: positive_signal fires only once
+    path: events[id=positive_signal].repeat
+    check: "equals false"
+
+  - description: natural_ask_window fires when rapport exceeds 55
+    path: events[id=natural_ask_window].when
+    check: "type=variable_above AND variable=rapport AND threshold=55"
+
+  - description: natural_ask_window fires only once
+    path: events[id=natural_ask_window].repeat
+    check: "equals false"
+
+  - description: comfort_warning fires when jordan_comfort falls below 30
+    path: events[id=comfort_warning].when
+    check: "type=variable_below AND variable=jordan_comfort AND threshold=30"
+
+  - description: comfort_warning fires only once
+    path: events[id=comfort_warning].repeat
+    check: "equals false"
+
+  - description: disengagement fires when jordan_interest falls below 20
+    path: events[id=disengagement].when
+    check: "type=variable_below AND variable=jordan_interest AND threshold=20"
+
+  - description: disengagement fires only once
+    path: events[id=disengagement].repeat
+    check: "equals false"
+
+  - description: Success ending condition targets jordan_interest above 68
+    path: ending_conditions.success
+    check: "type=variable_above AND variable=jordan_interest AND threshold=68"
+
+  - description: Failure ending condition targets jordan_comfort below 12
+    path: ending_conditions.failure
+    check: "type=variable_below AND variable=jordan_comfort AND threshold=12"
+
+  - description: rapport is player-visible
+    path: state.variables.rapport.visibility
+    check: "equals visible"
+
+  - description: confidence is player-visible
+    path: state.variables.confidence.visibility
+    check: "equals visible"
+
+  - description: jordan_interest is hidden from player
+    path: state.variables.jordan_interest.visibility
+    check: "equals hidden"
+
+  - description: jordan_comfort is hidden from player
+    path: state.variables.jordan_comfort.visibility
+    check: "equals hidden"
+
+  - description: NPC is marked fictional
+    path: npc.fictional
+    check: "equals true"
+
+  - description: Safety policy stops nsfw_sexual_content
+    path: safety.content_categories.nsfw_sexual_content
+    check: "equals stop"
+
+  - description: Safety policy redirects harassment_extreme
+    path: safety.content_categories.harassment_extreme
+    check: "equals redirect"
+
+  - description: Safety policy fires stop_with_resource_message for self_harm_crisis
+    path: safety.content_categories.self_harm_crisis
+    check: "equals stop_with_resource_message"
+
+  - description: Pack manifest declares the_ask as an entry scenario
+    path: manifest.entry_scenarios
+    check: "contains scenarios/the_ask.yaml"
+
+  - description: Hard difficulty applies a negative patience modifier
+    path: scenario.difficulty.options.hard.npc_patience_modifier
+    check: "equals -20"

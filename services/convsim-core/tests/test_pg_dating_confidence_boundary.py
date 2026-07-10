@@ -563,3 +563,157 @@ class TestLanguageCafeNonDatingDefault:
         assert not companion_warnings, (
             f"Language Café must not contain companion-framing NPCs; found: {companion_warnings}"
         )
+
+
+# ---------------------------------------------------------------------------
+# Dating — Confidence & Boundaries pack structural verification
+# ---------------------------------------------------------------------------
+
+
+class TestDatingConfidenceBoundariesPack:
+    """Structural tests for the official dating-confidence-boundaries pack.
+
+    Verifies that the pack:
+    - Is rated PG-13 with correct content_note and tags
+    - Safety policy uses redirect (not stop) for harassment_extreme so NPCs
+      can steer the conversation back on course
+    - Contains all four entry scenarios
+    - Has no companion-framing NPC archetypes (which would block official gates)
+    - Validates cleanly with zero errors
+    """
+
+    @pytest.fixture
+    def pack_dir(self) -> Path:
+        return (
+            Path(__file__).parent.parent.parent.parent
+            / "packs"
+            / "official"
+            / "dating-confidence-boundaries"
+        )
+
+    def test_manifest_content_rating_is_pg13(self, pack_dir):
+        if not pack_dir.exists():
+            pytest.skip("dating-confidence-boundaries pack not present in test environment")
+        import yaml
+        manifest = yaml.safe_load(
+            (pack_dir / "manifest.yaml").read_text(encoding="utf-8")
+        )
+        assert manifest.get("content_rating") == "PG-13", (
+            "dating-confidence-boundaries must be rated PG-13."
+        )
+
+    def test_manifest_has_correct_tags(self, pack_dir):
+        if not pack_dir.exists():
+            pytest.skip("dating-confidence-boundaries pack not present in test environment")
+        import yaml
+        manifest = yaml.safe_load(
+            (pack_dir / "manifest.yaml").read_text(encoding="utf-8")
+        )
+        tags = {t.lower() for t in manifest.get("tags", [])}
+        assert "dating" in tags, "Pack must include 'dating' tag."
+        assert "confidence" in tags, "Pack must include 'confidence' tag."
+        assert "boundaries" in tags, "Pack must include 'boundaries' tag."
+
+    def test_manifest_has_four_entry_scenarios(self, pack_dir):
+        if not pack_dir.exists():
+            pytest.skip("dating-confidence-boundaries pack not present in test environment")
+        import yaml
+        manifest = yaml.safe_load(
+            (pack_dir / "manifest.yaml").read_text(encoding="utf-8")
+        )
+        entry_scenarios = manifest.get("entry_scenarios", [])
+        assert len(entry_scenarios) == 4, (
+            f"Pack must have exactly 4 entry scenarios; found {len(entry_scenarios)}."
+        )
+
+    def test_all_entry_scenario_files_exist(self, pack_dir):
+        if not pack_dir.exists():
+            pytest.skip("dating-confidence-boundaries pack not present in test environment")
+        import yaml
+        manifest = yaml.safe_load(
+            (pack_dir / "manifest.yaml").read_text(encoding="utf-8")
+        )
+        for scenario_path in manifest.get("entry_scenarios", []):
+            full_path = pack_dir / scenario_path
+            assert full_path.is_file(), (
+                f"Entry scenario file not found: {scenario_path}"
+            )
+
+    def test_safety_policy_harassment_extreme_is_redirect(self, pack_dir):
+        if not pack_dir.exists():
+            pytest.skip("dating-confidence-boundaries pack not present in test environment")
+        import yaml
+        manifest = yaml.safe_load(
+            (pack_dir / "manifest.yaml").read_text(encoding="utf-8")
+        )
+        policy_path = pack_dir / manifest["safety"]["policy"]
+        policy = yaml.safe_load(policy_path.read_text(encoding="utf-8"))
+        categories = policy.get("content_categories", {})
+        assert categories.get("harassment_extreme") == "redirect", (
+            "Dating-confidence pack must use harassment_extreme: redirect so "
+            "NPCs can steer the conversation back on course rather than stopping."
+        )
+
+    def test_safety_policy_has_required_categories(self, pack_dir):
+        if not pack_dir.exists():
+            pytest.skip("dating-confidence-boundaries pack not present in test environment")
+        import yaml
+        manifest = yaml.safe_load(
+            (pack_dir / "manifest.yaml").read_text(encoding="utf-8")
+        )
+        policy_path = pack_dir / manifest["safety"]["policy"]
+        policy = yaml.safe_load(policy_path.read_text(encoding="utf-8"))
+        categories = policy.get("content_categories", {})
+        assert categories.get("nsfw_sexual_content") == "stop"
+        assert categories.get("minors_romantic_or_sexual") == "stop"
+        assert categories.get("self_harm_crisis") == "stop_with_resource_message"
+        assert categories.get("criminal_instruction") == "refuse"
+
+    def test_safety_policy_content_rating_cap_is_pg13(self, pack_dir):
+        if not pack_dir.exists():
+            pytest.skip("dating-confidence-boundaries pack not present in test environment")
+        from convsim_core.services.safety_policy_service import load_safety_policy
+        import yaml
+        manifest = yaml.safe_load(
+            (pack_dir / "manifest.yaml").read_text(encoding="utf-8")
+        )
+        policy_path = pack_dir / manifest["safety"]["policy"]
+        config = load_safety_policy(policy_path)
+        assert config.content_rating == "PG-13", (
+            "dating-confidence-boundaries safety policy must cap at PG-13."
+        )
+
+    def test_pack_validates_without_errors(self, pack_dir):
+        if not pack_dir.exists():
+            pytest.skip("dating-confidence-boundaries pack not present in test environment")
+        result = validate_pack_dir(pack_dir)
+        assert result.valid is True, (
+            f"dating-confidence-boundaries pack must validate with no errors; "
+            f"errors: {[e for e in getattr(result, 'errors', [])]}"
+        )
+
+    def test_pack_validates_without_companion_framing_warning(self, pack_dir):
+        if not pack_dir.exists():
+            pytest.skip("dating-confidence-boundaries pack not present in test environment")
+        result = validate_pack_dir(pack_dir)
+        companion_warnings = [
+            w for w in result.warnings if w.rule_id == "COMPANION_FRAMING"
+        ]
+        assert not companion_warnings, (
+            f"dating-confidence-boundaries must not contain companion-framing NPCs; "
+            f"found: {companion_warnings}"
+        )
+
+    def test_all_npc_files_are_fictional_and_adult(self, pack_dir):
+        if not pack_dir.exists():
+            pytest.skip("dating-confidence-boundaries pack not present in test environment")
+        import yaml
+        npcs_dir = pack_dir / "npcs"
+        for npc_file in sorted(npcs_dir.glob("*.yaml")):
+            npc = yaml.safe_load(npc_file.read_text(encoding="utf-8"))
+            assert npc.get("fictional") is True, (
+                f"{npc_file.name}: fictional must be true"
+            )
+            assert npc.get("age_band") == "adult", (
+                f"{npc_file.name}: age_band must be adult"
+            )

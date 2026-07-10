@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+rubric_id: dating_boundary_rubric
+title: Holding Your Ground Rubric
+dimensions:
+  - id: boundary_clarity
+    name: Boundary Clarity
+    description: >-
+      Whether the player states their position clearly and without ambiguity
+      — not softened to the point of sounding like uncertainty, not
+      so blunt it becomes harsh.
+    scoring:
+      low: Player's no is so hedged or qualified ("I'm just not sure right now", "maybe in a few weeks") that Ryan cannot tell whether they have actually said no or are leaving the door open.
+      medium: Player states a no but wraps it in so much softening that it sounds apologetic rather than clear — Ryan takes it as ambivalence and tries again.
+      high: Player states the boundary in plain, unambiguous language ("I'm not interested in that, and I want to be honest with you about it") so that Ryan knows what the answer is even if they push back.
+    weight: 0.35
+
+  - id: hold_under_pressure
+    name: Hold Under Pressure
+    description: >-
+      Whether the player maintains their position when Ryan tests it with a
+      reframe, a lighter ask, or an appeal to friendship — without escalating
+      or capitulating.
+    scoring:
+      low: Player changes their position when Ryan suggests a lighter version ("just as friends?"), or becomes defensive in a way that shifts the conversation to conflict rather than clarity.
+      medium: Player holds the boundary but adds new justifications each time Ryan pushes — the changing reasoning signals ambivalence and gives Ryan something to negotiate against.
+      high: Player repeats the same clear position calmly without adding new reasons — each restatement sounds like information rather than a defense, and Ryan eventually hears it as such.
+    weight: 0.30
+
+  - id: warmth_retention
+    name: Warmth Retention
+    description: >-
+      Whether the player maintains basic neighborly warmth throughout —
+      distinguishing the boundary from a withdrawal of all care.
+    scoring:
+      low: Player's delivery is cold, clipped, or framed as a character judgment ("you've been making this weird"), leaving Ryan feeling attacked rather than simply declined.
+      medium: Player is neutral and civil but gives no signal that the neighborly relationship is still okay — Ryan is likely to interpret the no as the end of any positive connection.
+      high: Player names the neighborly relationship explicitly ("I do actually like you as a neighbor and I want us to be okay") alongside the no — making the boundary about this specific thing, not a rejection of Ryan as a person.
+    weight: 0.20
+
+  - id: disengagement
+    name: Disengagement
+    description: >-
+      Whether the player knows when the conversation has reached its natural
+      end and closes it cleanly — without lingering past the point where Ryan
+      has accepted.
+    scoring:
+      low: Player continues after Ryan has accepted — adding more explanation, checking in repeatedly, or leaving the conversation on a note that reopens the topic.
+      medium: Player closes but the timing is slightly off — either slightly early before Ryan has fully processed, or slightly late after the natural exit window has passed.
+      high: Player reads the moment where Ryan has genuinely accepted and closes the conversation cleanly and warmly — the exit itself is part of the resolution.
+    weight: 0.15

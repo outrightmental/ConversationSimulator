@@ -1,0 +1,52 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+rubric_id: rejection_handling_rubric
+title: Graceful Exit Rubric
+dimensions:
+  - id: acceptance_speed
+    name: Acceptance Speed
+    description: >-
+      Whether the player accepts Priya's no without attempting to negotiate,
+      re-ask, or challenge her reasoning — a fast, clean acceptance is the
+      highest mark.
+    scoring:
+      low: Player argues with the rejection ("but we had such a great conversation"), asks Priya to reconsider, or reframes the original ask to try again. Priya becomes noticeably more guarded.
+      medium: Player accepts the rejection but adds commentary ("I get it, I was probably reading too much into it") that makes Priya feel she needs to manage the player's feelings rather than simply being done.
+      high: Player accepts the no directly and without commentary on whether they think it is the right call — a simple, clear acknowledgment ("Okay, I appreciate you telling me") that makes Priya visibly relax.
+    weight: 0.35
+
+  - id: emotional_regulation
+    name: Emotional Regulation
+    description: >-
+      Whether the player remains composed rather than expressing disappointment,
+      awkwardness, or frustration in a way that makes Priya responsible for
+      managing it.
+    scoring:
+      low: Player's response signals clear hurt, frustration, or passive-aggression — either in direct language ("fine, whatever") or in tone ("yeah, I figured"). Priya is left feeling like she caused harm.
+      medium: Player is composed but allows enough visible disappointment to surface that Priya feels she should check in or soften the rejection further. The player is not hostile but they are not comfortable either.
+      high: Player responds with evident composure — not performing happiness they do not feel, but not requiring Priya to do additional emotional labour. Priya can close the interaction without guilt.
+    weight: 0.30
+
+  - id: graceful_closure
+    name: Graceful Closure
+    description: >-
+      Whether the player finds a natural and comfortable way to close the
+      interaction — not leaving things hanging, not over-explaining, just
+      ending it well.
+    scoring:
+      low: Player either exits abruptly without any closing (turns and leaves, ends the conversation mid-sentence) or lingers past the natural endpoint with additional comments or questions that have no purpose.
+      medium: Player closes the interaction but the closing feels slightly formulaic or rushed — Priya gives a polite response but the exit is functional rather than warm.
+      high: Player closes with a genuine, brief line that signals warmth and mutual respect — something that makes it plausible they will interact again without weirdness. Priya's response is visibly easier than it might have been.
+    weight: 0.20
+
+  - id: self_respect
+    name: Self-Respect
+    description: >-
+      Whether the player maintains their own dignity throughout — not
+      diminishing themselves, over-apologising, or making the rejection into
+      a self-criticism session.
+    scoring:
+      low: Player's response includes excessive self-deprecation ("I knew it was a long shot", "I don't know why I thought..."), turning the interaction into a small public humiliation that neither of them needs.
+      medium: Player accepts with minimal self-deprecation but attaches a slight apology or disclaimer that signals they feel they over-reached — it is not damaging, but it is unnecessary.
+      high: Player accepts with composure and without diminishing themselves — their self-respect is visible in how they hold the interaction, and that composure actually earns Priya's respect in return.
+    weight: 0.15

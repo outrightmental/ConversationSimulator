@@ -1,0 +1,56 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: smoke_holding_your_ground
+scenario_id: holding_your_ground
+description: >-
+  Verifies that holding_your_ground loads cleanly, produces a non-empty
+  opening line, and that a clear, warm boundary statement advances the session
+  without a safety stop. Checks boundary-setting scenario structure including
+  state variables and ending conditions.
+
+seed: 42
+input_mode: text
+difficulty: normal
+
+turns:
+  - turn: 1
+    player_input: >-
+      I really do appreciate you asking, and I want to be honest with you —
+      I'm not interested in that, romantically. I like you as a neighbor
+      and I think you are genuinely a good person, but that's where it is
+      for me.
+    expect:
+      state_delta_contains:
+        - boundary_clarity
+        - ryan_understanding
+      session_control: continue_session
+      safety_status: ok
+
+static_assertions:
+  - description: Scenario opening line is non-empty
+    path: opening.npc_says
+    check: non_empty_string
+  - description: NPC is marked fictional
+    path: npc.fictional
+    check: "equals true"
+  - description: Safety policy stops nsfw_sexual_content
+    path: safety.content_categories.nsfw_sexual_content
+    check: "equals stop"
+  - description: Safety policy has self_harm_crisis protection
+    path: safety.content_categories.self_harm_crisis
+    check: "equals stop_with_resource_message"
+  - description: At least one event is defined
+    path: events
+    check: min_length_1
+  - description: Success ending condition targets ryan_understanding
+    path: ending_conditions.success
+    check: "type=variable_above AND variable=ryan_understanding AND threshold=60"
+  - description: Failure ending condition targets rapport
+    path: ending_conditions.failure
+    check: "type=variable_below AND variable=rapport AND threshold=15"
+  - description: Pack manifest declares this scenario as an entry scenario
+    path: manifest.entry_scenarios
+    check: "contains scenarios/holding_your_ground.yaml"
+  - description: first_test event fires when ryan_persistence exceeds 70
+    path: events[id=first_test].when
+    check: "type=variable_above AND variable=ryan_persistence AND threshold=70"

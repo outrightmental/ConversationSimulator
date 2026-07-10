@@ -1,0 +1,49 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+rubric_id: dating_confidence_rubric
+title: Asking Someone Out Rubric
+dimensions:
+  - id: genuine_connection
+    name: Genuine Connection
+    description: >-
+      Whether the player builds real conversational rapport before making any
+      kind of ask — or whether they skip directly to the goal without earning
+      the moment.
+    scoring:
+      low: Player opens with a direct compliment or a formulaic line ("do you come here often?") and does not engage with anything Jordan has actually said. Jordan's responses are short and polite.
+      medium: Player makes genuine conversational contact and Jordan responds warmly, but the player pivots to the ask before the connection has had time to develop — it lands as slightly rushed.
+      high: Player asks about something specific to Jordan (their work, their reading material, their coffee order) and responds to what Jordan actually says, building a thread of real conversation before the ask naturally arises from it.
+    weight: 0.35
+
+  - id: timing_of_the_ask
+    name: Timing of the Ask
+    description: >-
+      Whether the player reads the social cues correctly and makes the ask
+      at a moment that feels natural rather than premature or overdue.
+    scoring:
+      low: Player makes the ask before any real rapport has formed, or waits so long that the natural window has closed and Jordan is already wrapping up the interaction.
+      medium: Player makes the ask at a reasonable point in the conversation but misses a clearer opening signal — Jordan agrees or declines but the moment feels slightly forced rather than earned.
+      high: Player picks up on a signal that Jordan is engaged (a returned question, a shared laugh, a lingering moment) and uses it as the natural entry point for the ask — the timing makes Jordan more likely to say yes.
+    weight: 0.25
+
+  - id: clarity_of_intent
+    name: Clarity of Intent
+    description: >-
+      Whether the player states their interest directly and clearly, without
+      wrapping it in so much hedging that Jordan cannot tell what is being asked.
+    scoring:
+      low: Player's ask is so indirect or hedged ("I don't suppose you'd ever want to... I mean, no pressure") that it is not actually clear they are asking Jordan out. Jordan can plausibly miss the intent entirely.
+      medium: Player asks, but wraps the ask in so much qualification ("only if you want to, you can totally say no, it's completely fine either way") that the interest itself is obscured. The ask lands as low-conviction.
+      high: Player states their interest simply and directly ("I've really enjoyed talking with you — would you want to grab coffee sometime?") in a way that is clearly an ask without pressure or excessive hedging.
+    weight: 0.25
+
+  - id: pressure_sensitivity
+    name: Pressure Sensitivity
+    description: >-
+      Whether the player respects Jordan's pace and signals, and does not push
+      past the point where Jordan's engagement is genuine.
+    scoring:
+      low: Player continues or escalates the approach after Jordan has given clear signals of wanting to wrap up — shorter answers, looking away, mentions of needing to go. The player either misses or ignores the signal.
+      medium: Player reads most signals correctly but misses one — extends the conversation slightly past the natural exit, or adds one more question after Jordan has started to disengage.
+      high: Player tracks Jordan's engagement level throughout and either adjusts their approach accordingly (slowing down when Jordan is reserved, leaning in when Jordan opens up) or exits gracefully when the signals turn negative.
+    weight: 0.15
