@@ -287,7 +287,7 @@ export default function Settings() {
       {/* Local-first posture notice */}
       <div
         role="note"
-        aria-label="local-only notice"
+        aria-label={t('settings.localFirst.ariaLabel')}
         style={{
           background: 'rgba(34,197,94,0.08)',
           border: '1px solid rgba(34,197,94,0.25)',

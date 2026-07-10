@@ -135,6 +135,7 @@ export const de: LocaleMessages = {
   settings: {
     title: 'Einstellungen',
     localFirst: {
+      ariaLabel: 'Hinweis: nur lokal',
       label: 'Lokal-zuerst.',
       description:
         'Gespräche werden vollständig auf Ihrem Gerät verarbeitet. Es werden keine Telemetriedaten gesammelt, keine Transkripte automatisch hochgeladen und kein Modell oder Paket ohne explizite Aktion von Ihnen heruntergeladen.',

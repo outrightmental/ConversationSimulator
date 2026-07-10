@@ -127,6 +127,7 @@ export const en = {
   settings: {
     title: 'Settings',
     localFirst: {
+      ariaLabel: 'local-only notice',
       label: 'Local-first.',
       description:
         'Conversations are processed entirely on your device. No telemetry is collected, no transcript is uploaded automatically, and no model or pack is downloaded without an explicit action from you.',
