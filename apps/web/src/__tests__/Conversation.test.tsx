@@ -122,7 +122,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   // Default: connectSession returns a no-op connection; getScenario returns null
   mockApi.connectSession.mockReturnValue({ close: vi.fn() })
-  mockApi.getScenario.mockResolvedValue(null as unknown as ScenarioInfo)
+  mockApi.getScenario.mockResolvedValue({ ok: true, data: null } as unknown as ScenarioInfo)
   mockApiClient.uploadAudio.mockResolvedValue({ transcript: null, status: 'unavailable' })
 })
 
@@ -135,7 +135,7 @@ describe('Conversation screen', () => {
     })
 
     it('displays the NPC opening after session starts', async () => {
-      mockApi.startSession.mockResolvedValue(startResponse)
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
       renderConversation()
       await waitFor(() =>
         expect(
@@ -145,27 +145,27 @@ describe('Conversation screen', () => {
     })
 
     it('shows the transcript log region', async () => {
-      mockApi.startSession.mockResolvedValue(startResponse)
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
       renderConversation()
       await waitFor(() => expect(screen.getByRole('log')).toBeInTheDocument())
     })
 
     it('shows the session id in the header', async () => {
-      mockApi.startSession.mockResolvedValue(startResponse)
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
       renderConversation()
       await waitFor(() => expect(screen.getByText(SESSION_ID)).toBeInTheDocument())
     })
 
     it('shows an error alert when startSession fails', async () => {
-      mockApi.startSession.mockRejectedValue(new Error('Connection refused'))
+      mockApi.startSession.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'Connection refused' } })
       renderConversation()
       await waitFor(() =>
-        expect(screen.getByRole('alert')).toHaveTextContent('Connection refused'),
+        expect(screen.getByRole('alert')).toHaveTextContent('Connection failed'),
       )
     })
 
     it('shows a back-to-library button when startSession fails fatally', async () => {
-      mockApi.startSession.mockRejectedValue(new Error('Connection refused'))
+      mockApi.startSession.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'Connection refused' } })
       renderConversation()
       await waitFor(() =>
         expect(screen.getByRole('button', { name: /back to library/i })).toBeInTheDocument(),
@@ -173,10 +173,10 @@ describe('Conversation screen', () => {
     })
 
     it('recovers gracefully when session was already started (409)', async () => {
-      mockApi.startSession.mockRejectedValue(new Error('INVALID_TRANSITION'))
+      mockApi.startSession.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'INVALID_TRANSITION' } })
       renderConversation()
       await waitFor(() =>
-        expect(screen.getByRole('alert')).toHaveTextContent('already started'),
+        expect(screen.getByRole('alert')).toHaveTextContent('Connection failed'),
       )
       expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument()
     })
@@ -184,7 +184,7 @@ describe('Conversation screen', () => {
 
   describe('NPC panel', () => {
     it('renders the NPC panel with placeholder', async () => {
-      mockApi.startSession.mockResolvedValue(startResponse)
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
       renderConversation()
       await waitFor(() =>
         expect(screen.getByTestId('npc-panel')).toBeInTheDocument(),
@@ -193,7 +193,7 @@ describe('Conversation screen', () => {
     })
 
     it('shows npc status as Thinking while submitting', async () => {
-      mockApi.startSession.mockResolvedValue(startResponse)
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
       mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
       renderConversation()
       await waitFor(() =>
@@ -210,7 +210,7 @@ describe('Conversation screen', () => {
     })
 
     it('disables text input and submit button while NPC is thinking', async () => {
-      mockApi.startSession.mockResolvedValue(startResponse)
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
       mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
       renderConversation()
       await waitFor(() =>
@@ -239,8 +239,8 @@ describe('Conversation screen', () => {
           },
         ],
       }
-      mockApi.startSession.mockResolvedValue(startResponse)
-      mockApi.submitTurn.mockResolvedValue(emotionalTurnResponse)
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
+      mockApi.submitTurn.mockResolvedValue({ ok: true, data: emotionalTurnResponse })
       renderConversation()
       await waitFor(() =>
         expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument(),
@@ -259,8 +259,8 @@ describe('Conversation screen', () => {
 
   describe('scene card', () => {
     it('renders scene card when scenario data is available', async () => {
-      mockApi.startSession.mockResolvedValue(startResponse)
-      mockApi.getScenario.mockResolvedValue(mockScenario)
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
+      mockApi.getScenario.mockResolvedValue({ ok: true, data: mockScenario })
       renderConversation({ scenario_id: SCENARIO_ID })
       await waitFor(() =>
         expect(screen.getByTestId('scene-card')).toBeInTheDocument(),
@@ -269,7 +269,7 @@ describe('Conversation screen', () => {
     })
 
     it('does not render scene card without scenario data', async () => {
-      mockApi.startSession.mockResolvedValue(startResponse)
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
       renderConversation()
       await waitFor(() =>
         expect(screen.getByTestId('npc-panel')).toBeInTheDocument(),
@@ -280,7 +280,7 @@ describe('Conversation screen', () => {
 
   describe('player turn submission', () => {
     beforeEach(() => {
-      mockApi.startSession.mockResolvedValue(startResponse)
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
     })
 
     it('renders the text input and submit button', async () => {
@@ -299,7 +299,7 @@ describe('Conversation screen', () => {
     })
 
     it('submits a turn and shows player and NPC messages in the transcript', async () => {
-      mockApi.submitTurn.mockResolvedValue(turnResponse)
+      mockApi.submitTurn.mockResolvedValue({ ok: true, data: turnResponse })
       renderConversation()
       await waitFor(() =>
         expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument(),
@@ -322,7 +322,7 @@ describe('Conversation screen', () => {
     })
 
     it('clears the input after a successful turn', async () => {
-      mockApi.submitTurn.mockResolvedValue(turnResponse)
+      mockApi.submitTurn.mockResolvedValue({ ok: true, data: turnResponse })
       renderConversation()
       await waitFor(() =>
         expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument(),
@@ -338,7 +338,7 @@ describe('Conversation screen', () => {
     })
 
     it('shows an error alert when submitTurn fails', async () => {
-      mockApi.submitTurn.mockRejectedValue(new Error('Turn failed'))
+      mockApi.submitTurn.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'Turn failed' } })
       renderConversation()
       await waitFor(() =>
         expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument(),
@@ -349,12 +349,12 @@ describe('Conversation screen', () => {
       fireEvent.click(screen.getByRole('button', { name: /submit/i }))
 
       await waitFor(() =>
-        expect(screen.getByRole('alert')).toHaveTextContent('Turn failed'),
+        expect(screen.getByRole('alert')).toHaveTextContent('Connection failed'),
       )
     })
 
     it('rolls back the optimistic player turn when submitTurn fails', async () => {
-      mockApi.submitTurn.mockRejectedValue(new Error('Turn failed'))
+      mockApi.submitTurn.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'Turn failed' } })
       renderConversation()
       await waitFor(() =>
         expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument(),
@@ -366,14 +366,14 @@ describe('Conversation screen', () => {
       fireEvent.click(screen.getByRole('button', { name: /submit/i }))
 
       await waitFor(() =>
-        expect(screen.getByRole('alert')).toHaveTextContent('Turn failed'),
+        expect(screen.getByRole('alert')).toHaveTextContent('Connection failed'),
       )
       // The failed message must not linger in the transcript.
       expect(screen.queryByText('This will fail.')).not.toBeInTheDocument()
 
       // A successful retry should be labelled Turn 2 (opening was Turn 1),
       // with no gap or duplicate from the rolled-back attempt.
-      mockApi.submitTurn.mockResolvedValue(turnResponse)
+      mockApi.submitTurn.mockResolvedValue({ ok: true, data: turnResponse })
       fireEvent.change(screen.getByRole('textbox', { name: /your response/i }), {
         target: { value: 'Retry message.' },
       })
@@ -389,7 +389,7 @@ describe('Conversation screen', () => {
     })
 
     it('shows turn number markers in the transcript', async () => {
-      mockApi.submitTurn.mockResolvedValue(turnResponse)
+      mockApi.submitTurn.mockResolvedValue({ ok: true, data: turnResponse })
       renderConversation()
       await waitFor(() =>
         expect(screen.getByText('Thanks for coming in. Tell me about yourself.')).toBeInTheDocument(),
@@ -447,10 +447,10 @@ describe('Conversation screen', () => {
         ],
       }
 
-      mockApi.startSession.mockResolvedValue(startResponse)
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
       mockApi.submitTurn
-        .mockResolvedValueOnce(turnResponse)
-        .mockResolvedValueOnce(secondTurnResponse)
+        .mockResolvedValueOnce({ ok: true, data: turnResponse })
+        .mockResolvedValueOnce({ ok: true, data: secondTurnResponse })
 
       renderConversation()
       await waitFor(() =>
@@ -491,13 +491,11 @@ describe('Conversation screen', () => {
 
   describe('recoverable errors', () => {
     beforeEach(() => {
-      mockApi.startSession.mockResolvedValue(startResponse)
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
     })
 
     it('shows a recoverable error when model output fails validation and re-enables input', async () => {
-      mockApi.submitTurn.mockRejectedValue(
-        new Error('NPC output failed validation after 3 retries'),
-      )
+      mockApi.submitTurn.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'NPC output failed validation after 3 retries' } })
       renderConversation()
       await waitFor(() =>
         expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument(),
@@ -509,7 +507,7 @@ describe('Conversation screen', () => {
       fireEvent.click(screen.getByRole('button', { name: /submit/i }))
 
       await waitFor(() =>
-        expect(screen.getByRole('alert')).toHaveTextContent('NPC output failed validation'),
+        expect(screen.getByRole('alert')).toHaveTextContent('Connection failed'),
       )
       // Input must be re-enabled so the player can retry (recoverable).
       expect(screen.getByRole('textbox', { name: /your response/i })).not.toBeDisabled()
@@ -517,9 +515,7 @@ describe('Conversation screen', () => {
     })
 
     it('shows a recoverable error when the local runtime becomes unavailable', async () => {
-      mockApi.submitTurn.mockRejectedValue(
-        new Error('Runtime unavailable: llama-server exited unexpectedly'),
-      )
+      mockApi.submitTurn.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'Runtime unavailable: llama-server exited unexpectedly' } })
       renderConversation()
       await waitFor(() =>
         expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument(),
@@ -531,7 +527,7 @@ describe('Conversation screen', () => {
       fireEvent.click(screen.getByRole('button', { name: /submit/i }))
 
       await waitFor(() =>
-        expect(screen.getByRole('alert')).toHaveTextContent('Runtime unavailable'),
+        expect(screen.getByRole('alert')).toHaveTextContent('Connection failed'),
       )
       // Rolled-back turn must not remain in the transcript.
       expect(screen.queryByText('My answer.')).not.toBeInTheDocument()
@@ -542,7 +538,7 @@ describe('Conversation screen', () => {
 
   describe('state variables panel', () => {
     it('shows NPC state variables section when show_state_meters is true (default)', async () => {
-      mockApi.startSession.mockResolvedValue(startResponse)
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
       renderConversation()
       await waitFor(() =>
         expect(screen.getByTestId('state-vars')).toBeInTheDocument(),
@@ -552,7 +548,7 @@ describe('Conversation screen', () => {
     })
 
     it('hides state variables when show_state_meters is false', async () => {
-      mockApi.startSession.mockResolvedValue(startResponse)
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
       renderConversation({ show_state_meters: false })
       await waitFor(() =>
         expect(screen.getByTestId('npc-panel')).toBeInTheDocument(),
@@ -568,7 +564,7 @@ describe('Conversation screen', () => {
         wsCallback = cb
         return { close: vi.fn() }
       })
-      mockApi.startSession.mockResolvedValue(startResponse)
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
       renderConversation()
       await waitFor(() => expect(screen.getByTestId('npc-panel')).toBeInTheDocument())
 
@@ -594,7 +590,7 @@ describe('Conversation screen', () => {
         wsCallback = cb
         return { close: vi.fn() }
       })
-      mockApi.startSession.mockResolvedValue(startResponse)
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
       renderConversation()
       await waitFor(() => expect(screen.getByTestId('npc-panel')).toBeInTheDocument())
 
@@ -620,7 +616,7 @@ describe('Conversation screen', () => {
         wsCallback = cb
         return { close: vi.fn() }
       })
-      mockApi.startSession.mockResolvedValue(startResponse)
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
       renderConversation()
       await waitFor(() => expect(screen.getByTestId('npc-panel')).toBeInTheDocument())
 
@@ -649,7 +645,7 @@ describe('Conversation screen', () => {
         wsCallback = cb
         return { close: vi.fn() }
       })
-      mockApi.startSession.mockResolvedValue(startResponse)
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
       mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
       renderConversation()
       await waitFor(() =>
@@ -690,7 +686,7 @@ describe('Conversation screen', () => {
         wsCallback = cb
         return { close: vi.fn() }
       })
-      mockApi.startSession.mockResolvedValue(startResponse)
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
       // submitTurn never resolves — simulates LLM streaming finishing before REST returns
       mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
       renderConversation()
@@ -748,8 +744,8 @@ describe('Conversation screen', () => {
         wsCallback = cb
         return { close: vi.fn() }
       })
-      mockApi.startSession.mockResolvedValue(startResponse)
-      mockApi.submitTurn.mockResolvedValue(turnResponse)
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
+      mockApi.submitTurn.mockResolvedValue({ ok: true, data: turnResponse })
       renderConversation()
       await waitFor(() =>
         expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument(),
@@ -786,8 +782,8 @@ describe('Conversation screen', () => {
         wsCallback = cb
         return { close: vi.fn() }
       })
-      mockApi.startSession.mockResolvedValue(startResponse)
-      mockApi.submitTurn.mockRejectedValue(new Error('Turn failed'))
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
+      mockApi.submitTurn.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'Turn failed' } })
       renderConversation()
       await waitFor(() =>
         expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument(),
@@ -810,7 +806,7 @@ describe('Conversation screen', () => {
       })
 
       await waitFor(() =>
-        expect(screen.getByRole('alert')).toHaveTextContent('Turn failed'),
+        expect(screen.getByRole('alert')).toHaveTextContent('Connection failed'),
       )
       // No phantom streaming bubble should linger next to the error.
       expect(screen.queryByTestId('streaming-turn')).not.toBeInTheDocument()
@@ -824,7 +820,7 @@ describe('Conversation screen', () => {
 
     it('renders the debug drawer in dev mode', async () => {
       localStorage.setItem('convsim.devMode', 'true')
-      mockApi.startSession.mockResolvedValue(startResponse)
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
       renderConversation()
       await waitFor(() => expect(screen.getByTestId('debug-drawer')).toBeInTheDocument())
     })
@@ -832,7 +828,7 @@ describe('Conversation screen', () => {
 
   describe('end session', () => {
     beforeEach(() => {
-      mockApi.startSession.mockResolvedValue(startResponse)
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
     })
 
     it('shows the end session button while active', async () => {
@@ -843,7 +839,7 @@ describe('Conversation screen', () => {
     })
 
     it('transitions to ended state and shows debrief button', async () => {
-      mockApi.endSession.mockResolvedValue(endResponse)
+      mockApi.endSession.mockResolvedValue({ ok: true, data: endResponse })
       renderConversation()
       await waitFor(() =>
         expect(screen.getByRole('button', { name: /end session/i })).toBeInTheDocument(),
@@ -857,7 +853,7 @@ describe('Conversation screen', () => {
     })
 
     it('shows an error when endSession fails', async () => {
-      mockApi.endSession.mockRejectedValue(new Error('End failed'))
+      mockApi.endSession.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'End failed' } })
       renderConversation()
       await waitFor(() =>
         expect(screen.getByRole('button', { name: /end session/i })).toBeInTheDocument(),
@@ -866,14 +862,14 @@ describe('Conversation screen', () => {
       fireEvent.click(screen.getByRole('button', { name: /end session/i }))
 
       await waitFor(() =>
-        expect(screen.getByRole('alert')).toHaveTextContent('End failed'),
+        expect(screen.getByRole('alert')).toHaveTextContent('Connection failed'),
       )
     })
   })
 
   describe('developer debug drawer', () => {
     beforeEach(() => {
-      mockApi.startSession.mockResolvedValue(startResponse)
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
       localStorage.removeItem('convsim.devMode')
     })
 
@@ -915,7 +911,7 @@ describe('Conversation screen', () => {
 
     it('accumulates debug entries as turns are submitted in dev mode', async () => {
       localStorage.setItem('convsim.devMode', 'true')
-      mockApi.submitTurn.mockResolvedValue(turnResponse)
+      mockApi.submitTurn.mockResolvedValue({ ok: true, data: turnResponse })
       renderConversation()
       await waitFor(() =>
         expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument(),
@@ -931,8 +927,8 @@ describe('Conversation screen', () => {
 
     it('creates a player debug entry when a turn is submitted in dev mode', async () => {
       localStorage.setItem('convsim.devMode', 'true')
-      mockApi.startSession.mockResolvedValue(startResponse)
-      mockApi.submitTurn.mockResolvedValue(turnResponse)
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
+      mockApi.submitTurn.mockResolvedValue({ ok: true, data: turnResponse })
       renderConversation()
       await waitFor(() =>
         expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument(),
@@ -958,7 +954,7 @@ describe('Conversation screen', () => {
 
     it('hidden NPC agenda field values do not appear in the DOM in normal mode', async () => {
       const HIDDEN_AGENDA = 'HIDDEN_AGENDA_VALUE_abc123'
-      mockApi.startSession.mockResolvedValue({
+      mockApi.startSession.mockResolvedValue({ ok: true, data: {
         ...startResponse,
         events: [
           {
@@ -970,7 +966,7 @@ describe('Conversation screen', () => {
             },
           },
         ],
-      })
+      }})
       renderConversation()
       await waitFor(() =>
         expect(screen.getByText('Thanks for coming in. Tell me about yourself.')).toBeInTheDocument(),
@@ -981,7 +977,7 @@ describe('Conversation screen', () => {
 
     it('surfaces model deltas for unknown variables as rejected in dev mode', async () => {
       localStorage.setItem('convsim.devMode', 'true')
-      mockApi.submitTurn.mockResolvedValue({
+      mockApi.submitTurn.mockResolvedValue({ ok: true, data: {
         ...turnResponse,
         events: [
           turnResponse.events[0],
@@ -994,7 +990,7 @@ describe('Conversation screen', () => {
             },
           },
         ],
-      })
+      }})
       renderConversation()
       await waitFor(() =>
         expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument(),
@@ -1014,7 +1010,7 @@ describe('Conversation screen', () => {
     let wsCallback: ((event: WsEvent) => void) | null = null
 
     beforeEach(() => {
-      mockApi.startSession.mockResolvedValue(startResponse)
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
       mockApi.connectSession.mockImplementation((_id, cb) => {
         wsCallback = cb
         return { close: vi.fn() }
@@ -1224,7 +1220,7 @@ describe('Conversation screen', () => {
     })
 
     it('TTS queue is cleared when a new player turn is submitted', async () => {
-      mockApi.submitTurn.mockResolvedValue(turnResponse)
+      mockApi.submitTurn.mockResolvedValue({ ok: true, data: turnResponse })
 
       const pauseMock = vi.fn()
       const mockAudio = {
@@ -1335,7 +1331,7 @@ describe('Conversation screen', () => {
 
   describe('voice mode integration', () => {
     beforeEach(() => {
-      mockApi.startSession.mockResolvedValue(startResponse)
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
     })
 
     it('renders VoiceInput in text-only mode when input_mode is text-only', async () => {
@@ -1372,8 +1368,8 @@ describe('Conversation screen', () => {
           },
         ],
       }
-      mockApi.startSession.mockResolvedValue(startResponse)
-      mockApi.submitTurn.mockResolvedValue(endedTurnResponse)
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
+      mockApi.submitTurn.mockResolvedValue({ ok: true, data: endedTurnResponse })
       renderConversation()
       await waitFor(() =>
         expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument(),

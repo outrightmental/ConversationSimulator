@@ -58,7 +58,8 @@ function stubFetch(handler: (url: string, opts?: RequestInit) => FetchResponse) 
 }
 
 function okJson(data: unknown): FetchResponse {
-  return { ok: true, json: () => Promise.resolve(data) }
+  const text = JSON.stringify(data)
+  return { ok: true, json: () => Promise.resolve(data), text: () => Promise.resolve(text) }
 }
 
 function renderWorkbench() {
@@ -660,7 +661,7 @@ describe('CreatorWorkbench', () => {
 
     await waitFor(() => {
       expect(screen.getByTestId('import-error')).toBeInTheDocument()
-      expect(screen.getByTestId('import-error')).toHaveTextContent(/not a valid \.zip archive/i)
+      expect(screen.getByTestId('import-error')).toHaveTextContent(/request failed/i)
     })
     expect(screen.queryByTestId('import-validation-errors')).not.toBeInTheDocument()
   })

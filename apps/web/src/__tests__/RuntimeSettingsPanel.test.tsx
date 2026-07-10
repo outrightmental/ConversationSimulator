@@ -72,17 +72,20 @@ async function renderPanel() {
 beforeEach(() => {
   vi.restoreAllMocks()
   vi.clearAllMocks()
-  mockApi.getModels.mockResolvedValue(makeModels())
-  mockApi.getRuntimeSettings.mockResolvedValue(makeSettings())
+  mockApi.getModels.mockResolvedValue({ ok: true, data: makeModels() })
+  mockApi.getRuntimeSettings.mockResolvedValue({ ok: true, data: makeSettings() })
   mockApi.useModel.mockResolvedValue({
-    runtime_id: 'llama_cpp',
-    model_id: null,
-    runtime_name: 'llama.cpp',
-    status: 'unavailable',
-    message: null,
+    ok: true,
+    data: {
+      runtime_id: 'llama_cpp',
+      model_id: null,
+      runtime_name: 'llama.cpp',
+      status: 'unavailable',
+      message: null,
+    },
   })
-  mockApi.updateRuntimeSettings.mockResolvedValue(makeSettings())
-  mockApi.resetRuntimeSettings.mockResolvedValue(makeSettings())
+  mockApi.updateRuntimeSettings.mockResolvedValue({ ok: true, data: makeSettings() })
+  mockApi.resetRuntimeSettings.mockResolvedValue({ ok: true, data: makeSettings() })
 })
 
 // ── Loading and error states ──────────────────────────────────────────────────
@@ -95,10 +98,10 @@ describe('RuntimeSettingsPanel — loading', () => {
   })
 
   it('shows error when load fails', async () => {
-    mockApi.getModels.mockRejectedValue(new Error('network error'))
+    mockApi.getModels.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'network error' } })
     await renderPanel()
     await waitFor(() =>
-      expect(screen.getByRole('alert')).toHaveTextContent(/network error/i),
+      expect(screen.getByRole('alert')).toHaveTextContent(/Connection failed/i),
     )
   })
 })
@@ -112,7 +115,7 @@ describe('RuntimeSettingsPanel — basic settings', () => {
   })
 
   it('shows the active provider selected by default', async () => {
-    mockApi.getModels.mockResolvedValue(makeModels({ active: { runtime_id: 'ollama', model_id: 'llama3:latest' } }))
+    mockApi.getModels.mockResolvedValue({ ok: true, data: makeModels({ active: { runtime_id: 'ollama', model_id: 'llama3:latest' } }) })
     await renderPanel()
     await waitFor(() =>
       expect(screen.getByRole('combobox', { name: /provider/i })).toHaveValue('ollama'),
@@ -141,7 +144,7 @@ describe('RuntimeSettingsPanel — basic settings', () => {
   })
 
   it('populates model dropdown with installed llama.cpp models', async () => {
-    mockApi.getModels.mockResolvedValue(makeModels({
+    mockApi.getModels.mockResolvedValue({ ok: true, data: makeModels({
       installed: [{
         id: 1,
         registry_id: 'qwen3-4b-instruct-q4_k_m',
@@ -154,16 +157,16 @@ describe('RuntimeSettingsPanel — basic settings', () => {
         verified_sha256: null,
         installed_at: '2026-01-01T00:00:00.000Z',
       }],
-    }))
+    }) })
     await renderPanel()
     const modelSelect = await screen.findByRole('combobox', { name: /model/i })
     expect(modelSelect).toContainHTML('qwen3-4b.gguf')
   })
 
   it('populates model dropdown with Ollama models when Ollama is selected', async () => {
-    mockApi.getModels.mockResolvedValue(makeModels({
+    mockApi.getModels.mockResolvedValue({ ok: true, data: makeModels({
       ollama_models: [{ id: 'llama3:latest', name: 'llama3:latest', size_category: 'medium' }],
-    }))
+    }) })
     await renderPanel()
     fireEvent.change(screen.getByRole('combobox', { name: /provider/i }), { target: { value: 'ollama' } })
     await waitFor(() =>
@@ -193,11 +196,11 @@ describe('RuntimeSettingsPanel — basic settings', () => {
   })
 
   it('shows error when useModel fails', async () => {
-    mockApi.useModel.mockRejectedValue(new Error('runtime not available'))
+    mockApi.useModel.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'runtime not available' } })
     await renderPanel()
     fireEvent.click(screen.getByRole('button', { name: /apply provider and model/i }))
     await waitFor(() =>
-      expect(screen.getByRole('alert')).toHaveTextContent(/runtime not available/i),
+      expect(screen.getByRole('alert')).toHaveTextContent(/Connection failed/i),
     )
   })
 })
@@ -206,7 +209,7 @@ describe('RuntimeSettingsPanel — basic settings', () => {
 
 describe('RuntimeSettingsPanel — health display', () => {
   it('shows the runtime health status', async () => {
-    mockApi.getModels.mockResolvedValue(makeModels({
+    mockApi.getModels.mockResolvedValue({ ok: true, data: makeModels({
       runtime_health: {
         runtime_id: 'ollama',
         runtime_name: 'Ollama',
@@ -216,7 +219,7 @@ describe('RuntimeSettingsPanel — health display', () => {
         message: null,
         checked_at: '2026-01-01T00:00:00.000Z',
       },
-    }))
+    }) })
     await renderPanel()
     await waitFor(() =>
       expect(screen.getByLabelText(/runtime health/i)).toHaveTextContent(/Ollama/),
@@ -224,7 +227,7 @@ describe('RuntimeSettingsPanel — health display', () => {
   })
 
   it('shows the model ID in the health status', async () => {
-    mockApi.getModels.mockResolvedValue(makeModels({
+    mockApi.getModels.mockResolvedValue({ ok: true, data: makeModels({
       active: { runtime_id: 'ollama', model_id: 'llama3:latest' },
       runtime_health: {
         runtime_id: 'ollama',
@@ -235,7 +238,7 @@ describe('RuntimeSettingsPanel — health display', () => {
         message: null,
         checked_at: '2026-01-01T00:00:00.000Z',
       },
-    }))
+    }) })
     await renderPanel()
     await waitFor(() =>
       expect(screen.getByLabelText(/runtime health/i)).toHaveTextContent(/llama3:latest/),
@@ -243,7 +246,7 @@ describe('RuntimeSettingsPanel — health display', () => {
   })
 
   it('shows the last benchmark result when available', async () => {
-    mockApi.getModels.mockResolvedValue(makeModels({
+    mockApi.getModels.mockResolvedValue({ ok: true, data: makeModels({
       last_benchmark: {
         model_id: 'llama3:latest',
         runtime_id: 'ollama',
@@ -253,7 +256,7 @@ describe('RuntimeSettingsPanel — health display', () => {
         output_tokens: 5,
         benchmarked_at: '2026-01-01T00:00:00.000Z',
       },
-    }))
+    }) })
     await renderPanel()
     await waitFor(() =>
       expect(screen.getByLabelText(/last benchmark result/i)).toHaveTextContent(/18.7/),
@@ -322,7 +325,7 @@ describe('RuntimeSettingsPanel — advanced settings inputs', () => {
   })
 
   it('pre-fills inputs from saved settings', async () => {
-    mockApi.getRuntimeSettings.mockResolvedValue(makeSettings({
+    mockApi.getRuntimeSettings.mockResolvedValue({ ok: true, data: makeSettings({
       settings: {
         context_length: 4096,
         gpu_layers: -1,
@@ -331,7 +334,7 @@ describe('RuntimeSettingsPanel — advanced settings inputs', () => {
         top_p: 0.9,
         repeat_penalty: 1.1,
       },
-    }))
+    }) })
     await openAdvanced()
     expect(screen.getByRole('spinbutton', { name: /context length/i })).toHaveValue(4096)
     expect(screen.getByRole('spinbutton', { name: /gpu layers/i })).toHaveValue(-1)
@@ -464,7 +467,7 @@ describe('RuntimeSettingsPanel — restart required warning', () => {
   }
 
   it('shows restart warning after applying context length change', async () => {
-    mockApi.updateRuntimeSettings.mockResolvedValue(makeSettings({ requires_restart: true }))
+    mockApi.updateRuntimeSettings.mockResolvedValue({ ok: true, data: makeSettings({ requires_restart: true }) })
     await openAdvanced()
     fireEvent.change(screen.getByRole('spinbutton', { name: /context length/i }), {
       target: { value: '4096' },
@@ -476,7 +479,7 @@ describe('RuntimeSettingsPanel — restart required warning', () => {
   })
 
   it('does not show restart warning when non-restart fields change', async () => {
-    mockApi.updateRuntimeSettings.mockResolvedValue(makeSettings({ requires_restart: false }))
+    mockApi.updateRuntimeSettings.mockResolvedValue({ ok: true, data: makeSettings({ requires_restart: false }) })
     await openAdvanced()
     fireEvent.change(screen.getByRole('spinbutton', { name: /temperature/i }), {
       target: { value: '0.7' },
@@ -487,7 +490,7 @@ describe('RuntimeSettingsPanel — restart required warning', () => {
   })
 
   it('shows restart warning after reset', async () => {
-    mockApi.resetRuntimeSettings.mockResolvedValue(makeSettings({ requires_restart: true }))
+    mockApi.resetRuntimeSettings.mockResolvedValue({ ok: true, data: makeSettings({ requires_restart: true }) })
     await openAdvanced()
     fireEvent.click(screen.getByRole('button', { name: /reset to defaults/i }))
     await waitFor(() =>
@@ -506,11 +509,11 @@ describe('RuntimeSettingsPanel — apply advanced and reset', () => {
   }
 
   it('shows error when updateRuntimeSettings API fails', async () => {
-    mockApi.updateRuntimeSettings.mockRejectedValue(new Error('server error'))
+    mockApi.updateRuntimeSettings.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'server error' } })
     await openAdvanced()
     fireEvent.click(screen.getByRole('button', { name: /apply advanced settings/i }))
     await waitFor(() =>
-      expect(screen.getByRole('alert')).toHaveTextContent(/server error/i),
+      expect(screen.getByRole('alert')).toHaveTextContent(/Connection failed/i),
     )
   })
 
@@ -521,9 +524,9 @@ describe('RuntimeSettingsPanel — apply advanced and reset', () => {
   })
 
   it('clears form fields after reset', async () => {
-    mockApi.getRuntimeSettings.mockResolvedValue(makeSettings({
+    mockApi.getRuntimeSettings.mockResolvedValue({ ok: true, data: makeSettings({
       settings: { context_length: 4096, gpu_layers: null, threads: null, temperature: null, top_p: null, repeat_penalty: null },
-    }))
+    }) })
     await openAdvanced()
     await waitFor(() => expect(screen.getByRole('spinbutton', { name: /context length/i })).toHaveValue(4096))
     fireEvent.click(screen.getByRole('button', { name: /reset to defaults/i }))
@@ -533,11 +536,11 @@ describe('RuntimeSettingsPanel — apply advanced and reset', () => {
   })
 
   it('shows error when resetRuntimeSettings API fails', async () => {
-    mockApi.resetRuntimeSettings.mockRejectedValue(new Error('reset failed'))
+    mockApi.resetRuntimeSettings.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'reset failed' } })
     await openAdvanced()
     fireEvent.click(screen.getByRole('button', { name: /reset to defaults/i }))
     await waitFor(() =>
-      expect(screen.getByRole('alert')).toHaveTextContent(/reset failed/i),
+      expect(screen.getByRole('alert')).toHaveTextContent(/Connection failed/i),
     )
   })
 })

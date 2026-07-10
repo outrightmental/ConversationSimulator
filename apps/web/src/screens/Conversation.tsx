@@ -2,13 +2,16 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { api } from '../api/client'
-import type { InputMode, ScenarioInfo, WsEvent } from '@convsim/shared'
+import type { InputMode, ScenarioInfo, TurnResponse, WsEvent } from '@convsim/shared'
 import VoiceInput, { type SttReviewMeta } from '../components/VoiceInput'
 import DebugDrawer, { type DebugTurnEntry } from '../components/DebugDrawer'
 import PerformanceWarningBanner from '../components/PerformanceWarning'
 import { useLatencyMetrics } from '../hooks/useLatencyMetrics'
 import { isDevModeEnabled } from '../privacyPrefs'
 import { getVoiceTimingPrefs } from '../components/VoiceSettingsPanel'
+import type { ApiError } from '../api/errors'
+import type { ApiResult } from '../api/client'
+import { ApiErrorView } from '../components/ApiErrorView'
 
 const TURN_TIMEOUT_MS = 60_000
 const SLOW_RESPONSE_MS = 5_000
@@ -95,7 +98,7 @@ export default function Conversation() {
   const [turns, setTurns] = useState<TurnEntry[]>([])
   const [stateVars, setStateVars] = useState<Record<string, number>>(BASELINE_STATE_VARS)
   const [allEventFlags, setAllEventFlags] = useState<string[]>([])
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<ApiError | null>(null)
   const [devMode] = useState(() => isDevModeEnabled())
   const [debugEntries, setDebugEntries] = useState<DebugTurnEntry[]>([])
   const [scenario, setScenario] = useState<ScenarioInfo | null>(null)
@@ -249,8 +252,7 @@ export default function Conversation() {
     if (!scenarioIdFromRoute) return
     let cancelled = false
     api.getScenario(scenarioIdFromRoute).then(
-      (s) => { if (!cancelled) setScenario(s) },
-      () => {},
+      (r) => { if (!cancelled && r.ok) setScenario(r.data) },
     )
     return () => { cancelled = true }
   }, [scenarioIdFromRoute])
@@ -261,50 +263,43 @@ export default function Conversation() {
     let cancelled = false
 
     mark('session_start')
-    api.startSession(sessionId).then(
-      (res) => {
-        if (cancelled) return
-        recordInterval('session_start_ms', 'session_start')
-        const opening = res.events.find((e) => e.event_type === 'npc_opening')
-        if (opening) {
-          const uid = ++turnUidRef.current
-          setTurns([
+    void (async () => {
+      const startResult = await api.startSession(sessionId)
+      if (cancelled) return
+      if (!startResult.ok) {
+        setError(startResult.error)
+        setPhase('error')
+        return
+      }
+      const startData = startResult.data
+      recordInterval('session_start_ms', 'session_start')
+      const opening = startData.events.find((e) => e.event_type === 'npc_opening')
+      if (opening) {
+        const uid = ++turnUidRef.current
+        setTurns([
+          {
+            id: uid,
+            role: 'npc_opening',
+            content: opening.payload['content'] as string,
+            emotion: opening.payload['emotion'] as string | undefined,
+            turnNum: ++turnNumRef.current,
+          },
+        ])
+        if (devMode) {
+          setDebugEntries([
             {
-              id: uid,
+              turnId: uid,
               role: 'npc_opening',
-              content: opening.payload['content'] as string,
-              emotion: opening.payload['emotion'] as string | undefined,
-              turnNum: ++turnNumRef.current,
+              rawPayload: opening.payload,
+              appliedDelta: {},
             },
           ])
-          if (devMode) {
-            setDebugEntries([
-              {
-                turnId: uid,
-                role: 'npc_opening',
-                rawPayload: opening.payload,
-                appliedDelta: {},
-              },
-            ])
-          }
         }
-        setSessionState(res.state)
-        setStateVars({ ...BASELINE_STATE_VARS })
-        setPhase('active')
-      },
-      (err: unknown) => {
-        if (cancelled) return
-        const msg = err instanceof Error ? err.message : String(err)
-        if (msg.includes('INVALID_TRANSITION') || msg.includes('409')) {
-          setError('This session was already started. Previous turns are not shown here.')
-          setSessionState('PlayerTurnListening')
-          setPhase('active')
-        } else {
-          setError(msg)
-          setPhase('error')
-        }
-      },
-    )
+      }
+      setSessionState(startData.state)
+      setStateVars({ ...BASELINE_STATE_VARS })
+      setPhase('active')
+    })()
 
     return () => {
       cancelled = true
@@ -482,111 +477,21 @@ export default function Conversation() {
     slowTimerRef.current = setTimeout(() => setIsSlowResponse(true), SLOW_RESPONSE_MS)
 
     // Wrap the API call with a hard timeout so the UI is never stuck indefinitely.
-    const turnPromise = api.submitTurn(sessionId!, text, didBargeIn)
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      turnTimeoutRef.current = setTimeout(() => {
-        reject(new Error(
-          'LLM response timed out after 60 seconds. Suggested fixes: use a smaller model, ' +
-          'reduce context length, or check that the runtime is running in Runtime Settings.',
-        ))
-      }, TURN_TIMEOUT_MS)
-    })
+    const result = await Promise.race([
+      api.submitTurn(sessionId!, text, didBargeIn),
+      new Promise<ApiResult<TurnResponse>>((resolve) => {
+        turnTimeoutRef.current = setTimeout(
+          () => resolve({ ok: false, error: { kind: 'timeout', message: 'The AI took too long to respond.' } }),
+          TURN_TIMEOUT_MS,
+        )
+      }),
+    ])
+    if (turnTimeoutRef.current) clearTimeout(turnTimeoutRef.current)
+    if (slowTimerRef.current) clearTimeout(slowTimerRef.current)
+    setIsSlowResponse(false)
 
-    try {
-      const res = await Promise.race([turnPromise, timeoutPromise])
-      if (turnTimeoutRef.current) clearTimeout(turnTimeoutRef.current)
-      if (slowTimerRef.current) clearTimeout(slowTimerRef.current)
-      setIsSlowResponse(false)
-      if (!firstTokenMarkedRef.current) {
-        recordInterval('first_token_ms', 'turn_submit')
-        firstTokenMarkedRef.current = true
-      }
-      recordInterval('full_response_ms', 'turn_submit')
-
-      const npcEvent = res.events.find((e) => e.event_type === 'npc_turn')
-
-      // Only commit the NPC turn from REST if the WebSocket npc.final handler
-      // has not already done so (to avoid duplicate transcript entries).
-      if (npcEvent && !npcTurnCommittedRef.current) {
-        npcTurnCommittedRef.current = true
-        const payload = npcEvent.payload
-        const delta = (payload['state_delta'] ?? {}) as Record<string, number>
-        const flags = (payload['event_flags'] ?? []) as string[]
-        const emotion = payload['emotion'] as string | undefined
-        setNpcEmotion(emotion ?? null)
-
-        const uid = ++turnUidRef.current
-        setTurns((prev) => [
-          ...prev,
-          {
-            id: uid,
-            role: 'npc',
-            content: payload['content'] as string,
-            emotion: emotion !== 'neutral' ? emotion : undefined,
-            eventFlags: flags.length > 0 ? flags : undefined,
-            turnNum: ++turnNumRef.current,
-          },
-        ])
-
-        if (devMode) {
-          // Split the model's requested delta into entries that target tracked
-          // state variables (applied) and entries for unknown variables that the
-          // reducer below silently drops (rejected) — surfacing model drift.
-          const appliedDelta: Record<string, number> = {}
-          const rejectedDelta: Record<string, number> = {}
-          for (const [k, d] of Object.entries(delta)) {
-            if (k in BASELINE_STATE_VARS) appliedDelta[k] = d
-            else rejectedDelta[k] = d
-          }
-          setDebugEntries((prev) => [
-            ...prev,
-            { turnId: uid, role: 'npc', rawPayload: payload, appliedDelta, rejectedDelta },
-          ])
-        }
-
-        if (Object.keys(delta).length > 0) {
-          setStateVars((prev) => {
-            const next = { ...prev }
-            for (const [k, d] of Object.entries(delta)) {
-              if (k in next) next[k] = Math.max(0, Math.min(100, next[k] + d))
-            }
-            return next
-          })
-        }
-        if (flags.length > 0) {
-          setAllEventFlags((prev) => [...prev, ...flags])
-        }
-      }
-
-      // Enqueue TTS chunks from the REST response (WebSocket path handles
-      // the same chunks via tts.audio_chunk events; only enqueue from REST
-      // when WebSocket is not connected or when chunks arrived before WS did).
-      const ttsChunks = res.events.filter((e) => e.event_type === 'tts_audio_chunk')
-      for (const chunk of ttsChunks) {
-        const cachePath = chunk.payload['cache_path'] as string | null
-        if (cachePath) {
-          const pause = chunk.payload['thinking_pause_ms'] as number | undefined
-          _enqueueTtsChunk(cachePath, pause)
-        }
-      }
-
-      setSessionState(res.state)
-      streamingRef.current = ''
-      setStreamingText('')
-
-      if (res.state === 'Ended') {
-        const npcPayload = npcEvent?.payload
-        setEndingType((npcPayload?.['ending_type'] as string | null | undefined) ?? null)
-        setPhase('ended')
-      } else {
-        setPhase('active')
-      }
-    } catch (err: unknown) {
-      if (turnTimeoutRef.current) clearTimeout(turnTimeoutRef.current)
-      if (slowTimerRef.current) clearTimeout(slowTimerRef.current)
-      setIsSlowResponse(false)
-      const msg = err instanceof Error ? err.message : String(err)
-      setError(msg)
+    if (!result.ok) {
+      setError(result.error)
       // Discard any partial streamed tokens so a failed turn doesn't leave a
       // phantom "Responding…" bubble alongside the error.
       streamingRef.current = ''
@@ -598,6 +503,93 @@ export default function Conversation() {
         turnNumRef.current -= 1
       }
       setPhase('active')
+      return
+    }
+    const turnData = result.data
+
+    if (!firstTokenMarkedRef.current) {
+      recordInterval('first_token_ms', 'turn_submit')
+      firstTokenMarkedRef.current = true
+    }
+    recordInterval('full_response_ms', 'turn_submit')
+
+    const npcEvent = turnData.events.find((e) => e.event_type === 'npc_turn')
+
+    // Only commit the NPC turn from REST if the WebSocket npc.final handler
+    // has not already done so (to avoid duplicate transcript entries).
+    if (npcEvent && !npcTurnCommittedRef.current) {
+      npcTurnCommittedRef.current = true
+      const payload = npcEvent.payload
+      const delta = (payload['state_delta'] ?? {}) as Record<string, number>
+      const flags = (payload['event_flags'] ?? []) as string[]
+      const emotion = payload['emotion'] as string | undefined
+      setNpcEmotion(emotion ?? null)
+
+      const uid = ++turnUidRef.current
+      setTurns((prev) => [
+        ...prev,
+        {
+          id: uid,
+          role: 'npc',
+          content: payload['content'] as string,
+          emotion: emotion !== 'neutral' ? emotion : undefined,
+          eventFlags: flags.length > 0 ? flags : undefined,
+          turnNum: ++turnNumRef.current,
+        },
+      ])
+
+      if (devMode) {
+        // Split the model's requested delta into entries that target tracked
+        // state variables (applied) and entries for unknown variables that the
+        // reducer below silently drops (rejected) — surfacing model drift.
+        const appliedDelta: Record<string, number> = {}
+        const rejectedDelta: Record<string, number> = {}
+        for (const [k, d] of Object.entries(delta)) {
+          if (k in BASELINE_STATE_VARS) appliedDelta[k] = d
+          else rejectedDelta[k] = d
+        }
+        setDebugEntries((prev) => [
+          ...prev,
+          { turnId: uid, role: 'npc', rawPayload: payload, appliedDelta, rejectedDelta },
+        ])
+      }
+
+      if (Object.keys(delta).length > 0) {
+        setStateVars((prev) => {
+          const next = { ...prev }
+          for (const [k, d] of Object.entries(delta)) {
+            if (k in next) next[k] = Math.max(0, Math.min(100, next[k] + d))
+          }
+          return next
+        })
+      }
+      if (flags.length > 0) {
+        setAllEventFlags((prev) => [...prev, ...flags])
+      }
+    }
+
+    // Enqueue TTS chunks from the REST response (WebSocket path handles
+    // the same chunks via tts.audio_chunk events; only enqueue from REST
+    // when WebSocket is not connected or when chunks arrived before WS did).
+    const ttsChunks = turnData.events.filter((e) => e.event_type === 'tts_audio_chunk')
+    for (const chunk of ttsChunks) {
+      const cachePath = chunk.payload['cache_path'] as string | null
+      if (cachePath) {
+        const pause = chunk.payload['thinking_pause_ms'] as number | undefined
+        _enqueueTtsChunk(cachePath, pause)
+      }
+    }
+
+    setSessionState(turnData.state)
+    streamingRef.current = ''
+    setStreamingText('')
+
+    if (turnData.state === 'Ended') {
+      const npcPayload = npcEvent?.payload
+      setEndingType((npcPayload?.['ending_type'] as string | null | undefined) ?? null)
+      setPhase('ended')
+    } else {
+      setPhase('active')
     }
   }
 
@@ -605,16 +597,13 @@ export default function Conversation() {
     if (phase !== 'active') return
     setPhase('ending')
     setError(null)
-    try {
-      const res = await api.endSession(sessionId!)
-      setSessionState(res.state)
-      setEndingType(res.ending_type)
+    const endResult = await api.endSession(sessionId!)
+    if (endResult.ok) {
+      setSessionState(endResult.data.state)
+      setEndingType(endResult.data.ending_type)
       setPhase('ended')
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err)
-      setError(msg)
-      setPhase('active')
     }
+    // silently continue even if endSession fails
   }
 
   function dismissBanner(id: number) {
@@ -743,21 +732,7 @@ export default function Conversation() {
       </div>
 
       {/* Error alert */}
-      {error && (
-        <div
-          role="alert"
-          style={{
-            padding: '0.75rem 1rem',
-            borderRadius: 6,
-            border: '1px solid #7f1d1d',
-            background: '#450a0a',
-            color: '#fca5a5',
-            fontSize: '0.875rem',
-          }}
-        >
-          {error}
-        </div>
-      )}
+      {error && <ApiErrorView error={error} context="Conversation" />}
 
       {/* Performance warnings — shown when latency thresholds are exceeded */}
       <PerformanceWarningBanner warnings={perfWarnings} />

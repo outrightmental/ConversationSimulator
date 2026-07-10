@@ -3,6 +3,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import type { DebriefTurningPoint, DebriefMetrics, SessionDebriefResponse, SessionCreateRequest } from '@convsim/shared'
 import { api } from '../api/client'
+import type { ApiError } from '../api/errors'
+import { ApiErrorView } from '../components/ApiErrorView'
 import { isDevModeEnabled } from '../privacyPrefs'
 import { useTranslation, formatNumber } from '../i18n'
 
@@ -19,7 +21,7 @@ export default function Debrief() {
 
   const [phase, setPhase] = useState<'loading' | 'loaded' | 'error' | 'transcript_only'>('loading')
   const [debrief, setDebrief] = useState<SessionDebriefResponse | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<ApiError | null>(null)
   const [transcript, setTranscript] = useState<TranscriptEvent[]>([])
   const [exporting, setExporting] = useState(false)
   const [exportingText, setExportingText] = useState(false)
@@ -37,46 +39,47 @@ export default function Debrief() {
     if (!sessionId) return
     let cancelled = false
 
-    const debriefStart = performance.now()
-    api.generateDebrief(sessionId).then(
-      (result) => {
-        if (cancelled) return
-        setDebriefMs(Math.round(performance.now() - debriefStart))
-        setDebrief(result)
-        setPhase('loaded')
-
-        if (!result.transcript_saving_disabled) {
-          api.exportSession(sessionId).then(
-            (data) => {
-              if (cancelled) return
-              const exportData = data as {
-                session?: { setup?: SessionCreateRequest; scenario_id?: string }
-                events?: TranscriptEvent[]
-              }
-              if (exportData.session?.setup) {
-                setSessionSetup(exportData.session.setup)
-              }
-              if (exportData.session?.scenario_id) {
-                setExportedScenarioId(exportData.session.scenario_id)
-              }
-              const turns = (exportData.events ?? []).filter(
-                (e) =>
-                  e.event_type === 'player_turn' ||
-                  e.event_type === 'npc_turn' ||
-                  e.event_type === 'npc_opening',
-              )
-              setTranscript(turns)
-            },
-            () => {},
-          )
-        }
-      },
-      (err: unknown) => {
-        if (cancelled) return
-        setError(err instanceof Error ? err.message : String(err))
+    async function run() {
+      const debriefStart = performance.now()
+      const r = await api.generateDebrief(sessionId!)
+      if (cancelled) return
+      if (!r.ok) {
+        setError(r.error)
         setPhase('error')
-      },
-    )
+        return
+      }
+      setDebriefMs(Math.round(performance.now() - debriefStart))
+      const result = r.data
+      setDebrief(result)
+      setPhase('loaded')
+
+      if (!result.transcript_saving_disabled) {
+        const r2 = await api.exportSession(sessionId!)
+        if (cancelled) return
+        if (r2.ok) {
+          const exportData = r2.data as {
+            session?: { setup?: SessionCreateRequest; scenario_id?: string }
+            events?: TranscriptEvent[]
+          }
+          if (exportData.session?.setup) {
+            setSessionSetup(exportData.session.setup)
+          }
+          if (exportData.session?.scenario_id) {
+            setExportedScenarioId(exportData.session.scenario_id)
+          }
+          const turns = (exportData.events ?? []).filter(
+            (e) =>
+              e.event_type === 'player_turn' ||
+              e.event_type === 'npc_turn' ||
+              e.event_type === 'npc_opening',
+          )
+          setTranscript(turns)
+        }
+        // silently ignore export error
+      }
+    }
+
+    void run()
 
     return () => {
       cancelled = true
@@ -98,25 +101,25 @@ export default function Debrief() {
   async function handleShowTranscriptOnly() {
     if (!sessionId) return
     setPhase('loading')
-    try {
-      const data = await api.exportSession(sessionId)
-      const exportData = data as {
-        session?: { setup?: SessionCreateRequest; scenario_id?: string }
-        events?: TranscriptEvent[]
-      }
-      if (exportData.session?.setup) setSessionSetup(exportData.session.setup)
-      if (exportData.session?.scenario_id) setExportedScenarioId(exportData.session.scenario_id)
-      const turns = (exportData.events ?? []).filter(
-        (e) =>
-          e.event_type === 'player_turn' ||
-          e.event_type === 'npc_turn' ||
-          e.event_type === 'npc_opening',
-      )
-      setTranscript(turns)
-      setPhase('transcript_only')
-    } catch {
+    const r = await api.exportSession(sessionId!)
+    if (!r.ok) {
       setPhase('error')
+      return
     }
+    const exportData = r.data as {
+      session?: { setup?: SessionCreateRequest; scenario_id?: string }
+      events?: TranscriptEvent[]
+    }
+    if (exportData.session?.setup) setSessionSetup(exportData.session.setup)
+    if (exportData.session?.scenario_id) setExportedScenarioId(exportData.session.scenario_id)
+    const turns = (exportData.events ?? []).filter(
+      (e) =>
+        e.event_type === 'player_turn' ||
+        e.event_type === 'npc_turn' ||
+        e.event_type === 'npc_opening',
+    )
+    setTranscript(turns)
+    setPhase('transcript_only')
   }
 
   async function handleReplaySameSetup() {
@@ -125,56 +128,56 @@ export default function Debrief() {
       return
     }
     setReplayingSameSetup(true)
-    try {
-      const newSession = await api.createSession(sessionSetup)
-      navigate(`/conversation/${newSession.session_id}`, {
-        state: {
-          language: newSession.setup.language,
-          show_state_meters: newSession.setup.show_state_meters,
-          scenario_id: newSession.scenario_id,
-          input_mode: newSession.setup.input_mode,
-          tts_enabled: newSession.setup.tts_enabled,
-        },
-      })
-    } catch {
+    const r = await api.createSession(sessionSetup)
+    setReplayingSameSetup(false)
+    if (!r.ok) {
       handleReplayVariation()
-    } finally {
-      setReplayingSameSetup(false)
+      return
     }
+    const newSession = r.data
+    navigate(`/conversation/${newSession.session_id}`, {
+      state: {
+        language: newSession.setup.language,
+        show_state_meters: newSession.setup.show_state_meters,
+        scenario_id: newSession.scenario_id,
+        input_mode: newSession.setup.input_mode,
+        tts_enabled: newSession.setup.tts_enabled,
+      },
+    })
   }
 
   async function handleExport() {
     if (!sessionId) return
     setExporting(true)
-    try {
-      const data = await api.exportSession(sessionId)
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const r = await api.exportSession(sessionId!)
+    if (r.ok) {
+      const blob = new Blob([JSON.stringify(r.data, null, 2)], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
       a.download = `session-${sessionId}.json`
       a.click()
       URL.revokeObjectURL(url)
-    } finally {
-      setExporting(false)
     }
+    // silently ignore error (export is best-effort)
+    setExporting(false)
   }
 
   async function handleExportText() {
     if (!sessionId) return
     setExportingText(true)
-    try {
-      const { text, filename } = await api.exportTranscriptText(sessionId)
-      const blob = new Blob([text], { type: 'text/markdown; charset=utf-8' })
+    const r = await api.exportTranscriptText(sessionId!)
+    if (r.ok) {
+      const blob = new Blob([r.data.text], { type: 'text/markdown; charset=utf-8' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = filename
+      a.download = r.data.filename
       a.click()
       URL.revokeObjectURL(url)
-    } finally {
-      setExportingText(false)
     }
+    // silently ignore error (export is best-effort)
+    setExportingText(false)
   }
 
   function handleReplayVariation() {
@@ -230,35 +233,15 @@ export default function Debrief() {
       )}
 
       {phase === 'error' && (
-        <div
-          role="alert"
-          style={{
-            padding: '0.75rem 1rem',
-            borderRadius: 6,
-            border: '1px solid #7f1d1d',
-            background: '#450a0a',
-            color: '#fca5a5',
-            fontSize: '0.875rem',
-          }}
-        >
-          <strong>{t('debrief.error.prefix')}</strong> {error}
-          <div style={{ marginTop: '0.75rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <button
-              data-testid="retry-btn"
-              onClick={handleRetry}
-              style={{
-                padding: '0.35rem 0.9rem',
-                borderRadius: 5,
-                border: 'none',
-                background: '#4f46e5',
-                color: '#fff',
-                fontWeight: 600,
-                cursor: 'pointer',
-                fontSize: '0.8rem',
-              }}
-            >
-              {t('debrief.error.tryAgain')}
-            </button>
+        <>
+          {error && (
+            <ApiErrorView
+              error={error}
+              onRetry={handleRetry}
+              context="Debrief"
+            />
+          )}
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
             <button
               data-testid="transcript-only-btn"
               onClick={() => void handleShowTranscriptOnly()}
@@ -275,7 +258,7 @@ export default function Debrief() {
               {t('debrief.error.transcriptOnly')}
             </button>
           </div>
-        </div>
+        </>
       )}
 
       {phase === 'transcript_only' && (

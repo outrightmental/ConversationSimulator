@@ -31,22 +31,22 @@ vi.mock('@convsim/ui', () => ({
 
 vi.mock('../api/client', () => ({
   api: {
-    health: vi.fn().mockResolvedValue(null),
-    listScenarios: vi.fn().mockResolvedValue([]),
-    getScenario: vi.fn().mockResolvedValue(null),
+    health: vi.fn().mockResolvedValue({ ok: false, error: { kind: 'network', message: 'unavailable' } }),
+    listScenarios: vi.fn().mockResolvedValue({ ok: true, data: [] }),
+    getScenario: vi.fn().mockResolvedValue({ ok: false, error: { kind: 'network', message: 'unavailable' } }),
     startSession: vi.fn().mockReturnValue(new Promise(() => {})),
     endSession: vi.fn(),
     submitTurn: vi.fn(),
     generateDebrief: vi.fn().mockReturnValue(new Promise(() => {})),
     exportSession: vi.fn(),
     connectSession: vi.fn().mockReturnValue({ close: vi.fn() }),
-    listSessions: vi.fn().mockResolvedValue({ sessions: [] }),
-    getDataFolder: vi.fn().mockResolvedValue({ path: '/tmp/data' }),
-    getFolders: vi.fn().mockResolvedValue({ data: '/tmp/data', logs: '/tmp/logs', models: '/tmp/models', packs: '/tmp/packs' }),
+    listSessions: vi.fn().mockResolvedValue({ ok: true, data: { sessions: [] } }),
+    getDataFolder: vi.fn().mockResolvedValue({ ok: true, data: { path: '/tmp/data' } }),
+    getFolders: vi.fn().mockResolvedValue({ ok: true, data: { data: '/tmp/data', logs: '/tmp/logs', models: '/tmp/models', packs: '/tmp/packs' } }),
     clearLocalData: vi.fn(),
     deleteSession: vi.fn(),
-    listVoices: vi.fn().mockResolvedValue({ voices: [] }),
-    listPacks: vi.fn().mockResolvedValue({ packs: [], total: 0 }),
+    listVoices: vi.fn().mockResolvedValue({ ok: true, data: { voices: [] } }),
+    listPacks: vi.fn().mockResolvedValue({ ok: true, data: { packs: [], total: 0 } }),
     importPack: vi.fn(),
     getPack: vi.fn(),
     validatePack: vi.fn(),
@@ -61,9 +61,9 @@ vi.mock('../api/client', () => ({
     clearTtsCache: vi.fn(),
     vadHealth: vi.fn().mockReturnValue(new Promise(() => {})),
     workbench: {
-      listPacks: vi.fn().mockResolvedValue([]),
-      listFiles: vi.fn().mockResolvedValue({ tree: [] }),
-      validate: vi.fn().mockResolvedValue(null),
+      listPacks: vi.fn().mockResolvedValue({ ok: true, data: [] }),
+      listFiles: vi.fn().mockResolvedValue({ ok: true, data: { tree: [] } }),
+      validate: vi.fn().mockResolvedValue({ ok: false, error: { kind: 'network', message: 'unavailable' } }),
       readFile: vi.fn(),
       writeFile: vi.fn(),
       copyToLocal: vi.fn(),
@@ -73,8 +73,8 @@ vi.mock('../api/client', () => ({
   },
   apiClient: {
     health: vi.fn(),
-    uploadAudio: vi.fn().mockResolvedValue({ transcript: null, status: 'unavailable' }),
-    vadHealth: vi.fn().mockResolvedValue({}),
+    uploadAudio: vi.fn().mockResolvedValue({ ok: true, data: { transcript: null, status: 'unavailable' } }),
+    vadHealth: vi.fn().mockResolvedValue({ ok: true, data: { worker_id: '', worker_name: '', status: 'unavailable', checked_at: '' } }),
     vadCalibrate: vi.fn(),
   },
 }))
@@ -462,7 +462,7 @@ describe('Accessibility: FirstRunWizard', () => {
   it('choose step option cards are presented as a list', async () => {
     // Override getModels to resolve immediately so the wizard reaches the choose step.
     const { api: mockApi } = await import('../api/client')
-    vi.mocked(mockApi.getModels).mockResolvedValueOnce({
+    vi.mocked(mockApi.getModels).mockResolvedValueOnce({ ok: true, data: {
       registry: [],
       installed: [],
       ollama_models: [],
@@ -478,7 +478,7 @@ describe('Accessibility: FirstRunWizard', () => {
       },
       total: 0,
       last_benchmark: null,
-    })
+    } })
 
     const { container } = render(
       <MemoryRouter initialEntries={['/first-run']}>

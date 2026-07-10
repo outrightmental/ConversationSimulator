@@ -41,6 +41,9 @@ import type {
 } from '@convsim/shared';
 
 export type { HealthResponse };
+export type { ApiError, ApiResult } from './errors';
+
+import type { ApiError, ApiResult } from './errors';
 
 const BASE = _isTauriProduction ? `${CORE_ORIGIN}/api` : '/api'
 
@@ -112,8 +115,9 @@ export interface SttHealthResponse {
 }
 
 async function parseErrorMessage(res: Response): Promise<string> {
-  const text = await res.text()
-  let message = text || `${res.status} ${res.statusText}`
+  let text = ''
+  try { text = await res.text() } catch { /* ignore */ }
+  const fallback = text || `${res.status} ${res.statusText}`
   try {
     // convsim-core (Python) returns { error: { code, message } }; the interim
     // convsim-api (TypeScript) returns { code?, message } at the top level.
@@ -123,71 +127,116 @@ async function parseErrorMessage(res: Response): Promise<string> {
       code?: string
       error?: { message?: string; code?: string } | string
     }
-    // Prefer the top-level message (convsim-api shape, where `error` is a short
-    // status string), and fall back to a nested error object (convsim-core shape:
-    // { error: { code, message } }).
     let msg = json.message
     let code = json.code
     if (!msg && json.error && typeof json.error === 'object') {
       msg = json.error.message
       code = json.error.code
     }
-    if (msg) message = code ? `${code}: ${msg}` : msg
+    if (msg) return code ? `${code}: ${msg}` : msg
   } catch {
     // text is not JSON; use as-is
   }
-  return message
+  return fallback
 }
 
-async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`)
-  if (!res.ok) throw new Error(await parseErrorMessage(res))
-  return res.json() as Promise<T>
-}
-
-async function post<T>(path: string, body?: unknown): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    method: 'POST',
-    headers: body !== undefined ? { 'Content-Type': 'application/json' } : {},
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  })
-  if (!res.ok) throw new Error(await parseErrorMessage(res))
-  return res.json() as Promise<T>
-}
-
-async function put<T>(path: string, body: unknown): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  })
-  if (!res.ok) throw new Error(await parseErrorMessage(res))
-  return res.json() as Promise<T>
-}
-
-async function del(path: string): Promise<void> {
-  const res = await fetch(`${BASE}${path}`, { method: 'DELETE' })
-  if (!res.ok) throw new Error(await parseErrorMessage(res))
-}
-
-async function postForm<T>(path: string, body: FormData): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { method: 'POST', body })
+// Guard: reads the body as text, then JSON.parses it.  If the server returned
+// HTML (static server answering an API route while core is down), the parse
+// fails and we return runtime-unreachable instead of letting the raw parser
+// error or "<html>" content reach the DOM.
+async function handleResponse<T>(res: Response): Promise<ApiResult<T>> {
   if (!res.ok) {
-    throw new Error(await parseErrorMessage(res))
+    const msg = await parseErrorMessage(res)
+    return { ok: false, error: { kind: 'http-error', message: msg, status: res.status } }
   }
-  return res.json() as Promise<T>
+  let text = ''
+  try { text = await res.text() } catch { /* ignore */ }
+  let data: T
+  try {
+    data = JSON.parse(text) as T
+  } catch {
+    const isHtml = text.trimStart().startsWith('<')
+    return {
+      ok: false,
+      error: {
+        kind: 'runtime-unreachable',
+        message: isHtml
+          ? 'API returned HTML instead of JSON — the local runtime is not running.'
+          : 'API returned a non-JSON response — the local runtime may not be running.',
+        status: res.status,
+      },
+    }
+  }
+  return { ok: true, data }
+}
+
+async function get<T>(path: string): Promise<ApiResult<T>> {
+  try {
+    const res = await fetch(`${BASE}${path}`)
+    return handleResponse<T>(res)
+  } catch (err) {
+    return { ok: false, error: { kind: 'network', message: err instanceof Error ? err.message : 'Network error' } }
+  }
+}
+
+async function post<T>(path: string, body?: unknown): Promise<ApiResult<T>> {
+  try {
+    const res = await fetch(`${BASE}${path}`, {
+      method: 'POST',
+      headers: body !== undefined ? { 'Content-Type': 'application/json' } : {},
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    })
+    return handleResponse<T>(res)
+  } catch (err) {
+    return { ok: false, error: { kind: 'network', message: err instanceof Error ? err.message : 'Network error' } }
+  }
+}
+
+async function put<T>(path: string, body: unknown): Promise<ApiResult<T>> {
+  try {
+    const res = await fetch(`${BASE}${path}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    return handleResponse<T>(res)
+  } catch (err) {
+    return { ok: false, error: { kind: 'network', message: err instanceof Error ? err.message : 'Network error' } }
+  }
+}
+
+async function del(path: string): Promise<ApiResult<undefined>> {
+  try {
+    const res = await fetch(`${BASE}${path}`, { method: 'DELETE' })
+    if (!res.ok) {
+      const msg = await parseErrorMessage(res)
+      return { ok: false, error: { kind: 'http-error', message: msg, status: res.status } }
+    }
+    return { ok: true, data: undefined }
+  } catch (err) {
+    return { ok: false, error: { kind: 'network', message: err instanceof Error ? err.message : 'Network error' } }
+  }
+}
+
+async function postForm<T>(path: string, body: FormData): Promise<ApiResult<T>> {
+  try {
+    const res = await fetch(`${BASE}${path}`, { method: 'POST', body })
+    return handleResponse<T>(res)
+  } catch (err) {
+    return { ok: false, error: { kind: 'network', message: err instanceof Error ? err.message : 'Network error' } }
+  }
 }
 
 export const apiClient = {
-  health(): Promise<HealthResponse> {
+  health(): Promise<ApiResult<HealthResponse>> {
     return get<HealthResponse>('/health')
   },
 
-  packs(): Promise<PacksResponse> {
+  packs(): Promise<ApiResult<PacksResponse>> {
     return get<PacksResponse>('/packs')
   },
 
-  uploadAudio(blob: Blob, language?: string): Promise<SttUploadResponse> {
+  uploadAudio(blob: Blob, language?: string): Promise<ApiResult<SttUploadResponse>> {
     const ext = blob.type.includes('ogg') ? 'ogg' : 'webm'
     const form = new FormData()
     form.append('audio', blob, `recording.${ext}`)
@@ -197,15 +246,15 @@ export const apiClient = {
     return postForm<SttUploadResponse>('/stt/upload', form)
   },
 
-  sttHealth(): Promise<SttHealthResponse> {
+  sttHealth(): Promise<ApiResult<SttHealthResponse>> {
     return get<SttHealthResponse>('/stt/health')
   },
 
-  vadHealth(): Promise<VadHealthResponse> {
+  vadHealth(): Promise<ApiResult<VadHealthResponse>> {
     return get<VadHealthResponse>('/vad/health')
   },
 
-  vadCalibrate(blob: Blob): Promise<VadCalibrateResponse> {
+  vadCalibrate(blob: Blob): Promise<ApiResult<VadCalibrateResponse>> {
     const ext = blob.type.includes('ogg') ? 'ogg' : 'webm'
     const form = new FormData()
     form.append('audio', blob, `calibration.${ext}`)
@@ -278,130 +327,144 @@ export interface WsConnection {
 }
 
 export const api = {
-  health(): Promise<HealthResponse> {
+  health(): Promise<ApiResult<HealthResponse>> {
     return get<HealthResponse>('/health')
   },
-  listScenarios(): Promise<ScenarioInfo[]> {
+  listScenarios(): Promise<ApiResult<ScenarioInfo[]>> {
     return get<ScenarioInfo[]>('/scenarios')
   },
-  getScenario(scenarioId: string): Promise<ScenarioInfo> {
+  getScenario(scenarioId: string): Promise<ApiResult<ScenarioInfo>> {
     return get<ScenarioInfo>(`/scenarios/${scenarioId}`)
   },
-  listPacks(): Promise<PacksResponse> {
+  listPacks(): Promise<ApiResult<PacksResponse>> {
     return get<PacksResponse>('/packs')
   },
-  getPack(packId: string): Promise<PackDetail> {
+  getPack(packId: string): Promise<ApiResult<PackDetail>> {
     return get<PackDetail>(`/packs/${packId}`)
   },
-  async importPack(file: File): Promise<ImportPackResponse> {
-    const res = await fetch(`${BASE}/packs/import`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/zip' },
-      body: file,
-    })
-    if (!res.ok) throw new Error(await parseErrorMessage(res))
-    return res.json() as Promise<ImportPackResponse>
+  async importPack(file: File): Promise<ApiResult<ImportPackResponse>> {
+    try {
+      const res = await fetch(`${BASE}/packs/import`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/zip' },
+        body: file,
+      })
+      return handleResponse<ImportPackResponse>(res)
+    } catch (err) {
+      return { ok: false, error: { kind: 'network', message: err instanceof Error ? err.message : 'Network error' } }
+    }
   },
-  validatePack(packId: string): Promise<PackValidationResult> {
+  validatePack(packId: string): Promise<ApiResult<PackValidationResult>> {
     return post<PackValidationResult>(`/packs/${packId}/validate`)
   },
-  listSessions(): Promise<{ sessions: SessionCreateResponse[] }> {
+  listSessions(): Promise<ApiResult<{ sessions: SessionCreateResponse[] }>> {
     return get<{ sessions: SessionCreateResponse[] }>('/sessions')
   },
-  createSession(request: SessionCreateRequest): Promise<SessionCreateResponse> {
+  createSession(request: SessionCreateRequest): Promise<ApiResult<SessionCreateResponse>> {
     return post<SessionCreateResponse>('/sessions', request)
   },
-  getDataFolder(): Promise<{ path: string }> {
+  getDataFolder(): Promise<ApiResult<{ path: string }>> {
     return get<{ path: string }>('/privacy/data-folder')
   },
-  getFolders(): Promise<{ data: string; logs: string; models: string; packs: string; exports: string; cache: string; crash_bundles: string }> {
+  getFolders(): Promise<ApiResult<{ data: string; logs: string; models: string; packs: string; exports: string; cache: string; crash_bundles: string }>> {
     return get<{ data: string; logs: string; models: string; packs: string; exports: string; cache: string; crash_bundles: string }>('/privacy/folders')
   },
-  clearLocalData(): Promise<{ deleted_sessions: number }> {
+  clearLocalData(): Promise<ApiResult<{ deleted_sessions: number }>> {
     return post<{ deleted_sessions: number }>('/privacy/clear')
   },
-  getCloudSettings(): Promise<CloudSettings> {
-    return get<CloudSettings>('/cloud-settings')
+  async getCloudSettings(): Promise<CloudSettings> {
+    const r = await get<CloudSettings>('/cloud-settings')
+    if (!r.ok) throw new Error(r.error.message)
+    return r.data
   },
-  putCloudSettings(settings: CloudSettings): Promise<CloudSettings> {
-    return put<CloudSettings>('/cloud-settings', settings)
+  async putCloudSettings(settings: CloudSettings): Promise<CloudSettings> {
+    const r = await put<CloudSettings>('/cloud-settings', settings)
+    if (!r.ok) throw new Error(r.error.message)
+    return r.data
   },
-  createCrashBundle(): Promise<{ bundle_path: string; notice: string }> {
+  createCrashBundle(): Promise<ApiResult<{ bundle_path: string; notice: string }>> {
     return post<{ bundle_path: string; notice: string }>('/diag/crash-bundle')
   },
-  deleteSession(sessionId: string): Promise<void> {
+  deleteSession(sessionId: string): Promise<ApiResult<undefined>> {
     return del(`/sessions/${sessionId}`)
   },
-  exportSession(sessionId: string): Promise<unknown> {
+  exportSession(sessionId: string): Promise<ApiResult<unknown>> {
     return get<unknown>(`/sessions/${sessionId}/export`)
   },
-  async exportTranscriptText(sessionId: string): Promise<{ text: string; filename: string }> {
-    const res = await fetch(`${BASE}/sessions/${sessionId}/export/text`)
-    if (!res.ok) throw new Error(await parseErrorMessage(res))
-    const text = await res.text()
-    const disposition = res.headers.get('Content-Disposition') ?? ''
-    const match = /filename="([^"]+)"/.exec(disposition)
-    const filename = match?.[1] ?? `session-${sessionId}-transcript.md`
-    return { text, filename }
+  async exportTranscriptText(sessionId: string): Promise<ApiResult<{ text: string; filename: string }>> {
+    try {
+      const res = await fetch(`${BASE}/sessions/${sessionId}/export/text`)
+      if (!res.ok) {
+        const msg = await parseErrorMessage(res)
+        return { ok: false, error: { kind: 'http-error', message: msg, status: res.status } }
+      }
+      const text = await res.text()
+      const disposition = res.headers.get('Content-Disposition') ?? ''
+      const match = /filename="([^"]+)"/.exec(disposition)
+      const filename = match?.[1] ?? `session-${sessionId}-transcript.md`
+      return { ok: true, data: { text, filename } }
+    } catch (err) {
+      return { ok: false, error: { kind: 'network', message: err instanceof Error ? err.message : 'Network error' } }
+    }
   },
-  startSession(sessionId: string): Promise<SessionStartResponse> {
+  startSession(sessionId: string): Promise<ApiResult<SessionStartResponse>> {
     return post<SessionStartResponse>(`/sessions/${sessionId}/start`)
   },
-  submitTurn(sessionId: string, content: string, barged_in?: boolean): Promise<TurnResponse> {
+  submitTurn(sessionId: string, content: string, barged_in?: boolean): Promise<ApiResult<TurnResponse>> {
     return post<TurnResponse>(`/sessions/${sessionId}/turn`, { content, barged_in: barged_in ?? false })
   },
-  endSession(sessionId: string): Promise<SessionEndResponse> {
+  endSession(sessionId: string): Promise<ApiResult<SessionEndResponse>> {
     return post<SessionEndResponse>(`/sessions/${sessionId}/end`)
   },
-  generateDebrief(sessionId: string): Promise<SessionDebriefResponse> {
+  generateDebrief(sessionId: string): Promise<ApiResult<SessionDebriefResponse>> {
     return post<SessionDebriefResponse>(`/sessions/${sessionId}/debrief`)
   },
-  getModels(): Promise<ModelsResponse> {
+  getModels(): Promise<ApiResult<ModelsResponse>> {
     return get<ModelsResponse>('/models')
   },
-  useModel(request: UseModelRequest): Promise<UseModelResponse> {
+  useModel(request: UseModelRequest): Promise<ApiResult<UseModelResponse>> {
     return post<UseModelResponse>('/models/use', request)
   },
-  installModel(request: InstallModelRequest): Promise<InstallModelResponse> {
+  installModel(request: InstallModelRequest): Promise<ApiResult<InstallModelResponse>> {
     return post<InstallModelResponse>('/models/install', request)
   },
-  registerGguf(request: RegisterGgufRequest): Promise<RegisterGgufResponse> {
+  registerGguf(request: RegisterGgufRequest): Promise<ApiResult<RegisterGgufResponse>> {
     return post<RegisterGgufResponse>('/models/register-gguf', request)
   },
-  getInstallStatus(installId: number): Promise<InstalledModelInfo> {
+  getInstallStatus(installId: number): Promise<ApiResult<InstalledModelInfo>> {
     return get<InstalledModelInfo>(`/models/install/${installId}`)
   },
-  cancelInstall(installId: number): Promise<void> {
+  cancelInstall(installId: number): Promise<ApiResult<undefined>> {
     return del(`/models/install/${installId}`)
   },
-  startSidecar(model_path: string): Promise<{ state: string; pid: number | null; log_path: string; host: string; port: number }> {
+  startSidecar(model_path: string): Promise<ApiResult<{ state: string; pid: number | null; log_path: string; host: string; port: number }>> {
     return post('/sidecar/start', { model_path })
   },
-  benchmarkModel(request: BenchmarkRequest): Promise<BenchmarkResponse> {
+  benchmarkModel(request: BenchmarkRequest): Promise<ApiResult<BenchmarkResponse>> {
     return post<BenchmarkResponse>('/models/benchmark', request)
   },
-  getRuntimeSettings(): Promise<RuntimeSettingsResponse> {
+  getRuntimeSettings(): Promise<ApiResult<RuntimeSettingsResponse>> {
     return get<RuntimeSettingsResponse>('/runtime/settings')
   },
-  updateRuntimeSettings(request: RuntimeSettingsRequest): Promise<RuntimeSettingsResponse> {
+  updateRuntimeSettings(request: RuntimeSettingsRequest): Promise<ApiResult<RuntimeSettingsResponse>> {
     return put<RuntimeSettingsResponse>('/runtime/settings', request)
   },
-  resetRuntimeSettings(): Promise<RuntimeSettingsResponse> {
+  resetRuntimeSettings(): Promise<ApiResult<RuntimeSettingsResponse>> {
     return post<RuntimeSettingsResponse>('/runtime/settings/reset')
   },
-  listVoices(): Promise<VoicesResponse> {
+  listVoices(): Promise<ApiResult<VoicesResponse>> {
     return get<VoicesResponse>('/tts/voices')
   },
-  getTtsCacheSize(): Promise<TtsCacheSizeResponse> {
+  getTtsCacheSize(): Promise<ApiResult<TtsCacheSizeResponse>> {
     return get<TtsCacheSizeResponse>('/tts/cache/size')
   },
-  clearTtsCache(): Promise<TtsCacheClearResponse> {
+  clearTtsCache(): Promise<ApiResult<TtsCacheClearResponse>> {
     return post<TtsCacheClearResponse>('/tts/cache/clear')
   },
-  getBackchannels(): Promise<{ backchannels: Array<{ text: string; cache_path: string }> }> {
+  getBackchannels(): Promise<ApiResult<{ backchannels: Array<{ text: string; cache_path: string }> }>> {
     return get('/tts/backchannels')
   },
-  vadHealth(): Promise<VadHealthResponse> {
+  vadHealth(): Promise<ApiResult<VadHealthResponse>> {
     return get<VadHealthResponse>('/vad/health')
   },
   connectSession(
@@ -423,80 +486,102 @@ export const api = {
   },
 
   workbench: {
-    listPacks(): Promise<WorkbenchPack[]> {
+    listPacks(): Promise<ApiResult<WorkbenchPack[]>> {
       return get<WorkbenchPack[]>('/workbench/packs')
     },
-    listFiles(kind: PackKind, slug: string): Promise<{ tree: FileNode[] }> {
+    listFiles(kind: PackKind, slug: string): Promise<ApiResult<{ tree: FileNode[] }>> {
       return get<{ tree: FileNode[] }>(`/workbench/packs/${kind}/${slug}/files`)
     },
-    readFile(kind: PackKind, slug: string, filePath: string): Promise<{ content: string; editable: boolean }> {
+    readFile(kind: PackKind, slug: string, filePath: string): Promise<ApiResult<{ content: string; editable: boolean }>> {
       return get<{ content: string; editable: boolean }>(
         `/workbench/packs/${kind}/${slug}/file?path=${encodeURIComponent(filePath)}`,
       )
     },
-    writeFile(kind: PackKind, slug: string, filePath: string, content: string): Promise<WriteFileResult> {
+    writeFile(kind: PackKind, slug: string, filePath: string, content: string): Promise<ApiResult<WriteFileResult>> {
       return put<WriteFileResult>(
         `/workbench/packs/${kind}/${slug}/file?path=${encodeURIComponent(filePath)}`,
         { content },
       )
     },
-    validate(kind: PackKind, slug: string): Promise<WorkbenchValidation> {
+    validate(kind: PackKind, slug: string): Promise<ApiResult<WorkbenchValidation>> {
       return get<WorkbenchValidation>(`/workbench/packs/${kind}/${slug}/validate`)
     },
-    copyToLocal(kind: PackKind, slug: string): Promise<WorkbenchPack> {
+    copyToLocal(kind: PackKind, slug: string): Promise<ApiResult<WorkbenchPack>> {
       return post<WorkbenchPack>(`/workbench/packs/${kind}/${slug}/copy-to-local`)
     },
-    startTestSession(kind: PackKind, slug: string): Promise<WorkbenchTestSession> {
+    startTestSession(kind: PackKind, slug: string): Promise<ApiResult<WorkbenchTestSession>> {
       return post<WorkbenchTestSession>(`/workbench/packs/${kind}/${slug}/test-session`)
     },
     async importPack(
       file: File,
       conflict?: 'rename' | 'overwrite',
-    ): Promise<WorkbenchImportResult | WorkbenchImportValidationError> {
+    ): Promise<ApiResult<WorkbenchImportResult | WorkbenchImportValidationError>> {
       const url = conflict
         ? `${BASE}/workbench/packs/import?conflict=${conflict}`
         : `${BASE}/workbench/packs/import`
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/zip' },
-        body: file,
-      })
-      if (res.status === 422) {
-        // A 422 is either a structured validation failure (carrying the full
-        // issue list) or a plain error — e.g. a corrupt zip or a zip-slip path,
-        // which the backend rejects with a thrown Error (no issue list). Only
-        // treat it as a validation result when an errors array is actually
-        // present; otherwise surface the message so the UI shows it as an error
-        // rather than crashing on an undefined `errors`.
-        const data = await res.json().catch(() => null) as
-          | { valid?: false; errors?: WorkbenchValidationIssue[]; warnings?: WorkbenchValidationIssue[]; message?: string }
-          | null
-        if (data && Array.isArray(data.errors)) {
-          return { kind: 'validation', valid: false, errors: data.errors, warnings: data.warnings ?? [] }
+      try {
+        const res = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/zip' },
+          body: file,
+        })
+        if (res.status === 422) {
+          // A 422 is either a structured validation failure (carrying the full
+          // issue list) or a plain error — e.g. a corrupt zip or a zip-slip path,
+          // which the backend rejects with a thrown Error (no issue list). Only
+          // treat it as a validation result when an errors array is actually
+          // present; otherwise surface the message so the UI shows it as an error
+          // rather than crashing on an undefined `errors`.
+          let data: { valid?: false; errors?: WorkbenchValidationIssue[]; warnings?: WorkbenchValidationIssue[]; message?: string } | null = null
+          try { data = JSON.parse(await res.text()) } catch { /* ignore */ }
+          if (data && Array.isArray(data.errors)) {
+            return { ok: true, data: { kind: 'validation', valid: false, errors: data.errors, warnings: data.warnings ?? [] } }
+          }
+          return {
+            ok: false,
+            error: {
+              kind: 'http-error',
+              message: data?.message ?? 'Import failed: the uploaded file could not be processed',
+              status: 422,
+            },
+          }
         }
-        throw new Error(data?.message ?? 'Import failed: the uploaded file could not be processed')
+        return handleResponse<WorkbenchImportResult>(res)
+      } catch (err) {
+        return { ok: false, error: { kind: 'network', message: err instanceof Error ? err.message : 'Network error' } }
       }
-      if (!res.ok) throw new Error(await parseErrorMessage(res))
-      return res.json() as Promise<WorkbenchImportResult>
     },
-    async exportPack(kind: PackKind, slug: string): Promise<{ blob: Blob; filename: string }> {
-      const res = await fetch(`${BASE}/workbench/packs/${kind}/${slug}/export`)
-      if (res.status === 422) {
-        // Validation preflight failed — surface the first error message.
-        const data = await res.json() as { errors: WorkbenchValidationIssue[] }
-        const first = data.errors[0]
-        throw new Error(
-          first
-            ? `Export blocked: ${first.message} (${first.rule_id})`
-            : 'Pack validation failed before export',
-        )
+    async exportPack(kind: PackKind, slug: string): Promise<ApiResult<{ blob: Blob; filename: string }>> {
+      try {
+        const res = await fetch(`${BASE}/workbench/packs/${kind}/${slug}/export`)
+        if (res.status === 422) {
+          // Validation preflight failed — surface the first error message.
+          let data: { errors: WorkbenchValidationIssue[] } | null = null
+          try { data = JSON.parse(await res.text()) } catch { /* ignore */ }
+          const first = data?.errors?.[0]
+          return {
+            ok: false,
+            error: {
+              kind: 'http-error',
+              message: first
+                ? `Export blocked: ${first.message} (${first.rule_id})`
+                : 'Pack validation failed before export',
+              status: 422,
+            },
+          }
+        }
+        if (!res.ok) {
+          const msg = await parseErrorMessage(res)
+          return { ok: false, error: { kind: 'http-error', message: msg, status: res.status } }
+        }
+        const blob = await res.blob()
+        const disposition = res.headers.get('Content-Disposition') ?? ''
+        const match = /filename="([^"]+)"/.exec(disposition)
+        const filename = match?.[1] ?? `${slug}.zip`
+        return { ok: true, data: { blob, filename } }
+      } catch (err) {
+        return { ok: false, error: { kind: 'network', message: err instanceof Error ? err.message : 'Network error' } }
       }
-      if (!res.ok) throw new Error(await parseErrorMessage(res))
-      const blob = await res.blob()
-      const disposition = res.headers.get('Content-Disposition') ?? ''
-      const match = /filename="([^"]+)"/.exec(disposition)
-      const filename = match?.[1] ?? `${slug}.zip`
-      return { blob, filename }
     },
   },
 }
