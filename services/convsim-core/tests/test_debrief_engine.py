@@ -1129,3 +1129,70 @@ class TestTranscriptTextExport:
         assert res.status_code == 200
         disposition = res.headers.get("content-disposition", "")
         assert ".md" in disposition
+
+
+# ---------------------------------------------------------------------------
+# Integration — debrief writes a relationship recap that the NEXT session reads
+# (issue #314). The write-side pack_id (debrief handler) and the read-side
+# pack_id (turn pipeline) are derived independently; if they ever diverge the
+# feature silently stops working. These tests pin the end-to-end alignment.
+# ---------------------------------------------------------------------------
+
+
+class TestDebriefWritesRelationshipMemory:
+    def test_debrief_persists_recap_visible_via_api(self, client):
+        """Posting a debrief creates a recap keyed by the scenario's npc/pack."""
+        session_id = _complete_session(client)
+        client.post(f"/api/sessions/{session_id}/debrief")
+
+        res = client.get("/api/relationship-memory")
+        assert res.status_code == 200
+        body = res.json()
+        assert body["total"] == 1
+        recap = body["recaps"][0]
+        # No pack_id in _VALID_SETUP, so pack_id falls back to the scenario_id.
+        assert recap["pack_id"] == "behavioral_interview"
+        assert recap["session_count"] == 1
+        # Observations are sourced from the debrief improvements list.
+        assert len(recap["key_observations"]) > 0
+
+    def test_recap_written_by_debrief_is_read_by_next_session(self, client):
+        """The turn pipeline of a later session loads the recap the debrief wrote.
+
+        This guards the fragile seam: the debrief handler and the turn pipeline
+        derive (npc_id, pack_id) independently. Capturing the composed prompt
+        input for a second session proves both derivations agree, so the recap
+        actually reaches the NPC prompt.
+        """
+        # Session 1: complete and debrief so a recap is persisted.
+        first_session = _complete_session(client)
+        debrief = client.post(f"/api/sessions/{first_session}/debrief").json()
+        assert debrief["improvements"], "fake runtime should return improvements"
+        expected_obs = debrief["improvements"][0][:150]
+
+        # Session 2: same scenario. Capture the recap the turn pipeline loads.
+        second_session = _create_and_start(client)
+        captured: list = []
+        import convsim_core.services.turn_pipeline as _tp
+
+        _orig = _tp.compose_turn_prompt
+
+        def _spy(inp):
+            captured.append(inp.relationship_recap)
+            return _orig(inp)
+
+        with patch(
+            "convsim_core.services.turn_pipeline.compose_turn_prompt",
+            side_effect=_spy,
+        ):
+            turn = client.post(
+                f"/api/sessions/{second_session}/turn",
+                json={"content": "Let me tell you about a project I led."},
+            )
+        assert turn.status_code == 200
+        assert len(captured) == 1
+        recap = captured[0]
+        assert recap is not None, (
+            "turn pipeline read None — write/read pack_id keys diverged"
+        )
+        assert expected_obs in recap["key_observations"]
