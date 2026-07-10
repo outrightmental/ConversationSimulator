@@ -1,0 +1,150 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: golden_customer_service_refund
+scenario_id: customer_service_refund
+description: >-
+  Golden transcript property test: verifies that a customer who calmly cites
+  the manufacturer's one-year defect warranty, keeps their receipt and manual
+  on hand, and escalates through proper channels rather than jumping to threats
+  causes deal_progress to advance through the events sequence without
+  triggering the early-threat backfire or a safety stop.
+
+seed: 42
+input_mode: text
+difficulty: normal
+
+turns:
+  - turn: 1
+    player_input: >-
+      Hi Jordan, thanks. I bought a blender from you four months ago for
+      eighty-nine ninety-nine, and the motor has stopped working — it grinds
+      but produces nothing. I know the store return window is 90 days, but this
+      is a manufacturing defect, and the product carries a one-year
+      manufacturer defect warranty. I have the receipt, the box, and the manual
+      here.
+    expect:
+      state_delta_contains:
+        - deal_progress
+        - leverage
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 2
+    player_input: >-
+      I understand the standard return window has passed — that's not what I'm
+      asking about. A manufacturer defect is handled separately from a normal
+      return. The manual, page eleven, spells out one-year coverage for defects
+      in materials and workmanship. Could you look into what the warranty
+      process allows here?
+    expect:
+      state_delta_contains:
+        - deal_progress
+        - concession_level
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 3
+    player_input: >-
+      Thank you for checking on that. A full refund to my original card or an
+      equivalent replacement would both work for me — whichever is simpler on
+      your end. I appreciate you taking the time to sort this out properly; I
+      know it's not the standard case.
+    expect:
+      state_delta_contains:
+        - deal_progress
+        - concession_level
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 4
+    player_input: >-
+      Let's do the refund to my original payment method, then. Thanks, Jordan —
+      you've been really helpful and I appreciate you honouring the warranty
+      without me having to make a fuss about it. Is there anything you need from
+      me to process it?
+    expect:
+      state_delta_contains:
+        - deal_progress
+      session_control: continue_session
+      safety_status: ok
+
+static_assertions:
+  - description: Scenario opening line is non-empty
+    path: opening.npc_says
+    check: non_empty_string
+
+  - description: At least one event is defined
+    path: events
+    check: min_length_1
+
+  - description: warranty_recognition event fires when leverage exceeds 50
+    path: events[id=warranty_recognition].when
+    check: "type=variable_above AND variable=leverage AND threshold=50"
+
+  - description: warranty_recognition fires only once
+    path: events[id=warranty_recognition].repeat
+    check: "equals false"
+
+  - description: early_threat_backfire fires when perceived_fairness drops below 30
+    path: events[id=early_threat_backfire].when
+    check: "type=variable_below AND variable=perceived_fairness AND threshold=30"
+
+  - description: early_threat_backfire repeats on each subsequent low-fairness turn
+    path: events[id=early_threat_backfire].repeat
+    check: "equals true"
+
+  - description: resolution_offer event fires when deal_progress exceeds 50
+    path: events[id=resolution_offer].when
+    check: "type=variable_above AND variable=deal_progress AND threshold=50"
+
+  - description: resolution_offer fires only once
+    path: events[id=resolution_offer].repeat
+    check: "equals false"
+
+  - description: Success ending condition targets deal_progress above threshold
+    path: ending_conditions.success
+    check: "type=variable_above AND variable=deal_progress"
+
+  - description: Failure ending condition targets perceived_fairness below threshold
+    path: ending_conditions.failure
+    check: "type=variable_below AND variable=perceived_fairness"
+
+  - description: deal_progress variable is visible to the player
+    path: state.variables.deal_progress.visibility
+    check: "equals visible"
+
+  - description: perceived_fairness is hidden from the player
+    path: state.variables.perceived_fairness.visibility
+    check: "equals hidden"
+
+  - description: firmness is hidden from the player
+    path: state.variables.firmness.visibility
+    check: "equals hidden"
+
+  - description: leverage is hidden from the player
+    path: state.variables.leverage.visibility
+    check: "equals hidden"
+
+  - description: NPC is marked fictional
+    path: npc.fictional
+    check: "equals true"
+
+  - description: Safety policy stops nsfw_sexual_content
+    path: safety.content_categories.nsfw_sexual_content
+    check: "equals stop"
+
+  - description: Safety policy fires stop_with_resource_message for self_harm_crisis
+    path: safety.content_categories.self_harm_crisis
+    check: "equals stop_with_resource_message"
+
+  - description: Pack manifest declares customer_service_refund as an entry scenario
+    path: manifest.entry_scenarios
+    check: "contains scenarios/customer_service_refund.yaml"
+
+  - description: Hard difficulty applies a negative patience modifier
+    path: scenario.difficulty.options.hard.npc_patience_modifier
+    check: "equals -20"
+
+  - description: Easy difficulty applies a positive patience modifier
+    path: scenario.difficulty.options.easy.npc_patience_modifier
+    check: "equals 20"
