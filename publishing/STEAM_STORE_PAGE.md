@@ -38,7 +38,7 @@ difficult talks, and language skills with AI characters that run entirely on
 your computer. No internet needed during play. Free forever.
 ```
 
-Character count: 213. Within the 300-character limit.
+Character count: 212. Within the 300-character limit.
 
 ---
 
@@ -244,8 +244,8 @@ any server. This includes:
   - Usage events and analytics
 
 All processing happens on your computer. Conversation history is stored in
-a local SQLite database at ~/.convsim/db/sessions.db (Windows: %APPDATA%\
-convsim\). You can view, export, or permanently delete your session history
+a local SQLite database at ~/.convsim/db/sessions.db (Windows:
+%USERPROFILE%\.convsim\db\sessions.db). You can view, export, or permanently delete your session history
 from the Settings screen at any time.
 
 The release build contains no crash reporter, telemetry SDK, or background
