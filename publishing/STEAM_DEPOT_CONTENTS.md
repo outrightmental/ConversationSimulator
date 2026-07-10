@@ -253,8 +253,9 @@ steamcmd. It catches five categories of prohibited files:
 | `[secrets]` | Credential files — `.key`, `.pem`, `.pfx`, `config.vdf`, etc. |
 | `[fixtures]` | Test fixture directories and files |
 
-The `steam-deploy.yml` workflow runs an additional inline audit step (rule
-MD-04) as a belt-and-suspenders check before steamcmd is invoked.
+The `steam-deploy.yml` workflow invokes this same script against each platform's
+`steam-content/` directory (rule MD-04) before steamcmd is invoked, so CI
+enforces exactly the same categories as a local pre-release run.
 
 Run the audit locally before a release:
 
