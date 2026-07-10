@@ -310,8 +310,10 @@ Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 
 ### Supported distributions
 
-Ubuntu 22.04 LTS is the primary test target. Other glibc-based distros
-(Fedora 38+, Debian 12+, Arch) should work but are not regularly tested.
+Ubuntu 22.04 LTS is the primary test target and the CI build machine.
+Other glibc-based distros (Fedora 38+, Debian 12+, Arch, SteamOS 3.x)
+are compatible. See [linux-steamos-requirements.md](linux-steamos-requirements.md)
+for the full distribution compatibility matrix and GLibC version details.
 
 ### Build prerequisites
 
@@ -333,11 +335,31 @@ npm install -g pnpm
 sudo apt-get install -y python3.11 python3.11-venv
 ```
 
+Run setup and then the Linux build script:
+
+```bash
+./scripts/setup.sh
+./scripts/build-linux.sh
+```
+
 ### Installer format
 
 Tauri produces:
-- **`.AppImage`** — portable, runs on any x86_64 Linux without installation.
-- **`.deb`** — Debian/Ubuntu package for system-wide installation.
+- **`.AppImage`** — portable, runs on any x86_64 Linux with glibc ≥ 2.35
+  without installation. This is the primary Steam depot artifact and the
+  recommended format for Steam Deck / SteamOS installs.
+- **`.deb`** — Debian/Ubuntu package for system-wide installation on
+  Ubuntu 22.04+ and Debian 12+.
+
+The AppImage bundles WebKitGTK, GTK 3, and most other user-space dependencies.
+The `.deb` package declares them as `Depends:` and installs them via apt.
+
+### Code signing
+
+Linux builds are **not code-signed**. There is no Linux equivalent of macOS
+Gatekeeper or Windows SmartScreen; no signature is required for distribution.
+The AppImage and `.deb` are distributed with SHA-256 checksums listed in the
+GitHub release and verified by the Steam depot audit before upload.
 
 ### Microphone (PipeWire / PulseAudio)
 
@@ -346,6 +368,50 @@ PulseAudio session for the browser `getUserMedia` permission dialog to appear.
 On headless or minimal desktop environments, microphone access may silently
 fail; use text-only input mode in that case.
 
+```bash
+# Install portal support on Ubuntu
+sudo apt-get install -y xdg-desktop-portal xdg-desktop-portal-gtk
+```
+
+### Data directories
+
+```
+~/.local/share/convsim/db/       — SQLite session database
+~/.local/share/convsim/data/     — general application data
+~/.local/share/convsim/packs/    — installed scenario packs
+~/.local/share/convsim/exports/  — exported transcripts
+~/.local/share/convsim/logs/     — runtime logs
+~/.local/share/convsim/cache/    — regenerable caches
+~/.local/share/convsim/models/   — downloaded model weights
+```
+
+The root is `$XDG_DATA_HOME/convsim` when `XDG_DATA_HOME` is set, otherwise
+`~/.local/share/convsim`. If `~/.convsim/` exists from a pre-release dev
+install, the app migrates data on first launch. Every subdirectory can be
+redirected via a `CONVSIM_*` environment variable — e.g. `CONVSIM_DB_DIR`,
+`CONVSIM_DATA_DIR`, `CONVSIM_LOG_DIR`, `CONVSIM_MODELS_DIR` — or relocate the
+whole tree at once with `CONVSIM_DATA_ROOT`.
+
+### Port conflicts
+
+The app binds ports 7354–7358 on `127.0.0.1`. Find and stop conflicting
+processes:
+
+```bash
+ss -tlnp | grep -E '7354|7355|7356|7357|7358'
+# or
+fuser 7354/tcp 7355/tcp
+kill <PID>
+```
+
+### Steam Deck / SteamOS 3.x
+
+The AppImage runs on SteamOS 3.x (Arch-based, x86-64, glibc 2.37+) without
+modification. Refer to
+[linux-steamos-requirements.md](linux-steamos-requirements.md) for the
+complete Steam Deck installation guide, controller navigation expectations,
+and verification checklist required for the Steam Deck Verified tier.
+
 ---
 
 ## Cross-platform differences summary
@@ -353,11 +419,11 @@ fail; use text-only input mode in that case.
 | Feature | macOS | Windows | Linux |
 |---|---|---|---|
 | Installer format | `.dmg` | `.exe` (NSIS), `.msi` | `.AppImage`, `.deb` |
-| Code signing | Apple Developer ID | EV or OV certificate | Not applicable |
+| Code signing | Apple Developer ID | EV or OV certificate | Not required |
 | Runtime warning | Gatekeeper dialog | SmartScreen dialog | None |
 | WebView engine | WKWebView (Safari) | WebView2 (Chromium) | WebKitGTK |
 | Microphone prompt | System Settings | Windows Security | `xdg-desktop-portal` |
-| Data directory | `~/Library/Application Support/com.outrightmental.convsim` | `%LOCALAPPDATA%\outrightmental\convsim` | `~/.local/share/convsim` |
+| Data directory | `~/.convsim/` | `%USERPROFILE%\.convsim\` | `~/.local/share/convsim/` |
 | Dev script | `./scripts/dev.sh` | `.\scripts\dev.ps1` | `./scripts/dev.sh` |
 | First-run check | `./scripts/first-run-check.sh` | `.\scripts\first-run-check.ps1` | `./scripts/first-run-check.sh` |
 
