@@ -9,6 +9,8 @@ import type {
   DetectedOllamaModel,
   InstalledModelInfo,
   BenchmarkResponse,
+  PreflightResponse,
+  PreflightCheck,
 } from '@convsim/shared'
 
 const SETUP_DOCS_URL = 'https://github.com/outrightmental/ConversationSimulator/wiki'
@@ -28,6 +30,7 @@ function markFirstRunComplete(): void {
 type WizardStep =
   | 'welcome'
   | 'loading'
+  | 'preflight'
   | 'choose'
   | 'confirm-install'
   | 'installing'
@@ -36,6 +39,11 @@ type WizardStep =
   | 'gguf-path'
   | 'demo-warning'
   | 'load-error'
+
+// Infrastructure checks that block the wizard if they fail (binary missing,
+// disk full, data dir unwritable).  LLM-presence and packs are handled by the
+// wizard itself and therefore excluded from this list.
+const BLOCKING_CHECK_IDS = new Set(['llama-cpp-binary', 'disk-space', 'data-dir-writable'])
 
 // ── Shared styled primitives ─────────────────────────────────────────────────
 
@@ -166,6 +174,8 @@ export default function FirstRunWizard() {
   const [benchmarkResult, setBenchmarkResult] = useState<BenchmarkResponse | null>(null)
   const [benchmarkError, setBenchmarkError] = useState<string | null>(null)
 
+  const [preflightResult, setPreflightResult] = useState<PreflightResponse | null>(null)
+
   // Focus management: move focus to each step's heading on step change so that keyboard
   // and screen-reader users are announced the new context without a full page reload.
   const stepHeadingRef = useRef<HTMLHeadingElement>(null)
@@ -182,24 +192,32 @@ export default function FirstRunWizard() {
   // mid-wizard (before the navigate() fires) doesn't cause a spurious redirect to "/".
   const alreadyCompleteRef = useRef(localStorage.getItem(SETUP_KEYS.firstRunComplete) === 'true')
 
-  // Fetch model data when the user advances past the welcome step.
+  // Fetch model data and run preflight when the user advances past the welcome step.
   useEffect(() => {
     if (step !== 'loading') return
-    api
-      .getModels()
-      .then((r) => {
-        if (r.ok) {
-          setModelsData(r.data)
-          setStep('choose')
-        } else {
-          setLoadError(r.error.message)
-          setStep('load-error')
-        }
-      })
-      .catch((err: unknown) => {
-        setLoadError(err instanceof Error ? err.message : 'Failed to load model information.')
+    Promise.all([api.getModels(), api.preflight()]).then(([modelsResult, preflightResult]) => {
+      if (!modelsResult.ok) {
+        setLoadError(modelsResult.error.message)
         setStep('load-error')
-      })
+        return
+      }
+      setModelsData(modelsResult.data)
+
+      if (preflightResult.ok) {
+        setPreflightResult(preflightResult.data)
+        const blockingFails = preflightResult.data.checks.filter(
+          (c: PreflightCheck) => c.status === 'fail' && BLOCKING_CHECK_IDS.has(c.id),
+        )
+        if (blockingFails.length > 0) {
+          setStep('preflight')
+          return
+        }
+      }
+      setStep('choose')
+    }).catch((err: unknown) => {
+      setLoadError(err instanceof Error ? err.message : 'Failed to load model information.')
+      setStep('load-error')
+    })
   }, [step])
 
   // Poll install progress while on the 'installing' step.
@@ -389,7 +407,87 @@ export default function FirstRunWizard() {
     return (
       <div style={{ maxWidth: '640px', margin: '2rem auto', padding: '0 1rem' }}>
         <h1 ref={stepHeadingRef} tabIndex={-1} style={{ outline: 'none' }}>Model Setup</h1>
-        <p aria-live="polite" aria-busy="true">Loading model information…</p>
+        <p aria-live="polite" aria-busy="true">Checking your system…</p>
+      </div>
+    )
+  }
+
+  // ── Preflight ─────────────────────────────────────────────────────────────────
+
+  if (step === 'preflight' && preflightResult) {
+    const blockingFails = preflightResult.checks.filter(
+      (c) => c.status === 'fail' && BLOCKING_CHECK_IDS.has(c.id),
+    )
+    return (
+      <div style={{ maxWidth: '640px', margin: '2rem auto', padding: '0 1rem' }}>
+        <h1 ref={stepHeadingRef} tabIndex={-1} style={{ outline: 'none' }}>System Check</h1>
+        <p style={{ color: '#f87171', marginBottom: '1rem' }}>
+          {blockingFails.length === 1
+            ? 'One issue needs your attention before setup can continue.'
+            : `${blockingFails.length} issues need your attention before setup can continue.`}
+        </p>
+
+        <div
+          role="list"
+          aria-label="Preflight check results"
+          style={{ marginBottom: '1.25rem' }}
+          data-testid="wizard-preflight-results"
+        >
+          {preflightResult.checks
+            .filter((c) => c.status !== 'pass')
+            .map((check) => (
+              <div
+                key={check.id}
+                role="listitem"
+                data-testid={`wizard-preflight-check-${check.id}`}
+                style={{
+                  padding: '0.75rem',
+                  marginBottom: '0.5rem',
+                  background: check.status === 'fail'
+                    ? 'rgba(239,68,68,0.08)'
+                    : 'rgba(251,191,36,0.08)',
+                  border: `1px solid ${check.status === 'fail' ? 'rgba(239,68,68,0.3)' : 'rgba(251,191,36,0.25)'}`,
+                  borderRadius: '6px',
+                }}
+              >
+                <p style={{ margin: '0 0 0.25rem', fontWeight: 600, fontSize: '0.875rem',
+                  color: check.status === 'fail' ? '#f87171' : '#fde68a' }}>
+                  {check.name}
+                </p>
+                <p style={{ margin: 0, fontSize: '0.825rem', color: '#a1a1aa' }}>{check.message}</p>
+                {check.fix_action && (
+                  <button
+                    onClick={() => {
+                      const { kind, href } = check.fix_action!
+                      if (kind === 'open-url') {
+                        window.open(href, '_blank', 'noopener,noreferrer')
+                      } else {
+                        navigate(href)
+                      }
+                    }}
+                    data-testid={`wizard-preflight-fix-${check.id}`}
+                    style={{
+                      marginTop: '0.5rem',
+                      padding: '0.25rem 0.65rem',
+                      borderRadius: '4px',
+                      border: '1px solid rgba(255,255,255,0.15)',
+                      background: 'rgba(255,255,255,0.06)',
+                      color: '#93c5fd',
+                      fontSize: '0.8rem',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {check.fix_action.label} →
+                  </button>
+                )}
+              </div>
+            ))}
+        </div>
+
+        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <ActionButton onClick={() => setStep('loading')}>Retry system check</ActionButton>
+          <ActionButton onClick={() => setStep('choose')}>Continue anyway</ActionButton>
+        </div>
       </div>
     )
   }

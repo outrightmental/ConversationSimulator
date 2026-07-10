@@ -8,6 +8,7 @@ vi.mock('../api/client', () => ({
   api: {
     createCrashBundle: vi.fn(),
     createBetaReport: vi.fn(),
+    preflight: vi.fn(),
   },
 }))
 
@@ -370,5 +371,99 @@ describe('report a problem', () => {
     await waitFor(() => expect(screen.getByTestId('beta-report-success')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: /done/i }))
     await waitFor(() => expect(screen.getByTestId('report-problem-button')).toBeInTheDocument())
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Self-test
+// ---------------------------------------------------------------------------
+
+const PASS_PREFLIGHT = {
+  overall: 'pass' as const,
+  ran_at: '2026-01-01T00:00:00.000+00:00',
+  checks: [
+    { id: 'runtime-handshake', name: 'Runtime handshake', status: 'pass' as const, message: 'convsim-core 0.1.0 is running.', fix_action: null },
+    { id: 'llm-present', name: 'Language model', status: 'pass' as const, message: '1 model installed and ready.', fix_action: null },
+  ],
+}
+
+const FAIL_PREFLIGHT = {
+  overall: 'fail' as const,
+  ran_at: '2026-01-01T00:00:00.000+00:00',
+  checks: [
+    { id: 'llama-cpp-binary', name: 'Inference engine', status: 'fail' as const, message: 'llama-server binary not found.', fix_action: { kind: 'open-url' as const, href: 'https://example.com/setup', label: 'Setup guide' } },
+    { id: 'llm-present', name: 'Language model', status: 'fail' as const, message: 'No language model installed.', fix_action: { kind: 'navigate' as const, href: '/model-manager', label: 'Open Model Manager' } },
+  ],
+}
+
+describe('self-test', () => {
+  it('shows a Run self-test button', async () => {
+    await renderSupport()
+    expect(screen.getByRole('button', { name: /run self-test/i })).toBeInTheDocument()
+  })
+
+  it('calls preflight when the button is clicked', async () => {
+    mockApi.preflight.mockResolvedValue({ ok: true, data: PASS_PREFLIGHT })
+    await renderSupport()
+    fireEvent.click(screen.getByRole('button', { name: /run self-test/i }))
+    await waitFor(() => expect(mockApi.preflight).toHaveBeenCalledOnce())
+  })
+
+  it('disables the button while running', async () => {
+    let resolvePreflight!: (v: { ok: true; data: typeof PASS_PREFLIGHT }) => void
+    mockApi.preflight.mockReturnValue(
+      new Promise<{ ok: true; data: typeof PASS_PREFLIGHT }>((r) => { resolvePreflight = r }),
+    )
+    await renderSupport()
+    const button = screen.getByRole('button', { name: /run self-test/i })
+    fireEvent.click(button)
+    await waitFor(() => expect(button).toBeDisabled())
+    await act(async () => {
+      resolvePreflight({ ok: true, data: PASS_PREFLIGHT })
+    })
+  })
+
+  it('shows results after a successful self-test', async () => {
+    mockApi.preflight.mockResolvedValue({ ok: true, data: PASS_PREFLIGHT })
+    await renderSupport()
+    fireEvent.click(screen.getByRole('button', { name: /run self-test/i }))
+    await waitFor(() => expect(screen.getByTestId('preflight-results')).toBeInTheDocument())
+  })
+
+  it('shows check results with correct statuses', async () => {
+    mockApi.preflight.mockResolvedValue({ ok: true, data: PASS_PREFLIGHT })
+    await renderSupport()
+    fireEvent.click(screen.getByRole('button', { name: /run self-test/i }))
+    await waitFor(() => expect(screen.getByTestId('preflight-check-runtime-handshake')).toBeInTheDocument())
+  })
+
+  it('shows fix action buttons for failing checks', async () => {
+    mockApi.preflight.mockResolvedValue({ ok: true, data: FAIL_PREFLIGHT })
+    await renderSupport()
+    fireEvent.click(screen.getByRole('button', { name: /run self-test/i }))
+    await waitFor(() =>
+      expect(screen.getByTestId('preflight-fix-llama-cpp-binary')).toBeInTheDocument(),
+    )
+  })
+
+  it('shows overall fail status when preflight fails', async () => {
+    mockApi.preflight.mockResolvedValue({ ok: true, data: FAIL_PREFLIGHT })
+    await renderSupport()
+    fireEvent.click(screen.getByRole('button', { name: /run self-test/i }))
+    await waitFor(() =>
+      expect(screen.getByText(/overall:.*fail/i)).toBeInTheDocument(),
+    )
+  })
+
+  it('shows an error when preflight call fails', async () => {
+    mockApi.preflight.mockResolvedValue({
+      ok: false,
+      error: { kind: 'network', message: 'Core service unavailable' },
+    })
+    await renderSupport()
+    fireEvent.click(screen.getByRole('button', { name: /run self-test/i }))
+    await waitFor(() =>
+      expect(screen.getByTestId('self-test-error')).toBeInTheDocument(),
+    )
   })
 })

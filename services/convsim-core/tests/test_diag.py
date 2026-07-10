@@ -162,6 +162,29 @@ def test_post_beta_report_preflight_has_runtime_key(client):
     assert "runtime" in preflight
 
 
+def test_post_beta_report_includes_self_test_snapshot(client):
+    # Once the self-test pipeline has run, its structured 7-check snapshot must
+    # be embedded in the beta report (issue #301: preflight JSON in the beta
+    # report flow), not just the ad-hoc runtime/stt/tts health.
+    client.get("/api/preflight")
+    data = client.post("/api/diag/beta-report", json={}).json()
+    with zipfile.ZipFile(data["bundle_path"]) as zf:
+        preflight = json.loads(zf.read("preflight.json"))
+    assert "self_test" in preflight
+    self_test = preflight["self_test"]
+    assert self_test["overall"] in ("pass", "warn", "fail")
+    assert len(self_test["checks"]) == 7
+
+
+def test_post_beta_report_omits_self_test_when_not_run(client):
+    # A beta report created before any self-test still succeeds and simply omits
+    # the self_test key rather than failing.
+    data = client.post("/api/diag/beta-report", json={}).json()
+    with zipfile.ZipFile(data["bundle_path"]) as zf:
+        preflight = json.loads(zf.read("preflight.json"))
+    assert "self_test" not in preflight
+
+
 def test_post_beta_report_versions_has_app(client):
     data = client.post("/api/diag/beta-report", json={}).json()
     with zipfile.ZipFile(data["bundle_path"]) as zf:
