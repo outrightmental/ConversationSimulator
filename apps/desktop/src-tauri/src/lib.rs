@@ -40,12 +40,12 @@ struct PendingUpdateState(Arc<Mutex<Option<String>>>);
 async fn check_for_update(
     app: AppHandle,
     state: tauri::State<'_, PendingUpdateState>,
-) -> Option<UpdateInfo> {
+) -> Result<Option<UpdateInfo>, String> {
     let updater = match app.updater() {
         Ok(u) => u,
         Err(e) => {
             eprintln!("Updater unavailable (will retry on next launch): {e}");
-            return None;
+            return Ok(None);
         }
     };
     let maybe_update = match updater.check().await {
@@ -54,10 +54,13 @@ async fn check_for_update(
             // Offline or missing manifest — expected for users without network
             // access; do not surface to the user.
             eprintln!("Update check failed (offline or no manifest): {e}");
-            return None;
+            return Ok(None);
         }
     };
-    let update = maybe_update?;
+    let update = match maybe_update {
+        Some(u) => u,
+        None => return Ok(None),
+    };
     let version = update.version.clone();
     let release_url = format!(
         "https://github.com/outrightmental/ConversationSimulator/releases/tag/v{version}"
@@ -65,7 +68,7 @@ async fn check_for_update(
     if let Ok(mut guard) = state.0.lock() {
         *guard = Some(release_url.clone());
     }
-    Some(UpdateInfo { version, release_url })
+    Ok(Some(UpdateInfo { version, release_url }))
 }
 
 /// Open the GitHub release page for manual installation of the pending beta
