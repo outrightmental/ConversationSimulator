@@ -30,6 +30,9 @@ dev = [
 vad = [
     "onnxruntime>=1.18.0",
 ]
+build = [
+    "pyinstaller>=6.0",
+]
 
 [project.scripts]
 convsim-core = "convsim_core.main:main"

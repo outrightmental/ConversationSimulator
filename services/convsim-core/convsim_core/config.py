@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -11,10 +12,19 @@ _DEFAULT_DATA_DIR = str(Path.home() / ".convsim" / "data")
 _DEFAULT_LOG_DIR = str(Path.home() / ".convsim" / "logs")
 _DEFAULT_DB_DIR = str(Path.home() / ".convsim" / "db")
 _DEFAULT_PACKS_DIR = str(Path.home() / ".convsim" / "packs")
-# Read-only bundled official packs live in the repo's packs/official directory.
-# Resolve it relative to this file so the default works regardless of the
-# process CWD (config.py -> convsim_core -> convsim-core -> services -> repo root).
-_DEFAULT_OFFICIAL_PACKS_DIR = str(Path(__file__).resolve().parents[3] / "packs" / "official")
+# Read-only bundled official packs.
+#
+# In a PyInstaller packaged build (sys._MEIPASS is set), the packs are
+# embedded in the executable and extracted to sys._MEIPASS/packs/official/
+# at runtime.  In a developer checkout the packs live at the repo root.
+_is_frozen = getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS")
+if _is_frozen:
+    _DEFAULT_OFFICIAL_PACKS_DIR = str(Path(sys._MEIPASS) / "packs" / "official")  # type: ignore[attr-defined]
+else:
+    # Resolve relative to this file: config.py → convsim_core → convsim-core →
+    # services → repo root.  The default points at the repo's packs/official so
+    # `convsim-core` works from any process CWD in a developer checkout.
+    _DEFAULT_OFFICIAL_PACKS_DIR = str(Path(__file__).resolve().parents[3] / "packs" / "official")
 
 
 class ServiceConfig(BaseSettings):
