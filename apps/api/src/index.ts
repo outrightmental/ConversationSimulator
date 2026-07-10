@@ -67,6 +67,9 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
   const modelsDir =
     process.env['MODELS_DIR'] ?? path.join(os.homedir(), '.convsim', 'models', 'llm');
   fs.mkdirSync(logsDir, { recursive: true });
+  // Create the models folder eagerly so the Settings "Open model folder"
+  // button works on a fresh install, before any model has been downloaded.
+  fs.mkdirSync(modelsDir, { recursive: true });
   initDb(dbPath);
   setDataFolderPath(path.dirname(dbPath));
   setLogsFolderPath(logsDir);
