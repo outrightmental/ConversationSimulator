@@ -220,3 +220,50 @@ describe('useMicCapture — recording', () => {
     expect(result.current.isRecording).toBe(false)
   })
 })
+
+describe('useMicCapture — releaseStream', () => {
+  it('stops all stream tracks and clears the stream', async () => {
+    const trackStop = vi.fn()
+    const stream = { getTracks: () => [{ stop: trackStop }] } as unknown as MediaStream
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      mediaDevices: { getUserMedia: vi.fn().mockResolvedValue(stream) },
+    })
+
+    const { result } = renderHook(() => useMicCapture())
+
+    await act(async () => {
+      await result.current.requestPermission()
+    })
+    expect(result.current.stream).not.toBeNull()
+
+    act(() => {
+      result.current.releaseStream()
+    })
+
+    // The mic track must be stopped so the browser/OS recording indicator turns off.
+    expect(trackStop).toHaveBeenCalled()
+    expect(result.current.stream).toBeNull()
+  })
+
+  it('stops an in-progress recording before releasing the stream', async () => {
+    const { result } = renderHook(() => useMicCapture())
+
+    await act(async () => {
+      await result.current.requestPermission()
+    })
+
+    act(() => {
+      result.current.startRecording()
+    })
+    expect(result.current.isRecording).toBe(true)
+
+    act(() => {
+      result.current.releaseStream()
+    })
+
+    expect(result.current.isRecording).toBe(false)
+    expect(result.current.recordingSeconds).toBe(0)
+    expect(result.current.stream).toBeNull()
+  })
+})
