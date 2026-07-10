@@ -11,7 +11,7 @@ import type {
   SessionTranscriptResponse,
   EndingType,
 } from '@convsim/shared';
-import { SCENARIOS } from '../data/scenarios.js';
+import { findScenarioInfo } from './scenarios.js';
 import { getDb, WORKBENCH_TEST_SCENARIO_ID } from '../db.js';
 import { broadcast, closeSessionSockets } from '../ws/session-events.js';
 
@@ -226,12 +226,14 @@ export async function sessionRoutes(app: FastifyInstance) {
         throw new Error('player_role_name cannot be blank');
       }
 
-      if (!SCENARIOS[body.scenario_id]) {
+      // Resolve from the static built-ins *and* imported packs tracked in the
+      // PackIndex, so scenarios surfaced by the library's dynamic merge can be
+      // launched, not just browsed.
+      const scenario = findScenarioInfo(body.scenario_id);
+      if (!scenario) {
         reply.status(400);
         throw new Error(`Unknown scenario_id: ${body.scenario_id}`);
       }
-
-      const scenario = SCENARIOS[body.scenario_id]!;
 
       if (!Object.prototype.hasOwnProperty.call(scenario.difficulty.options, body.difficulty)) {
         reply.status(400);
@@ -425,7 +427,9 @@ export async function sessionRoutes(app: FastifyInstance) {
       // 2. Input safety precheck — placeholder hook, always passes.
       // A production implementation would call a safety classifier here.
 
-      const scenario = SCENARIOS[row.scenario_id];
+      // Resolve statically first (fast path) and fall back to imported packs so
+      // a launched pack scenario is capped by its own max_turns, not the default.
+      const scenario = findScenarioInfo(row.scenario_id);
       const newTurnCount = row.turn_count + 1;
       const maxTurns = scenario?.duration.max_turns ?? 20;
 

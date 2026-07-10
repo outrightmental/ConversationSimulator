@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState, useEffect, useMemo, useId } from 'react'
+import { useState, useEffect, useMemo, useId, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import type { ScenarioInfo, PackValidationResult } from '@convsim/shared'
 import { api } from '../api/client'
+import type { PackSummary, ImportPackResponse } from '../api/client'
 
 interface PackGroup {
   pack_id: string
@@ -29,6 +30,8 @@ type ValidationState =
   | { status: 'done'; result: PackValidationResult }
   | { status: 'error'; message: string }
 
+type ImportState = 'idle' | 'uploading' | 'success' | 'error'
+
 export default function ScenarioLibrary() {
   const [scenarios, setScenarios] = useState<ScenarioInfo[] | null>(null)
   const [loadError, setLoadError] = useState(false)
@@ -42,6 +45,19 @@ export default function ScenarioLibrary() {
   const [validations, setValidations] = useState<Record<string, ValidationState>>({})
   const [expandedValidation, setExpandedValidation] = useState<string | null>(null)
 
+  // Indexed packs (from PackIndex) for folder display
+  const [indexedPacks, setIndexedPacks] = useState<Record<string, PackSummary>>({})
+  const [folderOpen, setFolderOpen] = useState<string | null>(null)
+
+  // Import pack state
+  const [importState, setImportState] = useState<ImportState>('idle')
+  const [importError, setImportError] = useState<string | null>(null)
+  const [importedPack, setImportedPack] = useState<ImportPackResponse | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Model readiness warning
+  const [modelMissing, setModelMissing] = useState(false)
+
   const searchId = useId()
   const ratingId = useId()
   const languageId = useId()
@@ -49,11 +65,35 @@ export default function ScenarioLibrary() {
   const tagId = useId()
   const modelId = useId()
 
-  useEffect(() => {
+  function loadScenarios() {
     api
       .listScenarios()
       .then((s) => setScenarios(s))
       .catch(() => setLoadError(true))
+  }
+
+  function loadIndexedPacks() {
+    api
+      .listPacks()
+      .then(({ packs }) => {
+        const map: Record<string, PackSummary> = {}
+        for (const p of packs) map[p.pack_id] = p
+        setIndexedPacks(map)
+      })
+      .catch(() => {})
+  }
+
+  useEffect(() => {
+    loadScenarios()
+    loadIndexedPacks()
+
+    api
+      .getModels()
+      .then((r) => {
+        const { status } = r.runtime_health
+        setModelMissing(status !== 'ready' && status !== 'degraded')
+      })
+      .catch(() => {})
   }, [])
 
   const { allRatings, allLanguages, allDifficulties, allTags, allModels } = useMemo(() => {
@@ -117,9 +157,117 @@ export default function ScenarioLibrary() {
     }
   }
 
+  async function handleImportPack(file: File) {
+    setImportState('uploading')
+    setImportError(null)
+    setImportedPack(null)
+    try {
+      const result = await api.importPack(file)
+      setImportedPack(result)
+      setImportState('success')
+      loadScenarios()
+      loadIndexedPacks()
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : 'Import failed')
+      setImportState('error')
+    }
+  }
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (file) void handleImportPack(file)
+    e.target.value = ''
+  }
+
   return (
     <div style={{ maxWidth: '900px' }}>
-      <h1>Scenario Library</h1>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+        <h1 style={{ margin: 0 }}>Scenario Library</h1>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          {importState === 'success' && importedPack && (
+            <span
+              data-testid="import-success"
+              style={{ fontSize: '0.85rem', color: '#86efac' }}
+            >
+              Imported "{importedPack.name}" ({importedPack.pack_id})
+            </span>
+          )}
+          {importState === 'error' && importError && (
+            <span
+              role="alert"
+              data-testid="import-error"
+              style={{ fontSize: '0.85rem', color: '#f87171' }}
+            >
+              {importError}
+            </span>
+          )}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".zip,application/zip"
+            style={{ display: 'none' }}
+            aria-label="Select pack zip file"
+            data-testid="import-file-input"
+            onChange={handleFileChange}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={importState === 'uploading'}
+            data-testid="import-pack-button"
+            aria-label="Import pack"
+            style={{
+              padding: '0.4rem 0.85rem',
+              borderRadius: '6px',
+              border: '1px solid rgba(255,255,255,0.15)',
+              background: 'rgba(255,255,255,0.05)',
+              color: '#e8e8ea',
+              fontSize: '0.875rem',
+              cursor: importState === 'uploading' ? 'wait' : 'pointer',
+            }}
+          >
+            {importState === 'uploading' ? 'Importing…' : 'Import pack'}
+          </button>
+        </div>
+      </div>
+
+      {modelMissing && (
+        <div
+          role="alert"
+          data-testid="model-missing-banner"
+          style={{
+            background: 'rgba(251,191,36,0.08)',
+            border: '1px solid rgba(251,191,36,0.3)',
+            borderRadius: '6px',
+            padding: '0.75rem 1rem',
+            marginBottom: '1.25rem',
+            fontSize: '0.875rem',
+            color: '#fbbf24',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            gap: '1rem',
+          }}
+        >
+          <span>No model is ready. Launching a scenario requires a local or API-connected model.</span>
+          <Link
+            to="/model-manager"
+            data-testid="model-manager-link"
+            style={{
+              flexShrink: 0,
+              padding: '0.3rem 0.75rem',
+              borderRadius: '4px',
+              border: '1px solid rgba(251,191,36,0.4)',
+              color: '#fbbf24',
+              textDecoration: 'none',
+              fontSize: '0.8rem',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Set up model
+          </Link>
+        </div>
+      )}
 
       <div
         role="search"
@@ -300,26 +448,25 @@ export default function ScenarioLibrary() {
         >
           <p style={{ fontSize: '1.1rem', marginBottom: '0.5rem' }}>No scenario packs installed.</p>
           <p style={{ fontSize: '0.9rem', color: '#a1a1aa', marginBottom: '1.25rem' }}>
-            Import a pack via{' '}
-            <Link to="/settings" style={{ color: '#a5b4fc' }}>
-              Settings → Import Pack
-            </Link>
-            , or install an official starter pack to begin.
+            Import a pack using the button above, or install an official starter pack to begin.
           </p>
-          <Link
-            to="/settings"
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={importState === 'uploading'}
+            data-testid="empty-import-pack-button"
             style={{
               display: 'inline-block',
               padding: '0.5rem 1.25rem',
               borderRadius: '6px',
               background: 'rgba(255,255,255,0.08)',
               color: '#e8e8ea',
-              textDecoration: 'none',
+              border: '1px solid rgba(255,255,255,0.15)',
+              cursor: importState === 'uploading' ? 'wait' : 'pointer',
               fontSize: '0.875rem',
             }}
           >
-            Go to Settings
-          </Link>
+            {importState === 'uploading' ? 'Importing…' : 'Import pack'}
+          </button>
         </div>
       )}
 
@@ -347,6 +494,8 @@ export default function ScenarioLibrary() {
       {packs.map((pack) => {
         const validation: ValidationState = validations[pack.pack_id] ?? { status: 'idle' }
         const isExpanded = expandedValidation === pack.pack_id
+        const indexedPack = indexedPacks[pack.pack_id]
+        const isFolderOpen = folderOpen === pack.pack_id
 
         return (
           <section
@@ -378,32 +527,70 @@ export default function ScenarioLibrary() {
                 </span>
               </h2>
 
-              <button
-                onClick={() => {
-                  if (isExpanded && validation.status !== 'idle') {
-                    setExpandedValidation(null)
-                  } else {
-                    void handleValidate(pack.pack_id)
-                  }
-                }}
-                disabled={validation.status === 'loading'}
-                aria-label={`Validate pack ${pack.pack_name}`}
-                aria-expanded={isExpanded && validation.status !== 'idle'}
-                data-testid={`validate-${pack.pack_id}`}
+              <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
+                {indexedPack && (
+                  <button
+                    onClick={() => setFolderOpen(isFolderOpen ? null : pack.pack_id)}
+                    aria-label={`Open folder for pack ${pack.pack_name}`}
+                    aria-expanded={isFolderOpen}
+                    data-testid={`open-folder-${pack.pack_id}`}
+                    style={packActionButtonStyle}
+                  >
+                    {isFolderOpen ? 'Hide folder' : 'Open folder'}
+                  </button>
+                )}
+                <button
+                  onClick={() => {
+                    if (isExpanded && validation.status !== 'idle') {
+                      setExpandedValidation(null)
+                    } else {
+                      void handleValidate(pack.pack_id)
+                    }
+                  }}
+                  disabled={validation.status === 'loading'}
+                  aria-label={`Validate pack ${pack.pack_name}`}
+                  aria-expanded={isExpanded && validation.status !== 'idle'}
+                  data-testid={`validate-${pack.pack_id}`}
+                  style={{
+                    ...packActionButtonStyle,
+                    cursor: validation.status === 'loading' ? 'wait' : 'pointer',
+                  }}
+                >
+                  {validation.status === 'loading' ? 'Validating…' : 'Validate pack'}
+                </button>
+              </div>
+            </div>
+
+            {isFolderOpen && indexedPack?.pack_root && (
+              <div
+                data-testid={`folder-path-${pack.pack_id}`}
                 style={{
-                  padding: '0.25rem 0.65rem',
+                  marginBottom: '0.75rem',
+                  padding: '0.6rem 0.85rem',
                   borderRadius: '4px',
-                  border: '1px solid rgba(255,255,255,0.15)',
-                  cursor: validation.status === 'loading' ? 'wait' : 'pointer',
-                  background: 'transparent',
-                  color: '#a1a1aa',
-                  fontSize: '0.8rem',
-                  flexShrink: 0,
+                  background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.75rem',
                 }}
               >
-                {validation.status === 'loading' ? 'Validating…' : 'Validate pack'}
-              </button>
-            </div>
+                <code style={{ fontSize: '0.78rem', color: '#94a3b8', flex: 1, wordBreak: 'break-all' }}>
+                  {indexedPack.pack_root}
+                </code>
+                <button
+                  onClick={() => void navigator.clipboard.writeText(indexedPack.pack_root ?? '')}
+                  aria-label="Copy pack folder path"
+                  data-testid={`copy-folder-${pack.pack_id}`}
+                  style={{
+                    ...packActionButtonStyle,
+                    flexShrink: 0,
+                  }}
+                >
+                  Copy
+                </button>
+              </div>
+            )}
 
             {isExpanded && validation.status === 'done' && (
               <div
@@ -637,4 +824,14 @@ const filterGroupStyle: React.CSSProperties = {
 const labelStyle: React.CSSProperties = {
   fontSize: '0.8rem',
   color: '#a1a1aa',
+}
+
+const packActionButtonStyle: React.CSSProperties = {
+  padding: '0.25rem 0.65rem',
+  borderRadius: '4px',
+  border: '1px solid rgba(255,255,255,0.15)',
+  cursor: 'pointer',
+  background: 'transparent',
+  color: '#a1a1aa',
+  fontSize: '0.8rem',
 }
