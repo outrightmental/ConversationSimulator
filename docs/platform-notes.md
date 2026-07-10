@@ -72,15 +72,22 @@ If denied, re-enable in **System Settings → Privacy & Security → Microphone*
 
 ### Data directories
 
+The desktop app uses the macOS-native application support directory so that
+user data follows standard macOS conventions (visible in Finder under
+`~/Library/Application Support/`) without being swept into iCloud Drive or
+Time Machine's application bundles.
+
 ```
-~/.convsim/db/      — SQLite session database
-~/.convsim/data/    — exports and pack cache
-~/.convsim/logs/    — runtime logs
-~/.convsim/models/  — downloaded model weights (not in ~/Library to avoid iCloud sync)
+~/Library/Application Support/com.outrightmental.convsim/db/       — SQLite session database
+~/Library/Application Support/com.outrightmental.convsim/data/     — exports and pack cache
+~/Library/Application Support/com.outrightmental.convsim/logs/     — runtime logs
+~/Library/Application Support/com.outrightmental.convsim/models/   — downloaded model weights
+~/Library/Application Support/com.outrightmental.convsim/exports/  — exported transcripts
+~/Library/Application Support/com.outrightmental.convsim/data/audio/  — recorded audio clips (only when "save raw audio" is enabled; off by default)
+~/Library/Application Support/com.outrightmental.convsim/crashes/  — crash bundles
 ```
 
-Override with environment variables: `CONVSIM_DB_DIR`, `CONVSIM_DATA_DIR`,
-`CONVSIM_LOG_DIR`, `CONVSIM_MODELS_DIR`.
+The `CONVSIM_DATA_ROOT` environment variable overrides the entire root path.
 
 ### Port conflicts
 
@@ -146,16 +153,48 @@ To run an unsigned build:
 1. Click **More info** in the SmartScreen dialog.
 2. Click **Run anyway**.
 
-For distributable builds, sign with an Extended Validation (EV) or standard
-code-signing certificate. Set the Tauri signing environment variables before
-building:
+For distributable and Steam release builds, sign with an Extended Validation
+(EV) or standard OV code-signing certificate using Authenticode.
+
+#### Authenticode signing in CI (Release workflow)
+
+The release workflow (`release.yml`) signs Windows installers automatically
+when two repository secrets are present:
+
+| Secret | Contents |
+|--------|----------|
+| `WINDOWS_SIGN_CERT_PFX` | Base64-encoded PFX certificate file (cert + private key) |
+| `WINDOWS_SIGN_CERT_PASSWORD` | Password for the PFX file |
+
+When the secrets are absent the build continues and produces an unsigned
+installer.  Unsigned installers are blocked by SmartScreen on end-user
+machines; signing is **required** before the Stage 3 private beta gate
+(G3-01 in `docs/steam-mvp-scope.md`).
+
+**Obtaining a certificate:**
+
+1. Purchase an EV or OV code-signing certificate from DigiCert, Sectigo,
+   GlobalSign, or another trusted CA.
+2. Export the private key and certificate chain as a `.pfx` file.
+3. Base64-encode it: `certutil -encode cert.pfx cert.b64`
+4. Add the contents of `cert.b64` as the `WINDOWS_SIGN_CERT_PFX` repository
+   secret (Settings → Secrets and variables → Actions → Secrets).
+5. Add the PFX password as `WINDOWS_SIGN_CERT_PASSWORD`.
+
+**Local signing:**
 
 ```powershell
-$env:TAURI_SIGNING_PRIVATE_KEY      = "path\to\private.key"
-$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = "key-password"
+# Sign a specific installer with signtool.exe (included in the Windows SDK)
+signtool.exe sign `
+  /f path\to\cert.pfx `
+  /p <password> `
+  /tr http://timestamp.digicert.com `
+  /td sha256 /fd sha256 /v `
+  "apps\desktop\src-tauri\target\release\bundle\nsis\ConversationSimulator_*_x64-setup.exe"
 ```
 
-See [tauri.app/distribute/sign/windows](https://tauri.app/distribute/sign/windows).
+See [tauri.app/distribute/sign/windows](https://tauri.app/distribute/sign/windows) for
+additional options including HSM/EV token signing.
 
 ### Antivirus false positives
 
@@ -172,15 +211,73 @@ prompted, or grant it in **Settings → Privacy & Security → Microphone**.
 
 ### Data directories
 
+The desktop app stores all mutable user data under the platform-native
+application data directory.  On Windows this is `%LOCALAPPDATA%`, which is
+**not** synced by Windows Roaming Profiles or OneDrive by default, keeping
+data local as required by the local-first privacy promise.
+
 ```
-%USERPROFILE%\.convsim\db\      — SQLite session database
-%USERPROFILE%\.convsim\data\    — exports and pack cache
-%USERPROFILE%\.convsim\logs\    — runtime logs
-%USERPROFILE%\.convsim\models\  — downloaded model weights
+%LOCALAPPDATA%\outrightmental\convsim\db\       — SQLite session database
+%LOCALAPPDATA%\outrightmental\convsim\data\     — exports and pack cache
+%LOCALAPPDATA%\outrightmental\convsim\logs\     — runtime logs
+%LOCALAPPDATA%\outrightmental\convsim\models\   — downloaded model weights
+%LOCALAPPDATA%\outrightmental\convsim\exports\  — exported transcripts
+%LOCALAPPDATA%\outrightmental\convsim\data\audio\  — recorded audio clips (only when "save raw audio" is enabled; off by default)
+%LOCALAPPDATA%\outrightmental\convsim\crashes\  — crash bundles
 ```
 
-Override with environment variables: `CONVSIM_DB_DIR`, `CONVSIM_DATA_DIR`,
-`CONVSIM_LOG_DIR`, `CONVSIM_MODELS_DIR`.
+The `CONVSIM_DATA_ROOT` environment variable overrides the entire root path.
+
+> **Migration from earlier builds:** If `~\.convsim\` exists from a pre-1.0
+> alpha install, `convsim-core` automatically copies sessions, packs, logs,
+> exports, and the database to the new location on first launch.  Model weights
+> are **not** migrated; re-download them via the Model Manager after migration.
+> A `.convsim_migrated_to_platform_dir` marker is written when migration
+> completes.
+
+**Steam Cloud exclusion:** each data subdirectory contains a `.nosteamcloudpath`
+file that tells the Steam client not to sync it.  Transcripts, session history,
+audio, and model outputs never leave the player's machine via Steam Cloud.
+
+### Windows system requirements for Steam
+
+These requirements apply to the **installed desktop app** distributed via Steam.
+They do not apply to source-checkout developer builds (which may need
+additional tooling).
+
+#### Minimum requirements
+
+| Component | Minimum |
+|-----------|---------|
+| OS | Windows 10 (build 19041 / 20H1) 64-bit |
+| CPU | 64-bit x86 processor, 2 cores, SSE4.2 |
+| RAM | 8 GB |
+| Disk (app install) | 500 MB |
+| Disk (models, downloaded post-launch) | 4 GB free (for a single starter model) |
+| GPU | Not required — CPU-only inference is supported |
+| WebView2 | Microsoft Edge WebView2 Runtime (bundled by the NSIS installer on Windows 10 builds earlier than 21H2) |
+| Internet | Required only for initial model download; **all play is offline** after the model is installed |
+
+#### Recommended requirements
+
+| Component | Recommended |
+|-----------|-------------|
+| OS | Windows 11 (any release) 64-bit |
+| CPU | 64-bit x86 processor, 8+ cores (for faster CPU inference) |
+| RAM | 16 GB |
+| Disk | 20 GB free (for multiple models and session history) |
+| GPU | NVIDIA GPU with 4+ GB VRAM (enables GPU-accelerated inference via llama.cpp's CUDA backend) |
+
+> **Note on GPU acceleration:** GPU acceleration is not required and not
+> automatically enabled.  If a supported NVIDIA GPU is present the player can
+> opt in via the Model Manager.  CUDA toolkit is not required — the bundled
+> `llama-server.exe` includes the CUDA runtime.
+
+#### Verified Steam client version
+
+The app has been tested against **Steam client 1.0.0.81** and newer.  The
+minimum Steam client version to list on the store page is **Steam client
+1.0.0.81**.
 
 ### Port conflicts
 

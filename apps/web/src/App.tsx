@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { Routes, Route, Navigate, Outlet } from 'react-router-dom'
+import { I18nProvider } from './i18n'
 import AppLayout from './layout/AppLayout'
 import ErrorBoundary from './components/ErrorBoundary'
 import Home from './screens/Home'
@@ -26,6 +27,7 @@ function FirstRunGuard() {
 
 export default function App() {
   return (
+    <I18nProvider>
     <ErrorBoundary>
       <CoreStartupGuard>
         <Routes>
@@ -48,5 +50,6 @@ export default function App() {
         </Routes>
       </CoreStartupGuard>
     </ErrorBoundary>
+    </I18nProvider>
   )
 }
