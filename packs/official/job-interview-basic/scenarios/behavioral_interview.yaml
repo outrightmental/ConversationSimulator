@@ -118,3 +118,4 @@ ending_conditions:
     type: variable_below
     variable: impression
     threshold: 15
+replay_seed: 42

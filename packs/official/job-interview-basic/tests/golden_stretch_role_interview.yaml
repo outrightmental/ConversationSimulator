@@ -1,0 +1,179 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: golden_stretch_role_interview
+scenario_id: stretch_role_interview
+description: >-
+  Golden transcript property test: verifies that a candidate who honestly
+  acknowledges the experience gap, backs potential with specific transferable
+  examples, demonstrates genuine preparation, and shows evidence of rapid
+  learning causes conviction to exceed the success threshold before the session
+  ends. Also verifies that gap_probing fires when the gap is not addressed,
+  the evidence_boost fires on a high stretch_potential answer, and the
+  preparation_challenge fires when preparation_score is low.
+
+seed: 99
+input_mode: text
+difficulty: normal
+
+turns:
+  - turn: 1
+    player_input: >-
+      Honestly? I'm ready for the scope of the problems but not for everything
+      that comes with senior seniority. I haven't managed a roadmap across
+      four product areas simultaneously and I haven't managed a team of PMs.
+      Those are real gaps, and I'm not going to pretend they aren't. What I
+      do have is two years of shipping fast in a resource-constrained
+      environment, a track record of going from zero-to-one on two features
+      that became core to the company's enterprise ARR, and I've been
+      deliberately studying how senior PMs at companies like yours approach
+      prioritization under stakeholder pressure. I want this role because
+      the problem space is the one I care most about — not because of the
+      title.
+    expect:
+      state_delta_contains:
+        - conviction
+        - gap_acknowledged
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 2
+    player_input: >-
+      Before this interview I spent about eight hours going through everything
+      publicly available about Nexus Analytics — your product blog, customer
+      case studies, G2 reviews, and a couple of interviews your CEO gave last
+      year. What surprised me was how much of your enterprise churn seemed to
+      be connected to onboarding friction rather than feature gaps. The reviews
+      kept mentioning that the product was powerful but took too long to get
+      value from. That told me the roadmap problem isn't just prioritization —
+      it's sequencing for time-to-value, which is a different lens. I don't
+      know if that's how your team sees it, but I wanted to ask.
+    expect:
+      state_delta_contains:
+        - preparation_score
+        - conviction
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 3
+    player_input: >-
+      The clearest example I can give is when I joined my current company as
+      the third PM and was handed ownership of a product area I knew almost
+      nothing about — developer tooling — within my first four months. I had
+      no developer background. I spent the first six weeks doing nothing but
+      customer interviews and shadowing engineers during their actual workflow.
+      By week eight I had a problem statement the engineering team said was
+      the most accurate one they'd seen from product. We shipped the first
+      milestone eleven weeks after I picked up the area. That's the pattern
+      I'd bring here — I go deep on the customer before I go anywhere near
+      the roadmap.
+    expect:
+      state_delta_contains:
+        - stretch_potential
+        - conviction
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 4
+    player_input: >-
+      That's a real problem and I've thought about how I'd approach it. The
+      first thing I would not do is try to prioritize in a room — that just
+      creates a politics problem. I'd start by getting each stakeholder to
+      separately write down the one outcome they most need from Q3, with
+      measurable criteria for success. Then I'd look for where those outcomes
+      are actually compatible versus where they're genuinely in tension. Most
+      roadmap conflicts I've seen turn out to be sequencing disagreements, not
+      actual resource conflicts. Where there's a real conflict I'd surface the
+      trade-offs explicitly and ask the leadership team to make the call with
+      full information. My job is to make the trade-off visible, not to
+      absorb the politics of it.
+    expect:
+      state_delta_contains:
+        - conviction
+        - preparation_score
+      session_control: continue_session
+      safety_status: ok
+
+static_assertions:
+  - description: Scenario opening line is non-empty
+    path: opening.npc_says
+    check: non_empty_string
+
+  - description: At least one event is defined
+    path: events
+    check: min_length_1
+
+  - description: gap_probing fires when gap_acknowledged is below 1
+    path: events[id=gap_probing].when
+    check: "type=variable_below AND variable=gap_acknowledged AND threshold=1"
+
+  - description: gap_probing fires only once
+    path: events[id=gap_probing].repeat
+    check: "equals false"
+
+  - description: evidence_boost fires when stretch_potential exceeds 70
+    path: events[id=evidence_boost].when
+    check: "type=variable_above AND variable=stretch_potential AND threshold=70"
+
+  - description: evidence_boost fires only once
+    path: events[id=evidence_boost].repeat
+    check: "equals false"
+
+  - description: hesitation_signal fires when conviction is below 30
+    path: events[id=hesitation_signal].when
+    check: "type=variable_below AND variable=conviction AND threshold=30"
+
+  - description: hesitation_signal fires only once
+    path: events[id=hesitation_signal].repeat
+    check: "equals false"
+
+  - description: preparation_challenge fires when preparation_score is below 35
+    path: events[id=preparation_challenge].when
+    check: "type=variable_below AND variable=preparation_score AND threshold=35"
+
+  - description: preparation_challenge fires only once
+    path: events[id=preparation_challenge].repeat
+    check: "equals false"
+
+  - description: Success ending targets conviction above 65
+    path: ending_conditions.success
+    check: "type=variable_above AND variable=conviction AND threshold=65"
+
+  - description: Failure ending targets conviction below 15
+    path: ending_conditions.failure
+    check: "type=variable_below AND variable=conviction AND threshold=15"
+
+  - description: conviction is player-visible
+    path: state.variables.conviction.visibility
+    check: "equals visible"
+
+  - description: preparation_score is player-visible
+    path: state.variables.preparation_score.visibility
+    check: "equals visible"
+
+  - description: stretch_potential is hidden from player
+    path: state.variables.stretch_potential.visibility
+    check: "equals hidden"
+
+  - description: gap_acknowledged is hidden from player
+    path: state.variables.gap_acknowledged.visibility
+    check: "equals hidden"
+
+  - description: NPC is marked fictional
+    path: npc.fictional
+    check: "equals true"
+
+  - description: Safety policy stops nsfw_sexual_content
+    path: safety.content_categories.nsfw_sexual_content
+    check: "equals stop"
+
+  - description: Safety policy fires stop_with_resource_message for self_harm_crisis
+    path: safety.content_categories.self_harm_crisis
+    check: "equals stop_with_resource_message"
+
+  - description: Pack manifest declares stretch_role_interview as entry scenario
+    path: manifest.entry_scenarios
+    check: "contains scenarios/stretch_role_interview.yaml"
+
+  - description: Hard difficulty applies a negative patience modifier
+    path: scenario.difficulty.options.hard.npc_patience_modifier
+    check: "equals -15"
