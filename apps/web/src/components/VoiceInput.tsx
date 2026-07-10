@@ -191,14 +191,23 @@ export default function VoiceInput({ onSubmit, onRawStt, onSttLatency, onRecordi
     _cancelBackchannelTimer()
     stopSilenceDetection()
     stopPttRecording()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stopSilenceDetection, stopPttRecording])
 
   // Close the AudioContext after auto-stop. The onSilence callback only calls stopPttRecording
   // so that the 'stopping' vadState survives its React render before being cleaned up here.
   useEffect(() => {
-    if (!isRecording) stopSilenceDetection()
+    if (!isRecording) {
+      stopSilenceDetection()
+      // Hands-free auto-stop bypasses the stopRecording() wrapper, so cancel any
+      // pending backchannel here too — otherwise a short (<3.5 s) utterance would
+      // fire a stray acknowledgment after the player already finished speaking.
+      _cancelBackchannelTimer()
+    }
   }, [isRecording, stopSilenceDetection])
+
+  // Cancel any pending/playing backchannel on unmount (e.g. navigating away
+  // mid-utterance) so it cannot fire after the component is gone.
+  useEffect(() => () => _cancelBackchannelTimer(), [])
 
   function handleReviewConfirm(finalText: string) {
     const raw = reviewState
