@@ -6,7 +6,7 @@ summary: >-
   You are visiting Café Sol in Madrid. Rosa García, the barista, will greet
   you and take your order in Spanish. Practice ordering a drink, asking
   questions, and making small talk. The target language is Spanish (es).
-  Difficulty controls language correction: easy = none, normal = light
+  Difficulty controls language correction: warm = none, standard = light
   (implicit recasting), hard = explicit correction with practice prompts.
 player_role:
   label: Language Learner

@@ -6,7 +6,7 @@ summary: >-
   You are shopping at a konbini in Tokyo. Kenji Yamamoto, the store clerk,
   will greet you and help you find items. Practice polite everyday Japanese
   in a low-pressure service context. The target language is Japanese (ja).
-  Difficulty controls language correction: easy = none, normal = light
+  Difficulty controls language correction: warm = none, standard = light
   (implicit recasting), hard = explicit correction with practice prompts.
 player_role:
   label: Language Learner
