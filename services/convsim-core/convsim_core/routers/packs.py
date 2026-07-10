@@ -14,10 +14,9 @@ from pydantic import BaseModel
 from convsim_core.errors import ConvsimError
 from convsim_core.packs.exporter import export_to_zip
 from convsim_core.packs.importer import safe_extract_zip, import_from_folder, import_from_zip
-from convsim_core.packs.models import ImportResult, PackSummary, ValidationIssue, ValidationResult, ValidationSeverity
+from convsim_core.packs.models import ImportResult, ValidationIssue, ValidationResult, ValidationSeverity
 from convsim_core.packs.seeder import seed_official_packs
 from convsim_core.packs.validator import validate_pack_dir
-from convsim_core.storage.repositories.pack_repo import list_packs
 
 router = APIRouter(prefix="/api/packs", tags=["packs"])
 
