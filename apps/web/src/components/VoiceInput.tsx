@@ -201,6 +201,34 @@ export default function VoiceInput({ onSubmit, onRawStt, onSttLatency, disabled 
     }
   }, [startRecording, stopRecording, permission, isRecording, isSubmitting, disabled, isHandsFree, reviewState, textOnly])
 
+  // Gamepad R1 / right-shoulder push-to-talk — mirrors the Space hotkey above
+  // but driven by the custom events emitted by useGamepadNavigation.
+  useEffect(() => {
+    const handlePttStart = () => {
+      if (textOnly) return
+      if (permission !== 'granted' || isSubmitting || disabled) return
+      if (reviewState !== null) return
+      if (isHandsFree && isRecording) {
+        stopRecording()
+        return
+      }
+      startRecording()
+    }
+
+    const handlePttStop = () => {
+      if (textOnly) return
+      if (permission !== 'granted' || isSubmitting || (disabled && !isRecording)) return
+      if (!isHandsFree) stopRecording()
+    }
+
+    document.addEventListener('gamepad-ptt-start', handlePttStart)
+    document.addEventListener('gamepad-ptt-stop', handlePttStop)
+    return () => {
+      document.removeEventListener('gamepad-ptt-start', handlePttStart)
+      document.removeEventListener('gamepad-ptt-stop', handlePttStop)
+    }
+  }, [startRecording, stopRecording, permission, isRecording, isSubmitting, disabled, isHandsFree, reviewState, textOnly])
+
   const handleTextSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     const value = textValue.trim()

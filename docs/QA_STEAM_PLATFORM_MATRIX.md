@@ -77,14 +77,20 @@ opens.
 Each item must be checked by a tester on physical Steam Deck hardware running
 SteamOS 3.x in Gaming Mode before G4-02 can be declared PASS.
 
-- [ ] App launches in Gaming Mode from the Steam library without extra setup.
-- [ ] Home screen, scenario picker, and Model Manager are fully navigable with the controller alone.
-- [ ] On-screen keyboard appears automatically for every text input field.
-- [ ] All text is readable at 1280×800 (native resolution) without zooming or horizontal scrolling.
-- [ ] No required action is hidden behind a mouse-only hover state.
-- [ ] Offline smoke test passes under SteamOS 3.x (no outbound network during play).
-- [ ] Steam overlay (Shift+Tab) opens and closes without breaking the current session.
-- [ ] Approximate battery impact documented (see §8 performance thresholds).
+| Check | Controller-only test | Result |
+|-------|---------------------|--------|
+| App launches in Gaming Mode from the Steam library without extra setup. | Use controller to launch from library | [ ] PASS / [ ] FAIL |
+| Home, Library, Setup, Conversation, Debrief, Model Manager, Settings, Support, and Workbench are fully navigable with the controller alone. | TC-11 full walkthrough | [ ] PASS / [ ] FAIL |
+| Every interactive element has a visible focus ring at 1280×800 from couch distance. | Inspect each screen during TC-11 | [ ] PASS / [ ] FAIL |
+| On-screen keyboard appears automatically for every text input field (no manual invocation needed). | TC-11.5 and TC-11.7 | [ ] PASS / [ ] FAIL |
+| R1 (right shoulder) triggers push-to-talk in voice mode. | TC-11.6 | [ ] PASS / [ ] FAIL |
+| All text is readable at 1280×800 (native resolution) without zooming or horizontal scrolling. | Inspect transcript, meters, debrief | [ ] PASS / [ ] FAIL |
+| No required action is hidden behind a mouse-only hover state. | All screens — controller only | [ ] PASS / [ ] FAIL |
+| DebugDrawer is excluded from the controller focus ring (dev builds only). | TC-11.11 | [ ] PASS / [ ] N/A |
+| Default Steam Input config (`steam/controller_config.vdf`) is loaded automatically. | Launch game; check Steam Input overlay | [ ] PASS / [ ] FAIL |
+| Offline smoke test passes under SteamOS 3.x (no outbound network during play). | TC-09 on Steam Deck | [ ] PASS / [ ] FAIL |
+| Steam overlay (Shift+Tab) opens and closes without breaking the current session. | TC-11.12 | [ ] PASS / [ ] FAIL |
+| Approximate battery impact documented (see §5 performance thresholds). | Observe during TC-11 | [ ] Documented |
 
 ---
 
@@ -192,6 +198,29 @@ hardware.
 | 10.2 | Reinstall after uninstall with existing data directory | App launches; existing sessions and model files detected; no re-download required | Manual |
 | 10.3 | "Clear all local data" then reinstall | First-run wizard appears; model download required; no stale state from previous install | Manual |
 | 10.4 | Reinstall over an existing install (upgrade path) | Existing sessions preserved; no database migration error; model files intact | Manual |
+
+### TC-11 Controller-only full session (Steam Deck Verified gate)
+
+Full end-to-end play from launch to quit using the controller alone — no
+keyboard or mouse contact.  All steps must be completable with D-pad, A/B/X/Y
+buttons, left stick, and the on-screen keyboard only.  Corresponds to the
+controller-only column added to §3 (Steam Deck verification checklist).
+
+| # | Step | Pass criterion | Method |
+|---|------|----------------|--------|
+| 11.1 | Launch app in Gaming Mode from Steam library | App reaches Home screen; focus is placed on the first interactive element | Manual — Steam Deck hardware |
+| 11.2 | Navigate Home screen with D-pad / left stick | Every link and status badge reachable; a visible focus ring appears on each element at 1280×800 from couch distance | Manual — Steam Deck hardware |
+| 11.3 | Navigate to Scenario Library via controller | Focus moves correctly through nav links; Scenarios screen loads | Manual |
+| 11.4 | Select a scenario pack and choose a scenario | Card selection works; Setup screen reached with no keyboard/mouse | Manual |
+| 11.5 | Enter a player name or adjust setup field with on-screen keyboard | Steam floating keyboard appears automatically on text field focus; dismissed on confirm | Manual |
+| 11.6 | Start a conversation session in voice mode | Session launches; R1 (right shoulder) triggers push-to-talk; NPC responds | Manual |
+| 11.7 | Submit at least one text turn using the on-screen keyboard | On-screen keyboard appears on input focus; text submitted; NPC responds | Manual |
+| 11.8 | End the session and navigate to the Debrief screen | End session button reachable via controller; Debrief loads | Manual |
+| 11.9 | Navigate Debrief screen and confirm readability | All debrief scores and text readable at 1280×800; no clipped controls | Manual |
+| 11.10 | Navigate to Model Manager, Settings, Support, and Workbench screens | Each screen fully navigable; no interactive element requires mouse hover | Manual |
+| 11.11 | Confirm DebugDrawer is excluded from controller focus ring | DebugDrawer (dev-mode only) never receives focus during D-pad navigation | Manual — dev build only |
+| 11.12 | Open and close Steam overlay (Shift+Tab) during a session | Overlay opens and closes; controller focus resumes correctly in the app | Manual |
+| 11.13 | Quit the app via controller | App closes cleanly; no orphaned processes | Manual |
 
 ---
 

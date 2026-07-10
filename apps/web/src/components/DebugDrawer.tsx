@@ -331,7 +331,7 @@ interface DebugDrawerProps {
 
 export default function DebugDrawer({ entries, latencySnapshot }: DebugDrawerProps) {
   return (
-    <details data-testid="debug-drawer" aria-label="Developer debug drawer">
+    <details data-testid="debug-drawer" data-gamepad-exclude aria-label="Developer debug drawer">
       <summary
         style={{
           cursor: 'pointer',

@@ -1,0 +1,299 @@
+"In Game Actions"
+{
+	// Steam Input action manifest for Conversation Simulator.
+	// Shipped in the Linux/SteamOS depot so Steam Deck players receive default
+	// controller bindings out of the box.  The action names match the digital
+	// actions registered via ISteamInput in the Steamworks Admin portal.
+	//
+	// Layout targets Steam Deck but is valid for any standard gamepad.
+	// Action set "MenuControls" is active on all non-conversation screens.
+	// Action set "GameplayControls" is active inside an active conversation
+	// session (push-to-talk voice input becomes available).
+
+	"actions"
+	{
+		"MenuControls"
+		{
+			"title"	"#Set_MenuControls"
+			"StickPadGyro"
+			{
+				"scroll_list"
+				{
+					"title"	"#Action_ScrollList"
+					"input_mode"	"joystick_move"
+				}
+			}
+			"AnalogTrigger"
+			{
+			}
+			"Button"
+			{
+				"btn_confirm"
+				{
+					"title"	"#Action_Confirm"
+				}
+				"btn_back"
+				{
+					"title"	"#Action_Back"
+				}
+				"btn_nav_up"
+				{
+					"title"	"#Action_NavUp"
+				}
+				"btn_nav_down"
+				{
+					"title"	"#Action_NavDown"
+				}
+				"btn_nav_left"
+				{
+					"title"	"#Action_NavLeft"
+				}
+				"btn_nav_right"
+				{
+					"title"	"#Action_NavRight"
+				}
+			}
+		}
+		"GameplayControls"
+		{
+			"title"	"#Set_GameplayControls"
+			"StickPadGyro"
+			{
+				"scroll_list"
+				{
+					"title"	"#Action_ScrollList"
+					"input_mode"	"joystick_move"
+				}
+			}
+			"AnalogTrigger"
+			{
+			}
+			"Button"
+			{
+				"btn_confirm"
+				{
+					"title"	"#Action_Confirm"
+				}
+				"btn_back"
+				{
+					"title"	"#Action_Back"
+				}
+				"btn_nav_up"
+				{
+					"title"	"#Action_NavUp"
+				}
+				"btn_nav_down"
+				{
+					"title"	"#Action_NavDown"
+				}
+				"btn_nav_left"
+				{
+					"title"	"#Action_NavLeft"
+				}
+				"btn_nav_right"
+				{
+					"title"	"#Action_NavRight"
+				}
+				"btn_push_to_talk"
+				{
+					"title"	"#Action_PushToTalk"
+				}
+			}
+		}
+	}
+
+	"default_group"
+	{
+		"SetA"	"MenuControls"
+		"SetB"	"GameplayControls"
+	}
+
+	"default_bindings"
+	{
+		"controller_type"	"controller_steamdeck"
+
+		"group"
+		{
+			"id"	"0"
+			"mode"	"four_buttons"
+			"name"	""
+			"description"	""
+			"inputs"
+			{
+				"button_a"
+				{
+					"activators"
+					{
+						"Full_Press"
+						{
+							"bindings"
+							{
+								"binding"	"action btn_confirm, label ACTION"
+							}
+						}
+					}
+				}
+				"button_b"
+				{
+					"activators"
+					{
+						"Full_Press"
+						{
+							"bindings"
+							{
+								"binding"	"action btn_back, label ACTION"
+							}
+						}
+					}
+				}
+			}
+		}
+
+		"group"
+		{
+			"id"	"1"
+			"mode"	"dpad"
+			"name"	""
+			"description"	""
+			"inputs"
+			{
+				"dpad_north"
+				{
+					"activators"
+					{
+						"Full_Press"
+						{
+							"bindings"
+							{
+								"binding"	"action btn_nav_up, label ACTION"
+							}
+						}
+					}
+				}
+				"dpad_south"
+				{
+					"activators"
+					{
+						"Full_Press"
+						{
+							"bindings"
+							{
+								"binding"	"action btn_nav_down, label ACTION"
+							}
+						}
+					}
+				}
+				"dpad_west"
+				{
+					"activators"
+					{
+						"Full_Press"
+						{
+							"bindings"
+							{
+								"binding"	"action btn_nav_left, label ACTION"
+							}
+						}
+					}
+				}
+				"dpad_east"
+				{
+					"activators"
+					{
+						"Full_Press"
+						{
+							"bindings"
+							{
+								"binding"	"action btn_nav_right, label ACTION"
+							}
+						}
+					}
+				}
+			}
+		}
+
+		"group"
+		{
+			"id"	"2"
+			"mode"	"joystick_move"
+			"name"	""
+			"description"	""
+			"inputs"
+			{
+				"click"
+				{
+					"activators"
+					{
+					}
+				}
+			}
+		}
+
+		"group"
+		{
+			"id"	"3"
+			"mode"	"joystick_mouse"
+			"name"	""
+			"description"	""
+			"inputs"
+			{
+				"click"
+				{
+					"activators"
+					{
+					}
+				}
+			}
+		}
+
+		"group"
+		{
+			"id"	"4"
+			"mode"	"trigger"
+			"name"	""
+			"description"	""
+			"inputs"
+			{
+				"click"
+				{
+					"activators"
+					{
+						"Full_Press"
+						{
+							"bindings"
+							{
+								"binding"	"action btn_push_to_talk, label ACTION"
+							}
+						}
+					}
+				}
+			}
+		}
+
+		"group_source_bindings"
+		{
+			"0"	"switch active=GameplayControls"
+			"1"	"dpad active"
+			"2"	"left_joystick active"
+			"3"	"right_trackpad active"
+			"4"	"right_trigger active=GameplayControls"
+		}
+	}
+
+	"localization"
+	{
+		"english"
+		{
+			"Set_MenuControls"	"Menu Navigation"
+			"Set_GameplayControls"	"Conversation"
+			"Action_Confirm"	"Confirm / Select"
+			"Action_Back"	"Back"
+			"Action_NavUp"	"Navigate Up"
+			"Action_NavDown"	"Navigate Down"
+			"Action_NavLeft"	"Navigate Left"
+			"Action_NavRight"	"Navigate Right"
+			"Action_ScrollList"	"Scroll List"
+			"Action_PushToTalk"	"Push to Talk"
+		}
+	}
+}

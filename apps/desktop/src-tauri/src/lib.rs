@@ -86,6 +86,30 @@ fn steam_set_rich_presence(
         .unwrap_or(false)
 }
 
+/// Show the Steam floating on-screen keyboard over the game window.
+/// Called by the front-end whenever a text input gains focus so the
+/// Steam Deck keyboard appears without requiring manual player action.
+/// Returns `false` when not running under Steam or the `steam` feature is off.
+#[tauri::command]
+fn steam_show_floating_keyboard(state: tauri::State<'_, SteamRuntimeState>) -> bool {
+    state
+        .0
+        .lock()
+        .map(|r| r.show_floating_keyboard())
+        .unwrap_or(false)
+}
+
+/// Dismiss the Steam floating on-screen keyboard if it is currently visible.
+/// Returns `false` when not running under Steam or the `steam` feature is off.
+#[tauri::command]
+fn steam_hide_floating_keyboard(state: tauri::State<'_, SteamRuntimeState>) -> bool {
+    state
+        .0
+        .lock()
+        .map(|r| r.hide_floating_keyboard())
+        .unwrap_or(false)
+}
+
 // ── Managed state (owns the convsim-core child process) ───────────────────────
 
 struct CoreProcessState(Arc<Mutex<Option<Child>>>);
@@ -447,6 +471,8 @@ pub fn run() {
             steam_unlock_achievement,
             steam_increment_stat,
             steam_set_rich_presence,
+            steam_show_floating_keyboard,
+            steam_hide_floating_keyboard,
         ])
         .setup(move |app| {
             launch_or_verify_core(
