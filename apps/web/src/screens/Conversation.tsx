@@ -593,6 +593,7 @@ export default function Conversation() {
     }
 
 
+
     setSessionState(turnData.state)
     streamingRef.current = ''
     setStreamingText('')
@@ -621,6 +622,7 @@ export default function Conversation() {
       setError(endResult.error)
       setPhase('active')
     }
+    // silently continue even if endSession fails
   }
 
   function dismissBanner(id: number) {
