@@ -34,6 +34,18 @@ const validForm: SetupFormValues = {
 };
 
 describe('validateSetup', () => {
+  it('fails when LLM is not loaded', () => {
+    const result = validateSetup(
+      validForm,
+      { ...runtimeReady, llm_ready: false, llm_model_name: null },
+      false,
+    );
+    expect(result.valid).toBe(false);
+    const formError = result.errors.find((e) => e.field === '_form');
+    expect(formError).toBeDefined();
+    expect(formError!.message).toMatch(/LLM|model/i);
+  });
+
   it('passes a valid form with all runtime ready', () => {
     const result = validateSetup(
       { ...validForm, input_mode: 'push-to-talk', tts_enabled: true },

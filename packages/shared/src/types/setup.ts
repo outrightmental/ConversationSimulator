@@ -32,6 +32,14 @@ export function validateSetup(
 ): SetupValidationResult {
   const errors: SetupValidationError[] = [];
 
+  if (!runtime.llm_ready) {
+    errors.push({
+      field: '_form',
+      message:
+        'No LLM model is loaded. Install a model via Model Manager to start this scenario.',
+    });
+  }
+
   if (values.tts_enabled && !runtime.tts_ready) {
     errors.push({
       field: 'tts_enabled',
