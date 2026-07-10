@@ -317,7 +317,7 @@ describe('POST /api/sessions — launch imported pack scenario', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/sessions',
-      payload: launchPayload({ difficulty: 'easy' }),
+      payload: launchPayload({ difficulty: 'warm' }),
     });
     expect(res.statusCode).toBe(400);
   });

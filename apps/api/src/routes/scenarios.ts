@@ -14,22 +14,26 @@ export function setScenariosDbPath(dbPath: string | null): void {
 function buildDifficultyConfig(
   rawDiff: { default?: string; options?: Record<string, unknown> } | undefined,
 ): ScenarioInfo['difficulty'] {
-  const defaultDiff = (rawDiff?.default ?? 'normal') as ScenarioDifficulty;
+  const defaultDiff = (rawDiff?.default ?? 'standard') as ScenarioDifficulty;
   const rawOptions = (rawDiff?.options ?? {}) as Record<string, Record<string, unknown>>;
   const options: Partial<Record<ScenarioDifficulty, DifficultyOption>> = {};
 
+  const validPresets = new Set<string>(['warm', 'standard', 'hard', 'adversarial']);
   for (const [key, val] of Object.entries(rawOptions)) {
-    if (key === 'easy' || key === 'normal' || key === 'hard') {
-      options[key] = {
-        npc_patience_modifier: (val['npc_patience_modifier'] as number | undefined) ?? 0,
-        challenge_frequency:
-          (val['challenge_frequency'] as 'low' | 'medium' | 'high' | undefined) ?? 'medium',
+    if (validPresets.has(key)) {
+      options[key as ScenarioDifficulty] = {
+        patience:      (val['patience']      as number | undefined),
+        volatility:    (val['volatility']    as number | undefined),
+        disclosure:    (val['disclosure']    as number | undefined),
+        time_pressure: (val['time_pressure'] as number | undefined),
+        label:         (val['label']         as string | undefined),
+        description:   (val['description']   as string | undefined),
       };
     }
   }
 
   if (Object.keys(options).length === 0) {
-    options['normal'] = { npc_patience_modifier: 0, challenge_frequency: 'medium' };
+    options['standard'] = { patience: 50, volatility: 50, disclosure: 50, time_pressure: 50 };
   }
 
   return { default: defaultDiff, options };
