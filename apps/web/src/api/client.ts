@@ -309,11 +309,14 @@ export const api = {
   getDataFolder(): Promise<{ path: string }> {
     return get<{ path: string }>('/privacy/data-folder')
   },
-  getFolders(): Promise<{ data: string; logs: string; models: string; packs: string }> {
-    return get<{ data: string; logs: string; models: string; packs: string }>('/privacy/folders')
+  getFolders(): Promise<{ data: string; logs: string; models: string; packs: string; exports: string }> {
+    return get<{ data: string; logs: string; models: string; packs: string; exports: string }>('/privacy/folders')
   },
   clearLocalData(): Promise<{ deleted_sessions: number }> {
     return post<{ deleted_sessions: number }>('/privacy/clear')
+  },
+  createCrashBundle(): Promise<{ bundle_path: string; notice: string }> {
+    return post<{ bundle_path: string; notice: string }>('/diag/crash-bundle')
   },
   deleteSession(sessionId: string): Promise<void> {
     return del(`/sessions/${sessionId}`)

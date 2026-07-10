@@ -7,6 +7,7 @@ let _dataFolderPath = ':memory:';
 let _logsFolderPath = '';
 let _modelsFolderPath = '';
 let _packsFolderPath = '';
+let _exportsFolderPath = '';
 
 export function setDataFolderPath(p: string): void {
   _dataFolderPath = p;
@@ -28,11 +29,16 @@ export function setPacksFolderPath(p: string): void {
   _packsFolderPath = p;
 }
 
+export function setExportsFolderPath(p: string): void {
+  _exportsFolderPath = p;
+}
+
 export interface FoldersResponse {
   data: string;
   logs: string;
   models: string;
   packs: string;
+  exports: string;
 }
 
 interface SessionRow {
@@ -67,6 +73,7 @@ export async function privacyRoutes(app: FastifyInstance) {
       logs: _logsFolderPath,
       models: _modelsFolderPath,
       packs: _packsFolderPath,
+      exports: _exportsFolderPath,
     };
   });
 

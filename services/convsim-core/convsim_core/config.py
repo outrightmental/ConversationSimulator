@@ -11,6 +11,7 @@ _DEFAULT_DATA_DIR = str(Path.home() / ".convsim" / "data")
 _DEFAULT_LOG_DIR = str(Path.home() / ".convsim" / "logs")
 _DEFAULT_DB_DIR = str(Path.home() / ".convsim" / "db")
 _DEFAULT_PACKS_DIR = str(Path.home() / ".convsim" / "packs")
+_DEFAULT_EXPORTS_DIR = str(Path.home() / ".convsim" / "exports")
 # Read-only bundled official packs live in the repo's packs/official directory.
 # Resolve it relative to this file so the default works regardless of the
 # process CWD (config.py -> convsim_core -> convsim-core -> services -> repo root).
@@ -48,6 +49,7 @@ class ServiceConfig(BaseSettings):
     # Workbench also uses it as the editable local-dev pack root, falling back
     # to <packs_dir>/local-dev when unset.
     local_dev_packs_dir: Optional[str] = None
+    exports_dir: str = _DEFAULT_EXPORTS_DIR
     models_dir: str = str(Path.home() / ".convsim" / "models" / "llm")
     lan_access_enabled: bool = False
     runtime_id: str = "fake"

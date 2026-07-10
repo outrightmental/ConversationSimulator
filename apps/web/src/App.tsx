@@ -10,6 +10,7 @@ import Debrief from './screens/Debrief'
 import CreatorWorkbench from './screens/CreatorWorkbench'
 import Settings from './screens/Settings'
 import ModelManager from './screens/ModelManager'
+import Support from './screens/Support'
 import FirstRunWizard from './screens/FirstRunWizard'
 import CoreStartupGuard from './screens/CoreStartup'
 import { SETUP_KEYS } from './privacyPrefs'
@@ -41,6 +42,7 @@ export default function App() {
               <Route path="/workbench" element={<CreatorWorkbench />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/model-manager" element={<ModelManager />} />
+              <Route path="/support" element={<Support />} />
             </Route>
           </Route>
         </Routes>
