@@ -288,7 +288,11 @@ class TestForbiddenPatterns:
             if size <= WEIGHT_SIZE_THRESHOLD:
                 continue
             try:
-                magic = f.read_bytes()[:4]
+                # Read only the header — these files are >1 MiB (and weight
+                # files can be many GB), so never load the whole file to check
+                # 4 magic bytes.
+                with f.open("rb") as fh:
+                    magic = fh.read(4)
             except OSError:
                 continue
             # ELF: 7f 45 4c 46 — PE: 4d 5a
