@@ -282,7 +282,18 @@ export const en = {
       label: 'Interface language',
     },
     relationshipMemory: {
+      heading: 'NPC relationship memory',
+      description:
+        'After each completed session the app stores a short summary of your practice patterns for each NPC. This allows NPCs to exhibit subtle continuity across sessions. The summary never contains raw transcript text and you can delete any entry here.',
+      loading: 'Loading…',
+      empty: 'No NPC memories stored yet. Memories are created after completing a session and generating a debrief.',
+      sessionCount_one: '{{count}} session',
+      sessionCount_other: '{{count}} sessions',
+      delete: 'Delete',
+      deleting: 'Deleting…',
       deleteLabel: 'Delete memory for {{npc}}',
+      clearAll: 'Clear all NPC memories',
+      clearing: 'Clearing…',
     },
   },
   debrief: {

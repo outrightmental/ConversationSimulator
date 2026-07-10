@@ -868,21 +868,19 @@ export default function Settings() {
 
       {/* NPC relationship memory */}
       <section style={{ marginBottom: '2rem' }} data-testid="relationship-memory-section">
-        <SectionHeading>NPC relationship memory</SectionHeading>
+        <SectionHeading>{t('settings.relationshipMemory.heading')}</SectionHeading>
         <p style={{ fontSize: '0.875rem', color: '#a1a1aa', marginBottom: '0.75rem' }}>
-          After each completed session the app stores a short summary of your practice patterns for each NPC. This
-          allows NPCs to exhibit subtle continuity across sessions. The summary never contains raw transcript text
-          and you can delete any entry here.
+          {t('settings.relationshipMemory.description')}
         </p>
         {recapsError && (
           <ApiErrorView error={recapsError} onRetry={loadRecaps} context="Settings-RelationshipMemory" />
         )}
         {!recapsError && recaps === null && (
-          <p style={{ fontSize: '0.875rem', color: '#a1a1aa' }}>Loading&hellip;</p>
+          <p style={{ fontSize: '0.875rem', color: '#a1a1aa' }}>{t('settings.relationshipMemory.loading')}</p>
         )}
         {!recapsError && recaps !== null && recaps.length === 0 && (
           <p data-testid="no-recaps" style={{ fontSize: '0.875rem', color: '#a1a1aa' }}>
-            No NPC memories stored yet. Memories are created after completing a session and generating a debrief.
+            {t('settings.relationshipMemory.empty')}
           </p>
         )}
         {!recapsError && recaps !== null && recaps.length > 0 && (
@@ -908,7 +906,9 @@ export default function Settings() {
                       <span style={{ fontWeight: 500, color: '#d4d4d8' }}>{r.npc_id}</span>
                       <span style={{ color: '#71717a', marginLeft: '0.4rem', fontSize: '0.8rem' }}>{r.pack_id}</span>
                       <span style={{ color: '#71717a', marginLeft: '0.5rem', fontSize: '0.75rem' }}>
-                        {r.session_count} session{r.session_count !== 1 ? 's' : ''}
+                        {r.session_count === 1
+                          ? t('settings.relationshipMemory.sessionCount_one', { count: 1 })
+                          : t('settings.relationshipMemory.sessionCount_other', { count: r.session_count })}
                       </span>
                       {r.key_observations.length > 0 && (
                         <ul style={{ margin: '0.25rem 0 0 0', padding: '0 0 0 1rem', fontSize: '0.8rem', color: '#a1a1aa' }}>
@@ -933,7 +933,9 @@ export default function Settings() {
                         fontSize: '0.8rem',
                       }}
                     >
-                      {isDeleting ? 'Deleting…' : 'Delete'}
+                      {isDeleting
+                        ? t('settings.relationshipMemory.deleting')
+                        : t('settings.relationshipMemory.delete')}
                     </button>
                   </li>
                 )
@@ -954,7 +956,9 @@ export default function Settings() {
                 fontSize: '0.875rem',
               }}
             >
-              {clearingRecaps ? 'Clearing…' : 'Clear all NPC memories'}
+              {clearingRecaps
+                ? t('settings.relationshipMemory.clearing')
+                : t('settings.relationshipMemory.clearAll')}
             </button>
           </>
         )}
