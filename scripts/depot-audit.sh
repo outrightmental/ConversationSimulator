@@ -36,8 +36,6 @@
 #   1  One or more violations found.
 set -uo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-
 # ── Parse arguments ────────────────────────────────────────────────────────────
 
 DEPOT_DIR=""
