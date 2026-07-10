@@ -25,6 +25,11 @@ struct CoreStatusPayload {
 /// via `get_steam_status`.  Initialised once during `setup()`.
 struct SteamState(Arc<Mutex<steam::SteamStatus>>);
 
+/// Holds the live Steamworks runtime handle for achievement/stat/rich-presence
+/// calls issued from the front-end. Always present; methods are no-ops outside
+/// Steam or when the `steam` feature is disabled.
+struct SteamRuntimeState(Arc<Mutex<steam::SteamRuntime>>);
+
 /// Returns the current Steam integration status.
 /// Safe to call on non-Steam builds; always returns `is_steam_enabled: false`
 /// unless the `steam` Cargo feature is enabled and Steam is running.
@@ -35,6 +40,50 @@ fn get_steam_status(state: tauri::State<'_, SteamState>) -> steam::SteamStatus {
         .lock()
         .map(|g| g.clone())
         .unwrap_or_default()
+}
+
+/// Unlock a Steam achievement by its Steamworks API name.
+/// Returns `false` when not running under Steam or the `steam` feature is off.
+#[tauri::command]
+fn steam_unlock_achievement(
+    name: String,
+    state: tauri::State<'_, SteamRuntimeState>,
+) -> bool {
+    state
+        .0
+        .lock()
+        .map(|r| r.unlock_achievement(&name))
+        .unwrap_or(false)
+}
+
+/// Increment an integer stat by 1 and persist it to Steam.
+/// Returns `false` when not running under Steam or the `steam` feature is off.
+#[tauri::command]
+fn steam_increment_stat(
+    name: String,
+    state: tauri::State<'_, SteamRuntimeState>,
+) -> bool {
+    state
+        .0
+        .lock()
+        .map(|r| r.increment_stat(&name))
+        .unwrap_or(false)
+}
+
+/// Set the player's Steam rich presence to a generic activity token.
+/// Use the token constants from `steam::rich_presence` to keep disclosure
+/// generic (no session details, scenario names, or transcript content).
+/// Returns `false` when not running under Steam or the `steam` feature is off.
+#[tauri::command]
+fn steam_set_rich_presence(
+    value: String,
+    state: tauri::State<'_, SteamRuntimeState>,
+) -> bool {
+    state
+        .0
+        .lock()
+        .map(|r| r.set_rich_presence(&value))
+        .unwrap_or(false)
 }
 
 // ── Managed state (owns the convsim-core child process) ───────────────────────
@@ -350,8 +399,12 @@ pub fn run() {
 
     // Initialise the Steam bridge early so the status is available before the
     // webview requests it. Gracefully returns a disabled status when Steam is
-    // absent or the `steam` Cargo feature is off.
-    let steam_status = Arc::new(Mutex::new(steam::init()));
+    // absent or the `steam` Cargo feature is off. The runtime handle is kept
+    // alive for the process lifetime to service achievement/stat/rich-presence
+    // commands.
+    let (steam_status_val, steam_runtime_val) = steam::init();
+    let steam_status = Arc::new(Mutex::new(steam_status_val));
+    let steam_runtime = Arc::new(Mutex::new(steam_runtime_val));
 
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -360,7 +413,14 @@ pub fn run() {
         .manage(CoreProcessState(Arc::clone(&process_inner)))
         .manage(CoreStatusState(Arc::clone(&status_inner)))
         .manage(SteamState(Arc::clone(&steam_status)))
-        .invoke_handler(tauri::generate_handler![get_core_status, get_steam_status])
+        .manage(SteamRuntimeState(Arc::clone(&steam_runtime)))
+        .invoke_handler(tauri::generate_handler![
+            get_core_status,
+            get_steam_status,
+            steam_unlock_achievement,
+            steam_increment_stat,
+            steam_set_rich_presence,
+        ])
         .setup(move |app| {
             launch_or_verify_core(
                 app.handle().clone(),
