@@ -127,6 +127,26 @@ describe('api.createSession — content-type guard', () => {
       expect(result.error.kind).toBe('runtime-unreachable');
     }
   });
+
+  it('returns runtime-unreachable when an ERROR response carries an HTML body', async () => {
+    // A reverse proxy / static server can answer a failing API route with an HTML
+    // error page (502/503/504, or a 404 SPA fallback). That raw markup must never
+    // become the http-error message — it maps to the same designed degraded state.
+    const html = '<!doctype html><html><body>502 Bad Gateway</body></html>';
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 502,
+      statusText: 'Bad Gateway',
+      text: () => Promise.resolve(html),
+    }));
+    const result = await api.getScenario('some-id');
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.kind).toBe('runtime-unreachable');
+      expect(result.error.message).not.toContain('<!doctype');
+      expect(result.error.message).not.toContain('<html');
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
