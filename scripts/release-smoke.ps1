@@ -379,7 +379,7 @@ function Invoke-SmokeTextSession {
     try {
         # scenario_id is the bare registry id (not "pack/scenario"); player_role_name
         # is required by POST /api/sessions. See services/convsim-core routers/sessions.py.
-        $createBody = '{"scenario_id":"behavioral_interview","player_role_name":"Smoke Tester","difficulty":"normal","language":"en","input_mode":"text-only","tts_enabled":false}'
+        $createBody = '{"scenario_id":"behavioral_interview","player_role_name":"Smoke Tester","difficulty":"standard","language":"en","input_mode":"text-only","tts_enabled":false}'
         $createResp = Invoke-WebRequest -Uri "$CoreUrl/api/sessions" -Method POST `
             -ContentType "application/json" -Body $createBody -TimeoutSec 10 -UseBasicParsing -ErrorAction Stop
         if ($createResp.StatusCode -ne 201) {

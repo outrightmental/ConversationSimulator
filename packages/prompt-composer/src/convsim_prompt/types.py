@@ -29,8 +29,15 @@ class NpcData:
 
 @dataclass
 class DifficultySettings:
-    npc_patience_modifier: int = 0
-    challenge_frequency: str = "medium"
+    """Knob values for one named difficulty preset.
+
+    Each knob is 0-100.  The midpoint (50) is the neutral baseline; values above
+    or below steer NPC behaviour in the direction described.
+    """
+    patience: int = 50       # higher → NPC stays engaged longer
+    volatility: int = 50     # higher → state meters shift more per turn
+    disclosure: int = 50     # higher → NPC volunteers more information
+    time_pressure: int = 50  # higher → NPC signals urgency / turn budget pressure
 
 
 @dataclass
@@ -49,7 +56,7 @@ class ScenarioData:
     player_role_label: str
     player_role_brief: str
     npc: NpcData
-    difficulty: str = "normal"
+    difficulty: str = "standard"
     difficulty_settings: Optional[DifficultySettings] = None
     response_style: Optional[ResponseStyleOverrides] = None
     opening_npc_says: Optional[str] = None

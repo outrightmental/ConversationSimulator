@@ -164,7 +164,7 @@ def _create_and_start(
     """
     setup = {
         "scenario_id": scenario_id,
-        "difficulty": "normal",
+        "difficulty": "standard",
         "player_role_name": "Smoke Tester",
         "language": language,
         "input_mode": "push-to-talk",

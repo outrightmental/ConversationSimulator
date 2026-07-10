@@ -12,7 +12,7 @@ description: >-
 
 seed: 42
 input_mode: text
-difficulty: normal
+difficulty: standard
 
 turns:
   - turn: 1
@@ -153,5 +153,5 @@ static_assertions:
     check: "contains scenarios/holding_your_ground.yaml"
 
   - description: Hard difficulty applies a negative patience modifier
-    path: scenario.difficulty.options.hard.npc_patience_modifier
-    check: "equals -20"
+    path: scenario.difficulty.options.hard.patience
+    check: "lte 33"

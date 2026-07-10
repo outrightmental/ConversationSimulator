@@ -49,7 +49,7 @@ export interface ScenarioFile {
   description: string;
   player_role: string;
   goals: string[];
-  difficulty: 'easy' | 'medium' | 'hard';
+  difficulty: 'warm' | 'standard' | 'hard' | 'adversarial';
   duration_minutes: number;
   npc_ref: string;
   rubric_ref?: string;

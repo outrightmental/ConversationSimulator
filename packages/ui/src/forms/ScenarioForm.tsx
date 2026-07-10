@@ -211,9 +211,10 @@ export function ScenarioForm({ values, errors, onChange }: ScenarioFormProps) {
           onChange={(e) => onChange('difficulty', e.target.value)}
         >
           <option value="">— choose —</option>
-          <option value="easy">Easy — forgiving, patient NPC</option>
-          <option value="medium">Medium — balanced challenge</option>
+          <option value="warm">Warm — forgiving, patient NPC</option>
+          <option value="standard">Standard — balanced challenge</option>
           <option value="hard">Hard — demanding, pushes back</option>
+          <option value="adversarial">Adversarial — highly skeptical NPC</option>
         </select>
       </FieldWrapper>
 
