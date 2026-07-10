@@ -1033,3 +1033,237 @@ class TestPromptComposerWiring:
         sp = captured[0]
         assert sp.index("LAYER:SAFETY_POLICY") < sp.index("LAYER:SCENARIO_BRIEF")
         assert sp.index("LAYER:SCENARIO_BRIEF") < sp.index("LAYER:OUTPUT_SCHEMA")
+
+
+# ---------------------------------------------------------------------------
+# Issue #200: structured output path and debug API endpoint
+# ---------------------------------------------------------------------------
+
+
+class TestStructuredOutputPath:
+    """When ChatFinal.structured is set the pipeline uses it and records the fact."""
+
+    @pytest.mark.asyncio
+    async def test_native_structured_output_recorded_in_debug_event(self):
+        """FakeChatRuntime returns ChatFinal.structured; debug event must record it."""
+        conn = _make_unit_db()
+        row = _insert_unit_session(conn)
+
+        await process_turn(
+            session_row=row,
+            player_text="Hello, I'm ready to begin.",
+            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            max_turns=10,
+            runtime=FakeChatRuntime(),
+            conn=conn,
+        )
+
+        debug = _get_event_payloads(conn, "sess-unit", "debug")
+        assert len(debug) == 1
+        assert debug[0]["used_native_structured_output"] is True
+
+    @pytest.mark.asyncio
+    async def test_no_native_structured_output_recorded_for_plain_runtime(self):
+        """A runtime that does not set ChatFinal.structured records False."""
+        conn = _make_unit_db()
+        row = _insert_unit_session(conn)
+
+        class _PlainTextRuntime(FakeChatRuntime):
+            """Runtime that always returns plain text with no structured field."""
+            async def _stream(self, request: ChatRequest):
+                from convsim_core.runtime.types import ChatFinal
+                import json as _json
+                structured_response = {
+                    "npc_utterance": "That is a great question.",
+                    "npc_emotion": "curious",
+                    "state_delta": {},
+                    "event_flags": [],
+                    "rubric_observations": [],
+                    "safety": {"status": "ok"},
+                    "session_control": {"continue_session": True},
+                }
+                text = _json.dumps(structured_response)
+                yield ChatFinal(
+                    text=text,
+                    model_id="fake-small",
+                    input_tokens=5,
+                    output_tokens=10,
+                    structured=None,  # no native structured output
+                )
+
+        conn2 = _make_unit_db()
+        row2 = _insert_unit_session(conn2, session_id="sess-unit")
+
+        await process_turn(
+            session_row=row2,
+            player_text="What are you looking for?",
+            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            max_turns=10,
+            runtime=_PlainTextRuntime(),
+            conn=conn2,
+        )
+
+        debug = _get_event_payloads(conn2, "sess-unit", "debug")
+        assert len(debug) == 1
+        assert debug[0]["used_native_structured_output"] is False
+
+    @pytest.mark.asyncio
+    async def test_structured_output_parses_successfully(self):
+        """Native structured output bypasses JSON extraction and parses cleanly."""
+        conn = _make_unit_db()
+        row = _insert_unit_session(conn)
+
+        result = await process_turn(
+            session_row=row,
+            player_text="Tell me about yourself.",
+            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            max_turns=10,
+            runtime=FakeChatRuntime(),
+            conn=conn,
+        )
+
+        # FakeChatRuntime returns a valid NPC structured response; must parse cleanly.
+        assert result.used_fallback is False
+        assert result.npc_utterance == "Hello there. I am a simulated NPC."
+        assert result.npc_emotion == "neutral"
+
+    @pytest.mark.asyncio
+    async def test_raw_text_stored_separately_from_parse_input(self):
+        """raw_output_json in the NPC turn row reflects the model's actual text output."""
+        conn = _make_unit_db()
+        row = _insert_unit_session(conn)
+
+        await process_turn(
+            session_row=row,
+            player_text="Let's get started.",
+            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            max_turns=10,
+            runtime=FakeChatRuntime(),
+            conn=conn,
+        )
+
+        # NPC turn row has turn_number=2 (game_turn=1, npc_row = 1*2)
+        npc_row = conn.execute(
+            "SELECT raw_output_json FROM turn_session_turns "
+            "WHERE session_id = 'sess-unit' AND turn_number = 2"
+        ).fetchone()
+        assert npc_row is not None
+        assert npc_row["raw_output_json"] is not None
+
+
+class TestDebugEndpoint:
+    """Tests for GET /api/sessions/{session_id}/debug."""
+
+    def test_debug_returns_404_for_unknown_session(self, client):
+        res = client.get("/api/sessions/sess-doesnotexist/debug")
+        assert res.status_code == 404
+
+    def test_debug_returns_empty_turns_before_any_turn(self, client):
+        session_id = _create_and_start(client)
+        res = client.get(f"/api/sessions/{session_id}/debug")
+        assert res.status_code == 200
+        body = res.json()
+        assert body["session_id"] == session_id
+        assert body["turns"] == []
+
+    def test_debug_returns_turn_data_after_one_turn(self, client):
+        session_id = _create_and_start(client)
+        client.post(
+            f"/api/sessions/{session_id}/turn",
+            json={"content": "I have strong communication skills."},
+        )
+        res = client.get(f"/api/sessions/{session_id}/debug")
+        assert res.status_code == 200
+        body = res.json()
+        assert body["session_id"] == session_id
+        assert len(body["turns"]) == 1
+        turn = body["turns"][0]
+        assert turn["turn_number"] == 1
+
+    def test_debug_exposes_raw_npc_output(self, client):
+        session_id = _create_and_start(client)
+        client.post(
+            f"/api/sessions/{session_id}/turn",
+            json={"content": "My background is in software engineering."},
+        )
+        res = client.get(f"/api/sessions/{session_id}/debug")
+        assert res.status_code == 200
+        turn = res.json()["turns"][0]
+        # raw_npc_output is the raw text from the model (not None for a successful turn).
+        assert turn["raw_npc_output"] is not None
+        assert isinstance(turn["raw_npc_output"], str)
+
+    def test_debug_reports_native_structured_output_flag(self, client):
+        """FakeChatRuntime sets ChatFinal.structured so the flag must be True."""
+        session_id = _create_and_start(client)
+        client.post(
+            f"/api/sessions/{session_id}/turn",
+            json={"content": "I am excited about this opportunity."},
+        )
+        res = client.get(f"/api/sessions/{session_id}/debug")
+        assert res.status_code == 200
+        turn = res.json()["turns"][0]
+        assert turn["used_native_structured_output"] is True
+
+    def test_debug_includes_prompt_metadata(self, client):
+        session_id = _create_and_start(client)
+        client.post(
+            f"/api/sessions/{session_id}/turn",
+            json={"content": "Let me explain my experience."},
+        )
+        res = client.get(f"/api/sessions/{session_id}/debug")
+        assert res.status_code == 200
+        turn = res.json()["turns"][0]
+        assert turn["prompt_metadata"] is not None
+        assert "estimated_token_count" in turn["prompt_metadata"]
+        assert "layers_present" in turn["prompt_metadata"]
+
+    def test_debug_parse_events_present(self, client):
+        session_id = _create_and_start(client)
+        client.post(
+            f"/api/sessions/{session_id}/turn",
+            json={"content": "Here is my response."},
+        )
+        res = client.get(f"/api/sessions/{session_id}/debug")
+        assert res.status_code == 200
+        turn = res.json()["turns"][0]
+        # FakeChatRuntime produces clean output — no parse events expected.
+        assert isinstance(turn["parse_events"], list)
+
+    def test_debug_accumulates_across_turns(self, client):
+        session_id = _create_and_start(client)
+        client.post(
+            f"/api/sessions/{session_id}/turn",
+            json={"content": "First turn content."},
+        )
+        client.post(
+            f"/api/sessions/{session_id}/turn",
+            json={"content": "Second turn content."},
+        )
+        res = client.get(f"/api/sessions/{session_id}/debug")
+        assert res.status_code == 200
+        turns = res.json()["turns"]
+        assert len(turns) == 2
+        assert turns[0]["turn_number"] == 1
+        assert turns[1]["turn_number"] == 2
+
+    def test_debug_fallback_flag_set_when_runtime_returns_garbage(self, tmp_config):
+        from convsim_prompt import SAFE_FALLBACK_UTTERANCE
+        app = create_app(tmp_config)
+        with TestClient(app) as client:
+            res = client.post("/api/sessions", json=_VALID_SETUP)
+            session_id = res.json()["session_id"]
+            client.post(f"/api/sessions/{session_id}/start")
+
+            app.state.runtime = _GarbageRuntime()
+
+            client.post(
+                f"/api/sessions/{session_id}/turn",
+                json={"content": "This will trigger fallback."},
+            )
+
+            res = client.get(f"/api/sessions/{session_id}/debug")
+        assert res.status_code == 200
+        turn = res.json()["turns"][0]
+        assert turn["used_fallback"] is True
+        assert turn["used_native_structured_output"] is False

@@ -180,6 +180,20 @@ class SessionExportResponse(BaseModel):
     debrief: Optional[Dict[str, Any]] = None
 
 
+class TurnDebugDetail(BaseModel):
+    turn_number: int
+    raw_npc_output: Optional[str]
+    used_native_structured_output: bool
+    used_fallback: bool
+    parse_events: List[Dict[str, Any]]
+    prompt_metadata: Optional[Dict[str, Any]]
+
+
+class SessionDebugResponse(BaseModel):
+    session_id: str
+    turns: List[TurnDebugDetail]
+
+
 class DebriefTurningPoint(BaseModel):
     turn_number: int
     description: str
@@ -520,6 +534,70 @@ async def end_session(session_id: str, request: Request) -> SessionEndResponse:
         state="Ended",
         ending_type=ending_type,
     )
+
+
+@router.get("/{session_id}/debug", response_model=SessionDebugResponse)
+async def get_session_debug(session_id: str, request: Request) -> SessionDebugResponse:
+    """Dev-only: return raw NPC output and validation events for every turn.
+
+    Exposes the raw model output text, parse/validation events, prompt metadata,
+    and structured-output flags for each turn.  This data is stored locally and
+    never sent to any remote service.  Do not surface this endpoint in the normal
+    player UI.
+    """
+    db = request.app.state.db
+    conn = db.connection()
+    row = conn.execute(
+        "SELECT session_id FROM turn_sessions WHERE session_id = ?", (session_id,)
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Session {session_id!r} not found")
+
+    # NPC turn rows store the raw model output.  turn_number for NPC rows is
+    # game_turn * 2 (player is game_turn * 2 - 1), so we divide by 2 to map
+    # back to the game turn used in turn_session_events.
+    npc_rows = conn.execute(
+        "SELECT turn_number, raw_output_json FROM turn_session_turns "
+        "WHERE session_id = ? AND role = 'npc' ORDER BY turn_number ASC",
+        (session_id,),
+    ).fetchall()
+    raw_by_game_turn: Dict[int, Optional[str]] = {
+        t["turn_number"] // 2: t["raw_output_json"] for t in npc_rows
+    }
+
+    # Debug and prompt_metadata events share the same game turn number.
+    event_rows = conn.execute(
+        "SELECT turn_number, event_type, payload_json FROM turn_session_events "
+        "WHERE session_id = ? AND event_type IN ('debug', 'prompt_metadata') "
+        "ORDER BY id ASC",
+        (session_id,),
+    ).fetchall()
+    debug_by_turn: Dict[int, Dict[str, Any]] = {}
+    prompt_by_turn: Dict[int, Dict[str, Any]] = {}
+    for e in event_rows:
+        tn = e["turn_number"]
+        if tn is None:
+            continue
+        payload = json.loads(e["payload_json"])
+        if e["event_type"] == "debug":
+            debug_by_turn[tn] = payload
+        else:
+            prompt_by_turn[tn] = payload
+
+    all_game_turns = sorted(set(raw_by_game_turn) | set(debug_by_turn))
+    turns: List[TurnDebugDetail] = []
+    for game_turn in all_game_turns:
+        debug = debug_by_turn.get(game_turn, {})
+        turns.append(TurnDebugDetail(
+            turn_number=game_turn,
+            raw_npc_output=raw_by_game_turn.get(game_turn),
+            used_native_structured_output=debug.get("used_native_structured_output", False),
+            used_fallback=debug.get("used_fallback", False),
+            parse_events=debug.get("parse_events", []),
+            prompt_metadata=prompt_by_turn.get(game_turn),
+        ))
+
+    return SessionDebugResponse(session_id=session_id, turns=turns)
 
 
 @router.post("/{session_id}/debrief", response_model=DebriefResponse)
