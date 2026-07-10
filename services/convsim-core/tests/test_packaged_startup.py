@@ -83,43 +83,78 @@ class TestOfficialPacksDirResolution:
 
 
 class TestStableDataPaths:
-    """Verify that logs, db, data, packs, and models all route to ~/.convsim/."""
+    """Verify that all mutable paths route to the platform data root."""
+
+    def _platform_root(self):
+        from convsim_core.paths import platform_data_root
+        return platform_data_root()
 
     def test_log_dir_default(self):
         from convsim_core.config import ServiceConfig
         cfg = ServiceConfig()
-        assert Path(cfg.log_dir) == Path.home() / ".convsim" / "logs"
+        assert Path(cfg.log_dir) == self._platform_root() / "logs"
 
     def test_data_dir_default(self):
         from convsim_core.config import ServiceConfig
         cfg = ServiceConfig()
-        assert Path(cfg.data_dir) == Path.home() / ".convsim" / "data"
+        assert Path(cfg.data_dir) == self._platform_root() / "data"
 
     def test_db_dir_default(self):
         from convsim_core.config import ServiceConfig
         cfg = ServiceConfig()
-        assert Path(cfg.db_dir) == Path.home() / ".convsim" / "db"
+        assert Path(cfg.db_dir) == self._platform_root() / "db"
 
     def test_packs_dir_default(self):
         from convsim_core.config import ServiceConfig
         cfg = ServiceConfig()
-        assert Path(cfg.packs_dir) == Path.home() / ".convsim" / "packs"
+        assert Path(cfg.packs_dir) == self._platform_root() / "packs"
 
     def test_models_dir_default(self):
         from convsim_core.config import ServiceConfig
         cfg = ServiceConfig()
-        assert Path(cfg.models_dir) == Path.home() / ".convsim" / "models" / "llm"
+        assert Path(cfg.models_dir) == self._platform_root() / "models" / "llm"
 
-    def test_all_user_data_dirs_under_home_convsim(self):
-        """All mutable user data paths stay within ~/.convsim/."""
+    def test_cache_dir_default(self):
         from convsim_core.config import ServiceConfig
         cfg = ServiceConfig()
-        convsim_root = Path.home() / ".convsim"
-        mutable_dirs = [cfg.log_dir, cfg.data_dir, cfg.db_dir, cfg.packs_dir, cfg.models_dir]
+        assert Path(cfg.cache_dir) == self._platform_root() / "cache"
+
+    def test_crash_bundles_dir_default(self):
+        from convsim_core.config import ServiceConfig
+        cfg = ServiceConfig()
+        assert Path(cfg.crash_bundles_dir) == self._platform_root() / "crashes"
+
+    def test_all_user_data_dirs_under_platform_root(self):
+        """All mutable paths must stay within the platform data root."""
+        from convsim_core.config import ServiceConfig
+        cfg = ServiceConfig()
+        root = self._platform_root()
+        mutable_dirs = [
+            cfg.log_dir, cfg.data_dir, cfg.db_dir,
+            cfg.packs_dir, cfg.models_dir, cfg.cache_dir, cfg.crash_bundles_dir,
+        ]
         for d in mutable_dirs:
-            assert Path(d).is_relative_to(convsim_root), (
-                f"{d!r} escapes ~/.convsim/ — stable per-user path broken"
+            assert Path(d).is_relative_to(root), (
+                f"{d!r} escapes the platform data root {root!r}"
             )
+
+    def test_data_root_env_override_redirects_all_paths(self, tmp_path):
+        """CONVSIM_DATA_ROOT must redirect every default sub-directory."""
+        with patch.dict(os.environ, {"CONVSIM_DATA_ROOT": str(tmp_path)}):
+            cfg_mod = _reload_config()
+            from convsim_core.config import ServiceConfig
+            cfg = ServiceConfig()
+            for attr in ("data_dir", "log_dir", "db_dir", "packs_dir", "exports_dir",
+                         "cache_dir", "crash_bundles_dir"):
+                val = Path(getattr(cfg, attr))
+                assert val.is_relative_to(tmp_path), (
+                    f"{attr}={val!r} does not sit under CONVSIM_DATA_ROOT={tmp_path}"
+                )
+            # models_dir is overridable via its own env var but defaults under root too.
+            assert Path(cfg.models_dir).is_relative_to(tmp_path), (
+                f"models_dir={cfg.models_dir!r} does not sit under CONVSIM_DATA_ROOT={tmp_path}"
+            )
+            _ = cfg_mod  # suppress unused import warning
 
 
 # ── Packaged environment simulation ──────────────────────────────────────────
