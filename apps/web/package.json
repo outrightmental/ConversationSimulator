@@ -13,6 +13,7 @@
     "lint": "eslint src"
   },
   "dependencies": {
+    "@convsim/scenario-schema": "workspace:*",
     "@convsim/shared": "workspace:*",
     "@convsim/ui": "workspace:*",
     "react": "^18.3.1",

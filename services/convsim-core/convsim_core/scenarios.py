@@ -7,7 +7,9 @@ pipeline-level metadata (max_turns, supported_languages).
 """
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from convsim_prompt.types import (
@@ -302,14 +304,121 @@ SCENARIOS: Dict[str, ScenarioInfo] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Dynamic scenario registry (workbench test sessions)
+# ---------------------------------------------------------------------------
+
+# Process-local registry for scenarios loaded from pack directories at runtime.
+# Entries persist for the lifetime of the process; the data volume is negligible
+# (one ScenarioInfo per active workbench test session).  Sessions cleaned up
+# through DELETE /api/sessions/{id} do not remove entries here — that's
+# acceptable for the workbench MVP where test sessions are short-lived.
+_dynamic_registry: Dict[str, ScenarioInfo] = {}
+_dynamic_lock = threading.Lock()
+
+
+def register_dynamic_scenario(scenario_id: str, info: ScenarioInfo) -> None:
+    """Register a temporary scenario (e.g., for a workbench test session)."""
+    with _dynamic_lock:
+        _dynamic_registry[scenario_id] = info
+
+
+def unregister_dynamic_scenario(scenario_id: str) -> None:
+    """Remove a dynamic scenario registration if present."""
+    with _dynamic_lock:
+        _dynamic_registry.pop(scenario_id, None)
+
+
 def get_scenario_info(scenario_id: str) -> ScenarioInfo | None:
     """Return the ScenarioInfo for the given ID, or None if unknown."""
-    return SCENARIOS.get(scenario_id)
+    return SCENARIOS.get(scenario_id) or _dynamic_registry.get(scenario_id)
 
 
 def get_scenario_data(scenario_id: str, difficulty: str = "normal") -> ScenarioData | None:
     """Return a ScenarioData configured for the given difficulty, or None if unknown."""
-    info = SCENARIOS.get(scenario_id)
+    info = get_scenario_info(scenario_id)
     if info is None:
         return None
     return info.get_scenario_data(difficulty)
+
+
+# ---------------------------------------------------------------------------
+# Pack scenario loader (for workbench test sessions)
+# ---------------------------------------------------------------------------
+
+
+def _npc_data_from_dict(raw: Dict[str, Any]) -> NpcData:
+    """Build an NpcData from a parsed NPC YAML dict (inline or file-loaded)."""
+    pub = raw.get("public_persona") or {}
+    priv = raw.get("private_persona") or {}
+    return NpcData(
+        npc_id=raw.get("npc_id") or "npc",
+        display_name=raw.get("display_name") or "NPC",
+        public_persona=NpcPublicPersona(
+            occupation=pub.get("occupation") or "",
+            speaking_style=pub.get("speaking_style") or "",
+            demeanor=pub.get("demeanor") or "",
+        ),
+        private_persona=NpcPrivatePersona(
+            hidden_agenda=list(priv.get("hidden_agenda") or []),
+            biases_to_simulate=list(priv.get("biases_to_simulate") or []),
+            boundaries=list(priv.get("boundaries") or []),
+        ),
+    )
+
+
+def load_scenario_info_from_pack(pack_dir: Path, scenario_rel_path: str) -> ScenarioInfo:
+    """Load a ScenarioInfo by reading scenario (and NPC) YAML files from a pack directory.
+
+    Raises ``ValueError`` or ``OSError`` if the files cannot be read or parsed.
+    """
+    import yaml  # local import — only needed for workbench test sessions
+
+    scenario_file = (pack_dir / scenario_rel_path).resolve()
+    raw: Dict[str, Any] = yaml.safe_load(scenario_file.read_text(encoding="utf-8")) or {}
+    if not isinstance(raw, dict):
+        raise ValueError(f"Scenario YAML is not a mapping: {scenario_rel_path}")
+
+    # NPC: resolve ref or use inline dict
+    npc_section = raw.get("npc") or {}
+    npc_ref: Optional[str] = npc_section.get("ref") if isinstance(npc_section, dict) else None
+    if npc_ref:
+        npc_file = (scenario_file.parent / npc_ref).resolve()
+        npc_raw: Dict[str, Any] = yaml.safe_load(npc_file.read_text(encoding="utf-8")) or {}
+        if not isinstance(npc_raw, dict):
+            npc_raw = {}
+    else:
+        npc_raw = npc_section if isinstance(npc_section, dict) else {}
+
+    npc = _npc_data_from_dict(npc_raw)
+
+    player_role = raw.get("player_role") or {}
+    opening_section = raw.get("opening") or {}
+    opening_npc_says: str = opening_section.get("npc_says") or "Hello. Let's begin."
+
+    goals_section = raw.get("goals") or {}
+    player_visible_goals: List[str] = list(goals_section.get("player_visible") or [])
+
+    duration = raw.get("duration") or {}
+    max_turns: int = int(duration.get("max_turns") or 12)
+
+    state_section = raw.get("state") or {}
+    state_variable_overrides: Optional[Dict[str, Any]] = state_section.get("variables") or None
+
+    scenario_data = ScenarioData(
+        scenario_id=raw.get("scenario_id") or "workbench_test",
+        title=raw.get("title") or "Workbench Test",
+        player_role_label=player_role.get("label") or "Player",
+        player_role_brief=player_role.get("brief") or "",
+        npc=npc,
+        player_visible_goals=player_visible_goals,
+    )
+
+    return ScenarioInfo(
+        scenario_data=scenario_data,
+        max_turns=max_turns,
+        supported_languages=["en"],
+        difficulty_options={"normal": DifficultySettings()},
+        opening_npc_says=opening_npc_says,
+        state_variable_overrides=state_variable_overrides,
+    )

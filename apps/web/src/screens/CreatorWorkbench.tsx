@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState, useEffect, useCallback, useRef, type CSSProperties } from 'react'
 import { useBlocker } from 'react-router-dom'
+import { FormEditor } from '@convsim/ui'
+import type { PackFileType } from '@convsim/scenario-schema'
 import { api, type WorkbenchPack, type FileNode, type WorkbenchValidation, type WorkbenchValidationIssue, type WorkbenchImportValidationError } from '../api/client'
 
 // A validation response is only usable if it carries the expected error/warning
@@ -299,6 +301,19 @@ function FileTree({ nodes, selected, onSelect, depth = 0 }: FileTreeProps) {
 // FileEditor
 // ---------------------------------------------------------------------------
 
+function detectPackFileType(filePath: string): PackFileType | null {
+  const parts = filePath.split('/')
+  const name = parts[parts.length - 1] ?? ''
+  if (name === 'manifest.yaml' || name === 'manifest.yml') return 'manifest'
+  if (parts.length >= 2 && (name.endsWith('.yaml') || name.endsWith('.yml'))) {
+    const dir = parts[parts.length - 2]
+    if (dir === 'scenarios') return 'scenario'
+    if (dir === 'npcs') return 'npc'
+    if (dir === 'rubrics') return 'rubric'
+  }
+  return null
+}
+
 interface FileEditorProps {
   filePath: string
   content: string
@@ -308,6 +323,7 @@ interface FileEditorProps {
   saveError: string | null
   copying: boolean
   copyError: string | null
+  fileType: PackFileType | null
   onChange: (v: string) => void
   onSave: () => void
   onCopyToLocal?: () => void
@@ -322,12 +338,20 @@ function FileEditor({
   saveError,
   copying,
   copyError,
+  fileType,
   onChange,
   onSave,
   onCopyToLocal,
 }: FileEditorProps) {
   const ext = filePath.split('.').pop()?.toLowerCase() ?? ''
   const isMarkdown = ext === 'md'
+  const [editorMode, setEditorMode] = useState<'yaml' | 'form'>('yaml')
+
+  useEffect(() => {
+    setEditorMode('yaml')
+  }, [filePath])
+
+  const canUseFormEditor = editable && fileType !== null
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -346,6 +370,47 @@ function FileEditor({
         <code style={{ fontSize: '0.8rem', color: '#a1a1aa', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {filePath}
         </code>
+
+        {canUseFormEditor && (
+          <div
+            data-testid="editor-mode-toggle"
+            style={{ display: 'flex', border: '1px solid rgba(255,255,255,0.12)', borderRadius: '4px', overflow: 'hidden' }}
+          >
+            <button
+              data-testid="editor-mode-yaml"
+              onClick={() => setEditorMode('yaml')}
+              aria-pressed={editorMode === 'yaml'}
+              aria-label="YAML editor mode"
+              style={{
+                ...BTN,
+                padding: '0.15rem 0.5rem',
+                border: 'none',
+                borderRadius: 0,
+                background: editorMode === 'yaml' ? 'rgba(99,102,241,0.2)' : 'transparent',
+                color: editorMode === 'yaml' ? '#a5b4fc' : '#71717a',
+              }}
+            >
+              YAML
+            </button>
+            <button
+              data-testid="editor-mode-form"
+              onClick={() => setEditorMode('form')}
+              aria-pressed={editorMode === 'form'}
+              aria-label="Form editor mode"
+              style={{
+                ...BTN,
+                padding: '0.15rem 0.5rem',
+                border: 'none',
+                borderLeft: '1px solid rgba(255,255,255,0.12)',
+                borderRadius: 0,
+                background: editorMode === 'form' ? 'rgba(99,102,241,0.2)' : 'transparent',
+                color: editorMode === 'form' ? '#a5b4fc' : '#71717a',
+              }}
+            >
+              Form
+            </button>
+          </div>
+        )}
 
         {!editable && (
           <span
@@ -412,28 +477,38 @@ function FileEditor({
         </p>
       )}
 
-      {/* Editor */}
-      <textarea
-        data-testid="file-editor"
-        aria-label={`${isMarkdown ? 'Markdown' : 'YAML'} editor: ${filePath}`}
-        readOnly={!editable}
-        value={content}
-        onChange={(e) => onChange(e.target.value)}
-        spellCheck={false}
-        style={{
-          flex: 1,
-          padding: '0.75rem',
-          background: editable ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.15)',
-          color: editable ? '#e8e8ea' : '#71717a',
-          border: 'none',
-          outline: 'none',
-          fontFamily: 'monospace',
-          fontSize: '0.85rem',
-          lineHeight: 1.6,
-          resize: 'none',
-          cursor: editable ? 'text' : 'default',
-        }}
-      />
+      {/* Editor — form mode for recognized YAML types, raw textarea otherwise */}
+      {editorMode === 'form' && canUseFormEditor ? (
+        <div style={{ flex: 1, overflow: 'auto', padding: '0.75rem' }}>
+          <FormEditor
+            fileType={fileType}
+            initialYaml={content}
+            onChange={onChange}
+          />
+        </div>
+      ) : (
+        <textarea
+          data-testid="file-editor"
+          aria-label={`${isMarkdown ? 'Markdown' : 'YAML'} editor: ${filePath}`}
+          readOnly={!editable}
+          value={content}
+          onChange={(e) => onChange(e.target.value)}
+          spellCheck={false}
+          style={{
+            flex: 1,
+            padding: '0.75rem',
+            background: editable ? 'rgba(0,0,0,0.3)' : 'rgba(0,0,0,0.15)',
+            color: editable ? '#e8e8ea' : '#71717a',
+            border: 'none',
+            outline: 'none',
+            fontFamily: 'monospace',
+            fontSize: '0.85rem',
+            lineHeight: 1.6,
+            resize: 'none',
+            cursor: editable ? 'text' : 'default',
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -1769,6 +1844,7 @@ export default function CreatorWorkbench() {
                 saveError={saveError}
                 copying={copying}
                 copyError={copyError}
+                fileType={detectPackFileType(selectedFile)}
                 onChange={setEditorContent}
                 onSave={handleSave}
                 onCopyToLocal={!editorEditable ? handleCopyToLocal : undefined}
