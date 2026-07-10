@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Pack management endpoints: list, import (zip/folder), validate, and export."""
 import io
+import json
 import tempfile
 import zipfile
 from pathlib import Path
@@ -33,6 +34,10 @@ class _PackListItem(BaseModel):
     name: str
     scenario_count: int
     pack_root: Optional[str] = None
+    content_rating: Optional[str] = None
+    supported_languages: list[str] = []
+    tags: list[str] = []
+    validation_status: str = "unknown"
 
 
 class _PacksListResponse(BaseModel):
@@ -59,7 +64,9 @@ async def get_packs(request: Request) -> _PacksListResponse:
     conn = request.app.state.db.connection()
     rows = conn.execute(
         """
-        SELECT p.slug, p.name, p.source_path, COUNT(s.id) AS scenario_count
+        SELECT p.slug, p.name, p.source_path, COUNT(s.id) AS scenario_count,
+               p.content_rating, p.supported_languages_json, p.tags_json,
+               p.validation_status
         FROM packs p
         LEFT JOIN scenarios s ON s.pack_id = p.id
         GROUP BY p.id
@@ -72,6 +79,10 @@ async def get_packs(request: Request) -> _PacksListResponse:
             name=row["name"],
             scenario_count=row["scenario_count"],
             pack_root=row["source_path"],
+            content_rating=row["content_rating"],
+            supported_languages=json.loads(row["supported_languages_json"] or "[]"),
+            tags=json.loads(row["tags_json"] or "[]"),
+            validation_status=row["validation_status"] or "unknown",
         )
         for row in rows
     ]
