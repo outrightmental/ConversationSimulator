@@ -241,10 +241,14 @@ Answer all IARC questions based on the content present in the v1 launch build:
 
 ### 6.2 Expected IARC rating
 
-The answers above should produce a **PEGI 3 / Everyone** (E) rating or equivalent
-regional ratings. If the questionnaire produces a higher rating (e.g. PEGI 12 or
-T), review whether the answers match the actual content and consult Outright Mental
-before submitting.
+Because the official packs contain mild language for workplace and social
+conflict scenarios, the answers above are expected to produce a rating in the
+**ESRB E10+ / Teen** and **PEGI 7 / 12** range (or the equivalent regional
+ratings) — see the expected rating outcome table in
+[`publishing/STEAM_STORE_PAGE.md` — IARC / Steam content questionnaire answers](STEAM_STORE_PAGE.md#iarc--steam-content-questionnaire-answers).
+An 18+ age gate is **not** expected and must not be requested. If Valve assigns
+a rating higher than **PEGI 12 / ESRB T**, review whether the answers match the
+actual content and consult Outright Mental before accepting the rating.
 
 - [ ] IARC questionnaire completed.
 - [ ] Resulting content descriptors reviewed and approved by Outright Mental.
