@@ -138,7 +138,9 @@ class TestMigration0013:
     def test_migration_list_includes_0013(self):
         names = [name for name, _ in MIGRATIONS]
         assert "0013_branch_sessions" in names
-        assert names.index("0013_branch_sessions") == len(names) - 1
+        # 0013 is no longer the final migration (0014_barge_in follows it, issue
+        # #308); assert only that it is present and precedes the barge-in migration.
+        assert names.index("0013_branch_sessions") < names.index("0014_barge_in")
 
 
 # ---------------------------------------------------------------------------
