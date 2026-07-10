@@ -213,6 +213,7 @@ describe('GET /api/logbook/profile', () => {
   });
 
 
+
   it('sets strongest_dimension and weakest_dimension from debrief scores', async () => {
     const s1 = await createAndDebrief();
     getDb()
