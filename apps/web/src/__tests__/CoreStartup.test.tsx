@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import CoreStartupGuard from '../screens/CoreStartup'
 
 const APP_CHILD = <div>App content loaded</div>
@@ -32,16 +33,26 @@ function stubTauri(
   }
 }
 
+// CoreStartupGuard uses Link (for the "Get support bundle" action) so it needs
+// a router context.
+function renderGuard(child: React.ReactNode = APP_CHILD) {
+  return render(
+    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <CoreStartupGuard>{child}</CoreStartupGuard>
+    </MemoryRouter>,
+  )
+}
+
 // ── Non-Tauri (browser) context ───────────────────────────────────────────────
 
 describe('CoreStartupGuard — non-Tauri context', () => {
   it('renders children immediately when __TAURI__ is not present', () => {
-    render(<CoreStartupGuard>{APP_CHILD}</CoreStartupGuard>)
+    renderGuard()
     expect(screen.getByText('App content loaded')).toBeInTheDocument()
   })
 
   it('does not show a startup heading in browser context', () => {
-    render(<CoreStartupGuard>{APP_CHILD}</CoreStartupGuard>)
+    renderGuard()
     expect(screen.queryByRole('heading', { name: /conversation simulator/i })).not.toBeInTheDocument()
   })
 })
@@ -52,7 +63,7 @@ describe('CoreStartupGuard — Tauri context, core not yet ready', () => {
   it('shows the app heading while waiting', async () => {
     stubTauri(() => Promise.resolve(() => {}))
     await act(async () => {
-      render(<CoreStartupGuard>{APP_CHILD}</CoreStartupGuard>)
+      renderGuard()
     })
     expect(screen.getByRole('heading', { name: /conversation simulator/i })).toBeInTheDocument()
   })
@@ -60,7 +71,7 @@ describe('CoreStartupGuard — Tauri context, core not yet ready', () => {
   it('does not render children while waiting', async () => {
     stubTauri(() => Promise.resolve(() => {}))
     await act(async () => {
-      render(<CoreStartupGuard>{APP_CHILD}</CoreStartupGuard>)
+      renderGuard()
     })
     expect(screen.queryByText('App content loaded')).not.toBeInTheDocument()
   })
@@ -68,7 +79,7 @@ describe('CoreStartupGuard — Tauri context, core not yet ready', () => {
   it('shows a status live region while starting', async () => {
     stubTauri(() => Promise.resolve(() => {}))
     await act(async () => {
-      render(<CoreStartupGuard>{APP_CHILD}</CoreStartupGuard>)
+      renderGuard()
     })
     // Either a role="status" or a live region is present.
     expect(screen.getByRole('status')).toBeInTheDocument()
@@ -84,7 +95,7 @@ describe('CoreStartupGuard — core becomes ready via event', () => {
     })
 
     await act(async () => {
-      render(<CoreStartupGuard>{APP_CHILD}</CoreStartupGuard>)
+      renderGuard()
     })
 
     expect(screen.queryByText('App content loaded')).not.toBeInTheDocument()
@@ -106,7 +117,7 @@ describe('CoreStartupGuard — core becomes ready via event', () => {
     })
 
     await act(async () => {
-      render(<CoreStartupGuard>{APP_CHILD}</CoreStartupGuard>)
+      renderGuard()
     })
 
     await act(async () => {
@@ -120,7 +131,7 @@ describe('CoreStartupGuard — core becomes ready via event', () => {
 })
 
 describe('CoreStartupGuard — error state', () => {
-  it('shows an alert when core reports an error', async () => {
+  it('shows a recovery alert when core reports an error', async () => {
     let handler: TauriListenHandler | undefined
     stubTauri((_event, h) => {
       handler = h
@@ -128,7 +139,7 @@ describe('CoreStartupGuard — error state', () => {
     })
 
     await act(async () => {
-      render(<CoreStartupGuard>{APP_CHILD}</CoreStartupGuard>)
+      renderGuard()
     })
 
     await act(async () => {
@@ -143,7 +154,31 @@ describe('CoreStartupGuard — error state', () => {
 
     const alert = screen.getByRole('alert')
     expect(alert).toBeInTheDocument()
-    expect(alert).toHaveTextContent(/core service did not start/i)
+  })
+
+  it('shows a plain-language title for port conflict errors', async () => {
+    let handler: TauriListenHandler | undefined
+    stubTauri((_event, h) => {
+      handler = h
+      return Promise.resolve(() => {})
+    })
+
+    await act(async () => {
+      renderGuard()
+    })
+
+    await act(async () => {
+      handler?.({
+        payload: {
+          phase: 'error',
+          message: 'Core service did not start.',
+          error: 'Port 7355 is already in use.',
+        },
+      })
+    })
+
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent(/another app is using a required port/i)
   })
 
   it('shows the error detail in the alert', async () => {
@@ -154,7 +189,7 @@ describe('CoreStartupGuard — error state', () => {
     })
 
     await act(async () => {
-      render(<CoreStartupGuard>{APP_CHILD}</CoreStartupGuard>)
+      renderGuard()
     })
 
     await act(async () => {
@@ -170,6 +205,71 @@ describe('CoreStartupGuard — error state', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(/port 7355 is already in use/i)
   })
 
+  it('shows a plain-language title for binary-not-found errors', async () => {
+    let handler: TauriListenHandler | undefined
+    stubTauri((_event, h) => {
+      handler = h
+      return Promise.resolve(() => {})
+    })
+
+    await act(async () => {
+      renderGuard()
+    })
+
+    await act(async () => {
+      handler?.({
+        payload: {
+          phase: 'error',
+          message: 'Could not locate core service.',
+          error: 'convsim-core executable not found.',
+        },
+      })
+    })
+
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent(/the conversation engine couldn't be found/i)
+  })
+
+  it('shows a "Restart the app" action button in the error card', async () => {
+    let handler: TauriListenHandler | undefined
+    stubTauri((_event, h) => {
+      handler = h
+      return Promise.resolve(() => {})
+    })
+
+    await act(async () => {
+      renderGuard()
+    })
+
+    await act(async () => {
+      handler?.({
+        payload: { phase: 'error', message: 'Failed.', error: null },
+      })
+    })
+
+    expect(screen.getByRole('button', { name: /restart the app/i })).toBeInTheDocument()
+  })
+
+  it('shows a troubleshooting guide link in the error card', async () => {
+    let handler: TauriListenHandler | undefined
+    stubTauri((_event, h) => {
+      handler = h
+      return Promise.resolve(() => {})
+    })
+
+    await act(async () => {
+      renderGuard()
+    })
+
+    await act(async () => {
+      handler?.({
+        payload: { phase: 'error', message: 'Failed.', error: null },
+      })
+    })
+
+    expect(screen.getByRole('link', { name: /troubleshooting guide/i })).toBeInTheDocument()
+  })
+
   it('does not render children on error', async () => {
     let handler: TauriListenHandler | undefined
     stubTauri((_event, h) => {
@@ -178,7 +278,7 @@ describe('CoreStartupGuard — error state', () => {
     })
 
     await act(async () => {
-      render(<CoreStartupGuard>{APP_CHILD}</CoreStartupGuard>)
+      renderGuard()
     })
 
     await act(async () => {
@@ -200,7 +300,7 @@ describe('CoreStartupGuard — health check fast-path', () => {
     stubTauri(() => Promise.resolve(() => {}))
 
     await act(async () => {
-      render(<CoreStartupGuard>{APP_CHILD}</CoreStartupGuard>)
+      renderGuard()
     })
 
     expect(screen.getByText('App content loaded')).toBeInTheDocument()
@@ -221,12 +321,14 @@ describe('CoreStartupGuard — snapshot recovery of missed events', () => {
     stubTauri(() => Promise.resolve(() => {}), invoke)
 
     await act(async () => {
-      render(<CoreStartupGuard>{APP_CHILD}</CoreStartupGuard>)
+      renderGuard()
     })
 
     expect(invoke).toHaveBeenCalledWith('get_core_status')
     const alert = screen.getByRole('alert')
-    expect(alert).toHaveTextContent(/could not locate core service/i)
+    // Plain-language title for binary-not-found class.
+    expect(alert).toHaveTextContent(/the conversation engine couldn't be found/i)
+    // Technical detail is still shown for diagnostics.
     expect(alert).toHaveTextContent(/convsim-core executable not found/i)
     expect(screen.queryByText('App content loaded')).not.toBeInTheDocument()
   })
@@ -238,7 +340,7 @@ describe('CoreStartupGuard — snapshot recovery of missed events', () => {
     stubTauri(() => Promise.resolve(() => {}), invoke)
 
     await act(async () => {
-      render(<CoreStartupGuard>{APP_CHILD}</CoreStartupGuard>)
+      renderGuard()
     })
 
     expect(screen.getByText('App content loaded')).toBeInTheDocument()

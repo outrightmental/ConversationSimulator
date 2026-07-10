@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState, useEffect, useCallback } from 'react'
+import RuntimeRecoveryCard from '../components/RuntimeRecoveryCard'
 
 // ── Tauri global type (Tauri v2 with withGlobalTauri: true) ──────────────────
 
@@ -24,6 +25,52 @@ interface TauriGlobal {
 declare global {
   interface Window {
     __TAURI__?: TauriGlobal
+  }
+}
+
+const TROUBLESHOOTING_BASE =
+  'https://github.com/outrightmental/ConversationSimulator/blob/main/docs/troubleshooting.md'
+const ISSUES_URL =
+  'https://github.com/outrightmental/ConversationSimulator/issues/new/choose'
+
+type FailureKind = 'port-conflict' | 'not-found' | 'crash'
+
+interface ErrorInfo {
+  kind: FailureKind
+  title: string
+  description: string
+  anchor: string
+}
+
+function classifyError(message: string, error: string | null): ErrorInfo {
+  const text = `${message} ${error ?? ''}`.toLowerCase()
+
+  if (/eaddrinuse|address already in use|port.*busy|port.*in use|port conflict/.test(text)) {
+    return {
+      kind: 'port-conflict',
+      title: 'Another app is using a required port',
+      description:
+        'Close any other applications using port 7355, then restart Conversation Simulator.',
+      anchor: '#port-conflicts',
+    }
+  }
+
+  if (/not found|no such file|executable|binary|cannot locate/.test(text)) {
+    return {
+      kind: 'not-found',
+      title: "The conversation engine couldn't be found",
+      description:
+        'The app may be installed incorrectly. Try reinstalling from Steam or running setup again.',
+      anchor: '#engine-startup-failure',
+    }
+  }
+
+  return {
+    kind: 'crash',
+    title: "The conversation engine didn't start",
+    description:
+      'Something went wrong when the app tried to start. Check the logs for details.',
+    anchor: '#engine-startup-failure',
   }
 }
 
@@ -107,6 +154,7 @@ export default function CoreStartupGuard({ children }: { children: React.ReactNo
   if (ready) return <>{children}</>
 
   const isError = status?.phase === 'error'
+  const errorInfo = isError ? classifyError(status!.message, status!.error) : null
 
   return (
     <div
@@ -127,37 +175,28 @@ export default function CoreStartupGuard({ children }: { children: React.ReactNo
         Conversation Simulator
       </h1>
 
-      {isError ? (
-        <div
-          role="alert"
-          style={{
-            maxWidth: 520,
-            textAlign: 'center',
-            background: '#fff3f3',
-            border: '1px solid #f5c6cb',
-            borderRadius: 8,
-            padding: '1.25rem 1.5rem',
-          }}
-        >
-          <p style={{ fontWeight: 600, color: '#c0392b', margin: '0 0 0.5rem' }}>
-            {status!.message}
-          </p>
-          {status!.error && (
-            <p
-              style={{
-                color: '#555',
-                fontSize: '0.875rem',
-                whiteSpace: 'pre-wrap',
-                margin: '0 0 0.75rem',
-              }}
-            >
-              {status!.error}
-            </p>
-          )}
-          <p style={{ fontSize: '0.8125rem', color: '#888', margin: 0 }}>
-            Restart the app to try again. If the problem persists, check the
-            logs at <code>~/.convsim/logs</code>.
-          </p>
+      {isError && errorInfo ? (
+        <div style={{ maxWidth: 540, width: '100%' }}>
+          <RuntimeRecoveryCard
+            title={errorInfo.title}
+            description={errorInfo.description}
+            errorDetail={status!.error}
+            logPath="~/.convsim/logs/app.log"
+            troubleshootingHref={`${TROUBLESHOOTING_BASE}${errorInfo.anchor}`}
+            troubleshootingLabel="Troubleshooting guide"
+            primaryAction={{
+              label: 'Restart the app',
+              onClick: () => window.location.reload(),
+            }}
+            secondaryAction={{
+              // The in-app support/crash-bundle screen is behind CoreStartupGuard
+              // and needs the (currently down) core API, so it is unreachable
+              // during a startup failure. Point players at the report-issue flow
+              // instead, which works without the core running.
+              label: 'Report a problem',
+              href: ISSUES_URL,
+            }}
+          />
         </div>
       ) : (
         <p
