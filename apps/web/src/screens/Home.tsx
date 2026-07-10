@@ -1,14 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { StatusBadge } from '@convsim/ui'
 import { useApiHealth } from '../api/useApiHealth'
 import { usePackCount } from '../api/usePackCount'
 import { useTranslation } from '../i18n'
 import { useLogbookProfile } from '../api/useLogbookProfile'
+import { api } from '../api/client'
+import RuntimeRecoveryCard from '../components/RuntimeRecoveryCard'
 import type { BadgeStatus } from '@convsim/ui'
 
 const DOCS_URL = 'https://github.com/outrightmental/ConversationSimulator/wiki'
 const ISSUES_URL = 'https://github.com/outrightmental/ConversationSimulator/issues/new/choose'
+const TROUBLESHOOTING_BASE =
+  'https://github.com/outrightmental/ConversationSimulator/blob/main/docs/troubleshooting.md'
 
 export default function Home() {
   const health = useApiHealth()
@@ -16,6 +21,8 @@ export default function Home() {
   const logbook = useLogbookProfile()
   const loading = health.state === 'loading'
   const { t } = useTranslation()
+
+  const [isRestartingSidecar, setIsRestartingSidecar] = useState(false)
 
   const runtime = health.runtime
   const llmReady = runtime?.llm_ready ?? false
@@ -69,6 +76,22 @@ export default function Home() {
     packCount > 0
       ? t('home.status.packsInstalledCount', { count: packCount })
       : t('home.status.noneInstalled')
+
+  async function handleRestartSidecar() {
+    setIsRestartingSidecar(true)
+    try {
+      const statusResult = await api.getSidecarStatus()
+      const modelPath = statusResult.ok ? statusResult.data.model_path : null
+      await api.stopSidecar()
+      if (modelPath) {
+        await api.startSidecar(modelPath)
+      }
+      // The polling in useApiHealth will pick up the healthy state within 3 s.
+      health.refetch()
+    } finally {
+      setIsRestartingSidecar(false)
+    }
+  }
 
   return (
     <div>
@@ -193,7 +216,13 @@ export default function Home() {
         <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           <li>
             {t('home.status.localRuntime')}:{' '}
-            <StatusBadge status={runtimeBadgeProps.status}>{runtimeBadgeProps.label}</StatusBadge>
+            {runtimeBadgeProps.status === 'offline' ? (
+              <a href="#runtime-recovery" style={{ textDecoration: 'none' }}>
+                <StatusBadge status={runtimeBadgeProps.status}>{runtimeBadgeProps.label}</StatusBadge>
+              </a>
+            ) : (
+              <StatusBadge status={runtimeBadgeProps.status}>{runtimeBadgeProps.label}</StatusBadge>
+            )}
           </li>
           <li>
             {t('home.status.llm')}:{' '}
@@ -227,83 +256,67 @@ export default function Home() {
           </li>
         </ul>
 
-        {showUnreachable && (
-          <div
-            role="alert"
-            style={{
-              marginTop: '0.75rem',
-              padding: '0.85rem 1rem',
-              background: 'rgba(239,68,68,0.08)',
-              border: '1px solid rgba(239,68,68,0.3)',
-              borderRadius: '6px',
-            }}
-          >
-            <p style={{ margin: '0 0 0.3rem', fontWeight: 600, color: '#f87171', fontSize: '0.875rem' }}>
-              {t('home.unreachable.title')}
-            </p>
-            <p style={{ margin: '0 0 0.75rem', fontSize: '0.825rem', color: '#a1a1aa' }}>
-              {t('home.unreachable.message')}
-            </p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', fontSize: '0.8rem' }}>
-              <a href={DOCS_URL} target="_blank" rel="noreferrer" style={{ color: '#71717a' }}>
-                {t('home.unreachable.troubleshootingDocs')}
-              </a>
-              <span style={{ color: '#52525b' }}>·</span>
-              <a href={ISSUES_URL} target="_blank" rel="noreferrer" style={{ color: '#71717a' }}>
-                {t('home.unreachable.reportIssue')}
-              </a>
-            </div>
-          </div>
-        )}
-        {lastError && (
-          <div
-            role="alert"
-            style={{
-              marginTop: '0.75rem',
-              padding: '0.85rem 1rem',
-              background: 'rgba(239,68,68,0.08)',
-              border: '1px solid rgba(239,68,68,0.3)',
-              borderRadius: '6px',
-            }}
-          >
-            {isPortConflict ? (
-              <>
-                <p style={{ margin: '0 0 0.3rem', fontWeight: 600, color: '#f87171', fontSize: '0.875rem' }}>
-                  {t('home.portConflict.title')}
-                </p>
-                <p style={{ margin: '0 0 0.4rem', fontSize: '0.825rem', color: '#a1a1aa' }}>
-                  {t('home.portConflict.message')}
-                </p>
-                <p style={{ margin: '0 0 0.75rem', fontSize: '0.8rem', color: '#71717a' }}>
-                  {t('home.portConflict.details', { error: lastError })}
-                </p>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', fontSize: '0.8rem' }}>
-                  <a href={DOCS_URL} target="_blank" rel="noreferrer" style={{ color: '#71717a' }}>
-                    {t('home.portConflict.portTroubleshooting')}
-                  </a>
-                  <span style={{ color: '#52525b' }}>·</span>
-                  <a href={ISSUES_URL} target="_blank" rel="noreferrer" style={{ color: '#71717a' }}>
-                    {t('home.portConflict.reportIssue')}
-                  </a>
-                </div>
-              </>
+        {/* Recovery cards — anchored so the status strip can jump to them */}
+        <div id="runtime-recovery">
+          {showUnreachable && (
+            <RuntimeRecoveryCard
+              title={t('home.unreachable.title')}
+              description={t('home.unreachable.message')}
+              troubleshootingHref={`${TROUBLESHOOTING_BASE}#engine-startup-failure`}
+              troubleshootingLabel={t('home.unreachable.troubleshootingDocs')}
+              primaryAction={{
+                label: t('home.unreachable.restart'),
+                onClick: () => window.location.reload(),
+              }}
+              secondaryAction={{
+                label: t('home.unreachable.openSupport'),
+                href: '/support',
+              }}
+            />
+          )}
+          {lastError && (
+            isPortConflict ? (
+              <RuntimeRecoveryCard
+                title={t('home.portConflict.title')}
+                description={t('home.portConflict.message')}
+                errorDetail={t('home.portConflict.details', { error: lastError })}
+                troubleshootingHref={`${TROUBLESHOOTING_BASE}#port-conflicts`}
+                troubleshootingLabel={t('home.portConflict.portTroubleshooting')}
+                primaryAction={{
+                  label: t('home.recovery.restartEngine'),
+                  loadingLabel: t('home.recovery.restarting'),
+                  onClick: () => void handleRestartSidecar(),
+                  loading: isRestartingSidecar,
+                }}
+                secondaryAction={{
+                  label: t('home.recovery.openSupport'),
+                  href: '/support',
+                }}
+              />
             ) : (
-              <>
-                <p style={{ margin: '0 0 0.3rem', fontSize: '0.875rem', color: '#f87171' }}>
-                  {t('home.lastError.message', { error: lastError })}
-                </p>
-                <a
-                  href={ISSUES_URL}
-                  target="_blank"
-                  rel="noreferrer"
-                  style={{ fontSize: '0.8rem', color: '#71717a' }}
-                >
-                  {t('home.lastError.reportIssue')}
-                </a>
-              </>
-            )}
-          </div>
-        )}
+              <RuntimeRecoveryCard
+                title={t('home.lastError.message', { error: lastError })}
+                description=""
+                troubleshootingHref={`${TROUBLESHOOTING_BASE}#engine-startup-failure`}
+                troubleshootingLabel={t('home.recovery.troubleshootingDocs')}
+                primaryAction={{
+                  label: t('home.recovery.restartEngine'),
+                  loadingLabel: t('home.recovery.restarting'),
+                  onClick: () => void handleRestartSidecar(),
+                  loading: isRestartingSidecar,
+                }}
+                secondaryAction={{
+                  label: t('home.recovery.openSupport'),
+                  href: '/support',
+                }}
+                tertiaryAction={{
+                  label: t('home.lastError.reportIssue'),
+                  href: ISSUES_URL,
+                }}
+              />
+            )
+          )}
+        </div>
       </section>
 
       {showNoModelPrompt && (
