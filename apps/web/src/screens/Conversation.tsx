@@ -8,6 +8,7 @@ import DebugDrawer, { type DebugTurnEntry } from '../components/DebugDrawer'
 import PerformanceWarningBanner from '../components/PerformanceWarning'
 import { useLatencyMetrics } from '../hooks/useLatencyMetrics'
 import { isDevModeEnabled } from '../privacyPrefs'
+import { getVoiceTimingPrefs } from '../components/VoiceSettingsPanel'
 
 const TURN_TIMEOUT_MS = 60_000
 const SLOW_RESPONSE_MS = 5_000
@@ -85,6 +86,9 @@ export default function Conversation() {
   const inputMode = routeState?.input_mode ?? 'text-only'
   const ttsEnabled = routeState?.tts_enabled ?? false
 
+  // Voice timing preferences (issue #308) — read once at mount from localStorage.
+  const voiceTimingPrefs = getVoiceTimingPrefs()
+
   const [phase, setPhase] = useState<Phase>('starting')
   const [sessionState, setSessionState] = useState('NotStarted')
   const [endingType, setEndingType] = useState<string | null>(null)
@@ -108,6 +112,10 @@ export default function Conversation() {
   // TTS audio queue — plays synthesized sentence chunks in order.
   const ttsQueueRef = useRef<string[]>([])
   const ttsPlayingRef = useRef<HTMLAudioElement | null>(null)
+  // Holds a setTimeout ID while the NPC thinking-pause delay is active.
+  const ttsHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // True when the player started recording while TTS was playing (barge-in).
+  const bargedInRef = useRef(false)
 
   const transcriptRef = useRef<HTMLDivElement>(null)
   const turnUidRef = useRef(0)
@@ -124,6 +132,7 @@ export default function Conversation() {
     return () => {
       if (turnTimeoutRef.current) clearTimeout(turnTimeoutRef.current)
       if (slowTimerRef.current) clearTimeout(slowTimerRef.current)
+      if (ttsHoldTimerRef.current) clearTimeout(ttsHoldTimerRef.current)
       if (ttsPlayingRef.current) {
         ttsPlayingRef.current.pause()
         ttsPlayingRef.current = null
@@ -157,7 +166,7 @@ export default function Conversation() {
     })
   }
 
-  function _enqueueTtsChunk(cachePath: string) {
+  function _enqueueTtsChunk(cachePath: string, thinkingPauseMs?: number) {
     // Only play TTS audio when the session was started with TTS enabled.
     // The text transcript remains authoritative regardless of this flag.
     if (!ttsEnabled) return
@@ -165,17 +174,62 @@ export default function Conversation() {
     if (!filename) return
     const url = `/api/tts/audio/${filename}`
     ttsQueueRef.current.push(url)
-    if (ttsPlayingRef.current === null) {
-      _playNextTtsChunk()
+    if (ttsPlayingRef.current === null && ttsHoldTimerRef.current === null) {
+      // Apply the NPC thinking pause before starting the first chunk.
+      const pause = thinkingPauseMs && thinkingPauseMs > 0 ? thinkingPauseMs : 0
+      if (pause > 0) {
+        ttsHoldTimerRef.current = setTimeout(() => {
+          ttsHoldTimerRef.current = null
+          _playNextTtsChunk()
+        }, pause)
+      } else {
+        _playNextTtsChunk()
+      }
     }
   }
 
+  function _fadeTtsOut(durationMs: number, onDone: () => void) {
+    const audio = ttsPlayingRef.current
+    if (!audio) { onDone(); return }
+    const startVol = audio.volume
+    const steps = 10
+    const stepMs = durationMs / steps
+    let step = 0
+    const interval = setInterval(() => {
+      step++
+      if (!ttsPlayingRef.current || step >= steps) {
+        clearInterval(interval)
+        if (ttsPlayingRef.current) {
+          ttsPlayingRef.current.pause()
+          ttsPlayingRef.current = null
+        }
+        onDone()
+        return
+      }
+      audio.volume = Math.max(0, startVol * (1 - step / steps))
+    }, stepMs)
+  }
+
   function _stopTtsPlayback() {
+    if (ttsHoldTimerRef.current) {
+      clearTimeout(ttsHoldTimerRef.current)
+      ttsHoldTimerRef.current = null
+    }
     ttsQueueRef.current = []
     if (ttsPlayingRef.current) {
       ttsPlayingRef.current.pause()
       ttsPlayingRef.current = null
     }
+  }
+
+  function handleBargeIn() {
+    if (!ttsEnabled || !voiceTimingPrefs.bargeInEnabled) return
+    const isTtsActive = ttsPlayingRef.current !== null || ttsHoldTimerRef.current !== null
+    if (!isTtsActive) return
+    bargedInRef.current = true
+    _fadeTtsOut(180, () => {
+      ttsQueueRef.current = []
+    })
   }
 
   // Fetch scenario for NPC panel and scene card — best effort
@@ -329,7 +383,10 @@ export default function Conversation() {
             break
           case 'tts.audio_chunk':
             if (event.payload.cache_path) {
-              _enqueueTtsChunk(event.payload.cache_path)
+              _enqueueTtsChunk(
+                event.payload.cache_path,
+                event.payload.thinking_pause_ms,
+              )
             }
             break
           case 'stt.partial':
@@ -393,6 +450,10 @@ export default function Conversation() {
       setDebugEntries((prev) => [...prev, playerDebugEntry])
     }
 
+    // Capture barge-in state and reset for next turn.
+    const didBargeIn = bargedInRef.current
+    bargedInRef.current = false
+
     _stopTtsPlayback()
     setPhase('submitting')
     setError(null)
@@ -409,7 +470,7 @@ export default function Conversation() {
     slowTimerRef.current = setTimeout(() => setIsSlowResponse(true), SLOW_RESPONSE_MS)
 
     // Wrap the API call with a hard timeout so the UI is never stuck indefinitely.
-    const turnPromise = api.submitTurn(sessionId!, text)
+    const turnPromise = api.submitTurn(sessionId!, text, didBargeIn)
     const timeoutPromise = new Promise<never>((_, reject) => {
       turnTimeoutRef.current = setTimeout(() => {
         reject(new Error(
@@ -482,6 +543,18 @@ export default function Conversation() {
         }
         if (flags.length > 0) {
           setAllEventFlags((prev) => [...prev, ...flags])
+        }
+      }
+
+      // Enqueue TTS chunks from the REST response (WebSocket path handles
+      // the same chunks via tts.audio_chunk events; only enqueue from REST
+      // when WebSocket is not connected or when chunks arrived before WS did).
+      const ttsChunks = res.events.filter((e) => e.event_type === 'tts_audio_chunk')
+      for (const chunk of ttsChunks) {
+        const cachePath = chunk.payload['cache_path'] as string | null
+        if (cachePath) {
+          const pause = chunk.payload['thinking_pause_ms'] as number | undefined
+          _enqueueTtsChunk(cachePath, pause)
         }
       }
 
@@ -992,9 +1065,11 @@ export default function Conversation() {
           onSubmit={(text) => void handleSubmit(text)}
           onRawStt={devMode ? (meta) => { pendingRawSttRef.current = meta } : undefined}
           onSttLatency={(ms) => recordValue('stt_final_ms', ms)}
+          onRecordingStart={handleBargeIn}
           disabled={!isIdle}
           language={language}
           inputMode={inputMode}
+          backchannelEnabled={ttsEnabled && voiceTimingPrefs.backchannelEnabled}
         />
       )}
 
