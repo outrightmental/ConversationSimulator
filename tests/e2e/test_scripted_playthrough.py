@@ -172,7 +172,11 @@ class TestScriptedTextPlaythrough:
             f"First scripted turn failed (status {res.status_code})"
         )
         events = res.json().get("events", [])
-        assert len(events) >= 2, (
+        # Precompute the count so a failure's assertion introspection reports an
+        # integer rather than dumping the full events list (which carries NPC
+        # transcript content) into CI failure artifacts.
+        event_count = len(events)
+        assert event_count >= 2, (
             "Turn response must include at least player and NPC events"
         )
         event_types = {e.get("event_type") for e in events}
@@ -199,10 +203,15 @@ class TestScriptedTextPlaythrough:
             )
             npc_events = [e for e in events if e.get("event_type") == "npc_turn"]
             payload = npc_events[0].get("payload", {})
-            assert isinstance(payload.get("content"), str), (
+            # Precompute scalar checks so a failure never introspects the NPC
+            # content value itself into CI failure artifacts.
+            content = payload.get("content")
+            content_is_str = isinstance(content, str)
+            assert content_is_str, (
                 f"NPC turn {i + 1} content must be a string"
             )
-            assert len(payload["content"]) > 0, (
+            content_length = len(content) if content_is_str else 0
+            assert content_length > 0, (
                 f"NPC turn {i + 1} content must be non-empty"
             )
 
@@ -265,9 +274,15 @@ class TestScriptedTextPlaythrough:
         body = client.post(f"/api/sessions/{session_id}/debrief").json()
 
         # Check structure only, not values, to avoid exposing session content.
-        assert "scores" in body, "Debrief must include a scores field"
-        assert "summary" in body, "Debrief must include a summary field"
-        assert isinstance(body["scores"], dict), "Debrief scores must be a dict"
+        # Precompute booleans so a failure's assertion introspection cannot dump
+        # the debrief body (which contains the generated summary text) into CI
+        # failure artifacts.
+        has_scores = "scores" in body
+        has_summary = "summary" in body
+        scores_is_dict = isinstance(body.get("scores"), dict)
+        assert has_scores, "Debrief must include a scores field"
+        assert has_summary, "Debrief must include a summary field"
+        assert scores_is_dict, "Debrief scores must be a dict"
 
     def test_debrief_is_idempotent(self, client: TestClient) -> None:
         session_id = _create_and_start_session(client)
