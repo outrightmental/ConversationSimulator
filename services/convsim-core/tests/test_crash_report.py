@@ -48,6 +48,16 @@ def test_crash_bundle_placed_in_crash_reports_subdir(tmp_path, settings):
     assert bundle.parent.name == "crash-reports"
 
 
+def test_crash_bundle_written_to_explicit_bundle_dir(tmp_path, settings):
+    """When bundle_dir is given the ZIP lands there directly, not under log_dir."""
+    bundle_dir = tmp_path / "crashes"
+    bundle = create_crash_bundle(
+        str(tmp_path / "logs"), settings, bundle_dir=str(bundle_dir)
+    )
+    assert bundle.parent == bundle_dir
+    assert bundle.exists()
+
+
 # ---------------------------------------------------------------------------
 # Required files present
 # ---------------------------------------------------------------------------
