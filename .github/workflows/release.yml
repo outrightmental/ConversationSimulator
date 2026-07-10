@@ -92,10 +92,55 @@ jobs:
       - name: Build web frontend
         run: pnpm --filter @convsim/web build
 
+      # ── macOS code-signing setup ─────────────────────────────────────────────
+      # Imports the Apple Developer ID p12 certificate into a temporary keychain
+      # so that both PyInstaller (sidecar signing) and Tauri (bundle signing +
+      # notarisation) can find it.
+      #
+      # Required repository secrets (Settings → Secrets and variables → Actions):
+      #   APPLE_CERTIFICATE          Base64-encoded Developer ID Application .p12
+      #   APPLE_CERTIFICATE_PASSWORD Passphrase for the .p12 file
+      #   APPLE_SIGNING_IDENTITY     Full identity string, e.g.
+      #                              "Developer ID Application: Outright Mental (TEAMID)"
+      #   APPLE_ID                   Apple ID email of the notarisation account
+      #   APPLE_PASSWORD             App-specific password for the Apple ID
+      #   APPLE_TEAM_ID              10-character Apple Developer Team ID
+      #
+      # When these secrets are absent (contributor forks, unsigned local builds)
+      # this step is skipped and the build produces an unsigned artifact — suitable
+      # for development and internal testing but not for Stage 3/4 Steam release.
+      - name: Import Apple Developer certificate (macOS only)
+        if: runner.os == 'macOS' && secrets.APPLE_CERTIFICATE != ''
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          CERT_PATH="$RUNNER_TEMP/build_certificate.p12"
+          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$CERT_PATH"
+          security import "$CERT_PATH" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+          security set-key-partition-list \
+            -S apple-tool:,apple: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+          rm -f "$CERT_PATH"
+
       # ── Python core build (PyInstaller standalone binary) ────────────────────
       # Produces apps/desktop/src-tauri/resources/bin/convsim-core[.exe] which
       # Tauri bundles as a resource (bundle.resources: ["resources/**/*"] in
       # tauri.conf.json).  The binary must be present before `tauri build`.
+      #
+      # On macOS with APPLE_SIGNING_IDENTITY set, convsim-core.spec signs the
+      # sidecar binary and all embedded Python extensions with the Developer ID
+      # certificate using the entitlements in apps/desktop/src-tauri/entitlements.plist.
       - name: Set up Python for core build
         uses: actions/setup-python@v5
         with:
@@ -103,6 +148,8 @@ jobs:
 
       - name: Build convsim-core standalone binary
         shell: bash
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: |
           # working-directory (below) already places us in services/convsim-core;
           # all paths here are relative to it.
@@ -133,7 +180,17 @@ jobs:
           fi
 
       # ── Tauri desktop build ──────────────────────────────────────────────────
+      # On macOS, Tauri reads APPLE_SIGNING_IDENTITY, APPLE_ID, APPLE_PASSWORD,
+      # and APPLE_TEAM_ID to sign the .app bundle and submit it to Apple's
+      # notarisation service automatically.  These env vars are no-ops on Linux
+      # and Windows.  When the secrets are absent the build is unsigned (suitable
+      # for dev/internal builds but blocked by Gatekeeper on clean installs).
       - name: Build Tauri desktop
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: pnpm --filter @convsim/desktop build
 
       # ── Authenticode signing (Windows only, optional) ─────────────────────────
@@ -274,6 +331,9 @@ jobs:
 
       # ── Collect installers ───────────────────────────────────────────────────
       # Tauri v2 places bundles under target/release/bundle/<format>/.
+      # The .app.tar.gz (macOS) is the raw app bundle in a tarball — Steam depots
+      # require application files directly, not the .dmg installer, so the
+      # steam-deploy workflow extracts this tarball into steam-content/macos/.
       - name: Upload desktop installer artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -281,6 +341,7 @@ jobs:
           # Glob patterns cover all known Tauri installer formats.
           path: |
             apps/desktop/src-tauri/target/release/bundle/**/*.dmg
+            apps/desktop/src-tauri/target/release/bundle/**/*.app.tar.gz
             apps/desktop/src-tauri/target/release/bundle/**/*.AppImage
             apps/desktop/src-tauri/target/release/bundle/**/*.deb
             apps/desktop/src-tauri/target/release/bundle/**/*.exe
