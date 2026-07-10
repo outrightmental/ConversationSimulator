@@ -1,12 +1,17 @@
 # SPDX-License-Identifier: Apache-2.0
 import logging
+import re
+from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from convsim_core.tts.types import TtsError, TtsRequest, TtsUnavailableError, TtsVoiceValidationError
 from convsim_core.tts.voices import validate_voice_id
+
+_SAFE_FILENAME_RE = re.compile(r'^[a-f0-9]{1,64}\.wav$')
 
 logger = logging.getLogger(__name__)
 
@@ -92,6 +97,47 @@ async def get_tts_cache_size(request: Request) -> dict:
     """
     tts_worker = request.app.state.tts_worker
     return await tts_worker.cache_size()
+
+
+def _resolve_tts_cache_dir(tts_worker: object) -> Path:
+    """Return the cache directory used by *tts_worker*.
+
+    KokoroTtsWorker stores the resolved path as ``_cache_dir``.  For other
+    worker types the default location is used so the endpoint stays functional.
+    """
+    cache_dir = getattr(tts_worker, "_cache_dir", None)
+    if cache_dir is not None:
+        return Path(cache_dir)
+    return Path.home() / ".convsim" / "tts_cache"
+
+
+@router.get("/api/tts/audio/{filename}")
+async def get_tts_audio(filename: str, request: Request) -> FileResponse:
+    """Serve a cached TTS WAV file so the browser can play it via URL.
+
+    Only hex-named .wav files inside the configured TTS cache directory are
+    served.  Any other filename (path traversal, non-hex, non-wav) returns 404.
+    """
+    if not _SAFE_FILENAME_RE.match(filename):
+        raise HTTPException(status_code=404, detail="Not found")
+
+    tts_worker = request.app.state.tts_worker
+    cache_dir = _resolve_tts_cache_dir(tts_worker)
+    audio_path = cache_dir / filename
+
+    # Resolve symlinks and confirm the file stays inside the cache directory.
+    try:
+        resolved = audio_path.resolve()
+        resolved_cache = cache_dir.resolve()
+        if not str(resolved).startswith(str(resolved_cache)):
+            raise HTTPException(status_code=404, detail="Not found")
+    except OSError:
+        raise HTTPException(status_code=404, detail="Not found")
+
+    if not resolved.is_file():
+        raise HTTPException(status_code=404, detail="Not found")
+
+    return FileResponse(str(resolved), media_type="audio/wav")
 
 
 @router.get("/api/tts/voices")

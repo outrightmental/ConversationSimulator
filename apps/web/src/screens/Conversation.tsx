@@ -101,6 +101,10 @@ export default function Conversation() {
   const turnTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const slowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
+  // TTS audio queue — plays synthesized sentence chunks in order.
+  const ttsQueueRef = useRef<string[]>([])
+  const ttsPlayingRef = useRef<HTMLAudioElement | null>(null)
+
   const transcriptRef = useRef<HTMLDivElement>(null)
   const turnUidRef = useRef(0)
   const turnNumRef = useRef(0)
@@ -111,13 +115,52 @@ export default function Conversation() {
   const pendingRawSttRef = useRef<SttReviewMeta | null>(null)
   phaseRef.current = phase
 
-  // Clean up any pending timers when the component unmounts.
+  // Clean up any pending timers and TTS audio when the component unmounts.
   useEffect(() => {
     return () => {
       if (turnTimeoutRef.current) clearTimeout(turnTimeoutRef.current)
       if (slowTimerRef.current) clearTimeout(slowTimerRef.current)
+      if (ttsPlayingRef.current) {
+        ttsPlayingRef.current.pause()
+        ttsPlayingRef.current = null
+      }
+      ttsQueueRef.current = []
     }
   }, [])
+
+  function _playNextTtsChunk() {
+    const url = ttsQueueRef.current.shift()
+    if (!url) {
+      ttsPlayingRef.current = null
+      return
+    }
+    const audio = new Audio(url)
+    ttsPlayingRef.current = audio
+    audio.onended = _playNextTtsChunk
+    audio.onerror = _playNextTtsChunk
+    audio.play().catch(() => {
+      // Autoplay blocked or resource unavailable — skip to next chunk.
+      _playNextTtsChunk()
+    })
+  }
+
+  function _enqueueTtsChunk(cachePath: string) {
+    const filename = cachePath.replace(/\\/g, '/').split('/').pop()
+    if (!filename) return
+    const url = `/api/tts/audio/${filename}`
+    ttsQueueRef.current.push(url)
+    if (ttsPlayingRef.current === null) {
+      _playNextTtsChunk()
+    }
+  }
+
+  function _stopTtsPlayback() {
+    ttsQueueRef.current = []
+    if (ttsPlayingRef.current) {
+      ttsPlayingRef.current.pause()
+      ttsPlayingRef.current = null
+    }
+  }
 
   // Fetch scenario for NPC panel and scene card — best effort
   useEffect(() => {
@@ -268,6 +311,11 @@ export default function Conversation() {
               { id: ++bannerUidRef.current, kind: 'safety', text: event.payload.reason },
             ])
             break
+          case 'tts.audio_chunk':
+            if (event.payload.cache_path) {
+              _enqueueTtsChunk(event.payload.cache_path)
+            }
+            break
           case 'stt.partial':
           case 'stt.final':
             // STT streaming events — handled by VoiceInput via REST; these WS events
@@ -325,6 +373,7 @@ export default function Conversation() {
       setDebugEntries((prev) => [...prev, playerDebugEntry])
     }
 
+    _stopTtsPlayback()
     setPhase('submitting')
     setError(null)
     setIsSlowResponse(false)

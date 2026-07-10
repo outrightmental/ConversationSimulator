@@ -286,6 +286,47 @@ def test_tts_cache_clear_returns_deleted_count(client):
     assert isinstance(body["deleted_files"], int)
 
 
+# ---------------------------------------------------------------------------
+# GET /api/tts/audio/{filename} — audio serving endpoint
+# ---------------------------------------------------------------------------
+
+
+def test_tts_audio_returns_404_for_unknown_file(client, tmp_path):
+    # Point the fake worker at an empty dir so no files exist.
+    client.app.state.tts_worker._cache_dir = tmp_path / "empty_cache"
+    resp = client.get("/api/tts/audio/abc123deadbeef01234567890abcde1.wav")
+    assert resp.status_code == 404
+
+
+def test_tts_audio_returns_404_for_non_hex_filename(client):
+    resp = client.get("/api/tts/audio/../etc/passwd")
+    assert resp.status_code in (404, 422)
+
+
+def test_tts_audio_returns_404_for_non_wav_filename(client):
+    resp = client.get("/api/tts/audio/abc123.mp3")
+    assert resp.status_code == 404
+
+
+def test_tts_audio_returns_404_for_path_traversal(client):
+    resp = client.get("/api/tts/audio/%2e%2e%2fetc%2fpasswd")
+    assert resp.status_code == 404
+
+
+def test_tts_audio_serves_existing_wav_file(client, tmp_path):
+    cache_dir = tmp_path / "tts_cache"
+    cache_dir.mkdir()
+    wav_file = cache_dir / "ab1234567890abcd1234567890abcdef.wav"
+    wav_file.write_bytes(b"RIFF\x00\x00\x00\x00WAVEfmt ")
+
+    # The endpoint reads _cache_dir from the tts_worker via _resolve_tts_cache_dir.
+    client.app.state.tts_worker._cache_dir = cache_dir
+
+    resp = client.get("/api/tts/audio/ab1234567890abcd1234567890abcdef.wav")
+    assert resp.status_code == 200
+    assert resp.headers.get("content-type", "").startswith("audio/wav")
+
+
 def test_tts_voices_no_clone_or_import_endpoint_exists(client):
     # Verify there is no voice upload or cloning endpoint in the API.
     # 404 = route doesn't exist; 405 = path exists but method not allowed — both
