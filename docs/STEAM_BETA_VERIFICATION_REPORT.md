@@ -55,7 +55,7 @@ before this verification can proceed:
 
 | Step | Result |
 |------|--------|
-| E.1 SmartScreen / Authenticode — no warning on signed build | [ ] PASS / [ ] FAIL / [ ] SKIP |
+| E.1 Fresh install from Steam — no SmartScreen / AV warning on signed build | [ ] PASS / [ ] FAIL / [ ] SKIP |
 | E.2 First-run model wizard | [ ] PASS / [ ] FAIL / [ ] SKIP |
 | E.3 Text scenario and debrief | [ ] PASS / [ ] FAIL / [ ] SKIP |
 | E.4 Log verification | [ ] PASS / [ ] FAIL / [ ] SKIP |
