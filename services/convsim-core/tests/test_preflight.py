@@ -4,9 +4,7 @@
 Each test simulates a distinct failure class so that fixes targeting that class
 can be verified in isolation.
 """
-import os
 import stat
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest

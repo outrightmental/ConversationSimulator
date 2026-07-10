@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
