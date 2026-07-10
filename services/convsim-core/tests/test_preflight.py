@@ -349,6 +349,7 @@ def test_bundle_preflight_json_redacts_home_paths(client):
     assert home not in content
 
 
+
 def test_crash_bundle_excludes_preflight_when_not_run(client):
     # No preflight call — crash bundle should still succeed without preflight.json.
     bundle_resp = client.post("/api/diag/crash-bundle")
