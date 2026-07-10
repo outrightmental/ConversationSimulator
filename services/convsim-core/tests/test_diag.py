@@ -282,3 +282,47 @@ def test_post_beta_report_makes_no_outbound_network_calls(client):
     assert attempts == [], (
         f"Beta report endpoint made {len(attempts)} outbound network call(s): {attempts}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Crash-bundle embedding (#288 — "crash bundle if present")
+# ---------------------------------------------------------------------------
+
+def test_beta_report_omits_crash_bundle_when_none_present(client):
+    """With no crash bundle on disk, the beta report must not contain one."""
+    data = client.post("/api/diag/beta-report", json={}).json()
+    with zipfile.ZipFile(data["bundle_path"]) as zf:
+        names = zf.namelist()
+    assert "crash-bundle.zip" not in names
+    assert not any("crash-bundle" in item for item in data["manifest"])
+
+
+def test_beta_report_embeds_existing_crash_bundle(client):
+    """When a crash bundle exists, the beta report embeds it and lists it."""
+    # Create a crash bundle first — it lands in crash_bundles_dir.
+    crash = client.post("/api/diag/crash-bundle").json()
+    assert Path(crash["bundle_path"]).name.startswith("crash-")
+
+    data = client.post("/api/diag/beta-report", json={}).json()
+    with zipfile.ZipFile(data["bundle_path"]) as zf:
+        names = zf.namelist()
+        embedded = zf.read("crash-bundle.zip")
+    assert "crash-bundle.zip" in names
+    assert any("crash-bundle" in item for item in data["manifest"])
+    # The embedded entry is a real ZIP with the same bytes as the crash bundle.
+    assert embedded == Path(crash["bundle_path"]).read_bytes()
+
+
+def test_latest_crash_bundle_picks_newest(tmp_path):
+    """latest_crash_bundle returns the newest crash-*.zip and ignores others."""
+    from convsim_core.beta_report import latest_crash_bundle
+
+    assert latest_crash_bundle(tmp_path) is None
+    (tmp_path / "crash-20260101T000000Z.zip").write_text("old")
+    (tmp_path / "crash-20260709T120000Z.zip").write_text("new")
+    # A beta-report ZIP in the same dir must never be selected.
+    (tmp_path / "beta-report-20260709T130000Z.zip").write_text("beta")
+
+    latest = latest_crash_bundle(tmp_path)
+    assert latest is not None
+    assert latest.name == "crash-20260709T120000Z.zip"

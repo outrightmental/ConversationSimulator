@@ -52,6 +52,8 @@ Contents
   recent_errors.txt      — Last lines of app.log (no conversation content)
   session_metadata.json  — Last session stats (only if you opted in; no transcript
                            content, no player input, no NPC responses)
+  crash-bundle.zip       — Most recent crash bundle, if one exists (already
+                           redacted the same way as this bundle)
   README.txt             — This file
 
 Privacy notes
@@ -112,6 +114,21 @@ def _redact_paths(value: Any) -> Any:
     return value
 
 
+def latest_crash_bundle(bundle_dir: str | Path) -> Path | None:
+    """Return the most recent ``crash-*.zip`` in *bundle_dir*, or None.
+
+    Crash bundles (see :mod:`convsim_core.crash_report`) are written to the same
+    directory as beta reports and named ``crash-<UTC timestamp>.zip``, so the
+    lexicographically greatest name is also the newest.  Beta-report ZIPs use a
+    ``beta-report-`` prefix and are therefore never matched.
+    """
+    directory = Path(bundle_dir)
+    if not directory.is_dir():
+        return None
+    candidates = sorted(p for p in directory.glob("crash-*.zip") if p.is_file())
+    return candidates[-1] if candidates else None
+
+
 def _last_session_metadata(conn: sqlite3.Connection) -> dict[str, Any] | None:
     """Return metadata for the most recent session, or None if no sessions exist.
 
@@ -139,6 +156,7 @@ def create_beta_report_bundle(
     bundle_dir: str | None = None,
     db_conn: sqlite3.Connection | None = None,
     include_session_metadata: bool = False,
+    crash_bundle_path: Path | None = None,
 ) -> Path:
     """Create a local beta-report ZIP bundle.
 
@@ -162,6 +180,10 @@ def create_beta_report_bundle(
     include_session_metadata:
         When True, include a ``session_metadata.json`` file with non-identifying
         fields from the last session (no transcript content or player input).
+    crash_bundle_path:
+        When provided and the file exists, the crash bundle is embedded as
+        ``crash-bundle.zip``.  Crash bundles are already redacted, so this adds
+        no new sensitive data.  Use :func:`latest_crash_bundle` to locate it.
 
     Returns the absolute :class:`~pathlib.Path` to the created ``.zip`` file.
     """
@@ -202,16 +224,23 @@ def create_beta_report_bundle(
                 json.dumps(meta, indent=2) if meta is not None else "null",
             )
 
+        if crash_bundle_path is not None and crash_bundle_path.is_file():
+            zf.write(crash_bundle_path, arcname="crash-bundle.zip")
+
         zf.writestr("README.txt", _BUNDLE_README)
 
     return bundle_path
 
 
-def beta_report_manifest(include_session_metadata: bool) -> list[str]:
+def beta_report_manifest(
+    include_session_metadata: bool, include_crash_bundle: bool = False
+) -> list[str]:
     """Return the list of files that will be included in the bundle.
 
     Used by the UI consent screen so the tester sees exactly what the bundle
-    will contain before it is written to disk.
+    will contain before it is written to disk.  ``include_crash_bundle`` should
+    reflect whether a crash bundle actually exists (see
+    :func:`latest_crash_bundle`) so the preview matches the real contents.
     """
     files = [
         "versions.json — app, Python, and OS versions",
@@ -224,6 +253,10 @@ def beta_report_manifest(include_session_metadata: bool) -> list[str]:
         files.append(
             "session_metadata.json — last session: scenario ID, state, turn count,"
             " timestamps (no transcript content or player input)"
+        )
+    if include_crash_bundle:
+        files.append(
+            "crash-bundle.zip — most recent crash bundle (already redacted)"
         )
     files.append("README.txt — privacy notice")
     return files

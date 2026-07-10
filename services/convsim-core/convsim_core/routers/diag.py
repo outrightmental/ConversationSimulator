@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from convsim_core.beta_report import (
     beta_report_manifest,
     create_beta_report_bundle,
+    latest_crash_bundle,
 )
 from convsim_core.crash_report import create_crash_bundle
 from convsim_core.redaction import redact_path
@@ -103,6 +104,10 @@ async def post_beta_report(
 
     db_conn = request.app.state.db.connection() if body.include_session_metadata else None
 
+    # Embed the most recent crash bundle (#288) when one exists — it is written
+    # to the same directory and already redacted, so it adds no new sensitive data.
+    crash_bundle_path = latest_crash_bundle(config.crash_bundles_dir)
+
     bundle_path = create_beta_report_bundle(
         log_dir=config.log_dir,
         settings=settings,
@@ -110,9 +115,13 @@ async def post_beta_report(
         bundle_dir=config.crash_bundles_dir,
         db_conn=db_conn,
         include_session_metadata=body.include_session_metadata,
+        crash_bundle_path=crash_bundle_path,
     )
 
-    manifest = beta_report_manifest(body.include_session_metadata)
+    manifest = beta_report_manifest(
+        body.include_session_metadata,
+        include_crash_bundle=crash_bundle_path is not None,
+    )
     logger.info("Beta report bundle created at %s", redact_path(str(bundle_path)))
     return _BetaReportResponse(
         bundle_path=str(bundle_path),

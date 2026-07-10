@@ -116,6 +116,7 @@ export default function Support() {
           'session_metadata.json — last session: scenario ID, state, turn count, timestamps (no transcript content)',
         ]
       : []),
+    'crash-bundle.zip — most recent crash bundle, if one exists (already redacted)',
     DEFAULT_MANIFEST[DEFAULT_MANIFEST.length - 1],
   ]
 

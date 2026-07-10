@@ -69,6 +69,7 @@ one-click flow creates contains:
 | `preflight.json` | Runtime, STT, and TTS health snapshot (no user data) |
 | `recent_errors.txt` | Last log lines at WARNING level or above |
 | `session_metadata.json` | (opt-in only) Scenario ID, session state, turn count, timestamps |
+| `crash-bundle.zip` | (if one exists) Most recent crash bundle — already redacted |
 | `README.txt` | Privacy notice |
 
 **What is never included:**
