@@ -417,6 +417,129 @@ describe('Conversation screen', () => {
     })
   })
 
+  describe('transcript persistence', () => {
+    it('accumulates all turns in the transcript across multiple consecutive submissions', async () => {
+      const secondTurnResponse: TurnResponse = {
+        session_id: SESSION_ID,
+        state: 'PlayerTurnListening',
+        events: [
+          {
+            event_id: 4,
+            session_id: SESSION_ID,
+            event_type: 'player_turn',
+            payload: { content: 'Tell me more about the role.' },
+            created_at: '2026-07-01T00:00:03Z',
+          },
+          {
+            event_id: 5,
+            session_id: SESSION_ID,
+            event_type: 'npc_turn',
+            payload: {
+              content: 'The role involves leading a small engineering team.',
+              emotion: 'neutral',
+              state_delta: {},
+              event_flags: [],
+              safety: { status: 'ok' },
+              ending_type: null,
+            },
+            created_at: '2026-07-01T00:00:04Z',
+          },
+        ],
+      }
+
+      mockApi.startSession.mockResolvedValue(startResponse)
+      mockApi.submitTurn
+        .mockResolvedValueOnce(turnResponse)
+        .mockResolvedValueOnce(secondTurnResponse)
+
+      renderConversation()
+      await waitFor(() =>
+        expect(
+          screen.getByText('Thanks for coming in. Tell me about yourself.'),
+        ).toBeInTheDocument(),
+      )
+
+      // First turn
+      fireEvent.change(screen.getByRole('textbox', { name: /your response/i }), {
+        target: { value: 'I have five years of experience.' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+      await waitFor(() =>
+        expect(screen.getByText('Hello there. I am a simulated NPC.')).toBeInTheDocument(),
+      )
+
+      // Second turn
+      fireEvent.change(screen.getByRole('textbox', { name: /your response/i }), {
+        target: { value: 'Tell me more about the role.' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+      await waitFor(() =>
+        expect(
+          screen.getByText('The role involves leading a small engineering team.'),
+        ).toBeInTheDocument(),
+      )
+
+      // All previous turns must still be visible — the transcript accumulates.
+      expect(
+        screen.getByText('Thanks for coming in. Tell me about yourself.'),
+      ).toBeInTheDocument()
+      expect(screen.getByText('I have five years of experience.')).toBeInTheDocument()
+      expect(screen.getByText('Hello there. I am a simulated NPC.')).toBeInTheDocument()
+      expect(screen.getByText('Tell me more about the role.')).toBeInTheDocument()
+    })
+  })
+
+  describe('recoverable errors', () => {
+    beforeEach(() => {
+      mockApi.startSession.mockResolvedValue(startResponse)
+    })
+
+    it('shows a recoverable error when model output fails validation and re-enables input', async () => {
+      mockApi.submitTurn.mockRejectedValue(
+        new Error('NPC output failed validation after 3 retries'),
+      )
+      renderConversation()
+      await waitFor(() =>
+        expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument(),
+      )
+
+      fireEvent.change(screen.getByRole('textbox', { name: /your response/i }), {
+        target: { value: 'My answer.' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+
+      await waitFor(() =>
+        expect(screen.getByRole('alert')).toHaveTextContent('NPC output failed validation'),
+      )
+      // Input must be re-enabled so the player can retry (recoverable).
+      expect(screen.getByRole('textbox', { name: /your response/i })).not.toBeDisabled()
+      expect(screen.getByRole('button', { name: /submit/i })).toBeInTheDocument()
+    })
+
+    it('shows a recoverable error when the local runtime becomes unavailable', async () => {
+      mockApi.submitTurn.mockRejectedValue(
+        new Error('Runtime unavailable: llama-server exited unexpectedly'),
+      )
+      renderConversation()
+      await waitFor(() =>
+        expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument(),
+      )
+
+      fireEvent.change(screen.getByRole('textbox', { name: /your response/i }), {
+        target: { value: 'My answer.' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+
+      await waitFor(() =>
+        expect(screen.getByRole('alert')).toHaveTextContent('Runtime unavailable'),
+      )
+      // Rolled-back turn must not remain in the transcript.
+      expect(screen.queryByText('My answer.')).not.toBeInTheDocument()
+      // Session must remain interactive so the player can retry.
+      expect(screen.getByRole('textbox', { name: /your response/i })).not.toBeDisabled()
+    })
+  })
+
   describe('state variables panel', () => {
     it('shows NPC state variables section when show_state_meters is true (default)', async () => {
       mockApi.startSession.mockResolvedValue(startResponse)
