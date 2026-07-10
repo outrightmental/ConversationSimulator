@@ -298,7 +298,14 @@ fn launch_or_verify_core(
         // ~/.convsim dev location). convsim_core.paths.platform_data_root()
         // reads this env var and falls back to OS conventions when it is absent
         // (e.g. in dev mode without Tauri).
-        if let Ok(data_dir) = app.path().app_data_dir() {
+        //
+        // Use the *local* app data dir, not app_data_dir(): on Windows the
+        // latter resolves to %APPDATA% (the Roaming profile), which some sync
+        // tools and enterprise policies replicate across machines — a poor home
+        // for GBs of model files and private conversation data. app_local_data_dir()
+        // resolves to %LOCALAPPDATA%, matching paths.py's Windows convention.
+        // On macOS and Linux the two are identical.
+        if let Ok(data_dir) = app.path().app_local_data_dir() {
             cmd.env("CONVSIM_DATA_ROOT", &data_dir);
         }
 
