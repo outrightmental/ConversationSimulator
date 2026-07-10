@@ -277,3 +277,58 @@ describe('GET /api/packs/:pack_id', () => {
     expect(entry?.pack_root).toBeTruthy();
   });
 });
+
+// ---------------------------------------------------------------------------
+// POST /api/sessions — launch a scenario served from the pack index
+// ---------------------------------------------------------------------------
+
+describe('POST /api/sessions — launch imported pack scenario', () => {
+  function launchPayload(overrides: Record<string, unknown> = {}) {
+    return {
+      scenario_id: 'community_library_scenario',
+      difficulty: 'hard',
+      player_role_name: 'Learner',
+      language: 'en',
+      input_mode: 'text-only',
+      tts_enabled: false,
+      show_state_meters: false,
+      save_transcript: true,
+      seed: null,
+      ...overrides,
+    };
+  }
+
+  it('creates a session for a scenario that only exists in an imported pack', async () => {
+    await importPack();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/sessions',
+      payload: launchPayload(),
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json<{ scenario_id: string }>().scenario_id).toBe(
+      'community_library_scenario',
+    );
+  });
+
+  it('rejects a difficulty the imported scenario does not define', async () => {
+    await importPack();
+    // The pack scenario defines only normal/hard; easy must be rejected.
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/sessions',
+      payload: launchPayload({ difficulty: 'easy' }),
+    });
+    expect(res.statusCode).toBe(400);
+  });
+
+  it('still rejects a scenario id that exists in no pack', async () => {
+    await importPack();
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/sessions',
+      payload: launchPayload({ scenario_id: 'does_not_exist' }),
+    });
+    expect(res.statusCode).toBe(400);
+  });
+});

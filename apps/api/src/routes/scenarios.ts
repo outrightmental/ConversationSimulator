@@ -103,6 +103,32 @@ function loadScenariosFromPackIndex(dbPath: string, skipIds: Set<string>): Scena
   return results;
 }
 
+/**
+ * Resolve a scenario by id from the static built-ins first, then falling back
+ * to any pack tracked in the PackIndex. Returns undefined when the id matches
+ * neither, letting callers decide how to signal "not found". Shared by the
+ * scenario detail route and session creation so an imported pack scenario can
+ * be launched, not just browsed.
+ */
+export function findScenarioInfo(scenarioId: string): ScenarioInfo | undefined {
+  const staticScenario = SCENARIOS[scenarioId];
+  if (staticScenario) return staticScenario;
+
+  if (_scenariosDbPath) {
+    try {
+      const allDynamic = loadScenariosFromPackIndex(
+        _scenariosDbPath,
+        new Set(Object.keys(SCENARIOS)),
+      );
+      return allDynamic.find((s) => s.scenario_id === scenarioId);
+    } catch {
+      return undefined;
+    }
+  }
+
+  return undefined;
+}
+
 export async function scenarioRoutes(app: FastifyInstance) {
   app.get('/api/scenarios', async (): Promise<ScenarioInfo[]> => {
     const staticScenarios = Object.values(SCENARIOS);
@@ -125,21 +151,8 @@ export async function scenarioRoutes(app: FastifyInstance) {
     async (req, reply): Promise<ScenarioInfo> => {
       const { scenario_id } = req.params;
 
-      const staticScenario = SCENARIOS[scenario_id];
-      if (staticScenario) return staticScenario;
-
-      if (_scenariosDbPath) {
-        try {
-          const allDynamic = loadScenariosFromPackIndex(
-            _scenariosDbPath,
-            new Set(Object.keys(SCENARIOS)),
-          );
-          const found = allDynamic.find((s) => s.scenario_id === scenario_id);
-          if (found) return found;
-        } catch {
-          // fall through to 404
-        }
-      }
+      const found = findScenarioInfo(scenario_id);
+      if (found) return found;
 
       reply.status(404);
       throw new Error(`Scenario '${scenario_id}' not found`);
