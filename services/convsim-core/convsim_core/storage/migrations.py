@@ -324,11 +324,10 @@ _BARGE_IN_SQL = """
 ALTER TABLE turn_session_turns ADD COLUMN barged_in INTEGER NOT NULL DEFAULT 0;
 """
 
-# Records when a session concluded so the Logbook can measure practice time and
-# per-day streaks accurately. Populated by the /end handler and, for sessions
-# that terminate mid-turn without an explicit /end, backfilled when the debrief
-# is generated (see debrief_engine).
-_TURN_SESSION_ENDED_AT_SQL = """
+# The Logbook (issue #307): record when a session terminated so practice time
+# can be measured. Set by the /end and /debrief handlers via
+# COALESCE(ended_at, datetime('now')).
+_SESSION_ENDED_AT_SQL = """
 ALTER TABLE turn_sessions ADD COLUMN ended_at TEXT;
 """
 
@@ -347,7 +346,7 @@ MIGRATIONS: list[tuple[str, str]] = [
     ("0012_session_metrics", _SESSION_METRICS_SQL),
     ("0013_branch_sessions", _BRANCH_SESSIONS_SQL),
     ("0014_barge_in", _BARGE_IN_SQL),
-    ("0015_turn_session_ended_at", _TURN_SESSION_ENDED_AT_SQL),
+    ("0015_turn_sessions_ended_at", _SESSION_ENDED_AT_SQL),
 ]
 
 
