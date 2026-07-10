@@ -78,7 +78,7 @@ export default function MicButton({
 
   const label = isRecording
     ? isHandsFree
-      ? `Recording ${formatDuration(recordingSeconds)} — auto-stops on silence`
+      ? `Recording ${formatDuration(recordingSeconds)} — tap to stop or wait for silence`
       : `Recording ${formatDuration(recordingSeconds)} of ${MAX_RECORDING_SECONDS}s — release to stop`
     : isHandsFree
       ? 'Tap to start recording (auto-stops on silence)'
@@ -91,13 +91,14 @@ export default function MicButton({
         aria-label={label}
         aria-pressed={isRecording}
         disabled={disabled && !isRecording}
-        onPointerDown={onRecordStart}
+        onPointerDown={isHandsFree ? (isRecording ? onRecordStop : onRecordStart) : onRecordStart}
         onPointerUp={isHandsFree ? undefined : onRecordStop}
         onPointerLeave={isHandsFree ? undefined : onRecordStop}
         onKeyDown={(e) => {
           if (e.code === 'Space' && !e.repeat) {
             e.preventDefault()
-            onRecordStart()
+            if (isHandsFree && isRecording) onRecordStop()
+            else onRecordStart()
           }
         }}
         onKeyUp={(e) => {
