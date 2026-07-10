@@ -3,6 +3,8 @@ import { useEffect, useRef } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import OfflineIndicator from '../components/OfflineIndicator'
 import { useTranslation } from '../i18n'
+import { useGamepadNavigation } from '../hooks/useGamepadNavigation'
+import { useSteamKeyboard } from '../hooks/useSteamKeyboard'
 
 const linkStyle = ({ isActive }: { isActive: boolean }): React.CSSProperties => ({
   padding: '0.4rem 0.75rem',
@@ -17,7 +19,7 @@ const linkStyle = ({ isActive }: { isActive: boolean }): React.CSSProperties => 
 // styles always beat stylesheet rules, so `.skip-link:focus` could never
 // override an inline `position`/`left`/`width`, and the link would stay hidden
 // even when focused.
-const skipLinkFocusStyle = `
+const globalStyles = `
   .skip-link {
     position: absolute;
     left: -9999px;
@@ -39,6 +41,45 @@ const skipLinkFocusStyle = `
     text-decoration: none;
     z-index: 9999;
   }
+
+  /*
+   * Visible focus ring for controller and keyboard navigation.
+   * Sized to be legible on Steam Deck at 1280×800 from couch distance:
+   * 3 px solid outline with generous offset, high-contrast indigo.
+   * :focus-visible excludes mouse clicks so sighted mouse users are not
+   * distracted by focus rings on non-keyboard interactions.
+   */
+  :focus-visible {
+    outline: 3px solid #6366f1;
+    outline-offset: 3px;
+    border-radius: 4px;
+  }
+
+  /* Nav links have their own padding/radius — tighten the offset so the
+     outline hugs their shape rather than floating away from it. */
+  nav a:focus-visible {
+    outline-offset: 2px;
+  }
+
+  /*
+   * Controller focus ring.  When focus is moved programmatically by
+   * useGamepadNavigation (via element.focus()), Chromium's :focus-visible
+   * heuristic does NOT match buttons/links — gamepad input is not a keyboard
+   * "modality", so the ring above would never appear during D-pad navigation
+   * on Steam Deck.  useGamepadNavigation adds .gamepad-active to <html> while a
+   * controller is driving focus, so mirror the same ring on plain :focus for
+   * that mode.  The class is cleared on real pointer input so mouse users are
+   * unaffected.
+   */
+  :root.gamepad-active :focus {
+    outline: 3px solid #6366f1;
+    outline-offset: 3px;
+    border-radius: 4px;
+  }
+
+  :root.gamepad-active nav a:focus {
+    outline-offset: 2px;
+  }
 `
 
 export default function AppLayout() {
@@ -55,6 +96,13 @@ export default function AppLayout() {
     { to: '/support', label: t('nav.support'), end: false },
   ]
 
+  // Controller navigation: D-pad / left-stick moves focus, A = confirm, B = back,
+  // R1 = push-to-talk.  No-ops in the browser when no gamepad is connected.
+  useGamepadNavigation()
+  // Steam on-screen keyboard: show automatically when any text input is focused.
+  // No-ops outside Tauri or when Steam is not running.
+  useSteamKeyboard()
+
   // Move keyboard/screen-reader focus to the main landmark on route changes so
   // navigation is announced and the user lands at the new page's content.  Skip
   // the initial mount to avoid stealing focus (and scroll) on first paint.
@@ -68,7 +116,7 @@ export default function AppLayout() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-      <style>{skipLinkFocusStyle}</style>
+      <style>{globalStyles}</style>
       <a href="#main-content" className="skip-link">
         {t('nav.skipToMain')}
       </a>

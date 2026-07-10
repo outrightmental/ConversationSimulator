@@ -318,6 +318,12 @@ CREATE TABLE session_branches (
 CREATE UNIQUE INDEX session_branches_branch_idx ON session_branches(branch_session_id);
 """
 
+# Conversational timing realism (issue #308): record whether a player turn
+# barged in on NPC TTS playback so the debrief can count interruptions.
+_BARGE_IN_SQL = """
+ALTER TABLE turn_session_turns ADD COLUMN barged_in INTEGER NOT NULL DEFAULT 0;
+"""
+
 MIGRATIONS: list[tuple[str, str]] = [
     ("0001_initial_schema", _INITIAL_SCHEMA_SQL),
     ("0002_model_registry_v2", _MODEL_REGISTRY_V2_SQL),
@@ -332,6 +338,7 @@ MIGRATIONS: list[tuple[str, str]] = [
     ("0011_model_download_verified", _MODEL_DOWNLOAD_VERIFIED_SQL),
     ("0012_session_metrics", _SESSION_METRICS_SQL),
     ("0013_branch_sessions", _BRANCH_SESSIONS_SQL),
+    ("0014_barge_in", _BARGE_IN_SQL),
 ]
 
 

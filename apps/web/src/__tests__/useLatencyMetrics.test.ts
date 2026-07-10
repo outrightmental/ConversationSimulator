@@ -185,13 +185,13 @@ describe('useLatencyMetrics', () => {
       expect(result.current.warnings).toHaveLength(0)
     })
 
-    it('warns use_smaller_model when session_start_ms exceeds 5000ms', () => {
+    it('warns use_smaller_model when session_start_ms exceeds 10000ms', () => {
       const { result } = renderHook(() => useLatencyMetrics())
 
       act(() => {
         nowValue = 0
         result.current.mark('session_start')
-        nowValue = 6000
+        nowValue = 11000
         result.current.recordInterval('session_start_ms', 'session_start')
       })
 
@@ -200,13 +200,13 @@ describe('useLatencyMetrics', () => {
       expect(w?.title).toMatch(/session startup/i)
     })
 
-    it('warns use_smaller_model when first_token_ms exceeds 3000ms', () => {
+    it('warns use_smaller_model when first_token_ms exceeds 2500ms', () => {
       const { result } = renderHook(() => useLatencyMetrics())
 
       act(() => {
         nowValue = 0
         result.current.mark('turn_submit')
-        nowValue = 3001
+        nowValue = 2501
         result.current.recordInterval('first_token_ms', 'turn_submit')
       })
 
@@ -244,17 +244,83 @@ describe('useLatencyMetrics', () => {
       expect(w?.detail).toContain('5.0s')
     })
 
-    it('does not warn when first_token_ms is exactly at threshold (3000ms)', () => {
+    it('does not warn when first_token_ms is exactly at threshold (2500ms)', () => {
       const { result } = renderHook(() => useLatencyMetrics())
 
       act(() => {
         nowValue = 0
         result.current.mark('turn_submit')
-        nowValue = 3000
+        nowValue = 2500
         result.current.recordInterval('first_token_ms', 'turn_submit')
       })
 
       expect(result.current.warnings).toHaveLength(0)
+    })
+
+    it('warns disable_tts when tts_first_sentence_ms exceeds 1500ms', () => {
+      const { result } = renderHook(() => useLatencyMetrics())
+
+      act(() => {
+        result.current.recordValue('tts_first_sentence_ms', 1501)
+      })
+
+      const w = result.current.warnings.find((w) => w.code === 'disable_tts')
+      expect(w).toBeDefined()
+      expect(w?.title).toMatch(/tts audio/i)
+    })
+
+    it('does not warn when tts_first_sentence_ms is exactly at threshold (1500ms)', () => {
+      const { result } = renderHook(() => useLatencyMetrics())
+
+      act(() => {
+        result.current.recordValue('tts_first_sentence_ms', 1500)
+      })
+
+      expect(result.current.warnings).toHaveLength(0)
+    })
+
+    it('warns switch_to_push_to_talk when stt_final_ms exceeds 2000ms', () => {
+      const { result } = renderHook(() => useLatencyMetrics())
+
+      act(() => {
+        result.current.recordValue('stt_final_ms', 2001)
+      })
+
+      const w = result.current.warnings.find((w) => w.code === 'switch_to_push_to_talk')
+      expect(w).toBeDefined()
+      expect(w?.title).toMatch(/speech recognition/i)
+    })
+
+    it('does not warn when stt_final_ms is exactly at threshold (2000ms)', () => {
+      const { result } = renderHook(() => useLatencyMetrics())
+
+      act(() => {
+        result.current.recordValue('stt_final_ms', 2000)
+      })
+
+      expect(result.current.warnings).toHaveLength(0)
+    })
+
+    it('includes elapsed time in tts warning detail', () => {
+      const { result } = renderHook(() => useLatencyMetrics())
+
+      act(() => {
+        result.current.recordValue('tts_first_sentence_ms', 2000)
+      })
+
+      const w = result.current.warnings.find((w) => w.code === 'disable_tts')
+      expect(w?.detail).toContain('2.0s')
+    })
+
+    it('includes elapsed time in stt warning detail', () => {
+      const { result } = renderHook(() => useLatencyMetrics())
+
+      act(() => {
+        result.current.recordValue('stt_final_ms', 3500)
+      })
+
+      const w = result.current.warnings.find((w) => w.code === 'switch_to_push_to_talk')
+      expect(w?.detail).toContain('3.5s')
     })
   })
 })
