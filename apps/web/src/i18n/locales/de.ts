@@ -62,6 +62,11 @@ export const de: LocaleMessages = {
       lastSession: 'Letzte Sitzung',
       viewFull: 'Vollständiges Logbuch anzeigen →',
     },
+    trainingPlan: {
+      heading: 'Trainingsplan',
+      noSuggestions: 'Installieren Sie ein Szenario-Paket für personalisierte Empfehlungen.',
+      loading: 'Empfehlungen werden geladen…',
+    },
     readinessSection: 'Systembereitschaft',
     getStartedSection: 'Ohne Modell loslegen',
     helpSection: 'Hilfe und Ressourcen',
@@ -372,6 +377,9 @@ export const de: LocaleMessages = {
       tryAnother: 'Anderes Szenario versuchen',
       privacyNotice:
         'Exportierte Dateien werden in Ihrem lokalen Download-Ordner gespeichert und verlassen Ihr Gerät nicht.',
+    },
+    nextUp: {
+      heading: 'Als Nächstes',
     },
   },
 }

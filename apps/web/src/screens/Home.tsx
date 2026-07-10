@@ -7,7 +7,9 @@ import { usePackCount } from '../api/usePackCount'
 import { apiClient } from '../api/client'
 import { useTranslation } from '../i18n'
 import { useLogbookProfile } from '../api/useLogbookProfile'
+import { useScenarios } from '../api/useScenarios'
 import { api } from '../api/client'
+import { recommendNext } from '@convsim/shared'
 import RuntimeRecoveryCard from '../components/RuntimeRecoveryCard'
 import UpdateBanner from '../components/UpdateBanner'
 import { useAppUpdate } from '../hooks/useAppUpdate'
@@ -24,6 +26,7 @@ export default function Home() {
   const health = useApiHealth()
   const { count: packCount, refetch: refetchPackCount } = usePackCount()
   const logbook = useLogbookProfile()
+  const scenariosResult = useScenarios()
   const loading = health.state === 'loading'
   const { t } = useTranslation()
   const { update, dismiss, install } = useAppUpdate()
@@ -32,6 +35,17 @@ export default function Home() {
   const [reseeding, setReseeding] = useState(false)
   const [reseedDone, setReseedDone] = useState(false)
   const [reseedFailed, setReseedFailed] = useState(false)
+
+  // Wait for both the logbook profile and the scenario list before showing any
+  // recommendations, so we never flash cold-start suggestions computed from a
+  // still-loading (null) profile while the "Loading…" text is also on screen.
+  const trainingPlanLoading =
+    logbook.state === 'loading' || scenariosResult.state === 'loading'
+
+  const recommendations = recommendNext(
+    logbook.profile,
+    scenariosResult.scenarios,
+  )
 
   const runtime = health.runtime
   const llmReady = runtime?.llm_ready ?? false
@@ -231,6 +245,55 @@ export default function Home() {
               {t('home.training.viewFull')}
             </Link>
           </div>
+        )}
+      </section>
+
+      <section aria-label={t('home.trainingPlan.heading')} style={{ marginTop: '2rem' }}>
+        <h2 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.75rem' }}>
+          {t('home.trainingPlan.heading')}
+        </h2>
+        {trainingPlanLoading && (
+          <p style={{ color: '#71717a', fontSize: '0.875rem' }}>{t('home.trainingPlan.loading')}</p>
+        )}
+        {!trainingPlanLoading && recommendations.length === 0 && (
+          <p style={{ color: '#71717a', fontSize: '0.875rem' }}>{t('home.trainingPlan.noSuggestions')}</p>
+        )}
+        {!trainingPlanLoading && recommendations.length > 0 && (
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+            {recommendations.map((rec) => (
+              <li
+                key={`${rec.pack_id}/${rec.scenario_id}`}
+                style={{
+                  padding: '0.75rem 1rem',
+                  border: '1px solid rgba(255,255,255,0.07)',
+                  borderRadius: '6px',
+                  fontSize: '0.875rem',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <Link
+                    to={`/setup/${rec.scenario_id}`}
+                    style={{ fontWeight: 600, color: '#e8e8ea', textDecoration: 'none' }}
+                  >
+                    {rec.title}
+                  </Link>
+                  <span
+                    style={{
+                      fontSize: '0.75rem',
+                      padding: '0.1rem 0.4rem',
+                      borderRadius: '4px',
+                      background: 'rgba(99,102,241,0.15)',
+                      color: '#a5b4fc',
+                      textTransform: 'capitalize',
+                    }}
+                  >
+                    {rec.recommended_difficulty}
+                  </span>
+                </div>
+                <p style={{ margin: '0.25rem 0 0', color: '#a1a1aa', fontSize: '0.8rem' }}>{rec.reason}</p>
+              </li>
+            ))}
+          </ul>
         )}
       </section>
 
