@@ -633,9 +633,9 @@ class TestPackImportNetworkGuard:
 
         packs = _guard_client.get("/api/packs")
         assert packs.status_code == 200, f"[packs] {packs.text}"
-        slugs = [p.get("slug", "") for p in packs.json()]
-        assert any("guard" in slug.lower() for slug in slugs), (
-            f"[packs] guard pack not found in pack slugs after import: {slugs}"
+        pack_ids = [p.get("pack_id", "") for p in packs.json()["packs"]]
+        assert any("guard" in pack_id.lower() for pack_id in pack_ids), (
+            f"[packs] guard pack not found in pack list after import: {pack_ids}"
         )
 
         assert _guard_client.outbound_attempts == [], (

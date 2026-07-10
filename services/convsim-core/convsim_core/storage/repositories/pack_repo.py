@@ -109,6 +109,23 @@ def insert_scenario(
     return scenario_db_id
 
 
+def remove_pack_by_slug(conn: sqlite3.Connection, slug: str) -> Optional[str]:
+    """Remove a pack and all cascaded data by slug.
+
+    Cascade deletes on the packs table remove scenarios, asset_index entries,
+    and (via DB triggers) the scenario_fts and pack_readme_fts index entries.
+    Returns the installed source_path so the caller can clean up the filesystem,
+    or None when no pack with that slug exists.  Does NOT commit.
+    """
+    row = conn.execute(
+        "SELECT id, source_path FROM packs WHERE slug = ?", (slug,)
+    ).fetchone()
+    if row is None:
+        return None
+    conn.execute("DELETE FROM packs WHERE id = ?", (row["id"],))
+    return row["source_path"]
+
+
 def _row_to_summary(row: sqlite3.Row) -> PackSummary:
     return PackSummary(
         id=row["id"],

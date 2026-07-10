@@ -269,6 +269,10 @@ export const apiClient = {
     return get<PacksResponse>('/packs')
   },
 
+  reseedOfficialPacks(): Promise<ApiResult<{ seeded: number }>> {
+    return post<{ seeded: number }>('/packs/reseed')
+  },
+
   uploadAudio(blob: Blob, language?: string): Promise<ApiResult<SttUploadResponse>> {
     const ext = blob.type.includes('ogg') ? 'ogg' : 'webm'
     const form = new FormData()
