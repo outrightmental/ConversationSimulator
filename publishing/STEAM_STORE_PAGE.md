@@ -338,7 +338,7 @@ comfortable experience with larger AI models.
 | **Processor** | Intel Core i5 or AMD Ryzen 5 | Intel Core i7 or AMD Ryzen 7 |
 | **Memory** | 8 GB RAM | 16 GB RAM |
 | **Storage** | 500 MB for the app; 2–8 GB per AI model | 500 MB for the app; 8–20 GB for larger models |
-| **Additional Notes** | Flatpak or AppImage distribution. No root access required during play. |
+| **Additional Notes** | Flatpak or AppImage distribution. No root access required during play. | |
 
 ### SteamOS / Steam Deck
 
