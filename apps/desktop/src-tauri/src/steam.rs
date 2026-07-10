@@ -124,12 +124,14 @@ mod tests {
     fn with_steam_app_id(id: &str, f: impl FnOnce()) {
         let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let prev = std::env::var("SteamAppId").ok();
-        // SAFETY: single-threaded access is guaranteed by ENV_LOCK above.
-        unsafe { std::env::set_var("SteamAppId", id) }
+        // Serialised by ENV_LOCK above so the mutation is race-free. On the
+        // 2021 edition `set_var`/`remove_var` are safe fns (they only became
+        // `unsafe` in the 2024 edition), so no `unsafe` block is needed.
+        std::env::set_var("SteamAppId", id);
         f();
         match prev {
-            Some(v) => unsafe { std::env::set_var("SteamAppId", v) },
-            None => unsafe { std::env::remove_var("SteamAppId") },
+            Some(v) => std::env::set_var("SteamAppId", v),
+            None => std::env::remove_var("SteamAppId"),
         }
     }
 
@@ -137,16 +139,14 @@ mod tests {
         let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let prev_app = std::env::var("SteamAppId").ok();
         let prev_game = std::env::var("SteamGameId").ok();
-        unsafe {
-            std::env::remove_var("SteamAppId");
-            std::env::remove_var("SteamGameId");
-        }
+        std::env::remove_var("SteamAppId");
+        std::env::remove_var("SteamGameId");
         f();
         if let Some(v) = prev_app {
-            unsafe { std::env::set_var("SteamAppId", v) }
+            std::env::set_var("SteamAppId", v);
         }
         if let Some(v) = prev_game {
-            unsafe { std::env::set_var("SteamGameId", v) }
+            std::env::set_var("SteamGameId", v);
         }
     }
 
@@ -191,18 +191,16 @@ mod tests {
         let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let prev_app = std::env::var("SteamAppId").ok();
         let prev_game = std::env::var("SteamGameId").ok();
-        unsafe {
-            std::env::remove_var("SteamAppId");
-            std::env::set_var("SteamGameId", "480");
-        }
+        std::env::remove_var("SteamAppId");
+        std::env::set_var("SteamGameId", "480");
         assert!(is_launched_by_steam());
         // Restore.
-        unsafe { std::env::remove_var("SteamGameId") }
+        std::env::remove_var("SteamGameId");
         if let Some(v) = prev_app {
-            unsafe { std::env::set_var("SteamAppId", v) }
+            std::env::set_var("SteamAppId", v);
         }
         if let Some(v) = prev_game {
-            unsafe { std::env::set_var("SteamGameId", v) }
+            std::env::set_var("SteamGameId", v);
         }
     }
 
