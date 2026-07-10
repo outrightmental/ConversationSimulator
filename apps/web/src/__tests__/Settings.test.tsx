@@ -144,23 +144,23 @@ beforeEach(() => {
   vi.restoreAllMocks()
   vi.clearAllMocks()
   localStorage.clear()
-  mockApi.getDataFolder.mockResolvedValue({ path: '/home/user/.convsim/db' })
-  mockApi.getFolders.mockResolvedValue(STUB_FOLDERS)
-  mockApi.listSessions.mockResolvedValue({ sessions: [] })
-  mockApi.listPacks.mockResolvedValue({ packs: [], total: 0 })
-  mockApi.importPack.mockResolvedValue({ pack_id: 'pack-alpha', name: 'Alpha Scenarios', version: '1.0.0', dest: '/tmp/pack-alpha' })
-  mockApi.validatePack.mockResolvedValue({ pack_id: 'pack-alpha', valid: true, errors: [] })
-  mockApi.getModels.mockResolvedValue(STUB_MODELS)
-  mockApi.getRuntimeSettings.mockResolvedValue(STUB_RUNTIME_SETTINGS)
-  mockApi.useModel.mockResolvedValue({ runtime_id: 'llama_cpp', model_id: null, runtime_name: 'llama.cpp', status: 'unavailable', message: null })
-  mockApi.updateRuntimeSettings.mockResolvedValue(STUB_RUNTIME_SETTINGS)
-  mockApi.resetRuntimeSettings.mockResolvedValue(STUB_RUNTIME_SETTINGS)
+  mockApi.getDataFolder.mockResolvedValue({ ok: true, data: { path: '/home/user/.convsim/db' } })
+  mockApi.getFolders.mockResolvedValue({ ok: true, data: STUB_FOLDERS })
+  mockApi.listSessions.mockResolvedValue({ ok: true, data: { sessions: [] } })
+  mockApi.listPacks.mockResolvedValue({ ok: true, data: { packs: [], total: 0 } })
+  mockApi.importPack.mockResolvedValue({ ok: true, data: { pack_id: 'pack-alpha', name: 'Alpha Scenarios', version: '1.0.0', dest: '/tmp/pack-alpha' } })
+  mockApi.validatePack.mockResolvedValue({ ok: true, data: { pack_id: 'pack-alpha', valid: true, errors: [] } })
+  mockApi.getModels.mockResolvedValue({ ok: true, data: STUB_MODELS })
+  mockApi.getRuntimeSettings.mockResolvedValue({ ok: true, data: STUB_RUNTIME_SETTINGS })
+  mockApi.useModel.mockResolvedValue({ ok: true, data: { runtime_id: 'llama_cpp', model_id: null, runtime_name: 'llama.cpp', status: 'unavailable', message: null } })
+  mockApi.updateRuntimeSettings.mockResolvedValue({ ok: true, data: STUB_RUNTIME_SETTINGS })
+  mockApi.resetRuntimeSettings.mockResolvedValue({ ok: true, data: STUB_RUNTIME_SETTINGS })
   // VoiceSettingsPanel stubs
-  mockApi.listVoices.mockResolvedValue(STUB_VOICES)
-  mockApi.getTtsCacheSize.mockResolvedValue({ files: 0, size_bytes: 0 })
-  mockApi.clearTtsCache.mockResolvedValue({ deleted_files: 0 })
-  mockApi.health.mockResolvedValue(STUB_HEALTH)
-  mockApi.vadHealth.mockResolvedValue(STUB_VAD)
+  mockApi.listVoices.mockResolvedValue({ ok: true, data: STUB_VOICES })
+  mockApi.getTtsCacheSize.mockResolvedValue({ ok: true, data: { files: 0, size_bytes: 0 } })
+  mockApi.clearTtsCache.mockResolvedValue({ ok: true, data: { deleted_files: 0 } })
+  mockApi.health.mockResolvedValue({ ok: true, data: STUB_HEALTH })
+  mockApi.vadHealth.mockResolvedValue({ ok: true, data: STUB_VAD })
   // Stub navigator.permissions so tests don't hang on browser API
   Object.defineProperty(navigator, 'permissions', {
     value: { query: vi.fn().mockResolvedValue({ state: 'granted', addEventListener: vi.fn() }) },
@@ -299,7 +299,7 @@ describe('pack management: import', () => {
   })
 
   it('renders a row for each installed pack', async () => {
-    mockApi.listPacks.mockResolvedValue({ packs: [STUB_PACK_A], total: 1 })
+    mockApi.listPacks.mockResolvedValue({ ok: true, data: { packs: [STUB_PACK_A], total: 1 } })
     await renderSettings()
     await waitFor(() =>
       expect(screen.getByText('Alpha Scenarios')).toBeInTheDocument(),
@@ -308,16 +308,16 @@ describe('pack management: import', () => {
   })
 
   it('shows an error when listPacks fails', async () => {
-    mockApi.listPacks.mockRejectedValue(new Error('network'))
+    mockApi.listPacks.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'network' } })
     await renderSettings()
     await waitFor(() =>
-      expect(screen.getByText(/could not load installed packs/i)).toBeInTheDocument(),
+      expect(screen.getByText(/connection failed/i)).toBeInTheDocument(),
     )
   })
 
   it('shows importing state while uploading', async () => {
-    let resolveImport!: (v: ImportPackResponse) => void
-    mockApi.importPack.mockReturnValue(new Promise<ImportPackResponse>((r) => { resolveImport = r }))
+    let resolveImport!: (v: { ok: true; data: ImportPackResponse }) => void
+    mockApi.importPack.mockReturnValue(new Promise<{ ok: true; data: ImportPackResponse }>((r) => { resolveImport = r }))
     await renderSettings()
     const button = screen.getByRole('button', { name: /import pack/i })
     const fileInput = screen.getByTestId('settings-import-file-input')
@@ -327,7 +327,7 @@ describe('pack management: import', () => {
       expect(screen.getByRole('button', { name: /import pack/i })).toHaveTextContent(/importing/i),
     )
     expect(button).toBeDisabled()
-    resolveImport({ pack_id: 'pack-alpha', name: 'Alpha Scenarios', version: '1.0.0', dest: '/tmp/pack-alpha' })
+    resolveImport({ ok: true, data: { pack_id: 'pack-alpha', name: 'Alpha Scenarios', version: '1.0.0', dest: '/tmp/pack-alpha' } })
   })
 
   it('shows success message after a successful import', async () => {
@@ -342,7 +342,7 @@ describe('pack management: import', () => {
   })
 
   it('shows an error message when import fails', async () => {
-    mockApi.importPack.mockRejectedValue(new Error('Invalid pack format'))
+    mockApi.importPack.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'Invalid pack format' } })
     await renderSettings()
     const fileInput = screen.getByTestId('settings-import-file-input')
     const file = new File(['bad'], 'pack.zip', { type: 'application/zip' })
@@ -362,10 +362,10 @@ describe('pack management: import', () => {
   })
 
   it('reloads the pack list after a successful import', async () => {
-    mockApi.importPack.mockResolvedValue({ pack_id: 'pack-alpha', name: 'Alpha Scenarios', version: '1.0.0', dest: '/tmp/pack-alpha' })
+    mockApi.importPack.mockResolvedValue({ ok: true, data: { pack_id: 'pack-alpha', name: 'Alpha Scenarios', version: '1.0.0', dest: '/tmp/pack-alpha' } })
     mockApi.listPacks
-      .mockResolvedValueOnce({ packs: [], total: 0 })
-      .mockResolvedValueOnce({ packs: [STUB_PACK_A], total: 1 })
+      .mockResolvedValueOnce({ ok: true, data: { packs: [], total: 0 } })
+      .mockResolvedValueOnce({ ok: true, data: { packs: [STUB_PACK_A], total: 1 } })
     await renderSettings()
     const fileInput = screen.getByTestId('settings-import-file-input')
     const file = new File(['PK'], 'pack.zip', { type: 'application/zip' })
@@ -427,10 +427,10 @@ describe('local folders', () => {
   })
 
   it('shows an error message when getFolders fails', async () => {
-    mockApi.getFolders.mockRejectedValue(new Error('network error'))
+    mockApi.getFolders.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'network error' } })
     await renderSettings()
     await waitFor(() =>
-      expect(screen.getByText(/could not retrieve folder paths/i)).toBeInTheDocument(),
+      expect(screen.getByText(/connection failed/i)).toBeInTheDocument(),
     )
   })
 })
@@ -524,7 +524,7 @@ describe('clear local data', () => {
   })
 
   it('calls clearLocalData API on the second (confirm) click', async () => {
-    mockApi.clearLocalData.mockResolvedValue({ deleted_sessions: 3 })
+    mockApi.clearLocalData.mockResolvedValue({ ok: true, data: { deleted_sessions: 3 } })
     await renderSettings()
     fireEvent.click(screen.getByRole('button', { name: /clear all local data/i }))
     await waitFor(() => screen.getByRole('button', { name: /confirm.*delete everything/i }))
@@ -533,7 +533,7 @@ describe('clear local data', () => {
   })
 
   it('shows success message with deleted count after clear', async () => {
-    mockApi.clearLocalData.mockResolvedValue({ deleted_sessions: 3 })
+    mockApi.clearLocalData.mockResolvedValue({ ok: true, data: { deleted_sessions: 3 } })
     await renderSettings()
     fireEvent.click(screen.getByRole('button', { name: /clear all local data/i }))
     await waitFor(() => screen.getByRole('button', { name: /confirm.*delete everything/i }))
@@ -544,7 +544,7 @@ describe('clear local data', () => {
   })
 
   it('shows singular "1 session deleted" when exactly one session is removed', async () => {
-    mockApi.clearLocalData.mockResolvedValue({ deleted_sessions: 1 })
+    mockApi.clearLocalData.mockResolvedValue({ ok: true, data: { deleted_sessions: 1 } })
     await renderSettings()
     fireEvent.click(screen.getByRole('button', { name: /clear all local data/i }))
     await waitFor(() => screen.getByRole('button', { name: /confirm.*delete everything/i }))
@@ -555,18 +555,18 @@ describe('clear local data', () => {
   })
 
   it('shows an error when the clear API call fails', async () => {
-    mockApi.clearLocalData.mockRejectedValue(new Error('disk full'))
+    mockApi.clearLocalData.mockResolvedValue({ ok: false, error: { kind: 'http-error', message: 'disk full' } })
     await renderSettings()
     fireEvent.click(screen.getByRole('button', { name: /clear all local data/i }))
     await waitFor(() => screen.getByRole('button', { name: /confirm.*delete everything/i }))
     fireEvent.click(screen.getByRole('button', { name: /confirm.*delete everything/i }))
     await waitFor(() =>
-      expect(screen.getByRole('alert')).toHaveTextContent(/disk full/i),
+      expect(screen.getByRole('alert')).toHaveTextContent(/request failed/i),
     )
   })
 
   it('clicking clear again after success re-enters the confirmation flow', async () => {
-    mockApi.clearLocalData.mockResolvedValue({ deleted_sessions: 1 })
+    mockApi.clearLocalData.mockResolvedValue({ ok: true, data: { deleted_sessions: 1 } })
     await renderSettings()
     fireEvent.click(screen.getByRole('button', { name: /clear all local data/i }))
     await waitFor(() => screen.getByRole('button', { name: /confirm.*delete everything/i }))
@@ -581,7 +581,7 @@ describe('clear local data', () => {
   })
 
   it('clicking clear again after an error re-enters the confirmation flow', async () => {
-    mockApi.clearLocalData.mockRejectedValue(new Error('disk full'))
+    mockApi.clearLocalData.mockResolvedValue({ ok: false, error: { kind: 'http-error', message: 'disk full' } })
     await renderSettings()
     fireEvent.click(screen.getByRole('button', { name: /clear all local data/i }))
     await waitFor(() => screen.getByRole('button', { name: /confirm.*delete everything/i }))
@@ -602,7 +602,7 @@ describe('clear local data', () => {
 
 describe('your sessions', () => {
   it('shows "No sessions yet." when the list is empty', async () => {
-    mockApi.listSessions.mockResolvedValue({ sessions: [] })
+    mockApi.listSessions.mockResolvedValue({ ok: true, data: { sessions: [] } })
     await renderSettings()
     await waitFor(() =>
       expect(screen.getByTestId('no-sessions')).toBeInTheDocument(),
@@ -610,7 +610,7 @@ describe('your sessions', () => {
   })
 
   it('renders a row for each session', async () => {
-    mockApi.listSessions.mockResolvedValue({ sessions: [SESSION_A, SESSION_B] })
+    mockApi.listSessions.mockResolvedValue({ ok: true, data: { sessions: [SESSION_A, SESSION_B] } })
     await renderSettings()
     await waitFor(() =>
       expect(screen.getByRole('button', { name: /export session sess-aaa/i })).toBeInTheDocument(),
@@ -619,20 +619,20 @@ describe('your sessions', () => {
   })
 
   it('shows an error message when listSessions fails', async () => {
-    mockApi.listSessions.mockRejectedValue(new Error('network'))
+    mockApi.listSessions.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'network' } })
     await renderSettings()
     await waitFor(() =>
-      expect(screen.getByText(/could not load sessions/i)).toBeInTheDocument(),
+      expect(screen.getByText(/connection failed/i)).toBeInTheDocument(),
     )
   })
 
   it('clears the sessions error when a subsequent load succeeds', async () => {
     mockApi.listSessions
-      .mockRejectedValueOnce(new Error('network'))
-      .mockResolvedValueOnce({ sessions: [SESSION_A] })
-    mockApi.clearLocalData.mockResolvedValue({ deleted_sessions: 1 })
+      .mockResolvedValueOnce({ ok: false, error: { kind: 'network', message: 'network' } })
+      .mockResolvedValueOnce({ ok: true, data: { sessions: [SESSION_A] } })
+    mockApi.clearLocalData.mockResolvedValue({ ok: true, data: { deleted_sessions: 1 } })
     await renderSettings()
-    await waitFor(() => expect(screen.getByText(/could not load sessions/i)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(/connection failed/i)).toBeInTheDocument())
 
     // Trigger a reload via clear-all (success path calls loadSessions internally)
     fireEvent.click(screen.getByRole('button', { name: /clear all local data/i }))
@@ -640,12 +640,12 @@ describe('your sessions', () => {
     fireEvent.click(screen.getByRole('button', { name: /confirm.*delete everything/i }))
 
     await waitFor(() =>
-      expect(screen.queryByText(/could not load sessions/i)).not.toBeInTheDocument(),
+      expect(screen.queryByText(/connection failed/i)).not.toBeInTheDocument(),
     )
   })
 
   it('clicking Delete shows a confirm button', async () => {
-    mockApi.listSessions.mockResolvedValue({ sessions: [SESSION_A] })
+    mockApi.listSessions.mockResolvedValue({ ok: true, data: { sessions: [SESSION_A] } })
     await renderSettings()
     await waitFor(() => screen.getByRole('button', { name: /delete session sess-aaa/i }))
     fireEvent.click(screen.getByRole('button', { name: /delete session sess-aaa/i }))
@@ -655,7 +655,7 @@ describe('your sessions', () => {
   })
 
   it('clicking Cancel after Delete dismisses without calling API', async () => {
-    mockApi.listSessions.mockResolvedValue({ sessions: [SESSION_A] })
+    mockApi.listSessions.mockResolvedValue({ ok: true, data: { sessions: [SESSION_A] } })
     await renderSettings()
     await waitFor(() => screen.getByRole('button', { name: /delete session sess-aaa/i }))
     fireEvent.click(screen.getByRole('button', { name: /delete session sess-aaa/i }))
@@ -666,8 +666,8 @@ describe('your sessions', () => {
   })
 
   it('clicking Confirm delete calls deleteSession and removes the row', async () => {
-    mockApi.listSessions.mockResolvedValue({ sessions: [SESSION_A, SESSION_B] })
-    mockApi.deleteSession.mockResolvedValue(undefined)
+    mockApi.listSessions.mockResolvedValue({ ok: true, data: { sessions: [SESSION_A, SESSION_B] } })
+    mockApi.deleteSession.mockResolvedValue({ ok: true, data: undefined })
     await renderSettings()
     await waitFor(() => screen.getByRole('button', { name: /delete session sess-aaa/i }))
     fireEvent.click(screen.getByRole('button', { name: /delete session sess-aaa/i }))
@@ -681,8 +681,8 @@ describe('your sessions', () => {
   })
 
   it('clicking Export calls exportSession', async () => {
-    mockApi.listSessions.mockResolvedValue({ sessions: [SESSION_A] })
-    mockApi.exportSession.mockResolvedValue({ session: { ...SESSION_A, ending_type: null, state_vars: {}, turn_count: 0 }, events: [] })
+    mockApi.listSessions.mockResolvedValue({ ok: true, data: { sessions: [SESSION_A] } })
+    mockApi.exportSession.mockResolvedValue({ ok: true, data: { session: { ...SESSION_A, ending_type: null, state_vars: {}, turn_count: 0 }, events: [] } })
     // Stub URL.createObjectURL/revokeObjectURL which jsdom does not implement.
     const origURL = globalThis.URL
     Object.defineProperty(globalThis, 'URL', {
@@ -701,28 +701,28 @@ describe('your sessions', () => {
   })
 
   it('shows an error when deleteSession API fails', async () => {
-    mockApi.listSessions.mockResolvedValue({ sessions: [SESSION_A] })
-    mockApi.deleteSession.mockRejectedValue(new Error('network error'))
+    mockApi.listSessions.mockResolvedValue({ ok: true, data: { sessions: [SESSION_A] } })
+    mockApi.deleteSession.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'network error' } })
     await renderSettings()
     await waitFor(() => screen.getByRole('button', { name: /delete session sess-aaa/i }))
     fireEvent.click(screen.getByRole('button', { name: /delete session sess-aaa/i }))
     await waitFor(() => screen.getByRole('button', { name: /confirm delete session sess-aaa/i }))
     fireEvent.click(screen.getByRole('button', { name: /confirm delete session sess-aaa/i }))
     await waitFor(() =>
-      expect(screen.getByRole('alert')).toHaveTextContent(/network error/i),
+      expect(screen.getByRole('alert')).toHaveTextContent(/connection failed/i),
     )
     // Session row should still be present after a failed delete
     expect(screen.getByRole('button', { name: /delete session sess-aaa/i })).toBeInTheDocument()
   })
 
   it('shows an error when exportSession API fails', async () => {
-    mockApi.listSessions.mockResolvedValue({ sessions: [SESSION_A] })
-    mockApi.exportSession.mockRejectedValue(new Error('export failed'))
+    mockApi.listSessions.mockResolvedValue({ ok: true, data: { sessions: [SESSION_A] } })
+    mockApi.exportSession.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'export failed' } })
     await renderSettings()
     await waitFor(() => screen.getByRole('button', { name: /export session sess-aaa/i }))
     fireEvent.click(screen.getByRole('button', { name: /export session sess-aaa/i }))
     await waitFor(() =>
-      expect(screen.getByRole('alert')).toHaveTextContent(/export failed/i),
+      expect(screen.getByRole('alert')).toHaveTextContent(/connection failed/i),
     )
   })
 })

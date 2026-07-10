@@ -111,8 +111,11 @@ describe('crash bundle', () => {
 
   it('calls createCrashBundle when the button is clicked', async () => {
     mockApi.createCrashBundle.mockResolvedValue({
-      bundle_path: '/home/user/.convsim/logs/crash-reports/crash-2026.zip',
-      notice: 'Crash bundle created locally. It is never transmitted automatically. Review the contents and attach it to a GitHub issue manually.',
+      ok: true,
+      data: {
+        bundle_path: '/home/user/.convsim/logs/crash-reports/crash-2026.zip',
+        notice: 'Crash bundle created locally. It is never transmitted automatically. Review the contents and attach it to a GitHub issue manually.',
+      },
     })
     await renderSupport()
     fireEvent.click(screen.getByRole('button', { name: /create crash bundle/i }))
@@ -121,8 +124,11 @@ describe('crash bundle', () => {
 
   it('shows the bundle path after successful creation', async () => {
     mockApi.createCrashBundle.mockResolvedValue({
-      bundle_path: '/home/user/.convsim/logs/crash-reports/crash-2026.zip',
-      notice: 'Crash bundle created locally. It is never transmitted automatically.',
+      ok: true,
+      data: {
+        bundle_path: '/home/user/.convsim/logs/crash-reports/crash-2026.zip',
+        notice: 'Crash bundle created locally. It is never transmitted automatically.',
+      },
     })
     await renderSupport()
     fireEvent.click(screen.getByRole('button', { name: /create crash bundle/i }))
@@ -135,8 +141,11 @@ describe('crash bundle', () => {
 
   it('shows the notice text after successful creation', async () => {
     mockApi.createCrashBundle.mockResolvedValue({
-      bundle_path: '/home/user/.convsim/logs/crash-reports/crash-2026.zip',
-      notice: 'It is never transmitted automatically.',
+      ok: true,
+      data: {
+        bundle_path: '/home/user/.convsim/logs/crash-reports/crash-2026.zip',
+        notice: 'It is never transmitted automatically.',
+      },
     })
     await renderSupport()
     fireEvent.click(screen.getByRole('button', { name: /create crash bundle/i }))
@@ -148,25 +157,28 @@ describe('crash bundle', () => {
   })
 
   it('disables the button while creating', async () => {
-    let resolveBundle!: (v: { bundle_path: string; notice: string }) => void
+    let resolveBundle!: (v: { ok: true; data: { bundle_path: string; notice: string } }) => void
     mockApi.createCrashBundle.mockReturnValue(
-      new Promise<{ bundle_path: string; notice: string }>((r) => { resolveBundle = r }),
+      new Promise<{ ok: true; data: { bundle_path: string; notice: string } }>((r) => { resolveBundle = r }),
     )
     await renderSupport()
     const button = screen.getByRole('button', { name: /create crash bundle/i })
     fireEvent.click(button)
     await waitFor(() => expect(button).toBeDisabled())
     await act(async () => {
-      resolveBundle({ bundle_path: '/tmp/crash.zip', notice: 'Local only.' })
+      resolveBundle({ ok: true, data: { bundle_path: '/tmp/crash.zip', notice: 'Local only.' } })
     })
   })
 
   it('shows an error when crash bundle creation fails', async () => {
-    mockApi.createCrashBundle.mockRejectedValue(new Error('Core service unavailable'))
+    mockApi.createCrashBundle.mockResolvedValue({
+      ok: false,
+      error: { kind: 'network', message: 'Core service unavailable' },
+    })
     await renderSupport()
     fireEvent.click(screen.getByRole('button', { name: /create crash bundle/i }))
     await waitFor(() =>
-      expect(screen.getByRole('alert')).toHaveTextContent(/core service unavailable/i),
+      expect(screen.getByRole('alert')).toHaveTextContent(/connection failed/i),
     )
     expect(screen.getByTestId('crash-bundle-error')).toBeInTheDocument()
   })

@@ -4,6 +4,9 @@ import { useBlocker } from 'react-router-dom'
 import { FormEditor } from '@convsim/ui'
 import type { PackFileType } from '@convsim/scenario-schema'
 import { api, type WorkbenchPack, type FileNode, type WorkbenchValidation, type WorkbenchValidationIssue, type WorkbenchImportValidationError } from '../api/client'
+import type { ApiError } from '../api/errors'
+import { ERROR_COPY } from '../api/errors'
+import { ApiErrorView } from '../components/ApiErrorView'
 
 // A validation response is only usable if it carries the expected error/warning
 // arrays. Backends without a validator (or unexpected shapes) are treated as
@@ -81,7 +84,7 @@ interface PackListProps {
   onSelect: (pack: WorkbenchPack) => void
   onImport: (file: File) => void
   importing: boolean
-  importError: string | null
+  importError: ApiError | null
   importValidation: WorkbenchImportValidationError | null
   importRenamed: string | null
 }
@@ -168,9 +171,9 @@ function PackList({ packs, selected, onSelect, onImport, importing, importError,
         </button>
 
         {importError && (
-          <p role="alert" data-testid="import-error" style={{ fontSize: '0.75rem', color: '#f87171', marginTop: '0.4rem' }}>
-            {importError}
-          </p>
+          <div data-testid="import-error">
+            <ApiErrorView error={importError} compact context="CreatorWorkbench-import" />
+          </div>
         )}
 
         {importRenamed && !importError && (
@@ -320,9 +323,9 @@ interface FileEditorProps {
   editable: boolean
   isDirty: boolean
   saving: boolean
-  saveError: string | null
+  saveError: ApiError | null
   copying: boolean
-  copyError: string | null
+  copyError: ApiError | null
   fileType: PackFileType | null
   onChange: (v: string) => void
   onSave: () => void
@@ -466,15 +469,11 @@ function FileEditor({
       </div>
 
       {saveError && (
-        <p role="alert" style={{ margin: '0.5rem 0.75rem', fontSize: '0.8rem', color: '#f87171' }}>
-          Save failed: {saveError}
-        </p>
+        <ApiErrorView error={saveError} compact context="CreatorWorkbench-save" />
       )}
 
       {copyError && (
-        <p role="alert" style={{ margin: '0.5rem 0.75rem', fontSize: '0.8rem', color: '#f87171' }}>
-          Copy failed: {copyError}
-        </p>
+        <ApiErrorView error={copyError} compact context="CreatorWorkbench-copy" />
       )}
 
       {/* Editor — form mode for recognized YAML types, raw textarea otherwise */}
@@ -546,7 +545,7 @@ function groupByFile(issues: WorkbenchValidationIssue[]): Map<string, WorkbenchV
 interface ValidationPanelProps {
   validation: WorkbenchValidation | null
   loading: boolean
-  serviceError: string | null
+  serviceError: ApiError | null
   onSelectFile?: (filePath: string) => void
   onRefresh?: () => void
 }
@@ -597,7 +596,7 @@ function ValidationPanel({ validation, loading, serviceError, onSelectFile, onRe
         }}
       >
         <span style={{ color: '#fbbf24' }}>⚠ Validator unavailable</span>
-        <span style={{ color: '#71717a', flex: 1 }}>{serviceError}</span>
+        <span style={{ color: '#71717a', flex: 1 }}>{ERROR_COPY[serviceError.kind].description}</span>
         {onRefresh && (
           <button
             onClick={onRefresh}
@@ -862,8 +861,8 @@ function TestChatPanel({ pack, validation }: TestChatPanelProps) {
   const [lastDelta, setLastDelta] = useState<Record<string, number>>({})
   const [inputText, setInputText] = useState('')
   const [endingType, setEndingType] = useState<string | null>(null)
-  const [startError, setStartError] = useState<string | null>(null)
-  const [turnError, setTurnError] = useState<string | null>(null)
+  const [startError, setStartError] = useState<ApiError | null>(null)
+  const [turnError, setTurnError] = useState<ApiError | null>(null)
   const sessionIdRef = useRef<string | null>(null)
   const transcriptRef = useRef<HTMLDivElement>(null)
 
@@ -871,7 +870,7 @@ function TestChatPanel({ pack, validation }: TestChatPanelProps) {
   useEffect(() => {
     return () => {
       if (sessionIdRef.current) {
-        api.deleteSession(sessionIdRef.current).catch(() => {})
+        void api.deleteSession(sessionIdRef.current)
       }
     }
   }, [])
@@ -893,16 +892,12 @@ function TestChatPanel({ pack, validation }: TestChatPanelProps) {
     setLastDelta({})
     setEndingType(null)
     setTurnError(null)
-    try {
-      const result = await api.workbench.startTestSession(pack.kind, pack.slug)
-      sessionIdRef.current = result.session_id
-      setStateVars(result.state_vars)
-      setTranscript([{ role: 'npc', content: result.npc_opening }])
-      setChatStatus('active')
-    } catch (e) {
-      setStartError(e instanceof Error ? e.message : 'Failed to start test session')
-      setChatStatus('idle')
-    }
+    const r = await api.workbench.startTestSession(pack.kind, pack.slug)
+    if (!r.ok) { setStartError(r.error); setChatStatus('idle'); return }
+    sessionIdRef.current = r.data.session_id
+    setStateVars(r.data.state_vars)
+    setTranscript([{ role: 'npc', content: r.data.npc_opening }])
+    setChatStatus('active')
   }
 
   async function handleStart() {
@@ -921,7 +916,7 @@ function TestChatPanel({ pack, validation }: TestChatPanelProps) {
     setStartError(null)
     setTurnError(null)
     if (id) {
-      try { await api.deleteSession(id) } catch { /* ignore cleanup errors */ }
+      void api.deleteSession(id)
     }
   }
 
@@ -929,7 +924,7 @@ function TestChatPanel({ pack, validation }: TestChatPanelProps) {
     const id = sessionIdRef.current
     sessionIdRef.current = null
     if (id) {
-      try { await api.deleteSession(id) } catch { /* ignore */ }
+      void api.deleteSession(id)
     }
     await startSession()
   }
@@ -942,40 +937,36 @@ function TestChatPanel({ pack, validation }: TestChatPanelProps) {
     setTurnError(null)
     setTranscript(prev => [...prev, { role: 'player', content: text }])
     setChatStatus('sending')
-    try {
-      const result = await api.submitTurn(id, text)
-      const npcEvent = result.events.find(e => e.event_type === 'npc_turn')
-      if (npcEvent) {
-        const p = npcEvent.payload as Record<string, unknown>
-        const delta = (p['state_delta'] as Record<string, number> | undefined) ?? {}
-        setLastDelta(delta)
-        setStateVars(prev => {
-          const next = { ...prev }
-          for (const [k, v] of Object.entries(delta)) {
-            if (k in next) next[k] = Math.max(0, Math.min(100, (next[k] ?? 0) + v))
-          }
-          return next
-        })
-        const npcEntry: TranscriptEntry = {
-          role: 'npc',
-          content: (p['content'] as string) ?? '',
-          emotion: p['emotion'] as string | undefined,
-          stateDelta: Object.keys(delta).length > 0 ? delta : undefined,
-          eventFlags: ((p['event_flags'] as string[] | undefined) ?? []).filter(Boolean),
-          safetyStatus: (p['safety'] as { status?: string } | undefined)?.status,
-          endingType: (p['ending_type'] as string | null | undefined) ?? null,
+    const r = await api.submitTurn(id, text)
+    if (!r.ok) { setTurnError(r.error); setChatStatus('active'); return }
+    const npcEvent = r.data.events.find(e => e.event_type === 'npc_turn')
+    if (npcEvent) {
+      const p = npcEvent.payload as Record<string, unknown>
+      const delta = (p['state_delta'] as Record<string, number> | undefined) ?? {}
+      setLastDelta(delta)
+      setStateVars(prev => {
+        const next = { ...prev }
+        for (const [k, v] of Object.entries(delta)) {
+          if (k in next) next[k] = Math.max(0, Math.min(100, (next[k] ?? 0) + v))
         }
-        setTranscript(prev => [...prev, npcEntry])
-        if (result.state === 'Ended') {
-          setEndingType((p['ending_type'] as string | null | undefined) ?? 'player_exit')
-          setChatStatus('ended')
-        } else {
-          setChatStatus('active')
-        }
+        return next
+      })
+      const npcEntry: TranscriptEntry = {
+        role: 'npc',
+        content: (p['content'] as string) ?? '',
+        emotion: p['emotion'] as string | undefined,
+        stateDelta: Object.keys(delta).length > 0 ? delta : undefined,
+        eventFlags: ((p['event_flags'] as string[] | undefined) ?? []).filter(Boolean),
+        safetyStatus: (p['safety'] as { status?: string } | undefined)?.status,
+        endingType: (p['ending_type'] as string | null | undefined) ?? null,
       }
-    } catch (e) {
-      setTurnError(e instanceof Error ? e.message : 'Turn failed')
-      setChatStatus('active')
+      setTranscript(prev => [...prev, npcEntry])
+      if (r.data.state === 'Ended') {
+        setEndingType((p['ending_type'] as string | null | undefined) ?? 'player_exit')
+        setChatStatus('ended')
+      } else {
+        setChatStatus('active')
+      }
     }
   }
 
@@ -1025,13 +1016,7 @@ function TestChatPanel({ pack, validation }: TestChatPanelProps) {
         )}
 
         {startError && (
-          <p
-            role="alert"
-            data-testid="test-chat-start-error"
-            style={{ fontSize: '0.8rem', color: '#f87171', maxWidth: '320px', textAlign: 'center' }}
-          >
-            {startError}
-          </p>
+          <ApiErrorView error={startError} compact context="CreatorWorkbench-start" />
         )}
 
         <button
@@ -1097,13 +1082,7 @@ function TestChatPanel({ pack, validation }: TestChatPanelProps) {
           {statusLabel}
         </span>
         {turnError && (
-          <span
-            data-testid="turn-error"
-            role="alert"
-            style={{ fontSize: '0.75rem', color: '#f87171' }}
-          >
-            {turnError}
-          </span>
+          <ApiErrorView error={turnError} compact context="CreatorWorkbench-turn" />
         )}
         <button
           onClick={() => void handleReset()}
@@ -1392,33 +1371,33 @@ function TestChatPanel({ pack, validation }: TestChatPanelProps) {
 
 export default function CreatorWorkbench() {
   const [packs, setPacks] = useState<WorkbenchPack[]>([])
-  const [packsError, setPacksError] = useState<string | null>(null)
+  const [packsError, setPacksError] = useState<ApiError | null>(null)
   const [selectedPack, setSelectedPack] = useState<WorkbenchPack | null>(null)
   const [fileTree, setFileTree] = useState<FileNode[]>([])
   const [treeLoading, setTreeLoading] = useState(false)
-  const [treeError, setTreeError] = useState<string | null>(null)
+  const [treeError, setTreeError] = useState<ApiError | null>(null)
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
   const [editorContent, setEditorContent] = useState('')
   const [savedContent, setSavedContent] = useState('')
   const [editorEditable, setEditorEditable] = useState(false)
   const [fileLoading, setFileLoading] = useState(false)
-  const [fileError, setFileError] = useState<string | null>(null)
+  const [fileError, setFileError] = useState<ApiError | null>(null)
   const [saving, setSaving] = useState(false)
-  const [saveError, setSaveError] = useState<string | null>(null)
+  const [saveError, setSaveError] = useState<ApiError | null>(null)
   const [copying, setCopying] = useState(false)
-  const [copyError, setCopyError] = useState<string | null>(null)
+  const [copyError, setCopyError] = useState<ApiError | null>(null)
   const [validation, setValidation] = useState<WorkbenchValidation | null>(null)
   const [validationLoading, setValidationLoading] = useState(false)
-  const [validationServiceError, setValidationServiceError] = useState<string | null>(null)
+  const [validationServiceError, setValidationServiceError] = useState<ApiError | null>(null)
   const [activeTab, setActiveTab] = useState<'edit' | 'test'>('edit')
   // Import state
   const [importing, setImporting] = useState(false)
-  const [importError, setImportError] = useState<string | null>(null)
+  const [importError, setImportError] = useState<ApiError | null>(null)
   const [importValidation, setImportValidation] = useState<WorkbenchImportValidationError | null>(null)
   const [importRenamed, setImportRenamed] = useState<string | null>(null)
   // Export state
   const [exporting, setExporting] = useState(false)
-  const [exportError, setExportError] = useState<string | null>(null)
+  const [exportError, setExportError] = useState<ApiError | null>(null)
   const [exportFilename, setExportFilename] = useState<string | null>(null)
 
   const isDirty = selectedFile !== null && editorContent !== savedContent
@@ -1449,23 +1428,16 @@ export default function CreatorWorkbench() {
 
   // Load pack list on mount
   useEffect(() => {
-    api.workbench.listPacks()
-      .then((ps) => { setPacks(ps); setPacksError(null) })
-      .catch((e: unknown) => setPacksError(e instanceof Error ? e.message : 'Failed to load packs'))
+    void api.workbench.listPacks().then(r => { if (r.ok) { setPacks(r.data); setPacksError(null) } else setPacksError(r.error) })
   }, [])
 
   const loadFileTree = useCallback(async (pack: WorkbenchPack) => {
     setTreeLoading(true)
     setTreeError(null)
     setFileTree([])
-    try {
-      const { tree } = await api.workbench.listFiles(pack.kind, pack.slug)
-      setFileTree(tree)
-    } catch (e: unknown) {
-      setTreeError(e instanceof Error ? e.message : 'Failed to load file tree')
-    } finally {
-      setTreeLoading(false)
-    }
+    const r = await api.workbench.listFiles(pack.kind, pack.slug)
+    if (!r.ok) { setTreeError(r.error) } else { setFileTree(r.data.tree) }
+    setTreeLoading(false)
   }, [])
 
   // Refresh the pack's validation state. Surfaces service errors (network
@@ -1474,20 +1446,17 @@ export default function CreatorWorkbench() {
   const refreshValidation = useCallback(async (pack: WorkbenchPack) => {
     setValidationLoading(true)
     setValidationServiceError(null)
-    try {
-      const result = await api.workbench.validate(pack.kind, pack.slug)
-      if (isValidation(result)) {
-        setValidation(result)
-      } else {
-        setValidation(null)
-        setValidationServiceError('Validator returned an unexpected response.')
-      }
-    } catch (e: unknown) {
+    const r = await api.workbench.validate(pack.kind, pack.slug)
+    if (!r.ok) {
       setValidation(null)
-      setValidationServiceError(e instanceof Error ? e.message : 'Validation service error.')
-    } finally {
-      setValidationLoading(false)
+      setValidationServiceError(r.error)
+    } else if (isValidation(r.data)) {
+      setValidation(r.data)
+    } else {
+      setValidation(null)
+      setValidationServiceError({ kind: 'schema-mismatch', message: 'Validator returned an unexpected response.' })
     }
+    setValidationLoading(false)
   }, [])
 
   async function handleSelectPack(pack: WorkbenchPack) {
@@ -1518,63 +1487,53 @@ export default function CreatorWorkbench() {
     setCopyError(null)
     setFileError(null)
     setFileLoading(true)
-    try {
-      const { content, editable } = await api.workbench.readFile(selectedPack.kind, selectedPack.slug, filePath)
-      setEditorContent(content)
-      setSavedContent(content)
-      setEditorEditable(editable)
-    } catch (e: unknown) {
-      setFileError(e instanceof Error ? e.message : 'Failed to load file')
-    } finally {
-      setFileLoading(false)
+    const r = await api.workbench.readFile(selectedPack.kind, selectedPack.slug, filePath)
+    if (!r.ok) { setFileError(r.error) } else {
+      setEditorContent(r.data.content)
+      setSavedContent(r.data.content)
+      setEditorEditable(r.data.editable)
     }
+    setFileLoading(false)
   }
 
   async function handleSave() {
     if (!selectedPack || !selectedFile) return
     setSaving(true)
     setSaveError(null)
-    try {
-      const result = await api.workbench.writeFile(selectedPack.kind, selectedPack.slug, selectedFile, editorContent)
-      setSavedContent(editorContent)
-      // The save re-validates the pack. Prefer the validation the write returned;
-      // fall back to a dedicated refresh if the backend omitted it.
-      if (isValidation(result.validation)) {
-        setValidation(result.validation)
-        // The save re-validated successfully, so any earlier service error is
-        // stale — clear it so it doesn't mask the fresh result (the service-error
-        // branch of ValidationPanel renders ahead of the validation branch).
-        setValidationServiceError(null)
-      } else {
-        await refreshValidation(selectedPack)
-      }
-    } catch (e: unknown) {
-      setSaveError(e instanceof Error ? e.message : 'Failed to save file')
-    } finally {
-      setSaving(false)
+    const r = await api.workbench.writeFile(selectedPack.kind, selectedPack.slug, selectedFile, editorContent)
+    if (!r.ok) { setSaveError(r.error); setSaving(false); return }
+    setSavedContent(editorContent)
+    // The save re-validates the pack. Prefer the validation the write returned;
+    // fall back to a dedicated refresh if the backend omitted it.
+    if (isValidation(r.data.validation)) {
+      setValidation(r.data.validation)
+      // The save re-validated successfully, so any earlier service error is
+      // stale — clear it so it doesn't mask the fresh result (the service-error
+      // branch of ValidationPanel renders ahead of the validation branch).
+      setValidationServiceError(null)
+    } else {
+      await refreshValidation(selectedPack)
     }
+    setSaving(false)
   }
 
   async function handleCopyToLocal() {
     if (!selectedPack) return
     setCopying(true)
     setCopyError(null)
-    try {
-      const newPack = await api.workbench.copyToLocal(selectedPack.kind, selectedPack.slug)
-      setPacks((prev) => [...prev.filter((p) => !(p.kind === newPack.kind && p.slug === newPack.slug)), newPack])
-      // Switch to the new local-dev copy
-      setSelectedPack(newPack)
-      setSelectedFile(null)
-      setEditorContent('')
-      setSavedContent('')
-      setValidation(null)
-      setActiveTab('edit')
-      await Promise.all([loadFileTree(newPack), refreshValidation(newPack)])
-    } catch (e: unknown) {
-      setCopyError(e instanceof Error ? e.message : 'Failed to copy pack to local-dev')
-    } finally {
-      setCopying(false)
-    }
+    const r = await api.workbench.copyToLocal(selectedPack.kind, selectedPack.slug)
+    if (!r.ok) { setCopyError(r.error); setCopying(false); return }
+    const newPack = r.data
+    setPacks((prev) => [...prev.filter((p) => !(p.kind === newPack.kind && p.slug === newPack.slug)), newPack])
+    // Switch to the new local-dev copy
+    setSelectedPack(newPack)
+    setSelectedFile(null)
+    setEditorContent('')
+    setSavedContent('')
+    setValidation(null)
+    setActiveTab('edit')
+    await Promise.all([loadFileTree(newPack), refreshValidation(newPack)])
+    setCopying(false)
   }
 
   async function handleImport(file: File) {
@@ -1582,32 +1541,30 @@ export default function CreatorWorkbench() {
     setImportError(null)
     setImportValidation(null)
     setImportRenamed(null)
-    try {
-      const result = await api.workbench.importPack(file)
-      if (result.kind === 'validation') {
-        setImportValidation(result)
-        return
-      }
-      // Success: add the new pack to the list and select it
-      const newPack: WorkbenchPack = {
-        kind: result.kind,
-        slug: result.slug,
-        pack_id: result.pack_id,
-        name: result.name,
-        editable: result.editable,
-      }
-      setPacks((prev) => [...prev.filter((p) => !(p.kind === newPack.kind && p.slug === newPack.slug)), newPack])
-      // Select the new pack first: handleSelectPack resets the import notices,
-      // so the rename notice must be set *after* it or it would be cleared.
-      await handleSelectPack(newPack)
-      if (result.renamed_from) {
-        setImportRenamed(result.slug)
-      }
-    } catch (e: unknown) {
-      setImportError(e instanceof Error ? e.message : 'Failed to import pack')
-    } finally {
+    const r = await api.workbench.importPack(file)
+    if (!r.ok) { setImportError(r.error); setImporting(false); return }
+    if (r.data.kind === 'validation') {
+      setImportValidation(r.data)
       setImporting(false)
+      return
     }
+    // Success: add the new pack to the list and select it
+    const result = r.data
+    const newPack: WorkbenchPack = {
+      kind: result.kind,
+      slug: result.slug,
+      pack_id: result.pack_id,
+      name: result.name,
+      editable: result.editable,
+    }
+    setPacks((prev) => [...prev.filter((p) => !(p.kind === newPack.kind && p.slug === newPack.slug)), newPack])
+    // Select the new pack first: handleSelectPack resets the import notices,
+    // so the rename notice must be set *after* it or it would be cleared.
+    await handleSelectPack(newPack)
+    if (result.renamed_from) {
+      setImportRenamed(result.slug)
+    }
+    setImporting(false)
   }
 
   async function handleExport() {
@@ -1615,15 +1572,11 @@ export default function CreatorWorkbench() {
     setExporting(true)
     setExportError(null)
     setExportFilename(null)
-    try {
-      const { blob, filename } = await api.workbench.exportPack(selectedPack.kind, selectedPack.slug)
-      triggerDownload(blob, filename)
-      setExportFilename(filename)
-    } catch (e: unknown) {
-      setExportError(e instanceof Error ? e.message : 'Failed to export pack')
-    } finally {
-      setExporting(false)
-    }
+    const r = await api.workbench.exportPack(selectedPack.kind, selectedPack.slug)
+    if (!r.ok) { setExportError(r.error); setExporting(false); return }
+    triggerDownload(r.data.blob, r.data.filename)
+    setExportFilename(r.data.filename)
+    setExporting(false)
   }
 
   return (
@@ -1637,9 +1590,7 @@ export default function CreatorWorkbench() {
       </p>
 
       {packsError && (
-        <p role="alert" style={{ fontSize: '0.875rem', color: '#f87171', marginBottom: '1rem' }}>
-          Could not load packs: {packsError}
-        </p>
+        <ApiErrorView error={packsError} context="CreatorWorkbench-packs" />
       )}
 
       {selectedPack && (
@@ -1697,9 +1648,7 @@ export default function CreatorWorkbench() {
               <p style={{ fontSize: '0.8rem', color: '#71717a', padding: '0.5rem' }}>Loading…</p>
             )}
             {selectedPack && treeError && (
-              <p role="alert" style={{ fontSize: '0.8rem', color: '#f87171', padding: '0.5rem' }}>
-                {treeError}
-              </p>
+              <ApiErrorView error={treeError} compact context="CreatorWorkbench-tree" />
             )}
             {selectedPack && !treeLoading && !treeError && fileTree.length === 0 && (
               <p style={{ fontSize: '0.8rem', color: '#52525b', padding: '0.5rem' }}>
@@ -1766,14 +1715,9 @@ export default function CreatorWorkbench() {
                   </span>
                 )}
                 {exportError && (
-                  <span
-                    data-testid="export-error"
-                    role="alert"
-                    style={{ fontSize: '0.72rem', color: '#f87171', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                    title={exportError}
-                  >
-                    {exportError}
-                  </span>
+                  <div data-testid="export-error">
+                    <ApiErrorView error={exportError} compact context="CreatorWorkbench-export" />
+                  </div>
                 )}
                 <button
                   data-testid="export-pack-button"
@@ -1852,9 +1796,7 @@ export default function CreatorWorkbench() {
 
             {fileError && !fileLoading && (
               <div style={{ flex: 1, padding: '1rem' }}>
-                <p role="alert" style={{ fontSize: '0.875rem', color: '#f87171' }}>
-                  {fileError}
-                </p>
+                <ApiErrorView error={fileError} context="CreatorWorkbench-file" />
               </div>
             )}
 

@@ -2,6 +2,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '../api/client'
 import type { ModelsResponse, RuntimeSettings } from '@convsim/shared'
+import type { ApiError } from '../api/errors'
+import { ApiErrorView } from './ApiErrorView'
 
 const DOCS_URL = 'https://github.com/outrightmental/ConversationSimulator/wiki'
 
@@ -184,13 +186,13 @@ function FieldRow({
 
 export default function RuntimeSettingsPanel() {
   const [modelsData, setModelsData] = useState<ModelsResponse | null>(null)
-  const [loadError, setLoadError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<ApiError | null>(null)
 
   const [provider, setProvider] = useState<string>('llama_cpp')
   const [modelId, setModelId] = useState<string>('')
 
   const [basicApplying, setBasicApplying] = useState(false)
-  const [basicApplyError, setBasicApplyError] = useState<string | null>(null)
+  const [basicApplyError, setBasicApplyError] = useState<ApiError | null>(null)
   const [basicApplySuccess, setBasicApplySuccess] = useState(false)
 
   const [showAdvanced, setShowAdvanced] = useState(false)
@@ -204,24 +206,21 @@ export default function RuntimeSettingsPanel() {
   })
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({})
   const [advApplying, setAdvApplying] = useState(false)
-  const [advApplyError, setAdvApplyError] = useState<string | null>(null)
+  const [advApplyError, setAdvApplyError] = useState<ApiError | null>(null)
   const [requiresRestart, setRequiresRestart] = useState(false)
   const [resetting, setResetting] = useState(false)
-  const [resetError, setResetError] = useState<string | null>(null)
+  const [resetError, setResetError] = useState<ApiError | null>(null)
 
-  const loadData = useCallback(() => {
+  const loadData = useCallback(async () => {
     setLoadError(null)
-    Promise.all([api.getModels(), api.getRuntimeSettings()])
-      .then(([models, runtimeSettings]) => {
-        setModelsData(models)
-        setProvider(models.active.runtime_id ?? 'llama_cpp')
-        setModelId(models.active.model_id ?? '')
-        setForm(settingsToForm(runtimeSettings.settings))
-        setRequiresRestart(false)
-      })
-      .catch((err) => {
-        setLoadError(err instanceof Error ? err.message : 'Failed to load runtime settings')
-      })
+    const [modelsR, settingsR] = await Promise.all([api.getModels(), api.getRuntimeSettings()])
+    if (!modelsR.ok) { setLoadError(modelsR.error); return }
+    if (!settingsR.ok) { setLoadError(settingsR.error); return }
+    setModelsData(modelsR.data)
+    setProvider(modelsR.data.active.runtime_id ?? 'llama_cpp')
+    setModelId(modelsR.data.active.model_id ?? '')
+    setForm(settingsToForm(settingsR.data.settings))
+    setRequiresRestart(false)
   }, [])
 
   useEffect(() => { loadData() }, [loadData])
@@ -243,15 +242,11 @@ export default function RuntimeSettingsPanel() {
     setBasicApplying(true)
     setBasicApplyError(null)
     setBasicApplySuccess(false)
-    try {
-      await api.useModel({ runtime_id: provider, model_id: modelId || null })
-      setBasicApplySuccess(true)
-      loadData()
-    } catch (err) {
-      setBasicApplyError(err instanceof Error ? err.message : 'Failed to apply settings')
-    } finally {
-      setBasicApplying(false)
-    }
+    const r = await api.useModel({ runtime_id: provider, model_id: modelId || null })
+    if (!r.ok) { setBasicApplyError(r.error); setBasicApplying(false); return }
+    setBasicApplySuccess(true)
+    setBasicApplying(false)
+    loadData()
   }
 
   function handleFieldChange(field: keyof RuntimeSettings, value: string) {
@@ -275,42 +270,30 @@ export default function RuntimeSettingsPanel() {
     }
     setAdvApplying(true)
     setAdvApplyError(null)
-    try {
-      const result = await api.updateRuntimeSettings(formToRequest(form))
-      setRequiresRestart(result.requires_restart)
-      setForm(settingsToForm(result.settings))
-    } catch (err) {
-      setAdvApplyError(err instanceof Error ? err.message : 'Failed to apply advanced settings')
-    } finally {
-      setAdvApplying(false)
-    }
+    const r = await api.updateRuntimeSettings(formToRequest(form))
+    if (!r.ok) { setAdvApplyError(r.error); setAdvApplying(false); return }
+    setRequiresRestart(r.data.requires_restart)
+    setForm(settingsToForm(r.data.settings))
+    setAdvApplying(false)
   }
 
   async function handleReset() {
     setResetting(true)
     setResetError(null)
-    try {
-      const result = await api.resetRuntimeSettings()
-      setForm(settingsToForm(result.settings))
-      setFieldErrors({})
-      setRequiresRestart(result.requires_restart)
-      setAdvApplyError(null)
-    } catch (err) {
-      setResetError(err instanceof Error ? err.message : 'Failed to reset settings')
-    } finally {
-      setResetting(false)
-    }
+    const r = await api.resetRuntimeSettings()
+    if (!r.ok) { setResetError(r.error); setResetting(false); return }
+    setForm(settingsToForm(r.data.settings))
+    setFieldErrors({})
+    setRequiresRestart(r.data.requires_restart)
+    setAdvApplyError(null)
+    setResetting(false)
   }
 
   const health = modelsData?.runtime_health
   const lastBenchmark = modelsData?.last_benchmark
 
   if (loadError) {
-    return (
-      <p role="alert" style={{ fontSize: '0.875rem', color: '#f87171' }}>
-        Could not load runtime settings: {loadError}
-      </p>
-    )
+    return <ApiErrorView error={loadError} onRetry={loadData} context="RuntimeSettingsPanel" />
   }
 
   if (!modelsData) {
@@ -381,11 +364,7 @@ export default function RuntimeSettingsPanel() {
           </div>
         )}
 
-        {basicApplyError && (
-          <p role="alert" style={{ fontSize: '0.875rem', color: '#f87171', marginBottom: '0.5rem' }}>
-            {basicApplyError}
-          </p>
-        )}
+        {basicApplyError && <ApiErrorView error={basicApplyError} compact context="RuntimeSettingsPanel-BasicApply" />}
         {basicApplySuccess && (
           <p aria-live="polite" style={{ fontSize: '0.875rem', color: '#86efac', marginBottom: '0.5rem' }}>
             Provider and model updated.
@@ -625,16 +604,8 @@ export default function RuntimeSettingsPanel() {
             </div>
           )}
 
-          {advApplyError && (
-            <p role="alert" style={{ fontSize: '0.875rem', color: '#f87171', marginBottom: '0.5rem' }}>
-              {advApplyError}
-            </p>
-          )}
-          {resetError && (
-            <p role="alert" style={{ fontSize: '0.875rem', color: '#f87171', marginBottom: '0.5rem' }}>
-              {resetError}
-            </p>
-          )}
+          {advApplyError && <ApiErrorView error={advApplyError} compact context="RuntimeSettingsPanel-AdvApply" />}
+          {resetError && <ApiErrorView error={resetError} compact context="RuntimeSettingsPanel-Reset" />}
 
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
             <button

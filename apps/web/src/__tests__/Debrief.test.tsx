@@ -113,10 +113,13 @@ function renderDebrief() {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockApi.exportSession.mockResolvedValue(exportData)
+  mockApi.exportSession.mockResolvedValue({ ok: true, data: exportData })
   mockApi.exportTranscriptText.mockResolvedValue({
-    text: '# Session Transcript\n\nSession content here.',
-    filename: `session-${SESSION_ID}-transcript.md`,
+    ok: true,
+    data: {
+      text: '# Session Transcript\n\nSession content here.',
+      filename: `session-${SESSION_ID}-transcript.md`,
+    },
   })
   mockIsDevModeEnabled.mockReturnValue(false)
 })
@@ -129,7 +132,7 @@ describe('Debrief screen', () => {
   })
 
   it('displays summary after debrief loads', async () => {
-    mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
+    mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
     renderDebrief()
     await waitFor(() =>
       expect(screen.getByTestId('summary-section')).toBeInTheDocument(),
@@ -140,7 +143,7 @@ describe('Debrief screen', () => {
   })
 
   it('displays strengths section', async () => {
-    mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
+    mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
     renderDebrief()
     await waitFor(() =>
       expect(screen.getByText('Engaged with the scenario')).toBeInTheDocument(),
@@ -148,7 +151,7 @@ describe('Debrief screen', () => {
   })
 
   it('displays improvements section', async () => {
-    mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
+    mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
     renderDebrief()
     await waitFor(() =>
       expect(screen.getByText('Install a local LLM for real NPC responses')).toBeInTheDocument(),
@@ -156,7 +159,7 @@ describe('Debrief screen', () => {
   })
 
   it('displays replay suggestions', async () => {
-    mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
+    mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
     renderDebrief()
     await waitFor(() =>
       expect(screen.getByText('Try a different difficulty level')).toBeInTheDocument(),
@@ -164,13 +167,13 @@ describe('Debrief screen', () => {
   })
 
   it('shows the session id in the header', async () => {
-    mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
+    mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
     renderDebrief()
     await waitFor(() => expect(screen.getByText(SESSION_ID)).toBeInTheDocument())
   })
 
   it('shows outcome badge', async () => {
-    mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
+    mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
     renderDebrief()
     await waitFor(() =>
       expect(screen.getByTestId('outcome-badge')).toBeInTheDocument(),
@@ -179,21 +182,21 @@ describe('Debrief screen', () => {
   })
 
   it('shows turn count', async () => {
-    mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
+    mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
     renderDebrief()
     await waitFor(() => expect(screen.getByText('2')).toBeInTheDocument())
   })
 
   it('shows error alert when generateDebrief fails', async () => {
-    mockApi.generateDebrief.mockRejectedValue(new Error('Session not found'))
+    mockApi.generateDebrief.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'Session not found' } })
     renderDebrief()
     await waitFor(() =>
-      expect(screen.getByRole('alert')).toHaveTextContent('Session not found'),
+      expect(screen.getByRole('alert')).toHaveTextContent('Connection failed'),
     )
   })
 
   it('includes raw JSON debug section', async () => {
-    mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
+    mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
     renderDebrief()
     await waitFor(() =>
       expect(screen.getByTestId('debrief-json')).toBeInTheDocument(),
@@ -202,7 +205,7 @@ describe('Debrief screen', () => {
 
   describe('scorecard', () => {
     it('shows overall score', async () => {
-      mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
       renderDebrief()
       await waitFor(() =>
         expect(screen.getByTestId('overall-score')).toBeInTheDocument(),
@@ -211,7 +214,7 @@ describe('Debrief screen', () => {
     })
 
     it('shows a dimension row for each score', async () => {
-      mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
       renderDebrief()
       await waitFor(() =>
         expect(screen.getByTestId('scorecard-section')).toBeInTheDocument(),
@@ -221,7 +224,7 @@ describe('Debrief screen', () => {
     })
 
     it('omits scorecard when scores object is empty', async () => {
-      mockApi.generateDebrief.mockResolvedValue(fallbackDebriefResponse)
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fallbackDebriefResponse })
       renderDebrief()
       await waitFor(() =>
         expect(screen.getByTestId('summary-section')).toBeInTheDocument(),
@@ -232,7 +235,7 @@ describe('Debrief screen', () => {
 
   describe('turning points', () => {
     it('shows turning points section with key moments', async () => {
-      mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
       renderDebrief()
       await waitFor(() =>
         expect(screen.getByTestId('turning-points-section')).toBeInTheDocument(),
@@ -242,7 +245,7 @@ describe('Debrief screen', () => {
     })
 
     it('omits turning points section when list is empty', async () => {
-      mockApi.generateDebrief.mockResolvedValue(fallbackDebriefResponse)
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fallbackDebriefResponse })
       renderDebrief()
       await waitFor(() =>
         expect(screen.getByTestId('summary-section')).toBeInTheDocument(),
@@ -253,7 +256,7 @@ describe('Debrief screen', () => {
 
   describe('fallback debrief', () => {
     it('shows fallback notice when used_fallback is true', async () => {
-      mockApi.generateDebrief.mockResolvedValue(fallbackDebriefResponse)
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fallbackDebriefResponse })
       renderDebrief()
       await waitFor(() =>
         expect(screen.getByTestId('fallback-notice')).toBeInTheDocument(),
@@ -262,7 +265,7 @@ describe('Debrief screen', () => {
     })
 
     it('does not show fallback notice when used_fallback is false', async () => {
-      mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
       renderDebrief()
       await waitFor(() =>
         expect(screen.getByTestId('summary-section')).toBeInTheDocument(),
@@ -273,7 +276,7 @@ describe('Debrief screen', () => {
 
   describe('transcript saving disabled', () => {
     it('shows transcript-disabled notice when transcript_saving_disabled is true', async () => {
-      mockApi.generateDebrief.mockResolvedValue(transcriptDisabledDebriefResponse)
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: transcriptDisabledDebriefResponse })
       renderDebrief()
       await waitFor(() =>
         expect(screen.getByTestId('transcript-disabled-notice')).toBeInTheDocument(),
@@ -281,7 +284,7 @@ describe('Debrief screen', () => {
     })
 
     it('does not call exportSession when transcript saving is disabled', async () => {
-      mockApi.generateDebrief.mockResolvedValue(transcriptDisabledDebriefResponse)
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: transcriptDisabledDebriefResponse })
       renderDebrief()
       await waitFor(() =>
         expect(screen.getByTestId('summary-section')).toBeInTheDocument(),
@@ -292,7 +295,7 @@ describe('Debrief screen', () => {
 
   describe('transcript display', () => {
     it('shows transcript turns from export when available', async () => {
-      mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
       renderDebrief()
       await waitFor(() =>
         expect(screen.getByTestId('transcript-section')).toBeInTheDocument(),
@@ -302,8 +305,8 @@ describe('Debrief screen', () => {
     })
 
     it('omits transcript section when export returns no relevant events', async () => {
-      mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
-      mockApi.exportSession.mockResolvedValue({ session: exportData.session, events: [] })
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
+      mockApi.exportSession.mockResolvedValue({ ok: true, data: { session: exportData.session, events: [] } })
       renderDebrief()
       await waitFor(() =>
         expect(screen.getByTestId('summary-section')).toBeInTheDocument(),
@@ -317,7 +320,7 @@ describe('Debrief screen', () => {
 
   describe('export button', () => {
     it('renders an export button after debrief loads', async () => {
-      mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
       renderDebrief()
       await waitFor(() =>
         expect(screen.getByTestId('export-btn')).toBeInTheDocument(),
@@ -325,7 +328,7 @@ describe('Debrief screen', () => {
     })
 
     it('calls exportSession on click', async () => {
-      mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
 
       const createObjectURL = vi.fn().mockReturnValue('blob:mock')
       const revokeObjectURL = vi.fn()
@@ -357,7 +360,7 @@ describe('Debrief screen', () => {
   describe('debrief-generation latency (dev mode)', () => {
     it('captures and shows debrief generation latency when dev mode is on', async () => {
       mockIsDevModeEnabled.mockReturnValue(true)
-      mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
       renderDebrief()
       await waitFor(() =>
         expect(screen.getByTestId('debrief-latency')).toBeInTheDocument(),
@@ -367,7 +370,7 @@ describe('Debrief screen', () => {
 
     it('does not show debrief latency when dev mode is off', async () => {
       mockIsDevModeEnabled.mockReturnValue(false)
-      mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
       renderDebrief()
       await waitFor(() =>
         expect(screen.getByTestId('summary-section')).toBeInTheDocument(),
@@ -378,7 +381,7 @@ describe('Debrief screen', () => {
 
   describe('replay variation button', () => {
     it('renders a replay button after debrief loads', async () => {
-      mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
       renderDebrief()
       await waitFor(() =>
         expect(screen.getByTestId('replay-btn')).toBeInTheDocument(),
@@ -386,7 +389,7 @@ describe('Debrief screen', () => {
     })
 
     it('navigates to setup screen with the scenario id on replay click', async () => {
-      mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
       renderDebrief()
       await waitFor(() =>
         expect(screen.getByTestId('replay-btn')).toBeInTheDocument(),
@@ -400,7 +403,7 @@ describe('Debrief screen', () => {
 
   describe('replay same setup button', () => {
     it('renders replay-same-btn after debrief loads', async () => {
-      mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
       renderDebrief()
       await waitFor(() =>
         expect(screen.getByTestId('replay-same-btn')).toBeInTheDocument(),
@@ -408,14 +411,14 @@ describe('Debrief screen', () => {
     })
 
     it('creates a new session with same setup and navigates to conversation', async () => {
-      mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
-      mockApi.createSession.mockResolvedValue({
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
+      mockApi.createSession.mockResolvedValue({ ok: true, data: {
         session_id: 'new-sess-01',
         scenario_id: 'behavioral_interview',
         state: 'NotStarted',
         created_at: '2024-01-02T00:00:00Z',
         setup: sampleSetup,
-      })
+      } })
       renderDebrief()
       await waitFor(() =>
         expect(screen.getByTestId('replay-same-btn')).toBeInTheDocument(),
@@ -435,14 +438,14 @@ describe('Debrief screen', () => {
 
     it('forwards input_mode and tts_enabled to the conversation so replayed voice sessions keep their modes', async () => {
       const voiceSetup = { ...sampleSetup, input_mode: 'push-to-talk' as const, tts_enabled: true }
-      mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
-      mockApi.createSession.mockResolvedValue({
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
+      mockApi.createSession.mockResolvedValue({ ok: true, data: {
         session_id: 'new-sess-02',
         scenario_id: 'behavioral_interview',
         state: 'NotStarted',
         created_at: '2024-01-02T00:00:00Z',
         setup: voiceSetup,
-      })
+      } })
       renderDebrief()
       await waitFor(() =>
         expect(screen.getByTestId('replay-same-btn')).toBeInTheDocument(),
@@ -458,9 +461,9 @@ describe('Debrief screen', () => {
     })
 
     it('falls back to setup page when sessionSetup is unavailable', async () => {
-      mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
       // Export returns data without setup (e.g., transcript saving was off)
-      mockApi.exportSession.mockResolvedValue({ session: {}, events: [] })
+      mockApi.exportSession.mockResolvedValue({ ok: true, data: { session: {}, events: [] } })
       renderDebrief()
       await waitFor(() =>
         expect(screen.getByTestId('replay-same-btn')).toBeInTheDocument(),
@@ -477,7 +480,7 @@ describe('Debrief screen', () => {
 
   describe('missed opportunities section', () => {
     it('displays missed opportunities when present', async () => {
-      mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
       renderDebrief()
       await waitFor(() =>
         expect(screen.getByTestId('missed-opportunities-section')).toBeInTheDocument(),
@@ -486,10 +489,10 @@ describe('Debrief screen', () => {
     })
 
     it('does not render missed opportunities section when list is empty', async () => {
-      mockApi.generateDebrief.mockResolvedValue({
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: {
         ...fullDebriefResponse,
         missed_opportunities: [],
-      })
+      } })
       renderDebrief()
       await waitFor(() => expect(screen.getByTestId('summary-section')).toBeInTheDocument())
       expect(screen.queryByTestId('missed-opportunities-section')).not.toBeInTheDocument()
@@ -497,7 +500,7 @@ describe('Debrief screen', () => {
 
     it('does not render missed opportunities section when field is absent', async () => {
       const { missed_opportunities: _omit, ...rest } = fullDebriefResponse
-      mockApi.generateDebrief.mockResolvedValue(rest)
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: rest })
       renderDebrief()
       await waitFor(() => expect(screen.getByTestId('summary-section')).toBeInTheDocument())
       expect(screen.queryByTestId('missed-opportunities-section')).not.toBeInTheDocument()
@@ -506,7 +509,7 @@ describe('Debrief screen', () => {
 
   describe('export transcript as Markdown', () => {
     it('renders an export-text-btn after debrief loads', async () => {
-      mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
       renderDebrief()
       await waitFor(() =>
         expect(screen.getByTestId('export-text-btn')).toBeInTheDocument(),
@@ -514,7 +517,7 @@ describe('Debrief screen', () => {
     })
 
     it('calls exportTranscriptText on click and triggers download', async () => {
-      mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
 
       const createObjectURL = vi.fn().mockReturnValue('blob:mock-text')
       const revokeObjectURL = vi.fn()
@@ -547,7 +550,7 @@ describe('Debrief screen', () => {
 
   describe('export privacy notice', () => {
     it('shows a privacy notice near export buttons after debrief loads', async () => {
-      mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
       renderDebrief()
       await waitFor(() =>
         expect(screen.getByTestId('export-privacy-notice')).toBeInTheDocument(),
@@ -558,7 +561,7 @@ describe('Debrief screen', () => {
 
   describe('debrief failure retry', () => {
     it('shows a retry button in the error state', async () => {
-      mockApi.generateDebrief.mockRejectedValue(new Error('LLM unavailable'))
+      mockApi.generateDebrief.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'LLM unavailable' } })
       renderDebrief()
       await waitFor(() =>
         expect(screen.getByTestId('retry-btn')).toBeInTheDocument(),
@@ -567,8 +570,8 @@ describe('Debrief screen', () => {
 
     it('retry button resets to loading and calls generateDebrief again', async () => {
       mockApi.generateDebrief
-        .mockRejectedValueOnce(new Error('Timeout'))
-        .mockResolvedValue(fullDebriefResponse)
+        .mockResolvedValueOnce({ ok: false, error: { kind: 'network', message: 'Timeout' } })
+        .mockResolvedValue({ ok: true, data: fullDebriefResponse })
       renderDebrief()
       await waitFor(() =>
         expect(screen.getByTestId('retry-btn')).toBeInTheDocument(),
@@ -583,7 +586,7 @@ describe('Debrief screen', () => {
 
   describe('transcript-only fallback', () => {
     it('shows a "Show transcript only" button in the error state', async () => {
-      mockApi.generateDebrief.mockRejectedValue(new Error('Model error'))
+      mockApi.generateDebrief.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'Model error' } })
       renderDebrief()
       await waitFor(() =>
         expect(screen.getByTestId('transcript-only-btn')).toBeInTheDocument(),
@@ -591,7 +594,7 @@ describe('Debrief screen', () => {
     })
 
     it('clicking transcript-only loads transcript and shows transcript-only notice', async () => {
-      mockApi.generateDebrief.mockRejectedValue(new Error('Model error'))
+      mockApi.generateDebrief.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'Model error' } })
       renderDebrief()
       await waitFor(() =>
         expect(screen.getByTestId('transcript-only-btn')).toBeInTheDocument(),
@@ -606,7 +609,7 @@ describe('Debrief screen', () => {
     })
 
     it('transcript-only fallback shows transcript turns fetched via exportSession', async () => {
-      mockApi.generateDebrief.mockRejectedValue(new Error('Model error'))
+      mockApi.generateDebrief.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'Model error' } })
       renderDebrief()
       await waitFor(() =>
         expect(screen.getByTestId('transcript-only-btn')).toBeInTheDocument(),
@@ -619,8 +622,8 @@ describe('Debrief screen', () => {
     })
 
     it('transcript-only fallback shows no-transcript message when export has no turns', async () => {
-      mockApi.generateDebrief.mockRejectedValue(new Error('Model error'))
-      mockApi.exportSession.mockResolvedValue({ session: {}, events: [] })
+      mockApi.generateDebrief.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'Model error' } })
+      mockApi.exportSession.mockResolvedValue({ ok: true, data: { session: {}, events: [] } })
       renderDebrief()
       await waitFor(() =>
         expect(screen.getByTestId('transcript-only-btn')).toBeInTheDocument(),
@@ -634,7 +637,7 @@ describe('Debrief screen', () => {
     })
 
     it('transcript-only mode shows a retry debrief button', async () => {
-      mockApi.generateDebrief.mockRejectedValue(new Error('Model error'))
+      mockApi.generateDebrief.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'Model error' } })
       renderDebrief()
       await waitFor(() =>
         expect(screen.getByTestId('transcript-only-btn')).toBeInTheDocument(),
@@ -646,7 +649,7 @@ describe('Debrief screen', () => {
     })
 
     it('transcript-only mode shows export-privacy-notice', async () => {
-      mockApi.generateDebrief.mockRejectedValue(new Error('Model error'))
+      mockApi.generateDebrief.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'Model error' } })
       renderDebrief()
       await waitFor(() =>
         expect(screen.getByTestId('transcript-only-btn')).toBeInTheDocument(),
