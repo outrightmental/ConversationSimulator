@@ -1010,6 +1010,226 @@ describe('Conversation screen', () => {
     })
   })
 
+  describe('TTS audio playback', () => {
+    let wsCallback: ((event: WsEvent) => void) | null = null
+
+    beforeEach(() => {
+      mockApi.startSession.mockResolvedValue(startResponse)
+      mockApi.connectSession.mockImplementation((_id, cb) => {
+        wsCallback = cb
+        return { close: vi.fn() }
+      })
+    })
+
+    it('plays audio when tts.audio_chunk event has a cache_path', async () => {
+      const mockPlay = vi.fn().mockResolvedValue(undefined)
+      const mockAudio = { play: mockPlay, pause: vi.fn(), onended: null as unknown, onerror: null as unknown }
+      const AudioSpy = vi.spyOn(window, 'Audio').mockReturnValue(
+        mockAudio as unknown as HTMLAudioElement,
+      )
+
+      renderConversation()
+      await waitFor(() => expect(screen.getByRole('log')).toBeInTheDocument())
+
+      act(() => {
+        wsCallback?.({
+          type: 'tts.audio_chunk',
+          seq: 1,
+          session_id: SESSION_ID,
+          ts: '2026-07-01T00:00:00Z',
+          payload: {
+            chunk_index: 0,
+            total_chunks: 1,
+            text: 'Hello there.',
+            voice_id: 'af_heart',
+            cache_path: '/home/user/.convsim/tts_cache/abc123.wav',
+            error: null,
+          },
+        })
+      })
+
+      expect(AudioSpy).toHaveBeenCalledWith('/api/tts/audio/abc123.wav')
+      expect(mockPlay).toHaveBeenCalled()
+
+      AudioSpy.mockRestore()
+    })
+
+    it('does not play audio when tts.audio_chunk cache_path is null', async () => {
+      const mockPlay = vi.fn().mockResolvedValue(undefined)
+      const AudioSpy = vi.spyOn(window, 'Audio').mockReturnValue(
+        { play: mockPlay, pause: vi.fn(), onended: null, onerror: null } as unknown as HTMLAudioElement,
+      )
+
+      renderConversation()
+      await waitFor(() => expect(screen.getByRole('log')).toBeInTheDocument())
+
+      act(() => {
+        wsCallback?.({
+          type: 'tts.audio_chunk',
+          seq: 1,
+          session_id: SESSION_ID,
+          ts: '2026-07-01T00:00:00Z',
+          payload: {
+            chunk_index: 0,
+            total_chunks: 1,
+            text: 'Hello there.',
+            voice_id: 'af_heart',
+            cache_path: null,
+            error: 'synthesis failed',
+          },
+        })
+      })
+
+      expect(AudioSpy).not.toHaveBeenCalled()
+      expect(mockPlay).not.toHaveBeenCalled()
+
+      AudioSpy.mockRestore()
+    })
+
+    it('constructs audio URL from the filename of the cache path', async () => {
+      const urls: string[] = []
+      const AudioSpy = vi.spyOn(window, 'Audio').mockImplementation(
+        (url?: string) => {
+          if (url) urls.push(url)
+          return { play: vi.fn().mockResolvedValue(undefined), pause: vi.fn(), onended: null, onerror: null } as unknown as HTMLAudioElement
+        },
+      )
+
+      renderConversation()
+      await waitFor(() => expect(screen.getByRole('log')).toBeInTheDocument())
+
+      act(() => {
+        wsCallback?.({
+          type: 'tts.audio_chunk',
+          seq: 1,
+          session_id: SESSION_ID,
+          ts: '2026-07-01T00:00:00Z',
+          payload: {
+            chunk_index: 0,
+            total_chunks: 1,
+            text: 'Hi.',
+            voice_id: 'af_heart',
+            cache_path: '/Users/someone/.convsim/tts_cache/deadbeef1234.wav',
+            error: null,
+          },
+        })
+      })
+
+      expect(urls).toContain('/api/tts/audio/deadbeef1234.wav')
+
+      AudioSpy.mockRestore()
+    })
+
+    it('TTS queue is cleared when a new player turn is submitted', async () => {
+      mockApi.submitTurn.mockResolvedValue(turnResponse)
+
+      const pauseMock = vi.fn()
+      const mockAudio = {
+        play: vi.fn().mockResolvedValue(undefined),
+        pause: pauseMock,
+        onended: null as unknown,
+        onerror: null as unknown,
+      }
+      const AudioSpy = vi.spyOn(window, 'Audio').mockReturnValue(
+        mockAudio as unknown as HTMLAudioElement,
+      )
+
+      renderConversation()
+      await waitFor(() => expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument())
+
+      // Enqueue a chunk
+      act(() => {
+        wsCallback?.({
+          type: 'tts.audio_chunk',
+          seq: 1,
+          session_id: SESSION_ID,
+          ts: '2026-07-01T00:00:00Z',
+          payload: {
+            chunk_index: 0,
+            total_chunks: 1,
+            text: 'Hello.',
+            voice_id: 'af_heart',
+            cache_path: '/home/user/.convsim/tts_cache/abc.wav',
+            error: null,
+          },
+        })
+      })
+
+      // Submit a turn — should stop playback
+      const textarea = screen.getByRole('textbox', { name: /your response/i })
+      fireEvent.change(textarea, { target: { value: 'My response.' } })
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+
+      expect(pauseMock).toHaveBeenCalled()
+
+      AudioSpy.mockRestore()
+    })
+
+    it('does not double-advance the queue when a chunk both errors and rejects play()', async () => {
+      // A failed load can fire the error event and reject the play() promise for
+      // the same element. The queue must advance only once — otherwise two chunks
+      // play at the same time and one is skipped.
+      const created: Array<{ url?: string; onerror: (() => void) | null }> = []
+      let rejectFirst: ((err: unknown) => void) | null = null
+      const AudioSpy = vi.spyOn(window, 'Audio').mockImplementation((url?: string) => {
+        const isFirst = created.length === 0
+        const el = {
+          url,
+          pause: vi.fn(),
+          onended: null as unknown,
+          onerror: null as unknown,
+          play: vi.fn().mockImplementation(() =>
+            isFirst
+              ? new Promise((_resolve, reject) => {
+                  rejectFirst = reject
+                })
+              : Promise.resolve(undefined),
+          ),
+        }
+        created.push(el as unknown as { url?: string; onerror: (() => void) | null })
+        return el as unknown as HTMLAudioElement
+      })
+
+      renderConversation()
+      await waitFor(() => expect(screen.getByRole('log')).toBeInTheDocument())
+
+      const chunk = (name: string, seq: number): WsEvent => ({
+        type: 'tts.audio_chunk',
+        seq,
+        session_id: SESSION_ID,
+        ts: '2026-07-01T00:00:00Z',
+        payload: {
+          chunk_index: seq - 1,
+          total_chunks: 3,
+          text: name,
+          voice_id: 'af_heart',
+          cache_path: `/home/user/.convsim/tts_cache/${name}`,
+          error: null,
+        },
+      })
+
+      // Enqueue three chunks; the first is stuck on a pending play() promise.
+      act(() => wsCallback?.(chunk('a.wav', 1)))
+      act(() => wsCallback?.(chunk('b.wav', 2)))
+      act(() => wsCallback?.(chunk('c.wav', 3)))
+
+      // The first chunk fails: fire its error event AND reject its play() promise.
+      await act(async () => {
+        created[0].onerror?.()
+        rejectFirst?.(new Error('load failed'))
+        await Promise.resolve()
+      })
+
+      // Should have advanced to 'b.wav' exactly once; 'c.wav' must stay queued.
+      expect(created.map((el) => el.url)).toEqual([
+        '/api/tts/audio/a.wav',
+        '/api/tts/audio/b.wav',
+      ])
+
+      AudioSpy.mockRestore()
+    })
+  })
+
   describe('session ends via max turns', () => {
     it('shows debrief button when turn response has state=Ended', async () => {
       const endedTurnResponse: TurnResponse = {
