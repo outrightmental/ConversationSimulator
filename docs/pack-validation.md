@@ -270,8 +270,8 @@ static_assertions:
     check: "equals true"
 
   - description: Hard difficulty reduces NPC patience
-    path: scenario.difficulty.options.hard.npc_patience_modifier
-    check: "equals -20"
+    path: scenario.difficulty.options.hard.patience
+    check: "lte 33"
 ```
 
 ### What to assert in a golden test
@@ -289,8 +289,8 @@ static_assertions:
 - `success` and `failure` conditions target the right variable and threshold type.
 
 **Difficulty settings:**
-- `easy` increases `npc_patience_modifier`; `hard` decreases it.
-- `challenge_frequency` reflects the intended difficulty spread.
+- `warm` raises `patience` and `disclosure`; `hard`/`adversarial` lower them.
+- `volatility` and `time_pressure` climb as the preset gets harder.
 
 **Safety:**
 - Required safety categories are present and have the right actions.
