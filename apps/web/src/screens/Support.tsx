@@ -175,7 +175,7 @@ export default function Support() {
         )}
 
         {crashState === 'error' && crashError && (
-          <div style={{ marginTop: '0.5rem' }}>
+          <div data-testid="crash-bundle-error" style={{ marginTop: '0.5rem' }}>
             <ApiErrorView
               error={crashError}
               onRetry={handleCreateCrashBundle}

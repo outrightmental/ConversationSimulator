@@ -111,6 +111,11 @@ function renderWorkbench() {
 }
 
 beforeEach(() => {
+  // Clear call counts before each test. React Testing Library's auto-cleanup
+  // (which unmounts and can trigger the workbench's deleteSession-on-unmount)
+  // runs after the describe-level afterEach, so a prior test's teardown call
+  // would otherwise leak into the next test's assertions.
+  vi.clearAllMocks()
   vi.mocked(api.workbench.listPacks).mockResolvedValue({ ok: true, data: [OFFICIAL_PACK, LOCAL_PACK] })
   vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: [] } })
   vi.mocked(api.workbench.readFile).mockResolvedValue({ ok: true, data: { content: '', editable: false } })
