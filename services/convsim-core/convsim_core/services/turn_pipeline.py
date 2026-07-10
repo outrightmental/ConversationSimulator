@@ -190,6 +190,7 @@ def _persist_input_safety_stop(
     conn: sqlite3.Connection,
     source_mode: str,
     save_transcript: bool,
+    barged_in: bool = False,
 ) -> "TurnPipelineResult":
     """Short-circuit persist for a STOP / STOP_WITH_RESOURCE from the input router.
 
@@ -397,6 +398,7 @@ async def process_turn(
             conn=conn,
             source_mode=source_mode,
             save_transcript=save_transcript,
+            barged_in=barged_in,
         )
     # REDIRECT: safety policy is already injected into the LLM prompt; continue.
     # OK: proceed normally.
