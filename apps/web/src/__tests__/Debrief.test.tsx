@@ -224,7 +224,7 @@ describe('Debrief screen', () => {
       // fullDebriefResponse.outcome is 'player_exit' — the "manually ended"
       // case the shipped framework (#230) explicitly counts. FIRST_SCENARIO and
       // the SCENARIOS_COMPLETED stat must fire regardless of a 'success' outcome.
-      mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
       renderDebrief()
       await waitFor(() =>
         expect(screen.getByTestId('summary-section')).toBeInTheDocument(),
