@@ -37,6 +37,7 @@ def create_app(config: ServiceConfig | None = None) -> FastAPI:
         app.state.service_config = config
         app.state.db = db
         app.state.models_dir = config.models_dir
+        app.state.cancel_events = {}   # install_id → asyncio.Event (per-app)
         app.state.app_settings = load_settings(db.connection(), config.data_dir, config.log_dir)
         app.state.runtime = build_runtime(config.runtime_id)
         app.state.stt_worker = build_stt_worker(config.stt_worker_id)
