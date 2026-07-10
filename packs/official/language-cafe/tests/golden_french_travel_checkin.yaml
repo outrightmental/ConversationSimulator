@@ -1,0 +1,134 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: golden_french_travel_checkin
+scenario_id: french_travel_checkin
+description: >-
+  Golden transcript property test for gentle correction behaviour. Uses hard
+  difficulty (correction_style=strict) so that deliberate grammar errors
+  trigger Marie's kind explicit correction. Verifies that repair-strategy
+  turns increment repair_count, that the session remains open throughout,
+  and that all three correction_style values are correctly wired to the
+  difficulty levels.
+
+seed: 42
+input_mode: text
+difficulty: hard
+
+turns:
+  - turn: 1
+    player_input: >-
+      Bonjour madame. Moi j'ai un réservation — euh, au nom de Martin.
+      Je suis venu pour deux nuits, s'il vous plaît.
+    expect:
+      state_delta_contains:
+        - comprehension
+        - confidence
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 2
+    player_input: >-
+      Excusez-moi, je n'ai pas bien compris. Vous pouvez parler plus
+      lentement, s'il vous plaît ? Mon français est encore un peu... comment
+      dit-on... en progrès ?
+    expect:
+      state_delta_contains:
+        - repair_count
+        - comprehension
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 3
+    player_input: >-
+      Merci beaucoup ! Est-ce qu'il y a une boulangerie ou un café proche de
+      l'hôtel ? Je cherche un bon endroit pour le petit-déjeuner demain matin.
+    expect:
+      state_delta_contains:
+        - confidence
+        - vocabulary_richness
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 4
+    player_input: >-
+      Très bien ! Et aussi — est-ce que le WiFi est gratuit dans les chambres ?
+      J'ai besoin de travailler un peu. C'est important pour moi, merci.
+    expect:
+      state_delta_contains:
+        - confidence
+        - comprehension
+      session_control: continue_session
+      safety_status: ok
+
+static_assertions:
+  - description: Scenario opening line is non-empty
+    path: opening.npc_says
+    check: non_empty_string
+
+  - description: At least one event is defined
+    path: events
+    check: min_length_1
+
+  - description: comprehension_low event fires when comprehension drops below 30
+    path: events[id=comprehension_low].when
+    check: "type=variable_below AND variable=comprehension AND threshold=30"
+
+  - description: repair_strategy_used event fires when repair_count exceeds 1
+    path: events[id=repair_strategy_used].when
+    check: "type=variable_above AND variable=repair_count AND threshold=1"
+
+  - description: repair_strategy_used event is allowed to repeat
+    path: events[id=repair_strategy_used].repeat
+    check: "equals true"
+
+  - description: confidence_building event fires only once
+    path: events[id=confidence_building].repeat
+    check: "equals false"
+
+  - description: Success ending condition targets the comprehension variable
+    path: ending_conditions.success
+    check: "type=variable_above AND variable=comprehension"
+
+  - description: Failure ending condition targets the comprehension variable
+    path: ending_conditions.failure
+    check: "type=variable_below AND variable=comprehension"
+
+  - description: comprehension variable is player-visible
+    path: state.variables.comprehension.visibility
+    check: "equals visible"
+
+  - description: repair_count is hidden from the player
+    path: state.variables.repair_count.visibility
+    check: "equals hidden"
+
+  - description: Easy difficulty uses no correction
+    path: scenario.difficulty.options.easy.correction_style
+    check: "equals none"
+
+  - description: Normal difficulty uses light (silent recast) correction
+    path: scenario.difficulty.options.normal.correction_style
+    check: "equals light"
+
+  - description: Hard difficulty uses strict (explicit gentle) correction
+    path: scenario.difficulty.options.hard.correction_style
+    check: "equals strict"
+
+  - description: Hard difficulty applies a negative NPC patience modifier
+    path: scenario.difficulty.options.hard.npc_patience_modifier
+    check: "equals -10"
+
+  - description: NPC is marked fictional
+    path: npc.fictional
+    check: "equals true"
+
+  - description: Safety policy stops nsfw_sexual_content
+    path: safety.content_categories.nsfw_sexual_content
+    check: "equals stop"
+
+  - description: Safety policy fires stop_with_resource_message for self_harm_crisis
+    path: safety.content_categories.self_harm_crisis
+    check: "equals stop_with_resource_message"
+
+  - description: Pack manifest declares french_travel_checkin as an entry scenario
+    path: manifest.entry_scenarios
+    check: "contains scenarios/french_travel_checkin.yaml"
