@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import importlib
 import os
+import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -48,7 +49,8 @@ class TestOfficialPacksDirResolution:
         fake_packs.mkdir(parents=True)
 
         frozen_attrs = {"_MEIPASS": str(tmp_path), "frozen": True}
-        with patch.multiple(sys, **frozen_attrs):
+        # sys._MEIPASS / sys.frozen do not exist outside a bundle, so create=True.
+        with patch.multiple(sys, create=True, **frozen_attrs):
             cfg_mod = _reload_config()
             assert cfg_mod._DEFAULT_OFFICIAL_PACKS_DIR == str(fake_packs)
 
@@ -70,7 +72,7 @@ class TestOfficialPacksDirResolution:
         custom.mkdir()
 
         frozen_attrs = {"_MEIPASS": str(fake_meipass), "frozen": True}
-        with patch.multiple(sys, **frozen_attrs):
+        with patch.multiple(sys, create=True, **frozen_attrs):
             with patch.dict(os.environ, {"CONVSIM_OFFICIAL_PACKS_DIR": str(custom)}):
                 from convsim_core.config import ServiceConfig
                 cfg = ServiceConfig()
@@ -162,13 +164,32 @@ class TestPackagedEnvSimulation:
 class TestNoDevImportsLeakage:
     """Guard that test / dev packages cannot be imported from convsim_core."""
 
+    @staticmethod
+    def _leaked_modules_after_import(package: str) -> list[str]:
+        """Import convsim_core in a clean subprocess and report leaked modules.
+
+        This must run in a fresh interpreter: when these tests run under pytest,
+        pytest (and possibly setuptools) are already in this process's
+        sys.modules, so an in-process check would always report a false leak.
+        """
+        code = (
+            "import sys, convsim_core;"
+            f"print(','.join(m for m in sys.modules "
+            f"if m == {package!r} or m.startswith({package + '.'!r})))"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", code],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return [m for m in result.stdout.strip().split(",") if m]
+
     def test_pytest_not_imported_transitively(self):
-        import convsim_core  # noqa: F401
-        leaked = [m for m in sys.modules if m == "pytest" or m.startswith("pytest.")]
+        leaked = self._leaked_modules_after_import("pytest")
         assert not leaked, f"pytest leaked into convsim_core imports: {leaked}"
 
     def test_setuptools_not_imported_transitively(self):
-        import convsim_core  # noqa: F401
         # setuptools is used at install time; it must not be a runtime dependency.
-        leaked = [m for m in sys.modules if m == "setuptools" or m.startswith("setuptools.")]
+        leaked = self._leaked_modules_after_import("setuptools")
         assert not leaked, f"setuptools leaked into convsim_core imports: {leaked}"
