@@ -136,11 +136,20 @@ export default function Conversation() {
     }
     const audio = new Audio(url)
     ttsPlayingRef.current = audio
-    audio.onended = _playNextTtsChunk
-    audio.onerror = _playNextTtsChunk
+    // A failed load can fire both the error event and reject the play() promise;
+    // guard so this element advances the queue at most once — otherwise two
+    // chunks start playing at the same time and one is skipped.
+    let advanced = false
+    const advance = () => {
+      if (advanced) return
+      advanced = true
+      _playNextTtsChunk()
+    }
+    audio.onended = advance
+    audio.onerror = advance
     audio.play().catch(() => {
       // Autoplay blocked or resource unavailable — skip to next chunk.
-      _playNextTtsChunk()
+      advance()
     })
   }
 

@@ -1164,6 +1164,70 @@ describe('Conversation screen', () => {
 
       AudioSpy.mockRestore()
     })
+
+    it('does not double-advance the queue when a chunk both errors and rejects play()', async () => {
+      // A failed load can fire the error event and reject the play() promise for
+      // the same element. The queue must advance only once — otherwise two chunks
+      // play at the same time and one is skipped.
+      const created: Array<{ url?: string; onerror: (() => void) | null }> = []
+      let rejectFirst: ((err: unknown) => void) | null = null
+      const AudioSpy = vi.spyOn(window, 'Audio').mockImplementation((url?: string) => {
+        const isFirst = created.length === 0
+        const el = {
+          url,
+          pause: vi.fn(),
+          onended: null as unknown,
+          onerror: null as unknown,
+          play: vi.fn().mockImplementation(() =>
+            isFirst
+              ? new Promise((_resolve, reject) => {
+                  rejectFirst = reject
+                })
+              : Promise.resolve(undefined),
+          ),
+        }
+        created.push(el as unknown as { url?: string; onerror: (() => void) | null })
+        return el as unknown as HTMLAudioElement
+      })
+
+      renderConversation()
+      await waitFor(() => expect(screen.getByRole('log')).toBeInTheDocument())
+
+      const chunk = (name: string, seq: number): WsEvent => ({
+        type: 'tts.audio_chunk',
+        seq,
+        session_id: SESSION_ID,
+        ts: '2026-07-01T00:00:00Z',
+        payload: {
+          chunk_index: seq - 1,
+          total_chunks: 3,
+          text: name,
+          voice_id: 'af_heart',
+          cache_path: `/home/user/.convsim/tts_cache/${name}`,
+          error: null,
+        },
+      })
+
+      // Enqueue three chunks; the first is stuck on a pending play() promise.
+      act(() => wsCallback?.(chunk('a.wav', 1)))
+      act(() => wsCallback?.(chunk('b.wav', 2)))
+      act(() => wsCallback?.(chunk('c.wav', 3)))
+
+      // The first chunk fails: fire its error event AND reject its play() promise.
+      await act(async () => {
+        created[0].onerror?.()
+        rejectFirst?.(new Error('load failed'))
+        await Promise.resolve()
+      })
+
+      // Should have advanced to 'b.wav' exactly once; 'c.wav' must stay queued.
+      expect(created.map((el) => el.url)).toEqual([
+        '/api/tts/audio/a.wav',
+        '/api/tts/audio/b.wav',
+      ])
+
+      AudioSpy.mockRestore()
+    })
   })
 
   describe('session ends via max turns', () => {
