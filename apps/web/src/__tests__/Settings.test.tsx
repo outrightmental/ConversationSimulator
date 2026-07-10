@@ -29,6 +29,8 @@ vi.mock('../api/client', () => ({
     listPacks: vi.fn(),
     importPack: vi.fn(),
     validatePack: vi.fn(),
+    // Diagnostics
+    createCrashBundle: vi.fn(),
   },
 }))
 
@@ -78,6 +80,7 @@ const STUB_FOLDERS = {
   logs: '/home/user/.convsim/logs',
   models: '/home/user/.convsim/models/llm',
   packs: '/home/user/.convsim/db/packs',
+  exports: '/home/user/.convsim/exports',
 }
 
 const SESSION_A = {
@@ -406,6 +409,13 @@ describe('local folders', () => {
     )
   })
 
+  it('displays the exports folder path', async () => {
+    await renderSettings()
+    await waitFor(() =>
+      expect(screen.getByTestId('folder-path-exports')).toHaveTextContent('/home/user/.convsim/exports'),
+    )
+  })
+
   it('shows copy buttons for each folder', async () => {
     await renderSettings()
     await waitFor(() => screen.getByTestId('folder-path-data'))
@@ -413,6 +423,7 @@ describe('local folders', () => {
     expect(screen.getByRole('button', { name: /copy logs folder path/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /copy models folder path/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /copy packs folder path/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /copy exports folder path/i })).toBeInTheDocument()
   })
 
   it('shows an error message when getFolders fails', async () => {

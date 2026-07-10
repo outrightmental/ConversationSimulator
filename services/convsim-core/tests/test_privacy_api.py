@@ -1,0 +1,70 @@
+# SPDX-License-Identifier: Apache-2.0
+"""Tests for the /api/privacy endpoints."""
+from pathlib import Path
+
+
+def test_get_data_folder_returns_200(client):
+    response = client.get("/api/privacy/data-folder")
+    assert response.status_code == 200
+
+
+def test_get_data_folder_has_path(client):
+    data = client.get("/api/privacy/data-folder").json()
+    assert "path" in data
+    assert isinstance(data["path"], str)
+
+
+def test_get_data_folder_is_absolute(client):
+    data = client.get("/api/privacy/data-folder").json()
+    assert Path(data["path"]).is_absolute()
+
+
+def test_get_folders_returns_200(client):
+    response = client.get("/api/privacy/folders")
+    assert response.status_code == 200
+
+
+def test_get_folders_has_all_keys(client):
+    data = client.get("/api/privacy/folders").json()
+    for key in ("data", "logs", "models", "packs", "exports"):
+        assert key in data, f"missing key: {key}"
+
+
+def test_get_folders_all_paths_are_strings(client):
+    data = client.get("/api/privacy/folders").json()
+    for key in ("data", "logs", "models", "packs", "exports"):
+        assert isinstance(data[key], str), f"{key} is not a string"
+
+
+def test_get_folders_all_paths_are_absolute(client):
+    data = client.get("/api/privacy/folders").json()
+    for key in ("data", "logs", "models", "packs", "exports"):
+        assert Path(data[key]).is_absolute(), f"{key} path is not absolute: {data[key]}"
+
+
+def test_get_folders_exports_path_uses_exports_dir(client):
+    data = client.get("/api/privacy/folders").json()
+    assert "exports" in data["exports"].lower() or len(data["exports"]) > 0
+
+
+def test_exports_folder_created_at_startup(client):
+    """The exports folder must exist on startup so the desktop 'Open exports
+    folder' button works on a fresh install, before anything is exported."""
+    data = client.get("/api/privacy/folders").json()
+    assert Path(data["exports"]).is_dir()
+
+
+def test_post_clear_returns_200(client):
+    response = client.post("/api/privacy/clear")
+    assert response.status_code == 200
+
+
+def test_post_clear_returns_deleted_sessions_field(client):
+    data = client.post("/api/privacy/clear").json()
+    assert "deleted_sessions" in data
+    assert isinstance(data["deleted_sessions"], int)
+
+
+def test_post_clear_with_no_sessions_returns_zero(client):
+    data = client.post("/api/privacy/clear").json()
+    assert data["deleted_sessions"] == 0

@@ -12,19 +12,11 @@ _DEFAULT_DATA_DIR = str(Path.home() / ".convsim" / "data")
 _DEFAULT_LOG_DIR = str(Path.home() / ".convsim" / "logs")
 _DEFAULT_DB_DIR = str(Path.home() / ".convsim" / "db")
 _DEFAULT_PACKS_DIR = str(Path.home() / ".convsim" / "packs")
-# Read-only bundled official packs.
-#
-# In a PyInstaller packaged build (sys._MEIPASS is set), the packs are
-# embedded in the executable and extracted to sys._MEIPASS/packs/official/
-# at runtime.  In a developer checkout the packs live at the repo root.
-_is_frozen = getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS")
-if _is_frozen:
-    _DEFAULT_OFFICIAL_PACKS_DIR = str(Path(sys._MEIPASS) / "packs" / "official")  # type: ignore[attr-defined]
-else:
-    # Resolve relative to this file: config.py → convsim_core → convsim-core →
-    # services → repo root.  The default points at the repo's packs/official so
-    # `convsim-core` works from any process CWD in a developer checkout.
-    _DEFAULT_OFFICIAL_PACKS_DIR = str(Path(__file__).resolve().parents[3] / "packs" / "official")
+_DEFAULT_EXPORTS_DIR = str(Path.home() / ".convsim" / "exports")
+# Read-only bundled official packs live in the repo's packs/official directory.
+# Resolve it relative to this file so the default works regardless of the
+# process CWD (config.py -> convsim_core -> convsim-core -> services -> repo root).
+_DEFAULT_OFFICIAL_PACKS_DIR = str(Path(__file__).resolve().parents[3] / "packs" / "official")
 
 
 class ServiceConfig(BaseSettings):
@@ -58,6 +50,7 @@ class ServiceConfig(BaseSettings):
     # Workbench also uses it as the editable local-dev pack root, falling back
     # to <packs_dir>/local-dev when unset.
     local_dev_packs_dir: Optional[str] = None
+    exports_dir: str = _DEFAULT_EXPORTS_DIR
     models_dir: str = str(Path.home() / ".convsim" / "models" / "llm")
     lan_access_enabled: bool = False
     runtime_id: str = "fake"

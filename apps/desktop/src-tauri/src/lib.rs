@@ -8,6 +8,8 @@ use std::{
 };
 use tauri::{AppHandle, Emitter, Manager};
 
+mod steam;
+
 // ── Status events emitted to the front-end ────────────────────────────────────
 
 #[derive(Clone, serde::Serialize)]
@@ -15,6 +17,24 @@ struct CoreStatusPayload {
     phase: String,
     message: String,
     error: Option<String>,
+}
+
+// ── Steam integration state ───────────────────────────────────────────────────
+
+/// Holds the Steam status snapshot so the front-end can query it at any time
+/// via `get_steam_status`.  Initialised once during `setup()`.
+struct SteamState(Arc<Mutex<steam::SteamStatus>>);
+
+/// Returns the current Steam integration status.
+/// Safe to call on non-Steam builds; always returns `is_steam_enabled: false`
+/// unless the `steam` Cargo feature is enabled and Steam is running.
+#[tauri::command]
+fn get_steam_status(state: tauri::State<'_, SteamState>) -> steam::SteamStatus {
+    state
+        .0
+        .lock()
+        .map(|g| g.clone())
+        .unwrap_or_default()
 }
 
 // ── Managed state (owns the convsim-core child process) ───────────────────────
@@ -338,13 +358,19 @@ pub fn run() {
     // reliable teardown path; `Drop` remains as a backstop for other exit paths.
     let process_on_exit = Arc::clone(&process_inner);
 
+    // Initialise the Steam bridge early so the status is available before the
+    // webview requests it. Gracefully returns a disabled status when Steam is
+    // absent or the `steam` Cargo feature is off.
+    let steam_status = Arc::new(Mutex::new(steam::init()));
+
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .manage(CoreProcessState(Arc::clone(&process_inner)))
         .manage(CoreStatusState(Arc::clone(&status_inner)))
-        .invoke_handler(tauri::generate_handler![get_core_status])
+        .manage(SteamState(Arc::clone(&steam_status)))
+        .invoke_handler(tauri::generate_handler![get_core_status, get_steam_status])
         .setup(move |app| {
             launch_or_verify_core(
                 app.handle().clone(),
