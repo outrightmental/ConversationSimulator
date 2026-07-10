@@ -32,9 +32,7 @@ function makeGamepad(overrides: Partial<{
     timestamp: performance.now(),
     buttons: overrides.buttons ?? defaultButtons,
     axes: overrides.axes ?? [0, 0, 0, 0],
-    hapticActuators: [],
-    vibrationActuator: null,
-  }
+  } as unknown as Gamepad
 }
 
 function makeButtons(pressedIndices: number[]): MockButton[] {

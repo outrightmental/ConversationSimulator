@@ -13,12 +13,12 @@ import { useSteamKeyboard } from '../hooks/useSteamKeyboard'
 describe('useSteamKeyboard', () => {
   beforeEach(() => {
     // Ensure __TAURI__ is absent (browser / test environment).
-    delete (window as Record<string, unknown>)['__TAURI__']
+    delete (window as unknown as Record<string, unknown>)['__TAURI__']
   })
 
   afterEach(() => {
     vi.restoreAllMocks()
-    delete (window as Record<string, unknown>)['__TAURI__']
+    delete (window as unknown as Record<string, unknown>)['__TAURI__']
   })
 
   it('mounts and unmounts without throwing', () => {
