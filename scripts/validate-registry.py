@@ -85,8 +85,10 @@ def _check_urls(registry: dict) -> list[str]:
                     errors.append(f"  {mid}: unexpected HTTP {resp.status}")
         except urllib.error.HTTPError as exc:
             print(f"→ HTTP {exc.code}")
-            # 403/404 on HEAD can mean the CDN blocks HEAD but allows GET;
-            # treat as a warning rather than hard failure for HuggingFace URLs.
+            # 403/405 on HEAD can mean the CDN blocks the HEAD method but allows
+            # GET; treat those as a warning rather than a hard failure for
+            # HuggingFace URLs.  A 404 is NOT tolerated: it means the pinned file
+            # is gone and maintainers should be alerted.
             if exc.code in (403, 405) and "huggingface.co" in url:
                 print(f"    (ignoring {exc.code} — HuggingFace CDN blocks HEAD; "
                       "use GET to verify reachability)")
