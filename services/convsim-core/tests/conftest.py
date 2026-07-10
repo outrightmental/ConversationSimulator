@@ -19,6 +19,7 @@ def tmp_config(tmp_path, monkeypatch):
         log_dir=str(tmp_path / "logs"),
         db_dir=str(tmp_path / "db"),
         packs_dir=str(tmp_path / "packs"),
+        exports_dir=str(tmp_path / "exports"),
         # Allow folder imports from tmp_path so integration tests can use
         # make_pack_dir() without placing packs inside packs_dir itself.
         local_dev_packs_dir=str(tmp_path),
