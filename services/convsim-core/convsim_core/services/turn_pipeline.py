@@ -220,6 +220,14 @@ def _persist_input_safety_stop(
         session_id, turn_number, decision.category, decision.action.value,
     )
 
+    # Snapshot the simulation state at this turn boundary (state unchanged by safety stop).
+    current_state_vars: Dict[str, int] = json.loads(session_row["state_vars_json"] or "{}")
+    current_fired_events: List[str] = json.loads(session_row["fired_events_json"] or "[]")
+    safety_stop_snapshot_json = json.dumps({
+        "state_vars": current_state_vars,
+        "fired_events": current_fired_events,
+    })
+
     with conn:
         player_cursor = conn.execute(
             "INSERT INTO turn_session_turns "
@@ -230,14 +238,15 @@ def _persist_input_safety_stop(
         npc_cursor = conn.execute(
             "INSERT INTO turn_session_turns "
             "(session_id, turn_number, role, content, emotion, state_delta_json, event_flags_json, "
-            "safety_json, raw_output_json, flow_state_after, created_at) "
-            "VALUES (?, ?, 'npc', ?, 'neutral', '{}', '[]', ?, NULL, ?, ?)",
+            "safety_json, raw_output_json, flow_state_after, state_snapshot_json, created_at) "
+            "VALUES (?, ?, 'npc', ?, 'neutral', '{}', '[]', ?, NULL, ?, ?, ?)",
             (
                 session_id,
                 npc_turn_number,
                 npc_utterance,
                 json.dumps({"status": safety_status, "reason": decision.category}),
                 new_flow_state,
+                safety_stop_snapshot_json,
                 now,
             ),
         )
@@ -508,6 +517,13 @@ async def process_turn(
     player_turn_number = turn_number * 2 - 1
     npc_turn_number = turn_number * 2
 
+    # State snapshot stored on the NPC turn row so any completed game turn can
+    # serve as a fork point for branch sessions (see branch_service.py).
+    state_snapshot_json = json.dumps({
+        "state_vars": delta_result.new_state,
+        "fired_events": list(fired_event_ids),
+    })
+
     # Prompt metadata stored for debugging. Only non-private fields are kept:
     # token count, truncation flag, and which layers were present. The raw
     # prompt text and NPC private persona content are never written to the log.
@@ -527,8 +543,8 @@ async def process_turn(
         npc_cursor = conn.execute(
             "INSERT INTO turn_session_turns "
             "(session_id, turn_number, role, content, emotion, state_delta_json, event_flags_json, "
-            "safety_json, raw_output_json, flow_state_after, created_at) "
-            "VALUES (?, ?, 'npc', ?, ?, ?, ?, ?, ?, ?, ?)",
+            "safety_json, raw_output_json, flow_state_after, state_snapshot_json, created_at) "
+            "VALUES (?, ?, 'npc', ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 session_id,
                 npc_turn_number,
@@ -542,6 +558,7 @@ async def process_turn(
                 }),
                 raw_text,
                 new_flow_state,
+                state_snapshot_json,
                 now,
             ),
         )
