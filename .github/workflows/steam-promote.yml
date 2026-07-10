@@ -1,0 +1,237 @@
+# SPDX-License-Identifier: Apache-2.0
+# Steam branch-promotion workflow.
+#
+# Promotes a previously uploaded SteamPipe build to the `default` branch
+# (public release) WITHOUT re-uploading content.  Use this workflow after
+# the build has already been staged and verified on `beta`.
+#
+# Contrast with steam-deploy.yml, which uploads artifacts and optionally
+# sets a branch live in one step.  This workflow calls steamcmd
+# +set_build_live_branch, which is a pure metadata operation — no content
+# transfer occurs, and the depot files already on Valve's CDN are served
+# immediately.
+#
+# ── When to use ─────────────────────────────────────────────────────────────
+#
+# Use this workflow for the Stage 4 public release when:
+#   - The build is already staged in Steamworks (uploaded with set_live_branch
+#     left empty or "beta" via steam-deploy.yml), AND
+#   - All Stage 4 gate criteria in docs/steam-mvp-scope.md are met, AND
+#   - Valve has approved the store page (gate G4-01).
+#
+# Do NOT use this workflow to push net-new content.  If the build has not
+# been uploaded yet, run steam-deploy.yml first, then call this workflow.
+#
+# ── Prerequisites ────────────────────────────────────────────────────────────
+#
+# Repository variables (Settings → Secrets and variables → Actions → Variables):
+#   STEAM_APP_ID              Valve-assigned App ID (non-secret)
+#
+# Repository secrets (Settings → Secrets and variables → Actions → Secrets):
+#   STEAM_USERNAME            Steam username of the dedicated CI build account
+#   STEAM_CONFIG_VDF          Base64-encoded config.vdf (bypasses SteamGuard in CI)
+#
+# GitHub Actions environment:
+#   steam-release             Required-reviewer environment; gates job on manual
+#                             approval before any secret is exposed.
+#
+# See publishing/STEAM_APP_REGISTRATION.md for how to obtain and rotate these.
+#
+# ── Inputs ───────────────────────────────────────────────────────────────────
+#
+# build_id          SteamPipe Build ID to promote.  Find it in the Steamworks
+#                   partner portal → App Admin → Builds.  The build must already
+#                   be uploaded (depot file count non-zero).
+#
+# release_tag       GitHub release tag corresponding to this build (e.g. v0.3.0).
+#                   Used to download and hash the release artifacts for the
+#                   promotion log — the hashes are not used for the upload itself.
+#
+# previous_build_id The Build ID currently live on the default branch.  Recorded
+#                   in the promotion log for rollback reference.  Find it in
+#                   Steamworks → App Admin → Builds (filter by branch: default).
+#                   Pass "none" if no build is currently live on default.
+#
+# go_nogo_confirmed Type exactly YES to confirm that:
+#                     • All Stage 4 gate criteria in docs/steam-mvp-scope.md
+#                       are met.
+#                     • Valve has approved the store page (G4-01).
+#                     • The release owner has given launch go/no-go.
+#                   Any other value aborts the workflow before credentials are used.
+#
+# ── After this workflow completes ────────────────────────────────────────────
+#
+# 1. Open Steamworks → App Admin → Builds and confirm the promoted build is
+#    shown as live on the default branch.
+#
+# 2. Copy the promotion record printed in the "Record promotion details" step
+#    and add it to publishing/STEAM_PROMOTION_LOG.md.
+#
+# 3. Proceed with launch-day Steps 4–7 in publishing/LAUNCH_DAY_RUNBOOK.md:
+#    CDN propagation check, end-to-end install verification, announcement,
+#    and 72-hour monitoring.
+#
+name: Steam Promote to Default
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_id:
+        description: >
+          SteamPipe Build ID to promote
+          (Steamworks → App Admin → Builds — the numeric ID in the Build ID column).
+        required: true
+        type: string
+      release_tag:
+        description: 'GitHub release tag for this build (e.g. v0.3.0)'
+        required: true
+        type: string
+      previous_build_id:
+        description: >
+          Current default-branch Build ID (for rollback reference).
+          Pass "none" if no build is live on default yet.
+        required: true
+        type: string
+      go_nogo_confirmed:
+        description: >
+          Type exactly YES to confirm all Stage 4 gates are met and launch
+          go/no-go has been given by the release owner.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  promote:
+    name: Promote build ${{ inputs.build_id }} to default (${{ inputs.release_tag }})
+    runs-on: ubuntu-latest
+
+    # The steam-release environment gates this job behind a manual approval step.
+    # Create it in GitHub → Settings → Environments → New environment.
+    # Add required reviewers so no Steam credential is exposed without sign-off.
+    environment: steam-release
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Gate: explicit go/no-go confirmation ──────────────────────────────
+      # The required-reviewer check on the steam-release environment provides
+      # the primary approval gate.  This second check requires the operator to
+      # explicitly type YES, confirming they have verified all Stage 4 criteria
+      # before any credential or network operation begins.
+      - name: Verify go/no-go confirmation
+        env:
+          GO_NOGO: ${{ inputs.go_nogo_confirmed }}
+        run: |
+          if [ "$GO_NOGO" != "YES" ]; then
+            echo "ERROR: go_nogo_confirmed must be exactly 'YES' to proceed." >&2
+            echo "" >&2
+            echo "Before typing YES, verify all of the following in docs/steam-mvp-scope.md:" >&2
+            echo "  G4-01  Valve store page approval received." >&2
+            echo "  G4-02  Steam Deck Verified tier granted by Valve." >&2
+            echo "  G4-03  Full release checklist (Parts A–J) passed on all platforms." >&2
+            echo "  G4-04  Store page copy accurate (no therapy/diagnosis language)." >&2
+            echo "  G4-05  Voice smoke test passed (if voice is included in the build)." >&2
+            echo "" >&2
+            echo "Also confirm:" >&2
+            echo "  •  The signed-off STEAM_BETA_VERIFICATION_REPORT.md is attached to the" >&2
+            echo "     release issue (gate G3-06 / SR-09)." >&2
+            echo "  •  The release owner has given explicit launch go/no-go." >&2
+            echo "  •  publishing/BETA_FEEDBACK_AND_LAUNCH_RISKS.md is complete and signed." >&2
+            exit 1
+          fi
+          echo "Go/no-go confirmed by ${{ github.actor }}."
+
+      # ── Compute artifact hashes from the GitHub release ───────────────────
+      # Downloads the release assets and computes their SHA-256 digests.
+      # These hashes are recorded in the promotion log for provenance — they
+      # are not used to validate the Steam upload (which was already done by
+      # steam-deploy.yml when the build was first staged).
+      - name: Download release artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          mkdir -p release-artifacts
+          gh release download "$RELEASE_TAG" \
+            --dir release-artifacts \
+            --skip-errors
+
+      - name: Compute artifact SHA-256 hashes
+        run: |
+          echo "--- SHA-256 hashes for ${{ inputs.release_tag }} ---"
+          find release-artifacts -type f | sort | while IFS= read -r f; do
+            sha256sum "$f"
+          done | tee artifact-hashes.txt
+          echo "File count: $(wc -l < artifact-hashes.txt)"
+
+      # ── Install steamcmd ──────────────────────────────────────────────────
+      - name: Install steamcmd
+        run: |
+          sudo add-apt-repository multiverse
+          sudo dpkg --add-architecture i386
+          sudo apt-get update -qq
+          echo steamcmd steam/question select "I AGREE" | sudo debconf-set-selections
+          sudo apt-get install -y steamcmd
+
+      # ── Restore SteamGuard config ─────────────────────────────────────────
+      - name: Restore Steam config
+        env:
+          STEAM_CONFIG_VDF: ${{ secrets.STEAM_CONFIG_VDF }}
+        run: |
+          mkdir -p "$HOME/.steam/steam/config"
+          printf '%s' "$STEAM_CONFIG_VDF" | base64 --decode \
+            > "$HOME/.steam/steam/config/config.vdf"
+          chmod 600 "$HOME/.steam/steam/config/config.vdf"
+
+      # ── Set the build live on the default branch ──────────────────────────
+      # +set_build_live_branch is a pure metadata operation: it does not
+      # re-upload content.  The depot files already on Valve's CDN are
+      # served to players as soon as this command succeeds.
+      - name: Promote build to default branch
+        env:
+          STEAM_USERNAME: ${{ secrets.STEAM_USERNAME }}
+          STEAM_APP_ID:   ${{ vars.STEAM_APP_ID }}
+          BUILD_ID:       ${{ inputs.build_id }}
+        run: |
+          steamcmd \
+            +login "$STEAM_USERNAME" \
+            +set_build_live_branch "$STEAM_APP_ID" default "$BUILD_ID" \
+            +quit
+
+      # ── Print promotion record ────────────────────────────────────────────
+      # Always print — even on failure — so there is a timestamped audit
+      # trail in the workflow log.  Copy this output into
+      # publishing/STEAM_PROMOTION_LOG.md after the workflow succeeds.
+      - name: Record promotion details
+        if: always()
+        env:
+          BUILD_ID:          ${{ inputs.build_id }}
+          RELEASE_TAG:       ${{ inputs.release_tag }}
+          PREVIOUS_BUILD_ID: ${{ inputs.previous_build_id }}
+          RUN_URL:           ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          ACTOR:             ${{ github.actor }}
+        run: |
+          echo "========================================================"
+          echo "  Steam Promotion Record"
+          echo "========================================================"
+          echo "  Date (UTC)        : $(date -u '+%Y-%m-%d %H:%M UTC')"
+          echo "  Release tag       : $RELEASE_TAG"
+          echo "  Build ID (new)    : $BUILD_ID"
+          echo "  Build ID (prev)   : $PREVIOUS_BUILD_ID"
+          echo "  Branch set live   : default"
+          echo "  Promoted by       : $ACTOR"
+          echo "  CI run            : $RUN_URL"
+          echo "--------------------------------------------------------"
+          echo "  Artifact SHA-256 hashes:"
+          if [ -f artifact-hashes.txt ]; then
+            sed 's/^/    /' artifact-hashes.txt
+          else
+            echo "    (hash file not generated — artifact download may have failed)"
+          fi
+          echo "========================================================"
+          echo ""
+          echo "Copy the block above into publishing/STEAM_PROMOTION_LOG.md."
+          echo "Then proceed with launch-day Steps 4–7 in"
+          echo "publishing/LAUNCH_DAY_RUNBOOK.md."

@@ -240,8 +240,14 @@ that branch. Always follow the staged-then-promote pattern.
 1. Confirm **all** Stage 4 gate criteria in
    [`docs/steam-mvp-scope.md`](../docs/steam-mvp-scope.md) are met, including
    Valve store page approval and Steam Deck Verified status.
-2. Trigger the deploy workflow with the Stage 4 release tag and
-   `set_live_branch: default`.
+2. **If the build is already staged or live on `beta`**, use the dedicated
+   promotion workflow (`.github/workflows/steam-promote.yml`) with the Build ID
+   from Steamworks, the release tag, and the previous default Build ID (for
+   rollback reference).  This uses `+set_build_live_branch`, a metadata-only
+   operation that does not re-upload depot content.  Record the resulting
+   promotion entry in [`publishing/STEAM_PROMOTION_LOG.md`](STEAM_PROMOTION_LOG.md).
+   **If the build has not been staged yet**, trigger `steam-deploy.yml` with
+   `set_live_branch: default` instead.
 3. The `default` branch immediately serves all new installs and updates.
 4. Monitor the Steamworks App Admin → Reviews and the GitHub issue queue for
    the first 72 hours. Follow the launch monitoring checklist in
@@ -359,9 +365,12 @@ a signed build.
 - [`publishing/STEAM_DEPOT_CONTENTS.md`](STEAM_DEPOT_CONTENTS.md) — depot layout, exclusions, approved binary payload list
 - [`publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md`](STEAM_COMPLIANCE_AND_RISK_REGISTER.md) — risk register; see MD-04, SR-08
 - [`publishing/STEAM_STORE_AND_OPERATIONS.md`](STEAM_STORE_AND_OPERATIONS.md) — store operations, launch runbook, support triage
+- [`publishing/STEAM_PROMOTION_LOG.md`](STEAM_PROMOTION_LOG.md) — log of every default-branch promotion (Build IDs, artifact hashes, release notes)
+- [`publishing/LAUNCH_DAY_RUNBOOK.md`](LAUNCH_DAY_RUNBOOK.md) — launch-day sequence including Step 3 (promotion) and Step 4 (CDN verification)
 - [`publishing/MACOS_SIGNING_AND_NOTARIZATION.md`](MACOS_SIGNING_AND_NOTARIZATION.md) — macOS signing and notarisation
 - [`publishing/WINDOWS_CODE_SIGNING.md`](WINDOWS_CODE_SIGNING.md) — Windows Authenticode signing
-- [`.github/workflows/steam-deploy.yml`](../.github/workflows/steam-deploy.yml) — CI deploy workflow
+- [`.github/workflows/steam-promote.yml`](../.github/workflows/steam-promote.yml) — CI workflow for promoting a staged build to default (no re-upload)
+- [`.github/workflows/steam-deploy.yml`](../.github/workflows/steam-deploy.yml) — CI workflow for uploading content and optionally setting a branch live
 - [`steam/`](../steam/) — SteamPipe VDF templates
 - [`scripts/depot-audit.sh`](../scripts/depot-audit.sh) — depot content audit (Linux / macOS)
 - [`scripts/depot-audit.ps1`](../scripts/depot-audit.ps1) — depot content audit (Windows PowerShell)
