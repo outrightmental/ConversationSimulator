@@ -1,11 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
 import logging
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 
-from convsim_core.stt.types import SttError, SttRequest, SttUnavailableError
+from convsim_core.stt.types import SttError, SttHealth, SttRequest, SttUnavailableError
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +38,57 @@ class SttUploadResponse(BaseModel):
     processing_ms: float | None = None
 
 
+class SttHealthResponse(BaseModel):
+    worker_id: str
+    worker_name: str
+    status: Literal["unavailable", "starting", "ready", "degraded", "error"]
+    model_path: str | None = None
+    message: str | None = None
+    checked_at: str
+
+
+def _health_to_response(h: SttHealth) -> SttHealthResponse:
+    return SttHealthResponse(
+        worker_id=h.worker_id,
+        worker_name=h.worker_name,
+        status=h.status.value,
+        model_path=h.model_path,
+        message=h.message,
+        checked_at=h.checked_at,
+    )
+
+
+def _save_audio_locally(data: bytes, audio_format: str, data_dir: str) -> None:
+    """Persist raw audio to <data_dir>/audio/ with a timestamped filename.
+
+    Only called when the user has explicitly enabled save_raw_audio in Settings.
+    Errors are logged and silently swallowed so a write failure never blocks
+    the transcription response.
+    """
+    try:
+        audio_dir = Path(data_dir) / "audio"
+        audio_dir.mkdir(parents=True, exist_ok=True)
+        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        uid = uuid.uuid4().hex[:8]
+        filename = f"{ts}_{uid}.{audio_format}"
+        (audio_dir / filename).write_bytes(data)
+        logger.debug("Raw audio saved to %s", audio_dir / filename)
+    except OSError:
+        logger.warning("Failed to save raw audio to disk", exc_info=True)
+
+
+@router.get("/api/stt/health", response_model=SttHealthResponse)
+async def stt_health(request: Request) -> SttHealthResponse:
+    """Return availability status of the configured STT worker.
+
+    The frontend calls this on load to decide whether to offer push-to-talk. A
+    status of 'unavailable' means the whisper.cpp binary or GGML model is not
+    installed; the app continues in text-only mode.
+    """
+    h = await request.app.state.stt_worker.health()
+    return _health_to_response(h)
+
+
 @router.post("/api/stt/upload", response_model=SttUploadResponse)
 async def upload_audio(
     request: Request,
@@ -59,12 +113,13 @@ async def upload_audio(
     if len(data) > _MAX_AUDIO_BYTES:
         raise HTTPException(status_code=413, detail="Audio exceeds 25 MB limit")
 
-    # Raw audio is intentionally not persisted unless the user opts in.
+    audio_format = _MIME_TO_EXT.get(content_type, "bin")
+
+    # Raw audio is saved only when the user explicitly opts in via Settings.
     if app_settings.save_raw_audio:
-        pass  # Future: pass data to local storage here.
+        _save_audio_locally(data, audio_format, app_settings.data_dir)
 
     stt_worker = request.app.state.stt_worker
-    audio_format = _MIME_TO_EXT.get(content_type, "bin")
 
     try:
         result = await stt_worker.transcribe(
