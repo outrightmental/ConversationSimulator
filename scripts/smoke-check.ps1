@@ -120,6 +120,7 @@ Check-File "scripts\depot-audit.sh"
 Check-File "scripts\depot-audit.ps1"
 Check-File "services\convsim-core\convsim-core.spec"
 Check-File "apps\desktop\src-tauri\resources\bin\.gitkeep"
+Check-File "apps\desktop\src-tauri\resources\placeholder"
 
 Write-Host ""
 

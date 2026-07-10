@@ -124,6 +124,7 @@ check_file "scripts/depot-audit.sh"
 check_file "scripts/depot-audit.ps1"
 check_file "services/convsim-core/convsim-core.spec"
 check_file "apps/desktop/src-tauri/resources/bin/.gitkeep"
+check_file "apps/desktop/src-tauri/resources/placeholder"
 
 echo ""
 

@@ -20,17 +20,6 @@ if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
     exit 1
 }
 
-# Tauri's bundle.resources glob ("resources/**") panics if no visible file
-# matches. The real convsim-core binary is placed here by build-core.sh before
-# a release tauri build. When absent, create a zero-byte stub so cargo check
-# can pass, then remove it in the finally block.
-$CoreStub = Join-Path $DesktopDir 'resources\bin\convsim-core.exe'
-$StubCreated = $false
-if (-not (Test-Path $CoreStub)) {
-    New-Item -ItemType File -Path $CoreStub -Force | Out-Null
-    $StubCreated = $true
-}
-
 Write-Host "Running cargo check on apps/desktop/src-tauri..."
 Push-Location $DesktopDir
 try {
@@ -41,7 +30,6 @@ try {
     }
 } finally {
     Pop-Location
-    if ($StubCreated) { Remove-Item $CoreStub -ErrorAction SilentlyContinue }
 }
 Write-Host "  OK  cargo check passed."
 
