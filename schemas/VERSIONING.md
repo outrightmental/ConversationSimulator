@@ -81,6 +81,43 @@ https://schemas.convsim.dev/v1.0/pack.schema.json
 
 Pre-1.0 schemas use `v0.1`, `v0.2`, etc. and make no backward-compatibility guarantees between minor versions.
 
+## Beta release rollback and forward compatibility
+
+Beta releases must not introduce schema changes that break the current
+`schema_version` readers, so that users who roll back to a previous beta can
+continue to open their existing data.
+
+### Rules for beta schema changes
+
+| Scenario | Requirement |
+| --- | --- |
+| A new **optional** field is added | The field must have a backward-compatible default so files written by the newer version are still readable by the older version.  The `schema_version` may stay the same. |
+| A new **required** field is added | Bump `schema_version`.  Provide a migration step in the release notes that back-fills the field for existing rows. |
+| A field is **removed or renamed** | Bump `schema_version`.  Older betas that encounter the new `schema_version` must reject the file gracefully (see "reject unknown versions" requirement above) rather than crashing. |
+| A field **type** changes | Bump `schema_version`.  Older betas must not silently misinterpret the new type. |
+
+### Rollback guarantee
+
+The previous beta release remains downloadable from its versioned GitHub
+release page (e.g., `releases/tag/v0.1.0-beta.1`).  When a user installs the
+previous beta:
+
+1. Any data written by the newer beta with the **same** `schema_version` is
+   readable without migration.
+2. Any data written with a **bumped** `schema_version` is rejected by the
+   older reader, not corrupted.  The user sees an "unsupported schema version"
+   error and can choose to remain on the newer beta or wait for the stable
+   release.
+3. The session database (SQLite) uses additive migrations only within a beta
+   cycle.  Rollback to a previous beta that pre-dates a migration leaves the
+   extra columns intact but unused — no data loss.
+
+### Forward compatibility requirement
+
+New betas must be able to open data from any previous beta in the same release
+cycle without a migration prompt.  Breaking forward compatibility within a beta
+cycle is a bug.
+
 ## No executable code in packs
 
 Schema files must not define fields that accept executable code. Specifically:
