@@ -1024,7 +1024,7 @@ describe('Conversation screen', () => {
     it('plays audio when tts.audio_chunk event has a cache_path', async () => {
       const mockPlay = vi.fn().mockResolvedValue(undefined)
       const mockAudio = { play: mockPlay, pause: vi.fn(), onended: null as unknown, onerror: null as unknown }
-      const AudioSpy = vi.spyOn(globalThis, 'Audio' as keyof typeof globalThis).mockReturnValue(
+      const AudioSpy = vi.spyOn(window, 'Audio').mockReturnValue(
         mockAudio as unknown as HTMLAudioElement,
       )
 
@@ -1056,7 +1056,7 @@ describe('Conversation screen', () => {
 
     it('does not play audio when tts.audio_chunk cache_path is null', async () => {
       const mockPlay = vi.fn().mockResolvedValue(undefined)
-      const AudioSpy = vi.spyOn(globalThis, 'Audio' as keyof typeof globalThis).mockReturnValue(
+      const AudioSpy = vi.spyOn(window, 'Audio').mockReturnValue(
         { play: mockPlay, pause: vi.fn(), onended: null, onerror: null } as unknown as HTMLAudioElement,
       )
 
@@ -1088,7 +1088,7 @@ describe('Conversation screen', () => {
 
     it('constructs audio URL from the filename of the cache path', async () => {
       const urls: string[] = []
-      const AudioSpy = vi.spyOn(globalThis, 'Audio' as keyof typeof globalThis).mockImplementation(
+      const AudioSpy = vi.spyOn(window, 'Audio').mockImplementation(
         (url?: string) => {
           if (url) urls.push(url)
           return { play: vi.fn().mockResolvedValue(undefined), pause: vi.fn(), onended: null, onerror: null } as unknown as HTMLAudioElement
@@ -1130,7 +1130,7 @@ describe('Conversation screen', () => {
         onended: null as unknown,
         onerror: null as unknown,
       }
-      const AudioSpy = vi.spyOn(globalThis, 'Audio' as keyof typeof globalThis).mockReturnValue(
+      const AudioSpy = vi.spyOn(window, 'Audio').mockReturnValue(
         mockAudio as unknown as HTMLAudioElement,
       )
 
