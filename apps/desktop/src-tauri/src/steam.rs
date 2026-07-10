@@ -157,12 +157,19 @@ impl SteamRuntime {
             use steamworks::FloatingGamepadTextInputMode;
             // Position the keyboard in the lower third of the screen so it
             // overlaps as little of the UI as possible at 1280×800.
+            //
+            // `show_floating_gamepad_text_input` requires a `dismissed_cb`
+            // closure (invoked when the player closes the keyboard).  For the
+            // floating keyboard Steam injects the entered text directly into
+            // the focused field as key events, so nothing needs to be read
+            // back on dismiss and the callback is a no-op.
             return client.utils().show_floating_gamepad_text_input(
                 FloatingGamepadTextInputMode::SingleLine,
                 0,
                 534,
                 1280,
                 266,
+                || {},
             );
         }
         false
@@ -170,12 +177,15 @@ impl SteamRuntime {
 
     /// Dismiss the Steam floating on-screen keyboard if it is visible.
     /// Returns `false` when Steam is unavailable.
+    ///
+    /// NOTE: `steamworks` (through 0.13) does not bind
+    /// `ISteamUtils::DismissFloatingGamepadTextInput`, so there is no way to
+    /// programmatically hide the floating keyboard from Rust.  The floating
+    /// keyboard is instead dismissed by the player (or automatically when they
+    /// confirm input), so this is a no-op that reports `false`.  The Tauri
+    /// command and front-end wiring are kept so hide becomes effective for free
+    /// once the crate exposes the binding.
     pub fn hide_floating_keyboard(&self) -> bool {
-        #[cfg(feature = "steam")]
-        if let Some(ref client) = self.client {
-            client.utils().dismiss_floating_gamepad_text_input();
-            return true;
-        }
         false
     }
 }
