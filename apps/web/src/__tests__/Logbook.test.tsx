@@ -110,7 +110,7 @@ describe('Logbook — with sessions', () => {
       { dimension_id: 'assertiveness', rolling_score: 55, session_count: 3, trajectory: [40, 55] },
     ],
     personal_records: [
-      { scenario_id: 'behavioral_interview', difficulty: 'normal', best_score: 78, achieved_at: '2026-07-09T10:00:00Z' },
+      { scenario_id: 'behavioral_interview', difficulty: 'standard', best_score: 78, achieved_at: '2026-07-09T10:00:00Z' },
     ],
     strongest_dimension: 'empathy',
     weakest_dimension: 'assertiveness',
