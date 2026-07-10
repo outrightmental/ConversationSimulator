@@ -435,8 +435,15 @@ def test_sidecar_start_forwards_custom_host_and_port(client):
 
 _FAKE_LLAMA_SERVER = textwrap.dedent("""\
     #!/usr/bin/env python3
-    \"\"\"Minimal fake llama-server for sidecar integration testing.\"\"\"
+    \"\"\"Minimal fake llama-server for sidecar integration testing.
+
+    Handles:
+      GET  /health                    → 200 {"status":"ok"}
+      GET  /v1/models                 → 200 {"data":[{"id":"fake-model"}]}
+      POST /v1/chat/completions       → SSE stream with one token then [DONE]
+    \"\"\"
     import http.server
+    import json
     import sys
 
     port = 7356
@@ -446,16 +453,54 @@ _FAKE_LLAMA_SERVER = textwrap.dedent("""\
             port = int(args[i + 1])
             break
 
+    _SSE_CHUNK = json.dumps({
+        "choices": [{"delta": {"content": "hello"}, "finish_reason": None}],
+        "usage": None,
+    })
+    _SSE_FINAL = json.dumps({
+        "choices": [{"delta": {}, "finish_reason": "stop"}],
+        "usage": {"prompt_tokens": 3, "completion_tokens": 1},
+    })
+    _SSE_BODY = (
+        f"data: {_SSE_CHUNK}\\n\\n"
+        f"data: {_SSE_FINAL}\\n\\n"
+        "data: [DONE]\\n\\n"
+    ).encode()
+
     class _H(http.server.BaseHTTPRequestHandler):
         def do_GET(self):
             if self.path == "/health":
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.end_headers()
-                self.wfile.write(b'{"status":"ok"}')
+                self._json(b'{"status":"ok"}')
+            elif self.path == "/v1/models":
+                self._json(b'{"data":[{"id":"fake-model"}]}')
             else:
                 self.send_response(404)
                 self.end_headers()
+
+        def do_POST(self):
+            # Consume request body so the connection can proceed
+            length = int(self.headers.get("Content-Length", 0))
+            if length:
+                self.rfile.read(length)
+            if self.path == "/v1/chat/completions":
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.send_header("Content-Length", str(len(_SSE_BODY)))
+                self.send_header("Connection", "close")
+                self.end_headers()
+                self.wfile.write(_SSE_BODY)
+                self.wfile.flush()
+            else:
+                self.send_response(404)
+                self.end_headers()
+
+        def _json(self, body: bytes):
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
         def log_message(self, *_a, **_kw):
             pass
 
@@ -763,3 +808,121 @@ async def test_wait_for_ready_timeout_message_includes_http_status(tmp_path):
     assert "503" in str(exc_info.value), (
         "Timeout message should include the last HTTP status (503), not 'Last error: None'"
     )
+
+
+# ---------------------------------------------------------------------------
+# End-to-end integration: sidecar + runtime adapter + streaming chat
+#
+# These tests use the enhanced _FAKE_LLAMA_SERVER (which now handles
+# GET /health, GET /v1/models, and POST /v1/chat/completions) to verify the
+# full pipeline without a real model or GPU.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_streaming_chat_via_fake_server(tmp_path):
+    """LlamaCppRuntime.chat_stream() works end-to-end with the fake llama-server.
+
+    This is the CI-safe mock-server integration test: a real subprocess runs
+    the fake HTTP server, the sidecar manages its lifecycle, and the runtime
+    adapter communicates with it over localhost — no model weights needed.
+    """
+    from convsim_core.runtime.llama_cpp import LlamaCppConfig, LlamaCppRuntime
+    from convsim_core.runtime.types import ChatFinal, ChatMessage, ChatRequest, ChatToken
+
+    exe = _write_fake_server(tmp_path)
+    port = _free_port()
+    sidecar = LlamaCppSidecar(log_dir=str(tmp_path / "logs"))
+
+    await sidecar.start("fake-model.gguf", executable=exe, port=port, startup_timeout=15.0)
+    assert sidecar.state == SidecarState.RUNNING
+
+    try:
+        runtime = LlamaCppRuntime(
+            LlamaCppConfig(base_url=f"http://127.0.0.1:{port}", model_id="fake-model")
+        )
+
+        request = ChatRequest(messages=[ChatMessage(role="user", content="hello")])
+        tokens: list[str] = []
+        final: ChatFinal | None = None
+
+        async for chunk in runtime.chat_stream(request):
+            if isinstance(chunk, ChatToken):
+                tokens.append(chunk.text)
+            elif isinstance(chunk, ChatFinal):
+                final = chunk
+
+        assert final is not None, "chat_stream() must yield a ChatFinal"
+        assert final.text == "hello", f"Unexpected text: {final.text!r}"
+        assert len(tokens) >= 1
+
+        # Capability flags must be set correctly for the llama_cpp adapter
+        caps = runtime.capabilities
+        assert caps.streaming is True, "streaming must be True"
+        assert caps.json_schema is True, "json_schema must be True (enabled by default)"
+        assert caps.grammar is False
+        assert caps.tool_calling is False
+
+    finally:
+        await sidecar.stop()
+
+
+@pytest.mark.asyncio
+async def test_list_models_via_fake_server(tmp_path):
+    """LlamaCppRuntime.list_models() returns the models served by the fake server."""
+    from convsim_core.runtime.llama_cpp import LlamaCppConfig, LlamaCppRuntime
+
+    exe = _write_fake_server(tmp_path)
+    port = _free_port()
+    sidecar = LlamaCppSidecar(log_dir=str(tmp_path / "logs"))
+
+    await sidecar.start("fake-model.gguf", executable=exe, port=port, startup_timeout=15.0)
+    assert sidecar.state == SidecarState.RUNNING
+
+    try:
+        runtime = LlamaCppRuntime(
+            LlamaCppConfig(base_url=f"http://127.0.0.1:{port}")
+        )
+        models = await runtime.list_models()
+        assert len(models) == 1
+        assert models[0].id == "fake-model"
+    finally:
+        await sidecar.stop()
+
+
+@pytest.mark.asyncio
+async def test_structured_output_via_fake_server(tmp_path):
+    """Structured-output (json_schema) path works when json_schema is sent to fake server.
+
+    The fake server echoes a token "hello"; the runtime must attempt to parse
+    it as JSON and fall back gracefully (structured=None) without crashing.
+    """
+    from convsim_core.runtime.llama_cpp import LlamaCppConfig, LlamaCppRuntime
+    from convsim_core.runtime.types import ChatFinal, ChatMessage, ChatRequest
+
+    exe = _write_fake_server(tmp_path)
+    port = _free_port()
+    sidecar = LlamaCppSidecar(log_dir=str(tmp_path / "logs"))
+
+    await sidecar.start("fake-model.gguf", executable=exe, port=port, startup_timeout=15.0)
+
+    try:
+        runtime = LlamaCppRuntime(
+            LlamaCppConfig(base_url=f"http://127.0.0.1:{port}")
+        )
+        schema = {"type": "object", "properties": {"answer": {"type": "string"}}}
+        request = ChatRequest(
+            messages=[ChatMessage(role="user", content="go")],
+            json_schema=schema,
+        )
+        final: ChatFinal | None = None
+        async for chunk in runtime.chat_stream(request):
+            if isinstance(chunk, ChatFinal):
+                final = chunk
+
+        assert final is not None
+        # "hello" is not valid JSON → structured must be None (graceful fallback)
+        assert final.structured is None
+
+    finally:
+        await sidecar.stop()

@@ -446,6 +446,279 @@ async def test_health_degraded_when_no_models():
 
 
 # ---------------------------------------------------------------------------
+# Request-format tests — verify the payload sent to /api/chat
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_request_has_stream_true():
+    """The payload sent to /api/chat must always set stream=True."""
+    client = MagicMock()
+    client.stream = MagicMock(return_value=_StreamContext(_STREAM_LINES))
+    runtime = OllamaChatRuntime(client=client)
+    request = ChatRequest(
+        model_id="llama3.2:latest",
+        messages=[ChatMessage(role="user", content="hello")],
+    )
+    async for _ in runtime.chat_stream(request):
+        pass
+
+    payload = client.stream.call_args.kwargs["json"]
+    assert payload["stream"] is True
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_request_model_matches_request():
+    """The 'model' field in the payload must match the request's model_id."""
+    client = MagicMock()
+    client.stream = MagicMock(return_value=_StreamContext(_STREAM_LINES))
+    runtime = OllamaChatRuntime(client=client)
+    request = ChatRequest(
+        model_id="mistral:7b",
+        messages=[ChatMessage(role="user", content="hi")],
+    )
+    async for _ in runtime.chat_stream(request):
+        pass
+
+    payload = client.stream.call_args.kwargs["json"]
+    assert payload["model"] == "mistral:7b"
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_request_messages_formatted_as_role_content():
+    """Messages must be serialised as a list of {role, content} dicts."""
+    client = MagicMock()
+    client.stream = MagicMock(return_value=_StreamContext(_STREAM_LINES))
+    runtime = OllamaChatRuntime(client=client)
+    request = ChatRequest(
+        model_id="llama3.2:latest",
+        messages=[
+            ChatMessage(role="system", content="You are helpful."),
+            ChatMessage(role="user", content="hello"),
+        ],
+    )
+    async for _ in runtime.chat_stream(request):
+        pass
+
+    payload = client.stream.call_args.kwargs["json"]
+    assert payload["messages"] == [
+        {"role": "system", "content": "You are helpful."},
+        {"role": "user", "content": "hello"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_request_options_has_num_predict_and_temperature():
+    """The options dict must contain num_predict (from max_tokens) and temperature."""
+    client = MagicMock()
+    client.stream = MagicMock(return_value=_StreamContext(_STREAM_LINES))
+    runtime = OllamaChatRuntime(client=client)
+    request = ChatRequest(
+        model_id="llama3.2:latest",
+        messages=[ChatMessage(role="user", content="hello")],
+        max_tokens=128,
+        temperature=0.3,
+    )
+    async for _ in runtime.chat_stream(request):
+        pass
+
+    payload = client.stream.call_args.kwargs["json"]
+    assert "options" in payload
+    assert payload["options"]["num_predict"] == 128
+    assert payload["options"]["temperature"] == pytest.approx(0.3)
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_request_includes_format_when_schema_provided():
+    """When json_schema is set, the 'format' key must appear in the payload."""
+    schema = {"type": "object", "properties": {"npc_text": {"type": "string"}}}
+    structured_lines = [
+        json.dumps(
+            {
+                "model": "llama3.2",
+                "message": {"role": "assistant", "content": '{"npc_text": "Hello!"}'},
+                "done": False,
+            }
+        ),
+        json.dumps(
+            {
+                "model": "llama3.2",
+                "message": {"role": "assistant", "content": ""},
+                "done": True,
+                "prompt_eval_count": 3,
+                "eval_count": 5,
+            }
+        ),
+    ]
+    client = MagicMock()
+    client.stream = MagicMock(return_value=_StreamContext(structured_lines))
+    runtime = OllamaChatRuntime(client=client)
+    request = ChatRequest(
+        model_id="llama3.2:latest",
+        messages=[ChatMessage(role="user", content="go")],
+        json_schema=schema,
+    )
+    async for _ in runtime.chat_stream(request):
+        pass
+
+    payload = client.stream.call_args.kwargs["json"]
+    assert "format" in payload
+    assert payload["format"] == schema
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_request_excludes_format_when_no_schema():
+    """Without a json_schema, 'format' must not appear in the payload."""
+    client = MagicMock()
+    client.stream = MagicMock(return_value=_StreamContext(_STREAM_LINES))
+    runtime = OllamaChatRuntime(client=client)
+    request = ChatRequest(
+        model_id="llama3.2:latest",
+        messages=[ChatMessage(role="user", content="hello")],
+    )
+    async for _ in runtime.chat_stream(request):
+        pass
+
+    payload = client.stream.call_args.kwargs["json"]
+    assert "format" not in payload
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_request_targets_api_chat_endpoint():
+    """The streaming request must be POSTed to /api/chat."""
+    client = MagicMock()
+    client.stream = MagicMock(return_value=_StreamContext(_STREAM_LINES))
+    runtime = OllamaChatRuntime(client=client)
+    request = ChatRequest(
+        model_id="llama3.2:latest",
+        messages=[ChatMessage(role="user", content="hello")],
+    )
+    async for _ in runtime.chat_stream(request):
+        pass
+
+    call_args = client.stream.call_args
+    assert call_args.args[0] == "POST"
+    assert call_args.args[1] == "/api/chat"
+
+
+# ---------------------------------------------------------------------------
+# Structured-output response tests — verify ChatFinal.structured population
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_structured_output_parses_valid_json_from_stream():
+    """When json_schema is set and the model returns valid JSON, structured must be populated."""
+    payload = {"npc_utterance": "Greetings!", "safety": {"status": "ok"}}
+    lines = [
+        json.dumps(
+            {
+                "model": "llama3.2",
+                "message": {"role": "assistant", "content": json.dumps(payload)},
+                "done": False,
+            }
+        ),
+        json.dumps(
+            {
+                "model": "llama3.2",
+                "message": {"role": "assistant", "content": ""},
+                "done": True,
+                "prompt_eval_count": 4,
+                "eval_count": 8,
+            }
+        ),
+    ]
+    runtime = _make_runtime(stream_lines=lines)
+    request = ChatRequest(
+        model_id="llama3.2:latest",
+        messages=[ChatMessage(role="user", content="go")],
+        json_schema={"type": "object"},
+    )
+    final = None
+    async for chunk in runtime.chat_stream(request):
+        if isinstance(chunk, ChatFinal):
+            final = chunk
+
+    assert final is not None
+    assert final.structured is not None
+    assert final.structured["npc_utterance"] == "Greetings!"
+    assert final.structured["safety"]["status"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_structured_output_none_when_model_returns_malformed_json():
+    """If the stream content cannot be parsed as JSON, structured must be None (not an error)."""
+    lines = [
+        json.dumps(
+            {
+                "model": "llama3.2",
+                "message": {"role": "assistant", "content": "not valid json {{{"},
+                "done": False,
+            }
+        ),
+        json.dumps(
+            {
+                "model": "llama3.2",
+                "message": {"role": "assistant", "content": ""},
+                "done": True,
+                "prompt_eval_count": 2,
+                "eval_count": 4,
+            }
+        ),
+    ]
+    runtime = _make_runtime(stream_lines=lines)
+    request = ChatRequest(
+        model_id="llama3.2:latest",
+        messages=[ChatMessage(role="user", content="go")],
+        json_schema={"type": "object"},
+    )
+    final = None
+    async for chunk in runtime.chat_stream(request):
+        if isinstance(chunk, ChatFinal):
+            final = chunk
+
+    assert final is not None
+    assert final.structured is None
+
+
+@pytest.mark.asyncio
+async def test_structured_output_none_without_schema_even_if_content_is_json():
+    """structured must be None when no json_schema is provided, even if the content is JSON."""
+    json_content = json.dumps({"some": "data"})
+    lines = [
+        json.dumps(
+            {
+                "model": "llama3.2",
+                "message": {"role": "assistant", "content": json_content},
+                "done": False,
+            }
+        ),
+        json.dumps(
+            {
+                "model": "llama3.2",
+                "message": {"role": "assistant", "content": ""},
+                "done": True,
+                "prompt_eval_count": 2,
+                "eval_count": 3,
+            }
+        ),
+    ]
+    runtime = _make_runtime(stream_lines=lines)
+    request = ChatRequest(
+        model_id="llama3.2:latest",
+        messages=[ChatMessage(role="user", content="go")],
+        # No json_schema
+    )
+    final = None
+    async for chunk in runtime.chat_stream(request):
+        if isinstance(chunk, ChatFinal):
+            final = chunk
+
+    assert final is not None
+    assert final.structured is None
+
+
+# ---------------------------------------------------------------------------
 # Adapter identity and capability tests
 # ---------------------------------------------------------------------------
 

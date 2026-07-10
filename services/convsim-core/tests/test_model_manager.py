@@ -544,6 +544,28 @@ def _make_unavailable_runtime():
     return rt
 
 
+def _make_ready_ollama_runtime(model_ids: list[str]):
+    """Return a fake Ollama runtime that reports READY and exposes a fixed model list."""
+    from convsim_core.runtime.types import ModelInfo
+
+    rt = MagicMock()
+    rt.id = "ollama"
+    rt.display_name = "Ollama (local)"
+    rt.health = AsyncMock(
+        return_value=RuntimeHealth(
+            runtime_id="ollama",
+            runtime_name="Ollama (local)",
+            status=RuntimeStatus.READY,
+            model_id=model_ids[0] if model_ids else None,
+            checked_at="2026-01-01T00:00:00+00:00",
+        )
+    )
+    rt.list_models = AsyncMock(
+        return_value=[ModelInfo(id=mid, name=mid) for mid in model_ids]
+    )
+    return rt
+
+
 def test_use_model_ollama_runtime_returns_error_when_unavailable(client, monkeypatch):
     """use_model must return 503 when the requested runtime is unreachable."""
     import convsim_core.routers.models as models_module
@@ -574,6 +596,116 @@ def test_use_model_llama_cpp_returns_error_when_unavailable(client, monkeypatch)
     resp = client.post("/api/models/use", json={"runtime_id": "llama_cpp"})
     assert resp.status_code == 503
     assert resp.json()["error"]["code"] == "RUNTIME_UNAVAILABLE"
+
+
+def test_use_model_ollama_accepts_installed_model(client, monkeypatch):
+    """use_model must succeed when the requested Ollama model is in the local model list."""
+    import convsim_core.routers.models as models_module
+
+    monkeypatch.setattr(
+        models_module,
+        "build_runtime",
+        lambda _id: _make_ready_ollama_runtime(["llama3.2:latest", "phi3:mini"]),
+    )
+    resp = client.post(
+        "/api/models/use", json={"runtime_id": "ollama", "model_id": "llama3.2:latest"}
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["runtime_id"] == "ollama"
+    assert body["model_id"] == "llama3.2:latest"
+
+
+def test_use_model_ollama_rejects_missing_model(client, monkeypatch):
+    """use_model must return 404 when the requested model is not installed in Ollama."""
+    import convsim_core.routers.models as models_module
+
+    monkeypatch.setattr(
+        models_module,
+        "build_runtime",
+        lambda _id: _make_ready_ollama_runtime(["llama3.2:latest"]),
+    )
+    resp = client.post(
+        "/api/models/use", json={"runtime_id": "ollama", "model_id": "deepseek-r1:7b"}
+    )
+    assert resp.status_code == 404
+    body = resp.json()
+    assert body["error"]["code"] == "OLLAMA_MODEL_NOT_FOUND"
+    assert "deepseek-r1:7b" in body["error"]["message"]
+    assert "ollama pull" in body["error"]["message"]
+
+
+def test_use_model_ollama_no_model_id_skips_model_check(client, monkeypatch):
+    """Selecting an Ollama runtime without specifying model_id must not trigger model validation."""
+    import convsim_core.routers.models as models_module
+
+    monkeypatch.setattr(
+        models_module,
+        "build_runtime",
+        lambda _id: _make_ready_ollama_runtime(["llama3.2:latest"]),
+    )
+    resp = client.post("/api/models/use", json={"runtime_id": "ollama"})
+    assert resp.status_code == 200
+    assert resp.json()["runtime_id"] == "ollama"
+
+
+def test_use_model_ollama_rejects_missing_model_when_no_models_installed(client, monkeypatch):
+    """use_model returns 404 when Ollama has no models and a model_id is requested."""
+    import convsim_core.routers.models as models_module
+
+    monkeypatch.setattr(
+        models_module,
+        "build_runtime",
+        lambda _id: _make_ready_ollama_runtime([]),
+    )
+    resp = client.post(
+        "/api/models/use", json={"runtime_id": "ollama", "model_id": "llama3.2:latest"}
+    )
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "OLLAMA_MODEL_NOT_FOUND"
+
+
+def test_use_model_ollama_persists_config_after_successful_validation(client, monkeypatch):
+    """Active config must be saved when Ollama model validation passes."""
+    import convsim_core.routers.models as models_module
+
+    monkeypatch.setattr(
+        models_module,
+        "build_runtime",
+        lambda _id: _make_ready_ollama_runtime(["phi3:mini"]),
+    )
+    client.post("/api/models/use", json={"runtime_id": "ollama", "model_id": "phi3:mini"})
+    cfg = get_active_config(client.app.state.db.connection())
+    assert cfg["runtime_id"] == "ollama"
+    assert cfg["model_id"] == "phi3:mini"
+
+
+# ── GET /api/models — ollama_models detection ────────────────────────────────
+
+
+def test_get_models_returns_detected_ollama_models(client, monkeypatch):
+    """GET /api/models must include live-detected Ollama models when Ollama is reachable."""
+    import convsim_core.routers.models as models_module
+    from convsim_core.routers.models import DetectedOllamaModel
+
+    async def _fake_detect():
+        return [
+            DetectedOllamaModel(id="llama3.2:latest", name="llama3.2:latest", size_category="medium"),
+            DetectedOllamaModel(id="phi3:mini", name="phi3:mini", size_category="small"),
+        ]
+
+    monkeypatch.setattr(models_module, "_detect_ollama_models", _fake_detect)
+    body = client.get("/api/models").json()
+    assert len(body["ollama_models"]) == 2
+    ids = {m["id"] for m in body["ollama_models"]}
+    assert "llama3.2:latest" in ids
+    assert "phi3:mini" in ids
+
+
+def test_get_models_ollama_models_empty_when_unreachable(client):
+    """GET /api/models returns ollama_models=[] when Ollama is not running (default in tests)."""
+    body = client.get("/api/models").json()
+    assert body["ollama_models"] == []
 
 
 # ── POST /api/models/benchmark ───────────────────────────────────────────────
