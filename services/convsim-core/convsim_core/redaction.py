@@ -46,6 +46,19 @@ def redact_path(path: str) -> str:
     return path
 
 
+def redact_paths_in_text(text: str) -> str:
+    """Replace any home-directory prefix occurring anywhere within *text* with ~.
+
+    Unlike :func:`redact_path`, which only redacts a string that *is* a path,
+    this scans for the home prefix embedded inside a larger string, so it is
+    safe for human-readable messages that quote absolute paths (e.g. a
+    self-test result such as ``"llama-server found at /Users/alice/..."``).
+    """
+    if _HOME_PREFIX and _HOME_PREFIX in text:
+        return text.replace(_HOME_PREFIX, "~")
+    return text
+
+
 def redact_audio_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
     """Return a copy of *metadata* with only non-identifying fields kept."""
     return {k: v for k, v in metadata.items() if k in _SAFE_AUDIO_KEYS}

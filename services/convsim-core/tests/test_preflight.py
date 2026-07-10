@@ -311,6 +311,44 @@ def test_preflight_caches_result_on_app_state(client):
     assert "preflight.json" in names
 
 
+def test_redact_preflight_strips_embedded_home_path():
+    from pathlib import Path
+    from convsim_core.crash_report import _redact_preflight
+
+    home = str(Path.home())
+    data = {
+        "overall": "pass",
+        "checks": [
+            {"id": "llama-cpp-binary", "message": f"llama-server found at {home}/bin/llama-server."},
+            {"id": "data-dir-writable", "message": f"Data directory is writable at {home}/data."},
+        ],
+    }
+    redacted = _redact_preflight(data)
+    dumped = str(redacted)
+    assert home not in dumped
+    assert "~/bin/llama-server" in redacted["checks"][0]["message"]
+
+
+def test_bundle_preflight_json_redacts_home_paths(client):
+    # Preflight messages quote absolute paths (data dir, binary location) that
+    # embed the OS username. The crash bundle promises paths are redacted to ~,
+    # so the snapshot written to the ZIP must not leak the raw home prefix.
+    from pathlib import Path
+
+    client.get("/api/preflight")
+    bundle_resp = client.post("/api/diag/crash-bundle")
+    assert bundle_resp.status_code == 200
+    bundle_path = bundle_resp.json()["bundle_path"]
+
+    import zipfile
+    with zipfile.ZipFile(bundle_path) as zf:
+        assert "preflight.json" in zf.namelist()
+        content = zf.read("preflight.json").decode("utf-8")
+
+    home = str(Path.home())
+    assert home not in content
+
+
 def test_crash_bundle_excludes_preflight_when_not_run(client):
     # No preflight call — crash bundle should still succeed without preflight.json.
     bundle_resp = client.post("/api/diag/crash-bundle")
