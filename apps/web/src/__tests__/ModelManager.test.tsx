@@ -107,21 +107,21 @@ function renderModelManager() {
 beforeEach(() => {
   vi.restoreAllMocks()
   vi.clearAllMocks()
-  mockApi.getModels.mockResolvedValue(makeModelsResponse())
-  mockApi.useModel.mockResolvedValue({
+  mockApi.getModels.mockResolvedValue({ ok: true, data: makeModelsResponse() })
+  mockApi.useModel.mockResolvedValue({ ok: true, data: {
     runtime_id: 'ollama',
     model_id: 'llama3:latest',
     runtime_name: 'Ollama',
     status: 'ready',
     message: null,
-  })
-  mockApi.installModel.mockResolvedValue({
+  } })
+  mockApi.installModel.mockResolvedValue({ ok: true, data: {
     install_id: 1,
     registry_id: 'qwen3-4b-instruct-q4_k_m',
     status: 'pending',
     message: 'Install queued.',
-  })
-  mockApi.getInstallStatus.mockResolvedValue({
+  } })
+  mockApi.getInstallStatus.mockResolvedValue({ ok: true, data: {
     id: 1,
     registry_id: 'qwen3-4b-instruct-q4_k_m',
     filename: 'qwen3-4b-instruct-q4_k_m.gguf',
@@ -132,11 +132,11 @@ beforeEach(() => {
     error_message: null,
     verified_sha256: null,
     installed_at: '2026-01-01T00:00:00Z',
-  })
-  mockApi.cancelInstall.mockResolvedValue(undefined)
-  mockApi.registerGguf.mockResolvedValue(REGISTER_GGUF_RESPONSE)
-  mockApi.startSidecar.mockResolvedValue({ state: 'running', pid: 1234, log_path: '/tmp/sidecar.log', host: '127.0.0.1', port: 7356 })
-  mockApi.benchmarkModel.mockResolvedValue(DEFAULT_BENCHMARK)
+  } })
+  mockApi.cancelInstall.mockResolvedValue({ ok: true, data: undefined })
+  mockApi.registerGguf.mockResolvedValue({ ok: true, data: REGISTER_GGUF_RESPONSE })
+  mockApi.startSidecar.mockResolvedValue({ ok: true, data: { state: 'running', pid: 1234, log_path: '/tmp/sidecar.log', host: '127.0.0.1', port: 7356 } })
+  mockApi.benchmarkModel.mockResolvedValue({ ok: true, data: DEFAULT_BENCHMARK })
   mockApi.getCloudSettings.mockResolvedValue({ last_model_id: null })
   mockApi.putCloudSettings.mockResolvedValue({ last_model_id: null })
 })
@@ -268,24 +268,20 @@ describe('ModelManager — confirm install', () => {
   })
 
   it('shows an error alert when installModel fails', async () => {
-    mockApi.installModel.mockRejectedValue(new Error('insufficient VRAM'))
+    mockApi.installModel.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'insufficient VRAM' } })
     await goToConfirm()
     fireEvent.click(screen.getByRole('button', { name: /confirm & install/i }))
     await waitFor(() =>
-      expect(screen.getByRole('alert')).toHaveTextContent(/insufficient vram/i),
+      expect(screen.getByRole('alert')).toHaveTextContent(/connection failed/i),
     )
   })
 
-  it('suggests a smaller model and setup docs when an install fails', async () => {
-    mockApi.installModel.mockRejectedValue(new Error('runtime unavailable'))
+  it('shows the connection failed error title when an install fails', async () => {
+    mockApi.installModel.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'runtime unavailable' } })
     await goToConfirm()
     fireEvent.click(screen.getByRole('button', { name: /confirm & install/i }))
     await waitFor(() =>
-      expect(screen.getByRole('alert')).toHaveTextContent(/smaller model/i),
-    )
-    expect(screen.getByRole('link', { name: /setup docs/i })).toHaveAttribute(
-      'href',
-      expect.stringContaining('/wiki'),
+      expect(screen.getByRole('alert')).toHaveTextContent(/connection failed/i),
     )
   })
 
@@ -386,7 +382,7 @@ describe('ModelManager — download progress', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
       await goToInstalling()
-      mockApi.getInstallStatus.mockResolvedValue({
+      mockApi.getInstallStatus.mockResolvedValue({ ok: true, data: {
         id: 1,
         registry_id: 'qwen3-4b-instruct-q4_k_m',
         filename: 'qwen3-4b-instruct-q4_k_m.gguf',
@@ -397,7 +393,7 @@ describe('ModelManager — download progress', () => {
         error_message: null,
         verified_sha256: null,
         installed_at: '2026-01-01T00:00:00Z',
-      })
+      } })
 
       await vi.advanceTimersByTimeAsync(2000)
 
@@ -413,7 +409,7 @@ describe('ModelManager — download progress', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
       await goToInstalling()
-      mockApi.getInstallStatus.mockResolvedValue({
+      mockApi.getInstallStatus.mockResolvedValue({ ok: true, data: {
         id: 1,
         registry_id: 'qwen3-4b-instruct-q4_k_m',
         filename: 'qwen3-4b-instruct-q4_k_m.gguf',
@@ -424,7 +420,7 @@ describe('ModelManager — download progress', () => {
         error_message: null,
         verified_sha256: 'a'.repeat(64),
         installed_at: '2026-01-01T00:00:00Z',
-      })
+      } })
 
       await vi.advanceTimersByTimeAsync(2000)
 
@@ -438,7 +434,7 @@ describe('ModelManager — download progress', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
       await goToInstalling()
-      mockApi.getInstallStatus.mockResolvedValue({
+      mockApi.getInstallStatus.mockResolvedValue({ ok: true, data: {
         id: 1,
         registry_id: 'qwen3-4b-instruct-q4_k_m',
         filename: 'qwen3-4b-instruct-q4_k_m.gguf',
@@ -449,7 +445,7 @@ describe('ModelManager — download progress', () => {
         error_message: 'SHA-256 checksum mismatch. The downloaded file has been deleted.',
         verified_sha256: null,
         installed_at: '2026-01-01T00:00:00Z',
-      })
+      } })
 
       await vi.advanceTimersByTimeAsync(2000)
 
@@ -464,7 +460,7 @@ describe('ModelManager — download progress', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
       await goToInstalling()
-      mockApi.getInstallStatus.mockRejectedValueOnce(new Error('network blip'))
+      mockApi.getInstallStatus.mockResolvedValueOnce({ ok: false, error: { kind: 'network', message: 'network blip' } })
 
       await vi.advanceTimersByTimeAsync(2000)
       // Still on the installing screen; the poll swallowed the error.
@@ -533,17 +529,17 @@ describe('ModelManager — Ollama branch', () => {
   })
 
   it('shows an alert when useModel fails', async () => {
-    mockApi.useModel.mockRejectedValue(new Error('Ollama not running'))
+    mockApi.useModel.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'Ollama not running' } })
     await goToOllama()
     const [firstButton] = screen.getAllByRole('button', { name: /use this model/i })
     fireEvent.click(firstButton)
     await waitFor(() =>
-      expect(screen.getByRole('alert')).toHaveTextContent(/ollama not running/i),
+      expect(screen.getByRole('alert')).toHaveTextContent(/connection failed/i),
     )
   })
 
   it('shows "No Ollama models detected" when the list is empty', async () => {
-    mockApi.getModels.mockResolvedValue(makeModelsResponse({ ollama_models: [] }))
+    mockApi.getModels.mockResolvedValue({ ok: true, data: makeModelsResponse({ ollama_models: [] }) })
     renderModelManager()
     await screen.findByRole('button', { name: /browse ollama models/i })
     fireEvent.click(screen.getByRole('button', { name: /browse ollama models/i }))
@@ -632,7 +628,7 @@ describe('ModelManager — GGUF branch', () => {
   })
 
   it('continues to the benchmark step even when the sidecar fails to start', async () => {
-    mockApi.startSidecar.mockRejectedValue(new Error('sidecar failed'))
+    mockApi.startSidecar.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'sidecar failed' } })
     await goToGguf()
     fireEvent.change(screen.getByRole('textbox', { name: /file path/i }), {
       target: { value: '/home/user/models/my-model.gguf' },
@@ -653,14 +649,14 @@ describe('ModelManager — GGUF branch', () => {
   })
 
   it('shows an error when registerGguf fails for the GGUF path', async () => {
-    mockApi.registerGguf.mockRejectedValue(new Error('GGUF_FILE_NOT_FOUND: file not found'))
+    mockApi.registerGguf.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'GGUF_FILE_NOT_FOUND: file not found' } })
     await goToGguf()
     fireEvent.change(screen.getByRole('textbox', { name: /file path/i }), {
       target: { value: '/home/user/models/missing.gguf' },
     })
     fireEvent.click(screen.getByRole('button', { name: /use this file/i }))
     await waitFor(() =>
-      expect(screen.getByRole('alert')).toHaveTextContent(/file not found/i),
+      expect(screen.getByRole('alert')).toHaveTextContent(/connection failed/i),
     )
   })
 
@@ -713,13 +709,13 @@ describe('ModelManager — text-only demo branch', () => {
   })
 
   it('calls useModel with the fake runtime when confirmed', async () => {
-    mockApi.useModel.mockResolvedValue({
+    mockApi.useModel.mockResolvedValue({ ok: true, data: {
       runtime_id: 'fake',
       model_id: null,
       runtime_name: 'Fake (deterministic)',
       status: 'ready',
       message: null,
-    })
+    } })
     await goToDemo()
     fireEvent.click(screen.getByRole('button', { name: /i understand/i }))
     await waitFor(() =>
@@ -737,7 +733,7 @@ describe('ModelManager — text-only demo branch', () => {
   })
 
   it('still navigates to library even when useModel fails for demo', async () => {
-    mockApi.useModel.mockRejectedValue(new Error('runtime unavailable'))
+    mockApi.useModel.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'runtime unavailable' } })
     await goToDemo()
     fireEvent.click(screen.getByRole('button', { name: /i understand/i }))
     await waitFor(() => expect(screen.getByTestId('library-page')).toBeInTheDocument())
@@ -791,7 +787,7 @@ describe('ModelManager — benchmark step', () => {
   })
 
   it('shows benchmark warnings when returned by the API', async () => {
-    mockApi.benchmarkModel.mockResolvedValue({
+    mockApi.benchmarkModel.mockResolvedValue({ ok: true, data: {
       model_id: 'llama3:latest',
       runtime_id: 'ollama',
       tokens_per_sec: 0.8,
@@ -799,7 +795,7 @@ describe('ModelManager — benchmark step', () => {
       warnings: ['Very slow generation (0.8 tok/s). The model may be running on CPU only.'],
       output_tokens: 5,
       benchmarked_at: '2026-01-01T00:00:00.000Z',
-    } satisfies BenchmarkResponse)
+    } satisfies BenchmarkResponse })
     await goToBenchmarkViaOllama()
     const alertEl = await screen.findByRole('alert', { name: /benchmark warnings/i })
     expect(alertEl).toBeInTheDocument()
@@ -807,7 +803,7 @@ describe('ModelManager — benchmark step', () => {
   })
 
   it('shows error message when benchmark fails but still allows continuing', async () => {
-    mockApi.benchmarkModel.mockRejectedValue(new Error('runtime unavailable'))
+    mockApi.benchmarkModel.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'runtime unavailable' } })
     await goToBenchmarkViaOllama()
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent(/benchmark failed/i),
@@ -816,7 +812,7 @@ describe('ModelManager — benchmark step', () => {
   })
 
   it('allows navigating home even after benchmark failure', async () => {
-    mockApi.benchmarkModel.mockRejectedValue(new Error('runtime unavailable'))
+    mockApi.benchmarkModel.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'runtime unavailable' } })
     await goToBenchmarkViaOllama()
     const btn = await screen.findByRole('button', { name: /continue to home/i })
     fireEvent.click(btn)
@@ -828,38 +824,34 @@ describe('ModelManager — benchmark step', () => {
 
 describe('ModelManager — last benchmark in choose step', () => {
   it('shows last benchmark speed when available', async () => {
-    mockApi.getModels.mockResolvedValue(
-      makeModelsResponse({
-        last_benchmark: {
-          model_id: 'llama3:latest',
-          runtime_id: 'ollama',
-          tokens_per_sec: 18.3,
-          context_length: 8192,
-          warnings: [],
-          output_tokens: 5,
-          benchmarked_at: '2026-01-01T00:00:00.000Z',
-        },
-      }),
-    )
+    mockApi.getModels.mockResolvedValue({ ok: true, data: makeModelsResponse({
+      last_benchmark: {
+        model_id: 'llama3:latest',
+        runtime_id: 'ollama',
+        tokens_per_sec: 18.3,
+        context_length: 8192,
+        warnings: [],
+        output_tokens: 5,
+        benchmarked_at: '2026-01-01T00:00:00.000Z',
+      },
+    }) })
     renderModelManager()
     expect(await screen.findByLabelText(/last benchmark result/i)).toBeInTheDocument()
     expect(screen.getByText(/18\.3 tok\/s/i)).toBeInTheDocument()
   })
 
   it('shows warning count when last benchmark has warnings', async () => {
-    mockApi.getModels.mockResolvedValue(
-      makeModelsResponse({
-        last_benchmark: {
-          model_id: 'llama3:latest',
-          runtime_id: 'ollama',
-          tokens_per_sec: 1.2,
-          context_length: null,
-          warnings: ['Slow generation (1.2 tok/s).'],
-          output_tokens: 2,
-          benchmarked_at: '2026-01-01T00:00:00.000Z',
-        },
-      }),
-    )
+    mockApi.getModels.mockResolvedValue({ ok: true, data: makeModelsResponse({
+      last_benchmark: {
+        model_id: 'llama3:latest',
+        runtime_id: 'ollama',
+        tokens_per_sec: 1.2,
+        context_length: null,
+        warnings: ['Slow generation (1.2 tok/s).'],
+        output_tokens: 2,
+        benchmarked_at: '2026-01-01T00:00:00.000Z',
+      },
+    }) })
     renderModelManager()
     await screen.findByRole('heading', { name: /set up your model/i })
     expect(screen.getByText(/1 warning/i)).toBeInTheDocument()
@@ -876,24 +868,24 @@ describe('ModelManager — last benchmark in choose step', () => {
 
 describe('ModelManager — load error state', () => {
   it('shows an error alert when getModels fails', async () => {
-    mockApi.getModels.mockRejectedValue(new Error('network error'))
+    mockApi.getModels.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'network error' } })
     renderModelManager()
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
   })
 
-  it('shows the error message text', async () => {
-    mockApi.getModels.mockRejectedValue(new Error('connection refused'))
+  it('shows the connection failed title when getModels fails', async () => {
+    mockApi.getModels.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'connection refused' } })
     renderModelManager()
     await waitFor(() =>
-      expect(screen.getByRole('alert')).toHaveTextContent(/connection refused/i),
+      expect(screen.getByRole('alert')).toHaveTextContent(/connection failed/i),
     )
   })
 
-  it('suggests setup docs and the demo when the runtime is unavailable', async () => {
-    mockApi.getModels.mockRejectedValue(new Error('runtime unavailable'))
+  it('shows the connection failed error view when the runtime is unavailable', async () => {
+    mockApi.getModels.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'runtime unavailable' } })
     renderModelManager()
-    const link = await screen.findByRole('link', { name: /setup docs/i })
-    expect(link).toHaveAttribute('href', expect.stringContaining('/wiki'))
-    expect(screen.getByText(/text-only demo works without one/i)).toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(/connection failed/i),
+    )
   })
 })
