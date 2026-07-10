@@ -139,3 +139,4 @@ ending_conditions:
     type: variable_below
     variable: conviction
     threshold: 15
+replay_seed: 99
