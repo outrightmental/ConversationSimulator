@@ -219,6 +219,7 @@ class DebriefResponse(BaseModel):
     npc_final_state: Dict[str, int]
     generated_at: str
     used_fallback: bool
+    metrics: Optional[Dict[str, Any]] = None
 
 
 # ---------------------------------------------------------------------------
@@ -649,6 +650,7 @@ async def create_debrief(session_id: str, request: Request) -> DebriefResponse:
                 npc_final_state=doc.get("npc_final_state", {}),
                 generated_at=doc.get("generated_at", _now_iso()),
                 used_fallback=doc.get("used_fallback", False),
+                metrics=doc.get("metrics"),
             )
         # DebriefReady state with no persisted row — data inconsistency.
         raise HTTPException(
@@ -704,6 +706,7 @@ async def create_debrief(session_id: str, request: Request) -> DebriefResponse:
         npc_final_state=result.npc_final_state,
         generated_at=result.generated_at,
         used_fallback=result.used_fallback,
+        metrics=result.metrics if result.metrics else None,
     )
 
 
