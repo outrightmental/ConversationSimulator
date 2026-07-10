@@ -38,14 +38,18 @@ from convsim_core.services.model_registry_service import list_registry_models
 
 router = APIRouter()
 
-# Maps install_id → asyncio.Event; setting the event signals cancel to the download task.
-_cancel_events: dict[int, asyncio.Event] = {}
-
 # Strong references to in-flight download tasks. asyncio only keeps a weak
 # reference to tasks created via create_task, so without this the download task
 # can be garbage-collected mid-download and silently cancelled, leaving the
 # install record stuck in 'downloading'. Tasks remove themselves when done.
 _download_tasks: set[asyncio.Task[None]] = set()
+
+# Per-install-id cancel events are stored on app.state.cancel_events (a dict
+# initialised to {} in the lifespan) rather than as a module-level dict so that
+# each FastAPI app instance (and therefore each test) has its own isolated map.
+# Module-level state would leak between tests that suppress the download task,
+# leaving stale events under install_id=1 that would silently absorb a
+# subsequent cancel call and leave the record in 'pending' instead of 'cancelled'.
 
 
 def _spawn_download_task(coro: Any) -> "asyncio.Task[None]":
@@ -425,8 +429,11 @@ async def install_model(request: Request, body: InstallModelRequest) -> InstallM
     )
 
     # Register a cancel event before launching the task so DELETE can signal it.
+    # cancel_events lives on app.state (initialised in lifespan) so it is fresh
+    # per app instance and does not leak between tests.
+    cancel_events: dict[int, asyncio.Event] = request.app.state.cancel_events
     cancel_event = asyncio.Event()
-    _cancel_events[install_id] = cancel_event
+    cancel_events[install_id] = cancel_event
 
     async def _run_download() -> None:
         try:
@@ -440,7 +447,7 @@ async def install_model(request: Request, body: InstallModelRequest) -> InstallM
                 cancel_event=cancel_event,
             )
         finally:
-            _cancel_events.pop(install_id, None)
+            cancel_events.pop(install_id, None)
 
     _spawn_download_task(_run_download())
 
@@ -487,7 +494,8 @@ async def cancel_install(request: Request, install_id: int) -> None:
         )
 
     # Signal the background download task if one is running.
-    event = _cancel_events.get(install_id)
+    cancel_events: dict[int, asyncio.Event] = request.app.state.cancel_events
+    event = cancel_events.get(install_id)
     if event is not None:
         event.set()
     else:
