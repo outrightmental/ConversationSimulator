@@ -4,8 +4,10 @@
 Tauri v2 desktop wrapper for Conversation Simulator.
 
 The desktop app wraps the `apps/web` React UI in a native OS window using
-[Tauri](https://tauri.app). It does **not** bundle model weights or require
-cloud services — it is a thin shell around the same local web experience.
+[Tauri](https://tauri.app). It manages the `convsim-core` backend as a
+supervised child process and shows startup progress until the core is ready.
+It does **not** bundle model weights or require cloud services — the application
+is fully local.
 
 ---
 
@@ -21,6 +23,9 @@ The script:
 1. Starts `convsim-core` (Python, port 7355).
 2. Runs `tauri dev`, which launches the Vite web dev server (port 7354) via
    `beforeDevCommand` and opens the native window pointed at it.
+
+In dev mode the Vite proxy routes `/api` and `/ws` to the running core, so
+the existing relative-URL client works as-is.
 
 The browser path (`apps/web`) continues to work independently via
 `./scripts/dev.sh`.
@@ -53,31 +58,53 @@ pnpm --filter @convsim/desktop build
 ```
 
 The built installer is placed in `apps/desktop/src-tauri/target/release/bundle/`.
+
+In a production build the Tauri shell:
+1. Locates the `convsim-core` executable (see "Executable resolution" below).
+2. Spawns it bound to `127.0.0.1:7355`.
+3. Sets `CONVSIM_BUNDLED_RUNTIME_DIR` to the `runtimes/` dir adjacent to the
+   app bundle so sidecars (llama-server, whisper-cli, sherpa-onnx-offline-tts)
+   can be found without a system PATH entry.
+4. Shows a startup progress screen until the core is healthy, then loads the app.
+5. Kills the core process when the app window closes.
+
 Model weights are **never** included in the bundle.
 
 The repo ships **placeholder** app icons in `src-tauri/icons/` so the app
-compiles out of the box — Tauri embeds the window icon at compile time, so both
-`tauri dev` and `tauri build` fail if the referenced icons are missing. Replace
-them with real branding before shipping a distributable:
+compiles out of the box. Replace them before shipping a distributable:
 
 ```bash
 # Regenerate the full icon set from a 1024×1024 source PNG:
 pnpm --filter @convsim/desktop tauri icon assets/icon.png
 ```
 
-> **Alpha note:** `convsim-core` lifecycle is not yet managed by the desktop
-> shell. Run it manually before launching the app (the dev script handles
-> this automatically). A sidecar process will be added in a future milestone.
->
-> **The production build cannot reach the backend yet.** The web UI calls the
-> API via relative paths (`/api`, `/ws` — see `apps/web/src/api/client.ts`).
-> In dev mode the Vite dev server proxies those to `convsim-core` on port 7355,
-> but a `tauri build` bundle serves the frontend from `tauri://localhost` with
-> no such proxy, so backend-dependent screens (Model Manager, Scenario Library,
-> Conversation, Debrief, Settings) will fail to load data even if `convsim-core`
-> is running. **Dev mode (`./scripts/dev-desktop.sh`) is the only supported
-> alpha path.** Wiring the production bundle to the backend (sidecar + absolute
-> API base or a Tauri-side proxy) is tracked as future work.
+---
+
+## Executable resolution
+
+The Tauri shell finds `convsim-core` using this priority order (same convention
+as the Python sidecar resolver — see [docs/sidecar-bundling.md](../../docs/sidecar-bundling.md)):
+
+1. **`CONVSIM_CORE_EXECUTABLE`** env-var override — absolute path to the binary.
+2. **`CONVSIM_BUNDLED_RUNTIME_DIR`** — a `convsim-core[.exe]` file inside the
+   bundled runtime directory (Steam / packaged builds).
+3. **Tauri resource directory** — `convsim-core[.exe]` or `bin/convsim-core`
+   adjacent to the installed app bundle.
+4. **PATH lookup** — `which convsim-core` / `where convsim-core` (dev builds).
+
+---
+
+## Startup progress and error handling
+
+The web UI displays a startup screen (rendered by `CoreStartupGuard` in
+`apps/web/src/screens/CoreStartup.tsx`) that:
+
+- Shows live progress messages as the core service starts.
+- Displays an actionable error card if the core executable is missing, the
+  port is already in use, or the process crashes before becoming healthy.
+- Passes through immediately in non-Tauri (browser) contexts.
+- On a fast health check success (e.g. core already running in dev), the
+  startup screen is bypassed entirely.
 
 ---
 
@@ -118,22 +145,20 @@ apps/desktop/
     ├── icons/                   # Placeholder app icons (replace with `tauri icon`)
     └── src/
         ├── main.rs              # OS entry point
-        └── lib.rs               # Tauri Builder with plugins
+        └── lib.rs               # Tauri Builder, core process management
 ```
 
 The `frontendDist` path in `tauri.conf.json` points to `../../web/dist`,
 so the production build consumes the output of `pnpm --filter @convsim/web build`.
 
+In production, `apps/web/src/api/client.ts` detects the `tauri://localhost` (or
+`https://tauri.localhost` on Windows) origin and switches the API base URL to
+`http://127.0.0.1:7355/api` and the WebSocket base to `ws://127.0.0.1:7355/ws`.
+
 ---
 
-## Limitations (alpha)
+## Known limitations
 
-- **convsim-core sidecar** is not yet bundled. The core server must be started
-  separately. See `./scripts/dev-desktop.sh` for the reference flow.
-- **Production builds cannot reach the backend.** The web UI uses relative
-  `/api` and `/ws` requests that only the Vite dev proxy resolves; a `tauri
-  build` bundle has no proxy, so only dev mode is functional in the alpha.
-  See the alpha note under "Production build" above.
 - **Auto-update** is not configured.
 - **Code signing** is not configured — macOS Gatekeeper will warn on unsigned
   builds unless you sign with a Developer ID certificate.

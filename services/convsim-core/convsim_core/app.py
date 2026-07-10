@@ -3,6 +3,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 
 from convsim_core.config import ServiceConfig
 from convsim_core.errors import (
@@ -23,6 +24,21 @@ from convsim_core.storage.repositories.settings_repo import load_settings
 from convsim_core.stt import build_stt_worker
 from convsim_core.tts import build_tts_worker
 from convsim_core.vad import build_vad_worker
+
+
+# Origins the packaged Tauri desktop shell serves its web UI from. In a bundled
+# build the UI loads from tauri://localhost (macOS/Linux) or https://tauri.localhost
+# (Windows) and calls the API cross-origin at http://127.0.0.1:<port>, so the
+# native webview enforces CORS and blocks the responses unless the server opts in.
+# In dev mode the Vite proxy keeps API traffic same-origin, so these are only
+# needed for packaged builds. Listing explicit local webview origins keeps the
+# local-first promise intact — the server still binds to 127.0.0.1 and no LAN
+# origin is granted access.
+_TAURI_WEBVIEW_ORIGINS = [
+    "tauri://localhost",
+    "http://tauri.localhost",
+    "https://tauri.localhost",
+]
 
 
 def create_app(config: ServiceConfig | None = None) -> FastAPI:
@@ -58,6 +74,17 @@ def create_app(config: ServiceConfig | None = None) -> FastAPI:
         db.close()
 
     app = FastAPI(title="convsim-core", version="0.1.0", lifespan=lifespan)
+
+    # Allow the packaged Tauri desktop webview to read cross-origin API responses.
+    # No cookies/credentials are used, so credentials stay disabled and origins
+    # are pinned to the local webview schemes only.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_TAURI_WEBVIEW_ORIGINS,
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     app.add_exception_handler(ConvsimError, convsim_error_handler)  # type: ignore[arg-type]
     app.add_exception_handler(RequestValidationError, request_validation_error_handler)  # type: ignore[arg-type]

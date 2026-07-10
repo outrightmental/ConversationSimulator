@@ -110,6 +110,8 @@ Check-File "scripts\first-run-check.sh"
 Check-File "scripts\first-run-check.ps1"
 Check-File "scripts\release-smoke.sh"
 Check-File "scripts\release-smoke.ps1"
+Check-File "scripts\desktop-smoke.sh"
+Check-File "scripts\desktop-smoke.ps1"
 
 Write-Host ""
 

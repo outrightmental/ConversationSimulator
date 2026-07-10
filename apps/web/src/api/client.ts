@@ -1,4 +1,17 @@
 // SPDX-License-Identifier: Apache-2.0
+
+// In a packaged Tauri build the web UI is served from tauri://localhost (macOS/Linux)
+// or https://tauri.localhost (Windows) — there is no Vite dev-server proxy.  Detect
+// this and send API traffic directly to the core service on its fixed port.
+// In dev mode (tauri dev), Vite still proxies /api and /ws, so relative paths work.
+const _isTauriProduction: boolean =
+  typeof window !== 'undefined' &&
+  '__TAURI__' in window &&
+  (window.location.protocol === 'tauri:' ||
+    window.location.hostname === 'tauri.localhost')
+
+const CORE_ORIGIN = 'http://127.0.0.1:7355'
+
 import type {
   HealthResponse,
   ScenarioInfo,
@@ -29,7 +42,7 @@ import type {
 
 export type { HealthResponse };
 
-const BASE = '/api'
+const BASE = _isTauriProduction ? `${CORE_ORIGIN}/api` : '/api'
 
 export interface PackSummary {
   pack_id: string
@@ -379,8 +392,10 @@ export const api = {
     onEvent: (event: WsEvent) => void,
     opts?: { afterSeq?: number },
   ): WsConnection {
-    const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    let url = `${proto}//${window.location.host}/ws/session/${sessionId}`
+    const baseWs = _isTauriProduction
+      ? `ws://127.0.0.1:7355/ws/session/${sessionId}`
+      : `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}/ws/session/${sessionId}`
+    let url = baseWs
     if (opts?.afterSeq != null) url += `?after_seq=${opts.afterSeq}`
     const ws = new WebSocket(url)
     ws.onmessage = (event) => {

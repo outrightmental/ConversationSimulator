@@ -11,6 +11,7 @@ import CreatorWorkbench from './screens/CreatorWorkbench'
 import Settings from './screens/Settings'
 import ModelManager from './screens/ModelManager'
 import FirstRunWizard from './screens/FirstRunWizard'
+import CoreStartupGuard from './screens/CoreStartup'
 import { SETUP_KEYS } from './privacyPrefs'
 
 // Redirects to /first-run until the setup wizard has been completed once.
@@ -25,23 +26,25 @@ function FirstRunGuard() {
 export default function App() {
   return (
     <ErrorBoundary>
-      <Routes>
-        {/* First-run wizard shown outside the main app layout */}
-        <Route path="/first-run" element={<FirstRunWizard />} />
+      <CoreStartupGuard>
+        <Routes>
+          {/* First-run wizard shown outside the main app layout */}
+          <Route path="/first-run" element={<FirstRunWizard />} />
 
-        <Route element={<AppLayout />}>
-          <Route element={<FirstRunGuard />}>
-            <Route path="/" element={<Home />} />
-            <Route path="/library" element={<ScenarioLibrary />} />
-            <Route path="/setup/:scenarioId" element={<ScenarioSetup />} />
-            <Route path="/conversation/:sessionId" element={<Conversation />} />
-            <Route path="/debrief/:sessionId" element={<Debrief />} />
-            <Route path="/workbench" element={<CreatorWorkbench />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="/model-manager" element={<ModelManager />} />
+          <Route element={<AppLayout />}>
+            <Route element={<FirstRunGuard />}>
+              <Route path="/" element={<Home />} />
+              <Route path="/library" element={<ScenarioLibrary />} />
+              <Route path="/setup/:scenarioId" element={<ScenarioSetup />} />
+              <Route path="/conversation/:sessionId" element={<Conversation />} />
+              <Route path="/debrief/:sessionId" element={<Debrief />} />
+              <Route path="/workbench" element={<CreatorWorkbench />} />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="/model-manager" element={<ModelManager />} />
+            </Route>
           </Route>
-        </Route>
-      </Routes>
+        </Routes>
+      </CoreStartupGuard>
     </ErrorBoundary>
   )
 }

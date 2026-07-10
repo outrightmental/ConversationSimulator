@@ -114,6 +114,8 @@ check_file "scripts/first-run-check.sh"
 check_file "scripts/first-run-check.ps1"
 check_file "scripts/release-smoke.sh"
 check_file "scripts/release-smoke.ps1"
+check_file "scripts/desktop-smoke.sh"
+check_file "scripts/desktop-smoke.ps1"
 
 echo ""
 
