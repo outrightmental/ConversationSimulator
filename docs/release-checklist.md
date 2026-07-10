@@ -293,6 +293,110 @@ before the release is published.  CI covers all platforms in fake-runtime mode.
 
 ---
 
+## Part E — Windows Steam install verification
+
+Run this checklist on a **clean Windows machine** (a fresh Steam library
+directory with no prior Conversation Simulator install) before submitting a
+Windows depot to Valve.  It supplements Part B by testing the Steam-specific
+install path rather than the source-checkout developer path.
+
+Minimum hardware: see "Windows system requirements for Steam" in
+`docs/platform-notes.md`.
+
+### E.1 Fresh install from Steam
+
+1. Install the app from the Steam client (or use `steamcmd +app_update <AppID>`
+   on a test machine).
+2. Steam installs files into the Steam library directory (e.g.
+   `C:\Program Files (x86)\Steam\steamapps\common\ConversationSimulator\`).
+3. Launch via the Steam Play button (or double-click `ConversationSimulator.exe`
+   from the install directory).
+
+- [ ] Steam installs without errors
+- [ ] No Python, Node.js, or Rust prompts appear during install
+- [ ] `ConversationSimulator.exe` launches from the Steam Play button
+- [ ] The Tauri window opens and displays the home screen
+- [ ] No terminal window is visible (convsim-core runs as a hidden child process)
+- [ ] No SmartScreen or antivirus warning blocks launch (signed build only)
+
+### E.2 First-run model wizard
+
+On first launch, the Model Manager wizard should appear automatically.
+
+- [ ] Wizard is shown before the main scenario library is accessible
+- [ ] All six mandatory disclosure fields are visible:
+  model name, source URL, license, download size, SHA-256 checksum,
+  destination path on disk
+- [ ] Download button is inactive until the player confirms disclosure
+- [ ] Destination path shown is under `%LOCALAPPDATA%\outrightmental\convsim\models\`
+  (not under `%USERPROFILE%\.convsim\` — that would indicate a stale migration)
+- [ ] Download completes, SHA-256 is verified, model status changes to `loaded`
+
+### E.3 Text scenario and debrief
+
+Select **Job Interview Basics → Behavioral Interview** and run a session.
+
+- [ ] Scenario library loads and all four official packs are listed
+- [ ] Session starts without errors; NPC opening line is delivered
+- [ ] Player can submit a text turn; NPC responds within 60 seconds (CPU-only)
+- [ ] Session ends cleanly via the Stop / End Session button
+- [ ] Debrief screen loads with rubric scores and an export option
+- [ ] Exporting the transcript saves a file to `%LOCALAPPDATA%\outrightmental\convsim\exports\`
+
+### E.4 Log verification
+
+After running a session, confirm logs are written to the expected location.
+
+```powershell
+# Expected location (platform-native, not the old ~/.convsim path)
+Get-ChildItem "$env:LOCALAPPDATA\outrightmental\convsim\logs\"
+```
+
+- [ ] Log files are present in `%LOCALAPPDATA%\outrightmental\convsim\logs\`
+- [ ] Logs contain no API keys, tokens, or PII
+- [ ] No log files exist under `%USERPROFILE%\.convsim\` on a fresh install
+  (if they do, it indicates the migration from a prior alpha install occurred —
+  verify the migration marker `.convsim_migrated_to_platform_dir` exists in
+  `%USERPROFILE%\.convsim\`)
+
+### E.5 Uninstall behavior
+
+Uninstall via **Steam → right-click → Manage → Uninstall**.
+
+- [ ] Uninstall completes without errors
+- [ ] The Steam library directory for the app is removed
+- [ ] User data under `%LOCALAPPDATA%\outrightmental\convsim\` is **preserved**
+  (session history, downloaded models, exported transcripts must survive an
+  uninstall — Steam uninstallers must not touch `%LOCALAPPDATA%`)
+- [ ] Downloaded model weights are still present at
+  `%LOCALAPPDATA%\outrightmental\convsim\models\` after uninstall
+
+### E.6 Reinstall behavior
+
+Reinstall the app from Steam after the E.5 uninstall.
+
+- [ ] Reinstall completes without errors
+- [ ] On launch, **no first-run wizard** appears — the app detects existing
+  user data and goes directly to the main screen
+- [ ] Session history from before the uninstall is accessible in the library
+- [ ] Downloaded model is detected as `loaded` (no re-download needed)
+- [ ] Logs from the new session are appended to the existing log directory
+
+### E.7 Depot content audit (pre-submission)
+
+Before submitting the depot to Valve, run the audit locally:
+
+```powershell
+.\scripts\depot-audit.ps1 steam-content\windows
+```
+
+- [ ] Exits 0 (no violations)
+- [ ] No `.gguf`, `.bin`, `.safetensors`, `.pt`, `.pth`, or `.ckpt` files in the depot
+- [ ] No `.env`, `__pycache__\`, or `.venv\` directories in the depot
+- [ ] Installer is Authenticode-signed (verify with `signtool.exe verify /pa /v <file>`)
+
+---
+
 ## Smoke log
 
 Fill this in for each manual release smoke run.

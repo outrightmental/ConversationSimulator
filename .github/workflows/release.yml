@@ -136,6 +136,79 @@ jobs:
       - name: Build Tauri desktop
         run: pnpm --filter @convsim/desktop build
 
+      # ── Authenticode signing (Windows only, optional) ─────────────────────────
+      # Signs the NSIS installer (.exe) and MSI package produced by Tauri.
+      # Signing requires two repository secrets:
+      #
+      #   WINDOWS_SIGN_CERT_PFX      — base64-encoded PFX certificate file
+      #   WINDOWS_SIGN_CERT_PASSWORD — password for the PFX file
+      #
+      # When neither secret is set the step exits 0 and the build continues
+      # with an unsigned installer.  Unsigned installers trigger a Windows
+      # Defender SmartScreen "unrecognised publisher" warning on first launch;
+      # this is acceptable for developer builds but must be resolved before the
+      # Stage 3 (private beta) gate (G3-01 in docs/steam-mvp-scope.md).
+      #
+      # To obtain a code-signing certificate:
+      #   - Purchase an EV certificate from DigiCert, Sectigo, or similar CA.
+      #   - Export the private key and certificate chain as a .pfx file.
+      #   - Base64-encode the .pfx: certutil -encode cert.pfx cert.b64
+      #   - Add cert.b64 contents as WINDOWS_SIGN_CERT_PFX in repository secrets.
+      #   - Add the PFX password as WINDOWS_SIGN_CERT_PASSWORD in repository secrets.
+      - name: Sign Windows installers (Authenticode)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          CERT_PFX_BASE64: ${{ secrets.WINDOWS_SIGN_CERT_PFX }}
+          CERT_PASSWORD:   ${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}
+        run: |
+          if (-not $env:CERT_PFX_BASE64) {
+            Write-Host "  INFO  WINDOWS_SIGN_CERT_PFX is not set — producing unsigned build."
+            Write-Host "        Add the secret to enable Authenticode signing for release builds."
+            Write-Host "        See docs/platform-notes.md for certificate setup instructions."
+            exit 0
+          }
+
+          # Decode the base64-encoded PFX to a temporary file.
+          $pfxPath = Join-Path $env:RUNNER_TEMP "convsim-sign.pfx"
+          try {
+            [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:CERT_PFX_BASE64))
+
+            # Locate all Tauri-produced NSIS installers and MSI packages.
+            $bundleDir = "apps\desktop\src-tauri\target\release\bundle"
+            $installers = Get-ChildItem -Recurse -Path $bundleDir `
+              -Include "*.exe","*.msi" -ErrorAction SilentlyContinue
+
+            if (-not $installers) {
+              Write-Host "  WARN  No installers found in $bundleDir — skipping signing."
+              exit 0
+            }
+
+            foreach ($installer in $installers) {
+              Write-Host "  Signing: $($installer.FullName)"
+              # /tr  — RFC 3161 timestamp server (DigiCert, always free to use)
+              # /td  — timestamp digest algorithm
+              # /fd  — file digest algorithm
+              signtool.exe sign `
+                /f $pfxPath `
+                /p $env:CERT_PASSWORD `
+                /tr http://timestamp.digicert.com `
+                /td sha256 `
+                /fd sha256 `
+                /v `
+                $installer.FullName
+              if ($LASTEXITCODE -ne 0) {
+                Write-Error "signtool failed for $($installer.Name) (exit $LASTEXITCODE)"
+                exit $LASTEXITCODE
+              }
+            }
+
+            Write-Host "  INFO  All installers signed successfully."
+          } finally {
+            # Always remove the PFX from disk, even on failure.
+            if (Test-Path $pfxPath) { Remove-Item $pfxPath -Force }
+          }
+
       # ── Collect installers ───────────────────────────────────────────────────
       # Tauri v2 places bundles under target/release/bundle/<format>/.
       - name: Upload desktop installer artifacts
