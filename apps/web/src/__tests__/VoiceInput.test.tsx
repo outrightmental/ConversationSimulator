@@ -537,6 +537,32 @@ describe('VoiceInput — audio upload flow', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(/failed to process audio/i)
   })
 
+  it('text input remains available and usable when STT is unavailable (unavailable STT fallback)', async () => {
+    const onSubmit = vi.fn()
+    let capturedOnAudioReady: ((blob: Blob) => void) | undefined
+    vi.mocked(useMicCapture).mockImplementation((cb) => {
+      capturedOnAudioReady = cb
+      return makeMicState()
+    })
+    vi.mocked(apiClient.uploadAudio).mockResolvedValueOnce({ transcript: null, status: 'unavailable' })
+
+    render(<VoiceInput onSubmit={onSubmit} />)
+
+    await act(async () => {
+      capturedOnAudioReady?.(new Blob(['audio'], { type: 'audio/webm' }))
+    })
+
+    // Alert shown for STT unavailable
+    expect(screen.getByRole('alert')).toHaveTextContent(/not installed/i)
+
+    // Text input still visible and usable — the player can type their turn
+    const textInput = screen.getByRole('textbox', { name: /your response/i })
+    expect(textInput).toBeInTheDocument()
+    fireEvent.change(textInput, { target: { value: 'typed fallback response' } })
+    fireEvent.submit(textInput.closest('form')!)
+    expect(onSubmit).toHaveBeenCalledWith('typed fallback response')
+  })
+
   it('shows review panel when disabled, then populates text input after confirmation', async () => {
     const onSubmit = vi.fn()
     let capturedOnAudioReady: ((blob: Blob) => void) | undefined
@@ -562,6 +588,112 @@ describe('VoiceInput — audio upload flow', () => {
     expect(screen.queryByTestId('transcript-review-panel')).not.toBeInTheDocument()
     // After confirm, the text input (the standard response field) gets the transcript value
     expect(screen.getByRole('textbox', { name: /your response/i })).toHaveValue('hello world')
+  })
+})
+
+describe('VoiceInput — hands-free VAD auto-stop (VAD timeout)', () => {
+  it('calls stopRecording when the VAD silence callback fires during hands-free recording', () => {
+    const stopRecording = vi.fn()
+    let capturedOnSilence: (() => void) | undefined
+
+    vi.mocked(useVad).mockReturnValue(
+      makeVadState({
+        settings: { mode: 'hands-free', threshold: 0.05, silenceDurationMs: 1500, calibratedAt: null },
+        startSilenceDetection: vi.fn().mockImplementation((_stream: MediaStream, onSilence: () => void) => {
+          capturedOnSilence = onSilence
+        }),
+      }),
+    )
+    vi.mocked(useMicCapture).mockReturnValue(
+      makeMicState({ stopRecording, stream: {} as MediaStream }),
+    )
+
+    render(<VoiceInput />)
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+
+    // Start hands-free recording — this arms the VAD silence callback
+    fireEvent.keyDown(document, { code: 'Space' })
+
+    expect(capturedOnSilence).toBeDefined()
+
+    // VAD silence timer fires — simulates auto-stop after sustained silence
+    capturedOnSilence?.()
+
+    expect(stopRecording).toHaveBeenCalledOnce()
+  })
+
+  it('shows review panel after VAD auto-stop triggers audio upload', async () => {
+    let capturedOnAudioReady: ((blob: Blob) => void) | undefined
+    let capturedOnSilence: (() => void) | undefined
+    const stopRecording = vi.fn().mockImplementation(() => {
+      capturedOnAudioReady?.(new Blob(['audio'], { type: 'audio/webm' }))
+    })
+
+    vi.mocked(useVad).mockReturnValue(
+      makeVadState({
+        settings: { mode: 'hands-free', threshold: 0.05, silenceDurationMs: 1500, calibratedAt: null },
+        startSilenceDetection: vi.fn().mockImplementation((_stream: MediaStream, onSilence: () => void) => {
+          capturedOnSilence = onSilence
+        }),
+      }),
+    )
+    vi.mocked(useMicCapture).mockImplementation((cb) => {
+      capturedOnAudioReady = cb
+      return makeMicState({ stopRecording, stream: {} as MediaStream })
+    })
+    vi.mocked(apiClient.uploadAudio).mockResolvedValueOnce({ transcript: 'VAD stopped me', status: 'ok' })
+
+    render(<VoiceInput />)
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+
+    fireEvent.keyDown(document, { code: 'Space' })
+
+    await act(async () => {
+      capturedOnSilence?.()
+    })
+
+    expect(screen.getByTestId('transcript-review-panel')).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: /edit transcript/i })).toHaveValue('VAD stopped me')
+  })
+})
+
+describe('VoiceInput — hands-free manual override', () => {
+  it('stops recording when Space is pressed while already recording in hands-free mode', () => {
+    const stopRecording = vi.fn()
+    vi.mocked(useVad).mockReturnValue(
+      makeVadState({
+        settings: { mode: 'hands-free', threshold: 0.05, silenceDurationMs: 1500, calibratedAt: null },
+      }),
+    )
+    vi.mocked(useMicCapture).mockReturnValue(
+      makeMicState({ isRecording: true, stopRecording }),
+    )
+
+    render(<VoiceInput />)
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+
+    fireEvent.keyDown(document, { code: 'Space' })
+
+    expect(stopRecording).toHaveBeenCalledOnce()
+  })
+
+  it('does not start a new recording when Space is pressed while already recording in hands-free mode', () => {
+    const startRecording = vi.fn()
+    vi.mocked(useVad).mockReturnValue(
+      makeVadState({
+        settings: { mode: 'hands-free', threshold: 0.05, silenceDurationMs: 1500, calibratedAt: null },
+      }),
+    )
+    vi.mocked(useMicCapture).mockReturnValue(
+      makeMicState({ isRecording: true, startRecording }),
+    )
+
+    render(<VoiceInput />)
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+
+    fireEvent.keyDown(document, { code: 'Space' })
+
+    expect(startRecording).not.toHaveBeenCalled()
   })
 })
 

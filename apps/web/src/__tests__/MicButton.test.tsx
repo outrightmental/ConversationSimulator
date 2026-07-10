@@ -119,3 +119,77 @@ describe('MicButton — PTT behavior (granted)', () => {
     expect(onRecordStart).not.toHaveBeenCalled()
   })
 })
+
+describe('MicButton — hands-free mode', () => {
+  it('renders tap-to-start button when idle in hands-free mode', () => {
+    render(<MicButton {...makeProps({ isHandsFree: true })} />)
+    expect(screen.getByRole('button', { name: /tap to start recording/i })).toBeInTheDocument()
+  })
+
+  it('calls onRecordStart on pointer down when not recording in hands-free mode', () => {
+    const onRecordStart = vi.fn()
+    render(<MicButton {...makeProps({ isHandsFree: true, isRecording: false, onRecordStart })} />)
+    fireEvent.pointerDown(screen.getByRole('button'))
+    expect(onRecordStart).toHaveBeenCalledOnce()
+  })
+
+  it('calls onRecordStop on pointer down when recording in hands-free mode (manual override)', () => {
+    const onRecordStop = vi.fn()
+    render(
+      <MicButton {...makeProps({ isHandsFree: true, isRecording: true, recordingSeconds: 5, onRecordStop })} />,
+    )
+    fireEvent.pointerDown(screen.getByRole('button'))
+    expect(onRecordStop).toHaveBeenCalledOnce()
+  })
+
+  it('does not call onRecordStart on pointer down when already recording in hands-free mode', () => {
+    const onRecordStart = vi.fn()
+    render(
+      <MicButton {...makeProps({ isHandsFree: true, isRecording: true, recordingSeconds: 2, onRecordStart })} />,
+    )
+    fireEvent.pointerDown(screen.getByRole('button'))
+    expect(onRecordStart).not.toHaveBeenCalled()
+  })
+
+  it('does not call onRecordStop on pointer up in hands-free mode', () => {
+    const onRecordStop = vi.fn()
+    render(<MicButton {...makeProps({ isHandsFree: true, onRecordStop })} />)
+    fireEvent.pointerUp(screen.getByRole('button'))
+    expect(onRecordStop).not.toHaveBeenCalled()
+  })
+
+  it('does not call onRecordStop on pointer leave in hands-free mode', () => {
+    const onRecordStop = vi.fn()
+    render(<MicButton {...makeProps({ isHandsFree: true, onRecordStop })} />)
+    fireEvent.pointerLeave(screen.getByRole('button'))
+    expect(onRecordStop).not.toHaveBeenCalled()
+  })
+
+  it('calls onRecordStop on Space keydown when recording in hands-free mode', () => {
+    const onRecordStop = vi.fn()
+    render(
+      <MicButton {...makeProps({ isHandsFree: true, isRecording: true, recordingSeconds: 3, onRecordStop })} />,
+    )
+    fireEvent.keyDown(screen.getByRole('button'), { code: 'Space' })
+    expect(onRecordStop).toHaveBeenCalledOnce()
+  })
+
+  it('calls onRecordStart on Space keydown when not recording in hands-free mode', () => {
+    const onRecordStart = vi.fn()
+    render(<MicButton {...makeProps({ isHandsFree: true, isRecording: false, onRecordStart })} />)
+    fireEvent.keyDown(screen.getByRole('button'), { code: 'Space' })
+    expect(onRecordStart).toHaveBeenCalledOnce()
+  })
+
+  it('does not call onRecordStop on Space keyup in hands-free mode', () => {
+    const onRecordStop = vi.fn()
+    render(<MicButton {...makeProps({ isHandsFree: true, onRecordStop })} />)
+    fireEvent.keyUp(screen.getByRole('button'), { code: 'Space' })
+    expect(onRecordStop).not.toHaveBeenCalled()
+  })
+
+  it('shows tap-to-stop label when recording in hands-free mode', () => {
+    render(<MicButton {...makeProps({ isHandsFree: true, isRecording: true, recordingSeconds: 7 })} />)
+    expect(screen.getByRole('button', { name: /tap to stop or wait for silence/i })).toBeInTheDocument()
+  })
+})
