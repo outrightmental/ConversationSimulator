@@ -5,6 +5,10 @@ export interface DimensionScore {
   dimension_id: string;
   rolling_score: number;
   session_count: number;
+  // Per-session scores for this dimension in chronological order (oldest →
+  // newest), one entry per debriefed session that scored it. Raw material for
+  // the Logbook's per-skill trajectory chart.
+  trajectory: number[];
 }
 
 export interface PersonalRecord {
