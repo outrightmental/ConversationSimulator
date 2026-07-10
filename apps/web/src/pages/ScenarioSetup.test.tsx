@@ -644,6 +644,54 @@ describe('ScenarioSetupPage', () => {
     });
   });
 
+  describe('missing runtime (LLM not loaded)', () => {
+    const healthNoLlm: HealthResponse = {
+      status: 'error',
+      version: '0.1.0',
+      runtime: {
+        llm_ready: false,
+        llm_model_name: null,
+        stt_ready: false,
+        tts_ready: false,
+        tts_voice_name: null,
+        network_required: false,
+      },
+    };
+
+    it('shows a missing-runtime block when no LLM model is loaded', async () => {
+      mockApi.getScenario.mockResolvedValue(mockScenario);
+      mockApi.health.mockResolvedValue(healthNoLlm);
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      expect(screen.getByTestId('missing-runtime-block')).toBeInTheDocument();
+      expect(screen.getByText(/no llm model is loaded/i)).toBeInTheDocument();
+    });
+
+    it('disables the start button when no LLM model is loaded', async () => {
+      mockApi.getScenario.mockResolvedValue(mockScenario);
+      mockApi.health.mockResolvedValue(healthNoLlm);
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      expect(screen.getByRole('button', { name: /start scenario/i })).toBeDisabled();
+    });
+
+    it('shows a model manager hint in the missing-runtime block', async () => {
+      mockApi.getScenario.mockResolvedValue(mockScenario);
+      mockApi.health.mockResolvedValue(healthNoLlm);
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      expect(screen.getByTestId('missing-runtime-block')).toHaveTextContent(/model manager/i);
+    });
+
+    it('does not show the missing-runtime block when LLM is ready', async () => {
+      mockApi.getScenario.mockResolvedValue(mockScenario);
+      mockApi.health.mockResolvedValue(healthReady);
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      expect(screen.queryByTestId('missing-runtime-block')).not.toBeInTheDocument();
+    });
+  });
+
   describe('back navigation', () => {
     it('calls onBack when the back button is clicked', async () => {
       mockApi.getScenario.mockResolvedValue(mockScenario);

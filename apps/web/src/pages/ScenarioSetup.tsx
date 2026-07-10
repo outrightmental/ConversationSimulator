@@ -191,6 +191,8 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
     validationResult.errors.map((e) => [e.field, e.message]),
   );
 
+  const formLevelErrors = validationResult.errors.filter((e) => e.field === '_form');
+
   return (
     <div className="setup-page" data-testid="setup-page">
       <header className="setup-header">
@@ -206,6 +208,22 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
 
       <div className="setup-layout">
         <form className="setup-form" onSubmit={handleSubmit} noValidate>
+          {formLevelErrors.length > 0 && (
+            <div
+              className="setup-missing-runtime"
+              role="alert"
+              data-testid="missing-runtime-block"
+            >
+              {formLevelErrors.map((e, i) => (
+                <p key={i} className="setup-missing-runtime-message">{e.message}</p>
+              ))}
+              <p className="setup-missing-runtime-hint">
+                Go to <strong>Settings → Model Manager</strong> to install a model, then return
+                here to launch your scenario.
+              </p>
+            </div>
+          )}
+
           <section className="setup-section" aria-labelledby="difficulty-heading">
             <h2 id="difficulty-heading" className="setup-section-title">
               Difficulty
