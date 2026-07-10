@@ -161,6 +161,10 @@ Check-File "apps\desktop\src-tauri\capabilities\default.json"
 # Steam overlay compatibility (G3-03).  Referenced by tauri.conf.json and by
 # convsim-core.spec when APPLE_SIGNING_IDENTITY is set.
 Check-File "apps\desktop\src-tauri\entitlements.plist"
+# macOS Info.plist — merged by Tauri at bundle time; supplies
+# NSMicrophoneUsageDescription. Without it a Hardened Runtime build crashes
+# (SIGABRT) on first mic access instead of prompting, breaking voice input.
+Check-File "apps\desktop\src-tauri\Info.plist"
 # Icons referenced by tauri.conf.json are embedded at compile time; a missing
 # file breaks `tauri dev`/`tauri build`, so verify the placeholder set is present.
 Check-File "apps\desktop\src-tauri\icons\32x32.png"

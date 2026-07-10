@@ -113,6 +113,11 @@ Anyway") is the acceptance criterion.
 The OS shows a standard permission dialog on first use of voice input.
 If denied, re-enable in **System Settings → Privacy & Security → Microphone**.
 
+The dialog text comes from `NSMicrophoneUsageDescription` in
+`apps/desktop/src-tauri/Info.plist` (merged into the bundle by Tauri). This key
+is mandatory under Hardened Runtime — without it macOS terminates the app
+instead of prompting when voice input first requests the microphone.
+
 ### Data directories
 
 The platform data root is `~/Library/Application Support/com.outrightmental.convsim/`
