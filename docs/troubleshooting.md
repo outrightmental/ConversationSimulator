@@ -5,6 +5,32 @@ Common problems and solutions. If your issue is not listed here, open a [GitHub 
 
 ---
 
+## Engine startup failure {#engine-startup-failure}
+
+**"The conversation engine didn't start"**
+
+The app could not start its background conversation engine (`convsim-core`). Common causes:
+
+- **Port conflict:** another application is using port 7355. See [Port conflicts](#port-conflicts) below.
+- **Binary not found:** the `convsim-core` executable is missing. Reinstall the app or run `./scripts/setup.sh`.
+- **Crash on startup:** check the logs at `~/.convsim/logs/app.log` for the specific error.
+
+**Recovery steps:**
+
+1. Close other applications that might be using port 7355.
+2. Restart Conversation Simulator from Steam or your installation.
+3. If the problem persists, collect logs from `~/.convsim/logs/` and open a [GitHub issue](https://github.com/outrightmental/ConversationSimulator/issues).
+
+**"The conversation engine stopped"**
+
+The engine started but stopped during a session. This can happen if the AI model crashes the engine or the engine runs out of memory.
+
+1. Click **Restart conversation engine** in the status card on the home screen.
+2. If the problem repeats, try a lighter model from **Settings → Models**.
+3. Check `~/.convsim/logs/app.log` for crash details.
+
+---
+
 ## Setup issues
 
 **`./scripts/setup.sh` fails with "Python 3.10+ is required"**
@@ -99,7 +125,7 @@ For Apple Silicon, unified memory acts as VRAM — treat the total RAM figure as
 
 ---
 
-## Port conflicts
+## Port conflicts {#port-conflicts}
 
 **`./scripts/dev.sh` fails with "Port XXXX is already in use by PID YYYY (process-name)"**
 

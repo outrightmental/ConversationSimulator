@@ -456,6 +456,12 @@ export const api = {
   startSidecar(model_path: string): Promise<ApiResult<{ state: string; pid: number | null; log_path: string; host: string; port: number }>> {
     return post('/sidecar/start', { model_path })
   },
+  getSidecarStatus(): Promise<ApiResult<{ state: string; pid: number | null; model_path: string | null; error: string | null; log_path: string; host: string; port: number }>> {
+    return get('/sidecar/status')
+  },
+  stopSidecar(): Promise<ApiResult<{ state: string; message: string }>> {
+    return post('/sidecar/stop')
+  },
   benchmarkModel(request: BenchmarkRequest): Promise<ApiResult<BenchmarkResponse>> {
     return post<BenchmarkResponse>('/models/benchmark', request)
   },
