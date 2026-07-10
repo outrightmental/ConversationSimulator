@@ -288,6 +288,7 @@ def _persist_input_safety_stop(
         visible_state={},
         event_flags=[],
         triggered_scenario_events=[],
+        rubric_observations=[],
         safety_status=safety_status,
         safety_reason=decision.category,
         ending_type=ending_type,
