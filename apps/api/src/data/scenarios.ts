@@ -74,11 +74,11 @@ export const SCENARIOS: Record<string, ScenarioInfo> = {
       brief: 'You want to buy a used car listed at $12,000 and get a fair deal.',
     },
     difficulty: {
-      default: 'normal',
+      default: 'standard',
       options: {
-        easy: { npc_patience_modifier: 20, challenge_frequency: 'low' },
-        normal: { npc_patience_modifier: 0, challenge_frequency: 'medium' },
-        hard: { npc_patience_modifier: -15, challenge_frequency: 'high' },
+        warm: { patience: 80, volatility: 20, disclosure: 70, time_pressure: 20 },
+        standard: { patience: 50, volatility: 50, disclosure: 50, time_pressure: 50 },
+        hard: { patience: 25, volatility: 70, disclosure: 25, time_pressure: 60 },
       },
     },
     supported_languages: ['en', 'es'],
@@ -131,11 +131,11 @@ export const SCENARIOS: Record<string, ScenarioInfo> = {
       brief: 'You need to give constructive feedback to a coworker about missing a project deadline.',
     },
     difficulty: {
-      default: 'normal',
+      default: 'standard',
       options: {
-        easy: { npc_patience_modifier: 20, challenge_frequency: 'low' },
-        normal: { npc_patience_modifier: 0, challenge_frequency: 'medium' },
-        hard: { npc_patience_modifier: -15, challenge_frequency: 'high' },
+        warm: { patience: 80, volatility: 20, disclosure: 70, time_pressure: 20 },
+        standard: { patience: 50, volatility: 50, disclosure: 50, time_pressure: 50 },
+        hard: { patience: 25, volatility: 70, disclosure: 25, time_pressure: 60 },
       },
     },
     supported_languages: ['en'],
