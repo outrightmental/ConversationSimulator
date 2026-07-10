@@ -776,6 +776,42 @@ describe('import-pack — installation verification', () => {
     expect(existsSync(join(dataDir, 'packs', 'test.cli_pack', 'manifest.yaml'))).toBe(true);
   });
 
+  it('upgrades to a newer version of the same pack (upgrade path)', () => {
+    const packDir = track(makeValidPackDir());
+    const dataDir = track(mkdtempSync(join(tmpdir(), 'convsim-data-')));
+
+    // Install v0.2.0.
+    expect(runImportPack(packDir, false, dataDir)).toBe(0);
+
+    // Build a v0.3.0 directory with the same pack_id.
+    const upgradeDir = track(mkdtempSync(join(tmpdir(), 'convsim-upgrade-')));
+    for (const sub of ['scenarios', 'npcs', 'rubrics', 'safety']) {
+      mkdirSync(join(upgradeDir, sub), { recursive: true });
+    }
+    writeFileSync(
+      join(upgradeDir, 'manifest.yaml'),
+      VALID_MANIFEST.replace('version: 0.2.0', 'version: 0.3.0'),
+    );
+    writeFileSync(join(upgradeDir, 'safety', 'policy.yaml'), VALID_SAFETY);
+    writeFileSync(join(upgradeDir, 'npcs', 'cli_test_npc.yaml'), VALID_NPC);
+    writeFileSync(join(upgradeDir, 'rubrics', 'cli_test_rubric.yaml'), VALID_RUBRIC);
+    writeFileSync(join(upgradeDir, 'scenarios', 'cli_test_scenario.yaml'), VALID_SCENARIO);
+
+    // Import v0.3.0 — must succeed.
+    expect(runImportPack(upgradeDir, false, dataDir)).toBe(0);
+
+    // The index must reflect the new version.
+    const dbPath = join(dataDir, 'index.db');
+    const index = PackIndex.open(dbPath);
+    try {
+      const entry = index.listPacks().find((p) => p.pack_id === 'test.cli_pack');
+      expect(entry).toBeDefined();
+      expect(entry?.version).toBe('0.3.0');
+    } finally {
+      index.close();
+    }
+  });
+
   it('succeeds when importing from the already-installed location (self-import)', () => {
     const packDir = track(makeValidPackDir());
     const dataDir = track(mkdtempSync(join(tmpdir(), 'convsim-data-')));
