@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint src"
+    "lint": "eslint src",
+    "check-i18n": "node ../../scripts/check-i18n.mjs"
   },
   "dependencies": {
     "@convsim/scenario-schema": "workspace:*",

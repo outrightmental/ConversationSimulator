@@ -87,6 +87,10 @@ jobs:
         run: |
           echo "Local: pnpm --filter @convsim/web typecheck"
           pnpm --filter @convsim/web typecheck
+      - name: i18n check (pseudo-locale hardcoded string audit)
+        run: |
+          echo "Local: pnpm --filter @convsim/web check-i18n"
+          pnpm --filter @convsim/web check-i18n
       - name: Run web tests
         run: |
           echo "Local: pnpm --filter @convsim/web test"
