@@ -74,8 +74,17 @@ foreach ($ext in $weightExts) {
 Get-ChildItem -Recurse -File -Path $DepotDir -Filter '*.bin' -ErrorAction SilentlyContinue |
     Where-Object { $_.Length -gt 1MB } |
     ForEach-Object {
-        $bytes = [System.IO.File]::ReadAllBytes($_.FullName)[0..1]
-        $isPE  = ($bytes[0] -eq 0x4D -and $bytes[1] -eq 0x5A)
+        # Read only the first two bytes; weight .bin files can be many GB, so
+        # loading the whole file into memory (ReadAllBytes) would exhaust RAM on
+        # exactly the files this audit exists to catch.
+        $fs = [System.IO.File]::OpenRead($_.FullName)
+        try {
+            $b0 = $fs.ReadByte()
+            $b1 = $fs.ReadByte()
+        } finally {
+            $fs.Dispose()
+        }
+        $isPE = ($b0 -eq 0x4D -and $b1 -eq 0x5A)
         if (-not $isPE) { Write-Violation "weights" $_.FullName }
     }
 

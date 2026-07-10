@@ -98,7 +98,12 @@ exe = EXE(  # noqa: F821
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    # UPX is disabled deliberately: on Windows UPX-packed binaries are a common
+    # antivirus false-positive trigger, and on macOS packing mutates the binary
+    # in a way that breaks codesigning / notarization required for a Steam
+    # release. The size win is not worth shipping a binary that AV blocks or that
+    # fails to launch for non-technical users.
+    upx=False,
     upx_exclude=[],
     runtime_tmpdir=None,
     console=True,
