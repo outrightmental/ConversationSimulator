@@ -21,11 +21,13 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, field_validator
 
 from convsim_core.scenario_state import build_variable_defs, partition_state_by_visibility
 from convsim_core.scenarios import get_scenario_info
 from convsim_core.services.debrief_engine import generate_debrief
+from convsim_core.services.transcript_export import format_transcript_as_markdown
 from convsim_core.services.tts_queue import synthesize_utterance
 from convsim_core.services.turn_pipeline import MAX_TURN_CONTENT_CHARS, TurnInputError, process_turn
 
@@ -211,6 +213,7 @@ class DebriefResponse(BaseModel):
     summary: str
     strengths: List[str]
     improvements: List[str]
+    missed_opportunities: List[str] = []
     turning_points: List[DebriefTurningPoint]
     replay_suggestions: List[str]
     npc_final_state: Dict[str, int]
@@ -638,6 +641,7 @@ async def create_debrief(session_id: str, request: Request) -> DebriefResponse:
                 summary=doc.get("summary", ""),
                 strengths=doc.get("strengths", []),
                 improvements=doc.get("improvements", []),
+                missed_opportunities=doc.get("missed_opportunities", []),
                 turning_points=[
                     DebriefTurningPoint(**tp) for tp in doc.get("turning_points", [])
                 ],
@@ -692,6 +696,7 @@ async def create_debrief(session_id: str, request: Request) -> DebriefResponse:
         summary=result.summary,
         strengths=result.strengths,
         improvements=result.improvements,
+        missed_opportunities=result.missed_opportunities,
         turning_points=[
             DebriefTurningPoint(**tp) for tp in result.turning_points
         ],
@@ -766,6 +771,58 @@ async def get_transcript(session_id: str, request: Request) -> TranscriptRespons
         scenario_id=row["scenario_id"],
         transcript_saved=True,
         turns=_turns_from_rows(turn_rows),
+    )
+
+
+@router.get("/{session_id}/export/text", response_class=PlainTextResponse)
+async def export_session_text(session_id: str, request: Request) -> PlainTextResponse:
+    """Export a session transcript and debrief as human-readable Markdown text.
+
+    Returns a UTF-8 text/markdown response with Content-Disposition set for
+    file download.  All data is sourced locally from the session database.
+    """
+    db = request.app.state.db
+    conn = db.connection()
+    row = conn.execute(
+        "SELECT * FROM turn_sessions WHERE session_id = ?", (session_id,)
+    ).fetchone()
+    if row is None:
+        raise HTTPException(status_code=404, detail=f"Session {session_id!r} not found")
+
+    setup = json.loads(row["setup_json"])
+    save_transcript = setup.get("save_transcript", True)
+    scenario_id = row["scenario_id"]
+
+    turn_rows = (
+        conn.execute(
+            "SELECT turn_number, role, content, emotion "
+            "FROM turn_session_turns WHERE session_id = ? ORDER BY turn_number ASC",
+            (session_id,),
+        ).fetchall()
+        if save_transcript
+        else []
+    )
+
+    debrief_row = conn.execute(
+        "SELECT content_json FROM session_debriefs "
+        "WHERE session_id = ? ORDER BY id DESC LIMIT 1",
+        (session_id,),
+    ).fetchone()
+    debrief_doc = json.loads(debrief_row["content_json"]) if debrief_row else None
+
+    turns = [dict(r) for r in turn_rows]
+    markdown = format_transcript_as_markdown(
+        session_id=session_id,
+        scenario_id=scenario_id,
+        turns=turns,
+        debrief=debrief_doc,
+        transcript_saved=save_transcript,
+    )
+    filename = f"session-{session_id}-transcript.md"
+    return PlainTextResponse(
+        content=markdown,
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
