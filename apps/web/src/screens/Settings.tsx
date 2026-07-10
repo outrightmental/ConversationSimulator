@@ -450,7 +450,7 @@ export default function Settings() {
           All data stays on this device. Use these paths for manual inspection or backup.
         </p>
         {foldersError ? (
-          <ApiErrorView error={foldersError} onRetry={() => { void api.getFolders().then((r) => { if (r.ok) { setFolders(r.data); setFoldersError(null) } else setFoldersError(r.error) }) }} context="Settings-Folders" />
+          <ApiErrorView error={foldersError} onRetry={() => { void api.getFolders().then((r) => { if (r.ok) { setFolders(r.data); setFoldersError(false) } else setFoldersError(r.error) }) }} context="Settings-Folders" />
         ) : folders === null ? (
           <p style={{ fontSize: '0.875rem', color: '#a1a1aa' }}>Loading…</p>
         ) : (
