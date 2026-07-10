@@ -552,6 +552,21 @@ class TestComputeMetrics:
         assert isinstance(metrics["open_questions"], int)
         assert isinstance(metrics["state_arc"], list)
 
+    def test_response_latency_populated_end_to_end(self, client):
+        """Regression: a real session must yield non-null latency percentiles.
+
+        The player turn is persisted at request-arrival time and the NPC turn
+        after inference completes, so their ``created_at`` values differ and the
+        latency computation has a real gap to measure. If both turns were ever
+        stamped with the same timestamp again the percentiles would collapse to
+        None — this test guards against that regression.
+        """
+        session_id = _complete_session(client)
+        metrics = client.post(f"/api/sessions/{session_id}/debrief").json()["metrics"]
+        assert metrics["response_latency_p50_ms"] is not None
+        assert metrics["response_latency_p95_ms"] is not None
+        assert metrics["response_latency_p50_ms"] >= 0
+
     def test_metrics_in_export(self, client):
         """Integration: metrics block is present in the /export JSON."""
         session_id = _complete_session(client)
