@@ -17,6 +17,8 @@ Each path exercises all API-testable stages of the voice flow:
 | `text_correction` | Raw STT output differs from final player text (edit exercised) |
 | `turn_loop` | Player turn submitted; NPC responds; no safety stop for benign input |
 | `tts` | At least one `tts_audio_chunk` event returned; `cache_path` non-null |
+| `thinking_pause` | First TTS chunk payload carries `thinking_pause_ms ≥ 0`; later chunks do not |
+| `barge_in` | Turn submitted with `barged_in=True` still gets NPC response; `interruption_count` in debrief metrics increments |
 | Text fallback | TTS-disabled sessions still deliver NPC content with no stale audio |
 
 > **Mic capture** and **VAD** are hardware and browser concerns. They cannot be exercised at the HTTP API level. Test them manually using a real microphone and the web UI.
@@ -125,11 +127,47 @@ successfully.
    - Add a scripted player turn constant near the top of the file.
 3. Add a smoke fixture YAML in the appropriate pack's `tests/` directory if the scenario is new.
 
+## Barge-in test script
+
+The barge-in feature (issue #308) is validated at the API level via
+`TestBargeIn` in `test_voice_smoke.py`.  To run it manually with the web UI:
+
+1. Start a session with TTS enabled and hands-free or push-to-talk mode.
+2. After the NPC begins speaking (TTS audio is playing), press Space or tap
+   the mic button to start recording.
+3. Verify that NPC audio fades out within 200 ms.
+4. Submit the turn and check the debrief: `interruption_count` should be
+   incremented by one.
+5. Repeat with push-to-talk — barge-in applies to both input modes.
+
+For barge-in to work, the `Barge-in` toggle in **Voice settings** must be on
+(default) and TTS must be enabled.
+
+## Backchannel test script
+
+Backchannels are off by default.  To test them manually:
+
+1. Enable **Backchannels** in Voice settings.
+2. Start a session with TTS enabled and hands-free or push-to-talk mode.
+3. Speak for more than ~3.5 seconds without stopping.
+4. Verify that a short acknowledgment ("mm-hm", "right", etc.) plays
+   while you are still speaking.
+5. Confirm the main NPC response plays after you stop speaking (backchannels
+   do not affect the turn pipeline).
+
+Backchannel audio is pre-synthesized via `/api/tts/backchannels` and cached
+alongside regular TTS audio.
+
 ## Test plan checklist
 
 - [ ] `python -m pytest tests/test_voice_smoke.py -v` passes in CI (mocked)
 - [ ] `test_full_voice_path` passes for English path
 - [ ] `test_full_voice_path` passes for Spanish path
 - [ ] Text fallback tests confirm no TTS events when `tts_enabled=False`
+- [ ] `TestNpcThinkingPause` passes — first chunk has `thinking_pause_ms`
+- [ ] `TestBargeIn` passes — `interruption_count` in debrief metrics
+- [ ] `python -m pytest tests/test_timing.py -v` passes
 - [ ] Manual real-runtime test with `whisper_cpp` + `kokoro` workers (local only)
 - [ ] Manual test with microphone input via web UI on push-to-talk mode
+- [ ] Manual barge-in test: speak during NPC TTS → audio fades within 200 ms
+- [ ] Manual backchannel test (enable in Voice settings first)

@@ -140,6 +140,43 @@ async def get_tts_audio(filename: str, request: Request) -> FileResponse:
     return FileResponse(str(resolved), media_type="audio/wav")
 
 
+_BACKCHANNEL_PHRASES: list[str] = ["mm-hm", "right", "I see", "go on", "uh-huh"]
+
+_DEFAULT_BACKCHANNEL_VOICE = "af_heart"
+
+
+@router.get("/api/tts/backchannels")
+async def get_backchannels(request: Request) -> dict:
+    """Return pre-synthesized backchannel acknowledgment audio paths.
+
+    Synthesizes a small set of short acknowledgment phrases ("mm-hm", "right",
+    etc.) using the default voice and caches them via the TTS cache.  The
+    client can play one of these at random while the player is speaking to
+    make the NPC feel present during long player utterances.
+
+    Returns a list of objects with ``text`` and ``cache_path`` fields.
+    Only phrases that synthesized without error are included.  Returns an
+    empty list when TTS is unavailable.
+    """
+    from convsim_core.tts.types import TtsRequest, TtsUnavailableError, TtsError
+
+    tts_worker = request.app.state.tts_worker
+    results = []
+    for phrase in _BACKCHANNEL_PHRASES:
+        tts_request = TtsRequest(
+            text=phrase,
+            voice_id=_DEFAULT_BACKCHANNEL_VOICE,
+            speed=1.0,
+        )
+        try:
+            result = await tts_worker.synthesize(tts_request)
+            if result.audio_path:
+                results.append({"text": phrase, "cache_path": result.audio_path})
+        except (TtsUnavailableError, TtsError):
+            break  # TTS unavailable — return what we have (may be empty)
+    return {"backchannels": results}
+
+
 @router.get("/api/tts/voices")
 async def list_voices() -> dict:
     """Return the approved built-in voice list.
