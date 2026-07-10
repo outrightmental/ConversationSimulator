@@ -237,9 +237,10 @@ transmitted to our servers or any third party during normal play.
 [**If an incident is being investigated, add:**]
 We are currently investigating a reported issue and will post an update here
 once we have a clear picture of what happened. Until then, you can review your
-local data at `~/.convsim/` (macOS / Linux) or
-`%LOCALAPPDATA%\outrightmental\convsim\` (Windows), and you can delete it at
-any time from Settings → Privacy → Clear all data.
+local data at `~/Library/Application Support/com.outrightmental.convsim/`
+(macOS), `~/.local/share/convsim/` (Linux / Steam Deck, or `$XDG_DATA_HOME/convsim`
+if set), or `%LOCALAPPDATA%\outrightmental\convsim\` (Windows), and you can
+delete it at any time from Settings → Privacy → Clear all data.
 
 ---
 
