@@ -64,6 +64,14 @@ function getFocusableElements(): HTMLElement[] {
   )
 }
 
+// Mark the document as controller-driven so the CSS focus ring shows on plain
+// :focus.  Programmatic .focus() does not trigger :focus-visible for
+// buttons/links in Chromium (gamepad input is not a keyboard "modality"), so
+// without this flag D-pad navigation would move focus invisibly on Steam Deck.
+function setGamepadActive(): void {
+  document.documentElement.classList.add('gamepad-active')
+}
+
 function moveFocus(direction: 'prev' | 'next'): void {
   const els = getFocusableElements()
   if (els.length === 0) return
@@ -73,6 +81,7 @@ function moveFocus(direction: 'prev' | 'next'): void {
     direction === 'next'
       ? els[(idx + 1) % els.length]
       : els[(idx - 1 + els.length) % els.length]
+  setGamepadActive()
   next?.focus({ preventScroll: false })
 }
 
@@ -169,7 +178,19 @@ export function useGamepadNavigation(): void {
       rafId = requestAnimationFrame(tick)
     }
 
+    // Switching back to the mouse should drop the controller focus ring so
+    // sighted mouse users are not shown outlines on hover/click.  We never
+    // dispatch pointer events ourselves (only Keyboard/CustomEvents), so any
+    // pointerdown here is genuine user input.
+    function handlePointer(): void {
+      document.documentElement.classList.remove('gamepad-active')
+    }
+
+    document.addEventListener('pointerdown', handlePointer, true)
     rafId = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(rafId)
+    return () => {
+      cancelAnimationFrame(rafId)
+      document.removeEventListener('pointerdown', handlePointer, true)
+    }
   }, [])
 }

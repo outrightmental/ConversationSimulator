@@ -60,6 +60,26 @@ const globalStyles = `
   nav a:focus-visible {
     outline-offset: 2px;
   }
+
+  /*
+   * Controller focus ring.  When focus is moved programmatically by
+   * useGamepadNavigation (via element.focus()), Chromium's :focus-visible
+   * heuristic does NOT match buttons/links — gamepad input is not a keyboard
+   * "modality", so the ring above would never appear during D-pad navigation
+   * on Steam Deck.  useGamepadNavigation adds .gamepad-active to <html> while a
+   * controller is driving focus, so mirror the same ring on plain :focus for
+   * that mode.  The class is cleared on real pointer input so mouse users are
+   * unaffected.
+   */
+  :root.gamepad-active :focus {
+    outline: 3px solid #6366f1;
+    outline-offset: 3px;
+    border-radius: 4px;
+  }
+
+  :root.gamepad-active nav a:focus {
+    outline-offset: 2px;
+  }
 `
 
 export default function AppLayout() {

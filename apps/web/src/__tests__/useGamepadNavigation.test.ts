@@ -78,6 +78,8 @@ describe('useGamepadNavigation', () => {
   afterEach(() => {
     vi.restoreAllMocks()
     vi.unstubAllGlobals()
+    // Navigation sets this class on <html>; clear it so it can't leak between tests.
+    document.documentElement.classList.remove('gamepad-active')
   })
 
   it('starts a requestAnimationFrame loop on mount', () => {
@@ -189,6 +191,33 @@ describe('useGamepadNavigation', () => {
     flushRaf() // D-down press
 
     expect(document.activeElement).toBe(btn2)
+
+    document.body.removeChild(btn1)
+    document.body.removeChild(btn2)
+  })
+
+  it('marks <html> gamepad-active on navigation and clears it on real pointer input', () => {
+    const btn1 = document.createElement('button')
+    const btn2 = document.createElement('button')
+    document.body.appendChild(btn1)
+    document.body.appendChild(btn2)
+    btn1.focus()
+
+    const BTN_DPAD_DOWN = 13
+    getGamepadsMock
+      .mockReturnValueOnce([makeGamepad({ buttons: makeButtons([]) })])
+      .mockReturnValueOnce([makeGamepad({ buttons: makeButtons([BTN_DPAD_DOWN]) })])
+
+    renderHook(() => useGamepadNavigation())
+    flushRaf() // idle
+    flushRaf() // D-down press moves focus and flags gamepad mode
+
+    // Without this class the CSS focus ring never shows for programmatic focus.
+    expect(document.documentElement.classList.contains('gamepad-active')).toBe(true)
+
+    // Pointer input returns to mouse mode and drops the ring.
+    document.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    expect(document.documentElement.classList.contains('gamepad-active')).toBe(false)
 
     document.body.removeChild(btn1)
     document.body.removeChild(btn2)
