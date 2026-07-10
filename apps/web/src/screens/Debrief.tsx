@@ -62,7 +62,12 @@ export default function Debrief() {
       }
     : null
 
-  const nextUpRecommendations = recommendNext(sessionProfile, scenariosResult.scenarios)
+  // Exclude the scenario that was just completed so "Next up" always points
+  // forward rather than recommending a repeat of the session just debriefed.
+  const nextUpScenarios = debrief?.scenario_id
+    ? scenariosResult.scenarios.filter((s) => s.scenario_id !== debrief.scenario_id)
+    : scenariosResult.scenarios
+  const nextUpRecommendations = recommendNext(sessionProfile, nextUpScenarios)
 
   useEffect(() => {
     if (!sessionId) return

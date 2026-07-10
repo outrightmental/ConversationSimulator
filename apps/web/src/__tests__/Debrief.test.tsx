@@ -694,4 +694,46 @@ describe('Debrief screen', () => {
       )
     })
   })
+
+  describe('Next up footer', () => {
+    function scenario(overrides: Record<string, unknown>) {
+      return {
+        pack_id: 'p1',
+        pack_name: 'Pack',
+        title: 'Untitled',
+        summary: '',
+        content_rating: 'G',
+        player_role: { label: 'Role', brief: 'brief' },
+        difficulty: { default: 'standard', options: {} },
+        supported_languages: ['en'],
+        duration: { max_turns: 10, soft_time_limit_minutes: 15 },
+        state_meters_permitted: false,
+        voice_supported: false,
+        safety_summary: '',
+        estimated_length_label: '~10 min',
+        ...overrides,
+      }
+    }
+
+    it('does not recommend the scenario that was just completed', async () => {
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
+      mockApi.listScenarios.mockResolvedValue({
+        ok: true,
+        // The completed scenario tests the weakest dimension (clarity=45), so
+        // without the exclusion it would rank first in "Next up".
+        data: [
+          scenario({ scenario_id: 'behavioral_interview', title: 'Behavioral Interview', tested_dimensions: ['clarity'] }),
+          scenario({ scenario_id: 'other_scenario', pack_id: 'p2', title: 'Other Scenario', tested_dimensions: ['clarity'] }),
+        ] as never,
+      })
+      renderDebrief()
+      await waitFor(() =>
+        expect(screen.getByTestId('next-up-section')).toBeInTheDocument(),
+      )
+      const links = screen.getAllByTestId('next-up-link')
+      const titles = links.map((l) => l.textContent)
+      expect(titles.some((tt) => tt?.includes('Other Scenario'))).toBe(true)
+      expect(titles.some((tt) => tt?.includes('Behavioral Interview'))).toBe(false)
+    })
+  })
 })
