@@ -185,6 +185,46 @@ describe('FirstRunWizard — welcome step', () => {
     renderWizard()
     expect(screen.getByTestId('home-page')).toBeInTheDocument()
   })
+
+  it('shows a How it works section', () => {
+    renderWizard()
+    expect(screen.getByText(/how it works/i)).toBeInTheDocument()
+  })
+
+  it('explains that a local AI model powers conversations', () => {
+    renderWizard()
+    expect(
+      screen.getByText(/a local ai model powers the conversations/i),
+    ).toBeInTheDocument()
+  })
+
+  it('explains what scenario packs are', () => {
+    renderWizard()
+    expect(
+      screen.getByText(/packs give you scenarios to practise/i),
+    ).toBeInTheDocument()
+  })
+
+  it('mentions the text-only demo option', () => {
+    renderWizard()
+    expect(
+      screen.getByText(/no download\? try the text-only demo/i),
+    ).toBeInTheDocument()
+  })
+
+  it('explains that the model runs without internet after download', () => {
+    renderWizard()
+    expect(
+      screen.getByText(/works without internet/i),
+    ).toBeInTheDocument()
+  })
+
+  it('shows a Read setup docs link', () => {
+    renderWizard()
+    const link = screen.getByRole('link', { name: /read setup docs/i })
+    expect(link).toBeInTheDocument()
+    expect(link).toHaveAttribute('target', '_blank')
+  })
 })
 
 // ── Choose step ───────────────────────────────────────────────────────────────
