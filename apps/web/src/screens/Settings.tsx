@@ -391,11 +391,11 @@ export default function Settings() {
 
       {/* Steam Cloud sync */}
       <section
-        aria-label="Steam Cloud sync"
+        aria-label={t('settings.steamCloud.heading')}
         data-testid="steam-cloud-section"
         style={{ marginBottom: '2rem' }}
       >
-        <SectionHeading>Steam Cloud sync</SectionHeading>
+        <SectionHeading>{t('settings.steamCloud.heading')}</SectionHeading>
 
         {/* Active indicator: shown only when the app is running under Steam */}
         {steamStatus?.launched_by_steam && (
@@ -411,36 +411,34 @@ export default function Settings() {
               color: '#7dd3fc',
             }}
           >
-            Steam Cloud is active for this session.
+            {t('settings.steamCloud.active')}
           </div>
         )}
 
         <p style={{ fontSize: '0.875rem', color: '#a1a1aa', marginBottom: '0.75rem' }}>
-          When launched via Steam, a small file is synced across your devices so your
-          settings carry over automatically. All conversation data remains exclusively
-          on each device.
+          {t('settings.steamCloud.description')}
         </p>
 
         <div aria-label="steam-cloud-synced-items" style={{ marginBottom: '0.75rem' }}>
           <p style={{ fontSize: '0.875rem', color: '#d4d4d8', marginBottom: '0.4rem', fontWeight: 500 }}>
-            What Steam Cloud syncs:
+            {t('settings.steamCloud.syncedHeading')}
           </p>
           <ul style={{ margin: '0 0 0 1.25rem', padding: 0, fontSize: '0.85rem', color: '#a1a1aa' }}>
-            <li>Last-used model selection</li>
+            <li>{t('settings.steamCloud.syncedModel')}</li>
           </ul>
         </div>
 
         <div aria-label="steam-cloud-excluded-items">
           <p style={{ fontSize: '0.875rem', color: '#d4d4d8', marginBottom: '0.4rem', fontWeight: 500 }}>
-            What always stays on this device only:
+            {t('settings.steamCloud.excludedHeading')}
           </p>
           <ul style={{ margin: '0 0 0 1.25rem', padding: 0, fontSize: '0.85rem', color: '#a1a1aa' }}>
-            <li>Conversation transcripts and session history</li>
-            <li>Prompts and scenario responses</li>
-            <li>Raw audio recordings</li>
-            <li>Downloaded AI model files</li>
-            <li>Crash bundles and diagnostic logs</li>
-            <li>Imported private scenario packs</li>
+            <li>{t('settings.steamCloud.excludedTranscripts')}</li>
+            <li>{t('settings.steamCloud.excludedPrompts')}</li>
+            <li>{t('settings.steamCloud.excludedAudio')}</li>
+            <li>{t('settings.steamCloud.excludedModels')}</li>
+            <li>{t('settings.steamCloud.excludedCrashLogs')}</li>
+            <li>{t('settings.steamCloud.excludedPacks')}</li>
           </ul>
         </div>
       </section>

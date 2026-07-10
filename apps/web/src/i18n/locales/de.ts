@@ -163,6 +163,21 @@ export const de: LocaleMessages = {
       cacheDescription:
         'Das Zwischenspeichern generierter Sprache beschleunigt wiederholte Sätze. Zwischengespeichertes Audio bleibt auf Ihrem Gerät und wird niemals geteilt.',
     },
+    steamCloud: {
+      heading: 'Steam-Cloud-Synchronisierung',
+      active: 'Steam Cloud ist für diese Sitzung aktiv.',
+      description:
+        'Beim Start über Steam wird eine kleine Datei zwischen Ihren Geräten synchronisiert, damit Ihre Einstellungen automatisch übernommen werden. Alle Konversationsdaten verbleiben ausschließlich auf dem jeweiligen Gerät.',
+      syncedHeading: 'Was Steam Cloud synchronisiert:',
+      syncedModel: 'Zuletzt verwendete Modellauswahl',
+      excludedHeading: 'Was ausschließlich auf diesem Gerät bleibt:',
+      excludedTranscripts: 'Konversationstranskripte und Sitzungsverlauf',
+      excludedPrompts: 'Prompts und Szenario-Antworten',
+      excludedAudio: 'Rohe Audioaufnahmen',
+      excludedModels: 'Heruntergeladene KI-Modelldateien',
+      excludedCrashLogs: 'Absturzberichte und Diagnoseprotokolle',
+      excludedPacks: 'Importierte private Szenario-Pakete',
+    },
     packs: {
       heading: 'Paketverwaltung',
       description:
