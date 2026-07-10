@@ -496,9 +496,13 @@ Navigate to **Settings → Support** (or the Help / Support screen).
 ### E.12 Achievements, stats, and rich presence (if included in build)
 
 > Skip this step if the build was not compiled with `--features steam`.
-> Steam features are present only when the Tauri command `get_steam_status`
-> returns `{"enabled": true, ...}`.  Check `GET /api/health` for the
-> `steam` field, or look for `[steam] Steam initialised` in the startup log.
+> Steam features are active only when the Tauri command `get_steam_status`
+> returns `is_steam_enabled: true` in its `SteamStatus` payload
+> (`{"is_steam_enabled": ..., "launched_by_steam": ..., "app_id": ...,
+> "persona_name": ...}`).  `is_steam_enabled` is `true` only when the build
+> includes the `steam` Cargo feature **and** the app was launched from a
+> running Steam client.  As a UI cross-check, the Settings → Steam Cloud
+> panel shows an "active" indicator whenever the app is `launched_by_steam`.
 
 - [ ] Completing a scored session triggers the expected achievement notification
   (Steam overlay toast or in-app indicator)
@@ -732,7 +736,7 @@ Navigate to **Settings → Support**.
 
 ### G.9 Achievements, stats, and rich presence (if included in build)
 
-> Skip if `get_steam_status` returns `{"enabled": false}`.
+> Skip if `get_steam_status` returns `is_steam_enabled: false` (see E.12).
 
 - [ ] Completing a scored session triggers an achievement notification
 - [ ] Steam overlay (Shift+Tab) reflects the unlocked achievement
@@ -854,7 +858,7 @@ Navigate to **Settings → Support**.
 
 ### H.9 Achievements, stats, and rich presence (if included in build)
 
-> Skip if `get_steam_status` returns `{"enabled": false}`.
+> Skip if `get_steam_status` returns `is_steam_enabled: false` (see E.12).
 
 - [ ] Completing a scored session triggers an achievement notification
 - [ ] Steam overlay (Shift+Tab) reflects the unlocked achievement
@@ -965,7 +969,7 @@ done
 
 ### I.7 Achievements, stats, and rich presence (if included in build)
 
-> Skip if `get_steam_status` returns `{"enabled": false}`.
+> Skip if `get_steam_status` returns `is_steam_enabled: false` (see E.12).
 
 - [ ] Achievement notification appears after a scored session (on-screen toast
   or Steam overlay notification visible from Gaming Mode)
