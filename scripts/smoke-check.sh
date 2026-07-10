@@ -120,6 +120,7 @@ check_file "scripts/desktop-smoke.ps1"
 # Packaging and audit scripts
 check_file "scripts/build-core.sh"
 check_file "scripts/build-core.ps1"
+check_file "scripts/build-linux.sh"
 check_file "scripts/depot-audit.sh"
 check_file "scripts/depot-audit.ps1"
 check_file "services/convsim-core/convsim-core.spec"
@@ -134,6 +135,7 @@ check_file ".github/workflows/release-smoke.yml"
 check_file "docs/release-notes-template.md"
 check_file "docs/platform-notes.md"
 check_file "docs/release-checklist.md"
+check_file "docs/linux-steamos-requirements.md"
 
 echo ""
 
