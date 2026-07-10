@@ -717,7 +717,7 @@ jobs:
             exit 0
           fi
 
-          python3 - <<PYEOF
+          python3 - <<PYEOF > latest.json
           import json, sys
 
           platforms = {}
@@ -741,7 +741,6 @@ jobs:
           }
           print(json.dumps(manifest, indent=2))
           PYEOF
-          ) > latest.json
 
           echo "=== Generated latest.json ==="
           cat latest.json
