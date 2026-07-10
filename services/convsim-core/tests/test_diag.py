@@ -201,6 +201,42 @@ def test_post_beta_report_written_to_crash_bundles_dir(client):
     assert bundle_path.parent == crash_bundles_dir
 
 
+def test_beta_report_preflight_redacts_home_paths(tmp_path):
+    """Home-directory prefixes in the preflight snapshot must be redacted.
+
+    The STT health payload embeds an absolute model path (and error messages
+    reference it) that leak the OS username unless redacted — this asserts the
+    bundle honours its own privacy promise for preflight.json.
+    """
+    from convsim_core.beta_report import create_beta_report_bundle
+    from convsim_core.models import AppSettings
+
+    home = str(Path.home())
+    leaky_path = f"{home}/.convsim/models/stt/ggml-base.en.bin"
+    preflight = {
+        "runtime": {"runtime_id": "fake", "status": "ready"},
+        "stt": {
+            "worker_id": "whisper",
+            "model_path": leaky_path,
+            "message": f"STT model not found at {leaky_path!r}.",
+        },
+        "tts": {"worker_id": "piper", "status": "ready"},
+    }
+
+    bundle_path = create_beta_report_bundle(
+        log_dir=str(tmp_path),
+        settings=AppSettings(data_dir=str(tmp_path), log_dir=str(tmp_path)),
+        preflight=preflight,
+        bundle_dir=str(tmp_path),
+    )
+
+    with zipfile.ZipFile(bundle_path) as zf:
+        raw = zf.read("preflight.json").decode("utf-8")
+
+    assert home not in raw, f"preflight.json leaked home prefix: {raw}"
+    assert "~/.convsim/models/stt/ggml-base.en.bin" in raw
+
+
 def test_post_beta_report_makes_no_outbound_network_calls(client):
     """Creating a beta report must not make any outbound (non-loopback) calls.
 

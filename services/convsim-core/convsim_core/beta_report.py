@@ -18,6 +18,7 @@ Bundle contents:
 from __future__ import annotations
 
 import json
+import os
 import platform
 import sqlite3
 import sys
@@ -29,6 +30,8 @@ from typing import Any
 from convsim_core import __version__
 from convsim_core.crash_report import _safe_settings, _tail_log, _MAX_LOG_TAIL_LINES
 from convsim_core.models import AppSettings
+
+_HOME_PREFIX: str = str(Path.home())
 
 _BUNDLE_README = """\
 BETA REPORT BUNDLE — ConversationSimulator
@@ -77,6 +80,38 @@ _SAFE_SESSION_FIELDS: tuple[str, ...] = (
 )
 
 
+def _redact_home_in_text(text: str) -> str:
+    """Replace the home-directory prefix with ``~`` anywhere it appears.
+
+    Unlike :func:`convsim_core.redaction.redact_path`, which only redacts a
+    string that *is* an absolute path, this also catches paths embedded inside
+    larger strings — e.g. an STT health ``message`` such as
+    ``"STT model not found at '/home/alice/.convsim/...'"``.  The prefix is only
+    replaced when followed by a path separator so unrelated strings that merely
+    share the prefix (e.g. ``/home/alice-backup``) are left intact.
+    """
+    if not _HOME_PREFIX:
+        return text
+    return text.replace(_HOME_PREFIX + os.sep, "~" + os.sep)
+
+
+def _redact_paths(value: Any) -> Any:
+    """Recursively redact home-directory prefixes in any string values.
+
+    The preflight snapshot embeds health fields such as ``stt.model_path`` and
+    error ``message`` strings that contain absolute paths — these leak the OS
+    username unless redacted.  Non-path strings are returned unchanged, so this
+    is safe to apply blanket across the whole snapshot.
+    """
+    if isinstance(value, str):
+        return _redact_home_in_text(value)
+    if isinstance(value, dict):
+        return {k: _redact_paths(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_redact_paths(v) for v in value]
+    return value
+
+
 def _last_session_metadata(conn: sqlite3.Connection) -> dict[str, Any] | None:
     """Return metadata for the most recent session, or None if no sessions exist.
 
@@ -114,8 +149,10 @@ def create_beta_report_bundle(
     settings:
         Current application settings (paths are sanitised before inclusion).
     preflight:
-        A health/runtime snapshot dict safe to include verbatim (must not
-        contain transcripts or user input — callers are responsible).
+        A health/runtime snapshot dict.  Home-directory prefixes in any string
+        values are redacted to ``~`` before writing, so it is safe to pass the
+        raw health payload; callers remain responsible for ensuring it contains
+        no transcripts or user input.
     bundle_dir:
         Directory to write the bundle into.  Falls back to
         ``<log_dir>/beta-reports/`` when *None*.
@@ -154,7 +191,7 @@ def create_beta_report_bundle(
     with zipfile.ZipFile(bundle_path, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("versions.json", json.dumps(versions, indent=2))
         zf.writestr("config.json", json.dumps(_safe_settings(settings), indent=2))
-        zf.writestr("preflight.json", json.dumps(preflight, indent=2))
+        zf.writestr("preflight.json", json.dumps(_redact_paths(preflight), indent=2))
         zf.writestr("recent_errors.txt", recent_errors)
         zf.writestr("system.txt", json.dumps(system_info, indent=2))
 
