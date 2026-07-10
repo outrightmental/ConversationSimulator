@@ -132,7 +132,8 @@ until every item is checked.
 - [ ] The depot audit passes for all three platform depots — exit code 0 from
       `./scripts/depot-audit.sh` on each `steam-content/<platform>` directory.
 - [ ] The Steam deploy workflow has run successfully for the launch tag with
-      `set_live_branch` left empty (staged build, not yet live).
+      `set_live_branch` cleared (the field defaults to `beta`, so it must be
+      emptied for a staged build that is not yet live).
 - [ ] The staged build was verified in the Steamworks partner portal: build
       appears in the App Admin → Builds section with all three depots.
 

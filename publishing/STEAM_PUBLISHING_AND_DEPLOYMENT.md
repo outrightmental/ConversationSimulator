@@ -127,7 +127,7 @@ The workflow is triggered manually under Actions → Steam Deploy → Run workfl
 |-------|----------|-------------|
 | `release_tag` | Yes | The GitHub release tag to upload (e.g. `v0.3.0`). The release must already exist and its build artifacts must be published. |
 | `build_description` | No | Human-readable description shown in Steamworks. Defaults to `Conversation Simulator <tag>`. |
-| `set_live_branch` | No | Leave blank for a staged (dry-run) upload. Use `beta` to promote to Stage 3 testers. Use `default` only for the public release — all Stage 4 gate items must be checked first. |
+| `set_live_branch` | No | **Defaults to `beta`** (Stage 3 promotion). Clear the field for a staged (dry-run) upload that sets no branch live. Use `default` only for the public release — all Stage 4 gate items must be checked first. |
 
 ### Workflow steps
 
