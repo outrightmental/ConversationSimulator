@@ -295,6 +295,17 @@ The Steam edition makes the same local-first guarantee as the open-source build.
 
 ---
 
+## Beta testing
+
+Running a pre-release build?  Use **Support → Report a problem** in the app to
+assemble a redacted diagnostics bundle and open a pre-filled GitHub issue — all
+in under a minute, nothing uploaded automatically.
+
+> [docs/beta-testing.md](docs/beta-testing.md) — how to join, where to report,
+> what a good report looks like
+
+---
+
 ## Contributing
 
 All contributions are welcome — new scenario packs, bug fixes, documentation
