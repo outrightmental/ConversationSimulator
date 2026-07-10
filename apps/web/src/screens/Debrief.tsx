@@ -130,6 +130,8 @@ export default function Debrief() {
           language: newSession.setup.language,
           show_state_meters: newSession.setup.show_state_meters,
           scenario_id: newSession.scenario_id,
+          input_mode: newSession.setup.input_mode,
+          tts_enabled: newSession.setup.tts_enabled,
         },
       })
     } catch {
