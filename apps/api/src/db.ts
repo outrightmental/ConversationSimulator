@@ -73,6 +73,15 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    name: '0002_session_ended_at',
+    up: (db) => {
+      const cols = (db.pragma('table_info(sessions)') as { name: string }[]).map((r) => r.name);
+      if (!cols.includes('ended_at')) {
+        db.exec('ALTER TABLE sessions ADD COLUMN ended_at TEXT');
+      }
+    },
+  },
 ];
 
 function runMigrations(db: Database.Database): void {

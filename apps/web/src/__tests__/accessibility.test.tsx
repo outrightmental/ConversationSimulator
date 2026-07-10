@@ -39,6 +39,8 @@ vi.mock('../api/client', () => ({
     submitTurn: vi.fn(),
     generateDebrief: vi.fn().mockReturnValue(new Promise(() => {})),
     exportSession: vi.fn(),
+    getLogbookProfile: vi.fn().mockReturnValue(new Promise(() => {})),
+    exportLogbook: vi.fn().mockReturnValue(new Promise(() => {})),
     connectSession: vi.fn().mockReturnValue({ close: vi.fn() }),
     listSessions: vi.fn().mockResolvedValue({ ok: true, data: { sessions: [] } }),
     getDataFolder: vi.fn().mockResolvedValue({ ok: true, data: { path: '/tmp/data' } }),
@@ -85,6 +87,31 @@ vi.mock('../api/useApiHealth', () => ({
 
 vi.mock('../api/usePackCount', () => ({
   usePackCount: vi.fn().mockReturnValue(0),
+}))
+
+vi.mock('../api/useLogbookProfile', () => ({
+  useLogbookProfile: vi.fn().mockReturnValue({ state: 'loading', profile: null }),
+}))
+
+vi.mock('../hooks/useSteamAchievements', () => ({
+  useSteamAchievements: () => ({
+    unlock: vi.fn(() => Promise.resolve(false)),
+    incrementStat: vi.fn(() => Promise.resolve(false)),
+  }),
+  SteamAchievement: {
+    FIRST_SCENARIO: 'ACH_FIRST_SCENARIO',
+    FIRST_DEBRIEF: 'ACH_FIRST_DEBRIEF',
+    PRACTICE_STREAK: 'ACH_PRACTICE_STREAK',
+    PACK_EXPLORER: 'ACH_PACK_EXPLORER',
+    CREATOR_FIRST_VALIDATE: 'ACH_CREATOR_FIRST_VALIDATE',
+  },
+  SteamStat: {
+    SCENARIOS_COMPLETED: 'STAT_SCENARIOS_COMPLETED',
+    DEBRIEFS_GENERATED: 'STAT_DEBRIEFS_GENERATED',
+    PACKS_VALIDATED: 'STAT_PACKS_VALIDATED',
+    TEXT_MODE_SESSIONS: 'STAT_TEXT_MODE_SESSIONS',
+    VOICE_MODE_SESSIONS: 'STAT_VOICE_MODE_SESSIONS',
+  },
 }))
 
 // ── Screen imports ────────────────────────────────────────────────────────────
