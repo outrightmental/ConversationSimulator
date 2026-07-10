@@ -453,6 +453,9 @@ async def submit_turn(session_id: str, body: TurnSubmitRequest, request: Request
             conn=conn,
             save_transcript=save_transcript,
             source_mode=source_mode,
+            state_variable_overrides=info.state_variable_overrides,
+            scenario_events=info.events,
+            ending_conditions=info.ending_conditions,
         )
     except TurnInputError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -473,7 +476,10 @@ async def submit_turn(session_id: str, body: TurnSubmitRequest, request: Request
             "content": result.npc_utterance,
             "emotion": result.npc_emotion,
             "state_delta": result.state_delta,
+            "visible_state": result.visible_state,
             "event_flags": result.event_flags,
+            "triggered_scenario_events": result.triggered_scenario_events,
+            "rubric_observations": result.rubric_observations,
             "safety": {
                 "status": result.safety_status,
                 "reason": result.safety_reason,
