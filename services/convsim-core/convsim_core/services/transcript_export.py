@@ -94,6 +94,34 @@ def format_transcript_as_markdown(
                 lines.append(f"- {item}")
             lines.append("")
 
+        metrics = debrief.get("metrics")
+        if metrics:
+            lines.append("### Telemetry")
+            lines.append("")
+            talk_ratio = metrics.get("talk_ratio")
+            if talk_ratio is not None:
+                player_pct = round(talk_ratio * 100)
+                npc_pct = 100 - player_pct
+                lines.append(f"- **Talk ratio**: Player {player_pct}% / NPC {npc_pct}%")
+            wpt_player = metrics.get("words_per_turn_player")
+            wpt_npc = metrics.get("words_per_turn_npc")
+            if wpt_player is not None:
+                lines.append(f"- **Words per turn (player)**: {wpt_player}")
+            if wpt_npc is not None:
+                lines.append(f"- **Words per turn (NPC)**: {wpt_npc}")
+            open_q = metrics.get("open_questions", 0)
+            closed_q = metrics.get("closed_questions", 0)
+            if open_q or closed_q:
+                lines.append(f"- **Questions**: {open_q} open, {closed_q} closed")
+            filler = metrics.get("filler_word_count", 0)
+            if filler:
+                lines.append(f"- **Filler words**: {filler}")
+            p50 = metrics.get("response_latency_p50_ms")
+            p95 = metrics.get("response_latency_p95_ms")
+            if p50 is not None:
+                lines.append(f"- **Response latency**: p50 {p50} ms / p95 {p95} ms")
+            lines.append("")
+
     lines.append("## Transcript")
     lines.append("")
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import type { DebriefTurningPoint, SessionDebriefResponse, SessionCreateRequest } from '@convsim/shared'
+import type { DebriefTurningPoint, DebriefMetrics, SessionDebriefResponse, SessionCreateRequest } from '@convsim/shared'
 import { api } from '../api/client'
 import type { ApiError } from '../api/errors'
 import { ApiErrorView } from '../components/ApiErrorView'
@@ -519,6 +519,11 @@ export default function Debrief() {
             </section>
           )}
 
+          {/* Telemetry */}
+          {debrief.metrics && (
+            <TelemetryPanel metrics={debrief.metrics} />
+          )}
+
           {/* Strengths */}
           {debrief.strengths && debrief.strengths.length > 0 && (
             <section aria-labelledby="strengths-heading">
@@ -952,6 +957,150 @@ function TranscriptTurn({
       >
         {content}
       </div>
+    </div>
+  )
+}
+
+function StateArcSparkline({ arc, variable }: { arc: DebriefMetrics['state_arc']; variable: string }) {
+  const values = arc.map((e) => e.state[variable]).filter((v) => v !== undefined) as number[]
+  if (values.length < 2) return null
+  const W = 120
+  const H = 32
+  const min = 0
+  const max = 100
+  const points = values.map((v, i) => {
+    const x = (i / (values.length - 1)) * W
+    const y = H - ((v - min) / (max - min)) * H
+    return `${x.toFixed(1)},${y.toFixed(1)}`
+  })
+  return (
+    <svg
+      width={W}
+      height={H}
+      aria-label={`${variable} over turns`}
+      style={{ overflow: 'visible', flexShrink: 0 }}
+    >
+      <polyline
+        points={points.join(' ')}
+        fill="none"
+        stroke="#6ee7b7"
+        strokeWidth={1.5}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
+function TelemetryPanel({ metrics }: { metrics: DebriefMetrics }) {
+  const playerPct = Math.round(metrics.talk_ratio * 100)
+  const npcPct = 100 - playerPct
+
+  const stateVarNames = metrics.state_arc.length > 0
+    ? Object.keys(metrics.state_arc[metrics.state_arc.length - 1].state)
+    : []
+
+  return (
+    <section
+      aria-labelledby="telemetry-heading"
+      data-testid="telemetry-panel"
+      style={{
+        padding: '0.75rem 1rem',
+        borderRadius: 8,
+        background: '#09090b',
+        border: '1px solid #27272a',
+      }}
+    >
+      <h2 id="telemetry-heading" style={{ margin: '0 0 0.75rem', fontSize: '1.1rem' }}>
+        Telemetry
+      </h2>
+
+      {/* Headline numbers */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))',
+          gap: '0.75rem',
+          marginBottom: stateVarNames.length > 0 ? '1rem' : 0,
+        }}
+      >
+        <TelemetryStat
+          label="Talk ratio"
+          value={`${playerPct}% / ${npcPct}%`}
+          sub="player / NPC"
+        />
+        <TelemetryStat
+          label="Words / turn"
+          value={`${metrics.words_per_turn_player} / ${metrics.words_per_turn_npc}`}
+          sub="player / NPC"
+        />
+        <TelemetryStat
+          label="Questions"
+          value={`${metrics.open_questions} open, ${metrics.closed_questions} closed`}
+        />
+        {metrics.filler_word_count > 0 && (
+          <TelemetryStat
+            label="Filler words"
+            value={String(metrics.filler_word_count)}
+          />
+        )}
+        {metrics.response_latency_p50_ms !== null && (
+          <TelemetryStat
+            label="Response latency"
+            value={`p50 ${metrics.response_latency_p50_ms} ms`}
+            sub={metrics.response_latency_p95_ms !== null ? `p95 ${metrics.response_latency_p95_ms} ms` : undefined}
+          />
+        )}
+      </div>
+
+      {/* State arc sparklines */}
+      {stateVarNames.length > 0 && (
+        <div>
+          <p style={{ margin: '0 0 0.5rem', fontSize: '0.75rem', color: '#71717a' }}>
+            State meters across turns
+          </p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+            {stateVarNames.map((varName) => (
+              <div
+                key={varName}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}
+              >
+                <span
+                  style={{
+                    flex: '0 0 110px',
+                    fontSize: '0.75rem',
+                    color: '#a1a1aa',
+                    textTransform: 'capitalize',
+                  }}
+                >
+                  {varName.replace(/_/g, ' ')}
+                </span>
+                <StateArcSparkline arc={metrics.state_arc} variable={varName} />
+                <span style={{ fontSize: '0.7rem', color: '#6ee7b7', minWidth: 28, textAlign: 'right' }}>
+                  {metrics.state_arc[metrics.state_arc.length - 1].state[varName] ?? '—'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
+  )
+}
+
+function TelemetryStat({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div
+      style={{
+        padding: '0.5rem 0.75rem',
+        borderRadius: 6,
+        background: '#18181b',
+        border: '1px solid #27272a',
+      }}
+    >
+      <div style={{ fontSize: '0.7rem', color: '#71717a', marginBottom: 2 }}>{label}</div>
+      <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#f4f4f5' }}>{value}</div>
+      {sub && <div style={{ fontSize: '0.7rem', color: '#71717a', marginTop: 1 }}>{sub}</div>}
     </div>
   )
 }
