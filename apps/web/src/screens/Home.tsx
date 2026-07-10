@@ -6,6 +6,7 @@ import { useApiHealth } from '../api/useApiHealth'
 import { usePackCount } from '../api/usePackCount'
 import { apiClient } from '../api/client'
 import { useTranslation } from '../i18n'
+import { useLogbookProfile } from '../api/useLogbookProfile'
 import type { BadgeStatus } from '@convsim/ui'
 
 const DOCS_URL = 'https://github.com/outrightmental/ConversationSimulator/wiki'
@@ -14,6 +15,7 @@ const ISSUES_URL = 'https://github.com/outrightmental/ConversationSimulator/issu
 export default function Home() {
   const health = useApiHealth()
   const packCount = usePackCount()
+  const logbook = useLogbookProfile()
   const loading = health.state === 'loading'
   const { t } = useTranslation()
   const [reseeding, setReseeding] = useState(false)
@@ -97,6 +99,103 @@ export default function Home() {
           {t('home.readDocs')}
         </a>
       </nav>
+
+      <section aria-label={t('home.yourTraining')} style={{ marginTop: '2rem' }}>
+        <h2 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.75rem' }}>{t('home.yourTraining')}</h2>
+        {logbook.state === 'loading' && (
+          <p style={{ color: '#71717a', fontSize: '0.875rem' }}>{t('home.training.loading')}</p>
+        )}
+        {logbook.state === 'ready' && logbook.profile && logbook.profile.total_sessions === 0 && (
+          <div
+            style={{
+              padding: '0.85rem 1rem',
+              border: '1px solid rgba(255,255,255,0.07)',
+              borderRadius: '6px',
+              fontSize: '0.875rem',
+              color: '#a1a1aa',
+            }}
+          >
+            <p style={{ margin: '0 0 0.4rem' }}>{t('home.training.empty')}</p>
+            <p style={{ margin: 0, fontSize: '0.8rem' }}>
+              {t('home.training.emptyCta')}{' '}
+              <Link to="/library" style={{ color: '#6366f1' }}>
+                {t('home.training.startNow')}
+              </Link>
+            </p>
+          </div>
+        )}
+        {logbook.state === 'ready' && logbook.profile && logbook.profile.total_sessions > 0 && (
+          <div
+            style={{
+              padding: '0.85rem 1rem',
+              border: '1px solid rgba(255,255,255,0.07)',
+              borderRadius: '6px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.5rem',
+            }}
+          >
+            <ul
+              style={{
+                listStyle: 'none',
+                padding: 0,
+                margin: 0,
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '0.75rem 1.5rem',
+                fontSize: '0.875rem',
+              }}
+            >
+              <li>
+                <span style={{ color: '#71717a' }}>{t('home.training.sessions')}: </span>
+                <strong>{logbook.profile.total_sessions}</strong>
+              </li>
+              <li>
+                <span style={{ color: '#71717a' }}>{t('home.training.streak')}: </span>
+                <strong>{logbook.profile.streak_days} {logbook.profile.streak_days !== 1 ? t('home.training.days') : t('home.training.day')}</strong>
+              </li>
+              {logbook.profile.strongest_dimension && (
+                <li>
+                  <span style={{ color: '#71717a' }}>{t('home.training.strongest')}: </span>
+                  <strong style={{ color: '#4ade80' }}>
+                    {logbook.profile.strongest_dimension.replace(/_/g, ' ')}
+                  </strong>
+                </li>
+              )}
+              {logbook.profile.weakest_dimension &&
+                logbook.profile.weakest_dimension !== logbook.profile.strongest_dimension && (
+                  <li>
+                    <span style={{ color: '#71717a' }}>{t('home.training.needsWork')}: </span>
+                    <strong style={{ color: '#f87171' }}>
+                      {logbook.profile.weakest_dimension.replace(/_/g, ' ')}
+                    </strong>
+                  </li>
+                )}
+              {logbook.profile.last_session_delta !== null && (
+                <li>
+                  <span style={{ color: '#71717a' }}>{t('home.training.lastSession')}: </span>
+                  <strong
+                    style={{
+                      color:
+                        logbook.profile.last_session_delta > 0
+                          ? '#4ade80'
+                          : logbook.profile.last_session_delta < 0
+                          ? '#f87171'
+                          : '#a1a1aa',
+                    }}
+                  >
+                    {logbook.profile.last_session_delta >= 0 ? '+' : ''}
+                    {Math.round(logbook.profile.last_session_delta)}
+                  </strong>
+                </li>
+              )}
+            </ul>
+            <Link to="/logbook" style={{ fontSize: '0.8rem', color: '#6366f1', alignSelf: 'flex-start' }}>
+              {t('home.training.viewFull')}
+            </Link>
+          </div>
+        )}
+      </section>
 
       <section aria-label={t('home.readinessSection')} style={{ marginTop: '2rem' }}>
         <h2>{t('home.status.heading')}</h2>
