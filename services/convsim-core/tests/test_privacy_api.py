@@ -70,11 +70,25 @@ def test_crash_bundles_folder_created_at_startup(client):
 
 
 def test_nosteamcloudpath_written_to_user_data_dirs(client):
-    """Each mutable user-data dir must have a .nosteamcloudpath marker."""
+    """Each mutable user-data dir must have a .nosteamcloudpath marker.
+
+    models (model files) is explicitly named in issue #221 as data that must
+    not reach Steam Cloud, so it must be marked alongside the other dirs.
+    """
     data = client.get("/api/privacy/folders").json()
-    for key in ("data", "logs", "packs", "exports", "cache", "crash_bundles"):
+    for key in ("data", "logs", "packs", "exports", "cache", "crash_bundles", "models"):
         marker = Path(data[key]) / ".nosteamcloudpath"
         assert marker.exists(), f".nosteamcloudpath missing in {key} folder: {data[key]}"
+
+
+def test_nosteamcloudpath_written_to_db_dir(client):
+    """The db directory holds conversation transcripts and prompts, which issue
+    #221 requires be kept out of Steam Cloud; it must carry the marker even
+    though it is not exposed by the /privacy/folders endpoint."""
+    db_dir = Path(client.app.state.service_config.db_dir)
+    assert (db_dir / ".nosteamcloudpath").exists(), (
+        f".nosteamcloudpath missing in db folder: {db_dir}"
+    )
 
 
 def test_post_clear_returns_200(client):

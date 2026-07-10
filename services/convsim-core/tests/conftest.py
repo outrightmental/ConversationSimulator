@@ -22,6 +22,9 @@ def tmp_config(tmp_path, monkeypatch):
         exports_dir=str(tmp_path / "exports"),
         cache_dir=str(tmp_path / "cache"),
         crash_bundles_dir=str(tmp_path / "crashes"),
+        # Isolate models_dir to tmp_path so eager directory creation on startup
+        # does not touch the real platform models directory under the home dir.
+        models_dir=str(tmp_path / "models" / "llm"),
         # Allow folder imports from tmp_path so integration tests can use
         # make_pack_dir() without placing packs inside packs_dir itself.
         local_dev_packs_dir=str(tmp_path),

@@ -294,3 +294,46 @@ class TestMigrate:
         assert needs_migration(new, legacy)
         migrate(new, legacy)
         assert not needs_migration(new, legacy)
+
+
+class TestMigrationDuringAppStartup:
+    """End-to-end: create_app must migrate legacy data before configure_logging
+    populates the (previously empty) platform root and defeats needs_migration.
+    """
+
+    def test_create_app_migrates_legacy_data_before_logging(self, tmp_path, monkeypatch):
+        import convsim_core.app as app_mod
+        from convsim_core.config import ServiceConfig
+
+        new_root = tmp_path / "platform_root"  # does not exist yet
+        legacy = tmp_path / "legacy"
+        (legacy / "db").mkdir(parents=True)
+        (legacy / "db" / "convsim.sqlite3").write_text("legacy-conversations")
+
+        # Redirect the app's root/legacy resolution to our fixtures.
+        monkeypatch.setattr(app_mod, "platform_data_root", lambda: new_root)
+        monkeypatch.setattr(app_mod, "legacy_convsim_dir", lambda: legacy)
+
+        # Config points every mutable dir under the (initially empty) new root,
+        # mirroring a packaged install where log_dir == <root>/logs.
+        cfg = ServiceConfig(
+            data_dir=str(new_root / "data"),
+            log_dir=str(new_root / "logs"),
+            db_dir=str(new_root / "db"),
+            packs_dir=str(new_root / "packs"),
+            exports_dir=str(new_root / "exports"),
+            cache_dir=str(new_root / "cache"),
+            crash_bundles_dir=str(new_root / "crashes"),
+            models_dir=str(new_root / "models" / "llm"),
+            official_packs_dir=str(tmp_path / "no-official-packs"),
+        )
+
+        # create_app runs migration + configure_logging synchronously; the
+        # lifespan (Database.open etc.) is not entered here.
+        app_mod.create_app(cfg)
+
+        migrated = new_root / "db" / "convsim.sqlite3"
+        assert migrated.exists(), "legacy db was not migrated during startup"
+        assert migrated.read_text() == "legacy-conversations"
+        # Original legacy data must be preserved (copy, not move).
+        assert (legacy / "db" / "convsim.sqlite3").read_text() == "legacy-conversations"
