@@ -135,9 +135,12 @@ installer small.
   Backend-dependent features (Model Manager, Scenario Library, Conversation,
   Debrief, Settings) require running `convsim-core` separately. See
   [docs/install.md](install.md) for the developer install path.
-- **No auto-update.** Download new releases manually from the releases page.
-- **No code signing.** macOS and Windows will warn about unverified publishers
-  (see installation instructions above).
+- **In-app update notice.** The app checks for a new beta on launch and shows
+  a banner on the home screen.  Clicking **Install** opens this release page
+  for manual download.  The check is skipped silently when offline.
+- **No code signing (until #235).** macOS and Windows will warn about
+  unverified publishers (see installation instructions above).  Follow the
+  Gatekeeper / SmartScreen bypass steps in [docs/install.md](install.md).
 - **Speech input / output** requires additional local runtimes. Speech-to-text
   uses whisper.cpp (`./runtimes/whisper_cpp/download-runtime.sh`); text-to-speech
   uses a local Kokoro server. See the runtime READMEs under `runtimes/` for setup.
