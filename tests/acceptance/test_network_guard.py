@@ -205,7 +205,7 @@ _SILENT_WAV: bytes = (
 _TEXT_TURN = "I reduced on-call incidents by forty percent by improving our runbook coverage."
 _SETUP_TEXT = {
     "scenario_id": "behavioral_interview",
-    "difficulty": "normal",
+    "difficulty": "standard",
     "player_role_name": "Guard Tester",
     "language": "en",
     "input_mode": "text-only",

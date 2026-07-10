@@ -216,7 +216,7 @@ description: >-
 
 seed: 42
 input_mode: text
-difficulty: normal
+difficulty: standard
 
 # Multi-turn scripted conversation — each turn represents an ideal player move
 turns:

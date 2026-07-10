@@ -804,17 +804,36 @@ state:
     perceived_specificity: 40
 
 difficulty:
-  default: "normal"
+  default: "standard"
   options:
-    easy:
-      npc_patience_modifier: 15
-      challenge_frequency: low
-    normal:
-      npc_patience_modifier: 0
-      challenge_frequency: medium
+    warm:
+      patience: 80
+      volatility: 20
+      disclosure: 80
+      time_pressure: 10
+      label: "Warm-up"
+      description: "Forgiving, patient interviewer — great for first practice."
+    standard:
+      patience: 60
+      volatility: 40
+      disclosure: 60
+      time_pressure: 30
+      label: "Standard"
+      description: "Balanced challenge matching a typical interview."
     hard:
-      npc_patience_modifier: -20
-      challenge_frequency: high
+      patience: 35
+      volatility: 65
+      disclosure: 40
+      time_pressure: 60
+      label: "Hard"
+      description: "Demanding interviewer who pushes back on vague answers."
+    adversarial:
+      patience: 15
+      volatility: 90
+      disclosure: 20
+      time_pressure: 90
+      label: "Adversarial"
+      description: "Highly skeptical — expect interruptions and sharp challenges."
 
 events:
   - id: "rambling_warning"

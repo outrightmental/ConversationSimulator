@@ -455,7 +455,7 @@ smoke_text_session() {
     create_resp="$(curl -s --max-time 10 -w '\n%{http_code}' \
         -X POST "$CORE_URL/api/sessions" \
         -H 'Content-Type: application/json' \
-        -d '{"scenario_id":"behavioral_interview","player_role_name":"Smoke Tester","difficulty":"normal","language":"en","input_mode":"text-only","tts_enabled":false}' \
+        -d '{"scenario_id":"behavioral_interview","player_role_name":"Smoke Tester","difficulty":"standard","language":"en","input_mode":"text-only","tts_enabled":false}' \
         2>&1)" || {
         fail "text-session" "POST /api/sessions failed"
         return
