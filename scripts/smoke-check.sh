@@ -137,6 +137,22 @@ check_file "docs/release-checklist.md"
 
 echo ""
 
+# Steam publishing and depot policy docs
+check_dir  "steam"
+check_file "steam/app_build.vdf.tpl"
+check_file "steam/depot_windows.vdf.tpl"
+check_file "steam/depot_macos.vdf.tpl"
+check_file "steam/depot_linux.vdf.tpl"
+check_dir  "publishing"
+check_file "publishing/STEAM_DEPOT_CONTENTS.md"
+check_file "publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md"
+check_file "publishing/STEAM_APP_REGISTRATION.md"
+check_file "docs/model-download-policy.md"
+check_file "docs/pack-download-policy.md"
+check_file ".github/workflows/steam-deploy.yml"
+
+echo ""
+
 # Desktop Tauri wrapper
 check_dir  "apps/desktop/src-tauri"
 check_file "apps/desktop/src-tauri/Cargo.toml"

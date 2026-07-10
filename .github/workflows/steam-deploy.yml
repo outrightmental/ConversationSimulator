@@ -130,19 +130,18 @@ jobs:
           echo "--- Depot content summary ---"
           find steam-content -type f | sort
 
-      # ── Verify no model weight files are staged ────────────────────────────
-      # Enforces depot content exclusion rule MD-04 from the compliance register.
-      - name: Audit depot content for model weight files
+      # ── Verify no forbidden files are staged ───────────────────────────────
+      # Enforces depot content exclusion rule MD-04 and the approved binary
+      # payload list (see publishing/STEAM_DEPOT_CONTENTS.md) using the shared
+      # audit script, so CI catches exactly what the SR-08 manual checklist
+      # expects: weight files (.gguf/.safetensors/.bin/.pt/.pth/.ckpt) and
+      # unapproved binary payloads (large pickle/NumPy/ONNX files, models/ dirs).
+      - name: Audit depot content
         run: |
-          bad=$(find steam-content -type f \( \
-            -name "*.gguf" -o -name "*.safetensors" -o -name "*.bin" \
-          \))
-          if [ -n "$bad" ]; then
-            echo "ERROR: model weight files found in depot content — remove before uploading:"
-            echo "$bad"
-            exit 1
-          fi
-          echo "Depot audit passed: no model weight files detected."
+          for platform in windows macos linux; do
+            echo "── Auditing steam-content/$platform ──"
+            ./scripts/depot-audit.sh "steam-content/$platform"
+          done
 
       # ── Generate SteamPipe build scripts from VDF templates ────────────────
       - name: Generate SteamPipe VDF files
