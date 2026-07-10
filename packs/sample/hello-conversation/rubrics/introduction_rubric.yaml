@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: CC0-1.0
+schema_version: "0.1"
+rubric_id: introduction_rubric
+title: Friendly Introduction Rubric
+dimensions:
+  - id: clarity
+    name: Clarity
+    description: >-
+      Whether the player gives a clear, specific introduction — name, what
+      they do, and why they are at the event — rather than a vague or
+      incomplete one.
+    scoring:
+      low: "No clear name or role given, or the introduction is so brief it gives Sam nothing to respond to."
+      medium: "Name and role are mentioned but the introduction is generic ('I work in tech') with no personal context or reason for being at the event."
+      high: "Player gives their name, a specific and memorable description of their work, and at least one personal or contextual detail (why they came tonight, what they are curious about, what they are currently building)."
+    weight: 0.4
+
+  - id: genuine_connection
+    name: Genuine Connection
+    description: >-
+      Whether the player moves beyond introductions to find a real point of
+      connection with Sam — a shared interest, a question about Sam's
+      experience, or a moment of genuine curiosity.
+    scoring:
+      low: "Conversation stays entirely in networking-ritual mode. Player describes themselves but shows no interest in Sam's perspective or experience."
+      medium: "Player asks at least one follow-up question but it is generic ('What do you do?') rather than responsive to what Sam has actually said."
+      high: "Player asks a specific follow-up that responds to something Sam actually said, or finds a genuine shared topic that takes the conversation somewhere neither party had scripted."
+    weight: 0.6

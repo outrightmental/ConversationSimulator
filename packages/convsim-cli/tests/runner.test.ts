@@ -507,3 +507,34 @@ describe('golden — language-cafe pack test', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Sample pack: hello-conversation smoke test (keeps the tutorial's sample pack
+// fixture exercised in CI so its documented smoke test cannot silently rot)
+// ---------------------------------------------------------------------------
+
+describe('sample — hello-conversation smoke test', () => {
+  const repoRoot = fileURLToPath(new URL('../../../', import.meta.url));
+  const packDir = join(repoRoot, 'packs', 'sample', 'hello-conversation');
+
+  it('passes all fixtures with the fake runtime', () => {
+    const pack = loadPack(packDir, 'local-dev');
+    const result = runPackTests(pack);
+
+    expect(result.failed).toBe(0);
+    expect(result.fixture_count).toBeGreaterThan(0);
+  });
+
+  it('smoke_friendly_introduction fixture passes all static assertions', () => {
+    const pack = loadPack(packDir, 'local-dev');
+    const result = runPackTests(pack);
+
+    const fixture = result.fixtures.find((f) => f.fixture_id === 'smoke_friendly_introduction');
+    expect(fixture).toBeDefined();
+    expect(fixture?.status).toBe('passed');
+    expect(fixture?.failures).toHaveLength(0);
+    expect(fixture?.static_assertion_count).toBeGreaterThan(0);
+    expect(fixture?.scenario_id).toBe('friendly_introduction');
+    expect(fixture?.mode).toBe('fake');
+  });
+});

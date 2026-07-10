@@ -111,6 +111,12 @@ navigation). Copy an official pack, edit the YAML files, validate with one
 click, quick-test in the browser, and export a shareable `.zip` — all
 without leaving the browser.
 
+**New to pack authoring?** `packs/sample/hello-conversation/` is a
+minimal one-scenario sample pack (CC0-1.0, public domain) with every
+required file type and inline comments explaining each field. Copy it into
+`packs/local-dev/` and start editing — or import its zip in the Creator
+Workbench.
+
 Minimal `scenarios/my_scenario.yaml`:
 
 ```yaml
@@ -145,6 +151,7 @@ state:
 Add events, endings, difficulty modifiers, and extra rubric dimensions as you go.
 The JSON Schema in `schemas/` validates everything at import time.
 
+> Sample pack: [packs/sample/hello-conversation/](packs/sample/hello-conversation/) &nbsp;·&nbsp;
 > Creator workbench tutorial: [docs/scenario-authoring.md](docs/scenario-authoring.md) &nbsp;·&nbsp;
 > Pack validation: [docs/pack-validation.md](docs/pack-validation.md) &nbsp;·&nbsp;
 > Official quality bar: [docs/official-pack-quality-bar.md](docs/official-pack-quality-bar.md)
