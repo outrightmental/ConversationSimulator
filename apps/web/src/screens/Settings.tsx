@@ -5,6 +5,7 @@ import { api, type ImportPackResponse, type PackSummary } from '../api/client'
 import { readPrivacyPref, writePrivacyPref, PRIVACY_KEYS, isDevModeEnabled } from '../privacyPrefs'
 import RuntimeSettingsPanel from '../components/RuntimeSettingsPanel'
 import VoiceSettingsPanel from '../components/VoiceSettingsPanel'
+import { useTranslation, formatDate, SUPPORTED_LOCALES } from '../i18n'
 
 type ClearState = 'idle' | 'confirming' | 'clearing' | 'done' | 'error'
 type PackImportState = 'idle' | 'uploading' | 'success' | 'error'
@@ -72,7 +73,15 @@ async function openFolderInShell(folderPath: string): Promise<void> {
   await invoke('plugin:shell|open', { path: folderPath })
 }
 
+// Display names shown in the locale selector — always in the native language.
+const LOCALE_DISPLAY_NAMES: Record<string, string> = {
+  en: 'English',
+  de: 'Deutsch',
+}
+
 export default function Settings() {
+  const { t, locale, setLocale } = useTranslation()
+
   const [saveTranscripts, setSaveTranscripts] = useState(() => readPrivacyPref(PRIVACY_KEYS.saveTranscripts, true))
   const [saveTtsCache, setSaveTtsCache] = useState(() => readPrivacyPref(PRIVACY_KEYS.saveTtsCache, true))
   const [showAdvanced, setShowAdvanced] = useState(false)
@@ -129,7 +138,7 @@ export default function Settings() {
       await openFolderInShell(folderPath)
     } catch {
       // The shell open scope can reject local paths; fall back to the copyable path.
-      setOpenFolderError('Could not open the folder automatically. Copy the path and open it manually.')
+      setOpenFolderError(t('settings.folders.openError'))
     }
   }
 
@@ -255,23 +264,23 @@ export default function Settings() {
 
   const clearButtonLabel =
     clearState === 'confirming'
-      ? 'Confirm — delete everything'
+      ? t('settings.clearData.confirm')
       : clearState === 'clearing'
-        ? 'Clearing…'
-        : 'Clear all local data'
+        ? t('settings.clearData.clearing')
+        : t('settings.clearData.clear')
 
   type FolderKey = 'data' | 'logs' | 'models' | 'packs' | 'exports'
   const FOLDER_ROWS: { key: FolderKey; label: string }[] = [
-    { key: 'data', label: 'Data' },
-    { key: 'logs', label: 'Logs' },
-    { key: 'models', label: 'Models' },
-    { key: 'packs', label: 'Packs' },
-    { key: 'exports', label: 'Exports' },
+    { key: 'data', label: t('settings.folders.data') },
+    { key: 'logs', label: t('settings.folders.logs') },
+    { key: 'models', label: t('settings.folders.models') },
+    { key: 'packs', label: t('settings.folders.packs') },
+    { key: 'exports', label: t('settings.folders.exports') },
   ]
 
   return (
     <div style={{ maxWidth: '640px' }}>
-      <h1 style={{ marginBottom: '0.5rem' }}>Settings</h1>
+      <h1 style={{ marginBottom: '0.5rem' }}>{t('settings.title')}</h1>
 
       {/* Local-first posture notice */}
       <div
@@ -287,23 +296,54 @@ export default function Settings() {
           color: '#86efac',
         }}
       >
-        <strong>Local-first.</strong> Conversations are processed entirely on your device. No
-        telemetry is collected, no transcript is uploaded automatically, and no model or pack is
-        downloaded without an explicit action from you.
+        <strong>{t('settings.localFirst.label')}</strong>{' '}
+        {t('settings.localFirst.description')}
       </div>
+
+      {/* Language / locale switcher */}
+      <section style={{ marginBottom: '2rem' }}>
+        <SectionHeading>{t('settings.language.heading')}</SectionHeading>
+        <p style={{ fontSize: '0.875rem', color: '#a1a1aa', marginBottom: '0.75rem' }}>
+          {t('settings.language.description')}
+        </p>
+        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem' }}>
+          <span>{t('settings.language.label')}:</span>
+          <select
+            value={locale}
+            onChange={(e) => setLocale(e.target.value)}
+            aria-label={t('settings.language.label')}
+            data-testid="settings-locale-select"
+            style={{
+              padding: '0.3rem 0.6rem',
+              borderRadius: '4px',
+              border: '1px solid rgba(255,255,255,0.15)',
+              background: 'rgba(255,255,255,0.05)',
+              color: '#e8e8ea',
+              fontSize: '0.875rem',
+              cursor: 'pointer',
+            }}
+          >
+            {SUPPORTED_LOCALES.map((loc) => (
+              <option key={loc} value={loc}>
+                {LOCALE_DISPLAY_NAMES[loc] ?? loc}
+              </option>
+            ))}
+          </select>
+        </label>
+      </section>
 
       {/* Transcript saving */}
       <section style={{ marginBottom: '2rem' }}>
-        <SectionHeading>Transcript</SectionHeading>
+        <SectionHeading>{t('settings.transcript.heading')}</SectionHeading>
         <PrivacyToggle
           id="save-transcripts"
-          label="Save transcripts locally"
+          label={t('settings.transcript.saveLabel')}
           checked={saveTranscripts}
           onChange={handleSaveTranscriptsChange}
           description={
             saveTranscripts
-              ? 'Conversation transcripts are saved to your local data folder only — never uploaded anywhere.'
-              : 'Transcripts will not be saved. This session\'s conversation cannot be exported or searched after it ends.'
+              ? t('settings.transcript.saveOn')
+              : t('settings.transcript.saveOff')
           }
         />
         {!saveTranscripts && (
@@ -311,22 +351,22 @@ export default function Settings() {
             aria-live="polite"
             style={{ fontSize: '0.85rem', color: '#fbbf24', margin: '0 0 0 1.5rem' }}
           >
-            Not saved — transcript will be lost when this session ends.
+            {t('settings.transcript.notSavedWarning')}
           </p>
         )}
       </section>
 
       {/* Runtime settings */}
       <section style={{ marginBottom: '2rem' }}>
-        <SectionHeading>Runtime</SectionHeading>
+        <SectionHeading>{t('settings.runtime.heading')}</SectionHeading>
         <p style={{ fontSize: '0.875rem', color: '#a1a1aa', marginBottom: '0.75rem' }}>
-          Select the active AI provider and model. Advanced knobs are hidden by default.{' '}
+          {t('settings.runtime.description')}{' '}
           <Link
             to="/model-manager"
-            aria-label="Open model manager"
+            aria-label={t('settings.runtime.openModelManagerLabel')}
             style={{ color: '#71717a' }}
           >
-            Open model manager →
+            {t('settings.runtime.openModelManagerLink')}
           </Link>
         </p>
         <RuntimeSettingsPanel />
@@ -334,23 +374,22 @@ export default function Settings() {
 
       {/* Voice output */}
       <section style={{ marginBottom: '2rem' }}>
-        <SectionHeading>Voice output</SectionHeading>
+        <SectionHeading>{t('settings.voice.heading')}</SectionHeading>
         <PrivacyToggle
           id="save-tts-cache"
-          label="Cache TTS audio locally"
+          label={t('settings.voice.cacheLabel')}
           checked={saveTtsCache}
           onChange={handleSaveTtsCacheChange}
-          description="Caching generated speech speeds up repeated phrases. Cached audio stays on your device and is never shared."
+          description={t('settings.voice.cacheDescription')}
         />
         <VoiceSettingsPanel />
       </section>
 
       {/* Pack management */}
       <section style={{ marginBottom: '2rem' }}>
-        <SectionHeading>Pack management</SectionHeading>
+        <SectionHeading>{t('settings.packs.heading')}</SectionHeading>
         <p style={{ fontSize: '0.875rem', color: '#a1a1aa', marginBottom: '0.75rem' }}>
-          Packs add scenarios to your library. Import a pack zip file — no executable content is
-          accepted. Packs are validated on import and stored only on this device.
+          {t('settings.packs.description')}
         </p>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
@@ -359,14 +398,14 @@ export default function Settings() {
             type="file"
             accept=".zip,application/zip"
             style={{ display: 'none' }}
-            aria-label="Select pack zip file"
+            aria-label={t('settings.packs.importFileLabel')}
             data-testid="settings-import-file-input"
             onChange={handlePackFileChange}
           />
           <button
             onClick={() => packFileInputRef.current?.click()}
             disabled={packImportState === 'uploading'}
-            aria-label="Import pack"
+            aria-label={t('settings.packs.importButton')}
             data-testid="settings-import-pack-button"
             style={{
               padding: '0.4rem 0.85rem',
@@ -378,14 +417,14 @@ export default function Settings() {
               cursor: packImportState === 'uploading' ? 'wait' : 'pointer',
             }}
           >
-            {packImportState === 'uploading' ? 'Importing…' : 'Import pack (.zip)'}
+            {packImportState === 'uploading' ? t('settings.packs.importing') : t('settings.packs.importButton')}
           </button>
           {packImportState === 'success' && importedPack && (
             <span
               data-testid="settings-import-success"
               style={{ fontSize: '0.85rem', color: '#86efac' }}
             >
-              Imported &ldquo;{importedPack.name}&rdquo;
+              {t('settings.packs.importedSuccess', { name: importedPack.name })}
             </span>
           )}
           {packImportState === 'error' && packImportError && (
@@ -400,11 +439,11 @@ export default function Settings() {
         </div>
 
         {installedPacksError && (
-          <p style={{ fontSize: '0.875rem', color: '#f87171' }}>Could not load installed packs.</p>
+          <p style={{ fontSize: '0.875rem', color: '#f87171' }}>{t('settings.packs.loadError')}</p>
         )}
         {!installedPacksError && installedPacks !== null && installedPacks.length === 0 && (
           <p data-testid="no-packs" style={{ fontSize: '0.875rem', color: '#a1a1aa' }}>
-            No packs installed yet.
+            {t('settings.packs.noPacks')}
           </p>
         )}
         {!installedPacksError && installedPacks !== null && installedPacks.length > 0 && (
@@ -428,7 +467,9 @@ export default function Settings() {
                     {p.pack_id}
                   </span>
                   <span style={{ color: '#71717a', marginLeft: '0.5rem', fontSize: '0.8rem' }}>
-                    {p.scenario_count} scenario{p.scenario_count !== 1 ? 's' : ''}
+                    {p.scenario_count === 1
+                      ? t('settings.packs.scenarioCount_one', { count: 1 })
+                      : t('settings.packs.scenarioCount_other', { count: p.scenario_count })}
                   </span>
                 </span>
               </li>
@@ -439,14 +480,14 @@ export default function Settings() {
 
       {/* Local folders */}
       <section style={{ marginBottom: '2rem' }}>
-        <SectionHeading>Local folders</SectionHeading>
+        <SectionHeading>{t('settings.folders.heading')}</SectionHeading>
         <p style={{ fontSize: '0.875rem', color: '#a1a1aa', marginBottom: '0.75rem' }}>
-          All data stays on this device. Use these paths for manual inspection or backup.
+          {t('settings.folders.description')}
         </p>
         {foldersError ? (
-          <p style={{ fontSize: '0.875rem', color: '#f87171' }}>Could not retrieve folder paths.</p>
+          <p style={{ fontSize: '0.875rem', color: '#f87171' }}>{t('settings.folders.loadError')}</p>
         ) : folders === null ? (
-          <p style={{ fontSize: '0.875rem', color: '#a1a1aa' }}>Loading…</p>
+          <p style={{ fontSize: '0.875rem', color: '#a1a1aa' }}>{t('settings.folders.loading')}</p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
             {FOLDER_ROWS.map(({ key, label }) => {
@@ -471,7 +512,7 @@ export default function Settings() {
                       {folderPath}
                     </code>
                     <button
-                      aria-label={`Copy ${label.toLowerCase()} folder path`}
+                      aria-label={t('settings.folders.copyLabel', { folder: label.toLowerCase() })}
                       onClick={() => void handleCopyFolder(folderPath, key)}
                       style={{
                         flexShrink: 0,
@@ -484,11 +525,11 @@ export default function Settings() {
                         cursor: 'pointer',
                       }}
                     >
-                      {copiedFolder === key ? 'Copied!' : 'Copy'}
+                      {copiedFolder === key ? t('settings.folders.copied') : t('settings.folders.copy')}
                     </button>
                     {isTauri && (
                       <button
-                        aria-label={`Open ${label.toLowerCase()} folder`}
+                        aria-label={t('settings.folders.openLabel', { folder: label.toLowerCase() })}
                         onClick={() => void handleOpenFolder(folderPath)}
                         style={{
                           flexShrink: 0,
@@ -501,7 +542,7 @@ export default function Settings() {
                           cursor: 'pointer',
                         }}
                       >
-                        Open
+                        {t('settings.folders.open')}
                       </button>
                     )}
                   </div>
@@ -523,10 +564,9 @@ export default function Settings() {
 
       {/* Clear all local data */}
       <section style={{ marginBottom: '2rem' }}>
-        <SectionHeading>Clear local data</SectionHeading>
+        <SectionHeading>{t('settings.clearData.heading')}</SectionHeading>
         <p style={{ fontSize: '0.875rem', color: '#a1a1aa', marginBottom: '0.75rem' }}>
-          Permanently deletes all sessions, transcripts, and cached data from your device. Installed
-          models are not removed.
+          {t('settings.clearData.description')}
         </p>
 
         {clearState === 'confirming' && (
@@ -542,23 +582,22 @@ export default function Settings() {
               color: '#fca5a5',
             }}
           >
-            This will permanently delete all sessions and transcripts from this device. This cannot
-            be undone.
+            {t('settings.clearData.confirmMessage')}
           </div>
         )}
 
         {clearState === 'done' && (
           <p style={{ fontSize: '0.875rem', color: '#86efac', marginBottom: '0.5rem' }}>
             {deletedCount === 1
-              ? '1 session deleted.'
-              : `${deletedCount ?? 0} sessions deleted.`}{' '}
-            Local data has been cleared.
+              ? t('settings.clearData.done_one')
+              : t('settings.clearData.done_other', { count: deletedCount ?? 0 })}{' '}
+            {t('settings.clearData.doneLocal')}
           </p>
         )}
 
         {clearState === 'error' && (
           <p role="alert" style={{ fontSize: '0.875rem', color: '#f87171', marginBottom: '0.5rem' }}>
-            {clearError ?? 'Failed to clear data. Please try again.'}
+            {clearError ?? t('settings.clearData.error')}
           </p>
         )}
 
@@ -594,7 +633,7 @@ export default function Settings() {
                 fontSize: '0.875rem',
               }}
             >
-              Cancel
+              {t('settings.clearData.cancel')}
             </button>
           )}
         </div>
@@ -602,12 +641,12 @@ export default function Settings() {
 
       {/* Your sessions */}
       <section style={{ marginBottom: '2rem' }}>
-        <SectionHeading>Your sessions</SectionHeading>
+        <SectionHeading>{t('settings.sessions.heading')}</SectionHeading>
         <p style={{ fontSize: '0.875rem', color: '#a1a1aa', marginBottom: '0.75rem' }}>
-          Export a session as JSON or delete it permanently.
+          {t('settings.sessions.description')}
         </p>
         {sessionsError && (
-          <p style={{ fontSize: '0.875rem', color: '#f87171' }}>Could not load sessions.</p>
+          <p style={{ fontSize: '0.875rem', color: '#f87171' }}>{t('settings.sessions.loadError')}</p>
         )}
         {deleteError && (
           <p role="alert" style={{ fontSize: '0.875rem', color: '#f87171', marginBottom: '0.5rem' }}>
@@ -620,11 +659,11 @@ export default function Settings() {
           </p>
         )}
         {!sessionsError && sessions === null && (
-          <p style={{ fontSize: '0.875rem', color: '#a1a1aa' }}>Loading…</p>
+          <p style={{ fontSize: '0.875rem', color: '#a1a1aa' }}>{t('settings.sessions.loading')}</p>
         )}
         {!sessionsError && sessions !== null && sessions.length === 0 && (
           <p data-testid="no-sessions" style={{ fontSize: '0.875rem', color: '#a1a1aa' }}>
-            No sessions yet.
+            {t('settings.sessions.noSessions')}
           </p>
         )}
         {!sessionsError && sessions !== null && sessions.length > 0 && (
@@ -645,7 +684,7 @@ export default function Settings() {
                 <span style={{ color: '#d4d4d8', flex: 1, minWidth: 0 }}>
                   <span style={{ fontWeight: 500 }}>{s.scenario_id}</span>
                   <span style={{ color: '#71717a', marginLeft: '0.5rem' }}>
-                    {new Date(s.created_at).toLocaleDateString()}
+                    {formatDate(s.created_at, locale)}
                   </span>
                   <span
                     style={{
@@ -659,7 +698,7 @@ export default function Settings() {
                 </span>
                 <div style={{ display: 'flex', gap: '0.4rem', flexShrink: 0 }}>
                   <button
-                    aria-label={`Export session ${s.session_id}`}
+                    aria-label={t('settings.sessions.exportLabel', { id: s.session_id })}
                     onClick={() => handleExportSession(s.session_id)}
                     style={{
                       padding: '0.2rem 0.6rem',
@@ -671,12 +710,12 @@ export default function Settings() {
                       fontSize: '0.8rem',
                     }}
                   >
-                    Export
+                    {t('settings.sessions.export')}
                   </button>
                   {deleteConfirmId === s.session_id ? (
                     <>
                       <button
-                        aria-label={`Confirm delete session ${s.session_id}`}
+                        aria-label={t('settings.sessions.confirmDeleteLabel', { id: s.session_id })}
                         onClick={() => handleDeleteSession(s.session_id)}
                         disabled={deletingId === s.session_id}
                         style={{
@@ -689,10 +728,10 @@ export default function Settings() {
                           fontSize: '0.8rem',
                         }}
                       >
-                        Confirm delete
+                        {t('settings.sessions.confirmDelete')}
                       </button>
                       <button
-                        aria-label={`Cancel delete session ${s.session_id}`}
+                        aria-label={t('settings.sessions.cancelDeleteLabel', { id: s.session_id })}
                         onClick={() => setDeleteConfirmId(null)}
                         style={{
                           padding: '0.2rem 0.6rem',
@@ -704,12 +743,12 @@ export default function Settings() {
                           fontSize: '0.8rem',
                         }}
                       >
-                        Cancel
+                        {t('settings.sessions.cancelDelete')}
                       </button>
                     </>
                   ) : (
                     <button
-                      aria-label={`Delete session ${s.session_id}`}
+                      aria-label={t('settings.sessions.deleteLabel', { id: s.session_id })}
                       onClick={() => setDeleteConfirmId(s.session_id)}
                       style={{
                         padding: '0.2rem 0.6rem',
@@ -721,7 +760,7 @@ export default function Settings() {
                         fontSize: '0.8rem',
                       }}
                     >
-                      Delete
+                      {t('settings.sessions.delete')}
                     </button>
                   )}
                 </div>
@@ -748,40 +787,40 @@ export default function Settings() {
           }}
         >
           <span aria-hidden="true">{showAdvanced ? '▾ ' : '▸ '}</span>
-          {showAdvanced ? 'Hide advanced' : 'Show advanced'}
+          {showAdvanced ? t('settings.advanced.hideAdvanced') : t('settings.advanced.showAdvanced')}
         </button>
 
         {showAdvanced && (
           <div id="settings-advanced-section">
-            <SectionHeading>Advanced</SectionHeading>
+            <SectionHeading>{t('settings.advanced.heading')}</SectionHeading>
             <PrivacyToggle
               id="save-raw-audio"
-              label="Save raw audio recordings (advanced)"
+              label={t('settings.advanced.rawAudioLabel')}
               checked={saveRawAudio}
               onChange={handleSaveRawAudioChange}
-              description="Off by default. When enabled, unprocessed microphone recordings are saved to your data folder for debugging voice input. Enable only if you are diagnosing STT accuracy issues."
+              description={t('settings.advanced.rawAudioDescription')}
             />
             {saveRawAudio && (
               <p
                 aria-live="polite"
                 style={{ fontSize: '0.85rem', color: '#fbbf24', margin: '0 0 0 1.5rem' }}
               >
-                Raw audio saving is on. Recordings will be stored locally until you clear local data.
+                {t('settings.advanced.rawAudioWarning')}
               </p>
             )}
             <PrivacyToggle
               id="dev-mode"
-              label="Developer debug mode"
+              label={t('settings.advanced.devModeLabel')}
               checked={devMode}
               onChange={handleDevModeChange}
-              description="Shows a debug drawer in the conversation screen with raw model output, state deltas, event evaluations, and hidden NPC fields. For developers diagnosing model drift or scenario behaviour. Reload the conversation screen after toggling."
+              description={t('settings.advanced.devModeDescription')}
             />
             {devMode && (
               <p
                 aria-live="polite"
                 style={{ fontSize: '0.85rem', color: '#fbbf24', margin: '0 0 0 1.5rem' }}
               >
-                Developer debug drawer is active. Internal model data is visible on the conversation screen. Disable before sharing your screen.
+                {t('settings.advanced.devModeWarning')}
               </p>
             )}
           </div>

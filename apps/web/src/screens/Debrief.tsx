@@ -4,6 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import type { DebriefTurningPoint, SessionDebriefResponse, SessionCreateRequest } from '@convsim/shared'
 import { api } from '../api/client'
 import { isDevModeEnabled } from '../privacyPrefs'
+import { useTranslation, formatNumber } from '../i18n'
 
 type TranscriptEvent = {
   event_id: number
@@ -14,6 +15,7 @@ type TranscriptEvent = {
 export default function Debrief() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const navigate = useNavigate()
+  const { t, locale } = useTranslation()
 
   const [phase, setPhase] = useState<'loading' | 'loaded' | 'error' | 'transcript_only'>('loading')
   const [debrief, setDebrief] = useState<SessionDebriefResponse | null>(null)
@@ -200,9 +202,9 @@ export default function Debrief() {
         }}
       >
         <div>
-          <h1 style={{ margin: 0 }}>Session Debrief</h1>
+          <h1 style={{ margin: 0 }}>{t('debrief.title')}</h1>
           <p style={{ margin: 0, fontSize: '0.8rem', color: '#71717a' }}>
-            Session: <code>{sessionId}</code>
+            {t('debrief.sessionLabel')} <code>{sessionId}</code>
           </p>
         </div>
         <button
@@ -217,13 +219,13 @@ export default function Debrief() {
             fontSize: '0.875rem',
           }}
         >
-          ← Back to library
+          {t('debrief.backToLibrary')}
         </button>
       </div>
 
       {phase === 'loading' && (
         <p aria-live="polite" aria-busy="true" style={{ color: '#71717a' }}>
-          Generating debrief…
+          {t('debrief.generating')}
         </p>
       )}
 
@@ -239,7 +241,7 @@ export default function Debrief() {
             fontSize: '0.875rem',
           }}
         >
-          <strong>Failed to generate debrief:</strong> {error}
+          <strong>{t('debrief.error.prefix')}</strong> {error}
           <div style={{ marginTop: '0.75rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
             <button
               data-testid="retry-btn"
@@ -255,7 +257,7 @@ export default function Debrief() {
                 fontSize: '0.8rem',
               }}
             >
-              Try again
+              {t('debrief.error.tryAgain')}
             </button>
             <button
               data-testid="transcript-only-btn"
@@ -270,7 +272,7 @@ export default function Debrief() {
                 fontSize: '0.8rem',
               }}
             >
-              Show transcript only
+              {t('debrief.error.transcriptOnly')}
             </button>
           </div>
         </div>
@@ -289,7 +291,7 @@ export default function Debrief() {
               fontSize: '0.8rem',
             }}
           >
-            Debrief generation failed. Showing transcript only.
+            {t('debrief.transcript.transcriptOnlyNotice')}
           </div>
 
           {transcript.length > 0 ? (
@@ -298,11 +300,11 @@ export default function Debrief() {
                 id="transcript-heading-fallback"
                 style={{ marginBottom: '0.5rem', fontSize: '1.1rem' }}
               >
-                Transcript
+                {t('debrief.transcript.heading')}
               </h2>
               <div
                 role="log"
-                aria-label="Conversation transcript"
+                aria-label={t('debrief.transcript.ariaLabel')}
                 style={{
                   maxHeight: 400,
                   overflowY: 'auto',
@@ -329,7 +331,7 @@ export default function Debrief() {
             </section>
           ) : (
             <p style={{ color: '#71717a', fontSize: '0.875rem' }}>
-              No transcript was saved for this session.
+              {t('debrief.transcript.noSaved')}
             </p>
           )}
 
@@ -347,7 +349,7 @@ export default function Debrief() {
                 cursor: 'pointer',
               }}
             >
-              Retry debrief
+              {t('debrief.actions.retryDebrief')}
             </button>
             <button
               data-testid="replay-btn"
@@ -361,7 +363,7 @@ export default function Debrief() {
                 cursor: 'pointer',
               }}
             >
-              Replay variation
+              {t('debrief.actions.replayVariation')}
             </button>
             <button
               data-testid="export-text-btn"
@@ -376,7 +378,7 @@ export default function Debrief() {
                 cursor: exportingText ? 'default' : 'pointer',
               }}
             >
-              {exportingText ? 'Exporting…' : 'Export transcript (Markdown)'}
+              {exportingText ? t('debrief.actions.exporting') : t('debrief.actions.exportMarkdown')}
             </button>
             <button
               onClick={() => navigate('/library')}
@@ -389,14 +391,14 @@ export default function Debrief() {
                 cursor: 'pointer',
               }}
             >
-              Try another scenario
+              {t('debrief.actions.tryAnother')}
             </button>
           </div>
           <p
             data-testid="export-privacy-notice"
             style={{ fontSize: '0.75rem', color: '#52525b', margin: 0 }}
           >
-            Exported files are saved to your local download folder and never leave your device.
+            {t('debrief.actions.privacyNotice')}
           </p>
         </>
       )}
@@ -406,7 +408,7 @@ export default function Debrief() {
           data-testid="debrief-latency"
           style={{ fontSize: '0.7rem', color: '#6ee7b7' }}
         >
-          Debrief generation: {debriefMs.toLocaleString()} ms
+          {t('debrief.latency', { ms: formatNumber(debriefMs, locale) })}
         </div>
       )}
 
@@ -425,7 +427,7 @@ export default function Debrief() {
                 fontSize: '0.8rem',
               }}
             >
-              Debrief generated from a template — install a local model for detailed feedback.
+              {t('debrief.fallback')}
             </div>
           )}
 
@@ -442,7 +444,7 @@ export default function Debrief() {
                 fontSize: '0.8rem',
               }}
             >
-              Transcript saving was disabled for this session. Turn details are not available.
+              {t('debrief.transcriptDisabled')}
             </div>
           )}
 
@@ -462,11 +464,11 @@ export default function Debrief() {
           >
             <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'center' }}>
               <span style={{ fontSize: '0.875rem', color: '#a1a1aa' }}>
-                Scenario:{' '}
+                {t('debrief.scenario')}{' '}
                 <strong style={{ color: '#f4f4f5' }}>{debrief.scenario_id ?? '—'}</strong>
               </span>
               <span style={{ fontSize: '0.875rem', color: '#a1a1aa' }}>
-                Turns: <strong style={{ color: '#f4f4f5' }}>{debrief.turn_count ?? 0}</strong>
+                {t('debrief.turns')} <strong style={{ color: '#f4f4f5' }}>{debrief.turn_count ?? 0}</strong>
               </span>
             </div>
             <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
@@ -480,7 +482,7 @@ export default function Debrief() {
           {/* Summary */}
           <section aria-labelledby="summary-heading" data-testid="summary-section">
             <h2 id="summary-heading" style={{ marginBottom: '0.5rem', fontSize: '1.1rem' }}>
-              Summary
+              {t('debrief.summary')}
             </h2>
             <p
               style={{
@@ -501,7 +503,7 @@ export default function Debrief() {
           {debrief.scores && Object.keys(debrief.scores).length > 0 && (
             <section aria-labelledby="scorecard-heading" data-testid="scorecard-section">
               <h2 id="scorecard-heading" style={{ marginBottom: '0.5rem', fontSize: '1.1rem' }}>
-                Scorecard
+                {t('debrief.scorecard')}
               </h2>
               <div
                 style={{
@@ -525,7 +527,7 @@ export default function Debrief() {
           {debrief.strengths && debrief.strengths.length > 0 && (
             <section aria-labelledby="strengths-heading">
               <h2 id="strengths-heading" style={{ marginBottom: '0.5rem', fontSize: '1.1rem' }}>
-                Strengths
+                {t('debrief.strengths')}
               </h2>
               <ul style={{ margin: 0, paddingLeft: '1.5rem', color: '#86efac', lineHeight: 1.8 }}>
                 {debrief.strengths.map((s, i) => (
@@ -539,7 +541,7 @@ export default function Debrief() {
           {debrief.improvements && debrief.improvements.length > 0 && (
             <section aria-labelledby="improvements-heading">
               <h2 id="improvements-heading" style={{ marginBottom: '0.5rem', fontSize: '1.1rem' }}>
-                Areas for improvement
+                {t('debrief.improvements')}
               </h2>
               <ul style={{ margin: 0, paddingLeft: '1.5rem', color: '#fdba74', lineHeight: 1.8 }}>
                 {debrief.improvements.map((s, i) => (
@@ -553,7 +555,7 @@ export default function Debrief() {
           {debrief.missed_opportunities && debrief.missed_opportunities.length > 0 && (
             <section aria-labelledby="missed-heading" data-testid="missed-opportunities-section">
               <h2 id="missed-heading" style={{ marginBottom: '0.5rem', fontSize: '1.1rem' }}>
-                Missed opportunities
+                {t('debrief.missedOpportunities')}
               </h2>
               <ul style={{ margin: 0, paddingLeft: '1.5rem', color: '#fda4af', lineHeight: 1.8 }}>
                 {debrief.missed_opportunities.map((s, i) => (
@@ -573,7 +575,7 @@ export default function Debrief() {
                 id="turning-points-heading"
                 style={{ marginBottom: '0.5rem', fontSize: '1.1rem' }}
               >
-                Key moments
+                {t('debrief.keyMoments')}
               </h2>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                 {debrief.turning_points.map((tp, i) => (
@@ -591,7 +593,7 @@ export default function Debrief() {
           {debrief.replay_suggestions && debrief.replay_suggestions.length > 0 && (
             <section aria-labelledby="replay-heading">
               <h2 id="replay-heading" style={{ marginBottom: '0.5rem', fontSize: '1.1rem' }}>
-                Try next time
+                {t('debrief.tryNextTime')}
               </h2>
               <ul style={{ margin: 0, paddingLeft: '1.5rem', color: '#c4b5fd', lineHeight: 1.8 }}>
                 {debrief.replay_suggestions.map((s, i) => (
@@ -608,11 +610,11 @@ export default function Debrief() {
                 id="transcript-heading"
                 style={{ marginBottom: '0.5rem', fontSize: '1.1rem' }}
               >
-                Transcript
+                {t('debrief.transcript.heading')}
               </h2>
               <div
                 role="log"
-                aria-label="Conversation transcript"
+                aria-label={t('debrief.transcript.ariaLabel')}
                 style={{
                   maxHeight: 400,
                   overflowY: 'auto',
@@ -644,7 +646,7 @@ export default function Debrief() {
             <summary
               style={{ cursor: 'pointer', fontSize: '0.8rem', color: '#71717a', userSelect: 'none' }}
             >
-              Full debrief JSON (debug)
+              {t('debrief.debugJson')}
             </summary>
             <pre
               data-testid="debrief-json"
@@ -680,7 +682,7 @@ export default function Debrief() {
                 cursor: 'pointer',
               }}
             >
-              Replay variation
+              {t('debrief.actions.replayVariation')}
             </button>
             <button
               data-testid="replay-same-btn"
@@ -695,7 +697,7 @@ export default function Debrief() {
                 cursor: replayingSameSetup ? 'default' : 'pointer',
               }}
             >
-              {replayingSameSetup ? 'Starting…' : 'Replay same setup'}
+              {replayingSameSetup ? t('debrief.actions.starting') : t('debrief.actions.replaySameSetup')}
             </button>
             <button
               data-testid="export-btn"
@@ -710,7 +712,7 @@ export default function Debrief() {
                 cursor: exporting ? 'default' : 'pointer',
               }}
             >
-              {exporting ? 'Exporting…' : 'Export session JSON'}
+              {exporting ? t('debrief.actions.exporting') : t('debrief.actions.exportJSON')}
             </button>
             <button
               data-testid="export-text-btn"
@@ -725,7 +727,7 @@ export default function Debrief() {
                 cursor: exportingText ? 'default' : 'pointer',
               }}
             >
-              {exportingText ? 'Exporting…' : 'Export transcript (Markdown)'}
+              {exportingText ? t('debrief.actions.exporting') : t('debrief.actions.exportMarkdown')}
             </button>
             <button
               onClick={() => navigate('/library')}
@@ -738,14 +740,14 @@ export default function Debrief() {
                 cursor: 'pointer',
               }}
             >
-              Try another scenario
+              {t('debrief.actions.tryAnother')}
             </button>
           </div>
           <p
             data-testid="export-privacy-notice"
             style={{ fontSize: '0.75rem', color: '#52525b', margin: 0 }}
           >
-            Exported files are saved to your local download folder and never leave your device.
+            {t('debrief.actions.privacyNotice')}
           </p>
         </>
       )}
@@ -833,6 +835,7 @@ function TurningPointCard({
   point: DebriefTurningPoint
   onScrollTo?: (turnNumber: number) => void
 }) {
+  const { t } = useTranslation()
   const impactColor =
     point.impact === 'positive'
       ? '#86efac'
@@ -856,7 +859,7 @@ function TurningPointCard({
       {onScrollTo ? (
         <button
           onClick={() => onScrollTo(point.turn_number)}
-          aria-label={`Go to turn ${point.turn_number}`}
+          aria-label={t('debrief.transcript.goToTurn', { number: point.turn_number })}
           style={{
             flexShrink: 0,
             padding: '0.1rem 0.4rem',
@@ -915,6 +918,7 @@ function TranscriptTurn({
   turnNumber: number
   registerRef: (el: HTMLElement | null) => void
 }) {
+  const { t } = useTranslation()
   const isPlayer = event.event_type === 'player_turn'
   const content = (event.payload['content'] as string | undefined) ?? ''
   const emotion = event.payload['emotion'] as string | undefined
@@ -935,9 +939,9 @@ function TranscriptTurn({
           letterSpacing: '0.05em',
         }}
       >
-        <span>Turn {turnNumber}</span>
+        <span>{t('debrief.transcript.turn', { number: turnNumber })}</span>
         {' · '}
-        <span>{isPlayer ? 'You' : 'NPC'}</span>
+        <span>{isPlayer ? t('debrief.transcript.you') : t('debrief.transcript.npc')}</span>
         {emotion && emotion !== 'neutral' && (
           <span style={{ marginLeft: 6, opacity: 0.7 }}>({emotion})</span>
         )}
