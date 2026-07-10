@@ -55,6 +55,7 @@ from convsim_core.scenario_state import (
     initialize_state,
     partition_state_by_visibility,
 )
+from convsim_core.storage.repositories.relationship_repo import get_relationship_recap
 
 logger = logging.getLogger(__name__)
 
@@ -426,7 +427,16 @@ async def process_turn(
     # 4. Get recent transcript.
     recent_transcript = _load_recent_turns(session_id, conn)
 
-    # 5. Build prompt.
+    # 5. Load cross-session relationship recap for this NPC (may be None on
+    #    the first session or when the feature is not yet populated).
+    #    pack_id falls back to scenario_id so builtin scenarios partition
+    #    their NPCs without requiring a pack row in the database.
+    npc_id: str = scenario_data.npc.npc_id
+    setup: Dict[str, Any] = json.loads(session_row["setup_json"] or "{}")
+    pack_id: str = setup.get("pack_id") or scenario_data.scenario_id
+    relationship_recap = get_relationship_recap(conn, npc_id, pack_id)
+
+    # 6. Build prompt.
     prompt_safety_policy = (
         _safety_policy_config_to_prompt_policy(safety_policy_config)
         if safety_policy_config is not None
@@ -441,9 +451,10 @@ async def process_turn(
         safety_policy=prompt_safety_policy,
         player_utterance=normalized,
         recent_transcript=recent_transcript,
+        relationship_recap=relationship_recap,
     ))
 
-    # 6. Call runtime.
+    # 7. Call runtime.
     messages = [
         ChatMessage(role="system", content=prompt.system_prompt),
         ChatMessage(role="user", content=prompt.user_prompt),
@@ -458,7 +469,7 @@ async def process_turn(
     )
     raw_text, native_structured = await _collect_runtime_output(runtime, request)
 
-    # 7. Validate / repair / fallback.
+    # 8. Validate / repair / fallback.
     # When the runtime returned a pre-parsed structured dict (via native JSON-schema
     # or grammar constraints), serialise it back to a clean JSON string for the
     # parser so the JSON-extraction step always succeeds on the first try.
@@ -479,15 +490,15 @@ async def process_turn(
     if used_fallback:
         logger.warning("Turn output fell back to safe utterance for session %s turn %d", session_id, turn_number)
 
-    # 8. Handle safety status from model output.
+    # 9. Handle safety status from model output.
     safety_stopped = turn_output.safety.status == "stop"
 
-    # 9. Apply state delta.
+    # 10. Apply state delta.
     delta_result = apply_state_delta(state_vars, turn_output.state_delta, var_defs)
     if delta_result.rejected_keys:
         logger.warning("State delta had unknown keys (rejected): %s", delta_result.rejected_keys)
 
-    # 10. Evaluate scenario event triggers.
+    # 11. Evaluate scenario event triggers.
     triggered_events = evaluate_event_triggers(
         delta_result.new_state,
         turn_number,
@@ -496,7 +507,7 @@ async def process_turn(
         active_flags=set(turn_output.event_flags),
     )
 
-    # 11. Evaluate ending condition.
+    # 12. Evaluate ending condition.
     ending_type = evaluate_ending_condition(
         delta_result.new_state,
         turn_number,
@@ -513,7 +524,7 @@ async def process_turn(
 
     new_flow_state = "Ended" if ending_type else "PlayerTurnListening"
 
-    # 12. Persist atomically. Use `with conn:` so a mid-transaction failure
+    # 13. Persist atomically. Use `with conn:` so a mid-transaction failure
     # triggers an automatic rollback instead of leaving a dirty open transaction
     # on the singleton connection.
     now = datetime.now(timezone.utc).isoformat()

@@ -28,6 +28,7 @@ from convsim_core.scenario_state import build_variable_defs, partition_state_by_
 from convsim_core.scenarios import get_scenario_info
 from convsim_core.services.branch_service import fork_session
 from convsim_core.services.debrief_engine import generate_debrief
+from convsim_core.services.relationship_memory import update_relationship_memory
 from convsim_core.services.timing import thinking_pause_ms_for_difficulty
 from convsim_core.services.transcript_export import format_transcript_as_markdown
 from convsim_core.services.tts_queue import synthesize_utterance
@@ -738,6 +739,20 @@ async def create_debrief(session_id: str, request: Request) -> DebriefResponse:
     except Exception as exc:
         logger.error("Debrief generation failed for session %s: %s", session_id, exc)
         raise HTTPException(status_code=500, detail="Debrief generation failed") from exc
+
+    # Update the NPC relationship recap with this session's debrief data.
+    # pack_id falls back to scenario_id for built-in scenarios that have no pack.
+    npc_id = scenario_data.npc.npc_id
+    pack_id = result.pack_id or scenario_id
+    update_relationship_memory(
+        conn,
+        npc_id=npc_id,
+        pack_id=pack_id,
+        outcome=result.outcome,
+        scores=result.scores,
+        improvements=result.improvements,
+        generated_at=result.generated_at,
+    )
 
     return DebriefResponse(
         session_id=result.session_id,

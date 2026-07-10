@@ -184,5 +184,6 @@ class PromptComposerInput:
     player_utterance: str
     recent_transcript: List[TranscriptEntry] = field(default_factory=list)
     memory_summary: Optional[str] = None
+    relationship_recap: Optional[Dict[str, Any]] = None
     max_transcript_turns: int = 6
     token_budget: int = 4096

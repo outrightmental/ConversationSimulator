@@ -108,6 +108,17 @@ export interface VadHealthResponse {
   checked_at: string
 }
 
+export interface RelationshipRecapSummary {
+  npc_id: string
+  pack_id: string
+  session_count: number
+  updated_at: string
+  key_observations: string[]
+  player_style_tags: string[]
+  last_outcome: string | null
+  last_session_at: string | null
+}
+
 export interface SttHealthResponse {
   worker_id: string
   worker_name: string
@@ -407,6 +418,15 @@ export const api = {
   },
   deleteSession(sessionId: string): Promise<ApiResult<undefined>> {
     return del(`/sessions/${sessionId}`)
+  },
+  listRelationshipMemory(): Promise<ApiResult<{ recaps: RelationshipRecapSummary[]; total: number }>> {
+    return get<{ recaps: RelationshipRecapSummary[]; total: number }>('/relationship-memory')
+  },
+  deleteRelationshipMemory(npcId: string, packId: string): Promise<ApiResult<undefined>> {
+    return del(`/relationship-memory/${encodeURIComponent(npcId)}/${encodeURIComponent(packId)}`)
+  },
+  clearAllRelationshipMemory(): Promise<ApiResult<undefined>> {
+    return del('/relationship-memory')
   },
   exportSession(sessionId: string): Promise<ApiResult<unknown>> {
     return get<unknown>(`/sessions/${sessionId}/export`)

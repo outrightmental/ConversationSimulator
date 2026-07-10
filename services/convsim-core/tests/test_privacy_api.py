@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 """Tests for the /api/privacy endpoints."""
+import json
 from pathlib import Path
 
 
@@ -105,3 +106,31 @@ def test_post_clear_returns_deleted_sessions_field(client):
 def test_post_clear_with_no_sessions_returns_zero(client):
     data = client.post("/api/privacy/clear").json()
     assert data["deleted_sessions"] == 0
+
+
+def test_post_clear_cascades_to_relationship_state(client):
+    """Clearing local data must also wipe NPC relationship memory (issue #314).
+
+    The recap is derived from session data, so it must not survive a data wipe;
+    otherwise the Settings 'Clear all local data' control leaves a stale,
+    privacy-relevant store behind."""
+    conn = client.app.state.db.connection()
+    recap = {
+        "schema_version": "1",
+        "session_count": 2,
+        "last_session_at": "2026-07-10T12:00:00+00:00",
+        "key_observations": ["Sample observation"],
+        "player_style_tags": ["direct"],
+        "last_outcome": "success",
+    }
+    conn.execute(
+        "INSERT INTO relationship_state (npc_id, pack_id, recap_json, session_count) "
+        "VALUES (?, ?, ?, ?)",
+        ("npc_alice", "negotiation_pack", json.dumps(recap), 2),
+    )
+    conn.commit()
+    assert client.get("/api/relationship-memory").json()["total"] == 1
+
+    assert client.post("/api/privacy/clear").status_code == 200
+
+    assert client.get("/api/relationship-memory").json()["total"] == 0

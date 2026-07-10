@@ -38,6 +38,8 @@ vi.mock('../api/client', () => ({
     // Steam Cloud settings
     getCloudSettings: vi.fn(),
     putCloudSettings: vi.fn(),
+    // NPC relationship memory
+    listRelationshipMemory: vi.fn(),
   },
 }))
 
@@ -173,6 +175,7 @@ beforeEach(() => {
   mockApi.clearTtsCache.mockResolvedValue({ ok: true, data: { deleted_files: 0 } })
   mockApi.health.mockResolvedValue({ ok: true, data: STUB_HEALTH })
   mockApi.vadHealth.mockResolvedValue({ ok: true, data: STUB_VAD })
+  mockApi.listRelationshipMemory.mockResolvedValue({ ok: true, data: { recaps: [], total: 0 } })
   // Stub navigator.permissions so tests don't hang on browser API
   Object.defineProperty(navigator, 'permissions', {
     value: { query: vi.fn().mockResolvedValue({ state: 'granted', addEventListener: vi.fn() }) },
