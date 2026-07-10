@@ -93,7 +93,7 @@ Run these steps in order. Each step has a hard dependency on the previous one.
 ### Step 1 — Confirm all Stage 4 gates are green (T−2 hours)
 
 Work through the full Stage 4 gate list in
-[`docs/steam-mvp-scope.md`](../docs/steam-mvp-scope.md#stage-4-gates-public-release):
+[`docs/steam-mvp-scope.md`](../docs/steam-mvp-scope.md#stage-4-gate--public-free-steam-release):
 
 | Gate | Check |
 |------|-------|

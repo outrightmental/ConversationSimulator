@@ -109,7 +109,7 @@ Enter minimum and recommended system requirements exactly as specified in
 ### 1.7 Age disclosures and content warnings
 
 Enter the age disclosure and content warning text from
-[`publishing/STEAM_STORE_PAGE.md` — Age disclosures](STEAM_STORE_PAGE.md#age-disclosures-and-content-warnings).
+[`publishing/STEAM_STORE_PAGE.md` — Age and content disclosures](STEAM_STORE_PAGE.md#age-and-content-disclosures).
 
 - [ ] Age disclosure text entered in the appropriate Steamworks field.
 - [ ] Content warning text entered.
