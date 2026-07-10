@@ -9,9 +9,9 @@ vi.mock('../hooks/useMicCapture', () => ({
 
 vi.mock('../api/client', () => ({
   apiClient: {
-    uploadAudio: vi.fn().mockResolvedValue({ transcript: null, status: 'unavailable' }),
-    vadHealth: vi.fn().mockResolvedValue({ status: 'unavailable', worker_id: 'fake', worker_name: 'Fake VAD', checked_at: '' }),
-    vadCalibrate: vi.fn().mockResolvedValue({ recommended_threshold: 0.05, noise_floor: 0.01, worker_id: 'fake', status: 'ok' }),
+    uploadAudio: vi.fn().mockResolvedValue({ ok: true, data: { transcript: null, status: 'unavailable' } }),
+    vadHealth: vi.fn().mockResolvedValue({ ok: true, data: { status: 'unavailable', worker_id: 'fake', worker_name: 'Fake VAD', checked_at: '' } }),
+    vadCalibrate: vi.fn().mockResolvedValue({ ok: true, data: { recommended_threshold: 0.05, noise_floor: 0.01, worker_id: 'fake', status: 'ok' } }),
   },
 }))
 
@@ -61,7 +61,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   vi.mocked(useMicCapture).mockReturnValue(makeMicState())
   vi.mocked(useVad).mockReturnValue(makeVadState())
-  vi.mocked(apiClient.uploadAudio).mockResolvedValue({ transcript: null, status: 'unavailable' })
+  vi.mocked(apiClient.uploadAudio).mockResolvedValue({ ok: true, data: { transcript: null, status: 'unavailable' } })
 })
 
 describe('VoiceInput — global Space hotkey focus guard', () => {
@@ -321,7 +321,7 @@ describe('VoiceInput — audio upload flow', () => {
       capturedOnAudioReady = cb
       return makeMicState()
     })
-    vi.mocked(apiClient.uploadAudio).mockResolvedValueOnce({ transcript: 'hello world', status: 'ok' })
+    vi.mocked(apiClient.uploadAudio).mockResolvedValueOnce({ ok: true, data: { transcript: 'hello world', status: 'ok' } })
 
     render(<VoiceInput />)
 
@@ -340,7 +340,7 @@ describe('VoiceInput — audio upload flow', () => {
       capturedOnAudioReady = cb
       return makeMicState()
     })
-    vi.mocked(apiClient.uploadAudio).mockResolvedValueOnce({ transcript: 'hello world', status: 'ok' })
+    vi.mocked(apiClient.uploadAudio).mockResolvedValueOnce({ ok: true, data: { transcript: 'hello world', status: 'ok' } })
 
     render(<VoiceInput onSubmit={onSubmit} />)
 
@@ -360,7 +360,7 @@ describe('VoiceInput — audio upload flow', () => {
       capturedOnAudioReady = cb
       return makeMicState()
     })
-    vi.mocked(apiClient.uploadAudio).mockResolvedValueOnce({ transcript: 'hello world', status: 'ok' })
+    vi.mocked(apiClient.uploadAudio).mockResolvedValueOnce({ ok: true, data: { transcript: 'hello world', status: 'ok' } })
 
     render(<VoiceInput onSubmit={onSubmit} />)
 
@@ -381,7 +381,7 @@ describe('VoiceInput — audio upload flow', () => {
       capturedOnAudioReady = cb
       return makeMicState()
     })
-    vi.mocked(apiClient.uploadAudio).mockResolvedValueOnce({ transcript: 'hello world', status: 'ok' })
+    vi.mocked(apiClient.uploadAudio).mockResolvedValueOnce({ ok: true, data: { transcript: 'hello world', status: 'ok' } })
 
     render(<VoiceInput />)
 
@@ -402,7 +402,7 @@ describe('VoiceInput — audio upload flow', () => {
       capturedOnAudioReady = cb
       return makeMicState()
     })
-    vi.mocked(apiClient.uploadAudio).mockResolvedValueOnce({ transcript: 'hello world', status: 'ok' })
+    vi.mocked(apiClient.uploadAudio).mockResolvedValueOnce({ ok: true, data: { transcript: 'hello world', status: 'ok' } })
 
     render(<VoiceInput />)
 
@@ -424,7 +424,7 @@ describe('VoiceInput — audio upload flow', () => {
       capturedOnAudioReady = cb
       return makeMicState()
     })
-    vi.mocked(apiClient.uploadAudio).mockResolvedValueOnce({ transcript: 'hello world', status: 'ok' })
+    vi.mocked(apiClient.uploadAudio).mockResolvedValueOnce({ ok: true, data: { transcript: 'hello world', status: 'ok' } })
 
     render(<VoiceInput onSubmit={onSubmit} />)
 
@@ -459,7 +459,7 @@ describe('VoiceInput — audio upload flow', () => {
       capturedOnAudioReady = cb
       return makeMicState()
     })
-    vi.mocked(apiClient.uploadAudio).mockResolvedValueOnce({ transcript: null, status: 'error' })
+    vi.mocked(apiClient.uploadAudio).mockResolvedValueOnce({ ok: true, data: { transcript: null, status: 'error' } })
 
     render(<VoiceInput />)
 
@@ -476,7 +476,7 @@ describe('VoiceInput — audio upload flow', () => {
       capturedOnAudioReady = cb
       return makeMicState()
     })
-    vi.mocked(apiClient.uploadAudio).mockResolvedValueOnce({ transcript: null, status: 'unavailable' })
+    vi.mocked(apiClient.uploadAudio).mockResolvedValueOnce({ ok: true, data: { transcript: null, status: 'unavailable' } })
 
     render(<VoiceInput />)
 
@@ -493,7 +493,7 @@ describe('VoiceInput — audio upload flow', () => {
       capturedOnAudioReady = cb
       return makeMicState()
     })
-    vi.mocked(apiClient.uploadAudio).mockResolvedValueOnce({ transcript: '', status: 'ok' })
+    vi.mocked(apiClient.uploadAudio).mockResolvedValueOnce({ ok: true, data: { transcript: '', status: 'ok' } })
 
     render(<VoiceInput />)
 
@@ -545,7 +545,7 @@ describe('VoiceInput — audio upload flow', () => {
       capturedOnAudioReady = cb
       return makeMicState()
     })
-    vi.mocked(apiClient.uploadAudio).mockResolvedValueOnce({ transcript: null, status: 'unavailable' })
+    vi.mocked(apiClient.uploadAudio).mockResolvedValueOnce({ ok: true, data: { transcript: null, status: 'unavailable' } })
 
     render(<VoiceInput onSubmit={onSubmit} />)
 
@@ -571,7 +571,7 @@ describe('VoiceInput — audio upload flow', () => {
       capturedOnAudioReady = cb
       return makeMicState()
     })
-    vi.mocked(apiClient.uploadAudio).mockResolvedValueOnce({ transcript: 'hello world', status: 'ok' })
+    vi.mocked(apiClient.uploadAudio).mockResolvedValueOnce({ ok: true, data: { transcript: 'hello world', status: 'ok' } })
 
     render(<VoiceInput onSubmit={onSubmit} disabled />)
 
@@ -642,7 +642,7 @@ describe('VoiceInput — hands-free VAD auto-stop (VAD timeout)', () => {
       capturedOnAudioReady = cb
       return makeMicState({ stopRecording, stream: {} as MediaStream })
     })
-    vi.mocked(apiClient.uploadAudio).mockResolvedValueOnce({ transcript: 'VAD stopped me', status: 'ok' })
+    vi.mocked(apiClient.uploadAudio).mockResolvedValueOnce({ ok: true, data: { transcript: 'VAD stopped me', status: 'ok' } })
 
     render(<VoiceInput />)
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur()

@@ -7,14 +7,9 @@ export function usePackCount(): number {
 
   useEffect(() => {
     let cancelled = false
-    apiClient
-      .packs()
-      .then((data) => {
-        if (!cancelled) setCount(data?.total ?? 0)
-      })
-      .catch(() => {
-        if (!cancelled) setCount(0)
-      })
+    void apiClient.packs().then((r) => {
+      if (!cancelled) setCount(r.ok ? (r.data?.total ?? 0) : 0)
+    })
     return () => {
       cancelled = true
     }

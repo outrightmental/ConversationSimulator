@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from 'react'
 import { api } from '../api/client'
+import type { ApiError } from '../api/errors'
+import { ApiErrorView } from '../components/ApiErrorView'
 
 const ISSUES_URL = 'https://github.com/outrightmental/ConversationSimulator/issues/new/choose'
 const TEMPLATE_BASE = 'https://github.com/outrightmental/ConversationSimulator/issues/new?template='
@@ -32,20 +34,20 @@ export default function Support() {
   const [crashState, setCrashState] = useState<CrashBundleState>('idle')
   const [bundlePath, setBundlePath] = useState<string | null>(null)
   const [bundleNotice, setBundleNotice] = useState<string | null>(null)
-  const [crashError, setCrashError] = useState<string | null>(null)
+  const [crashError, setCrashError] = useState<ApiError | null>(null)
 
   async function handleCreateCrashBundle() {
     setCrashState('creating')
     setCrashError(null)
     setBundlePath(null)
     setBundleNotice(null)
-    try {
-      const result = await api.createCrashBundle()
-      setBundlePath(result.bundle_path)
-      setBundleNotice(result.notice)
+    const r = await api.createCrashBundle()
+    if (r.ok) {
+      setBundlePath(r.data.bundle_path)
+      setBundleNotice(r.data.notice)
       setCrashState('done')
-    } catch (err) {
-      setCrashError(err instanceof Error ? err.message : 'Failed to create crash bundle')
+    } else {
+      setCrashError(r.error)
       setCrashState('error')
     }
   }
@@ -173,13 +175,13 @@ export default function Support() {
         )}
 
         {crashState === 'error' && crashError && (
-          <p
-            role="alert"
-            data-testid="crash-bundle-error"
-            style={{ fontSize: '0.85rem', color: '#f87171', marginTop: '0.5rem' }}
-          >
-            {crashError}
-          </p>
+          <div data-testid="crash-bundle-error" style={{ marginTop: '0.5rem' }}>
+            <ApiErrorView
+              error={crashError}
+              onRetry={handleCreateCrashBundle}
+              context="Support-CrashBundle"
+            />
+          </div>
         )}
       </section>
 
