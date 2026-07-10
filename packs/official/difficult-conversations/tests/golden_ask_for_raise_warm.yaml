@@ -1,0 +1,96 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: golden_ask_for_raise_warm
+scenario_id: ask_for_raise
+description: >-
+  Golden transcript at the 'warm' difficulty preset. Verifies that at high
+  patience / low volatility / high disclosure / low time-pressure: Diane
+  offers gentle nudges when the player stalls, state meters shift slowly so
+  early missteps are recoverable, and Diane volunteers helpful framing cues
+  rather than waiting to be asked directly. A player who builds a solid case
+  across four turns should reach the success threshold without triggering the
+  deflation event.
+
+seed: 42
+input_mode: text
+difficulty: warm
+
+turns:
+  - turn: 1
+    player_input: >-
+      I want to walk you through what has changed in my role over the last six
+      months. When I started, my scope was one team and one set of deliverables.
+      Since then I have taken on the cross-team API migration, onboarded two new
+      engineers, and delivered the Q3 regulatory project after the original lead
+      left. I think that represents a real expansion in scope.
+    expect:
+      state_delta_contains:
+        - impression
+        - evidence_strength
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 2
+    player_input: >-
+      Based on market data I have gathered, comparable roles at similar companies
+      are paying between ninety-five and one-ten. My current base is
+      eighty-four. I am asking for a move to ninety-eight — the lower end of
+      that range.
+    expect:
+      state_delta_contains:
+        - case_clarity
+        - evidence_strength
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 3
+    player_input: >-
+      On the migration specifically, I can share the retrospective document. We
+      shipped nine weeks instead of twelve, and I was the lead. That was not in
+      my original job description. I took it on because it needed to be done,
+      and the outcome was good for the company.
+    expect:
+      state_delta_contains:
+        - evidence_strength
+        - impression
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 4
+    player_input: >-
+      I want to frame this in a way that is easy for you to take upward. The
+      one-sentence business case is: I am carrying a senior scope at a junior
+      rate. Correcting that now is less expensive than the alternatives. I am
+      not threatening to leave — I am making a case I think you can actually
+      work with.
+    expect:
+      state_delta_contains:
+        - case_clarity
+        - impression
+      session_control: continue_session
+      safety_status: ok
+
+static_assertions:
+  - description: Warm preset is defined in scenario difficulty options
+    path: scenario.difficulty.options.warm
+    check: non_null
+
+  - description: Warm preset patience knob is high (patient NPC)
+    path: scenario.difficulty.options.warm.patience
+    check: "gte 67"
+
+  - description: Warm preset volatility knob is low (slow state shifts)
+    path: scenario.difficulty.options.warm.volatility
+    check: "lte 33"
+
+  - description: Warm preset disclosure knob is high (NPC volunteers info)
+    path: scenario.difficulty.options.warm.disclosure
+    check: "gte 67"
+
+  - description: Warm preset time_pressure knob is low (no urgency)
+    path: scenario.difficulty.options.warm.time_pressure
+    check: "lte 33"
+
+  - description: Difficulty default is standard (not warm — warm is a player choice)
+    path: scenario.difficulty.default
+    check: "equals standard"

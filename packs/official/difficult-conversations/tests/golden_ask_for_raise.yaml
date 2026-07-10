@@ -14,7 +14,7 @@ description: >-
 
 seed: 42
 input_mode: text
-difficulty: normal
+difficulty: standard
 
 turns:
   - turn: 1
@@ -156,6 +156,10 @@ static_assertions:
     path: manifest.entry_scenarios
     check: "contains scenarios/ask_for_raise.yaml"
 
-  - description: Hard difficulty applies a negative patience modifier
-    path: scenario.difficulty.options.hard.npc_patience_modifier
-    check: "equals -20"
+  - description: Hard difficulty sets low patience (NPC disengages quickly)
+    path: scenario.difficulty.options.hard.patience
+    check: "lte 33"
+
+  - description: Adversarial difficulty sets very high volatility
+    path: scenario.difficulty.options.adversarial.volatility
+    check: "gte 85"

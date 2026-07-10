@@ -13,8 +13,7 @@ description: >-
 
 seed: 99
 input_mode: text
-difficulty: normal
-
+difficulty: standard
 turns:
   - turn: 1
     player_input: >-
@@ -175,5 +174,5 @@ static_assertions:
     check: "contains scenarios/stretch_role_interview.yaml"
 
   - description: Hard difficulty applies a negative patience modifier
-    path: scenario.difficulty.options.hard.npc_patience_modifier
-    check: "equals -15"
+    path: scenario.difficulty.options.hard.patience
+    check: "lte 33"

@@ -1,0 +1,104 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: golden_ask_for_raise_adversarial
+scenario_id: ask_for_raise
+description: >-
+  Golden transcript at the 'adversarial' difficulty preset. Verifies that at
+  low patience / high volatility / low disclosure / high time-pressure: Diane
+  volunteers almost nothing, state meters swing dramatically on weak answers,
+  the conversation feels time-constrained, and only a player who leads with
+  precise specifics and a concrete number immediately can sustain impression
+  long enough to reach the success threshold. A single unfocused opening turn
+  should noticeably damage impression and evidence_strength before the player
+  has a chance to recover.
+
+seed: 42
+input_mode: text
+difficulty: adversarial
+
+turns:
+  - turn: 1
+    player_input: >-
+      I want to discuss a compensation adjustment. Over the last two quarters I
+      led the cross-team API migration involving six teams, shipped it three
+      weeks early, onboarded two new engineers who are now independent, and
+      absorbed the Q3 regulatory project mid-flight. That is a materially larger
+      role than I was hired into, and my pay has not moved. I am asking for a
+      move from eighty-four to ninety-eight — the low end of what comparable
+      senior IC scope costs in this market right now.
+    expect:
+      state_delta_contains:
+        - impression
+        - evidence_strength
+        - case_clarity
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 2
+    player_input: >-
+      The market reference is three live postings and two offers from my network
+      in the last sixty days. I can share the exact postings. The ninety-eight
+      figure is not the ceiling — it is the floor of the current market band for
+      this scope. Asking for the floor is a conservative ask that I can defend
+      to anyone who asks where the number came from.
+    expect:
+      state_delta_contains:
+        - evidence_strength
+        - case_clarity
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 3
+    player_input: >-
+      On the migration: the project charter is in Confluence. Timeline was twelve
+      weeks; we shipped in nine. The lead role was not in my job description when
+      I was hired. I have the original JD and the current scope in writing. The
+      delta is not ambiguous.
+    expect:
+      state_delta_contains:
+        - evidence_strength
+        - impression
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 4
+    player_input: >-
+      The business case in one sentence: correcting this now costs fourteen
+      thousand dollars. Not correcting it eventually costs a backfill, a
+      knowledge transfer, and a market-rate replacement hire. I am giving you the
+      cheaper option and I am giving you the language to take it upward.
+    expect:
+      state_delta_contains:
+        - case_clarity
+        - impression
+      session_control: continue_session
+      safety_status: ok
+
+static_assertions:
+  - description: Adversarial preset is defined in scenario difficulty options
+    path: scenario.difficulty.options.adversarial
+    check: non_null
+
+  - description: Adversarial preset patience knob is very low (NPC disengages quickly)
+    path: scenario.difficulty.options.adversarial.patience
+    check: "lte 15"
+
+  - description: Adversarial preset volatility knob is very high (dramatic state swings)
+    path: scenario.difficulty.options.adversarial.volatility
+    check: "gte 85"
+
+  - description: Adversarial preset disclosure knob is very low (NPC volunteers almost nothing)
+    path: scenario.difficulty.options.adversarial.disclosure
+    check: "lte 15"
+
+  - description: Adversarial preset time_pressure knob is very high
+    path: scenario.difficulty.options.adversarial.time_pressure
+    check: "gte 75"
+
+  - description: Success condition still requires case_clarity above 65 even at adversarial
+    path: ending_conditions.success
+    check: "type=variable_above AND variable=case_clarity AND threshold=65"
+
+  - description: Failure condition still triggers on impression below 15
+    path: ending_conditions.failure
+    check: "type=variable_below AND variable=impression AND threshold=15"
