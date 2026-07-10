@@ -97,8 +97,8 @@ goals:
 difficulty:
   default: hard
   options:
-    normal: { npc_patience_modifier: 0, challenge_frequency: medium }
-    hard: { npc_patience_modifier: -20, challenge_frequency: high }
+    standard: { patience: 50, volatility: 50, disclosure: 50, time_pressure: 50 }
+    hard: { patience: 25, volatility: 70, disclosure: 25, time_pressure: 60 }
 `;
 
 function makePackZip(parent: string): Buffer {
@@ -182,8 +182,10 @@ describe('GET /api/scenarios — dynamic pack merge', () => {
     expect(dynamic.recommended_model).toEqual(['llama-3-8b']);
     expect(dynamic.difficulty.default).toBe('hard');
     expect(dynamic.difficulty.options.hard).toEqual({
-      npc_patience_modifier: -20,
-      challenge_frequency: 'high',
+      patience: 25,
+      volatility: 70,
+      disclosure: 25,
+      time_pressure: 60,
     });
     expect(dynamic.duration.max_turns).toBe(10);
     expect(dynamic.duration.soft_time_limit_minutes).toBe(12);
