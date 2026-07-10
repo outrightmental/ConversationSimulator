@@ -182,6 +182,19 @@ describe('Home — no-pack state', () => {
     renderHome()
     expect(await screen.findByText('None installed')).toBeInTheDocument()
   })
+
+  it('shows Checking while pack count fetch is in flight', () => {
+    // fetch never resolves — packCount stays null
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})))
+    renderHome()
+    expect(screen.getAllByText('Checking…').length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('does not flash missing-pack notice before the pack count is known', () => {
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})))
+    renderHome()
+    expect(screen.queryByRole('status', { name: /no scenario packs installed/i })).toBeNull()
+  })
 })
 
 describe('Home — offline readiness', () => {
@@ -336,6 +349,16 @@ describe('Home — missing-pack section', () => {
     const section = await screen.findByRole('status', { name: /no scenario packs installed/i })
     const link = section.querySelector('a, [href]')
     expect(link).not.toBeNull()
+  })
+
+  it('shows Restore official packs button in the missing-pack section', async () => {
+    stubFetches(makeHealth({ llm_ready: true, llm_model_name: 'TestModel' }), makePacks(0))
+    renderHome()
+    await screen.findByText('TestModel')
+    await screen.findByRole('status', { name: /no scenario packs installed/i })
+    expect(
+      screen.getByRole('button', { name: /restore official packs/i }),
+    ).toBeInTheDocument()
   })
 })
 
