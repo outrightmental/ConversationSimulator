@@ -1,0 +1,41 @@
+# SPDX-License-Identifier: Apache-2.0
+# Nightly registry validation: schema check, no-PENDING assertion, and URL HEAD checks.
+#
+# The URL HEAD check is intentionally run only nightly (not per-PR) because
+# HuggingFace CDN responses can be slow or temporarily rate-limited.  The
+# schema and no-PENDING checks also run in the main CI backend job via
+# test_model_registry.py, providing per-PR coverage without network calls.
+
+name: Registry nightly
+
+on:
+  schedule:
+    - cron: "0 3 * * *"  # 03:00 UTC daily
+  workflow_dispatch:       # allow manual triggering for debugging
+
+permissions:
+  contents: read
+
+jobs:
+  validate-registry:
+    name: Registry schema, no-PENDING, and URL HEAD checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install validation dependencies
+        run: pip install pyyaml jsonschema
+
+      - name: Schema and no-PENDING check
+        run: |
+          echo "Local: python scripts/validate-registry.py"
+          python scripts/validate-registry.py
+
+      - name: URL HEAD checks
+        run: |
+          echo "Local: python scripts/validate-registry.py --url-check"
+          python scripts/validate-registry.py --url-check

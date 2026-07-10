@@ -2,16 +2,7 @@
 import { useEffect, useRef } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import OfflineIndicator from '../components/OfflineIndicator'
-import { useGamepadNavigation } from '../hooks/useGamepadNavigation'
-import { useSteamKeyboard } from '../hooks/useSteamKeyboard'
-
-const NAV_LINKS = [
-  { to: '/', label: 'Home', end: true },
-  { to: '/library', label: 'Scenarios', end: false },
-  { to: '/workbench', label: 'Workbench', end: false },
-  { to: '/settings', label: 'Settings', end: false },
-  { to: '/support', label: 'Support', end: false },
-]
+import { useTranslation } from '../i18n'
 
 const linkStyle = ({ isActive }: { isActive: boolean }): React.CSSProperties => ({
   padding: '0.4rem 0.75rem',
@@ -73,6 +64,15 @@ export default function AppLayout() {
   const location = useLocation()
   const mainRef = useRef<HTMLElement>(null)
   const isInitialMount = useRef(true)
+  const { t } = useTranslation()
+
+  const NAV_LINKS = [
+    { to: '/', label: t('nav.home'), end: true },
+    { to: '/library', label: t('nav.scenarios'), end: false },
+    { to: '/workbench', label: t('nav.workbench'), end: false },
+    { to: '/settings', label: t('nav.settings'), end: false },
+    { to: '/support', label: t('nav.support'), end: false },
+  ]
 
   // Controller navigation: D-pad / left-stick moves focus, A = confirm, B = back,
   // R1 = push-to-talk.  No-ops in the browser when no gamepad is connected.
@@ -96,7 +96,7 @@ export default function AppLayout() {
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       <style>{globalStyles}</style>
       <a href="#main-content" className="skip-link">
-        Skip to main content
+        {t('nav.skipToMain')}
       </a>
 
       <header
@@ -110,9 +110,9 @@ export default function AppLayout() {
         }}
       >
         <span style={{ fontWeight: 700, marginRight: '1rem', letterSpacing: '-0.02em' }}>
-          Conversation Simulator
+          {t('nav.appTitle')}
         </span>
-        <nav aria-label="Main navigation" style={{ display: 'flex', gap: '0.25rem', flex: 1 }}>
+        <nav aria-label={t('nav.mainNavigation')} style={{ display: 'flex', gap: '0.25rem', flex: 1 }}>
           {NAV_LINKS.map(({ to, label, end }) => (
             <NavLink key={to} to={to} end={end} style={linkStyle}>
               {label}
