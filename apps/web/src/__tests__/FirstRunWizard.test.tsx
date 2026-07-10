@@ -142,7 +142,6 @@ beforeEach(() => {
     port: 7356,
   } })
   mockApi.benchmarkModel.mockResolvedValue({ ok: true, data: DEFAULT_BENCHMARK })
-  mockApi.putCloudSettings.mockResolvedValue({ last_model_id: null })
 })
 
 // ── Welcome step ─────────────────────────────────────────────────────────────
