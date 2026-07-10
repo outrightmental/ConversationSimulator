@@ -279,15 +279,21 @@ sudo apt-get install -y xdg-desktop-portal xdg-desktop-portal-gtk
 ### Data directories
 
 ```
-~/.local/share/convsim/db/      — SQLite session database
-~/.local/share/convsim/data/    — exports and pack cache
-~/.local/share/convsim/logs/    — runtime logs
-~/.local/share/convsim/models/  — downloaded model weights
+~/.local/share/convsim/db/       — SQLite session database
+~/.local/share/convsim/data/     — general application data
+~/.local/share/convsim/packs/    — installed scenario packs
+~/.local/share/convsim/exports/  — exported transcripts
+~/.local/share/convsim/logs/     — runtime logs
+~/.local/share/convsim/cache/    — regenerable caches
+~/.local/share/convsim/models/   — downloaded model weights
 ```
 
-If `~/.convsim/` exists from a pre-release dev install, the app migrates
-data on first launch. Override with environment variables:
-`CONVSIM_DB_DIR`, `CONVSIM_DATA_DIR`, `CONVSIM_LOG_DIR`, `CONVSIM_MODELS_DIR`.
+The root is `$XDG_DATA_HOME/convsim` when `XDG_DATA_HOME` is set, otherwise
+`~/.local/share/convsim`. If `~/.convsim/` exists from a pre-release dev
+install, the app migrates data on first launch. Every subdirectory can be
+redirected via a `CONVSIM_*` environment variable — e.g. `CONVSIM_DB_DIR`,
+`CONVSIM_DATA_DIR`, `CONVSIM_LOG_DIR`, `CONVSIM_MODELS_DIR` — or relocate the
+whole tree at once with `CONVSIM_DATA_ROOT`.
 
 ### Port conflicts
 
