@@ -413,7 +413,15 @@ async def process_turn(
                     {
                         "event_type": e.event_type,
                         "category": e.category,
-                        "reason": e.reason,
+                        # A hidden_agenda_leak reason embeds verbatim keywords
+                        # copied from the NPC's private hidden agenda. Redact it
+                        # so private content is never written to the debug log
+                        # (issue #199: no hidden/private content in logs by
+                        # default). event_type + category still identify the leak.
+                        "reason": (
+                            None if e.category == "hidden_agenda_leak" else e.reason
+                        ),
+                        "is_recoverable": e.is_recoverable,
                     }
                     for e in turn_parse_events
                 ],

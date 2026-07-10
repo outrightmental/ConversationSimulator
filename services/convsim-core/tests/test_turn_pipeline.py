@@ -953,6 +953,58 @@ class TestPromptComposerWiring:
         assert "structural_validation_failure" in types
 
     @pytest.mark.asyncio
+    async def test_hidden_agenda_leak_reason_redacted_in_debug_event(self):
+        """A hidden_agenda_leak reason (which embeds verbatim private agenda
+        keywords) must not be persisted to the debug log (issue #199)."""
+        conn = _make_unit_db()
+        row = _insert_unit_session(conn)
+
+        secret_keywords = "candidate leadership competency"
+
+        def _spy_parse(raw, runtime=None, hidden_agenda=None, turn_events=None):
+            if turn_events is not None:
+                turn_events.append(TurnEvent(
+                    event_type="output_violation_detected",
+                    category="hidden_agenda_leak",
+                    reason=(
+                        "NPC utterance contains multiple keywords from a private "
+                        f"agenda item ({secret_keywords})"
+                    ),
+                    is_recoverable=True,
+                ))
+            return _valid_turn_output()
+
+        with patch(
+            "convsim_core.services.turn_pipeline.parse_turn_output",
+            side_effect=_spy_parse,
+        ):
+            await process_turn(
+                session_row=row,
+                player_text="Tell me a secret.",
+                scenario_data=get_scenario_data("behavioral_interview", "normal"),
+                max_turns=10,
+                runtime=FakeChatRuntime(),
+                conn=conn,
+            )
+
+        rows = conn.execute(
+            "SELECT payload_json FROM turn_session_events "
+            "WHERE session_id = 'sess-unit' AND event_type = 'debug'",
+        ).fetchall()
+        assert len(rows) == 1
+        raw_payload = rows[0]["payload_json"]
+        # Private agenda keywords must not appear anywhere in the persisted log.
+        assert secret_keywords not in raw_payload
+        # The event is still recorded (type/category preserved), reason redacted.
+        debug = json.loads(raw_payload)
+        leak_evt = next(
+            e for e in debug["parse_events"]
+            if e["category"] == "hidden_agenda_leak"
+        )
+        assert leak_evt["reason"] is None
+        assert leak_evt["event_type"] == "output_violation_detected"
+
+    @pytest.mark.asyncio
     async def test_prompt_layers_ordered_safety_before_scenario(self):
         """In the composed system prompt, SAFETY_POLICY always precedes SCENARIO_BRIEF."""
         conn = _make_unit_db()
