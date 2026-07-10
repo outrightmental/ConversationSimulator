@@ -105,13 +105,13 @@ export default function Settings() {
   // ── Folders ─────────────────────────────────────────────────────────────────
 
   const [folders, setFolders] = useState<{ data: string; logs: string; models: string; packs: string; exports: string; cache: string; crash_bundles: string } | null>(null)
-  const [foldersError, setFoldersError] = useState<ApiError | null>(null)
+  const [foldersError, setFoldersError] = useState<ApiError | false>(false)
   const [copiedFolder, setCopiedFolder] = useState<string | null>(null)
   const [openFolderError, setOpenFolderError] = useState<string | null>(null)
 
   useEffect(() => {
     void api.getFolders().then((r) => {
-      if (r.ok) { setFolders(r.data); setFoldersError(null) }
+      if (r.ok) { setFolders(r.data); setFoldersError(false) }
       else setFoldersError(r.error)
     })
   }, [])
