@@ -167,6 +167,9 @@ export default function VoiceInput({ onSubmit, onRawStt, onSttLatency, disabled 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.code !== 'Space' || e.repeat) return
       if (isInteractiveElement(document.activeElement)) return
+      // In text-only mode there is no mic recording — the hotkey must be inert
+      // even when microphone permission is still granted from an active stream.
+      if (textOnly) return
       if (permission !== 'granted' || isSubmitting || disabled) return
       // Don't start recording while the transcript review panel is open.
       if (reviewState !== null) return
@@ -183,6 +186,7 @@ export default function VoiceInput({ onSubmit, onRawStt, onSttLatency, disabled 
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.code !== 'Space') return
       if (isInteractiveElement(document.activeElement)) return
+      if (textOnly) return
       if (permission !== 'granted' || isSubmitting || (disabled && !isRecording)) return
       // PTT only: release Space to stop. In hands-free mode, stop is handled on keydown.
       if (!isHandsFree) stopRecording()
@@ -194,7 +198,7 @@ export default function VoiceInput({ onSubmit, onRawStt, onSttLatency, disabled 
       document.removeEventListener('keydown', handleKeyDown)
       document.removeEventListener('keyup', handleKeyUp)
     }
-  }, [startRecording, stopRecording, permission, isRecording, isSubmitting, disabled, isHandsFree, reviewState])
+  }, [startRecording, stopRecording, permission, isRecording, isSubmitting, disabled, isHandsFree, reviewState, textOnly])
 
   const handleTextSubmit = (e: React.FormEvent) => {
     e.preventDefault()

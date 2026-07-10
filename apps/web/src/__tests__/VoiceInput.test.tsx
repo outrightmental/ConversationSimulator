@@ -907,4 +907,20 @@ describe('VoiceInput — text-only fallback (voice-to-text switch)', () => {
 
     expect(onSubmit).toHaveBeenCalledWith('fallback text')
   })
+
+  it('does not start recording via the Space hotkey after switching to text-only', () => {
+    const startRecording = vi.fn()
+    vi.mocked(useMicCapture).mockReturnValue(
+      makeMicState({ permission: 'granted', startRecording }),
+    )
+    render(<VoiceInput inputMode="push-to-talk" />)
+
+    fireEvent.click(screen.getByRole('button', { name: /switch to text-only/i }))
+    // Blur the newly focused text input so the hotkey focus guard doesn't mask the switch guard.
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+
+    fireEvent.keyDown(document, { code: 'Space' })
+
+    expect(startRecording).not.toHaveBeenCalled()
+  })
 })
