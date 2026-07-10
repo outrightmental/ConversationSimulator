@@ -249,12 +249,12 @@
 		"group"
 		{
 			"id"	"4"
-			"mode"	"trigger"
+			"mode"	"switches"
 			"name"	""
 			"description"	""
 			"inputs"
 			{
-				"click"
+				"right_bumper"
 				{
 					"activators"
 					{
@@ -272,11 +272,11 @@
 
 		"group_source_bindings"
 		{
-			"0"	"switch active=GameplayControls"
+			"0"	"button_diamond active"
 			"1"	"dpad active"
 			"2"	"left_joystick active"
 			"3"	"right_trackpad active"
-			"4"	"right_trigger active=GameplayControls"
+			"4"	"switch active=GameplayControls"
 		}
 	}
 
