@@ -73,7 +73,12 @@ export default function Logbook() {
     // Unlocking is idempotent, so it is safe to re-check on every visit. The
     // cumulative scenario-count stat is NOT idempotent, so it is incremented at
     // the point of completion (Debrief), never here on page load.
-    if (profile.streak_days >= 7) {
+    //
+    // Threshold matches the shipped Steam framework (#230), which defines
+    // ACH_PRACTICE_STREAK as "scenarios on three or more consecutive calendar
+    // days". Unlocking at a higher value would leave the achievement's stated
+    // condition met but ungranted.
+    if (profile.streak_days >= 3) {
       void unlock(SteamAchievement.PRACTICE_STREAK)
     }
   }, [state, profile, unlock])
