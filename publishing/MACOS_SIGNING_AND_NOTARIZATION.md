@@ -102,7 +102,7 @@ variables → Actions → Secrets):
 Tauri's bundler reads these environment variables from the CI environment
 automatically. The release workflow (`release.yml`) passes them through
 `env:` blocks. See
-[`docs/platform-notes.md` — Code signing and Gatekeeper](platform-notes.md#code-signing-and-gatekeeper)
+[`docs/platform-notes.md` — Code signing and Gatekeeper](../docs/platform-notes.md#code-signing-and-gatekeeper)
 for the exact variable names used by Tauri.
 
 ---
@@ -113,14 +113,21 @@ The Hardened Runtime is required for notarisation. The entitlements file at
 `apps/desktop/src-tauri/entitlements.plist` grants the capabilities the app
 needs under Hardened Runtime.
 
-The file must include the following entitlements at minimum:
+The file must include the following entitlements at minimum (these match the
+committed `entitlements.plist`):
 
 | Entitlement key | Value | Reason |
 |-----------------|-------|--------|
-| `com.apple.security.cs.allow-unsigned-executable-memory` | `true` | llama.cpp JIT compilation |
-| `com.apple.security.cs.disable-library-validation` | `true` | PyInstaller bundled extensions |
-| `com.apple.security.device.audio-input` | `true` | Microphone access for STT |
-| `com.apple.security.network.client` | `true` | Model download (user-initiated) |
+| `com.apple.security.cs.allow-jit` | `true` | WKWebView (Tauri's embedded browser) requires JIT to run JavaScript under Hardened Runtime |
+| `com.apple.security.cs.disable-library-validation` | `true` | Load vendor-signed third-party dylibs (Steamworks SDK, llama.cpp runtime) |
+| `com.apple.security.device.audio-input` | `true` | Microphone access for optional Whisper STT |
+| `com.apple.security.network.client` | `true` | Model download and loopback to the convsim-core sidecar (user-initiated) |
+| `com.apple.security.files.user-selected.read-write` | `true` | Read/write files chosen via the system open/save dialog (pack import, debrief export) |
+
+The App Sandbox is intentionally **not** enabled — Steam apps require direct
+IPC for the overlay and achievement reporting, which the App Sandbox forbids.
+Hardened Runtime (codesign's `runtime` option) is separate from the App Sandbox
+and is the feature Apple's notary service requires.
 
 Review the entitlements file before each Stage 3 submission. Entitlements that
 are not needed must be removed — Apple's notary service flags unnecessary
@@ -335,7 +342,7 @@ for notary service outages.
 
 - [`apps/desktop/src-tauri/entitlements.plist`](../apps/desktop/src-tauri/entitlements.plist) — Hardened Runtime entitlements
 - [`apps/desktop/src-tauri/tauri.conf.json`](../apps/desktop/src-tauri/tauri.conf.json) — Tauri bundle configuration
-- [`docs/platform-notes.md` — macOS section](platform-notes.md#macos) — system requirements, supported versions, build prerequisites
+- [`docs/platform-notes.md` — macOS section](../docs/platform-notes.md#macos) — system requirements, supported versions, build prerequisites
 - [`docs/steam-mvp-scope.md` — G3-01](../docs/steam-mvp-scope.md) — Stage 3 gate: notarised macOS build required
 - [`publishing/STEAM_DEPOT_CONTENTS.md` — macOS depot](STEAM_DEPOT_CONTENTS.md#macos-depot) — macOS depot layout and notarisation requirement
 - [`publishing/STEAM_PUBLISHING_AND_DEPLOYMENT.md`](STEAM_PUBLISHING_AND_DEPLOYMENT.md) — Steam deploy workflow and troubleshooting

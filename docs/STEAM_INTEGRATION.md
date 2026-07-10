@@ -28,7 +28,10 @@ enabled. Enabling the feature links the `steamworks` crate and activates the
 ```toml
 # apps/desktop/src-tauri/Cargo.toml
 [features]
-steam = ["steamworks"]
+steam = ["dep:steamworks"]
+
+[dependencies]
+steamworks = { version = "0.11", optional = true }
 ```
 
 ### Build variants
@@ -64,8 +67,10 @@ workflow environment.
 The bridge consists of:
 
 1. **`apps/desktop/src-tauri/src/steam.rs`** — Rust module that wraps the
-   `steamworks` crate. Contains the `SteamRuntime` struct, all Tauri command
-   handlers, and the graceful-fallback logic.
+   `steamworks` crate. Contains the `SteamRuntime` struct (with the
+   `unlock_achievement`, `increment_stat`, and `set_rich_presence` methods) and
+   the graceful-fallback logic. The `#[tauri::command]` handlers that expose
+   these methods to the front end live in `apps/desktop/src-tauri/src/lib.rs`.
 2. **`useSteamAchievements`** React hook — front-end wrapper that invokes the
    Tauri `steam_unlock_achievement` and `steam_increment_stat` commands.
 3. **`useSteamRichPresence`** React hook — front-end wrapper that invokes the
@@ -77,25 +82,28 @@ The bridge consists of:
 |---------|-----------|--------------------------|--------------------------|
 | `steam_unlock_achievement` | `name: String` | Calls `steamworks::UserStats::achievement(name).set()` then `store_stats()` | Returns `false`, no-op |
 | `steam_increment_stat` | `name: String` | Reads current value, increments by 1, calls `store_stats()` | Returns `false`, no-op |
-| `steam_set_rich_presence` | `key: String, value: String` | Calls `steamworks::Friends::set_rich_presence(key, value)` | Returns `false`, no-op |
+| `steam_set_rich_presence` | `value: String` | Calls `steamworks::Friends::set_rich_presence("steam_display", Some(value))` — the key is fixed internally | Returns `false`, no-op |
 
 Commands can be called freely without checking whether Steam is available.
 The `SteamRuntime` managed-state object absorbs all failures silently.
 
 ### `SteamRuntime` managed state
 
-`SteamRuntime` is registered as a Tauri managed state object in `lib.rs`:
+`SteamRuntime` is constructed once by `steam::init()` during `setup()` and
+registered as a Tauri managed state object in `lib.rs`, wrapped in an
+`Arc<Mutex<…>>` newtype (`SteamRuntimeState`) so the command handlers can share it:
 
 ```rust
 // apps/desktop/src-tauri/src/lib.rs
-use crate::steam::SteamRuntime;
+let (steam_status_val, steam_runtime_val) = steam::init();
+let steam_runtime = Arc::new(Mutex::new(steam_runtime_val));
 
 tauri::Builder::default()
-    .manage(SteamRuntime::new())
+    .manage(SteamRuntimeState(Arc::clone(&steam_runtime)))
     ...
 ```
 
-`SteamRuntime::new()` attempts `steamworks::Client::init()`. If init fails for
+`steam::init()` attempts `steamworks::Client::init()`. If init fails for
 any reason — Steam not running, `steam` feature disabled, wrong App ID, SDK
 missing — the runtime stores a `None` client and all subsequent commands return
 `false` immediately without logging errors.
@@ -122,7 +130,10 @@ Only `steam_cloud_settings.json` is included.
 The app writes a `.nosteamcloudpath` file to each data subdirectory on first
 launch. This sentinel file tells the Steam client not to sync its directory
 even if the portal configuration changes or is misconfigured. The sentinel
-files are created by `convsim_core/paths.py` at the `ensure_data_dirs()` call.
+files are written by the FastAPI app lifespan hook in
+`services/convsim-core/convsim_core/app.py`, which touches a
+`.nosteamcloudpath` marker in each data subdirectory on startup. The exclusion
+semantics are documented in `services/convsim-core/convsim_core/steam_cloud.py`.
 
 ### `steam_cloud_settings.json` schema
 
@@ -146,9 +157,13 @@ Fields that may **never** appear in this file:
 - Personal or identifying information
 
 If a field is added to `steam_cloud_settings.json`, it must be reviewed for
-privacy impact before the feature is merged. The gate G4-04 in
-[`docs/steam-mvp-scope.md`](steam-mvp-scope.md) requires explicit sign-off
-from the platform team on any new synced field.
+privacy impact before the feature is merged. The authoritative sync scope is
+the **Steam Cloud sync for non-sensitive settings** row in
+[`docs/steam-mvp-scope.md`](steam-mvp-scope.md) (display preferences,
+last-used model ID, UI layout state only — transcripts, model weights, audio
+files, and session history must never sync), and the privacy risks PR-01
+through PR-03 in
+[`publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md`](../publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md).
 
 ### Verifying the Steam Cloud configuration
 
@@ -325,6 +340,6 @@ Use this checklist at the Stage 4 gate:
 - [`docs/steam-achievements-stats-rich-presence.md`](steam-achievements-stats-rich-presence.md) — Steamworks portal configuration: achievements, stats, rich presence
 - [`publishing/STEAM_APP_REGISTRATION.md`](../publishing/STEAM_APP_REGISTRATION.md) — Steam Cloud quota, root paths, and exclusion patterns
 - [`docs/privacy.md`](privacy.md) — local-first data handling; base privacy policy
-- [`docs/steam-mvp-scope.md`](steam-mvp-scope.md) — Stage 4 gate criteria (G4-04 covers synced-field sign-off)
+- [`docs/steam-mvp-scope.md`](steam-mvp-scope.md) — release gates and the authoritative Steam Cloud sync scope (non-sensitive settings only)
 - [`docs/release-checklist.md`](release-checklist.md) — B.11 Steam Cloud sync verification
 - [`publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md`](../publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md) — privacy risks PR-01 through PR-03

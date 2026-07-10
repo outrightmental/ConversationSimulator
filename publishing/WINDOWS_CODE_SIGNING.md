@@ -91,13 +91,15 @@ certutil -encode cert.pfx cert.b64
 base64 -i cert.pfx -o cert.b64
 ```
 
-Tauri's bundler reads these secrets and calls `signtool.exe` automatically
-during `cargo tauri build` on Windows when the secrets are present. When the
-secrets are absent, the build proceeds and produces an unsigned installer.
-
-The release workflow (`release.yml`) passes the secrets as environment
-variables. When CI runs on a non-Windows runner, the signing step is skipped
-automatically.
+The release workflow (`release.yml`) signs the installers in a dedicated
+**"Sign Windows installers (Authenticode)"** step that runs *after*
+`cargo tauri build`, not through Tauri's own bundler. That step decodes
+`WINDOWS_SIGN_CERT_PFX` to a temporary `.pfx`, locates `signtool.exe` from the
+Windows SDK, and signs every `.exe` and `.msi` under
+`apps\desktop\src-tauri\target\release\bundle`. When `WINDOWS_SIGN_CERT_PFX`
+is absent (contributor forks, unsigned local builds), the step logs a notice
+and exits 0, producing an unsigned installer. The step only runs on Windows
+runners (`if: runner.os == 'Windows'`).
 
 For **EV certificates via cloud HSM**, the CI integration depends on the
 vendor. Consult DigiCert's or Sectigo's CI documentation for the required
@@ -258,14 +260,17 @@ to see the exact file name.
 
 ### CI build produces unsigned installer even when secrets are set
 
-**Cause:** The release workflow only signs on Windows runners. If the
-`windows-latest` runner was not used, or if the Tauri signing variables were
-not passed through the `env:` block, the signing step was silently skipped.
+**Cause:** The "Sign Windows installers (Authenticode)" step only runs on
+Windows runners, and it skips (exits 0) when `WINDOWS_SIGN_CERT_PFX` is empty.
+If the `windows-latest` runner was not used, or the secret was not exposed to
+the step's `env:` block, the installer is produced unsigned.
 
-**Fix:** Confirm the release workflow uses `windows-latest` for the Windows
-build job and that `WINDOWS_SIGN_CERT_PFX` and `WINDOWS_SIGN_CERT_PASSWORD`
-are in the job's `env:` block. Check the workflow step output for the line
-`INFO tauri::bundle::windows::sign: Signing binary`.
+**Fix:** Confirm the release workflow runs the Windows build job on
+`windows-latest` and that `WINDOWS_SIGN_CERT_PFX` / `WINDOWS_SIGN_CERT_PASSWORD`
+are mapped in that step's `env:` block. In the step log, look for
+`Using signtool: ...` and `Signing: ...` lines. The message
+`WINDOWS_SIGN_CERT_PFX is not set — producing unsigned build` means the secret
+did not reach the step.
 
 ---
 
