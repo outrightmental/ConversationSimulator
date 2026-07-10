@@ -146,6 +146,13 @@ jobs:
           find release-artifacts -name "*.deb" \
             -exec cp -v {} steam-content/linux/ \;
 
+          # GitHub release assets do not carry the Unix executable bit, so the
+          # AppImage arrives as mode 0644 after download + copy.  SteamPipe
+          # preserves the staged file mode on Linux, so restore +x here — both
+          # to ship a runnable binary to players and so the artifact inspection
+          # gate below (test_appimage_is_executable) reflects the shipped state.
+          find steam-content/linux -name "*.AppImage" -exec chmod +x {} \;
+
           echo "--- Depot content summary ---"
           find steam-content -type f | sort
 
