@@ -180,6 +180,41 @@ jobs:
           echo "--- Depot content summary ---"
           find steam-content -type f | sort
 
+      # ── Verify macOS .app code-signature presence ─────────────────────────────
+      # Confirms the extracted .app bundle was signed before it is staged for
+      # Steam upload.  This deploy workflow runs on an Ubuntu runner, so
+      # codesign(1) and spctl(1) are unavailable; full notarisation verification
+      # was already performed in release.yml before the artifact was uploaded.
+      #
+      # This lightweight check verifies that the _CodeSignature directory exists
+      # inside the bundle — codesign always creates it when signing succeeds.
+      # An absent _CodeSignature means the artifact is unsigned, which will cause
+      # Gatekeeper to block the app on clean macOS installs and violates gate
+      # G3-01 (docs/steam-mvp-scope.md).
+      #
+      # Non-blocking: a missing signature emits a WARN (not an error) so that
+      # dry-run and internal staging uploads of unsigned dev builds are not
+      # blocked.  Signed builds must be used for any Stage 3+ release.
+      - name: Verify macOS .app code-signature presence
+        run: |
+          APP_PATH="$(find steam-content/macos -maxdepth 1 -name '*.app' -type d \
+            2>/dev/null | head -n1)"
+          if [ -z "$APP_PATH" ]; then
+            echo "  INFO  No .app directory found in steam-content/macos — skipping check."
+            exit 0
+          fi
+          if [ -d "$APP_PATH/Contents/_CodeSignature" ]; then
+            echo "  OK  Code signature present: $APP_PATH/Contents/_CodeSignature"
+            echo "      Notarisation was verified in release.yml before artifact upload."
+            echo "      Gate G3-01 macOS signature criterion satisfied."
+          else
+            echo "  WARN  $APP_PATH does not contain a code signature (_CodeSignature missing)." >&2
+            echo "        Signed and notarised builds are required for Stage 3/4 Steam release" >&2
+            echo "        (gate G3-01 in docs/steam-mvp-scope.md)." >&2
+            echo "        This warning does not block dry-run or internal staging uploads." >&2
+            echo "        See docs/platform-notes.md for signing requirements." >&2
+          fi
+
       # ── Verify no forbidden files are staged ───────────────────────────────
       # Enforces depot content exclusion rule MD-04 and the approved binary
       # payload list (see publishing/STEAM_DEPOT_CONTENTS.md) using the shared
