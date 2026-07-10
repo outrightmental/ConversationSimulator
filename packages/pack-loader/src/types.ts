@@ -201,7 +201,7 @@ export interface RawFixture {
   description: string;
   seed?: number;
   input_mode?: 'text' | 'voice';
-  difficulty?: 'easy' | 'normal' | 'hard';
+  difficulty?: 'warm' | 'standard' | 'hard' | 'adversarial';
   turns: RawFixtureTurn[];
   static_assertions?: RawStaticAssertion[];
 }

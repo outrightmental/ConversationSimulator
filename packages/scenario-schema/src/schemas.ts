@@ -107,8 +107,8 @@ export const ScenarioSchema = z
       .array(z.string().min(1, 'Goal cannot be empty').max(200, 'Goal must be 200 characters or fewer'))
       .min(1, 'At least one goal is required')
       .max(10, 'At most 10 goals allowed'),
-    difficulty: z.enum(['easy', 'medium', 'hard'], {
-      errorMap: () => ({ message: 'Difficulty must be easy, medium, or hard' }),
+    difficulty: z.enum(['warm', 'standard', 'hard', 'adversarial'], {
+      errorMap: () => ({ message: 'Difficulty must be warm, standard, hard, or adversarial' }),
     }),
     duration_minutes: z
       .number()
