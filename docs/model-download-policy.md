@@ -74,9 +74,11 @@ All registry-managed models list `provider: huggingface` in `model-registry/regi
 The download URL points directly to HuggingFace Hub (e.g.
 `https://huggingface.co/<org>/<repo>/resolve/<ref>/<filename>.gguf`).
 
-URLs are confirmed at Milestone 1 when `PENDING` entries in the registry are
-resolved with verified checksums. Until then, the model manager shows a
-**Not yet available** state for any entry with `url: PENDING`.
+All registry-managed URLs are pinned to a specific repo revision (commit SHA)
+and paired with a verified checksum. The `PENDING` sentinel remains reserved in
+the schema for any future pre-release entry; while an entry carries
+`url: PENDING` the model manager shows a **Not yet available** state and its
+download is blocked.
 
 ### No automatic mirror fallback
 
@@ -152,7 +154,7 @@ screen. No partial disclosure is acceptable.
 | 1 | **Model name** | `name` field in registry | `Qwen3 4B Instruct Q4_K_M` |
 | 2 | **Source URL** | `download.url` in registry | `https://huggingface.co/…` |
 | 3 | **Licence** | `license` + `license_url` in registry | `Apache 2.0` with link to `https://www.apache.org/licenses/LICENSE-2.0` |
-| 4 | **Download size** | `size_gb` in registry | `2.6 GB` |
+| 4 | **Download size** | `size_gb` in registry | `2.5 GB` |
 | 5 | **SHA-256 checksum** | `download.sha256` in registry | `abc123…` (64 hex chars) or `PENDING — not yet available` |
 | 6 | **Destination path** | Resolved at runtime | `~/.convsim/models/qwen3-4b-instruct-q4_k_m.gguf` |
 
@@ -252,13 +254,14 @@ Current registry-managed models (v1):
 
 | Model ID | Tier | Size | Licence |
 |----------|------|------|---------|
-| `qwen3-4b-instruct-q4_k_m` | Starter | 2.6 GB | Apache 2.0 |
+| `qwen3-4b-instruct-q4_k_m` | Starter | 2.5 GB | Apache 2.0 |
 | `qwen3-8b-instruct-q4_k_m` | Standard | 5.0 GB | Apache 2.0 |
 | `qwen3-14b-instruct-q4_k_m` | High-quality | 9.0 GB | Apache 2.0 |
-| `mistral-small-3.1-24b-instruct-q4_k_m` | High-quality | 14.8 GB | Apache 2.0 |
+| `mistral-small-3.1-24b-instruct-q4_k_m` | High-quality | 14.3 GB | Apache 2.0 |
 | `user-supplied-gguf` | User-supplied | Unknown | Unknown |
 
-All download URLs and SHA-256 checksums are `PENDING` until Milestone 1.
+All registry-managed download URLs are pinned to a commit SHA and paired with a
+verified SHA-256 checksum; no entry ships a `PENDING` value.
 
 ---
 

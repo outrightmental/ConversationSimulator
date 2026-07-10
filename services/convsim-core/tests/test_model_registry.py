@@ -315,6 +315,23 @@ def test_actual_registry_has_all_required_tiers(registry_schema):
     assert "user-supplied" in roles
 
 
+def test_actual_registry_no_pending_values():
+    """The production registry must not ship PENDING sentinel values.
+
+    PENDING is allowed by the schema as a pre-release placeholder, but every
+    registry-managed model must have a real URL and verified sha256 before
+    release.  This test prevents PENDING values from reaching the main branch.
+    """
+    data = load_registry_yaml(_REGISTRY_PATH)
+    for model in data.get("models", []):
+        download = model.get("download", {})
+        model_id = model.get("id", "<unknown>")
+        url = download.get("url", "")
+        sha256 = download.get("sha256", "")
+        assert url != "PENDING", f"Model '{model_id}' still has download.url: PENDING"
+        assert sha256 != "PENDING", f"Model '{model_id}' still has download.sha256: PENDING"
+
+
 def test_actual_registry_no_model_weights():
     """No binary model weights are included in the repository."""
     registry_dir = _REGISTRY_PATH.parent
@@ -483,12 +500,16 @@ def test_get_models_after_registry_load_returns_sorted_entries(client):
 
 
 def test_get_models_entry_shape(client):
+    import re
+
     load_and_persist_registry(client.app.state.db.connection(), _REGISTRY_PATH)
     body = client.get("/api/models").json()
     entry = next(m for m in body["registry"] if m["role"] == "starter")
     assert entry["license_spdx"] == "Apache-2.0"
     assert entry["source_type"] == "registry"
-    assert entry["sha256"] == "PENDING"
+    assert re.fullmatch(r"[0-9a-f]{64}", entry["sha256"] or ""), (
+        f"Expected 64-char hex sha256, got: {entry['sha256']!r}"
+    )
     assert isinstance(entry["size_gb"], float)
     assert isinstance(entry["min_vram_gb"], float)
 
