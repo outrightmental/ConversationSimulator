@@ -13,6 +13,14 @@ interface ApiErrorViewProps {
 export function ApiErrorView({ error, onRetry, context, compact = false }: ApiErrorViewProps) {
   const [copied, setCopied] = useState(false)
   const copy = ERROR_COPY[error.kind]
+  // For an http-error the server sent a clean, human-readable business message
+  // (e.g. "Unknown scenario_id" or "SHA-256 checksum mismatch"). The content-type
+  // guard in client.ts guarantees parser internals never reach this path, so it is
+  // safe — and more useful — to surface that message as the cause. Other kinds
+  // (network, runtime-unreachable, timeout, schema-mismatch) carry only low-level
+  // text, so we keep the designed plain-language description instead.
+  const detail =
+    error.kind === 'http-error' && error.message ? error.message : copy.description
 
   function handleCopyDiagnostics() {
     void (async () => {
@@ -33,6 +41,9 @@ export function ApiErrorView({ error, onRetry, context, compact = false }: ApiEr
         style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}
       >
         <span style={{ color: '#f87171', fontSize: '0.8rem' }}>{copy.title}</span>
+        {error.kind === 'http-error' && error.message && (
+          <span style={{ color: '#a1a1aa', fontSize: '0.8rem' }}>{error.message}</span>
+        )}
         {onRetry && (
           <button
             onClick={onRetry}
@@ -81,7 +92,7 @@ export function ApiErrorView({ error, onRetry, context, compact = false }: ApiEr
         {copy.title}
       </p>
       <p style={{ margin: '0 0 0.75rem', fontSize: '0.825rem', color: '#a1a1aa' }}>
-        {copy.description}
+        {detail}
       </p>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
         {onRetry && (

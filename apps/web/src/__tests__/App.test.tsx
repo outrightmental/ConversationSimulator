@@ -13,8 +13,12 @@ vi.mock('@convsim/ui', () => ({
 }))
 
 function mockFetch(response: object) {
+  // The API client reads the body via res.text() and then JSON.parses it (so an
+  // HTML body from a downed runtime becomes a typed error instead of a parser
+  // crash), so the mock must provide text(), not just json().
+  const body = JSON.stringify(response)
   vi.stubGlobal('fetch', vi.fn(() =>
-    Promise.resolve({ ok: true, json: () => Promise.resolve(response) }),
+    Promise.resolve({ ok: true, status: 200, statusText: 'OK', json: () => Promise.resolve(response), text: () => Promise.resolve(body) }),
   ))
 }
 

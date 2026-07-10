@@ -194,7 +194,7 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
   if (loadError) {
     return (
       <div className="setup-page" data-testid="setup-page">
-        <div className="setup-error" role="alert">
+        <div className="setup-error">
           <h2>Failed to load scenario</h2>
           <ApiErrorView error={loadError} context="ScenarioSetup" />
           <button onClick={onBack} style={{ marginTop: '0.75rem' }}>Go back</button>
@@ -515,7 +515,7 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
           </section>
 
           {submitError && (
-            <div className="setup-submit-error" role="alert">
+            <div className="setup-submit-error">
               <ApiErrorView error={submitError} compact context="ScenarioSetup-Submit" />
             </div>
           )}
