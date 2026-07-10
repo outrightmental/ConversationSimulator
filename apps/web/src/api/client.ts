@@ -43,7 +43,7 @@ import type {
 export type { HealthResponse };
 export type { ApiError, ApiResult } from './errors';
 
-import type { ApiResult } from './errors';
+import type { ApiError, ApiResult } from './errors';
 
 const BASE = _isTauriProduction ? `${CORE_ORIGIN}/api` : '/api'
 
@@ -114,9 +114,15 @@ export interface SttHealthResponse {
   checked_at: string
 }
 
-async function parseErrorMessage(res: Response): Promise<string> {
-  let text = ''
-  try { text = await res.text() } catch { /* ignore */ }
+const HTML_ERROR: Omit<ApiError, 'status'> = {
+  kind: 'runtime-unreachable',
+  message: 'API returned HTML instead of JSON — the local runtime is not running.',
+}
+
+// Turn an already-read error body into a clean message. Never returns HTML or
+// parser internals — an HTML body is handled upstream in errorFromResponse and
+// never reaches here.
+function parseErrorText(text: string, res: Response): string {
   const fallback = text || `${res.status} ${res.statusText}`
   try {
     // convsim-core (Python) returns { error: { code, message } }; the interim
@@ -140,14 +146,27 @@ async function parseErrorMessage(res: Response): Promise<string> {
   return fallback
 }
 
+// Build an ApiError for a non-2xx response. Reads the body once and applies the
+// same content-type guard as the success path: an HTML error page (a static
+// server or reverse proxy answering an API route while core is down — which can
+// arrive with any status, not just 2xx) maps to runtime-unreachable so the raw
+// "<!doctype …>" markup can never reach the DOM.
+async function errorFromResponse(res: Response): Promise<ApiError> {
+  let text = ''
+  try { text = await res.text() } catch { /* ignore */ }
+  if (text.trimStart().startsWith('<')) {
+    return { ...HTML_ERROR, status: res.status }
+  }
+  return { kind: 'http-error', message: parseErrorText(text, res), status: res.status }
+}
+
 // Guard: reads the body as text, then JSON.parses it.  If the server returned
 // HTML (static server answering an API route while core is down), the parse
 // fails and we return runtime-unreachable instead of letting the raw parser
 // error or "<html>" content reach the DOM.
 async function handleResponse<T>(res: Response): Promise<ApiResult<T>> {
   if (!res.ok) {
-    const msg = await parseErrorMessage(res)
-    return { ok: false, error: { kind: 'http-error', message: msg, status: res.status } }
+    return { ok: false, error: await errorFromResponse(res) }
   }
   let text = ''
   try { text = await res.text() } catch { /* ignore */ }
@@ -161,7 +180,7 @@ async function handleResponse<T>(res: Response): Promise<ApiResult<T>> {
       error: {
         kind: 'runtime-unreachable',
         message: isHtml
-          ? 'API returned HTML instead of JSON — the local runtime is not running.'
+          ? HTML_ERROR.message
           : 'API returned a non-JSON response — the local runtime may not be running.',
         status: res.status,
       },
@@ -209,8 +228,7 @@ async function del(path: string): Promise<ApiResult<undefined>> {
   try {
     const res = await fetch(`${BASE}${path}`, { method: 'DELETE' })
     if (!res.ok) {
-      const msg = await parseErrorMessage(res)
-      return { ok: false, error: { kind: 'http-error', message: msg, status: res.status } }
+      return { ok: false, error: await errorFromResponse(res) }
     }
     return { ok: true, data: undefined }
   } catch (err) {
@@ -395,8 +413,7 @@ export const api = {
     try {
       const res = await fetch(`${BASE}/sessions/${sessionId}/export/text`)
       if (!res.ok) {
-        const msg = await parseErrorMessage(res)
-        return { ok: false, error: { kind: 'http-error', message: msg, status: res.status } }
+        return { ok: false, error: await errorFromResponse(res) }
       }
       const text = await res.text()
       const disposition = res.headers.get('Content-Disposition') ?? ''
@@ -571,8 +588,7 @@ export const api = {
           }
         }
         if (!res.ok) {
-          const msg = await parseErrorMessage(res)
-          return { ok: false, error: { kind: 'http-error', message: msg, status: res.status } }
+          return { ok: false, error: await errorFromResponse(res) }
         }
         const blob = await res.blob()
         const disposition = res.headers.get('Content-Disposition') ?? ''
