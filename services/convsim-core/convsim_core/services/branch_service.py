@@ -99,7 +99,7 @@ def fork_session(
     turns_to_copy = conn.execute(
         "SELECT turn_number, role, content, emotion, state_delta_json, "
         "event_flags_json, safety_json, raw_output_json, source_mode, "
-        "flow_state_after, state_snapshot_json, created_at "
+        "barged_in, flow_state_after, state_snapshot_json, created_at "
         "FROM turn_session_turns "
         "WHERE session_id = ? AND turn_number <= ? ORDER BY turn_number ASC",
         (parent_session_id, max_db_turn_to_copy),
@@ -133,9 +133,9 @@ def fork_session(
                 "INSERT INTO turn_session_turns "
                 "(session_id, turn_number, role, content, emotion, "
                 "state_delta_json, event_flags_json, safety_json, "
-                "raw_output_json, source_mode, flow_state_after, "
+                "raw_output_json, source_mode, barged_in, flow_state_after, "
                 "state_snapshot_json, created_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
                     (
                         new_session_id,
@@ -148,6 +148,7 @@ def fork_session(
                         t["safety_json"],
                         t["raw_output_json"],
                         t["source_mode"],
+                        t["barged_in"],
                         t["flow_state_after"],
                         t["state_snapshot_json"],
                         t["created_at"],

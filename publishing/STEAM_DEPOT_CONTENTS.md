@@ -148,6 +148,7 @@ resources/
     everyday-negotiation/
     language-cafe/
     difficult-conversations/
+controller_config.vdf             # Default Steam Input bindings (see §Steam Input config)
 LICENSE                           # Apache 2.0
 NOTICE                            # Third-party licence notices
 ```
@@ -194,6 +195,38 @@ distributed outside the app (GitHub, itch.io, direct links) and installed by
 the player using the manual import path in the Settings screen. See
 [`docs/pack-download-policy.md`](../docs/pack-download-policy.md) for the full
 import policy.
+
+---
+
+## Steam Input config
+
+The file `steam/controller_config.vdf` contains the default Steam Input action
+manifest for Conversation Simulator.  It defines two action sets:
+
+| Action set | Active when |
+|------------|-------------|
+| `MenuControls` | Home, Library, Setup, Debrief, Model Manager, Settings, Support, Workbench |
+| `GameplayControls` | Inside an active conversation session |
+
+Default bindings for the Steam Deck:
+
+| Physical input | Action | Action set |
+|----------------|--------|------------|
+| D-pad up/down/left/right | Navigate focus | Both |
+| Left stick | Scroll lists | Both |
+| A button | Confirm / select | Both |
+| B button | Back | Both |
+| Right trackpad | Pointer (precise click) | Both |
+| R1 (right shoulder) | Push to Talk | `GameplayControls` only |
+| L4/R4/L5/R5 (back buttons) | Unmapped in v1 | — |
+| Gyro | Unmapped in v1 | — |
+
+The VDF is included **in the Linux depot only** (the only platform that runs on
+Steam Deck).  Windows and macOS depots do not include it.  The path at the
+depot root (`controller_config.vdf`) is the conventional location Steam uses
+when loading bundled input configurations.
+
+Source file: [`steam/controller_config.vdf`](../steam/controller_config.vdf)
 
 ---
 

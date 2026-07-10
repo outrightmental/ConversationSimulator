@@ -1054,6 +1054,77 @@ describe('Conversation screen', () => {
       AudioSpy.mockRestore()
     })
 
+    it('defers playback (thinking pause) when thinking_pause_ms is present and the toggle is enabled', async () => {
+      // Toggle defaults to enabled (localStorage key unset).
+      localStorage.removeItem('convsim.voice.thinkingPauseEnabled')
+      const mockPlay = vi.fn().mockResolvedValue(undefined)
+      const AudioSpy = vi.spyOn(window, 'Audio').mockReturnValue(
+        { play: mockPlay, pause: vi.fn(), onended: null, onerror: null } as unknown as HTMLAudioElement,
+      )
+
+      renderConversation({ tts_enabled: true })
+      await waitFor(() => expect(screen.getByRole('log')).toBeInTheDocument())
+
+      act(() => {
+        wsCallback?.({
+          type: 'tts.audio_chunk',
+          seq: 1,
+          session_id: SESSION_ID,
+          ts: '2026-07-01T00:00:00Z',
+          payload: {
+            chunk_index: 0,
+            total_chunks: 1,
+            text: 'Hello there.',
+            voice_id: 'af_heart',
+            cache_path: '/home/user/.convsim/tts_cache/abc123.wav',
+            error: null,
+            thinking_pause_ms: 400,
+          },
+        })
+      })
+
+      // Playback must be held back by the thinking-pause timer, not started synchronously.
+      expect(mockPlay).not.toHaveBeenCalled()
+
+      AudioSpy.mockRestore()
+    })
+
+    it('skips the thinking pause (immediate playback) when the toggle is disabled', async () => {
+      // Voice settings toggle off — the pause must not apply even though the
+      // backend still sends thinking_pause_ms.
+      localStorage.setItem('convsim.voice.thinkingPauseEnabled', 'false')
+      const mockPlay = vi.fn().mockResolvedValue(undefined)
+      const AudioSpy = vi.spyOn(window, 'Audio').mockReturnValue(
+        { play: mockPlay, pause: vi.fn(), onended: null, onerror: null } as unknown as HTMLAudioElement,
+      )
+
+      renderConversation({ tts_enabled: true })
+      await waitFor(() => expect(screen.getByRole('log')).toBeInTheDocument())
+
+      act(() => {
+        wsCallback?.({
+          type: 'tts.audio_chunk',
+          seq: 1,
+          session_id: SESSION_ID,
+          ts: '2026-07-01T00:00:00Z',
+          payload: {
+            chunk_index: 0,
+            total_chunks: 1,
+            text: 'Hello there.',
+            voice_id: 'af_heart',
+            cache_path: '/home/user/.convsim/tts_cache/abc123.wav',
+            error: null,
+            thinking_pause_ms: 400,
+          },
+        })
+      })
+
+      expect(mockPlay).toHaveBeenCalled()
+
+      localStorage.removeItem('convsim.voice.thinkingPauseEnabled')
+      AudioSpy.mockRestore()
+    })
+
     it('does not play audio when tts_enabled is false (text-only session)', async () => {
       const mockPlay = vi.fn().mockResolvedValue(undefined)
       const AudioSpy = vi.spyOn(window, 'Audio').mockReturnValue(

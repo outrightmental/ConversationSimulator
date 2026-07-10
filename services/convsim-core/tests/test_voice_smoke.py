@@ -635,3 +635,139 @@ class TestTextFallback:
         assert data["state"] in ("PlayerTurnListening", "Ended"), (
             f"[stage: turn_loop] Unexpected session state after text-fallback turn: {data['state']}"
         )
+
+
+# ===========================================================================
+# Conversational timing features — issue #308
+# ===========================================================================
+
+
+class TestNpcThinkingPause:
+    """Verify the NPC thinking-pause feature (issue #308).
+
+    The backend embeds ``thinking_pause_ms`` on the first ``tts_audio_chunk``
+    event payload when TTS is enabled and the feature is on (default).
+    """
+
+    _SCENARIO = "behavioral_interview"
+    _LANGUAGE = "en"
+
+    def test_thinking_pause_present_in_first_tts_chunk(self, voice_client):
+        """Stage tts: first chunk payload contains thinking_pause_ms (integer ≥ 0)."""
+        session_id, _ = _create_and_start(
+            voice_client, self._SCENARIO, self._LANGUAGE, tts_enabled=True
+        )
+        data = _submit_turn(voice_client, session_id, _ENGLISH_PLAYER_TURN)
+        tts_events = [e for e in data["events"] if e["event_type"] == "tts_audio_chunk"]
+        assert tts_events, "[stage: tts] No tts_audio_chunk events"
+        first = tts_events[0]["payload"]
+        pause = first.get("thinking_pause_ms")
+        assert isinstance(pause, int) and pause >= 0, (
+            f"[stage: tts] thinking_pause_ms missing or invalid on first chunk: {first}"
+        )
+
+    def test_thinking_pause_absent_on_subsequent_chunks(self, voice_client):
+        """Stage tts: subsequent chunks (chunk_index > 0) do not carry thinking_pause_ms."""
+        session_id, _ = _create_and_start(
+            voice_client, self._SCENARIO, self._LANGUAGE, tts_enabled=True
+        )
+        data = _submit_turn(voice_client, session_id, _ENGLISH_PLAYER_TURN)
+        tts_events = [e for e in data["events"] if e["event_type"] == "tts_audio_chunk"]
+        if len(tts_events) < 2:
+            pytest.skip("Not enough TTS chunks to test subsequent-chunk absence")
+        for chunk_event in tts_events[1:]:
+            assert "thinking_pause_ms" not in chunk_event["payload"], (
+                f"thinking_pause_ms unexpectedly present on chunk > 0: {chunk_event['payload']}"
+            )
+
+    def test_thinking_pause_absent_when_tts_disabled(self, voice_client):
+        """No thinking_pause_ms when TTS is off (no TTS events)."""
+        session_id, _ = _create_and_start(
+            voice_client, self._SCENARIO, self._LANGUAGE, tts_enabled=False
+        )
+        data = _submit_turn(voice_client, session_id, _ENGLISH_PLAYER_TURN)
+        tts_events = [e for e in data["events"] if e["event_type"] == "tts_audio_chunk"]
+        assert not tts_events, "[stage: tts] Unexpected TTS events when tts_enabled=False"
+
+
+class TestBargeIn:
+    """Verify the barge-in feature end-to-end (issue #308).
+
+    When the player submits a turn with ``barged_in=True`` the backend:
+      1. Persists the flag on the player turn row.
+      2. Still delivers a full NPC response (barge-in does not abort the LLM).
+      3. Reflects the count in the debrief metrics ``interruption_count``.
+
+    Barge-in script:
+      1. Start a TTS-enabled session.
+      2. Submit a first turn without barge-in to advance the session.
+      3. Submit a second turn with barged_in=True (simulating the player
+         starting to speak while NPC TTS was playing).
+      4. End the session and generate a debrief.
+      5. Assert interruption_count == 1 in debrief metrics.
+    """
+
+    _SCENARIO = "behavioral_interview"
+    _LANGUAGE = "en"
+
+    def _submit_barged_in_turn(
+        self, client, session_id: str, text: str
+    ) -> dict:
+        """POST a player turn with barged_in=True."""
+        resp = client.post(
+            f"/api/sessions/{session_id}/turn",
+            json={"content": text, "barged_in": True},
+        )
+        assert resp.status_code == 200, (
+            f"[stage: barge_in] Turn with barged_in=True returned "
+            f"{resp.status_code}: {resp.text}"
+        )
+        return resp.json()
+
+    def test_barge_in_turn_still_delivers_npc_response(self, voice_client):
+        """Stage barge_in: barged-in turn receives a full NPC response."""
+        session_id, _ = _create_and_start(voice_client, self._SCENARIO, self._LANGUAGE)
+        data = self._submit_barged_in_turn(voice_client, session_id, _ENGLISH_PLAYER_TURN)
+        npc_event = next((e for e in data["events"] if e["event_type"] == "npc_turn"), None)
+        assert npc_event is not None, "[stage: barge_in] No npc_turn event after barged-in turn"
+        assert npc_event["payload"].get("content"), (
+            "[stage: barge_in] Empty NPC content after barged-in turn"
+        )
+
+    def test_barge_in_flag_appears_on_player_event(self, voice_client):
+        """Stage barge_in: player_turn event payload carries barged_in=True."""
+        session_id, _ = _create_and_start(voice_client, self._SCENARIO, self._LANGUAGE)
+        data = self._submit_barged_in_turn(voice_client, session_id, _ENGLISH_PLAYER_TURN)
+        player_event = next((e for e in data["events"] if e["event_type"] == "player_turn"), None)
+        assert player_event is not None, "[stage: barge_in] No player_turn event"
+        assert player_event["payload"].get("barged_in") is True, (
+            f"[stage: barge_in] Expected barged_in=True in player_turn payload: "
+            f"{player_event['payload']}"
+        )
+
+    def test_barge_in_increments_interruption_count_in_debrief(self, voice_client):
+        """Stage barge_in: debrief metrics reflect one interruption after one barge-in turn."""
+        # Step 1: create and start session.
+        session_id, _ = _create_and_start(
+            voice_client, self._SCENARIO, self._LANGUAGE, tts_enabled=True
+        )
+        # Step 2: first normal turn (no barge-in).
+        _submit_turn(voice_client, session_id, _ENGLISH_PLAYER_TURN)
+        # Step 3: second turn with barge-in.
+        self._submit_barged_in_turn(voice_client, session_id, _ENGLISH_PLAYER_TURN)
+        # Step 4: end the session.
+        end_resp = voice_client.post(f"/api/sessions/{session_id}/end")
+        assert end_resp.status_code == 200, (
+            f"[stage: barge_in] End session returned {end_resp.status_code}"
+        )
+        # Step 5: generate debrief.
+        debrief_resp = voice_client.post(f"/api/sessions/{session_id}/debrief")
+        assert debrief_resp.status_code == 200, (
+            f"[stage: barge_in] Debrief generation returned {debrief_resp.status_code}: "
+            f"{debrief_resp.text}"
+        )
+        debrief = debrief_resp.json()
+        metrics = debrief.get("metrics") or {}
+        assert metrics.get("interruption_count") == 1, (
+            f"[stage: barge_in] Expected interruption_count=1, got: {metrics}"
+        )
