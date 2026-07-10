@@ -190,6 +190,35 @@ jobs:
             exit 1
           fi
 
+      # ── Sync app version to the release tag ──────────────────────────────────
+      # The built binary reports the `version` field from tauri.conf.json, and
+      # the in-app updater compares that against the `version` in latest.json
+      # (which the release job derives from the tag).  If the two drift, the
+      # updater's semver comparison never fires: e.g. a binary hard-coded to
+      # "0.1.0" would treat a "0.1.0-beta.2" manifest as *older* (pre-release <
+      # release) and silently offer no update.  Stamping the tag version here
+      # keeps binary and manifest in lockstep so successive betas compare
+      # correctly (beta.2 > beta.1, and a stable release > any of its betas).
+      - name: Set app version from release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          VERSION="${TAG#v}"
+          CONF=apps/desktop/src-tauri/tauri.conf.json
+          python3 - "$CONF" "$VERSION" <<'PYEOF'
+          import json, sys
+          path, version = sys.argv[1], sys.argv[2]
+          with open(path) as f:
+              conf = json.load(f)
+          conf["version"] = version
+          with open(path, "w") as f:
+              json.dump(conf, f, indent=2)
+              f.write("\n")
+          print(f"Set {path} version to {version}")
+          PYEOF
+          grep '"version"' "$CONF"
+
       # ── Tauri desktop build ──────────────────────────────────────────────────
       # On macOS, Tauri reads APPLE_SIGNING_IDENTITY, APPLE_ID, APPLE_PASSWORD,
       # and APPLE_TEAM_ID to sign the .app bundle and submit it to Apple's
