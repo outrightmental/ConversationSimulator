@@ -65,11 +65,14 @@ function renderLogbook() {
 }
 
 beforeEach(() => {
-  vi.mocked(api.getLogbookProfile).mockResolvedValue(makeProfile())
+  vi.mocked(api.getLogbookProfile).mockResolvedValue({ ok: true, data: makeProfile() })
   vi.mocked(api.exportLogbook).mockResolvedValue({
-    exported_at: new Date().toISOString(),
-    profile: makeProfile(),
-    session_scores: [],
+    ok: true,
+    data: {
+      exported_at: new Date().toISOString(),
+      profile: makeProfile(),
+      session_scores: [],
+    },
   })
 })
 
@@ -118,7 +121,7 @@ describe('Logbook — with sessions', () => {
   })
 
   beforeEach(() => {
-    vi.mocked(api.getLogbookProfile).mockResolvedValue(profile)
+    vi.mocked(api.getLogbookProfile).mockResolvedValue({ ok: true, data: profile })
   })
 
   it('shows the session count', async () => {
@@ -187,7 +190,7 @@ describe('Logbook — error state', () => {
 describe('Logbook — single session delta', () => {
   it('does not show last session delta with only one session', async () => {
     vi.mocked(api.getLogbookProfile).mockResolvedValue(
-      makeProfile({ total_sessions: 1, last_session_delta: null }),
+      { ok: true, data: makeProfile({ total_sessions: 1, last_session_delta: null }) },
     )
     renderLogbook()
     await screen.findByRole('heading', { name: /^logbook$/i })

@@ -5,6 +5,8 @@ import { useApiHealth } from '../api/useApiHealth'
 import { usePackCount } from '../api/usePackCount'
 import { useTranslation } from '../i18n'
 import { useLogbookProfile } from '../api/useLogbookProfile'
+import { useAppUpdate } from '../hooks/useAppUpdate'
+import UpdateBanner from '../components/UpdateBanner'
 import type { BadgeStatus } from '@convsim/ui'
 
 const DOCS_URL = 'https://github.com/outrightmental/ConversationSimulator/wiki'
