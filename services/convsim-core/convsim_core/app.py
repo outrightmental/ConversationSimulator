@@ -17,7 +17,7 @@ from convsim_core.errors import (
 from convsim_core.logging_setup import configure_logging
 from convsim_core.packs.seeder import seed_official_packs
 from convsim_core.paths import legacy_convsim_dir, platform_data_root
-from convsim_core.routers import cloud_settings as cloud_settings_router, diag as diag_router, health, models as models_router, packs as packs_router, privacy as privacy_router, scenarios as scenarios_router, sessions as sessions_router, settings as settings_router, sidecar as sidecar_router, stt as stt_router, tts as tts_router, vad as vad_router, workbench as workbench_router
+from convsim_core.routers import cloud_settings as cloud_settings_router, diag as diag_router, health, logbook as logbook_router, models as models_router, packs as packs_router, privacy as privacy_router, scenarios as scenarios_router, sessions as sessions_router, settings as settings_router, sidecar as sidecar_router, stt as stt_router, tts as tts_router, vad as vad_router, workbench as workbench_router
 from convsim_core.runtime import build_runtime
 from convsim_core.runtime.sidecar import LlamaCppSidecar
 from convsim_core.runtime.kokoro_sidecar import KokoroSidecar
