@@ -32,7 +32,7 @@ import threading
 from pathlib import Path
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 # Filename placed at the data root (one level above db/, logs/, models/, etc.).
 # This is the only file Steam Cloud is configured to sync.
@@ -59,6 +59,24 @@ class CloudSettings(BaseModel):
     # Pre-selects the same model on a second machine so the user does not need
     # to repeat model selection after installing on a new device.
     last_model_id: Optional[str] = None
+
+    @field_validator("last_model_id")
+    @classmethod
+    def last_model_id_must_not_be_a_path(cls, v: Optional[str]) -> Optional[str]:
+        """Reject filesystem paths — they may leak a username or home directory.
+
+        Only opaque model identifiers (registry IDs, Ollama tags) may be synced.
+        A user-supplied GGUF is stored locally as an absolute path such as
+        ``/Users/alice/models/foo.gguf``; syncing that would upload
+        locally-identifiable data to Steam Cloud, violating the local-first
+        privacy promise.  Any value containing a path separator is refused so a
+        buggy or malicious client cannot smuggle a path into the cloud file.
+        Values written by such a client are also rejected on read, resetting the
+        settings to defaults rather than propagating the leak.
+        """
+        if v is not None and ("/" in v or "\\" in v):
+            raise ValueError("last_model_id must be an opaque model id, not a filesystem path")
+        return v
 
 
 def cloud_settings_path(data_root: Path) -> Path:

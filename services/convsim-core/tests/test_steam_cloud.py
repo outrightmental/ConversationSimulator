@@ -4,6 +4,7 @@ import json
 import time
 
 import pytest
+from pydantic import ValidationError
 
 from convsim_core.steam_cloud import (
     CLOUD_SETTINGS_FILENAME,
@@ -211,3 +212,44 @@ def test_cloud_settings_file_does_not_land_inside_nosteamcloudpath_dirs(
         assert not (subdir_path / CLOUD_SETTINGS_FILENAME).exists(), (
             f"steam_cloud_settings.json must not be inside {subdir_path}"
         )
+
+
+# ── privacy: last_model_id must never carry a filesystem path ─────────────────
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "/Users/alice/models/foo.gguf",
+        "C:\\Users\\alice\\models\\foo.gguf",
+        "models/llm/foo.gguf",
+        "../secret.gguf",
+    ],
+)
+def test_cloud_settings_rejects_path_like_last_model_id(value):
+    """A path would leak a username/home directory to Steam Cloud — reject it."""
+    with pytest.raises(ValidationError):
+        CloudSettings(last_model_id=value)
+
+
+@pytest.mark.parametrize("value", ["qwen3-4b-q4_k_m", "llama3:8b", "phi3.mini", None])
+def test_cloud_settings_accepts_opaque_model_ids(value):
+    """Opaque registry IDs and Ollama tags (no path separators) are allowed."""
+    assert CloudSettings(last_model_id=value).last_model_id == value
+
+
+def test_read_resets_to_defaults_when_file_contains_a_path(tmp_path):
+    """A path smuggled into the file on disk is refused on read (self-healing)."""
+    (tmp_path / CLOUD_SETTINGS_FILENAME).write_text(
+        json.dumps({"last_model_id": "/Users/alice/models/foo.gguf"}), "utf-8"
+    )
+    settings = read_cloud_settings(tmp_path)
+    assert settings.last_model_id is None
+
+
+def test_put_cloud_settings_rejects_path_like_last_model_id(client):
+    """The API must refuse a path so a buggy client cannot write it to the file."""
+    resp = client.put(
+        "/api/cloud-settings", json={"last_model_id": "/Users/alice/models/foo.gguf"}
+    )
+    assert resp.status_code == 422
