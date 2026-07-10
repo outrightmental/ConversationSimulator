@@ -70,7 +70,8 @@ export default function VoiceInput({ onSubmit, onRawStt, onSttLatency, onRecordi
     if (!backchannelEnabled) return
     api.getBackchannels()
       .then((r) => {
-        backchannelPathsRef.current = r.backchannels
+        if (!r.ok) return
+        backchannelPathsRef.current = r.data.backchannels
           .map((b) => {
             const filename = b.cache_path.replace(/\\/g, '/').split('/').pop()
             return filename ? `/api/tts/audio/${filename}` : ''

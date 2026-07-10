@@ -38,6 +38,7 @@ import type {
   VoicesResponse,
   TtsCacheSizeResponse,
   TtsCacheClearResponse,
+  BackchannelsResponse,
 } from '@convsim/shared';
 
 export type { HealthResponse };
@@ -467,6 +468,9 @@ export const api = {
   },
   clearTtsCache(): Promise<ApiResult<TtsCacheClearResponse>> {
     return post<TtsCacheClearResponse>('/tts/cache/clear')
+  },
+  getBackchannels(): Promise<ApiResult<BackchannelsResponse>> {
+    return get<BackchannelsResponse>('/tts/backchannels')
   },
   vadHealth(): Promise<ApiResult<VadHealthResponse>> {
     return get<VadHealthResponse>('/vad/health')
