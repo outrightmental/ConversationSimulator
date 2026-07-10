@@ -9,7 +9,7 @@ import { packsRoutes, packRoutes, setPacksDbPath, setPacksDataDir } from './rout
 import { scenarioRoutes, setScenariosDbPath } from './routes/scenarios.js';
 import { sessionRoutes } from './routes/sessions.js';
 import { sessionWsRoutes } from './routes/session-ws.js';
-import { privacyRoutes, setDataFolderPath } from './routes/privacy.js';
+import { privacyRoutes, setDataFolderPath, setLogsFolderPath, setModelsFolderPath, setPacksFolderPath } from './routes/privacy.js';
 import { workbenchRoutes, setWorkbenchRoots } from './routes/workbench.js';
 import { modelsRoutes } from './routes/models.js';
 import { runtimeSettingsRoutes } from './routes/runtime-settings.js';
@@ -62,8 +62,16 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
     process.env['PACKS_DATA_DIR'] ??
     path.join(path.dirname(packsDbPath), 'packs');
   fs.mkdirSync(packsDataDir, { recursive: true });
+  const logsDir =
+    process.env['LOGS_DIR'] ?? path.join(os.homedir(), '.convsim', 'logs');
+  const modelsDir =
+    process.env['MODELS_DIR'] ?? path.join(os.homedir(), '.convsim', 'models', 'llm');
+  fs.mkdirSync(logsDir, { recursive: true });
   initDb(dbPath);
   setDataFolderPath(path.dirname(dbPath));
+  setLogsFolderPath(logsDir);
+  setModelsFolderPath(modelsDir);
+  setPacksFolderPath(packsDataDir);
   setPacksDbPath(packsDbPath);
   setPacksDataDir(packsDataDir);
   setScenariosDbPath(packsDbPath);
