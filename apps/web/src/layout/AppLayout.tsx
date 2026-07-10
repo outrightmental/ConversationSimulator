@@ -3,6 +3,8 @@ import { useEffect, useRef } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import OfflineIndicator from '../components/OfflineIndicator'
 import { useTranslation } from '../i18n'
+import { useGamepadNavigation } from '../hooks/useGamepadNavigation'
+import { useSteamKeyboard } from '../hooks/useSteamKeyboard'
 
 const linkStyle = ({ isActive }: { isActive: boolean }): React.CSSProperties => ({
   padding: '0.4rem 0.75rem',
