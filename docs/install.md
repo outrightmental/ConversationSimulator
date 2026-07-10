@@ -145,6 +145,70 @@ The command exits 0 on success and prints an actionable error if any subsystem a
 
 ---
 
+## Beta builds — direct-download channel
+
+Beta builds are published to GitHub Releases as versioned pre-releases (e.g.
+`v0.1.0-beta.1`).  They are distinct from the Steam beta branch (covered by
+the Steam depot workflow).
+
+### In-app update notice
+
+The desktop app checks for a new beta on launch and shows a non-intrusive
+banner on the home screen when one is found.  The banner never appears during
+an active conversation session.  Click **View notes** to open the release page,
+or **Install** to open it and download the new build.  The check is skipped
+silently when you are offline.
+
+### SmartScreen and Gatekeeper warnings (beta builds before signing certs land)
+
+Beta builds may be unsigned until code-signing certificates are provisioned
+(tracked in [#235](https://github.com/outrightmental/ConversationSimulator/issues/235)).
+Both macOS Gatekeeper and Windows Defender SmartScreen will warn about unverified
+publishers.  Once #235 ships, these warnings disappear automatically.
+
+**macOS — Gatekeeper bypass for unsigned beta builds:**
+
+1. Download the `.dmg` and open it.
+2. Drag **Conversation Simulator** to `/Applications`.
+3. Do **not** double-click the app directly — right-click (or Control-click)
+   the icon → **Open** → click **Open** in the dialog.
+4. Alternatively, in **System Settings → Privacy & Security → Security**
+   scroll down and click **Open Anyway** after the first blocked launch.
+
+Once signed and notarised (#235), the app opens normally without any bypass.
+
+**Windows — SmartScreen bypass for unsigned beta builds:**
+
+1. Run the `.exe` installer.
+2. If SmartScreen shows "Windows protected your PC", click **More info**.
+3. Click **Run anyway**.
+
+Once signed with an EV code-signing certificate (#235), SmartScreen displays
+the verified publisher name instead of this warning.
+
+**Linux — no bypass needed:**
+
+The `.AppImage` is not code-signed at the OS level.  Mark it executable and
+run it directly:
+
+```bash
+chmod +x conversation-simulator_<version>_amd64.AppImage
+./conversation-simulator_<version>_amd64.AppImage
+```
+
+### Rollback
+
+Every beta release remains permanently downloadable from its versioned release
+page (e.g., `releases/tag/v0.1.0-beta.1`).  To roll back:
+
+1. Download the installer from the previous versioned release page.
+2. Install over the current version — the NSIS installer and macOS DMG both
+   support in-place downgrades.
+3. Data created in a newer beta is forward-compatible with older betas at the
+   same schema version (see [schemas/VERSIONING.md](../schemas/VERSIONING.md)).
+
+---
+
 ## Path B — alpha app install
 
 When a release is published on the [GitHub releases page](https://github.com/outrightmental/ConversationSimulator/releases):

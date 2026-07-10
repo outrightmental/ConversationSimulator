@@ -8,6 +8,8 @@ import { useTranslation } from '../i18n'
 import { useLogbookProfile } from '../api/useLogbookProfile'
 import { api } from '../api/client'
 import RuntimeRecoveryCard from '../components/RuntimeRecoveryCard'
+import UpdateBanner from '../components/UpdateBanner'
+import { useAppUpdate } from '../hooks/useAppUpdate'
 import type { BadgeStatus } from '@convsim/ui'
 
 const DOCS_URL = 'https://github.com/outrightmental/ConversationSimulator/wiki'
@@ -23,6 +25,7 @@ export default function Home() {
   const logbook = useLogbookProfile()
   const loading = health.state === 'loading'
   const { t } = useTranslation()
+  const { update, dismiss, install } = useAppUpdate()
 
   const [isRestartingSidecar, setIsRestartingSidecar] = useState(false)
 
@@ -97,6 +100,15 @@ export default function Home() {
 
   return (
     <div>
+      {update.status === 'available' && update.version && update.releaseUrl && (
+        <UpdateBanner
+          version={update.version}
+          releaseUrl={update.releaseUrl}
+          onViewNotes={dismiss}
+          onInstall={install}
+          onDismiss={dismiss}
+        />
+      )}
       <h1>{t('home.title')}</h1>
       <p>{t('home.tagline')}</p>
 
