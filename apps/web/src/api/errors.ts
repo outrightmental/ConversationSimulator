@@ -62,6 +62,7 @@ export function errorHeadline(error: ApiError): string {
   return ERROR_COPY[error.kind].title
 }
 
+
 export function buildDiagnosticsText(error: ApiError, context?: string): string {
   const lines: string[] = ['ConversationSimulator diagnostics', `kind: ${error.kind}`]
   if (error.status !== undefined) lines.push(`status: ${error.status}`)

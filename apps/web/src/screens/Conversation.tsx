@@ -592,6 +592,7 @@ export default function Conversation() {
       }
     }
 
+
     setSessionState(turnData.state)
     streamingRef.current = ''
     setStreamingText('')
