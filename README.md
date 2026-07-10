@@ -4,7 +4,7 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 # Conversation Simulator
 
-> Flight Simulator for conversations.
+> The simulator for conversations.
 
 Practice interviews, negotiations, language, and difficult social situations with AI
 NPCs — running **100% on your computer**, no account, no cloud, no telemetry.
