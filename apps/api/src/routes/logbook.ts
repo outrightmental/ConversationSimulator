@@ -116,8 +116,17 @@ function buildProfile(db: ReturnType<typeof getDb>): LogbookProfile {
   const prMap = new Map<string, { best_score: number; achieved_at: string; scenario_id: string; difficulty: string }>();
   // session_id → overall_score (first debrief per session wins)
   const overallBySession = new Map<string, number>();
+  // Sessions already folded in. A session can be debriefed more than once
+  // (e.g. the debrief screen's retry re-runs generation from the Ended state),
+  // producing multiple debrief_generated events. Only the most recent debrief
+  // per session should count — otherwise dimension session counts and the
+  // recency-weighted rolling score are inflated by re-debriefs. debriefRows is
+  // ordered event_id DESC, so the first row seen for a session is the newest.
+  const seenSessions = new Set<string>();
 
   for (const row of debriefRows) {
+    if (seenSessions.has(row.session_id)) continue;
+
     const payload = JSON.parse(row.payload_json) as {
       scores?: Record<string, number>;
       overall_score?: number;
@@ -125,6 +134,7 @@ function buildProfile(db: ReturnType<typeof getDb>): LogbookProfile {
 
     const session = sessionById.get(row.session_id);
     if (!session) continue;
+    seenSessions.add(row.session_id);
 
     const setup = JSON.parse(session.setup_json) as { difficulty: string };
 

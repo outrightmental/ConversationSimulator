@@ -149,6 +149,39 @@ describe('GET /api/logbook/profile', () => {
     expect(clarity!.rolling_score).toBe(80);
   });
 
+  it('counts a re-debriefed session only once in dimension scores', async () => {
+    // A session can be debriefed again from the Ended state (the debrief screen's
+    // retry button does exactly this), producing a second debrief_generated event.
+    // Only the most recent debrief per session must count toward dimension scores.
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/sessions',
+      payload: validRequest,
+    });
+    const { session_id } = createRes.json<SessionCreateResponse>();
+    await app.inject({ method: 'POST', url: `/api/sessions/${session_id}/start` });
+    getDb()
+      .prepare("UPDATE sessions SET state = 'DebriefReady' WHERE session_id = ?")
+      .run(session_id);
+    await app.inject({ method: 'POST', url: `/api/sessions/${session_id}/debrief` });
+    // Retry: from Ended, generate a debrief a second time.
+    await app.inject({ method: 'POST', url: `/api/sessions/${session_id}/debrief` });
+    getDb()
+      .prepare(
+        `UPDATE session_events
+         SET payload_json = '{"summary":"x","scores":{"clarity":80},"overall_score":75}'
+         WHERE session_id = ? AND event_type = 'debrief_generated'`,
+      )
+      .run(session_id);
+
+    const res = await app.inject({ method: 'GET', url: '/api/logbook/profile' });
+    const body = res.json<LogbookProfile>();
+    expect(body.total_sessions).toBe(1);
+    const clarity = body.dimension_scores.find((d) => d.dimension_id === 'clarity');
+    expect(clarity).toBeDefined();
+    expect(clarity!.session_count).toBe(1);
+  });
+
   it('sets strongest_dimension and weakest_dimension from debrief scores', async () => {
     const s1 = await createAndDebrief();
     getDb()
