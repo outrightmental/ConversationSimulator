@@ -11,6 +11,7 @@ function stubTauriInvoke(impl: (cmd: string) => Promise<unknown>) {
 beforeEach(() => {
   const win = window as { __TAURI__?: unknown }
   delete win.__TAURI__
+  window.sessionStorage.clear()
 })
 
 afterEach(() => {
@@ -68,5 +69,39 @@ describe('useAppUpdate — dismiss', () => {
     expect(result.current.update.status).toBe('available')
     act(() => { result.current.dismiss() })
     expect(result.current.update.status).toBe('dismissed')
+  })
+
+  it('stays dismissed for the same version on a later mount (non-nagging)', async () => {
+    stubTauriInvoke(() =>
+      Promise.resolve({ version: '0.2.0', release_url: 'https://example.com/v0.2.0' }),
+    )
+    // First mount: dismiss the banner.
+    const first = renderHook(() => useAppUpdate())
+    await act(async () => {})
+    act(() => { first.result.current.dismiss() })
+    expect(first.result.current.update.status).toBe('dismissed')
+
+    // Simulate navigating away and back — Home unmounts, so the hook re-runs.
+    const second = renderHook(() => useAppUpdate())
+    await act(async () => {})
+    expect(second.result.current.update.status).toBe('dismissed')
+  })
+
+  it('re-shows the banner when a newer version is offered', async () => {
+    stubTauriInvoke(() =>
+      Promise.resolve({ version: '0.2.0', release_url: 'https://example.com/v0.2.0' }),
+    )
+    const first = renderHook(() => useAppUpdate())
+    await act(async () => {})
+    act(() => { first.result.current.dismiss() })
+
+    // A newer beta appears — the dismissal of the older version must not suppress it.
+    stubTauriInvoke(() =>
+      Promise.resolve({ version: '0.3.0', release_url: 'https://example.com/v0.3.0' }),
+    )
+    const second = renderHook(() => useAppUpdate())
+    await act(async () => {})
+    expect(second.result.current.update.status).toBe('available')
+    expect(second.result.current.update.version).toBe('0.3.0')
   })
 })

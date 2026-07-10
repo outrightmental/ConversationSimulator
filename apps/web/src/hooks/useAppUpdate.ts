@@ -12,6 +12,28 @@ interface TauriUpdateInfo {
   release_url: string
 }
 
+// Session-scoped record of the version the user has dismissed. Persisted so
+// the banner stays dismissed across Home re-mounts (React Router unmounts the
+// Home route on navigation), keeping it non-nagging within a single app run.
+// A newer version key re-shows the banner; a full app restart clears it.
+const DISMISSED_STORAGE_KEY = 'convsim.betaUpdateDismissedVersion'
+
+function readDismissedVersion(): string | null {
+  try {
+    return window.sessionStorage.getItem(DISMISSED_STORAGE_KEY)
+  } catch {
+    return null
+  }
+}
+
+function rememberDismissedVersion(version: string): void {
+  try {
+    window.sessionStorage.setItem(DISMISSED_STORAGE_KEY, version)
+  } catch {
+    // sessionStorage unavailable — dismissal just won't persist across remounts.
+  }
+}
+
 // Checks for a beta update once on mount (Tauri desktop only).
 // Fails silently when offline or when the manifest is unavailable.
 // The banner never appears in a plain browser context (no __TAURI__).
@@ -36,7 +58,12 @@ export function useAppUpdate(): {
       .invoke<TauriUpdateInfo | null>('check_for_update')
       .then((info) => {
         if (info) {
-          setUpdate({ status: 'available', version: info.version, releaseUrl: info.release_url })
+          const alreadyDismissed = readDismissedVersion() === info.version
+          setUpdate({
+            status: alreadyDismissed ? 'dismissed' : 'available',
+            version: info.version,
+            releaseUrl: info.release_url,
+          })
         } else {
           setUpdate({ status: 'idle', version: null, releaseUrl: null })
         }
@@ -50,7 +77,10 @@ export function useAppUpdate(): {
   }, [])
 
   function dismiss() {
-    setUpdate((prev) => ({ ...prev, status: 'dismissed' }))
+    setUpdate((prev) => {
+      if (prev.version) rememberDismissedVersion(prev.version)
+      return { ...prev, status: 'dismissed' }
+    })
   }
 
   function install() {
