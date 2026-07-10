@@ -74,7 +74,7 @@ def client(tmp_config):
 
 _VALID_SETUP = {
     "scenario_id": "behavioral_interview",
-    "difficulty": "normal",
+    "difficulty": "standard",
     "player_role_name": "Alice",
     "language": "en",
     "input_mode": "text-only",
@@ -170,7 +170,7 @@ class TestForkSession:
                 turn_count,
                 json.dumps(setup or {
                     "save_transcript": True,
-                    "difficulty": "normal",
+                    "difficulty": "standard",
                 }),
             ),
         )
