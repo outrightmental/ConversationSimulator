@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import Home from '../screens/Home'
 
@@ -209,6 +209,16 @@ describe('Home — status card links', () => {
     // Install model, Import pack, LLM badge, STT badge, TTS badge = 5
     expect(settingsLinks.length).toBeGreaterThanOrEqual(5)
   })
+
+  it('Local runtime badge links to the recovery section when offline', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('Network error'))))
+    renderHome()
+    await screen.findByRole('alert')
+    const runtimeLink = screen.getAllByRole('link').find(
+      (el) => el.getAttribute('href') === '#runtime-recovery',
+    )
+    expect(runtimeLink).toBeDefined()
+  })
 })
 
 describe('Home — runtime-error state', () => {
@@ -218,12 +228,26 @@ describe('Home — runtime-error state', () => {
     expect(await screen.findByText(liText('Local runtime: Unavailable'))).toBeInTheDocument()
   })
 
-  it('shows an actionable error alert when runtime is down', async () => {
+  it('shows a recovery alert when runtime is down', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('Network error'))))
     renderHome()
     const alert = await screen.findByRole('alert')
     expect(alert).toBeInTheDocument()
-    expect(alert).toHaveTextContent(/ensure the api server is running/i)
+  })
+
+  it('shows plain-language title in the unreachable recovery card', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('Network error'))))
+    renderHome()
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/the conversation engine is not responding/i)
+  })
+
+  it('does not contain API-server jargon in the unreachable card', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('Network error'))))
+    renderHome()
+    const alert = await screen.findByRole('alert')
+    expect(alert).not.toHaveTextContent(/api server/i)
+    expect(alert).not.toHaveTextContent(/local runtime/i)
   })
 
   it('does not show the no-model section when runtime is unreachable', async () => {
@@ -252,14 +276,14 @@ describe('Home — runtime-error state', () => {
     stubFetches(makeHealth({ last_error: 'EADDRINUSE: address already in use :::7355' }), makePacks(0))
     renderHome()
     const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent(/port conflict/i)
+    expect(alert).toHaveTextContent(/another app is using a required port/i)
   })
 
   it('shows port troubleshooting guidance for port conflict errors', async () => {
     stubFetches(makeHealth({ last_error: 'EADDRINUSE port 7356 in use' }), makePacks(0))
     renderHome()
     await screen.findByRole('alert')
-    expect(screen.getByText(/a required port is already in use/i)).toBeInTheDocument()
+    expect(screen.getByText(/close the conflicting app/i)).toBeInTheDocument()
   })
 
   it('shows the unreachable alert with troubleshooting docs link', async () => {
@@ -269,12 +293,76 @@ describe('Home — runtime-error state', () => {
     expect(screen.getByRole('link', { name: /troubleshooting docs/i })).toBeInTheDocument()
   })
 
-  it('shows a report-an-issue link in the unreachable alert', async () => {
+  it('shows a report-an-issue link in the help section', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('Network error'))))
     renderHome()
     await screen.findByRole('alert')
     const links = screen.getAllByRole('link', { name: /report an issue/i })
     expect(links.length).toBeGreaterThanOrEqual(1)
+  })
+})
+
+describe('Home — recovery card actions', () => {
+  it('shows a Restart button in the unreachable recovery card', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('Network error'))))
+    renderHome()
+    await screen.findByRole('alert')
+    expect(screen.getByRole('button', { name: /restart the app/i })).toBeInTheDocument()
+  })
+
+  it('shows a Get support bundle link in the unreachable recovery card', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('Network error'))))
+    renderHome()
+    await screen.findByRole('alert')
+    expect(screen.getByRole('link', { name: /get support bundle/i })).toBeInTheDocument()
+  })
+
+  it('shows Restart conversation engine button for port conflict errors', async () => {
+    stubFetches(makeHealth({ last_error: 'EADDRINUSE: address already in use :::7355' }), makePacks(0))
+    renderHome()
+    await screen.findByRole('alert')
+    expect(screen.getByRole('button', { name: /restart conversation engine/i })).toBeInTheDocument()
+  })
+
+  it('shows Restart conversation engine button for generic last_error', async () => {
+    stubFetches(makeHealth({ last_error: 'Model crashed unexpectedly' }), makePacks(0))
+    renderHome()
+    await screen.findByRole('alert')
+    expect(screen.getByRole('button', { name: /restart conversation engine/i })).toBeInTheDocument()
+  })
+
+  it('calls sidecar stop then start when Restart conversation engine is clicked', async () => {
+    const mockFetch = vi.fn((url: string) => {
+      if (url.includes('/packs')) {
+        const body = makePacks(0)
+        return Promise.resolve({ ok: true, text: () => Promise.resolve(JSON.stringify(body)) })
+      }
+      if (url.includes('/sidecar/status')) {
+        return Promise.resolve({
+          ok: true,
+          text: () => Promise.resolve(JSON.stringify({ state: 'crashed', model_path: '/models/test.gguf', error: null, log_path: '/tmp/log', host: '127.0.0.1', port: 7356 })),
+        })
+      }
+      if (url.includes('/sidecar/stop') || url.includes('/sidecar/start')) {
+        return Promise.resolve({
+          ok: true,
+          text: () => Promise.resolve(JSON.stringify({ state: 'running', message: 'ok' })),
+        })
+      }
+      // Health returns last_error to trigger the recovery card
+      const body = makeHealth({ last_error: 'Sidecar crashed' })
+      return Promise.resolve({ ok: true, text: () => Promise.resolve(JSON.stringify(body)) })
+    })
+    vi.stubGlobal('fetch', mockFetch)
+
+    renderHome()
+    const restartBtn = await screen.findByRole('button', { name: /restart conversation engine/i })
+    fireEvent.click(restartBtn)
+
+    await waitFor(() => {
+      const calls = mockFetch.mock.calls.map((c) => c[0] as string)
+      expect(calls.some((u) => u.includes('/sidecar/stop'))).toBe(true)
+    })
   })
 })
 

@@ -73,23 +73,31 @@ export const de: LocaleMessages = {
       packsInstalledCount: '{{count}} installiert',
     },
     unreachable: {
-      title: 'Lokale Laufzeitumgebung nicht erreichbar',
+      title: 'Die Konversations-Engine antwortet nicht',
       message:
-        'Stellen Sie sicher, dass der API-Server läuft. Falls das Problem weiterhin besteht, prüfen Sie den Protokollordner oder melden Sie ein Problem.',
+        'Die App kann die Konversations-Engine gerade nicht erreichen. Versuchen Sie einen Neustart oder sehen Sie in der Fehlerbehebungsanleitung nach.',
+      restart: 'App neu starten',
+      openSupport: 'Support-Paket erstellen',
       troubleshootingDocs: 'Fehlerbehebungsdokumentation',
       reportIssue: 'Problem melden',
     },
     portConflict: {
-      title: 'Port-Konflikt',
+      title: 'Eine andere App belegt einen erforderlichen Port',
       message:
-        'Ein erforderlicher Port wird bereits von einem anderen Prozess verwendet. Schließen Sie andere Apps und starten Sie den Gesprächssimulator neu.',
+        'Schließen Sie die konfliktverursachende App und starten Sie den Gesprächssimulator neu. Port 7355 muss frei sein.',
       details: 'Details: {{error}}',
-      portTroubleshooting: 'Port-Fehlerbehebung',
+      portTroubleshooting: 'Port-Konflikt-Anleitung',
       reportIssue: 'Problem melden',
     },
     lastError: {
       message: 'Letzter Fehler: {{error}}',
       reportIssue: 'Problem melden',
+    },
+    recovery: {
+      restartEngine: 'Konversations-Engine neu starten',
+      restarting: 'Startet neu…',
+      openSupport: 'Support-Paket erstellen',
+      troubleshootingDocs: 'Fehlerbehebungsdokumentation',
     },
     noModel: {
       heading: 'Kein Modell konfiguriert',

@@ -67,23 +67,31 @@ export const en = {
       packsInstalledCount: '{{count}} installed',
     },
     unreachable: {
-      title: 'Cannot reach the local runtime',
+      title: 'The conversation engine is not responding',
       message:
-        'Ensure the API server is running. If this persists, check the logs folder or report an issue.',
+        'The app can\'t reach the conversation engine right now. Try restarting, or view the troubleshooting guide.',
+      restart: 'Restart the app',
+      openSupport: 'Get support bundle',
       troubleshootingDocs: 'Troubleshooting docs',
       reportIssue: 'Report an issue',
     },
     portConflict: {
-      title: 'Port conflict',
+      title: 'Another app is using a required port',
       message:
-        'A required port is already in use by another process. Try closing other apps, then restart Conversation Simulator.',
+        'Close the conflicting app and restart Conversation Simulator. Port 7355 must be free.',
       details: 'Details: {{error}}',
-      portTroubleshooting: 'Port troubleshooting',
+      portTroubleshooting: 'Port conflict guide',
       reportIssue: 'Report an issue',
     },
     lastError: {
       message: 'Last error: {{error}}',
       reportIssue: 'Report an issue',
+    },
+    recovery: {
+      restartEngine: 'Restart conversation engine',
+      restarting: 'Restarting…',
+      openSupport: 'Get support bundle',
+      troubleshootingDocs: 'Troubleshooting docs',
     },
     noModel: {
       heading: 'No model configured',
