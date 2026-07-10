@@ -43,6 +43,7 @@ export const de: LocaleMessages = {
     title: 'Gesprächssimulator',
     tagline:
       'Üben Sie Vorstellungsgespräche, Verhandlungen, Sprachen und schwierige Gespräche.',
+    primaryActions: 'Hauptaktionen',
     startScenario: 'Szenario starten',
     createEdit: 'Szenario erstellen / bearbeiten',
     installModel: 'Modell installieren',

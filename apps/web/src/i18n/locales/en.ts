@@ -37,6 +37,7 @@ export const en = {
   home: {
     title: 'Conversation Simulator',
     tagline: 'Practice interviews, negotiations, language, and difficult conversations.',
+    primaryActions: 'Primary actions',
     startScenario: 'Start a scenario',
     createEdit: 'Create / edit a scenario',
     installModel: 'Install model',
