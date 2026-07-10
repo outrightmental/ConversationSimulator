@@ -85,7 +85,9 @@ fn install_update(
         .map_err(|e| e.to_string())?
         .clone()
         .ok_or_else(|| "No pending update — run check_for_update first".to_string())?;
-    app.shell().open(&url, None).map_err(|e| e.to_string())
+    // `Shell::open` takes `impl Into<String>`; `&String` does not implement it,
+    // so pass the owned `String` (it is not needed afterwards).
+    app.shell().open(url, None).map_err(|e| e.to_string())
 }
 
 // ── Steam integration state ───────────────────────────────────────────────────
