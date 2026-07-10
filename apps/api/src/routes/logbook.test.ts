@@ -9,7 +9,7 @@ let app: FastifyInstance;
 
 const validRequest: SessionCreateRequest = {
   scenario_id: 'behavioral_interview',
-  difficulty: 'normal',
+  difficulty: 'standard',
   player_role_name: 'Alice',
   language: 'en',
   input_mode: 'text-only',
@@ -304,7 +304,7 @@ describe('GET /api/logbook/export', () => {
     const body = res.json<LogbookExport>();
     expect(body.session_scores.length).toBe(1);
     expect(body.session_scores[0].scenario_id).toBe('behavioral_interview');
-    expect(body.session_scores[0].difficulty).toBe('normal');
+    expect(body.session_scores[0].difficulty).toBe('standard');
   });
 
   it('has an ISO timestamp for exported_at', async () => {
