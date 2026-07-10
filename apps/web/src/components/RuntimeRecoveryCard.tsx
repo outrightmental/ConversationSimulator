@@ -93,8 +93,13 @@ function ActionButton({ action }: { action: RecoveryAction }) {
   const style = action.loading || action.disabled ? buttonDisabledStyle : buttonStyle
 
   if (action.href) {
+    // External links (docs, GitHub) open in a new tab; internal app routes
+    // (e.g. /support) must navigate in the same window so we don't spawn a new
+    // browser tab / OS window and re-bootstrap the whole SPA.
+    const isExternal = /^https?:\/\//i.test(action.href)
+    const externalProps = isExternal ? { target: '_blank', rel: 'noreferrer' } : {}
     return (
-      <a href={action.href} target="_blank" rel="noreferrer" style={style}>
+      <a href={action.href} {...externalProps} style={style}>
         {label}
       </a>
     )

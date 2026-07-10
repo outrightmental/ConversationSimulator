@@ -30,6 +30,8 @@ declare global {
 
 const TROUBLESHOOTING_BASE =
   'https://github.com/outrightmental/ConversationSimulator/blob/main/docs/troubleshooting.md'
+const ISSUES_URL =
+  'https://github.com/outrightmental/ConversationSimulator/issues/new/choose'
 
 type FailureKind = 'port-conflict' | 'not-found' | 'crash'
 
@@ -187,8 +189,12 @@ export default function CoreStartupGuard({ children }: { children: React.ReactNo
               onClick: () => window.location.reload(),
             }}
             secondaryAction={{
-              label: 'Get support bundle',
-              href: '/support',
+              // The in-app support/crash-bundle screen is behind CoreStartupGuard
+              // and needs the (currently down) core API, so it is unreachable
+              // during a startup failure. Point players at the report-issue flow
+              // instead, which works without the core running.
+              label: 'Report a problem',
+              href: ISSUES_URL,
             }}
           />
         </div>
