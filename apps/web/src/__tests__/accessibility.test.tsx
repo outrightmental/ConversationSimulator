@@ -91,7 +91,7 @@ vi.mock('../api/useApiHealth', () => ({
 }))
 
 vi.mock('../api/usePackCount', () => ({
-  usePackCount: vi.fn().mockReturnValue(0),
+  usePackCount: vi.fn().mockReturnValue({ count: 0, refetch: vi.fn() }),
 }))
 
 vi.mock('../api/useLogbookProfile', () => ({

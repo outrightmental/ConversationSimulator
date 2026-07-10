@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 """Tests for the official pack startup seeder."""
+import json
 from pathlib import Path
 
 import pytest
@@ -115,6 +116,55 @@ def test_seed_invalid_pack_is_skipped_without_failing(tmp_path):
     db.close()
 
 
+# ── version-aware seeding ────────────────────────────────────────────────────
+
+
+def test_seed_upgrades_older_installed_pack(tmp_path):
+    """Seeder re-imports a pack when the bundled version is newer."""
+    official_dir = tmp_path / "official"
+    official_dir.mkdir()
+    make_pack_dir(official_dir)  # creates pack with version 1.0.0 (see helpers.py)
+
+    db = _open_db(tmp_path)
+    config = _make_config(tmp_path, str(official_dir))
+
+    # First seed installs the pack.
+    count1 = seed_official_packs(config, db.connection())
+    assert count1 == 1
+    packs = list_packs(db.connection())
+    assert len(packs) == 1
+    assert packs[0].version == "1.0.0"
+
+    # Simulate an app upgrade: bump the bundled manifest version to 2.0.0.
+    manifest_path = official_dir / "pack" / "pack.json"
+    data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    data["version"] = "2.0.0"
+    manifest_path.write_text(json.dumps(data), encoding="utf-8")
+
+    # Second seed should detect the newer version and upgrade.
+    count2 = seed_official_packs(config, db.connection())
+    assert count2 == 1
+    packs_after = list_packs(db.connection())
+    assert len(packs_after) == 1
+    assert packs_after[0].version == "2.0.0"
+    db.close()
+
+
+def test_seed_does_not_upgrade_same_version(tmp_path):
+    """Seeder skips re-import when the bundled version matches the installed version."""
+    official_dir = tmp_path / "official"
+    official_dir.mkdir()
+    make_pack_dir(official_dir)
+
+    db = _open_db(tmp_path)
+    config = _make_config(tmp_path, str(official_dir))
+
+    seed_official_packs(config, db.connection())
+    count2 = seed_official_packs(config, db.connection())
+    assert count2 == 0  # same version — no upgrade
+    db.close()
+
+
 # ── integration test: seeder fires on app startup ────────────────────────────
 
 
@@ -139,9 +189,11 @@ def test_app_startup_seeds_official_packs(tmp_path, monkeypatch):
     with TestClient(app) as client:
         resp = client.get("/api/packs")
         assert resp.status_code == 200
-        packs = resp.json()
-        assert len(packs) == 1
-        assert packs[0]["slug"] == "test.sample_pack"
+        body = resp.json()
+        # Response is now {packs: [...], total: N}
+        assert body["total"] == 1
+        assert len(body["packs"]) == 1
+        assert body["packs"][0]["pack_id"] == "test.sample_pack"
 
         # And the scenarios from the seeded pack are browseable
         scenarios_resp = client.get("/api/scenarios")

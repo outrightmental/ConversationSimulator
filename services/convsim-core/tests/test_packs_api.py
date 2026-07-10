@@ -17,7 +17,7 @@ from tests.helpers import make_pack_dir, make_pack_zip
 def test_list_packs_empty(client):
     resp = client.get("/api/packs")
     assert resp.status_code == 200
-    assert resp.json() == []
+    assert resp.json() == {"packs": [], "total": 0}
 
 
 def test_import_zip_valid(client, tmp_path):
@@ -41,10 +41,12 @@ def test_list_packs_after_import(client, tmp_path):
     )
     resp = client.get("/api/packs")
     assert resp.status_code == 200
-    packs = resp.json()
+    data = resp.json()
+    packs = data["packs"]
+    assert data["total"] == 1
     assert len(packs) == 1
-    assert packs[0]["slug"] == "test.sample_pack"
-    assert packs[0]["license"] == "CC-BY-4.0"
+    assert packs[0]["pack_id"] == "test.sample_pack"
+    assert packs[0]["content_rating"] == "G"
 
 
 def test_import_zip_with_executable_rejected(client, tmp_path):
