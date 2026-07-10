@@ -42,6 +42,7 @@ vi.mock('../api/client', () => ({
     connectSession: vi.fn().mockReturnValue({ close: vi.fn() }),
     listSessions: vi.fn().mockResolvedValue({ sessions: [] }),
     getDataFolder: vi.fn().mockResolvedValue({ path: '/tmp/data' }),
+    getFolders: vi.fn().mockResolvedValue({ data: '/tmp/data', logs: '/tmp/logs', models: '/tmp/models', packs: '/tmp/packs' }),
     clearLocalData: vi.fn(),
     deleteSession: vi.fn(),
     listVoices: vi.fn().mockResolvedValue({ voices: [] }),
