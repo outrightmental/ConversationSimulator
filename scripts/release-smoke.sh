@@ -22,6 +22,8 @@
 #   [voice]            voice fallback (TTS-disabled path)
 #   [offline]          no outbound network calls during a scripted play session
 #   [packaged-startup] packaged binary build infrastructure and startup tests
+#   [e2e-playthrough]  end-to-end scripted multi-turn playthrough in packaged env
+#   [artifact-inspect] artifact inspection: layout, permissions, icons, version
 #
 # Exit 0: all required checks passed.
 # Exit 1: one or more required checks failed; see FAIL lines and artifact dir.
@@ -115,6 +117,8 @@ smoke_setup() {
         packs/official/everyday-negotiation
         packs/official/language-cafe
         packs/official/difficult-conversations
+        tests/e2e
+        tests/artifact
     )
     local required_files=(
         README.md LICENSE NOTICE package.json
@@ -137,6 +141,8 @@ smoke_setup() {
         services/convsim-core/convsim-core.spec
         apps/web/package.json apps/desktop/package.json
         apps/desktop/src-tauri/resources/bin/.gitkeep
+        tests/e2e/test_scripted_playthrough.py
+        tests/artifact/test_artifact_inspection.py
     )
 
     for d in "${required_dirs[@]}"; do
@@ -674,6 +680,135 @@ smoke_packaged_startup() {
     fi
 }
 
+# ── [e2e-playthrough] End-to-end scripted playthrough ─────────────────────────
+
+smoke_e2e_playthrough() {
+    label "[e2e-playthrough] End-to-end scripted text playthrough (packaged env)"
+
+    local test_dir="$REPO_ROOT/tests/e2e"
+    if [[ ! -d "$test_dir" ]]; then
+        fail "e2e-playthrough" "tests/e2e/ not found"
+        return
+    fi
+
+    if ! command -v python3 &>/dev/null; then
+        skip "e2e-playthrough" "python3 not found"
+        return
+    fi
+
+    local venv="$REPO_ROOT/services/convsim-core/.venv"
+    local pytest_cmd
+    if [[ -f "$venv/bin/pytest" ]]; then
+        pytest_cmd="$venv/bin/pytest"
+    elif command -v pytest &>/dev/null; then
+        pytest_cmd="pytest"
+    else
+        skip "e2e-playthrough" "pytest not found — run setup.sh first"
+        return
+    fi
+
+    if [[ "$MODE" == "ci" ]]; then
+        local out
+        out="$(cd "$REPO_ROOT" && \
+               "$pytest_cmd" tests/e2e/ -v 2>&1)" || {
+            fail "e2e-playthrough" "E2E scripted playthrough tests failed"
+            # Write pytest output only — never raw session content — to the
+            # artifact dir so CI logs do not expose transcript text.
+            echo "$out" >> "$ARTIFACT_DIR/e2e-playthrough-error.txt"
+            _ARTIFACTS_WRITTEN=1
+            return
+        }
+        pass "e2e-playthrough" "E2E scripted playthrough tests passed (fake runtime, packaged env)"
+        return
+    fi
+
+    # Full mode: run against the live server if reachable.
+    if ! command -v curl &>/dev/null; then
+        skip "e2e-playthrough" "curl not found"
+        return
+    fi
+
+    local health_resp health_code
+    health_resp="$(curl -sf --max-time 5 -w '\n%{http_code}' "$CORE_URL/api/health" 2>&1)" || {
+        skip "e2e-playthrough" "Live server not reachable at $CORE_URL — is convsim-core running?"
+        return
+    }
+    health_code="${health_resp##*$'\n'}"
+    if [[ "$health_code" != "200" ]]; then
+        skip "e2e-playthrough" "GET /api/health returned HTTP $health_code — skipping live E2E"
+        return
+    fi
+
+    local out
+    out="$(cd "$REPO_ROOT" && \
+           CONVSIM_LIVE_URL="$CORE_URL" "$pytest_cmd" tests/e2e/ -v 2>&1)" || {
+        fail "e2e-playthrough" "E2E scripted playthrough tests failed (live server: $CORE_URL)"
+        echo "$out" >> "$ARTIFACT_DIR/e2e-playthrough-error.txt"
+        _ARTIFACTS_WRITTEN=1
+        capture_backend_logs
+        return
+    }
+    pass "e2e-playthrough" "E2E scripted playthrough tests passed (live server: $CORE_URL)"
+}
+
+# ── [artifact-inspect] Artifact inspection ────────────────────────────────────
+
+smoke_artifact_inspect() {
+    label "[artifact-inspect] Artifact inspection (layout, permissions, icons, version)"
+
+    if [[ "$MODE" == "ci" ]]; then
+        skip "artifact-inspect" \
+            "No build artifact in CI — run with --full and CONVSIM_ARTIFACT_DIR set"
+        return
+    fi
+
+    local artifact_dir_env="${CONVSIM_ARTIFACT_DIR:-}"
+    if [[ -z "$artifact_dir_env" ]]; then
+        skip "artifact-inspect" \
+            "CONVSIM_ARTIFACT_DIR not set — run: CONVSIM_ARTIFACT_DIR=<path> $0 --full"
+        return
+    fi
+
+    if [[ ! -d "$artifact_dir_env" ]]; then
+        fail "artifact-inspect" "CONVSIM_ARTIFACT_DIR=$artifact_dir_env is not a directory"
+        return
+    fi
+
+    local test_dir="$REPO_ROOT/tests/artifact"
+    if [[ ! -d "$test_dir" ]]; then
+        fail "artifact-inspect" "tests/artifact/ not found"
+        return
+    fi
+
+    if ! command -v python3 &>/dev/null; then
+        skip "artifact-inspect" "python3 not found"
+        return
+    fi
+
+    local venv="$REPO_ROOT/services/convsim-core/.venv"
+    local pytest_cmd
+    if [[ -f "$venv/bin/pytest" ]]; then
+        pytest_cmd="$venv/bin/pytest"
+    elif command -v pytest &>/dev/null; then
+        pytest_cmd="pytest"
+    else
+        skip "artifact-inspect" "pytest not found — run setup.sh first"
+        return
+    fi
+
+    info "artifact-inspect" "Inspecting artifact: $artifact_dir_env"
+    local out
+    out="$(cd "$REPO_ROOT" && \
+           CONVSIM_ARTIFACT_DIR="$artifact_dir_env" \
+           "$pytest_cmd" tests/artifact/ -v 2>&1)" || {
+        fail "artifact-inspect" "Artifact inspection failed for: $artifact_dir_env"
+        echo "$out" >> "$ARTIFACT_DIR/artifact-inspect-error.txt"
+        _ARTIFACTS_WRITTEN=1
+        return
+    }
+    pass "artifact-inspect" "Artifact inspection passed for: $artifact_dir_env"
+}
+
 # ── [web] Web frontend build and reachability ─────────────────────────────────
 
 smoke_web() {
@@ -770,6 +905,8 @@ main() {
     smoke_debrief
     smoke_offline
     smoke_packaged_startup
+    smoke_e2e_playthrough
+    smoke_artifact_inspect
     smoke_web
 
     print_summary
