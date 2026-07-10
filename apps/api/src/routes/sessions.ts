@@ -633,6 +633,7 @@ export async function sessionRoutes(app: FastifyInstance) {
       const summary = `You completed ${turnCount} ${turnWord} of "${scenarioTitle}". Session outcome: ${outcome.replace(/_/g, ' ')}.`;
       const strengths: string[] = ['Engaged with the scenario'];
       const improvements: string[] = ['Install a local LLM for real NPC responses'];
+      const missedOpportunities: string[] = ['Consider replaying with a different strategy to see how the NPC responds.'];
       const replaySuggestions: string[] = ['Try a different difficulty level'];
       const saveTranscript = shouldSaveTranscript(row.setup_json);
 
@@ -661,6 +662,7 @@ export async function sessionRoutes(app: FastifyInstance) {
         scenario_id: row.scenario_id,
         strengths,
         improvements,
+        missed_opportunities: missedOpportunities,
         replay_suggestions: replaySuggestions,
         scores: {} as Record<string, number>,
         overall_score: 50,
@@ -668,6 +670,72 @@ export async function sessionRoutes(app: FastifyInstance) {
         used_fallback: true,
         transcript_saving_disabled: !saveTranscript,
       };
+    },
+  );
+
+  // GET /api/sessions/:session_id/export/text
+  // Returns a Markdown text representation of the session transcript and debrief.
+  app.get<{ Params: { session_id: string } }>(
+    '/api/sessions/:session_id/export/text',
+    async (req, reply): Promise<void> => {
+      const db = getDb();
+      const row = db
+        .prepare<[string], SessionRow>('SELECT * FROM sessions WHERE session_id = ?')
+        .get(req.params.session_id);
+
+      if (!row) {
+        reply.status(404);
+        throw new Error(`Session '${req.params.session_id}' not found`);
+      }
+
+      const saveTranscript = shouldSaveTranscript(row.setup_json);
+      const events = saveTranscript
+        ? db
+            .prepare<[string], EventRow>(
+              'SELECT * FROM session_events WHERE session_id = ? ORDER BY event_id ASC',
+            )
+            .all(req.params.session_id)
+            .map(rowToEvent)
+        : [];
+
+      const turnEvents = events.filter(
+        (e) => e.event_type === 'player_turn' || e.event_type === 'npc_turn' || e.event_type === 'npc_opening',
+      );
+
+      const lines: string[] = [];
+      lines.push('# Session Transcript');
+      lines.push('');
+      lines.push(`**Session ID**: \`${row.session_id}\``);
+      lines.push(`**Scenario**: ${row.scenario_id}`);
+      lines.push('');
+      lines.push('## Transcript');
+      lines.push('');
+
+      if (!saveTranscript) {
+        lines.push('*Transcript saving was disabled for this session. Turn content is not available.*');
+        lines.push('');
+      } else if (turnEvents.length === 0) {
+        lines.push('*No turns recorded for this session.*');
+        lines.push('');
+      } else {
+        for (let i = 0; i < turnEvents.length; i++) {
+          const e = turnEvents[i];
+          const isPlayer = e.event_type === 'player_turn';
+          const content = (e.payload['content'] as string | undefined) ?? '';
+          const speaker = isPlayer ? 'You' : 'NPC';
+          lines.push(`### Turn ${i + 1} — ${speaker}`);
+          lines.push('');
+          lines.push(content);
+          lines.push('');
+        }
+      }
+
+      const markdown = lines.join('\n');
+      const filename = `session-${row.session_id}-transcript.md`;
+      void reply
+        .header('Content-Type', 'text/markdown; charset=utf-8')
+        .header('Content-Disposition', `attachment; filename="${filename}"`)
+        .send(markdown);
     },
   );
 

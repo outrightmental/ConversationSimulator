@@ -9,6 +9,7 @@ vi.mock('../api/client', () => ({
   api: {
     generateDebrief: vi.fn(),
     exportSession: vi.fn(),
+    exportTranscriptText: vi.fn(),
   },
 }))
 
@@ -32,6 +33,7 @@ const fullDebriefResponse: SessionDebriefResponse = {
   scenario_id: 'behavioral_interview',
   strengths: ['Engaged with the scenario', 'Completed the session flow'],
   improvements: ['Install a local LLM for real NPC responses'],
+  missed_opportunities: ['Consider asking more probing questions to deepen the dialogue.'],
   replay_suggestions: ['Try a different difficulty level'],
   scores: { rapport: 60, clarity: 45 },
   overall_score: 52,
@@ -79,6 +81,10 @@ function renderDebrief() {
 beforeEach(() => {
   vi.clearAllMocks()
   mockApi.exportSession.mockResolvedValue(exportData)
+  mockApi.exportTranscriptText.mockResolvedValue({
+    text: '# Session Transcript\n\nSession content here.',
+    filename: `session-${SESSION_ID}-transcript.md`,
+  })
   mockIsDevModeEnabled.mockReturnValue(false)
 })
 
@@ -356,6 +362,76 @@ describe('Debrief screen', () => {
       await waitFor(() =>
         expect(screen.getByText('Setup page')).toBeInTheDocument(),
       )
+    })
+  })
+
+  describe('missed opportunities section', () => {
+    it('displays missed opportunities when present', async () => {
+      mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
+      renderDebrief()
+      await waitFor(() =>
+        expect(screen.getByTestId('missed-opportunities-section')).toBeInTheDocument(),
+      )
+      expect(screen.getByText('Consider asking more probing questions to deepen the dialogue.')).toBeInTheDocument()
+    })
+
+    it('does not render missed opportunities section when list is empty', async () => {
+      mockApi.generateDebrief.mockResolvedValue({
+        ...fullDebriefResponse,
+        missed_opportunities: [],
+      })
+      renderDebrief()
+      await waitFor(() => expect(screen.getByTestId('summary-section')).toBeInTheDocument())
+      expect(screen.queryByTestId('missed-opportunities-section')).not.toBeInTheDocument()
+    })
+
+    it('does not render missed opportunities section when field is absent', async () => {
+      const { missed_opportunities: _omit, ...rest } = fullDebriefResponse
+      mockApi.generateDebrief.mockResolvedValue(rest)
+      renderDebrief()
+      await waitFor(() => expect(screen.getByTestId('summary-section')).toBeInTheDocument())
+      expect(screen.queryByTestId('missed-opportunities-section')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('export transcript as Markdown', () => {
+    it('renders an export-text-btn after debrief loads', async () => {
+      mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
+      renderDebrief()
+      await waitFor(() =>
+        expect(screen.getByTestId('export-text-btn')).toBeInTheDocument(),
+      )
+    })
+
+    it('calls exportTranscriptText on click and triggers download', async () => {
+      mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
+
+      const createObjectURL = vi.fn().mockReturnValue('blob:mock-text')
+      const revokeObjectURL = vi.fn()
+      const originalCreateElement = document.createElement.bind(document)
+      const click = vi.fn()
+      const createElementSpy = vi.spyOn(document, 'createElement').mockImplementation((tag) => {
+        if (tag === 'a') return { href: '', download: '', click } as unknown as HTMLElement
+        return originalCreateElement(tag)
+      })
+      vi.stubGlobal('URL', { createObjectURL, revokeObjectURL })
+
+      try {
+        renderDebrief()
+        await waitFor(() => expect(screen.getByTestId('export-text-btn')).toBeInTheDocument())
+
+        fireEvent.click(screen.getByTestId('export-text-btn'))
+
+        await waitFor(() =>
+          expect(mockApi.exportTranscriptText).toHaveBeenCalledWith(SESSION_ID),
+        )
+        await waitFor(() => expect(click).toHaveBeenCalled())
+        expect(createObjectURL).toHaveBeenCalled()
+        expect(revokeObjectURL).toHaveBeenCalled()
+      } finally {
+        createElementSpy.mockRestore()
+        vi.unstubAllGlobals()
+      }
     })
   })
 })

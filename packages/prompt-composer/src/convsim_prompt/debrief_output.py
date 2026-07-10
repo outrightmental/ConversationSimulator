@@ -42,6 +42,11 @@ DEBRIEF_NARRATIVE_SCHEMA: Dict[str, Any] = {
             "items": {"type": "string"},
             "minItems": 1,
         },
+        "missed_opportunities": {
+            "type": "array",
+            "description": "Specific moments where a different response could have improved the outcome.",
+            "items": {"type": "string"},
+        },
         "turning_points": {
             "type": "array",
             "description": "Key moments that shifted the conversation outcome.",
@@ -114,6 +119,7 @@ class DebriefNarrative:
     improvements: List[str]
     turning_points: List[TurningPoint]
     replay_suggestions: List[str] = field(default_factory=list)
+    missed_opportunities: List[str] = field(default_factory=list)
     used_fallback: bool = False
 
 
@@ -151,6 +157,20 @@ def _make_fallback_narrative(
         else:
             improvements.append("Try to engage more deeply with the scenario on your next attempt.")
 
+    missed_opportunities: List[str] = []
+    if outcome == "failure":
+        missed_opportunities.append(
+            "Review the transcript to identify turning points where a different approach might have changed the outcome."
+        )
+    elif outcome == "timeout":
+        missed_opportunities.append(
+            "Consider pacing the conversation more efficiently — you may have spent too long on early exchanges."
+        )
+    elif outcome == "player_exit":
+        missed_opportunities.append(
+            "Replaying with a different strategy can reveal how the NPC responds to alternative approaches."
+        )
+
     turning_points: List[TurningPoint] = []
     for kt in key_turns[:3]:
         turning_points.append(TurningPoint(
@@ -168,6 +188,7 @@ def _make_fallback_narrative(
         summary=" ".join(summary_parts),
         strengths=strengths,
         improvements=improvements,
+        missed_opportunities=missed_opportunities,
         turning_points=turning_points,
         replay_suggestions=replay_suggestions,
         used_fallback=True,
@@ -262,10 +283,20 @@ def _validate_narrative(data: Dict[str, Any]) -> DebriefNarrative:
             raise DebriefValidationError(f"replay_suggestions[{i}] must be a string")
         replay.append(s)
 
+    raw_missed = data.get("missed_opportunities", [])
+    if not isinstance(raw_missed, list):
+        raise DebriefValidationError("missed_opportunities must be an array")
+    missed: List[str] = []
+    for i, s in enumerate(raw_missed):
+        if not isinstance(s, str):
+            raise DebriefValidationError(f"missed_opportunities[{i}] must be a string")
+        missed.append(s)
+
     return DebriefNarrative(
         summary=summary,
         strengths=list(strengths),
         improvements=list(improvements),
+        missed_opportunities=missed,
         turning_points=turning_points,
         replay_suggestions=replay,
         used_fallback=False,

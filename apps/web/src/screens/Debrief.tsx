@@ -20,6 +20,7 @@ export default function Debrief() {
   const [error, setError] = useState<string | null>(null)
   const [transcript, setTranscript] = useState<TranscriptEvent[]>([])
   const [exporting, setExporting] = useState(false)
+  const [exportingText, setExportingText] = useState(false)
   // Debrief-generation latency (ms), captured locally for the dev debug view. No telemetry.
   const [debriefMs, setDebriefMs] = useState<number | null>(null)
   const devMode = isDevModeEnabled()
@@ -86,6 +87,23 @@ export default function Debrief() {
       URL.revokeObjectURL(url)
     } finally {
       setExporting(false)
+    }
+  }
+
+  async function handleExportText() {
+    if (!sessionId) return
+    setExportingText(true)
+    try {
+      const { text, filename } = await api.exportTranscriptText(sessionId)
+      const blob = new Blob([text], { type: 'text/markdown; charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      a.click()
+      URL.revokeObjectURL(url)
+    } finally {
+      setExportingText(false)
     }
   }
 
@@ -304,6 +322,20 @@ export default function Debrief() {
             </section>
           )}
 
+          {/* Missed opportunities */}
+          {debrief.missed_opportunities && debrief.missed_opportunities.length > 0 && (
+            <section aria-labelledby="missed-heading" data-testid="missed-opportunities-section">
+              <h2 id="missed-heading" style={{ marginBottom: '0.5rem', fontSize: '1.1rem' }}>
+                Missed opportunities
+              </h2>
+              <ul style={{ margin: 0, paddingLeft: '1.5rem', color: '#fda4af', lineHeight: 1.8 }}>
+                {debrief.missed_opportunities.map((s, i) => (
+                  <li key={i}>{s}</li>
+                ))}
+              </ul>
+            </section>
+          )}
+
           {/* Turning points / key moments */}
           {debrief.turning_points && debrief.turning_points.length > 0 && (
             <section
@@ -437,6 +469,21 @@ export default function Debrief() {
               }}
             >
               {exporting ? 'Exporting…' : 'Export session JSON'}
+            </button>
+            <button
+              data-testid="export-text-btn"
+              onClick={() => void handleExportText()}
+              disabled={exportingText}
+              style={{
+                padding: '0.5rem 1rem',
+                borderRadius: 6,
+                border: '1px solid #52525b',
+                background: 'transparent',
+                color: '#a1a1aa',
+                cursor: exportingText ? 'default' : 'pointer',
+              }}
+            >
+              {exportingText ? 'Exporting…' : 'Export transcript (Markdown)'}
             </button>
             <button
               onClick={() => navigate('/library')}

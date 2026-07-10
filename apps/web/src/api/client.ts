@@ -295,6 +295,15 @@ export const api = {
   exportSession(sessionId: string): Promise<unknown> {
     return get<unknown>(`/sessions/${sessionId}/export`)
   },
+  async exportTranscriptText(sessionId: string): Promise<{ text: string; filename: string }> {
+    const res = await fetch(`${BASE}/sessions/${sessionId}/export/text`)
+    if (!res.ok) throw new Error(await parseErrorMessage(res))
+    const text = await res.text()
+    const disposition = res.headers.get('Content-Disposition') ?? ''
+    const match = /filename="([^"]+)"/.exec(disposition)
+    const filename = match?.[1] ?? `session-${sessionId}-transcript.md`
+    return { text, filename }
+  },
   startSession(sessionId: string): Promise<SessionStartResponse> {
     return post<SessionStartResponse>(`/sessions/${sessionId}/start`)
   },
