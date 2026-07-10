@@ -8,9 +8,32 @@ Conversation Simulator on macOS and Windows.
 
 ## macOS
 
+### Steam system requirements
+
+These are the official minimum and recommended requirements recorded for the
+Steam store page and the Stage 3/4 release gates.
+
+| | Minimum | Recommended |
+|---|---|---|
+| **OS** | macOS 13 Ventura | macOS 14 Sonoma or newer |
+| **Architecture** | Apple Silicon (arm64) or Intel (x86-64) | Apple Silicon (M2 or newer) |
+| **CPU** | Apple M1 / Intel Core i5 (6th gen or newer) | Apple M2 or newer |
+| **RAM** | 8 GB | 16 GB |
+| **Storage** | 2 GB free (app) + 3 GB per downloaded model | 5 GB free |
+| **GPU / ANE** | Integrated GPU | Apple Neural Engine (M1+) for fast inference |
+| **Internet** | Required for first-time model download | — |
+
+Notes:
+- macOS 12 Monterey may work but is **not tested** and is excluded from QA coverage.
+- A universal binary (arm64 + x86-64) is the target; separate arm64 and x86-64
+  `.dmg` files are acceptable for Stage 3 private beta.
+- As of late 2024, the GitHub-hosted `macos-13` Intel runner is deprecated; CI
+  builds on `macos-latest` (Apple Silicon / arm64). Intel builds require a
+  self-hosted runner or cross-compilation (`--target x86_64-apple-darwin`).
+
 ### Supported versions
 
-macOS 12 Monterey or newer. Apple Silicon (M1+) and Intel are both supported
+macOS 13 Ventura or newer. Apple Silicon (M1+) and Intel are both supported
 with separate installer builds (`.dmg` files differ by architecture).
 
 ### Build prerequisites
@@ -49,21 +72,38 @@ unsigned build:
 1. Right-click (or Control-click) the `.app` → **Open** → **Open**.
 2. Or: **System Settings → Privacy & Security** → scroll down → **Open Anyway**.
 
-For distributable builds, sign with an Apple Developer ID certificate:
+For distributable (Stage 3+) builds, sign and notarise with an Apple Developer
+ID certificate. Set the following environment variables before running
+`tauri build` (or let the CI release workflow set them from secrets):
 
 ```bash
-# Set these before running `tauri build`:
-export APPLE_CERTIFICATE="Developer ID Application: Your Name (TEAMID)"
-export APPLE_CERTIFICATE_PASSWORD="keychain-password"
-export APPLE_SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)"
+# Base64-encoded Developer ID Application .p12 certificate
+export APPLE_CERTIFICATE="<base64>"
+export APPLE_CERTIFICATE_PASSWORD="<p12-passphrase>"
+# Full identity string from the certificate
+export APPLE_SIGNING_IDENTITY="Developer ID Application: Outright Mental (TEAMID)"
+# Notarisation credentials
 export APPLE_ID="you@example.com"
-export APPLE_PASSWORD="app-specific-password"
+export APPLE_PASSWORD="<app-specific-password>"
 export APPLE_TEAM_ID="TEAMID"
 ```
 
-Tauri's bundler handles signing and notarisation automatically when these
-environment variables are present. See
-[tauri.app/distribute/sign/macos](https://tauri.app/distribute/sign/macos).
+Tauri's bundler reads these variables automatically, applies
+`apps/desktop/src-tauri/entitlements.plist` (Hardened Runtime entitlements
+required for Steamworks and sidecar compatibility — see the file for details),
+signs the `.app` bundle with `codesign --options runtime`, and submits it to
+Apple's notarisation service via `notarytool`.
+
+The `convsim-core` PyInstaller sidecar also reads `APPLE_SIGNING_IDENTITY`
+at build time (see `convsim-core.spec`) and signs its embedded Python extensions
+with the same entitlements before Tauri wraps them in the bundle.
+
+See [tauri.app/distribute/sign/macos](https://tauri.app/distribute/sign/macos)
+for more details on the Tauri signing process.
+
+**Gate G3-01:** A notarised macOS build is required before Stage 3 (Steam
+private beta). A Gatekeeper pass on a clean macOS install (without "Open
+Anyway") is the acceptance criterion.
 
 ### Microphone permission
 
@@ -72,15 +112,28 @@ If denied, re-enable in **System Settings → Privacy & Security → Microphone*
 
 ### Data directories
 
+The platform data root is `~/Library/Application Support/com.outrightmental.convsim/`
+(set by `convsim_core/paths.py`; passed to the sidecar as `CONVSIM_DATA_ROOT`
+via the Tauri shell's `app_local_data_dir()`). Subdirectories:
+
 ```
-~/.convsim/db/      — SQLite session database
-~/.convsim/data/    — exports and pack cache
-~/.convsim/logs/    — runtime logs
-~/.convsim/models/  — downloaded model weights (not in ~/Library to avoid iCloud sync)
+~/Library/Application Support/com.outrightmental.convsim/
+  db/       — SQLite session database
+  data/     — exports and pack cache
+  logs/     — runtime logs
+  models/   — downloaded model weights
+  exports/  — debrief exports
+  crashes/  — crash bundles
 ```
 
-Override with environment variables: `CONVSIM_DB_DIR`, `CONVSIM_DATA_DIR`,
-`CONVSIM_LOG_DIR`, `CONVSIM_MODELS_DIR`.
+This directory is not synced to iCloud (it is outside `~/Library/Mobile Documents`)
+and is explicitly excluded from Steam Cloud via `.nosteamcloudpath` sentinel files.
+
+If you have data from an older build that used `~/.convsim/`, run the app once to
+trigger the one-time migration (`convsim_core/data_migration.py` copies existing
+data to the new location on first launch).
+
+Override the entire data root with the `CONVSIM_DATA_ROOT` environment variable.
 
 ### Port conflicts
 
@@ -326,7 +379,7 @@ and verification checklist required for the Steam Deck Verified tier.
 | Runtime warning | Gatekeeper dialog | SmartScreen dialog | None |
 | WebView engine | WKWebView (Safari) | WebView2 (Chromium) | WebKitGTK |
 | Microphone prompt | System Settings | Windows Security | `xdg-desktop-portal` |
-| Data directory | `~/.convsim/` | `%USERPROFILE%\.convsim\` | `~/.local/share/convsim/` |
+| Data directory | `~/Library/Application Support/com.outrightmental.convsim/` | `%LOCALAPPDATA%\outrightmental\convsim\` | `$XDG_DATA_HOME/convsim/` |
 | Dev script | `./scripts/dev.sh` | `.\scripts\dev.ps1` | `./scripts/dev.sh` |
 | First-run check | `./scripts/first-run-check.sh` | `.\scripts\first-run-check.ps1` | `./scripts/first-run-check.sh` |
 
