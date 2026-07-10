@@ -88,6 +88,7 @@ export interface SessionDebriefResponse {
   scenario_id?: string;
   strengths?: string[];
   improvements?: string[];
+  missed_opportunities?: string[];
   replay_suggestions?: string[];
   scores?: Record<string, number>;
   overall_score?: number;

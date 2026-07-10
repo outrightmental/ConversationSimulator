@@ -64,6 +64,11 @@
       "description": "Suggested improvements for next attempt.",
       "items": { "type": "string" }
     },
+    "missed_opportunities": {
+      "type": "array",
+      "description": "Specific moments where a different response could have improved the outcome.",
+      "items": { "type": "string" }
+    },
     "turning_points": {
       "type": "array",
       "description": "Key moments in the conversation that significantly shifted the outcome.",
