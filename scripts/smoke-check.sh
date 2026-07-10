@@ -117,6 +117,15 @@ check_file "scripts/release-smoke.ps1"
 check_file "scripts/desktop-smoke.sh"
 check_file "scripts/desktop-smoke.ps1"
 
+# Packaging and audit scripts
+check_file "scripts/build-core.sh"
+check_file "scripts/build-core.ps1"
+check_file "scripts/depot-audit.sh"
+check_file "scripts/depot-audit.ps1"
+check_file "services/convsim-core/convsim-core.spec"
+check_file "apps/desktop/src-tauri/resources/bin/.gitkeep"
+check_file "apps/desktop/src-tauri/resources/placeholder"
+
 echo ""
 
 # Release infrastructure

@@ -92,6 +92,46 @@ jobs:
       - name: Build web frontend
         run: pnpm --filter @convsim/web build
 
+      # ── Python core build (PyInstaller standalone binary) ────────────────────
+      # Produces apps/desktop/src-tauri/resources/bin/convsim-core[.exe] which
+      # Tauri bundles as a resource (bundle.resources: ["resources/**/*"] in
+      # tauri.conf.json).  The binary must be present before `tauri build`.
+      - name: Set up Python for core build
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Build convsim-core standalone binary
+        shell: bash
+        run: |
+          # working-directory (below) already places us in services/convsim-core;
+          # all paths here are relative to it.
+          python -m pip install -q -e "../../packages/prompt-composer"
+          python -m pip install -q -e ".[build]"
+          python -m PyInstaller convsim-core.spec --noconfirm
+
+          # Copy to the Tauri resources directory for bundling.
+          mkdir -p ../../apps/desktop/src-tauri/resources/bin
+          if [ -f dist/convsim-core.exe ]; then
+            cp dist/convsim-core.exe ../../apps/desktop/src-tauri/resources/bin/
+          else
+            cp dist/convsim-core ../../apps/desktop/src-tauri/resources/bin/
+            chmod +x ../../apps/desktop/src-tauri/resources/bin/convsim-core
+          fi
+        working-directory: services/convsim-core
+
+      - name: Verify bundled core binary
+        shell: bash
+        run: |
+          BIN_DIR=apps/desktop/src-tauri/resources/bin
+          if [ -f "$BIN_DIR/convsim-core" ] || [ -f "$BIN_DIR/convsim-core.exe" ]; then
+            echo "OK: convsim-core binary present in $BIN_DIR"
+            ls -lh "$BIN_DIR"
+          else
+            echo "ERROR: convsim-core binary missing from $BIN_DIR" >&2
+            exit 1
+          fi
+
       # ── Tauri desktop build ──────────────────────────────────────────────────
       - name: Build Tauri desktop
         run: pnpm --filter @convsim/desktop build

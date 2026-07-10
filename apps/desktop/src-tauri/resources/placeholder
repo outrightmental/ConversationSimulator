@@ -1,0 +1,3 @@
+This file ensures the Tauri bundle.resources glob (resources/**/*) matches at
+least one visible file in a clean checkout, before the convsim-core binary is
+placed here by scripts/build-core.sh.

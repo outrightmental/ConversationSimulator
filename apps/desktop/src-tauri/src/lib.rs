@@ -172,12 +172,16 @@ fn find_core_executable(resource_dir: Option<&PathBuf>) -> Result<PathBuf, Strin
     }
 
     // 3. Tauri resource directory (adjacent to the app bundle).
+    //    Checks both the resource dir root and the resources/bin/ sub-path
+    //    produced by scripts/build-core.sh (via "resources/**/*" in tauri.conf.json).
     if let Some(res) = resource_dir {
         for rel in &[
             "convsim-core",
             "convsim-core.exe",
             "bin/convsim-core",
             "bin/convsim-core.exe",
+            "resources/bin/convsim-core",
+            "resources/bin/convsim-core.exe",
         ] {
             let p = res.join(rel);
             if p.exists() {
@@ -291,10 +295,16 @@ fn launch_or_verify_core(
         // Tell convsim-core where the bundled sidecar binaries live so it can
         // start llama-server, whisper-cli, and sherpa-onnx-offline-tts without
         // requiring a system PATH entry (Steam build convention).
+        //
+        // Check both runtimes/ (legacy direct resource) and resources/runtimes/
+        // (produced by the "resources/**/*" glob in tauri.conf.json).
         if let Some(ref res) = resource_dir {
-            let runtimes = res.join("runtimes");
-            if runtimes.exists() {
-                cmd.env("CONVSIM_BUNDLED_RUNTIME_DIR", &runtimes);
+            for runtimes_rel in &["runtimes", "resources/runtimes"] {
+                let runtimes = res.join(runtimes_rel);
+                if runtimes.exists() {
+                    cmd.env("CONVSIM_BUNDLED_RUNTIME_DIR", &runtimes);
+                    break;
+                }
             }
         }
 

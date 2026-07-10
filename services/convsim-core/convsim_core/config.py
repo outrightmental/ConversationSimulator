@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -12,10 +13,25 @@ _DEFAULT_LOG_DIR = str(Path.home() / ".convsim" / "logs")
 _DEFAULT_DB_DIR = str(Path.home() / ".convsim" / "db")
 _DEFAULT_PACKS_DIR = str(Path.home() / ".convsim" / "packs")
 _DEFAULT_EXPORTS_DIR = str(Path.home() / ".convsim" / "exports")
-# Read-only bundled official packs live in the repo's packs/official directory.
-# Resolve it relative to this file so the default works regardless of the
-# process CWD (config.py -> convsim_core -> convsim-core -> services -> repo root).
-_DEFAULT_OFFICIAL_PACKS_DIR = str(Path(__file__).resolve().parents[3] / "packs" / "official")
+
+
+def _default_official_packs_dir() -> str:
+    """Resolve the read-only bundled official packs directory.
+
+    In a PyInstaller single-file bundle the official packs are embedded at
+    ``sys._MEIPASS/packs/official`` (see ``convsim-core.spec``); detect that
+    frozen environment and route to it so a Steam install needs no developer
+    checkout.  Otherwise resolve relative to this file so the default works
+    regardless of the process CWD
+    (config.py -> convsim_core -> convsim-core -> services -> repo root).
+    """
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        return str(Path(meipass) / "packs" / "official")
+    return str(Path(__file__).resolve().parents[3] / "packs" / "official")
+
+
+_DEFAULT_OFFICIAL_PACKS_DIR = _default_official_packs_dir()
 
 
 class ServiceConfig(BaseSettings):
