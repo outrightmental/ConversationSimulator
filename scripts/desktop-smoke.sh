@@ -26,6 +26,16 @@ Install via rustup: https://rustup.rs/
 Then re-run this script."
 fi
 
+# Tauri's bundle.resources glob ("resources/**") panics if no visible file
+# matches. The real convsim-core binary is placed here by build-core.sh before
+# a release tauri build. When absent, create a zero-byte stub so cargo check
+# can pass, then remove it on exit.
+CORE_STUB="$DESKTOP_TAURI/resources/bin/convsim-core"
+if [[ ! -f "$CORE_STUB" ]]; then
+    touch "$CORE_STUB"
+    trap 'rm -f "$CORE_STUB"' EXIT
+fi
+
 echo "Running cargo check on apps/desktop/src-tauri..."
 (cd "$DESKTOP_TAURI" && cargo check 2>&1)
 echo "  OK  cargo check passed."
