@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /** Difficulty level options a scenario can expose to the player. */
-export type DifficultyLevel = "easy" | "normal" | "hard";
+export type DifficultyLevel = "warm" | "standard" | "hard" | "adversarial";
 
 /** Lightweight scenario card returned by the scenario-listing API endpoint. */
 export interface ScenarioSummary {

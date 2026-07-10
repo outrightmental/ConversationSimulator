@@ -207,7 +207,7 @@ export async function sessionRoutes(app: FastifyInstance) {
           ],
           properties: {
             scenario_id: { type: 'string' },
-            difficulty: { type: 'string', enum: ['easy', 'normal', 'hard'] },
+            difficulty: { type: 'string', enum: ['warm', 'standard', 'hard', 'adversarial'] },
             player_role_name: { type: 'string', minLength: 1 },
             language: { type: 'string' },
             input_mode: {

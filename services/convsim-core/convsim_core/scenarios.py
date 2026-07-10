@@ -40,7 +40,7 @@ class ScenarioInfo:
         """Return a ScenarioData with difficulty settings applied."""
         diff_settings = self.difficulty_options.get(
             difficulty,
-            self.difficulty_options.get("normal", DifficultySettings()),
+            self.difficulty_options.get("standard", DifficultySettings()),
         )
         return ScenarioData(
             scenario_id=self.scenario_data.scenario_id,
@@ -95,9 +95,10 @@ SCENARIOS: Dict[str, ScenarioInfo] = {
         max_turns=18,
         supported_languages=["en"],
         difficulty_options={
-            "easy": DifficultySettings(npc_patience_modifier=15, challenge_frequency="low"),
-            "normal": DifficultySettings(npc_patience_modifier=0, challenge_frequency="medium"),
-            "hard": DifficultySettings(npc_patience_modifier=-20, challenge_frequency="high"),
+            "warm":        DifficultySettings(patience=80, volatility=20, disclosure=70, time_pressure=20),
+            "standard":    DifficultySettings(patience=50, volatility=50, disclosure=50, time_pressure=50),
+            "hard":        DifficultySettings(patience=25, volatility=70, disclosure=25, time_pressure=60),
+            "adversarial": DifficultySettings(patience=10, volatility=90, disclosure=10, time_pressure=80),
         },
         opening_npc_says=(
             "Thanks for coming in today. I'm Alex Chen from HR. "
@@ -137,8 +138,9 @@ SCENARIOS: Dict[str, ScenarioInfo] = {
         max_turns=14,
         supported_languages=["en"],
         difficulty_options={
-            "normal": DifficultySettings(npc_patience_modifier=-10, challenge_frequency="medium"),
-            "hard": DifficultySettings(npc_patience_modifier=-25, challenge_frequency="high"),
+            "standard":    DifficultySettings(patience=30, volatility=60, disclosure=30, time_pressure=60),
+            "hard":        DifficultySettings(patience=15, volatility=80, disclosure=15, time_pressure=75),
+            "adversarial": DifficultySettings(patience=5,  volatility=95, disclosure=5,  time_pressure=90),
         },
         opening_npc_says=(
             "Let's skip the pleasantries. Why should I care about you? "
@@ -182,9 +184,10 @@ SCENARIOS: Dict[str, ScenarioInfo] = {
         max_turns=16,
         supported_languages=["en", "es"],
         difficulty_options={
-            "easy": DifficultySettings(npc_patience_modifier=20, challenge_frequency="low"),
-            "normal": DifficultySettings(npc_patience_modifier=0, challenge_frequency="medium"),
-            "hard": DifficultySettings(npc_patience_modifier=-15, challenge_frequency="high"),
+            "warm":        DifficultySettings(patience=80, volatility=20, disclosure=70, time_pressure=20),
+            "standard":    DifficultySettings(patience=50, volatility=50, disclosure=50, time_pressure=50),
+            "hard":        DifficultySettings(patience=25, volatility=70, disclosure=25, time_pressure=60),
+            "adversarial": DifficultySettings(patience=10, volatility=90, disclosure=10, time_pressure=80),
         },
         opening_npc_says=(
             "Welcome! You're looking at one of our best deals. "
@@ -228,8 +231,9 @@ SCENARIOS: Dict[str, ScenarioInfo] = {
         max_turns=20,
         supported_languages=["es", "en"],
         difficulty_options={
-            "easy": DifficultySettings(npc_patience_modifier=15, challenge_frequency="low"),
-            "normal": DifficultySettings(npc_patience_modifier=0, challenge_frequency="medium"),
+            "warm":     DifficultySettings(patience=80, volatility=20, disclosure=80, time_pressure=10),
+            "standard": DifficultySettings(patience=55, volatility=45, disclosure=55, time_pressure=30),
+            "hard":     DifficultySettings(patience=30, volatility=65, disclosure=30, time_pressure=55),
         },
         opening_npc_says="¡Buenos días! ¿Qué le pongo?",
     ),
@@ -269,9 +273,10 @@ SCENARIOS: Dict[str, ScenarioInfo] = {
         max_turns=14,
         supported_languages=["en"],
         difficulty_options={
-            "easy": DifficultySettings(npc_patience_modifier=15, challenge_frequency="low"),
-            "normal": DifficultySettings(npc_patience_modifier=0, challenge_frequency="medium"),
-            "hard": DifficultySettings(npc_patience_modifier=-15, challenge_frequency="high"),
+            "warm":        DifficultySettings(patience=80, volatility=20, disclosure=70, time_pressure=20),
+            "standard":    DifficultySettings(patience=50, volatility=50, disclosure=50, time_pressure=50),
+            "hard":        DifficultySettings(patience=25, volatility=70, disclosure=25, time_pressure=60),
+            "adversarial": DifficultySettings(patience=10, volatility=90, disclosure=10, time_pressure=80),
         },
         opening_npc_says="Hey, you wanted to talk? What's up?",
         state_variable_overrides={
@@ -334,7 +339,7 @@ def get_scenario_info(scenario_id: str) -> ScenarioInfo | None:
     return SCENARIOS.get(scenario_id) or _dynamic_registry.get(scenario_id)
 
 
-def get_scenario_data(scenario_id: str, difficulty: str = "normal") -> ScenarioData | None:
+def get_scenario_data(scenario_id: str, difficulty: str = "standard") -> ScenarioData | None:
     """Return a ScenarioData configured for the given difficulty, or None if unknown."""
     info = get_scenario_info(scenario_id)
     if info is None:
@@ -418,7 +423,7 @@ def load_scenario_info_from_pack(pack_dir: Path, scenario_rel_path: str) -> Scen
         scenario_data=scenario_data,
         max_turns=max_turns,
         supported_languages=["en"],
-        difficulty_options={"normal": DifficultySettings()},
+        difficulty_options={"standard": DifficultySettings()},
         opening_npc_says=opening_npc_says,
         state_variable_overrides=state_variable_overrides,
     )

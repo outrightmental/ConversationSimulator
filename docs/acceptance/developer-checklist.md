@@ -95,7 +95,7 @@ cd services/convsim-core
 CONVSIM_LOG_LEVEL=DEBUG python -m convsim_core.main &
 curl -s -X POST http://127.0.0.1:7355/api/sessions \
      -H 'Content-Type: application/json' \
-     -d '{"scenario_id":"behavioral_interview","difficulty":"normal","player_role_name":"Dev","language":"en","input_mode":"text-only","tts_enabled":false,"show_state_meters":false,"save_transcript":true}'
+     -d '{"scenario_id":"behavioral_interview","difficulty":"standard","player_role_name":"Dev","language":"en","input_mode":"text-only","tts_enabled":false,"show_state_meters":false,"save_transcript":true}'
 ```
 
 - [ ] DEBUG log lines appear in the terminal for the session create call

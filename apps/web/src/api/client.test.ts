@@ -31,7 +31,7 @@ describe('api.createSession error handling', () => {
     await expect(
       api.createSession({
         scenario_id: 'nonexistent',
-        difficulty: 'normal',
+        difficulty: 'standard',
         player_role_name: 'Alice',
         language: 'en',
         input_mode: 'text-only',
@@ -54,7 +54,7 @@ describe('api.createSession error handling', () => {
     try {
       await api.createSession({
         scenario_id: 'behavioral_interview',
-        difficulty: 'normal',
+        difficulty: 'standard',
         player_role_name: '',
         language: 'en',
         input_mode: 'text-only',
@@ -78,7 +78,7 @@ describe('api.createSession error handling', () => {
     try {
       await api.createSession({
         scenario_id: 'behavioral_interview',
-        difficulty: 'normal',
+        difficulty: 'standard',
         player_role_name: 'Alice',
         language: 'en',
         input_mode: 'text-only',
@@ -101,7 +101,7 @@ describe('api.createSession error handling', () => {
     await expect(
       api.createSession({
         scenario_id: 'behavioral_interview',
-        difficulty: 'normal',
+        difficulty: 'standard',
         player_role_name: 'Alice',
         language: 'en',
         input_mode: 'text-only',

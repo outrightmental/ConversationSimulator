@@ -31,7 +31,7 @@ description: "A scenario for testing."
 player_role: "You are a tester."
 goals:
   - "Complete the test"
-difficulty: medium
+difficulty: standard
 duration_minutes: 10
 npc_ref: test-npc
 opening_context: "The test begins."
@@ -230,7 +230,7 @@ describe('FormEditor — scenario form', () => {
   it('renders difficulty select with current value', () => {
     render(<FormEditor fileType="scenario" initialYaml={SCENARIO_YAML} />);
     const select = screen.getByLabelText('Difficulty');
-    expect(select).toHaveValue('medium');
+    expect(select).toHaveValue('standard');
   });
 
   it('updates difficulty via dropdown', async () => {
