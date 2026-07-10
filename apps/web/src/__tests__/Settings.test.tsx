@@ -425,6 +425,47 @@ describe('local folders', () => {
 })
 
 // ---------------------------------------------------------------------------
+// Local folders — desktop "Open" integration (Tauri shell)
+// ---------------------------------------------------------------------------
+
+describe('local folders: open in desktop shell', () => {
+  const win = window as unknown as { __TAURI__?: unknown }
+
+  afterEach(() => {
+    delete win.__TAURI__
+  })
+
+  it('does not render Open buttons outside the desktop shell', async () => {
+    await renderSettings()
+    await waitFor(() => screen.getByTestId('folder-path-data'))
+    expect(screen.queryByRole('button', { name: /open data folder/i })).not.toBeInTheDocument()
+  })
+
+  it('invokes the shell with the folder path when Open is clicked', async () => {
+    const invoke = vi.fn().mockResolvedValue(undefined)
+    win.__TAURI__ = { core: { invoke } }
+    await renderSettings()
+    await waitFor(() => screen.getByTestId('folder-path-data'))
+    fireEvent.click(screen.getByRole('button', { name: /open logs folder/i }))
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith('plugin:shell|open', { path: '/home/user/.convsim/logs' }),
+    )
+  })
+
+  it('shows a fallback message when the shell rejects the path', async () => {
+    const invoke = vi.fn().mockRejectedValue(new Error('not allowed'))
+    win.__TAURI__ = { core: { invoke } }
+    await renderSettings()
+    await waitFor(() => screen.getByTestId('folder-path-data'))
+    fireEvent.click(screen.getByRole('button', { name: /open data folder/i }))
+    await waitFor(() =>
+      expect(screen.getByTestId('folder-open-error')).toBeInTheDocument(),
+    )
+    expect(screen.getByTestId('folder-open-error')).toHaveTextContent(/copy the path/i)
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Clear local data — two-step confirmation
 // ---------------------------------------------------------------------------
 

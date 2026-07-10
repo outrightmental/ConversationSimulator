@@ -58,13 +58,18 @@ function detectTauri(): boolean {
   return typeof (window as { __TAURI__?: unknown }).__TAURI__ !== 'undefined'
 }
 
-/** Opens a local folder in the OS file manager when running in Tauri; falls back to a no-op. */
+/**
+ * Opens a local folder in the OS file manager via the Tauri shell.
+ * Throws when the desktop shell is unavailable or the shell rejects the path
+ * (e.g. the shell open scope is restricted), so callers can surface a fallback.
+ */
 async function openFolderInShell(folderPath: string): Promise<void> {
   const tauri = (window as { __TAURI__?: { core?: { invoke?: (cmd: string, args?: unknown) => Promise<void> } } }).__TAURI__
   const invoke = tauri?.core?.invoke
-  if (invoke) {
-    await invoke('plugin:shell|open', { path: folderPath })
+  if (!invoke) {
+    throw new Error('Desktop shell is unavailable')
   }
+  await invoke('plugin:shell|open', { path: folderPath })
 }
 
 export default function Settings() {
@@ -100,6 +105,7 @@ export default function Settings() {
   const [folders, setFolders] = useState<{ data: string; logs: string; models: string; packs: string } | null>(null)
   const [foldersError, setFoldersError] = useState(false)
   const [copiedFolder, setCopiedFolder] = useState<string | null>(null)
+  const [openFolderError, setOpenFolderError] = useState<string | null>(null)
 
   useEffect(() => {
     api.getFolders()
@@ -114,6 +120,16 @@ export default function Settings() {
       setTimeout(() => setCopiedFolder((v) => (v === key ? null : v)), 1500)
     } catch {
       // ignore — clipboard may be unavailable in non-secure contexts
+    }
+  }
+
+  async function handleOpenFolder(folderPath: string) {
+    setOpenFolderError(null)
+    try {
+      await openFolderInShell(folderPath)
+    } catch {
+      // The shell open scope can reject local paths; fall back to the copyable path.
+      setOpenFolderError('Could not open the folder automatically. Copy the path and open it manually.')
     }
   }
 
@@ -472,7 +488,7 @@ export default function Settings() {
                     {isTauri && (
                       <button
                         aria-label={`Open ${label.toLowerCase()} folder`}
-                        onClick={() => void openFolderInShell(folderPath)}
+                        onClick={() => void handleOpenFolder(folderPath)}
                         style={{
                           flexShrink: 0,
                           padding: '0.3rem 0.6rem',
@@ -492,6 +508,15 @@ export default function Settings() {
               )
             })}
           </div>
+        )}
+        {openFolderError && (
+          <p
+            role="alert"
+            data-testid="folder-open-error"
+            style={{ fontSize: '0.85rem', color: '#f87171', marginTop: '0.5rem' }}
+          >
+            {openFolderError}
+          </p>
         )}
       </section>
 
