@@ -82,8 +82,8 @@ Time Machine's application bundles.
 ~/Library/Application Support/com.outrightmental.convsim/data/     — exports and pack cache
 ~/Library/Application Support/com.outrightmental.convsim/logs/     — runtime logs
 ~/Library/Application Support/com.outrightmental.convsim/models/   — downloaded model weights
-~/Library/Application Support/com.outrightmental.convsim/audio/    — recorded audio clips
 ~/Library/Application Support/com.outrightmental.convsim/exports/  — exported transcripts
+~/Library/Application Support/com.outrightmental.convsim/data/audio/  — recorded audio clips (only when "save raw audio" is enabled; off by default)
 ~/Library/Application Support/com.outrightmental.convsim/crashes/  — crash bundles
 ```
 
@@ -221,8 +221,8 @@ data local as required by the local-first privacy promise.
 %LOCALAPPDATA%\outrightmental\convsim\data\     — exports and pack cache
 %LOCALAPPDATA%\outrightmental\convsim\logs\     — runtime logs
 %LOCALAPPDATA%\outrightmental\convsim\models\   — downloaded model weights
-%LOCALAPPDATA%\outrightmental\convsim\audio\    — recorded audio clips
 %LOCALAPPDATA%\outrightmental\convsim\exports\  — exported transcripts
+%LOCALAPPDATA%\outrightmental\convsim\data\audio\  — recorded audio clips (only when "save raw audio" is enabled; off by default)
 %LOCALAPPDATA%\outrightmental\convsim\crashes\  — crash bundles
 ```
 
