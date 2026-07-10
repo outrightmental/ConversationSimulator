@@ -79,15 +79,51 @@ def build_scenario_brief_layer(scenario: ScenarioData) -> str:
         lines.append("Player goals (visible to player):")
         for goal in scenario.player_visible_goals:
             lines.append(f"  - {goal}")
+    lines.append(f"Difficulty preset: {scenario.difficulty}")
     if scenario.difficulty_settings:
         ds = scenario.difficulty_settings
-        lines.append(
-            f"Difficulty: {scenario.difficulty} "
-            f"(patience modifier: {ds.npc_patience_modifier:+d}, "
-            f"challenge frequency: {ds.challenge_frequency})"
-        )
-    else:
-        lines.append(f"Difficulty: {scenario.difficulty}")
+        # Each knob maps to a bounded behaviour fragment so that prompts differ
+        # measurably between presets while staying within the safety envelope.
+        if ds.patience <= 33:
+            lines.append(
+                "NPC patience: low — the NPC may disengage or cut the conversation short "
+                "if the player stalls, repeats themselves, or fails to make progress."
+            )
+        elif ds.patience >= 67:
+            lines.append(
+                "NPC patience: high — the NPC stays engaged even through awkward pauses, "
+                "tangents, or slow starts; they give the player ample space to find their footing."
+            )
+        if ds.volatility <= 33:
+            lines.append(
+                "State sensitivity: low — small player missteps have limited immediate effect "
+                "on NPC state meters; the player has room to recover without sudden shifts."
+            )
+        elif ds.volatility >= 67:
+            lines.append(
+                "State sensitivity: high — each player choice has a strong and immediate effect "
+                "on NPC state; a single poor response can meaningfully alter outcomes."
+            )
+        if ds.disclosure <= 33:
+            lines.append(
+                "NPC disclosure: low — the NPC shares only what is directly asked and volunteers "
+                "nothing extra; the player must ask the right questions to surface useful information."
+            )
+        elif ds.disclosure >= 67:
+            lines.append(
+                "NPC disclosure: high — the NPC volunteers relevant context, hints, and information "
+                "when it is natural to do so; they are an open and cooperative conversational partner."
+            )
+        if ds.time_pressure <= 33:
+            lines.append(
+                "Time pressure: none — the NPC does not signal turn-budget urgency; "
+                "the player may take their time without the conversation feeling rushed."
+            )
+        elif ds.time_pressure >= 67:
+            lines.append(
+                "Time pressure: high — the NPC conveys that time is limited; they expect the player "
+                "to reach the point, and will signal when the window for resolution is closing."
+            )
     return "\n".join(lines)
 
 

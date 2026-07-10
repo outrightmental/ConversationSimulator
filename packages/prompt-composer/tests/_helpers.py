@@ -53,10 +53,12 @@ def make_interview_scenario(
         player_role_label="Candidate",
         player_role_brief=player_role_brief,
         npc=make_hiring_manager_npc(),
-        difficulty="normal",
+        difficulty="standard",
         difficulty_settings=DifficultySettings(
-            npc_patience_modifier=0,
-            challenge_frequency="medium",
+            patience=50,
+            volatility=50,
+            disclosure=50,
+            time_pressure=50,
         ),
         response_style=ResponseStyleOverrides(
             max_words=90,
