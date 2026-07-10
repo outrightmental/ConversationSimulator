@@ -780,7 +780,16 @@ jobs:
           echo "=== Generated latest.json ==="
           cat latest.json
 
-      - name: Create draft GitHub release
+      # When the updater manifest is being produced (HAS_UPDATER_KEY), the
+      # versioned release MUST be published immediately as a pre-release rather
+      # than left as a draft: the beta-channel `latest.json` uploaded in the next
+      # step points at this release's `.../releases/download/<tag>/...` assets and
+      # `.../releases/tag/<tag>` page, and the in-app banner's "View notes" /
+      # "Install" links open that page. Draft-release assets and tag pages 404 for
+      # the public, so advertising the manifest before the target is live would
+      # send beta testers to a dead link. When signing is off there is no manifest
+      # to advertise, so we keep the previous draft/manual-review behaviour.
+      - name: Create versioned GitHub release
         id: versioned_release
         uses: softprops/action-gh-release@v2
         with:
@@ -789,7 +798,7 @@ jobs:
             Conversation Simulator
             ${{ github.event.inputs.tag || github.ref_name }}
           body_path: docs/release-notes-template.md
-          draft: true
+          draft: ${{ env.HAS_UPDATER_KEY != 'true' }}
           prerelease: true
           files: |
             release-artifacts/**
