@@ -153,7 +153,7 @@ def _start_llama_server(model_path: Path, port: int) -> subprocess.Popen:
     return proc
 
 
-def _start_core(data_dir: Path, port: int, llama_port: int) -> subprocess.Popen:
+def _start_core(data_dir: Path, port: int, llama_port: int, llama_timeout_s: float) -> subprocess.Popen:
     """Start convsim-core wired to the local llama-server via env overrides."""
     env = os.environ.copy()
     env.update({
@@ -162,6 +162,11 @@ def _start_core(data_dir: Path, port: int, llama_port: int) -> subprocess.Popen:
         # Point the adapter at the llama-server started above.
         "CONVSIM_LLAMA_CPP_BASE_URL": f"http://127.0.0.1:{llama_port}",
         "CONVSIM_LLAMA_CPP_CONTEXT_LENGTH": "8192",
+        # The adapter's per-request timeout must outlast the CI ceiling we
+        # measure against, or a slow-but-passing turn on the 2-vCPU CPU-only
+        # runner is killed by the adapter's 30 s default before we can time it,
+        # failing the nightly spuriously instead of reporting the real latency.
+        "CONVSIM_LLAMA_CPP_TIMEOUT": str(int(llama_timeout_s)),
         "CONVSIM_DATA_DIR": str(data_dir),
         "CONVSIM_LOG_DIR": str(data_dir / "logs"),
         "CONVSIM_DB_DIR": str(data_dir / "db"),
@@ -243,6 +248,12 @@ def run_smoke(
 ) -> bool:
     """Run the scripted smoke session and check budgets.  Returns True on pass."""
     model_path = _find_model_path(model_id)
+    # The turn must be allowed to run past the CI ceiling before we judge it, so
+    # both the adapter timeout and our own POST timeout are derived from the
+    # full-response ceiling with headroom rather than a fixed 30 s / 180 s.
+    full_ceiling_s = (BUDGETS_MS["full_response_ms"] * ci_hardware_factor * REGRESSION_TOLERANCE) / 1000
+    llama_timeout_s = max(180.0, full_ceiling_s + 60.0)
+    turn_timeout_s = llama_timeout_s + 30.0
     results: dict = {
         "model_id": model_id,
         "ci_hardware_factor": ci_hardware_factor,
@@ -272,7 +283,7 @@ def run_smoke(
             print("[smoke] llama-server ready.")
 
             print(f"[smoke] Starting convsim-core on port {CORE_PORT}…")
-            core_proc = _start_core(data_dir, CORE_PORT, LLAMA_SERVER_PORT)
+            core_proc = _start_core(data_dir, CORE_PORT, LLAMA_SERVER_PORT, llama_timeout_s)
             threading.Thread(target=_drain, args=(core_proc.stderr,), daemon=True).start()
             threading.Thread(target=_drain, args=(core_proc.stdout,), daemon=True).start()
 
@@ -307,7 +318,9 @@ def run_smoke(
             })
             session_id = session["session_id"]
             print(f"[smoke] Session {session_id} created. Starting session…")
-            _post_json(f"{base}/sessions/{session_id}/start", {})
+            # /start generates the NPC opening — a real model call, so it needs
+            # the same generous timeout as the turn on slow CI hardware.
+            _post_json(f"{base}/sessions/{session_id}/start", {}, timeout=turn_timeout_s)
             print("[smoke] NPC opening received. Submitting player turn…")
 
             # Submit a player turn and time the synchronous end-to-end response.
@@ -315,7 +328,7 @@ def run_smoke(
             turn = _post_json(
                 f"{base}/sessions/{session_id}/turn",
                 {"content": SMOKE_PLAYER_TURN},
-                timeout=180.0,
+                timeout=turn_timeout_s,
             )
             full_ms = (time.monotonic() - t_start) * 1000
             npc_text = _npc_turn_content(turn.get("events", []))
