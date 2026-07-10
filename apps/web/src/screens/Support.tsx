@@ -50,7 +50,6 @@ async function openFolderInShell(folderPath: string): Promise<void> {
   await invoke('plugin:shell|open', { path: folderPath })
 }
 
-
 const STATUS_COLORS: Record<string, string> = {
   pass: '#86efac',
   warn: '#fde68a',
@@ -135,7 +134,6 @@ export default function Support() {
   const [betaManifest, setBetaManifest] = useState<string[] | null>(null)
   const [betaError, setBetaError] = useState<ApiError | null>(null)
   const [betaFolderError, setBetaFolderError] = useState<string | null>(null)
-
 
   const [selfTestState, setSelfTestState] = useState<SelfTestState>('idle')
   const [selfTestResult, setSelfTestResult] = useState<PreflightResponse | null>(null)
