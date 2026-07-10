@@ -243,7 +243,7 @@ safety net but are not a substitute for the pre-upload audit.
 ### 2. `scripts/depot-audit.sh` / `depot-audit.ps1`
 
 Run this script against each platform's content directory before invoking
-steamcmd. It catches four categories of prohibited files:
+steamcmd. It catches five categories of prohibited files:
 
 | Category | What it catches |
 |----------|----------------|
