@@ -11,11 +11,40 @@ export interface Recommendation {
   ladder_position?: LadderPosition;
 }
 
+const DIFFICULTY_ORDER: ScenarioDifficulty[] = ['warm', 'standard', 'hard', 'adversarial'];
+
 function suggestedDifficulty(score: number): ScenarioDifficulty {
   if (score < 30) return 'warm';
   if (score < 55) return 'standard';
   if (score < 75) return 'hard';
   return 'adversarial';
+}
+
+/**
+ * Clamp the desired difficulty tier to a preset the scenario actually declares.
+ *
+ * A scenario that declares no `difficulty.options` is treated as unrestricted
+ * and keeps the desired tier. Otherwise, if the desired tier is not offered we
+ * step down to the closest lower tier the scenario supports, falling back to
+ * its lowest offered tier. This prevents surfacing (and, via `isCleared`,
+ * de-prioritising) a preset the scenario cannot be played at — e.g. showing
+ * "adversarial" for a scenario that only offers warm/standard/hard.
+ */
+function difficultyForScenario(
+  desired: ScenarioDifficulty,
+  scenario: ScenarioInfo,
+): ScenarioDifficulty {
+  const available = Object.keys(scenario.difficulty?.options ?? {}).filter(
+    (o): o is ScenarioDifficulty => (DIFFICULTY_ORDER as string[]).includes(o),
+  );
+  if (available.length === 0 || available.includes(desired)) return desired;
+  available.sort((a, b) => DIFFICULTY_ORDER.indexOf(a) - DIFFICULTY_ORDER.indexOf(b));
+  const desiredIdx = DIFFICULTY_ORDER.indexOf(desired);
+  let best: ScenarioDifficulty | null = null;
+  for (const o of available) {
+    if (DIFFICULTY_ORDER.indexOf(o) <= desiredIdx) best = o;
+  }
+  return best ?? available[0];
 }
 
 function isCleared(
@@ -78,12 +107,15 @@ export function recommendNext(
 
   const recommendedDifficulty = suggestedDifficulty(avgWeakScore);
 
-  type Scored = { scenario: ScenarioInfo; points: number; reason: string };
+  type Scored = { scenario: ScenarioInfo; points: number; reason: string; difficulty: ScenarioDifficulty };
   const scored: Scored[] = [];
 
   for (const s of scenarios) {
     let points = 0;
     let reason = '';
+    // Difficulty this scenario would actually be recommended at, clamped to the
+    // presets it declares.
+    const scenarioDifficulty = difficultyForScenario(recommendedDifficulty, s);
 
     const taught = s.taught_dimensions ?? [];
     const tested = s.tested_dimensions ?? [];
@@ -118,7 +150,7 @@ export function recommendNext(
     }
 
     // De-prioritize scenarios already cleared at the recommended difficulty.
-    if (isCleared(s.scenario_id, recommendedDifficulty, profile.personal_records)) {
+    if (isCleared(s.scenario_id, scenarioDifficulty, profile.personal_records)) {
       points -= 10;
     }
 
@@ -129,16 +161,16 @@ export function recommendNext(
     // keep the recommender useful before pack authors add the optional fields.
     if (!reason) reason = 'Broaden your practice with a different scenario.';
 
-    scored.push({ scenario: s, points, reason });
+    scored.push({ scenario: s, points, reason, difficulty: scenarioDifficulty });
   }
 
   scored.sort((a, b) => b.points - a.points);
 
-  return scored.slice(0, 3).map(({ scenario: s, reason }) => ({
+  return scored.slice(0, 3).map(({ scenario: s, reason, difficulty }) => ({
     scenario_id: s.scenario_id,
     pack_id: s.pack_id,
     title: s.title,
-    recommended_difficulty: recommendedDifficulty,
+    recommended_difficulty: difficulty,
     reason,
     ladder_position: s.ladder_position,
   }));

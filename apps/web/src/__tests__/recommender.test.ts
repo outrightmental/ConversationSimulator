@@ -224,6 +224,31 @@ describe('recommendNext — active profile', () => {
     expect(recs[0].recommended_difficulty).toBe('adversarial')
   })
 
+  it('clamps the recommended difficulty to a preset the scenario actually offers', () => {
+    // Strong player: the raw suggested tier is "adversarial", but this scenario
+    // only declares warm/standard/hard, so the recommendation must step down to
+    // the closest offered tier rather than name an unplayable preset.
+    const profile = makeProfile({
+      dimension_scores: [
+        { dimension_id: 'negotiation', rolling_score: 90, session_count: 5, trajectory: [90] },
+      ],
+    })
+    const scenarios = [
+      makeScenario({
+        scenario_id: 's1',
+        pack_id: 'p1',
+        title: 'Tough negotiation',
+        tested_dimensions: ['negotiation'],
+        difficulty: {
+          default: 'standard',
+          options: { warm: {}, standard: {}, hard: {} },
+        },
+      }),
+    ]
+    const recs = recommendNext(profile, scenarios)
+    expect(recs[0].recommended_difficulty).toBe('hard')
+  })
+
   it('de-prioritises cleared scenarios in favour of uncleared ones', () => {
     const profile = makeProfile({
       dimension_scores: [
