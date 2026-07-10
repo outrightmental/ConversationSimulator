@@ -1,0 +1,140 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scenario_id: graceful_exit
+title: When She Says No
+summary: >-
+  Priya Singh, an acquaintance you met at a mutual friend's gallery opening
+  a few weeks ago, has agreed to meet you there again this evening. You asked
+  her out by text and she said she wanted to tell you in person. You know
+  what is coming. She is warm but clear, and she is hoping you will make this
+  easy. Your job is not to convince her — it is to accept this with grace.
+player_role:
+  label: Yourself
+  brief: >-
+    Priya has just said no to your ask. She is being kind and direct and she
+    is not going to change her mind. Your goal is to accept that gracefully,
+    stay composed, and close this interaction in a way that leaves you both
+    feeling okay — a clean exit is a genuine win.
+npc:
+  ref: ../npcs/priya_singh.yaml
+scene:
+  ref: ../scenes/community_gallery.yaml
+rubric:
+  ref: ../rubrics/rejection_handling_rubric.yaml
+duration:
+  max_turns: 10
+  soft_time_limit_minutes: 7
+opening:
+  npc_says: >-
+    Hey — thanks for meeting me here again, I wanted to do this in person.
+    So... I really enjoyed the conversation we had last time, and I don't
+    want this to be awkward. But I don't think I want to go on a date.
+    I just wanted to be straight with you about that.
+goals:
+  player_visible:
+    - "Accept Priya's no clearly and without trying to change her mind"
+    - "Stay composed — you do not need to perform happiness, just composure"
+    - "Close the interaction in a way that leaves you both okay"
+  hidden:
+    - "Priya is watching for whether the player can hold their dignity — that is what will determine whether she adds a warm closing line or exits with relief"
+    - "The player who accepts quickly and without commentary gives Priya the most room to be warm in return — the faster the acceptance, the warmer her closing"
+    - "Trying to negotiate or reframe the ask makes Priya more guarded, not less — she has made her decision and arguing signals the player cannot accept it"
+    - "Excessive self-deprecation (\"I don't know why I thought...\") makes Priya feel responsible for the player's feelings, which is the opposite of a graceful exit"
+state:
+  variables:
+    composure:
+      min: 0
+      max: 100
+      default: 65
+      visibility: visible
+      max_delta_per_turn: 15
+    exit_quality:
+      min: 0
+      max: 100
+      default: 0
+      visibility: visible
+      max_delta_per_turn: 22
+    priya_discomfort:
+      min: 0
+      max: 100
+      default: 30
+      visibility: hidden
+      max_delta_per_turn: 18
+    player_pressure:
+      min: 0
+      max: 100
+      default: 0
+      visibility: hidden
+      max_delta_per_turn: 20
+difficulty:
+  default: normal
+  options:
+    easy:
+      npc_patience_modifier: 25
+      challenge_frequency: low
+    normal:
+      npc_patience_modifier: 0
+      challenge_frequency: medium
+    hard:
+      npc_patience_modifier: -20
+      challenge_frequency: high
+events:
+  - id: priya_relaxes
+    when:
+      type: variable_above
+      variable: exit_quality
+      threshold: 50
+    npc_instruction: >-
+      The player has handled the first part of this well. Priya visibly
+      relaxes — her posture opens slightly, her voice loses the careful
+      measure it had at the start. She might add a brief, genuine line:
+      "I really appreciate you being so easy about this." This is earned
+      warmth, not consolation.
+    repeat: false
+  - id: clean_exit_moment
+    when:
+      type: variable_above
+      variable: exit_quality
+      threshold: 72
+    npc_instruction: >-
+      The interaction has reached its natural end. Priya offers a warm,
+      genuine close — something that signals she would not be uncomfortable
+      running into the player again. Let this be the last substantive
+      exchange unless the player re-opens the conversation.
+    repeat: false
+  - id: pressure_detected
+    when:
+      type: variable_above
+      variable: player_pressure
+      threshold: 45
+    npc_instruction: >-
+      The player has pushed back, re-asked, or made Priya responsible for
+      managing their feelings. Priya becomes shorter and more measured —
+      not cold, but clearly closing off. Her next response is brief and
+      leaves no open threads: "I hear you, and my answer is the same."
+      She does not expand or soften.
+    repeat: true
+  - id: discomfort_high
+    when:
+      type: variable_above
+      variable: priya_discomfort
+      threshold: 65
+    npc_instruction: >-
+      Priya is uncomfortable. She is not hostile but she is done. Give a
+      polite, complete close — something like "I should get back to the
+      people I came with" — and let the player respond to a natural end.
+      The warmth that might have been there is no longer available.
+    repeat: false
+ending_conditions:
+  success:
+    type: variable_above
+    variable: exit_quality
+    threshold: 65
+  failure:
+    type: variable_above
+    variable: priya_discomfort
+    threshold: 80
+response_style:
+  max_words: 65
+  verbosity: moderate
+  formality: casual

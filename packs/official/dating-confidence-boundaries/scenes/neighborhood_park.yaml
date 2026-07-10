@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scene_id: neighborhood_park
+display_name: "Neighborhood Park — Weekend Afternoon"
+description: >-
+  A small urban park with benches along a paved path. Dog walkers pass
+  intermittently. The player and Ryan have met here by mutual agreement
+  after exchanging a text. It is neutral territory — not the lobby of their
+  building, not a date-framed venue. The setting is chosen deliberately to
+  be low-key and easy to exit.
+ambient: park_afternoon

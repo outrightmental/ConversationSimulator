@@ -56,7 +56,7 @@ capsule is 460 × 215 px and will be viewed at 1× in a search result list.
 
 **Text on capsules:**
 - Header capsule (460 × 215): include "Conversation Simulator" logotype
-  and optionally the tagline "Flight Simulator for conversations."
+  and optionally the tagline "The simulator for conversations."
 - Small capsule (231 × 87): logotype only — no tagline at this size
 - Main capsule / library hero (3840 × 1240): logotype, tagline, and the
   Outright Mental publisher mark
@@ -255,7 +255,7 @@ do I actually do?") within the first 15 seconds.
 
 | Timestamp | Content |
 |-----------|---------|
-| 0:00–0:05 | Title card: "Conversation Simulator" + tagline "Flight Simulator for conversations." |
+| 0:00–0:05 | Title card: "Conversation Simulator" + tagline "The simulator for conversations." |
 | 0:05–0:15 | Home screen → Scenario Library → scenario card selection (fast cut). Show the app is approachable and immediately understandable. |
 | 0:15–0:45 | **Core loop — 30 seconds of actual conversation.** Show a mid-session exchange in one of the four built-in packs. Player types a response; NPC replies; a state meter changes; a scenario event triggers. Show at least one moment where the NPC pushes back or the dynamic shifts. |
 | 0:45–1:00 | Debrief screen. Show the overall score, at least one scorecard dimension, and a key moment. Convey that the session produced useful feedback, not just a score. |
