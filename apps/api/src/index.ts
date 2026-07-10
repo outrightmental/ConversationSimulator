@@ -13,6 +13,7 @@ import { privacyRoutes, setDataFolderPath, setExportsFolderPath, setLogsFolderPa
 import { workbenchRoutes, setWorkbenchRoots } from './routes/workbench.js';
 import { modelsRoutes } from './routes/models.js';
 import { runtimeSettingsRoutes } from './routes/runtime-settings.js';
+import { logbookRoutes } from './routes/logbook.js';
 import { initDb } from './db.js';
 import { getListenConfig } from './config.js';
 
@@ -44,6 +45,7 @@ export async function buildApp() {
   await app.register(workbenchRoutes);
   await app.register(modelsRoutes);
   await app.register(runtimeSettingsRoutes);
+  await app.register(logbookRoutes);
 
   return app;
 }

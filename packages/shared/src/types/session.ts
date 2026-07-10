@@ -45,6 +45,10 @@ export interface SessionCreateResponse {
   state: SessionState;
   created_at: string;
   setup: SessionCreateRequest;
+  // Included in list responses (GET /api/sessions) but absent from creation responses
+  ending_type?: EndingType | null;
+  turn_count?: number;
+  ended_at?: string | null;
 }
 
 export interface SessionEvent {

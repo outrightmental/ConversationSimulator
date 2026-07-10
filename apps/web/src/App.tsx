@@ -14,6 +14,7 @@ import ModelManager from './screens/ModelManager'
 import Support from './screens/Support'
 import FirstRunWizard from './screens/FirstRunWizard'
 import CoreStartupGuard from './screens/CoreStartup'
+import Logbook from './screens/Logbook'
 import { SETUP_KEYS } from './privacyPrefs'
 
 // Redirects to /first-run until the setup wizard has been completed once.
@@ -45,6 +46,7 @@ export default function App() {
               <Route path="/settings" element={<Settings />} />
               <Route path="/model-manager" element={<ModelManager />} />
               <Route path="/support" element={<Support />} />
+              <Route path="/logbook" element={<Logbook />} />
             </Route>
           </Route>
         </Routes>
