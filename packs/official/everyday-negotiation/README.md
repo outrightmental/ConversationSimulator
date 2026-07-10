@@ -3,7 +3,7 @@
 
 **License:** CC BY 4.0 — https://creativecommons.org/licenses/by/4.0/  
 **Content rating:** PG  
-**Status:** Complete — four scenarios, shared rubric, safety policy, smoke tests
+**Status:** Complete — four scenarios, shared rubric, safety policy, smoke tests, golden transcripts
 
 Practice realistic everyday negotiation conversations with adversarial but safe
 NPCs. Each scenario has clear success and failure dynamics tied to state
@@ -132,12 +132,14 @@ All categories from `safety/default.yaml` apply:
 # Validate all YAML schemas and cross-file references
 convsim validate-pack packs/official/everyday-negotiation
 
-# Run all four smoke tests against the fake runtime
+# Run all smoke and golden transcript tests against the fake runtime
 convsim test-pack packs/official/everyday-negotiation
 ```
 
-Smoke tests use the fake runtime — they verify structure and session flow,
-not LLM-generated responses. All four tests should pass with exit code 0.
+Each scenario ships with a smoke test (single-turn session-open check) and a
+golden transcript (multi-turn property test with static structural
+assertions). Both use the fake runtime — they verify structure and session
+flow, not LLM-generated responses. All tests should pass with exit code 0.
 
 ---
 
@@ -166,9 +168,15 @@ everyday-negotiation/
 │   ├── property_office.yaml
 │   ├── video_call.yaml
 │   └── customer_service_call.yaml
+├── assets/
+│   └── PLACEHOLDERS.md             # Background image placeholders
 └── tests/
     ├── smoke_used_car_negotiation.yaml
     ├── smoke_apartment_lease_renewal.yaml
     ├── smoke_freelance_scope_negotiation.yaml
-    └── smoke_customer_service_refund.yaml
+    ├── smoke_customer_service_refund.yaml
+    ├── golden_used_car_negotiation.yaml
+    ├── golden_apartment_lease_renewal.yaml
+    ├── golden_freelance_scope_negotiation.yaml
+    └── golden_customer_service_refund.yaml
 ```

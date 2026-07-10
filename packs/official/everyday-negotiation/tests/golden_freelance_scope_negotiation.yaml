@@ -1,0 +1,149 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: golden_freelance_scope_negotiation
+scenario_id: freelance_scope_negotiation
+description: >-
+  Golden transcript property test: verifies that a freelance developer who
+  references the signed contract scope, gives a specific hours-and-cost
+  estimate for the new work, and proposes a concrete change order causes
+  deal_progress to advance through the events sequence without capitulating
+  and without triggering a safety stop.
+
+seed: 42
+input_mode: text
+difficulty: normal
+
+turns:
+  - turn: 1
+    player_input: >-
+      Glad we could talk, Marcus. I'm excited about the launch too. Just to
+      level-set: our signed contract is a five-page marketing site for
+      forty-eight hundred, and a blog section, team page, and case study
+      template are all outside that scope. I'm happy to build them — I estimate
+      about twenty additional hours — but that's new work we'd need to price.
+    expect:
+      state_delta_contains:
+        - deal_progress
+        - leverage
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 2
+    player_input: >-
+      I hear the deadline pressure, and I don't want to put the launch at risk.
+      Here's a path: I can commit to all three pages before launch as a
+      documented change order at fifteen hundred, which is my standard rate for
+      twenty hours. If budget's tight, we could ship the blog now and phase the
+      other two as a fast-follow.
+    expect:
+      state_delta_contains:
+        - deal_progress
+        - concession_level
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 3
+    player_input: >-
+      I appreciate you finding room in the budget. Let's do all three before
+      launch at fifteen hundred, and I'll send an itemised change order today so
+      everything's documented on both sides. I can keep the current launch date
+      as long as we get sign-off by end of week.
+    expect:
+      state_delta_contains:
+        - deal_progress
+        - concession_level
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 4
+    player_input: >-
+      Perfect — I'll get the change order over within the hour and start on the
+      blog section this afternoon. Thanks for working through this with me,
+      Marcus; I want this launch to go well as much as you do, and I think this
+      keeps it fair for both of us.
+    expect:
+      state_delta_contains:
+        - deal_progress
+      session_control: continue_session
+      safety_status: ok
+
+static_assertions:
+  - description: Scenario opening line is non-empty
+    path: opening.npc_says
+    check: non_empty_string
+
+  - description: At least one event is defined
+    path: events
+    check: min_length_1
+
+  - description: contract_reference_reward event fires when leverage exceeds 55
+    path: events[id=contract_reference_reward].when
+    check: "type=variable_above AND variable=leverage AND threshold=55"
+
+  - description: contract_reference_reward fires only once
+    path: events[id=contract_reference_reward].repeat
+    check: "equals false"
+
+  - description: deadline_pressure_reveal fires when deal_progress exceeds 40
+    path: events[id=deadline_pressure_reveal].when
+    check: "type=variable_above AND variable=deal_progress AND threshold=40"
+
+  - description: deadline_pressure_reveal fires only once
+    path: events[id=deadline_pressure_reveal].repeat
+    check: "equals false"
+
+  - description: capitulation_test fires when leverage drops below 20
+    path: events[id=capitulation_test].when
+    check: "type=variable_below AND variable=leverage AND threshold=20"
+
+  - description: capitulation_test fires only once
+    path: events[id=capitulation_test].repeat
+    check: "equals false"
+
+  - description: Success ending condition targets deal_progress above threshold
+    path: ending_conditions.success
+    check: "type=variable_above AND variable=deal_progress"
+
+  - description: Failure ending condition targets perceived_fairness below threshold
+    path: ending_conditions.failure
+    check: "type=variable_below AND variable=perceived_fairness"
+
+  - description: deal_progress variable is visible to the player
+    path: state.variables.deal_progress.visibility
+    check: "equals visible"
+
+  - description: perceived_fairness is hidden from the player
+    path: state.variables.perceived_fairness.visibility
+    check: "equals hidden"
+
+  - description: firmness is hidden from the player
+    path: state.variables.firmness.visibility
+    check: "equals hidden"
+
+  - description: leverage is hidden from the player
+    path: state.variables.leverage.visibility
+    check: "equals hidden"
+
+  - description: NPC is marked fictional
+    path: npc.fictional
+    check: "equals true"
+
+  - description: Safety policy stops nsfw_sexual_content
+    path: safety.content_categories.nsfw_sexual_content
+    check: "equals stop"
+
+  - description: Safety policy fires stop_with_resource_message for self_harm_crisis
+    path: safety.content_categories.self_harm_crisis
+    check: "equals stop_with_resource_message"
+
+  - description: Pack manifest declares freelance_scope_negotiation as an entry scenario
+    path: manifest.entry_scenarios
+    check: "contains scenarios/freelance_scope_negotiation.yaml"
+
+  - description: Hard difficulty applies a negative patience modifier
+    path: scenario.difficulty.options.hard.npc_patience_modifier
+    check: "equals -20"
+
+  - description: Easy difficulty applies a positive patience modifier
+    path: scenario.difficulty.options.easy.npc_patience_modifier
+    check: "equals 20"
