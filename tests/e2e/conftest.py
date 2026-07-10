@@ -12,13 +12,19 @@ convsim-core as a sidecar.  Key differences from the acceptance test suite
   - Tests are smoke tests: minimal assertions, failure messages that do not
     expose transcript content.
 
-All checks run against the fake runtime — no model download required.
-For real-model packaged-app testing see Part F of docs/release-checklist.md.
+By default checks run against an in-process app on the fake runtime — no model
+download required.  When CONVSIM_LIVE_URL is set (release-smoke.sh --full), the
+same tests run against an already-running convsim-core server at that URL
+instead, so --full genuinely exercises a live (packaged) sidecar rather than a
+fresh in-process app.  For real-model packaged-app testing see Part F of
+docs/release-checklist.md.
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -53,7 +59,19 @@ def packaged_config(tmp_path, monkeypatch):
 
 @pytest.fixture()
 def client(packaged_config):
-    """TestClient wrapping a convsim-core app in packaged-environment mode."""
+    """HTTP client for a convsim-core server in packaged-environment mode.
+
+    When CONVSIM_LIVE_URL is set, yield an httpx.Client pointed at that live
+    server (release-smoke.sh --full runs the playthrough against a real running
+    sidecar).  Otherwise wrap a fresh in-process app on the fake runtime.  Both
+    expose the same relative-path request API the tests use, so the test body is
+    identical either way.
+    """
+    live_url = os.environ.get("CONVSIM_LIVE_URL", "").strip()
+    if live_url:
+        with httpx.Client(base_url=live_url.rstrip("/"), timeout=120.0) as c:
+            yield c
+        return
     app = create_app(packaged_config)
     with TestClient(app, raise_server_exceptions=True) as c:
         yield c
