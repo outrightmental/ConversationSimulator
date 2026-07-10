@@ -8,6 +8,8 @@ import { useTranslation } from '../i18n'
 import { useLogbookProfile } from '../api/useLogbookProfile'
 import { api } from '../api/client'
 import RuntimeRecoveryCard from '../components/RuntimeRecoveryCard'
+import UpdateBanner from '../components/UpdateBanner'
+import { useAppUpdate } from '../hooks/useAppUpdate'
 import type { BadgeStatus } from '@convsim/ui'
 
 const DOCS_URL = 'https://github.com/outrightmental/ConversationSimulator/wiki'
