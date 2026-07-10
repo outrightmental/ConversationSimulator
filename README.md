@@ -279,6 +279,20 @@ deliberately out of scope, and links to the acceptance criteria and docs.
 > [Full specification](docs/SPEC.md) &nbsp;·&nbsp;
 > [Post-alpha issues](docs/post-alpha-issues.md)
 
+### Steam release
+
+The project is being prepared for a free, Outright Mental-sponsored Steam release.
+The Steam edition makes the same local-first guarantee as the open-source build.
+
+| Document | Purpose |
+|----------|---------|
+| [docs/STEAM_ROADMAP.md](docs/STEAM_ROADMAP.md) | Release principles and release train (Stages 1–5) |
+| [publishing/STEAM_STORE_AND_OPERATIONS.md](publishing/STEAM_STORE_AND_OPERATIONS.md) | Store page operations, launch runbook, support triage |
+| [publishing/STEAM_PUBLISHING_AND_DEPLOYMENT.md](publishing/STEAM_PUBLISHING_AND_DEPLOYMENT.md) | SteamPipe concepts, CI deploy, manual upload, branch promotion, troubleshooting |
+| [docs/STEAM_INTEGRATION.md](docs/STEAM_INTEGRATION.md) | Steam API bridge, Steam Cloud exclusions, achievements, stats, rich presence |
+| [publishing/MACOS_SIGNING_AND_NOTARIZATION.md](publishing/MACOS_SIGNING_AND_NOTARIZATION.md) | macOS Apple Developer ID signing and notarisation |
+| [publishing/WINDOWS_CODE_SIGNING.md](publishing/WINDOWS_CODE_SIGNING.md) | Windows Authenticode signing |
+
 ---
 
 ## Contributing
