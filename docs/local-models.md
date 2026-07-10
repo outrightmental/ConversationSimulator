@@ -27,13 +27,13 @@ Downloaded models are stored in `~/.convsim/models/llm/`.
 
 ## Hardware tiers
 
-| Tier | Model | Size | Min VRAM | CPU fallback |
-|---|---|---|---|---|
-| Starter | Qwen3 4B Instruct Q4_K_M | ~2.6 GB | 4 GB | Yes (slow) |
-| Standard | Qwen3 8B Instruct Q4_K_M | ~5.0 GB | 6 GB | Yes (very slow) |
-| High-quality | Qwen3 14B Instruct Q4_K_M | ~9.0 GB | 10 GB | Not practical |
-| High-quality | Mistral Small 3.1 24B Q4_K_M | ~14.8 GB | 16 GB | Not practical |
-| User-supplied | Any GGUF | varies | varies | Depends on model |
+| Tier | Model | Size | Download at 50 Mbps | Min VRAM | CPU fallback |
+|---|---|---|---|---|---|
+| Starter | Qwen3 4B Instruct Q4_K_M | 2.5 GB | ~7 min | 4 GB | Yes (slow) |
+| Standard | Qwen3 8B Instruct Q4_K_M | 5.0 GB | ~14 min | 6 GB | Yes (very slow) |
+| High-quality | Qwen3 14B Instruct Q4_K_M | 9.0 GB | ~25 min | 10 GB | Not practical |
+| High-quality | Mistral Small 3.1 24B Q4_K_M | 14.3 GB | ~39 min | 16 GB | Not practical |
+| User-supplied | Any GGUF | varies | varies | varies | Depends on model |
 
 **Apple Silicon:** Metal acceleration works out of the box through llama.cpp. Use the VRAM column as a guide for unified memory (M1/M2/M3/M4 chips share CPU and GPU memory).
 
@@ -48,7 +48,7 @@ Downloaded models are stored in `~/.convsim/models/llm/`.
 ### Qwen3 4B Instruct Q4_K_M — starter
 
 - **License:** Apache-2.0
-- **Size:** ~2.6 GB
+- **Size:** 2.5 GB — about 7 minutes on a 50 Mbps connection
 - **Best for:** machines with 4–6 GB VRAM, or CPU-only installs
 - **Context length:** 8 192 tokens
 - **Notes:** Fastest model in the registry. Suitable for all text-only scenarios. NPC responses may be shorter and less contextually rich than larger models.
@@ -56,7 +56,7 @@ Downloaded models are stored in `~/.convsim/models/llm/`.
 ### Qwen3 8B Instruct Q4_K_M — standard (recommended for most users)
 
 - **License:** Apache-2.0
-- **Size:** ~5.0 GB
+- **Size:** 5.0 GB — about 14 minutes on a 50 Mbps connection
 - **Best for:** machines with 6–8 GB VRAM
 - **Context length:** 8 192 tokens
 - **Notes:** Good balance of quality and speed. Handles complex multi-turn conversations well.
@@ -64,7 +64,7 @@ Downloaded models are stored in `~/.convsim/models/llm/`.
 ### Qwen3 14B Instruct Q4_K_M — high-quality
 
 - **License:** Apache-2.0
-- **Size:** ~9.0 GB
+- **Size:** 9.0 GB — about 25 minutes on a 50 Mbps connection
 - **Best for:** machines with 10–12 GB VRAM
 - **Context length:** 8 192 tokens
 - **Notes:** Noticeably more coherent NPC behaviour in emotionally complex scenarios.
@@ -72,7 +72,7 @@ Downloaded models are stored in `~/.convsim/models/llm/`.
 ### Mistral Small 3.1 24B Instruct Q4_K_M — high-quality
 
 - **License:** Apache-2.0
-- **Size:** ~14.8 GB
+- **Size:** 14.3 GB — about 39 minutes on a 50 Mbps connection
 - **Best for:** machines with 16–24 GB VRAM
 - **Context length:** 32 768 tokens
 - **Notes:** Longest context window in the registry. Best for long negotiations or scenarios with many tracked state variables.
