@@ -32,17 +32,39 @@ impl Drop for CoreProcessState {
     }
 }
 
+// Holds the most recently emitted status so the front-end can reconcile any
+// event it missed. The launch thread starts emitting from `setup()`, which runs
+// before the webview has loaded and subscribed to `core-status`; Tauri does not
+// replay events, so a fast failure (e.g. missing binary) would otherwise leave
+// the UI stuck on the initial "starting" message. The front-end queries
+// `get_core_status` once after subscribing to recover the current state.
+struct CoreStatusState(Arc<Mutex<Option<CoreStatusPayload>>>);
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-fn emit_core_status(app: &AppHandle, phase: &str, message: &str, error: Option<&str>) {
-    let _ = app.emit(
-        "core-status",
-        CoreStatusPayload {
-            phase: phase.to_string(),
-            message: message.to_string(),
-            error: error.map(|s| s.to_string()),
-        },
-    );
+fn emit_core_status(
+    app: &AppHandle,
+    store: &Arc<Mutex<Option<CoreStatusPayload>>>,
+    phase: &str,
+    message: &str,
+    error: Option<&str>,
+) {
+    let payload = CoreStatusPayload {
+        phase: phase.to_string(),
+        message: message.to_string(),
+        error: error.map(|s| s.to_string()),
+    };
+    if let Ok(mut guard) = store.lock() {
+        *guard = Some(payload.clone());
+    }
+    let _ = app.emit("core-status", payload);
+}
+
+// Snapshot of the latest core status, used by the front-end to recover events
+// emitted before it subscribed.
+#[tauri::command]
+fn get_core_status(state: tauri::State<'_, CoreStatusState>) -> Option<CoreStatusPayload> {
+    state.0.lock().ok().and_then(|guard| guard.clone())
 }
 
 fn is_port_open(port: u16) -> bool {
@@ -127,14 +149,18 @@ fn find_core_executable(resource_dir: Option<&PathBuf>) -> Result<PathBuf, Strin
 
 // ── Core launch / supervision ─────────────────────────────────────────────────
 
-fn launch_or_verify_core(app: AppHandle, process_arc: Arc<Mutex<Option<Child>>>) {
+fn launch_or_verify_core(
+    app: AppHandle,
+    process_arc: Arc<Mutex<Option<Child>>>,
+    status_arc: Arc<Mutex<Option<CoreStatusPayload>>>,
+) {
     std::thread::spawn(move || {
         const CORE_PORT: u16 = 7355;
 
         // If core is already responding (e.g. started by dev-desktop.sh), signal
         // ready immediately.
         if is_port_open(CORE_PORT) {
-            emit_core_status(&app, "ready", "Core service is ready.", None);
+            emit_core_status(&app, &status_arc, "ready", "Core service is ready.", None);
             return;
         }
 
@@ -144,12 +170,13 @@ fn launch_or_verify_core(app: AppHandle, process_arc: Arc<Mutex<Option<Child>>>)
             for _ in 0..20u32 {
                 std::thread::sleep(Duration::from_millis(500));
                 if is_port_open(CORE_PORT) {
-                    emit_core_status(&app, "ready", "Core service is ready.", None);
+                    emit_core_status(&app, &status_arc, "ready", "Core service is ready.", None);
                     return;
                 }
             }
             emit_core_status(
                 &app,
+                &status_arc,
                 "error",
                 "Core service is not running.",
                 Some(
@@ -162,22 +189,32 @@ fn launch_or_verify_core(app: AppHandle, process_arc: Arc<Mutex<Option<Child>>>)
 
         // ── Release mode: find, launch, and supervise convsim-core ───────────
 
-        emit_core_status(&app, "starting", "Locating core service…", None);
+        emit_core_status(&app, &status_arc, "starting", "Locating core service…", None);
 
         let resource_dir = app.path().resource_dir().ok();
 
         let exe = match find_core_executable(resource_dir.as_ref()) {
             Ok(p) => p,
             Err(e) => {
-                emit_core_status(&app, "error", "Could not locate core service.", Some(&e));
+                emit_core_status(
+                    &app,
+                    &status_arc,
+                    "error",
+                    "Could not locate core service.",
+                    Some(&e),
+                );
                 return;
             }
         };
 
-        emit_core_status(&app, "starting", "Starting core service…", None);
+        emit_core_status(&app, &status_arc, "starting", "Starting core service…", None);
 
+        // convsim-core reads its bind address from CONVSIM_HOST / CONVSIM_PORT
+        // (see services/convsim-core/convsim_core/config.py); it does not parse
+        // CLI flags. Set them explicitly so the shell controls the port it polls.
         let mut cmd = Command::new(&exe);
-        cmd.args(["--host", "127.0.0.1", "--port", "7355"])
+        cmd.env("CONVSIM_HOST", "127.0.0.1")
+            .env("CONVSIM_PORT", CORE_PORT.to_string())
             .stdin(Stdio::null())
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit());
@@ -202,7 +239,7 @@ fn launch_or_verify_core(app: AppHandle, process_arc: Arc<Mutex<Option<Child>>>)
                     "Failed to start the core service process. \
                      Check the logs at ~/.convsim/logs for details."
                 };
-                emit_core_status(&app, "error", hint, Some(&e.to_string()));
+                emit_core_status(&app, &status_arc, "error", hint, Some(&e.to_string()));
                 return;
             }
         };
@@ -214,7 +251,13 @@ fn launch_or_verify_core(app: AppHandle, process_arc: Arc<Mutex<Option<Child>>>)
 
         // ── Poll until healthy ────────────────────────────────────────────────
 
-        emit_core_status(&app, "starting", "Waiting for core service to be ready…", None);
+        emit_core_status(
+            &app,
+            &status_arc,
+            "starting",
+            "Waiting for core service to be ready…",
+            None,
+        );
 
         for attempt in 0..30u32 {
             std::thread::sleep(Duration::from_millis(500));
@@ -230,6 +273,7 @@ fn launch_or_verify_core(app: AppHandle, process_arc: Arc<Mutex<Option<Child>>>)
                         );
                         emit_core_status(
                             &app,
+                            &status_arc,
                             "error",
                             &msg,
                             Some("Check the logs at ~/.convsim/logs for details."),
@@ -240,13 +284,14 @@ fn launch_or_verify_core(app: AppHandle, process_arc: Arc<Mutex<Option<Child>>>)
             }
 
             if is_port_open(CORE_PORT) {
-                emit_core_status(&app, "ready", "Core service is ready.", None);
+                emit_core_status(&app, &status_arc, "ready", "Core service is ready.", None);
                 return;
             }
 
             if attempt == 10 {
                 emit_core_status(
                     &app,
+                    &status_arc,
                     "starting",
                     "Still starting core service — this may take a moment on first run…",
                     None,
@@ -257,6 +302,7 @@ fn launch_or_verify_core(app: AppHandle, process_arc: Arc<Mutex<Option<Child>>>)
         // Timeout after ~15 s.
         emit_core_status(
             &app,
+            &status_arc,
             "error",
             "Core service did not become ready in time.",
             Some(
@@ -272,14 +318,21 @@ fn launch_or_verify_core(app: AppHandle, process_arc: Arc<Mutex<Option<Child>>>)
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let process_inner: Arc<Mutex<Option<Child>>> = Arc::new(Mutex::new(None));
+    let status_inner: Arc<Mutex<Option<CoreStatusPayload>>> = Arc::new(Mutex::new(None));
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .manage(CoreProcessState(Arc::clone(&process_inner)))
+        .manage(CoreStatusState(Arc::clone(&status_inner)))
+        .invoke_handler(tauri::generate_handler![get_core_status])
         .setup(move |app| {
-            launch_or_verify_core(app.handle().clone(), Arc::clone(&process_inner));
+            launch_or_verify_core(
+                app.handle().clone(),
+                Arc::clone(&process_inner),
+                Arc::clone(&status_inner),
+            );
             Ok(())
         })
         .run(tauri::generate_context!())

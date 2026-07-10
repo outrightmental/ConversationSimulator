@@ -16,6 +16,9 @@ interface TauriGlobal {
       handler: (e: { payload: T }) => void,
     ): Promise<() => void>
   }
+  core?: {
+    invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T>
+  }
 }
 
 declare global {
@@ -53,33 +56,43 @@ export default function CoreStartupGuard({ children }: { children: React.ReactNo
   useEffect(() => {
     if (!isTauri) return
 
+    const tauri = window.__TAURI__
+    if (!tauri) return
+
     let cancelled = false
     let unlisten: (() => void) | undefined
 
-    checkHealth().then((healthy) => {
+    const apply = (payload: CoreStatusPayload) => {
       if (cancelled) return
-      if (healthy) {
-        setReady(true)
-        return
-      }
+      setStatus(payload)
+      if (payload.phase === 'ready') setReady(true)
+    }
 
-      // Core not yet up — subscribe to Tauri events for live progress.
-      const tauri = window.__TAURI__
-      if (!tauri) return
+    // Subscribe to live progress events first. The Rust shell starts emitting
+    // core-status from setup(), before this webview has loaded, and Tauri does
+    // not replay events — so after subscribing we reconcile with the last-known
+    // status via get_core_status to recover any event fired before we attached
+    // (e.g. a fast failure like a missing binary).
+    tauri.event
+      .listen<CoreStatusPayload>('core-status', (e) => apply(e.payload))
+      .then((fn) => {
+        if (cancelled) {
+          fn()
+          return
+        }
+        unlisten = fn
+        tauri.core
+          ?.invoke<CoreStatusPayload | null>('get_core_status')
+          .then((snapshot) => {
+            if (snapshot) apply(snapshot)
+          })
+          .catch(() => {})
+      })
 
-      tauri.event
-        .listen<CoreStatusPayload>('core-status', (e) => {
-          if (cancelled) return
-          setStatus(e.payload)
-          if (e.payload.phase === 'ready') setReady(true)
-        })
-        .then((fn) => {
-          if (cancelled) {
-            fn()
-          } else {
-            unlisten = fn
-          }
-        })
+    // Independent fast-path: if the core is already serving (e.g. started by
+    // dev-desktop.sh) pass through immediately without waiting for an event.
+    checkHealth().then((healthy) => {
+      if (!cancelled && healthy) setReady(true)
     })
 
     return () => {

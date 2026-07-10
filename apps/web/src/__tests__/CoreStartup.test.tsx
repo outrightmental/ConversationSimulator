@@ -23,10 +23,12 @@ type TauriListenHandler = (e: { payload: unknown }) => void
 
 function stubTauri(
   onListen: (event: string, handler: TauriListenHandler) => Promise<() => void>,
+  invoke?: (cmd: string) => Promise<unknown>,
 ) {
   const win = window as { __TAURI__?: unknown }
   win.__TAURI__ = {
     event: { listen: onListen },
+    ...(invoke ? { core: { invoke } } : {}),
   }
 }
 
@@ -196,6 +198,44 @@ describe('CoreStartupGuard — health check fast-path', () => {
       vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) })),
     )
     stubTauri(() => Promise.resolve(() => {}))
+
+    await act(async () => {
+      render(<CoreStartupGuard>{APP_CHILD}</CoreStartupGuard>)
+    })
+
+    expect(screen.getByText('App content loaded')).toBeInTheDocument()
+  })
+})
+
+describe('CoreStartupGuard — snapshot recovery of missed events', () => {
+  it('recovers an error emitted before the listener attached via get_core_status', async () => {
+    // Listener attaches but the terminal event already fired, so no event is
+    // ever delivered to the handler — only get_core_status knows the state.
+    const invoke = vi.fn(() =>
+      Promise.resolve({
+        phase: 'error',
+        message: 'Could not locate core service.',
+        error: 'convsim-core executable not found.',
+      }),
+    )
+    stubTauri(() => Promise.resolve(() => {}), invoke)
+
+    await act(async () => {
+      render(<CoreStartupGuard>{APP_CHILD}</CoreStartupGuard>)
+    })
+
+    expect(invoke).toHaveBeenCalledWith('get_core_status')
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent(/could not locate core service/i)
+    expect(alert).toHaveTextContent(/convsim-core executable not found/i)
+    expect(screen.queryByText('App content loaded')).not.toBeInTheDocument()
+  })
+
+  it('recovers a ready state emitted before the listener attached', async () => {
+    const invoke = vi.fn(() =>
+      Promise.resolve({ phase: 'ready', message: 'Core service is ready.', error: null }),
+    )
+    stubTauri(() => Promise.resolve(() => {}), invoke)
 
     await act(async () => {
       render(<CoreStartupGuard>{APP_CHILD}</CoreStartupGuard>)
