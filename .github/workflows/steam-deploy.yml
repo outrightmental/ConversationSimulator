@@ -104,12 +104,14 @@ jobs:
 
       # ── Organise artifacts into per-platform depot content directories ──────
       #
-      # Steam depots contain application files, not installer packages.
-      # The current release.yml produces installers (.exe, .msi, .dmg,
-      # .AppImage, .deb). Until a separate "raw binary" build step is added,
-      # these installer assets are placed in the depot directories as a
-      # placeholder. Update these patterns when the Tauri build produces
-      # a portable application directory alongside the installers.
+      # Steam depots must contain application files, not installer packages.
+      # macOS ships the .app bundle extracted from the .app.tar.gz published
+      # by the release workflow — NOT the .dmg disk image.  The .app is signed
+      # and notarised by Apple (gate G3-01) in release.yml before it reaches here.
+      # Linux ships the AppImage (portable, runs without installation).
+      # Windows still stages the .exe/.msi installers below — a portable-app
+      # depot layout for Windows is tracked separately and not part of this
+      # macOS-focused change.
       - name: Organise depot content
         run: |
           mkdir -p steam-content/windows steam-content/macos steam-content/linux
@@ -119,8 +121,25 @@ jobs:
           find release-artifacts -name "*.msi" \
             -exec cp -v {} steam-content/windows/ \;
 
-          find release-artifacts -name "*.dmg" \
-            -exec cp -v {} steam-content/macos/ \;
+          # macOS: extract the .app bundle from the .app.tar.gz published by
+          # the release workflow. Steam depots require the raw application
+          # directory, not the .dmg installer, so that steamcmd uploads
+          # ConversationSimulator.app/... directly into the depot.
+          # See publishing/STEAM_DEPOT_CONTENTS.md — macOS depot section.
+          if find release-artifacts -name "*.app.tar.gz" | grep -q .; then
+            find release-artifacts -name "*.app.tar.gz" | while IFS= read -r f; do
+              echo "Extracting $f -> steam-content/macos/"
+              tar -xzf "$f" -C steam-content/macos/
+            done
+          else
+            # Fallback: stage the .dmg if no .app.tar.gz is available.
+            # This path should only occur when deploying artifacts built before
+            # the .app.tar.gz upload was added to release.yml.
+            echo "WARNING: no .app.tar.gz found; staging .dmg as placeholder" >&2
+            echo "NOTE: .dmg is an installer, not application files — depot audit may flag this" >&2
+            find release-artifacts -name "*.dmg" \
+              -exec cp -v {} steam-content/macos/ \;
+          fi
 
           find release-artifacts -name "*.AppImage" \
             -exec cp -v {} steam-content/linux/ \;

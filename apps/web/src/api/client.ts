@@ -46,6 +46,11 @@ export type { HealthResponse };
 
 const BASE = _isTauriProduction ? `${CORE_ORIGIN}/api` : '/api'
 
+export interface CloudSettings {
+  /** Last model ID selected by the user. The only field Steam Cloud syncs. */
+  last_model_id: string | null
+}
+
 export interface PackSummary {
   pack_id: string
   name: string
@@ -322,6 +327,12 @@ export const api = {
   },
   clearLocalData(): Promise<{ deleted_sessions: number }> {
     return post<{ deleted_sessions: number }>('/privacy/clear')
+  },
+  getCloudSettings(): Promise<CloudSettings> {
+    return get<CloudSettings>('/cloud-settings')
+  },
+  putCloudSettings(settings: CloudSettings): Promise<CloudSettings> {
+    return put<CloudSettings>('/cloud-settings', settings)
   },
   createCrashBundle(): Promise<{ bundle_path: string; notice: string }> {
     return post<{ bundle_path: string; notice: string }>('/diag/crash-bundle')

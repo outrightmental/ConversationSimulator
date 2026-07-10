@@ -152,6 +152,72 @@ checklist item SR-08 in
 
 ---
 
+## Steam Cloud configuration
+
+Steam Cloud must be configured in the Steamworks partner portal before Stage 3
+(private beta).  The configuration enforces the local-first promise by syncing
+**only** the non-sensitive cloud settings file and excluding all directories
+that contain private user data.
+
+### What to configure
+
+Navigate to **Steamworks App Admin → Steam Cloud** for the app.
+
+#### Quota
+
+| Setting | Value |
+|---------|-------|
+| Byte quota per user | 64 KB (the cloud settings file is under 1 KB; 64 KB provides ample headroom for future non-sensitive fields) |
+| File count per user | 5 |
+
+#### Root paths (per platform)
+
+These root paths tell Steam Cloud where to look for files to sync.  Set them
+to the same platform-specific data root that `convsim_core.paths.platform_data_root()`
+resolves to, or use the `{Steam}` variable if Valve's remote storage paths match
+the platform conventions below.
+
+| Platform | Steamworks root path |
+|----------|---------------------|
+| Windows | `{localappdata}\outrightmental\convsim` |
+| macOS | `{userhome}/Library/Application Support/com.outrightmental.convsim` |
+| Linux / Steam Deck | `{userhome}/.local/share/convsim` |
+
+#### Sync pattern — include (one entry)
+
+| Pattern | Recursive | Description |
+|---------|-----------|-------------|
+| `steam_cloud_settings.json` | No | The only file Steam Cloud is allowed to sync |
+
+#### Sync pattern — exclude (one entry per subdirectory)
+
+These exclusions prevent Steam Cloud from touching any subdirectory.  The
+`.nosteamcloudpath` markers placed by the app lifespan hook serve as an
+additional defence, but the Steamworks portal exclusions are the authoritative
+control.
+
+| Pattern | Recursive | Reason |
+|---------|-----------|--------|
+| `db\*` / `db/*` | Yes | Conversation transcripts, session history, prompts |
+| `logs\*` / `logs/*` | Yes | Application and service logs |
+| `models\*` / `models/*` | Yes | LLM / STT / TTS model weight files |
+| `packs\*` / `packs/*` | Yes | User-imported scenario packs (may be private) |
+| `exports\*` / `exports/*` | Yes | Exported session JSON files |
+| `cache\*` / `cache/*` | Yes | TTS audio cache and download cache |
+| `crashes\*` / `crashes/*` | Yes | Crash report bundles |
+| `data\*` / `data/*` | Yes | Miscellaneous application data directory |
+
+> **Important:** Add both Windows (`\`) and POSIX (`/`) path separator variants
+> if the Steamworks portal requires per-platform wildcard syntax.
+
+### Verification
+
+After configuring Steam Cloud in the Steamworks portal, verify the setup using
+the **B.11 Steam Cloud sync verification** steps in
+[`docs/release-checklist.md`](../docs/release-checklist.md).
+
+---
+
 ## Branch strategy
 
 Steam uses **branches** to control which build a player's Steam client

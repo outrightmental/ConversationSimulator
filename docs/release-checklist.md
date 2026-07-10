@@ -57,7 +57,7 @@ account) to catch first-run issues that don't appear on development machines.
 
 | Item | Minimum | Recommended |
 |---|---|---|
-| OS | macOS 12, Ubuntu 22.04, Windows 10 build 19041 | Latest stable |
+| OS | macOS 13, Ubuntu 22.04, Windows 10 build 19041 | Latest stable |
 | CPU | 64-bit x86 or Apple Silicon | Apple Silicon M2 or newer |
 | RAM | 8 GB | 16 GB |
 | Disk free | 10 GB | 20 GB |
@@ -226,7 +226,54 @@ python -m pytest tests/test_voice_smoke.py -v
 - [ ] TTS returns audio chunks with a non-null `cache_path`
 - [ ] Push-to-talk voice input works via the web UI (manual, requires microphone)
 
-### B.11 Offline smoke
+### B.11 Steam Cloud sync verification
+
+**Applies to Steam builds only.** Skip this step on non-Steam (direct-download)
+builds.  Requires two machines or two Steam accounts / profiles with the same
+Steam app installed.
+
+#### B.11.1 Verify the sync file placement
+
+On the test machine, launch the app under Steam and select a model in the Model
+Manager.  Wait 5 seconds for the debounce to flush, then close the app.
+
+```bash
+# macOS
+cat "$HOME/Library/Application Support/com.outrightmental.convsim/steam_cloud_settings.json"
+
+# Linux / Steam Deck
+cat "$HOME/.local/share/convsim/steam_cloud_settings.json"
+
+# Windows (PowerShell)
+type "$env:LOCALAPPDATA\outrightmental\convsim\steam_cloud_settings.json"
+```
+
+- [ ] File exists at the data root (not inside `db/`, `logs/`, or any other subdirectory)
+- [ ] File contains only `last_model_id` — no transcripts, audio paths, or session content
+
+#### B.11.2 Verify subdirectory exclusion markers
+
+```bash
+# macOS / Linux (check each subdirectory for .nosteamcloudpath).
+# Note: the model marker lives at models/llm/ — models_dir resolves to
+# {data_root}/models/llm, so the marker is placed there, not at models/.
+for d in data db logs models/llm packs exports cache crashes; do
+    echo "$d: $(ls "$HOME/Library/Application Support/com.outrightmental.convsim/$d/.nosteamcloudpath" 2>/dev/null && echo PRESENT || echo MISSING)"
+done
+```
+
+- [ ] `.nosteamcloudpath` is present in every marked subdirectory (`data/`, `db/`, `logs/`, `models/llm/`, `packs/`, `exports/`, `cache/`, `crashes/`)
+- [ ] No `.nosteamcloudpath` marker exists at the data root itself (that would prevent the cloud settings file from syncing)
+
+#### B.11.3 Cross-device sync test
+
+- [ ] On machine A: select a model in the Model Manager, close the app, and wait for Steam to sync (Steam tray icon stops animating, typically 10–30 seconds)
+- [ ] On machine B (fresh profile or second machine): launch the app via Steam
+- [ ] Confirm the same model is pre-selected in the Model Manager on machine B
+- [ ] Confirm that no conversation transcripts, session history, audio recordings, or private pack data appears on machine B
+- [ ] Confirm the Steam Cloud section in Settings (Settings → Steam Cloud sync) shows "Steam Cloud is active for this session"
+
+### B.12 Offline smoke
 
 Confirms no outbound network calls occur during a scripted play session.
 
