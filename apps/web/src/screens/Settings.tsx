@@ -2,6 +2,8 @@
 import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { api, type ImportPackResponse, type PackSummary } from '../api/client'
+import type { ApiError } from '../api/errors'
+import { ApiErrorView } from '../components/ApiErrorView'
 import { readPrivacyPref, writePrivacyPref, PRIVACY_KEYS, isDevModeEnabled } from '../privacyPrefs'
 import RuntimeSettingsPanel from '../components/RuntimeSettingsPanel'
 import VoiceSettingsPanel from '../components/VoiceSettingsPanel'
@@ -103,14 +105,15 @@ export default function Settings() {
   // ── Folders ─────────────────────────────────────────────────────────────────
 
   const [folders, setFolders] = useState<{ data: string; logs: string; models: string; packs: string; exports: string; cache: string; crash_bundles: string } | null>(null)
-  const [foldersError, setFoldersError] = useState(false)
+  const [foldersError, setFoldersError] = useState<ApiError | null>(null)
   const [copiedFolder, setCopiedFolder] = useState<string | null>(null)
   const [openFolderError, setOpenFolderError] = useState<string | null>(null)
 
   useEffect(() => {
-    api.getFolders()
-      .then((r) => setFolders(r))
-      .catch(() => setFoldersError(true))
+    void api.getFolders().then((r) => {
+      if (r.ok) { setFolders(r.data); setFoldersError(null) }
+      else setFoldersError(r.error)
+    })
   }, [])
 
   async function handleCopyFolder(folderPath: string, key: string) {
@@ -140,12 +143,13 @@ export default function Settings() {
   const [packImportError, setPackImportError] = useState<string | null>(null)
   const [importedPack, setImportedPack] = useState<ImportPackResponse | null>(null)
   const [installedPacks, setInstalledPacks] = useState<PackSummary[] | null>(null)
-  const [installedPacksError, setInstalledPacksError] = useState(false)
+  const [installedPacksError, setInstalledPacksError] = useState<ApiError | null>(null)
 
   const loadInstalledPacks = useCallback(() => {
-    api.listPacks()
-      .then((r) => { setInstalledPacks(r.packs); setInstalledPacksError(false) })
-      .catch(() => setInstalledPacksError(true))
+    void api.listPacks().then((r) => {
+      if (r.ok) { setInstalledPacks(r.data.packs); setInstalledPacksError(null) }
+      else setInstalledPacksError(r.error)
+    })
   }, [])
 
   useEffect(() => { loadInstalledPacks() }, [loadInstalledPacks])
@@ -154,13 +158,13 @@ export default function Settings() {
     setPackImportState('uploading')
     setPackImportError(null)
     setImportedPack(null)
-    try {
-      const result = await api.importPack(file)
-      setImportedPack(result)
+    const r = await api.importPack(file)
+    if (r.ok) {
+      setImportedPack(r.data)
       setPackImportState('success')
       loadInstalledPacks()
-    } catch (err) {
-      setPackImportError(err instanceof Error ? err.message : 'Import failed')
+    } else {
+      setPackImportError(r.error.message)
       setPackImportState('error')
     }
   }
@@ -174,20 +178,21 @@ export default function Settings() {
   // ── Session data ─────────────────────────────────────────────────────────────
 
   const [clearState, setClearState] = useState<ClearState>('idle')
-  const [clearError, setClearError] = useState<string | null>(null)
+  const [clearError, setClearError] = useState<ApiError | null>(null)
   const [deletedCount, setDeletedCount] = useState<number | null>(null)
 
   const [sessions, setSessions] = useState<SessionSummary[] | null>(null)
-  const [sessionsError, setSessionsError] = useState(false)
+  const [sessionsError, setSessionsError] = useState<ApiError | null>(null)
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
-  const [deleteError, setDeleteError] = useState<string | null>(null)
-  const [exportError, setExportError] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<ApiError | null>(null)
+  const [exportError, setExportError] = useState<ApiError | null>(null)
 
   const loadSessions = useCallback(() => {
-    api.listSessions()
-      .then((r) => { setSessions(r.sessions); setSessionsError(false) })
-      .catch(() => setSessionsError(true))
+    void api.listSessions().then((r) => {
+      if (r.ok) { setSessions(r.data.sessions); setSessionsError(null) }
+      else setSessionsError(r.error)
+    })
   }, [])
 
   useEffect(() => { loadSessions() }, [loadSessions])
@@ -200,17 +205,17 @@ export default function Settings() {
     if (clearState === 'confirming') {
       setClearState('clearing')
       setClearError(null)
-      try {
-        const result = await api.clearLocalData()
-        setDeletedCount(result.deleted_sessions)
+      const r = await api.clearLocalData()
+      if (r.ok) {
+        setDeletedCount(r.data.deleted_sessions)
         setDeleteError(null)
         setExportError(null)
         setSessions([])
         setDeleteConfirmId(null)
         setClearState('done')
         loadSessions()
-      } catch (err) {
-        setClearError(err instanceof Error ? err.message : 'Unknown error')
+      } else {
+        setClearError(r.error)
         setClearState('error')
       }
     }
@@ -224,22 +229,21 @@ export default function Settings() {
   async function handleDeleteSession(sessionId: string) {
     setDeletingId(sessionId)
     setDeleteError(null)
-    try {
-      await api.deleteSession(sessionId)
+    const r = await api.deleteSession(sessionId)
+    if (r.ok) {
       setSessions((prev) => prev?.filter((s) => s.session_id !== sessionId) ?? null)
-    } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : 'Failed to delete session')
-    } finally {
-      setDeletingId(null)
-      setDeleteConfirmId(null)
+    } else {
+      setDeleteError(r.error)
     }
+    setDeletingId(null)
+    setDeleteConfirmId(null)
   }
 
   async function handleExportSession(sessionId: string) {
     setExportError(null)
-    try {
-      const data = await api.exportSession(sessionId)
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const r = await api.exportSession(sessionId)
+    if (r.ok) {
+      const blob = new Blob([JSON.stringify(r.data, null, 2)], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
@@ -248,8 +252,8 @@ export default function Settings() {
       a.click()
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
-    } catch (err) {
-      setExportError(err instanceof Error ? err.message : 'Failed to export session')
+    } else {
+      setExportError(r.error)
     }
   }
 
@@ -402,14 +406,14 @@ export default function Settings() {
         </div>
 
         {installedPacksError && (
-          <p style={{ fontSize: '0.875rem', color: '#f87171' }}>Could not load installed packs.</p>
+          <ApiErrorView error={installedPacksError} onRetry={loadInstalledPacks} context="Settings-Packs" />
         )}
         {!installedPacksError && installedPacks !== null && installedPacks.length === 0 && (
           <p data-testid="no-packs" style={{ fontSize: '0.875rem', color: '#a1a1aa' }}>
             No packs installed yet.
           </p>
         )}
-        {!installedPacksError && installedPacks !== null && installedPacks.length > 0 && (
+        {installedPacksError === null && installedPacks !== null && installedPacks.length > 0 && (
           <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
             {installedPacks.map((p) => (
               <li
@@ -446,7 +450,7 @@ export default function Settings() {
           All data stays on this device. Use these paths for manual inspection or backup.
         </p>
         {foldersError ? (
-          <p style={{ fontSize: '0.875rem', color: '#f87171' }}>Could not retrieve folder paths.</p>
+          <ApiErrorView error={foldersError} onRetry={() => { void api.getFolders().then((r) => { if (r.ok) { setFolders(r.data); setFoldersError(null) } else setFoldersError(r.error) }) }} context="Settings-Folders" />
         ) : folders === null ? (
           <p style={{ fontSize: '0.875rem', color: '#a1a1aa' }}>Loading…</p>
         ) : (
@@ -558,10 +562,10 @@ export default function Settings() {
           </p>
         )}
 
-        {clearState === 'error' && (
-          <p role="alert" style={{ fontSize: '0.875rem', color: '#f87171', marginBottom: '0.5rem' }}>
-            {clearError ?? 'Failed to clear data. Please try again.'}
-          </p>
+        {clearState === 'error' && clearError && (
+          <div style={{ marginBottom: '0.5rem' }}>
+            <ApiErrorView error={clearError} onRetry={handleClearLocalData} context="Settings-Clear" />
+          </div>
         )}
 
         <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -609,27 +613,27 @@ export default function Settings() {
           Export a session as JSON or delete it permanently.
         </p>
         {sessionsError && (
-          <p style={{ fontSize: '0.875rem', color: '#f87171' }}>Could not load sessions.</p>
+          <ApiErrorView error={sessionsError} onRetry={loadSessions} context="Settings-Sessions" />
         )}
         {deleteError && (
-          <p role="alert" style={{ fontSize: '0.875rem', color: '#f87171', marginBottom: '0.5rem' }}>
-            {deleteError}
-          </p>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <ApiErrorView error={deleteError} compact context="Settings-Delete" />
+          </div>
         )}
         {exportError && (
-          <p role="alert" style={{ fontSize: '0.875rem', color: '#f87171', marginBottom: '0.5rem' }}>
-            {exportError}
-          </p>
+          <div style={{ marginBottom: '0.5rem' }}>
+            <ApiErrorView error={exportError} compact context="Settings-Export" />
+          </div>
         )}
-        {!sessionsError && sessions === null && (
+        {sessionsError === null && sessions === null && (
           <p style={{ fontSize: '0.875rem', color: '#a1a1aa' }}>Loading…</p>
         )}
-        {!sessionsError && sessions !== null && sessions.length === 0 && (
+        {sessionsError === null && sessions !== null && sessions.length === 0 && (
           <p data-testid="no-sessions" style={{ fontSize: '0.875rem', color: '#a1a1aa' }}>
             No sessions yet.
           </p>
         )}
-        {!sessionsError && sessions !== null && sessions.length > 0 && (
+        {sessionsError === null && sessions !== null && sessions.length > 0 && (
           <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
             {sessions.map((s) => (
               <li
