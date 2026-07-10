@@ -3,29 +3,39 @@
 
 Verifies that every player-facing path (gameplay, STT, TTS, debrief,
 transcript export, pack import) completes without making outbound network
-calls when ``LOCAL_MODE`` is active.
+calls while a local-only guard is active.
 
-All four session states are exercised using fake workers so the suite runs
-in any CI environment without model downloads:
+All session states are exercised using fake workers so the suite runs in any
+CI environment without model downloads:
 
   G-1  Text-only gameplay + debrief + transcript export.
   G-2  STT-enabled: audio upload, transcript review, player turn.
   G-3  TTS-enabled: NPC utterance synthesised to local audio.
   G-4  Pack import: zip import followed by scenario listing.
   G-5  Explicit-download always passes through LOCAL_MODE.
+  G-6  The socket guard itself blocks + records a real outbound connection.
 
 Enforcement model
 -----------------
-``LOCAL_MODE = True`` makes ``require_network(NetworkMode.PLAY)`` raise
-``NetworkBlockedError``.  Tests run against the fake runtime (no LLM),
-FakeSttWorker (no whisper.cpp), and FakeTtsWorker (no Kokoro), all of
-which are pure in-process — they never call ``require_network``.
+Guarded scenarios run under **two** independent guards:
 
-If a future code change adds an accidental cloud-service call on any of
-these paths, the call site will need to invoke ``require_network(PLAY)``
-first (as required by the network policy contract), and with
-``LOCAL_MODE = True`` that call will raise ``NetworkBlockedError``,
-failing the test immediately.
+1. A socket-level guard (``_SocketGuard``) patches ``socket.socket.connect``
+   and ``connect_ex`` for the client's lifetime.  Any connection to a
+   non-loopback host is recorded and blocked with ``OutboundNetworkAttempt``
+   — this is the Python analogue of the TypeScript CLI guard that patches
+   ``net.Socket.prototype.connect``.  It catches accidental cloud calls even
+   when the offending code bypasses the policy gate below.
+
+2. ``LOCAL_MODE = True`` makes ``require_network(NetworkMode.PLAY)`` raise
+   ``NetworkBlockedError``, giving a labelled, defence-in-depth signal at the
+   exact call site.
+
+Tests run against the fake runtime (no LLM), FakeSttWorker (no whisper.cpp),
+and FakeTtsWorker (no Kokoro), all pure in-process — so a clean run makes
+neither guard fire.  If a future change adds an accidental outbound call on
+any of these paths, the socket guard blocks and records it (failing the test),
+and if the call site went through the policy gate the ``LOCAL_MODE`` block
+fires too.
 
 For the TypeScript CLI path the network guard is enforced at the TCP
 socket level — see ``packages/convsim-cli/tests/offline-smoke-test.test.ts``.
@@ -33,6 +43,7 @@ socket level — see ``packages/convsim-cli/tests/offline-smoke-test.test.ts``.
 from __future__ import annotations
 
 import io
+import socket
 import zipfile
 
 import pytest
@@ -42,6 +53,79 @@ import convsim_core.network_policy as _np
 from convsim_core.app import create_app
 from convsim_core.config import ServiceConfig
 from convsim_core.network_policy import NetworkBlockedError, NetworkMode
+
+
+# ---------------------------------------------------------------------------
+# Socket-level outbound guard
+# ---------------------------------------------------------------------------
+#
+# ``LOCAL_MODE`` alone only catches call sites that voluntarily invoke
+# ``require_network(PLAY)``.  To actually *block or record* outbound network
+# attempts (issue #218 definition-of-done), we patch ``socket.socket.connect``
+# and ``connect_ex`` for the lifetime of the guarded client — the Python
+# equivalent of the TypeScript CLI guard that patches
+# ``net.Socket.prototype.connect``.  Any connection to a non-loopback host is
+# recorded and blocked; loopback and AF_UNIX (local IPC / sidecar) connections
+# pass through untouched.
+
+_LOOPBACK_HOSTS = frozenset({"localhost", "::1", "[::1]", "0.0.0.0", "::"})
+
+
+def _is_local_address(family: int, address) -> bool:
+    """True if *address* is loopback / local IPC and must not be blocked."""
+    if family == getattr(socket, "AF_UNIX", object()):
+        return True  # Unix-domain socket — local IPC only.
+    if not isinstance(address, tuple) or not address:
+        return True  # Unparseable form — don't block (mirrors the TS guard).
+    host = str(address[0]).lower()
+    if host in _LOOPBACK_HOSTS or host.endswith(".localhost"):
+        return True
+    return host.startswith("127.")  # 127.0.0.0/8 loopback range.
+
+
+class OutboundNetworkAttempt(OSError):
+    """Raised (and recorded) when play-mode code opens a non-loopback socket."""
+
+    def __init__(self, address) -> None:
+        super().__init__(
+            f"Outbound network connection to {address!r} blocked by the "
+            "local-only guard. Play, debrief, transcript, telemetry, and crash "
+            "paths must not contact remote hosts."
+        )
+        self.address = address
+
+
+class _SocketGuard:
+    """Patches ``socket.socket.connect``/``connect_ex`` to block outbound calls."""
+
+    def __init__(self) -> None:
+        self.attempts: list = []
+        self._orig_connect = socket.socket.connect
+        self._orig_connect_ex = socket.socket.connect_ex
+
+    def install(self) -> None:
+        guard = self
+        orig_connect = self._orig_connect
+        orig_connect_ex = self._orig_connect_ex
+
+        def connect(self, address, *args, **kwargs):  # noqa: ANN001
+            if not _is_local_address(self.family, address):
+                guard.attempts.append(address)
+                raise OutboundNetworkAttempt(address)
+            return orig_connect(self, address, *args, **kwargs)
+
+        def connect_ex(self, address, *args, **kwargs):  # noqa: ANN001
+            if not _is_local_address(self.family, address):
+                guard.attempts.append(address)
+                raise OutboundNetworkAttempt(address)
+            return orig_connect_ex(self, address, *args, **kwargs)
+
+        socket.socket.connect = connect
+        socket.socket.connect_ex = connect_ex
+
+    def restore(self) -> None:
+        socket.socket.connect = self._orig_connect
+        socket.socket.connect_ex = self._orig_connect_ex
 
 
 # ---------------------------------------------------------------------------
@@ -72,18 +156,32 @@ def _voice_config(tmp_path, monkeypatch):
 
 @pytest.fixture()
 def _guard_client(_voice_config):
-    """TestClient whose entire lifetime runs under LOCAL_MODE = True.
+    """TestClient whose entire lifetime runs under LOCAL_MODE + socket guard.
 
-    Any accidental play-mode outbound call during this client's lifetime
-    will raise NetworkBlockedError and fail the calling test.
+    Two independent guards are active for the client's lifetime:
+
+    * ``LOCAL_MODE = True`` — any call site that invokes
+      ``require_network(PLAY)`` raises ``NetworkBlockedError``.
+    * A socket-level guard that blocks and records any outbound (non-loopback)
+      TCP/UDP connection, catching accidental cloud calls that bypass the
+      policy gate entirely (e.g. a stray ``requests``/``httpx`` call).
+
+    The recorded outbound attempts are exposed as ``client.outbound_attempts``.
+    ``create_app`` runs *before* the socket guard is installed so app startup
+    (which may legitimately bind local sockets) is never mistaken for a
+    play-mode outbound call.
     """
     app = create_app(_voice_config)
     original = _np.LOCAL_MODE
     _np.LOCAL_MODE = True
+    guard = _SocketGuard()
+    guard.install()
     try:
         with TestClient(app) as c:
+            c.outbound_attempts = guard.attempts
             yield c
     finally:
+        guard.restore()
         _np.LOCAL_MODE = original
 
 
@@ -284,6 +382,11 @@ class TestTextOnlyNetworkGuard:
         export = _guard_client.get(f"/api/sessions/{sid}/export")
         assert export.status_code == 200, f"[export] {export.text}"
 
+        assert _guard_client.outbound_attempts == [], (
+            f"Outbound network attempts recorded during text-only play: "
+            f"{_guard_client.outbound_attempts}"
+        )
+
 
 # ---------------------------------------------------------------------------
 # G-2: STT-enabled path
@@ -365,6 +468,11 @@ class TestSttEnabledNetworkGuard:
 
         end = _guard_client.post(f"/api/sessions/{sid}/end")
         assert end.status_code == 200, f"[end] {end.text}"
+
+        assert _guard_client.outbound_attempts == [], (
+            f"Outbound network attempts recorded during STT play: "
+            f"{_guard_client.outbound_attempts}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -449,6 +557,11 @@ class TestTtsEnabledNetworkGuard:
         debrief = _guard_client.post(f"/api/sessions/{sid}/debrief")
         assert debrief.status_code == 200, f"[debrief] {debrief.text}"
 
+        assert _guard_client.outbound_attempts == [], (
+            f"Outbound network attempts recorded during TTS play: "
+            f"{_guard_client.outbound_attempts}"
+        )
+
 
 # ---------------------------------------------------------------------------
 # G-4: Pack import path
@@ -525,6 +638,11 @@ class TestPackImportNetworkGuard:
             f"[packs] guard pack not found in pack slugs after import: {slugs}"
         )
 
+        assert _guard_client.outbound_attempts == [], (
+            f"Outbound network attempts recorded during pack import + play: "
+            f"{_guard_client.outbound_attempts}"
+        )
+
 
 # ---------------------------------------------------------------------------
 # G-5: Explicit-download always passes through LOCAL_MODE
@@ -566,3 +684,72 @@ class TestExplicitDownloadAlwaysPermitted:
             require_network(NetworkMode.EXPLICIT_DOWNLOAD)
         finally:
             _np.LOCAL_MODE = False
+
+
+# ---------------------------------------------------------------------------
+# G-6: The socket guard itself actually blocks and records outbound calls
+# ---------------------------------------------------------------------------
+
+
+class TestSocketGuardBlocksOutbound:
+    """G-6: Verify the harness is not a silent no-op.
+
+    The G-1..G-4 guarantees are only meaningful if the socket guard genuinely
+    intercepts outbound connections.  These tests exercise the guard directly:
+    a non-loopback connection must be blocked and recorded, while loopback and
+    unresolved-hostname connections must pass through to the original socket.
+    """
+
+    def test_outbound_connection_is_blocked_and_recorded(self):
+        guard = _SocketGuard()
+        guard.install()
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            with pytest.raises(OutboundNetworkAttempt):
+                # TEST-NET-1 (RFC 5737) — never routable, so no real packets.
+                s.connect(("192.0.2.1", 443))
+            s.close()
+        finally:
+            guard.restore()
+        assert guard.attempts == [("192.0.2.1", 443)], (
+            f"Outbound connection was not recorded by the guard: {guard.attempts}"
+        )
+
+    def test_connect_ex_outbound_is_blocked_and_recorded(self):
+        guard = _SocketGuard()
+        guard.install()
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            with pytest.raises(OutboundNetworkAttempt):
+                s.connect_ex(("198.51.100.7", 8080))  # TEST-NET-2 (RFC 5737).
+            s.close()
+        finally:
+            guard.restore()
+        assert guard.attempts == [("198.51.100.7", 8080)]
+
+    def test_loopback_is_not_blocked(self):
+        guard = _SocketGuard()
+        guard.install()
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(0.05)
+            # No server is listening; the connection fails with a normal socket
+            # error — but crucially NOT OutboundNetworkAttempt, and it is not
+            # recorded as a violation.
+            with pytest.raises(OSError) as exc_info:
+                s.connect(("127.0.0.1", 9))  # Discard port, nothing listening.
+            assert not isinstance(exc_info.value, OutboundNetworkAttempt)
+            s.close()
+        finally:
+            guard.restore()
+        assert guard.attempts == [], (
+            f"Loopback connection was wrongly recorded as outbound: {guard.attempts}"
+        )
+
+    def test_guard_restores_socket_connect(self):
+        original = socket.socket.connect
+        guard = _SocketGuard()
+        guard.install()
+        assert socket.socket.connect is not original
+        guard.restore()
+        assert socket.socket.connect is original

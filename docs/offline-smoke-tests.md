@@ -18,7 +18,7 @@ Every pull request runs several explicit CI steps:
 | **Run offline smoke tests (mock runtime)** | Loads all four official packs, plays scripted turns with the fake runtime, confirms no network violations (TypeScript/TCP guard). Also validates all golden transcript fixtures. |
 | **Run CLI unit tests** | CLI argument parsing and command dispatch. |
 | **Run acceptance tests** | Full player text-path journey including `TestNoCloudInference` (LOCAL_MODE=True guard). |
-| **Run network guard acceptance tests** | Four explicit guard scenarios: text-only gameplay+debrief+export (G-1), STT-enabled audio upload (G-2), TTS-enabled synthesis (G-3), pack import and play (G-4), and explicit-download always permitted (G-5). |
+| **Run network guard acceptance tests** | Six explicit guard scenarios under a socket-level guard + `LOCAL_MODE`: text-only gameplay+debrief+export (G-1), STT-enabled audio upload (G-2), TTS-enabled synthesis (G-3), pack import and play (G-4), explicit-download always permitted (G-5), and a socket-guard self-test (G-6). |
 
 These run automatically on every PR and merge to `main`.  No hardware or model
 downloads are needed.
@@ -55,13 +55,16 @@ A pass produces output like:
 ### Python acceptance tests (multi-path guard)
 
 Run the network guard acceptance tests to verify STT, TTS, debrief, and pack-import
-paths all complete without outbound calls:
+paths all complete without outbound calls.  Each guarded scenario runs under a
+socket-level guard (patches `socket.socket.connect`/`connect_ex`) **and**
+`LOCAL_MODE = True`, so any outbound connection to a non-loopback host is both
+recorded and blocked:
 
 ```bash
 pip install -e "packages/prompt-composer[dev]"
 pip install -e "services/convsim-core[dev]"
 
-# All acceptance tests (includes G-1 through G-5 guard scenarios):
+# All acceptance tests (includes G-1 through G-6 guard scenarios):
 python -m pytest tests/acceptance/ -v
 
 # Network guard tests only:
@@ -75,6 +78,7 @@ python -m pytest tests/acceptance/test_network_guard.py -v
 | **G-3** TTS-enabled | turn → NPC utterance synthesised to local WAV → debrief |
 | **G-4** Pack import | zip import → scenario listed → session created and played |
 | **G-5** Explicit-download | `NetworkMode.EXPLICIT_DOWNLOAD` always passes through LOCAL_MODE |
+| **G-6** Guard self-test | socket guard actually blocks + records a non-loopback connection, permits loopback, and restores cleanly |
 
 ---
 
@@ -233,17 +237,29 @@ This approach catches:
 It does **not** prevent connections to other local processes (e.g. the llama.cpp
 sidecar listening on `127.0.0.1:8080`), which are intentional during real play.
 
-### Python / FastAPI (policy gate)
+### Python / FastAPI (socket guard + policy gate)
 
-The Python service enforces the policy through `convsim_core.network_policy`.
-Any code path that would contact a remote network service during play must call
-`require_network(NetworkMode.PLAY)` before opening a connection.  In test
-environments, setting `LOCAL_MODE = True` makes this call raise
-`NetworkBlockedError` immediately, failing the test.
+The Python acceptance tests enforce the local-only promise with **two**
+independent guards, both active for the entire guarded-client lifetime:
+
+1. **Socket-level guard** — the acceptance-test fixture patches
+   `socket.socket.connect` and `socket.socket.connect_ex` (the Python analogue
+   of the TypeScript `net.Socket.prototype.connect` hook).  Any connection to a
+   non-loopback host is recorded and blocked with `OutboundNetworkAttempt`,
+   regardless of whether the calling code went through the policy gate.  This
+   catches accidental cloud calls made by a stray `requests`/`httpx`/`urllib`
+   dependency on any play, debrief, transcript, telemetry, or crash path.  The
+   `G-6` self-test proves the guard is not a silent no-op.
+2. **Policy gate** — `convsim_core.network_policy`.  Play-mode code that would
+   contact a remote service must call `require_network(NetworkMode.PLAY)` before
+   opening a connection.  With `LOCAL_MODE = True` that call raises
+   `NetworkBlockedError` immediately, giving a labelled, defence-in-depth signal
+   at the exact call site.
 
 User-initiated downloads (model files, pack bundles) use
 `require_network(NetworkMode.EXPLICIT_DOWNLOAD)`, which always passes through
-regardless of `LOCAL_MODE`.
+regardless of `LOCAL_MODE`.  (The socket guard is only installed inside the
+acceptance-test fixture, so it never interferes with real explicit downloads.)
 
 ---
 
@@ -252,7 +268,8 @@ regardless of `LOCAL_MODE`.
 | Limitation | Why | Workaround |
 |---|---|---|
 | The TypeScript TCP guard cannot intercept Rust/C process syscalls. | The Tauri shell and llama.cpp sidecar are native processes — `net.Socket.prototype.connect` only covers the Node.js process. | Run `lsof -i` during a manual session to check sidecar outbound activity. |
-| The Python LOCAL_MODE guard only activates when call sites explicitly invoke `require_network(PLAY)`. | A call site that bypasses the policy gate is invisible to LOCAL_MODE. | Use the TypeScript TCP guard for end-to-end verification; the Python gate is a defence-in-depth ratchet. |
+| The Python socket guard cannot intercept native-process (Rust/C) syscalls. | Like the TypeScript guard, `socket.socket.connect` only covers the Python process — the Tauri shell and whisper.cpp / Kokoro sidecars are separate native processes. | Run `lsof -i` during a manual session; see "Manual verification with real voice workers" below. |
+| The `LOCAL_MODE` policy gate only fires when call sites explicitly invoke `require_network(PLAY)`. | A call site that skips the gate produces no labelled `NetworkBlockedError`. | The socket-level guard still records and blocks the actual outbound connection, so the leak is caught regardless — the policy gate just adds a precise, labelled signal on top. |
 | Fake workers (FakeSttWorker, FakeTtsWorker) are used in CI. | Real whisper.cpp and Kokoro binaries are not available in the CI environment. | See "Manual verification with real voice workers" below for how to test with real models. |
 | Mic capture and VAD hardware cannot be tested at the API level. | Microphone input requires a physical device and browser permission. | Tested manually as part of the beta sign-off checklist. |
 | WebSocket session paths are not covered by the acceptance tests. | FastAPI `TestClient` does not exercise the WebSocket session endpoint. | The WebSocket handler delegates to the same turn pipeline as the REST endpoint; REST coverage is sufficient for the network policy ratchet. |
