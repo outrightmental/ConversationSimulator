@@ -111,6 +111,11 @@
     "used_fallback": {
       "type": "boolean",
       "description": "True if the narrative was generated from a template rather than an LLM call."
+    },
+    "difficulty_preset": {
+      "type": "string",
+      "enum": ["warm", "standard", "hard", "adversarial"],
+      "description": "The difficulty preset the player selected for this session."
     }
   }
 }
