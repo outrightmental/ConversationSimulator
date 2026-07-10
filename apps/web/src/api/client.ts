@@ -160,9 +160,6 @@ async function errorFromResponse(res: Response): Promise<ApiError> {
   return { kind: 'http-error', message: parseErrorText(text, res), status: res.status }
 }
 
-
-
-
 // Guard: reads the body as text, then JSON.parses it.  If the server returned
 // HTML (static server answering an API route while core is down), the parse
 // fails and we return runtime-unreachable instead of letting the raw parser
@@ -393,16 +390,6 @@ export const api = {
   clearLocalData(): Promise<ApiResult<{ deleted_sessions: number }>> {
     return post<{ deleted_sessions: number }>('/privacy/clear')
   },
-  async getCloudSettings(): Promise<CloudSettings> {
-    const r = await get<CloudSettings>('/cloud-settings')
-    if (!r.ok) throw new Error(r.error.message)
-    return r.data
-  },
-  async putCloudSettings(settings: CloudSettings): Promise<CloudSettings> {
-    const r = await put<CloudSettings>('/cloud-settings', settings)
-    if (!r.ok) throw new Error(r.error.message)
-    return r.data
-  },
   createCrashBundle(): Promise<ApiResult<{ bundle_path: string; notice: string }>> {
     return post<{ bundle_path: string; notice: string }>('/diag/crash-bundle')
   },
@@ -480,9 +467,6 @@ export const api = {
   },
   clearTtsCache(): Promise<ApiResult<TtsCacheClearResponse>> {
     return post<TtsCacheClearResponse>('/tts/cache/clear')
-  },
-  getBackchannels(): Promise<ApiResult<{ backchannels: Array<{ text: string; cache_path: string }> }>> {
-    return get('/tts/backchannels')
   },
   vadHealth(): Promise<ApiResult<VadHealthResponse>> {
     return get<VadHealthResponse>('/vad/health')

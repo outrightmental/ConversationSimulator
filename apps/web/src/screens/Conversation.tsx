@@ -580,20 +580,6 @@ export default function Conversation() {
       }
     }
 
-    // Enqueue TTS chunks from the REST response (WebSocket path handles
-    // the same chunks via tts.audio_chunk events; only enqueue from REST
-    // when WebSocket is not connected or when chunks arrived before WS did).
-    const ttsChunks = turnData.events.filter((e) => e.event_type === 'tts_audio_chunk')
-    for (const chunk of ttsChunks) {
-      const cachePath = chunk.payload['cache_path'] as string | null
-      if (cachePath) {
-        const pause = chunk.payload['thinking_pause_ms'] as number | undefined
-        _enqueueTtsChunk(cachePath, pause)
-      }
-    }
-
-
-
     setSessionState(turnData.state)
     streamingRef.current = ''
     setStreamingText('')

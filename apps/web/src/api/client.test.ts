@@ -128,7 +128,6 @@ describe('api.createSession — content-type guard', () => {
     }
   });
 
-
   it('returns runtime-unreachable when an ERROR response carries an HTML body', async () => {
     // A reverse proxy / static server can answer a failing API route with an HTML
     // error page (502/503/504, or a 404 SPA fallback). That raw markup must never

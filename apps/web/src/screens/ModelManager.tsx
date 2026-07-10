@@ -171,12 +171,6 @@ export default function ModelManager() {
   const [benchmarkError, setBenchmarkError] = useState<ApiError | null>(null)
   const benchmarkStartedRef = useRef(false)
 
-  // The registry ID synced across devices via Steam Cloud (may be null). Used to
-  // pre-select the model the user last chose on another machine so setup on a
-  // fresh device defaults to their prior choice.
-  const [cloudLastModelId, setCloudLastModelId] = useState<string | null>(null)
-
-
   async function loadData() {
     setStep('loading')
     const r = await api.getModels()
@@ -185,17 +179,7 @@ export default function ModelManager() {
     setStep('choose')
   }
 
-  useEffect(() => {
-    void loadData()
-    // Best-effort: read the cross-device model preference. A failure (e.g. the
-    // file has never been written) must never block model setup.
-    api
-      .getCloudSettings()
-      .then((settings) => setCloudLastModelId(settings.last_model_id))
-      .catch(() => {
-        /* no synced preference available; fall back to the default recommendation */
-      })
-  }, [])
+  useEffect(() => { void loadData() }, [])
 
   // Poll install progress while in the 'installing' step.
   useEffect(() => {
@@ -506,13 +490,6 @@ export default function ModelManager() {
               setActionError(null)
               const r = await api.installModel({ registry_id: selectedModel.id })
               if (!r.ok) { setActionError(r.error); setActionLoading(false); return }
-              // Record this choice for cross-device sync. Only the opaque
-              // registry ID is stored — never a filesystem path — so the
-              // Steam Cloud settings file carries no locally-identifiable
-              // data. Best-effort: persistence must not block the install.
-              api.putCloudSettings({ last_model_id: selectedModel.id }).catch(() => {
-                /* non-fatal: model install proceeds regardless */
-              })
               setInstallId(r.data.install_id)
               setInstallRecord(null)
               setStep('installing')

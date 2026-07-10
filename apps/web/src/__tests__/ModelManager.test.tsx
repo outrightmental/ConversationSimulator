@@ -135,8 +135,6 @@ beforeEach(() => {
   mockApi.registerGguf.mockResolvedValue({ ok: true, data: REGISTER_GGUF_RESPONSE })
   mockApi.startSidecar.mockResolvedValue({ ok: true, data: { state: 'running', pid: 1234, log_path: '/tmp/sidecar.log', host: '127.0.0.1', port: 7356 } })
   mockApi.benchmarkModel.mockResolvedValue({ ok: true, data: DEFAULT_BENCHMARK })
-  mockApi.getCloudSettings.mockResolvedValue({ last_model_id: null })
-  mockApi.putCloudSettings.mockResolvedValue({ last_model_id: null })
 })
 
 // ── Loading state ────────────────────────────────────────────────────────────
