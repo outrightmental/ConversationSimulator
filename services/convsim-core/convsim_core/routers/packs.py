@@ -4,7 +4,7 @@ import io
 import tempfile
 import zipfile
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, File, Request, UploadFile
 from fastapi.responses import Response
@@ -14,6 +14,7 @@ from convsim_core.errors import ConvsimError
 from convsim_core.packs.exporter import export_to_zip
 from convsim_core.packs.importer import safe_extract_zip, import_from_folder, import_from_zip
 from convsim_core.packs.models import ImportResult, PackSummary, ValidationIssue, ValidationResult, ValidationSeverity
+from convsim_core.packs.seeder import seed_official_packs
 from convsim_core.packs.validator import validate_pack_dir
 from convsim_core.storage.repositories.pack_repo import list_packs
 
@@ -26,6 +27,23 @@ class _FolderImportBody(BaseModel):
     path: str
 
 
+class _PackListItem(BaseModel):
+    """Pack summary in the shape expected by the web frontend."""
+    pack_id: str
+    name: str
+    scenario_count: int
+    pack_root: Optional[str] = None
+
+
+class _PacksListResponse(BaseModel):
+    packs: list[_PackListItem]
+    total: int
+
+
+class _ReseedResponse(BaseModel):
+    seeded: int
+
+
 def _is_within(path: Path, base: Path) -> bool:
     """Return True if path is equal to or a descendant of base."""
     try:
@@ -35,10 +53,43 @@ def _is_within(path: Path, base: Path) -> bool:
         return False
 
 
-@router.get("", response_model=list[PackSummary])
-async def get_packs(request: Request) -> list[PackSummary]:
-    """List all installed packs."""
-    return list_packs(request.app.state.db.connection())
+@router.get("", response_model=_PacksListResponse)
+async def get_packs(request: Request) -> _PacksListResponse:
+    """List all installed packs with scenario counts."""
+    conn = request.app.state.db.connection()
+    rows = conn.execute(
+        """
+        SELECT p.slug, p.name, p.source_path, COUNT(s.id) AS scenario_count
+        FROM packs p
+        LEFT JOIN scenarios s ON s.pack_id = p.id
+        GROUP BY p.id
+        ORDER BY p.installed_at DESC
+        """
+    ).fetchall()
+    items = [
+        _PackListItem(
+            pack_id=row["slug"],
+            name=row["name"],
+            scenario_count=row["scenario_count"],
+            pack_root=row["source_path"],
+        )
+        for row in rows
+    ]
+    return _PacksListResponse(packs=items, total=len(items))
+
+
+@router.post("/reseed", response_model=_ReseedResponse)
+async def reseed_official_packs(request: Request) -> _ReseedResponse:
+    """Re-run official pack seeding on demand.
+
+    Idempotent: packs already installed at the current bundled version are
+    skipped.  Useful for recovering from a manually deleted pack library.
+    Returns the count of packs that were seeded or upgraded.
+    """
+    config = request.app.state.service_config
+    db = request.app.state.db
+    seeded = seed_official_packs(config, db.connection())
+    return _ReseedResponse(seeded=seeded)
 
 
 @router.post("/import/zip", response_model=ImportResult, status_code=201)
