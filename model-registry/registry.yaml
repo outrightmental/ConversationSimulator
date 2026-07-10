@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: Apache-2.0
 # Conversation Simulator model registry
 # Models are not bundled. The app shows license and size before any download.
-# URLs and checksums marked PENDING will be confirmed at Milestone 1.
-# Checksum policy: registry-managed models require sha256 (64-char hex or PENDING).
+# Checksum policy: registry-managed models require sha256 (64-char lowercase hex).
+# All URLs are pinned to a specific Hugging Face repo revision for reproducibility.
 
 schema_version: "0.1"
 
@@ -16,14 +16,15 @@ models:
     format: gguf
     license: Apache-2.0
     license_url: "https://www.apache.org/licenses/LICENSE-2.0"
-    size_gb: 2.6
+    size_gb: 2.5
     hardware:
       min_vram_gb: 4
       recommended_vram_gb: 6
     download:
       provider: huggingface
-      url: "PENDING"
-      sha256: "PENDING"
+      # Pinned to commit a9a60d0 of Qwen/Qwen3-4B-GGUF
+      url: "https://huggingface.co/Qwen/Qwen3-4B-GGUF/resolve/a9a60d009fa7ff9606305047c2bf77ac25dbec49/Qwen3-4B-Q4_K_M.gguf"
+      sha256: "7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5"
     runtime:
       llama_cpp:
         context_length: 8192
@@ -45,8 +46,9 @@ models:
       recommended_vram_gb: 8
     download:
       provider: huggingface
-      url: "PENDING"
-      sha256: "PENDING"
+      # Pinned to commit 6a56986 of Qwen/Qwen3-8B-GGUF
+      url: "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/6a569868d07d3bd59e8b97fb001bf8c0b254bb20/Qwen3-8B-Q4_K_M.gguf"
+      sha256: "d98cdcbd03e17ce47681435b5150e34c1417f50b5c0019dd560e4882c5745785"
     runtime:
       llama_cpp:
         context_length: 8192
@@ -68,8 +70,9 @@ models:
       recommended_vram_gb: 12
     download:
       provider: huggingface
-      url: "PENDING"
-      sha256: "PENDING"
+      # Pinned to commit c75e7b2 of Qwen/Qwen3-14B-GGUF
+      url: "https://huggingface.co/Qwen/Qwen3-14B-GGUF/resolve/c75e7b2d0234068f674a1bacf548ea32e27ccd29/Qwen3-14B-Q4_K_M.gguf"
+      sha256: "500a8806e85ee9c83f3ae08420295592451379b4f8cf2d0f41c15dffeb6b81f0"
     runtime:
       llama_cpp:
         context_length: 8192
@@ -83,14 +86,15 @@ models:
     format: gguf
     license: Apache-2.0
     license_url: "https://www.apache.org/licenses/LICENSE-2.0"
-    size_gb: 14.8
+    size_gb: 14.3
     hardware:
       min_vram_gb: 16
       recommended_vram_gb: 24
     download:
       provider: huggingface
-      url: "PENDING"
-      sha256: "PENDING"
+      # Pinned to commit 0484476 of bartowski/mistralai_Mistral-Small-3.1-24B-Instruct-2503-GGUF
+      url: "https://huggingface.co/bartowski/mistralai_Mistral-Small-3.1-24B-Instruct-2503-GGUF/resolve/0484476cded2c5b0dc40cf3ba095dca4648e4f8f/mistralai_Mistral-Small-3.1-24B-Instruct-2503-Q4_K_M.gguf"
+      sha256: "c5743c1bf39db0ae8a5ade5df0374b8e9e492754a199cfdad7ef393c1590f7c0"
     runtime:
       llama_cpp:
         context_length: 32768
