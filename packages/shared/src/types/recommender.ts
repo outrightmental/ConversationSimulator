@@ -117,9 +117,11 @@ export function recommendNext(
       points -= 10;
     }
 
-    // Skip scenarios with no metadata signal and no points.
-    if (points <= 0 && allDims.length === 0 && !s.ladder_position) continue;
-
+    // Every installed scenario remains eligible so the training plan always
+    // surfaces up to 3 suggestions. Scenarios that lack ladder/dimension
+    // metadata simply score 0 and fill the remaining slots after any that
+    // target a weak dimension — they never displace a stronger match, but they
+    // keep the recommender useful before pack authors add the optional fields.
     if (!reason) reason = 'Broaden your practice with a different scenario.';
 
     scored.push({ scenario: s, points, reason });

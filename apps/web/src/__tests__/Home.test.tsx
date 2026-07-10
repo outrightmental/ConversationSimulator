@@ -544,7 +544,9 @@ describe('Home — training plan section', () => {
     ]
     stubFetches(makeHealth(), makePacks(1), makeLogbook({ total_sessions: 0 }), scenarios)
     renderHome()
-    expect(await screen.findByText('Starter Chat')).toBeInTheDocument()
+    const link = await screen.findByText('Starter Chat')
+    // Recommendation links to the scenario setup screen, not the generic library.
+    expect(link.closest('a')).toHaveAttribute('href', '/setup/s_intro')
   })
 
   it('recommends a scenario targeting the weakest dimension with an active profile', async () => {

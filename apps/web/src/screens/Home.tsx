@@ -244,7 +244,7 @@ export default function Home() {
               >
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', flexWrap: 'wrap' }}>
                   <Link
-                    to={`/library?scenario=${rec.scenario_id}`}
+                    to={`/setup/${rec.scenario_id}`}
                     style={{ fontWeight: 600, color: '#e8e8ea', textDecoration: 'none' }}
                   >
                     {rec.title}

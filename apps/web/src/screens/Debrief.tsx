@@ -823,7 +823,7 @@ export default function Debrief() {
                   <li key={`${rec.pack_id}/${rec.scenario_id}`} style={{ fontSize: '0.875rem' }}>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', flexWrap: 'wrap' }}>
                       <Link
-                        to={`/library?scenario=${rec.scenario_id}`}
+                        to={`/setup/${rec.scenario_id}`}
                         data-testid="next-up-link"
                         style={{ fontWeight: 600, color: '#e8e8ea', textDecoration: 'none' }}
                       >

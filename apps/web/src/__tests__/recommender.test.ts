@@ -270,6 +270,45 @@ describe('recommendNext — active profile', () => {
     expect(recs.length).toBeLessThanOrEqual(3)
   })
 
+  it('still surfaces suggestions when installed scenarios lack ladder/dimension metadata', () => {
+    // Real packs may not declare the optional metadata yet; an active user with
+    // installed packs must not be told to "install a pack".
+    const profile = makeProfile({
+      total_sessions: 5,
+      dimension_scores: [
+        { dimension_id: 'clarity', rolling_score: 40, session_count: 5, trajectory: [40] },
+      ],
+    })
+    const scenarios = [
+      makeScenario({ scenario_id: 's1', pack_id: 'p1', title: 'Plain One' }),
+      makeScenario({ scenario_id: 's2', pack_id: 'p2', title: 'Plain Two' }),
+    ]
+    const recs = recommendNext(profile, scenarios)
+    expect(recs.length).toBeGreaterThan(0)
+    expect(recs.length).toBeLessThanOrEqual(3)
+    expect(recs.every((r) => r.reason.length > 0)).toBe(true)
+  })
+
+  it('ranks a weak-dimension match above metadata-less scenarios', () => {
+    const profile = makeProfile({
+      total_sessions: 5,
+      dimension_scores: [
+        { dimension_id: 'clarity', rolling_score: 20, session_count: 5, trajectory: [20] },
+      ],
+    })
+    const scenarios = [
+      makeScenario({ scenario_id: 's_plain', pack_id: 'p1', title: 'Plain' }),
+      makeScenario({
+        scenario_id: 's_match',
+        pack_id: 'p2',
+        title: 'Targeted',
+        tested_dimensions: ['clarity'],
+      }),
+    ]
+    const recs = recommendNext(profile, scenarios)
+    expect(recs[0].scenario_id).toBe('s_match')
+  })
+
   it('never recommends a scenario from an uninstalled pack', () => {
     // Only the installed scenario should appear.
     const profile = makeProfile({
