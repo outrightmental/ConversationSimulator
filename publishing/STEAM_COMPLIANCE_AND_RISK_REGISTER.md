@@ -391,8 +391,11 @@ gate (Stage 3) or the public release gate (Stage 4).
 - [ ] macOS build is notarised with Apple Developer ID; Gatekeeper passes on a clean macOS install.
 - [ ] Windows build is code-signed; SmartScreen does not block installation on a clean Windows install.
 - [ ] Steam Deck verification checklist in `docs/STEAM_ROADMAP.md` is complete and all items pass.
-- [ ] Steam store page copy has been reviewed for accuracy; no language claims AI therapy, diagnosis, or legal advice.
-- [ ] Steam store page does not imply paid content or a marketplace that does not exist in v1.
+- [ ] Steam store page copy has been reviewed using the checklist in [`publishing/STEAM_STORE_PAGE.md`](STEAM_STORE_PAGE.md) — Store page review checklist.
+- [ ] Store page copy accuracy: no language claims AI therapy, diagnosis, or legal advice (gate G4-04).
+- [ ] Steam store page does not imply paid content or a marketplace that does not exist in v1 (gate G4-04).
+- [ ] All store page copy sign-off rows in [`publishing/STEAM_STORE_PAGE.md`](STEAM_STORE_PAGE.md) — Sign-off table are completed with reviewer name and date.
+- [ ] All capsule assets, screenshots, and trailer reviewed against the production brief in [`publishing/STEAM_ASSETS_SPEC.md`](STEAM_ASSETS_SPEC.md) and uploaded to Steamworks.
 
 ### SR-08 — Depot content audit
 
@@ -456,6 +459,9 @@ team is unblocked.
 
 ## Links
 
+- [`publishing/STEAM_STORE_PAGE.md`](STEAM_STORE_PAGE.md) — canonical store copy, system requirements, genres/tags, age disclosures, and store review checklist (SR-07 reference)
+- [`publishing/STEAM_ASSETS_SPEC.md`](STEAM_ASSETS_SPEC.md) — capsule art, screenshot, and trailer production briefs
+- [`publishing/STEAM_APP_REGISTRATION.md`](STEAM_APP_REGISTRATION.md) — app identity, depot layout, and CI credentials
 - [`docs/STEAM_ROADMAP.md`](../docs/STEAM_ROADMAP.md) — release train, principles, and model download transparency spec
 - [`docs/privacy.md`](../docs/privacy.md) — local-first data handling details
 - [`docs/network-security.md`](../docs/network-security.md) — runtime network enforcement
