@@ -97,7 +97,12 @@ export function recommendNext(
       const dimId = topDim?.dimension_id ?? matchingWeak[0];
       const dimScore = profile.dimension_scores.find((d) => d.dimension_id === dimId);
       const scoreLabel = dimScore ? Math.round(dimScore.rolling_score) : '—';
-      reason = `Your ${dimId.replace(/_/g, ' ')} score (${scoreLabel}) is your weakest metric; this scenario drills it.`;
+      // Only claim "your weakest metric" when the drilled dimension really is
+      // the global lowest; otherwise it is merely one of the weakest, and
+      // over-claiming would make the explanation inaccurate.
+      const isGlobalWeakest = sorted.length > 0 && dimId === sorted[0].dimension_id;
+      const rank = isGlobalWeakest ? 'your weakest metric' : 'one of your weakest metrics';
+      reason = `Your ${dimId.replace(/_/g, ' ')} score (${scoreLabel}) is ${rank}; this scenario drills it.`;
     }
 
     // Ladder-position suitability bonus.

@@ -322,4 +322,21 @@ describe('recommendNext — active profile', () => {
     const recs = recommendNext(profile, installedScenarios)
     expect(recs.every((r) => r.pack_id === 'installed_pack')).toBe(true)
   })
+
+  it('does not over-claim "weakest" when the drilled dimension is not the global lowest', () => {
+    const profile = makeProfile({
+      dimension_scores: [
+        { dimension_id: 'open_question_rate', rolling_score: 10, session_count: 3, trajectory: [10] },
+        { dimension_id: 'clarity', rolling_score: 25, session_count: 3, trajectory: [25] },
+      ],
+    })
+    const scenarios = [
+      // Only tests clarity (the 2nd-weakest), not the global weakest.
+      makeScenario({ scenario_id: 's1', pack_id: 'p1', title: 'Clarity drill', tested_dimensions: ['clarity'] }),
+    ]
+    const recs = recommendNext(profile, scenarios)
+    expect(recs[0].reason).toMatch(/clarity/i)
+    expect(recs[0].reason).toMatch(/one of your weakest metrics/i)
+    expect(recs[0].reason).not.toMatch(/is your weakest metric/i)
+  })
 })
