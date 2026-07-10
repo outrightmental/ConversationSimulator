@@ -2,9 +2,17 @@
 # Desktop distribution workflow — runs the full test suite then builds
 # cross-platform Tauri installers and publishes a draft GitHub release.
 #
-# Triggered by a semver tag push (v*) or manual dispatch.  All backend,
-# frontend, schema, pack, and offline smoke tests must pass before the
-# per-platform builds start.
+# Triggered by manual dispatch only (supply the release tag as input).  All
+# backend, frontend, schema, pack, and offline smoke tests must pass before
+# the per-platform builds start.
+#
+# NOTE: this workflow is intentionally NOT wired to `push: tags: 'v*'`.  The
+# canonical automatic tag-push release is owned by `release.yml` (the workflow
+# advertised by the README badge, documented in docs/platform-notes.md, and
+# whose existence the offline smoke tests assert).  Wiring both workflows to
+# the same tag would run the cross-platform Tauri build twice and create two
+# competing draft releases for one tag.  This workflow is the on-demand,
+# fully test-gated build/release you dispatch for a specific tag.
 #
 # Build matrix:
 #   Windows x86_64  — NSIS installer (.exe) + MSI package (.msi)
@@ -20,9 +28,6 @@
 name: Desktop distribution
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
     inputs:
       tag:
