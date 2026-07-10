@@ -163,6 +163,14 @@ check_file "apps/desktop/src-tauri/build.rs"
 check_file "apps/desktop/src-tauri/src/main.rs"
 check_file "apps/desktop/src-tauri/src/lib.rs"
 check_file "apps/desktop/src-tauri/capabilities/default.json"
+# macOS Hardened Runtime entitlements — required for notarization (G3-01) and
+# Steam overlay compatibility (G3-03).  Referenced by tauri.conf.json and by
+# convsim-core.spec when APPLE_SIGNING_IDENTITY is set.
+check_file "apps/desktop/src-tauri/entitlements.plist"
+# macOS Info.plist — merged by Tauri at bundle time; supplies
+# NSMicrophoneUsageDescription. Without it a Hardened Runtime build crashes
+# (SIGABRT) on first mic access instead of prompting, breaking voice input.
+check_file "apps/desktop/src-tauri/Info.plist"
 # Icons referenced by tauri.conf.json are embedded at compile time; a missing
 # file breaks `tauri dev`/`tauri build`, so verify the placeholder set is present.
 check_file "apps/desktop/src-tauri/icons/32x32.png"
