@@ -14,6 +14,8 @@ const DOCS_URL = 'https://github.com/outrightmental/ConversationSimulator/wiki'
 const ISSUES_URL = 'https://github.com/outrightmental/ConversationSimulator/issues/new/choose'
 const TROUBLESHOOTING_BASE =
   'https://github.com/outrightmental/ConversationSimulator/blob/main/docs/troubleshooting.md'
+const BETA_REPORT_URL =
+  'https://github.com/outrightmental/ConversationSimulator/issues/new?template=beta-report.yml&labels=beta-feedback'
 
 export default function Home() {
   const health = useApiHealth()
@@ -272,6 +274,7 @@ export default function Home() {
                 label: t('home.unreachable.openSupport'),
                 href: '/support',
               }}
+              reportProblemHref={BETA_REPORT_URL}
             />
           )}
           {lastError && (
@@ -292,6 +295,7 @@ export default function Home() {
                   label: t('home.recovery.openSupport'),
                   href: '/support',
                 }}
+                reportProblemHref={BETA_REPORT_URL}
               />
             ) : (
               <RuntimeRecoveryCard
@@ -313,6 +317,7 @@ export default function Home() {
                   label: t('home.lastError.reportIssue'),
                   href: ISSUES_URL,
                 }}
+                reportProblemHref={BETA_REPORT_URL}
               />
             )
           )}
