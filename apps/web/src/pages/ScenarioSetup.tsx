@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import type {
   ScenarioInfo,
   ScenarioDifficulty,
+  DifficultyOption,
   SetupFormValues,
   InputMode,
   RuntimeReadiness,
@@ -11,6 +12,28 @@ import type {
 import { validateSetup, randomSeed } from '@convsim/shared';
 import { api } from '../api/client';
 import { readPrivacyPref, PRIVACY_KEYS } from '../privacyPrefs';
+
+const DIFFICULTY_LABELS: Record<ScenarioDifficulty, string> = {
+  warm:        'Warm-up',
+  standard:    'Standard',
+  hard:        'Hard',
+  adversarial: 'Adversarial',
+};
+
+const DIFFICULTY_DESCRIPTIONS: Record<ScenarioDifficulty, string> = {
+  warm:        'The NPC is patient and forthcoming — ideal for first attempts or building confidence.',
+  standard:    'Balanced challenge with realistic NPC behaviour — the author\'s recommended starting point.',
+  hard:        'The NPC is terse, reactive, and discloses little; expect rapid state swings.',
+  adversarial: 'Maximum challenge: very low patience, high state volatility, almost no disclosure, strong time pressure.',
+};
+
+function difficultyDescription(level: ScenarioDifficulty, option: DifficultyOption | undefined): string {
+  return option?.description ?? DIFFICULTY_DESCRIPTIONS[level] ?? level;
+}
+
+function difficultyLabel(level: ScenarioDifficulty, option: DifficultyOption | undefined): string {
+  return option?.label ?? DIFFICULTY_LABELS[level] ?? level.charAt(0).toUpperCase() + level.slice(1);
+}
 
 const LANGUAGE_LABELS: Record<string, string> = {
   en: 'English',
@@ -51,7 +74,7 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   const [form, setForm] = useState<SetupFormValues>({
-    difficulty: 'normal',
+    difficulty: 'standard',
     player_role_name: '',
     language: 'en',
     input_mode: 'text-only',
@@ -229,20 +252,31 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
               Difficulty
             </h2>
             <div className="setup-radio-group" role="radiogroup" aria-label="Difficulty">
-              {availableDifficulties.map((level) => (
-                <label key={level} className="setup-radio-label">
-                  <input
-                    type="radio"
-                    name="difficulty"
-                    value={level}
-                    checked={form.difficulty === level}
-                    onChange={() => setField('difficulty', level)}
-                  />
-                  <span className="setup-radio-text">
-                    {level.charAt(0).toUpperCase() + level.slice(1)}
-                  </span>
-                </label>
-              ))}
+              {availableDifficulties.map((level) => {
+                const option = scenario.difficulty.options[level];
+                return (
+                  <label key={level} className="setup-radio-label">
+                    <input
+                      type="radio"
+                      name="difficulty"
+                      value={level}
+                      checked={form.difficulty === level}
+                      onChange={() => setField('difficulty', level)}
+                    />
+                    <span className="setup-radio-text">
+                      <span className="setup-difficulty-name">
+                        {difficultyLabel(level, option)}
+                        {level === scenario.difficulty.default && (
+                          <span className="setup-difficulty-recommended"> (recommended)</span>
+                        )}
+                      </span>
+                      <span className="setup-difficulty-description">
+                        {difficultyDescription(level, option)}
+                      </span>
+                    </span>
+                  </label>
+                );
+              })}
             </div>
           </section>
 

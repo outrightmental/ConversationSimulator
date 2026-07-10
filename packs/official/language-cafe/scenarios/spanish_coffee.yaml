@@ -6,7 +6,7 @@ summary: >-
   You are visiting Café Sol in Madrid. Rosa García, the barista, will greet
   you and take your order in Spanish. Practice ordering a drink, asking
   questions, and making small talk. The target language is Spanish (es).
-  Difficulty controls language correction: easy = none, normal = light
+  Difficulty controls language correction: warm = none, standard = light
   (implicit recasting), hard = explicit correction with practice prompts.
 player_role:
   label: Language Learner
@@ -63,20 +63,36 @@ state:
       visibility: hidden
       max_delta_per_turn: 10
 difficulty:
-  default: normal
+  default: standard
   options:
-    easy:
-      correction_style: none
-      npc_patience_modifier: 20
-      challenge_frequency: low
-    normal:
-      correction_style: light
-      npc_patience_modifier: 0
-      challenge_frequency: medium
+    warm:
+      patience: 80
+      volatility: 20
+      disclosure: 80
+      time_pressure: 10
+      label: Warm-up
+      description: Rosa is very patient and offers plenty of hints — no corrections, just encouragement.
+    standard:
+      patience: 55
+      volatility: 45
+      disclosure: 55
+      time_pressure: 30
+      label: Standard
+      description: Rosa recasts errors gently and keeps the conversation moving at a natural café pace.
     hard:
-      correction_style: strict
-      npc_patience_modifier: -10
-      challenge_frequency: high
+      patience: 30
+      volatility: 65
+      disclosure: 30
+      time_pressure: 55
+      label: Hard
+      description: Rosa corrects explicitly and slows down noticeably when comprehension is low.
+    adversarial:
+      patience: 10
+      volatility: 85
+      disclosure: 10
+      time_pressure: 75
+      label: Adversarial
+      description: Rosa speaks at full native speed, volunteers nothing, and moves on quickly — sink or swim.
 events:
   - id: comprehension_low
     when:

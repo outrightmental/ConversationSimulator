@@ -44,7 +44,7 @@
     },
     "difficulty": {
       "type": "string",
-      "enum": ["easy", "normal", "hard"],
+      "enum": ["warm", "standard", "hard", "adversarial"],
       "description": "Difficulty setting to use when running the fixture."
     },
     "turns": {
