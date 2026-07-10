@@ -48,6 +48,8 @@ async def post_crash_bundle(request: Request) -> _CrashBundleResponse:
     """
     config = request.app.state.service_config
     settings = request.app.state.app_settings
-    bundle_path = create_crash_bundle(config.log_dir, settings)
+    bundle_path = create_crash_bundle(
+        config.log_dir, settings, bundle_dir=config.crash_bundles_dir
+    )
     logger.info("Crash bundle created at %s", redact_path(str(bundle_path)))
     return _CrashBundleResponse(bundle_path=str(bundle_path), notice=_BUNDLE_NOTICE)

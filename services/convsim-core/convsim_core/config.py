@@ -8,11 +8,17 @@ from typing import Optional
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-_DEFAULT_DATA_DIR = str(Path.home() / ".convsim" / "data")
-_DEFAULT_LOG_DIR = str(Path.home() / ".convsim" / "logs")
-_DEFAULT_DB_DIR = str(Path.home() / ".convsim" / "db")
-_DEFAULT_PACKS_DIR = str(Path.home() / ".convsim" / "packs")
-_DEFAULT_EXPORTS_DIR = str(Path.home() / ".convsim" / "exports")
+from convsim_core.paths import platform_data_root as _platform_data_root
+
+_DATA_ROOT = _platform_data_root()
+
+_DEFAULT_DATA_DIR = str(_DATA_ROOT / "data")
+_DEFAULT_LOG_DIR = str(_DATA_ROOT / "logs")
+_DEFAULT_DB_DIR = str(_DATA_ROOT / "db")
+_DEFAULT_PACKS_DIR = str(_DATA_ROOT / "packs")
+_DEFAULT_EXPORTS_DIR = str(_DATA_ROOT / "exports")
+_DEFAULT_CACHE_DIR = str(_DATA_ROOT / "cache")
+_DEFAULT_CRASH_BUNDLES_DIR = str(_DATA_ROOT / "crashes")
 
 
 def _default_official_packs_dir() -> str:
@@ -66,7 +72,9 @@ class ServiceConfig(BaseSettings):
     # to <packs_dir>/local-dev when unset.
     local_dev_packs_dir: Optional[str] = None
     exports_dir: str = _DEFAULT_EXPORTS_DIR
-    models_dir: str = str(Path.home() / ".convsim" / "models" / "llm")
+    cache_dir: str = _DEFAULT_CACHE_DIR
+    crash_bundles_dir: str = _DEFAULT_CRASH_BUNDLES_DIR
+    models_dir: str = str(_DATA_ROOT / "models" / "llm")
     lan_access_enabled: bool = False
     runtime_id: str = "fake"
     stt_worker_id: str = "whisper_cpp"
