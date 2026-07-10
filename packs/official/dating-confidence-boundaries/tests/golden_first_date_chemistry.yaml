@@ -1,0 +1,157 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: golden_first_date_chemistry
+scenario_id: first_date_chemistry
+description: >-
+  Golden transcript property test: verifies that a player who matches Sam's
+  opening energy, builds on what Sam actually says rather than pivoting to
+  themselves, leaves space for Sam to direct the conversation, and shares
+  something small but genuine causes sam_interest to exceed the success
+  threshold. Also verifies event structure, variable visibility, and safety.
+
+seed: 42
+input_mode: text
+difficulty: normal
+
+turns:
+  - turn: 1
+    player_input: >-
+      Ha — okay, I'm glad you said that because I typed and deleted
+      about four different "I'm here" messages. Slightly nervous is
+      exactly where I'm at too. I'm really glad you're here. What made
+      you actually decide to come tonight?
+    expect:
+      state_delta_contains:
+        - connection
+        - sam_interest
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 2
+    player_input: >-
+      That is genuinely a good reason. I almost convinced myself I was
+      busy — I'm glad I didn't. The housing thing sounds really interesting,
+      by the way — is that something you kind of fell into or something
+      you went looking for?
+    expect:
+      state_delta_contains:
+        - connection
+        - comfort
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 3
+    player_input: >-
+      I feel like "ended up in it by accident and stayed because it
+      mattered" is kind of the best possible origin story for a job.
+      I'm still figuring out whether my work feels like that. I think
+      it's getting there. What does a day actually look like for you?
+      Like the part that's not in the job title.
+    expect:
+      state_delta_contains:
+        - connection
+        - sam_interest
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 4
+    player_input: >-
+      I feel like I should tell you that I'm a little bit terrible at
+      first dates — I either overthink everything or I forget to seem
+      like a normal human. I think this one is going well, for what
+      it's worth. You're easy to talk to.
+    expect:
+      state_delta_contains:
+        - comfort
+        - sam_interest
+      session_control: continue_session
+      safety_status: ok
+
+static_assertions:
+  - description: Scenario opening line is non-empty
+    path: opening.npc_says
+    check: non_empty_string
+
+  - description: At least one event is defined
+    path: events
+    check: min_length_1
+
+  - description: genuine_spark fires when sam_interest exceeds 65
+    path: events[id=genuine_spark].when
+    check: "type=variable_above AND variable=sam_interest AND threshold=65"
+
+  - description: genuine_spark fires only once
+    path: events[id=genuine_spark].repeat
+    check: "equals false"
+
+  - description: personal_share fires when comfort exceeds 72
+    path: events[id=personal_share].when
+    check: "type=variable_above AND variable=comfort AND threshold=72"
+
+  - description: personal_share fires only once
+    path: events[id=personal_share].repeat
+    check: "equals false"
+
+  - description: oversharing_check fires when awkwardness exceeds 48
+    path: events[id=oversharing_check].when
+    check: "type=variable_above AND variable=awkwardness AND threshold=48"
+
+  - description: oversharing_check can repeat
+    path: events[id=oversharing_check].repeat
+    check: "equals true"
+
+  - description: connection_stall fires when connection falls below 20
+    path: events[id=connection_stall].when
+    check: "type=variable_below AND variable=connection AND threshold=20"
+
+  - description: connection_stall can repeat
+    path: events[id=connection_stall].repeat
+    check: "equals true"
+
+  - description: Success ending condition targets sam_interest above 70
+    path: ending_conditions.success
+    check: "type=variable_above AND variable=sam_interest AND threshold=70"
+
+  - description: Failure ending condition targets awkwardness above 82
+    path: ending_conditions.failure
+    check: "type=variable_above AND variable=awkwardness AND threshold=82"
+
+  - description: connection is player-visible
+    path: state.variables.connection.visibility
+    check: "equals visible"
+
+  - description: comfort is player-visible
+    path: state.variables.comfort.visibility
+    check: "equals visible"
+
+  - description: sam_interest is hidden from player
+    path: state.variables.sam_interest.visibility
+    check: "equals hidden"
+
+  - description: awkwardness is hidden from player
+    path: state.variables.awkwardness.visibility
+    check: "equals hidden"
+
+  - description: NPC is marked fictional
+    path: npc.fictional
+    check: "equals true"
+
+  - description: Safety policy stops nsfw_sexual_content
+    path: safety.content_categories.nsfw_sexual_content
+    check: "equals stop"
+
+  - description: Safety policy redirects harassment_extreme
+    path: safety.content_categories.harassment_extreme
+    check: "equals redirect"
+
+  - description: Safety policy fires stop_with_resource_message for self_harm_crisis
+    path: safety.content_categories.self_harm_crisis
+    check: "equals stop_with_resource_message"
+
+  - description: Pack manifest declares first_date_chemistry as an entry scenario
+    path: manifest.entry_scenarios
+    check: "contains scenarios/first_date_chemistry.yaml"
+
+  - description: Hard difficulty applies a negative patience modifier
+    path: scenario.difficulty.options.hard.npc_patience_modifier
+    check: "equals -20"

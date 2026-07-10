@@ -1,0 +1,138 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: golden_graceful_exit
+scenario_id: graceful_exit
+description: >-
+  Golden transcript property test: verifies that a player who accepts
+  Priya's rejection quickly and without commentary, stays composed without
+  burdening Priya with their feelings, and closes with a brief warm line
+  causes exit_quality to exceed the success threshold and priya_discomfort
+  to stay low. Also verifies event structure, state visibility, and safety.
+
+seed: 42
+input_mode: text
+difficulty: normal
+
+turns:
+  - turn: 1
+    player_input: >-
+      I really appreciate you saying it in person. That took something.
+      And — yeah, totally okay. No hard feelings at all.
+    expect:
+      state_delta_contains:
+        - composure
+        - exit_quality
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 2
+    player_input: >-
+      Honestly, I'm glad we talked at the opening last time. That was a
+      good conversation regardless of this part. You don't need to feel
+      weird about it.
+    expect:
+      state_delta_contains:
+        - exit_quality
+        - priya_discomfort
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 3
+    player_input: >-
+      For what it's worth, I think you handled this really well. I should
+      head back in — I hope you enjoy the rest of the evening.
+    expect:
+      state_delta_contains:
+        - exit_quality
+        - composure
+      session_control: continue_session
+      safety_status: ok
+
+static_assertions:
+  - description: Scenario opening line is non-empty
+    path: opening.npc_says
+    check: non_empty_string
+
+  - description: At least one event is defined
+    path: events
+    check: min_length_1
+
+  - description: priya_relaxes fires when exit_quality exceeds 50
+    path: events[id=priya_relaxes].when
+    check: "type=variable_above AND variable=exit_quality AND threshold=50"
+
+  - description: priya_relaxes fires only once
+    path: events[id=priya_relaxes].repeat
+    check: "equals false"
+
+  - description: clean_exit_moment fires when exit_quality exceeds 72
+    path: events[id=clean_exit_moment].when
+    check: "type=variable_above AND variable=exit_quality AND threshold=72"
+
+  - description: clean_exit_moment fires only once
+    path: events[id=clean_exit_moment].repeat
+    check: "equals false"
+
+  - description: pressure_detected fires when player_pressure exceeds 45
+    path: events[id=pressure_detected].when
+    check: "type=variable_above AND variable=player_pressure AND threshold=45"
+
+  - description: pressure_detected can repeat
+    path: events[id=pressure_detected].repeat
+    check: "equals true"
+
+  - description: discomfort_high fires when priya_discomfort exceeds 65
+    path: events[id=discomfort_high].when
+    check: "type=variable_above AND variable=priya_discomfort AND threshold=65"
+
+  - description: discomfort_high fires only once
+    path: events[id=discomfort_high].repeat
+    check: "equals false"
+
+  - description: Success ending condition targets exit_quality above 65
+    path: ending_conditions.success
+    check: "type=variable_above AND variable=exit_quality AND threshold=65"
+
+  - description: Failure ending condition targets priya_discomfort above 80
+    path: ending_conditions.failure
+    check: "type=variable_above AND variable=priya_discomfort AND threshold=80"
+
+  - description: composure is player-visible
+    path: state.variables.composure.visibility
+    check: "equals visible"
+
+  - description: exit_quality is player-visible
+    path: state.variables.exit_quality.visibility
+    check: "equals visible"
+
+  - description: priya_discomfort is hidden from player
+    path: state.variables.priya_discomfort.visibility
+    check: "equals hidden"
+
+  - description: player_pressure is hidden from player
+    path: state.variables.player_pressure.visibility
+    check: "equals hidden"
+
+  - description: NPC is marked fictional
+    path: npc.fictional
+    check: "equals true"
+
+  - description: Safety policy stops nsfw_sexual_content
+    path: safety.content_categories.nsfw_sexual_content
+    check: "equals stop"
+
+  - description: Safety policy redirects harassment_extreme
+    path: safety.content_categories.harassment_extreme
+    check: "equals redirect"
+
+  - description: Safety policy fires stop_with_resource_message for self_harm_crisis
+    path: safety.content_categories.self_harm_crisis
+    check: "equals stop_with_resource_message"
+
+  - description: Pack manifest declares graceful_exit as an entry scenario
+    path: manifest.entry_scenarios
+    check: "contains scenarios/graceful_exit.yaml"
+
+  - description: Hard difficulty applies a negative patience modifier
+    path: scenario.difficulty.options.hard.npc_patience_modifier
+    check: "equals -20"

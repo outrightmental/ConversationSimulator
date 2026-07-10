@@ -26,8 +26,12 @@
     }
 
     // Exclude model weight files — see risk MD-04 in
-    // publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md.
+    // publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md and the full list of
+    // excluded patterns in publishing/STEAM_DEPOT_CONTENTS.md.
     "FileExclusion" "*.gguf"
     "FileExclusion" "*.bin"
     "FileExclusion" "*.safetensors"
+    "FileExclusion" "*.pt"
+    "FileExclusion" "*.pth"
+    "FileExclusion" "*.ckpt"
 }

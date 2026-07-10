@@ -1,0 +1,57 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: smoke_first_date_chemistry
+scenario_id: first_date_chemistry
+description: >-
+  Verifies that first_date_chemistry loads cleanly, produces a non-empty
+  opening line, and that a genuine, curious response advances the session
+  without a safety stop. Checks connection-building scenario structure
+  including state variables, events, and ending conditions.
+
+seed: 42
+input_mode: text
+difficulty: normal
+
+turns:
+  - turn: 1
+    player_input: >-
+      Ha — you have no idea how much I needed to hear that. I almost
+      sent you three different "hey I'm here" texts and deleted them all.
+      I'm doing really well, actually, now that the awkward first-thirty-
+      seconds part is behind us. I'm curious — what made you decide to
+      actually show up tonight?
+    expect:
+      state_delta_contains:
+        - connection
+        - sam_interest
+      session_control: continue_session
+      safety_status: ok
+
+static_assertions:
+  - description: Scenario opening line is non-empty
+    path: opening.npc_says
+    check: non_empty_string
+  - description: NPC is marked fictional
+    path: npc.fictional
+    check: "equals true"
+  - description: Safety policy stops nsfw_sexual_content
+    path: safety.content_categories.nsfw_sexual_content
+    check: "equals stop"
+  - description: Safety policy has self_harm_crisis protection
+    path: safety.content_categories.self_harm_crisis
+    check: "equals stop_with_resource_message"
+  - description: At least one event is defined
+    path: events
+    check: min_length_1
+  - description: Success ending condition targets sam_interest
+    path: ending_conditions.success
+    check: "type=variable_above AND variable=sam_interest AND threshold=70"
+  - description: Failure ending condition targets awkwardness
+    path: ending_conditions.failure
+    check: "type=variable_above AND variable=awkwardness AND threshold=82"
+  - description: Pack manifest declares this scenario as an entry scenario
+    path: manifest.entry_scenarios
+    check: "contains scenarios/first_date_chemistry.yaml"
+  - description: genuine_spark event fires when sam_interest exceeds 65
+    path: events[id=genuine_spark].when
+    check: "type=variable_above AND variable=sam_interest AND threshold=65"

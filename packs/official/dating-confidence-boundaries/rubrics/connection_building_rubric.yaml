@@ -1,0 +1,50 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+rubric_id: connection_building_rubric
+title: First Date Connection Rubric
+dimensions:
+  - id: active_listening
+    name: Active Listening
+    description: >-
+      Whether the player builds on what Sam has actually said rather than
+      pivoting to themselves — the clearest signal of genuine interest to Sam.
+    scoring:
+      low: Player responds to Sam's answers by pivoting to themselves ("oh yeah, I also...") or asking a new unrelated question rather than engaging with what Sam just shared. Sam's answers stay brief and surface-level.
+      medium: Player references something Sam said but does not go deep — follows up with a polite question but does not signal that what Sam said actually landed or mattered to them.
+      high: Player picks up a specific detail from what Sam said and builds on it — asks a follow-up that could only come from actually hearing what Sam shared, not just waiting for their turn to speak.
+    weight: 0.35
+
+  - id: comfort_building
+    name: Comfort Building
+    description: >-
+      Whether the player creates a space where Sam feels at ease — not
+      performing ease they do not have, but genuinely making the dynamic
+      feel low-pressure.
+    scoring:
+      low: Player's energy is too intense — too much direct complimenting, too many questions in a row, or a tone that signals the player is anxiously monitoring Sam's reaction. Sam becomes quieter and more measured.
+      medium: Player's demeanor is pleasant and appropriate but does not actively make Sam feel more comfortable — neutral rather than warm, which keeps Sam at their initial level of guardedness.
+      high: Player creates space for Sam to relax — through unhurried pace, genuine curiosity without interrogation, and a willingness to share something honest about themselves that gives Sam something to connect with.
+    weight: 0.30
+
+  - id: mutual_consent
+    name: Mutual Consent
+    description: >-
+      Whether the player reads Sam's signals and adjusts accordingly — not
+      pursuing topics or intensity that Sam has signalled they are not ready for.
+    scoring:
+      low: Player misses or ignores Sam's discomfort signals — shorter answers, redirects, or quieter tone — and continues the same approach without adjustment.
+      medium: Player notices Sam pulling back but takes too long to adjust — one or two more turns go by before they recalibrate, by which point some of the comfort has been lost.
+      high: Player responds to Sam's signals almost in real-time — if Sam gives a brief answer, the player reads it as a signal to shift the topic or approach, and does so naturally without calling attention to the adjustment.
+    weight: 0.20
+
+  - id: authentic_presence
+    name: Authentic Presence
+    description: >-
+      Whether the player shows up as a genuine person rather than someone
+      performing interest — a small moment of honesty or self-disclosure
+      that gives Sam something real to connect with.
+    scoring:
+      low: Player's conversation reads as a series of good questions with no self-disclosure — it lands as an interview rather than a mutual exchange. Sam is engaged but the dynamic is asymmetric.
+      medium: Player shares some information about themselves but it is factual rather than revealing — topic rather than feeling, biography rather than perspective. Sam is interested but does not feel like they know the player.
+      high: Player shares something small but genuinely personal — a hesitation, an honest admission, a perspective that could only come from them — that gives Sam something real to respond to. The dynamic becomes mutual.
+    weight: 0.15
