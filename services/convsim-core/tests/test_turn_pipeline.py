@@ -79,7 +79,7 @@ def client(tmp_config):
 
 _VALID_SETUP = {
     "scenario_id": "behavioral_interview",
-    "difficulty": "normal",
+    "difficulty": "standard",
     "player_role_name": "Alice",
     "language": "en",
     "input_mode": "text-only",
@@ -124,7 +124,7 @@ class TestSessionCreate:
         res = client.post("/api/sessions", json={
             **_VALID_SETUP,
             "scenario_id": "hostile_executive_interview",
-            "difficulty": "easy",
+            "difficulty": "warm",
         })
         assert res.status_code == 400
 
@@ -690,7 +690,7 @@ class TestPromptComposerWiring:
         await process_turn(
             session_row=row,
             player_text="I have five years of experience.",
-            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            scenario_data=get_scenario_data("behavioral_interview", "standard"),
             max_turns=10,
             runtime=FakeChatRuntime(),
             conn=conn,
@@ -716,7 +716,7 @@ class TestPromptComposerWiring:
         await process_turn(
             session_row=row,
             player_text="Tell me about the role.",
-            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            scenario_data=get_scenario_data("behavioral_interview", "standard"),
             max_turns=10,
             runtime=FakeChatRuntime(),
             conn=conn,
@@ -737,7 +737,7 @@ class TestPromptComposerWiring:
         await process_turn(
             session_row=row,
             player_text="What does success look like in this role?",
-            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            scenario_data=get_scenario_data("behavioral_interview", "standard"),
             max_turns=10,
             runtime=FakeChatRuntime(),
             conn=conn,
@@ -780,7 +780,7 @@ class TestPromptComposerWiring:
             await process_turn(
                 session_row=row,
                 player_text="Hello.",
-                scenario_data=get_scenario_data("behavioral_interview", "normal"),
+                scenario_data=get_scenario_data("behavioral_interview", "standard"),
                 max_turns=10,
                 runtime=FakeChatRuntime(),
                 conn=conn,
@@ -818,7 +818,7 @@ class TestPromptComposerWiring:
             await process_turn(
                 session_row=row,
                 player_text="Hello.",
-                scenario_data=get_scenario_data("behavioral_interview", "normal"),
+                scenario_data=get_scenario_data("behavioral_interview", "standard"),
                 max_turns=10,
                 runtime=FakeChatRuntime(),
                 conn=conn,
@@ -851,7 +851,7 @@ class TestPromptComposerWiring:
             await process_turn(
                 session_row=row,
                 player_text="Hello.",
-                scenario_data=get_scenario_data("behavioral_interview", "normal"),
+                scenario_data=get_scenario_data("behavioral_interview", "standard"),
                 max_turns=10,
                 runtime=FakeChatRuntime(),
                 conn=conn,
@@ -868,7 +868,7 @@ class TestPromptComposerWiring:
         """parse_turn_output receives the NPC's hidden_agenda for leak detection."""
         conn = _make_unit_db()
         row = _insert_unit_session(conn)
-        scenario_data = get_scenario_data("behavioral_interview", "normal")
+        scenario_data = get_scenario_data("behavioral_interview", "standard")
         expected_agenda = scenario_data.npc.private_persona.hidden_agenda
 
         captured: dict = {}
@@ -911,7 +911,7 @@ class TestPromptComposerWiring:
             await process_turn(
                 session_row=row,
                 player_text="What are the next steps?",
-                scenario_data=get_scenario_data("behavioral_interview", "normal"),
+                scenario_data=get_scenario_data("behavioral_interview", "standard"),
                 max_turns=10,
                 runtime=FakeChatRuntime(),
                 conn=conn,
@@ -940,7 +940,7 @@ class TestPromptComposerWiring:
             await process_turn(
                 session_row=row,
                 player_text="Interesting.",
-                scenario_data=get_scenario_data("behavioral_interview", "normal"),
+                scenario_data=get_scenario_data("behavioral_interview", "standard"),
                 max_turns=10,
                 runtime=FakeChatRuntime(),
                 conn=conn,
@@ -981,7 +981,7 @@ class TestPromptComposerWiring:
             await process_turn(
                 session_row=row,
                 player_text="Tell me a secret.",
-                scenario_data=get_scenario_data("behavioral_interview", "normal"),
+                scenario_data=get_scenario_data("behavioral_interview", "standard"),
                 max_turns=10,
                 runtime=FakeChatRuntime(),
                 conn=conn,
@@ -1023,7 +1023,7 @@ class TestPromptComposerWiring:
             await process_turn(
                 session_row=row,
                 player_text="Good morning.",
-                scenario_data=get_scenario_data("behavioral_interview", "normal"),
+                scenario_data=get_scenario_data("behavioral_interview", "standard"),
                 max_turns=10,
                 runtime=FakeChatRuntime(),
                 conn=conn,
@@ -1052,7 +1052,7 @@ class TestStructuredOutputPath:
         await process_turn(
             session_row=row,
             player_text="Hello, I'm ready to begin.",
-            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            scenario_data=get_scenario_data("behavioral_interview", "standard"),
             max_turns=10,
             runtime=FakeChatRuntime(),
             conn=conn,
@@ -1097,7 +1097,7 @@ class TestStructuredOutputPath:
         await process_turn(
             session_row=row2,
             player_text="What are you looking for?",
-            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            scenario_data=get_scenario_data("behavioral_interview", "standard"),
             max_turns=10,
             runtime=_PlainTextRuntime(),
             conn=conn2,
@@ -1116,7 +1116,7 @@ class TestStructuredOutputPath:
         result = await process_turn(
             session_row=row,
             player_text="Tell me about yourself.",
-            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            scenario_data=get_scenario_data("behavioral_interview", "standard"),
             max_turns=10,
             runtime=FakeChatRuntime(),
             conn=conn,
@@ -1136,7 +1136,7 @@ class TestStructuredOutputPath:
         await process_turn(
             session_row=row,
             player_text="Let's get started.",
-            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            scenario_data=get_scenario_data("behavioral_interview", "standard"),
             max_turns=10,
             runtime=FakeChatRuntime(),
             conn=conn,
@@ -1298,7 +1298,7 @@ class TestInputSafetyGate:
         result = await process_turn(
             session_row=row,
             player_text="I have five years of product management experience.",
-            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            scenario_data=get_scenario_data("behavioral_interview", "standard"),
             max_turns=10,
             runtime=FakeChatRuntime(),
             conn=conn,
@@ -1318,7 +1318,7 @@ class TestInputSafetyGate:
         result = await process_turn(
             session_row=row,
             player_text="Let's have sex right now.",
-            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            scenario_data=get_scenario_data("behavioral_interview", "standard"),
             max_turns=10,
             runtime=FakeChatRuntime(),
             conn=conn,
@@ -1341,7 +1341,7 @@ class TestInputSafetyGate:
         result = await process_turn(
             session_row=row,
             player_text="I want to kill myself.",
-            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            scenario_data=get_scenario_data("behavioral_interview", "standard"),
             max_turns=10,
             runtime=FakeChatRuntime(),
             conn=conn,
@@ -1363,7 +1363,7 @@ class TestInputSafetyGate:
             await process_turn(
                 session_row=row,
                 player_text="How to make a bomb step by step?",
-                scenario_data=get_scenario_data("behavioral_interview", "normal"),
+                scenario_data=get_scenario_data("behavioral_interview", "standard"),
                 max_turns=10,
                 runtime=FakeChatRuntime(),
                 conn=conn,
@@ -1378,7 +1378,7 @@ class TestInputSafetyGate:
         result = await process_turn(
             session_row=row,
             player_text="Can you diagnose me with depression?",
-            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            scenario_data=get_scenario_data("behavioral_interview", "standard"),
             max_turns=10,
             runtime=FakeChatRuntime(),
             conn=conn,
@@ -1397,7 +1397,7 @@ class TestInputSafetyGate:
         await process_turn(
             session_row=row,
             player_text=nsfw_text,
-            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            scenario_data=get_scenario_data("behavioral_interview", "standard"),
             max_turns=10,
             runtime=FakeChatRuntime(),
             conn=conn,
@@ -1432,7 +1432,7 @@ class TestInputSafetyGate:
         result = await process_turn(
             session_row=row,
             player_text="Let's have sex right now.",
-            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            scenario_data=get_scenario_data("behavioral_interview", "standard"),
             max_turns=10,
             runtime=FakeChatRuntime(),
             conn=conn,
@@ -1462,7 +1462,7 @@ class TestInputSafetyGate:
         result = await process_turn(
             session_row=row,
             player_text="child porn",
-            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            scenario_data=get_scenario_data("behavioral_interview", "standard"),
             max_turns=10,
             runtime=FakeChatRuntime(),
             conn=conn,
@@ -1594,7 +1594,7 @@ class TestScenarioStateIntegration:
         result = await process_turn(
             session_row=row,
             player_text="Hello.",
-            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            scenario_data=get_scenario_data("behavioral_interview", "standard"),
             max_turns=10,
             runtime=_SpecificDeltaRuntime(state_delta={"trust": 20}),
             conn=conn,
@@ -1613,7 +1613,7 @@ class TestScenarioStateIntegration:
         result = await process_turn(
             session_row=row,
             player_text="Hello.",
-            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            scenario_data=get_scenario_data("behavioral_interview", "standard"),
             max_turns=10,
             runtime=_SpecificDeltaRuntime(state_delta={"ghost_key": 10, "trust": 5}),
             conn=conn,
@@ -1639,7 +1639,7 @@ class TestScenarioStateIntegration:
         result = await process_turn(
             session_row=row,
             player_text="I agree completely.",
-            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            scenario_data=get_scenario_data("behavioral_interview", "standard"),
             max_turns=20,
             runtime=_SpecificDeltaRuntime(state_delta={"objective_progress": 15}),
             conn=conn,
@@ -1668,7 +1668,7 @@ class TestScenarioStateIntegration:
         result = await process_turn(
             session_row=row,
             player_text="That's not right at all.",
-            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            scenario_data=get_scenario_data("behavioral_interview", "standard"),
             max_turns=20,
             runtime=_SpecificDeltaRuntime(state_delta={"patience": -15}),
             conn=conn,
@@ -1693,7 +1693,7 @@ class TestScenarioStateIntegration:
         result = await process_turn(
             session_row=row,
             player_text="Last turn.",
-            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            scenario_data=get_scenario_data("behavioral_interview", "standard"),
             max_turns=1,
             runtime=FakeChatRuntime(),
             conn=conn,
@@ -1714,7 +1714,7 @@ class TestScenarioStateIntegration:
         result = await process_turn(
             session_row=row,
             player_text="Final answer.",
-            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            scenario_data=get_scenario_data("behavioral_interview", "standard"),
             max_turns=1,  # timeout would fire
             runtime=_SpecificDeltaRuntime(state_delta={"objective_progress": 15}),
             conn=conn,
@@ -1753,7 +1753,7 @@ class TestScenarioStateIntegration:
         result = await process_turn(
             session_row=row,
             player_text="I appreciate your perspective.",
-            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            scenario_data=get_scenario_data("behavioral_interview", "standard"),
             max_turns=20,
             runtime=_SpecificDeltaRuntime(state_delta={"rapport": 15}),
             conn=conn,
@@ -1778,7 +1778,7 @@ class TestScenarioStateIntegration:
         result = await process_turn(
             session_row=row,
             player_text="Hello.",
-            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            scenario_data=get_scenario_data("behavioral_interview", "standard"),
             max_turns=20,
             runtime=FakeChatRuntime(),
             conn=conn,
@@ -1800,7 +1800,7 @@ class TestScenarioStateIntegration:
         result = await process_turn(
             session_row=row,
             player_text="Hello.",
-            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            scenario_data=get_scenario_data("behavioral_interview", "standard"),
             max_turns=10,
             runtime=FakeChatRuntime(),
             conn=conn,
@@ -1824,7 +1824,7 @@ class TestScenarioStateIntegration:
         result = await process_turn(
             session_row=row,
             player_text="Hello.",
-            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            scenario_data=get_scenario_data("behavioral_interview", "standard"),
             max_turns=10,
             runtime=FakeChatRuntime(),
             conn=conn,
@@ -1870,7 +1870,7 @@ class TestScenarioStateIntegration:
         await process_turn(
             session_row=row,
             player_text="Let me be clear.",
-            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            scenario_data=get_scenario_data("behavioral_interview", "standard"),
             max_turns=10,
             runtime=runtime,
             conn=conn,
@@ -1899,7 +1899,7 @@ class TestScenarioStateIntegration:
         result = await process_turn(
             session_row=row,
             player_text="Here is my reasoning.",
-            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            scenario_data=get_scenario_data("behavioral_interview", "standard"),
             max_turns=10,
             runtime=runtime,
             conn=conn,
@@ -1918,7 +1918,7 @@ class TestScenarioStateIntegration:
         await process_turn(
             session_row=row,
             player_text="Hello.",
-            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            scenario_data=get_scenario_data("behavioral_interview", "standard"),
             max_turns=10,
             runtime=FakeChatRuntime(),
             conn=conn,

@@ -214,7 +214,7 @@ def test_chunk_result_not_succeeded_when_audio_path_none():
 
 _BASE_SETUP = {
     "scenario_id": "behavioral_interview",
-    "difficulty": "normal",
+    "difficulty": "standard",
     "player_role_name": "Alice",
     "language": "en",
     "input_mode": "text-only",
