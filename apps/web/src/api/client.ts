@@ -35,11 +35,27 @@ export interface PackSummary {
   pack_id: string
   name: string
   scenario_count: number
+  pack_root?: string
 }
 
 export interface PacksResponse {
   packs: PackSummary[]
   total: number
+}
+
+export interface PackDetail {
+  pack_id: string
+  name: string
+  version: string
+  scenario_count: number
+  pack_root: string
+}
+
+export interface ImportPackResponse {
+  pack_id: string
+  name: string
+  version: string
+  dest: string
 }
 
 export interface SttUploadResponse {
@@ -239,6 +255,21 @@ export const api = {
   },
   getScenario(scenarioId: string): Promise<ScenarioInfo> {
     return get<ScenarioInfo>(`/scenarios/${scenarioId}`)
+  },
+  listPacks(): Promise<PacksResponse> {
+    return get<PacksResponse>('/packs')
+  },
+  getPack(packId: string): Promise<PackDetail> {
+    return get<PackDetail>(`/packs/${packId}`)
+  },
+  async importPack(file: File): Promise<ImportPackResponse> {
+    const res = await fetch(`${BASE}/packs/import`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/zip' },
+      body: file,
+    })
+    if (!res.ok) throw new Error(await parseErrorMessage(res))
+    return res.json() as Promise<ImportPackResponse>
   },
   validatePack(packId: string): Promise<PackValidationResult> {
     return post<PackValidationResult>(`/packs/${packId}/validate`)
