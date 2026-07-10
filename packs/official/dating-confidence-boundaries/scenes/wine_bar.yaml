@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scene_id: wine_bar
+display_name: "Wine Bar — Early Evening"
+description: >-
+  A quiet wine bar in the early evening, before it fills up. Low lighting,
+  small tables, soft background music that does not interfere with conversation.
+  Sam and the player are seated across from each other with their first drinks.
+  The setting is warm and mildly formal — dressed-up-casual, clearly a date
+  context, but relaxed enough for a genuine conversation.
+ambient: wine_bar_evening
