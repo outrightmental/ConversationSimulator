@@ -481,6 +481,59 @@ class TestComputeMetrics:
         assert arc[1]["turn_number"] == 4
         assert arc[1]["state"]["credibility"] == 8
 
+    def test_state_arc_anchored_to_true_meter_values(self):
+        # Deltas stored are clamped changes; variables start from a non-zero
+        # default (e.g. 50). Passing final_state anchors the arc to real values.
+        # credibility: default 50, +5 then +3 → final 58.
+        m = compute_metrics(_GOLDEN_TURNS, final_state={"credibility": 58})
+        arc = m["state_arc"]
+        assert arc[0]["state"]["credibility"] == 55  # 50 + 5
+        assert arc[1]["state"]["credibility"] == 58  # 55 + 3, equals final
+        # Every meter value stays within the schema's [0, 100] range.
+        for entry in arc:
+            for value in entry["state"].values():
+                assert 0 <= value <= 100
+
+    def test_state_arc_final_equals_final_state(self):
+        # A meter that drops must not go negative when anchored to final_state.
+        turns = [
+            _make_turn_row(role="npc_opening", turn_number=0, content="Hi."),
+            _make_turn_row(role="player", turn_number=1, content="Sorry."),
+            _make_turn_row(
+                role="npc", turn_number=2, content="Hmm.",
+                state_delta_json='{"patience": -10}',
+            ),
+        ]
+        # patience default 75, -10 → final 65 (never negative).
+        m = compute_metrics(turns, final_state={"patience": 65})
+        assert m["state_arc"][-1]["state"]["patience"] == 65
+
+    def test_filler_common_words_not_false_positives(self):
+        # Ordinary content words ("I", "you", "so") must not count as fillers.
+        turns = [
+            _make_turn_row(role="npc_opening", turn_number=0, content="Hi."),
+            _make_turn_row(
+                role="player", turn_number=1,
+                content="I think you should so definitely okay it right away.",
+            ),
+            _make_turn_row(role="npc", turn_number=2, content="Ok.", state_delta_json="{}"),
+        ]
+        m = compute_metrics(turns, source_mode="push-to-talk")
+        assert m["filler_word_count"] == 0
+
+    def test_filler_phrase_counted_once(self):
+        turns = [
+            _make_turn_row(role="npc_opening", turn_number=0, content="Hi."),
+            _make_turn_row(
+                role="player", turn_number=1,
+                content="Um, you know, I mean it was like really good.",
+            ),
+            _make_turn_row(role="npc", turn_number=2, content="Ok.", state_delta_json="{}"),
+        ]
+        m = compute_metrics(turns, source_mode="push-to-talk")
+        # "um" + "you know" (phrase) + "i mean" (phrase) + "like" = 4
+        assert m["filler_word_count"] == 4
+
     def test_deterministic_on_same_input(self):
         m1 = compute_metrics(_GOLDEN_TURNS)
         m2 = compute_metrics(_GOLDEN_TURNS)

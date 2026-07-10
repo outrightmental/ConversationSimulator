@@ -137,7 +137,7 @@
         "words_per_turn_npc": {
           "type": "number",
           "minimum": 0,
-          "description": "Mean word count per NPC turn (excluding the opening)."
+          "description": "Mean word count per NPC turn (including the opening monologue)."
         },
         "open_questions": {
           "type": "integer",

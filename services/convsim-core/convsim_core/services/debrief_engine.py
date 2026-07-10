@@ -46,13 +46,24 @@ _SCORE_BASELINE = 50.0
 _SCORE_MIN = 0.0
 _SCORE_MAX = 100.0
 
-# Filler words detected in voice-mode transcripts (STT tokens).
+# Single-token filler / disfluency markers detected in voice-mode transcripts
+# (STT tokens).  Deliberately excludes ordinary content words such as "i",
+# "you", "so", or "okay": those appear in nearly every utterance and counting
+# them would swamp the metric with false positives.
 _FILLER_WORDS: frozenset = frozenset([
-    "um", "uh", "uhm", "err", "er",
+    "um", "umm", "uh", "uhm", "uhh", "erm", "err", "er", "ah", "hmm",
     "like", "basically", "literally", "actually",
-    "you", "know", "i", "mean",
-    "so", "right", "okay",
 ])
+
+# Multi-word filler phrases counted as a single filler when their tokens appear
+# consecutively (e.g. "you know", "i mean").  Matching the phrase avoids
+# counting the individual common words on their own.
+_FILLER_PHRASES: tuple = (
+    ("you", "know"),
+    ("i", "mean"),
+    ("sort", "of"),
+    ("kind", "of"),
+)
 
 # First words (lowercased) that introduce an open-ended question.
 _OPEN_QUESTION_STARTERS: frozenset = frozenset([
@@ -103,6 +114,7 @@ def _parse_iso_timestamp(ts: str) -> Optional[float]:
 def compute_metrics(
     all_turns: List[sqlite3.Row],
     source_mode: str = "text-only",
+    final_state: Optional[Dict[str, int]] = None,
 ) -> Dict[str, Any]:
     """Compute session telemetry metrics from stored transcript rows.
 
@@ -112,10 +124,13 @@ def compute_metrics(
     Args:
         all_turns: Ordered rows from turn_session_turns for one session.
         source_mode: The session input_mode ("text-only", "push-to-talk", "hands-free").
+        final_state: The session's final (clamped) state variable values. Used to
+            anchor the state arc to true meter values: stored deltas are the
+            clamped per-turn change, so the true starting value is
+            ``final_state - sum(deltas)``. When omitted, the arc is relative to
+            zero (deltas only).
     """
     player_turns = [t for t in all_turns if t["role"] == "player"]
-    # NPC response turns only (not the opening monologue) for per-turn metrics.
-    npc_turns = [t for t in all_turns if t["role"] == "npc"]
     all_npc_speech = [t for t in all_turns if t["role"] in ("npc", "npc_opening")]
 
     # --- Talk ratio and words per turn ---
@@ -152,7 +167,22 @@ def compute_metrics(
     if source_mode in ("push-to-talk", "hands-free"):
         for turn in player_turns:
             tokens = re.findall(r"\b\w+\b", (turn["content"] or "").lower())
-            filler_word_count += sum(1 for tok in tokens if tok in _FILLER_WORDS)
+            # Consume tokens left to right so a phrase match doesn't also count
+            # its constituent single-token fillers.
+            i = 0
+            while i < len(tokens):
+                phrase_len = 0
+                for phrase in _FILLER_PHRASES:
+                    if tuple(tokens[i:i + len(phrase)]) == phrase:
+                        phrase_len = len(phrase)
+                        break
+                if phrase_len:
+                    filler_word_count += 1
+                    i += phrase_len
+                    continue
+                if tokens[i] in _FILLER_WORDS:
+                    filler_word_count += 1
+                i += 1
 
     # --- Response latency (player turn submitted → NPC turn persisted) ---
     # Turn numbering: player turn N is at row turn_number=2N-1, NPC at 2N.
@@ -182,21 +212,39 @@ def compute_metrics(
         p95_ms = round(sorted_lat[p95_idx])
 
     # --- State arc: cumulative state after each NPC response turn ---
-    # state_delta_json stores incremental changes; accumulate them into running_state.
-    state_arc: List[Dict[str, Any]] = []
-    running_state: Dict[str, int] = {}
+    # state_delta_json stores the *actual* (clamped) per-turn change to each
+    # variable, not the raw meter value.  Scenario variables start from their
+    # defined defaults (e.g. 50), so summing deltas from zero would understate
+    # real meter values and could even go negative.  We anchor the running state
+    # to the true initial values, derived as ``final_state - sum(deltas)``, so
+    # each snapshot reproduces the exact clamped meter value at that turn.
+    parsed_deltas: List[Dict[str, int]] = []
+    total_deltas: Dict[str, int] = {}
     for turn in all_turns:
+        delta_clean: Dict[str, int] = {}
         if turn["state_delta_json"]:
             try:
-                delta = json.loads(turn["state_delta_json"])
-                if isinstance(delta, dict):
-                    for var_name, var_delta in delta.items():
+                raw = json.loads(turn["state_delta_json"])
+                if isinstance(raw, dict):
+                    for var_name, var_delta in raw.items():
                         if isinstance(var_delta, (int, float)):
-                            running_state[var_name] = (
-                                running_state.get(var_name, 0) + int(var_delta)
+                            delta_clean[var_name] = int(var_delta)
+                            total_deltas[var_name] = (
+                                total_deltas.get(var_name, 0) + int(var_delta)
                             )
             except json.JSONDecodeError:
                 pass
+        parsed_deltas.append(delta_clean)
+
+    running_state: Dict[str, int] = {}
+    if final_state:
+        for var_name, final_val in final_state.items():
+            running_state[var_name] = int(final_val) - total_deltas.get(var_name, 0)
+
+    state_arc: List[Dict[str, Any]] = []
+    for turn, delta_clean in zip(all_turns, parsed_deltas):
+        for var_name, var_delta in delta_clean.items():
+            running_state[var_name] = running_state.get(var_name, 0) + var_delta
         if turn["role"] == "npc":
             state_arc.append({
                 "turn_number": turn["turn_number"],
@@ -420,7 +468,9 @@ async def generate_debrief(
 
         # Compute telemetry metrics (pure, deterministic over this transcript).
         source_mode = setup.get("input_mode", "text-only")
-        metrics = compute_metrics(all_turn_rows, source_mode=source_mode)
+        metrics = compute_metrics(
+            all_turn_rows, source_mode=source_mode, final_state=final_state
+        )
 
         # Identify key turning points for fallback and for the LLM.
         key_turns = _identify_key_turns(npc_turn_rows)
