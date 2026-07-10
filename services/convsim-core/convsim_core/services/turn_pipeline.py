@@ -111,7 +111,8 @@ class _SyncRuntimeBridge:
             request = ChatRequest(
                 messages=[ChatMessage(role="user", content=prompt)],
             )
-            return await _collect_runtime_output(self._runtime, request)
+            text, _ = await _collect_runtime_output(self._runtime, request)
+            return text
 
         pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         try:
@@ -180,16 +181,26 @@ def _load_recent_turns(session_id: str, conn: sqlite3.Connection, limit: int = 1
     return entries
 
 
-async def _collect_runtime_output(runtime: ChatRuntime, request: ChatRequest) -> str:
-    """Stream from the runtime and return the final text."""
+async def _collect_runtime_output(
+    runtime: ChatRuntime, request: ChatRequest
+) -> tuple[str, Optional[Dict[str, Any]]]:
+    """Stream from the runtime and return (raw_text, structured).
+
+    ``structured`` is the pre-parsed JSON dict from ``ChatFinal.structured``
+    when the runtime used native JSON-schema constraints.  The caller should
+    prefer ``structured`` over re-parsing ``raw_text`` when it is not None,
+    because grammar-constrained output is always valid JSON.
+    """
     raw_text = ""
+    structured: Optional[Dict[str, Any]] = None
     async for chunk in runtime.chat_stream(request):
         if isinstance(chunk, ChatFinal):
             raw_text = chunk.text
+            structured = chunk.structured
             break  # ChatFinal is authoritative; trailing tokens must not append to it.
         elif isinstance(chunk, ChatToken):
             raw_text += chunk.text
-    return raw_text
+    return raw_text, structured
 
 
 async def process_turn(
@@ -270,15 +281,21 @@ async def process_turn(
         "Calling runtime %s for session %s turn %d (estimated %d tokens, truncated=%s)",
         runtime.id, session_id, turn_number, prompt.estimated_token_count, prompt.was_truncated,
     )
-    raw_text = await _collect_runtime_output(runtime, request)
+    raw_text, native_structured = await _collect_runtime_output(runtime, request)
 
     # 7. Validate / repair / fallback.
+    # When the runtime returned a pre-parsed structured dict (via native JSON-schema
+    # or grammar constraints), serialise it back to a clean JSON string for the
+    # parser so the JSON-extraction step always succeeds on the first try.
+    # The original raw_text is preserved in the DB for the debug drawer.
+    parse_input = json.dumps(native_structured) if native_structured is not None else raw_text
+
     # Wrap the runtime so parse_turn_output can make synchronous repair calls.
     # Hidden agenda is forwarded for verbatim-leak detection in the output validator.
     runtime_bridge = _SyncRuntimeBridge(runtime)
     turn_parse_events: List[TurnEvent] = []
     turn_output = parse_turn_output(
-        raw_text,
+        parse_input,
         runtime=runtime_bridge,
         hidden_agenda=scenario_data.npc.private_persona.hidden_agenda,
         turn_events=turn_parse_events,
@@ -409,6 +426,7 @@ async def process_turn(
             session_id, turn_number, "debug",
             json.dumps({
                 "used_fallback": used_fallback,
+                "used_native_structured_output": native_structured is not None,
                 "parse_events": [
                     {
                         "event_type": e.event_type,
