@@ -220,43 +220,23 @@ export async function packRoutes(app: FastifyInstance) {
 
       const { pack_id } = req.params;
 
-      let packRoot: string | undefined;
+      // Use PackIndex so the canonical schema is applied. Opening a
+      // not-yet-existing index creates an empty one (correct schema) rather
+      // than a divergent minimal table that would break later imports.
+      let packRoot: string;
+      const index = PackIndex.open(_packsDbPath);
       try {
-        // Open without fileMustExist so an empty index (no packs imported yet)
-        // returns 404 instead of 503 from a missing-file exception.
-        const db = new Database(_packsDbPath, { readonly: false });
-        try {
-          db.exec(`
-            CREATE TABLE IF NOT EXISTS installed_packs (
-              pack_id TEXT PRIMARY KEY,
-              name TEXT NOT NULL,
-              pack_root TEXT NOT NULL,
-              version TEXT NOT NULL,
-              scenario_count INTEGER NOT NULL DEFAULT 0
-            )
-          `);
-          const row = db
-            .prepare('SELECT pack_root, version FROM installed_packs WHERE pack_id = ?')
-            .get(pack_id) as { pack_root: string; version: string } | undefined;
-          if (!row) {
-            reply.status(404);
-            throw Object.assign(new Error(`Pack '${pack_id}' not found.`), {
-              statusCode: 404,
-              code: 'NOT_FOUND',
-            });
-          }
-          packRoot = row.pack_root;
-        } finally {
-          db.close();
+        const entry = index.getPack(pack_id);
+        if (!entry) {
+          reply.status(404);
+          throw Object.assign(new Error(`Pack '${pack_id}' not found.`), {
+            statusCode: 404,
+            code: 'NOT_FOUND',
+          });
         }
-      } catch (e) {
-        // Re-throw typed errors (including our 404) directly to Fastify.
-        if ((e as { statusCode?: number }).statusCode) throw e;
-        reply.status(503);
-        throw Object.assign(new Error('Pack index is unavailable.'), {
-          statusCode: 503,
-          code: 'DB_UNAVAILABLE',
-        });
+        packRoot = entry.pack_root;
+      } finally {
+        index.close();
       }
 
       const zip = new AdmZip();

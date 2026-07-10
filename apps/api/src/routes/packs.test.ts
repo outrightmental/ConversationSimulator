@@ -379,6 +379,25 @@ describe('GET /api/packs/:pack_id/export', () => {
     expect(entryNames.some((n) => n.endsWith('manifest.yaml'))).toBe(true);
   });
 
+  it('does not corrupt the pack index when export is called before any import', async () => {
+    // Hitting export on a fresh install (no packs yet) must not create a
+    // divergent installed_packs schema that breaks a subsequent import.
+    const exportRes = await app.inject({
+      method: 'GET',
+      url: '/api/packs/no_such_pack/export',
+    });
+    expect(exportRes.statusCode).toBe(404);
+
+    const zipBuffer = makeValidPackZip(tempDir);
+    const importRes = await app.inject({
+      method: 'POST',
+      url: '/api/packs/import',
+      headers: { 'content-type': 'application/zip' },
+      payload: zipBuffer,
+    });
+    expect(importRes.statusCode).toBe(201);
+  });
+
   it('round-trips: exported zip can be re-imported', async () => {
     const zipBuffer = makeValidPackZip(tempDir);
     await app.inject({
