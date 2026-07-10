@@ -41,9 +41,26 @@ const BTN_DPAD_RIGHT = 15
 const AXIS_LEFT_Y = 1
 const STICK_DEAD_ZONE = 0.5
 
+// True when the element (and every ancestor) is rendered — i.e. not hidden via
+// `display:none` / `visibility:hidden` / the `hidden` attribute.  A hidden
+// element cannot actually receive focus, so `.focus()` silently no-ops and the
+// focus ring gets stuck on it forever.  The concrete offenders are the hidden
+// `<input type="file">` controls used for pack import on Settings, Library, and
+// Workbench — without this filter D-pad navigation soft-locks on those screens.
+function isNavigable(el: HTMLElement): boolean {
+  let node: HTMLElement | null = el
+  while (node) {
+    if (node.hidden) return false
+    const style = window.getComputedStyle(node)
+    if (style.display === 'none' || style.visibility === 'hidden') return false
+    node = node.parentElement
+  }
+  return true
+}
+
 function getFocusableElements(): HTMLElement[] {
   return Array.from(document.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
-    (el) => !el.closest('[data-gamepad-exclude]'),
+    (el) => !el.closest('[data-gamepad-exclude]') && isNavigable(el),
   )
 }
 

@@ -247,6 +247,37 @@ describe('useGamepadNavigation', () => {
     document.body.removeChild(btn2)
   })
 
+  it('skips hidden (display:none) inputs so navigation does not soft-lock', () => {
+    // Regression: the hidden <input type="file"> used for pack import on
+    // Settings/Library/Workbench cannot receive focus, so it must be excluded
+    // from the focus ring — otherwise D-pad navigation gets stuck on it.
+    const btn1 = document.createElement('button')
+    const hidden = document.createElement('input')
+    hidden.type = 'file'
+    hidden.style.display = 'none'
+    const btn2 = document.createElement('button')
+    document.body.appendChild(btn1)
+    document.body.appendChild(hidden)
+    document.body.appendChild(btn2)
+    btn1.focus()
+
+    const BTN_DPAD_DOWN = 13
+    getGamepadsMock
+      .mockReturnValueOnce([makeGamepad({ buttons: makeButtons([]) })])
+      .mockReturnValueOnce([makeGamepad({ buttons: makeButtons([BTN_DPAD_DOWN]) })])
+
+    renderHook(() => useGamepadNavigation())
+    flushRaf()
+    flushRaf()
+
+    // btn2 is next because the hidden file input is skipped.
+    expect(document.activeElement).toBe(btn2)
+
+    document.body.removeChild(btn1)
+    document.body.removeChild(hidden)
+    document.body.removeChild(btn2)
+  })
+
   it('dispatches a click on the focused element when A is pressed', () => {
     const btn = document.createElement('button')
     const clickHandler = vi.fn()
