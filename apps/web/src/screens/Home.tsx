@@ -27,6 +27,8 @@ export default function Home() {
   const { update, dismiss, install } = useAppUpdate()
 
   const [isRestartingSidecar, setIsRestartingSidecar] = useState(false)
+  const [reseeding, setReseeding] = useState(false)
+  const [reseedDone, setReseedDone] = useState(false)
 
   const runtime = health.runtime
   const llmReady = runtime?.llm_ready ?? false
