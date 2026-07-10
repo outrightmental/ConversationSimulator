@@ -283,6 +283,9 @@ export const api = {
   getDataFolder(): Promise<{ path: string }> {
     return get<{ path: string }>('/privacy/data-folder')
   },
+  getFolders(): Promise<{ data: string; logs: string; models: string; packs: string }> {
+    return get<{ data: string; logs: string; models: string; packs: string }>('/privacy/folders')
+  },
   clearLocalData(): Promise<{ deleted_sessions: number }> {
     return post<{ deleted_sessions: number }>('/privacy/clear')
   },

@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import type { SessionCreateRequest } from '@convsim/shared'
+import type { ImportPackResponse } from '../api/client'
 import Settings from '../screens/Settings'
 
 vi.mock('../api/client', () => ({
   api: {
     getDataFolder: vi.fn(),
+    getFolders: vi.fn(),
     clearLocalData: vi.fn(),
     listSessions: vi.fn(),
     deleteSession: vi.fn(),
@@ -22,6 +25,10 @@ vi.mock('../api/client', () => ({
     clearTtsCache: vi.fn(),
     health: vi.fn(),
     vadHealth: vi.fn(),
+    // Pack management
+    listPacks: vi.fn(),
+    importPack: vi.fn(),
+    validatePack: vi.fn(),
   },
 }))
 
@@ -66,6 +73,13 @@ const STUB_RUNTIME_SETTINGS = {
   requires_restart: false,
 }
 
+const STUB_FOLDERS = {
+  data: '/home/user/.convsim/db',
+  logs: '/home/user/.convsim/logs',
+  models: '/home/user/.convsim/models/llm',
+  packs: '/home/user/.convsim/db/packs',
+}
+
 const SESSION_A = {
   session_id: 'sess-aaa',
   scenario_id: 'behavioral_interview',
@@ -82,12 +96,24 @@ const SESSION_B = {
   setup: {} as unknown as SessionCreateRequest,
 }
 
+const STUB_PACK_A = {
+  pack_id: 'pack-alpha',
+  name: 'Alpha Scenarios',
+  scenario_count: 3,
+  pack_root: '/home/user/.convsim/db/packs/pack-alpha',
+}
+
 async function renderSettings() {
-  render(<Settings />)
+  render(
+    <MemoryRouter>
+      <Settings />
+    </MemoryRouter>,
+  )
   // Wait for all mount effects to fire and flush state updates.
   await waitFor(() => {
-    expect(mockApi.getDataFolder).toHaveBeenCalled()
+    expect(mockApi.getFolders).toHaveBeenCalled()
     expect(mockApi.listSessions).toHaveBeenCalled()
+    expect(mockApi.listPacks).toHaveBeenCalled()
     expect(mockApi.getModels).toHaveBeenCalled()
     expect(mockApi.getRuntimeSettings).toHaveBeenCalled()
     expect(mockApi.listVoices).toHaveBeenCalled()
@@ -116,7 +142,11 @@ beforeEach(() => {
   vi.clearAllMocks()
   localStorage.clear()
   mockApi.getDataFolder.mockResolvedValue({ path: '/home/user/.convsim/db' })
+  mockApi.getFolders.mockResolvedValue(STUB_FOLDERS)
   mockApi.listSessions.mockResolvedValue({ sessions: [] })
+  mockApi.listPacks.mockResolvedValue({ packs: [], total: 0 })
+  mockApi.importPack.mockResolvedValue({ pack_id: 'pack-alpha', name: 'Alpha Scenarios', version: '1.0.0', dest: '/tmp/pack-alpha' })
+  mockApi.validatePack.mockResolvedValue({ pack_id: 'pack-alpha', valid: true, errors: [] })
   mockApi.getModels.mockResolvedValue(STUB_MODELS)
   mockApi.getRuntimeSettings.mockResolvedValue(STUB_RUNTIME_SETTINGS)
   mockApi.useModel.mockResolvedValue({ runtime_id: 'llama_cpp', model_id: null, runtime_name: 'llama.cpp', status: 'unavailable', message: null })
@@ -150,7 +180,21 @@ describe('privacy notice', () => {
   it('states no conversation data is sent to external servers', async () => {
     await renderSettings()
     expect(
-      screen.getByText(/no conversation data is ever sent to external servers/i),
+      screen.getByText(/no telemetry is collected/i),
+    ).toBeInTheDocument()
+  })
+
+  it('states no transcript is uploaded automatically', async () => {
+    await renderSettings()
+    expect(
+      screen.getByText(/no transcript is uploaded automatically/i),
+    ).toBeInTheDocument()
+  })
+
+  it('states no model or pack is downloaded without explicit action', async () => {
+    await renderSettings()
+    expect(
+      screen.getByText(/no model or pack is downloaded without an explicit action/i),
     ).toBeInTheDocument()
   })
 })
@@ -214,23 +258,210 @@ describe('TTS cache toggle', () => {
 })
 
 // ---------------------------------------------------------------------------
-// Data folder
+// Model manager link
 // ---------------------------------------------------------------------------
 
-describe('data folder', () => {
-  it('displays the data folder path returned by the API', async () => {
+describe('model manager link', () => {
+  it('shows a link to the model manager', async () => {
+    await renderSettings()
+    expect(
+      screen.getByRole('link', { name: /open model manager/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('model manager link points to /model-manager', async () => {
+    await renderSettings()
+    const link = screen.getByRole('link', { name: /open model manager/i })
+    expect(link).toHaveAttribute('href', '/model-manager')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Pack management — import
+// ---------------------------------------------------------------------------
+
+describe('pack management: import', () => {
+  it('shows the import pack button', async () => {
+    await renderSettings()
+    expect(
+      screen.getByRole('button', { name: /import pack/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('shows "No packs installed yet." when the list is empty', async () => {
     await renderSettings()
     await waitFor(() =>
-      expect(screen.getByTestId('data-folder-path')).toHaveTextContent('/home/user/.convsim/db'),
+      expect(screen.getByTestId('no-packs')).toBeInTheDocument(),
     )
   })
 
-  it('shows an error message when the API fails', async () => {
-    mockApi.getDataFolder.mockRejectedValue(new Error('network error'))
+  it('renders a row for each installed pack', async () => {
+    mockApi.listPacks.mockResolvedValue({ packs: [STUB_PACK_A], total: 1 })
     await renderSettings()
     await waitFor(() =>
-      expect(screen.getByText(/could not retrieve data folder path/i)).toBeInTheDocument(),
+      expect(screen.getByText('Alpha Scenarios')).toBeInTheDocument(),
     )
+    expect(screen.getByText('pack-alpha')).toBeInTheDocument()
+  })
+
+  it('shows an error when listPacks fails', async () => {
+    mockApi.listPacks.mockRejectedValue(new Error('network'))
+    await renderSettings()
+    await waitFor(() =>
+      expect(screen.getByText(/could not load installed packs/i)).toBeInTheDocument(),
+    )
+  })
+
+  it('shows importing state while uploading', async () => {
+    let resolveImport!: (v: ImportPackResponse) => void
+    mockApi.importPack.mockReturnValue(new Promise<ImportPackResponse>((r) => { resolveImport = r }))
+    await renderSettings()
+    const button = screen.getByRole('button', { name: /import pack/i })
+    const fileInput = screen.getByTestId('settings-import-file-input')
+    const file = new File(['PK'], 'pack.zip', { type: 'application/zip' })
+    fireEvent.change(fileInput, { target: { files: [file] } })
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /import pack/i })).toHaveTextContent(/importing/i),
+    )
+    expect(button).toBeDisabled()
+    resolveImport({ pack_id: 'pack-alpha', name: 'Alpha Scenarios', version: '1.0.0', dest: '/tmp/pack-alpha' })
+  })
+
+  it('shows success message after a successful import', async () => {
+    await renderSettings()
+    const fileInput = screen.getByTestId('settings-import-file-input')
+    const file = new File(['PK'], 'pack.zip', { type: 'application/zip' })
+    fireEvent.change(fileInput, { target: { files: [file] } })
+    await waitFor(() =>
+      expect(screen.getByTestId('settings-import-success')).toBeInTheDocument(),
+    )
+    expect(screen.getByTestId('settings-import-success')).toHaveTextContent(/alpha scenarios/i)
+  })
+
+  it('shows an error message when import fails', async () => {
+    mockApi.importPack.mockRejectedValue(new Error('Invalid pack format'))
+    await renderSettings()
+    const fileInput = screen.getByTestId('settings-import-file-input')
+    const file = new File(['bad'], 'pack.zip', { type: 'application/zip' })
+    fireEvent.change(fileInput, { target: { files: [file] } })
+    await waitFor(() =>
+      expect(screen.getByTestId('settings-import-error')).toBeInTheDocument(),
+    )
+    expect(screen.getByTestId('settings-import-error')).toHaveTextContent(/invalid pack format/i)
+  })
+
+  it('calls importPack with the selected file', async () => {
+    await renderSettings()
+    const fileInput = screen.getByTestId('settings-import-file-input')
+    const file = new File(['PK'], 'mypack.zip', { type: 'application/zip' })
+    fireEvent.change(fileInput, { target: { files: [file] } })
+    await waitFor(() => expect(mockApi.importPack).toHaveBeenCalledWith(file))
+  })
+
+  it('reloads the pack list after a successful import', async () => {
+    mockApi.importPack.mockResolvedValue({ pack_id: 'pack-alpha', name: 'Alpha Scenarios', version: '1.0.0', dest: '/tmp/pack-alpha' })
+    mockApi.listPacks
+      .mockResolvedValueOnce({ packs: [], total: 0 })
+      .mockResolvedValueOnce({ packs: [STUB_PACK_A], total: 1 })
+    await renderSettings()
+    const fileInput = screen.getByTestId('settings-import-file-input')
+    const file = new File(['PK'], 'pack.zip', { type: 'application/zip' })
+    fireEvent.change(fileInput, { target: { files: [file] } })
+    await waitFor(() =>
+      expect(screen.getByText('Alpha Scenarios')).toBeInTheDocument(),
+    )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Local folders
+// ---------------------------------------------------------------------------
+
+describe('local folders', () => {
+  it('displays the data folder path', async () => {
+    await renderSettings()
+    await waitFor(() =>
+      expect(screen.getByTestId('folder-path-data')).toHaveTextContent('/home/user/.convsim/db'),
+    )
+  })
+
+  it('displays the logs folder path', async () => {
+    await renderSettings()
+    await waitFor(() =>
+      expect(screen.getByTestId('folder-path-logs')).toHaveTextContent('/home/user/.convsim/logs'),
+    )
+  })
+
+  it('displays the models folder path', async () => {
+    await renderSettings()
+    await waitFor(() =>
+      expect(screen.getByTestId('folder-path-models')).toHaveTextContent('/home/user/.convsim/models/llm'),
+    )
+  })
+
+  it('displays the packs folder path', async () => {
+    await renderSettings()
+    await waitFor(() =>
+      expect(screen.getByTestId('folder-path-packs')).toHaveTextContent('/home/user/.convsim/db/packs'),
+    )
+  })
+
+  it('shows copy buttons for each folder', async () => {
+    await renderSettings()
+    await waitFor(() => screen.getByTestId('folder-path-data'))
+    expect(screen.getByRole('button', { name: /copy data folder path/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /copy logs folder path/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /copy models folder path/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /copy packs folder path/i })).toBeInTheDocument()
+  })
+
+  it('shows an error message when getFolders fails', async () => {
+    mockApi.getFolders.mockRejectedValue(new Error('network error'))
+    await renderSettings()
+    await waitFor(() =>
+      expect(screen.getByText(/could not retrieve folder paths/i)).toBeInTheDocument(),
+    )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Local folders — desktop "Open" integration (Tauri shell)
+// ---------------------------------------------------------------------------
+
+describe('local folders: open in desktop shell', () => {
+  const win = window as unknown as { __TAURI__?: unknown }
+
+  afterEach(() => {
+    delete win.__TAURI__
+  })
+
+  it('does not render Open buttons outside the desktop shell', async () => {
+    await renderSettings()
+    await waitFor(() => screen.getByTestId('folder-path-data'))
+    expect(screen.queryByRole('button', { name: /open data folder/i })).not.toBeInTheDocument()
+  })
+
+  it('invokes the shell with the folder path when Open is clicked', async () => {
+    const invoke = vi.fn().mockResolvedValue(undefined)
+    win.__TAURI__ = { core: { invoke } }
+    await renderSettings()
+    await waitFor(() => screen.getByTestId('folder-path-data'))
+    fireEvent.click(screen.getByRole('button', { name: /open logs folder/i }))
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith('plugin:shell|open', { path: '/home/user/.convsim/logs' }),
+    )
+  })
+
+  it('shows a fallback message when the shell rejects the path', async () => {
+    const invoke = vi.fn().mockRejectedValue(new Error('not allowed'))
+    win.__TAURI__ = { core: { invoke } }
+    await renderSettings()
+    await waitFor(() => screen.getByTestId('folder-path-data'))
+    fireEvent.click(screen.getByRole('button', { name: /open data folder/i }))
+    await waitFor(() =>
+      expect(screen.getByTestId('folder-open-error')).toBeInTheDocument(),
+    )
+    expect(screen.getByTestId('folder-open-error')).toHaveTextContent(/copy the path/i)
   })
 })
 
