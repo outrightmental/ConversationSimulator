@@ -199,7 +199,7 @@ def compute_metrics(
         if p_time is None or n_time is None:
             continue
         delta_ms = (n_time - p_time) * 1000.0
-        if 0 < delta_ms < _LATENCY_MAX_MS:
+        if 0 <= delta_ms < _LATENCY_MAX_MS:
             latencies_ms.append(delta_ms)
 
     p50_ms: Optional[int] = None
