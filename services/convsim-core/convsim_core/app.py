@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
@@ -51,6 +52,10 @@ def create_app(config: ServiceConfig | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         db = Database.open(config.db_dir)
+        # Create the exports folder eagerly so the Settings "Open exports
+        # folder" button works on a fresh install, before any conversation has
+        # been exported. Unlike data/logs/packs, nothing else creates it yet.
+        Path(config.exports_dir).mkdir(parents=True, exist_ok=True)
         app.state.service_config = config
         app.state.db = db
         app.state.models_dir = config.models_dir

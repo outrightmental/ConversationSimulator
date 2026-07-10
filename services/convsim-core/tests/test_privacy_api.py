@@ -47,6 +47,13 @@ def test_get_folders_exports_path_uses_exports_dir(client):
     assert "exports" in data["exports"].lower() or len(data["exports"]) > 0
 
 
+def test_exports_folder_created_at_startup(client):
+    """The exports folder must exist on startup so the desktop 'Open exports
+    folder' button works on a fresh install, before anything is exported."""
+    data = client.get("/api/privacy/folders").json()
+    assert Path(data["exports"]).is_dir()
+
+
 def test_post_clear_returns_200(client):
     response = client.post("/api/privacy/clear")
     assert response.status_code == 200
