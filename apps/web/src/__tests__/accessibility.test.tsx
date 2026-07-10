@@ -94,6 +94,7 @@ import ScenarioLibrary from '../screens/ScenarioLibrary'
 import Settings from '../screens/Settings'
 import Debrief from '../screens/Debrief'
 import CreatorWorkbench from '../screens/CreatorWorkbench'
+import FirstRunWizard from '../screens/FirstRunWizard'
 import AppLayout from '../layout/AppLayout'
 import MicButton from '../components/MicButton'
 import VadStatusIndicator from '../components/VadStatusIndicator'
@@ -381,5 +382,121 @@ describe('Accessibility: TranscriptReviewPanel', () => {
     )
     const textarea = container.querySelector('textarea')
     expect(document.activeElement).toBe(textarea)
+  })
+})
+
+describe('Accessibility: FirstRunWizard', () => {
+  beforeEach(() => {
+    // Prevent a previous test's localStorage state from triggering the "already complete" redirect.
+    localStorage.clear()
+  })
+
+  it('welcome step has no axe violations', async () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={['/first-run']}>
+        <Routes>
+          <Route path="/first-run" element={<FirstRunWizard />} />
+          <Route path="/" element={<div data-testid="home" />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    const violations = await runAxe(container)
+    expect(violations, formatViolations(violations)).toHaveLength(0)
+  })
+
+  it('does not steal focus on initial welcome-step mount', () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={['/first-run']}>
+        <Routes>
+          <Route path="/first-run" element={<FirstRunWizard />} />
+          <Route path="/" element={<div />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    const h1 = container.querySelector('h1')
+    expect(document.activeElement).not.toBe(h1)
+  })
+
+  it('moves focus to the step heading when the step advances', () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={['/first-run']}>
+        <Routes>
+          <Route path="/first-run" element={<FirstRunWizard />} />
+          <Route path="/" element={<div />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    // Clicking "Get started" transitions from welcome → loading; getModels is a pending
+    // promise in this test suite so the wizard stays on the loading step.
+    fireEvent.click(container.querySelector('button')!)
+    const newH1 = container.querySelector('h1')
+    expect(document.activeElement).toBe(newH1)
+  })
+
+  it('loading step announces busy state', () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={['/first-run']}>
+        <Routes>
+          <Route path="/first-run" element={<FirstRunWizard />} />
+          <Route path="/" element={<div />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    fireEvent.click(container.querySelector('button')!)
+    const busyEl = container.querySelector('[aria-busy="true"]')
+    expect(busyEl).not.toBeNull()
+  })
+
+  it('welcome step has a privacy and offline-play guarantee note', () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={['/first-run']}>
+        <Routes>
+          <Route path="/first-run" element={<FirstRunWizard />} />
+          <Route path="/" element={<div />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    expect(container.querySelector('[role="note"][aria-label*="privacy"]')).not.toBeNull()
+  })
+
+  it('choose step option cards are presented as a list', async () => {
+    // Override getModels to resolve immediately so the wizard reaches the choose step.
+    const { api: mockApi } = await import('../api/client')
+    vi.mocked(mockApi.getModels).mockResolvedValueOnce({
+      registry: [],
+      installed: [],
+      ollama_models: [],
+      active: { runtime_id: null, model_id: null },
+      runtime_health: {
+        runtime_id: 'none',
+        runtime_name: 'llama.cpp',
+        status: 'unavailable',
+        model_id: null,
+        latency_ms: null,
+        message: 'No model configured',
+        checked_at: '2026-01-01T00:00:00.000Z',
+      },
+      total: 0,
+      last_benchmark: null,
+    })
+
+    const { container } = render(
+      <MemoryRouter initialEntries={['/first-run']}>
+        <Routes>
+          <Route path="/first-run" element={<FirstRunWizard />} />
+          <Route path="/" element={<div />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    fireEvent.click(container.querySelector('button')!)
+
+    // Wait for the choose step to appear.
+    await vi.waitFor(() => {
+      expect(container.querySelector('h1')?.textContent).toMatch(/choose how to get started/i)
+    })
+
+    // Option cards must be rendered as a list so assistive technologies can count them.
+    expect(container.querySelector('ul[role="list"]')).not.toBeNull()
   })
 })

@@ -165,6 +165,18 @@ export default function FirstRunWizard() {
   const [benchmarkRunning, setBenchmarkRunning] = useState(false)
   const [benchmarkResult, setBenchmarkResult] = useState<BenchmarkResponse | null>(null)
   const [benchmarkError, setBenchmarkError] = useState<string | null>(null)
+
+  // Focus management: move focus to each step's heading on step change so that keyboard
+  // and screen-reader users are announced the new context without a full page reload.
+  const stepHeadingRef = useRef<HTMLHeadingElement>(null)
+  const isInitialStep = useRef(true)
+  useEffect(() => {
+    if (isInitialStep.current) {
+      isInitialStep.current = false
+      return
+    }
+    stepHeadingRef.current?.focus()
+  }, [step])
   const benchmarkStartedRef = useRef(false)
   // Capture the "already done" state once at mount so that calling markFirstRunComplete()
   // mid-wizard (before the navigate() fires) doesn't cause a spurious redirect to "/".
@@ -258,7 +270,7 @@ export default function FirstRunWizard() {
   if (step === 'welcome') {
     return (
       <div style={{ maxWidth: '640px', margin: '2rem auto', padding: '0 1rem' }}>
-        <h1>Welcome to Conversation Simulator</h1>
+        <h1 ref={stepHeadingRef} tabIndex={-1} style={{ outline: 'none' }}>Welcome to Conversation Simulator</h1>
         <p style={{ fontSize: '1rem', lineHeight: 1.6, color: '#d4d4d8' }}>
           Conversation Simulator is a flight simulator for real-life conversations — a private,
           local-first tool for practising difficult discussions at your own pace.
@@ -367,8 +379,8 @@ export default function FirstRunWizard() {
   if (step === 'loading') {
     return (
       <div style={{ maxWidth: '640px', margin: '2rem auto', padding: '0 1rem' }}>
-        <h1>Model Setup</h1>
-        <p>Loading model information…</p>
+        <h1 ref={stepHeadingRef} tabIndex={-1} style={{ outline: 'none' }}>Model Setup</h1>
+        <p aria-live="polite" aria-busy="true">Loading model information…</p>
       </div>
     )
   }
@@ -378,7 +390,7 @@ export default function FirstRunWizard() {
   if (step === 'load-error') {
     return (
       <div style={{ maxWidth: '640px', margin: '2rem auto', padding: '0 1rem' }}>
-        <h1>Model Setup</h1>
+        <h1 ref={stepHeadingRef} tabIndex={-1} style={{ outline: 'none' }}>Model Setup</h1>
         <p role="alert" style={{ color: '#f87171' }}>
           {loadError ?? 'Something went wrong loading model information. Please try again.'}
         </p>
@@ -428,78 +440,98 @@ export default function FirstRunWizard() {
   if (step === 'choose') {
     return (
       <div style={{ maxWidth: '640px', margin: '2rem auto', padding: '0 1rem' }}>
-        <h1>Choose how to get started</h1>
+        <h1 ref={stepHeadingRef} tabIndex={-1} style={{ outline: 'none' }}>Choose how to get started</h1>
         <p style={{ color: '#a1a1aa', fontSize: '0.9rem' }}>
           Pick an option below. You can change it later in Settings.
         </p>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1.5rem' }}>
+        <ul
+          role="list"
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '1rem',
+            marginTop: '1.5rem',
+            listStyle: 'none',
+            padding: 0,
+            margin: '1.5rem 0 0',
+          }}
+        >
           {recommendedModel && (
+            <li>
+              <SectionCard>
+                <CardHeading>Install recommended model</CardHeading>
+                <CardDescription>
+                  {recommendedModel.name} · {recommendedModel.size_gb} GB ·{' '}
+                  {recommendedModel.license_spdx} · Requires {recommendedModel.min_vram_gb} GB VRAM
+                </CardDescription>
+                <ActionButton
+                  onClick={() => {
+                    setSelectedModel(recommendedModel)
+                    resetAction()
+                    setStep('confirm-install')
+                  }}
+                >
+                  Install {recommendedModel.name}
+                </ActionButton>
+              </SectionCard>
+            </li>
+          )}
+
+          <li>
             <SectionCard>
-              <CardHeading>Install recommended model</CardHeading>
+              <CardHeading>Use existing Ollama model</CardHeading>
               <CardDescription>
-                {recommendedModel.name} · {recommendedModel.size_gb} GB ·{' '}
-                {recommendedModel.license_spdx} · Requires {recommendedModel.min_vram_gb} GB VRAM
+                Select from models already installed in your local Ollama instance.
               </CardDescription>
               <ActionButton
                 onClick={() => {
-                  setSelectedModel(recommendedModel)
                   resetAction()
-                  setStep('confirm-install')
+                  setStep('ollama-select')
                 }}
               >
-                Install {recommendedModel.name}
+                Browse Ollama models
               </ActionButton>
             </SectionCard>
-          )}
+          </li>
 
-          <SectionCard>
-            <CardHeading>Use existing Ollama model</CardHeading>
-            <CardDescription>
-              Select from models already installed in your local Ollama instance.
-            </CardDescription>
-            <ActionButton
-              onClick={() => {
-                resetAction()
-                setStep('ollama-select')
-              }}
-            >
-              Browse Ollama models
-            </ActionButton>
-          </SectionCard>
+          <li>
+            <SectionCard>
+              <CardHeading>Use a local GGUF file</CardHeading>
+              <CardDescription>
+                Point to a GGUF model file already on your machine. Compatible with llama.cpp.
+              </CardDescription>
+              <ActionButton
+                onClick={() => {
+                  setGgufPath('')
+                  setGgufPathError(null)
+                  resetAction()
+                  setStep('gguf-path')
+                }}
+              >
+                Use a GGUF file
+              </ActionButton>
+            </SectionCard>
+          </li>
 
-          <SectionCard>
-            <CardHeading>Use a local GGUF file</CardHeading>
-            <CardDescription>
-              Point to a GGUF model file already on your machine. Compatible with llama.cpp.
-            </CardDescription>
-            <ActionButton
-              onClick={() => {
-                setGgufPath('')
-                setGgufPathError(null)
-                resetAction()
-                setStep('gguf-path')
-              }}
-            >
-              Use a GGUF file
-            </ActionButton>
-          </SectionCard>
-
-          <SectionCard>
-            <CardHeading>Continue without a model</CardHeading>
-            <CardDescription>
-              Try the interface without a model. NPC responses are scripted — not real AI quality.
-            </CardDescription>
-            <ActionButton
-              onClick={() => {
-                resetAction()
-                setStep('demo-warning')
-              }}
-            >
-              Continue in text-only demo
-            </ActionButton>
-          </SectionCard>
-        </div>
+          <li>
+            <SectionCard>
+              <CardHeading>Continue without a model</CardHeading>
+              <CardDescription>
+                Try the interface without a model. NPC responses will be scripted — not AI-generated.
+                Response quality is limited compared to a real local model.
+              </CardDescription>
+              <ActionButton
+                onClick={() => {
+                  resetAction()
+                  setStep('demo-warning')
+                }}
+              >
+                Continue in text-only demo
+              </ActionButton>
+            </SectionCard>
+          </li>
+        </ul>
       </div>
     )
   }
@@ -513,13 +545,24 @@ export default function FirstRunWizard() {
 
     return (
       <div style={{ maxWidth: '640px', margin: '2rem auto', padding: '0 1rem' }}>
-        <h1>Confirm model install</h1>
+        <h1 ref={stepHeadingRef} tabIndex={-1} style={{ outline: 'none' }}>Confirm model install</h1>
         <p style={{ color: '#a1a1aa', fontSize: '0.9rem' }}>
           Review the details below before starting the download. No download begins until you click{' '}
           <strong>Confirm &amp; install</strong>.
         </p>
 
         <table style={{ marginTop: '1rem', borderCollapse: 'collapse', width: '100%' }}>
+          <caption
+            style={{
+              textAlign: 'left',
+              fontSize: '0.8rem',
+              color: '#71717a',
+              paddingBottom: '0.4rem',
+              captionSide: 'top',
+            }}
+          >
+            Model details
+          </caption>
           <tbody>
             <DetailRow label="Model">{selectedModel.name}</DetailRow>
             <DetailRow label="Size">
@@ -542,7 +585,7 @@ export default function FirstRunWizard() {
                 ? `${selectedModel.recommended_vram_gb} GB`
                 : 'Unknown'}
             </DetailRow>
-            <DetailRow label="SHA-256 checksum">
+            <DetailRow label="Integrity checksum">
               <span
                 style={{
                   fontFamily: 'monospace',
@@ -553,7 +596,7 @@ export default function FirstRunWizard() {
               >
                 {sha256Display}
               </span>
-              {sha256IsPending && (
+              {sha256IsPending ? (
                 <span
                   style={{
                     display: 'block',
@@ -562,11 +605,22 @@ export default function FirstRunWizard() {
                     marginTop: '0.2rem',
                   }}
                 >
-                  Checksum not yet confirmed — install may be rejected by the runtime.
+                  Checksum not yet confirmed — the download will be rejected if verification fails.
+                </span>
+              ) : (
+                <span
+                  style={{
+                    display: 'block',
+                    fontSize: '0.75rem',
+                    color: '#71717a',
+                    marginTop: '0.2rem',
+                  }}
+                >
+                  SHA-256 — the app checks this after download to confirm the file was not corrupted.
                 </span>
               )}
             </DetailRow>
-            <DetailRow label="Saved to">
+            <DetailRow label="Saves to">
               <code style={{ fontSize: '0.8rem' }}>
                 ~/.convsim/models/llm/{selectedModel.id}.gguf
               </code>
@@ -675,7 +729,7 @@ export default function FirstRunWizard() {
 
       return (
         <div style={{ maxWidth: '640px', margin: '2rem auto', padding: '0 1rem' }}>
-          <h1>Installing model</h1>
+          <h1 ref={stepHeadingRef} tabIndex={-1} style={{ outline: 'none' }}>Installing model</h1>
 
           {isNetworkError && (
             <div
@@ -821,9 +875,10 @@ export default function FirstRunWizard() {
 
     return (
       <div style={{ maxWidth: '640px', margin: '2rem auto', padding: '0 1rem' }}>
-        <h1>Installing model</h1>
+        <h1 ref={stepHeadingRef} tabIndex={-1} style={{ outline: 'none' }}>Installing model</h1>
         <p style={{ color: '#a1a1aa', fontSize: '0.9rem' }}>
-          {statusLabel[status] ?? 'Downloading…'} Download time depends on your connection speed.
+          {statusLabel[status] ?? 'Downloading…'} Download time depends on your internet speed.
+          The app will be ready as soon as the download completes.
         </p>
 
         <div
@@ -851,7 +906,7 @@ export default function FirstRunWizard() {
           />
         </div>
 
-        <p style={{ fontSize: '0.8rem', color: '#71717a', marginTop: '0.4rem' }}>
+        <p aria-live="polite" style={{ fontSize: '0.8rem', color: '#71717a', marginTop: '0.4rem' }}>
           {pct != null
             ? `${pct}% — ${(progressBytes / 1_073_741_824).toFixed(2)} GB`
             : 'Waiting for progress data…'}
@@ -898,7 +953,7 @@ export default function FirstRunWizard() {
 
     return (
       <div style={{ maxWidth: '640px', margin: '2rem auto', padding: '0 1rem' }}>
-        <h1>Use Ollama model</h1>
+        <h1 ref={stepHeadingRef} tabIndex={-1} style={{ outline: 'none' }}>Use Ollama model</h1>
 
         {ollamaModels.length === 0 ? (
           <div>
@@ -1013,7 +1068,7 @@ export default function FirstRunWizard() {
 
     return (
       <div style={{ maxWidth: '640px', margin: '2rem auto', padding: '0 1rem' }}>
-        <h1>Use a GGUF file</h1>
+        <h1 ref={stepHeadingRef} tabIndex={-1} style={{ outline: 'none' }}>Use a GGUF file</h1>
 
         <div
           role="note"
@@ -1072,7 +1127,9 @@ export default function FirstRunWizard() {
             id="gguf-path-hint"
             style={{ fontSize: '0.8rem', color: '#71717a', marginTop: '0.3rem' }}
           >
-            Absolute path to a GGUF model file compatible with llama.cpp.
+            Full file path including the filename, e.g.{' '}
+            <code style={{ fontFamily: 'monospace' }}>/home/you/Downloads/model.gguf</code> —
+            must be compatible with llama.cpp.
           </p>
           {ggufPathError && (
             <p
@@ -1128,7 +1185,7 @@ export default function FirstRunWizard() {
 
     return (
       <div style={{ maxWidth: '640px', margin: '2rem auto', padding: '0 1rem' }}>
-        <h1>Text-only demo</h1>
+        <h1 ref={stepHeadingRef} tabIndex={-1} style={{ outline: 'none' }}>Text-only demo</h1>
 
         <div
           role="note"
@@ -1178,7 +1235,7 @@ export default function FirstRunWizard() {
   if (step === 'benchmark') {
     return (
       <div style={{ maxWidth: '640px', margin: '2rem auto', padding: '0 1rem' }}>
-        <h1>Model benchmark</h1>
+        <h1 ref={stepHeadingRef} tabIndex={-1} style={{ outline: 'none' }}>Model benchmark</h1>
         <p style={{ color: '#a1a1aa', fontSize: '0.9rem' }}>
           Running a short benchmark to measure generation speed and check hardware compatibility.
         </p>
