@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState, useCallback, useEffect, useRef } from 'react'
 import type { InputMode } from '@convsim/shared'
-import { apiClient } from '../api/client'
+import { apiClient, api } from '../api/client'
 import { useMicCapture, MAX_RECORDING_SECONDS } from '../hooks/useMicCapture'
 import { useVad } from '../hooks/useVad'
 import MicButton from './MicButton'
 import VadStatusIndicator from './VadStatusIndicator'
 import VadCalibration from './VadCalibration'
 import TranscriptReviewPanel from './TranscriptReviewPanel'
+
+const BACKCHANNEL_TRIGGER_MS = 3_500
 
 export interface SttReviewMeta {
   rawTranscript: string
@@ -27,6 +29,11 @@ interface VoiceInputProps {
   onRawStt?: (meta: SttReviewMeta) => void
   /** Called with the STT round-trip latency (ms) once a transcript is returned. */
   onSttLatency?: (ms: number) => void
+  /**
+   * Called when the player starts recording while NPC TTS may be playing.
+   * The parent uses this to fade TTS and register a barge-in for the next turn.
+   */
+  onRecordingStart?: () => void
   disabled?: boolean
   language?: string
   /**
@@ -35,6 +42,8 @@ interface VoiceInputProps {
    * in-conversation "Switch to text-only" fallback.
    */
   inputMode?: InputMode
+  /** Play short NPC acknowledgments ("mm-hm") while the player speaks. Default false. */
+  backchannelEnabled?: boolean
 }
 
 function isInteractiveElement(el: Element | null): boolean {
@@ -43,7 +52,7 @@ function isInteractiveElement(el: Element | null): boolean {
   return tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'button' || tag === 'a'
 }
 
-export default function VoiceInput({ onSubmit, onRawStt, onSttLatency, disabled = false, language, inputMode }: VoiceInputProps) {
+export default function VoiceInput({ onSubmit, onRawStt, onSttLatency, onRecordingStart, disabled = false, language, inputMode, backchannelEnabled = false }: VoiceInputProps) {
   const [textValue, setTextValue] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
@@ -51,6 +60,54 @@ export default function VoiceInput({ onSubmit, onRawStt, onSttLatency, disabled 
   const [reviewState, setReviewState] = useState<ReviewState | null>(null)
   // Tracks whether the player has switched to text-only fallback mid-session.
   const [textOnly, setTextOnly] = useState(() => inputMode === 'text-only')
+
+  // Backchannel audio: pre-fetched paths played during extended player speech.
+  const backchannelPathsRef = useRef<string[]>([])
+  const backchannelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const backchannelAudioRef = useRef<HTMLAudioElement | null>(null)
+
+  useEffect(() => {
+    if (!backchannelEnabled) return
+    api.getBackchannels()
+      .then((r) => {
+        backchannelPathsRef.current = r.backchannels
+          .map((b) => {
+            const filename = b.cache_path.replace(/\\/g, '/').split('/').pop()
+            return filename ? `/api/tts/audio/${filename}` : ''
+          })
+          .filter(Boolean)
+      })
+      .catch(() => {})
+  }, [backchannelEnabled])
+
+  function _playRandomBackchannel() {
+    const paths = backchannelPathsRef.current
+    if (!paths.length) return
+    const url = paths[Math.floor(Math.random() * paths.length)]
+    const audio = new Audio(url)
+    backchannelAudioRef.current = audio
+    audio.play().catch(() => {})
+  }
+
+  function _startBackchannelTimer() {
+    if (!backchannelEnabled || !backchannelPathsRef.current.length) return
+    if (backchannelTimerRef.current) clearTimeout(backchannelTimerRef.current)
+    backchannelTimerRef.current = setTimeout(() => {
+      backchannelTimerRef.current = null
+      _playRandomBackchannel()
+    }, BACKCHANNEL_TRIGGER_MS)
+  }
+
+  function _cancelBackchannelTimer() {
+    if (backchannelTimerRef.current) {
+      clearTimeout(backchannelTimerRef.current)
+      backchannelTimerRef.current = null
+    }
+    if (backchannelAudioRef.current) {
+      backchannelAudioRef.current.pause()
+      backchannelAudioRef.current = null
+    }
+  }
 
   const vad = useVad()
   const isHandsFree = vad.settings.mode === 'hands-free'
@@ -122,10 +179,16 @@ export default function VoiceInput({ onSubmit, onRawStt, onSttLatency, disabled 
         stopPttRecording()
       })
     }
+    // Notify the parent so it can fade NPC TTS (barge-in) if it is currently playing.
+    onRecordingStart?.()
+    // Start a timer to play a backchannel acknowledgment during extended speech.
+    _startBackchannelTimer()
     startPttRecording()
-  }, [isRecording, isHandsFree, stream, startSilenceDetection, startPttRecording, stopPttRecording])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRecording, isHandsFree, stream, startSilenceDetection, startPttRecording, stopPttRecording, onRecordingStart, backchannelEnabled])
 
   const stopRecording = useCallback(() => {
+    _cancelBackchannelTimer()
     stopSilenceDetection()
     stopPttRecording()
   }, [stopSilenceDetection, stopPttRecording])
@@ -133,8 +196,18 @@ export default function VoiceInput({ onSubmit, onRawStt, onSttLatency, disabled 
   // Close the AudioContext after auto-stop. The onSilence callback only calls stopPttRecording
   // so that the 'stopping' vadState survives its React render before being cleaned up here.
   useEffect(() => {
-    if (!isRecording) stopSilenceDetection()
+    if (!isRecording) {
+      stopSilenceDetection()
+      // Hands-free auto-stop bypasses the stopRecording() wrapper, so cancel any
+      // pending backchannel here too — otherwise a short (<3.5 s) utterance would
+      // fire a stray acknowledgment after the player already finished speaking.
+      _cancelBackchannelTimer()
+    }
   }, [isRecording, stopSilenceDetection])
+
+  // Cancel any pending/playing backchannel on unmount (e.g. navigating away
+  // mid-utterance) so it cannot fire after the component is gone.
+  useEffect(() => () => _cancelBackchannelTimer(), [])
 
   function handleReviewConfirm(finalText: string) {
     const raw = reviewState
