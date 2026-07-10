@@ -183,7 +183,8 @@ export function useVad(): UseVadReturn {
       setIsCalibrating(true)
       try {
         const result = await apiClient.vadCalibrate(blob)
-        update({ threshold: result.recommended_threshold, calibratedAt: new Date().toISOString() })
+        if (!result.ok) throw new Error(result.error.message)
+        update({ threshold: result.data.recommended_threshold, calibratedAt: new Date().toISOString() })
         setBackendAvailable(true)
       } catch (err) {
         setBackendAvailable(false)

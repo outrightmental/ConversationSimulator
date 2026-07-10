@@ -74,17 +74,19 @@ export default function VoiceInput({ onSubmit, onRawStt, onSttLatency, disabled 
       try {
         const result = await apiClient.uploadAudio(blob, language)
         onSttLatency?.(Math.round(performance.now() - sttStart))
-        if (result.status === 'error') {
+        if (!result.ok) {
+          setUploadError(result.error.message)
+        } else if (result.data.status === 'error') {
           setUploadError('Speech could not be transcribed. Please try again or type your response.')
-        } else if (result.status === 'unavailable') {
+        } else if (result.data.status === 'unavailable') {
           setUploadError('Speech-to-text is not installed. Please type your response.')
-        } else if (result.transcript) {
+        } else if (result.data.transcript) {
           setReviewState({
-            transcript: result.transcript,
-            language: result.language,
-            confidence: result.confidence,
+            transcript: result.data.transcript,
+            language: result.data.language,
+            confidence: result.data.confidence,
           })
-        } else if (result.status === 'ok' && !result.transcript) {
+        } else if (result.data.status === 'ok' && !result.data.transcript) {
           setUploadError('No speech detected. Please try again or type your response.')
         }
       } catch (err) {

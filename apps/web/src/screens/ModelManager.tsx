@@ -183,7 +183,7 @@ export default function ModelManager() {
             if (record.install_status === 'ready' || record.install_status === 'complete') {
               navigate('/')
             } else {
-              setActionError({ kind: 'unknown', message: record.error_message ?? 'Download failed. Please try again.' })
+              setActionError({ kind: 'http-error', message: record.error_message ?? 'Download failed. Please try again.' })
               setStep('confirm-install')
             }
           }
