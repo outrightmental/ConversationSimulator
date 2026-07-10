@@ -24,6 +24,47 @@ MODEL_URL="https://huggingface.co/ggml-org/whisper.cpp/resolve/main/ggml-${MODEL
 BINARY_NAME="whisper-cli"
 
 # ---------------------------------------------------------------------------
+# License and privacy disclosure
+# ---------------------------------------------------------------------------
+
+cat <<'DISCLOSURE'
+──────────────────────────────────────────────────────────────────────────────
+  LICENSE NOTICE
+  whisper.cpp is released under the MIT License.
+  The OpenAI Whisper model weights are released under the MIT License.
+  Source: https://github.com/ggml-org/whisper.cpp/blob/master/LICENSE
+          https://github.com/openai/whisper/blob/main/LICENSE
+
+  PRIVACY NOTICE
+  Model files are downloaded from HuggingFace (huggingface.co). No audio,
+  transcript, or personal data is transmitted. All speech recognition runs
+  entirely on your device after this one-time download.
+──────────────────────────────────────────────────────────────────────────────
+DISCLOSURE
+
+# ---------------------------------------------------------------------------
+# Approximate model sizes (for user awareness before download)
+# ---------------------------------------------------------------------------
+
+declare -A MODEL_SIZES=(
+  ["tiny"]="~77 MB"
+  ["tiny.en"]="~77 MB"
+  ["base"]="~148 MB"
+  ["base.en"]="~147 MB"
+  ["small"]="~488 MB"
+  ["small.en"]="~488 MB"
+  ["medium"]="~1.5 GB"
+  ["medium.en"]="~1.5 GB"
+  ["large-v3"]="~3.1 GB"
+)
+
+APPROX_SIZE="${MODEL_SIZES[$MODEL_NAME]:-unknown size}"
+echo "Model   : ggml-${MODEL_NAME}"
+echo "Size    : ${APPROX_SIZE} (approximate)"
+echo "Dest    : ${MODEL_FILE}"
+echo ""
+
+# ---------------------------------------------------------------------------
 # Detect platform
 # ---------------------------------------------------------------------------
 
@@ -56,7 +97,7 @@ mkdir -p "${MODEL_DIR}"
 if [[ -f "${MODEL_FILE}" ]]; then
   echo "Model already present: ${MODEL_FILE}"
 else
-  echo "Downloading model ggml-${MODEL_NAME} …"
+  echo "Downloading model ggml-${MODEL_NAME} (${APPROX_SIZE}) …"
   if command -v curl &>/dev/null; then
     curl -L --progress-bar -o "${MODEL_FILE}" "${MODEL_URL}"
   elif command -v wget &>/dev/null; then
@@ -67,6 +108,27 @@ else
   fi
   echo "Model saved to ${MODEL_FILE}"
 fi
+
+# ---------------------------------------------------------------------------
+# Checksum — display SHA256 of the downloaded file
+# ---------------------------------------------------------------------------
+
+echo ""
+echo "Computing SHA256 checksum …"
+if command -v sha256sum &>/dev/null; then
+  FILE_SHA256="$(sha256sum "${MODEL_FILE}" | awk '{print $1}')"
+elif command -v shasum &>/dev/null; then
+  FILE_SHA256="$(shasum -a 256 "${MODEL_FILE}" | awk '{print $1}')"
+else
+  echo "WARNING: sha256sum / shasum not available — cannot verify checksum." >&2
+  FILE_SHA256="(unavailable)"
+fi
+
+echo "SHA256  : ${FILE_SHA256}"
+echo ""
+echo "To verify independently, compare the above against the value listed on:"
+echo "  https://huggingface.co/ggml-org/whisper.cpp/blob/main/ggml-${MODEL_NAME}.bin"
+echo ""
 
 # ---------------------------------------------------------------------------
 # Install binary (Linux/macOS only — Windows users should build from source)
@@ -120,5 +182,6 @@ echo ""
 echo "whisper.cpp runtime ready:"
 echo "  Binary : $(command -v ${BINARY_NAME})"
 echo "  Model  : ${MODEL_FILE}"
+echo "  SHA256 : ${FILE_SHA256}"
 echo ""
 echo "Start convsim-core and the STT status badge should show 'Ready'."
