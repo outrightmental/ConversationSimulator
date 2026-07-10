@@ -1516,6 +1516,7 @@ class TestInputSafetyGate:
         assert state == "Ended"
 
 
+
 # ---------------------------------------------------------------------------
 # Issue #201: state variables, scenario events, endings, and rubrics
 # ---------------------------------------------------------------------------
