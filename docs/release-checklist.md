@@ -503,6 +503,7 @@ CONVSIM_ARTIFACT_DIR=<artifact-dir> ./scripts/release-smoke.sh --full
 
 - [ ] `[artifact-inspect]` passes — no violations found
 - [ ] Version number in installer filename matches the release tag
+- [ ] macOS `.app` `Contents/Info.plist` `CFBundleShortVersionString` is stamped
 - [ ] Version is not `0.0.0` (confirms the stamp step ran)
 - [ ] Linux `.AppImage` has executable bit set (`chmod +x` if missing)
 - [ ] macOS `.app` main binary is executable

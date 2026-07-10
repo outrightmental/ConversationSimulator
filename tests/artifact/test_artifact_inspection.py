@@ -20,6 +20,7 @@ and Python-native assertion messages for post-mortem inspection.
 from __future__ import annotations
 
 import platform
+import plistlib
 import re
 import stat
 from pathlib import Path
@@ -65,6 +66,20 @@ def _is_pyinstaller_internal(path: Path) -> bool:
     outside source-install paths.
     """
     return "_internal" in path.parts
+
+
+def _main_app_bundles(artifact_dir: Path) -> list[Path]:
+    """Return top-level .app bundles (excluding helper .apps nested in another).
+
+    A macOS product bundle can embed helper .app bundles (e.g. inside
+    Contents/Frameworks/); those carry their own versions and must not be
+    treated as the shipped application when checking the version stamp.
+    """
+    bundles = [p for p in artifact_dir.rglob("*.app") if p.is_dir()]
+    return [
+        b for b in bundles
+        if not any(parent.suffix == ".app" for parent in b.parents)
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -246,6 +261,49 @@ class TestVersionStamping:
                     "The version stamp step may not have run, or the wrong tag "
                     "was supplied to the build workflow."
                 )
+
+    def test_macos_app_info_plist_is_version_stamped(
+        self, artifact_dir: Path
+    ) -> None:
+        """A macOS .app bundle must carry a stamped CFBundleShortVersionString.
+
+        The macOS Steam depot ships the extracted .app bundle, not an installer
+        file, so the filename-based checks above skip for it.  The version stamp
+        for a .app lives in Contents/Info.plist, so verify it directly there —
+        otherwise an unstamped (0.0.0) macOS build would sail through the deploy
+        gate uninspected.  Runs on any OS since it only reads the plist file.
+        """
+        app_bundles = _main_app_bundles(artifact_dir)
+        if not app_bundles:
+            pytest.skip("No .app bundle in artifact — skipping macOS version check")
+        checked = 0
+        for bundle in app_bundles:
+            plist_path = bundle / "Contents" / "Info.plist"
+            if not plist_path.is_file():
+                continue
+            with plist_path.open("rb") as fh:
+                info = plistlib.load(fh)
+            version = info.get("CFBundleShortVersionString")
+            assert version, (
+                f"{bundle.name}/Contents/Info.plist has no "
+                "CFBundleShortVersionString — the version stamp step may not "
+                "have run."
+            )
+            assert _SEMVER.search(version), (
+                f"CFBundleShortVersionString={version!r} in {bundle.name} is not "
+                "a semantic version (e.g. 0.1.0)."
+            )
+            assert _SEMVER.search(version).group() != "0.0.0", (
+                f"CFBundleShortVersionString is 0.0.0 in {bundle.name}. "
+                "The version stamp step may not have run, or the wrong tag was "
+                "supplied to the build workflow."
+            )
+            checked += 1
+        if checked == 0:
+            pytest.skip(
+                "No .app bundle contained a Contents/Info.plist — "
+                "skipping macOS version stamp check"
+            )
 
 
 # ---------------------------------------------------------------------------
