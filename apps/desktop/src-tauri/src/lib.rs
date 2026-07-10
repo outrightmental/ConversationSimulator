@@ -124,7 +124,7 @@ fn find_core_executable(resource_dir: Option<&PathBuf>) -> Result<PathBuf, Strin
 
     // 3. Tauri resource directory (adjacent to the app bundle).
     //    Checks both the resource dir root and the resources/bin/ sub-path
-    //    produced by scripts/build-core.sh (via "resources/**" in tauri.conf.json).
+    //    produced by scripts/build-core.sh (via "resources/**/*" in tauri.conf.json).
     if let Some(res) = resource_dir {
         for rel in &[
             "convsim-core",
@@ -248,7 +248,7 @@ fn launch_or_verify_core(
         // requiring a system PATH entry (Steam build convention).
         //
         // Check both runtimes/ (legacy direct resource) and resources/runtimes/
-        // (produced by the "resources/**" glob in tauri.conf.json).
+        // (produced by the "resources/**/*" glob in tauri.conf.json).
         if let Some(ref res) = resource_dir {
             for runtimes_rel in &["runtimes", "resources/runtimes"] {
                 let runtimes = res.join(runtimes_rel);

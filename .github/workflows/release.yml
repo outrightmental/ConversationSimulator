@@ -94,7 +94,7 @@ jobs:
 
       # ── Python core build (PyInstaller standalone binary) ────────────────────
       # Produces apps/desktop/src-tauri/resources/bin/convsim-core[.exe] which
-      # Tauri bundles as a resource (bundle.resources: ["resources/**"] in
+      # Tauri bundles as a resource (bundle.resources: ["resources/**/*"] in
       # tauri.conf.json).  The binary must be present before `tauri build`.
       - name: Set up Python for core build
         uses: actions/setup-python@v5
