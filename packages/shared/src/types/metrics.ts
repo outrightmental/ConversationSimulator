@@ -1,5 +1,27 @@
 // SPDX-License-Identifier: Apache-2.0
 
+/**
+ * Latency budgets that define "fast enough" on the mid-spec reference machine.
+ * All values in milliseconds. PerformanceWarning thresholds are derived from
+ * these constants rather than scattered ad-hoc numbers.
+ *
+ * Reference machine: Apple M2 / NVIDIA RTX 3060 equivalent — the mid-spec
+ * "Fast" tier documented in docs/performance.md. Nightly CI smoke tests fail
+ * when any measured value exceeds the budget by more than 20 %.
+ */
+export const LATENCY_BUDGETS = {
+  /** Cold start → interactive Home. */
+  COLD_START_MS: 10_000,
+  /** Time-to-first-token on the starter model / recommended tier. */
+  TTFT_MS: 2_500,
+  /** TTS first-audio chunk ready. */
+  TTS_FIRST_AUDIO_MS: 1_500,
+  /** STT round-trip for a 10-word utterance. */
+  STT_ROUND_TRIP_MS: 2_000,
+  /** Maximum full NPC response time before recommending context reduction. */
+  FULL_RESPONSE_MS: 10_000,
+} as const
+
 /** Latency measurements captured during a conversation session. All values in milliseconds. */
 export interface LatencySnapshot {
   /** Time from session start request to first NPC opening event. */
