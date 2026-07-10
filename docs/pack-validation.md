@@ -117,7 +117,7 @@ Schema versioning policy: see [`schemas/VERSIONING.md`](../schemas/VERSIONING.md
 
 ## What convsim test-pack checks
 
-Run the pack's smoke tests with:
+Run the pack's test fixtures with:
 
 ```sh
 convsim test-pack <pack-dir>
@@ -130,13 +130,30 @@ may declare an optional `seed` field for forward compatibility, but the current
 fake runtime does not consume it — it is reserved for reproducible results once
 a real runtime is wired in.
 
+### Smoke tests vs. golden transcript tests
+
+Official packs contain two types of test fixture files in `tests/`:
+
+| File naming convention | Purpose |
+|------------------------|---------|
+| `smoke_<scenario>.yaml` | **Structural smoke test.** Runs in CI against the fake runtime. Verifies that the pack loads, required fields are present, and a single realistic player turn does not produce an unexpected end or safety stop. Focuses on *structure*, not *behaviour*. |
+| `golden_<scenario>.yaml` | **Behavioural property test.** Runs a multi-turn scripted conversation and asserts that state variables advance correctly, events fire at the right thresholds, and session endings are wired to the right variables. The fake runtime can check the structural properties (via `static_assertions`) but cannot verify that the state variables actually *change* in response to input — that requires a real runtime. |
+
+Both fixture types use the same YAML schema (`schemas/pack-test.schema.json`)
+and both run with `convsim test-pack`. The distinction is in purpose and depth,
+not in a separate command.
+
+**Every pack must include at minimum one smoke test per entry scenario.**
+Golden tests are expected for all official packs and recommended for any pack
+intended for wider sharing.
+
 ### Fixture structure
 
 Fixture files contain:
 
-- **`turns`** — a sequence of player inputs and expected outcomes for each turn.
+- **`turns`** — a sequence of player inputs and expected outcomes per turn.
 - **`static_assertions`** — structural checks against resolved pack fields
-  (opening lines, NPC properties, safety categories, etc.).
+  (opening lines, NPC properties, safety categories, event wiring, etc.).
 
 #### Turn-level checks
 
@@ -174,6 +191,135 @@ and `check` expressions:
 | `min_length_1` | `check: min_length_1` |
 | `contains <value>` | `check: "contains scenarios/my_scenario.yaml"` |
 | Compound (`AND`) | `check: "type=variable_above AND variable=impression"` |
+
+---
+
+## Golden transcript tests in detail
+
+A golden transcript test asserts **behavioural properties** of a scenario by
+scripting a multi-turn conversation and verifying structural invariants across
+the whole scenario design. They complement smoke tests by covering the event
+system, state variable wiring, difficulty settings, and ending conditions —
+things that cannot be checked by loading a single turn.
+
+### Anatomy of a golden test
+
+```yaml
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: golden_my_scenario
+scenario_id: my_scenario
+description: >-
+  Property test: verifies that a player who applies the winning strategy
+  causes deal_progress to advance through the event sequence without
+  triggering a safety stop.
+
+seed: 42
+input_mode: text
+difficulty: normal
+
+# Multi-turn scripted conversation — each turn represents an ideal player move
+turns:
+  - turn: 1
+    player_input: >-
+      [The opening move that should advance the key variable positively.]
+    expect:
+      state_delta_contains:
+        - key_variable       # Assert the variable is tracked
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 2
+    player_input: >-
+      [A follow-through move that continues advancing the scenario.]
+    expect:
+      state_delta_contains:
+        - key_variable
+        - secondary_variable
+      session_control: continue_session
+      safety_status: ok
+
+# Structural property checks — verified at load time, not turn time
+static_assertions:
+  - description: Opening line is non-empty
+    path: opening.npc_says
+    check: non_empty_string
+
+  - description: Event fires when variable crosses the threshold
+    path: events[id=my_event].when
+    check: "type=variable_above AND variable=key_variable AND threshold=60"
+
+  - description: Event fires only once (repeat: false)
+    path: events[id=my_event].repeat
+    check: "equals false"
+
+  - description: Success ending condition targets the right variable
+    path: ending_conditions.success
+    check: "type=variable_above AND variable=key_variable"
+
+  - description: Visible variable is accessible to the player
+    path: state.variables.key_variable.visibility
+    check: "equals visible"
+
+  - description: Hidden variable is not accessible to the player
+    path: state.variables.internal_counter.visibility
+    check: "equals hidden"
+
+  - description: NPC is marked fictional
+    path: npc.fictional
+    check: "equals true"
+
+  - description: Hard difficulty reduces NPC patience
+    path: scenario.difficulty.options.hard.npc_patience_modifier
+    check: "equals -20"
+```
+
+### What to assert in a golden test
+
+**State variable wiring:**
+- Every state variable declared in the scenario appears in `state_delta_contains`
+  for the turn where it should change.
+- Visible variables are accessible to players; hidden variables are not.
+
+**Event system:**
+- Each named event has the correct `when` condition (type, variable, threshold).
+- Single-fire events set `repeat: false`; recurring events set `repeat: true`.
+
+**Ending conditions:**
+- `success` and `failure` conditions target the right variable and threshold type.
+
+**Difficulty settings:**
+- `easy` increases `npc_patience_modifier`; `hard` decreases it.
+- `challenge_frequency` reflects the intended difficulty spread.
+
+**Safety:**
+- Required safety categories are present and have the right actions.
+- The non-overridable global rules are both declared.
+
+**Manifest:**
+- The scenario appears in `manifest.entry_scenarios` via a `contains` assertion.
+
+### Golden tests and the fake runtime
+
+Under the fake runtime, the `turns` section verifies structural correctness:
+that the state variables are *declared*, the session format is *valid*, and no
+safety stop fires for benign input. The fake runtime does not change variable
+values in response to player input, so golden tests cannot assert that
+`key_variable` reached a specific value after turn 3.
+
+Once a real runtime is wired in, the same fixture will run against live
+inference, and turn-level assertions like `state_delta_contains` will verify
+*actual* behavioural changes. Write the scripted player inputs to represent a
+realistic ideal strategy — the fake runtime ignores the content, but the real
+runtime will use it.
+
+### Example from an official pack
+
+The `everyday-negotiation` pack's golden test for `used_car_negotiation`
+scripts four turns representing an ideal negotiation strategy and uses
+`static_assertions` to verify all event conditions and ending condition wiring.
+See `packs/official/everyday-negotiation/tests/golden_used_car_negotiation.yaml`
+for a reference implementation.
 
 ---
 

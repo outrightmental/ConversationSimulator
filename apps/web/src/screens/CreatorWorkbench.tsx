@@ -524,6 +524,8 @@ const SECURITY_RULES = new Set(['FORBIDDEN_FILE', 'FORBIDDEN_BINARY'])
 // workbench.
 const AUTHORING_DOCS_URL = 'https://github.com/outrightmental/ConversationSimulator/blob/main/docs/scenario-authoring.md'
 const VALIDATION_DOCS_URL = 'https://github.com/outrightmental/ConversationSimulator/blob/main/docs/pack-validation.md'
+const QUALITY_BAR_DOCS_URL = 'https://github.com/outrightmental/ConversationSimulator/blob/main/docs/official-pack-quality-bar.md'
+const SAMPLE_PACK_DOCS_URL = 'https://github.com/outrightmental/ConversationSimulator/blob/main/packs/sample/hello-conversation/README.md'
 
 function isSecurityIssue(issue: WorkbenchValidationIssue): boolean {
   return SECURITY_RULES.has(issue.rule_id) || issue.category === 'security'
@@ -1808,15 +1810,37 @@ export default function CreatorWorkbench() {
                 style={{
                   flex: 1,
                   display: 'flex',
+                  flexDirection: 'column',
                   alignItems: 'center',
                   justifyContent: 'center',
                   color: '#52525b',
                   fontSize: '0.875rem',
+                  gap: '0.5rem',
+                  padding: '1.5rem',
+                  textAlign: 'center',
                 }}
               >
-                {selectedPack
-                  ? 'Select a YAML or Markdown file from the tree.'
-                  : 'Select a pack to get started.'}
+                <span>
+                  {selectedPack
+                    ? 'Select a YAML or Markdown file from the tree.'
+                    : 'Select a pack to get started.'}
+                </span>
+                {!selectedPack && (
+                  <span style={{ fontSize: '0.75rem', color: '#71717a' }}>
+                    New here?{' '}
+                    <a href={SAMPLE_PACK_DOCS_URL} target="_blank" rel="noreferrer" style={{ color: '#93c5fd' }}>
+                      Sample pack ↗
+                    </a>
+                    {' · '}
+                    <a href={AUTHORING_DOCS_URL} target="_blank" rel="noreferrer" style={{ color: '#93c5fd' }}>
+                      Authoring guide ↗
+                    </a>
+                    {' · '}
+                    <a href={QUALITY_BAR_DOCS_URL} target="_blank" rel="noreferrer" style={{ color: '#93c5fd' }}>
+                      Quality bar ↗
+                    </a>
+                  </span>
+                )}
               </div>
             )}
 

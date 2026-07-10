@@ -177,6 +177,10 @@ jobs:
         run: |
           echo "Local: node packages/scenario-schema/tests/validate-packs.js packs/official"
           node packages/scenario-schema/tests/validate-packs.js packs/official
+      - name: Validate sample pack (schema check)
+        run: |
+          echo "Local: node packages/scenario-schema/tests/validate-packs.js packs/sample"
+          node packages/scenario-schema/tests/validate-packs.js packs/sample
       - name: Install prompt-composer
         run: pip install -e "packages/prompt-composer[dev]"
       - name: Install convsim-core
@@ -185,5 +189,11 @@ jobs:
         run: |
           echo "Local: for d in packs/official/*/; do convsim-validate-pack \"\$d\"; done"
           for d in packs/official/*/; do
+            convsim-validate-pack "$d"
+          done
+      - name: Validate sample pack (full policy check)
+        run: |
+          echo "Local: for d in packs/sample/*/; do convsim-validate-pack \"\$d\"; done"
+          for d in packs/sample/*/; do
             convsim-validate-pack "$d"
           done
