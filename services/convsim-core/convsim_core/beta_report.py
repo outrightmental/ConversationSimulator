@@ -9,7 +9,7 @@ review and attach them manually.
 Bundle contents:
   versions.json          — app, Python, and OS version strings
   config.json            — sanitised settings (home paths replaced by ~)
-  preflight.json         — runtime/stt/tts health snapshot (no user data)
+  preflight.json         — runtime/stt/tts health + self-test snapshot (no user data)
   recent_errors.txt      — redacted tail of app.log
   session_metadata.json  — (opt-in) last session: scenario, turn count, state;
                             never includes transcript content or player input
@@ -49,7 +49,8 @@ Contents
   versions.json          — App, Python, and OS version strings
   system.txt             — OS name, release, architecture, Python implementation
   config.json            — Settings with home-directory paths replaced by ~
-  preflight.json         — Runtime, STT, and TTS health snapshot (no user data)
+  preflight.json         — Runtime, STT, and TTS health plus the self-test
+                           snapshot, when a self-test has been run (no user data)
   recent_errors.txt      — Last lines of app.log (no conversation content)
   session_metadata.json  — Last session stats (only if you opted in; no transcript
                            content, no player input, no NPC responses)
@@ -247,7 +248,7 @@ def beta_report_manifest(
         "versions.json — app, Python, and OS versions",
         "system.txt — OS name, release, architecture",
         "config.json — settings (home directory replaced with ~)",
-        "preflight.json — runtime / STT / TTS health snapshot",
+        "preflight.json — runtime / STT / TTS health and self-test snapshot",
         "recent_errors.txt — last log lines at WARNING or above (no conversation content)",
     ]
     if include_session_metadata:

@@ -70,8 +70,10 @@ async def post_crash_bundle(request: Request) -> _CrashBundleResponse:
     """
     config = request.app.state.service_config
     settings = request.app.state.app_settings
+    preflight_data = getattr(request.app.state, "last_preflight", None)
     bundle_path = create_crash_bundle(
-        config.log_dir, settings, bundle_dir=config.crash_bundles_dir
+        config.log_dir, settings, bundle_dir=config.crash_bundles_dir,
+        preflight_data=preflight_data,
     )
     logger.info("Crash bundle created at %s", redact_path(str(bundle_path)))
     return _CrashBundleResponse(bundle_path=str(bundle_path), notice=_BUNDLE_NOTICE)
@@ -101,6 +103,14 @@ async def post_beta_report(
         "stt": stt_health.model_dump() if hasattr(stt_health, "model_dump") else str(stt_health),
         "tts": tts_health.model_dump() if hasattr(tts_health, "model_dump") else str(tts_health),
     }
+
+    # Include the full self-test snapshot (7-check preflight pipeline with fix
+    # actions) when one has been run, so the beta report carries the same
+    # diagnostic verdict a maintainer sees in Support.  The snapshot is redacted
+    # for home paths inside create_beta_report_bundle like the rest of preflight.
+    self_test = getattr(request.app.state, "last_preflight", None)
+    if self_test is not None:
+        preflight["self_test"] = self_test
 
     db_conn = request.app.state.db.connection() if body.include_session_metadata else None
 
