@@ -56,6 +56,13 @@ export const en = {
       lastSession: 'Last session',
       viewFull: 'View full logbook →',
     },
+    trainingPlan: {
+      heading: 'Training plan',
+      nextUp: 'Next up',
+      noSuggestions: 'Install a scenario pack to get personalized recommendations.',
+      loading: 'Loading recommendations…',
+      difficulty: 'Recommended difficulty',
+    },
     readinessSection: 'System readiness',
     getStartedSection: 'Get started without a model',
     helpSection: 'Help and resources',
@@ -336,6 +343,11 @@ export const en = {
       tryAnother: 'Try another scenario',
       privacyNotice:
         'Exported files are saved to your local download folder and never leave your device.',
+    },
+    nextUp: {
+      heading: 'Next up',
+      cta: 'Practice this →',
+      difficulty: '{{difficulty}}',
     },
   },
 }

@@ -11,6 +11,7 @@ vi.mock('../api/client', () => ({
     exportSession: vi.fn(),
     exportTranscriptText: vi.fn(),
     createSession: vi.fn(),
+    listScenarios: vi.fn(() => Promise.resolve({ ok: true, data: [] })),
   },
 }))
 

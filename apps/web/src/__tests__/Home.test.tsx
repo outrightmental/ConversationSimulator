@@ -58,13 +58,14 @@ function liText(expected: string) {
 
 // Stub fetch: routes by URL pattern to the appropriate response.
 // Includes text() because handleResponse now reads the body as text first.
-function stubFetches(healthResp: object, packsResp: object, logbookResp: object = makeLogbook()) {
+function stubFetches(healthResp: object, packsResp: object, logbookResp: object = makeLogbook(), scenariosResp: object[] = []) {
   vi.stubGlobal(
     'fetch',
     vi.fn((url: string) => {
       let body: object = healthResp
       if (url.includes('/packs')) body = packsResp
       else if (url.includes('/logbook')) body = logbookResp
+      else if (url.includes('/scenarios')) body = scenariosResp
       const text = JSON.stringify(body)
       return Promise.resolve({ ok: true, json: () => Promise.resolve(body), text: () => Promise.resolve(text) })
     }),
@@ -419,5 +420,73 @@ describe('Home — your training panel', () => {
     renderHome()
     const link = await screen.findByRole('link', { name: /start now/i })
     expect(link).toHaveAttribute('href', '/library')
+  })
+})
+
+describe('Home — training plan section', () => {
+  it('shows the Training plan heading', () => {
+    renderHome()
+    expect(screen.getByRole('heading', { name: /training plan/i })).toBeInTheDocument()
+  })
+
+  it('shows no-suggestions message when scenario list is empty', async () => {
+    stubFetches(makeHealth(), makePacks(0), makeLogbook(), [])
+    renderHome()
+    expect(await screen.findByText(/install a scenario pack/i)).toBeInTheDocument()
+  })
+
+  it('shows a recommended scenario title when scenarios are available with no profile', async () => {
+    const scenarios = [
+      {
+        scenario_id: 's_intro',
+        pack_id: 'p1',
+        title: 'Starter Chat',
+        summary: 'An intro scenario.',
+        content_rating: 'G',
+        player_role: { label: 'You', brief: 'You talk.' },
+        difficulty: { default: 'standard', options: {} },
+        supported_languages: ['en'],
+        duration: { max_turns: 10, soft_time_limit_minutes: 15 },
+        state_meters_permitted: false,
+        voice_supported: false,
+        safety_summary: '',
+        estimated_length_label: '~10 min',
+        ladder_position: 'intro',
+      },
+    ]
+    stubFetches(makeHealth(), makePacks(1), makeLogbook({ total_sessions: 0 }), scenarios)
+    renderHome()
+    expect(await screen.findByText('Starter Chat')).toBeInTheDocument()
+  })
+
+  it('recommends a scenario targeting the weakest dimension with an active profile', async () => {
+    const scenarios = [
+      {
+        scenario_id: 's_listen',
+        pack_id: 'p1',
+        title: 'Listening drill',
+        summary: 'Practice listening.',
+        content_rating: 'G',
+        player_role: { label: 'You', brief: 'You listen.' },
+        difficulty: { default: 'standard', options: {} },
+        supported_languages: ['en'],
+        duration: { max_turns: 10, soft_time_limit_minutes: 15 },
+        state_meters_permitted: false,
+        voice_supported: false,
+        safety_summary: '',
+        estimated_length_label: '~10 min',
+        tested_dimensions: ['active_listening'],
+        ladder_position: 'practice',
+      },
+    ]
+    const profile = makeLogbook({
+      total_sessions: 5,
+      dimension_scores: [
+        { dimension_id: 'active_listening', rolling_score: 20, session_count: 5, trajectory: [20] },
+      ],
+    })
+    stubFetches(makeHealth(), makePacks(1), profile, scenarios)
+    renderHome()
+    expect(await screen.findByText('Listening drill')).toBeInTheDocument()
   })
 })
