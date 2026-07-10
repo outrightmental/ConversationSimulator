@@ -32,11 +32,11 @@ const SCENARIO_BEHAVIORAL: ScenarioInfo = {
   pack_name: 'Job Interview Basics',
   player_role: { label: 'Candidate', brief: 'You are interviewing for a product manager role.' },
   difficulty: {
-    default: 'normal',
+    default: 'standard',
     options: {
-      easy: { npc_patience_modifier: 15, challenge_frequency: 'low' },
-      normal: { npc_patience_modifier: 0, challenge_frequency: 'medium' },
-      hard: { npc_patience_modifier: -20, challenge_frequency: 'high' },
+      warm:     { patience: 80, volatility: 20, disclosure: 70, time_pressure: 20 },
+      standard: { patience: 50, volatility: 50, disclosure: 50, time_pressure: 50 },
+      hard:     { patience: 25, volatility: 70, disclosure: 25, time_pressure: 60 },
     },
   },
   supported_languages: ['en'],
@@ -58,10 +58,11 @@ const SCENARIO_HOSTILE: ScenarioInfo = {
   pack_name: 'Job Interview Basics',
   player_role: { label: 'Candidate', brief: 'VP-level interview.' },
   difficulty: {
-    default: 'normal',
+    default: 'standard',
     options: {
-      normal: { npc_patience_modifier: -10, challenge_frequency: 'medium' },
-      hard: { npc_patience_modifier: -25, challenge_frequency: 'high' },
+      standard:    { patience: 30, volatility: 60, disclosure: 30, time_pressure: 60 },
+      hard:        { patience: 15, volatility: 80, disclosure: 15, time_pressure: 75 },
+      adversarial: { patience: 5,  volatility: 95, disclosure: 5,  time_pressure: 90 },
     },
   },
   supported_languages: ['en'],
@@ -83,10 +84,10 @@ const SCENARIO_SPANISH: ScenarioInfo = {
   pack_name: 'Language Café',
   player_role: { label: 'Language Learner', brief: 'Practicing Spanish in Madrid.' },
   difficulty: {
-    default: 'easy',
+    default: 'warm',
     options: {
-      easy: { npc_patience_modifier: 25, challenge_frequency: 'low' },
-      normal: { npc_patience_modifier: 0, challenge_frequency: 'medium' },
+      warm:     { patience: 80, volatility: 20, disclosure: 80, time_pressure: 10 },
+      standard: { patience: 55, volatility: 45, disclosure: 55, time_pressure: 30 },
     },
   },
   supported_languages: ['es', 'en'],
@@ -280,9 +281,9 @@ describe('scenario card rendering', () => {
   it('shows difficulty chips', async () => {
     renderLibrary()
     await waitFor(() => screen.getByText('Behavioral Interview'))
-    // Easy, Normal, Hard present from SCENARIO_BEHAVIORAL
-    const easyChips = screen.getAllByText('Easy')
-    expect(easyChips.length).toBeGreaterThan(0)
+    // Warm, Standard, Hard present from SCENARIO_BEHAVIORAL
+    const warmChips = screen.getAllByText('Warm')
+    expect(warmChips.length).toBeGreaterThan(0)
   })
 
   it('shows supported languages', async () => {
@@ -461,9 +462,9 @@ describe('filters', () => {
   it('filter by difficulty removes scenarios lacking that difficulty option', async () => {
     renderLibrary()
     await waitFor(() => screen.getByText('Behavioral Interview'))
-    // SCENARIO_HOSTILE only has normal and hard; filtering for 'easy' should hide it
+    // SCENARIO_HOSTILE only has standard, hard, adversarial; filtering for 'warm' should hide it
     fireEvent.change(screen.getByRole('combobox', { name: /filter by difficulty/i }), {
-      target: { value: 'easy' },
+      target: { value: 'warm' },
     })
     await waitFor(() =>
       expect(screen.queryByText('Hostile Executive Interview')).not.toBeInTheDocument(),

@@ -91,7 +91,7 @@ const mockScenario: ScenarioInfo = {
   pack_id: 'job-interview-basic',
   pack_name: 'Job Interview Basics',
   player_role: { label: 'Job Candidate', brief: 'You are applying for a software engineering role.' },
-  difficulty: { default: 'normal', options: { easy: { npc_patience_modifier: 0.5, challenge_frequency: 'low' }, normal: { npc_patience_modifier: 0, challenge_frequency: 'medium' } } },
+  difficulty: { default: 'standard', options: { warm: { patience: 80, volatility: 20, disclosure: 70, time_pressure: 20 }, standard: { patience: 50, volatility: 50, disclosure: 50, time_pressure: 50 } } },
   supported_languages: ['en'],
   duration: { max_turns: 20, soft_time_limit_minutes: 15 },
   state_meters_permitted: true,

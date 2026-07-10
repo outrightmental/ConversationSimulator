@@ -120,7 +120,7 @@ def test_get_scenario_detail_intro(client, tmp_path):
     assert detail["title"] == "Introduction Scenario"
     assert detail["max_turns"] == 10
     assert detail["estimated_length_minutes"] == 8
-    assert detail["difficulty_default"] == "easy"
+    assert detail["difficulty_default"] == "warm"
     assert detail["player_role"]["label"] == "Participant"
     assert detail["opening_npc_says"] == "Hello! Welcome to the session."
     assert "Build rapport with the host" in detail["player_visible_goals"]
@@ -230,12 +230,12 @@ def test_filter_by_content_rating_no_match(client, tmp_path):
 
 def test_filter_by_difficulty(client, tmp_path):
     _import_pack(client, tmp_path)
-    resp = client.get("/api/scenarios?difficulty=easy")
+    resp = client.get("/api/scenarios?difficulty=warm")
     assert resp.status_code == 200
     scenarios = resp.json()
     assert len(scenarios) >= 1
     for s in scenarios:
-        assert s["difficulty_default"] == "easy"
+        assert s["difficulty_default"] == "warm"
 
 
 def test_filter_by_voice_support_false(client, tmp_path):

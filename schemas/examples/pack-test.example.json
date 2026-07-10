@@ -5,7 +5,7 @@
   "description": "Minimal smoke test for the hello_world scenario. Verifies the scenario loads, produces a non-empty opening, and that a clear self-introduction advances the session without a safety stop.",
   "seed": 1,
   "input_mode": "text",
-  "difficulty": "normal",
+  "difficulty": "standard",
   "turns": [
     {
       "turn": 1,
