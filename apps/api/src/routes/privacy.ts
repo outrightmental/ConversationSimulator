@@ -4,6 +4,9 @@ import type { SessionCreateRequest, SessionExportResponse } from '@convsim/share
 import { getDb } from '../db.js';
 
 let _dataFolderPath = ':memory:';
+let _logsFolderPath = '';
+let _modelsFolderPath = '';
+let _packsFolderPath = '';
 
 export function setDataFolderPath(p: string): void {
   _dataFolderPath = p;
@@ -11,6 +14,25 @@ export function setDataFolderPath(p: string): void {
 
 export function getDataFolderPath(): string {
   return _dataFolderPath;
+}
+
+export function setLogsFolderPath(p: string): void {
+  _logsFolderPath = p;
+}
+
+export function setModelsFolderPath(p: string): void {
+  _modelsFolderPath = p;
+}
+
+export function setPacksFolderPath(p: string): void {
+  _packsFolderPath = p;
+}
+
+export interface FoldersResponse {
+  data: string;
+  logs: string;
+  models: string;
+  packs: string;
 }
 
 interface SessionRow {
@@ -36,6 +58,16 @@ export async function privacyRoutes(app: FastifyInstance) {
   // GET /api/privacy/data-folder
   app.get('/api/privacy/data-folder', async (): Promise<{ path: string }> => {
     return { path: _dataFolderPath };
+  });
+
+  // GET /api/privacy/folders — returns paths to all local storage folders
+  app.get('/api/privacy/folders', async (): Promise<FoldersResponse> => {
+    return {
+      data: _dataFolderPath,
+      logs: _logsFolderPath,
+      models: _modelsFolderPath,
+      packs: _packsFolderPath,
+    };
   });
 
   // POST /api/privacy/clear

@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState, useEffect, useCallback, type ReactNode } from 'react'
-import { api } from '../api/client'
+import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
+import { Link } from 'react-router-dom'
+import { api, type ImportPackResponse, type PackSummary } from '../api/client'
 import { readPrivacyPref, writePrivacyPref, PRIVACY_KEYS, isDevModeEnabled } from '../privacyPrefs'
 import RuntimeSettingsPanel from '../components/RuntimeSettingsPanel'
 import VoiceSettingsPanel from '../components/VoiceSettingsPanel'
 
 type ClearState = 'idle' | 'confirming' | 'clearing' | 'done' | 'error'
+type PackImportState = 'idle' | 'uploading' | 'success' | 'error'
 
 interface SessionSummary {
   session_id: string
@@ -51,12 +53,32 @@ function SectionHeading({ children }: { children: ReactNode }) {
   )
 }
 
+/** Returns true when running inside the Tauri desktop shell. */
+function detectTauri(): boolean {
+  return typeof (window as { __TAURI__?: unknown }).__TAURI__ !== 'undefined'
+}
+
+/**
+ * Opens a local folder in the OS file manager via the Tauri shell.
+ * Throws when the desktop shell is unavailable or the shell rejects the path
+ * (e.g. the shell open scope is restricted), so callers can surface a fallback.
+ */
+async function openFolderInShell(folderPath: string): Promise<void> {
+  const tauri = (window as { __TAURI__?: { core?: { invoke?: (cmd: string, args?: unknown) => Promise<void> } } }).__TAURI__
+  const invoke = tauri?.core?.invoke
+  if (!invoke) {
+    throw new Error('Desktop shell is unavailable')
+  }
+  await invoke('plugin:shell|open', { path: folderPath })
+}
+
 export default function Settings() {
   const [saveTranscripts, setSaveTranscripts] = useState(() => readPrivacyPref(PRIVACY_KEYS.saveTranscripts, true))
   const [saveTtsCache, setSaveTtsCache] = useState(() => readPrivacyPref(PRIVACY_KEYS.saveTtsCache, true))
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [saveRawAudio, setSaveRawAudio] = useState(() => readPrivacyPref(PRIVACY_KEYS.saveRawAudio, false))
   const [devMode, setDevMode] = useState(() => isDevModeEnabled())
+  const [isTauri] = useState(detectTauri)
 
   function handleSaveTranscriptsChange(v: boolean) {
     setSaveTranscripts(v)
@@ -78,8 +100,78 @@ export default function Settings() {
     writePrivacyPref(PRIVACY_KEYS.devMode, v)
   }
 
-  const [dataFolder, setDataFolder] = useState<string | null>(null)
-  const [dataFolderError, setDataFolderError] = useState(false)
+  // ── Folders ─────────────────────────────────────────────────────────────────
+
+  const [folders, setFolders] = useState<{ data: string; logs: string; models: string; packs: string } | null>(null)
+  const [foldersError, setFoldersError] = useState(false)
+  const [copiedFolder, setCopiedFolder] = useState<string | null>(null)
+  const [openFolderError, setOpenFolderError] = useState<string | null>(null)
+
+  useEffect(() => {
+    api.getFolders()
+      .then((r) => setFolders(r))
+      .catch(() => setFoldersError(true))
+  }, [])
+
+  async function handleCopyFolder(folderPath: string, key: string) {
+    try {
+      await navigator.clipboard.writeText(folderPath)
+      setCopiedFolder(key)
+      setTimeout(() => setCopiedFolder((v) => (v === key ? null : v)), 1500)
+    } catch {
+      // ignore — clipboard may be unavailable in non-secure contexts
+    }
+  }
+
+  async function handleOpenFolder(folderPath: string) {
+    setOpenFolderError(null)
+    try {
+      await openFolderInShell(folderPath)
+    } catch {
+      // The shell open scope can reject local paths; fall back to the copyable path.
+      setOpenFolderError('Could not open the folder automatically. Copy the path and open it manually.')
+    }
+  }
+
+  // ── Pack management ──────────────────────────────────────────────────────────
+
+  const packFileInputRef = useRef<HTMLInputElement>(null)
+  const [packImportState, setPackImportState] = useState<PackImportState>('idle')
+  const [packImportError, setPackImportError] = useState<string | null>(null)
+  const [importedPack, setImportedPack] = useState<ImportPackResponse | null>(null)
+  const [installedPacks, setInstalledPacks] = useState<PackSummary[] | null>(null)
+  const [installedPacksError, setInstalledPacksError] = useState(false)
+
+  const loadInstalledPacks = useCallback(() => {
+    api.listPacks()
+      .then((r) => { setInstalledPacks(r.packs); setInstalledPacksError(false) })
+      .catch(() => setInstalledPacksError(true))
+  }, [])
+
+  useEffect(() => { loadInstalledPacks() }, [loadInstalledPacks])
+
+  async function handleImportPack(file: File) {
+    setPackImportState('uploading')
+    setPackImportError(null)
+    setImportedPack(null)
+    try {
+      const result = await api.importPack(file)
+      setImportedPack(result)
+      setPackImportState('success')
+      loadInstalledPacks()
+    } catch (err) {
+      setPackImportError(err instanceof Error ? err.message : 'Import failed')
+      setPackImportState('error')
+    }
+  }
+
+  function handlePackFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (file) void handleImportPack(file)
+    e.target.value = ''
+  }
+
+  // ── Session data ─────────────────────────────────────────────────────────────
 
   const [clearState, setClearState] = useState<ClearState>('idle')
   const [clearError, setClearError] = useState<string | null>(null)
@@ -96,12 +188,6 @@ export default function Settings() {
     api.listSessions()
       .then((r) => { setSessions(r.sessions); setSessionsError(false) })
       .catch(() => setSessionsError(true))
-  }, [])
-
-  useEffect(() => {
-    api.getDataFolder()
-      .then((r) => setDataFolder(r.path))
-      .catch(() => setDataFolderError(true))
   }, [])
 
   useEffect(() => { loadSessions() }, [loadSessions])
@@ -174,11 +260,19 @@ export default function Settings() {
         ? 'Clearing…'
         : 'Clear all local data'
 
+  type FolderKey = 'data' | 'logs' | 'models' | 'packs'
+  const FOLDER_ROWS: { key: FolderKey; label: string }[] = [
+    { key: 'data', label: 'Data' },
+    { key: 'logs', label: 'Logs' },
+    { key: 'models', label: 'Models' },
+    { key: 'packs', label: 'Packs' },
+  ]
+
   return (
     <div style={{ maxWidth: '640px' }}>
       <h1 style={{ marginBottom: '0.5rem' }}>Settings</h1>
 
-      {/* Privacy notice */}
+      {/* Local-first posture notice */}
       <div
         role="note"
         aria-label="local-only notice"
@@ -192,8 +286,9 @@ export default function Settings() {
           color: '#86efac',
         }}
       >
-        Conversations are processed entirely on your device. No conversation data is ever sent to
-        external servers.
+        <strong>Local-first.</strong> Conversations are processed entirely on your device. No
+        telemetry is collected, no transcript is uploaded automatically, and no model or pack is
+        downloaded without an explicit action from you.
       </div>
 
       {/* Transcript saving */}
@@ -224,7 +319,14 @@ export default function Settings() {
       <section style={{ marginBottom: '2rem' }}>
         <SectionHeading>Runtime</SectionHeading>
         <p style={{ fontSize: '0.875rem', color: '#a1a1aa', marginBottom: '0.75rem' }}>
-          Select the active AI provider and model. Advanced knobs are hidden by default.
+          Select the active AI provider and model. Advanced knobs are hidden by default.{' '}
+          <Link
+            to="/model-manager"
+            aria-label="Open model manager"
+            style={{ color: '#71717a' }}
+          >
+            Open model manager →
+          </Link>
         </p>
         <RuntimeSettingsPanel />
       </section>
@@ -242,30 +344,179 @@ export default function Settings() {
         <VoiceSettingsPanel />
       </section>
 
-      {/* Data folder */}
+      {/* Pack management */}
       <section style={{ marginBottom: '2rem' }}>
-        <SectionHeading>Data folder</SectionHeading>
-        <p style={{ fontSize: '0.875rem', color: '#a1a1aa', marginBottom: '0.5rem' }}>
-          All local data (sessions, transcripts, caches) is stored in:
+        <SectionHeading>Pack management</SectionHeading>
+        <p style={{ fontSize: '0.875rem', color: '#a1a1aa', marginBottom: '0.75rem' }}>
+          Packs add scenarios to your library. Import a pack zip file — no executable content is
+          accepted. Packs are validated on import and stored only on this device.
         </p>
-        {dataFolderError ? (
-          <p style={{ fontSize: '0.875rem', color: '#f87171' }}>Could not retrieve data folder path.</p>
-        ) : dataFolder === null ? (
-          <p style={{ fontSize: '0.875rem', color: '#a1a1aa' }}>Loading…</p>
-        ) : (
-          <code
-            data-testid="data-folder-path"
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '0.75rem' }}>
+          <input
+            ref={packFileInputRef}
+            type="file"
+            accept=".zip,application/zip"
+            style={{ display: 'none' }}
+            aria-label="Select pack zip file"
+            data-testid="settings-import-file-input"
+            onChange={handlePackFileChange}
+          />
+          <button
+            onClick={() => packFileInputRef.current?.click()}
+            disabled={packImportState === 'uploading'}
+            aria-label="Import pack"
+            data-testid="settings-import-pack-button"
             style={{
-              display: 'block',
-              padding: '0.5rem 0.75rem',
+              padding: '0.4rem 0.85rem',
+              borderRadius: '6px',
+              border: '1px solid rgba(255,255,255,0.15)',
               background: 'rgba(255,255,255,0.05)',
-              borderRadius: '4px',
-              fontSize: '0.8rem',
-              wordBreak: 'break-all',
+              color: '#e8e8ea',
+              fontSize: '0.875rem',
+              cursor: packImportState === 'uploading' ? 'wait' : 'pointer',
             }}
           >
-            {dataFolder}
-          </code>
+            {packImportState === 'uploading' ? 'Importing…' : 'Import pack (.zip)'}
+          </button>
+          {packImportState === 'success' && importedPack && (
+            <span
+              data-testid="settings-import-success"
+              style={{ fontSize: '0.85rem', color: '#86efac' }}
+            >
+              Imported &ldquo;{importedPack.name}&rdquo;
+            </span>
+          )}
+          {packImportState === 'error' && packImportError && (
+            <span
+              role="alert"
+              data-testid="settings-import-error"
+              style={{ fontSize: '0.85rem', color: '#f87171' }}
+            >
+              {packImportError}
+            </span>
+          )}
+        </div>
+
+        {installedPacksError && (
+          <p style={{ fontSize: '0.875rem', color: '#f87171' }}>Could not load installed packs.</p>
+        )}
+        {!installedPacksError && installedPacks !== null && installedPacks.length === 0 && (
+          <p data-testid="no-packs" style={{ fontSize: '0.875rem', color: '#a1a1aa' }}>
+            No packs installed yet.
+          </p>
+        )}
+        {!installedPacksError && installedPacks !== null && installedPacks.length > 0 && (
+          <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+            {installedPacks.map((p) => (
+              <li
+                key={p.pack_id}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '0.5rem',
+                  padding: '0.5rem 0',
+                  borderBottom: '1px solid rgba(255,255,255,0.06)',
+                  fontSize: '0.875rem',
+                }}
+              >
+                <span style={{ color: '#d4d4d8', flex: 1, minWidth: 0 }}>
+                  <span style={{ fontWeight: 500 }}>{p.name}</span>
+                  <span style={{ color: '#71717a', marginLeft: '0.5rem', fontSize: '0.8rem' }}>
+                    {p.pack_id}
+                  </span>
+                  <span style={{ color: '#71717a', marginLeft: '0.5rem', fontSize: '0.8rem' }}>
+                    {p.scenario_count} scenario{p.scenario_count !== 1 ? 's' : ''}
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {/* Local folders */}
+      <section style={{ marginBottom: '2rem' }}>
+        <SectionHeading>Local folders</SectionHeading>
+        <p style={{ fontSize: '0.875rem', color: '#a1a1aa', marginBottom: '0.75rem' }}>
+          All data stays on this device. Use these paths for manual inspection or backup.
+        </p>
+        {foldersError ? (
+          <p style={{ fontSize: '0.875rem', color: '#f87171' }}>Could not retrieve folder paths.</p>
+        ) : folders === null ? (
+          <p style={{ fontSize: '0.875rem', color: '#a1a1aa' }}>Loading…</p>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {FOLDER_ROWS.map(({ key, label }) => {
+              const folderPath = folders[key]
+              return (
+                <div key={key}>
+                  <span style={{ fontSize: '0.8rem', color: '#71717a', marginBottom: '0.25rem', display: 'block' }}>
+                    {label}
+                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <code
+                      data-testid={`folder-path-${key}`}
+                      style={{
+                        flex: 1,
+                        padding: '0.4rem 0.6rem',
+                        background: 'rgba(255,255,255,0.05)',
+                        borderRadius: '4px',
+                        fontSize: '0.8rem',
+                        wordBreak: 'break-all',
+                      }}
+                    >
+                      {folderPath}
+                    </code>
+                    <button
+                      aria-label={`Copy ${label.toLowerCase()} folder path`}
+                      onClick={() => void handleCopyFolder(folderPath, key)}
+                      style={{
+                        flexShrink: 0,
+                        padding: '0.3rem 0.6rem',
+                        borderRadius: '4px',
+                        border: '1px solid rgba(255,255,255,0.15)',
+                        background: 'transparent',
+                        color: copiedFolder === key ? '#86efac' : '#a1a1aa',
+                        fontSize: '0.75rem',
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {copiedFolder === key ? 'Copied!' : 'Copy'}
+                    </button>
+                    {isTauri && (
+                      <button
+                        aria-label={`Open ${label.toLowerCase()} folder`}
+                        onClick={() => void handleOpenFolder(folderPath)}
+                        style={{
+                          flexShrink: 0,
+                          padding: '0.3rem 0.6rem',
+                          borderRadius: '4px',
+                          border: '1px solid rgba(255,255,255,0.15)',
+                          background: 'transparent',
+                          color: '#a1a1aa',
+                          fontSize: '0.75rem',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Open
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+        {openFolderError && (
+          <p
+            role="alert"
+            data-testid="folder-open-error"
+            style={{ fontSize: '0.85rem', color: '#f87171', marginTop: '0.5rem' }}
+          >
+            {openFolderError}
+          </p>
         )}
       </section>
 

@@ -51,6 +51,22 @@ describe('GET /api/privacy/data-folder', () => {
 });
 
 // ---------------------------------------------------------------------------
+// GET /api/privacy/folders
+// ---------------------------------------------------------------------------
+
+describe('GET /api/privacy/folders', () => {
+  it('returns 200 with data, logs, models, and packs fields', async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/privacy/folders' });
+    expect(res.statusCode).toBe(200);
+    const body = res.json<{ data: string; logs: string; models: string; packs: string }>();
+    expect(typeof body.data).toBe('string');
+    expect(typeof body.logs).toBe('string');
+    expect(typeof body.models).toBe('string');
+    expect(typeof body.packs).toBe('string');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // POST /api/privacy/clear
 // ---------------------------------------------------------------------------
 
