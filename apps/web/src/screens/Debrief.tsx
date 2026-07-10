@@ -237,11 +237,26 @@ export default function Debrief() {
           {error && (
             <ApiErrorView
               error={error}
-              onRetry={handleRetry}
               context="Debrief"
             />
           )}
           <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <button
+              data-testid="retry-btn"
+              onClick={handleRetry}
+              style={{
+                padding: '0.35rem 0.9rem',
+                borderRadius: 5,
+                border: 'none',
+                background: '#4f46e5',
+                color: '#fff',
+                fontWeight: 600,
+                cursor: 'pointer',
+                fontSize: '0.8rem',
+              }}
+            >
+              Retry debrief
+            </button>
             <button
               data-testid="transcript-only-btn"
               onClick={() => void handleShowTranscriptOnly()}
