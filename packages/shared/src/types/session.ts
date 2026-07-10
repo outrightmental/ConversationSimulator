@@ -79,6 +79,25 @@ export interface DebriefTurningPoint {
   impact?: 'positive' | 'negative' | 'neutral';
 }
 
+export interface DebriefStateArcEntry {
+  turn_number: number;
+  state: Record<string, number>;
+}
+
+export interface DebriefMetrics {
+  metrics_version: '1';
+  talk_ratio: number;
+  words_per_turn_player: number;
+  words_per_turn_npc: number;
+  open_questions: number;
+  closed_questions: number;
+  filler_word_count: number;
+  interruption_count: number;
+  response_latency_p50_ms: number | null;
+  response_latency_p95_ms: number | null;
+  state_arc: DebriefStateArcEntry[];
+}
+
 export interface SessionDebriefResponse {
   session_id: string;
   state: SessionState;
@@ -95,6 +114,7 @@ export interface SessionDebriefResponse {
   turning_points?: DebriefTurningPoint[];
   used_fallback?: boolean;
   transcript_saving_disabled?: boolean;
+  metrics?: DebriefMetrics;
 }
 
 export interface SessionTranscriptResponse {
