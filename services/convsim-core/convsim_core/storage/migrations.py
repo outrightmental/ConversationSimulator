@@ -318,12 +318,10 @@ CREATE TABLE session_branches (
 CREATE UNIQUE INDEX session_branches_branch_idx ON session_branches(branch_session_id);
 """
 
-# Records when a session concluded so the Logbook can measure practice time and
-# per-day streaks accurately. Populated by the /end handler and, for sessions
-# that terminate mid-turn without an explicit /end, backfilled when the debrief
-# is generated (see debrief_engine).
-_TURN_SESSION_ENDED_AT_SQL = """
-ALTER TABLE turn_sessions ADD COLUMN ended_at TEXT;
+# Conversational timing realism (issue #308): record whether a player turn
+# barged in on NPC TTS playback so the debrief can count interruptions.
+_BARGE_IN_SQL = """
+ALTER TABLE turn_session_turns ADD COLUMN barged_in INTEGER NOT NULL DEFAULT 0;
 """
 
 MIGRATIONS: list[tuple[str, str]] = [
@@ -340,7 +338,7 @@ MIGRATIONS: list[tuple[str, str]] = [
     ("0011_model_download_verified", _MODEL_DOWNLOAD_VERIFIED_SQL),
     ("0012_session_metrics", _SESSION_METRICS_SQL),
     ("0013_branch_sessions", _BRANCH_SESSIONS_SQL),
-    ("0014_turn_session_ended_at", _TURN_SESSION_ENDED_AT_SQL),
+    ("0014_barge_in", _BARGE_IN_SQL),
 ]
 
 

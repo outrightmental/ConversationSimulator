@@ -115,6 +115,7 @@ def compute_metrics(
     all_turns: List[sqlite3.Row],
     source_mode: str = "text-only",
     final_state: Optional[Dict[str, int]] = None,
+    interruption_count: int = 0,
 ) -> Dict[str, Any]:
     """Compute session telemetry metrics from stored transcript rows.
 
@@ -259,7 +260,7 @@ def compute_metrics(
         "open_questions": open_questions,
         "closed_questions": closed_questions,
         "filler_word_count": filler_word_count,
-        "interruption_count": 0,  # reserved: VAD overlap events not yet stored
+        "interruption_count": interruption_count,
         "response_latency_p50_ms": p50_ms,
         "response_latency_p95_ms": p95_ms,
         "state_arc": state_arc,
@@ -455,13 +456,20 @@ async def generate_debrief(
         # Load all turns for transcript.
         all_turn_rows = conn.execute(
             "SELECT turn_number, role, content, emotion, state_delta_json, "
-            "event_flags_json, safety_json, raw_output_json, source_mode, created_at "
+            "event_flags_json, safety_json, raw_output_json, source_mode, "
+            "barged_in, created_at "
             "FROM turn_session_turns WHERE session_id = ? ORDER BY turn_number ASC",
             (session_id,),
         ).fetchall()
 
         # NPC turns hold raw_output_json with rubric_observations.
         npc_turn_rows = [r for r in all_turn_rows if r["role"] == "npc"]
+
+        # Count player turns where the player barges in on NPC TTS playback.
+        barge_in_count = sum(
+            1 for r in all_turn_rows
+            if r["role"] == "player" and r["barged_in"]
+        )
 
         # Compute scores.
         scores = _compute_scores(npc_turn_rows)
@@ -470,7 +478,10 @@ async def generate_debrief(
         # Compute telemetry metrics (pure, deterministic over this transcript).
         source_mode = setup.get("input_mode", "text-only")
         metrics = compute_metrics(
-            all_turn_rows, source_mode=source_mode, final_state=final_state
+            all_turn_rows,
+            source_mode=source_mode,
+            final_state=final_state,
+            interruption_count=barge_in_count,
         )
 
         # Identify key turning points for fallback and for the LLM.

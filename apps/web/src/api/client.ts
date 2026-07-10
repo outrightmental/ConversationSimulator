@@ -355,8 +355,8 @@ export const api = {
   startSession(sessionId: string): Promise<SessionStartResponse> {
     return post<SessionStartResponse>(`/sessions/${sessionId}/start`)
   },
-  submitTurn(sessionId: string, content: string): Promise<TurnResponse> {
-    return post<TurnResponse>(`/sessions/${sessionId}/turn`, { content })
+  submitTurn(sessionId: string, content: string, barged_in?: boolean): Promise<TurnResponse> {
+    return post<TurnResponse>(`/sessions/${sessionId}/turn`, { content, barged_in: barged_in ?? false })
   },
   endSession(sessionId: string): Promise<SessionEndResponse> {
     return post<SessionEndResponse>(`/sessions/${sessionId}/end`)
@@ -405,6 +405,9 @@ export const api = {
   },
   clearTtsCache(): Promise<TtsCacheClearResponse> {
     return post<TtsCacheClearResponse>('/tts/cache/clear')
+  },
+  getBackchannels(): Promise<{ backchannels: Array<{ text: string; cache_path: string }> }> {
+    return get('/tts/backchannels')
   },
   vadHealth(): Promise<VadHealthResponse> {
     return get<VadHealthResponse>('/vad/health')

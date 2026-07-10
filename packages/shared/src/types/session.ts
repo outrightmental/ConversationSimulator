@@ -30,6 +30,10 @@ export interface SessionCreateRequest {
   // case the backend applies its default. Matches the backend `tts_voice_id`
   // field, which validates the value against the approved voice list.
   tts_voice_id?: string;
+  // Conversational timing features (issue #308). All optional; backend defaults apply.
+  npc_thinking_pause_enabled?: boolean;
+  backchannel_enabled?: boolean;
+  barge_in_enabled?: boolean;
   show_state_meters: boolean;
   save_transcript: boolean;
   seed: number | null;
