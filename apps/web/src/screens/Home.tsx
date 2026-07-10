@@ -27,6 +27,7 @@ export default function Home() {
 
   const [isRestartingSidecar, setIsRestartingSidecar] = useState(false)
 
+
   const recommendations = recommendNext(
     logbook.profile,
     scenariosResult.scenarios,
