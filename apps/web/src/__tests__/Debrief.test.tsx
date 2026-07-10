@@ -10,6 +10,7 @@ vi.mock('../api/client', () => ({
     generateDebrief: vi.fn(),
     exportSession: vi.fn(),
     exportTranscriptText: vi.fn(),
+    createSession: vi.fn(),
   },
 }))
 
@@ -23,6 +24,18 @@ import { isDevModeEnabled } from '../privacyPrefs'
 const mockIsDevModeEnabled = vi.mocked(isDevModeEnabled)
 
 const SESSION_ID = 'sess-debrief01'
+
+const sampleSetup = {
+  scenario_id: 'behavioral_interview',
+  difficulty: 'normal' as const,
+  player_role_name: 'Candidate',
+  language: 'en',
+  input_mode: 'text-only' as const,
+  tts_enabled: false,
+  show_state_meters: false,
+  save_transcript: true,
+  seed: null,
+}
 
 const fullDebriefResponse: SessionDebriefResponse = {
   session_id: SESSION_ID,
@@ -59,7 +72,16 @@ const transcriptDisabledDebriefResponse: SessionDebriefResponse = {
 }
 
 const exportData = {
-  session: { session_id: SESSION_ID, scenario_id: 'behavioral_interview', state: 'Ended', ending_type: 'player_exit', created_at: '2024-01-01T00:00:00Z', turn_count: 2, setup: {}, state_vars: {} },
+  session: {
+    session_id: SESSION_ID,
+    scenario_id: 'behavioral_interview',
+    state: 'Ended',
+    ending_type: 'player_exit',
+    created_at: '2024-01-01T00:00:00Z',
+    turn_count: 2,
+    setup: sampleSetup,
+    state_vars: {},
+  },
   events: [
     { event_id: 1, session_id: SESSION_ID, event_type: 'player_turn', payload: { content: 'Hello, I am interested in this role.' }, created_at: '2024-01-01T00:00:01Z' },
     { event_id: 2, session_id: SESSION_ID, event_type: 'npc_turn', payload: { content: 'Tell me about yourself.', emotion: 'neutral' }, created_at: '2024-01-01T00:00:02Z' },
@@ -73,6 +95,7 @@ function renderDebrief() {
         <Route path="/debrief/:sessionId" element={<Debrief />} />
         <Route path="/library" element={<div>Library page</div>} />
         <Route path="/setup/:scenarioId" element={<div>Setup page</div>} />
+        <Route path="/conversation/:sessionId" element={<div>Conversation page</div>} />
       </Routes>
     </MemoryRouter>,
   )
@@ -270,7 +293,7 @@ describe('Debrief screen', () => {
 
     it('omits transcript section when export returns no relevant events', async () => {
       mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
-      mockApi.exportSession.mockResolvedValue({ events: [] })
+      mockApi.exportSession.mockResolvedValue({ session: exportData.session, events: [] })
       renderDebrief()
       await waitFor(() =>
         expect(screen.getByTestId('summary-section')).toBeInTheDocument(),
@@ -343,7 +366,7 @@ describe('Debrief screen', () => {
     })
   })
 
-  describe('replay button', () => {
+  describe('replay variation button', () => {
     it('renders a replay button after debrief loads', async () => {
       mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
       renderDebrief()
@@ -359,6 +382,59 @@ describe('Debrief screen', () => {
         expect(screen.getByTestId('replay-btn')).toBeInTheDocument(),
       )
       fireEvent.click(screen.getByTestId('replay-btn'))
+      await waitFor(() =>
+        expect(screen.getByText('Setup page')).toBeInTheDocument(),
+      )
+    })
+  })
+
+  describe('replay same setup button', () => {
+    it('renders replay-same-btn after debrief loads', async () => {
+      mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
+      renderDebrief()
+      await waitFor(() =>
+        expect(screen.getByTestId('replay-same-btn')).toBeInTheDocument(),
+      )
+    })
+
+    it('creates a new session with same setup and navigates to conversation', async () => {
+      mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
+      mockApi.createSession.mockResolvedValue({
+        session_id: 'new-sess-01',
+        scenario_id: 'behavioral_interview',
+        state: 'NotStarted',
+        created_at: '2024-01-02T00:00:00Z',
+        setup: sampleSetup,
+      })
+      renderDebrief()
+      await waitFor(() =>
+        expect(screen.getByTestId('replay-same-btn')).toBeInTheDocument(),
+      )
+      // Wait for export to populate sessionSetup
+      await waitFor(() =>
+        expect(mockApi.exportSession).toHaveBeenCalled(),
+      )
+      fireEvent.click(screen.getByTestId('replay-same-btn'))
+      await waitFor(() =>
+        expect(mockApi.createSession).toHaveBeenCalledWith(sampleSetup),
+      )
+      await waitFor(() =>
+        expect(screen.getByText('Conversation page')).toBeInTheDocument(),
+      )
+    })
+
+    it('falls back to setup page when sessionSetup is unavailable', async () => {
+      mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
+      // Export returns data without setup (e.g., transcript saving was off)
+      mockApi.exportSession.mockResolvedValue({ session: {}, events: [] })
+      renderDebrief()
+      await waitFor(() =>
+        expect(screen.getByTestId('replay-same-btn')).toBeInTheDocument(),
+      )
+      await waitFor(() =>
+        expect(mockApi.exportSession).toHaveBeenCalled(),
+      )
+      fireEvent.click(screen.getByTestId('replay-same-btn'))
       await waitFor(() =>
         expect(screen.getByText('Setup page')).toBeInTheDocument(),
       )
@@ -432,6 +508,119 @@ describe('Debrief screen', () => {
         createElementSpy.mockRestore()
         vi.unstubAllGlobals()
       }
+    })
+  })
+
+  describe('export privacy notice', () => {
+    it('shows a privacy notice near export buttons after debrief loads', async () => {
+      mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
+      renderDebrief()
+      await waitFor(() =>
+        expect(screen.getByTestId('export-privacy-notice')).toBeInTheDocument(),
+      )
+      expect(screen.getByTestId('export-privacy-notice')).toHaveTextContent(/local download folder/i)
+    })
+  })
+
+  describe('debrief failure retry', () => {
+    it('shows a retry button in the error state', async () => {
+      mockApi.generateDebrief.mockRejectedValue(new Error('LLM unavailable'))
+      renderDebrief()
+      await waitFor(() =>
+        expect(screen.getByTestId('retry-btn')).toBeInTheDocument(),
+      )
+    })
+
+    it('retry button resets to loading and calls generateDebrief again', async () => {
+      mockApi.generateDebrief
+        .mockRejectedValueOnce(new Error('Timeout'))
+        .mockResolvedValue(fullDebriefResponse)
+      renderDebrief()
+      await waitFor(() =>
+        expect(screen.getByTestId('retry-btn')).toBeInTheDocument(),
+      )
+      fireEvent.click(screen.getByTestId('retry-btn'))
+      await waitFor(() =>
+        expect(screen.getByTestId('summary-section')).toBeInTheDocument(),
+      )
+      expect(mockApi.generateDebrief).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  describe('transcript-only fallback', () => {
+    it('shows a "Show transcript only" button in the error state', async () => {
+      mockApi.generateDebrief.mockRejectedValue(new Error('Model error'))
+      renderDebrief()
+      await waitFor(() =>
+        expect(screen.getByTestId('transcript-only-btn')).toBeInTheDocument(),
+      )
+    })
+
+    it('clicking transcript-only loads transcript and shows transcript-only notice', async () => {
+      mockApi.generateDebrief.mockRejectedValue(new Error('Model error'))
+      renderDebrief()
+      await waitFor(() =>
+        expect(screen.getByTestId('transcript-only-btn')).toBeInTheDocument(),
+      )
+      fireEvent.click(screen.getByTestId('transcript-only-btn'))
+      await waitFor(() =>
+        expect(screen.getByTestId('transcript-only-notice')).toBeInTheDocument(),
+      )
+      expect(screen.getByTestId('transcript-only-notice')).toHaveTextContent(
+        /debrief generation failed/i,
+      )
+    })
+
+    it('transcript-only fallback shows transcript turns fetched via exportSession', async () => {
+      mockApi.generateDebrief.mockRejectedValue(new Error('Model error'))
+      renderDebrief()
+      await waitFor(() =>
+        expect(screen.getByTestId('transcript-only-btn')).toBeInTheDocument(),
+      )
+      fireEvent.click(screen.getByTestId('transcript-only-btn'))
+      await waitFor(() =>
+        expect(screen.getByTestId('transcript-section')).toBeInTheDocument(),
+      )
+      expect(screen.getAllByTestId('transcript-turn')).toHaveLength(2)
+    })
+
+    it('transcript-only fallback shows no-transcript message when export has no turns', async () => {
+      mockApi.generateDebrief.mockRejectedValue(new Error('Model error'))
+      mockApi.exportSession.mockResolvedValue({ session: {}, events: [] })
+      renderDebrief()
+      await waitFor(() =>
+        expect(screen.getByTestId('transcript-only-btn')).toBeInTheDocument(),
+      )
+      fireEvent.click(screen.getByTestId('transcript-only-btn'))
+      await waitFor(() =>
+        expect(screen.getByTestId('transcript-only-notice')).toBeInTheDocument(),
+      )
+      expect(screen.queryByTestId('transcript-section')).not.toBeInTheDocument()
+      expect(screen.getByText(/no transcript was saved/i)).toBeInTheDocument()
+    })
+
+    it('transcript-only mode shows a retry debrief button', async () => {
+      mockApi.generateDebrief.mockRejectedValue(new Error('Model error'))
+      renderDebrief()
+      await waitFor(() =>
+        expect(screen.getByTestId('transcript-only-btn')).toBeInTheDocument(),
+      )
+      fireEvent.click(screen.getByTestId('transcript-only-btn'))
+      await waitFor(() =>
+        expect(screen.getByTestId('retry-btn')).toBeInTheDocument(),
+      )
+    })
+
+    it('transcript-only mode shows export-privacy-notice', async () => {
+      mockApi.generateDebrief.mockRejectedValue(new Error('Model error'))
+      renderDebrief()
+      await waitFor(() =>
+        expect(screen.getByTestId('transcript-only-btn')).toBeInTheDocument(),
+      )
+      fireEvent.click(screen.getByTestId('transcript-only-btn'))
+      await waitFor(() =>
+        expect(screen.getByTestId('export-privacy-notice')).toBeInTheDocument(),
+      )
     })
   })
 })

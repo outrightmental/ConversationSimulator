@@ -571,4 +571,58 @@ describe('offline-smoke-test — official packs', () => {
     runOfflineSmokeTest(difficultConvPack, true);
     expect(Socket.prototype.connect).toBe(origConnect);
   });
+
+  const everydayNegotiationPack = join(repoRoot, 'packs', 'official', 'everyday-negotiation');
+
+  it('passes for the everyday-negotiation pack', () => {
+    const code = runOfflineSmokeTest(everydayNegotiationPack, false);
+    expect(code).toBe(0);
+  });
+
+  it('JSON output is ok for the everyday-negotiation pack', () => {
+    let captured = '';
+    const spy = vi.spyOn(process.stdout, 'write').mockImplementation((d) => {
+      captured += String(d);
+      return true;
+    });
+    runOfflineSmokeTest(everydayNegotiationPack, true);
+    spy.mockRestore();
+    const result = JSON.parse(captured) as Record<string, unknown>;
+    expect(result['status']).toBe('ok');
+    expect(result['pack_id']).toBe('official.everyday_negotiation');
+    expect(typeof result['scenario_id']).toBe('string');
+    expect((result['turns_played'] as number)).toBeGreaterThan(0);
+    expect(result['debrief_generated']).toBe(true);
+    expect((result['network_violations'] as unknown[]).length).toBe(0);
+  });
+
+  const languageCafePack = join(repoRoot, 'packs', 'official', 'language-cafe');
+
+  it('passes for the language-cafe pack', () => {
+    const code = runOfflineSmokeTest(languageCafePack, false);
+    expect(code).toBe(0);
+  });
+
+  it('JSON output is ok for the language-cafe pack', () => {
+    let captured = '';
+    const spy = vi.spyOn(process.stdout, 'write').mockImplementation((d) => {
+      captured += String(d);
+      return true;
+    });
+    runOfflineSmokeTest(languageCafePack, true);
+    spy.mockRestore();
+    const result = JSON.parse(captured) as Record<string, unknown>;
+    expect(result['status']).toBe('ok');
+    expect(result['pack_id']).toBe('official.language_cafe');
+    expect(typeof result['scenario_id']).toBe('string');
+    expect((result['turns_played'] as number)).toBeGreaterThan(0);
+    expect(result['debrief_generated']).toBe(true);
+    expect((result['network_violations'] as unknown[]).length).toBe(0);
+  });
+
+  it('Socket.prototype.connect is restored after the language-cafe pack run', () => {
+    const origConnect = Socket.prototype.connect;
+    runOfflineSmokeTest(languageCafePack, true);
+    expect(Socket.prototype.connect).toBe(origConnect);
+  });
 });
