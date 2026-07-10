@@ -41,6 +41,7 @@ jobs:
       HAS_APPLE_CERT: ${{ secrets.APPLE_CERTIFICATE != '' }}
       HAS_NOTARIZATION: ${{ secrets.APPLE_ID != '' }}
       HAS_WINDOWS_CERT: ${{ secrets.WINDOWS_SIGN_CERT_PFX != '' }}
+      HAS_UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -572,6 +573,48 @@ jobs:
           tar -czf "$TARBALL" -C "$BUNDLE_DIR" "$APP_NAME"
           ls -lh "$TARBALL"
 
+      # ── Sign updater artifacts (optional, requires TAURI_SIGNING_PRIVATE_KEY) ─
+      # Generates .sig files alongside the updater-relevant installer/archive so
+      # the release job can embed them in the Tauri updater manifest (latest.json).
+      #
+      # Required repository secrets (Settings → Secrets and variables → Actions):
+      #   TAURI_SIGNING_PRIVATE_KEY          Base64-encoded Ed25519 private key.
+      #                                      Generate with: cargo tauri signer generate
+      #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD Passphrase for the key (may be empty).
+      #
+      # When either secret is absent this step exits 0 with an INFO message;
+      # the release is published without an updater manifest and the in-app
+      # banner check fails silently (offline guard).
+      - name: Sign updater artifacts
+        if: env.HAS_UPDATER_KEY == 'true'
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          BUNDLE_ROOT=apps/desktop/src-tauri/target/release/bundle
+
+          sign_file() {
+            local FILE="$1"
+            echo "  Signing: $FILE"
+            cargo tauri signer sign \
+              --private-key "$TAURI_SIGNING_PRIVATE_KEY" \
+              ${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:+--password "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD"} \
+              "$FILE"
+          }
+
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            ARCHIVE="$(find "$BUNDLE_ROOT/macos" -maxdepth 1 -name '*.app.tar.gz' | head -n1)"
+            [ -n "$ARCHIVE" ] && sign_file "$ARCHIVE" || echo "  WARN  No .app.tar.gz found — skipping"
+          elif [ "$RUNNER_OS" = "Linux" ]; then
+            APPIMAGE="$(find "$BUNDLE_ROOT/appimage" -name '*.AppImage' | head -n1)"
+            [ -n "$APPIMAGE" ] && sign_file "$APPIMAGE" || echo "  WARN  No .AppImage found — skipping"
+          elif [ "$RUNNER_OS" = "Windows" ]; then
+            INSTALLER="$(find "$BUNDLE_ROOT/nsis" -name '*-setup.exe' | head -n1)"
+            [ -n "$INSTALLER" ] && sign_file "$INSTALLER" || echo "  WARN  No NSIS installer found — skipping"
+          fi
+
       # ── Collect installers ───────────────────────────────────────────────────
       # Tauri v2 places bundles under target/release/bundle/<format>/.
       # The .app.tar.gz (macOS) is the raw app bundle in a tarball, produced by
@@ -586,9 +629,12 @@ jobs:
           path: |
             apps/desktop/src-tauri/target/release/bundle/**/*.dmg
             apps/desktop/src-tauri/target/release/bundle/**/*.app.tar.gz
+            apps/desktop/src-tauri/target/release/bundle/**/*.app.tar.gz.sig
             apps/desktop/src-tauri/target/release/bundle/**/*.AppImage
+            apps/desktop/src-tauri/target/release/bundle/**/*.AppImage.sig
             apps/desktop/src-tauri/target/release/bundle/**/*.deb
             apps/desktop/src-tauri/target/release/bundle/**/*.exe
+            apps/desktop/src-tauri/target/release/bundle/**/*.exe.sig
             apps/desktop/src-tauri/target/release/bundle/**/*.msi
           if-no-files-found: warn
           retention-days: 7
@@ -598,6 +644,8 @@ jobs:
     name: Publish release
     needs: build-desktop
     runs-on: ubuntu-latest
+    env:
+      HAS_UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -621,7 +669,85 @@ jobs:
           done > checksums-sha256.txt
           cat checksums-sha256.txt
 
+      # ── Generate Tauri updater manifest (latest.json) ─────────────────────────
+      # latest.json is the endpoint the app's tauri-plugin-updater polls on
+      # launch.  It lists the new version, per-platform download URLs, and the
+      # Ed25519 updater signatures produced by the "Sign updater artifacts" step.
+      #
+      # This step is skipped when TAURI_SIGNING_PRIVATE_KEY is absent; in that
+      # case the in-app update check fails silently (offline guard) and no banner
+      # is shown — acceptable until signing infrastructure lands in #235.
+      - name: Generate Tauri updater manifest (latest.json)
+        if: env.HAS_UPDATER_KEY == 'true'
+        run: |
+          set -euo pipefail
+
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          VERSION="${TAG#v}"
+          REPO="outrightmental/ConversationSimulator"
+          BASE_URL="https://github.com/${REPO}/releases/download/${TAG}"
+          PUB_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+          # Helper: read .sig content or emit empty string.
+          sig_content() {
+            local FILE="$1"
+            [ -f "$FILE" ] && cat "$FILE" || echo ""
+          }
+
+          # Locate each platform's updater artifact and its signature.
+          MACOS_ARCHIVE="$(find release-artifacts -name '*.app.tar.gz' | head -n1)"
+          MACOS_SIG_FILE="${MACOS_ARCHIVE}.sig"
+          MACOS_SIG="$(sig_content "$MACOS_SIG_FILE")"
+          MACOS_FILENAME="$(basename "$MACOS_ARCHIVE")"
+
+          LINUX_APPIMAGE="$(find release-artifacts -name '*.AppImage' | head -n1)"
+          LINUX_SIG_FILE="${LINUX_APPIMAGE}.sig"
+          LINUX_SIG="$(sig_content "$LINUX_SIG_FILE")"
+          LINUX_FILENAME="$(basename "$LINUX_APPIMAGE")"
+
+          WINDOWS_EXE="$(find release-artifacts -name '*-setup.exe' | head -n1)"
+          WINDOWS_SIG_FILE="${WINDOWS_EXE}.sig"
+          WINDOWS_SIG="$(sig_content "$WINDOWS_SIG_FILE")"
+          WINDOWS_FILENAME="$(basename "$WINDOWS_EXE")"
+
+          # Emit the manifest only when at least one sig file is present.
+          if [ -z "$MACOS_SIG" ] && [ -z "$LINUX_SIG" ] && [ -z "$WINDOWS_SIG" ]; then
+            echo "  WARN  No .sig files found — skipping latest.json generation."
+            echo "        Set TAURI_SIGNING_PRIVATE_KEY to enable updater manifests."
+            exit 0
+          fi
+
+          python3 - <<PYEOF
+          import json, sys
+
+          platforms = {}
+          for key, sig, filename in [
+            ("darwin-aarch64", """$MACOS_SIG""", "$MACOS_FILENAME"),
+            ("linux-x86_64",   """$LINUX_SIG""",   "$LINUX_FILENAME"),
+            ("windows-x86_64", """$WINDOWS_SIG""", "$WINDOWS_FILENAME"),
+          ]:
+            sig = sig.strip()
+            if sig and filename:
+              platforms[key] = {
+                "signature": sig,
+                "url": "$BASE_URL/" + filename,
+              }
+
+          manifest = {
+            "version": "$VERSION",
+            "notes":   "See https://github.com/$REPO/releases/tag/$TAG for the full release notes.",
+            "pub_date": "$PUB_DATE",
+            "platforms": platforms,
+          }
+          print(json.dumps(manifest, indent=2))
+          PYEOF
+          ) > latest.json
+
+          echo "=== Generated latest.json ==="
+          cat latest.json
+
       - name: Create draft GitHub release
+        id: versioned_release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
@@ -634,5 +760,33 @@ jobs:
           files: |
             release-artifacts/**
             checksums-sha256.txt
+            ${{ env.HAS_UPDATER_KEY == 'true' && 'latest.json' || '' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Update beta-channel release ───────────────────────────────────────────
+      # The app's updater plugin checks a fixed URL:
+      #   .../releases/download/beta-channel/latest.json
+      # Uploading latest.json here means every new beta release is discovered
+      # automatically on next app launch without any URL change in the binary.
+      # Previous versioned releases (e.g. v0.1.0-beta.1) remain downloadable.
+      - name: Update beta-channel release with latest updater manifest
+        if: env.HAS_UPDATER_KEY == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: beta-channel
+          name: Beta channel — latest updater manifest
+          body: |
+            This release holds the Tauri updater manifest (`latest.json`) for the
+            beta channel.  The app's built-in update checker polls this asset on
+            launch to detect new beta builds.
+
+            **Do not install from this release directly** — download from the
+            corresponding versioned pre-release instead.
+
+            Latest beta: ${{ github.event.inputs.tag || github.ref_name }}
+          prerelease: true
+          draft: false
+          files: latest.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
