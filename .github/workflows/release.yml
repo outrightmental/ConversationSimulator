@@ -39,6 +39,8 @@ jobs:
     # make Tauri attempt its own keychain import without the password).
     env:
       HAS_APPLE_CERT: ${{ secrets.APPLE_CERTIFICATE != '' }}
+      HAS_NOTARIZATION: ${{ secrets.APPLE_ID != '' }}
+      HAS_WINDOWS_CERT: ${{ secrets.WINDOWS_SIGN_CERT_PFX != '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -201,6 +203,84 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: pnpm --filter @convsim/desktop build
 
+      # ── Verify macOS signature, entitlements, notarization, and stapling ──────
+      # Confirms that Tauri's signing + Apple notarisation pipeline completed
+      # correctly before the artifact is uploaded.
+      #
+      # Codesign verification: --deep checks every nested binary and dylib;
+      # --strict rejects any relaxed-mode signatures that would fail on newer
+      # macOS releases.
+      #
+      # Entitlement verification: confirms the five Hardened Runtime entitlements
+      # declared in apps/desktop/src-tauri/entitlements.plist are present in the
+      # signed bundle.  A mismatch here means the wrong entitlements file was
+      # used, which would cause runtime failures (JIT, dylib loading, microphone).
+      #
+      # Notarization + stapling: spctl --assess verifies Gatekeeper would accept
+      # the app on a clean macOS install.  xcrun stapler validate confirms the
+      # notarisation ticket is embedded in the bundle so the assessment passes
+      # offline (no Apple CDN required at install time).
+      #
+      # Gate G3-01: notarised + Gatekeeper-accepted macOS build required for
+      # Stage 3 Steam private beta — see docs/steam-mvp-scope.md.
+      #
+      # When APPLE_CERTIFICATE is absent the step exits 0 with an INFO message
+      # (unsigned build — acceptable for dev/contributor builds).
+      - name: Verify macOS signature, entitlements, notarization, and stapling
+        if: runner.os == 'macOS' && env.HAS_APPLE_CERT == 'true'
+        shell: bash
+        env:
+          HAS_NOTARIZATION: ${{ env.HAS_NOTARIZATION }}
+        run: |
+          set -euo pipefail
+          BUNDLE_DIR=apps/desktop/src-tauri/target/release/bundle/macos
+          APP_PATH="$(find "$BUNDLE_DIR" -maxdepth 1 -name '*.app' | head -n1)"
+          if [ -z "$APP_PATH" ]; then
+            echo "ERROR: no .app bundle found under $BUNDLE_DIR" >&2
+            exit 1
+          fi
+
+          echo "=== Code signature verification: $APP_PATH ==="
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+
+          echo ""
+          echo "=== Hardened Runtime entitlement verification ==="
+          ENTITLEMENTS="$(codesign --display --entitlements :- "$APP_PATH" 2>&1)"
+          printf '%s\n' "$ENTITLEMENTS"
+          fail=0
+          for KEY in \
+            com.apple.security.cs.allow-jit \
+            com.apple.security.cs.disable-library-validation \
+            com.apple.security.network.client \
+            com.apple.security.device.audio-input \
+            com.apple.security.files.user-selected.read-write; do
+            if printf '%s' "$ENTITLEMENTS" | grep -q "$KEY"; then
+              echo "  OK: $KEY"
+            else
+              echo "  ERROR: expected entitlement $KEY missing from signed bundle" >&2
+              fail=1
+            fi
+          done
+          [ "$fail" -eq 0 ] || exit 1
+
+          if [ "$HAS_NOTARIZATION" = "true" ]; then
+            echo ""
+            echo "=== Notarization verification (Gatekeeper assessment) ==="
+            spctl --assess --type execute --verbose=2 "$APP_PATH"
+
+            echo ""
+            echo "=== Stapled notarization ticket verification ==="
+            xcrun stapler validate "$APP_PATH"
+            echo "  Gate G3-01 macOS criterion met: signed, notarised, and Gatekeeper-accepted."
+          else
+            echo ""
+            echo "  SKIP  APPLE_ID is not set — notarization and Gatekeeper checks skipped."
+            echo "        The .app is code-signed but not notarised."
+            echo "        Gatekeeper will block this build on clean macOS installs."
+            echo "        Set APPLE_ID, APPLE_PASSWORD, and APPLE_TEAM_ID secrets to enable"
+            echo "        notarisation (required for gate G3-01)."
+          fi
+
       # ── Authenticode signing (Windows only, optional) ─────────────────────────
       # Signs the NSIS installer (.exe) and MSI package produced by Tauri.
       # Signing requires two repository secrets:
@@ -300,6 +380,134 @@ jobs:
             # Always remove the PFX from disk, even on failure.
             if (Test-Path $pfxPath) { Remove-Item $pfxPath -Force }
           }
+
+      # ── Verify Windows Authenticode signature ─────────────────────────────────
+      # Confirms signtool correctly embedded a valid Authenticode signature in
+      # each installer produced by Tauri.  Skipped when WINDOWS_SIGN_CERT_PFX is
+      # absent (unsigned build — see the signing step above for details).
+      - name: Verify Windows Authenticode signature
+        if: runner.os == 'Windows' && env.HAS_WINDOWS_CERT == 'true'
+        shell: pwsh
+        run: |
+          $bundleDir = "apps\desktop\src-tauri\target\release\bundle"
+          $installers = Get-ChildItem -Recurse -Path $bundleDir `
+            -Include "*.exe","*.msi" -ErrorAction SilentlyContinue
+          if (-not $installers) {
+            Write-Host "  WARN  No installers found for signature verification."
+            exit 0
+          }
+
+          $signtool = (Get-Command signtool.exe -ErrorAction SilentlyContinue).Source
+          if (-not $signtool) {
+            $signtool = Get-ChildItem `
+              -Path "${env:ProgramFiles(x86)}\Windows Kits\10\bin" `
+              -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
+              Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
+              Sort-Object FullName -Descending |
+              Select-Object -First 1 -ExpandProperty FullName
+          }
+          if (-not $signtool) {
+            Write-Error "signtool.exe not found — cannot verify Authenticode signature."
+            exit 1
+          }
+
+          foreach ($installer in $installers) {
+            Write-Host "  Verifying: $($installer.FullName)"
+            & $signtool verify /pa /v $installer.FullName
+            if ($LASTEXITCODE -ne 0) {
+              Write-Error "Authenticode verification failed for $($installer.Name) (exit $LASTEXITCODE)"
+              exit $LASTEXITCODE
+            }
+          }
+          Write-Host "  INFO  All installers have a valid Authenticode signature."
+
+      # ── Scan Windows installers for malware (VirusTotal, optional) ─────────────
+      # Submits each Windows installer to VirusTotal for analysis and records the
+      # analysis URL in the CI log and as a retained artifact.  This step is
+      # intentionally non-blocking: freshly compiled Rust/Tauri executables are
+      # often flagged by heuristic engines as false positives, and blocking the
+      # release on false positives would be counterproductive.
+      #
+      # Required repository secret:
+      #   VIRUSTOTAL_API_KEY    VirusTotal Public API v3 key.  Free tier allows
+      #                         4 file uploads/minute and 500/day.  See
+      #                         docs/platform-notes.md for key setup and rotation.
+      #
+      # Files > 32 MB use the large-file upload URL provided by the VirusTotal
+      # API (Tauri NSIS installers frequently exceed this threshold).
+      #
+      # When the secret is absent the step exits 0 with an INFO message.
+      - name: Scan Windows installers for malware (VirusTotal, optional)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          VIRUSTOTAL_API_KEY: ${{ secrets.VIRUSTOTAL_API_KEY }}
+        run: |
+          if (-not $env:VIRUSTOTAL_API_KEY) {
+            Write-Host "  INFO  VIRUSTOTAL_API_KEY is not set — skipping malware scan."
+            Write-Host "        Set the secret to enable VirusTotal pre-upload scanning."
+            Write-Host "        See docs/platform-notes.md for setup and key rotation instructions."
+            exit 0
+          }
+
+          $bundleDir = "apps\desktop\src-tauri\target\release\bundle"
+          $installers = Get-ChildItem -Recurse -Path $bundleDir `
+            -Include "*.exe","*.msi" -ErrorAction SilentlyContinue
+          if (-not $installers) {
+            Write-Host "  WARN  No installers found — skipping malware scan."
+            exit 0
+          }
+
+          $recordPath = Join-Path $env:RUNNER_TEMP "virustotal-scan-record.txt"
+          # VirusTotal standard upload limit; files above this use the large-file endpoint.
+          $MAX_STANDARD_BYTES = 32 * 1024 * 1024
+
+          foreach ($installer in $installers) {
+            $sizeMB = [math]::Round($installer.Length / 1MB, 1)
+            Write-Host "  Uploading $($installer.Name) (${sizeMB} MB) to VirusTotal..."
+            try {
+              if ($installer.Length -gt $MAX_STANDARD_BYTES) {
+                Write-Host "    File exceeds 32 MB — requesting large-file upload URL."
+                $urlResp = Invoke-RestMethod `
+                  -Uri "https://www.virustotal.com/api/v3/files/upload_url" `
+                  -Headers @{ "x-apikey" = $env:VIRUSTOTAL_API_KEY }
+                $uploadUrl = $urlResp.data
+              } else {
+                $uploadUrl = "https://www.virustotal.com/api/v3/files"
+              }
+
+              $response = Invoke-RestMethod `
+                -Uri $uploadUrl `
+                -Method POST `
+                -Headers @{ "x-apikey" = $env:VIRUSTOTAL_API_KEY } `
+                -Form @{ file = Get-Item $installer.FullName }
+
+              $analysisId = $response.data.id
+              $vtUrl = "https://www.virustotal.com/gui/file-analysis/$analysisId"
+              Write-Host "    Analysis ID : $analysisId"
+              Write-Host "    View results: $vtUrl"
+              Add-Content -Path $recordPath `
+                -Value "$($installer.Name) => $analysisId => $vtUrl"
+            } catch {
+              Write-Host "  WARN  VirusTotal upload failed for $($installer.Name): $_"
+              Write-Host "        Continuing — malware scan is non-blocking."
+            }
+          }
+
+          if (Test-Path $recordPath) {
+            Write-Host ""
+            Write-Host "  Scan record summary:"
+            Get-Content $recordPath | ForEach-Object { Write-Host "    $_" }
+          }
+
+      - name: Upload VirusTotal scan record
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: virustotal-scan-${{ matrix.name }}
+          path: ${{ runner.temp }}/virustotal-scan-record.txt
+          if-no-files-found: ignore
+          retention-days: 90
 
       # ── Verify Linux artifact permissions ────────────────────────────────────
       # AppImage files must be executable before upload so that players can run
