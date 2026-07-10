@@ -45,6 +45,7 @@ Contents
   config.json       — Settings with home-directory paths replaced by ~
   recent_errors.txt — Last lines of app.log (no conversation content)
   system.txt        — OS and architecture summary
+  preflight.json    — Last self-test results (if a self-test has been run)
   README.txt        — This file
 
 Privacy notes
@@ -87,7 +88,10 @@ def _tail_log(log_path: Path, n: int) -> str:
 
 
 def create_crash_bundle(
-    log_dir: str, settings: AppSettings, bundle_dir: str | None = None
+    log_dir: str,
+    settings: AppSettings,
+    bundle_dir: str | None = None,
+    preflight_data: dict | None = None,
 ) -> Path:
     """Create a local crash-report ZIP bundle.
 
@@ -128,6 +132,8 @@ def create_crash_bundle(
         zf.writestr("config.json", json.dumps(_safe_settings(settings), indent=2))
         zf.writestr("recent_errors.txt", recent_errors)
         zf.writestr("system.txt", json.dumps(system_info, indent=2))
+        if preflight_data is not None:
+            zf.writestr("preflight.json", json.dumps(preflight_data, indent=2))
         zf.writestr("README.txt", _BUNDLE_README)
 
     return bundle_path
