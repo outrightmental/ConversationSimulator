@@ -109,8 +109,8 @@ register is the single source of truth for whether a risk is open or closed.
 | Stage | Required compliance status |
 |-------|--------------------------|
 | Stage 2 — packaged desktop alpha | All privacy risks (PR-01, PR-02, PR-03) MITIGATED |
-| Stage 3 — Steam private beta | All release-blocking risks MITIGATED or ACCEPTED; SR-01 through SR-07 passed |
-| Stage 4 — public free release | SR-08 (depot audit) and SR-09 (post-deployment verification) passed |
+| Stage 3 — Steam private beta | All release-blocking risks MITIGATED or ACCEPTED; SR-01 through SR-08 passed (including SR-08 depot audit) and the SR-09 private beta sign-off completed |
+| Stage 4 — public free release | All Stage 4 gates (G4-01 through G4-05 in [`docs/steam-mvp-scope.md`](../docs/steam-mvp-scope.md)) met; SR-08 depot audit re-run clean on the launch build |
 
 Run the store-page review checklist in
 [`publishing/STEAM_STORE_PAGE.md` — Store page review checklist](STEAM_STORE_PAGE.md#store-page-review-checklist)
@@ -181,7 +181,9 @@ until every item is checked.
    button is active and set to `Free`.
 6. Install from a fresh account (not the partner account) on each required
    platform to confirm end-to-end installation.
-7. Complete the post-deployment checks in SR-09 of the compliance register.
+7. Confirm all Stage 4 gates (G4-01 through G4-05 in
+   [`docs/steam-mvp-scope.md`](../docs/steam-mvp-scope.md)) remain satisfied on
+   the shipped build, then begin the post-launch monitoring below.
 
 ### Post-launch monitoring
 
