@@ -92,7 +92,7 @@ class TestInterviewPromptSnapshot:
 
     def test_difficulty_in_system_prompt(self):
         bundle = compose_turn_prompt(make_interview_input())
-        assert "normal" in bundle.system_prompt
+        assert "standard" in bundle.system_prompt
 
     def test_recent_transcript_included(self):
         transcript = [
@@ -351,22 +351,131 @@ class TestResponseStyle:
     def test_difficulty_settings_in_scenario_brief(self):
         bundle = compose_turn_prompt(make_interview_input())
         brief = bundle.layer_map["SCENARIO_BRIEF"]
-        assert "normal" in brief
-        assert "medium" in brief  # challenge_frequency
+        assert "standard" in brief
 
     def test_hard_difficulty_override_reflected(self):
         from convsim_prompt import DifficultySettings
         inp = make_interview_input()
         inp.scenario.difficulty = "hard"
         inp.scenario.difficulty_settings = DifficultySettings(
-            npc_patience_modifier=-20,
-            challenge_frequency="high",
+            patience=25,
+            volatility=70,
+            disclosure=25,
+            time_pressure=60,
         )
         bundle = compose_turn_prompt(inp)
         brief = bundle.layer_map["SCENARIO_BRIEF"]
         assert "hard" in brief
-        assert "-20" in brief
-        assert "high" in brief
+        # Low patience/disclosure → expect NPC behaviour fragments
+        assert "patience: low" in brief
+        assert "disclosure: low" in brief
+
+
+# ---------------------------------------------------------------------------
+# Difficulty knob system — preset isolation and bounded fragments
+# ---------------------------------------------------------------------------
+
+
+class TestDifficultyKnobs:
+    """Verify that prompts differ by preset and that knob fragments stay within
+    the safety envelope (no new safety rules or schema instructions are emitted
+    regardless of difficulty settings)."""
+
+    def _make_with_preset(self, name: str, **knobs) -> str:
+        from convsim_prompt import DifficultySettings
+        inp = make_interview_input()
+        inp.scenario.difficulty = name
+        inp.scenario.difficulty_settings = DifficultySettings(**knobs)
+        return compose_turn_prompt(inp).system_prompt
+
+    def test_warm_prompt_differs_from_adversarial(self):
+        warm = self._make_with_preset(
+            "warm", patience=80, volatility=20, disclosure=80, time_pressure=20
+        )
+        adversarial = self._make_with_preset(
+            "adversarial", patience=10, volatility=90, disclosure=10, time_pressure=80
+        )
+        assert warm != adversarial
+
+    def test_all_four_presets_produce_distinct_prompts(self):
+        prompts = [
+            self._make_with_preset("warm",        patience=80, volatility=20, disclosure=80, time_pressure=20),
+            self._make_with_preset("standard",    patience=50, volatility=50, disclosure=50, time_pressure=50),
+            self._make_with_preset("hard",        patience=25, volatility=70, disclosure=25, time_pressure=60),
+            self._make_with_preset("adversarial", patience=10, volatility=90, disclosure=10, time_pressure=80),
+        ]
+        assert len(set(prompts)) == 4, "All four presets must produce distinct system prompts"
+
+    def test_low_patience_fragment_present(self):
+        sp = self._make_with_preset("adversarial", patience=10, volatility=50, disclosure=50, time_pressure=50)
+        assert "patience: low" in sp
+
+    def test_high_patience_fragment_present(self):
+        sp = self._make_with_preset("warm", patience=80, volatility=50, disclosure=50, time_pressure=50)
+        assert "patience: high" in sp
+
+    def test_medium_patience_emits_no_fragment(self):
+        sp = self._make_with_preset("standard", patience=50, volatility=50, disclosure=50, time_pressure=50)
+        assert "patience: low" not in sp
+        assert "patience: high" not in sp
+
+    def test_high_volatility_fragment_present(self):
+        sp = self._make_with_preset("adversarial", patience=50, volatility=90, disclosure=50, time_pressure=50)
+        assert "State sensitivity: high" in sp
+
+    def test_low_volatility_fragment_present(self):
+        sp = self._make_with_preset("warm", patience=50, volatility=20, disclosure=50, time_pressure=50)
+        assert "State sensitivity: low" in sp
+
+    def test_low_disclosure_fragment_present(self):
+        sp = self._make_with_preset("adversarial", patience=50, volatility=50, disclosure=10, time_pressure=50)
+        assert "disclosure: low" in sp
+
+    def test_high_disclosure_fragment_present(self):
+        sp = self._make_with_preset("warm", patience=50, volatility=50, disclosure=80, time_pressure=50)
+        assert "disclosure: high" in sp
+
+    def test_high_time_pressure_fragment_present(self):
+        sp = self._make_with_preset("adversarial", patience=50, volatility=50, disclosure=50, time_pressure=80)
+        assert "Time pressure: high" in sp
+
+    def test_low_time_pressure_fragment_present(self):
+        sp = self._make_with_preset("warm", patience=50, volatility=50, disclosure=50, time_pressure=20)
+        assert "Time pressure: none" in sp
+
+    def test_knob_fragments_do_not_appear_in_output_schema(self):
+        """Difficulty knob fragments must stay within the untrusted content region,
+        not in the OUTPUT_SCHEMA layer."""
+        sp = self._make_with_preset("adversarial", patience=10, volatility=90, disclosure=10, time_pressure=80)
+        from convsim_prompt import UNTRUSTED_CONTENT_END
+        # All knob content must appear before the trusted end sentinel.
+        end_pos = sp.index(UNTRUSTED_CONTENT_END)
+        schema_pos = sp.find("OUTPUT_SCHEMA")
+        assert end_pos < schema_pos
+
+    def test_difficulty_knobs_do_not_override_safety_policy(self):
+        """Adversarial knobs must not alter the SAFETY_POLICY layer."""
+        from _helpers import DEFAULT_SAFETY_POLICY
+        standard_inp = make_interview_input()
+        standard_inp.safety_policy = DEFAULT_SAFETY_POLICY
+        standard_sp = compose_turn_prompt(standard_inp).system_prompt
+
+        adversarial_inp = make_interview_input()
+        adversarial_inp.safety_policy = DEFAULT_SAFETY_POLICY
+        adversarial_inp.scenario.difficulty = "adversarial"
+        from convsim_prompt import DifficultySettings
+        adversarial_inp.scenario.difficulty_settings = DifficultySettings(
+            patience=10, volatility=90, disclosure=10, time_pressure=80
+        )
+        adversarial_sp = compose_turn_prompt(adversarial_inp).system_prompt
+
+        # Extract the SAFETY_POLICY layer from both prompts and compare.
+        def _extract_safety(text: str) -> str:
+            start = text.find("LAYER:SAFETY_POLICY")
+            end = text.find("LAYER:", start + 1)
+            return text[start:end] if end != -1 else text[start:]
+
+        assert _extract_safety(standard_sp) == _extract_safety(adversarial_sp)
 
 
 # ---------------------------------------------------------------------------

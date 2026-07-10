@@ -42,6 +42,7 @@ class DebriefComposerInput:
     turns: List[DebriefTurnRecord]
     rubric_dimension_names: Dict[str, str] = field(default_factory=dict)
     pack_id: Optional[str] = None
+    difficulty_preset: Optional[str] = None
 
 
 def _format_transcript(turns: List[DebriefTurnRecord]) -> str:
@@ -87,6 +88,11 @@ def compose_debrief_prompt(inp: DebriefComposerInput) -> PromptBundle:
         f"SCENARIO: {inp.scenario_title} (id: {inp.scenario_id})",
         f"PLAYER ROLE: {inp.player_role_label}",
         f"OUTCOME: {inp.outcome}",
+        *(
+            [f"DIFFICULTY PRESET: {inp.difficulty_preset}"]
+            if inp.difficulty_preset
+            else []
+        ),
         "---",
         "DIMENSION SCORES (computed from per-turn rubric observations):",
         _format_scores(inp.scores, inp.rubric_dimension_names),

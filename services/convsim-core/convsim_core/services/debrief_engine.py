@@ -438,6 +438,7 @@ async def generate_debrief(
     scenario_id: str = session_row["scenario_id"]
     setup: Dict[str, Any] = json.loads(session_row["setup_json"] or "{}")
     pack_id: Optional[str] = setup.get("pack_id")
+    difficulty_preset: Optional[str] = setup.get("difficulty")
     outcome: str = session_row["ending_type"] or "player_exit"
     final_state: Dict[str, int] = json.loads(session_row["state_vars_json"] or "{}")
     total_turns: int = int(session_row["turn_count"])
@@ -488,6 +489,7 @@ async def generate_debrief(
             scores=scores,
             turns=turn_records,
             pack_id=pack_id,
+            difficulty_preset=difficulty_preset,
         )
         prompt = compose_debrief_prompt(composer_input)
 
@@ -563,6 +565,8 @@ async def generate_debrief(
         }
         if pack_id:
             debrief_doc["pack_id"] = pack_id
+        if difficulty_preset:
+            debrief_doc["difficulty_preset"] = difficulty_preset
 
         # Persist and transition to DebriefReady.
         with conn:

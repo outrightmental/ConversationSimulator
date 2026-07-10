@@ -194,6 +194,11 @@
           }
         }
       }
+    },
+    "difficulty_preset": {
+      "type": "string",
+      "enum": ["warm", "standard", "hard", "adversarial"],
+      "description": "The difficulty preset the player selected for this session."
     }
   }
 }

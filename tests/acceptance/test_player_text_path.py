@@ -28,7 +28,7 @@ from convsim_core.runtime.types import ChatFinal
 # Shared session-setup payload; individual tests copy and customise it.
 _SESSION_SETUP = {
     "scenario_id": "behavioral_interview",
-    "difficulty": "normal",
+    "difficulty": "standard",
     "player_role_name": "Acceptance Tester",
     "language": "en",
     "input_mode": "text-only",
