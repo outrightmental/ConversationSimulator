@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!--
+  Hardened Runtime entitlements for Conversation Simulator (macOS).
+
+  These entitlements are required for Apple notarization and are applied by
+  Tauri's bundler when APPLE_SIGNING_IDENTITY is set.  The PyInstaller sidecar
+  (convsim-core) inherits these entitlements when it is signed via the
+  APPLE_SIGNING_IDENTITY env var in scripts/build-core.sh or the release CI job.
+
+  App Sandbox is intentionally NOT enabled here.  Steam apps cannot run inside
+  the macOS App Sandbox: the Steamworks SDK requires direct inter-process
+  communication for the overlay (G3-03 gate) and achievement/stat reporting, and
+  the convsim-core sidecar needs unrestricted write access to the platform data
+  directory (~/Library/Application Support/com.outrightmental.convsim).
+
+  Hardened Runtime (codesign's "runtime" option) is separate from App Sandbox
+  and is what Apple requires for notarization — the two features are independent.
+
+  Reference: https://developer.apple.com/documentation/security/hardened_runtime
+-->
+<plist version="1.0">
+<dict>
+    <!--
+      WKWebView (Tauri's embedded browser) requires JIT compilation to execute
+      JavaScript at full speed.  Without this entitlement, the app crashes at
+      startup on macOS 10.15+ with Hardened Runtime enabled.
+    -->
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+
+    <!--
+      The Steamworks SDK (libsteam_api.dylib) and llama.cpp runtime are signed
+      by their respective vendors, not by Apple.  Library validation must be
+      disabled so these third-party dylibs load correctly under Hardened Runtime.
+      This is the standard entitlement for Steam-distributed apps.
+    -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+
+    <!--
+      Allow outbound network connections.  Required for:
+        - Model weight downloads initiated via the in-app Model Manager
+        - Loopback connection to the convsim-core sidecar on 127.0.0.1:7355
+      The network guard in convsim-core (routers/privacy.py) enforces
+      no-outbound-calls during a play session regardless of this entitlement.
+    -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+
+    <!--
+      Microphone (audio input) access for optional Whisper STT voice input.
+      Under Hardened Runtime the audio-input entitlement is
+      `com.apple.security.device.audio-input`; `com.apple.security.device.microphone`
+      is the App Sandbox equivalent and has no effect here because the App
+      Sandbox is intentionally disabled (see header).
+      The OS shows a one-time permission dialog on first use; players who do
+      not use voice input are not prompted.  Text-only mode is fully functional
+      without this permission.
+    -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+
+    <!--
+      Read and write access to files selected by the player via the system
+      open/save dialog (pack import, debrief export).  Does not grant access
+      to arbitrary file-system paths outside user-selected locations.
+    -->
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+</dict>
+</plist>

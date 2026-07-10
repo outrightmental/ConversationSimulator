@@ -673,6 +673,12 @@ export default function FirstRunWizard() {
               setActionError(null)
               try {
                 const resp = await api.installModel({ registry_id: selectedModel.id })
+                // Record this choice for cross-device sync (Steam Cloud). Only the
+                // opaque registry ID is stored — never a filesystem path — so no
+                // locally-identifiable data leaves the machine. Best-effort.
+                api.putCloudSettings({ last_model_id: selectedModel.id }).catch(() => {
+                  /* non-fatal: model install proceeds regardless */
+                })
                 setInstallId(resp.install_id)
                 setInstallRecord(null)
                 setStep('installing')
