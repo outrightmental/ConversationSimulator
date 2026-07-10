@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- SPDX-License-Identifier: Apache-2.0 -->
+<!--
+  Additional macOS Info.plist keys merged into the Tauri-generated Info.plist
+  at bundle time (Tauri v2 merges a src-tauri/Info.plist next to tauri.conf.json).
+
+  NSMicrophoneUsageDescription is REQUIRED, not optional: the app requests
+  microphone access via WKWebView `getUserMedia` (see apps/web/src/hooks/
+  useMicCapture.ts) for optional push-to-talk voice input. Under macOS TCC a
+  microphone request from an app that has no usage-description string is not
+  merely denied — the OS terminates the process (SIGABRT). This pairs with the
+  com.apple.security.device.audio-input Hardened Runtime entitlement in
+  entitlements.plist: the entitlement authorises the signed binary to reach the
+  microphone TCC service, and this string is what lets macOS show the one-time
+  permission dialog instead of crashing on first use.
+
+  Text-only mode never triggers a microphone request, so players who do not use
+  voice input are never prompted.
+-->
+<plist version="1.0">
+<dict>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Conversation Simulator uses the microphone only for optional push-to-talk voice input during practice conversations. Audio is transcribed locally on your device and is never uploaded or shared.</string>
+</dict>
+</plist>

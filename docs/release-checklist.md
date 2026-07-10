@@ -57,7 +57,7 @@ account) to catch first-run issues that don't appear on development machines.
 
 | Item | Minimum | Recommended |
 |---|---|---|
-| OS | macOS 12, Ubuntu 22.04, Windows 10 build 19041 | Latest stable |
+| OS | macOS 13, Ubuntu 22.04, Windows 10 build 19041 | Latest stable |
 | CPU | 64-bit x86 or Apple Silicon | Apple Silicon M2 or newer |
 | RAM | 8 GB | 16 GB |
 | Disk free | 10 GB | 20 GB |

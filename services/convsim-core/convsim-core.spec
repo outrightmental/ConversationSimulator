@@ -23,9 +23,25 @@
 # Large model weights (.gguf / .safetensors / .bin) are never bundled; the
 # in-app model registry handles downloading them on first use.
 
+import os as _os  # noqa: F401
 from pathlib import Path  # noqa: F401 — used below; PyInstaller evaluates this file
 
 block_cipher = None
+
+# When APPLE_SIGNING_IDENTITY is set (typically in CI when the Apple Developer
+# p12 certificate has been imported into the keychain), PyInstaller signs the
+# binary and all embedded Python extensions using that identity.  The same
+# entitlements file used by the Tauri app bundle is applied so that Gatekeeper
+# treats the sidecar and the outer shell as a consistent signed unit.
+#
+# When the env var is absent (local dev builds, non-macOS platforms), signing is
+# skipped — codesign_identity=None is PyInstaller's "no signing" sentinel.
+_SIGNING_IDENTITY = _os.environ.get('APPLE_SIGNING_IDENTITY', None)
+_ENTITLEMENTS = (
+    str(Path(SPECPATH).parents[1]  # noqa: F821 — repo root
+        / 'apps' / 'desktop' / 'src-tauri' / 'entitlements.plist')
+    if _SIGNING_IDENTITY else None
+)
 
 # Repository root is two levels above services/convsim-core/
 _SPEC_DIR = Path(SPECPATH)         # services/convsim-core/   # noqa: F821
@@ -107,6 +123,6 @@ exe = EXE(  # noqa: F821
     upx_exclude=[],
     runtime_tmpdir=None,
     console=True,
-    codesign_identity=None,
-    entitlements_file=None,
+    codesign_identity=_SIGNING_IDENTITY,
+    entitlements_file=_ENTITLEMENTS,
 )
