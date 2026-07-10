@@ -21,7 +21,7 @@ import logging
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 from convsim_prompt import (
     NPC_TURN_OUTPUT_SCHEMA,
