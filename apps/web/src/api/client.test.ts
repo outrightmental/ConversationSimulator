@@ -18,7 +18,7 @@ function mockFetch(status: number, body: unknown) {
 
 const BASE_SESSION = {
   scenario_id: 'behavioral_interview',
-  difficulty: 'normal' as const,
+  difficulty: 'standard' as const,
   player_role_name: 'Alice',
   language: 'en',
   input_mode: 'text-only' as const,
