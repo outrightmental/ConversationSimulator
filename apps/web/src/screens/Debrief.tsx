@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
-import type { DebriefTurningPoint, DebriefMetrics, SessionDebriefResponse, SessionCreateRequest } from '@convsim/shared'
+import { useParams, useNavigate, Link } from 'react-router-dom'
+import type { DebriefTurningPoint, DebriefMetrics, SessionDebriefResponse, SessionCreateRequest, LogbookProfile } from '@convsim/shared'
+import { recommendNext } from '@convsim/shared'
 import { api } from '../api/client'
 import type { ApiError } from '../api/errors'
 import { ApiErrorView } from '../components/ApiErrorView'
 import { isDevModeEnabled } from '../privacyPrefs'
 import { useTranslation, formatNumber } from '../i18n'
 import { useSteamAchievements, SteamAchievement, SteamStat } from '../hooks/useSteamAchievements'
+import { useScenarios } from '../api/useScenarios'
 
 type TranscriptEvent = {
   event_id: number
@@ -37,6 +39,35 @@ export default function Debrief() {
   const turnRefs = useRef<Map<number, HTMLElement>>(new Map())
   const { unlock, incrementStat } = useSteamAchievements()
   const achievementsGranted = useRef(false)
+  const scenariosResult = useScenarios()
+
+  // Build a synthetic profile from the session scores so the recommender can
+  // surface the next scenario without a separate logbook fetch.
+  const sessionProfile: LogbookProfile | null = debrief
+    ? {
+        total_sessions: 1,
+        total_practice_seconds: 0,
+        streak_days: 0,
+        last_session_date: null,
+        dimension_scores: Object.entries(debrief.scores ?? {}).map(([id, score]) => ({
+          dimension_id: id,
+          rolling_score: score,
+          session_count: 1,
+          trajectory: [score],
+        })),
+        personal_records: [],
+        strongest_dimension: null,
+        weakest_dimension: null,
+        last_session_delta: null,
+      }
+    : null
+
+  // Exclude the scenario that was just completed so "Next up" always points
+  // forward rather than recommending a repeat of the session just debriefed.
+  const nextUpScenarios = debrief?.scenario_id
+    ? scenariosResult.scenarios.filter((s) => s.scenario_id !== debrief.scenario_id)
+    : scenariosResult.scenarios
+  const nextUpRecommendations = recommendNext(sessionProfile, nextUpScenarios)
 
   useEffect(() => {
     if (!sessionId) return
@@ -776,6 +807,44 @@ export default function Debrief() {
               {t('debrief.actions.tryAnother')}
             </button>
           </div>
+
+          {nextUpRecommendations.length > 0 && (
+            <section
+              aria-label={t('debrief.nextUp.heading')}
+              data-testid="next-up-section"
+              style={{
+                marginTop: '1.5rem',
+                padding: '0.85rem 1rem',
+                border: '1px solid rgba(99,102,241,0.2)',
+                borderRadius: '6px',
+                background: 'rgba(99,102,241,0.04)',
+              }}
+            >
+              <p style={{ margin: '0 0 0.6rem', fontWeight: 600, fontSize: '0.875rem', color: '#a5b4fc' }}>
+                {t('debrief.nextUp.heading')}
+              </p>
+              <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {nextUpRecommendations.map((rec) => (
+                  <li key={`${rec.pack_id}/${rec.scenario_id}`} style={{ fontSize: '0.875rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <Link
+                        to={`/setup/${rec.scenario_id}`}
+                        data-testid="next-up-link"
+                        style={{ fontWeight: 600, color: '#e8e8ea', textDecoration: 'none' }}
+                      >
+                        {rec.title} →
+                      </Link>
+                      <span style={{ fontSize: '0.75rem', color: '#71717a', textTransform: 'capitalize' }}>
+                        {rec.recommended_difficulty}
+                      </span>
+                    </div>
+                    <p style={{ margin: '0.2rem 0 0', color: '#a1a1aa', fontSize: '0.8rem' }}>{rec.reason}</p>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
           <p
             data-testid="export-privacy-notice"
             style={{ fontSize: '0.75rem', color: '#52525b', margin: 0 }}

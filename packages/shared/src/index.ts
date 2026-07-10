@@ -7,4 +7,4 @@ export * from './types/ws-events.js';
 export * from './types/voice.js';
 export * from './types/metrics.js';
 export * from './types/logbook.js';
-export * from './types/preflight.js';
+export * from './types/recommender.js';
