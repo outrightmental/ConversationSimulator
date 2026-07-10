@@ -117,7 +117,10 @@ export const de: LocaleMessages = {
     missingPack: {
       title: 'Keine Szenarienpakete installiert',
       description:
-        'Ihr Modell ist bereit, aber es gibt keine Pakete zum Spielen. Importieren Sie ein Paket oder durchsuchen Sie die Szenarienbibliothek.',
+        'Ihr Modell ist bereit, aber es gibt keine Pakete zum Spielen. Offizielle Pakete wiederherstellen, ein Paket importieren oder die Bibliothek durchsuchen.',
+      restoreAction: 'Offizielle Pakete wiederherstellen',
+      restoring: 'Wird wiederhergestellt…',
+      restoreDone: 'Offizielle Pakete wiederhergestellt ✓',
       action: 'Zur Bibliothek →',
     },
     help: {
