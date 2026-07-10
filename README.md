@@ -54,7 +54,7 @@ Then open **http://127.0.0.1:7354** in your browser.
 **Windows:** use `scripts\setup.ps1` and `scripts\dev.ps1` instead.
 
 On first launch you will be prompted to download a local model. The recommended
-starter is **Qwen3 4B Instruct Q4\_K\_M** (~2.6 GB, Apache-2.0). No model is
+starter is **Qwen3 4B Instruct Q4\_K\_M** (~2.5 GB, Apache-2.0). No model is
 bundled — you decide what to install and when.
 
 > Full install guide: [docs/install.md](docs/install.md) &nbsp;·&nbsp;
@@ -230,10 +230,10 @@ No model is bundled. The app shows license information and size before each down
 
 | Model | Size | VRAM | License | Role |
 | ----- | ---- | ---- | ------- | ---- |
-| Qwen3 4B Instruct Q4\_K\_M | 2.6 GB | 4 GB+ | Apache-2.0 | Starter (lower-spec machines) |
+| Qwen3 4B Instruct Q4\_K\_M | 2.5 GB | 4 GB+ | Apache-2.0 | Starter (lower-spec machines) |
 | Qwen3 8B Instruct Q4\_K\_M | 5.0 GB | 6 GB+ | Apache-2.0 | Standard (recommended for most) |
 | Qwen3 14B Instruct Q4\_K\_M | 9.0 GB | 10 GB+ | Apache-2.0 | High quality |
-| Mistral Small 3.1 24B Q4\_K\_M | 14.8 GB | 16 GB+ | Apache-2.0 | High quality, long context |
+| Mistral Small 3.1 24B Q4\_K\_M | 14.3 GB | 16 GB+ | Apache-2.0 | High quality, long context |
 
 You can also load any llama.cpp-compatible GGUF file from your own filesystem.
 The full model registry with checksums is in `model-registry/registry.yaml`.
