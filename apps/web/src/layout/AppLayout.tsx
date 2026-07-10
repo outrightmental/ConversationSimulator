@@ -86,7 +86,7 @@ export default function AppLayout() {
         <span style={{ fontWeight: 700, marginRight: '1rem', letterSpacing: '-0.02em' }}>
           {t('nav.appTitle')}
         </span>
-        <nav aria-label="Main navigation" style={{ display: 'flex', gap: '0.25rem', flex: 1 }}>
+        <nav aria-label={t('nav.mainNavigation')} style={{ display: 'flex', gap: '0.25rem', flex: 1 }}>
           {NAV_LINKS.map(({ to, label, end }) => (
             <NavLink key={to} to={to} end={end} style={linkStyle}>
               {label}

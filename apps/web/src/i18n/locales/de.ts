@@ -34,6 +34,7 @@ export const de: LocaleMessages = {
   nav: {
     appTitle: 'Gesprächssimulator',
     skipToMain: 'Zum Hauptinhalt springen',
+    mainNavigation: 'Hauptnavigation',
     home: 'Startseite',
     scenarios: 'Szenarien',
     workbench: 'Werkbank',
@@ -45,6 +46,9 @@ export const de: LocaleMessages = {
     tagline:
       'Üben Sie Vorstellungsgespräche, Verhandlungen, Sprachen und schwierige Gespräche.',
     primaryActions: 'Hauptaktionen',
+    readinessSection: 'Systembereitschaft',
+    getStartedSection: 'Ohne Modell loslegen',
+    helpSection: 'Hilfe und Ressourcen',
     startScenario: 'Szenario starten',
     createEdit: 'Szenario erstellen / bearbeiten',
     installModel: 'Modell installieren',

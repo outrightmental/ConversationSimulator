@@ -29,15 +29,20 @@ const MIGRATED_FILES = [
 // Patterns that indicate a hardcoded user-visible string outside of JSX.
 // We look for JSX text content and string attributes that are English prose
 // (2+ words or single capitalized words that are not identifiers/types).
+// Patterns flagged `attr: true` match a hardcoded literal attribute value
+// (aria-label="...", placeholder="...", title="..."). A t()-wrapped attribute is
+// written `aria-label={t(...)}` — no `="` literal — so these regexes only ever match
+// genuine hardcoded strings. They must NOT be suppressed by the layout allowlist
+// below (e.g. `style=`), otherwise a hardcoded aria-label on a styled element escapes.
 const VIOLATION_PATTERNS = [
   // JSX text content: ><two or more English words<
   { re: />([A-Z][a-z]+ [a-z].{3,})</g, label: 'JSX text content' },
   // aria-label="..." with English prose
-  { re: /aria-label="([A-Z][a-z]+ [a-z].{2,})"/g, label: 'aria-label attribute' },
+  { re: /aria-label="([A-Z][a-z]+ [a-z].{2,})"/g, label: 'aria-label attribute', attr: true },
   // placeholder="..." with English prose
-  { re: /placeholder="([A-Z][a-z]+ .{2,})"/g, label: 'placeholder attribute' },
+  { re: /placeholder="([A-Z][a-z]+ .{2,})"/g, label: 'placeholder attribute', attr: true },
   // title="..." with English prose
-  { re: /(?<![a-z])title="([A-Z][a-z]+ .{2,})"/g, label: 'title attribute' },
+  { re: /(?<![a-z])title="([A-Z][a-z]+ .{2,})"/g, label: 'title attribute', attr: true },
 ]
 
 // Patterns to allowlist — matches that are never violations.
@@ -80,10 +85,13 @@ for (const relPath of MIGRATED_FILES) {
     const line = lines[lineIdx]
     const lineNum = lineIdx + 1
 
-    // Skip lines that are clearly allowlisted
-    if (ALLOWLIST_PATTERNS.some((p) => p.test(line))) continue
+    // The layout allowlist suppresses false positives on JSX *text* content (e.g.
+    // styled prose lines). It must not gate literal-attribute checks, which only ever
+    // match hardcoded aria-label/placeholder/title values.
+    const lineAllowlisted = ALLOWLIST_PATTERNS.some((p) => p.test(line))
 
-    for (const { re, label } of VIOLATION_PATTERNS) {
+    for (const { re, label, attr } of VIOLATION_PATTERNS) {
+      if (!attr && lineAllowlisted) continue
       re.lastIndex = 0
       let match
       while ((match = re.exec(line)) !== null) {

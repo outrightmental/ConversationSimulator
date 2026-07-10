@@ -89,7 +89,7 @@ export default function Home() {
         </a>
       </nav>
 
-      <section aria-label="System readiness" style={{ marginTop: '2rem' }}>
+      <section aria-label={t('home.readinessSection')} style={{ marginTop: '2rem' }}>
         <h2>{t('home.status.heading')}</h2>
         <ul style={{ listStyle: 'none', padding: 0, display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
           <li>
@@ -208,7 +208,7 @@ export default function Home() {
       </section>
 
       {showNoModelPrompt && (
-        <section aria-label="Get started without a model" style={{ marginTop: '2rem' }}>
+        <section aria-label={t('home.getStartedSection')} style={{ marginTop: '2rem' }}>
           <h2>{t('home.noModel.heading')}</h2>
           <p style={{ color: '#a1a1aa', fontSize: '0.875rem', marginBottom: '1rem' }}>
             {t('home.noModel.description')}
@@ -339,7 +339,7 @@ export default function Home() {
         </section>
       )}
 
-      <section aria-label="Help and resources" style={{ marginTop: '2.5rem', borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: '1.5rem' }}>
+      <section aria-label={t('home.helpSection')} style={{ marginTop: '2.5rem', borderTop: '1px solid rgba(255,255,255,0.07)', paddingTop: '1.5rem' }}>
         <h2 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.75rem' }}>
           {t('home.help.heading')}
         </h2>

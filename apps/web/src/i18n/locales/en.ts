@@ -29,6 +29,7 @@ export const en = {
   nav: {
     appTitle: 'Conversation Simulator',
     skipToMain: 'Skip to main content',
+    mainNavigation: 'Main navigation',
     home: 'Home',
     scenarios: 'Scenarios',
     workbench: 'Workbench',
@@ -39,6 +40,9 @@ export const en = {
     title: 'Conversation Simulator',
     tagline: 'Practice interviews, negotiations, language, and difficult conversations.',
     primaryActions: 'Primary actions',
+    readinessSection: 'System readiness',
+    getStartedSection: 'Get started without a model',
+    helpSection: 'Help and resources',
     startScenario: 'Start a scenario',
     createEdit: 'Create / edit a scenario',
     installModel: 'Install model',
