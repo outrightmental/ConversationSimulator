@@ -221,14 +221,14 @@ def _check_packs_seeded(conn) -> CheckResult:
                 f"Only {count} scenario pack{'s' if count != 1 else ''} found "
                 f"({_MIN_PACKS}+ recommended)."
             ),
-            fix_action=FixAction(kind="navigate", href="/scenarios", label="Browse Scenarios"),
+            fix_action=FixAction(kind="navigate", href="/library", label="Browse Scenarios"),
         )
     return CheckResult(
         id="packs-seeded",
         name="Scenario packs",
         status="fail",
         message="No scenario packs found. The app needs at least one pack to play.",
-        fix_action=FixAction(kind="navigate", href="/scenarios", label="Browse Scenarios"),
+        fix_action=FixAction(kind="navigate", href="/library", label="Browse Scenarios"),
     )
 
 
