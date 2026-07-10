@@ -47,6 +47,7 @@ from convsim_core.input_router import (
 from convsim_core.runtime.base import ChatRuntime
 from convsim_core.runtime.types import ChatFinal, ChatMessage, ChatRequest, ChatToken
 from convsim_core.scenario_state import (
+    ScenarioEvent,
     apply_state_delta,
     build_variable_defs,
     evaluate_ending_condition,
@@ -168,6 +169,7 @@ class TurnPipelineResult:
     visible_state: Dict[str, int]
     event_flags: List[str]
     triggered_scenario_events: List[str]
+    rubric_observations: List[Dict[str, Any]]
     safety_status: str
     safety_reason: Optional[str]
     ending_type: Optional[str]
@@ -286,6 +288,7 @@ def _persist_input_safety_stop(
         visible_state={},
         event_flags=[],
         triggered_scenario_events=[],
+        rubric_observations=[],
         safety_status=safety_status,
         safety_reason=decision.category,
         ending_type=ending_type,
@@ -345,6 +348,9 @@ async def process_turn(
     save_transcript: bool = True,
     source_mode: str = "text-only",
     safety_policy_config: Optional[SafetyPolicyConfig] = None,
+    state_variable_overrides: Optional[Dict[str, Any]] = None,
+    scenario_events: Optional[List[ScenarioEvent]] = None,
+    ending_conditions: Optional[Dict[str, Any]] = None,
 ) -> TurnPipelineResult:
     """Execute the full player-turn pipeline and persist results.
 
@@ -393,8 +399,8 @@ async def process_turn(
     fired_event_ids: Set[str] = set(json.loads(session_row["fired_events_json"] or "[]"))
     turn_number: int = int(session_row["turn_count"]) + 1
 
-    # If state_vars is empty (first turn), initialize from baseline.
-    var_defs = build_variable_defs()
+    # If state_vars is empty (first turn), initialize from scenario variable defs.
+    var_defs = build_variable_defs(state_variable_overrides)
     if not state_vars:
         state_vars = initialize_state(var_defs)
 
@@ -466,7 +472,7 @@ async def process_turn(
     triggered_events = evaluate_event_triggers(
         delta_result.new_state,
         turn_number,
-        events=[],  # No inline scenario events in hardcoded scenarios yet.
+        events=scenario_events or [],
         fired_event_ids=fired_event_ids,
         active_flags=set(turn_output.event_flags),
     )
@@ -476,7 +482,7 @@ async def process_turn(
         delta_result.new_state,
         turn_number,
         max_turns,
-        ending_conditions=None,
+        ending_conditions=ending_conditions,
         safety_stopped=safety_stopped,
     )
 
@@ -549,6 +555,18 @@ async def process_turn(
             events_to_insert.append((
                 session_id, turn_number, "scenario_event",
                 json.dumps({"event_id": event_id}), now,
+            ))
+        if turn_output.rubric_observations:
+            events_to_insert.append((
+                session_id, turn_number, "rubric_observations",
+                json.dumps([
+                    {
+                        "rubric_id": obs.rubric_id,
+                        "observation": obs.observation,
+                        "score_delta": obs.score_delta,
+                    }
+                    for obs in turn_output.rubric_observations
+                ]), now,
             ))
         if turn_output.safety.status == "redirect":
             events_to_insert.append((
@@ -646,6 +664,14 @@ async def process_turn(
         visible_state=visible,
         event_flags=turn_output.event_flags,
         triggered_scenario_events=triggered_events,
+        rubric_observations=[
+            {
+                "rubric_id": obs.rubric_id,
+                "observation": obs.observation,
+                "score_delta": obs.score_delta,
+            }
+            for obs in turn_output.rubric_observations
+        ],
         safety_status=turn_output.safety.status,
         safety_reason=turn_output.safety.reason,
         ending_type=ending_type,

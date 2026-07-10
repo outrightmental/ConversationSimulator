@@ -8,7 +8,7 @@ pipeline-level metadata (max_turns, supported_languages).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, List
+from typing import Any, Dict, List, Optional
 
 from convsim_prompt.types import (
     DifficultySettings,
@@ -18,6 +18,7 @@ from convsim_prompt.types import (
     ResponseStyleOverrides,
     ScenarioData,
 )
+from convsim_core.scenario_state import ScenarioEvent
 
 
 @dataclass
@@ -28,6 +29,10 @@ class ScenarioInfo:
     supported_languages: List[str]
     difficulty_options: Dict[str, DifficultySettings]
     opening_npc_says: str
+    # Optional per-scenario simulation config; None means use baseline defaults.
+    state_variable_overrides: Optional[Dict[str, Any]] = None
+    events: Optional[List[ScenarioEvent]] = None
+    ending_conditions: Optional[Dict[str, Any]] = None
 
     def get_scenario_data(self, difficulty: str) -> ScenarioData:
         """Return a ScenarioData with difficulty settings applied."""
@@ -267,6 +272,32 @@ SCENARIOS: Dict[str, ScenarioInfo] = {
             "hard": DifficultySettings(npc_patience_modifier=-15, challenge_frequency="high"),
         },
         opening_npc_says="Hey, you wanted to talk? What's up?",
+        state_variable_overrides={
+            # Jordan starts guarded — rapport begins below the baseline 50.
+            "rapport": {"default": 30, "visibility": "visible"},
+        },
+        events=[
+            ScenarioEvent(
+                id="npc_defensive",
+                when={"type": "variable_below", "variable": "patience", "threshold": 30},
+                npc_instruction=(
+                    "Jordan is becoming defensive. Give shorter, clipped replies "
+                    "and stop volunteering information."
+                ),
+            ),
+        ],
+        ending_conditions={
+            "success": {
+                "type": "variable_above",
+                "variable": "objective_progress",
+                "threshold": 60,
+            },
+            "failure": {
+                "type": "variable_below",
+                "variable": "patience",
+                "threshold": 15,
+            },
+        },
     ),
 }
 
