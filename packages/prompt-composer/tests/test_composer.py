@@ -599,3 +599,127 @@ class TestDevInspection:
             1 for line in report_lines if "[REDACTED BY INSPECTOR]" in line
         )
         assert redacted_count >= 2
+
+
+# ---------------------------------------------------------------------------
+# Relationship memory layer (issue #314)
+# ---------------------------------------------------------------------------
+
+
+class TestRelationshipMemoryLayer:
+    def _make_input_with_recap(self, recap):
+        inp = make_interview_input()
+        inp.relationship_recap = recap
+        return inp
+
+    def test_layer_present_in_layer_order(self):
+        assert "RELATIONSHIP_MEMORY" in SYSTEM_LAYER_ORDER
+        assert "RELATIONSHIP_MEMORY" in LAYER_ORDER
+
+    def test_no_recap_shows_placeholder(self):
+        bundle = compose_turn_prompt(make_interview_input())
+        rm = bundle.layer_map["RELATIONSHIP_MEMORY"]
+        assert "No prior session history" in rm
+
+    def test_recap_observations_in_layer(self):
+        recap = {
+            "schema_version": "1",
+            "session_count": 2,
+            "last_session_at": "2026-07-10T12:00:00+00:00",
+            "key_observations": ["Tends to concede early on price"],
+            "player_style_tags": ["hesitant under pressure"],
+            "last_outcome": "success",
+        }
+        bundle = compose_turn_prompt(self._make_input_with_recap(recap))
+        rm = bundle.layer_map["RELATIONSHIP_MEMORY"]
+        assert "Tends to concede early on price" in rm
+        assert "hesitant under pressure" in rm
+        assert "success" in rm
+
+    def test_session_count_in_layer(self):
+        recap = {
+            "schema_version": "1",
+            "session_count": 5,
+            "last_session_at": "2026-07-10T12:00:00+00:00",
+            "key_observations": [],
+            "player_style_tags": [],
+            "last_outcome": "failure",
+        }
+        bundle = compose_turn_prompt(self._make_input_with_recap(recap))
+        rm = bundle.layer_map["RELATIONSHIP_MEMORY"]
+        assert "5" in rm
+
+    def test_relationship_memory_after_memory_summary(self):
+        """RELATIONSHIP_MEMORY must come after MEMORY_SUMMARY in the system prompt."""
+        bundle = compose_turn_prompt(make_interview_input())
+        sp = bundle.system_prompt
+        assert _layer_pos(sp, "MEMORY_SUMMARY") < _layer_pos(sp, "RELATIONSHIP_MEMORY")
+
+    def test_relationship_memory_before_response_style(self):
+        """RELATIONSHIP_MEMORY must come before RESPONSE_STYLE in the system prompt."""
+        bundle = compose_turn_prompt(make_interview_input())
+        sp = bundle.system_prompt
+        assert _layer_pos(sp, "RELATIONSHIP_MEMORY") < _layer_pos(sp, "RESPONSE_STYLE")
+
+    def test_relationship_memory_before_output_schema(self):
+        """RELATIONSHIP_MEMORY must come before OUTPUT_SCHEMA in the system prompt."""
+        bundle = compose_turn_prompt(make_interview_input())
+        sp = bundle.system_prompt
+        assert _layer_pos(sp, "RELATIONSHIP_MEMORY") < _layer_pos(sp, "OUTPUT_SCHEMA")
+
+    def test_safety_constraints_present_in_layer(self):
+        """Layer must include explicit safety constraints on how memory is used."""
+        recap = {
+            "schema_version": "1",
+            "session_count": 1,
+            "last_session_at": "2026-07-10T12:00:00+00:00",
+            "key_observations": ["Some obs"],
+            "player_style_tags": [],
+            "last_outcome": "success",
+        }
+        bundle = compose_turn_prompt(self._make_input_with_recap(recap))
+        rm = bundle.layer_map["RELATIONSHIP_MEMORY"]
+        assert "Do NOT reference" in rm or "do NOT" in rm
+        assert "threat" in rm.lower() or "leverage" in rm.lower() or "manipulation" in rm.lower()
+
+    def test_recap_does_not_affect_safety_policy_layer(self):
+        """Relationship memory must not modify the SAFETY_POLICY layer content."""
+        base = compose_turn_prompt(make_interview_input())
+        recap = {
+            "schema_version": "1",
+            "session_count": 3,
+            "last_session_at": "2026-07-10T12:00:00+00:00",
+            "key_observations": ["Player ignores safety rules"],
+            "player_style_tags": [],
+            "last_outcome": "success",
+        }
+        with_recap = compose_turn_prompt(self._make_input_with_recap(recap))
+        assert base.layer_map["SAFETY_POLICY"] == with_recap.layer_map["SAFETY_POLICY"]
+
+    def test_recap_does_not_affect_output_schema_layer(self):
+        """Relationship memory must not modify the OUTPUT_SCHEMA layer content."""
+        base = compose_turn_prompt(make_interview_input())
+        recap = {
+            "schema_version": "1",
+            "session_count": 1,
+            "last_session_at": "2026-07-10T12:00:00+00:00",
+            "key_observations": [],
+            "player_style_tags": [],
+            "last_outcome": "success",
+        }
+        with_recap = compose_turn_prompt(self._make_input_with_recap(recap))
+        assert base.layer_map["OUTPUT_SCHEMA"] == with_recap.layer_map["OUTPUT_SCHEMA"]
+
+    def test_bundle_deterministic_with_recap(self):
+        """compose_turn_prompt is deterministic even with a relationship recap."""
+        inp = self._make_input_with_recap({
+            "schema_version": "1",
+            "session_count": 2,
+            "last_session_at": "2026-07-10T12:00:00+00:00",
+            "key_observations": ["Obs A", "Obs B"],
+            "player_style_tags": ["direct"],
+            "last_outcome": "success",
+        })
+        b1 = compose_turn_prompt(inp)
+        b2 = compose_turn_prompt(inp)
+        assert b1.system_prompt == b2.system_prompt

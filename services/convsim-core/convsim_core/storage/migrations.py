@@ -331,6 +331,23 @@ _SESSION_ENDED_AT_SQL = """
 ALTER TABLE turn_sessions ADD COLUMN ended_at TEXT;
 """
 
+# Persistent NPC relationship memory (issue #314 spike): one bounded recap per
+# (npc_id, pack_id) pair, updated after each completed debrief.  The recap is
+# never raw transcript — it is a schema-validated JSON summary extracted
+# deterministically from the debrief's improvements and dimension scores.
+# pack_id is never NULL: builtin scenarios use their scenario_id as the
+# pack_id so NPCs that appear in multiple scenarios stay partitioned.
+_RELATIONSHIP_MEMORY_SQL = """
+CREATE TABLE relationship_state (
+    npc_id        TEXT    NOT NULL,
+    pack_id       TEXT    NOT NULL,
+    recap_json    TEXT    NOT NULL,
+    session_count INTEGER NOT NULL DEFAULT 0,
+    updated_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (npc_id, pack_id)
+);
+"""
+
 MIGRATIONS: list[tuple[str, str]] = [
     ("0001_initial_schema", _INITIAL_SCHEMA_SQL),
     ("0002_model_registry_v2", _MODEL_REGISTRY_V2_SQL),
@@ -347,6 +364,7 @@ MIGRATIONS: list[tuple[str, str]] = [
     ("0013_branch_sessions", _BRANCH_SESSIONS_SQL),
     ("0014_barge_in", _BARGE_IN_SQL),
     ("0015_turn_sessions_ended_at", _SESSION_ENDED_AT_SQL),
+    ("0016_relationship_memory", _RELATIONSHIP_MEMORY_SQL),
 ]
 
 

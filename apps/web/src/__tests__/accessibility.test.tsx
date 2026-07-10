@@ -62,6 +62,11 @@ vi.mock('../api/client', () => ({
     getTtsCacheSize: vi.fn().mockReturnValue(new Promise(() => {})),
     clearTtsCache: vi.fn(),
     vadHealth: vi.fn().mockReturnValue(new Promise(() => {})),
+    // Steam Cloud settings
+    getCloudSettings: vi.fn().mockReturnValue(new Promise(() => {})),
+    putCloudSettings: vi.fn(),
+    // NPC relationship memory
+    listRelationshipMemory: vi.fn().mockResolvedValue({ ok: true, data: { recaps: [], total: 0 } }),
     workbench: {
       listPacks: vi.fn().mockResolvedValue({ ok: true, data: [] }),
       listFiles: vi.fn().mockResolvedValue({ ok: true, data: { tree: [] } }),
