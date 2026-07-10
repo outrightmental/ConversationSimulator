@@ -94,7 +94,7 @@ export default function Home() {
       <section aria-label={t('home.yourTraining')} style={{ marginTop: '2rem' }}>
         <h2 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.75rem' }}>{t('home.yourTraining')}</h2>
         {logbook.state === 'loading' && (
-          <p style={{ color: '#71717a', fontSize: '0.875rem' }}>Loading…</p>
+          <p style={{ color: '#71717a', fontSize: '0.875rem' }}>{t('home.training.loading')}</p>
         )}
         {logbook.state === 'ready' && logbook.profile && logbook.profile.total_sessions === 0 && (
           <div
@@ -106,11 +106,11 @@ export default function Home() {
               color: '#a1a1aa',
             }}
           >
-            <p style={{ margin: '0 0 0.4rem' }}>No sessions yet.</p>
+            <p style={{ margin: '0 0 0.4rem' }}>{t('home.training.empty')}</p>
             <p style={{ margin: 0, fontSize: '0.8rem' }}>
-              Complete your first scenario to start tracking progress.{' '}
+              {t('home.training.emptyCta')}{' '}
               <Link to="/library" style={{ color: '#6366f1' }}>
-                Start now →
+                {t('home.training.startNow')}
               </Link>
             </p>
           </div>
@@ -138,16 +138,16 @@ export default function Home() {
               }}
             >
               <li>
-                <span style={{ color: '#71717a' }}>Sessions: </span>
+                <span style={{ color: '#71717a' }}>{t('home.training.sessions')}: </span>
                 <strong>{logbook.profile.total_sessions}</strong>
               </li>
               <li>
-                <span style={{ color: '#71717a' }}>Streak: </span>
-                <strong>{logbook.profile.streak_days} day{logbook.profile.streak_days !== 1 ? 's' : ''}</strong>
+                <span style={{ color: '#71717a' }}>{t('home.training.streak')}: </span>
+                <strong>{logbook.profile.streak_days} {logbook.profile.streak_days !== 1 ? t('home.training.days') : t('home.training.day')}</strong>
               </li>
               {logbook.profile.strongest_dimension && (
                 <li>
-                  <span style={{ color: '#71717a' }}>Strongest: </span>
+                  <span style={{ color: '#71717a' }}>{t('home.training.strongest')}: </span>
                   <strong style={{ color: '#4ade80' }}>
                     {logbook.profile.strongest_dimension.replace(/_/g, ' ')}
                   </strong>
@@ -156,7 +156,7 @@ export default function Home() {
               {logbook.profile.weakest_dimension &&
                 logbook.profile.weakest_dimension !== logbook.profile.strongest_dimension && (
                   <li>
-                    <span style={{ color: '#71717a' }}>Needs work: </span>
+                    <span style={{ color: '#71717a' }}>{t('home.training.needsWork')}: </span>
                     <strong style={{ color: '#f87171' }}>
                       {logbook.profile.weakest_dimension.replace(/_/g, ' ')}
                     </strong>
@@ -164,7 +164,7 @@ export default function Home() {
                 )}
               {logbook.profile.last_session_delta !== null && (
                 <li>
-                  <span style={{ color: '#71717a' }}>Last session: </span>
+                  <span style={{ color: '#71717a' }}>{t('home.training.lastSession')}: </span>
                   <strong
                     style={{
                       color:
@@ -182,7 +182,7 @@ export default function Home() {
               )}
             </ul>
             <Link to="/logbook" style={{ fontSize: '0.8rem', color: '#6366f1', alignSelf: 'flex-start' }}>
-              View full logbook →
+              {t('home.training.viewFull')}
             </Link>
           </div>
         )}
