@@ -168,6 +168,11 @@ export default function ModelManager() {
   const [benchmarkError, setBenchmarkError] = useState<string | null>(null)
   const benchmarkStartedRef = useRef(false)
 
+  // The registry ID synced across devices via Steam Cloud (may be null). Used to
+  // pre-select the model the user last chose on another machine so setup on a
+  // fresh device defaults to their prior choice.
+  const [cloudLastModelId, setCloudLastModelId] = useState<string | null>(null)
+
   useEffect(() => {
     api
       .getModels()
@@ -178,6 +183,14 @@ export default function ModelManager() {
       .catch((err: unknown) => {
         setLoadError(err instanceof Error ? err.message : 'Failed to load model information.')
         setStep('load-error')
+      })
+    // Best-effort: read the cross-device model preference. A failure (e.g. the
+    // file has never been written) must never block model setup.
+    api
+      .getCloudSettings()
+      .then((settings) => setCloudLastModelId(settings.last_model_id))
+      .catch(() => {
+        /* no synced preference available; fall back to the default recommendation */
       })
   }, [])
 
@@ -238,7 +251,17 @@ export default function ModelManager() {
       })
   }, [step])
 
-  const recommendedModel = modelsData?.registry.find((m) => m.role === 'starter') ?? null
+  // Prefer the model the user last selected on another device (synced via Steam
+  // Cloud) when it is a still-available registry entry; otherwise fall back to
+  // the default starter model.
+  const recommendedModel =
+    (cloudLastModelId != null
+      ? modelsData?.registry.find(
+          (m) => m.id === cloudLastModelId && m.source_type === 'registry',
+        )
+      : undefined) ??
+    modelsData?.registry.find((m) => m.role === 'starter') ??
+    null
 
   function resetAction() {
     setActionError(null)
@@ -518,6 +541,13 @@ export default function ModelManager() {
               setActionError(null)
               try {
                 const resp = await api.installModel({ registry_id: selectedModel.id })
+                // Record this choice for cross-device sync. Only the opaque
+                // registry ID is stored — never a filesystem path — so the
+                // Steam Cloud settings file carries no locally-identifiable
+                // data. Best-effort: persistence must not block the install.
+                api.putCloudSettings({ last_model_id: selectedModel.id }).catch(() => {
+                  /* non-fatal: model install proceeds regardless */
+                })
                 setInstallId(resp.install_id)
                 setInstallRecord(null)
                 setStep('installing')

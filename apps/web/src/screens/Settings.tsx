@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { api, type ImportPackResponse, type PackSummary } from '../api/client'
 import { readPrivacyPref, writePrivacyPref, PRIVACY_KEYS, isDevModeEnabled } from '../privacyPrefs'
+import { useSteamStatus } from '../hooks/useSteamStatus'
 import RuntimeSettingsPanel from '../components/RuntimeSettingsPanel'
 import VoiceSettingsPanel from '../components/VoiceSettingsPanel'
 import { useTranslation, formatDate, SUPPORTED_LOCALES } from '../i18n'
@@ -88,6 +89,7 @@ export default function Settings() {
   const [saveRawAudio, setSaveRawAudio] = useState(() => readPrivacyPref(PRIVACY_KEYS.saveRawAudio, false))
   const [devMode, setDevMode] = useState(() => isDevModeEnabled())
   const [isTauri] = useState(detectTauri)
+  const steamStatus = useSteamStatus()
 
   function handleSaveTranscriptsChange(v: boolean) {
     setSaveTranscripts(v)
@@ -385,6 +387,60 @@ export default function Settings() {
           description={t('settings.voice.cacheDescription')}
         />
         <VoiceSettingsPanel />
+      </section>
+
+      {/* Steam Cloud sync */}
+      <section
+        aria-label={t('settings.steamCloud.heading')}
+        data-testid="steam-cloud-section"
+        style={{ marginBottom: '2rem' }}
+      >
+        <SectionHeading>{t('settings.steamCloud.heading')}</SectionHeading>
+
+        {/* Active indicator: shown only when the app is running under Steam */}
+        {steamStatus?.launched_by_steam && (
+          <div
+            aria-label="steam-cloud-active"
+            style={{
+              background: 'rgba(103,193,245,0.08)',
+              border: '1px solid rgba(103,193,245,0.25)',
+              borderRadius: '6px',
+              padding: '0.5rem 0.875rem',
+              marginBottom: '0.75rem',
+              fontSize: '0.85rem',
+              color: '#7dd3fc',
+            }}
+          >
+            {t('settings.steamCloud.active')}
+          </div>
+        )}
+
+        <p style={{ fontSize: '0.875rem', color: '#a1a1aa', marginBottom: '0.75rem' }}>
+          {t('settings.steamCloud.description')}
+        </p>
+
+        <div aria-label="steam-cloud-synced-items" style={{ marginBottom: '0.75rem' }}>
+          <p style={{ fontSize: '0.875rem', color: '#d4d4d8', marginBottom: '0.4rem', fontWeight: 500 }}>
+            {t('settings.steamCloud.syncedHeading')}
+          </p>
+          <ul style={{ margin: '0 0 0 1.25rem', padding: 0, fontSize: '0.85rem', color: '#a1a1aa' }}>
+            <li>{t('settings.steamCloud.syncedModel')}</li>
+          </ul>
+        </div>
+
+        <div aria-label="steam-cloud-excluded-items">
+          <p style={{ fontSize: '0.875rem', color: '#d4d4d8', marginBottom: '0.4rem', fontWeight: 500 }}>
+            {t('settings.steamCloud.excludedHeading')}
+          </p>
+          <ul style={{ margin: '0 0 0 1.25rem', padding: 0, fontSize: '0.85rem', color: '#a1a1aa' }}>
+            <li>{t('settings.steamCloud.excludedTranscripts')}</li>
+            <li>{t('settings.steamCloud.excludedPrompts')}</li>
+            <li>{t('settings.steamCloud.excludedAudio')}</li>
+            <li>{t('settings.steamCloud.excludedModels')}</li>
+            <li>{t('settings.steamCloud.excludedCrashLogs')}</li>
+            <li>{t('settings.steamCloud.excludedPacks')}</li>
+          </ul>
+        </div>
       </section>
 
       {/* Pack management */}

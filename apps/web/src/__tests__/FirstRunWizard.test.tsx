@@ -16,6 +16,7 @@ vi.mock('../api/client', () => ({
     registerGguf: vi.fn(),
     startSidecar: vi.fn(),
     benchmarkModel: vi.fn(),
+    putCloudSettings: vi.fn(),
   },
 }))
 
@@ -141,6 +142,7 @@ beforeEach(() => {
     port: 7356,
   })
   mockApi.benchmarkModel.mockResolvedValue(DEFAULT_BENCHMARK)
+  mockApi.putCloudSettings.mockResolvedValue({ last_model_id: null })
 })
 
 // ── Welcome step ─────────────────────────────────────────────────────────────
@@ -315,6 +317,16 @@ describe('FirstRunWizard — confirm install step', () => {
   it('does not start the download until Confirm is clicked', async () => {
     await goToConfirm()
     expect(mockApi.installModel).not.toHaveBeenCalled()
+  })
+
+  it('records the selected registry ID for cross-device sync on confirm', async () => {
+    await goToConfirm()
+    fireEvent.click(screen.getByRole('button', { name: /confirm & install/i }))
+    await waitFor(() =>
+      expect(mockApi.putCloudSettings).toHaveBeenCalledWith({
+        last_model_id: 'qwen3-4b-instruct-q4_k_m',
+      }),
+    )
   })
 })
 
