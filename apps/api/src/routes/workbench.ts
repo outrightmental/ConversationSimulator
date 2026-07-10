@@ -529,7 +529,7 @@ export async function workbenchRoutes(app: FastifyInstance): Promise<void> {
 
       const setupJson = JSON.stringify({
         scenario_id: WORKBENCH_TEST_SCENARIO_ID,
-        difficulty: 'normal',
+        difficulty: 'standard',
         player_role_name: 'Creator',
         language: 'en',
         input_mode: 'text-only',

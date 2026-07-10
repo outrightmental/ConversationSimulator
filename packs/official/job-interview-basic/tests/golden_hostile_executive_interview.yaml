@@ -12,8 +12,7 @@ description: >-
 
 seed: 73
 input_mode: text
-difficulty: normal
-
+difficulty: standard
 turns:
   - turn: 1
     player_input: >-
@@ -167,5 +166,5 @@ static_assertions:
     check: "contains scenarios/hostile_executive_interview.yaml"
 
   - description: Hard difficulty applies a negative patience modifier
-    path: scenario.difficulty.options.hard.npc_patience_modifier
-    check: "equals -20"
+    path: scenario.difficulty.options.hard.patience
+    check: "lte 33"

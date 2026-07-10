@@ -31,7 +31,7 @@ affect your own work. You have asked him to grab coffee to talk it through.
 **Player role:** Peer Colleague (no formal authority)
 **NPC:** Marcus Webb — guarded, mildly defensive, genuinely well-meaning underneath
 **Duration:** Up to 18 turns (≈ 12 minutes)
-**Difficulty options:** easy / normal / hard
+**Difficulty options:** warm / standard / hard / adversarial
 
 **State variables:**
 
@@ -66,7 +66,7 @@ but she already had to explain the delay upward to her own manager.
 **Player role:** Team Member
 **NPC:** Priya Nair — measured, controlled disappointment, watching for real ownership
 **Duration:** Up to 16 turns (≈ 10 minutes)
-**Difficulty options:** easy / normal / hard
+**Difficulty options:** warm / standard / hard / adversarial
 
 **State variables:**
 
@@ -101,7 +101,7 @@ cannot and do not want to. You have asked to meet for coffee to say no.
 **Player role:** Friend
 **NPC:** Jamie Osei — warm, emotionally expressive, persistent in pushback, ultimately reasonable
 **Duration:** Up to 16 turns (≈ 10 minutes)
-**Difficulty options:** easy / normal / hard
+**Difficulty options:** warm / standard / hard / adversarial
 
 **State variables:**
 
@@ -136,7 +136,7 @@ thirty minutes with your manager, Diane Kowalczyk, to make the case.
 **Player role:** Employee
 **NPC:** Diane Kowalczyk — businesslike, skeptical, needs a justification she can take upward
 **Duration:** Up to 18 turns (≈ 12 minutes)
-**Difficulty options:** easy / normal / hard
+**Difficulty options:** warm / standard / hard / adversarial
 
 **State variables:**
 

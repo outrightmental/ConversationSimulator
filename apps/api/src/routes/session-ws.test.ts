@@ -16,7 +16,7 @@ let app: FastifyInstance;
 
 const validRequest = {
   scenario_id: 'behavioral_interview',
-  difficulty: 'normal',
+  difficulty: 'standard',
   player_role_name: 'Alice',
   language: 'en',
   input_mode: 'text-only',
