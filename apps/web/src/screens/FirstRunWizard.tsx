@@ -272,8 +272,9 @@ export default function FirstRunWizard() {
       <div style={{ maxWidth: '640px', margin: '2rem auto', padding: '0 1rem' }}>
         <h1 ref={stepHeadingRef} tabIndex={-1} style={{ outline: 'none' }}>Welcome to Conversation Simulator</h1>
         <p style={{ fontSize: '1rem', lineHeight: 1.6, color: '#d4d4d8' }}>
-          Conversation Simulator is a flight simulator for real-life conversations — a private,
-          local-first tool for practising difficult discussions at your own pace.
+          Conversation Simulator is the private, local-first practice tool for conversations that
+          matter — interviews, negotiations, language practice, and difficult discussions at your
+          own pace.
         </p>
 
         <div
