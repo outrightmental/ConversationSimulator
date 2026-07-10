@@ -32,6 +32,7 @@ export const en = {
     mainNavigation: 'Main navigation',
     home: 'Home',
     scenarios: 'Scenarios',
+    logbook: 'Logbook',
     workbench: 'Workbench',
     settings: 'Settings',
     support: 'Support',

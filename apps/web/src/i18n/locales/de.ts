@@ -37,6 +37,7 @@ export const de: LocaleMessages = {
     mainNavigation: 'Hauptnavigation',
     home: 'Startseite',
     scenarios: 'Szenarien',
+    logbook: 'Logbuch',
     workbench: 'Werkbank',
     settings: 'Einstellungen',
     support: 'Support',

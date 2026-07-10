@@ -214,6 +214,21 @@ describe('Accessibility: AppLayout', () => {
     expect(container.querySelector('nav[aria-label]')).not.toBeNull()
   })
 
+  it('renders a translated Logbook nav link (not a raw i18n key)', () => {
+    const { container } = render(
+      <MemoryRouter>
+        <Routes>
+          <Route element={<AppLayout />}>
+            <Route index element={<div><h1>Test page</h1></div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    )
+    const logbookLink = container.querySelector('a[href="/logbook"]')
+    expect(logbookLink).not.toBeNull()
+    expect(logbookLink?.textContent).toBe('Logbook')
+  })
+
   it('main element has the id targeted by the skip link', () => {
     const { container } = render(
       <MemoryRouter>
