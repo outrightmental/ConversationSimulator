@@ -12,6 +12,11 @@ Test plan:
   - Unit: safety.status='stop' ends the session with safety_stop.
   - Unit: safety.status='redirect' keeps session alive.
   - Idempotency guard: state machine rejects a turn in a non-listening state.
+  - Unit (issue #199): prompt layer ordering respected end-to-end.
+  - Unit (issue #199): safety-policy config is converted and forwarded to compose_turn_prompt.
+  - Unit (issue #199): hidden agenda is forwarded to parse_turn_output for leak detection.
+  - Unit (issue #199): prompt metadata persisted without private content.
+  - Unit (issue #199): transcript truncation flag stored in prompt_metadata event.
 """
 from __future__ import annotations
 
@@ -26,6 +31,7 @@ from fastapi.testclient import TestClient
 
 from convsim_core.app import create_app
 from convsim_core.config import ServiceConfig
+from convsim_core.input_router import RouteAction, SafetyPolicyConfig
 from convsim_core.runtime.fake import FakeChatRuntime
 from convsim_core.runtime.types import (
     ChatFinal,
@@ -37,12 +43,15 @@ from convsim_core.runtime.types import (
     RuntimeStatus,
 )
 from convsim_core.scenario_state import build_variable_defs, initialize_state
-from convsim_core.scenarios import get_scenario_info
+from convsim_core.scenarios import get_scenario_data, get_scenario_info
 from convsim_core.services.turn_pipeline import (
     MAX_TURN_CONTENT_CHARS,
     TurnInputError,
     process_turn,
 )
+from convsim_core.storage.migrations import run_migrations
+from convsim_prompt import LAYER_ORDER, SafetyPolicy, TurnEvent
+from convsim_prompt.turn_output import SafetyStatus, SessionControl, TurnOutput
 
 
 # ---------------------------------------------------------------------------
@@ -606,3 +615,369 @@ class TestStatePersistence:
             )
         assert res2.status_code == 200
         assert res2.json()["state"] == "PlayerTurnListening"
+
+
+# ---------------------------------------------------------------------------
+# Helpers for direct process_turn unit tests (issue #199)
+# ---------------------------------------------------------------------------
+
+def _make_unit_db() -> sqlite3.Connection:
+    """Return an in-memory SQLite connection with all migrations applied."""
+    conn = sqlite3.connect(":memory:")
+    conn.row_factory = sqlite3.Row
+    run_migrations(conn)
+    return conn
+
+
+def _insert_unit_session(
+    conn: sqlite3.Connection,
+    session_id: str = "sess-unit",
+) -> sqlite3.Row:
+    conn.execute(
+        "INSERT INTO turn_sessions "
+        "(session_id, scenario_id, flow_state, state_vars_json, fired_events_json, "
+        "turn_count, setup_json) "
+        "VALUES (?, 'behavioral_interview', 'PlayerTurnListening', '{}', '[]', 0, '{}')",
+        (session_id,),
+    )
+    conn.commit()
+    return conn.execute(
+        "SELECT * FROM turn_sessions WHERE session_id = ?", (session_id,)
+    ).fetchone()
+
+
+def _get_event_payloads(
+    conn: sqlite3.Connection,
+    session_id: str,
+    event_type: str,
+) -> list:
+    rows = conn.execute(
+        "SELECT payload_json FROM turn_session_events "
+        "WHERE session_id = ? AND event_type = ?",
+        (session_id, event_type),
+    ).fetchall()
+    return [json.loads(r["payload_json"]) for r in rows]
+
+
+def _valid_turn_output() -> TurnOutput:
+    return TurnOutput(
+        npc_utterance="That's a great point, thank you.",
+        npc_emotion="neutral",
+        state_delta={},
+        event_flags=[],
+        rubric_observations=[],
+        safety=SafetyStatus(status="ok"),
+        session_control=SessionControl(continue_session=True),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Issue #199: prompt-composer wiring unit tests
+# ---------------------------------------------------------------------------
+
+
+class TestPromptComposerWiring:
+    """Unit tests for prompt-composer wiring: layer ordering, safety policy,
+    hidden agenda handling, prompt metadata persistence, and transcript truncation.
+    """
+
+    @pytest.mark.asyncio
+    async def test_prompt_metadata_event_persisted_after_turn(self):
+        """A 'prompt_metadata' event is written to turn_session_events each turn."""
+        conn = _make_unit_db()
+        row = _insert_unit_session(conn)
+
+        await process_turn(
+            session_row=row,
+            player_text="I have five years of experience.",
+            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            max_turns=10,
+            runtime=FakeChatRuntime(),
+            conn=conn,
+        )
+
+        events = _get_event_payloads(conn, "sess-unit", "prompt_metadata")
+        assert len(events) == 1
+        meta = events[0]
+        assert "estimated_token_count" in meta
+        assert meta["estimated_token_count"] > 0
+        assert "was_truncated" in meta
+        assert isinstance(meta["was_truncated"], bool)
+        assert "layers_present" in meta
+        assert isinstance(meta["layers_present"], list)
+        assert len(meta["layers_present"]) > 0
+
+    @pytest.mark.asyncio
+    async def test_prompt_metadata_lists_all_expected_layers(self):
+        """layers_present in the prompt_metadata event covers the full layer set."""
+        conn = _make_unit_db()
+        row = _insert_unit_session(conn)
+
+        await process_turn(
+            session_row=row,
+            player_text="Tell me about the role.",
+            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            max_turns=10,
+            runtime=FakeChatRuntime(),
+            conn=conn,
+        )
+
+        meta = _get_event_payloads(conn, "sess-unit", "prompt_metadata")[0]
+        for layer in LAYER_ORDER:
+            assert layer in meta["layers_present"], (
+                f"Expected layer {layer!r} in layers_present"
+            )
+
+    @pytest.mark.asyncio
+    async def test_prompt_metadata_excludes_private_persona_text(self):
+        """Hidden agenda text and raw prompt content are not stored in prompt_metadata."""
+        conn = _make_unit_db()
+        row = _insert_unit_session(conn)
+
+        await process_turn(
+            session_row=row,
+            player_text="What does success look like in this role?",
+            scenario_data=get_scenario_data("behavioral_interview", "normal"),
+            max_turns=10,
+            runtime=FakeChatRuntime(),
+            conn=conn,
+        )
+
+        rows = conn.execute(
+            "SELECT payload_json FROM turn_session_events "
+            "WHERE session_id = 'sess-unit' AND event_type = 'prompt_metadata'",
+        ).fetchall()
+        assert len(rows) == 1
+        raw_payload = rows[0]["payload_json"]
+
+        # Hidden agenda bullets from the behavioral_interview NPC must not appear.
+        assert "Assess candidate" not in raw_payload
+        assert "Probe for specific" not in raw_payload
+        # Raw prompt structure markers must not appear.
+        assert "LAYER:SAFETY_POLICY" not in raw_payload
+        assert "LAYER:NPC_PRIVATE_PERSONA" not in raw_payload
+
+    @pytest.mark.asyncio
+    async def test_truncation_flag_stored_when_compose_returns_truncated(self):
+        """When compose_turn_prompt signals was_truncated=True, it appears in the event."""
+        from convsim_prompt.types import PromptBundle
+
+        conn = _make_unit_db()
+        row = _insert_unit_session(conn)
+
+        fake_bundle = PromptBundle(
+            system_prompt="s",
+            user_prompt="u",
+            layer_map={name: "..." for name in LAYER_ORDER},
+            estimated_token_count=5000,
+            was_truncated=True,
+        )
+
+        with patch(
+            "convsim_core.services.turn_pipeline.compose_turn_prompt",
+            return_value=fake_bundle,
+        ):
+            await process_turn(
+                session_row=row,
+                player_text="Hello.",
+                scenario_data=get_scenario_data("behavioral_interview", "normal"),
+                max_turns=10,
+                runtime=FakeChatRuntime(),
+                conn=conn,
+            )
+
+        meta = _get_event_payloads(conn, "sess-unit", "prompt_metadata")
+        assert len(meta) == 1
+        assert meta[0]["was_truncated"] is True
+        assert meta[0]["estimated_token_count"] == 5000
+
+    @pytest.mark.asyncio
+    async def test_custom_safety_policy_config_forwarded_to_compose_turn_prompt(self):
+        """Providing safety_policy_config converts and passes the policy to compose_turn_prompt."""
+        conn = _make_unit_db()
+        row = _insert_unit_session(conn)
+
+        custom_config = SafetyPolicyConfig(
+            policy_id="pack_pg13",
+            content_rating="PG-13",
+            categories={
+                "nsfw_sexual_content": RouteAction.STOP,
+                "criminal_instruction": RouteAction.REFUSE,
+            },
+        )
+        captured: list = []
+
+        import convsim_core.services.turn_pipeline as _tp
+        _orig = _tp.compose_turn_prompt
+
+        def _spy(inp):
+            captured.append(inp.safety_policy)
+            return _orig(inp)
+
+        with patch("convsim_core.services.turn_pipeline.compose_turn_prompt", side_effect=_spy):
+            await process_turn(
+                session_row=row,
+                player_text="Hello.",
+                scenario_data=get_scenario_data("behavioral_interview", "normal"),
+                max_turns=10,
+                runtime=FakeChatRuntime(),
+                conn=conn,
+                safety_policy_config=custom_config,
+            )
+
+        assert len(captured) == 1
+        used = captured[0]
+        assert isinstance(used, SafetyPolicy)
+        assert used.policy_id == "pack_pg13"
+        assert used.content_rating == "PG-13"
+        assert "nsfw_sexual_content" in used.prohibited
+        assert "criminal_instruction" in used.prohibited
+
+    @pytest.mark.asyncio
+    async def test_default_safety_policy_applied_when_no_config_provided(self):
+        """When safety_policy_config is None the built-in default PG policy is used."""
+        conn = _make_unit_db()
+        row = _insert_unit_session(conn)
+
+        captured: list = []
+        import convsim_core.services.turn_pipeline as _tp
+        _orig = _tp.compose_turn_prompt
+
+        def _spy(inp):
+            captured.append(inp.safety_policy)
+            return _orig(inp)
+
+        with patch("convsim_core.services.turn_pipeline.compose_turn_prompt", side_effect=_spy):
+            await process_turn(
+                session_row=row,
+                player_text="Hello.",
+                scenario_data=get_scenario_data("behavioral_interview", "normal"),
+                max_turns=10,
+                runtime=FakeChatRuntime(),
+                conn=conn,
+            )
+
+        assert len(captured) == 1
+        used = captured[0]
+        assert isinstance(used, SafetyPolicy)
+        assert used.policy_id == "default_pg"
+        assert used.content_rating == "PG"
+
+    @pytest.mark.asyncio
+    async def test_hidden_agenda_forwarded_to_parse_turn_output(self):
+        """parse_turn_output receives the NPC's hidden_agenda for leak detection."""
+        conn = _make_unit_db()
+        row = _insert_unit_session(conn)
+        scenario_data = get_scenario_data("behavioral_interview", "normal")
+        expected_agenda = scenario_data.npc.private_persona.hidden_agenda
+
+        captured: dict = {}
+
+        def _spy_parse(raw, runtime=None, hidden_agenda=None, turn_events=None):
+            captured["hidden_agenda"] = hidden_agenda
+            return _valid_turn_output()
+
+        with patch(
+            "convsim_core.services.turn_pipeline.parse_turn_output",
+            side_effect=_spy_parse,
+        ):
+            await process_turn(
+                session_row=row,
+                player_text="I have relevant experience.",
+                scenario_data=scenario_data,
+                max_turns=10,
+                runtime=FakeChatRuntime(),
+                conn=conn,
+            )
+
+        assert captured.get("hidden_agenda") == expected_agenda
+
+    @pytest.mark.asyncio
+    async def test_runtime_bridge_forwarded_to_parse_turn_output(self):
+        """A non-None runtime bridge is passed to parse_turn_output for repair calls."""
+        conn = _make_unit_db()
+        row = _insert_unit_session(conn)
+
+        captured: dict = {}
+
+        def _spy_parse(raw, runtime=None, hidden_agenda=None, turn_events=None):
+            captured["runtime"] = runtime
+            return _valid_turn_output()
+
+        with patch(
+            "convsim_core.services.turn_pipeline.parse_turn_output",
+            side_effect=_spy_parse,
+        ):
+            await process_turn(
+                session_row=row,
+                player_text="What are the next steps?",
+                scenario_data=get_scenario_data("behavioral_interview", "normal"),
+                max_turns=10,
+                runtime=FakeChatRuntime(),
+                conn=conn,
+            )
+
+        assert captured.get("runtime") is not None
+
+    @pytest.mark.asyncio
+    async def test_parse_turn_events_included_in_debug_event(self):
+        """TurnEvents emitted by parse_turn_output are stored in the debug event payload."""
+        conn = _make_unit_db()
+        row = _insert_unit_session(conn)
+
+        def _spy_parse(raw, runtime=None, hidden_agenda=None, turn_events=None):
+            if turn_events is not None:
+                turn_events.append(TurnEvent(
+                    event_type="structural_validation_failure",
+                    reason="injected test event",
+                ))
+            return _valid_turn_output()
+
+        with patch(
+            "convsim_core.services.turn_pipeline.parse_turn_output",
+            side_effect=_spy_parse,
+        ):
+            await process_turn(
+                session_row=row,
+                player_text="Interesting.",
+                scenario_data=get_scenario_data("behavioral_interview", "normal"),
+                max_turns=10,
+                runtime=FakeChatRuntime(),
+                conn=conn,
+            )
+
+        debug = _get_event_payloads(conn, "sess-unit", "debug")
+        assert len(debug) == 1
+        parse_evts = debug[0].get("parse_events", [])
+        types = [e["event_type"] for e in parse_evts]
+        assert "structural_validation_failure" in types
+
+    @pytest.mark.asyncio
+    async def test_prompt_layers_ordered_safety_before_scenario(self):
+        """In the composed system prompt, SAFETY_POLICY always precedes SCENARIO_BRIEF."""
+        conn = _make_unit_db()
+        row = _insert_unit_session(conn)
+
+        captured: list = []
+        import convsim_core.services.turn_pipeline as _tp
+        _orig = _tp.compose_turn_prompt
+
+        def _spy(inp):
+            result = _orig(inp)
+            captured.append(result.system_prompt)
+            return result
+
+        with patch("convsim_core.services.turn_pipeline.compose_turn_prompt", side_effect=_spy):
+            await process_turn(
+                session_row=row,
+                player_text="Good morning.",
+                scenario_data=get_scenario_data("behavioral_interview", "normal"),
+                max_turns=10,
+                runtime=FakeChatRuntime(),
+                conn=conn,
+            )
+
+        assert len(captured) == 1
+        sp = captured[0]
+        assert sp.index("LAYER:SAFETY_POLICY") < sp.index("LAYER:SCENARIO_BRIEF")
+        assert sp.index("LAYER:SCENARIO_BRIEF") < sp.index("LAYER:OUTPUT_SCHEMA")
