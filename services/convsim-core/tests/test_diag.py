@@ -76,3 +76,17 @@ def test_post_crash_bundle_versions_has_app(client):
     with zipfile.ZipFile(data["bundle_path"]) as zf:
         versions = json.loads(zf.read("versions.json"))
     assert "app" in versions
+
+
+def test_post_crash_bundle_written_to_crash_bundles_dir(client):
+    """The bundle must land in the exposed crash_bundles_dir, not the log dir.
+
+    issue #221 exposes an 'Open Crash Bundles Folder' action; the bundles the
+    user is directed to must actually be written into that folder.
+    """
+    crash_bundles_dir = Path(client.app.state.service_config.crash_bundles_dir).resolve()
+    data = client.post("/api/diag/crash-bundle").json()
+    bundle_path = Path(data["bundle_path"]).resolve()
+    assert bundle_path.parent == crash_bundles_dir, (
+        f"crash bundle written to {bundle_path.parent}, not crash_bundles_dir {crash_bundles_dir}"
+    )

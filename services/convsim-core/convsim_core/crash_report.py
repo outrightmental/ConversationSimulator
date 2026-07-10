@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 """Local crash-report bundle creation.
 
-Bundles are ZIP files written to <log_dir>/crash-reports/ and are NEVER
-transmitted automatically.  The user must review and share them manually.
+Bundles are ZIP files written to the dedicated crash-bundles directory
+(falling back to <log_dir>/crash-reports/) and are NEVER transmitted
+automatically.  The user must review and share them manually.
 
 Bundle contents (no conversation data is included):
   versions.json     — app, Python, and OS version strings
@@ -85,19 +86,27 @@ def _tail_log(log_path: Path, n: int) -> str:
     return "\n".join(error_lines[-n:])
 
 
-def create_crash_bundle(log_dir: str, settings: AppSettings) -> Path:
-    """Create a local crash-report ZIP bundle in ``<log_dir>/crash-reports/``.
+def create_crash_bundle(
+    log_dir: str, settings: AppSettings, bundle_dir: str | None = None
+) -> Path:
+    """Create a local crash-report ZIP bundle.
+
+    The bundle is written to ``bundle_dir`` when provided (the dedicated
+    platform crash-bundles directory that the Settings UI exposes and that is
+    marked ``.nosteamcloudpath``); it falls back to ``<log_dir>/crash-reports/``
+    when omitted.  ``log_dir`` is always used to read ``app.log`` for the recent
+    errors excerpt.
 
     The bundle never contains raw conversation text, prompts, or audio.
     Home-directory prefixes in paths are replaced with ``~``.
 
     Returns the absolute :class:`~pathlib.Path` to the created ``.zip`` file.
     """
-    bundle_dir = Path(log_dir) / "crash-reports"
-    bundle_dir.mkdir(parents=True, exist_ok=True)
+    dest = Path(bundle_dir) if bundle_dir is not None else Path(log_dir) / "crash-reports"
+    dest.mkdir(parents=True, exist_ok=True)
 
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    bundle_path = bundle_dir / f"crash-{ts}.zip"
+    bundle_path = dest / f"crash-{ts}.zip"
 
     versions = {
         "app": __version__,

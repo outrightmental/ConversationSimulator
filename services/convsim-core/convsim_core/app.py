@@ -7,6 +7,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 
 from convsim_core.config import ServiceConfig
+from convsim_core.data_migration import migrate, needs_migration
 from convsim_core.errors import (
     ConvsimError,
     convsim_error_handler,
@@ -15,6 +16,7 @@ from convsim_core.errors import (
 )
 from convsim_core.logging_setup import configure_logging
 from convsim_core.packs.seeder import seed_official_packs
+from convsim_core.paths import legacy_convsim_dir, platform_data_root
 from convsim_core.routers import diag as diag_router, health, models as models_router, packs as packs_router, privacy as privacy_router, scenarios as scenarios_router, sessions as sessions_router, settings as settings_router, sidecar as sidecar_router, stt as stt_router, tts as tts_router, vad as vad_router, workbench as workbench_router
 from convsim_core.runtime import build_runtime
 from convsim_core.runtime.sidecar import LlamaCppSidecar
@@ -47,15 +49,44 @@ def create_app(config: ServiceConfig | None = None) -> FastAPI:
     if config is None:
         config = ServiceConfig()
 
+    # Migrate user data from the legacy ~/.convsim directory if this is the
+    # first launch with platform-specific paths and old data exists.  This must
+    # run *before* configure_logging(), which eagerly creates <root>/logs and
+    # would otherwise make the new platform root non-empty — causing
+    # needs_migration() to conclude the root is already in use and skip the
+    # migration entirely.
+    new_root = platform_data_root()
+    legacy = legacy_convsim_dir()
+    if needs_migration(new_root, legacy):
+        migrate(new_root, legacy)
+
     configure_logging(config.log_dir, debug=config.dev_debug)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         db = Database.open(config.db_dir)
-        # Create the exports folder eagerly so the Settings "Open exports
-        # folder" button works on a fresh install, before any conversation has
-        # been exported. Unlike data/logs/packs, nothing else creates it yet.
-        Path(config.exports_dir).mkdir(parents=True, exist_ok=True)
+
+        # Create mutable user-data directories eagerly so OS file-manager
+        # shortcuts work on a fresh install before any data is written.
+        # Also place a .nosteamcloudpath marker in each directory; this signals
+        # to Steam (and any sync tools that honour it) that the directory
+        # contains user-private data that must not be uploaded to Steam Cloud.
+        # db_dir (conversation transcripts + prompts) and models_dir (model
+        # files) are included deliberately: issue #221 names both as data that
+        # must never reach Steam Cloud.
+        for _dir in (
+            config.data_dir,
+            config.db_dir,
+            config.log_dir,
+            config.packs_dir,
+            config.exports_dir,
+            config.cache_dir,
+            config.crash_bundles_dir,
+            config.models_dir,
+        ):
+            _p = Path(_dir)
+            _p.mkdir(parents=True, exist_ok=True)
+            (_p / ".nosteamcloudpath").touch(exist_ok=True)
         app.state.service_config = config
         app.state.db = db
         app.state.models_dir = config.models_dir
