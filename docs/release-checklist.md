@@ -450,6 +450,64 @@ Before submitting the depot to Valve, run the audit locally:
 - [ ] No `.env`, `__pycache__\`, or `.venv\` directories in the depot
 - [ ] Installer is Authenticode-signed (verify with `signtool.exe verify /pa /v <file>`)
 
+### E.8 Offline play after model download
+
+Block all outbound network access (Windows Firewall or disconnect the network
+adapter) after the model has been downloaded and verified, then start a session.
+
+- [ ] Session starts and runs normally with no network connection
+- [ ] No error or network-related warning appears in the UI
+- [ ] Push-to-talk (if voice is enabled) still functions locally
+- [ ] Reconnecting the network does not trigger any sync or phone-home behavior
+
+### E.9 Privacy controls
+
+Navigate to **Settings → Privacy** (or the Privacy section of Settings).
+
+- [ ] Transcript history view is accessible and lists the sessions played above
+- [ ] "Clear all local data" button is present and functional
+- [ ] Local data path (`%LOCALAPPDATA%\outrightmental\convsim\`) is displayed in the UI
+- [ ] Clearing data removes all sessions from the session library without requiring
+  file-manager navigation
+- [ ] After clearing, `GET /api/health` shows `privacy.telemetry_enabled: false`
+- [ ] No outbound telemetry call is observed before or after clearing data
+
+### E.10 Steam Cloud exclusions
+
+See **Part B.11** for the full Steam Cloud sync verification procedure.
+Complete B.11 on this Windows machine before checking the items below.
+
+- [ ] B.11 Steam Cloud sync verification completed (Windows)
+- [ ] `steam_cloud_settings.json` contains only `last_model_id` — no transcripts,
+  audio paths, or session content
+- [ ] `.nosteamcloudpath` markers present in `db\`, `logs\`, `models\llm\`,
+  `packs\`, `exports\`, `cache\`, and `crashes\` subdirectories
+
+### E.11 Support bundle flow
+
+Navigate to **Settings → Support** (or the Help / Support screen).
+
+- [ ] Log directory path is shown or linked in the UI
+- [ ] User can copy the log path without file-manager navigation
+- [ ] Opening the log directory via the UI shows `%LOCALAPPDATA%\outrightmental\convsim\logs\`
+- [ ] Log files contain startup events and session lifecycle info with no raw
+  conversation text or NPC responses
+
+### E.12 Achievements, stats, and rich presence (if included in build)
+
+> Skip this step if the build was not compiled with `--features steam`.
+> Steam features are present only when the Tauri command `get_steam_status`
+> returns `{"enabled": true, ...}`.  Check `GET /api/health` for the
+> `steam` field, or look for `[steam] Steam initialised` in the startup log.
+
+- [ ] Completing a scored session triggers the expected achievement notification
+  (Steam overlay toast or in-app indicator)
+- [ ] Steam overlay (Shift+Tab) shows the unlocked achievement in the
+  overlay's achievement list
+- [ ] Rich presence text in the Steam Friends list reflects the current
+  scenario or session state
+- [ ] No outbound HTTP calls outside the Steamworks SDK are observed during play
+
 ---
 
 ## Part F — Packaged-app smoke (desktop build)
@@ -580,6 +638,413 @@ grep -r "player_turn\|npc_turn\|content.*:" "${TMPDIR:-/tmp}"/convsim-release-sm
 
 ---
 
+## Part G — macOS Steam beta install verification
+
+Run this checklist on a **clean macOS machine** (fresh Steam library, no prior
+Conversation Simulator data) before declaring the macOS Stage 3 gate open.
+It is the macOS equivalent of Part E.
+
+Minimum hardware: macOS 13 Ventura or newer, Apple Silicon (arm64) or Intel
+(x86-64).  See `docs/platform-notes.md` for system requirements.
+
+### G.1 Gatekeeper and notarization
+
+Install the app from the Steam client and attempt to launch it on a fresh macOS
+profile where the app has never been opened before.
+
+- [ ] Steam installs the macOS app without errors (no Python, Node.js, or Rust prompts)
+- [ ] The `.app` bundle opens from the Steam Play button **without** a Gatekeeper
+  "unverified developer" dialog (notarised + stapled build)
+- [ ] `spctl --assess --verbose "ConversationSimulator.app"` exits 0 and prints
+  `accepted` (run in Terminal on the installed `.app`)
+- [ ] `codesign --verify --deep --strict "ConversationSimulator.app"` exits 0
+- [ ] No persistent security exception in System Settings → Privacy & Security
+  is required after first launch
+
+### G.2 Fresh install from Steam
+
+- [ ] Tauri window opens and displays the home screen
+- [ ] No terminal window is visible (convsim-core runs as a hidden child process)
+- [ ] `~/Library/Application Support/com.outrightmental.convsim/` is created on
+  first launch; no data written before the first-run wizard is dismissed
+
+### G.3 First-run model wizard
+
+- [ ] Wizard is shown before the main scenario library is accessible
+- [ ] All six mandatory disclosure fields are visible:
+  model name, source URL, license, download size, SHA-256 checksum,
+  destination path on disk
+- [ ] Download button is inactive until the player confirms disclosure
+- [ ] Destination path shown is under
+  `~/Library/Application Support/com.outrightmental.convsim/models/`
+- [ ] Download completes; SHA-256 is verified; model status changes to `loaded`
+
+### G.4 Text scenario and debrief
+
+Select **Job Interview Basics → Behavioral Interview** and run a session.
+
+- [ ] Scenario library loads and all five official packs are listed
+- [ ] Session starts without errors; NPC opening line is delivered
+- [ ] Player can submit a text turn; NPC responds within 60 seconds (CPU-only)
+- [ ] Session ends cleanly via the Stop / End Session button
+- [ ] Debrief screen loads with rubric scores and an export option
+- [ ] Exporting the transcript saves a file under
+  `~/Library/Application Support/com.outrightmental.convsim/exports/`
+
+### G.5 Offline play after model download
+
+Disconnect the network (Wi-Fi off or Airplane mode) after the model is
+downloaded and verified.
+
+- [ ] Session starts and runs normally with no network connection
+- [ ] No error or network-related warning appears
+- [ ] Reconnecting to the network does not trigger any sync or phone-home behavior
+
+### G.6 Privacy controls
+
+Navigate to **Settings → Privacy**.
+
+- [ ] Transcript history view lists the sessions played above
+- [ ] "Clear all local data" button is present and functional
+- [ ] Local data path (`~/Library/Application Support/com.outrightmental.convsim/`)
+  is displayed in the UI
+- [ ] Clearing data removes all sessions without requiring Finder navigation
+- [ ] `telemetry_enabled` is `false` in `GET /api/health`
+
+### G.7 Steam Cloud exclusions
+
+See **Part B.11** for the full Steam Cloud sync verification procedure.
+
+- [ ] B.11 Steam Cloud sync verification completed (macOS)
+- [ ] `steam_cloud_settings.json` at the data root contains only `last_model_id`
+- [ ] `.nosteamcloudpath` markers present in `data/`, `db/`, `logs/`,
+  `models/llm/`, `packs/`, `exports/`, `cache/`, and `crashes/`
+
+### G.8 Support bundle flow
+
+Navigate to **Settings → Support**.
+
+- [ ] Log directory path is shown or linked in the UI
+- [ ] Opening the log directory via the UI reveals
+  `~/Library/Application Support/com.outrightmental.convsim/logs/`
+- [ ] Log files contain startup events and session lifecycle info with no raw
+  conversation text
+
+### G.9 Achievements, stats, and rich presence (if included in build)
+
+> Skip if `get_steam_status` returns `{"enabled": false}`.
+
+- [ ] Completing a scored session triggers an achievement notification
+- [ ] Steam overlay (Shift+Tab) reflects the unlocked achievement
+- [ ] Rich presence text updates to reflect the current session state
+- [ ] No outbound HTTP calls outside the Steamworks SDK observed during play
+
+### G.10 Log verification
+
+```bash
+ls -la "$HOME/Library/Application Support/com.outrightmental.convsim/logs/"
+```
+
+- [ ] Log files present in the macOS data directory
+- [ ] Logs contain no API keys, tokens, or raw conversation content
+- [ ] No stale `~/.convsim/` directory was created (macOS platform path only)
+
+### G.11 Uninstall and reinstall behavior
+
+Uninstall via **Steam → right-click → Manage → Uninstall**, then reinstall.
+
+- [ ] Uninstall completes; the Steam library directory for the app is removed
+- [ ] User data under `~/Library/Application Support/com.outrightmental.convsim/`
+  is **preserved** (Steam uninstallers must not touch Application Support)
+- [ ] Downloaded model weights survive the uninstall
+- [ ] After reinstall, **no first-run wizard** appears — the app detects existing
+  user data and goes directly to the main screen
+- [ ] Session history and downloaded model detected as `loaded` (no re-download)
+
+---
+
+## Part H — Linux / SteamOS Steam beta install verification
+
+Run this checklist on a **clean Ubuntu 22.04 or SteamOS 3.x machine** with
+no prior Conversation Simulator install.  It is the Linux equivalent of Part E.
+
+### H.1 Executable permissions and dependency verification
+
+```bash
+# After Steam installs the app:
+INSTALL_DIR="$HOME/.steam/steam/steamapps/common/ConversationSimulator"
+ls -la "$INSTALL_DIR"
+
+# Check the AppImage is executable:
+file "$INSTALL_DIR/ConversationSimulator.AppImage"   # should say "ELF 64-bit" or "AppImage"
+
+# Confirm glibc version meets the ≥ 2.35 requirement:
+ldd --version | head -1
+```
+
+- [ ] AppImage file is present in the Steam install directory
+- [ ] AppImage has the executable bit set (`-rwxr-xr-x`)
+- [ ] `ldd --version` reports glibc ≥ 2.35 (Ubuntu 22.04 ships 2.35; SteamOS 3.x ships 2.37+)
+- [ ] No additional package install prompts appear (WebKitGTK and GTK 3 bundled
+  in AppImage)
+- [ ] On Ubuntu 22.04 without FUSE 2: AppImage runs with `--appimage-extract-and-run`
+  flag or after `sudo apt-get install libfuse2`
+
+### H.2 Fresh install from Steam
+
+- [ ] Tauri window opens and displays the home screen
+- [ ] No terminal window visible (convsim-core runs as hidden child process)
+- [ ] `~/.local/share/convsim/` or `~/.config/com.outrightmental.convsim/` is
+  created on first launch (platform-native data directory; confirm in startup log)
+
+### H.3 First-run model wizard
+
+- [ ] Wizard is shown before the main scenario library is accessible
+- [ ] All six mandatory disclosure fields visible (name, source, license, size,
+  SHA-256, destination path)
+- [ ] Download button inactive until disclosure confirmed
+- [ ] Destination path shown is under `~/.local/share/convsim/models/`
+- [ ] Download completes; SHA-256 verified; model status changes to `loaded`
+
+### H.4 Text scenario and debrief
+
+Select **Job Interview Basics → Behavioral Interview** and run a session.
+
+- [ ] All five official packs listed in the scenario library
+- [ ] Session starts; NPC opening line delivered
+- [ ] Player text turn submitted; NPC responds within 60 seconds (CPU-only)
+- [ ] Session ends cleanly; debrief screen loads with rubric scores and export option
+- [ ] Exported transcript saved under `~/.local/share/convsim/exports/`
+
+### H.5 Offline play after model download
+
+Disable the network interface (`nmcli networking off` or unplug ethernet) after
+model download.
+
+- [ ] Session runs normally with no network
+- [ ] No error or network-related warning in the UI
+- [ ] Restoring network does not trigger phone-home or sync behavior
+
+### H.6 Privacy controls
+
+Navigate to **Settings → Privacy**.
+
+- [ ] Transcript history view lists played sessions
+- [ ] "Clear all local data" button present and functional
+- [ ] Local data path displayed in the UI
+- [ ] Clearing data removes sessions without terminal navigation
+- [ ] `telemetry_enabled` is `false` in `GET /api/health`
+
+### H.7 Steam Cloud exclusions
+
+See **Part B.11** for the full Steam Cloud sync verification procedure.
+
+- [ ] B.11 Steam Cloud sync verification completed (Linux)
+- [ ] `steam_cloud_settings.json` at the data root contains only `last_model_id`
+- [ ] `.nosteamcloudpath` markers present in all required subdirectories
+
+### H.8 Support bundle flow
+
+Navigate to **Settings → Support**.
+
+- [ ] Log directory path shown or linked in the UI
+- [ ] Opening via the UI confirms logs in `~/.local/share/convsim/logs/`
+- [ ] Log files contain diagnostic context with no raw conversation text
+
+### H.9 Achievements, stats, and rich presence (if included in build)
+
+> Skip if `get_steam_status` returns `{"enabled": false}`.
+
+- [ ] Completing a scored session triggers an achievement notification
+- [ ] Steam overlay (Shift+Tab) reflects the unlocked achievement
+- [ ] Rich presence text updates in the Steam Friends list
+- [ ] No outbound HTTP calls outside the Steamworks SDK during play
+
+### H.10 Log verification
+
+```bash
+ls -la ~/.local/share/convsim/logs/
+```
+
+- [ ] Log files present
+- [ ] No API keys, tokens, or raw conversation content in logs
+- [ ] No stale `~/.convsim/` directory (platform-native path only)
+
+### H.11 FUSE and AppImage behavior notes
+
+> Document any FUSE-related issues encountered during this verification.
+
+| Issue | Resolution | Documented |
+|-------|-----------|-----------|
+| FUSE 2 not present | Run with `--appimage-extract-and-run` or `apt install libfuse2` | [ ] |
+| AppImage not executable | `chmod +x ConversationSimulator.AppImage` | [ ] |
+| WebKit / GTK missing | Should not occur (bundled); document if observed | [ ] |
+
+---
+
+## Part I — Steam Deck beta verification
+
+Run this checklist on **physical Steam Deck hardware** running SteamOS 3.x in
+Gaming Mode.  This is required for the Stage 4 gate G4-02 (Steam Deck Verified).
+
+All steps must be completable without a keyboard or mouse: use the D-pad,
+A/B/X/Y buttons, left stick, right trackpad, and the Steam on-screen keyboard
+only.  See `docs/QA_STEAM_PLATFORM_MATRIX.md §3` for the full controller
+navigation checklist (TC-11) that these steps exercise.
+
+### I.1 Install from Steam library
+
+In Gaming Mode on the Steam Deck:
+
+- [ ] App is listed in the Steam library after the beta key is redeemed
+- [ ] Install completes from the Steam Play button without switching to Desktop Mode
+- [ ] App launches in Gaming Mode from the library tile
+
+### I.2 First-run model wizard (controller-only)
+
+- [ ] Wizard appears before the main scenario library
+- [ ] Model Manager UI is fully navigable with D-pad and A/B/X/Y buttons
+- [ ] On-screen keyboard appears automatically when any text field is focused
+  (tester name or search field)
+- [ ] Download button can be reached and activated via controller alone
+- [ ] Download completes; model status changes to `loaded` at the expected
+  SteamOS latency (see `docs/linux-steamos-requirements.md` — target ≤ 90 s
+  for Qwen3 4B Q4_K_M on Steam Deck hardware)
+
+### I.3 Controller-only full session (TC-11)
+
+Complete all 13 steps of TC-11 from `docs/QA_STEAM_PLATFORM_MATRIX.md §4`
+using the controller alone.
+
+| TC-11 step | Result |
+|-----------|--------|
+| 11.1 Launch and reach Home screen | [ ] PASS / [ ] FAIL |
+| 11.2 Navigate Home with D-pad / left stick | [ ] PASS / [ ] FAIL |
+| 11.3 Navigate to Scenario Library | [ ] PASS / [ ] FAIL |
+| 11.4 Select scenario without keyboard/mouse | [ ] PASS / [ ] FAIL |
+| 11.5 On-screen keyboard for text field | [ ] PASS / [ ] FAIL |
+| 11.6 Start voice session; R1 triggers push-to-talk | [ ] PASS / [ ] FAIL / [ ] N/A |
+| 11.7 Submit text turn via on-screen keyboard | [ ] PASS / [ ] FAIL |
+| 11.8 End session; reach Debrief screen | [ ] PASS / [ ] FAIL |
+| 11.9 Navigate Debrief; check readability at 1280×800 | [ ] PASS / [ ] FAIL |
+| 11.10 Navigate Model Manager, Settings, Support, Workbench | [ ] PASS / [ ] FAIL |
+| 11.11 DebugDrawer excluded from focus ring (dev build) | [ ] PASS / [ ] N/A |
+| 11.12 Steam overlay opens / closes without breaking session | [ ] PASS / [ ] FAIL |
+| 11.13 Quit via controller; no orphaned processes | [ ] PASS / [ ] FAIL |
+
+### I.4 Offline play under SteamOS
+
+After model download, switch to Airplane Mode (Steam Deck Quick Access → Network).
+
+- [ ] Session runs normally with no network
+- [ ] No error or network-related warning in the UI (controller-accessible)
+- [ ] TC-09 offline smoke criteria met on SteamOS hardware
+
+### I.5 Privacy controls and support bundle
+
+Navigate to **Settings → Privacy** and **Settings → Support** via controller.
+
+- [ ] Privacy controls navigable without keyboard/mouse
+- [ ] "Clear all local data" button reachable and functional via controller
+- [ ] Support screen log path visible and readable at 1280×800
+
+### I.6 Steam Cloud exclusions
+
+```bash
+# In Desktop Mode — Konsole:
+cat "$HOME/.local/share/convsim/steam_cloud_settings.json"
+for d in data db logs models/llm packs exports cache crashes; do
+    echo "$d: $(ls "$HOME/.local/share/convsim/$d/.nosteamcloudpath" 2>/dev/null \
+      && echo PRESENT || echo MISSING)"
+done
+```
+
+- [ ] `steam_cloud_settings.json` contains only `last_model_id`
+- [ ] `.nosteamcloudpath` present in all required subdirectories
+
+### I.7 Achievements, stats, and rich presence (if included in build)
+
+> Skip if `get_steam_status` returns `{"enabled": false}`.
+
+- [ ] Achievement notification appears after a scored session (on-screen toast
+  or Steam overlay notification visible from Gaming Mode)
+- [ ] Rich presence text visible in the Steam Friends list on another device
+- [ ] No outbound HTTP calls outside Steamworks SDK during play
+
+### I.8 Battery impact documentation
+
+Run a 15-minute text session while monitoring battery draw.  Use the Steam Deck
+performance overlay (Quick Access → Performance) to observe average wattage.
+
+- [ ] Average battery draw during sustained text inference: ___ W
+  (target: < 15 W — see `docs/linux-steamos-requirements.md §SteamOS`)
+- [ ] Fan behavior during inference: [ ] Silent / [ ] Intermittent spin / [ ] Sustained
+- [ ] Result documented in the beta verification report
+
+### I.9 Steam Deck Verified sign-off requirements
+
+These items are required for Valve to grant the Verified tier (G4-02).
+
+- [ ] All TC-11 steps above show PASS (no FAIL results)
+- [ ] On-screen keyboard appeared automatically for every text field
+- [ ] No required action hidden behind a mouse-only hover state
+- [ ] All text readable at 1280×800 from couch distance without zooming
+- [ ] Every interactive element had a visible focus ring during controller navigation
+- [ ] Default controller config (`steam/controller_config.vdf`) loaded automatically
+  (confirm via Steam Input overlay)
+- [ ] Push-to-talk (R1) does not conflict with Steam overlay (Shift+Tab)
+- [ ] App exits cleanly and returns to the Steam library home
+- [ ] Battery draw documented (I.8 above)
+
+---
+
+## Part J — Steam beta verification sign-off
+
+Complete this section after Parts E, G, H, and I are all finished for the
+release candidate build.  This section gates **G3-06** (private beta sign-off)
+and contributes evidence for **G4-02** (Steam Deck Verified).
+
+### J.1 Minimum tester coverage
+
+A minimum of five testers must complete at least one full text session and view
+the debrief screen before G3-06 can be declared PASS.  At least one tester must
+be on each required platform.
+
+| Platform | Required testers | Status |
+|----------|-----------------|--------|
+| Windows 10 / 11 (x86-64) | ≥ 2 | TBD |
+| macOS — Apple Silicon | ≥ 1 | TBD |
+| macOS — Intel | ≥ 1 | TBD |
+| Linux (x86-64) | ≥ 1 | TBD |
+| Steam Deck (SteamOS 3.x, Gaming Mode) | ≥ 1 | TBD for G4-02 |
+
+### J.2 Platform-specific blocker tracking
+
+Any session-ending bug, data-loss bug, or privacy regression found during Parts
+E, G, H, or I must be filed as a GitHub issue with the label `beta-testing`
+before the gate can be declared.
+
+Use the label `platform:windows`, `platform:macos`, `platform:linux`, or
+`platform:steam-deck` to identify the affected platform.  Child issues should
+reference this issue as a blocker.
+
+- [ ] All session-ending, data-loss, and privacy-regression bugs are filed
+- [ ] All filed blockers are either closed or have a documented maintainer waiver
+  before G3-06 is declared PASS
+
+### J.3 Beta verification report
+
+Produce and file the signed-off beta verification report using the template in
+`docs/STEAM_BETA_VERIFICATION_REPORT.md`.  The completed report must be
+attached to the release issue before the Stage 3 gate is declared open.
+
+- [ ] `docs/STEAM_BETA_VERIFICATION_REPORT.md` filled out for this build
+- [ ] All four platform sign-offs completed (or PARTIAL with documented waiver)
+- [ ] Report attached to the release GitHub issue or linked from the release PR
+- [ ] Publishing owner has countersigned the aggregate sign-off section
+
+---
+
 ## Smoke log
 
 Fill this in for each manual release smoke run.
@@ -629,6 +1094,13 @@ When a subsystem fails, the output labels the failing step:
 | `[e2e-playthrough]` | E2E playthrough | Full playthrough broken in packaged-env mode; official packs not loading |
 | `[artifact-inspect]` | Artifact inspection | Version not stamped; icon missing; forbidden file in depot; permission bit wrong |
 | `[workbench]` | Creator workbench | Pack import/export or file API broken; workbench route error |
+| `[steam-beta]` | Steam beta verification | Platform-specific install, OS trust state, or Steam-client-specific regression; see Parts E / G / H / I |
 
 CI artifacts for failed runs are uploaded to GitHub Actions under the job name
 `release-smoke-<platform>` and retained for 7 days.
+
+Steam beta verification failures (Parts E, G, H, I) must be filed as GitHub
+issues with the label `beta-testing` and the appropriate `platform:*` label
+before the Stage 3 gate (G3-06) can be declared PASS.  See Part J for the
+complete sign-off process and `docs/STEAM_BETA_VERIFICATION_REPORT.md` for the
+report template.

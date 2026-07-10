@@ -351,6 +351,14 @@ Signed: ___________________________ (tester)
 Countersigned: ___________________________ (maintainer, if PARTIAL or for Stage 4)
 ```
 
+### Aggregate beta verification report
+
+After all per-platform sign-offs above are complete, combine them into the
+aggregate beta verification report using the template in
+[`docs/STEAM_BETA_VERIFICATION_REPORT.md`](STEAM_BETA_VERIFICATION_REPORT.md).
+The completed report must be attached to the release GitHub issue before the
+Stage 3 gate (G3-06) can be declared PASS.
+
 ### Steam review sign-off (Stage 4 public release)
 
 Before opening the Stage 4 gate, the publishing owner must complete the
@@ -380,9 +388,11 @@ Notes            :
 
 - [steam-mvp-scope.md](steam-mvp-scope.md) — feature requirements and pass/fail gates (G2–G4)
 - [STEAM_ROADMAP.md](STEAM_ROADMAP.md) — release principles, release train, Steam Deck verification checklist
-- [release-checklist.md](release-checklist.md) — Parts A–D platform smoke matrix
+- [STEAM_BETA_VERIFICATION_REPORT.md](STEAM_BETA_VERIFICATION_REPORT.md) — aggregate signed-off beta verification report template (all four platforms)
+- [release-checklist.md](release-checklist.md) — Parts A–D platform smoke matrix; Parts E (Windows), G (macOS), H (Linux/SteamOS), I (Steam Deck), J (sign-off) for Steam beta verification
 - [performance.md](performance.md) — hardware tier definitions and latency guidance
 - [platform-notes.md](platform-notes.md) — platform-specific build and install details
+- [linux-steamos-requirements.md](linux-steamos-requirements.md) — glibc requirements, SteamOS hardware profile, AppImage behavior
 - [privacy.md](privacy.md) — local-first promise and data handling
 - [network-security.md](network-security.md) — runtime network enforcement
 - [voice-smoke-tests.md](voice-smoke-tests.md) — STT/TTS smoke test procedures
