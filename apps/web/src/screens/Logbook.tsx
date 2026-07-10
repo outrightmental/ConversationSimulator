@@ -15,6 +15,40 @@ function formatDuration(seconds: number): string {
   return remainingMins > 0 ? `${hours}h ${remainingMins}m` : `${hours}h`
 }
 
+// Per-skill trajectory sparkline. Renders one point per debriefed session
+// (chronological, left = oldest). Returns null when there is not yet enough
+// history to draw a line (fewer than two sessions).
+function SkillTrajectory({ dimensionId, scores, color }: { dimensionId: string; scores: number[]; color: string }) {
+  if (scores.length < 2) return null
+  const W = 80
+  const H = 20
+  const min = 0
+  const max = 100
+  const points = scores.map((v, i) => {
+    const x = (i / (scores.length - 1)) * W
+    const y = H - ((Math.min(max, Math.max(min, v)) - min) / (max - min)) * H
+    return `${x.toFixed(1)},${y.toFixed(1)}`
+  })
+  return (
+    <svg
+      width={W}
+      height={H}
+      role="img"
+      aria-label={`${dimensionId.replace(/_/g, ' ')} trajectory over ${scores.length} sessions`}
+      style={{ overflow: 'visible', flexShrink: 0 }}
+    >
+      <polyline
+        points={points.join(' ')}
+        fill="none"
+        stroke={color}
+        strokeWidth={1.5}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
 function DeltaBadge({ delta }: { delta: number }) {
   const sign = delta >= 0 ? '+' : ''
   const color = delta > 0 ? '#4ade80' : delta < 0 ? '#f87171' : '#a1a1aa'
@@ -251,6 +285,11 @@ export default function Logbook() {
                     >
                       {dim.rolling_score}
                     </span>
+                    <SkillTrajectory
+                      dimensionId={dim.dimension_id}
+                      scores={dim.trajectory}
+                      color={isStrongest ? '#4ade80' : isWeakest ? '#f87171' : '#6366f1'}
+                    />
                     <span style={{ fontSize: '0.75rem', color: '#52525b', minWidth: '4rem' }}>
                       {dim.session_count} session{dim.session_count !== 1 ? 's' : ''}
                     </span>

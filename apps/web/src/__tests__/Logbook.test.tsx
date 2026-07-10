@@ -106,8 +106,8 @@ describe('Logbook — with sessions', () => {
     streak_days: 3,
     last_session_date: '2026-07-10',
     dimension_scores: [
-      { dimension_id: 'empathy', rolling_score: 82, session_count: 4 },
-      { dimension_id: 'assertiveness', rolling_score: 55, session_count: 3 },
+      { dimension_id: 'empathy', rolling_score: 82, session_count: 4, trajectory: [70, 75, 80, 82] },
+      { dimension_id: 'assertiveness', rolling_score: 55, session_count: 3, trajectory: [40, 55] },
     ],
     personal_records: [
       { scenario_id: 'behavioral_interview', difficulty: 'normal', best_score: 78, achieved_at: '2026-07-09T10:00:00Z' },
@@ -140,6 +140,12 @@ describe('Logbook — with sessions', () => {
     renderLogbook()
     expect(await screen.findByText(/empathy/i)).toBeInTheDocument()
     expect(await screen.findByText(/assertiveness/i)).toBeInTheDocument()
+  })
+
+  it('renders a per-skill trajectory chart when a skill has multiple sessions', async () => {
+    renderLogbook()
+    expect(await screen.findByRole('img', { name: /empathy trajectory over 4 sessions/i })).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: /assertiveness trajectory over 2 sessions/i })).toBeInTheDocument()
   })
 
   it('shows personal records section', async () => {
