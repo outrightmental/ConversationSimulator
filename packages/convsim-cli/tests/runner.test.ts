@@ -385,3 +385,64 @@ describe('golden — difficult-conversations pack test', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Golden snapshot: everyday-negotiation — all eight fixtures (4 smoke + 4 golden)
+// ---------------------------------------------------------------------------
+
+describe('golden — everyday-negotiation pack test', () => {
+  const repoRoot = fileURLToPath(new URL('../../../', import.meta.url));
+  const packDir = join(repoRoot, 'packs', 'official', 'everyday-negotiation');
+
+  it('passes all fixtures with the fake runtime', () => {
+    const pack = loadPack(packDir, 'official');
+    const result = runPackTests(pack);
+
+    expect(result.failed).toBe(0);
+    expect(result.fixture_count).toBeGreaterThanOrEqual(8);
+  });
+
+  it.each([
+    'smoke_used_car_negotiation',
+    'smoke_apartment_lease_renewal',
+    'smoke_freelance_scope_negotiation',
+    'smoke_customer_service_refund',
+  ])('%s fixture passes all static assertions', (fixtureId) => {
+    const pack = loadPack(packDir, 'official');
+    const result = runPackTests(pack);
+
+    const fixture = result.fixtures.find((f) => f.fixture_id === fixtureId);
+    expect(fixture).toBeDefined();
+    expect(fixture?.status).toBe('passed');
+    expect(fixture?.failures).toHaveLength(0);
+    expect(fixture?.static_assertion_count).toBeGreaterThan(0);
+  });
+
+  it.each([
+    'golden_used_car_negotiation',
+    'golden_apartment_lease_renewal',
+    'golden_freelance_scope_negotiation',
+    'golden_customer_service_refund',
+  ])('%s fixture passes all static assertions', (fixtureId) => {
+    const pack = loadPack(packDir, 'official');
+    const result = runPackTests(pack);
+
+    const fixture = result.fixtures.find((f) => f.fixture_id === fixtureId);
+    expect(fixture).toBeDefined();
+    expect(fixture?.status).toBe('passed');
+    expect(fixture?.failures).toHaveLength(0);
+    expect(fixture?.static_assertion_count).toBeGreaterThan(0);
+  });
+
+  it('reports correct turn counts for golden fixtures', () => {
+    const pack = loadPack(packDir, 'official');
+    const result = runPackTests(pack);
+
+    for (const id of ['golden_used_car_negotiation', 'golden_apartment_lease_renewal',
+                      'golden_freelance_scope_negotiation', 'golden_customer_service_refund']) {
+      const fixture = result.fixtures.find((f) => f.fixture_id === id);
+      expect(fixture?.turn_count).toBe(4);
+      expect(fixture?.mode).toBe('fake');
+    }
+  });
+});
