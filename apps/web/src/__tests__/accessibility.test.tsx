@@ -52,6 +52,7 @@ vi.mock('../api/client', () => ({
     importPack: vi.fn(),
     getPack: vi.fn(),
     validatePack: vi.fn(),
+    preflight: vi.fn().mockResolvedValue({ ok: true, data: { overall: 'pass', checks: [], ran_at: '2026-01-01T00:00:00.000+00:00' } }),
     // RuntimeSettingsPanel
     getModels: vi.fn().mockReturnValue(new Promise(() => {})),
     getRuntimeSettings: vi.fn().mockReturnValue(new Promise(() => {})),

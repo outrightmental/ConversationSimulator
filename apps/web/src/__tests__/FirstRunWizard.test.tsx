@@ -9,6 +9,7 @@ import type { ModelsResponse, BenchmarkResponse } from '@convsim/shared'
 vi.mock('../api/client', () => ({
   api: {
     getModels: vi.fn(),
+    preflight: vi.fn(),
     useModel: vi.fn(),
     installModel: vi.fn(),
     getInstallStatus: vi.fn(),
@@ -96,6 +97,14 @@ beforeEach(() => {
   localStorage.clear()
 
   mockApi.getModels.mockResolvedValue({ ok: true, data: makeModelsResponse() })
+  mockApi.preflight.mockResolvedValue({
+    ok: true,
+    data: {
+      overall: 'pass',
+      checks: [],
+      ran_at: '2026-01-01T00:00:00.000+00:00',
+    },
+  })
   mockApi.useModel.mockResolvedValue({ ok: true, data: {
     runtime_id: 'ollama',
     model_id: 'llama3:latest',
@@ -224,6 +233,79 @@ describe('FirstRunWizard — welcome step', () => {
     const link = screen.getByRole('link', { name: /read setup docs/i })
     expect(link).toBeInTheDocument()
     expect(link).toHaveAttribute('target', '_blank')
+  })
+})
+
+// ── Preflight step ────────────────────────────────────────────────────────────
+
+describe('FirstRunWizard — preflight step', () => {
+  const INFRA_FAIL_PREFLIGHT = {
+    overall: 'fail' as const,
+    ran_at: '2026-01-01T00:00:00.000+00:00',
+    checks: [
+      {
+        id: 'llama-cpp-binary',
+        name: 'Inference engine',
+        status: 'fail' as const,
+        message: 'llama-server binary not found.',
+        fix_action: { kind: 'open-url' as const, href: 'https://example.com/setup', label: 'Setup guide' },
+      },
+    ],
+  }
+
+  async function goToPreflight() {
+    mockApi.preflight.mockResolvedValue({ ok: true, data: INFRA_FAIL_PREFLIGHT })
+    renderWizard()
+    fireEvent.click(screen.getByRole('button', { name: /get started/i }))
+    await screen.findByRole('heading', { name: /system check/i })
+  }
+
+  it('shows the system check heading when infra checks fail', async () => {
+    await goToPreflight()
+    expect(screen.getByRole('heading', { name: /system check/i })).toBeInTheDocument()
+  })
+
+  it('shows failing check details in the wizard', async () => {
+    await goToPreflight()
+    expect(screen.getByTestId('wizard-preflight-check-llama-cpp-binary')).toBeInTheDocument()
+  })
+
+  it('shows a fix action button for the failing check', async () => {
+    await goToPreflight()
+    expect(screen.getByTestId('wizard-preflight-fix-llama-cpp-binary')).toBeInTheDocument()
+  })
+
+  it('shows a Continue anyway button', async () => {
+    await goToPreflight()
+    expect(screen.getByRole('button', { name: /continue anyway/i })).toBeInTheDocument()
+  })
+
+  it('shows a Retry system check button', async () => {
+    await goToPreflight()
+    expect(screen.getByRole('button', { name: /retry system check/i })).toBeInTheDocument()
+  })
+
+  it('proceeds to choose step when Continue anyway is clicked', async () => {
+    await goToPreflight()
+    fireEvent.click(screen.getByRole('button', { name: /continue anyway/i }))
+    await screen.findByRole('heading', { name: /choose how to get started/i })
+  })
+
+  it('skips preflight step when all infra checks pass', async () => {
+    mockApi.preflight.mockResolvedValue({
+      ok: true,
+      data: { overall: 'pass', checks: [], ran_at: '2026-01-01T00:00:00.000+00:00' },
+    })
+    renderWizard()
+    fireEvent.click(screen.getByRole('button', { name: /get started/i }))
+    await screen.findByRole('heading', { name: /choose how to get started/i })
+  })
+
+  it('skips preflight step when preflight API call fails (graceful degradation)', async () => {
+    mockApi.preflight.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'unavailable' } })
+    renderWizard()
+    fireEvent.click(screen.getByRole('button', { name: /get started/i }))
+    await screen.findByRole('heading', { name: /choose how to get started/i })
   })
 })
 
