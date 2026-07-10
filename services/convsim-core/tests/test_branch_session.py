@@ -138,7 +138,9 @@ class TestMigration0013:
     def test_migration_list_includes_0013(self):
         names = [name for name, _ in MIGRATIONS]
         assert "0013_branch_sessions" in names
-        assert names.index("0013_branch_sessions") == len(names) - 1
+        # 0013 must be appended in order (immediately before its successor
+        # migration), not inserted mid-list where it could re-run out of order.
+        assert names.index("0013_branch_sessions") == names.index("0014_turn_session_ended_at") - 1
 
 
 # ---------------------------------------------------------------------------

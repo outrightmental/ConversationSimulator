@@ -575,8 +575,12 @@ async def generate_debrief(
                 "VALUES (?, ?, ?, ?)",
                 (session_id, json.dumps(debrief_doc), json.dumps(metrics), now),
             )
+            # Backfill ended_at for sessions that reached a terminal state
+            # mid-turn (safety_stop/timeout/player_exit) without an explicit
+            # /end call, so the Logbook can measure their practice time.
             conn.execute(
-                "UPDATE turn_sessions SET flow_state = 'DebriefReady' WHERE session_id = ?",
+                "UPDATE turn_sessions SET flow_state = 'DebriefReady', "
+                "ended_at = COALESCE(ended_at, datetime('now')) WHERE session_id = ?",
                 (session_id,),
             )
 

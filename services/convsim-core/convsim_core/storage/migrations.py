@@ -318,6 +318,14 @@ CREATE TABLE session_branches (
 CREATE UNIQUE INDEX session_branches_branch_idx ON session_branches(branch_session_id);
 """
 
+# Records when a session concluded so the Logbook can measure practice time and
+# per-day streaks accurately. Populated by the /end handler and, for sessions
+# that terminate mid-turn without an explicit /end, backfilled when the debrief
+# is generated (see debrief_engine).
+_TURN_SESSION_ENDED_AT_SQL = """
+ALTER TABLE turn_sessions ADD COLUMN ended_at TEXT;
+"""
+
 MIGRATIONS: list[tuple[str, str]] = [
     ("0001_initial_schema", _INITIAL_SCHEMA_SQL),
     ("0002_model_registry_v2", _MODEL_REGISTRY_V2_SQL),
@@ -332,6 +340,7 @@ MIGRATIONS: list[tuple[str, str]] = [
     ("0011_model_download_verified", _MODEL_DOWNLOAD_VERIFIED_SQL),
     ("0012_session_metrics", _SESSION_METRICS_SQL),
     ("0013_branch_sessions", _BRANCH_SESSIONS_SQL),
+    ("0014_turn_session_ended_at", _TURN_SESSION_ENDED_AT_SQL),
 ]
 
 
