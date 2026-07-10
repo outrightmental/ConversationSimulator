@@ -541,4 +541,34 @@ describe('offline-smoke-test — official packs', () => {
     runOfflineSmokeTest(jobInterviewPack, true);
     expect(Socket.prototype.connect).toBe(origConnect);
   });
+
+  const difficultConvPack = join(repoRoot, 'packs', 'official', 'difficult-conversations');
+
+  it('passes for the difficult-conversations pack', () => {
+    const code = runOfflineSmokeTest(difficultConvPack, false);
+    expect(code).toBe(0);
+  });
+
+  it('JSON output is ok for the difficult-conversations pack', () => {
+    let captured = '';
+    const spy = vi.spyOn(process.stdout, 'write').mockImplementation((d) => {
+      captured += String(d);
+      return true;
+    });
+    runOfflineSmokeTest(difficultConvPack, true);
+    spy.mockRestore();
+    const result = JSON.parse(captured) as Record<string, unknown>;
+    expect(result['status']).toBe('ok');
+    expect(result['pack_id']).toBe('official.difficult_conversations');
+    expect(typeof result['scenario_id']).toBe('string');
+    expect((result['turns_played'] as number)).toBeGreaterThan(0);
+    expect(result['debrief_generated']).toBe(true);
+    expect((result['network_violations'] as unknown[]).length).toBe(0);
+  });
+
+  it('Socket.prototype.connect is restored after the difficult-conversations pack run', () => {
+    const origConnect = Socket.prototype.connect;
+    runOfflineSmokeTest(difficultConvPack, true);
+    expect(Socket.prototype.connect).toBe(origConnect);
+  });
 });

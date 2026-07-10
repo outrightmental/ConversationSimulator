@@ -1,0 +1,154 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: golden_boundary_with_friend
+scenario_id: boundary_with_friend
+description: >-
+  Golden transcript property test: verifies that a player who states the
+  boundary clearly and early while explicitly reaffirming the friendship,
+  holds it calmly through Jamie's reframe and guilt play without escalating
+  or over-explaining, and reaffirms care once Jamie accepts causes acceptance
+  to exceed the success threshold. Also verifies that first_pushback fires on
+  early pressure, guilt_play fires on high pressure, and reluctant_acceptance
+  fires when Jamie genuinely stands down.
+
+seed: 42
+input_mode: text
+difficulty: normal
+
+turns:
+  - turn: 1
+    player_input: >-
+      Everything is good between us — I want you to hear that right away,
+      because I did not want this to feel like a weird coffee. I care about
+      our friendship and nothing about what I am about to say changes that.
+      The birthday weekend — I am not going to be able to help coordinate it.
+      That is the thing I needed to tell you in person. It is not about wanting
+      you to have a great birthday, which I really do. It is just that I cannot
+      take on something that scale right now, and I needed to say that to you
+      directly rather than just let it become something I quietly resented.
+    expect:
+      state_delta_contains:
+        - rapport
+        - boundary_clarity
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 2
+    player_input: >-
+      I hear you, and I know you would not ask if you did not need it. Even
+      just the venue piece — I am still not going to be able to do it. I know
+      that is not what you were hoping for and I am genuinely sorry it lands
+      that way. But my answer is the same: I cannot take this on right now,
+      not even a piece of it.
+    expect:
+      state_delta_contains:
+        - boundary_clarity
+        - pressure
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 3
+    player_input: >-
+      I know you showed up for me when I moved. That was real, and I have not
+      forgotten it. What I am telling you is not that I am pulling back from
+      the friendship — it is that this particular thing is not something I
+      can do right now. Those are different things. You have always been someone
+      I can count on and I hope I am that for you too. This is not me changing
+      that. I just cannot do this one thing.
+    expect:
+      state_delta_contains:
+        - rapport
+        - acceptance
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 4
+    player_input: >-
+      I know it is a little disappointing and I appreciate that you heard me.
+      I really do want your birthday weekend to be amazing — I hope you find
+      the right person to help you pull it together, and I will absolutely
+      be there celebrating with you. You and I are fine. I just needed you
+      to know where I was at.
+    expect:
+      state_delta_contains:
+        - rapport
+        - acceptance
+      session_control: continue_session
+      safety_status: ok
+
+static_assertions:
+  - description: Scenario opening line is non-empty
+    path: opening.npc_says
+    check: non_empty_string
+
+  - description: At least one event is defined
+    path: events
+    check: min_length_1
+
+  - description: first_pushback fires when pressure exceeds 60
+    path: events[id=first_pushback].when
+    check: "type=variable_above AND variable=pressure AND threshold=60"
+
+  - description: first_pushback fires only once
+    path: events[id=first_pushback].repeat
+    check: "equals false"
+
+  - description: guilt_play fires when pressure exceeds 75
+    path: events[id=guilt_play].when
+    check: "type=variable_above AND variable=pressure AND threshold=75"
+
+  - description: guilt_play fires only once
+    path: events[id=guilt_play].repeat
+    check: "equals false"
+
+  - description: reluctant_acceptance fires when acceptance exceeds 65
+    path: events[id=reluctant_acceptance].when
+    check: "type=variable_above AND variable=acceptance AND threshold=65"
+
+  - description: reluctant_acceptance fires only once
+    path: events[id=reluctant_acceptance].repeat
+    check: "equals false"
+
+  - description: rapport_drop_warning fires when rapport falls below 35
+    path: events[id=rapport_drop_warning].when
+    check: "type=variable_below AND variable=rapport AND threshold=35"
+
+  - description: Success ending condition targets acceptance above 60
+    path: ending_conditions.success
+    check: "type=variable_above AND variable=acceptance AND threshold=60"
+
+  - description: Failure ending condition targets rapport below 20
+    path: ending_conditions.failure
+    check: "type=variable_below AND variable=rapport AND threshold=20"
+
+  - description: rapport is player-visible
+    path: state.variables.rapport.visibility
+    check: "equals visible"
+
+  - description: pressure is hidden from player
+    path: state.variables.pressure.visibility
+    check: "equals hidden"
+
+  - description: acceptance is hidden from player
+    path: state.variables.acceptance.visibility
+    check: "equals hidden"
+
+  - description: NPC is marked fictional
+    path: npc.fictional
+    check: "equals true"
+
+  - description: Safety policy stops nsfw_sexual_content
+    path: safety.content_categories.nsfw_sexual_content
+    check: "equals stop"
+
+  - description: Safety policy fires stop_with_resource_message for self_harm_crisis
+    path: safety.content_categories.self_harm_crisis
+    check: "equals stop_with_resource_message"
+
+  - description: Pack manifest declares boundary_with_friend as an entry scenario
+    path: manifest.entry_scenarios
+    check: "contains scenarios/boundary_with_friend.yaml"
+
+  - description: Hard difficulty applies a negative patience modifier
+    path: scenario.difficulty.options.hard.npc_patience_modifier
+    check: "equals -20"

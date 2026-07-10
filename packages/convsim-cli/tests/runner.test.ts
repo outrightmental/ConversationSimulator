@@ -271,3 +271,117 @@ describe('golden — job-interview-basic smoke test', () => {
     expect(fixture?.mode).toBe('fake');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Golden snapshot: difficult-conversations — all eight fixtures (4 smoke + 4 golden)
+// ---------------------------------------------------------------------------
+
+describe('golden — difficult-conversations pack test', () => {
+  const repoRoot = fileURLToPath(new URL('../../../', import.meta.url));
+  const packDir = join(repoRoot, 'packs', 'official', 'difficult-conversations');
+
+  it('passes all fixtures with the fake runtime', () => {
+    const pack = loadPack(packDir, 'official');
+    const result = runPackTests(pack);
+
+    expect(result.failed).toBe(0);
+    expect(result.fixture_count).toBeGreaterThanOrEqual(8);
+  });
+
+  it('smoke_coworker_feedback fixture passes all static assertions', () => {
+    const pack = loadPack(packDir, 'official');
+    const result = runPackTests(pack);
+
+    const fixture = result.fixtures.find((f) => f.fixture_id === 'smoke_coworker_feedback');
+    expect(fixture).toBeDefined();
+    expect(fixture?.status).toBe('passed');
+    expect(fixture?.failures).toHaveLength(0);
+    expect(fixture?.static_assertion_count).toBeGreaterThan(0);
+  });
+
+  it('smoke_missed_deadline_apology fixture passes all static assertions', () => {
+    const pack = loadPack(packDir, 'official');
+    const result = runPackTests(pack);
+
+    const fixture = result.fixtures.find((f) => f.fixture_id === 'smoke_missed_deadline_apology');
+    expect(fixture).toBeDefined();
+    expect(fixture?.status).toBe('passed');
+    expect(fixture?.failures).toHaveLength(0);
+  });
+
+  it('smoke_boundary_with_friend fixture passes all static assertions', () => {
+    const pack = loadPack(packDir, 'official');
+    const result = runPackTests(pack);
+
+    const fixture = result.fixtures.find((f) => f.fixture_id === 'smoke_boundary_with_friend');
+    expect(fixture).toBeDefined();
+    expect(fixture?.status).toBe('passed');
+    expect(fixture?.failures).toHaveLength(0);
+  });
+
+  it('smoke_ask_for_raise fixture passes all static assertions', () => {
+    const pack = loadPack(packDir, 'official');
+    const result = runPackTests(pack);
+
+    const fixture = result.fixtures.find((f) => f.fixture_id === 'smoke_ask_for_raise');
+    expect(fixture).toBeDefined();
+    expect(fixture?.status).toBe('passed');
+    expect(fixture?.failures).toHaveLength(0);
+  });
+
+  it('golden_coworker_feedback fixture passes all static assertions', () => {
+    const pack = loadPack(packDir, 'official');
+    const result = runPackTests(pack);
+
+    const fixture = result.fixtures.find((f) => f.fixture_id === 'golden_coworker_feedback');
+    expect(fixture).toBeDefined();
+    expect(fixture?.status).toBe('passed');
+    expect(fixture?.failures).toHaveLength(0);
+    expect(fixture?.static_assertion_count).toBeGreaterThan(0);
+  });
+
+  it('golden_missed_deadline_apology fixture passes all static assertions', () => {
+    const pack = loadPack(packDir, 'official');
+    const result = runPackTests(pack);
+
+    const fixture = result.fixtures.find((f) => f.fixture_id === 'golden_missed_deadline_apology');
+    expect(fixture).toBeDefined();
+    expect(fixture?.status).toBe('passed');
+    expect(fixture?.failures).toHaveLength(0);
+    expect(fixture?.static_assertion_count).toBeGreaterThan(0);
+  });
+
+  it('golden_boundary_with_friend fixture passes all static assertions', () => {
+    const pack = loadPack(packDir, 'official');
+    const result = runPackTests(pack);
+
+    const fixture = result.fixtures.find((f) => f.fixture_id === 'golden_boundary_with_friend');
+    expect(fixture).toBeDefined();
+    expect(fixture?.status).toBe('passed');
+    expect(fixture?.failures).toHaveLength(0);
+    expect(fixture?.static_assertion_count).toBeGreaterThan(0);
+  });
+
+  it('golden_ask_for_raise fixture passes all static assertions', () => {
+    const pack = loadPack(packDir, 'official');
+    const result = runPackTests(pack);
+
+    const fixture = result.fixtures.find((f) => f.fixture_id === 'golden_ask_for_raise');
+    expect(fixture).toBeDefined();
+    expect(fixture?.status).toBe('passed');
+    expect(fixture?.failures).toHaveLength(0);
+    expect(fixture?.static_assertion_count).toBeGreaterThan(0);
+  });
+
+  it('reports correct turn counts for golden fixtures', () => {
+    const pack = loadPack(packDir, 'official');
+    const result = runPackTests(pack);
+
+    for (const id of ['golden_coworker_feedback', 'golden_missed_deadline_apology',
+                      'golden_boundary_with_friend', 'golden_ask_for_raise']) {
+      const fixture = result.fixtures.find((f) => f.fixture_id === id);
+      expect(fixture?.turn_count).toBe(4);
+      expect(fixture?.mode).toBe('fake');
+    }
+  });
+});
