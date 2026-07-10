@@ -6,16 +6,21 @@
 # mocked STT/TTS workers are used throughout.
 #
 # Subsystems tested:
-#   setup        — monorepo structure and expected paths
-#   pack-valid   — official pack schema validation
-#   voice        — TTS-disabled (voice unavailable) fallback path
-#   health       — backend /api/health unit tests (fake runtime)
-#   model-mgr    — model manager unit tests (no downloads)
-#   scenario-lib — scenario library API unit tests
-#   text-session — session create + turn pipeline unit tests
-#   debrief      — debrief engine unit tests
-#   offline      — network policy (no outbound calls during play)
-#   web          — web frontend typecheck
+#   setup            — monorepo structure and expected paths
+#   pack-valid       — official pack schema validation
+#   voice            — TTS-disabled (voice unavailable) fallback path
+#   health           — backend /api/health unit tests (fake runtime)
+#   model-mgr        — model manager unit tests (no downloads)
+#   scenario-lib     — scenario library API unit tests
+#   text-session     — session create + turn pipeline unit tests
+#   debrief          — debrief engine unit tests
+#   offline          — network policy (no outbound calls during play)
+#   packaged-startup — packaged binary build infrastructure and startup tests
+#   e2e-playthrough  — end-to-end scripted playthrough in packaged-env mode
+#   web              — web frontend typecheck
+#
+# [artifact-inspect] skips automatically in CI (no built artifact available);
+# it runs in --full mode when CONVSIM_ARTIFACT_DIR is set to a build output dir.
 #
 # Failures record the subsystem label and platform in the job name so
 # the root cause is visible in the GitHub UI without reading full logs.

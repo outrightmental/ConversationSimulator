@@ -162,6 +162,35 @@ jobs:
             ./scripts/depot-audit.sh "steam-content/$platform"
           done
 
+      # ── Artifact inspection (layout, permissions, icons, version stamp) ──────
+      # Runs the Python artifact inspection test suite against each platform's
+      # depot content directory.  Catches issues the shell depot-audit cannot:
+      # version stamping, icon presence, executable permissions, and depot
+      # layout structure.  Skips a platform directory when it is empty.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Python test dependencies for artifact inspection
+        run: |
+          pip install -e "packages/prompt-composer"
+          pip install -e "services/convsim-core[dev]"
+
+      - name: Run artifact inspection tests
+        run: |
+          FAIL=0
+          for platform in windows macos linux; do
+            dir="steam-content/$platform"
+            if [ -d "$dir" ] && [ "$(ls -A "$dir" 2>/dev/null)" ]; then
+              echo "── Inspecting $dir ──"
+              CONVSIM_ARTIFACT_DIR="$dir" \
+                python -m pytest tests/artifact/ -v --tb=short || FAIL=1
+            else
+              echo "  SKIP  $dir is empty or does not exist"
+            fi
+          done
+          exit $FAIL
+
       # ── Generate SteamPipe build scripts from VDF templates ────────────────
       - name: Generate SteamPipe VDF files
         env:

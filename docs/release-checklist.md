@@ -42,7 +42,13 @@ intend to tag.
 - [ ] `[text-session]` — Session create + turn pipeline unit tests pass
 - [ ] `[debrief]` — Debrief engine unit tests pass
 - [ ] `[offline]` — Network policy tests pass (no outbound calls during fake-runtime play)
+- [ ] `[packaged-startup]` — Packaged startup unit tests pass (config resolution, no dev imports)
+- [ ] `[e2e-playthrough]` — End-to-end scripted playthrough passes in packaged-env mode
 - [ ] `[web]` — Web frontend typecheck passes
+
+> **Note:** `[artifact-inspect]` skips in CI (no build artifact available).  It
+> runs automatically as part of the Steam deploy workflow, and can be triggered
+> manually via `--full` mode — see Part F below.
 
 If any CI gate is red, **do not proceed to Part B** — fix the failure first.
 
@@ -446,6 +452,133 @@ Before submitting the depot to Valve, run the audit locally:
 
 ---
 
+## Part F — Packaged-app smoke (desktop build)
+
+Run this checklist against an **actual packaged desktop build** (`.app`,
+`.AppImage`, or `.exe` installer) on a machine with no source checkout.
+It supplements Part B by testing the packaged binary path rather than the
+source-install developer path.
+
+> **CI equivalent:** `[e2e-playthrough]` in `release-smoke.yml` covers the
+> fake-runtime version of this flow.  Part F validates the same flow with a
+> real packaged binary and (optionally) a real model.
+
+### F.1 Build and locate the packaged binary
+
+```bash
+# Build the convsim-core PyInstaller binary and place it in resources/bin/:
+./scripts/build-core.sh
+
+# Then build the full Tauri desktop app:
+pnpm --filter @convsim/desktop build
+
+# The installer is at:
+# Linux:   apps/desktop/src-tauri/target/release/bundle/appimage/*.AppImage
+# macOS:   apps/desktop/src-tauri/target/release/bundle/macos/*.app
+# Windows: apps/desktop/src-tauri/target/release/bundle/nsis/*.exe
+```
+
+### F.2 Artifact inspection
+
+Run the artifact inspection test suite against the built artifact directory.
+Checks depot layout, executable permissions, icon presence, version stamping,
+and forbidden file patterns.
+
+```bash
+# Linux AppImage example:
+CONVSIM_ARTIFACT_DIR=apps/desktop/src-tauri/target/release/bundle/appimage \
+  python -m pytest tests/artifact/ -v
+
+# macOS .app example (inspect the .app bundle directory):
+CONVSIM_ARTIFACT_DIR=apps/desktop/src-tauri/target/release/bundle/macos \
+  python -m pytest tests/artifact/ -v
+
+# Windows (inspect the NSIS installer directory):
+$env:CONVSIM_ARTIFACT_DIR = "apps\desktop\src-tauri\target\release\bundle\nsis"
+python -m pytest tests/artifact/ -v
+
+# Or via the release-smoke --full runner (all checks in one command):
+CONVSIM_ARTIFACT_DIR=<artifact-dir> ./scripts/release-smoke.sh --full
+```
+
+- [ ] `[artifact-inspect]` passes — no violations found
+- [ ] Version number in installer filename matches the release tag
+- [ ] Version is not `0.0.0` (confirms the stamp step ran)
+- [ ] Linux `.AppImage` has executable bit set (`chmod +x` if missing)
+- [ ] macOS `.app` main binary is executable
+- [ ] macOS `.app` contains an `.icns` icon in `Contents/Resources/`
+- [ ] No `.gguf`, `.safetensors`, `.pt`, `.pth`, or `.ckpt` files present
+- [ ] No `.env`, `pytest.ini`, `__pycache__/`, or `tests/` present
+
+### F.3 Launch and confirm core health
+
+**macOS / Linux:**
+
+```bash
+# Set CONVSIM_BUNDLED_RUNTIME_DIR if the runtimes are not in the default location.
+open "ConversationSimulator.app"          # macOS
+./ConversationSimulator-*.AppImage        # Linux
+
+# Wait ~5 seconds for the sidecar to start, then:
+curl http://127.0.0.1:7355/api/health | python3 -m json.tool
+```
+
+**Windows:**
+
+```powershell
+Start-Process "Conversation Simulator_*.exe"
+# Wait ~5 seconds, then:
+Invoke-RestMethod http://127.0.0.1:7355/api/health | ConvertTo-Json
+```
+
+- [ ] Desktop window opens and renders the web UI
+- [ ] Title bar shows "Conversation Simulator"
+- [ ] `GET /api/health` returns `{"status": "ok", ...}`
+- [ ] No terminal window visible (sidecar runs as hidden child process)
+
+### F.4 Scripted text playthrough (fake runtime)
+
+With no real model installed, the app should fall back to the fake runtime.
+
+In the desktop app:
+
+- [ ] Home screen loads without console errors
+- [ ] At least one official pack is listed in the Scenarios library
+- [ ] `behavioral_interview` scenario is present
+- [ ] Starting a session delivers an NPC opening line (fake runtime response)
+- [ ] Three scripted player turns complete without error
+- [ ] Session ends cleanly via the Stop / End Session button
+- [ ] Debrief screen loads with rubric scores and export option
+
+### F.5 Scripted text playthrough (real model — optional)
+
+Requires the **Qwen3 4B Instruct Q4_K_M** starter model (≈2.6 GB) to be
+downloaded and verified via the in-app Model Manager.
+
+- [ ] First-run Model Manager wizard appeared before the scenario library
+- [ ] Disclosure fields (name, URL, license, size, SHA-256, destination) visible
+- [ ] Download completed; SHA-256 verified; model status changed to `loaded`
+- [ ] NPC opening line delivered within 60 seconds (CPU inference)
+- [ ] Three scripted player turns complete; each NPC response within 60 seconds
+- [ ] Session ends cleanly; debrief shows real rubric scores
+
+### F.6 Transcript privacy verification
+
+After running a test session, confirm no transcript content escaped into
+the failure artifact directory (CI / local `$TMPDIR/convsim-release-smoke-*/`).
+
+```bash
+# Inspect the artifact directory for transcript-like content:
+ls -la "${TMPDIR:-/tmp}"/convsim-release-smoke-*/
+grep -r "player_turn\|npc_turn\|content.*:" "${TMPDIR:-/tmp}"/convsim-release-smoke-*/ \
+  2>/dev/null || echo "No transcript content found in artifacts"
+```
+
+- [ ] No `player_turn` or `npc_turn` event content in any artifact file
+- [ ] `save_transcript: false` was set in all smoke session configs (see `tests/e2e/test_scripted_playthrough.py`)
+
+---
+
 ## Smoke log
 
 Fill this in for each manual release smoke run.
@@ -491,6 +624,9 @@ When a subsystem fails, the output labels the failing step:
 | `[pack-valid]` | Pack validation | Schema change broke existing packs; YAML parse error |
 | `[voice]` | Voice fallback | TTS worker state machine regression; fallback path not taken |
 | `[offline]` | Offline policy | Outbound call detected; network guard not active |
+| `[packaged-startup]` | Packaged startup | Config resolution broke; dev import leaked into bundle |
+| `[e2e-playthrough]` | E2E playthrough | Full playthrough broken in packaged-env mode; official packs not loading |
+| `[artifact-inspect]` | Artifact inspection | Version not stamped; icon missing; forbidden file in depot; permission bit wrong |
 | `[workbench]` | Creator workbench | Pack import/export or file API broken; workbench route error |
 
 CI artifacts for failed runs are uploaded to GitHub Actions under the job name

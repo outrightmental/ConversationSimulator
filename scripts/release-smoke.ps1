@@ -21,6 +21,8 @@
 #   [voice]            voice fallback (TTS-disabled path)
 #   [offline]          no outbound network calls during a scripted play session
 #   [packaged-startup] packaged binary build infrastructure and startup tests
+#   [e2e-playthrough]  end-to-end scripted multi-turn playthrough in packaged env
+#   [artifact-inspect] artifact inspection: layout, permissions, icons, version
 
 [CmdletBinding()]
 param(
@@ -107,7 +109,9 @@ function Invoke-SmokSetup {
         "packs\official\job-interview-basic",
         "packs\official\everyday-negotiation",
         "packs\official\language-cafe",
-        "packs\official\difficult-conversations"
+        "packs\official\difficult-conversations",
+        "tests\e2e",
+        "tests\artifact"
     )
     $requiredFiles = @(
         "README.md", "LICENSE", "NOTICE", "package.json",
@@ -127,7 +131,9 @@ function Invoke-SmokSetup {
         "services\convsim-core\pyproject.toml",
         "services\convsim-core\convsim-core.spec",
         "apps\web\package.json", "apps\desktop\package.json",
-        "apps\desktop\src-tauri\resources\bin\.gitkeep"
+        "apps\desktop\src-tauri\resources\bin\.gitkeep",
+        "tests\e2e\test_scripted_playthrough.py",
+        "tests\artifact\test_artifact_inspection.py"
     )
 
     foreach ($d in $requiredDirs) {
@@ -559,6 +565,124 @@ function Invoke-SmokePackagedStartup {
     }
 }
 
+# ── [e2e-playthrough] ─────────────────────────────────────────────────────────
+
+function Invoke-SmokeE2ePlaythrough {
+    Write-Label "[e2e-playthrough] End-to-end scripted text playthrough (packaged env)"
+
+    $testDir = Join-Path $RepoRoot "tests\e2e"
+    if (-not (Test-Path $testDir)) {
+        Write-Fail "e2e-playthrough" "tests\e2e\ not found"
+        return
+    }
+
+    $pytestPath = Get-PytestPath
+    if (-not $pytestPath) {
+        Write-Skip "e2e-playthrough" "pytest not found — run setup.ps1 first"
+        return
+    }
+
+    if ($Mode -eq "ci") {
+        $prevLocation = Get-Location
+        Set-Location $RepoRoot
+        try {
+            $out = & $pytestPath tests/e2e/ -v 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                Write-Fail "e2e-playthrough" "E2E scripted playthrough tests failed"
+                # Write pytest output only — never raw session content.
+                Save-ArtifactText "e2e-playthrough-error.txt" ($out -join "`n")
+                return
+            }
+        } finally {
+            Set-Location $prevLocation
+        }
+        Write-Pass "e2e-playthrough" "E2E scripted playthrough tests passed (fake runtime, packaged env)"
+        return
+    }
+
+    # Full mode: run against the live server if reachable.
+    try {
+        $healthResp = Invoke-WebRequest -Uri "$CoreUrl/api/health" -TimeoutSec 5 `
+            -UseBasicParsing -ErrorAction Stop
+        if ($healthResp.StatusCode -ne 200) {
+            Write-Skip "e2e-playthrough" "GET /api/health returned HTTP $($healthResp.StatusCode) — skipping live E2E"
+            return
+        }
+    } catch {
+        Write-Skip "e2e-playthrough" "Live server not reachable at $CoreUrl — is convsim-core running?"
+        return
+    }
+
+    $prevLocation = Get-Location
+    Set-Location $RepoRoot
+    try {
+        $env:CONVSIM_LIVE_URL = $CoreUrl
+        $out = & $pytestPath tests/e2e/ -v 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Fail "e2e-playthrough" "E2E scripted playthrough tests failed (live server: $CoreUrl)"
+            Save-ArtifactText "e2e-playthrough-error.txt" ($out -join "`n")
+            Copy-BackendLogs
+            return
+        }
+    } finally {
+        Remove-Item Env:\CONVSIM_LIVE_URL -ErrorAction SilentlyContinue
+        Set-Location $prevLocation
+    }
+    Write-Pass "e2e-playthrough" "E2E scripted playthrough tests passed (live server: $CoreUrl)"
+}
+
+# ── [artifact-inspect] ────────────────────────────────────────────────────────
+
+function Invoke-SmokeArtifactInspect {
+    Write-Label "[artifact-inspect] Artifact inspection (layout, permissions, icons, version)"
+
+    if ($Mode -eq "ci") {
+        Write-Skip "artifact-inspect" `
+            "No build artifact in CI — run with -Full and CONVSIM_ARTIFACT_DIR set"
+        return
+    }
+
+    $artifactDirEnv = $env:CONVSIM_ARTIFACT_DIR
+    if (-not $artifactDirEnv) {
+        Write-Skip "artifact-inspect" `
+            "CONVSIM_ARTIFACT_DIR not set — run: `$env:CONVSIM_ARTIFACT_DIR='<path>'; .\scripts\release-smoke.ps1 -Full"
+        return
+    }
+
+    if (-not (Test-Path -PathType Container $artifactDirEnv)) {
+        Write-Fail "artifact-inspect" "CONVSIM_ARTIFACT_DIR=$artifactDirEnv is not a directory"
+        return
+    }
+
+    $testDir = Join-Path $RepoRoot "tests\artifact"
+    if (-not (Test-Path $testDir)) {
+        Write-Fail "artifact-inspect" "tests\artifact\ not found"
+        return
+    }
+
+    $pytestPath = Get-PytestPath
+    if (-not $pytestPath) {
+        Write-Skip "artifact-inspect" "pytest not found — run setup.ps1 first"
+        return
+    }
+
+    Write-Info "artifact-inspect" "Inspecting artifact: $artifactDirEnv"
+    $prevLocation = Get-Location
+    Set-Location $RepoRoot
+    try {
+        $env:CONVSIM_ARTIFACT_DIR = $artifactDirEnv
+        $out = & $pytestPath tests/artifact/ -v 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Fail "artifact-inspect" "Artifact inspection failed for: $artifactDirEnv"
+            Save-ArtifactText "artifact-inspect-error.txt" ($out -join "`n")
+            return
+        }
+    } finally {
+        Set-Location $prevLocation
+    }
+    Write-Pass "artifact-inspect" "Artifact inspection passed for: $artifactDirEnv"
+}
+
 # ── [web] ─────────────────────────────────────────────────────────────────────
 
 function Invoke-SmokeWeb {
@@ -649,6 +773,8 @@ Invoke-SmokeTextSession
 Invoke-SmokeDebrief
 Invoke-SmokeOffline
 Invoke-SmokePackagedStartup
+Invoke-SmokeE2ePlaythrough
+Invoke-SmokeArtifactInspect
 Invoke-SmokeWeb
 
 Write-Summary
