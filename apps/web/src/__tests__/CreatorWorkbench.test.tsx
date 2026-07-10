@@ -111,7 +111,7 @@ function renderWorkbench() {
 }
 
 beforeEach(() => {
-// Clear call counts before each test. React Testing Library's auto-cleanup
+  // Clear call counts before each test. React Testing Library's auto-cleanup
   // (which unmounts and can trigger the workbench's deleteSession-on-unmount)
   // runs after the describe-level afterEach, so a prior test's teardown call
   // would otherwise leak into the next test's assertions.
