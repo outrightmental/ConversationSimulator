@@ -50,6 +50,7 @@ export default function AppLayout() {
   const NAV_LINKS = [
     { to: '/', label: t('nav.home'), end: true },
     { to: '/library', label: t('nav.scenarios'), end: false },
+    { to: '/logbook', label: t('nav.logbook'), end: false },
     { to: '/workbench', label: t('nav.workbench'), end: false },
     { to: '/settings', label: t('nav.settings'), end: false },
     { to: '/support', label: t('nav.support'), end: false },

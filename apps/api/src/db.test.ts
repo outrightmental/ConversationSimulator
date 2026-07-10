@@ -133,7 +133,7 @@ describe('migration idempotency across restarts', () => {
         (db.prepare('SELECT name FROM schema_migrations').all() as { name: string }[]).map(
           (r) => r.name,
         ),
-      ).toEqual(['0001_initial_schema']);
+      ).toEqual(['0001_initial_schema', '0002_session_ended_at']);
       db.prepare(
         'INSERT INTO sessions (session_id, scenario_id, state, created_at, setup_json) VALUES (?, ?, ?, ?, ?)',
       ).run('sess-persist-01', 'behavioral_interview', 'NotStarted', new Date().toISOString(), '{}');
@@ -145,7 +145,7 @@ describe('migration idempotency across restarts', () => {
       const applied = (
         db.prepare('SELECT name FROM schema_migrations').all() as { name: string }[]
       ).map((r) => r.name);
-      expect(applied).toEqual(['0001_initial_schema']);
+      expect(applied).toEqual(['0001_initial_schema', '0002_session_ended_at']);
       const row = db
         .prepare('SELECT session_id FROM sessions WHERE session_id = ?')
         .get('sess-persist-01') as { session_id: string } | undefined;
