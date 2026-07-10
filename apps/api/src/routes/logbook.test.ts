@@ -182,6 +182,36 @@ describe('GET /api/logbook/profile', () => {
     expect(clarity!.session_count).toBe(1);
   });
 
+  it('exposes a per-dimension trajectory in chronological (oldest → newest) order', async () => {
+    const older = await createAndDebrief();
+    const newer = await createAndDebrief();
+    getDb()
+      .prepare(
+        `UPDATE session_events
+         SET payload_json = '{"summary":"x","scores":{"clarity":60},"overall_score":60}'
+         WHERE session_id = ? AND event_type = 'debrief_generated'`,
+      )
+      .run(older);
+    getDb()
+      .prepare(
+        `UPDATE session_events
+         SET payload_json = '{"summary":"x","scores":{"clarity":80},"overall_score":80}'
+         WHERE session_id = ? AND event_type = 'debrief_generated'`,
+      )
+      .run(newer);
+    // Make `newer` unambiguously the most recent session.
+    getDb()
+      .prepare('UPDATE sessions SET ended_at = ? WHERE session_id = ?')
+      .run(new Date(Date.now() + 2000).toISOString(), newer);
+
+    const res = await app.inject({ method: 'GET', url: '/api/logbook/profile' });
+    const body = res.json<LogbookProfile>();
+    const clarity = body.dimension_scores.find((d) => d.dimension_id === 'clarity');
+    expect(clarity).toBeDefined();
+    // Oldest session (60) first, newest (80) last.
+    expect(clarity!.trajectory).toEqual([60, 80]);
+  });
+
   it('sets strongest_dimension and weakest_dimension from debrief scores', async () => {
     const s1 = await createAndDebrief();
     getDb()

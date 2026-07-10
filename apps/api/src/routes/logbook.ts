@@ -166,6 +166,8 @@ function buildProfile(db: ReturnType<typeof getDb>): LogbookProfile {
       dimension_id,
       rolling_score: computeRollingScore(scores),
       session_count: scores.length,
+      // scores is most-recent-first; reverse to chronological for the chart.
+      trajectory: [...scores].reverse(),
     }),
   );
 
