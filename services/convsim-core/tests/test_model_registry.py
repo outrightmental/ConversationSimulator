@@ -182,6 +182,25 @@ def test_null_size_gb_for_registry_model_fails(registry_schema, valid_registry_e
         )
 
 
+def test_missing_license_url_for_registry_model_fails(registry_schema, valid_registry_entry):
+    # Registry-managed models must disclose a license URL (mandatory licence
+    # disclosure, compliance rule MD-03).
+    del valid_registry_entry["license_url"]
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate(
+            instance=make_registry([valid_registry_entry]), schema=registry_schema
+        )
+
+
+def test_missing_license_url_for_user_supplied_passes(registry_schema, valid_user_supplied_entry):
+    # license_url is only required for registry-managed models; user-supplied
+    # entries omit it because provenance is unknown.
+    valid_user_supplied_entry.pop("license_url", None)
+    jsonschema.validate(
+        instance=make_registry([valid_user_supplied_entry]), schema=registry_schema
+    )
+
+
 def test_invalid_role_fails(registry_schema, valid_registry_entry):
     valid_registry_entry["role"] = "ultra-mega-tier"
     with pytest.raises(jsonschema.ValidationError):

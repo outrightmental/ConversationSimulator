@@ -16,6 +16,14 @@
 #
 #   [weights]   Large model weight files (.gguf, .safetensors, .bin, .pt, .pth,
 #               .ckpt) — compliance rule MD-04.
+#               See publishing\STEAM_DEPOT_CONTENTS.md for the approved binary
+#               payload list and docs\model-download-policy.md for download rules.
+#
+#   [unapproved-binaries]  Serialised model payloads in less common formats:
+#               *.pkl / *.pickle > 10 MB (serialised PyTorch / scikit-learn),
+#               *.npz / *.npy > 10 MB (NumPy array formats), any models\
+#               directory (must never appear in a depot), *.onnx > 50 MB
+#               (large ONNX exports indicate a bundled LLM).
 #
 #   [devfiles]  Developer-only artefacts: .env, .venv\, __pycache__\, *.py[cod],
 #               tests\, .git\, pytest config, coverage files, *.spec.
@@ -87,6 +95,36 @@ Get-ChildItem -Recurse -File -Path $DepotDir -Filter '*.bin' -ErrorAction Silent
         $isPE = ($b0 -eq 0x4D -and $b1 -eq 0x5A)
         if (-not $isPE) { Write-Violation "weights" $_.FullName }
     }
+
+# ── [unapproved-binaries] Serialised model payloads ───────────────────────────
+
+Write-Section "[unapproved-binaries] Serialised model payloads"
+
+# Pickle files > 10 MB — may be serialised PyTorch or scikit-learn models.
+foreach ($ext in @('*.pkl', '*.pickle')) {
+    Get-ChildItem -Recurse -File -Path $DepotDir -Filter $ext -ErrorAction SilentlyContinue |
+        Where-Object { $_.Length -gt 10MB } |
+        ForEach-Object { Write-Violation "unapproved-binaries" $_.FullName }
+}
+
+# NumPy array files > 10 MB — used by some lightweight model quantisation formats.
+foreach ($ext in @('*.npz', '*.npy')) {
+    Get-ChildItem -Recurse -File -Path $DepotDir -Filter $ext -ErrorAction SilentlyContinue |
+        Where-Object { $_.Length -gt 10MB } |
+        ForEach-Object { Write-Violation "unapproved-binaries" $_.FullName }
+}
+
+# Any models\ subdirectory — model files must never appear in a depot; they live
+# in ~/.convsim/models/ on the player's machine after an explicit download.
+Get-ChildItem -Recurse -Directory -Path $DepotDir -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -eq 'models' } |
+    ForEach-Object { Write-Violation "unapproved-binaries" ($_.FullName + '\') }
+
+# ONNX files > 50 MB — small ONNX files are legitimate sidecar dependencies
+# (VAD model, TTS voice files); large ONNX files indicate a bundled LLM export.
+Get-ChildItem -Recurse -File -Path $DepotDir -Filter '*.onnx' -ErrorAction SilentlyContinue |
+    Where-Object { $_.Length -gt 50MB } |
+    ForEach-Object { Write-Violation "unapproved-binaries" $_.FullName }
 
 # ── [devfiles] Developer-only artefacts ───────────────────────────────────────
 

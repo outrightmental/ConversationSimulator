@@ -18,6 +18,17 @@
 #   [weights]   Large model weight files (.gguf, .safetensors, .bin, .pt, .pth,
 #               .ckpt) — compliance rule MD-04.  Players must explicitly download
 #               models via the in-app model registry.
+#               See publishing/STEAM_DEPOT_CONTENTS.md for the approved binary
+#               payload list and docs/model-download-policy.md for download rules.
+#
+#   [unapproved-binaries]  Serialised model payloads in less common formats that
+#               may indicate accidentally bundled weight files:
+#               *.pkl / *.pickle > 10 MB (serialised PyTorch / scikit-learn),
+#               *.npz / *.npy > 10 MB (NumPy array formats used by some model
+#               quantisers), any models/ directory (must never appear in a depot;
+#               model files live in ~/.convsim/models/ on the player's machine),
+#               *.onnx > 50 MB (large ONNX exports indicate a bundled LLM —
+#               small ONNX files used by the TTS/VAD sidecars are < 50 MB).
 #
 #   [devfiles]  Developer-only artefacts that must not ship in any release:
 #               .env, .venv/, __pycache__/, *.py[cod], *.egg-info/, tests/,
@@ -108,6 +119,42 @@ while IFS= read -r -d '' f; do
         fi
     fi
 done < <(find "$DEPOT_DIR" -type f -name "*.bin" -print0 2>/dev/null)
+
+# ── [unapproved-binaries] Serialised model payloads ───────────────────────────
+
+section "[unapproved-binaries] Serialised model payloads"
+
+# Pickle files > 10 MB — may be serialised PyTorch or scikit-learn models.
+while IFS= read -r -d '' f; do
+    size=$(stat -f%z "$f" 2>/dev/null || stat -c%s "$f" 2>/dev/null || echo 0)
+    if [[ "$size" -gt 10485760 ]]; then
+        violation "unapproved-binaries" "$f"
+    fi
+done < <(find "$DEPOT_DIR" -type f \( -name "*.pkl" -o -name "*.pickle" \) -print0 2>/dev/null)
+
+# NumPy array files > 10 MB — used by some lightweight model quantisation formats.
+while IFS= read -r -d '' f; do
+    size=$(stat -f%z "$f" 2>/dev/null || stat -c%s "$f" 2>/dev/null || echo 0)
+    if [[ "$size" -gt 10485760 ]]; then
+        violation "unapproved-binaries" "$f"
+    fi
+done < <(find "$DEPOT_DIR" -type f \( -name "*.npz" -o -name "*.npy" \) -print0 2>/dev/null)
+
+# Any models/ subdirectory — model files must never appear in a depot; they live
+# in ~/.convsim/models/ on the player's machine after an explicit download.
+while IFS= read -r -d '' d; do
+    violation "unapproved-binaries" "$d/"
+done < <(find "$DEPOT_DIR" -type d -name "models" -print0 2>/dev/null)
+
+# ONNX files > 50 MB — small ONNX files are legitimate sidecar dependencies
+# (VAD model, TTS voice files), but large ONNX files indicate a bundled LLM
+# export that should not ship in the depot.
+while IFS= read -r -d '' f; do
+    size=$(stat -f%z "$f" 2>/dev/null || stat -c%s "$f" 2>/dev/null || echo 0)
+    if [[ "$size" -gt 52428800 ]]; then
+        violation "unapproved-binaries" "$f"
+    fi
+done < <(find "$DEPOT_DIR" -type f -name "*.onnx" -print0 2>/dev/null)
 
 # ── [devfiles] Developer-only artefacts ───────────────────────────────────────
 
