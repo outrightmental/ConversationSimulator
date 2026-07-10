@@ -35,7 +35,7 @@ One-sentence GitHub description:
 
 README tagline:
 
-> Flight Simulator for conversations.
+> The simulator for conversations.
 
 Core promise:
 

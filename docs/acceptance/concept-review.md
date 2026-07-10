@@ -23,7 +23,7 @@ Score each dimension 1 (fail), 2 (partial), or 3 (pass).
 
 | # | Dimension | Pass criteria | Score |
 |---|---|---|---|
-| 1 | **What it is** | Reviewer can state the product is a conversation simulator, analogous to a flight simulator for social/professional skills | 1 / 2 / 3 |
+| 1 | **What it is** | Reviewer can state the product is the simulator for conversations — for interviews, negotiations, language practice, and difficult conversations | 1 / 2 / 3 |
 | 2 | **Local-first** | Reviewer can state that inference runs locally (no cloud LLM required) | 1 / 2 / 3 |
 | 3 | **Who it is for** | Reviewer can name at least two of the four target audiences (player, creator, developer, researcher) OR two use-cases (interviews, negotiations, language, difficult conversations) | 1 / 2 / 3 |
 | 4 | **How to start** | Reviewer can state a concrete first action (e.g. "run setup.sh" or "open the web app") | 1 / 2 / 3 |
