@@ -27,6 +27,7 @@ from pydantic import BaseModel, field_validator
 from convsim_core.scenario_state import build_variable_defs, partition_state_by_visibility
 from convsim_core.scenarios import get_scenario_info
 from convsim_core.services.debrief_engine import generate_debrief
+from convsim_core.services.timing import thinking_pause_ms_for_difficulty
 from convsim_core.services.transcript_export import format_transcript_as_markdown
 from convsim_core.services.tts_queue import synthesize_utterance
 from convsim_core.services.turn_pipeline import MAX_TURN_CONTENT_CHARS, TurnInputError, process_turn
@@ -69,6 +70,10 @@ class SessionCreateRequest(BaseModel):
     input_mode: Literal["text-only", "push-to-talk", "hands-free"] = "text-only"
     tts_enabled: bool = False
     tts_voice_id: str = _DEFAULT_TTS_VOICE_ID
+    # Conversational timing features (issue #308)
+    npc_thinking_pause_enabled: bool = True
+    backchannel_enabled: bool = False
+    barge_in_enabled: bool = True
     show_state_meters: bool = False
     save_transcript: bool = True
     seed: Optional[int] = None
@@ -116,6 +121,7 @@ class SessionStartResponse(BaseModel):
 
 class TurnSubmitRequest(BaseModel):
     content: str
+    barged_in: bool = False
 
     @field_validator("content")
     @classmethod
@@ -235,11 +241,15 @@ async def _run_tts_for_utterance(
     tts_worker: Any,
     conn: Any,
     now: str,
+    thinking_pause_ms: int = 0,
 ) -> List[SessionEventPayload]:
     """Synthesize *utterance* sentence-by-sentence and persist tts_audio_chunk events.
 
     Returns an ordered list of SessionEventPayload for the caller to include in
     the HTTP response.  Any TTS failure is captured per-chunk and does not raise.
+
+    ``thinking_pause_ms`` is embedded in the first chunk's payload so the client
+    can delay playback start to simulate the NPC "thinking" before speaking.
     """
     try:
         chunks = await synthesize_utterance(
@@ -252,7 +262,7 @@ async def _run_tts_for_utterance(
         return []
 
     events: List[SessionEventPayload] = []
-    for chunk in chunks:
+    for i, chunk in enumerate(chunks):
         payload: Dict[str, Any] = {
             "chunk_index": chunk.chunk_index,
             "total_chunks": chunk.total_chunks,
@@ -261,6 +271,10 @@ async def _run_tts_for_utterance(
             "cache_path": chunk.audio_path,
             "error": chunk.error,
         }
+        # Attach thinking pause only to the first chunk so the client waits
+        # before starting playback, then streams subsequent chunks normally.
+        if i == 0 and thinking_pause_ms > 0:
+            payload["thinking_pause_ms"] = thinking_pause_ms
         cursor = conn.execute(
             "INSERT INTO turn_session_events "
             "(session_id, turn_number, event_type, payload_json, occurred_at) "
@@ -457,6 +471,7 @@ async def submit_turn(session_id: str, body: TurnSubmitRequest, request: Request
             conn=conn,
             save_transcript=save_transcript,
             source_mode=source_mode,
+            barged_in=body.barged_in,
             state_variable_overrides=info.state_variable_overrides,
             scenario_events=info.events,
             ending_conditions=info.ending_conditions,
@@ -469,7 +484,7 @@ async def submit_turn(session_id: str, body: TurnSubmitRequest, request: Request
         event_id=result.player_event_id,
         session_id=session_id,
         event_type="player_turn",
-        payload={"content": result.player_content},
+        payload={"content": result.player_content, "barged_in": body.barged_in},
         created_at=now,
     )
     npc_event = SessionEventPayload(
@@ -497,6 +512,12 @@ async def submit_turn(session_id: str, body: TurnSubmitRequest, request: Request
     tts_enabled = setup.get("tts_enabled", False)
     if tts_enabled and not result.used_fallback:
         voice_id = setup.get("tts_voice_id", _DEFAULT_TTS_VOICE_ID)
+        npc_thinking_pause_enabled = setup.get("npc_thinking_pause_enabled", True)
+        diff_settings = scenario_data.difficulty_settings
+        pause_ms = thinking_pause_ms_for_difficulty(
+            difficulty_settings_patience=diff_settings.patience if diff_settings else 50,
+            enabled=bool(npc_thinking_pause_enabled),
+        )
         tts_events = await _run_tts_for_utterance(
             utterance=result.npc_utterance,
             session_id=session_id,
@@ -505,6 +526,7 @@ async def submit_turn(session_id: str, body: TurnSubmitRequest, request: Request
             tts_worker=request.app.state.tts_worker,
             conn=conn,
             now=now,
+            thinking_pause_ms=pause_ms,
         )
 
     return TurnResponse(
