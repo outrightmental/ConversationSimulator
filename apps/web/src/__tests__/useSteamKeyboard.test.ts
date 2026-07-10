@@ -168,4 +168,50 @@ describe('useSteamKeyboard', () => {
     unmount()
     document.body.removeChild(btn)
   })
+
+  it.each(['checkbox', 'radio', 'range', 'file', 'color'])(
+    'does not invoke the keyboard bridge when a %s input gains focus under Tauri',
+    async (type) => {
+      const invoke = vi.fn().mockResolvedValue(true)
+      ;(window as unknown as Record<string, unknown>)['__TAURI__'] = { core: { invoke } }
+
+      const { unmount } = renderHook(() => useSteamKeyboard())
+      const input = document.createElement('input')
+      input.type = type
+      document.body.appendChild(input)
+
+      await act(async () => {
+        input.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
+      })
+
+      // Toggle / selector inputs are adjusted with the gamepad directly; a text
+      // keyboard would only obscure them.
+      expect(invoke).not.toHaveBeenCalled()
+
+      unmount()
+      document.body.removeChild(input)
+    },
+  )
+
+  it.each(['text', 'search', 'email', 'url', 'tel', 'password', 'number'])(
+    'invokes steam_show_floating_keyboard when a %s input gains focus under Tauri',
+    async (type) => {
+      const invoke = vi.fn().mockResolvedValue(true)
+      ;(window as unknown as Record<string, unknown>)['__TAURI__'] = { core: { invoke } }
+
+      const { unmount } = renderHook(() => useSteamKeyboard())
+      const input = document.createElement('input')
+      input.type = type
+      document.body.appendChild(input)
+
+      await act(async () => {
+        input.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
+      })
+
+      expect(invoke).toHaveBeenCalledWith('steam_show_floating_keyboard')
+
+      unmount()
+      document.body.removeChild(input)
+    },
+  )
 })
