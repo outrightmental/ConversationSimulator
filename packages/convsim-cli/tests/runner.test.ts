@@ -67,6 +67,61 @@ describe('evaluateCheck — contains', () => {
   });
 });
 
+describe('evaluateCheck — non_null', () => {
+  it('passes for a defined non-null value', () => {
+    expect(evaluateCheck({ patience: 10 }, 'non_null')).toBe(true);
+    expect(evaluateCheck(0, 'non_null')).toBe(true);
+    expect(evaluateCheck('', 'non_null')).toBe(true);
+    expect(evaluateCheck(false, 'non_null')).toBe(true);
+  });
+  it('fails for null or undefined', () => {
+    expect(evaluateCheck(null, 'non_null')).toBe(false);
+    expect(evaluateCheck(undefined, 'non_null')).toBe(false);
+  });
+});
+
+describe('evaluateCheck — lte', () => {
+  it('passes when value is at or below the threshold', () => {
+    expect(evaluateCheck(33, 'lte 33')).toBe(true);
+    expect(evaluateCheck(10, 'lte 33')).toBe(true);
+  });
+  it('fails when value is above the threshold', () => {
+    expect(evaluateCheck(34, 'lte 33')).toBe(false);
+  });
+  it('fails for non-numeric values', () => {
+    expect(evaluateCheck('10', 'lte 33')).toBe(false);
+    expect(evaluateCheck(null, 'lte 33')).toBe(false);
+  });
+});
+
+describe('evaluateCheck — gte', () => {
+  it('passes when value is at or above the threshold', () => {
+    expect(evaluateCheck(67, 'gte 67')).toBe(true);
+    expect(evaluateCheck(90, 'gte 67')).toBe(true);
+  });
+  it('fails when value is below the threshold', () => {
+    expect(evaluateCheck(66, 'gte 67')).toBe(false);
+  });
+  it('fails for non-numeric values', () => {
+    expect(evaluateCheck('90', 'gte 67')).toBe(false);
+  });
+});
+
+describe('evaluateCheck — between', () => {
+  it('passes when value is within the inclusive range', () => {
+    expect(evaluateCheck(50, 'between 40 60')).toBe(true);
+    expect(evaluateCheck(40, 'between 40 60')).toBe(true);
+    expect(evaluateCheck(60, 'between 40 60')).toBe(true);
+  });
+  it('fails when value is outside the range', () => {
+    expect(evaluateCheck(39, 'between 40 60')).toBe(false);
+    expect(evaluateCheck(61, 'between 40 60')).toBe(false);
+  });
+  it('fails for non-numeric values', () => {
+    expect(evaluateCheck('50', 'between 40 60')).toBe(false);
+  });
+});
+
 describe('evaluateCheck — key=value AND conditions', () => {
   it('passes when all conditions match', () => {
     const value = { type: 'variable_above', variable: 'impression', threshold: 70 };
