@@ -66,5 +66,8 @@ async def clear_local_data(request: Request) -> _ClearResponse:
     ).fetchone()[0]
     conn.execute("DELETE FROM turn_session_events")
     conn.execute("DELETE FROM turn_sessions")
+    # Relationship memory is derived from session data; clear it in the same
+    # transaction as the session wipe so the two stores stay consistent.
+    conn.execute("DELETE FROM relationship_state")
     conn.commit()
     return _ClearResponse(deleted_sessions=count)

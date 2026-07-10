@@ -12,6 +12,7 @@ from .layers import (
     build_output_schema_layer,
     build_player_utterance_layer,
     build_recent_transcript_layer,
+    build_relationship_memory_layer,
     build_response_style_layer,
     build_safety_policy_layer,
     build_scenario_brief_layer,
@@ -28,19 +29,21 @@ _CHARS_PER_TOKEN = 4
 #   - OUTPUT_SCHEMA is always the final system-prompt section so it cannot be
 #     displaced or overridden by anything in the scenario or player input.
 #   - The UNTRUSTED_CONTENT_BEGIN / UNTRUSTED_CONTENT_END sentinels (inserted by
-#     the scenario brief and response style layers respectively) bracket items 3–9,
+#     the scenario brief and response style layers respectively) bracket items 3–10
+#     (SCENARIO_BRIEF through RESPONSE_STYLE, now including RELATIONSHIP_MEMORY),
 #     making the untrusted region verifiable by adapters.
 SYSTEM_LAYER_ORDER: List[str] = [
     "GLOBAL_RULES",
     "SAFETY_POLICY",
-    "SCENARIO_BRIEF",       # untrusted region begins here
+    "SCENARIO_BRIEF",          # untrusted region begins here
     "NPC_PUBLIC_PERSONA",
     "NPC_PRIVATE_PERSONA",
     "CURRENT_STATE",
     "RECENT_TRANSCRIPT",
     "MEMORY_SUMMARY",
-    "RESPONSE_STYLE",       # untrusted region closes here (END sentinel appended by this layer)
-    "OUTPUT_SCHEMA",        # always last in system prompt
+    "RELATIONSHIP_MEMORY",     # bounded cross-session player recap (issue #314)
+    "RESPONSE_STYLE",          # untrusted region closes here (END sentinel appended by this layer)
+    "OUTPUT_SCHEMA",           # always last in system prompt
 ]
 
 # Full ordering including the user turn.
@@ -64,6 +67,7 @@ def _build_layers(inp: PromptComposerInput, max_transcript_turns: int) -> Dict[s
             max_turns=max_transcript_turns,
         ),
         "MEMORY_SUMMARY": build_memory_summary_layer(inp.memory_summary),
+        "RELATIONSHIP_MEMORY": build_relationship_memory_layer(inp.relationship_recap),
         "RESPONSE_STYLE": build_response_style_layer(inp.scenario),
         "PLAYER_UTTERANCE": build_player_utterance_layer(inp.player_utterance),
         "OUTPUT_SCHEMA": build_output_schema_layer(),
