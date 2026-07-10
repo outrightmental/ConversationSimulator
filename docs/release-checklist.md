@@ -890,8 +890,8 @@ Gaming Mode.  This is required for the Stage 4 gate G4-02 (Steam Deck Verified).
 
 All steps must be completable without a keyboard or mouse: use the D-pad,
 A/B/X/Y buttons, left stick, right trackpad, and the Steam on-screen keyboard
-only.  See `docs/QA_STEAM_PLATFORM_MATRIX.md §3` for the full controller
-navigation checklist (TC-11) that these steps exercise.
+only.  See `docs/QA_STEAM_PLATFORM_MATRIX.md §3` for the Steam Deck
+verification checklist and §4 for the TC-11 test case that these steps exercise.
 
 ### I.1 Install from Steam library
 
