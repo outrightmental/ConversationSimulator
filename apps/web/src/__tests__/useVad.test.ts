@@ -299,6 +299,69 @@ describe('useVad — auto-stop arms only after speech', () => {
 // Threshold configuration
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Conservative fallback — AudioContext unavailable
+// ---------------------------------------------------------------------------
+
+describe('useVad — conservative fallback (AudioContext unavailable)', () => {
+  it('does not throw when AudioContext constructor is unavailable', () => {
+    vi.stubGlobal('AudioContext', vi.fn(() => { throw new Error('AudioContext not supported') }))
+    const { result } = renderHook(() => useVad())
+    expect(() => act(() => result.current.startSilenceDetection(makeStream(), vi.fn()))).not.toThrow()
+  })
+
+  it('stays in idle state when AudioContext constructor throws', () => {
+    vi.stubGlobal('AudioContext', vi.fn(() => { throw new Error('not supported') }))
+    const { result } = renderHook(() => useVad())
+    act(() => result.current.startSilenceDetection(makeStream(), vi.fn()))
+    // startSilenceDetection fails silently — conservative fallback: recording continues
+    // until useMicCapture's MAX_RECORDING_SECONDS fires externally.
+    expect(result.current.vadState).toBe('idle')
+  })
+
+  it('does not fire onSilence when AudioContext is unavailable', () => {
+    vi.stubGlobal('AudioContext', vi.fn(() => { throw new Error('not supported') }))
+    const { result } = renderHook(() => useVad())
+    const onSilence = vi.fn()
+    act(() => result.current.startSilenceDetection(makeStream(), onSilence))
+    act(() => { vi.advanceTimersByTime(30_000) })
+    expect(onSilence).not.toHaveBeenCalled()
+  })
+
+  it('does not throw when AudioContext.createMediaStreamSource throws', () => {
+    const mockCtx = {
+      createAnalyser: () => ({
+        fftSize: 512,
+        smoothingTimeConstant: 0,
+        connect: vi.fn(),
+      }),
+      createMediaStreamSource: () => { throw new Error('stream unavailable') },
+      close: vi.fn().mockResolvedValue(undefined),
+    }
+    vi.stubGlobal('AudioContext', vi.fn(() => mockCtx))
+    const { result } = renderHook(() => useVad())
+    expect(() => act(() => result.current.startSilenceDetection(makeStream(), vi.fn()))).not.toThrow()
+  })
+
+  it('stays in idle state when createMediaStreamSource throws', () => {
+    const mockCtx = {
+      createAnalyser: () => ({
+        fftSize: 512,
+        smoothingTimeConstant: 0,
+        connect: vi.fn(),
+      }),
+      createMediaStreamSource: () => { throw new Error('stream unavailable') },
+      close: vi.fn().mockResolvedValue(undefined),
+    }
+    vi.stubGlobal('AudioContext', vi.fn(() => mockCtx))
+    const { result } = renderHook(() => useVad())
+    act(() => result.current.startSilenceDetection(makeStream(), vi.fn()))
+    expect(result.current.vadState).toBe('idle')
+  })
+})
+
+// ---------------------------------------------------------------------------
+
 describe('useVad — threshold range', () => {
   it('default threshold is between 0 and 1', () => {
     const { result } = renderHook(() => useVad())
