@@ -122,7 +122,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   // Default: connectSession returns a no-op connection; getScenario returns null
   mockApi.connectSession.mockReturnValue({ close: vi.fn() })
-  mockApi.getScenario.mockResolvedValue({ ok: true, data: null } as never)
+  mockApi.getScenario.mockResolvedValue({ ok: true, data: null } as unknown as ScenarioInfo)
   mockApiClient.uploadAudio.mockResolvedValue({ ok: true, data: { transcript: null, status: 'unavailable' } })
 })
 

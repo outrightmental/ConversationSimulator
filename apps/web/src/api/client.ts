@@ -160,6 +160,7 @@ async function errorFromResponse(res: Response): Promise<ApiError> {
   return { kind: 'http-error', message: parseErrorText(text, res), status: res.status }
 }
 
+
 // Guard: reads the body as text, then JSON.parses it.  If the server returned
 // HTML (static server answering an API route while core is down), the parse
 // fails and we return runtime-unreachable instead of letting the raw parser
