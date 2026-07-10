@@ -26,6 +26,7 @@ from pydantic import BaseModel, field_validator
 
 from convsim_core.scenario_state import build_variable_defs, partition_state_by_visibility
 from convsim_core.scenarios import get_scenario_info
+from convsim_core.services.branch_service import fork_session
 from convsim_core.services.debrief_engine import generate_debrief
 from convsim_core.services.timing import thinking_pause_ms_for_difficulty
 from convsim_core.services.transcript_export import format_transcript_as_markdown
@@ -226,6 +227,34 @@ class DebriefResponse(BaseModel):
     generated_at: str
     used_fallback: bool
     metrics: Optional[Dict[str, Any]] = None
+
+
+class BranchSessionRequest(BaseModel):
+    fork_turn_number: int
+
+
+class BranchSessionResponse(BaseModel):
+    branch_session_id: str
+    parent_session_id: str
+    fork_turn_number: int
+    state: str
+    created_at: str
+
+
+class SessionCompareSummary(BaseModel):
+    session_id: str
+    outcome: Optional[str] = None
+    total_turns: int
+    overall_score: Optional[float] = None
+    headline_metrics: Optional[Dict[str, Any]] = None
+
+
+class SessionCompareResponse(BaseModel):
+    parent_session_id: str
+    branch_session_id: str
+    fork_turn_number: int
+    parent: SessionCompareSummary
+    branch: SessionCompareSummary
 
 
 # ---------------------------------------------------------------------------
@@ -848,6 +877,133 @@ async def export_session_text(session_id: str, request: Request) -> PlainTextRes
         content=markdown,
         media_type="text/markdown; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post("/{session_id}/branch", status_code=201, response_model=BranchSessionResponse)
+async def create_branch_session(
+    session_id: str, body: BranchSessionRequest, request: Request
+) -> BranchSessionResponse:
+    """Fork the session at the start of game turn *fork_turn_number*.
+
+    Creates a new branch session that inherits the parent's state and transcript
+    up to turn N-1, then resumes in PlayerTurnListening so the player can try a
+    different approach at turn N.  The branch session is fully independent and
+    supports its own debrief.  Use GET /{branch_id}/compare to compare outcomes.
+
+    Requires the parent session to have at least *fork_turn_number* completed
+    game turns and to have been played with snapshot-enabled pipeline (any
+    session created after this feature was shipped).
+    """
+    db = request.app.state.db
+    conn = db.connection()
+
+    try:
+        branch_session_id, created_at = fork_session(
+            parent_session_id=session_id,
+            fork_turn_number=body.fork_turn_number,
+            conn=conn,
+        )
+    except ValueError as exc:
+        msg = str(exc)
+        if "not found" in msg:
+            raise HTTPException(status_code=404, detail=msg) from exc
+        raise HTTPException(status_code=400, detail=msg) from exc
+
+    return BranchSessionResponse(
+        branch_session_id=branch_session_id,
+        parent_session_id=session_id,
+        fork_turn_number=body.fork_turn_number,
+        state="PlayerTurnListening",
+        created_at=created_at,
+    )
+
+
+def _debrief_headline(conn: Any, session_id: str) -> tuple[Optional[str], Optional[float], Optional[Dict[str, Any]]]:
+    """Return (outcome, overall_score, headline_metrics) from the stored debrief, or Nones."""
+    debrief_row = conn.execute(
+        "SELECT content_json, metrics_json FROM session_debriefs "
+        "WHERE session_id = ? ORDER BY id DESC LIMIT 1",
+        (session_id,),
+    ).fetchone()
+    if debrief_row is None:
+        return None, None, None
+    doc = json.loads(debrief_row["content_json"])
+    outcome: Optional[str] = doc.get("outcome")
+    overall_score: Optional[float] = doc.get("overall_score")
+    metrics_raw = debrief_row["metrics_json"] or doc.get("metrics")
+    headline: Optional[Dict[str, Any]] = None
+    if metrics_raw:
+        m = json.loads(metrics_raw) if isinstance(metrics_raw, str) else metrics_raw
+        headline = {
+            "talk_ratio": m.get("talk_ratio"),
+            "open_questions": m.get("open_questions"),
+            "words_per_turn_player": m.get("words_per_turn_player"),
+            "response_latency_p50_ms": m.get("response_latency_p50_ms"),
+        }
+    return outcome, overall_score, headline
+
+
+@router.get("/{session_id}/compare", response_model=SessionCompareResponse)
+async def compare_branch_session(session_id: str, request: Request) -> SessionCompareResponse:
+    """Compare this branch session against its parent run.
+
+    Returns headline outcome and metric summaries for both sessions so the
+    player can see how their different choice at the fork point played out.
+    Debrief data is included when available; sessions without a debrief return
+    ``null`` for score and metrics fields.
+
+    Returns 404 if the session is not a branch (has no parent in
+    ``session_branches``).
+    """
+    db = request.app.state.db
+    conn = db.connection()
+
+    branch_row = conn.execute(
+        "SELECT * FROM session_branches WHERE branch_session_id = ?", (session_id,)
+    ).fetchone()
+    if branch_row is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Session {session_id!r} is not a branch session or has no recorded parent",
+        )
+
+    parent_id: str = branch_row["parent_session_id"]
+    fork_turn: int = branch_row["fork_turn_number"]
+
+    parent_session = conn.execute(
+        "SELECT turn_count, ending_type FROM turn_sessions WHERE session_id = ?", (parent_id,)
+    ).fetchone()
+    branch_session = conn.execute(
+        "SELECT turn_count, ending_type FROM turn_sessions WHERE session_id = ?", (session_id,)
+    ).fetchone()
+
+    if parent_session is None:
+        raise HTTPException(status_code=404, detail=f"Parent session {parent_id!r} not found")
+    if branch_session is None:
+        raise HTTPException(status_code=404, detail=f"Branch session {session_id!r} not found")
+
+    p_outcome, p_score, p_metrics = _debrief_headline(conn, parent_id)
+    b_outcome, b_score, b_metrics = _debrief_headline(conn, session_id)
+
+    return SessionCompareResponse(
+        parent_session_id=parent_id,
+        branch_session_id=session_id,
+        fork_turn_number=fork_turn,
+        parent=SessionCompareSummary(
+            session_id=parent_id,
+            outcome=p_outcome or parent_session["ending_type"],
+            total_turns=int(parent_session["turn_count"]),
+            overall_score=p_score,
+            headline_metrics=p_metrics,
+        ),
+        branch=SessionCompareSummary(
+            session_id=session_id,
+            outcome=b_outcome or branch_session["ending_type"],
+            total_turns=int(branch_session["turn_count"]),
+            overall_score=b_score,
+            headline_metrics=b_metrics,
+        ),
     )
 
 

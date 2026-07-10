@@ -150,3 +150,37 @@ export interface SessionTransitionError {
   message: string;
   current_state?: SessionState;
 }
+
+export interface BranchSessionRequest {
+  /** 1-indexed game turn to retry; copies parent transcript up to turn N-1. */
+  fork_turn_number: number;
+}
+
+export interface BranchSessionResponse {
+  branch_session_id: string;
+  parent_session_id: string;
+  fork_turn_number: number;
+  state: SessionState;
+  created_at: string;
+}
+
+export interface SessionCompareSummary {
+  session_id: string;
+  outcome: string | null;
+  total_turns: number;
+  overall_score: number | null;
+  headline_metrics: {
+    talk_ratio: number | null;
+    open_questions: number | null;
+    words_per_turn_player: number | null;
+    response_latency_p50_ms: number | null;
+  } | null;
+}
+
+export interface SessionCompareResponse {
+  parent_session_id: string;
+  branch_session_id: string;
+  fork_turn_number: number;
+  parent: SessionCompareSummary;
+  branch: SessionCompareSummary;
+}

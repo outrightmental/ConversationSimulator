@@ -304,8 +304,18 @@ _SESSION_METRICS_SQL = """
 ALTER TABLE session_debriefs ADD COLUMN metrics_json TEXT;
 """
 
-_SPEECH_TIMING_SQL = """
-ALTER TABLE turn_session_turns ADD COLUMN barged_in INTEGER NOT NULL DEFAULT 0;
+_BRANCH_SESSIONS_SQL = """
+ALTER TABLE turn_session_turns ADD COLUMN state_snapshot_json TEXT;
+
+CREATE TABLE session_branches (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    branch_session_id TEXT    NOT NULL REFERENCES turn_sessions(session_id) ON DELETE CASCADE,
+    parent_session_id TEXT    NOT NULL,
+    fork_turn_number  INTEGER NOT NULL,
+    created_at        TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE UNIQUE INDEX session_branches_branch_idx ON session_branches(branch_session_id);
 """
 
 MIGRATIONS: list[tuple[str, str]] = [
@@ -321,7 +331,7 @@ MIGRATIONS: list[tuple[str, str]] = [
     ("0010_user_gguf_profiles", _USER_GGUF_PROFILES_SQL),
     ("0011_model_download_verified", _MODEL_DOWNLOAD_VERIFIED_SQL),
     ("0012_session_metrics", _SESSION_METRICS_SQL),
-    ("0013_speech_timing", _SPEECH_TIMING_SQL),
+    ("0013_branch_sessions", _BRANCH_SESSIONS_SQL),
 ]
 
 
