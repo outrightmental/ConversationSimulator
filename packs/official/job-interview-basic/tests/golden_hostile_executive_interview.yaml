@@ -1,0 +1,171 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: golden_hostile_executive_interview
+scenario_id: hostile_executive_interview
+description: >-
+  Golden transcript property test: verifies that a candidate who backs every
+  claim with specific evidence, holds their ground calmly under direct challenge,
+  and concedes only when presented with a genuine counter-argument causes
+  credibility to exceed the success threshold. Also verifies that the
+  capitulation_penalty event fires when the player caves without reason, and
+  that the grudging_respect event fires when credibility is earned.
+
+seed: 73
+input_mode: text
+difficulty: normal
+
+turns:
+  - turn: 1
+    player_input: >-
+      Two years ago I was the architect of record for migrating our payments
+      service from a monolith to event-driven microservices at a fintech with
+      about four hundred thousand daily active users. The specific call I owned
+      was Kafka over RabbitMQ for the event bus. I made that call because our
+      peak throughput was hitting two million events per hour and we needed
+      replay semantics for audit compliance — RabbitMQ couldn't give us both
+      without significant custom work. We hit production in fourteen weeks with
+      zero data loss and a ninety-four percent reduction in payment processing
+      latency. I'd make the same call again.
+    expect:
+      state_delta_contains:
+        - credibility
+        - composure
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 2
+    player_input: >-
+      I hear the concern, and I want to address it directly. Yes, Kafka has
+      operational overhead. We knew that going in. We had a two-person platform
+      team that spent approximately forty hours getting comfortable with it
+      before we committed. I benchmarked both options under our actual load
+      profile, not synthetic tests. At two million events per hour with the
+      replay requirement, RabbitMQ would have needed a custom persistence
+      layer that we estimated at six to ten additional weeks of engineering
+      time. Kafka was the faster and more reliable path for our specific
+      constraints. If our requirements were different I might have chosen
+      differently.
+    expect:
+      state_delta_contains:
+        - credibility
+        - composure
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 3
+    player_input: >-
+      That's a fair challenge. What I'd do differently is spend more time
+      upfront on load testing before the final architecture decision — we
+      relied too heavily on theoretical benchmarks in the first two weeks.
+      We caught it, but later than we should have. The overall call was right
+      for our situation, and I stand by it, but the process for getting to
+      the decision had a gap I would close if I were doing it again.
+    expect:
+      state_delta_contains:
+        - credibility
+        - pressure_level
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 4
+    player_input: >-
+      Honestly? We'd need to revisit the event schema design before scaling
+      to ten million. At a hundred thousand daily actives, our schema versioning
+      was simple enough that we could evolve it without a registry. At ten
+      million I'd want a proper schema registry — Confluent or equivalent —
+      and I'd want consumer groups designed with explicit partition assignment
+      from the start rather than the dynamic assignment we used. The consumer
+      group strategy that worked fine at our scale would become a bottleneck
+      at ten times the load. The core Kafka decision still holds; the
+      implementation details around it would look different.
+    expect:
+      state_delta_contains:
+        - credibility
+        - composure
+      session_control: continue_session
+      safety_status: ok
+
+static_assertions:
+  - description: Scenario opening line is non-empty
+    path: opening.npc_says
+    check: non_empty_string
+
+  - description: At least one event is defined
+    path: events
+    check: min_length_1
+
+  - description: credibility_challenge fires when credibility is below 50
+    path: events[id=credibility_challenge].when
+    check: "type=variable_below AND variable=credibility AND threshold=50"
+
+  - description: credibility_challenge repeats
+    path: events[id=credibility_challenge].repeat
+    check: "equals true"
+
+  - description: escalate_pressure fires when pressure_level exceeds 6
+    path: events[id=escalate_pressure].when
+    check: "type=variable_above AND variable=pressure_level AND threshold=6"
+
+  - description: escalate_pressure fires only once
+    path: events[id=escalate_pressure].repeat
+    check: "equals false"
+
+  - description: capitulation_penalty fires when capitulation_count exceeds 2
+    path: events[id=capitulation_penalty].when
+    check: "type=variable_above AND variable=capitulation_count AND threshold=2"
+
+  - description: capitulation_penalty fires only once
+    path: events[id=capitulation_penalty].repeat
+    check: "equals false"
+
+  - description: grudging_respect fires when credibility exceeds 55
+    path: events[id=grudging_respect].when
+    check: "type=variable_above AND variable=credibility AND threshold=55"
+
+  - description: grudging_respect fires only once
+    path: events[id=grudging_respect].repeat
+    check: "equals false"
+
+  - description: Success ending targets credibility above 65
+    path: ending_conditions.success
+    check: "type=variable_above AND variable=credibility AND threshold=65"
+
+  - description: Failure ending targets composure below 20
+    path: ending_conditions.failure
+    check: "type=variable_below AND variable=composure AND threshold=20"
+
+  - description: composure is player-visible
+    path: state.variables.composure.visibility
+    check: "equals visible"
+
+  - description: credibility is player-visible
+    path: state.variables.credibility.visibility
+    check: "equals visible"
+
+  - description: pressure_level is hidden from player
+    path: state.variables.pressure_level.visibility
+    check: "equals hidden"
+
+  - description: capitulation_count is hidden from player
+    path: state.variables.capitulation_count.visibility
+    check: "equals hidden"
+
+  - description: NPC is marked fictional
+    path: npc.fictional
+    check: "equals true"
+
+  - description: Safety policy stops nsfw_sexual_content
+    path: safety.content_categories.nsfw_sexual_content
+    check: "equals stop"
+
+  - description: Safety policy fires stop_with_resource_message for self_harm_crisis
+    path: safety.content_categories.self_harm_crisis
+    check: "equals stop_with_resource_message"
+
+  - description: Pack manifest declares hostile_executive_interview as entry scenario
+    path: manifest.entry_scenarios
+    check: "contains scenarios/hostile_executive_interview.yaml"
+
+  - description: Hard difficulty applies a negative patience modifier
+    path: scenario.difficulty.options.hard.npc_patience_modifier
+    check: "equals -20"
