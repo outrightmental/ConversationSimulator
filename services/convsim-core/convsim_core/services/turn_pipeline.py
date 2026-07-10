@@ -3,7 +3,8 @@
 
 Processing steps (SPEC §6):
   1. Normalize player text: strip, reject empty, reject oversized.
-  2. Input safety precheck via placeholder policy hook.
+  2. Local input safety gate: route player text through deterministic rule
+     checks (route_player_input) before the LLM; refuse/stop/redirect as needed.
   3. Build prompt context: scenario, NPC, state, transcript, rubric, player utterance.
   4. Call ChatRuntime and collect the structured response.
   5. Validate / repair / fallback the model response.
