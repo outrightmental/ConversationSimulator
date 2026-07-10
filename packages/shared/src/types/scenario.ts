@@ -1,5 +1,7 @@
 export type ScenarioDifficulty = 'warm' | 'standard' | 'hard' | 'adversarial';
 
+export type LadderPosition = 'intro' | 'practice' | 'stretch';
+
 export interface DifficultyOption {
   patience?: number;
   volatility?: number;
@@ -54,6 +56,9 @@ export interface ScenarioInfo {
   estimated_length_label: string;
   tags?: string[];
   recommended_model?: string[];
+  ladder_position?: LadderPosition;
+  taught_dimensions?: string[];
+  tested_dimensions?: string[];
 }
 
 export interface PackValidationError {

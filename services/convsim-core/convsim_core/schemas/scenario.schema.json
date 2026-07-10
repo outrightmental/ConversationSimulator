@@ -264,6 +264,23 @@
         }
       }
     },
+    "ladder_position": {
+      "type": "string",
+      "enum": ["intro", "practice", "stretch"],
+      "description": "Position on the curriculum ladder. intro = foundational entry point for new learners; practice = core repetitions for building fluency; stretch = challenge for experienced practitioners."
+    },
+    "taught_dimensions": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+      "uniqueItems": true,
+      "description": "Rubric dimension IDs that this scenario explicitly introduces or teaches."
+    },
+    "tested_dimensions": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+      "uniqueItems": true,
+      "description": "Rubric dimension IDs that this scenario meaningfully scores and provides feedback on."
+    },
     "ending_conditions": {
       "type": "object",
       "additionalProperties": false,
