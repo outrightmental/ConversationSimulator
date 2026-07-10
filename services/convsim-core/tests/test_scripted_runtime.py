@@ -280,3 +280,33 @@ def test_scripted_runtime_is_registered():
     from convsim_core.runtime.registry import list_runtime_ids
     import convsim_core.runtime  # noqa: F401 — triggers registration
     assert "scripted" in list_runtime_ids()
+
+
+# ── Output-schema compatibility ───────────────────────────────────────────────
+# The turn pipeline feeds every runtime's structured output through the
+# prompt-composer validators (parse_turn_output / parse_debrief_narrative).
+# Any field the scripted script gets wrong — an unknown npc_emotion, a
+# malformed turning_point — is silently replaced with a safe fallback, which
+# would break the tutorial without failing the isolated runtime tests above.
+# These tests validate the scripted content against the real validators so a
+# schema drift is caught here instead of at runtime.
+
+def test_scripted_turns_pass_npc_output_validation():
+    from convsim_prompt.turn_output import _validate as validate_turn_output
+    from convsim_core.runtime.scripted import _FIRST_WORDS_SCRIPT, _pick_ending_turn
+
+    for i, turn in enumerate(_FIRST_WORDS_SCRIPT, start=1):
+        # Raises ValidationError (and fails the test) on any invalid field.
+        validate_turn_output(turn), f"turn {i} failed validation"
+
+    for player_text in ("I'm so excited!", "how does this work?", "ok"):
+        validate_turn_output(_pick_ending_turn(player_text))
+
+
+def test_scripted_debrief_passes_debrief_validation():
+    from convsim_prompt.debrief_output import _validate_narrative
+    from convsim_core.runtime.scripted import _DEBRIEF_RESPONSE
+
+    narrative = _validate_narrative(_DEBRIEF_RESPONSE)
+    assert narrative.used_fallback is False
+    assert narrative.turning_points  # scripted debrief keeps its turning point

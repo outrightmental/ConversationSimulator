@@ -43,7 +43,7 @@ _FIRST_WORDS_SCRIPT: list[dict] = [
             "They update every turn based on what you say. "
             "Go ahead — say anything to get us started."
         ),
-        "npc_emotion": "welcoming",
+        "npc_emotion": "warm",
         "state_delta": {"engagement": 10, "confidence": 5},
         "event_flags": [],
         "rubric_observations": [],
@@ -76,7 +76,7 @@ _FIRST_WORDS_SCRIPT: list[dict] = [
             "hidden prompt, changing how I behave for the rest of the conversation. "
             "You're about to see Engagement cross 60 for the first time..."
         ),
-        "npc_emotion": "thoughtful",
+        "npc_emotion": "curious",
         "state_delta": {"engagement": 20, "confidence": 10},
         "event_flags": [],
         "rubric_observations": [],
@@ -113,7 +113,7 @@ _FIRST_WORDS_SCRIPT: list[dict] = [
             "We're almost at the end of this tutorial. One last question: "
             "how are you feeling about trying a real conversation next?"
         ),
-        "npc_emotion": "encouraging",
+        "npc_emotion": "warm",
         "state_delta": {"engagement": 10, "confidence": 15},
         "event_flags": [],
         "rubric_observations": [],
@@ -160,7 +160,7 @@ def _pick_ending_turn(player_text: str) -> dict:
                 "something that excites you and see how far you can go. "
                 "Your first real conversation is ready when you are."
             ),
-            "npc_emotion": "delighted",
+            "npc_emotion": "impressed",
             "state_delta": {"engagement": 10, "confidence": 15},
             "event_flags": [],
             "rubric_observations": [],
@@ -177,7 +177,7 @@ def _pick_ending_turn(player_text: str) -> dict:
                 "the debrief will explain it. Head to the library and explore — "
                 "the scenarios will answer your questions better than I can."
             ),
-            "npc_emotion": "thoughtful",
+            "npc_emotion": "curious",
             "state_delta": {"engagement": 5, "confidence": 10},
             "event_flags": [],
             "rubric_observations": [],
@@ -193,7 +193,7 @@ def _pick_ending_turn(player_text: str) -> dict:
             "times as you like, and each attempt is private. "
             "There's no rush. Just start when it feels right."
         ),
-        "npc_emotion": "calm",
+        "npc_emotion": "neutral",
         "state_delta": {"engagement": 5, "confidence": 5},
         "event_flags": [],
         "rubric_observations": [],
@@ -217,7 +217,14 @@ _DEBRIEF_RESPONSE: dict = {
     ],
     "missed_opportunities": [],
     "turning_points": [
-        "The warm_moment event at turn 3 — this is where Engagement crossed 60 and the NPC instructions shifted.",
+        {
+            "turn_number": 3,
+            "description": (
+                "The warm_moment event fired — this is where Engagement crossed 60 "
+                "and the NPC instructions shifted."
+            ),
+            "impact": "positive",
+        },
     ],
     "replay_suggestions": [
         "Jump into a real scenario from the library — the behavioral interview is a great first challenge.",
