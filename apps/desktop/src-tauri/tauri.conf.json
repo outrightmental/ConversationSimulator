@@ -27,6 +27,15 @@
       "csp": null
     }
   },
+  "plugins": {
+    "updater": {
+      "dialog": false,
+      "endpoints": [
+        "https://github.com/outrightmental/ConversationSimulator/releases/download/beta-channel/latest.json"
+      ],
+      "pubkey": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+    }
+  },
   "bundle": {
     "active": true,
     "targets": "all",
