@@ -395,11 +395,19 @@ class TestForbiddenPatterns:
     def test_no_secret_files(
         self, all_file_paths: list[Path], artifact_dir: Path
     ) -> None:
-        """Secret and credential files (.key, .pem, config.vdf, etc.) must not ship."""
+        """Secret and credential files (.key, .pem, config.vdf, etc.) must not ship.
+
+        PyInstaller's _internal/ bundle legitimately contains public CA
+        certificate bundles from dependencies (e.g. certifi's cacert.pem, pulled
+        in transitively via httpx).  Those are not secrets, so _internal/ is
+        excluded here — mirroring the other forbidden-pattern checks — to avoid
+        false-positives that would abort the deploy on every real build.
+        """
         secret_files = [
             f
             for f in all_file_paths
             if _SECRET_PATTERN.search(f.name)
+            and not _is_pyinstaller_internal(f)
         ]
         assert not secret_files, (
             "Potential secret or credential files found in artifact: "
