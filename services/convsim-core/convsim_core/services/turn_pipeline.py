@@ -113,8 +113,15 @@ class _SyncRuntimeBridge:
             )
             return await _collect_runtime_output(self._runtime, request)
 
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        try:
             return pool.submit(asyncio.run, _call()).result(timeout=60)
+        finally:
+            # Never wait on a hung repair call — the 60s timeout above must be
+            # the real ceiling. A context manager would call shutdown(wait=True)
+            # on exit and block indefinitely if the runtime never returns, so we
+            # shut down without waiting and let a stuck thread die on its own.
+            pool.shutdown(wait=False)
 
 
 class TurnInputError(ValueError):
