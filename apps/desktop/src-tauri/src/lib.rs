@@ -320,7 +320,15 @@ pub fn run() {
     let process_inner: Arc<Mutex<Option<Child>>> = Arc::new(Mutex::new(None));
     let status_inner: Arc<Mutex<Option<CoreStatusPayload>>> = Arc::new(Mutex::new(None));
 
-    tauri::Builder::default()
+    // Kept for the `RunEvent::Exit` handler below. Relying on `CoreProcessState`'s
+    // `Drop` alone is not enough: on desktop the tao event loop terminates the
+    // process via `std::process::exit()` when the app exits, so managed-state
+    // destructors are never run and `convsim-core` would be orphaned (leaving
+    // port 7355 held). Killing the child explicitly on `RunEvent::Exit` is the
+    // reliable teardown path; `Drop` remains as a backstop for other exit paths.
+    let process_on_exit = Arc::clone(&process_inner);
+
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -335,6 +343,17 @@ pub fn run() {
             );
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application");
+
+    app.run(move |_app_handle, event| {
+        if let tauri::RunEvent::Exit = event {
+            if let Ok(mut guard) = process_on_exit.lock() {
+                if let Some(ref mut child) = *guard {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
+            }
+        }
+    });
 }
