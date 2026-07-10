@@ -5,6 +5,7 @@ import type { ScenarioInfo, PackValidationResult } from '@convsim/shared'
 import { api } from '../api/client'
 import type { PackSummary, ImportPackResponse } from '../api/client'
 import type { ApiError } from '../api/errors'
+import { errorHeadline } from '../api/errors'
 import { ApiErrorView } from '../components/ApiErrorView'
 
 interface PackGroup {
@@ -30,7 +31,7 @@ type ValidationState =
   | { status: 'idle' }
   | { status: 'loading' }
   | { status: 'done'; result: PackValidationResult }
-  | { status: 'error'; message: string }
+  | { status: 'error'; error: ApiError }
 
 type ImportState = 'idle' | 'uploading' | 'success' | 'error'
 
@@ -53,7 +54,7 @@ export default function ScenarioLibrary() {
 
   // Import pack state
   const [importState, setImportState] = useState<ImportState>('idle')
-  const [importError, setImportError] = useState<string | null>(null)
+  const [importError, setImportError] = useState<ApiError | null>(null)
   const [importedPack, setImportedPack] = useState<ImportPackResponse | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -147,7 +148,7 @@ export default function ScenarioLibrary() {
     if (r.ok) {
       setValidations((prev) => ({ ...prev, [packId]: { status: 'done', result: r.data } }))
     } else {
-      setValidations((prev) => ({ ...prev, [packId]: { status: 'error', message: r.error.message } }))
+      setValidations((prev) => ({ ...prev, [packId]: { status: 'error', error: r.error } }))
     }
   }
 
@@ -162,7 +163,7 @@ export default function ScenarioLibrary() {
       loadScenarios()
       loadIndexedPacks()
     } else {
-      setImportError(r.error.message)
+      setImportError(r.error)
       setImportState('error')
     }
   }
@@ -193,7 +194,7 @@ export default function ScenarioLibrary() {
               data-testid="import-error"
               style={{ fontSize: '0.85rem', color: '#f87171' }}
             >
-              {importError}
+              {errorHeadline(importError)}
             </span>
           )}
           <input
@@ -670,7 +671,7 @@ export default function ScenarioLibrary() {
                 role="alert"
                 style={{ fontSize: '0.85rem', color: '#f87171', marginBottom: '0.75rem' }}
               >
-                {validation.message}
+                {errorHeadline(validation.error)}
               </p>
             )}
 
