@@ -33,12 +33,12 @@ Steam short descriptions are displayed in search results and store capsules.
 Limit: **300 characters**.
 
 ```
-Flight Simulator for conversations. Practice job interviews, negotiations,
-difficult talks, and language skills with AI characters that run entirely on
-your computer. No internet needed during play. Free forever.
+Conversation Simulator is the practice tool for interviews, negotiations,
+difficult talks, and language skills. AI characters run entirely on your
+computer. No internet needed during play. Free forever.
 ```
 
-Character count: 212. Within the 300-character limit.
+Character count: 202. Within the 300-character limit.
 
 ---
 
@@ -50,7 +50,7 @@ features → privacy pitch → content boundaries → system note → free editi
 statement.
 
 ```html
-<h2>Flight Simulator for conversations.</h2>
+<h2>Conversation Simulator is the simulator for conversations.</h2>
 
 <p>
   Conversation Simulator is a free, local-first practice tool that lets you
@@ -61,7 +61,6 @@ statement.
 </p>
 
 <p>
-  Think of it like a flight simulator, but for conversations that matter.
   No judgment. No audience. No internet connection during play. Just the
   scenario, the AI, and you.
 </p>
