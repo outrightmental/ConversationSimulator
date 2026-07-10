@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import { StatusBadge } from '@convsim/ui'
 import { useApiHealth } from '../api/useApiHealth'
 import { usePackCount } from '../api/usePackCount'
+import { apiClient } from '../api/client'
 import { useTranslation } from '../i18n'
 import { useLogbookProfile } from '../api/useLogbookProfile'
 import { useScenarios } from '../api/useScenarios'
@@ -23,7 +24,7 @@ const BETA_REPORT_URL =
 
 export default function Home() {
   const health = useApiHealth()
-  const packCount = usePackCount()
+  const { count: packCount, refetch: refetchPackCount } = usePackCount()
   const logbook = useLogbookProfile()
   const scenariosResult = useScenarios()
   const loading = health.state === 'loading'
@@ -31,6 +32,9 @@ export default function Home() {
   const { update, dismiss, install } = useAppUpdate()
 
   const [isRestartingSidecar, setIsRestartingSidecar] = useState(false)
+  const [reseeding, setReseeding] = useState(false)
+  const [reseedDone, setReseedDone] = useState(false)
+  const [reseedFailed, setReseedFailed] = useState(false)
 
   // Wait for both the logbook profile and the scenario list before showing any
   // recommendations, so we never flash cold-start suggestions computed from a
@@ -83,6 +87,8 @@ export default function Home() {
 
   const showNoModelPrompt = !loading && health.healthy && !llmReady
   const showUnreachable = health.state === 'unavailable' && !health.runtime
+  // packCount === null means the fetch is still in flight; only show the
+  // missing-pack warning once we know for certain there are zero packs.
   const showMissingPack = !loading && health.healthy && llmReady && packCount === 0
   const isPortConflict =
     lastError != null &&
@@ -90,9 +96,12 @@ export default function Home() {
       lastError,
     )
 
-  const packsBadgeStatus: BadgeStatus = packCount > 0 ? 'online' : 'offline'
+  const packsBadgeStatus: BadgeStatus =
+    packCount === null ? 'loading' : packCount > 0 ? 'online' : 'offline'
   const packsBadgeLabel =
-    packCount > 0
+    packCount === null
+      ? t('home.status.checking')
+      : packCount > 0
       ? t('home.status.packsInstalledCount', { count: packCount })
       : t('home.status.noneInstalled')
 
@@ -511,23 +520,63 @@ export default function Home() {
           <p style={{ margin: '0 0 0.3rem', fontWeight: 600, color: '#fbbf24', fontSize: '0.875rem' }}>
             {t('home.missingPack.title')}
           </p>
-          <p style={{ margin: '0 0 0.6rem', fontSize: '0.825rem', color: '#a1a1aa' }}>
+          <p style={{ margin: '0 0 0.75rem', fontSize: '0.825rem', color: '#a1a1aa' }}>
             {t('home.missingPack.description')}
           </p>
-          <Link
-            to="/library"
-            style={{
-              fontSize: '0.8rem',
-              padding: '0.3rem 0.7rem',
-              borderRadius: '4px',
-              border: '1px solid rgba(251,191,36,0.3)',
-              color: '#fbbf24',
-              textDecoration: 'none',
-              display: 'inline-block',
-            }}
-          >
-            {t('home.missingPack.action')}
-          </Link>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', alignItems: 'center' }}>
+            <button
+              onClick={() => {
+                if (reseeding) return
+                setReseeding(true)
+                setReseedDone(false)
+                setReseedFailed(false)
+                void apiClient.reseedOfficialPacks().then((r) => {
+                  setReseeding(false)
+                  if (r.ok) {
+                    setReseedDone(true)
+                    // Refresh the pack count so the "None installed" badge and
+                    // this missing-pack notice clear once packs are restored.
+                    refetchPackCount()
+                  } else {
+                    setReseedFailed(true)
+                  }
+                })
+              }}
+              disabled={reseeding}
+              data-testid="restore-official-packs-btn"
+              style={{
+                fontSize: '0.8rem',
+                padding: '0.3rem 0.7rem',
+                borderRadius: '4px',
+                border: '1px solid rgba(251,191,36,0.3)',
+                background: 'transparent',
+                color: '#fbbf24',
+                cursor: reseeding ? 'wait' : 'pointer',
+              }}
+            >
+              {reseeding
+                ? t('home.missingPack.restoring')
+                : reseedDone
+                ? t('home.missingPack.restoreDone')
+                : reseedFailed
+                ? t('home.missingPack.restoreFailed')
+                : t('home.missingPack.restoreAction')}
+            </button>
+            <Link
+              to="/library"
+              style={{
+                fontSize: '0.8rem',
+                padding: '0.3rem 0.7rem',
+                borderRadius: '4px',
+                border: '1px solid rgba(251,191,36,0.3)',
+                color: '#fbbf24',
+                textDecoration: 'none',
+                display: 'inline-block',
+              }}
+            >
+              {t('home.missingPack.action')}
+            </Link>
+          </div>
         </section>
       )}
 

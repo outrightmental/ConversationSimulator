@@ -200,6 +200,19 @@ describe('Home — no-pack state', () => {
     renderHome()
     expect(await screen.findByText('None installed')).toBeInTheDocument()
   })
+
+  it('shows Checking while pack count fetch is in flight', () => {
+    // fetch never resolves — packCount stays null
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})))
+    renderHome()
+    expect(screen.getAllByText('Checking…').length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('does not flash missing-pack notice before the pack count is known', () => {
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})))
+    renderHome()
+    expect(screen.queryByRole('status', { name: /no scenario packs installed/i })).toBeNull()
+  })
 })
 
 describe('Home — offline readiness', () => {
@@ -442,6 +455,91 @@ describe('Home — missing-pack section', () => {
     const section = await screen.findByRole('status', { name: /no scenario packs installed/i })
     const link = section.querySelector('a, [href]')
     expect(link).not.toBeNull()
+  })
+
+  it('shows Restore official packs button in the missing-pack section', async () => {
+    stubFetches(makeHealth({ llm_ready: true, llm_model_name: 'TestModel' }), makePacks(0))
+    renderHome()
+    await screen.findByText('TestModel')
+    await screen.findByRole('status', { name: /no scenario packs installed/i })
+    expect(
+      screen.getByRole('button', { name: /restore official packs/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('clears the missing-pack notice after a successful restore', async () => {
+    // /packs starts at 0, then reports 1 after the reseed POST succeeds.
+    let packsTotal = 0
+    const mockFetch = vi.fn((url: string, init?: RequestInit) => {
+      let body: object
+      if (url.includes('/packs/reseed')) {
+        packsTotal = 1
+        body = { seeded: 1 }
+      } else if (url.includes('/packs')) {
+        body = { packs: [], total: packsTotal }
+      } else if (url.includes('/logbook')) {
+        body = makeLogbook()
+      } else {
+        body = makeHealth({ llm_ready: true, llm_model_name: 'TestModel' })
+      }
+      void init
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve(body),
+        text: () => Promise.resolve(JSON.stringify(body)),
+      })
+    })
+    vi.stubGlobal('fetch', mockFetch)
+
+    renderHome()
+    await screen.findByText('TestModel')
+    await screen.findByRole('status', { name: /no scenario packs installed/i })
+
+    fireEvent.click(screen.getByRole('button', { name: /restore official packs/i }))
+
+    // Once the refreshed count reports a pack, the notice must disappear.
+    await waitFor(() => {
+      expect(
+        screen.queryByRole('status', { name: /no scenario packs installed/i }),
+      ).toBeNull()
+    })
+  })
+
+  it('shows a retry affordance when restoring official packs fails', async () => {
+    const mockFetch = vi.fn((url: string) => {
+      let body: object
+      if (url.includes('/packs/reseed')) {
+        return Promise.resolve({
+          ok: false,
+          status: 500,
+          json: () => Promise.resolve({ detail: 'internal error' }),
+          text: () => Promise.resolve('internal error'),
+        })
+      } else if (url.includes('/packs')) {
+        body = { packs: [], total: 0 }
+      } else if (url.includes('/logbook')) {
+        body = makeLogbook()
+      } else {
+        body = makeHealth({ llm_ready: true, llm_model_name: 'TestModel' })
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve(body),
+        text: () => Promise.resolve(JSON.stringify(body)),
+      })
+    })
+    vi.stubGlobal('fetch', mockFetch)
+
+    renderHome()
+    await screen.findByRole('status', { name: /no scenario packs installed/i })
+
+    fireEvent.click(screen.getByRole('button', { name: /restore official packs/i }))
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: /retry/i }),
+      ).toBeInTheDocument(),
+    )
   })
 })
 

@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import CreatorWorkbench from '../screens/CreatorWorkbench'
-import { api } from '../api/client'
+import { api, apiClient } from '../api/client'
 import type { WorkbenchPack, FileNode } from '../api/client'
 
 vi.mock('@convsim/ui', () => ({
@@ -34,6 +34,9 @@ vi.mock('../api/client', () => ({
     },
     submitTurn: vi.fn(),
     deleteSession: vi.fn(),
+  },
+  apiClient: {
+    reseedOfficialPacks: vi.fn(),
   },
 }))
 
@@ -127,6 +130,7 @@ beforeEach(() => {
   vi.mocked(api.workbench.exportPack).mockResolvedValue({ ok: true, data: { blob: new Blob([]), filename: 'pack.zip' } })
   vi.mocked(api.submitTurn).mockResolvedValue({ ok: true, data: TURN_RESPONSE })
   vi.mocked(api.deleteSession).mockResolvedValue({ ok: true, data: undefined })
+  vi.mocked(apiClient.reseedOfficialPacks).mockResolvedValue({ ok: true, data: { seeded: 4 } })
 })
 
 describe('CreatorWorkbench', () => {
@@ -137,6 +141,42 @@ describe('CreatorWorkbench', () => {
   it('renders the heading', () => {
     renderWorkbench()
     expect(screen.getByRole('heading', { name: /creator workbench/i })).toBeInTheDocument()
+  })
+
+  it('offers a restore official packs action when the library is empty', async () => {
+    vi.mocked(api.workbench.listPacks).mockResolvedValue({ ok: true, data: [] })
+    renderWorkbench()
+    expect(
+      await screen.findByTestId('restore-official-packs-button'),
+    ).toBeInTheDocument()
+  })
+
+  it('reseeds and reloads the pack list when restore is clicked', async () => {
+    vi.mocked(api.workbench.listPacks).mockResolvedValue({ ok: true, data: [] })
+    renderWorkbench()
+    const btn = await screen.findByTestId('restore-official-packs-button')
+
+    // After a successful reseed the reload returns the seeded packs.
+    vi.mocked(api.workbench.listPacks).mockResolvedValue({ ok: true, data: [OFFICIAL_PACK] })
+    fireEvent.click(btn)
+
+    await waitFor(() => expect(apiClient.reseedOfficialPacks).toHaveBeenCalled())
+    expect(await screen.findByText('Job Interview')).toBeInTheDocument()
+    expect(screen.queryByTestId('restore-official-packs-button')).toBeNull()
+  })
+
+  it('shows a retry affordance when restore fails', async () => {
+    vi.mocked(api.workbench.listPacks).mockResolvedValue({ ok: true, data: [] })
+    vi.mocked(apiClient.reseedOfficialPacks).mockResolvedValue({
+      ok: false,
+      error: { kind: 'network', message: 'network' },
+    })
+    renderWorkbench()
+    const btn = await screen.findByTestId('restore-official-packs-button')
+    fireEvent.click(btn)
+    await waitFor(() =>
+      expect(screen.getByTestId('restore-official-packs-button')).toHaveTextContent(/retry/i),
+    )
   })
 
   it('shows pack list after loading', async () => {

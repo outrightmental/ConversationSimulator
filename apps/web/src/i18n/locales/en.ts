@@ -138,7 +138,11 @@ export const en = {
     missingPack: {
       title: 'No scenario packs installed',
       description:
-        'Your model is ready but there are no packs to play. Import a pack or browse the scenario library.',
+        'Your model is ready but there are no packs to play. Restore the official packs, import a pack, or browse the library.',
+      restoreAction: 'Restore official packs',
+      restoring: 'Restoring…',
+      restoreDone: 'Official packs restored ✓',
+      restoreFailed: 'Restore failed — retry',
       action: 'Go to library →',
     },
     help: {
@@ -285,6 +289,20 @@ export const en = {
       heading: 'Language',
       description: 'Select the language for the user interface.',
       label: 'Interface language',
+    },
+    relationshipMemory: {
+      heading: 'NPC relationship memory',
+      description:
+        'After each completed session the app stores a short summary of your practice patterns for each NPC. This allows NPCs to exhibit subtle continuity across sessions. The summary never contains raw transcript text and you can delete any entry here.',
+      loading: 'Loading…',
+      empty: 'No NPC memories stored yet. Memories are created after completing a session and generating a debrief.',
+      sessionCount_one: '{{count}} session',
+      sessionCount_other: '{{count}} sessions',
+      delete: 'Delete',
+      deleting: 'Deleting…',
+      deleteLabel: 'Delete memory for {{npc}}',
+      clearAll: 'Clear all NPC memories',
+      clearing: 'Clearing…',
     },
   },
   debrief: {

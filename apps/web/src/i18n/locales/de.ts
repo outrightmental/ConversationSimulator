@@ -146,7 +146,11 @@ export const de: LocaleMessages = {
     missingPack: {
       title: 'Keine Szenarienpakete installiert',
       description:
-        'Ihr Modell ist bereit, aber es gibt keine Pakete zum Spielen. Importieren Sie ein Paket oder durchsuchen Sie die Szenarienbibliothek.',
+        'Ihr Modell ist bereit, aber es gibt keine Pakete zum Spielen. Offizielle Pakete wiederherstellen, ein Paket importieren oder die Bibliothek durchsuchen.',
+      restoreAction: 'Offizielle Pakete wiederherstellen',
+      restoring: 'Wird wiederhergestellt…',
+      restoreDone: 'Offizielle Pakete wiederhergestellt ✓',
+      restoreFailed: 'Wiederherstellung fehlgeschlagen — erneut versuchen',
       action: 'Zur Bibliothek →',
     },
     help: {
@@ -294,6 +298,20 @@ export const de: LocaleMessages = {
       heading: 'Sprache',
       description: 'Wählen Sie die Sprache der Benutzeroberfläche.',
       label: 'Oberflächensprache',
+    },
+    relationshipMemory: {
+      heading: 'NPC-Beziehungsgedächtnis',
+      description:
+        'Nach jeder abgeschlossenen Sitzung speichert die App eine kurze Zusammenfassung Ihrer Übungsmuster für jeden NPC. Dadurch können NPCs eine subtile Kontinuität über Sitzungen hinweg zeigen. Die Zusammenfassung enthält niemals den Rohtext des Transkripts, und Sie können hier jeden Eintrag löschen.',
+      loading: 'Wird geladen…',
+      empty: 'Noch keine NPC-Erinnerungen gespeichert. Erinnerungen werden nach Abschluss einer Sitzung und dem Erstellen einer Nachbesprechung angelegt.',
+      sessionCount_one: '{{count}} Sitzung',
+      sessionCount_other: '{{count}} Sitzungen',
+      delete: 'Löschen',
+      deleting: 'Wird gelöscht…',
+      deleteLabel: 'Erinnerung für {{npc}} löschen',
+      clearAll: 'Alle NPC-Erinnerungen löschen',
+      clearing: 'Wird gelöscht…',
     },
   },
   debrief: {

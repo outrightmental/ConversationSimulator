@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { api, type ImportPackResponse, type PackSummary } from '../api/client'
+import { api, type ImportPackResponse, type PackSummary, type RelationshipRecapSummary } from '../api/client'
 import type { ApiError } from '../api/errors'
 import { errorHeadline } from '../api/errors'
 import { ApiErrorView } from '../components/ApiErrorView'
@@ -249,6 +249,39 @@ export default function Settings() {
     }
     setDeletingId(null)
     setDeleteConfirmId(null)
+  }
+
+  // ── NPC relationship memory ──────────────────────────────────────────────────
+
+  const [recaps, setRecaps] = useState<RelationshipRecapSummary[] | null>(null)
+  const [recapsError, setRecapsError] = useState<ApiError | null>(null)
+  const [deletingRecap, setDeletingRecap] = useState<string | null>(null)
+  const [clearingRecaps, setClearingRecaps] = useState(false)
+
+  const loadRecaps = useCallback(() => {
+    void api.listRelationshipMemory().then((r) => {
+      if (r.ok) { setRecaps(r.data.recaps); setRecapsError(null) }
+      else setRecapsError(r.error)
+    })
+  }, [])
+
+  useEffect(() => { loadRecaps() }, [loadRecaps])
+
+  async function handleDeleteRecap(npcId: string, packId: string) {
+    const key = `${npcId}:${packId}`
+    setDeletingRecap(key)
+    const r = await api.deleteRelationshipMemory(npcId, packId)
+    if (r.ok) {
+      setRecaps((prev) => prev?.filter((x) => !(x.npc_id === npcId && x.pack_id === packId)) ?? null)
+    }
+    setDeletingRecap(null)
+  }
+
+  async function handleClearAllRecaps() {
+    setClearingRecaps(true)
+    const r = await api.clearAllRelationshipMemory()
+    if (r.ok) { setRecaps([]) }
+    setClearingRecaps(false)
   }
 
   async function handleExportSession(sessionId: string) {
@@ -830,6 +863,104 @@ export default function Settings() {
               </li>
             ))}
           </ul>
+        )}
+      </section>
+
+      {/* NPC relationship memory */}
+      <section style={{ marginBottom: '2rem' }} data-testid="relationship-memory-section">
+        <SectionHeading>{t('settings.relationshipMemory.heading')}</SectionHeading>
+        <p style={{ fontSize: '0.875rem', color: '#a1a1aa', marginBottom: '0.75rem' }}>
+          {t('settings.relationshipMemory.description')}
+        </p>
+        {recapsError && (
+          <ApiErrorView error={recapsError} onRetry={loadRecaps} context="Settings-RelationshipMemory" />
+        )}
+        {!recapsError && recaps === null && (
+          <p style={{ fontSize: '0.875rem', color: '#a1a1aa' }}>{t('settings.relationshipMemory.loading')}</p>
+        )}
+        {!recapsError && recaps !== null && recaps.length === 0 && (
+          <p data-testid="no-recaps" style={{ fontSize: '0.875rem', color: '#a1a1aa' }}>
+            {t('settings.relationshipMemory.empty')}
+          </p>
+        )}
+        {!recapsError && recaps !== null && recaps.length > 0 && (
+          <>
+            <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 0.75rem 0' }}>
+              {recaps.map((r) => {
+                const key = `${r.npc_id}:${r.pack_id}`
+                const isDeleting = deletingRecap === key
+                return (
+                  <li
+                    key={key}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      justifyContent: 'space-between',
+                      gap: '0.5rem',
+                      padding: '0.6rem 0',
+                      borderBottom: '1px solid rgba(255,255,255,0.06)',
+                      fontSize: '0.875rem',
+                    }}
+                  >
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ fontWeight: 500, color: '#d4d4d8' }}>{r.npc_id}</span>
+                      <span style={{ color: '#71717a', marginLeft: '0.4rem', fontSize: '0.8rem' }}>{r.pack_id}</span>
+                      <span style={{ color: '#71717a', marginLeft: '0.5rem', fontSize: '0.75rem' }}>
+                        {r.session_count === 1
+                          ? t('settings.relationshipMemory.sessionCount_one', { count: 1 })
+                          : t('settings.relationshipMemory.sessionCount_other', { count: r.session_count })}
+                      </span>
+                      {r.key_observations.length > 0 && (
+                        <ul style={{ margin: '0.25rem 0 0 0', padding: '0 0 0 1rem', fontSize: '0.8rem', color: '#a1a1aa' }}>
+                          {r.key_observations.slice(0, 3).map((obs, i) => (
+                            <li key={i}>{obs}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                    <button
+                      aria-label={t('settings.relationshipMemory.deleteLabel', { npc: r.npc_id })}
+                      onClick={() => void handleDeleteRecap(r.npc_id, r.pack_id)}
+                      disabled={isDeleting}
+                      style={{
+                        flexShrink: 0,
+                        padding: '0.2rem 0.6rem',
+                        borderRadius: '4px',
+                        border: '1px solid rgba(239,68,68,0.4)',
+                        cursor: isDeleting ? 'wait' : 'pointer',
+                        background: 'transparent',
+                        color: '#f87171',
+                        fontSize: '0.8rem',
+                      }}
+                    >
+                      {isDeleting
+                        ? t('settings.relationshipMemory.deleting')
+                        : t('settings.relationshipMemory.delete')}
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+            <button
+              data-testid="clear-all-recaps-button"
+              onClick={() => void handleClearAllRecaps()}
+              disabled={clearingRecaps}
+              style={{
+                padding: '0.4rem 0.85rem',
+                borderRadius: '4px',
+                border: 'none',
+                cursor: clearingRecaps ? 'wait' : 'pointer',
+                background: 'rgba(239,68,68,0.15)',
+                color: '#f87171',
+                fontWeight: 500,
+                fontSize: '0.875rem',
+              }}
+            >
+              {clearingRecaps
+                ? t('settings.relationshipMemory.clearing')
+                : t('settings.relationshipMemory.clearAll')}
+            </button>
+          </>
         )}
       </section>
 

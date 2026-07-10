@@ -2,7 +2,7 @@
 import { useState, useEffect, useMemo, useId, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import type { ScenarioInfo, PackValidationResult } from '@convsim/shared'
-import { api } from '../api/client'
+import { api, apiClient } from '../api/client'
 import type { PackSummary, ImportPackResponse } from '../api/client'
 import type { ApiError } from '../api/errors'
 import { errorHeadline } from '../api/errors'
@@ -57,6 +57,9 @@ export default function ScenarioLibrary() {
   const [importError, setImportError] = useState<ApiError | null>(null)
   const [importedPack, setImportedPack] = useState<ImportPackResponse | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Restore official packs state
+  const [restoreState, setRestoreState] = useState<'idle' | 'restoring' | 'done' | 'error'>('idle')
 
   // Model readiness warning
   const [modelMissing, setModelMissing] = useState(false)
@@ -165,6 +168,18 @@ export default function ScenarioLibrary() {
     } else {
       setImportError(r.error)
       setImportState('error')
+    }
+  }
+
+  async function handleRestoreOfficialPacks() {
+    setRestoreState('restoring')
+    const r = await apiClient.reseedOfficialPacks()
+    if (r.ok) {
+      setRestoreState('done')
+      loadScenarios()
+      loadIndexedPacks()
+    } else {
+      setRestoreState('error')
     }
   }
 
@@ -445,38 +460,61 @@ export default function ScenarioLibrary() {
         >
           <p style={{ fontSize: '1.1rem', marginBottom: '0.5rem' }}>No scenario packs installed.</p>
           <p style={{ fontSize: '0.9rem', color: '#a1a1aa', marginBottom: '0.5rem' }}>
-            Packs are collections of practice conversations. Import a pack zip file using the
-            button above, or install an official starter pack to begin.
+            Packs are collections of practice conversations. Restore the bundled official packs,
+            import a pack zip file, or browse the docs for more options.
           </p>
           <p style={{ fontSize: '0.875rem', color: '#71717a', marginBottom: '1.25rem' }}>
-            You can also{' '}
             <a
               href="https://github.com/outrightmental/ConversationSimulator/wiki"
               target="_blank"
               rel="noreferrer"
               style={{ color: '#71717a' }}
             >
-              browse the docs
-            </a>{' '}
-            for a link to official packs or the pack authoring guide.
+              Pack authoring guide ↗
+            </a>
           </p>
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={importState === 'uploading'}
-            data-testid="empty-import-pack-button"
-            style={{
-              display: 'inline-block',
-              padding: '0.5rem 1.25rem',
-              borderRadius: '6px',
-              background: 'rgba(255,255,255,0.08)',
-              color: '#e8e8ea',
-              border: '1px solid rgba(255,255,255,0.15)',
-              cursor: importState === 'uploading' ? 'wait' : 'pointer',
-              fontSize: '0.875rem',
-            }}
-          >
-            {importState === 'uploading' ? 'Importing…' : 'Import pack'}
-          </button>
+          <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'center', gap: '0.75rem' }}>
+            <button
+              onClick={() => void handleRestoreOfficialPacks()}
+              disabled={restoreState === 'restoring'}
+              data-testid="restore-official-packs-button"
+              style={{
+                display: 'inline-block',
+                padding: '0.5rem 1.25rem',
+                borderRadius: '6px',
+                background: 'rgba(99,102,241,0.12)',
+                color: '#a5b4fc',
+                border: '1px solid rgba(99,102,241,0.3)',
+                cursor: restoreState === 'restoring' ? 'wait' : 'pointer',
+                fontSize: '0.875rem',
+              }}
+            >
+              {restoreState === 'restoring'
+                ? 'Restoring…'
+                : restoreState === 'done'
+                ? 'Official packs restored ✓'
+                : restoreState === 'error'
+                ? 'Restore failed — retry'
+                : 'Restore official packs'}
+            </button>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={importState === 'uploading'}
+              data-testid="empty-import-pack-button"
+              style={{
+                display: 'inline-block',
+                padding: '0.5rem 1.25rem',
+                borderRadius: '6px',
+                background: 'rgba(255,255,255,0.08)',
+                color: '#e8e8ea',
+                border: '1px solid rgba(255,255,255,0.15)',
+                cursor: importState === 'uploading' ? 'wait' : 'pointer',
+                fontSize: '0.875rem',
+              }}
+            >
+              {importState === 'uploading' ? 'Importing…' : 'Import pack'}
+            </button>
+          </div>
         </div>
       )}
 

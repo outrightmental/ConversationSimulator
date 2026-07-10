@@ -522,7 +522,7 @@ def test_pack_list_includes_content_rating(client, tmp_path):
     _import_pack(client, tmp_path)
     resp = client.get("/api/packs")
     assert resp.status_code == 200
-    packs = resp.json()
+    packs = resp.json()["packs"]
     assert len(packs) == 1
     assert packs[0]["content_rating"] == "G"
 
@@ -530,14 +530,14 @@ def test_pack_list_includes_content_rating(client, tmp_path):
 def test_pack_list_includes_supported_languages(client, tmp_path):
     _import_pack(client, tmp_path)
     resp = client.get("/api/packs")
-    packs = resp.json()
+    packs = resp.json()["packs"]
     assert packs[0]["supported_languages"] == ["en"]
 
 
 def test_pack_list_includes_validation_status(client, tmp_path):
     _import_pack(client, tmp_path)
     resp = client.get("/api/packs")
-    packs = resp.json()
+    packs = resp.json()["packs"]
     assert "validation_status" in packs[0]
     assert packs[0]["validation_status"] == "unknown"
 
@@ -545,7 +545,7 @@ def test_pack_list_includes_validation_status(client, tmp_path):
 def test_pack_list_includes_tags(client, tmp_path):
     _import_pack(client, tmp_path)
     resp = client.get("/api/packs")
-    packs = resp.json()
+    packs = resp.json()["packs"]
     assert "test" in packs[0]["tags"]
 
 
