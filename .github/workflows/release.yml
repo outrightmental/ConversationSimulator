@@ -337,6 +337,7 @@ jobs:
           find "$BUNDLE_ROOT" \( -name "*.AppImage" -o -name "*.deb" \) | \
             sort | xargs sha256sum
 
+
       # ── Package the macOS .app bundle for the Steam depot ────────────────────
       # Tauri only emits `.dmg` (installer) and the raw `.app` bundle directory
       # here; the `.app.tar.gz` updater artifact is NOT produced because the
