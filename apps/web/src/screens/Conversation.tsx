@@ -232,8 +232,13 @@ export default function Conversation() {
   function handleBargeIn() {
     if (!ttsEnabled || !voiceTimingPrefs.bargeInEnabled) return
     const isTtsActive = ttsPlayingRef.current !== null || ttsHoldTimerRef.current !== null
+    // Reset the flag on every recording start so it always reflects whether THIS
+    // recording began during NPC playback. Otherwise a barge-in the player then
+    // discards or re-records in transcript review would leave the flag set and be
+    // mis-attributed to a later, non-interrupting turn — over-counting
+    // interruption_count in the debrief.
+    bargedInRef.current = isTtsActive
     if (!isTtsActive) return
-    bargedInRef.current = true
     _fadeTtsOut(180, () => {
       ttsQueueRef.current = []
     })

@@ -295,6 +295,41 @@ class TestForkSession:
         assert turns[2]["turn_number"] == 2
         assert turns[2]["role"] == "npc"
 
+    def test_fork_preserves_barged_in_flag_on_copied_turns(self, tmp_path):
+        """Barge-in flag (issue #308) survives the fork copy so a branch debrief
+        still counts interruptions inherited from the shared history."""
+        conn = self._make_db(tmp_path)
+        self._insert_session(conn, "parent", turn_count=2)
+        self._insert_npc_opening(conn, "parent")
+        # Player turn 1 barged in on NPC TTS; player turn 2 did not.
+        conn.execute(
+            "INSERT INTO turn_session_turns "
+            "(session_id, turn_number, role, content, source_mode, barged_in, "
+            "flow_state_after, created_at) "
+            "VALUES ('parent', 1, 'player', 'p1', 'push-to-talk', 1, "
+            "'PlayerTurnListening', datetime('now'))"
+        )
+        conn.execute(
+            "INSERT INTO turn_session_turns "
+            "(session_id, turn_number, role, content, emotion, state_delta_json, "
+            "event_flags_json, safety_json, flow_state_after, state_snapshot_json, created_at) "
+            "VALUES ('parent', 2, 'npc', 'n1', 'neutral', '{}', '[]', "
+            "'{\"status\":\"ok\"}', 'PlayerTurnListening', ?, datetime('now'))",
+            (json.dumps({"state_vars": {"trust": 60}, "fired_events": []}),)
+        )
+        conn.commit()
+
+        branch_id, _ = fork_session("parent", 2, conn)
+
+        rows = conn.execute(
+            "SELECT turn_number, role, barged_in FROM turn_session_turns "
+            "WHERE session_id = ? ORDER BY turn_number ASC",
+            (branch_id,),
+        ).fetchall()
+        by_turn = {r["turn_number"]: r for r in rows}
+        assert by_turn[1]["role"] == "player"
+        assert by_turn[1]["barged_in"] == 1, "barge-in flag lost during fork copy"
+
     def test_fork_at_turn_1_copies_only_npc_opening(self, tmp_path):
         conn = self._make_db(tmp_path)
         self._insert_session(conn, "parent", turn_count=1)
