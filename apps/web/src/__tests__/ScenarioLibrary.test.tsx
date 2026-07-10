@@ -281,9 +281,9 @@ describe('scenario card rendering', () => {
   it('shows difficulty chips', async () => {
     renderLibrary()
     await waitFor(() => screen.getByText('Behavioral Interview'))
-    // Easy, Normal, Hard present from SCENARIO_BEHAVIORAL
-    const easyChips = screen.getAllByText('Easy')
-    expect(easyChips.length).toBeGreaterThan(0)
+    // Warm, Standard, Hard present from SCENARIO_BEHAVIORAL
+    const warmChips = screen.getAllByText('Warm')
+    expect(warmChips.length).toBeGreaterThan(0)
   })
 
   it('shows supported languages', async () => {
@@ -462,9 +462,9 @@ describe('filters', () => {
   it('filter by difficulty removes scenarios lacking that difficulty option', async () => {
     renderLibrary()
     await waitFor(() => screen.getByText('Behavioral Interview'))
-    // SCENARIO_HOSTILE only has normal and hard; filtering for 'easy' should hide it
+    // SCENARIO_HOSTILE only has standard, hard, adversarial; filtering for 'warm' should hide it
     fireEvent.change(screen.getByRole('combobox', { name: /filter by difficulty/i }), {
-      target: { value: 'easy' },
+      target: { value: 'warm' },
     })
     await waitFor(() =>
       expect(screen.queryByText('Hostile Executive Interview')).not.toBeInTheDocument(),
