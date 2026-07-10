@@ -276,6 +276,49 @@ class TestMigrate:
 
         assert (legacy / "data" / "keep.txt").read_text() == "precious"
 
+    def test_partial_failure_rolls_back_and_retries_next_launch(self, tmp_path):
+        """A copy that fails partway must not orphan the un-copied subdirs.
+
+        needs_migration() skips when new_root is non-empty, so a partial copy
+        left in place would make migration never retry, stranding the rest of
+        the legacy data. The failed run must roll back what it copied so the
+        next launch sees an empty new_root and completes the migration.
+        """
+        from convsim_core.data_migration import needs_migration, migrate
+        import shutil
+
+        legacy = tmp_path / "legacy"
+        # _MIGRATE_SUBDIRS order copies "data" before "logs"; make the "logs"
+        # copy fail after "data" has already succeeded.
+        (legacy / "data").mkdir(parents=True)
+        (legacy / "data" / "keep.txt").write_text("precious")
+        (legacy / "logs").mkdir(parents=True)
+        (legacy / "logs" / "app.log").write_text("log")
+        new = tmp_path / "new"
+
+        real_copytree = shutil.copytree
+
+        def flaky_copytree(src, dst, **kw):
+            if Path(dst).name == "logs":
+                raise OSError("simulated mid-migration failure")
+            return real_copytree(src, dst, **kw)
+
+        with patch("convsim_core.data_migration.shutil.copytree", flaky_copytree):
+            assert migrate(new, legacy) is False
+
+        # The successfully-copied "data" subdir must have been rolled back so
+        # new_root is empty again and migration is re-attempted.
+        assert not (new / "data").exists()
+        assert needs_migration(new, legacy)
+
+        # Second launch with a healthy filesystem completes the migration.
+        assert migrate(new, legacy) is True
+        assert (new / "data" / "keep.txt").read_text() == "precious"
+        assert (new / "logs" / "app.log").read_text() == "log"
+        assert not needs_migration(new, legacy)
+        # Original legacy data preserved throughout.
+        assert (legacy / "data" / "keep.txt").read_text() == "precious"
+
     def test_models_not_migrated(self, tmp_path):
         """Models directory is excluded from migration (can be many GBs)."""
         from convsim_core.data_migration import migrate
