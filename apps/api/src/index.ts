@@ -6,7 +6,7 @@ import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
 import { healthRoutes } from './routes/health.js';
 import { packsRoutes, packRoutes, setPacksDbPath, setPacksDataDir } from './routes/packs.js';
-import { scenarioRoutes } from './routes/scenarios.js';
+import { scenarioRoutes, setScenariosDbPath } from './routes/scenarios.js';
 import { sessionRoutes } from './routes/sessions.js';
 import { sessionWsRoutes } from './routes/session-ws.js';
 import { privacyRoutes, setDataFolderPath } from './routes/privacy.js';
@@ -66,6 +66,7 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
   setDataFolderPath(path.dirname(dbPath));
   setPacksDbPath(packsDbPath);
   setPacksDataDir(packsDataDir);
+  setScenariosDbPath(packsDbPath);
   setWorkbenchRoots(
     process.env['PACKS_OFFICIAL_ROOT'] ?? path.join(process.cwd(), 'packs', 'official'),
     process.env['PACKS_LOCAL_DEV_ROOT'] ?? path.join(os.homedir(), '.convsim', 'packs', 'local-dev'),

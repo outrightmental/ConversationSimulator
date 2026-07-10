@@ -45,6 +45,10 @@ vi.mock('../api/client', () => ({
     clearLocalData: vi.fn(),
     deleteSession: vi.fn(),
     listVoices: vi.fn().mockResolvedValue({ voices: [] }),
+    listPacks: vi.fn().mockResolvedValue({ packs: [], total: 0 }),
+    importPack: vi.fn(),
+    getPack: vi.fn(),
+    validatePack: vi.fn(),
     // RuntimeSettingsPanel
     getModels: vi.fn().mockReturnValue(new Promise(() => {})),
     getRuntimeSettings: vi.fn().mockReturnValue(new Promise(() => {})),

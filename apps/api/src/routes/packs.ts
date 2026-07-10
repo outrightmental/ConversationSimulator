@@ -13,6 +13,15 @@ export interface PackSummary {
   pack_id: string;
   name: string;
   scenario_count: number;
+  pack_root: string;
+}
+
+export interface PackDetail {
+  pack_id: string;
+  name: string;
+  version: string;
+  scenario_count: number;
+  pack_root: string;
 }
 
 export interface PacksResponse {
@@ -91,7 +100,7 @@ export async function packsRoutes(app: FastifyInstance): Promise<void> {
       const db = new Database(_packsDbPath, { readonly: true, fileMustExist: true });
       try {
         const rows = db
-          .prepare('SELECT pack_id, name, scenario_count FROM installed_packs ORDER BY name')
+          .prepare('SELECT pack_id, name, scenario_count, pack_root FROM installed_packs ORDER BY name')
           .all() as PackSummary[];
         return { packs: rows, total: rows.length };
       } finally {
@@ -194,6 +203,42 @@ export async function packsRoutes(app: FastifyInstance): Promise<void> {
 }
 
 export async function packRoutes(app: FastifyInstance) {
+  app.get<{ Params: { pack_id: string } }>(
+    '/api/packs/:pack_id',
+    async (req, reply): Promise<PackDetail> => {
+      const { pack_id } = req.params;
+
+      if (!_packsDbPath) {
+        reply.status(404);
+        throw Object.assign(new Error(`Pack '${pack_id}' not found.`), {
+          statusCode: 404,
+          code: 'NOT_FOUND',
+        });
+      }
+
+      const index = PackIndex.open(_packsDbPath);
+      try {
+        const entry = index.getPack(pack_id);
+        if (!entry) {
+          reply.status(404);
+          throw Object.assign(new Error(`Pack '${pack_id}' not found.`), {
+            statusCode: 404,
+            code: 'NOT_FOUND',
+          });
+        }
+        return {
+          pack_id: entry.pack_id,
+          name: entry.name,
+          version: entry.version,
+          scenario_count: entry.scenario_count,
+          pack_root: entry.pack_root,
+        };
+      } finally {
+        index.close();
+      }
+    },
+  );
+
   app.post<{ Params: { pack_id: string } }>(
     '/api/packs/:pack_id/validate',
     async (req, reply): Promise<PackValidationResult> => {
