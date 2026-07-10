@@ -7,6 +7,8 @@ use std::{
     time::Duration,
 };
 use tauri::{AppHandle, Emitter, Manager};
+use tauri_plugin_updater::UpdaterExt;
+use tauri_plugin_shell::ShellExt;
 
 mod steam;
 
@@ -17,6 +19,70 @@ struct CoreStatusPayload {
     phase: String,
     message: String,
     error: Option<String>,
+}
+
+// ── Update check ─────────────────────────────────────────────────────────────
+
+#[derive(Clone, serde::Serialize)]
+struct UpdateInfo {
+    version: String,
+    release_url: String,
+}
+
+/// Stores the release page URL for the latest available beta update so that
+/// `install_update` can open it without accepting an untrusted URL from the
+/// frontend.
+struct PendingUpdateState(Arc<Mutex<Option<String>>>);
+
+/// Check for a beta update.  Fails silently when offline or when the updater
+/// manifest is unavailable — the frontend shows nothing in that case.
+#[tauri::command]
+async fn check_for_update(
+    app: AppHandle,
+    state: tauri::State<'_, PendingUpdateState>,
+) -> Option<UpdateInfo> {
+    let updater = match app.updater() {
+        Ok(u) => u,
+        Err(e) => {
+            eprintln!("Updater unavailable (will retry on next launch): {e}");
+            return None;
+        }
+    };
+    let maybe_update = match updater.check().await {
+        Ok(r) => r,
+        Err(e) => {
+            // Offline or missing manifest — expected for users without network
+            // access; do not surface to the user.
+            eprintln!("Update check failed (offline or no manifest): {e}");
+            return None;
+        }
+    };
+    let update = maybe_update?;
+    let version = update.version.clone();
+    let release_url = format!(
+        "https://github.com/outrightmental/ConversationSimulator/releases/tag/v{version}"
+    );
+    if let Ok(mut guard) = state.0.lock() {
+        *guard = Some(release_url.clone());
+    }
+    Some(UpdateInfo { version, release_url })
+}
+
+/// Open the GitHub release page for manual installation of the pending beta
+/// update.  The URL is always constructed on the Rust side and never accepted
+/// from the frontend.
+#[tauri::command]
+fn install_update(
+    state: tauri::State<'_, PendingUpdateState>,
+    app: AppHandle,
+) -> Result<(), String> {
+    let url = state
+        .0
+        .lock()
+        .map_err(|e| e.to_string())?
+        .clone()
+        .ok_or_else(|| "No pending update — run check_for_update first".to_string())?;
+    app.shell().open(&url, None).map_err(|e| e.to_string())
 }
 
 // ── Steam integration state ───────────────────────────────────────────────────
@@ -439,6 +505,7 @@ fn launch_or_verify_core(
 pub fn run() {
     let process_inner: Arc<Mutex<Option<Child>>> = Arc::new(Mutex::new(None));
     let status_inner: Arc<Mutex<Option<CoreStatusPayload>>> = Arc::new(Mutex::new(None));
+    let pending_update_inner: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
 
     // Kept for the `RunEvent::Exit` handler below. Relying on `CoreProcessState`'s
     // `Drop` alone is not enough: on desktop the tao event loop terminates the
@@ -461,13 +528,17 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(CoreProcessState(Arc::clone(&process_inner)))
         .manage(CoreStatusState(Arc::clone(&status_inner)))
+        .manage(PendingUpdateState(Arc::clone(&pending_update_inner)))
         .manage(SteamState(Arc::clone(&steam_status)))
         .manage(SteamRuntimeState(Arc::clone(&steam_runtime)))
         .invoke_handler(tauri::generate_handler![
             get_core_status,
             get_steam_status,
+            check_for_update,
+            install_update,
             steam_unlock_achievement,
             steam_increment_stat,
             steam_set_rich_presence,
