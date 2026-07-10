@@ -2,8 +2,14 @@
 import { useEffect, useState } from 'react'
 import { apiClient } from './client'
 
-export function usePackCount(): number {
-  const [count, setCount] = useState(0)
+/**
+ * Returns the number of installed packs, or null while the initial fetch is in
+ * flight.  Returning null (rather than defaulting to 0) prevents the UI from
+ * briefly flashing "None installed" on screens that render before the first
+ * API round-trip completes.
+ */
+export function usePackCount(): number | null {
+  const [count, setCount] = useState<number | null>(null)
 
   useEffect(() => {
     let cancelled = false
