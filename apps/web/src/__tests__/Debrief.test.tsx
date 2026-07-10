@@ -27,7 +27,7 @@ const SESSION_ID = 'sess-debrief01'
 
 const sampleSetup = {
   scenario_id: 'behavioral_interview',
-  difficulty: 'normal' as const,
+  difficulty: 'standard' as const,
   player_role_name: 'Candidate',
   language: 'en',
   input_mode: 'text-only' as const,

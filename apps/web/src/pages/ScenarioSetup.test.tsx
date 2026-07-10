@@ -15,11 +15,11 @@ const mockScenario: ScenarioInfo = {
     brief: 'You are interviewing for a product manager role.',
   },
   difficulty: {
-    default: 'normal',
+    default: 'standard',
     options: {
-      easy: { npc_patience_modifier: 15, challenge_frequency: 'low' },
-      normal: { npc_patience_modifier: 0, challenge_frequency: 'medium' },
-      hard: { npc_patience_modifier: -20, challenge_frequency: 'high' },
+      warm:     { patience: 80, volatility: 20, disclosure: 70, time_pressure: 20, label: 'Warm-up', description: 'NPC is patient and guides you.' },
+      standard: { patience: 50, volatility: 50, disclosure: 50, time_pressure: 50 },
+      hard:     { patience: 25, volatility: 70, disclosure: 25, time_pressure: 60 },
     },
   },
   supported_languages: ['en', 'es'],
@@ -147,8 +147,8 @@ describe('ScenarioSetupPage', () => {
     it('sets difficulty to the scenario default', async () => {
       renderSetup();
       await waitFor(() => screen.getByText('Behavioral Interview'));
-      const normalRadio = screen.getByRole('radio', { name: /normal/i });
-      expect(normalRadio).toBeChecked();
+      const standardRadio = screen.getByRole('radio', { name: /standard/i });
+      expect(standardRadio).toBeChecked();
     });
 
     it('sets player role name to the scenario label', async () => {
@@ -217,8 +217,8 @@ describe('ScenarioSetupPage', () => {
     it('renders all difficulty options from the scenario', async () => {
       renderSetup();
       await waitFor(() => screen.getByText('Behavioral Interview'));
-      expect(screen.getByRole('radio', { name: /easy/i })).toBeInTheDocument();
-      expect(screen.getByRole('radio', { name: /normal/i })).toBeInTheDocument();
+      expect(screen.getByRole('radio', { name: /warm-up/i })).toBeInTheDocument();
+      expect(screen.getByRole('radio', { name: /standard/i })).toBeInTheDocument();
       expect(screen.getByRole('radio', { name: /hard/i })).toBeInTheDocument();
     });
 
@@ -431,7 +431,7 @@ describe('ScenarioSetupPage', () => {
         created_at: '2026-06-30T00:00:00Z',
         setup: {
           scenario_id: 'behavioral_interview',
-          difficulty: 'normal',
+          difficulty: 'standard',
           player_role_name: 'Candidate',
           language: 'en',
           input_mode: 'push-to-talk',
@@ -453,7 +453,7 @@ describe('ScenarioSetupPage', () => {
       await waitFor(() => {
         expect(mockApi.createSession).toHaveBeenCalledWith({
           scenario_id: 'behavioral_interview',
-          difficulty: 'normal',
+          difficulty: 'standard',
           player_role_name: 'Candidate',
           language: 'en',
           input_mode: 'push-to-talk',
