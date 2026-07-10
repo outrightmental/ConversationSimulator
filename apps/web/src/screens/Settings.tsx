@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { api, type ImportPackResponse, type PackSummary } from '../api/client'
 import type { ApiError } from '../api/errors'
+import { errorHeadline } from '../api/errors'
 import { ApiErrorView } from '../components/ApiErrorView'
 import { readPrivacyPref, writePrivacyPref, PRIVACY_KEYS, isDevModeEnabled } from '../privacyPrefs'
 import { useSteamStatus } from '../hooks/useSteamStatus'
@@ -151,7 +152,7 @@ export default function Settings() {
 
   const packFileInputRef = useRef<HTMLInputElement>(null)
   const [packImportState, setPackImportState] = useState<PackImportState>('idle')
-  const [packImportError, setPackImportError] = useState<string | null>(null)
+  const [packImportError, setPackImportError] = useState<ApiError | null>(null)
   const [importedPack, setImportedPack] = useState<ImportPackResponse | null>(null)
   const [installedPacks, setInstalledPacks] = useState<PackSummary[] | null>(null)
   const [installedPacksError, setInstalledPacksError] = useState<ApiError | null>(null)
@@ -175,7 +176,7 @@ export default function Settings() {
       setPackImportState('success')
       loadInstalledPacks()
     } else {
-      setPackImportError(r.error.message)
+      setPackImportError(r.error)
       setPackImportState('error')
     }
   }
@@ -495,7 +496,7 @@ export default function Settings() {
               data-testid="settings-import-error"
               style={{ fontSize: '0.85rem', color: '#f87171' }}
             >
-              {packImportError}
+              {errorHeadline(packImportError)}
             </span>
           )}
         </div>

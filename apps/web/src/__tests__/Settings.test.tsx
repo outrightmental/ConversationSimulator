@@ -354,7 +354,7 @@ describe('pack management: import', () => {
   })
 
   it('shows an error message when import fails', async () => {
-    mockApi.importPack.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'Invalid pack format' } })
+    mockApi.importPack.mockResolvedValue({ ok: false, error: { kind: 'http-error', message: 'Invalid pack format', status: 422 } })
     await renderSettings()
     const fileInput = screen.getByTestId('settings-import-file-input')
     const file = new File(['bad'], 'pack.zip', { type: 'application/zip' })
