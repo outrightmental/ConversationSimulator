@@ -190,6 +190,7 @@ def _persist_input_safety_stop(
     conn: sqlite3.Connection,
     source_mode: str,
     save_transcript: bool,
+    barged_in: bool = False,
 ) -> "TurnPipelineResult":
     """Short-circuit persist for a STOP / STOP_WITH_RESOURCE from the input router.
 
@@ -231,9 +232,9 @@ def _persist_input_safety_stop(
     with conn:
         player_cursor = conn.execute(
             "INSERT INTO turn_session_turns "
-            "(session_id, turn_number, role, content, source_mode, flow_state_after, created_at) "
-            "VALUES (?, ?, 'player', ?, ?, ?, ?)",
-            (session_id, player_turn_number, normalized, source_mode, new_flow_state, now),
+            "(session_id, turn_number, role, content, source_mode, barged_in, flow_state_after, created_at) "
+            "VALUES (?, ?, 'player', ?, ?, ?, ?, ?)",
+            (session_id, player_turn_number, normalized, source_mode, int(barged_in), new_flow_state, now),
         )
         npc_cursor = conn.execute(
             "INSERT INTO turn_session_turns "
@@ -356,6 +357,7 @@ async def process_turn(
     *,
     save_transcript: bool = True,
     source_mode: str = "text-only",
+    barged_in: bool = False,
     safety_policy_config: Optional[SafetyPolicyConfig] = None,
     state_variable_overrides: Optional[Dict[str, Any]] = None,
     scenario_events: Optional[List[ScenarioEvent]] = None,
@@ -405,6 +407,7 @@ async def process_turn(
             conn=conn,
             source_mode=source_mode,
             save_transcript=save_transcript,
+            barged_in=barged_in,
         )
     # REDIRECT: safety policy is already injected into the LLM prompt; continue.
     # OK: proceed normally.
@@ -536,9 +539,9 @@ async def process_turn(
     with conn:
         player_cursor = conn.execute(
             "INSERT INTO turn_session_turns "
-            "(session_id, turn_number, role, content, source_mode, flow_state_after, created_at) "
-            "VALUES (?, ?, 'player', ?, ?, ?, ?)",
-            (session_id, player_turn_number, normalized, source_mode, new_flow_state, received_at),
+            "(session_id, turn_number, role, content, source_mode, barged_in, flow_state_after, created_at) "
+            "VALUES (?, ?, 'player', ?, ?, ?, ?, ?)",
+            (session_id, player_turn_number, normalized, source_mode, int(barged_in), new_flow_state, received_at),
         )
         npc_cursor = conn.execute(
             "INSERT INTO turn_session_turns "
@@ -565,6 +568,11 @@ async def process_turn(
 
         # Persist discrete turn events.
         events_to_insert: List[tuple] = []
+        if barged_in:
+            events_to_insert.append((
+                session_id, turn_number, "barge_in",
+                json.dumps({"turn_number": turn_number}), now,
+            ))
         events_to_insert.append((
             session_id,
             turn_number,

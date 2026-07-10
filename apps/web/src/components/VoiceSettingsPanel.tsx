@@ -3,6 +3,22 @@ import { useState, useEffect, useCallback } from 'react'
 import type { VoiceInfo } from '@convsim/shared'
 import { api } from '../api/client'
 
+export const VOICE_PREF_THINKING_PAUSE = 'convsim.voice.thinkingPauseEnabled'
+export const VOICE_PREF_BACKCHANNEL = 'convsim.voice.backchannelEnabled'
+export const VOICE_PREF_BARGE_IN = 'convsim.voice.bargeInEnabled'
+
+export function getVoiceTimingPrefs(): {
+  thinkingPauseEnabled: boolean
+  backchannelEnabled: boolean
+  bargeInEnabled: boolean
+} {
+  return {
+    thinkingPauseEnabled: localStorage.getItem(VOICE_PREF_THINKING_PAUSE) !== 'false',
+    backchannelEnabled: localStorage.getItem(VOICE_PREF_BACKCHANNEL) === 'true',
+    bargeInEnabled: localStorage.getItem(VOICE_PREF_BARGE_IN) !== 'false',
+  }
+}
+
 type MicPermission = 'granted' | 'denied' | 'prompt' | 'unavailable' | 'checking'
 type ReadinessStatus = 'ready' | 'unavailable' | 'checking' | 'error'
 
@@ -88,6 +104,16 @@ export default function VoiceSettingsPanel() {
     () => localStorage.getItem('convsim.voice.preferredVoiceId') ?? ''
   )
 
+  const [thinkingPauseEnabled, setThinkingPauseEnabled] = useState(
+    () => localStorage.getItem(VOICE_PREF_THINKING_PAUSE) !== 'false'
+  )
+  const [backchannelEnabled, setBackchannelEnabled] = useState(
+    () => localStorage.getItem(VOICE_PREF_BACKCHANNEL) === 'true'
+  )
+  const [bargeInEnabled, setBargeInEnabled] = useState(
+    () => localStorage.getItem(VOICE_PREF_BARGE_IN) !== 'false'
+  )
+
   const loadCacheSize = useCallback(() => {
     api.getTtsCacheSize()
       .then((r) => { setCacheFiles(r.files); setCacheSizeBytes(r.size_bytes); setCacheError(false) })
@@ -166,6 +192,24 @@ export default function VoiceSettingsPanel() {
       setClearError(err instanceof Error ? err.message : 'Failed to clear cache')
       setClearState('error')
     }
+  }
+
+  function handleThinkingPauseToggle() {
+    const next = !thinkingPauseEnabled
+    setThinkingPauseEnabled(next)
+    localStorage.setItem(VOICE_PREF_THINKING_PAUSE, String(next))
+  }
+
+  function handleBackchannelToggle() {
+    const next = !backchannelEnabled
+    setBackchannelEnabled(next)
+    localStorage.setItem(VOICE_PREF_BACKCHANNEL, String(next))
+  }
+
+  function handleBargeInToggle() {
+    const next = !bargeInEnabled
+    setBargeInEnabled(next)
+    localStorage.setItem(VOICE_PREF_BARGE_IN, String(next))
   }
 
   function cacheSizeLabel(): string {
@@ -288,6 +332,61 @@ export default function VoiceSettingsPanel() {
             </p>
           </>
         )}
+      </div>
+
+      {/* Conversational timing features */}
+      <div style={{ marginBottom: '1.25rem' }}>
+        <h3 style={{ fontSize: '0.875rem', fontWeight: 600, color: '#a1a1aa', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          Conversational timing
+        </h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              data-testid="toggle-thinking-pause"
+              checked={thinkingPauseEnabled}
+              onChange={handleThinkingPauseToggle}
+              style={{ marginTop: '0.15rem', flexShrink: 0 }}
+            />
+            <span>
+              <span style={{ fontWeight: 500, fontSize: '0.875rem' }}>NPC thinking pause</span>
+              <span style={{ display: 'block', fontSize: '0.8rem', color: '#71717a' }}>
+                Adds a brief delay before the NPC speaks — longer for patient NPCs, shorter for adversarial ones.
+              </span>
+            </span>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              data-testid="toggle-backchannel"
+              checked={backchannelEnabled}
+              onChange={handleBackchannelToggle}
+              style={{ marginTop: '0.15rem', flexShrink: 0 }}
+            />
+            <span>
+              <span style={{ fontWeight: 500, fontSize: '0.875rem' }}>Backchannels</span>
+              <span style={{ display: 'block', fontSize: '0.8rem', color: '#71717a' }}>
+                NPC plays short acknowledgments ("mm-hm", "right") while you speak.{' '}
+                <em>Off by default — may add latency on slower hardware.</em>
+              </span>
+            </span>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              data-testid="toggle-barge-in"
+              checked={bargeInEnabled}
+              onChange={handleBargeInToggle}
+              style={{ marginTop: '0.15rem', flexShrink: 0 }}
+            />
+            <span>
+              <span style={{ fontWeight: 500, fontSize: '0.875rem' }}>Barge-in</span>
+              <span style={{ display: 'block', fontSize: '0.8rem', color: '#71717a' }}>
+                Speaking while the NPC is talking stops NPC audio immediately and starts your turn.
+              </span>
+            </span>
+          </label>
+        </div>
       </div>
 
       {/* TTS cache */}
