@@ -54,7 +54,7 @@ export default function Home() {
   return (
     <div>
       <h1>Conversation Simulator</h1>
-      <p>Flight Simulator for conversations.</p>
+      <p>Practice interviews, negotiations, language, and difficult conversations.</p>
 
       <nav
         aria-label="Primary actions"

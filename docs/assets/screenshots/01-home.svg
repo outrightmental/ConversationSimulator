@@ -22,7 +22,7 @@
 
   <!-- Main content -->
   <text x="32" y="92" font-family="system-ui,sans-serif" font-size="22" font-weight="700" fill="#f4f4f5">Conversation Simulator</text>
-  <text x="32" y="114" font-family="system-ui,sans-serif" font-size="14" fill="#a1a1aa">Flight Simulator for conversations.</text>
+  <text x="32" y="114" font-family="system-ui,sans-serif" font-size="14" fill="#a1a1aa">Practice interviews, negotiations, language, and difficult conversations.</text>
 
   <!-- Primary navigation links -->
   <text x="32" y="158" font-family="system-ui,sans-serif" font-size="13" fill="#a5b4fc">→  Start a scenario</text>
