@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback, useRef, type CSSProperties } from 're
 import { useBlocker } from 'react-router-dom'
 import { FormEditor } from '@convsim/ui'
 import type { PackFileType } from '@convsim/scenario-schema'
-import { api, type WorkbenchPack, type FileNode, type WorkbenchValidation, type WorkbenchValidationIssue, type WorkbenchImportValidationError } from '../api/client'
+import { api, apiClient, type WorkbenchPack, type FileNode, type WorkbenchValidation, type WorkbenchValidationIssue, type WorkbenchImportValidationError } from '../api/client'
 import type { ApiError } from '../api/errors'
 import { ERROR_COPY } from '../api/errors'
 import { ApiErrorView } from '../components/ApiErrorView'
@@ -87,9 +87,12 @@ interface PackListProps {
   importError: ApiError | null
   importValidation: WorkbenchImportValidationError | null
   importRenamed: string | null
+  onRestore: () => void
+  restoring: boolean
+  restoreFailed: boolean
 }
 
-function PackList({ packs, selected, onSelect, onImport, importing, importError, importValidation, importRenamed }: PackListProps) {
+function PackList({ packs, selected, onSelect, onImport, importing, importError, importValidation, importRenamed, onRestore, restoring, restoreFailed }: PackListProps) {
   const official = packs.filter((p) => p.kind === 'official')
   const localDev = packs.filter((p) => p.kind === 'local-dev')
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -138,9 +141,24 @@ function PackList({ packs, selected, onSelect, onImport, importing, importError,
   return (
     <div>
       {packs.length === 0 && (
-        <p style={{ fontSize: '0.85rem', color: '#52525b', padding: '0.5rem 0.75rem' }}>
-          No packs found.
-        </p>
+        <div style={{ padding: '0.5rem 0.75rem' }}>
+          <p style={{ fontSize: '0.85rem', color: '#a1a1aa', margin: '0 0 0.5rem' }}>
+            No packs found. Restore the official packs or import your own to begin.
+          </p>
+          <button
+            data-testid="restore-official-packs-button"
+            disabled={restoring}
+            onClick={onRestore}
+            style={{ ...BTN, width: '100%', textAlign: 'center', ...(restoring ? BTN_DISABLED : {}) }}
+            aria-label={restoring ? 'Restoring official packs…' : 'Restore official packs'}
+          >
+            {restoring
+              ? 'Restoring…'
+              : restoreFailed
+              ? 'Restore failed — retry'
+              : 'Restore official packs'}
+          </button>
+        </div>
       )}
       {group('Official', official)}
       {group('Local Dev', localDev)}
@@ -1372,6 +1390,8 @@ function TestChatPanel({ pack, validation }: TestChatPanelProps) {
 export default function CreatorWorkbench() {
   const [packs, setPacks] = useState<WorkbenchPack[]>([])
   const [packsError, setPacksError] = useState<ApiError | null>(null)
+  const [restoring, setRestoring] = useState(false)
+  const [restoreFailed, setRestoreFailed] = useState(false)
   const [selectedPack, setSelectedPack] = useState<WorkbenchPack | null>(null)
   const [fileTree, setFileTree] = useState<FileNode[]>([])
   const [treeLoading, setTreeLoading] = useState(false)
@@ -1426,10 +1446,27 @@ export default function CreatorWorkbench() {
     return () => window.removeEventListener('beforeunload', handler)
   }, [isDirty])
 
+  const loadPacks = useCallback(async () => {
+    const r = await api.workbench.listPacks()
+    if (r.ok) { setPacks(r.data); setPacksError(null) } else setPacksError(r.error)
+  }, [])
+
   // Load pack list on mount
   useEffect(() => {
-    void api.workbench.listPacks().then(r => { if (r.ok) { setPacks(r.data); setPacksError(null) } else setPacksError(r.error) })
-  }, [])
+    void loadPacks()
+  }, [loadPacks])
+
+  async function handleRestoreOfficialPacks() {
+    setRestoring(true)
+    setRestoreFailed(false)
+    const r = await apiClient.reseedOfficialPacks()
+    if (r.ok) {
+      await loadPacks()
+    } else {
+      setRestoreFailed(true)
+    }
+    setRestoring(false)
+  }
 
   const loadFileTree = useCallback(async (pack: WorkbenchPack) => {
     setTreeLoading(true)
@@ -1631,6 +1668,9 @@ export default function CreatorWorkbench() {
               importError={importError}
               importValidation={importValidation}
               importRenamed={importRenamed}
+              onRestore={() => void handleRestoreOfficialPacks()}
+              restoring={restoring}
+              restoreFailed={restoreFailed}
             />
           </div>
 
