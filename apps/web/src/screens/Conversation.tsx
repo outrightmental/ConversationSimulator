@@ -330,6 +330,10 @@ export default function Conversation() {
     return () => {
       conn?.close()
     }
+    // _enqueueTtsChunk is a ref-only helper; the WS connection must not be
+    // torn down and re-established on every render, so it is deliberately
+    // excluded from the dependency array.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, recordInterval])
 
   // Auto-scroll transcript
