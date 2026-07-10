@@ -52,7 +52,7 @@ Compare the output against `checksums-sha256.txt` attached to this release.
 
 | Requirement | Minimum | Recommended |
 |---|---|---|
-| OS | macOS 12, Ubuntu 22.04, Windows 10 (build 19041+) | Latest stable |
+| OS | macOS 13, Ubuntu 22.04, Windows 10 (build 19041+) | Latest stable |
 | CPU | 64-bit x86 or Apple Silicon | Apple Silicon M1 or newer |
 | RAM | 8 GB | 16 GB |
 | Disk | 5 GB free | 20 GB free (headroom for multiple models) |
