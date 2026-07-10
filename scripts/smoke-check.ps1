@@ -157,6 +157,10 @@ Check-File "apps\desktop\src-tauri\build.rs"
 Check-File "apps\desktop\src-tauri\src\main.rs"
 Check-File "apps\desktop\src-tauri\src\lib.rs"
 Check-File "apps\desktop\src-tauri\capabilities\default.json"
+# macOS Hardened Runtime entitlements — required for notarization (G3-01) and
+# Steam overlay compatibility (G3-03).  Referenced by tauri.conf.json and by
+# convsim-core.spec when APPLE_SIGNING_IDENTITY is set.
+Check-File "apps\desktop\src-tauri\entitlements.plist"
 # Icons referenced by tauri.conf.json are embedded at compile time; a missing
 # file breaks `tauri dev`/`tauri build`, so verify the placeholder set is present.
 Check-File "apps\desktop\src-tauri\icons\32x32.png"
