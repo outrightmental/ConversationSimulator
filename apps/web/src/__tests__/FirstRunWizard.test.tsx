@@ -16,7 +16,6 @@ vi.mock('../api/client', () => ({
     registerGguf: vi.fn(),
     startSidecar: vi.fn(),
     benchmarkModel: vi.fn(),
-    putCloudSettings: vi.fn(),
   },
 }))
 
@@ -319,15 +318,6 @@ describe('FirstRunWizard — confirm install step', () => {
     expect(mockApi.installModel).not.toHaveBeenCalled()
   })
 
-  it('records the selected registry ID for cross-device sync on confirm', async () => {
-    await goToConfirm()
-    fireEvent.click(screen.getByRole('button', { name: /confirm & install/i }))
-    await waitFor(() =>
-      expect(mockApi.putCloudSettings).toHaveBeenCalledWith({
-        last_model_id: 'qwen3-4b-instruct-q4_k_m',
-      }),
-    )
-  })
 })
 
 // ── Successful install ────────────────────────────────────────────────────────

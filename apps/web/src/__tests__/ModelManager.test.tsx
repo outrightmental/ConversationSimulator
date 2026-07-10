@@ -15,8 +15,6 @@ vi.mock('../api/client', () => ({
     registerGguf: vi.fn(),
     startSidecar: vi.fn(),
     benchmarkModel: vi.fn(),
-    getCloudSettings: vi.fn(),
-    putCloudSettings: vi.fn(),
   },
 }))
 
@@ -303,66 +301,6 @@ describe('ModelManager — installing step', () => {
     fireEvent.click(screen.getByRole('button', { name: /confirm & install/i }))
     await screen.findByRole('heading', { name: /installing model/i })
     expect(screen.getByRole('heading', { name: /installing model/i })).toBeInTheDocument()
-  })
-})
-
-// ── Steam Cloud cross-device model preference ────────────────────────────────
-
-describe('ModelManager — Steam Cloud last-model sync', () => {
-  const SECOND_ENTRY = {
-    ...REGISTRY_ENTRY,
-    id: 'gemma2-2b-it-q4_k_m',
-    name: 'Gemma2 2B IT Q4_K_M',
-    role: 'alternate',
-  }
-
-  it('records the selected registry ID (never a path) on confirm-install', async () => {
-    renderModelManager()
-    await screen.findByRole('button', { name: /install qwen3/i })
-    fireEvent.click(screen.getByRole('button', { name: /install qwen3/i }))
-    await screen.findByRole('button', { name: /confirm & install/i })
-    fireEvent.click(screen.getByRole('button', { name: /confirm & install/i }))
-    await waitFor(() =>
-      expect(mockApi.putCloudSettings).toHaveBeenCalledWith({
-        last_model_id: 'qwen3-4b-instruct-q4_k_m',
-      }),
-    )
-  })
-
-  it('does not sync anything when registering a local GGUF file (path stays local)', async () => {
-    renderModelManager()
-    await screen.findByRole('button', { name: /use a gguf file/i })
-    fireEvent.click(screen.getByRole('button', { name: /use a gguf file/i }))
-    await screen.findByRole('heading', { name: /use a gguf file/i })
-    fireEvent.change(screen.getByRole('textbox', { name: /file path/i }), {
-      target: { value: '/home/user/models/my-model.gguf' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: /use this file/i }))
-    await waitFor(() => expect(mockApi.registerGguf).toHaveBeenCalled())
-    expect(mockApi.putCloudSettings).not.toHaveBeenCalled()
-  })
-
-  it('pre-selects the cloud-synced last model as the recommendation', async () => {
-    mockApi.getCloudSettings.mockResolvedValue({ last_model_id: 'gemma2-2b-it-q4_k_m' })
-    mockApi.getModels.mockResolvedValue(
-      makeModelsResponse({ registry: [REGISTRY_ENTRY, SECOND_ENTRY], total: 2 }),
-    )
-    renderModelManager()
-    // The recommended-install button should offer the synced model, not the starter.
-    expect(await screen.findByRole('button', { name: /install gemma2 2b/i })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /install qwen3/i })).not.toBeInTheDocument()
-  })
-
-  it('falls back to the starter model when the synced ID is no longer in the registry', async () => {
-    mockApi.getCloudSettings.mockResolvedValue({ last_model_id: 'removed-model-id' })
-    renderModelManager()
-    expect(await screen.findByRole('button', { name: /install qwen3/i })).toBeInTheDocument()
-  })
-
-  it('falls back to the starter model when the cloud settings read fails', async () => {
-    mockApi.getCloudSettings.mockRejectedValue(new Error('not found'))
-    renderModelManager()
-    expect(await screen.findByRole('button', { name: /install qwen3/i })).toBeInTheDocument()
   })
 })
 
