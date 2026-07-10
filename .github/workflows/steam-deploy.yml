@@ -105,11 +105,13 @@ jobs:
       # ── Organise artifacts into per-platform depot content directories ──────
       #
       # Steam depots must contain application files, not installer packages.
-      # Windows ships the portable app directory from the NSIS build.
-      # Linux ships the AppImage (portable, runs without installation).
       # macOS ships the .app bundle extracted from the .app.tar.gz published
-      # by the release workflow — NOT the .dmg disk image.  The depot is then
-      # notarised by Apple (gate G3-01) before it is submitted to Steam.
+      # by the release workflow — NOT the .dmg disk image.  The .app is signed
+      # and notarised by Apple (gate G3-01) in release.yml before it reaches here.
+      # Linux ships the AppImage (portable, runs without installation).
+      # Windows still stages the .exe/.msi installers below — a portable-app
+      # depot layout for Windows is tracked separately and not part of this
+      # macOS-focused change.
       - name: Organise depot content
         run: |
           mkdir -p steam-content/windows steam-content/macos steam-content/linux
