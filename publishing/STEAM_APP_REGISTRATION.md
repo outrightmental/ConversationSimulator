@@ -234,14 +234,67 @@ deploy workflow.
 ### Setting a branch live
 
 1. Trigger the deploy workflow (`.github/workflows/steam-deploy.yml`) with the
-   target release tag and, optionally, the `set_live_branch` input set to
-   `beta` or `default`.
-2. If `set_live_branch` is left empty, the build is staged in Steamworks but no
-   branch is made live — use this for a dry run or when manual sign-off is
-   required before going live.
+   target release tag. The `set_live_branch` input defaults to `beta` — the
+   correct choice for a Stage 3 private beta upload.
+2. Leave `set_live_branch` empty to stage the build without making any branch
+   live — use this for a dry run or when manual sign-off is required first.
 3. For `default` (public release): the Stage 4 gate in
    [`docs/steam-mvp-scope.md`](../docs/steam-mvp-scope.md) must be fully passed
    before this branch is set live.
+
+### Private beta verification procedure
+
+After the deploy workflow completes with `set_live_branch = beta`, verify the
+deployment before distributing Steam keys to testers.
+
+**Step 1 — Confirm the build is staged**
+
+Open the Steamworks partner portal → **App Admin → Builds**.
+
+- The new build appears in the build list with the correct description.
+- The build row shows three depot file counts (one per platform).
+- The `beta` column shows `SET LIVE` next to the new build.
+
+**Step 2 — Verify build version**
+
+Click the build row → **View Manifest**. Confirm the version field matches the
+GitHub release tag (e.g. `0.1.0` for tag `v0.1.0`).
+
+**Step 3 — Confirm Stage 3 gate criteria**
+
+Before sharing keys with testers, all Stage 3 gate criteria in
+[`docs/steam-mvp-scope.md`](../docs/steam-mvp-scope.md) must be satisfied:
+
+| Gate ID | Check |
+|---------|-------|
+| G3-01 | macOS `.app` is notarised; Windows installer is Authenticode-signed |
+| G3-02 | Depot audit passed in CI — no model-weight files in any depot |
+| G3-04 | All release-blocking risks in `STEAM_COMPLIANCE_AND_RISK_REGISTER.md` are MITIGATED, ACCEPTED, or DEFERRED |
+| G3-05 | All SR-01 through SR-08 compliance checklist items are signed off |
+
+**Step 4 — Generate beta tester keys**
+
+Steamworks → **Packages → [Free package] → Generate Steam Product Codes**.
+Request one key batch per named tester group. Share keys only with named testers
+— do not post them publicly.
+
+**Step 5 — Beta session verification (G3-06)**
+
+At least five testers (at least one on each of Windows, macOS, and Linux) must:
+
+1. Activate the key and install via the Steam client.
+2. Launch the app from the Steam Play button.
+3. Complete a full text session and view the debrief screen.
+4. Confirm the Steam overlay (Shift+Tab) opens without disrupting the session (G3-03).
+5. Report any session-ending bugs, data-loss bugs, or privacy regressions.
+
+Record tester sign-offs and platform coverage in [`docs/release-checklist.md`](../docs/release-checklist.md).
+
+**Step 6 — Promote to `default` only after Stage 4 gate**
+
+Do not trigger the deploy workflow with `set_live_branch = default` until the
+full Stage 4 gate passes, including Valve review approval (G4-01) and Steam Deck
+Verified tier (G4-02). See [`docs/steam-mvp-scope.md`](../docs/steam-mvp-scope.md).
 
 ---
 
