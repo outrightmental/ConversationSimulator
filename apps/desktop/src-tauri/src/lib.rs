@@ -292,6 +292,16 @@ fn launch_or_verify_core(
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit());
 
+        // Pass the OS-native app data directory as CONVSIM_DATA_ROOT so the
+        // Python backend uses the same platform-specific location that Tauri
+        // considers the app's home for user data (rather than the legacy
+        // ~/.convsim dev location). convsim_core.paths.platform_data_root()
+        // reads this env var and falls back to OS conventions when it is absent
+        // (e.g. in dev mode without Tauri).
+        if let Ok(data_dir) = app.path().app_data_dir() {
+            cmd.env("CONVSIM_DATA_ROOT", &data_dir);
+        }
+
         // Tell convsim-core where the bundled sidecar binaries live so it can
         // start llama-server, whisper-cli, and sherpa-onnx-offline-tts without
         // requiring a system PATH entry (Steam build convention).
