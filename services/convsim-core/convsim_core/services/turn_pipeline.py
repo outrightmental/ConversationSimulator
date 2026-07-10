@@ -14,6 +14,8 @@ Processing steps (SPEC §6):
 """
 from __future__ import annotations
 
+import asyncio
+import concurrent.futures
 import json
 import logging
 import sqlite3
@@ -28,11 +30,13 @@ from convsim_prompt import (
     SafetyPolicy,
     SessionState as PromptSessionState,
     TranscriptEntry,
+    TurnEvent,
     compose_turn_prompt,
     parse_turn_output,
 )
 from convsim_prompt.types import ScenarioData
 
+from convsim_core.input_router import SafetyPolicyConfig
 from convsim_core.runtime.base import ChatRuntime
 from convsim_core.runtime.types import ChatFinal, ChatMessage, ChatRequest, ChatToken
 from convsim_core.scenario_state import (
@@ -64,6 +68,60 @@ _DEFAULT_SAFETY_POLICY = SafetyPolicy(
         "illegal": "That's not something I can discuss. Let me steer us back on track.",
     },
 )
+
+
+def _safety_policy_config_to_prompt_policy(config: SafetyPolicyConfig) -> SafetyPolicy:
+    """Convert a SafetyPolicyConfig (input-router) to SafetyPolicy (prompt-composer).
+
+    The prompt-composer SafetyPolicy.prohibited list is shown to the LLM as NPC
+    behavior constraints in the SAFETY_POLICY layer.  Category names from
+    SafetyPolicyConfig are used directly — they are descriptive enough for the model.
+    """
+    prohibited = list(config.categories.keys())
+    redirects: Dict[str, str] = dict(config.per_category_messages)
+    if config.global_redirect_message and "default" not in redirects:
+        redirects["default"] = config.global_redirect_message
+    return SafetyPolicy(
+        policy_id=config.policy_id,
+        content_rating=config.content_rating,
+        prohibited=prohibited,
+        redirects=redirects,
+    )
+
+
+class _SyncRuntimeBridge:
+    """Synchronous RuntimeProtocol bridge over ChatRuntime for repair calls.
+
+    parse_turn_output expects a synchronous RuntimeProtocol.call_llm() to request
+    structural-repair or content-safety-retry responses from the model.  ChatRuntime
+    exposes only an async chat_stream() interface, so this bridge runs each repair
+    call in a dedicated thread with its own event loop, isolating it from the
+    caller's running asyncio loop.
+
+    If the runtime is event-loop-bound (e.g. uses a per-loop aiohttp session) the
+    call will raise from the foreign loop — that exception propagates to
+    parse_turn_output's except clause, which logs it and falls back gracefully.
+    """
+
+    def __init__(self, runtime: ChatRuntime) -> None:
+        self._runtime = runtime
+
+    def call_llm(self, prompt: str) -> str:
+        async def _call() -> str:
+            request = ChatRequest(
+                messages=[ChatMessage(role="user", content=prompt)],
+            )
+            return await _collect_runtime_output(self._runtime, request)
+
+        pool = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        try:
+            return pool.submit(asyncio.run, _call()).result(timeout=60)
+        finally:
+            # Never wait on a hung repair call — the 60s timeout above must be
+            # the real ceiling. A context manager would call shutdown(wait=True)
+            # on exit and block indefinitely if the runtime never returns, so we
+            # shut down without waiting and let a stuck thread die on its own.
+            pool.shutdown(wait=False)
 
 
 class TurnInputError(ValueError):
@@ -144,6 +202,7 @@ async def process_turn(
     *,
     save_transcript: bool = True,
     source_mode: str = "text-only",
+    safety_policy_config: Optional[SafetyPolicyConfig] = None,
 ) -> TurnPipelineResult:
     """Execute the full player-turn pipeline and persist results.
 
@@ -182,13 +241,18 @@ async def process_turn(
     recent_transcript = _load_recent_turns(session_id, conn)
 
     # 5. Build prompt.
+    prompt_safety_policy = (
+        _safety_policy_config_to_prompt_policy(safety_policy_config)
+        if safety_policy_config is not None
+        else _DEFAULT_SAFETY_POLICY
+    )
     prompt = compose_turn_prompt(PromptComposerInput(
         scenario=scenario_data,
         session_state=PromptSessionState(
             variables=state_vars,
             turn_number=turn_number,
         ),
-        safety_policy=_DEFAULT_SAFETY_POLICY,
+        safety_policy=prompt_safety_policy,
         player_utterance=normalized,
         recent_transcript=recent_transcript,
     ))
@@ -203,13 +267,22 @@ async def process_turn(
         json_schema=NPC_TURN_OUTPUT_SCHEMA,
     )
     logger.debug(
-        "Calling runtime %s for session %s turn %d (estimated %d tokens)",
-        runtime.id, session_id, turn_number, prompt.estimated_token_count,
+        "Calling runtime %s for session %s turn %d (estimated %d tokens, truncated=%s)",
+        runtime.id, session_id, turn_number, prompt.estimated_token_count, prompt.was_truncated,
     )
     raw_text = await _collect_runtime_output(runtime, request)
 
     # 7. Validate / repair / fallback.
-    turn_output = parse_turn_output(raw_text)
+    # Wrap the runtime so parse_turn_output can make synchronous repair calls.
+    # Hidden agenda is forwarded for verbatim-leak detection in the output validator.
+    runtime_bridge = _SyncRuntimeBridge(runtime)
+    turn_parse_events: List[TurnEvent] = []
+    turn_output = parse_turn_output(
+        raw_text,
+        runtime=runtime_bridge,
+        hidden_agenda=scenario_data.npc.private_persona.hidden_agenda,
+        turn_events=turn_parse_events,
+    )
     used_fallback = (turn_output.npc_utterance == SAFE_FALLBACK_UTTERANCE)
     if used_fallback:
         logger.warning("Turn output fell back to safe utterance for session %s turn %d", session_id, turn_number)
@@ -254,6 +327,15 @@ async def process_turn(
     now = datetime.now(timezone.utc).isoformat()
     player_turn_number = turn_number * 2 - 1
     npc_turn_number = turn_number * 2
+
+    # Prompt metadata stored for debugging. Only non-private fields are kept:
+    # token count, truncation flag, and which layers were present. The raw
+    # prompt text and NPC private persona content are never written to the log.
+    prompt_metadata_payload = json.dumps({
+        "estimated_token_count": prompt.estimated_token_count,
+        "was_truncated": prompt.was_truncated,
+        "layers_present": list(prompt.layer_map.keys()),
+    })
 
     with conn:
         player_cursor = conn.execute(
@@ -321,8 +403,29 @@ async def process_turn(
                 now,
             ))
         events_to_insert.append((
+            session_id, turn_number, "prompt_metadata", prompt_metadata_payload, now,
+        ))
+        events_to_insert.append((
             session_id, turn_number, "debug",
-            json.dumps({"used_fallback": used_fallback}), now,
+            json.dumps({
+                "used_fallback": used_fallback,
+                "parse_events": [
+                    {
+                        "event_type": e.event_type,
+                        "category": e.category,
+                        # A hidden_agenda_leak reason embeds verbatim keywords
+                        # copied from the NPC's private hidden agenda. Redact it
+                        # so private content is never written to the debug log
+                        # (issue #199: no hidden/private content in logs by
+                        # default). event_type + category still identify the leak.
+                        "reason": (
+                            None if e.category == "hidden_agenda_leak" else e.reason
+                        ),
+                        "is_recoverable": e.is_recoverable,
+                    }
+                    for e in turn_parse_events
+                ],
+            }), now,
         ))
         conn.executemany(
             "INSERT INTO turn_session_events "
