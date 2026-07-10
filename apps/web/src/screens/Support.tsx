@@ -8,6 +8,8 @@ const ISSUES_URL = 'https://github.com/outrightmental/ConversationSimulator/issu
 const TEMPLATE_BASE = 'https://github.com/outrightmental/ConversationSimulator/issues/new?template='
 const BETA_REPORT_TEMPLATE_URL =
   'https://github.com/outrightmental/ConversationSimulator/issues/new?template=beta-report.yml&labels=beta-feedback'
+const BETA_GUIDE_URL =
+  'https://github.com/outrightmental/ConversationSimulator/blob/main/docs/beta-testing.md'
 
 const ISSUE_TEMPLATES = [
   { key: 'bug_report', label: 'Bug report', template: 'bug_report.yml' },
@@ -131,6 +133,19 @@ export default function Support() {
         <p style={{ fontSize: '0.875rem', color: '#a1a1aa', marginBottom: '0.75rem' }}>
           Assemble a diagnostics bundle, review its contents, and open a pre-filled GitHub
           issue — all in under a minute. Nothing leaves this device until you explicitly send it.
+        </p>
+        <p style={{ fontSize: '0.8rem', color: '#a1a1aa', marginBottom: '0.75rem' }}>
+          New to the beta? Read the{' '}
+          <a
+            href={BETA_GUIDE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid="beta-guide-link"
+            style={{ color: '#a5b4fc' }}
+          >
+            beta testing guide →
+          </a>{' '}
+          for how to join, what to report, and what a good report looks like.
         </p>
 
         {betaStep === 'idle' && (

@@ -89,8 +89,9 @@ async def post_beta_report(
     config = request.app.state.service_config
     settings = request.app.state.app_settings
 
-    # Build a safe preflight snapshot from the health state already in memory.
-    # We read from app.state directly (no HTTP call) to keep this path offline.
+    # Build a safe preflight snapshot from the in-process health checkers.
+    # These probe the local sidecars over loopback only (e.g. llama-server on
+    # 127.0.0.1); no request ever leaves the machine, keeping this path offline.
     runtime_health = await request.app.state.runtime.health()
     stt_health = await request.app.state.stt_worker.health()
     tts_health = await request.app.state.tts_worker.health()

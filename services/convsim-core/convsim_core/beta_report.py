@@ -29,7 +29,6 @@ from typing import Any
 from convsim_core import __version__
 from convsim_core.crash_report import _safe_settings, _tail_log, _MAX_LOG_TAIL_LINES
 from convsim_core.models import AppSettings
-from convsim_core.redaction import redact_path
 
 _BUNDLE_README = """\
 BETA REPORT BUNDLE — ConversationSimulator
