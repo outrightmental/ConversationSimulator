@@ -86,6 +86,7 @@ function renderWizard() {
         <Route path="/first-run" element={<FirstRunWizard />} />
         <Route path="/" element={<div data-testid="home-page" />} />
         <Route path="/library" element={<div data-testid="library-page" />} />
+        <Route path="/play/*" element={<div data-testid="play-page" />} />
       </Routes>
     </MemoryRouter>,
   )
@@ -973,6 +974,203 @@ describe('FirstRunWizard — text-only demo path', () => {
     await goToDemo()
     fireEvent.click(screen.getByRole('button', { name: /i understand/i }))
     await waitFor(() => expect(screen.getByTestId('library-page')).toBeInTheDocument())
+  })
+})
+
+// ── Tutorial CTA on installing step ──────────────────────────────────────────
+
+describe('FirstRunWizard — tutorial CTA during install', () => {
+  async function goToInstalling() {
+    renderWizard()
+    fireEvent.click(screen.getByRole('button', { name: /get started/i }))
+    await screen.findByRole('button', { name: /install qwen3/i })
+    fireEvent.click(screen.getByRole('button', { name: /install qwen3/i }))
+    await screen.findByRole('button', { name: /confirm & install/i })
+    fireEvent.click(screen.getByRole('button', { name: /confirm & install/i }))
+    await screen.findByRole('heading', { name: /installing model/i })
+  }
+
+  it('shows the play tutorial note while downloading', async () => {
+    await goToInstalling()
+    expect(
+      screen.getByRole('note', { name: /play tutorial while downloading/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('shows the Play the tutorial while you wait button', async () => {
+    await goToInstalling()
+    expect(
+      screen.getByRole('button', { name: /play the tutorial while you wait/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('still shows the download progress bar alongside the tutorial CTA', async () => {
+    await goToInstalling()
+    expect(screen.getByRole('progressbar', { name: /download progress/i })).toBeInTheDocument()
+  })
+
+  it('still shows the Cancel and go home button alongside the tutorial CTA', async () => {
+    await goToInstalling()
+    expect(screen.getByRole('button', { name: /cancel and go home/i })).toBeInTheDocument()
+  })
+
+  it('advances to the tutorial-prompt step when the CTA is clicked', async () => {
+    await goToInstalling()
+    fireEvent.click(screen.getByRole('button', { name: /play the tutorial while you wait/i }))
+    await screen.findByRole('heading', { name: /first words tutorial/i })
+  })
+})
+
+// ── Tutorial prompt step ──────────────────────────────────────────────────────
+
+describe('FirstRunWizard — tutorial prompt step', () => {
+  async function goToTutorialPrompt() {
+    renderWizard()
+    fireEvent.click(screen.getByRole('button', { name: /get started/i }))
+    await screen.findByRole('button', { name: /install qwen3/i })
+    fireEvent.click(screen.getByRole('button', { name: /install qwen3/i }))
+    await screen.findByRole('button', { name: /confirm & install/i })
+    fireEvent.click(screen.getByRole('button', { name: /confirm & install/i }))
+    await screen.findByRole('heading', { name: /installing model/i })
+    fireEvent.click(screen.getByRole('button', { name: /play the tutorial while you wait/i }))
+    await screen.findByRole('heading', { name: /first words tutorial/i })
+  }
+
+  it('shows the scripted tutorial disclaimer', async () => {
+    await goToTutorialPrompt()
+    expect(
+      screen.getByRole('note', { name: /scripted tutorial disclaimer/i }),
+    ).toBeInTheDocument()
+  })
+
+  it('labels the tutorial as scripted and not AI-generated', async () => {
+    await goToTutorialPrompt()
+    expect(screen.getByText(/scripted tutorial — not ai-generated/i)).toBeInTheDocument()
+  })
+
+  it('lists what the player will learn', async () => {
+    await goToTutorialPrompt()
+    expect(screen.getByText(/state meters/i)).toBeInTheDocument()
+    expect(screen.getByText(/scenario events/i)).toBeInTheDocument()
+  })
+
+  it('shows a Start the tutorial button', async () => {
+    await goToTutorialPrompt()
+    expect(screen.getByRole('button', { name: /start the tutorial/i })).toBeInTheDocument()
+  })
+
+  it('shows a Back button to return to the installing step', async () => {
+    await goToTutorialPrompt()
+    expect(screen.getByRole('button', { name: /back/i })).toBeInTheDocument()
+  })
+
+  it('back button returns to the installing step', async () => {
+    await goToTutorialPrompt()
+    fireEvent.click(screen.getByRole('button', { name: /back/i }))
+    await screen.findByRole('heading', { name: /installing model/i })
+  })
+
+  it('calls useModel with scripted runtime when Start the tutorial is clicked', async () => {
+    mockApi.useModel.mockResolvedValue({ ok: true, data: {
+      runtime_id: 'scripted',
+      model_id: null,
+      runtime_name: 'Scripted tutorial',
+      status: 'ready',
+      message: null,
+    } })
+    await goToTutorialPrompt()
+    fireEvent.click(screen.getByRole('button', { name: /start the tutorial/i }))
+    await waitFor(() =>
+      expect(mockApi.useModel).toHaveBeenCalledWith({ runtime_id: 'scripted', model_id: null }),
+    )
+  })
+
+  it('marks tutorial complete in localStorage when starting the tutorial', async () => {
+    await goToTutorialPrompt()
+    fireEvent.click(screen.getByRole('button', { name: /start the tutorial/i }))
+    await waitFor(() =>
+      expect(localStorage.getItem(SETUP_KEYS.tutorialComplete)).toBe('true'),
+    )
+  })
+
+  it('marks first-run complete in localStorage when starting the tutorial', async () => {
+    await goToTutorialPrompt()
+    fireEvent.click(screen.getByRole('button', { name: /start the tutorial/i }))
+    await waitFor(() =>
+      expect(localStorage.getItem(SETUP_KEYS.firstRunComplete)).toBe('true'),
+    )
+  })
+
+  it('proceeds even when useModel fails for the scripted runtime', async () => {
+    mockApi.useModel.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'scripted unavailable' } })
+    await goToTutorialPrompt()
+    fireEvent.click(screen.getByRole('button', { name: /start the tutorial/i }))
+    await waitFor(() =>
+      expect(localStorage.getItem(SETUP_KEYS.tutorialComplete)).toBe('true'),
+    )
+  })
+})
+
+// ── Tutorial completion affects post-install navigation ───────────────────────
+
+describe('FirstRunWizard — post-install navigation with tutorial completed', () => {
+  async function goToInstalling() {
+    renderWizard()
+    fireEvent.click(screen.getByRole('button', { name: /get started/i }))
+    await screen.findByRole('button', { name: /install qwen3/i })
+    fireEvent.click(screen.getByRole('button', { name: /install qwen3/i }))
+    await screen.findByRole('button', { name: /confirm & install/i })
+    fireEvent.click(screen.getByRole('button', { name: /confirm & install/i }))
+    await screen.findByRole('heading', { name: /installing model/i })
+  }
+
+  it('navigates to /library (not home) when install completes and tutorial was completed', async () => {
+    localStorage.setItem(SETUP_KEYS.tutorialComplete, 'true')
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      await goToInstalling()
+      mockApi.getInstallStatus.mockResolvedValue({ ok: true, data: {
+        id: 1,
+        registry_id: 'qwen3-4b-instruct-q4_k_m',
+        filename: 'qwen3-4b-instruct-q4_k_m.gguf',
+        file_path: '/home/user/.convsim/models/llm/qwen3-4b-instruct-q4_k_m.gguf',
+        size_bytes: 2_000_000_000,
+        install_status: 'ready',
+        progress_bytes: 2_000_000_000,
+        error_message: null,
+        verified_sha256: 'a'.repeat(64),
+        installed_at: '2026-01-01T00:00:00Z',
+      } })
+      await vi.advanceTimersByTimeAsync(2000)
+
+      await waitFor(() => expect(screen.getByTestId('library-page')).toBeInTheDocument())
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('navigates to / (home) when install completes and tutorial was NOT completed', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      await goToInstalling()
+      mockApi.getInstallStatus.mockResolvedValue({ ok: true, data: {
+        id: 1,
+        registry_id: 'qwen3-4b-instruct-q4_k_m',
+        filename: 'qwen3-4b-instruct-q4_k_m.gguf',
+        file_path: '/home/user/.convsim/models/llm/qwen3-4b-instruct-q4_k_m.gguf',
+        size_bytes: 2_000_000_000,
+        install_status: 'ready',
+        progress_bytes: 2_000_000_000,
+        error_message: null,
+        verified_sha256: 'a'.repeat(64),
+        installed_at: '2026-01-01T00:00:00Z',
+      } })
+      await vi.advanceTimersByTimeAsync(2000)
+
+      await waitFor(() => expect(screen.getByTestId('home-page')).toBeInTheDocument())
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 
