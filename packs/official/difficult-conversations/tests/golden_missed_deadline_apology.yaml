@@ -1,0 +1,147 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: golden_missed_deadline_apology
+scenario_id: missed_deadline_apology
+description: >-
+  Golden transcript property test: verifies that a player who takes clear,
+  specific ownership first, acknowledges the concrete downstream impact on
+  Priya and the client, provides a named and credible remedy, and stays
+  regulated through Priya's continued disappointment causes repair_confidence
+  to exceed the success threshold. Also verifies that trust_recovery fires
+  when real ownership is received and resolution_signal fires when the
+  conversation is ready to close.
+
+seed: 42
+input_mode: text
+difficulty: normal
+
+turns:
+  - turn: 1
+    player_input: >-
+      I missed the deadline, and that is on me. I saw the scope expanding on
+      Wednesday and I told myself I could still make it work without flagging
+      it. I was wrong about that. I should have come to you by Thursday at
+      the latest and asked for help prioritising. I did not, and the client
+      delivery slipped because of that call.
+    expect:
+      state_delta_contains:
+        - trust
+        - clarity
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 2
+    player_input: >-
+      I know this put you in a specific position — you had to go to Vikram
+      and explain something that should not have needed explaining, and that
+      is a cost I put on you by not flagging early. I do not want to minimise
+      that. The client delay is one thing; having to absorb the upward
+      conversation is another, and I understand that was not fair to you.
+    expect:
+      state_delta_contains:
+        - trust
+        - repair_confidence
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 3
+    player_input: >-
+      What I am putting in place starting now: any time I see scope shift
+      mid-sprint that looks like it could affect a deadline, I flag it to you
+      within twenty-four hours and give you a revised estimate — not a
+      reassurance. If I cannot hit the target with the available scope, I
+      surface that before it becomes a miss, not after. That is a specific
+      change I can hold myself to, and you can hold me to it.
+    expect:
+      state_delta_contains:
+        - repair_confidence
+        - clarity
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 4
+    player_input: >-
+      I do not have anything else to add. I think what happened is clear,
+      I think what I am changing is clear, and I am glad we talked about it
+      directly rather than letting it sit. Is there anything else you need
+      from me right now, or anything specific you want me to do with the
+      client relationship from here?
+    expect:
+      state_delta_contains:
+        - repair_confidence
+        - trust
+      session_control: continue_session
+      safety_status: ok
+
+static_assertions:
+  - description: Scenario opening line is non-empty
+    path: opening.npc_says
+    check: non_empty_string
+
+  - description: At least one event is defined
+    path: events
+    check: min_length_1
+
+  - description: excuse_detection fires when pressure exceeds 75
+    path: events[id=excuse_detection].when
+    check: "type=variable_above AND variable=pressure AND threshold=75"
+
+  - description: excuse_detection can repeat
+    path: events[id=excuse_detection].repeat
+    check: "equals true"
+
+  - description: trust_recovery fires once when trust exceeds 70
+    path: events[id=trust_recovery].when
+    check: "type=variable_above AND variable=trust AND threshold=70"
+
+  - description: trust_recovery fires only once
+    path: events[id=trust_recovery].repeat
+    check: "equals false"
+
+  - description: resolution_signal fires when repair_confidence exceeds 70
+    path: events[id=resolution_signal].when
+    check: "type=variable_above AND variable=repair_confidence AND threshold=70"
+
+  - description: resolution_signal fires only once
+    path: events[id=resolution_signal].repeat
+    check: "equals false"
+
+  - description: Success ending condition targets repair_confidence
+    path: ending_conditions.success
+    check: "type=variable_above AND variable=repair_confidence AND threshold=65"
+
+  - description: Failure ending condition targets trust below 15
+    path: ending_conditions.failure
+    check: "type=variable_below AND variable=trust AND threshold=15"
+
+  - description: trust is player-visible
+    path: state.variables.trust.visibility
+    check: "equals visible"
+
+  - description: pressure is hidden from player
+    path: state.variables.pressure.visibility
+    check: "equals hidden"
+
+  - description: repair_confidence is hidden from player
+    path: state.variables.repair_confidence.visibility
+    check: "equals hidden"
+
+  - description: NPC is marked fictional
+    path: npc.fictional
+    check: "equals true"
+
+  - description: Safety policy stops nsfw_sexual_content
+    path: safety.content_categories.nsfw_sexual_content
+    check: "equals stop"
+
+  - description: Safety policy fires stop_with_resource_message for self_harm_crisis
+    path: safety.content_categories.self_harm_crisis
+    check: "equals stop_with_resource_message"
+
+  - description: Pack manifest declares missed_deadline_apology as an entry scenario
+    path: manifest.entry_scenarios
+    check: "contains scenarios/missed_deadline_apology.yaml"
+
+  - description: Hard difficulty applies a negative patience modifier
+    path: scenario.difficulty.options.hard.npc_patience_modifier
+    check: "equals -25"

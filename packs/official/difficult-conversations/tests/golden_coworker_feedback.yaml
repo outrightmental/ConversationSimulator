@@ -1,0 +1,151 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: golden_coworker_feedback
+scenario_id: coworker_feedback
+description: >-
+  Golden transcript property test: verifies that a player who opens by
+  acknowledging Marcus's strengths, gives specific behavioural feedback,
+  asks about his experience before pressing for change, and proposes a
+  concrete collaborative next step causes resolution_progress to exceed
+  the success threshold. Also verifies that trust_breakthrough fires when
+  Marcus feels safe and that resolution_near fires when the resolution is
+  close.
+
+seed: 42
+input_mode: text
+difficulty: normal
+
+turns:
+  - turn: 1
+    player_input: >-
+      Hey, thanks for grabbing coffee with me. I want to start by saying —
+      your technical work has been solid. The auth refactor you shipped last
+      month was clean and the team noticed. That is not nothing. But there is
+      something that has been affecting me directly, and I wanted to come to
+      you before it got bigger. In the last three sprints, your handoff tasks
+      have come in late — a day, sometimes two — and I have been covering that
+      gap without us actually talking about it. I do not want to keep doing
+      that without saying something to you first.
+    expect:
+      state_delta_contains:
+        - trust
+        - defensiveness
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 2
+    player_input: >-
+      I hear you — I know it has been a rough quarter for everyone. I am not
+      trying to say you are the only person under pressure. What I am saying
+      is that from where I sit, the pattern has been consistent enough that
+      it is affecting my own deadlines. I am not here to assign blame; I wanted
+      to name it because I think we can actually fix it together. I would rather
+      do that than keep silently absorbing it.
+    expect:
+      state_delta_contains:
+        - trust
+        - clarity
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 3
+    player_input: >-
+      Actually, before I say anything else — what has it been like for you
+      this quarter? I have been on the receiving end of the delays and I have
+      been thinking about what to say to you, but I have not really stopped
+      to ask what is actually going on. Is there something happening that I
+      do not know about?
+    expect:
+      state_delta_contains:
+        - trust
+        - defensiveness
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 4
+    player_input: >-
+      That makes a lot of sense. I did not know about the situation at home
+      and I am glad you told me. Here is what I am thinking — what if we do
+      a quick sync at the start of each sprint, just the two of us, fifteen
+      minutes? That way if something is slipping, we catch it before it
+      becomes a handoff miss rather than after. Would that actually work for
+      you, or is there a better version of that from your side?
+    expect:
+      state_delta_contains:
+        - resolution_progress
+        - trust
+      session_control: continue_session
+      safety_status: ok
+
+static_assertions:
+  - description: Scenario opening line is non-empty
+    path: opening.npc_says
+    check: non_empty_string
+
+  - description: At least one event is defined
+    path: events
+    check: min_length_1
+
+  - description: deflection_redirect fires when defensiveness exceeds 75
+    path: events[id=deflection_redirect].when
+    check: "type=variable_above AND variable=defensiveness AND threshold=75"
+
+  - description: deflection_redirect can repeat
+    path: events[id=deflection_redirect].repeat
+    check: "equals true"
+
+  - description: trust_breakthrough fires once when trust exceeds 65
+    path: events[id=trust_breakthrough].when
+    check: "type=variable_above AND variable=trust AND threshold=65"
+
+  - description: trust_breakthrough fires only once
+    path: events[id=trust_breakthrough].repeat
+    check: "equals false"
+
+  - description: resolution_near fires when resolution_progress exceeds 70
+    path: events[id=resolution_near].when
+    check: "type=variable_above AND variable=resolution_progress AND threshold=70"
+
+  - description: resolution_near fires only once
+    path: events[id=resolution_near].repeat
+    check: "equals false"
+
+  - description: Success ending condition targets resolution_progress
+    path: ending_conditions.success
+    check: "type=variable_above AND variable=resolution_progress AND threshold=65"
+
+  - description: Failure ending condition triggers on high defensiveness
+    path: ending_conditions.failure
+    check: "type=variable_above AND variable=defensiveness AND threshold=90"
+
+  - description: trust is player-visible
+    path: state.variables.trust.visibility
+    check: "equals visible"
+
+  - description: defensiveness is hidden from player
+    path: state.variables.defensiveness.visibility
+    check: "equals hidden"
+
+  - description: resolution_progress is hidden from player
+    path: state.variables.resolution_progress.visibility
+    check: "equals hidden"
+
+  - description: NPC is marked fictional
+    path: npc.fictional
+    check: "equals true"
+
+  - description: Safety policy stops nsfw_sexual_content
+    path: safety.content_categories.nsfw_sexual_content
+    check: "equals stop"
+
+  - description: Safety policy fires stop_with_resource_message for self_harm_crisis
+    path: safety.content_categories.self_harm_crisis
+    check: "equals stop_with_resource_message"
+
+  - description: Pack manifest declares coworker_feedback as an entry scenario
+    path: manifest.entry_scenarios
+    check: "contains scenarios/coworker_feedback.yaml"
+
+  - description: Hard difficulty applies a negative patience modifier
+    path: scenario.difficulty.options.hard.npc_patience_modifier
+    check: "equals -20"
