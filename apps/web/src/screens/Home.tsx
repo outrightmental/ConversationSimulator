@@ -74,7 +74,7 @@ export default function Home() {
       <p>{t('home.tagline')}</p>
 
       <nav
-        aria-label="Primary actions"
+        aria-label={t('home.primaryActions')}
         style={{ marginTop: '2rem', display: 'flex', flexDirection: 'column', gap: '0.75rem', maxWidth: '20rem' }}
       >
         <Link to="/library">{t('home.startScenario')}</Link>
@@ -306,7 +306,7 @@ export default function Home() {
 
       {showMissingPack && (
         <section
-          aria-label="No scenario packs installed"
+          aria-label={t('home.missingPack.title')}
           role="status"
           style={{
             marginTop: '2rem',
