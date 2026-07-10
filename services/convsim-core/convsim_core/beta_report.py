@@ -47,6 +47,7 @@ only the system and diagnostic information described here.
 Contents
 --------
   versions.json          — App, Python, and OS version strings
+  system.txt             — OS name, release, architecture, Python implementation
   config.json            — Settings with home-directory paths replaced by ~
   preflight.json         — Runtime, STT, and TTS health snapshot (no user data)
   recent_errors.txt      — Last lines of app.log (no conversation content)
