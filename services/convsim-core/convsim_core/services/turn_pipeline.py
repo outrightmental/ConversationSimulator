@@ -362,6 +362,13 @@ async def process_turn(
     Raises TurnInputError if the player text fails validation.
     Never raises for model errors — uses safe fallback instead.
     """
+    # Capture the moment the player's turn arrived, before any LLM work. The
+    # player turn is persisted with this timestamp while the NPC turn is stamped
+    # after inference completes, so their gap reflects real response latency
+    # (see compute_metrics). If both were stamped at persist time the latency
+    # would always be zero.
+    received_at = datetime.now(timezone.utc).isoformat()
+
     # 1. Normalize and validate input.
     normalized = _normalize_text(player_text)
     if not normalized:
@@ -515,7 +522,7 @@ async def process_turn(
             "INSERT INTO turn_session_turns "
             "(session_id, turn_number, role, content, source_mode, flow_state_after, created_at) "
             "VALUES (?, ?, 'player', ?, ?, ?, ?)",
-            (session_id, player_turn_number, normalized, source_mode, new_flow_state, now),
+            (session_id, player_turn_number, normalized, source_mode, new_flow_state, received_at),
         )
         npc_cursor = conn.execute(
             "INSERT INTO turn_session_turns "
