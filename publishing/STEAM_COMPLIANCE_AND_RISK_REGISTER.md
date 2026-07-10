@@ -132,7 +132,7 @@
 | **Area** | Privacy / Platform |
 | **Risk** | A model download is triggered by app startup, an installer script, or a background update check without the player's explicit consent, consuming bandwidth and disk space without warning. |
 | **Owner** | Platform team |
-| **Mitigation** | The model manager requires explicit player confirmation before any download. Model name, source, license, size, SHA-256 checksum, and destination path must all be displayed before the Download button activates. Silent downloads are explicitly prohibited — see `docs/STEAM_ROADMAP.md` — Model download transparency. |
+| **Mitigation** | The model manager requires explicit player confirmation before any download. Model name, source, license, size, SHA-256 checksum, and destination path must all be displayed before the Download button activates. Silent downloads are explicitly prohibited — see `docs/model-download-policy.md` — Download rules and `docs/STEAM_ROADMAP.md` — Model download transparency. |
 | **Release-blocking** | YES |
 | **Status** | MITIGATED |
 
@@ -143,7 +143,7 @@
 | **Area** | Safety / Privacy |
 | **Risk** | A failed or interrupted download leaves a partial model file at `~/.convsim/models/` that passes a future checksum check (collision or truncation) and causes unpredictable inference behaviour. |
 | **Owner** | Platform team |
-| **Mitigation** | After transfer, the model manager computes SHA-256 locally and compares against the model registry. On mismatch, the partial file is deleted and an error is shown. The model registry (`model-registry/`) is the authoritative checksum source. No new model entry may be merged without a verified checksum. |
+| **Mitigation** | After transfer, the model manager computes SHA-256 locally and compares against the model registry. On mismatch, the partial file is deleted and an error is shown. The model registry (`model-registry/`) is the authoritative checksum source. No new model entry may be merged without a verified checksum. See `docs/model-download-policy.md` — Checksum policy and retry/resume behaviour for the full specification. |
 | **Release-blocking** | YES |
 | **Status** | MITIGATED |
 
@@ -154,7 +154,7 @@
 | **Area** | Licensing |
 | **Risk** | A player downloads a model under a non-commercial or attribution-required license (e.g. Llama Community License) without being shown the license terms, creating a compliance gap. |
 | **Owner** | Platform team / Content team |
-| **Mitigation** | The download confirmation panel must display the model license (Apache 2.0, Llama Community License, etc.) and a link to the full license text before the player confirms. This is a mandatory field in the model registry schema (`schemas/model-registry.schema.json`). |
+| **Mitigation** | The download confirmation panel must display all six mandatory disclosure fields (model name, source URL, license with link to full text, download size, SHA-256 checksum, destination path) before the player confirms. The `license` and `license_url` fields are required in the model registry schema (`schemas/model-registry.schema.json`). The full disclosure specification is in `docs/model-download-policy.md` — Licence disclosure. |
 | **Release-blocking** | YES |
 | **Status** | OPEN |
 
@@ -165,9 +165,9 @@
 | **Area** | Licensing / Distribution |
 | **Risk** | A CI or packaging step accidentally bundles model weight files in the Steam depot, violating model license terms that prohibit redistribution via third-party storefronts or adding gigabytes of weight to the installer. |
 | **Owner** | Platform team |
-| **Mitigation** | The Steam depot configuration must exclude `model-registry/*.gguf`, `~/.convsim/models/`, and any weight file patterns. A depot content audit step must be added to the release checklist (see SR-08 below). |
+| **Mitigation** | Enforced at three layers: (1) SteamPipe `FileExclusion` patterns in all three platform depot VDFs (`steam/depot_*.vdf.tpl`) exclude `*.gguf`, `*.bin`, `*.safetensors`, `*.pt`, `*.pth`, `*.ckpt`; (2) `scripts/depot-audit.sh` / `depot-audit.ps1` scan for weight files, unapproved binary payloads (large pickle/NumPy/ONNX files), dev artefacts, secrets, and test fixtures — the script exits 1 on any violation; (3) the `steam-deploy.yml` workflow runs `scripts/depot-audit.sh` against each platform's staged `steam-content/` directory before steamcmd is invoked, so CI enforces the same weight and unapproved-binary categories as the manual SR-08 checklist. Depot contents are formally documented in `publishing/STEAM_DEPOT_CONTENTS.md`, which also lists the approved binary payload list. Model download rules (no bundling) are defined in `docs/model-download-policy.md`. |
 | **Release-blocking** | YES |
-| **Status** | OPEN |
+| **Status** | MITIGATED |
 
 ---
 
@@ -399,9 +399,21 @@ gate (Stage 3) or the public release gate (Stage 4).
 
 ### SR-08 — Depot content audit
 
+Run `scripts/depot-audit.sh <depot-dir>` against all three platform depot
+content directories before invoking steamcmd. The script must exit 0 on all
+three platforms. See `publishing/STEAM_DEPOT_CONTENTS.md` for the authoritative
+list of what is allowed and forbidden in each depot.
+
+- [ ] `./scripts/depot-audit.sh steam-content/windows` exits 0 — no violations.
+- [ ] `./scripts/depot-audit.sh steam-content/macos` exits 0 — no violations.
+- [ ] `./scripts/depot-audit.sh steam-content/linux` exits 0 — no violations.
 - [ ] Steam depot manifest reviewed; no files from `~/.convsim/models/` are staged.
-- [ ] Steam depot manifest reviewed; no `.gguf`, `.bin`, or `.safetensors` weight files are included.
-- [ ] Steam depot manifest reviewed; documentation files carrying CC-BY-4.0 attribution requirements are either excluded or accompanied by correct attribution in the credits screen.
+- [ ] Steam depot manifest reviewed; no `.gguf`, `.bin`, `.safetensors`, `.pt`, `.pth`, or `.ckpt` weight files are included.
+- [ ] Steam depot manifest reviewed; no unapproved binary payloads (large pickle, NumPy, or ONNX files; any `models/` subdirectory) are included.
+- [ ] Depot contents match the approved binary payload list in `publishing/STEAM_DEPOT_CONTENTS.md`.
+- [ ] Documentation files carrying CC-BY-4.0 attribution requirements are either excluded from the depot or accompanied by correct attribution in the credits screen.
+- [ ] `LICENSE` and `NOTICE` files are present at the depot root for all three platforms.
+- [ ] `NOTICE` file includes licence entries for all bundled runtimes (Whisper.cpp MIT, sherpa-onnx/Kokoro Apache 2.0, llama.cpp MIT, WebView2 on Windows).
 
 ### SR-09 — Private beta sign-off
 
@@ -441,7 +453,7 @@ team is unblocked.
 | MD-01 | Privacy / Platform | YES | MITIGATED |
 | MD-02 | Safety / Privacy | YES | MITIGATED |
 | MD-03 | Licensing | YES | OPEN |
-| MD-04 | Licensing / Distribution | YES | OPEN |
+| MD-04 | Licensing / Distribution | YES | MITIGATED |
 | CP-01 | Safety | YES | MITIGATED |
 | CP-02 | Privacy / Safety | YES | MITIGATED |
 | CP-03 | Safety / Platform | YES | MITIGATED |
@@ -462,7 +474,10 @@ team is unblocked.
 - [`publishing/STEAM_STORE_PAGE.md`](STEAM_STORE_PAGE.md) — canonical store copy, system requirements, genres/tags, age disclosures, and store review checklist (SR-07 reference)
 - [`publishing/STEAM_ASSETS_SPEC.md`](STEAM_ASSETS_SPEC.md) — capsule art, screenshot, and trailer production briefs
 - [`publishing/STEAM_APP_REGISTRATION.md`](STEAM_APP_REGISTRATION.md) — app identity, depot layout, and CI credentials
+- [`publishing/STEAM_DEPOT_CONTENTS.md`](STEAM_DEPOT_CONTENTS.md) — authoritative depot content specification, approved binary payload list, and audit instructions (SR-08 reference)
 - [`docs/STEAM_ROADMAP.md`](../docs/STEAM_ROADMAP.md) — release train, principles, and model download transparency spec
+- [`docs/model-download-policy.md`](../docs/model-download-policy.md) — model download rules, mirror policy, checksum policy, licence disclosure, retry/resume behaviour (MD-01–MD-04 reference)
+- [`docs/pack-download-policy.md`](../docs/pack-download-policy.md) — pack download and import policy for official, community, and local-dev packs (CP-01–CP-04 reference)
 - [`docs/privacy.md`](../docs/privacy.md) — local-first data handling details
 - [`docs/network-security.md`](../docs/network-security.md) — runtime network enforcement
 - [`docs/safety-policy.md`](../docs/safety-policy.md) — content policy, pack sandboxing, and prohibited categories
@@ -470,3 +485,5 @@ team is unblocked.
 - [`schemas/safety.schema.json`](../schemas/safety.schema.json) — safety policy schema
 - [`schemas/pack.schema.json`](../schemas/pack.schema.json) — pack manifest schema
 - [`model-registry/`](../model-registry/) — authoritative model checksums and license metadata
+- [`scripts/depot-audit.sh`](../scripts/depot-audit.sh) — depot content audit script (Linux / macOS)
+- [`scripts/depot-audit.ps1`](../scripts/depot-audit.ps1) — depot content audit script (Windows PowerShell)
