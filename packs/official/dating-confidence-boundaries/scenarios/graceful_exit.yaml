@@ -39,7 +39,7 @@ goals:
     - "Priya is watching for whether the player can hold their dignity — that is what will determine whether she adds a warm closing line or exits with relief"
     - "The player who accepts quickly and without commentary gives Priya the most room to be warm in return — the faster the acceptance, the warmer her closing"
     - "Trying to negotiate or reframe the ask makes Priya more guarded, not less — she has made her decision and arguing signals the player cannot accept it"
-    - "Excessive self-deprecation ("I don't know why I thought...") makes Priya feel responsible for the player's feelings, which is the opposite of a graceful exit"
+    - "Excessive self-deprecation (\"I don't know why I thought...\") makes Priya feel responsible for the player's feelings, which is the opposite of a graceful exit"
 state:
   variables:
     composure:

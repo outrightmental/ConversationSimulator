@@ -29,8 +29,3 @@ assets:
   allow_external_urls: false
 safety:
   policy: safety/dating_safety.yaml
-content_note: >-
-  PG-13 social-confidence practice. Scenarios explore asking someone out,
-  handling rejection, setting boundaries, and first-date conversation. No
-  sexual content, no coercion, no minors. Disengage-gracefully endings are
-  first-class wins.
