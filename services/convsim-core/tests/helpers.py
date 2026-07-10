@@ -146,12 +146,18 @@ def make_pack_dir(base: Path, manifest: dict | None = None, extra_files: dict | 
         "  hidden:\n"
         "    - Host is evaluating your communication style\n"
         "difficulty:\n"
-        "  default: easy\n"
+        "  default: warm\n"
         "  options:\n"
-        "    easy:\n"
-        "      npc_patience_modifier: 10\n"
-        "    normal:\n"
-        "      npc_patience_modifier: 0\n",
+        "    warm:\n"
+        "      patience: 80\n"
+        "      volatility: 20\n"
+        "      disclosure: 70\n"
+        "      time_pressure: 20\n"
+        "    standard:\n"
+        "      patience: 50\n"
+        "      volatility: 50\n"
+        "      disclosure: 50\n"
+        "      time_pressure: 50\n",
         encoding="utf-8",
     )
     (scenarios_dir / "advanced.yaml").write_text(
@@ -177,7 +183,7 @@ def make_pack_dir(base: Path, manifest: dict | None = None, extra_files: dict | 
         "  hidden:\n"
         "    - Evaluating leadership qualities\n"
         "difficulty:\n"
-        "  default: hard\n",
+        "  default: adversarial\n",
         encoding="utf-8",
     )
 
