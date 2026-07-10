@@ -46,6 +46,7 @@ export const de: LocaleMessages = {
     tagline:
       'Üben Sie Vorstellungsgespräche, Verhandlungen, Sprachen und schwierige Gespräche.',
     primaryActions: 'Hauptaktionen',
+    yourTraining: 'Ihr Training',
     readinessSection: 'Systembereitschaft',
     getStartedSection: 'Ohne Modell loslegen',
     helpSection: 'Hilfe und Ressourcen',
