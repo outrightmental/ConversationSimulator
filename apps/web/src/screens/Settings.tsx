@@ -102,7 +102,7 @@ export default function Settings() {
 
   // ── Folders ─────────────────────────────────────────────────────────────────
 
-  const [folders, setFolders] = useState<{ data: string; logs: string; models: string; packs: string; exports: string } | null>(null)
+  const [folders, setFolders] = useState<{ data: string; logs: string; models: string; packs: string; exports: string; cache: string; crash_bundles: string } | null>(null)
   const [foldersError, setFoldersError] = useState(false)
   const [copiedFolder, setCopiedFolder] = useState<string | null>(null)
   const [openFolderError, setOpenFolderError] = useState<string | null>(null)
@@ -260,13 +260,15 @@ export default function Settings() {
         ? 'Clearing…'
         : 'Clear all local data'
 
-  type FolderKey = 'data' | 'logs' | 'models' | 'packs' | 'exports'
+  type FolderKey = 'data' | 'logs' | 'models' | 'packs' | 'exports' | 'cache' | 'crash_bundles'
   const FOLDER_ROWS: { key: FolderKey; label: string }[] = [
     { key: 'data', label: 'Data' },
     { key: 'logs', label: 'Logs' },
     { key: 'models', label: 'Models' },
     { key: 'packs', label: 'Packs' },
     { key: 'exports', label: 'Exports' },
+    { key: 'cache', label: 'Cache' },
+    { key: 'crash_bundles', label: 'Crash bundles' },
   ]
 
   return (

@@ -81,6 +81,8 @@ const STUB_FOLDERS = {
   models: '/home/user/.convsim/models/llm',
   packs: '/home/user/.convsim/db/packs',
   exports: '/home/user/.convsim/exports',
+  cache: '/home/user/.convsim/cache',
+  crash_bundles: '/home/user/.convsim/crashes',
 }
 
 const SESSION_A = {
