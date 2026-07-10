@@ -24,21 +24,24 @@ def test_get_folders_returns_200(client):
     assert response.status_code == 200
 
 
+_ALL_FOLDER_KEYS = ("data", "logs", "models", "packs", "exports", "cache", "crash_bundles")
+
+
 def test_get_folders_has_all_keys(client):
     data = client.get("/api/privacy/folders").json()
-    for key in ("data", "logs", "models", "packs", "exports"):
+    for key in _ALL_FOLDER_KEYS:
         assert key in data, f"missing key: {key}"
 
 
 def test_get_folders_all_paths_are_strings(client):
     data = client.get("/api/privacy/folders").json()
-    for key in ("data", "logs", "models", "packs", "exports"):
+    for key in _ALL_FOLDER_KEYS:
         assert isinstance(data[key], str), f"{key} is not a string"
 
 
 def test_get_folders_all_paths_are_absolute(client):
     data = client.get("/api/privacy/folders").json()
-    for key in ("data", "logs", "models", "packs", "exports"):
+    for key in _ALL_FOLDER_KEYS:
         assert Path(data[key]).is_absolute(), f"{key} path is not absolute: {data[key]}"
 
 
@@ -52,6 +55,26 @@ def test_exports_folder_created_at_startup(client):
     folder' button works on a fresh install, before anything is exported."""
     data = client.get("/api/privacy/folders").json()
     assert Path(data["exports"]).is_dir()
+
+
+def test_cache_folder_created_at_startup(client):
+    """The cache folder must exist on startup."""
+    data = client.get("/api/privacy/folders").json()
+    assert Path(data["cache"]).is_dir()
+
+
+def test_crash_bundles_folder_created_at_startup(client):
+    """The crash bundles folder must exist on startup."""
+    data = client.get("/api/privacy/folders").json()
+    assert Path(data["crash_bundles"]).is_dir()
+
+
+def test_nosteamcloudpath_written_to_user_data_dirs(client):
+    """Each mutable user-data dir must have a .nosteamcloudpath marker."""
+    data = client.get("/api/privacy/folders").json()
+    for key in ("data", "logs", "packs", "exports", "cache", "crash_bundles"):
+        marker = Path(data[key]) / ".nosteamcloudpath"
+        assert marker.exists(), f".nosteamcloudpath missing in {key} folder: {data[key]}"
 
 
 def test_post_clear_returns_200(client):

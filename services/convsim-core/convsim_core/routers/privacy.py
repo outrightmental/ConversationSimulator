@@ -18,6 +18,8 @@ class _FoldersResponse(BaseModel):
     models: str
     packs: str
     exports: str
+    cache: str
+    crash_bundles: str
 
 
 class _ClearResponse(BaseModel):
@@ -45,6 +47,8 @@ async def get_folders(request: Request) -> _FoldersResponse:
         models=str(Path(config.models_dir).resolve()),
         packs=str(Path(config.packs_dir).resolve()),
         exports=str(Path(config.exports_dir).resolve()),
+        cache=str(Path(config.cache_dir).resolve()),
+        crash_bundles=str(Path(config.crash_bundles_dir).resolve()),
     )
 
 
