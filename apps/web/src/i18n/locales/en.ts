@@ -154,6 +154,21 @@ export const en = {
       cacheDescription:
         'Caching generated speech speeds up repeated phrases. Cached audio stays on your device and is never shared.',
     },
+    steamCloud: {
+      heading: 'Steam Cloud sync',
+      active: 'Steam Cloud is active for this session.',
+      description:
+        'When launched via Steam, a small file is synced across your devices so your settings carry over automatically. All conversation data remains exclusively on each device.',
+      syncedHeading: 'What Steam Cloud syncs:',
+      syncedModel: 'Last-used model selection',
+      excludedHeading: 'What always stays on this device only:',
+      excludedTranscripts: 'Conversation transcripts and session history',
+      excludedPrompts: 'Prompts and scenario responses',
+      excludedAudio: 'Raw audio recordings',
+      excludedModels: 'Downloaded AI model files',
+      excludedCrashLogs: 'Crash bundles and diagnostic logs',
+      excludedPacks: 'Imported private scenario packs',
+    },
     packs: {
       heading: 'Pack management',
       description:

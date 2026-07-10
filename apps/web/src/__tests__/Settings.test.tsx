@@ -6,6 +6,10 @@ import type { SessionCreateRequest } from '@convsim/shared'
 import type { ImportPackResponse } from '../api/client'
 import Settings from '../screens/Settings'
 
+vi.mock('../hooks/useSteamStatus', () => ({
+  useSteamStatus: vi.fn().mockReturnValue(null),
+}))
+
 vi.mock('../api/client', () => ({
   api: {
     getDataFolder: vi.fn(),
@@ -31,11 +35,17 @@ vi.mock('../api/client', () => ({
     validatePack: vi.fn(),
     // Diagnostics
     createCrashBundle: vi.fn(),
+    // Steam Cloud settings
+    getCloudSettings: vi.fn(),
+    putCloudSettings: vi.fn(),
   },
 }))
 
 import { api } from '../api/client'
 const mockApi = vi.mocked(api)
+
+import { useSteamStatus } from '../hooks/useSteamStatus'
+const mockUseSteamStatus = vi.mocked(useSteamStatus)
 
 const STUB_MODELS = {
   registry: [],
@@ -837,5 +847,89 @@ describe('advanced: developer debug mode', () => {
     fireEvent.click(screen.getByRole('button', { name: /show advanced/i }))
     await waitFor(() => screen.getByRole('checkbox', { name: /developer debug mode/i }))
     expect(screen.getByRole('checkbox', { name: /developer debug mode/i })).toBeChecked()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Steam Cloud sync section
+// ---------------------------------------------------------------------------
+
+describe('steam cloud sync section', () => {
+  it('renders the Steam Cloud sync section heading', async () => {
+    await renderSettings()
+    expect(screen.getByRole('region', { name: /steam cloud sync/i })).toBeInTheDocument()
+  })
+
+  it('explains what Steam Cloud syncs', async () => {
+    await renderSettings()
+    expect(screen.getByLabelText('steam-cloud-synced-items')).toHaveTextContent(
+      /last-used model selection/i,
+    )
+  })
+
+  it('explicitly lists transcripts as staying local', async () => {
+    await renderSettings()
+    expect(screen.getByLabelText('steam-cloud-excluded-items')).toHaveTextContent(
+      /conversation transcripts/i,
+    )
+  })
+
+  it('explicitly lists raw audio as staying local', async () => {
+    await renderSettings()
+    expect(screen.getByLabelText('steam-cloud-excluded-items')).toHaveTextContent(
+      /raw audio recordings/i,
+    )
+  })
+
+  it('explicitly lists model files as staying local', async () => {
+    await renderSettings()
+    expect(screen.getByLabelText('steam-cloud-excluded-items')).toHaveTextContent(
+      /ai model files/i,
+    )
+  })
+
+  it('explicitly lists crash bundles and logs as staying local', async () => {
+    await renderSettings()
+    expect(screen.getByLabelText('steam-cloud-excluded-items')).toHaveTextContent(
+      /crash bundles/i,
+    )
+  })
+
+  it('explicitly lists imported private packs as staying local', async () => {
+    await renderSettings()
+    expect(screen.getByLabelText('steam-cloud-excluded-items')).toHaveTextContent(
+      /private scenario packs/i,
+    )
+  })
+
+  it('does not show the active indicator when not running under Steam', async () => {
+    mockUseSteamStatus.mockReturnValue(null)
+    await renderSettings()
+    expect(screen.queryByLabelText('steam-cloud-active')).not.toBeInTheDocument()
+  })
+
+  it('does not show the active indicator when Steam is not running', async () => {
+    mockUseSteamStatus.mockReturnValue({
+      is_steam_enabled: false,
+      launched_by_steam: false,
+      app_id: null,
+      persona_name: null,
+    })
+    await renderSettings()
+    expect(screen.queryByLabelText('steam-cloud-active')).not.toBeInTheDocument()
+  })
+
+  it('shows the active indicator when launched via Steam', async () => {
+    mockUseSteamStatus.mockReturnValue({
+      is_steam_enabled: true,
+      launched_by_steam: true,
+      app_id: 480,
+      persona_name: 'TestPlayer',
+    })
+    await renderSettings()
+    expect(screen.getByLabelText('steam-cloud-active')).toBeInTheDocument()
+    expect(screen.getByLabelText('steam-cloud-active')).toHaveTextContent(
+      /steam cloud is active/i,
+    )
   })
 })
