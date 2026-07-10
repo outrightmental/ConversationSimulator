@@ -1021,14 +1021,14 @@ describe('Conversation screen', () => {
       })
     })
 
-    it('plays audio when tts.audio_chunk event has a cache_path', async () => {
+    it('plays audio when tts.audio_chunk event has a cache_path and tts_enabled is true', async () => {
       const mockPlay = vi.fn().mockResolvedValue(undefined)
       const mockAudio = { play: mockPlay, pause: vi.fn(), onended: null as unknown, onerror: null as unknown }
       const AudioSpy = vi.spyOn(window, 'Audio').mockReturnValue(
         mockAudio as unknown as HTMLAudioElement,
       )
 
-      renderConversation()
+      renderConversation({ tts_enabled: true })
       await waitFor(() => expect(screen.getByRole('log')).toBeInTheDocument())
 
       act(() => {
@@ -1054,13 +1054,45 @@ describe('Conversation screen', () => {
       AudioSpy.mockRestore()
     })
 
+    it('does not play audio when tts_enabled is false (text-only session)', async () => {
+      const mockPlay = vi.fn().mockResolvedValue(undefined)
+      const AudioSpy = vi.spyOn(window, 'Audio').mockReturnValue(
+        { play: mockPlay, pause: vi.fn(), onended: null, onerror: null } as unknown as HTMLAudioElement,
+      )
+
+      renderConversation({ tts_enabled: false })
+      await waitFor(() => expect(screen.getByRole('log')).toBeInTheDocument())
+
+      act(() => {
+        wsCallback?.({
+          type: 'tts.audio_chunk',
+          seq: 1,
+          session_id: SESSION_ID,
+          ts: '2026-07-01T00:00:00Z',
+          payload: {
+            chunk_index: 0,
+            total_chunks: 1,
+            text: 'Hello there.',
+            voice_id: 'af_heart',
+            cache_path: '/home/user/.convsim/tts_cache/abc123.wav',
+            error: null,
+          },
+        })
+      })
+
+      expect(AudioSpy).not.toHaveBeenCalled()
+      expect(mockPlay).not.toHaveBeenCalled()
+
+      AudioSpy.mockRestore()
+    })
+
     it('does not play audio when tts.audio_chunk cache_path is null', async () => {
       const mockPlay = vi.fn().mockResolvedValue(undefined)
       const AudioSpy = vi.spyOn(window, 'Audio').mockReturnValue(
         { play: mockPlay, pause: vi.fn(), onended: null, onerror: null } as unknown as HTMLAudioElement,
       )
 
-      renderConversation()
+      renderConversation({ tts_enabled: true })
       await waitFor(() => expect(screen.getByRole('log')).toBeInTheDocument())
 
       act(() => {
@@ -1095,7 +1127,7 @@ describe('Conversation screen', () => {
         },
       )
 
-      renderConversation()
+      renderConversation({ tts_enabled: true })
       await waitFor(() => expect(screen.getByRole('log')).toBeInTheDocument())
 
       act(() => {
@@ -1134,7 +1166,7 @@ describe('Conversation screen', () => {
         mockAudio as unknown as HTMLAudioElement,
       )
 
-      renderConversation()
+      renderConversation({ tts_enabled: true })
       await waitFor(() => expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument())
 
       // Enqueue a chunk
@@ -1190,7 +1222,7 @@ describe('Conversation screen', () => {
         return el as unknown as HTMLAudioElement
       })
 
-      renderConversation()
+      renderConversation({ tts_enabled: true })
       await waitFor(() => expect(screen.getByRole('log')).toBeInTheDocument())
 
       const chunk = (name: string, seq: number): WsEvent => ({
@@ -1227,6 +1259,32 @@ describe('Conversation screen', () => {
       ])
 
       AudioSpy.mockRestore()
+    })
+  })
+
+  describe('voice mode integration', () => {
+    beforeEach(() => {
+      mockApi.startSession.mockResolvedValue(startResponse)
+    })
+
+    it('renders VoiceInput in text-only mode when input_mode is text-only', async () => {
+      renderConversation({ input_mode: 'text-only' })
+      await waitFor(() =>
+        expect(screen.getByTestId('text-only-notice')).toBeInTheDocument(),
+      )
+      expect(screen.getByTestId('text-only-notice')).toHaveTextContent(
+        /voice input disabled/i,
+      )
+    })
+
+    it('renders VoiceInput with mic button when input_mode is push-to-talk', async () => {
+      mockApiClient.uploadAudio.mockResolvedValue({ transcript: null, status: 'unavailable' })
+      renderConversation({ input_mode: 'push-to-talk' })
+      await waitFor(() =>
+        expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument(),
+      )
+      // In push-to-talk mode the text-only notice must not appear
+      expect(screen.queryByTestId('text-only-notice')).not.toBeInTheDocument()
     })
   })
 

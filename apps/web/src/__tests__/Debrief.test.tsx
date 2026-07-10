@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
-import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import Debrief from '../screens/Debrief'
 import type { SessionDebriefResponse } from '@convsim/shared'
 
@@ -88,6 +88,16 @@ const exportData = {
   ],
 }
 
+function ConversationRouteStub() {
+  const { state } = useLocation()
+  return (
+    <div>
+      Conversation page
+      <span data-testid="route-state">{JSON.stringify(state)}</span>
+    </div>
+  )
+}
+
 function renderDebrief() {
   return render(
     <MemoryRouter initialEntries={[`/debrief/${SESSION_ID}`]}>
@@ -95,7 +105,7 @@ function renderDebrief() {
         <Route path="/debrief/:sessionId" element={<Debrief />} />
         <Route path="/library" element={<div>Library page</div>} />
         <Route path="/setup/:scenarioId" element={<div>Setup page</div>} />
-        <Route path="/conversation/:sessionId" element={<div>Conversation page</div>} />
+        <Route path="/conversation/:sessionId" element={<ConversationRouteStub />} />
       </Routes>
     </MemoryRouter>,
   )
@@ -421,6 +431,30 @@ describe('Debrief screen', () => {
       await waitFor(() =>
         expect(screen.getByText('Conversation page')).toBeInTheDocument(),
       )
+    })
+
+    it('forwards input_mode and tts_enabled to the conversation so replayed voice sessions keep their modes', async () => {
+      const voiceSetup = { ...sampleSetup, input_mode: 'push-to-talk' as const, tts_enabled: true }
+      mockApi.generateDebrief.mockResolvedValue(fullDebriefResponse)
+      mockApi.createSession.mockResolvedValue({
+        session_id: 'new-sess-02',
+        scenario_id: 'behavioral_interview',
+        state: 'NotStarted',
+        created_at: '2024-01-02T00:00:00Z',
+        setup: voiceSetup,
+      })
+      renderDebrief()
+      await waitFor(() =>
+        expect(screen.getByTestId('replay-same-btn')).toBeInTheDocument(),
+      )
+      await waitFor(() => expect(mockApi.exportSession).toHaveBeenCalled())
+      fireEvent.click(screen.getByTestId('replay-same-btn'))
+      await waitFor(() =>
+        expect(screen.getByText('Conversation page')).toBeInTheDocument(),
+      )
+      const routeState = JSON.parse(screen.getByTestId('route-state').textContent || '{}')
+      expect(routeState.input_mode).toBe('push-to-talk')
+      expect(routeState.tts_enabled).toBe(true)
     })
 
     it('falls back to setup page when sessionSetup is unavailable', async () => {

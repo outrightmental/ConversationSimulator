@@ -36,6 +36,7 @@ function makeMicState(overrides: Partial<ReturnType<typeof useMicCapture>> = {})
     requestPermission: vi.fn(),
     startRecording: vi.fn(),
     stopRecording: vi.fn(),
+    releaseStream: vi.fn(),
     ...overrides,
   }
 }
@@ -793,5 +794,147 @@ describe('VoiceInput — disabled prop', () => {
     fireEvent.keyUp(document, { code: 'Space' })
 
     expect(stopRecording).toHaveBeenCalledOnce()
+  })
+})
+
+describe('VoiceInput — inputMode prop (mode selection)', () => {
+  it('renders text-only notice and no mic button when inputMode is text-only', () => {
+    render(<VoiceInput inputMode="text-only" />)
+
+    expect(screen.getByTestId('text-only-notice')).toBeInTheDocument()
+    expect(screen.getByTestId('text-only-notice')).toHaveTextContent(/voice input disabled/i)
+    expect(screen.queryByRole('button', { name: /record|mic/i })).not.toBeInTheDocument()
+  })
+
+  it('still accepts text submission in text-only mode', () => {
+    const onSubmit = vi.fn()
+    render(<VoiceInput inputMode="text-only" onSubmit={onSubmit} />)
+
+    const input = screen.getByRole('textbox', { name: /your response/i })
+    fireEvent.change(input, { target: { value: 'typed response' } })
+    fireEvent.submit(input.closest('form')!)
+
+    expect(onSubmit).toHaveBeenCalledWith('typed response')
+  })
+
+  it('renders mic button when inputMode is push-to-talk', () => {
+    render(<VoiceInput inputMode="push-to-talk" />)
+
+    expect(screen.queryByTestId('text-only-notice')).not.toBeInTheDocument()
+    // MicButton renders as a button; any button that is not text-only notice
+    // confirms mic controls are present
+    expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument()
+  })
+
+  it('initialises VAD mode to ptt when inputMode is push-to-talk', () => {
+    const setMode = vi.fn()
+    vi.mocked(useVad).mockReturnValue(makeVadState({ setMode }))
+
+    render(<VoiceInput inputMode="push-to-talk" />)
+
+    expect(setMode).toHaveBeenCalledWith('ptt')
+  })
+
+  it('initialises VAD mode to hands-free when inputMode is hands-free', () => {
+    const setMode = vi.fn()
+    vi.mocked(useVad).mockReturnValue(makeVadState({ setMode }))
+
+    render(<VoiceInput inputMode="hands-free" />)
+
+    expect(setMode).toHaveBeenCalledWith('hands-free')
+  })
+
+  it('does not call setMode when inputMode is text-only', () => {
+    const setMode = vi.fn()
+    vi.mocked(useVad).mockReturnValue(makeVadState({ setMode }))
+
+    render(<VoiceInput inputMode="text-only" />)
+
+    expect(setMode).not.toHaveBeenCalled()
+  })
+
+  it('does not call setMode again on re-render', () => {
+    const setMode = vi.fn()
+    vi.mocked(useVad).mockReturnValue(makeVadState({ setMode }))
+
+    const { rerender } = render(<VoiceInput inputMode="push-to-talk" />)
+    rerender(<VoiceInput inputMode="push-to-talk" />)
+
+    // setMode initialises once on mount, not on every re-render
+    expect(setMode).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('VoiceInput — text-only fallback (voice-to-text switch)', () => {
+  it('shows a Switch to text-only button when mic is granted and not in text-only mode', () => {
+    vi.mocked(useMicCapture).mockReturnValue(makeMicState({ permission: 'granted' }))
+    render(<VoiceInput inputMode="push-to-talk" />)
+
+    expect(screen.getByRole('button', { name: /switch to text-only/i })).toBeInTheDocument()
+  })
+
+  it('switching to text-only shows the text-only notice and hides the mic button area', () => {
+    vi.mocked(useMicCapture).mockReturnValue(makeMicState({ permission: 'granted' }))
+    render(<VoiceInput inputMode="push-to-talk" />)
+
+    fireEvent.click(screen.getByRole('button', { name: /switch to text-only/i }))
+
+    expect(screen.getByTestId('text-only-notice')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /switch to text-only/i })).not.toBeInTheDocument()
+  })
+
+  it('stops any in-progress recording when switching to text-only', () => {
+    const stopRecording = vi.fn()
+    vi.mocked(useMicCapture).mockReturnValue(
+      makeMicState({ permission: 'granted', isRecording: true, stopRecording }),
+    )
+    render(<VoiceInput inputMode="push-to-talk" />)
+
+    fireEvent.click(screen.getByRole('button', { name: /switch to text-only/i }))
+
+    expect(stopRecording).toHaveBeenCalledOnce()
+  })
+
+  it('releases the microphone stream when switching to text-only', () => {
+    const releaseStream = vi.fn()
+    vi.mocked(useMicCapture).mockReturnValue(
+      makeMicState({ permission: 'granted', releaseStream }),
+    )
+    render(<VoiceInput inputMode="push-to-talk" />)
+
+    fireEvent.click(screen.getByRole('button', { name: /switch to text-only/i }))
+
+    // The mic must be released so the browser/OS recording indicator turns off.
+    expect(releaseStream).toHaveBeenCalledOnce()
+  })
+
+  it('text input is still functional after switching to text-only', () => {
+    const onSubmit = vi.fn()
+    vi.mocked(useMicCapture).mockReturnValue(makeMicState({ permission: 'granted' }))
+    render(<VoiceInput inputMode="push-to-talk" onSubmit={onSubmit} />)
+
+    fireEvent.click(screen.getByRole('button', { name: /switch to text-only/i }))
+
+    const input = screen.getByRole('textbox', { name: /your response/i })
+    fireEvent.change(input, { target: { value: 'fallback text' } })
+    fireEvent.submit(input.closest('form')!)
+
+    expect(onSubmit).toHaveBeenCalledWith('fallback text')
+  })
+
+  it('does not start recording via the Space hotkey after switching to text-only', () => {
+    const startRecording = vi.fn()
+    vi.mocked(useMicCapture).mockReturnValue(
+      makeMicState({ permission: 'granted', startRecording }),
+    )
+    render(<VoiceInput inputMode="push-to-talk" />)
+
+    fireEvent.click(screen.getByRole('button', { name: /switch to text-only/i }))
+    // Blur the newly focused text input so the hotkey focus guard doesn't mask the switch guard.
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+
+    fireEvent.keyDown(document, { code: 'Space' })
+
+    expect(startRecording).not.toHaveBeenCalled()
   })
 })

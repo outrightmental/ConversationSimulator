@@ -13,6 +13,13 @@ export interface UseMicCaptureReturn {
   requestPermission: () => Promise<void>
   startRecording: () => void
   stopRecording: () => void
+  /**
+   * Stops recording (if active) and releases the microphone by stopping all
+   * MediaStream tracks, so the browser/OS recording indicator turns off. Used
+   * when the player switches to text-only mid-session and voice is no longer
+   * needed. The stream is not reacquired automatically.
+   */
+  releaseStream: () => void
 }
 
 export const MAX_RECORDING_SECONDS = 60
@@ -64,6 +71,16 @@ export function useMicCapture(onAudioReady?: (blob: Blob) => void): UseMicCaptur
     if (rec && rec.state === 'recording') {
       rec.stop()
     }
+  }, [clearTimers])
+
+  const releaseStream = useCallback(() => {
+    clearTimers()
+    setRecordingSeconds(0)
+    const rec = recorderRef.current
+    if (rec && rec.state === 'recording') rec.stop()
+    streamRef.current?.getTracks().forEach((t) => t.stop())
+    streamRef.current = null
+    setStream(null)
   }, [clearTimers])
 
   const startRecording = useCallback(() => {
@@ -143,5 +160,6 @@ export function useMicCapture(onAudioReady?: (blob: Blob) => void): UseMicCaptur
     requestPermission,
     startRecording,
     stopRecording,
+    releaseStream,
   }
 }

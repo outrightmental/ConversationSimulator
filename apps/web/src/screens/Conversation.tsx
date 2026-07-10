@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { api } from '../api/client'
-import type { ScenarioInfo, WsEvent } from '@convsim/shared'
+import type { InputMode, ScenarioInfo, WsEvent } from '@convsim/shared'
 import VoiceInput, { type SttReviewMeta } from '../components/VoiceInput'
 import DebugDrawer, { type DebugTurnEntry } from '../components/DebugDrawer'
 import PerformanceWarningBanner from '../components/PerformanceWarning'
@@ -75,11 +75,15 @@ export default function Conversation() {
     language?: string
     show_state_meters?: boolean
     scenario_id?: string
+    input_mode?: InputMode
+    tts_enabled?: boolean
   } | null
 
   const language = routeState?.language
   const showStateMeters = routeState?.show_state_meters ?? true
   const scenarioIdFromRoute = routeState?.scenario_id
+  const inputMode = routeState?.input_mode ?? 'text-only'
+  const ttsEnabled = routeState?.tts_enabled ?? false
 
   const [phase, setPhase] = useState<Phase>('starting')
   const [sessionState, setSessionState] = useState('NotStarted')
@@ -154,6 +158,9 @@ export default function Conversation() {
   }
 
   function _enqueueTtsChunk(cachePath: string) {
+    // Only play TTS audio when the session was started with TTS enabled.
+    // The text transcript remains authoritative regardless of this flag.
+    if (!ttsEnabled) return
     const filename = cachePath.replace(/\\/g, '/').split('/').pop()
     if (!filename) return
     const url = `/api/tts/audio/${filename}`
@@ -987,6 +994,7 @@ export default function Conversation() {
           onSttLatency={(ms) => recordValue('stt_final_ms', ms)}
           disabled={!isIdle}
           language={language}
+          inputMode={inputMode}
         />
       )}
 

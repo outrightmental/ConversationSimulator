@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
+import type { InputMode } from '@convsim/shared'
 import { apiClient } from '../api/client'
 import { useMicCapture, MAX_RECORDING_SECONDS } from '../hooks/useMicCapture'
 import { useVad } from '../hooks/useVad'
@@ -28,6 +29,12 @@ interface VoiceInputProps {
   onSttLatency?: (ms: number) => void
   disabled?: boolean
   language?: string
+  /**
+   * Input mode selected at session setup. Initialises the VAD mode and hides
+   * mic controls when set to 'text-only'. Can be overridden mid-session via the
+   * in-conversation "Switch to text-only" fallback.
+   */
+  inputMode?: InputMode
 }
 
 function isInteractiveElement(el: Element | null): boolean {
@@ -36,16 +43,28 @@ function isInteractiveElement(el: Element | null): boolean {
   return tag === 'input' || tag === 'textarea' || tag === 'select' || tag === 'button' || tag === 'a'
 }
 
-export default function VoiceInput({ onSubmit, onRawStt, onSttLatency, disabled = false, language }: VoiceInputProps) {
+export default function VoiceInput({ onSubmit, onRawStt, onSttLatency, disabled = false, language, inputMode }: VoiceInputProps) {
   const [textValue, setTextValue] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [showCalibration, setShowCalibration] = useState(false)
   const [reviewState, setReviewState] = useState<ReviewState | null>(null)
+  // Tracks whether the player has switched to text-only fallback mid-session.
+  const [textOnly, setTextOnly] = useState(() => inputMode === 'text-only')
 
   const vad = useVad()
   const isHandsFree = vad.settings.mode === 'hands-free'
-  const { startSilenceDetection, stopSilenceDetection } = vad
+  const { startSilenceDetection, stopSilenceDetection, setMode: vadSetMode } = vad
+
+  // Initialise VAD mode from the session setup choice on first render only.
+  const initModeRef = useRef(false)
+  useEffect(() => {
+    if (initModeRef.current) return
+    initModeRef.current = true
+    if (inputMode === 'hands-free') vadSetMode('hands-free')
+    else if (inputMode === 'push-to-talk') vadSetMode('ptt')
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const handleAudioReady = useCallback(
     async (blob: Blob) => {
@@ -87,6 +106,7 @@ export default function VoiceInput({ onSubmit, onRawStt, onSttLatency, disabled 
     requestPermission,
     startRecording: startPttRecording,
     stopRecording: stopPttRecording,
+    releaseStream,
   } = useMicCapture(handleAudioReady)
 
   // Wrap start/stop to hook in VAD silence detection for hands-free mode.
@@ -148,6 +168,9 @@ export default function VoiceInput({ onSubmit, onRawStt, onSttLatency, disabled 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.code !== 'Space' || e.repeat) return
       if (isInteractiveElement(document.activeElement)) return
+      // In text-only mode there is no mic recording — the hotkey must be inert
+      // even when microphone permission is still granted from an active stream.
+      if (textOnly) return
       if (permission !== 'granted' || isSubmitting || disabled) return
       // Don't start recording while the transcript review panel is open.
       if (reviewState !== null) return
@@ -164,6 +187,7 @@ export default function VoiceInput({ onSubmit, onRawStt, onSttLatency, disabled 
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.code !== 'Space') return
       if (isInteractiveElement(document.activeElement)) return
+      if (textOnly) return
       if (permission !== 'granted' || isSubmitting || (disabled && !isRecording)) return
       // PTT only: release Space to stop. In hands-free mode, stop is handled on keydown.
       if (!isHandsFree) stopRecording()
@@ -175,7 +199,7 @@ export default function VoiceInput({ onSubmit, onRawStt, onSttLatency, disabled 
       document.removeEventListener('keydown', handleKeyDown)
       document.removeEventListener('keyup', handleKeyUp)
     }
-  }, [startRecording, stopRecording, permission, isRecording, isSubmitting, disabled, isHandsFree, reviewState])
+  }, [startRecording, stopRecording, permission, isRecording, isSubmitting, disabled, isHandsFree, reviewState, textOnly])
 
   const handleTextSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -196,6 +220,40 @@ export default function VoiceInput({ onSubmit, onRawStt, onSttLatency, disabled 
 
   const showDeniedNotice = permission === 'denied'
   const showUnsupportedNotice = permission === 'unsupported'
+
+  // Text-only mode: render a minimal input without any mic controls.
+  if (textOnly) {
+    return (
+      <div style={containerStyle}>
+        <p role="status" data-testid="text-only-notice" style={noticeStyle}>
+          Voice input disabled — using text only for this session.
+        </p>
+        {uploadError && (
+          <p role="alert" style={{ ...noticeStyle, color: '#f87171' }}>
+            {uploadError}
+          </p>
+        )}
+        <form onSubmit={handleTextSubmit} style={{ display: 'flex', flex: 1, gap: '0.5rem' }}>
+          <input
+            type="text"
+            value={textValue}
+            onChange={(e) => setTextValue(e.target.value)}
+            placeholder="Type your response…"
+            disabled={disabled}
+            aria-label="Your response"
+            style={textInputStyle}
+          />
+          <button
+            type="submit"
+            disabled={disabled || !textValue.trim()}
+            style={sendButtonStyle}
+          >
+            Submit
+          </button>
+        </form>
+      </div>
+    )
+  }
 
   return (
     <div style={containerStyle}>
@@ -271,7 +329,7 @@ export default function VoiceInput({ onSubmit, onRawStt, onSttLatency, disabled 
             </form>
           </div>
 
-          {/* Hands-free controls row */}
+          {/* Voice controls row: mode toggle, VAD indicator, calibrate, text-only fallback */}
           {permission === 'granted' && (
             <div style={hfRowStyle}>
               <button
@@ -299,6 +357,22 @@ export default function VoiceInput({ onSubmit, onRawStt, onSttLatency, disabled 
                   </button>
                 </>
               )}
+
+              <button
+                type="button"
+                data-testid="switch-to-text-only"
+                onClick={() => {
+                  if (isRecording) stopRecording()
+                  // Release the microphone so the recording indicator turns off —
+                  // the player has opted out of voice for the rest of the session.
+                  releaseStream()
+                  setTextOnly(true)
+                }}
+                aria-label="Switch to text-only input"
+                style={switchToTextOnlyStyle}
+              >
+                Text only
+              </button>
             </div>
           )}
 
@@ -423,6 +497,17 @@ const modeInactiveStyle: React.CSSProperties = {
 }
 
 const calibrateBtnStyle: React.CSSProperties = {
+  padding: '0.25rem 0.6rem',
+  borderRadius: '6px',
+  border: '1px solid #3f3f46',
+  background: 'transparent',
+  color: '#71717a',
+  cursor: 'pointer',
+  fontSize: '0.78rem',
+}
+
+const switchToTextOnlyStyle: React.CSSProperties = {
+  marginLeft: 'auto',
   padding: '0.25rem 0.6rem',
   borderRadius: '6px',
   border: '1px solid #3f3f46',
