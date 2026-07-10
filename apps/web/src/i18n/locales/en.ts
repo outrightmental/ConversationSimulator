@@ -40,6 +40,7 @@ export const en = {
     title: 'Conversation Simulator',
     tagline: 'Practice interviews, negotiations, language, and difficult conversations.',
     primaryActions: 'Primary actions',
+    yourTraining: 'Your training',
     readinessSection: 'System readiness',
     getStartedSection: 'Get started without a model',
     helpSection: 'Help and resources',

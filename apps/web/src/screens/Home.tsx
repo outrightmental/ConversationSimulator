@@ -91,7 +91,7 @@ export default function Home() {
         </a>
       </nav>
 
-      <section aria-label="Your training" style={{ marginTop: '2rem' }}>
+      <section aria-label={t('home.yourTraining')} style={{ marginTop: '2rem' }}>
         <h2 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.75rem' }}>Your training</h2>
         {logbook.state === 'loading' && (
           <p style={{ color: '#71717a', fontSize: '0.875rem' }}>Loading…</p>
