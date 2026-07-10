@@ -1,0 +1,148 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: golden_apartment_lease_renewal
+scenario_id: apartment_lease_renewal
+description: >-
+  Golden transcript property test: verifies that a tenant who cites a clean
+  two-year payment record, backs an offer with specific comparable rents,
+  mentions a credible alternative, and stays professional causes deal_progress
+  to advance through the events sequence without triggering a safety stop or
+  aggression lockdown.
+
+seed: 42
+input_mode: text
+difficulty: normal
+
+turns:
+  - turn: 1
+    player_input: >-
+      Thanks for seeing me, Patricia. I've been a tenant here for two years and
+      never missed or been late on a single payment. I did want to talk about
+      the renewal — a 12% jump to sixteen-twenty-four is steep. Comparable units
+      in the neighbourhood are listing at fifteen-twenty to fifteen-sixty right
+      now, which is more like a 5 to 7 percent increase.
+    expect:
+      state_delta_contains:
+        - deal_progress
+        - leverage
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 2
+    player_input: >-
+      I want to be upfront — I have a viewing at a building on Elm this weekend
+      in the same range, so I do have options. But I'd genuinely rather stay; I
+      like it here and moving is a hassle for both of us. Is there room to land
+      closer to fifteen-forty, or a longer term that works for ownership?
+    expect:
+      state_delta_contains:
+        - deal_progress
+        - concession_level
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 3
+    player_input: >-
+      An 18-month lease at fifteen-forty — I appreciate that. That price
+      stability actually works well for me, and I understand it gives ownership
+      predictability too. Could we also lock in a cap on the next renewal so we
+      both know where we stand a year and a half from now?
+    expect:
+      state_delta_contains:
+        - deal_progress
+        - concession_level
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 4
+    player_input: >-
+      That sounds fair to me. Fifteen-forty on an 18-month term with a
+      reasonable renewal cap — I'm happy to sign and keep being a reliable
+      tenant for you. Thank you for working with me on this; I know you have
+      constraints from ownership too.
+    expect:
+      state_delta_contains:
+        - deal_progress
+      session_control: continue_session
+      safety_status: ok
+
+static_assertions:
+  - description: Scenario opening line is non-empty
+    path: opening.npc_says
+    check: non_empty_string
+
+  - description: At least one event is defined
+    path: events
+    check: min_length_1
+
+  - description: market_data_reward event fires when leverage exceeds 55
+    path: events[id=market_data_reward].when
+    check: "type=variable_above AND variable=leverage AND threshold=55"
+
+  - description: market_data_reward fires only once
+    path: events[id=market_data_reward].repeat
+    check: "equals false"
+
+  - description: aggression_lockdown fires when perceived_fairness drops below 30
+    path: events[id=aggression_lockdown].when
+    check: "type=variable_below AND variable=perceived_fairness AND threshold=30"
+
+  - description: aggression_lockdown repeats on each subsequent low-fairness turn
+    path: events[id=aggression_lockdown].repeat
+    check: "equals true"
+
+  - description: longer_term_offer event fires when deal_progress exceeds 45
+    path: events[id=longer_term_offer].when
+    check: "type=variable_above AND variable=deal_progress AND threshold=45"
+
+  - description: longer_term_offer fires only once
+    path: events[id=longer_term_offer].repeat
+    check: "equals false"
+
+  - description: Success ending condition targets deal_progress above threshold
+    path: ending_conditions.success
+    check: "type=variable_above AND variable=deal_progress"
+
+  - description: Failure ending condition targets perceived_fairness below threshold
+    path: ending_conditions.failure
+    check: "type=variable_below AND variable=perceived_fairness"
+
+  - description: deal_progress variable is visible to the player
+    path: state.variables.deal_progress.visibility
+    check: "equals visible"
+
+  - description: perceived_fairness is hidden from the player
+    path: state.variables.perceived_fairness.visibility
+    check: "equals hidden"
+
+  - description: firmness is hidden from the player
+    path: state.variables.firmness.visibility
+    check: "equals hidden"
+
+  - description: leverage is hidden from the player
+    path: state.variables.leverage.visibility
+    check: "equals hidden"
+
+  - description: NPC is marked fictional
+    path: npc.fictional
+    check: "equals true"
+
+  - description: Safety policy stops nsfw_sexual_content
+    path: safety.content_categories.nsfw_sexual_content
+    check: "equals stop"
+
+  - description: Safety policy fires stop_with_resource_message for self_harm_crisis
+    path: safety.content_categories.self_harm_crisis
+    check: "equals stop_with_resource_message"
+
+  - description: Pack manifest declares apartment_lease_renewal as an entry scenario
+    path: manifest.entry_scenarios
+    check: "contains scenarios/apartment_lease_renewal.yaml"
+
+  - description: Hard difficulty applies a negative patience modifier
+    path: scenario.difficulty.options.hard.npc_patience_modifier
+    check: "equals -20"
+
+  - description: Easy difficulty applies a positive patience modifier
+    path: scenario.difficulty.options.easy.npc_patience_modifier
+    check: "equals 20"

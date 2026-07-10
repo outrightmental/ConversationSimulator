@@ -1,0 +1,148 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: golden_used_car_negotiation
+scenario_id: used_car_negotiation
+description: >-
+  Golden transcript property test: verifies that a buyer who anchors early
+  with specific comparable sales, stays calm under resistance, and frames
+  the deal as mutually beneficial causes deal_progress to advance through
+  the events sequence without triggering a safety stop or aggression lockout.
+
+seed: 42
+input_mode: text
+difficulty: normal
+
+turns:
+  - turn: 1
+    player_input: >-
+      Thanks, Ray. I've been researching this for three weeks. I pulled comps
+      from AutoTrader and CarGurus — 2019 Civics with similar mileage are
+      selling for thirteen-four to thirteen-eight in the metro area right now.
+      I'd like to offer thirteen-five, out the door, cash — no financing
+      paperwork for you, which should make this straightforward for both of us.
+    expect:
+      state_delta_contains:
+        - deal_progress
+        - leverage
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 2
+    player_input: >-
+      I hear you — the car is in great shape and that's reflected in my offer.
+      Thirteen-five is in line with what the market is showing for comparable
+      units. I've got the printouts here. Is there flexibility on the price,
+      or are there other items — floor mats, warranty checkup — that you could
+      include to help close the gap?
+    expect:
+      state_delta_contains:
+        - deal_progress
+        - concession_level
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 3
+    player_input: >-
+      Fourteen-two with a full tank and a six-month checkup — I appreciate
+      that. I'd like to meet you at fourteen-even with those extras included.
+      I can have a cashier's cheque here this afternoon. That gives us a clean
+      close today, which I think is good for both of us. Does that work?
+    expect:
+      state_delta_contains:
+        - deal_progress
+        - concession_level
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 4
+    player_input: >-
+      I understand you need to make the numbers work on your end too. I'm
+      genuinely happy with this car at the right price. Fourteen-even, full
+      tank, and the checkup — that is my best offer and I can sign today.
+      I don't want to walk away from this car if we can land on something fair.
+    expect:
+      state_delta_contains:
+        - deal_progress
+      session_control: continue_session
+      safety_status: ok
+
+static_assertions:
+  - description: Scenario opening line is non-empty
+    path: opening.npc_says
+    check: non_empty_string
+
+  - description: At least one event is defined
+    path: events
+    check: min_length_1
+
+  - description: research_anchor_reward event fires when leverage exceeds 55
+    path: events[id=research_anchor_reward].when
+    check: "type=variable_above AND variable=leverage AND threshold=55"
+
+  - description: research_anchor_reward fires only once
+    path: events[id=research_anchor_reward].repeat
+    check: "equals false"
+
+  - description: aggression_pushback fires when perceived_fairness drops below 30
+    path: events[id=aggression_pushback].when
+    check: "type=variable_below AND variable=perceived_fairness AND threshold=30"
+
+  - description: aggression_pushback repeats on each subsequent low-fairness turn
+    path: events[id=aggression_pushback].repeat
+    check: "equals true"
+
+  - description: close_the_gap event fires when deal_progress exceeds 60
+    path: events[id=close_the_gap].when
+    check: "type=variable_above AND variable=deal_progress AND threshold=60"
+
+  - description: close_the_gap fires only once
+    path: events[id=close_the_gap].repeat
+    check: "equals false"
+
+  - description: Success ending condition targets deal_progress above threshold
+    path: ending_conditions.success
+    check: "type=variable_above AND variable=deal_progress"
+
+  - description: Failure ending condition targets perceived_fairness below threshold
+    path: ending_conditions.failure
+    check: "type=variable_below AND variable=perceived_fairness"
+
+  - description: deal_progress variable is visible to the player
+    path: state.variables.deal_progress.visibility
+    check: "equals visible"
+
+  - description: perceived_fairness is hidden from the player
+    path: state.variables.perceived_fairness.visibility
+    check: "equals hidden"
+
+  - description: firmness is hidden from the player
+    path: state.variables.firmness.visibility
+    check: "equals hidden"
+
+  - description: leverage is hidden from the player
+    path: state.variables.leverage.visibility
+    check: "equals hidden"
+
+  - description: NPC is marked fictional
+    path: npc.fictional
+    check: "equals true"
+
+  - description: Safety policy stops nsfw_sexual_content
+    path: safety.content_categories.nsfw_sexual_content
+    check: "equals stop"
+
+  - description: Safety policy fires stop_with_resource_message for self_harm_crisis
+    path: safety.content_categories.self_harm_crisis
+    check: "equals stop_with_resource_message"
+
+  - description: Pack manifest declares used_car_negotiation as an entry scenario
+    path: manifest.entry_scenarios
+    check: "contains scenarios/used_car_negotiation.yaml"
+
+  - description: Hard difficulty applies a negative patience modifier
+    path: scenario.difficulty.options.hard.npc_patience_modifier
+    check: "equals -20"
+
+  - description: Easy difficulty applies a positive patience modifier
+    path: scenario.difficulty.options.easy.npc_patience_modifier
+    check: "equals 20"
