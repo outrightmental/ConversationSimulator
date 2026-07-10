@@ -155,6 +155,12 @@ until every item is checked.
 - [ ] Smoke matrix from [`docs/release-checklist.md`](../docs/release-checklist.md)
       has been run and passed on Windows 10/11, macOS 13+, Linux x86-64, and
       Steam Deck.
+- [ ] Steam beta verification (Parts E, G, H, I, J of
+      [`docs/release-checklist.md`](../docs/release-checklist.md)) is complete and
+      the signed-off
+      [`docs/STEAM_BETA_VERIFICATION_REPORT.md`](../docs/STEAM_BETA_VERIFICATION_REPORT.md)
+      for the launch build is attached to the release issue (SR-09 / G3-06
+      deliverable).
 - [ ] Steam Deck Verified tier checklist from
       [`docs/STEAM_ROADMAP.md`](../docs/STEAM_ROADMAP.md#steam-deck-verification-checklist)
       has been submitted to Valve and verified.
@@ -245,4 +251,5 @@ for the full policy.
 - [`docs/steam-triage.md`](../docs/steam-triage.md) — issue triage flow, SLA targets, privacy handling
 - [`docs/steam-mvp-scope.md`](../docs/steam-mvp-scope.md) — feature requirements and pass/fail release gates
 - [`docs/STEAM_ROADMAP.md`](../docs/STEAM_ROADMAP.md) — release principles and release train
-- [`docs/release-checklist.md`](../docs/release-checklist.md) — platform smoke matrix
+- [`docs/release-checklist.md`](../docs/release-checklist.md) — platform smoke matrix and Steam beta verification (Parts E/G/H/I/J)
+- [`docs/STEAM_BETA_VERIFICATION_REPORT.md`](../docs/STEAM_BETA_VERIFICATION_REPORT.md) — aggregate signed-off beta verification report template (all four platforms)
