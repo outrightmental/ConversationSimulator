@@ -39,7 +39,7 @@ from convsim_core.app import create_app
 from convsim_core.config import ServiceConfig
 from convsim_core.runtime.fake import FakeChatRuntime
 from convsim_core.runtime.types import ChatFinal, ChatRequest, ChatToken
-from convsim_core.services.debrief_engine import _compute_overall_score, _compute_scores
+from convsim_core.services.debrief_engine import _compute_overall_score, _compute_scores, compute_metrics
 from convsim_prompt.debrief_output import (
     DebriefValidationError,
     _validate_narrative,
@@ -357,6 +357,238 @@ class TestComputeOverallScore:
 
     def test_average_of_multiple(self):
         assert _compute_overall_score({"a": 60.0, "b": 80.0}) == 70.0
+
+
+# ---------------------------------------------------------------------------
+# Unit tests — compute_metrics
+# ---------------------------------------------------------------------------
+
+
+def _make_turn_row(**kwargs) -> dict:
+    """Build a minimal dict that mimics a sqlite3.Row for compute_metrics tests."""
+    defaults = {
+        "role": "player",
+        "content": "",
+        "state_delta_json": None,
+        "event_flags_json": None,
+        "safety_json": None,
+        "raw_output_json": None,
+        "source_mode": "text-only",
+        "created_at": "2024-01-01T12:00:00+00:00",
+        "turn_number": 1,
+    }
+    return {**defaults, **kwargs}
+
+
+# A golden transcript: NPC opening → player turn → NPC response.
+_GOLDEN_TURNS = [
+    _make_turn_row(
+        turn_number=0,
+        role="npc_opening",
+        content="Hello, let's begin the interview. Tell me about yourself.",
+        created_at="2024-01-01T12:00:00.000000+00:00",
+    ),
+    _make_turn_row(
+        turn_number=1,
+        role="player",
+        content="I have five years of product management experience at a mid-sized tech company.",
+        created_at="2024-01-01T12:00:01.000000+00:00",
+    ),
+    _make_turn_row(
+        turn_number=2,
+        role="npc",
+        content="That sounds impressive. What would you say was your biggest achievement?",
+        state_delta_json='{"credibility": 5}',
+        created_at="2024-01-01T12:00:03.500000+00:00",
+    ),
+    _make_turn_row(
+        turn_number=3,
+        role="player",
+        content="What metrics did you use to measure success?",
+        created_at="2024-01-01T12:00:10.000000+00:00",
+    ),
+    _make_turn_row(
+        turn_number=4,
+        role="npc",
+        content="We look at revenue impact, user retention, and NPS.",
+        state_delta_json='{"credibility": 3}',
+        created_at="2024-01-01T12:00:12.200000+00:00",
+    ),
+]
+
+
+class TestComputeMetrics:
+    def test_empty_turns_returns_zero_metrics(self):
+        m = compute_metrics([])
+        assert m["metrics_version"] == "1"
+        assert m["talk_ratio"] == 0.0
+        assert m["words_per_turn_player"] == 0.0
+        assert m["words_per_turn_npc"] == 0.0
+        assert m["state_arc"] == []
+
+    def test_talk_ratio_is_fraction_of_player_words(self):
+        m = compute_metrics(_GOLDEN_TURNS)
+        assert 0 < m["talk_ratio"] < 1
+        # Player turns: turn 1 (13 words) + turn 3 (8 words) = 21
+        # NPC: opening (9 words) + turn 2 (11 words) + turn 4 (9 words) = 29
+        # talk_ratio = round(21 / 50, 3) = 0.42
+        assert abs(m["talk_ratio"] - round(21 / 50, 3)) < 0.001
+
+    def test_words_per_turn_computed_correctly(self):
+        m = compute_metrics(_GOLDEN_TURNS)
+        # player: 21 words across 2 turns = 10.5
+        assert m["words_per_turn_player"] == pytest.approx(21 / 2, abs=0.1)
+        # npc (incl. opening): 29 words across 3 turns ≈ 9.67
+        assert m["words_per_turn_npc"] == pytest.approx(29 / 3, abs=0.2)
+
+    def test_open_question_detected(self):
+        m = compute_metrics(_GOLDEN_TURNS)
+        # Turn 3: "What metrics did you use to measure success?" → open question
+        assert m["open_questions"] >= 1
+        assert m["closed_questions"] == 0
+
+    def test_filler_words_only_counted_for_voice_mode(self):
+        voice_turns = [
+            _make_turn_row(role="npc_opening", turn_number=0, content="Hello."),
+            _make_turn_row(role="player", turn_number=1, content="Um like I was thinking."),
+            _make_turn_row(role="npc", turn_number=2, content="I see.", state_delta_json="{}"),
+        ]
+        text_metrics = compute_metrics(voice_turns, source_mode="text-only")
+        assert text_metrics["filler_word_count"] == 0
+
+        voice_metrics = compute_metrics(voice_turns, source_mode="push-to-talk")
+        assert voice_metrics["filler_word_count"] > 0
+
+    def test_response_latency_computed_from_timestamps(self):
+        m = compute_metrics(_GOLDEN_TURNS)
+        # Turn 1 @ 12:00:01, NPC (turn 2) @ 12:00:03.5 → 2500 ms
+        # Turn 3 @ 12:00:10, NPC (turn 4) @ 12:00:12.2 → 2200 ms
+        assert m["response_latency_p50_ms"] is not None
+        assert m["response_latency_p95_ms"] is not None
+        # p50 of [2200, 2500] → index 1 = 2500 ms (len=2, n//2=1)
+        assert m["response_latency_p50_ms"] == 2500
+        assert m["response_latency_p95_ms"] == 2500
+
+    def test_state_arc_accumulates_deltas(self):
+        m = compute_metrics(_GOLDEN_TURNS)
+        arc = m["state_arc"]
+        # Two NPC response turns with credibility deltas
+        assert len(arc) == 2
+        # After turn 2: credibility = 5
+        assert arc[0]["turn_number"] == 2
+        assert arc[0]["state"]["credibility"] == 5
+        # After turn 4: credibility = 5 + 3 = 8
+        assert arc[1]["turn_number"] == 4
+        assert arc[1]["state"]["credibility"] == 8
+
+    def test_state_arc_anchored_to_true_meter_values(self):
+        # Deltas stored are clamped changes; variables start from a non-zero
+        # default (e.g. 50). Passing final_state anchors the arc to real values.
+        # credibility: default 50, +5 then +3 → final 58.
+        m = compute_metrics(_GOLDEN_TURNS, final_state={"credibility": 58})
+        arc = m["state_arc"]
+        assert arc[0]["state"]["credibility"] == 55  # 50 + 5
+        assert arc[1]["state"]["credibility"] == 58  # 55 + 3, equals final
+        # Every meter value stays within the schema's [0, 100] range.
+        for entry in arc:
+            for value in entry["state"].values():
+                assert 0 <= value <= 100
+
+    def test_state_arc_final_equals_final_state(self):
+        # A meter that drops must not go negative when anchored to final_state.
+        turns = [
+            _make_turn_row(role="npc_opening", turn_number=0, content="Hi."),
+            _make_turn_row(role="player", turn_number=1, content="Sorry."),
+            _make_turn_row(
+                role="npc", turn_number=2, content="Hmm.",
+                state_delta_json='{"patience": -10}',
+            ),
+        ]
+        # patience default 75, -10 → final 65 (never negative).
+        m = compute_metrics(turns, final_state={"patience": 65})
+        assert m["state_arc"][-1]["state"]["patience"] == 65
+
+    def test_filler_common_words_not_false_positives(self):
+        # Ordinary content words ("I", "you", "so") must not count as fillers.
+        turns = [
+            _make_turn_row(role="npc_opening", turn_number=0, content="Hi."),
+            _make_turn_row(
+                role="player", turn_number=1,
+                content="I think you should so definitely okay it right away.",
+            ),
+            _make_turn_row(role="npc", turn_number=2, content="Ok.", state_delta_json="{}"),
+        ]
+        m = compute_metrics(turns, source_mode="push-to-talk")
+        assert m["filler_word_count"] == 0
+
+    def test_filler_phrase_counted_once(self):
+        turns = [
+            _make_turn_row(role="npc_opening", turn_number=0, content="Hi."),
+            _make_turn_row(
+                role="player", turn_number=1,
+                content="Um, you know, I mean it was like really good.",
+            ),
+            _make_turn_row(role="npc", turn_number=2, content="Ok.", state_delta_json="{}"),
+        ]
+        m = compute_metrics(turns, source_mode="push-to-talk")
+        # "um" + "you know" (phrase) + "i mean" (phrase) + "like" = 4
+        assert m["filler_word_count"] == 4
+
+    def test_deterministic_on_same_input(self):
+        m1 = compute_metrics(_GOLDEN_TURNS)
+        m2 = compute_metrics(_GOLDEN_TURNS)
+        assert m1 == m2
+
+    def test_metrics_in_debrief_response(self, client):
+        """Integration: metrics appear in the /debrief HTTP response."""
+        session_id = _complete_session(client)
+        res = client.post(f"/api/sessions/{session_id}/debrief")
+        assert res.status_code == 200
+        body = res.json()
+        assert "metrics" in body
+        metrics = body["metrics"]
+        assert metrics["metrics_version"] == "1"
+        assert isinstance(metrics["talk_ratio"], float)
+        assert isinstance(metrics["open_questions"], int)
+        assert isinstance(metrics["state_arc"], list)
+
+    def test_response_latency_populated_end_to_end(self, client):
+        """Regression: a real session must yield non-null latency percentiles.
+
+        The player turn is persisted at request-arrival time and the NPC turn
+        after inference completes, so their ``created_at`` values differ and the
+        latency computation has a real gap to measure. If both turns were ever
+        stamped with the same timestamp again the percentiles would collapse to
+        None — this test guards against that regression.
+        """
+        session_id = _complete_session(client)
+        metrics = client.post(f"/api/sessions/{session_id}/debrief").json()["metrics"]
+        assert metrics["response_latency_p50_ms"] is not None
+        assert metrics["response_latency_p95_ms"] is not None
+        assert metrics["response_latency_p50_ms"] >= 0
+
+    def test_metrics_in_export(self, client):
+        """Integration: metrics block is present in the /export JSON."""
+        session_id = _complete_session(client)
+        client.post(f"/api/sessions/{session_id}/debrief")
+        export = client.get(f"/api/sessions/{session_id}/export").json()
+        assert export["debrief"]["metrics"]["metrics_version"] == "1"
+
+    def test_metrics_in_text_export(self, client):
+        """Integration: metrics Telemetry section appears in Markdown export."""
+        session_id = _complete_session(client)
+        client.post(f"/api/sessions/{session_id}/debrief")
+        text_res = client.get(f"/api/sessions/{session_id}/export/text")
+        assert text_res.status_code == 200
+        assert "Telemetry" in text_res.text
+        assert "Talk ratio" in text_res.text
+
+    def test_metrics_idempotent_on_cached_debrief(self, client):
+        """Integration: second /debrief call returns the same metrics from cache."""
+        session_id = _complete_session(client)
+        res1 = client.post(f"/api/sessions/{session_id}/debrief")
+        res2 = client.post(f"/api/sessions/{session_id}/debrief")
+        assert res1.json()["metrics"] == res2.json()["metrics"]
 
 
 # ---------------------------------------------------------------------------
