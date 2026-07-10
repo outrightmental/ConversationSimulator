@@ -106,6 +106,7 @@ export default function VoiceInput({ onSubmit, onRawStt, onSttLatency, disabled 
     requestPermission,
     startRecording: startPttRecording,
     stopRecording: stopPttRecording,
+    releaseStream,
   } = useMicCapture(handleAudioReady)
 
   // Wrap start/stop to hook in VAD silence detection for hands-free mode.
@@ -362,6 +363,9 @@ export default function VoiceInput({ onSubmit, onRawStt, onSttLatency, disabled 
                 data-testid="switch-to-text-only"
                 onClick={() => {
                   if (isRecording) stopRecording()
+                  // Release the microphone so the recording indicator turns off —
+                  // the player has opted out of voice for the rest of the session.
+                  releaseStream()
                   setTextOnly(true)
                 }}
                 aria-label="Switch to text-only input"

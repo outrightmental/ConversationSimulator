@@ -36,6 +36,7 @@ function makeMicState(overrides: Partial<ReturnType<typeof useMicCapture>> = {})
     requestPermission: vi.fn(),
     startRecording: vi.fn(),
     stopRecording: vi.fn(),
+    releaseStream: vi.fn(),
     ...overrides,
   }
 }
@@ -892,6 +893,19 @@ describe('VoiceInput — text-only fallback (voice-to-text switch)', () => {
     fireEvent.click(screen.getByRole('button', { name: /switch to text-only/i }))
 
     expect(stopRecording).toHaveBeenCalledOnce()
+  })
+
+  it('releases the microphone stream when switching to text-only', () => {
+    const releaseStream = vi.fn()
+    vi.mocked(useMicCapture).mockReturnValue(
+      makeMicState({ permission: 'granted', releaseStream }),
+    )
+    render(<VoiceInput inputMode="push-to-talk" />)
+
+    fireEvent.click(screen.getByRole('button', { name: /switch to text-only/i }))
+
+    // The mic must be released so the browser/OS recording indicator turns off.
+    expect(releaseStream).toHaveBeenCalledOnce()
   })
 
   it('text input is still functional after switching to text-only', () => {
