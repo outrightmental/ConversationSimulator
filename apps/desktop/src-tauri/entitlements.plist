@@ -15,8 +15,8 @@
   the convsim-core sidecar needs unrestricted write access to the platform data
   directory (~/Library/Application Support/com.outrightmental.convsim).
 
-  Hardened Runtime (--options runtime) is separate from App Sandbox and is what
-  Apple requires for notarization — the two features are independent.
+  Hardened Runtime (codesign's "runtime" option) is separate from App Sandbox
+  and is what Apple requires for notarization — the two features are independent.
 
   Reference: https://developer.apple.com/documentation/security/hardened_runtime
 -->
@@ -50,12 +50,16 @@
     <true/>
 
     <!--
-      Microphone access for optional Whisper STT voice input.
+      Microphone (audio input) access for optional Whisper STT voice input.
+      Under Hardened Runtime the audio-input entitlement is
+      `com.apple.security.device.audio-input`; `com.apple.security.device.microphone`
+      is the App Sandbox equivalent and has no effect here because the App
+      Sandbox is intentionally disabled (see header).
       The OS shows a one-time permission dialog on first use; players who do
       not use voice input are not prompted.  Text-only mode is fully functional
       without this permission.
     -->
-    <key>com.apple.security.device.microphone</key>
+    <key>com.apple.security.device.audio-input</key>
     <true/>
 
     <!--
