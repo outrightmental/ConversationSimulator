@@ -142,6 +142,52 @@ impl SteamRuntime {
         }
         false
     }
+
+    /// Show the Steam floating on-screen keyboard over the game window.
+    ///
+    /// Called whenever a text input or textarea gains focus so the Steam Deck
+    /// on-screen keyboard appears without the player needing to invoke it
+    /// manually — a requirement for the Steam Deck Verified tier.
+    ///
+    /// The keyboard is automatically dismissed when the player confirms or
+    /// cancels input.  Returns `false` when Steam is unavailable.
+    pub fn show_floating_keyboard(&self) -> bool {
+        #[cfg(feature = "steam")]
+        if let Some(ref client) = self.client {
+            use steamworks::FloatingGamepadTextInputMode;
+            // Position the keyboard in the lower third of the screen so it
+            // overlaps as little of the UI as possible at 1280×800.
+            //
+            // `show_floating_gamepad_text_input` requires a `dismissed_cb`
+            // closure (invoked when the player closes the keyboard).  For the
+            // floating keyboard Steam injects the entered text directly into
+            // the focused field as key events, so nothing needs to be read
+            // back on dismiss and the callback is a no-op.
+            return client.utils().show_floating_gamepad_text_input(
+                FloatingGamepadTextInputMode::SingleLine,
+                0,
+                534,
+                1280,
+                266,
+                || {},
+            );
+        }
+        false
+    }
+
+    /// Dismiss the Steam floating on-screen keyboard if it is visible.
+    /// Returns `false` when Steam is unavailable.
+    ///
+    /// NOTE: `steamworks` (through 0.13) does not bind
+    /// `ISteamUtils::DismissFloatingGamepadTextInput`, so there is no way to
+    /// programmatically hide the floating keyboard from Rust.  The floating
+    /// keyboard is instead dismissed by the player (or automatically when they
+    /// confirm input), so this is a no-op that reports `false`.  The Tauri
+    /// command and front-end wiring are kept so hide becomes effective for free
+    /// once the crate exposes the binding.
+    pub fn hide_floating_keyboard(&self) -> bool {
+        false
+    }
 }
 
 // ── Environment-variable helpers (always compiled) ────────────────────────────
@@ -400,6 +446,22 @@ mod tests {
         without_steam_env_vars(|| {
             let (_status, runtime) = init();
             assert!(!runtime.set_rich_presence(rich_presence::IN_SCENARIO));
+        });
+    }
+
+    #[test]
+    fn show_floating_keyboard_returns_false_without_steam() {
+        without_steam_env_vars(|| {
+            let (_status, runtime) = init();
+            assert!(!runtime.show_floating_keyboard());
+        });
+    }
+
+    #[test]
+    fn hide_floating_keyboard_returns_false_without_steam() {
+        without_steam_env_vars(|| {
+            let (_status, runtime) = init();
+            assert!(!runtime.hide_floating_keyboard());
         });
     }
 }
