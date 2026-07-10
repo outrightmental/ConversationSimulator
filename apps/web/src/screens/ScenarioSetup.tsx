@@ -13,6 +13,8 @@ export default function ScenarioSetup() {
         language: session.setup.language,
         show_state_meters: session.setup.show_state_meters,
         scenario_id: session.scenario_id,
+        input_mode: session.setup.input_mode,
+        tts_enabled: session.setup.tts_enabled,
       },
     })
   }
