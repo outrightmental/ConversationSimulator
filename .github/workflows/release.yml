@@ -170,9 +170,18 @@ jobs:
           }
 
           # Decode the base64-encoded PFX to a temporary file.
+          #
+          # `certutil -encode` (the command in the setup docs) wraps its output
+          # in PEM `-----BEGIN/END CERTIFICATE-----` header/footer lines.
+          # [Convert]::FromBase64String tolerates embedded whitespace/newlines
+          # but throws on those marker lines, so strip any line that is not
+          # base64 payload before decoding.  This also accepts a plain,
+          # unwrapped base64 blob unchanged.
           $pfxPath = Join-Path $env:RUNNER_TEMP "convsim-sign.pfx"
           try {
-            [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:CERT_PFX_BASE64))
+            $b64 = ($env:CERT_PFX_BASE64 -split "`r?`n" |
+              Where-Object { $_ -notmatch '^-----' }) -join ''
+            [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($b64))
 
             # Locate all Tauri-produced NSIS installers and MSI packages.
             $bundleDir = "apps\desktop\src-tauri\target\release\bundle"
