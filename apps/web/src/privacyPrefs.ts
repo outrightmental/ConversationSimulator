@@ -7,6 +7,10 @@ export const PRIVACY_KEYS = {
   devMode: 'convsim.devMode',
 } as const
 
+export const SETUP_KEYS = {
+  firstRunComplete: 'convsim.setup.complete',
+} as const
+
 export function readPrivacyPref(key: string, defaultValue: boolean): boolean {
   if (typeof localStorage === 'undefined') return defaultValue
   const v = localStorage.getItem(key)
