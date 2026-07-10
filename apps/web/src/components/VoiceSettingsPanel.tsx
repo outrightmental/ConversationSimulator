@@ -2,6 +2,8 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { VoiceInfo } from '@convsim/shared'
 import { api } from '../api/client'
+import type { ApiError } from '../api/errors'
+import { ApiErrorView } from './ApiErrorView'
 
 type MicPermission = 'granted' | 'denied' | 'prompt' | 'unavailable' | 'checking'
 type ReadinessStatus = 'ready' | 'unavailable' | 'checking' | 'error'
@@ -71,13 +73,13 @@ type CacheClearState = 'idle' | 'clearing' | 'done' | 'error'
 
 export default function VoiceSettingsPanel() {
   const [voices, setVoices] = useState<VoiceInfo[]>([])
-  const [voicesError, setVoicesError] = useState(false)
+  const [voicesError, setVoicesError] = useState<ApiError | null>(null)
 
   const [cacheFiles, setCacheFiles] = useState<number | null>(null)
   const [cacheSizeBytes, setCacheSizeBytes] = useState<number | null>(null)
-  const [cacheError, setCacheError] = useState(false)
+  const [cacheError, setCacheError] = useState<ApiError | null>(null)
   const [clearState, setClearState] = useState<CacheClearState>('idle')
-  const [clearError, setClearError] = useState<string | null>(null)
+  const [clearError, setClearError] = useState<ApiError | null>(null)
 
   const [micPerm, setMicPerm] = useState<MicPermission>('checking')
   const [sttReady, setSttReady] = useState<boolean | null>(null)
@@ -90,48 +92,38 @@ export default function VoiceSettingsPanel() {
 
   const loadCacheSize = useCallback(() => {
     api.getTtsCacheSize()
-      .then((r) => { setCacheFiles(r.files); setCacheSizeBytes(r.size_bytes); setCacheError(false) })
-      .catch(() => setCacheError(true))
+      .then((r) => { if (r.ok) { setCacheFiles(r.data.file_count); setCacheSizeBytes(r.data.bytes) } else setCacheError(r.error) })
   }, [])
 
   useEffect(() => {
     // Load voices from the approved list
     api.listVoices()
       .then((r) => {
-        setVoices(r.voices)
-        setVoicesError(false)
-        // Initialise preferred voice from localStorage if set, else default to first
-        const stored = localStorage.getItem('convsim.voice.preferredVoiceId')
-        if (stored && r.voices.some((v) => v.voice_id === stored)) {
-          setPreferredVoiceId(stored)
-        } else if (r.voices.length > 0) {
-          setPreferredVoiceId(r.voices[0].voice_id)
+        if (r.ok) {
+          setVoices(r.data.voices)
+          setVoicesError(null)
+          // Initialise preferred voice from localStorage if set, else default to first
+          const stored = localStorage.getItem('convsim.voice.preferredVoiceId')
+          if (stored && r.data.voices.some((v) => v.voice_id === stored)) {
+            setPreferredVoiceId(stored)
+          } else if (r.data.voices.length > 0) {
+            setPreferredVoiceId(r.data.voices[0].voice_id)
+          }
+        } else {
+          setVoicesError(r.error)
         }
       })
-      .catch(() => setVoicesError(true))
 
     // Load cache size
     loadCacheSize()
 
     // Health check for STT and TTS readiness
     api.health()
-      .then((h) => {
-        setSttReady(h.runtime.stt_ready)
-        setTtsReady(h.runtime.tts_ready)
-      })
-      .catch(() => {
-        setSttReady(false)
-        setTtsReady(false)
-      })
+      .then((r) => { if (r.ok) { setSttReady(r.data.runtime?.stt_ready ?? false); setTtsReady(r.data.runtime?.tts_ready ?? false) } })
 
     // VAD health check
     api.vadHealth()
-      .then((v) => {
-        setVadReady(v.status === 'ready')
-      })
-      .catch(() => {
-        setVadReady(false)
-      })
+      .then((r) => { if (r.ok) setVadReady(r.data.status === 'ready') })
 
     // Microphone permission
     if (!navigator.permissions) {
@@ -156,15 +148,14 @@ export default function VoiceSettingsPanel() {
   async function handleClearCache() {
     setClearState('clearing')
     setClearError(null)
-    try {
-      const result = await api.clearTtsCache()
+    const r = await api.clearTtsCache()
+    if (!r.ok) {
+      setClearState('error')
+      setClearError(r.error)
+    } else {
       setCacheFiles(0)
       setCacheSizeBytes(0)
       setClearState('done')
-      void result // deleted_files available if needed
-    } catch (err) {
-      setClearError(err instanceof Error ? err.message : 'Failed to clear cache')
-      setClearState('error')
     }
   }
 
@@ -257,7 +248,7 @@ export default function VoiceSettingsPanel() {
           Default NPC voice
         </label>
         {voicesError ? (
-          <p style={{ fontSize: '0.875rem', color: '#f87171' }}>Could not load voice list.</p>
+          <ApiErrorView error={voicesError} compact context="VoiceSettings-Voices" />
         ) : voices.length === 0 ? (
           <p style={{ fontSize: '0.875rem', color: '#a1a1aa' }}>Loading…</p>
         ) : (
@@ -305,16 +296,14 @@ export default function VoiceSettingsPanel() {
           Cached audio files speed up repeated phrases. Clear the cache to free disk space or reset synthesised audio.
         </p>
 
+        {cacheError && <ApiErrorView error={cacheError} compact context="VoiceSettings-Cache" />}
+
         {clearState === 'done' && (
           <p aria-live="polite" style={{ fontSize: '0.875rem', color: '#86efac', marginBottom: '0.4rem' }}>
             Cache cleared.
           </p>
         )}
-        {clearState === 'error' && (
-          <p role="alert" style={{ fontSize: '0.875rem', color: '#f87171', marginBottom: '0.4rem' }}>
-            {clearError ?? 'Failed to clear cache. Please try again.'}
-          </p>
-        )}
+        {clearError && <ApiErrorView error={clearError} compact context="VoiceSettings-Clear" />}
 
         <button
           onClick={handleClearCache}

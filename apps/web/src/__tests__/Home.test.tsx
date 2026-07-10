@@ -42,12 +42,14 @@ function liText(expected: string) {
 }
 
 // Stub fetch: routes /health → healthResp and /packs → packsResp by URL.
+// Includes text() because handleResponse now reads the body as text first.
 function stubFetches(healthResp: object, packsResp: object) {
   vi.stubGlobal(
     'fetch',
     vi.fn((url: string) => {
       const body = url.includes('/packs') ? packsResp : healthResp
-      return Promise.resolve({ ok: true, json: () => Promise.resolve(body) })
+      const text = JSON.stringify(body)
+      return Promise.resolve({ ok: true, json: () => Promise.resolve(body), text: () => Promise.resolve(text) })
     }),
   )
 }

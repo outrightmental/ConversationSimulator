@@ -16,106 +16,181 @@ function mockFetch(status: number, body: unknown) {
   );
 }
 
+const BASE_SESSION = {
+  scenario_id: 'behavioral_interview',
+  difficulty: 'normal' as const,
+  player_role_name: 'Alice',
+  language: 'en',
+  input_mode: 'text-only' as const,
+  tts_enabled: false,
+  show_state_meters: false,
+  save_transcript: true,
+  seed: null,
+};
+
 beforeEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('api.createSession error handling', () => {
-  it('throws with the human-readable message field from a Fastify JSON error', async () => {
+describe('api.createSession — ApiResult return type', () => {
+  it('returns ok:true with data on success', async () => {
+    mockFetch(201, { session_id: 'sess-1', scenario_id: 'behavioral_interview', state: 'NotStarted', created_at: '' });
+    const result = await api.createSession(BASE_SESSION);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data.session_id).toBe('sess-1');
+  });
+
+  it('returns ok:false with http-error kind and human-readable message on 400', async () => {
     mockFetch(400, {
       statusCode: 400,
       error: 'Bad Request',
       message: 'Unknown scenario_id: nonexistent',
     });
-
-    await expect(
-      api.createSession({
-        scenario_id: 'nonexistent',
-        difficulty: 'standard',
-        player_role_name: 'Alice',
-        language: 'en',
-        input_mode: 'text-only',
-        tts_enabled: false,
-        show_state_meters: false,
-        save_transcript: true,
-        seed: null,
-      }),
-    ).rejects.toThrow('Unknown scenario_id: nonexistent');
+    const result = await api.createSession({ ...BASE_SESSION, scenario_id: 'nonexistent' });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.kind).toBe('http-error');
+      expect(result.error.message).toBe('Unknown scenario_id: nonexistent');
+    }
   });
 
-  it('does not throw raw JSON string as the error message', async () => {
+  it('error message does not contain raw JSON (no statusCode field)', async () => {
     mockFetch(400, {
       statusCode: 400,
       error: 'Bad Request',
       message: 'player_role_name cannot be blank',
     });
-
-    let thrownMessage = '';
-    try {
-      await api.createSession({
-        scenario_id: 'behavioral_interview',
-        difficulty: 'standard',
-        player_role_name: '',
-        language: 'en',
-        input_mode: 'text-only',
-        tts_enabled: false,
-        show_state_meters: false,
-        save_transcript: true,
-        seed: null,
-      });
-    } catch (e) {
-      thrownMessage = e instanceof Error ? e.message : String(e);
+    const result = await api.createSession({ ...BASE_SESSION, player_role_name: '' });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toBe('player_role_name cannot be blank');
+      expect(result.error.message).not.toContain('"statusCode"');
     }
-
-    expect(thrownMessage).toBe('player_role_name cannot be blank');
-    expect(thrownMessage).not.toContain('"statusCode"');
   });
 
-  it('extracts the message from a convsim-core nested error object', async () => {
+  it('extracts message from nested convsim-core error object', async () => {
     mockFetch(404, { error: { code: 'PACK_NOT_FOUND', message: 'Pack "ghost" not found' } });
-
-    let thrownMessage = '';
-    try {
-      await api.createSession({
-        scenario_id: 'behavioral_interview',
-        difficulty: 'standard',
-        player_role_name: 'Alice',
-        language: 'en',
-        input_mode: 'text-only',
-        tts_enabled: false,
-        show_state_meters: false,
-        save_transcript: true,
-        seed: null,
-      });
-    } catch (e) {
-      thrownMessage = e instanceof Error ? e.message : String(e);
+    const result = await api.createSession(BASE_SESSION);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.kind).toBe('http-error');
+      expect(result.error.message).toBe('PACK_NOT_FOUND: Pack "ghost" not found');
+      expect(result.error.message).not.toContain('{');
     }
-
-    expect(thrownMessage).toBe('PACK_NOT_FOUND: Pack "ghost" not found');
-    expect(thrownMessage).not.toContain('{');
   });
 
-  it('falls back to raw text when response is not JSON', async () => {
+  it('falls back to raw text for non-JSON error bodies', async () => {
     mockFetch(500, 'Internal server error (plain text)');
-
-    await expect(
-      api.createSession({
-        scenario_id: 'behavioral_interview',
-        difficulty: 'standard',
-        player_role_name: 'Alice',
-        language: 'en',
-        input_mode: 'text-only',
-        tts_enabled: false,
-        show_state_meters: false,
-        save_transcript: true,
-        seed: null,
-      }),
-    ).rejects.toThrow('Internal server error (plain text)');
+    const result = await api.createSession(BASE_SESSION);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.kind).toBe('http-error');
+      expect(result.error.message).toBe('Internal server error (plain text)');
+    }
   });
 });
 
 // ---------------------------------------------------------------------------
-// api.connectSession — WebSocket client
+// Content-type / runtime-unreachable guard
+// ---------------------------------------------------------------------------
+
+describe('api.createSession — content-type guard', () => {
+  it('returns runtime-unreachable when the server returns HTML on a 2xx response', async () => {
+    // This is the root-cause scenario: core is down, static server returns index.html
+    const html = '<!doctype html><html><body>Loading…</body></html>';
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      text: () => Promise.resolve(html),
+    }));
+    const result = await api.createSession(BASE_SESSION);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.kind).toBe('runtime-unreachable');
+      // Parser internals must not leak to the DOM
+      expect(result.error.message).not.toContain('Unexpected token');
+      expect(result.error.message).not.toContain('<!doctype');
+    }
+  });
+
+  it('returns runtime-unreachable for any non-JSON 2xx body', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      text: () => Promise.resolve('not valid json at all'),
+    }));
+    const result = await api.createSession(BASE_SESSION);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.kind).toBe('runtime-unreachable');
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Network errors
+// ---------------------------------------------------------------------------
+
+describe('api — network errors', () => {
+  it('returns ok:false with network kind when fetch rejects (connection refused)', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
+    const result = await api.createSession(BASE_SESSION);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.kind).toBe('network');
+    }
+  });
+
+  it('returns ok:false with network kind for getScenario when offline', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
+    const result = await api.getScenario('some-id');
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.kind).toBe('network');
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// api.getScenario
+// ---------------------------------------------------------------------------
+
+describe('api.getScenario', () => {
+  it('returns ok:false with http-error on 404', async () => {
+    mockFetch(404, {
+      statusCode: 404,
+      error: 'Not Found',
+      message: "Scenario 'nonexistent' not found",
+    });
+    const result = await api.getScenario('nonexistent');
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.kind).toBe('http-error');
+      expect(result.error.message).toBe("Scenario 'nonexistent' not found");
+      expect(result.error.message).not.toContain('"statusCode"');
+    }
+  });
+
+  it('falls back to status text when response body is empty', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      statusText: 'Internal Server Error',
+      text: () => Promise.resolve(''),
+    }));
+    const result = await api.getScenario('some_id');
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.kind).toBe('http-error');
+      expect(result.error.message).toContain('500');
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// api.connectSession — WebSocket client (unchanged behavior)
 // ---------------------------------------------------------------------------
 
 interface MockWsInstance {
@@ -143,7 +218,6 @@ function setupMockWebSocket(): { instances: MockWsInstance[] } {
     }
   }
 
-  // Patch MockWebSocket instances with dispatch helper
   Object.defineProperty(MockWebSocket.prototype, 'dispatch', {
     value(this: MockWebSocket, data: unknown) {
       this.onmessage?.({ data: JSON.stringify(data) });
@@ -228,50 +302,5 @@ describe('api.connectSession', () => {
     instances[0]!.dispatch({ seq: 3, session_id: 'sess-test', ts: '', type: 'npc.final', payload: { content: 'Hi', emotion: 'neutral', state_delta: {}, event_flags: [] } });
 
     expect(types).toEqual(['session.state', 'npc.token', 'npc.final']);
-  });
-});
-
-describe('api.getScenario error handling', () => {
-  it('throws with the human-readable message field from a Fastify JSON error', async () => {
-    mockFetch(404, {
-      statusCode: 404,
-      error: 'Not Found',
-      message: "Scenario 'nonexistent' not found",
-    });
-
-    await expect(api.getScenario('nonexistent')).rejects.toThrow(
-      "Scenario 'nonexistent' not found",
-    );
-  });
-
-  it('does not throw raw JSON string as the error message', async () => {
-    mockFetch(404, {
-      statusCode: 404,
-      error: 'Not Found',
-      message: "Scenario 'nonexistent' not found",
-    });
-
-    let thrownMessage = '';
-    try {
-      await api.getScenario('nonexistent');
-    } catch (e) {
-      thrownMessage = e instanceof Error ? e.message : String(e);
-    }
-
-    expect(thrownMessage).not.toContain('"statusCode"');
-  });
-
-  it('falls back to status text when response is not JSON', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
-        ok: false,
-        status: 500,
-        statusText: 'Internal Server Error',
-        text: () => Promise.resolve(''),
-      }),
-    );
-
-    await expect(api.getScenario('some_id')).rejects.toThrow('500 Internal Server Error');
   });
 });

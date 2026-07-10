@@ -159,16 +159,16 @@ const INDEXED_PACKS_WITH_JOB = {
 beforeEach(() => {
   vi.restoreAllMocks()
   vi.clearAllMocks()
-  mockApi.listScenarios.mockResolvedValue(ALL_SCENARIOS)
-  mockApi.validatePack.mockResolvedValue(VALID_RESULT)
-  mockApi.listPacks.mockResolvedValue(INDEXED_PACKS_EMPTY)
-  mockApi.getModels.mockResolvedValue(MODELS_READY)
-  mockApi.importPack.mockResolvedValue({
+  mockApi.listScenarios.mockResolvedValue({ ok: true, data: ALL_SCENARIOS })
+  mockApi.validatePack.mockResolvedValue({ ok: true, data: VALID_RESULT })
+  mockApi.listPacks.mockResolvedValue({ ok: true, data: INDEXED_PACKS_EMPTY })
+  mockApi.getModels.mockResolvedValue({ ok: true, data: MODELS_READY })
+  mockApi.importPack.mockResolvedValue({ ok: true, data: {
     pack_id: 'community.test_pack',
     name: 'Test Pack',
     version: '1.0.0',
     dest: '/home/user/.convsim/packs/community.test_pack',
-  })
+  }})
 })
 
 // ---------------------------------------------------------------------------
@@ -194,10 +194,10 @@ describe('loading states', () => {
   })
 
   it('shows error message when fetch fails', async () => {
-    mockApi.listScenarios.mockRejectedValue(new Error('network'))
+    mockApi.listScenarios.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'network' } })
     renderLibrary()
     await waitFor(() =>
-      expect(screen.getByRole('alert')).toHaveTextContent(/could not load scenarios/i),
+      expect(screen.getByRole('alert')).toHaveTextContent(/connection failed/i),
     )
   })
 })
@@ -208,7 +208,7 @@ describe('loading states', () => {
 
 describe('empty state', () => {
   it('shows empty state when no scenarios are installed', async () => {
-    mockApi.listScenarios.mockResolvedValue([])
+    mockApi.listScenarios.mockResolvedValue({ ok: true, data: [] })
     renderLibrary()
     await waitFor(() =>
       expect(screen.getByTestId('empty-state')).toBeInTheDocument(),
@@ -216,7 +216,7 @@ describe('empty state', () => {
   })
 
   it('empty state mentions how to import packs', async () => {
-    mockApi.listScenarios.mockResolvedValue([])
+    mockApi.listScenarios.mockResolvedValue({ ok: true, data: [] })
     renderLibrary()
     await waitFor(() =>
       expect(screen.getByTestId('empty-state')).toHaveTextContent(/import a pack/i),
@@ -224,7 +224,7 @@ describe('empty state', () => {
   })
 
   it('empty state has an import pack button', async () => {
-    mockApi.listScenarios.mockResolvedValue([])
+    mockApi.listScenarios.mockResolvedValue({ ok: true, data: [] })
     renderLibrary()
     await waitFor(() => screen.getByTestId('empty-state'))
     expect(screen.getByTestId('empty-import-pack-button')).toBeInTheDocument()
@@ -506,7 +506,7 @@ describe('filters', () => {
   })
 
   it('model filter dropdown is hidden when no scenarios have recommended_model', async () => {
-    mockApi.listScenarios.mockResolvedValue([SCENARIO_SPANISH])
+    mockApi.listScenarios.mockResolvedValue({ ok: true, data: [SCENARIO_SPANISH] })
     renderLibrary()
     await waitFor(() => screen.getByText('Spanish Coffee Conversation'))
     expect(screen.queryByRole('combobox', { name: /filter by recommended model/i })).not.toBeInTheDocument()
@@ -579,7 +579,7 @@ describe('pack validation', () => {
   })
 
   it('shows validation errors with rule_id when pack is invalid', async () => {
-    mockApi.validatePack.mockResolvedValue(INVALID_RESULT)
+    mockApi.validatePack.mockResolvedValue({ ok: true, data: INVALID_RESULT })
     renderLibrary()
     await waitFor(() => screen.getByTestId('validate-official.job_interview_basic'))
     fireEvent.click(screen.getByTestId('validate-official.job_interview_basic'))
@@ -591,7 +591,7 @@ describe('pack validation', () => {
   })
 
   it('shows file_path in validation error when present', async () => {
-    mockApi.validatePack.mockResolvedValue(INVALID_RESULT)
+    mockApi.validatePack.mockResolvedValue({ ok: true, data: INVALID_RESULT })
     renderLibrary()
     await waitFor(() => screen.getByTestId('validate-official.job_interview_basic'))
     fireEvent.click(screen.getByTestId('validate-official.job_interview_basic'))
@@ -602,17 +602,17 @@ describe('pack validation', () => {
   })
 
   it('shows error alert when validate API call fails', async () => {
-    mockApi.validatePack.mockRejectedValue(new Error('Server error'))
+    mockApi.validatePack.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'network' } })
     renderLibrary()
     await waitFor(() => screen.getByTestId('validate-official.job_interview_basic'))
     fireEvent.click(screen.getByTestId('validate-official.job_interview_basic'))
     await waitFor(() =>
-      expect(screen.getByRole('alert')).toHaveTextContent(/server error/i),
+      expect(screen.getByRole('alert')).toHaveTextContent(/connection failed/i),
     )
   })
 
   it('validate button shows loading state while request is in flight', async () => {
-    let resolve: (v: PackValidationResult) => void
+    let resolve: (v: { ok: true; data: PackValidationResult }) => void
     mockApi.validatePack.mockReturnValue(new Promise((r) => { resolve = r }))
     renderLibrary()
     await waitFor(() => screen.getByTestId('validate-official.job_interview_basic'))
@@ -622,7 +622,7 @@ describe('pack validation', () => {
         /validating/i,
       ),
     )
-    await act(async () => { resolve!(VALID_RESULT) })
+    await act(async () => { resolve!({ ok: true, data: VALID_RESULT }) })
   })
 })
 
@@ -728,14 +728,14 @@ describe('import pack', () => {
   })
 
   it('shows error message when import fails', async () => {
-    mockApi.importPack.mockRejectedValue(new Error('Invalid pack format'))
+    mockApi.importPack.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'network' } })
     renderLibrary()
     await waitFor(() => screen.getByText('Behavioral Interview'))
     const fileInput = screen.getByTestId('import-file-input')
     const file = new File(['bad'], 'bad.zip', { type: 'application/zip' })
     fireEvent.change(fileInput, { target: { files: [file] } })
     await waitFor(() => screen.getByTestId('import-error'))
-    expect(screen.getByTestId('import-error')).toHaveTextContent(/invalid pack format/i)
+    expect(screen.getByTestId('import-error')).toHaveTextContent(/connection failed/i)
   })
 
   it('reloads scenarios after successful import', async () => {
@@ -750,7 +750,7 @@ describe('import pack', () => {
   })
 
   it('empty state shows an import pack button', async () => {
-    mockApi.listScenarios.mockResolvedValue([])
+    mockApi.listScenarios.mockResolvedValue({ ok: true, data: [] })
     renderLibrary()
     await waitFor(() => screen.getByTestId('empty-state'))
     expect(screen.getByTestId('empty-import-pack-button')).toBeInTheDocument()
@@ -763,7 +763,7 @@ describe('import pack', () => {
 
 describe('open pack folder', () => {
   it('shows open-folder button for indexed (imported) packs', async () => {
-    mockApi.listPacks.mockResolvedValue(INDEXED_PACKS_WITH_JOB)
+    mockApi.listPacks.mockResolvedValue({ ok: true, data: INDEXED_PACKS_WITH_JOB })
     renderLibrary()
     await waitFor(() => screen.getByText('Behavioral Interview'))
     await waitFor(() =>
@@ -774,7 +774,7 @@ describe('open pack folder', () => {
   })
 
   it('does not show open-folder button for packs not in index', async () => {
-    mockApi.listPacks.mockResolvedValue(INDEXED_PACKS_EMPTY)
+    mockApi.listPacks.mockResolvedValue({ ok: true, data: INDEXED_PACKS_EMPTY })
     renderLibrary()
     await waitFor(() => screen.getByText('Behavioral Interview'))
     expect(
@@ -783,7 +783,7 @@ describe('open pack folder', () => {
   })
 
   it('clicking open-folder reveals the pack root path', async () => {
-    mockApi.listPacks.mockResolvedValue(INDEXED_PACKS_WITH_JOB)
+    mockApi.listPacks.mockResolvedValue({ ok: true, data: INDEXED_PACKS_WITH_JOB })
     renderLibrary()
     await waitFor(() => screen.getByTestId('open-folder-official.job_interview_basic'))
     fireEvent.click(screen.getByTestId('open-folder-official.job_interview_basic'))
@@ -798,7 +798,7 @@ describe('open pack folder', () => {
   })
 
   it('open-folder button has an accessible aria-label', async () => {
-    mockApi.listPacks.mockResolvedValue(INDEXED_PACKS_WITH_JOB)
+    mockApi.listPacks.mockResolvedValue({ ok: true, data: INDEXED_PACKS_WITH_JOB })
     renderLibrary()
     await waitFor(() => screen.getByTestId('open-folder-official.job_interview_basic'))
     expect(
@@ -807,7 +807,7 @@ describe('open pack folder', () => {
   })
 
   it('clicking open-folder again hides the path', async () => {
-    mockApi.listPacks.mockResolvedValue(INDEXED_PACKS_WITH_JOB)
+    mockApi.listPacks.mockResolvedValue({ ok: true, data: INDEXED_PACKS_WITH_JOB })
     renderLibrary()
     await waitFor(() => screen.getByTestId('open-folder-official.job_interview_basic'))
     fireEvent.click(screen.getByTestId('open-folder-official.job_interview_basic'))
@@ -829,45 +829,45 @@ describe('open pack folder', () => {
 
 describe('model-missing state', () => {
   it('does not show model-missing banner when runtime is ready', async () => {
-    mockApi.getModels.mockResolvedValue(MODELS_READY)
+    mockApi.getModels.mockResolvedValue({ ok: true, data: MODELS_READY })
     renderLibrary()
     await waitFor(() => screen.getByText('Behavioral Interview'))
     expect(screen.queryByTestId('model-missing-banner')).not.toBeInTheDocument()
   })
 
   it('does not show model-missing banner when runtime is degraded', async () => {
-    mockApi.getModels.mockResolvedValue({
+    mockApi.getModels.mockResolvedValue({ ok: true, data: {
       ...MODELS_READY,
       runtime_health: { ...MODELS_READY.runtime_health, status: 'degraded' },
-    })
+    }})
     renderLibrary()
     await waitFor(() => screen.getByText('Behavioral Interview'))
     expect(screen.queryByTestId('model-missing-banner')).not.toBeInTheDocument()
   })
 
   it('shows model-missing banner when runtime is unavailable', async () => {
-    mockApi.getModels.mockResolvedValue(MODELS_UNAVAILABLE)
+    mockApi.getModels.mockResolvedValue({ ok: true, data: MODELS_UNAVAILABLE })
     renderLibrary()
     await waitFor(() => screen.getByTestId('model-missing-banner'))
     expect(screen.getByTestId('model-missing-banner')).toBeInTheDocument()
   })
 
   it('model-missing banner mentions model setup', async () => {
-    mockApi.getModels.mockResolvedValue(MODELS_UNAVAILABLE)
+    mockApi.getModels.mockResolvedValue({ ok: true, data: MODELS_UNAVAILABLE })
     renderLibrary()
     await waitFor(() => screen.getByTestId('model-missing-banner'))
     expect(screen.getByTestId('model-missing-banner')).toHaveTextContent(/no model is ready/i)
   })
 
   it('model-missing banner links to model manager', async () => {
-    mockApi.getModels.mockResolvedValue(MODELS_UNAVAILABLE)
+    mockApi.getModels.mockResolvedValue({ ok: true, data: MODELS_UNAVAILABLE })
     renderLibrary()
     await waitFor(() => screen.getByTestId('model-manager-link'))
     expect(screen.getByTestId('model-manager-link')).toHaveAttribute('href', '/model-manager')
   })
 
   it('model-missing banner is an alert region', async () => {
-    mockApi.getModels.mockResolvedValue(MODELS_UNAVAILABLE)
+    mockApi.getModels.mockResolvedValue({ ok: true, data: MODELS_UNAVAILABLE })
     renderLibrary()
     await waitFor(() => screen.getByTestId('model-missing-banner'))
     const banner = screen.getByTestId('model-missing-banner')
@@ -875,7 +875,7 @@ describe('model-missing state', () => {
   })
 
   it('does not show model-missing banner when getModels fails', async () => {
-    mockApi.getModels.mockRejectedValue(new Error('network'))
+    mockApi.getModels.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'network' } })
     renderLibrary()
     await waitFor(() => screen.getByText('Behavioral Interview'))
     expect(screen.queryByTestId('model-missing-banner')).not.toBeInTheDocument()

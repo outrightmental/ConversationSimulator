@@ -95,21 +95,21 @@ beforeEach(() => {
   vi.clearAllMocks()
   localStorage.clear()
 
-  mockApi.getModels.mockResolvedValue(makeModelsResponse())
-  mockApi.useModel.mockResolvedValue({
+  mockApi.getModels.mockResolvedValue({ ok: true, data: makeModelsResponse() })
+  mockApi.useModel.mockResolvedValue({ ok: true, data: {
     runtime_id: 'ollama',
     model_id: 'llama3:latest',
     runtime_name: 'Ollama',
     status: 'ready',
     message: null,
-  })
-  mockApi.installModel.mockResolvedValue({
+  } })
+  mockApi.installModel.mockResolvedValue({ ok: true, data: {
     install_id: 1,
     registry_id: 'qwen3-4b-instruct-q4_k_m',
     status: 'pending',
     message: 'Install queued.',
-  })
-  mockApi.getInstallStatus.mockResolvedValue({
+  } })
+  mockApi.getInstallStatus.mockResolvedValue({ ok: true, data: {
     id: 1,
     registry_id: 'qwen3-4b-instruct-q4_k_m',
     filename: 'qwen3-4b-instruct-q4_k_m.gguf',
@@ -120,9 +120,9 @@ beforeEach(() => {
     error_message: null,
     verified_sha256: null,
     installed_at: '2026-01-01T00:00:00Z',
-  })
-  mockApi.cancelInstall.mockResolvedValue(undefined)
-  mockApi.registerGguf.mockResolvedValue({
+  } })
+  mockApi.cancelInstall.mockResolvedValue({ ok: true, data: undefined })
+  mockApi.registerGguf.mockResolvedValue({ ok: true, data: {
     profile_id: 1,
     file_path: '/home/user/models/my-model.gguf',
     display_name: 'my-model.gguf',
@@ -132,15 +132,15 @@ beforeEach(() => {
     warnings: [],
     active_runtime_id: 'llama_cpp',
     active_model_id: '/home/user/models/my-model.gguf',
-  })
-  mockApi.startSidecar.mockResolvedValue({
+  } })
+  mockApi.startSidecar.mockResolvedValue({ ok: true, data: {
     state: 'running',
     pid: 1234,
     log_path: '/tmp/sidecar.log',
     host: '127.0.0.1',
     port: 7356,
-  })
-  mockApi.benchmarkModel.mockResolvedValue(DEFAULT_BENCHMARK)
+  } })
+  mockApi.benchmarkModel.mockResolvedValue({ ok: true, data: DEFAULT_BENCHMARK })
 })
 
 // ── Welcome step ─────────────────────────────────────────────────────────────
@@ -345,7 +345,7 @@ describe('FirstRunWizard — successful install', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
       await goToInstalling()
-      mockApi.getInstallStatus.mockResolvedValue({
+      mockApi.getInstallStatus.mockResolvedValue({ ok: true, data: {
         id: 1,
         registry_id: 'qwen3-4b-instruct-q4_k_m',
         filename: 'qwen3-4b-instruct-q4_k_m.gguf',
@@ -356,7 +356,7 @@ describe('FirstRunWizard — successful install', () => {
         error_message: null,
         verified_sha256: null,
         installed_at: '2026-01-01T00:00:00Z',
-      })
+      } })
       await vi.advanceTimersByTimeAsync(2000)
 
       const bar = screen.getByRole('progressbar')
@@ -371,7 +371,7 @@ describe('FirstRunWizard — successful install', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
       await goToInstalling()
-      mockApi.getInstallStatus.mockResolvedValue({
+      mockApi.getInstallStatus.mockResolvedValue({ ok: true, data: {
         id: 1,
         registry_id: 'qwen3-4b-instruct-q4_k_m',
         filename: 'qwen3-4b-instruct-q4_k_m.gguf',
@@ -382,7 +382,7 @@ describe('FirstRunWizard — successful install', () => {
         error_message: null,
         verified_sha256: 'a'.repeat(64),
         installed_at: '2026-01-01T00:00:00Z',
-      })
+      } })
       await vi.advanceTimersByTimeAsync(2000)
 
       await waitFor(() => expect(screen.getByTestId('home-page')).toBeInTheDocument())
@@ -395,7 +395,7 @@ describe('FirstRunWizard — successful install', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
       await goToInstalling()
-      mockApi.getInstallStatus.mockResolvedValue({
+      mockApi.getInstallStatus.mockResolvedValue({ ok: true, data: {
         id: 1,
         registry_id: 'qwen3-4b-instruct-q4_k_m',
         filename: 'qwen3-4b-instruct-q4_k_m.gguf',
@@ -406,7 +406,7 @@ describe('FirstRunWizard — successful install', () => {
         error_message: null,
         verified_sha256: 'a'.repeat(64),
         installed_at: '2026-01-01T00:00:00Z',
-      })
+      } })
       await vi.advanceTimersByTimeAsync(2000)
       await waitFor(() => expect(screen.getByTestId('home-page')).toBeInTheDocument())
 
@@ -434,7 +434,7 @@ describe('FirstRunWizard — no network error', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
       await goToInstalling()
-      mockApi.getInstallStatus.mockResolvedValue({
+      mockApi.getInstallStatus.mockResolvedValue({ ok: true, data: {
         id: 1,
         registry_id: 'qwen3-4b-instruct-q4_k_m',
         filename: 'qwen3-4b-instruct-q4_k_m.gguf',
@@ -445,7 +445,7 @@ describe('FirstRunWizard — no network error', () => {
         error_message: 'no network connection available',
         verified_sha256: null,
         installed_at: '2026-01-01T00:00:00Z',
-      })
+      } })
       await vi.advanceTimersByTimeAsync(2000)
 
       await waitFor(() =>
@@ -461,7 +461,7 @@ describe('FirstRunWizard — no network error', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
       await goToInstalling()
-      mockApi.getInstallStatus.mockResolvedValue({
+      mockApi.getInstallStatus.mockResolvedValue({ ok: true, data: {
         id: 1,
         registry_id: 'qwen3-4b-instruct-q4_k_m',
         filename: 'qwen3-4b-instruct-q4_k_m.gguf',
@@ -472,7 +472,7 @@ describe('FirstRunWizard — no network error', () => {
         error_message: 'network error: connection refused',
         verified_sha256: null,
         installed_at: '2026-01-01T00:00:00Z',
-      })
+      } })
       await vi.advanceTimersByTimeAsync(2000)
 
       await waitFor(() =>
@@ -488,7 +488,7 @@ describe('FirstRunWizard — no network error', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
       await goToInstalling()
-      mockApi.getInstallStatus.mockResolvedValue({
+      mockApi.getInstallStatus.mockResolvedValue({ ok: true, data: {
         id: 1,
         registry_id: 'qwen3-4b-instruct-q4_k_m',
         filename: 'qwen3-4b-instruct-q4_k_m.gguf',
@@ -499,7 +499,7 @@ describe('FirstRunWizard — no network error', () => {
         error_message: 'no network connection',
         verified_sha256: null,
         installed_at: '2026-01-01T00:00:00Z',
-      })
+      } })
       await vi.advanceTimersByTimeAsync(2000)
 
       await waitFor(() =>
@@ -514,7 +514,7 @@ describe('FirstRunWizard — no network error', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
       await goToInstalling()
-      mockApi.getInstallStatus.mockResolvedValue({
+      mockApi.getInstallStatus.mockResolvedValue({ ok: true, data: {
         id: 1,
         registry_id: 'qwen3-4b-instruct-q4_k_m',
         filename: 'qwen3-4b-instruct-q4_k_m.gguf',
@@ -525,7 +525,7 @@ describe('FirstRunWizard — no network error', () => {
         error_message: 'no network connection',
         verified_sha256: null,
         installed_at: '2026-01-01T00:00:00Z',
-      })
+      } })
       await vi.advanceTimersByTimeAsync(2000)
 
       await waitFor(() =>
@@ -542,7 +542,7 @@ describe('FirstRunWizard — no network error', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
       await goToInstalling()
-      mockApi.getInstallStatus.mockResolvedValue({
+      mockApi.getInstallStatus.mockResolvedValue({ ok: true, data: {
         id: 1,
         registry_id: 'qwen3-4b-instruct-q4_k_m',
         filename: 'qwen3-4b-instruct-q4_k_m.gguf',
@@ -553,7 +553,7 @@ describe('FirstRunWizard — no network error', () => {
         error_message: 'no network connection',
         verified_sha256: null,
         installed_at: '2026-01-01T00:00:00Z',
-      })
+      } })
       await vi.advanceTimersByTimeAsync(2000)
       await waitFor(() =>
         expect(screen.getByRole('button', { name: /retry download/i })).toBeInTheDocument(),
@@ -570,7 +570,7 @@ describe('FirstRunWizard — no network error', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
       await goToInstalling()
-      mockApi.getInstallStatus.mockResolvedValue({
+      mockApi.getInstallStatus.mockResolvedValue({ ok: true, data: {
         id: 1,
         registry_id: 'qwen3-4b-instruct-q4_k_m',
         filename: 'qwen3-4b-instruct-q4_k_m.gguf',
@@ -581,7 +581,7 @@ describe('FirstRunWizard — no network error', () => {
         error_message: 'no network connection',
         verified_sha256: null,
         installed_at: '2026-01-01T00:00:00Z',
-      })
+      } })
       await vi.advanceTimersByTimeAsync(2000)
       await waitFor(() =>
         expect(
@@ -610,7 +610,7 @@ describe('FirstRunWizard — insufficient disk error', () => {
     fireEvent.click(screen.getByRole('button', { name: /confirm & install/i }))
     await screen.findByRole('heading', { name: /installing model/i })
 
-    mockApi.getInstallStatus.mockResolvedValue({
+    mockApi.getInstallStatus.mockResolvedValue({ ok: true, data: {
       id: 1,
       registry_id: 'qwen3-4b-instruct-q4_k_m',
       filename: 'qwen3-4b-instruct-q4_k_m.gguf',
@@ -621,7 +621,7 @@ describe('FirstRunWizard — insufficient disk error', () => {
       error_message: 'insufficient disk space',
       verified_sha256: null,
       installed_at: '2026-01-01T00:00:00Z',
-    })
+    } })
     await vi.advanceTimersByTimeAsync(2000)
 
     await waitFor(() =>
@@ -724,7 +724,7 @@ describe('FirstRunWizard — cancelled download', () => {
   })
 
   it('navigates home even when cancelInstall API call fails', async () => {
-    mockApi.cancelInstall.mockRejectedValue(new Error('server error'))
+    mockApi.cancelInstall.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'server error' } })
     await goToInstalling()
     fireEvent.click(screen.getByRole('button', { name: /cancel and go home/i }))
     await waitFor(() => expect(screen.getByTestId('home-page')).toBeInTheDocument())
@@ -734,7 +734,7 @@ describe('FirstRunWizard — cancelled download', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
       await goToInstalling()
-      mockApi.getInstallStatus.mockRejectedValueOnce(new Error('network blip'))
+      mockApi.getInstallStatus.mockResolvedValueOnce({ ok: false, error: { kind: 'network', message: 'network blip' } })
 
       await vi.advanceTimersByTimeAsync(2000)
       expect(screen.getByRole('heading', { name: /installing model/i })).toBeInTheDocument()
@@ -816,7 +816,7 @@ describe('FirstRunWizard — existing Ollama path', () => {
   })
 
   it('shows an error alert when useModel fails', async () => {
-    mockApi.useModel.mockRejectedValue(new Error('Ollama not running'))
+    mockApi.useModel.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'Ollama not running' } })
     await goToOllama()
     const [first] = screen.getAllByRole('button', { name: /use this model/i })
     fireEvent.click(first)
@@ -826,7 +826,7 @@ describe('FirstRunWizard — existing Ollama path', () => {
   })
 
   it('shows "No Ollama models detected" when the list is empty', async () => {
-    mockApi.getModels.mockResolvedValue(makeModelsResponse({ ollama_models: [] }))
+    mockApi.getModels.mockResolvedValue({ ok: true, data: makeModelsResponse({ ollama_models: [] }) })
     renderWizard()
     fireEvent.click(screen.getByRole('button', { name: /get started/i }))
     await screen.findByRole('button', { name: /browse ollama models/i })
@@ -864,13 +864,13 @@ describe('FirstRunWizard — text-only demo path', () => {
   })
 
   it('calls useModel with the fake runtime when confirmed', async () => {
-    mockApi.useModel.mockResolvedValue({
+    mockApi.useModel.mockResolvedValue({ ok: true, data: {
       runtime_id: 'fake',
       model_id: null,
       runtime_name: 'Fake (deterministic)',
       status: 'ready',
       message: null,
-    })
+    } })
     await goToDemo()
     fireEvent.click(screen.getByRole('button', { name: /i understand/i }))
     await waitFor(() =>
@@ -886,7 +886,7 @@ describe('FirstRunWizard — text-only demo path', () => {
   })
 
   it('still navigates to library even when useModel fails in demo mode', async () => {
-    mockApi.useModel.mockRejectedValue(new Error('runtime unavailable'))
+    mockApi.useModel.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'runtime unavailable' } })
     await goToDemo()
     fireEvent.click(screen.getByRole('button', { name: /i understand/i }))
     await waitFor(() => expect(screen.getByTestId('library-page')).toBeInTheDocument())
@@ -897,7 +897,7 @@ describe('FirstRunWizard — text-only demo path', () => {
 
 describe('FirstRunWizard — load error state', () => {
   it('shows an error alert when getModels fails', async () => {
-    mockApi.getModels.mockRejectedValue(new Error('service unavailable'))
+    mockApi.getModels.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'service unavailable' } })
     renderWizard()
     fireEvent.click(screen.getByRole('button', { name: /get started/i }))
     await waitFor(() =>
@@ -906,7 +906,7 @@ describe('FirstRunWizard — load error state', () => {
   })
 
   it('mentions the text-only demo as a fallback when the runtime is unavailable', async () => {
-    mockApi.getModels.mockRejectedValue(new Error('runtime unreachable'))
+    mockApi.getModels.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'runtime unreachable' } })
     renderWizard()
     fireEvent.click(screen.getByRole('button', { name: /get started/i }))
     await waitFor(() =>
@@ -916,7 +916,7 @@ describe('FirstRunWizard — load error state', () => {
   })
 
   it('back button from load error returns to the welcome step', async () => {
-    mockApi.getModels.mockRejectedValue(new Error('network error'))
+    mockApi.getModels.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'network error' } })
     renderWizard()
     fireEvent.click(screen.getByRole('button', { name: /get started/i }))
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())

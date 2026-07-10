@@ -21,23 +21,16 @@ export function useApiHealth(): ApiHealth {
   useEffect(() => {
     let cancelled = false
 
-    apiClient
-      .health()
-      .then((data) => {
-        if (!cancelled) {
-          const state: HealthState = data.status === 'ok' ? 'healthy' : 'unavailable'
-          setResult({
-            state,
-            healthy: state === 'healthy',
-            runtime: data.runtime ?? null,
-          })
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
+    void apiClient.health().then((r) => {
+      if (!cancelled) {
+        if (r.ok) {
+          const state: HealthState = r.data.status === 'ok' ? 'healthy' : 'unavailable'
+          setResult({ state, healthy: state === 'healthy', runtime: r.data.runtime ?? null })
+        } else {
           setResult({ state: 'unavailable', healthy: false, runtime: null })
         }
-      })
+      }
+    })
 
     return () => {
       cancelled = true

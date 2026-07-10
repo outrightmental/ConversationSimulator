@@ -3,6 +3,8 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { ModelsResponse, ModelRegistryEntry, DetectedOllamaModel, InstalledModelInfo, BenchmarkResponse } from '@convsim/shared'
+import type { ApiError } from '../api/errors'
+import { ApiErrorView } from '../components/ApiErrorView'
 
 const SETUP_DOCS_URL = 'https://github.com/outrightmental/ConversationSimulator/wiki'
 
@@ -129,13 +131,13 @@ export default function ModelManager() {
   const navigate = useNavigate()
   const [step, setStep] = useState<WizardStep>('loading')
   const [modelsData, setModelsData] = useState<ModelsResponse | null>(null)
-  const [loadError, setLoadError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<ApiError | null>(null)
 
   const [selectedModel, setSelectedModel] = useState<ModelRegistryEntry | null>(null)
   const [ggufPath, setGgufPath] = useState('')
   const [ggufPathError, setGgufPathError] = useState<string | null>(null)
 
-  const [actionError, setActionError] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<ApiError | null>(null)
   const [actionLoading, setActionLoading] = useState(false)
 
   const [installId, setInstallId] = useState<number | null>(null)
@@ -147,18 +149,15 @@ export default function ModelManager() {
   const [benchmarkError, setBenchmarkError] = useState<string | null>(null)
   const benchmarkStartedRef = useRef(false)
 
-  useEffect(() => {
-    api
-      .getModels()
-      .then((data) => {
-        setModelsData(data)
-        setStep('choose')
-      })
-      .catch((err: unknown) => {
-        setLoadError(err instanceof Error ? err.message : 'Failed to load model information.')
-        setStep('load-error')
-      })
-  }, [])
+  async function loadData() {
+    setStep('loading')
+    const r = await api.getModels()
+    if (!r.ok) { setLoadError(r.error); setStep('load-error'); return }
+    setModelsData(r.data)
+    setStep('choose')
+  }
+
+  useEffect(() => { void loadData() }, [])
 
   // Poll install progress while in the 'installing' step.
   useEffect(() => {
@@ -174,7 +173,9 @@ export default function ModelManager() {
     pollRef.current = setInterval(() => {
       api
         .getInstallStatus(installId)
-        .then((record) => {
+        .then((r) => {
+          if (!r.ok) { /* Ignore transient polling errors; keep polling. */ return }
+          const record = r.data
           setInstallRecord(record)
           const terminal = ['ready', 'complete', 'failed', 'cancelled', 'checksum_mismatch']
           if (terminal.includes(record.install_status)) {
@@ -182,13 +183,10 @@ export default function ModelManager() {
             if (record.install_status === 'ready' || record.install_status === 'complete') {
               navigate('/')
             } else {
-              setActionError(record.error_message ?? 'Download failed. Please try again.')
+              setActionError({ kind: 'unknown', message: record.error_message ?? 'Download failed. Please try again.' })
               setStep('confirm-install')
             }
           }
-        })
-        .catch(() => {
-          // Ignore transient polling errors; keep polling.
         })
     }, 2000)
 
@@ -206,11 +204,9 @@ export default function ModelManager() {
     setBenchmarkError(null)
     api
       .benchmarkModel({})
-      .then((result) => {
-        setBenchmarkResult(result)
-      })
-      .catch((err: unknown) => {
-        setBenchmarkError(err instanceof Error ? err.message : 'Benchmark failed.')
+      .then((r) => {
+        if (r.ok) setBenchmarkResult(r.data)
+        else setBenchmarkError(r.error.message)
       })
       .finally(() => {
         setBenchmarkRunning(false)
@@ -241,18 +237,7 @@ export default function ModelManager() {
     return (
       <div style={{ maxWidth: '640px' }}>
         <h1>Model Setup</h1>
-        <p role="alert" style={{ color: '#f87171' }}>
-          {loadError ?? 'Something went wrong loading model information. Please try again.'}
-        </p>
-        <p style={{ fontSize: '0.875rem', color: '#a1a1aa' }}>
-          The local runtime may be unavailable. Check that it is running, then reload this page.
-          If your hardware cannot run a full model, the text-only demo works without one, or see
-          the{' '}
-          <a href={SETUP_DOCS_URL} target="_blank" rel="noreferrer">
-            setup docs
-          </a>{' '}
-          for smaller-model and troubleshooting guidance.
-        </p>
+        {loadError && <ApiErrorView error={loadError} onRetry={loadData} context="ModelManager" />}
         <ActionButton onClick={() => navigate('/')}>Back to Home</ActionButton>
       </div>
     )
@@ -376,8 +361,6 @@ export default function ModelManager() {
   // ── Confirm install ──────────────────────────────────────────────────────────
 
   if (step === 'confirm-install' && selectedModel) {
-    const needsMoreVram =
-      selectedModel.min_vram_gb != null && selectedModel.min_vram_gb > 4
     const sha256Display = selectedModel.sha256 ?? 'Not available'
     const sha256IsPending = sha256Display.toUpperCase() === 'PENDING'
 
@@ -444,21 +427,7 @@ export default function ModelManager() {
           </tbody>
         </table>
 
-        {actionError && (
-          <div role="alert" style={{ marginTop: '1rem' }}>
-            <p style={{ color: '#f87171', margin: 0 }}>{actionError}</p>
-            <p style={{ fontSize: '0.875rem', color: '#a1a1aa', marginTop: '0.4rem' }}>
-              {needsMoreVram
-                ? `This model requires ${selectedModel.min_vram_gb} GB VRAM. If your hardware is limited, try a smaller model or `
-                : 'If your hardware or runtime cannot install this model, try a smaller model or '}
-              check the{' '}
-              <a href={SETUP_DOCS_URL} target="_blank" rel="noreferrer">
-                setup docs
-              </a>
-              .
-            </p>
-          </div>
-        )}
+        {actionError && <ApiErrorView error={actionError} compact context="ModelManager-Action" />}
 
         <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1.5rem' }}>
           <PrimaryButton
@@ -466,18 +435,12 @@ export default function ModelManager() {
             onClick={async () => {
               setActionLoading(true)
               setActionError(null)
-              try {
-                const resp = await api.installModel({ registry_id: selectedModel.id })
-                setInstallId(resp.install_id)
-                setInstallRecord(null)
-                setStep('installing')
-              } catch (err: unknown) {
-                setActionError(
-                  err instanceof Error ? err.message : 'Install failed. Please try again.',
-                )
-              } finally {
-                setActionLoading(false)
-              }
+              const r = await api.installModel({ registry_id: selectedModel.id })
+              if (!r.ok) { setActionError(r.error); setActionLoading(false); return }
+              setInstallId(r.data.install_id)
+              setInstallRecord(null)
+              setStep('installing')
+              setActionLoading(false)
             }}
           >
             {actionLoading ? 'Starting…' : 'Confirm & install'}
@@ -552,13 +515,9 @@ export default function ModelManager() {
 
         <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1.5rem' }}>
           <ActionButton
-            onClick={async () => {
+            onClick={() => {
               if (installId != null) {
-                try {
-                  await api.cancelInstall(installId)
-                } catch {
-                  // Cancel is best-effort; navigate home regardless.
-                }
+                void api.cancelInstall(installId)
               }
               navigate('/')
             }}
@@ -578,15 +537,9 @@ export default function ModelManager() {
     async function handleSelectOllama(m: DetectedOllamaModel) {
       setActionLoading(true)
       setActionError(null)
-      try {
-        await api.useModel({ runtime_id: 'ollama', model_id: m.id })
-        setStep('benchmark')
-      } catch (err: unknown) {
-        setActionError(
-          err instanceof Error ? err.message : 'Failed to activate Ollama model.',
-        )
-        setActionLoading(false)
-      }
+      const r = await api.useModel({ runtime_id: 'ollama', model_id: m.id })
+      if (!r.ok) { setActionError(r.error); setActionLoading(false); return }
+      setStep('benchmark')
     }
 
     return (
@@ -651,11 +604,7 @@ export default function ModelManager() {
           </div>
         )}
 
-        {actionError && (
-          <p role="alert" style={{ color: '#f87171', marginTop: '0.75rem', fontSize: '0.875rem' }}>
-            {actionError}
-          </p>
-        )}
+        {actionError && <ApiErrorView error={actionError} compact context="ModelManager-Action" />}
 
         <div style={{ marginTop: '1.5rem' }}>
           <ActionButton
@@ -687,24 +636,13 @@ export default function ModelManager() {
       setGgufPathError(null)
       setActionLoading(true)
       setActionError(null)
-      try {
-        await api.registerGguf({ path: trimmed })
-        // Best-effort sidecar launch. Registration already made the model the
-        // active config, so a failed auto-start is non-fatal — proceed to the
-        // benchmark step and let the user start the server manually if needed.
-        // Log it for diagnostics.
-        try {
-          await api.startSidecar(trimmed)
-        } catch (sidecarErr) {
-          console.warn('GGUF registered, but the llama.cpp sidecar failed to start:', sidecarErr)
-        }
-        setStep('benchmark')
-      } catch (err: unknown) {
-        setActionError(
-          err instanceof Error ? err.message : 'Failed to activate the GGUF file.',
-        )
-        setActionLoading(false)
-      }
+      const r = await api.registerGguf({ path: trimmed })
+      if (!r.ok) { setActionError(r.error); setActionLoading(false); return }
+      // Best-effort sidecar launch. Registration already made the model the
+      // active config, so a failed auto-start is non-fatal — proceed to the
+      // benchmark step and let the user start the server manually if needed.
+      void api.startSidecar(trimmed)
+      setStep('benchmark')
     }
 
     return (
@@ -775,11 +713,7 @@ export default function ModelManager() {
           )}
         </div>
 
-        {actionError && (
-          <p role="alert" style={{ color: '#f87171', marginTop: '0.75rem', fontSize: '0.875rem' }}>
-            {actionError}
-          </p>
-        )}
+        {actionError && <ApiErrorView error={actionError} compact context="ModelManager-Action" />}
 
         <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1.5rem' }}>
           <PrimaryButton disabled={actionLoading} onClick={handleUseGguf}>
@@ -803,16 +737,11 @@ export default function ModelManager() {
   if (step === 'demo-warning') {
     async function handleConfirmDemo() {
       setActionLoading(true)
-      try {
-        // The text-only demo is served by the deterministic "fake" runtime, which
-        // always reports ready and streams scripted responses. There is no separate
-        // "demo" runtime registered in the backend.
-        await api.useModel({ runtime_id: 'fake', model_id: null })
-      } catch {
-        // Demo mode activation is best-effort; proceed to the library regardless.
-      } finally {
-        setActionLoading(false)
-      }
+      // The text-only demo is served by the deterministic "fake" runtime, which
+      // always reports ready and streams scripted responses. There is no separate
+      // "demo" runtime registered in the backend. Activation is best-effort.
+      void api.useModel({ runtime_id: 'fake', model_id: null })
+      setActionLoading(false)
       navigate('/library')
     }
 
