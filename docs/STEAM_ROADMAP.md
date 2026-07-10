@@ -221,6 +221,7 @@ issue must not be started until the upstream issue is merged and closed.
 | [[Steam Roadmap] Define Steam MVP scope and release gates](https://github.com/outrightmental/ConversationSimulator/issues?q=is%3Aissue+steam-mvp-scope+in%3Atitle) | [docs/steam-mvp-scope.md](steam-mvp-scope.md) | Stage 2 prerequisite |
 | [[Steam Roadmap] Add issue templates for Steam QA, platform bugs, and content-pack bugs](https://github.com/outrightmental/ConversationSimulator/issues/185) | [docs/steam-triage.md](steam-triage.md) | Stage 3 prerequisite |
 | [[Steamworks] Register Steam app, depots, packages, and free-to-play configuration](https://github.com/outrightmental/ConversationSimulator/issues/226) | [publishing/STEAM_APP_REGISTRATION.md](../publishing/STEAM_APP_REGISTRATION.md), [`steam/`](../steam/), [`.github/workflows/steam-deploy.yml`](../.github/workflows/steam-deploy.yml) | Stage 3 prerequisite (must be complete before first depot submission) |
+| [[Publishing] Write Steam publishing docs matching the FeverTilt pattern](https://github.com/outrightmental/ConversationSimulator/issues/232) | [publishing/STEAM_STORE_AND_OPERATIONS.md](../publishing/STEAM_STORE_AND_OPERATIONS.md), [publishing/STEAM_PUBLISHING_AND_DEPLOYMENT.md](../publishing/STEAM_PUBLISHING_AND_DEPLOYMENT.md), [docs/STEAM_INTEGRATION.md](STEAM_INTEGRATION.md), [publishing/MACOS_SIGNING_AND_NOTARIZATION.md](../publishing/MACOS_SIGNING_AND_NOTARIZATION.md), [publishing/WINDOWS_CODE_SIGNING.md](../publishing/WINDOWS_CODE_SIGNING.md) | Stage 3 prerequisite (operational clarity before private beta) |
 | [[Marketplace] Design future in-game content marketplace architecture](https://github.com/outrightmental/ConversationSimulator/issues/233) | [docs/marketplace-architecture.md](marketplace-architecture.md) | Stage 5 design baseline (post-launch, not launch-blocking) |
 
 All open and closed issues in this work stream:
@@ -233,10 +234,15 @@ All open and closed issues in this work stream:
 - [ROADMAP.md](../ROADMAP.md) — base project roadmap (MVP acceptance criteria, build order, status)
 - [steam-mvp-scope.md](steam-mvp-scope.md) — minimum playable release features, optional targeted features, pass/fail gates, and post-launch deferrals
 - [steam-triage.md](steam-triage.md) — issue triage flow for private beta and public launch
+- [STEAM_INTEGRATION.md](STEAM_INTEGRATION.md) — Steam API bridge, Steam Cloud exclusions, achievements/stats/rich presence, fallback behaviour
 - [post-alpha-issues.md](post-alpha-issues.md) — triaged items deferred from the alpha
 - [privacy.md](privacy.md) — local-first promise and data handling details
 - [network-security.md](network-security.md) — runtime network enforcement
 - [release-checklist.md](release-checklist.md) — platform smoke matrix
 - [model-registry/](../model-registry/) — authoritative model checksums and license metadata
 - [marketplace-architecture.md](marketplace-architecture.md) — post-launch marketplace design baseline; entry gate criteria, distribution path comparison, and schema/signing/moderation/payment scope
+- [publishing/STEAM_STORE_AND_OPERATIONS.md](../publishing/STEAM_STORE_AND_OPERATIONS.md) — store operations, launch runbook, support triage
+- [publishing/STEAM_PUBLISHING_AND_DEPLOYMENT.md](../publishing/STEAM_PUBLISHING_AND_DEPLOYMENT.md) — SteamPipe, CI deploy, manual upload, branch promotion, troubleshooting
+- [publishing/MACOS_SIGNING_AND_NOTARIZATION.md](../publishing/MACOS_SIGNING_AND_NOTARIZATION.md) — macOS signing and notarisation runbook
+- [publishing/WINDOWS_CODE_SIGNING.md](../publishing/WINDOWS_CODE_SIGNING.md) — Windows Authenticode signing runbook
 - [GitHub Milestones](https://github.com/outrightmental/ConversationSimulator/milestones) — issue tracking
