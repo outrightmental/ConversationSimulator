@@ -515,7 +515,7 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
           </section>
 
           {submitError && (
-            <div className="setup-submit-error">
+            <div className="setup-submit-error" role="alert">
               <ApiErrorView error={submitError} compact context="ScenarioSetup-Submit" />
             </div>
           )}
