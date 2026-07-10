@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import CreatorWorkbench from '../screens/CreatorWorkbench'
+import { api } from '../api/client'
 import type { WorkbenchPack, FileNode } from '../api/client'
 
 vi.mock('@convsim/ui', () => ({
@@ -16,6 +17,24 @@ vi.mock('@convsim/ui', () => ({
       />
     </div>
   ),
+}))
+
+vi.mock('../api/client', () => ({
+  api: {
+    workbench: {
+      listPacks: vi.fn(),
+      listFiles: vi.fn(),
+      readFile: vi.fn(),
+      writeFile: vi.fn(),
+      validate: vi.fn(),
+      copyToLocal: vi.fn(),
+      startTestSession: vi.fn(),
+      importPack: vi.fn(),
+      exportPack: vi.fn(),
+    },
+    submitTurn: vi.fn(),
+    deleteSession: vi.fn(),
+  },
 }))
 
 const OFFICIAL_PACK: WorkbenchPack = {
@@ -47,775 +66,6 @@ const MOCK_TREE: FileNode[] = [
 ]
 
 const MANIFEST_CONTENT = 'schema_version: "0.1"\npack_id: official.job_interview\nname: Job Interview\n'
-
-type FetchResponse = { ok: boolean; status?: number; json?: () => Promise<unknown>; text?: () => Promise<string> }
-
-function stubFetch(handler: (url: string, opts?: RequestInit) => FetchResponse) {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn((url: string, opts?: RequestInit) => Promise.resolve(handler(url, opts))),
-  )
-}
-
-function okJson(data: unknown): FetchResponse {
-  const text = JSON.stringify(data)
-  return { ok: true, json: () => Promise.resolve(data), text: () => Promise.resolve(text) }
-}
-
-function renderWorkbench() {
-  return render(
-    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-      <CreatorWorkbench />
-    </MemoryRouter>,
-  )
-}
-
-beforeEach(() => {
-  // Default: list-packs returns both packs; everything else is pending
-  stubFetch((url) => {
-    if (url.includes('/api/workbench/packs') && !url.includes('/files') && !url.includes('/file') && !url.includes('/copy-to-local')) {
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
-    }
-    return { ok: false, status: 404, text: () => Promise.resolve('Not found') }
-  })
-})
-
-describe('CreatorWorkbench', () => {
-  it('renders the heading', () => {
-    renderWorkbench()
-    expect(screen.getByRole('heading', { name: /creator workbench/i })).toBeInTheDocument()
-  })
-
-  it('shows pack list after loading', async () => {
-    renderWorkbench()
-    expect(await screen.findByText('Job Interview')).toBeInTheDocument()
-    expect(await screen.findByText('My Pack')).toBeInTheDocument()
-  })
-
-  it('shows official label for official packs', async () => {
-    renderWorkbench()
-    await screen.findByText('Job Interview')
-    expect(screen.getByText('official')).toBeInTheDocument()
-  })
-
-  it('shows file tree when a pack is selected', async () => {
-    stubFetch((url) => {
-      if (url.includes('/api/workbench/packs') && url.includes('/files')) {
-        return okJson({ tree: MOCK_TREE })
-      }
-      if (url.includes('/api/workbench/packs') && !url.includes('/')) {
-        return okJson([OFFICIAL_PACK, LOCAL_PACK])
-      }
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
-    })
-
-    renderWorkbench()
-    const packBtn = await screen.findByRole('button', { name: /job interview/i })
-    fireEvent.click(packBtn)
-
-    await waitFor(() => {
-      expect(screen.getByRole('tree')).toBeInTheDocument()
-    })
-  })
-
-  it('shows file content when a YAML file is selected', async () => {
-    stubFetch((url) => {
-      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
-      if (url.includes('/file?')) return okJson({ content: MANIFEST_CONTENT, editable: false })
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
-    })
-
-    renderWorkbench()
-    fireEvent.click(await screen.findByRole('button', { name: /job interview/i }))
-
-    const fileBtn = await screen.findByRole('button', { name: /open manifest\.yaml/i })
-    fireEvent.click(fileBtn)
-
-    await waitFor(() => {
-      const editor = screen.getByTestId('file-editor') as HTMLTextAreaElement
-      expect(editor.value).toContain('pack_id')
-    })
-  })
-
-  it('shows read-only badge for official pack file', async () => {
-    stubFetch((url) => {
-      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
-      if (url.includes('/file?')) return okJson({ content: MANIFEST_CONTENT, editable: false })
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
-    })
-
-    renderWorkbench()
-    fireEvent.click(await screen.findByRole('button', { name: /job interview/i }))
-    fireEvent.click(await screen.findByRole('button', { name: /open manifest\.yaml/i }))
-
-    await waitFor(() => {
-      expect(screen.getByTestId('read-only-badge')).toBeInTheDocument()
-    })
-  })
-
-  it('shows create-local-copy button for read-only files', async () => {
-    stubFetch((url) => {
-      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
-      if (url.includes('/file?')) return okJson({ content: MANIFEST_CONTENT, editable: false })
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
-    })
-
-    renderWorkbench()
-    fireEvent.click(await screen.findByRole('button', { name: /job interview/i }))
-    fireEvent.click(await screen.findByRole('button', { name: /open manifest\.yaml/i }))
-
-    await waitFor(() => {
-      expect(screen.getByTestId('copy-to-local-button')).toBeInTheDocument()
-    })
-  })
-
-  it('shows no save button for read-only official pack', async () => {
-    stubFetch((url) => {
-      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
-      if (url.includes('/file?')) return okJson({ content: MANIFEST_CONTENT, editable: false })
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
-    })
-
-    renderWorkbench()
-    fireEvent.click(await screen.findByRole('button', { name: /job interview/i }))
-    fireEvent.click(await screen.findByRole('button', { name: /open manifest\.yaml/i }))
-
-    await waitFor(() => {
-      expect(screen.queryByTestId('save-button')).not.toBeInTheDocument()
-    })
-  })
-
-  it('shows editable textarea and save button for local-dev pack', async () => {
-    const localContent = 'name: My Pack\n'
-    stubFetch((url) => {
-      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
-      if (url.includes('/file?')) return okJson({ content: localContent, editable: true })
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
-    })
-
-    renderWorkbench()
-    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
-    fireEvent.click(await screen.findByRole('button', { name: /open manifest\.yaml/i }))
-
-    await waitFor(() => {
-      expect(screen.getByTestId('save-button')).toBeInTheDocument()
-      expect(screen.queryByTestId('read-only-badge')).not.toBeInTheDocument()
-    })
-  })
-
-  it('shows dirty indicator after editing content', async () => {
-    const localContent = 'name: My Pack\n'
-    stubFetch((url) => {
-      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
-      if (url.includes('/file?')) return okJson({ content: localContent, editable: true })
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
-    })
-
-    renderWorkbench()
-    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
-    fireEvent.click(await screen.findByRole('button', { name: /open manifest\.yaml/i }))
-
-    await waitFor(() => {
-      expect(screen.getByTestId('file-editor')).toBeInTheDocument()
-    })
-
-    fireEvent.change(screen.getByTestId('file-editor'), {
-      target: { value: 'name: Changed\n' },
-    })
-
-    expect(screen.getByTestId('dirty-indicator')).toBeInTheDocument()
-  })
-
-  it('clears dirty state after saving', async () => {
-    const localContent = 'name: My Pack\n'
-    const putSpy = vi.fn().mockResolvedValue({ ok: true })
-    stubFetch((url, opts) => {
-      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
-      if (url.includes('/file?') && (!opts || opts.method !== 'PUT')) {
-        return okJson({ content: localContent, editable: true })
-      }
-      if (url.includes('/file?') && opts?.method === 'PUT') {
-        putSpy()
-        return okJson({ ok: true })
-      }
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
-    })
-
-    renderWorkbench()
-    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
-    fireEvent.click(await screen.findByRole('button', { name: /open manifest\.yaml/i }))
-    await waitFor(() => expect(screen.getByTestId('file-editor')).toBeInTheDocument())
-
-    fireEvent.change(screen.getByTestId('file-editor'), {
-      target: { value: 'name: Changed\n' },
-    })
-    expect(screen.getByTestId('dirty-indicator')).toBeInTheDocument()
-
-    fireEvent.click(screen.getByTestId('save-button'))
-
-    await waitFor(() => {
-      expect(screen.queryByTestId('dirty-indicator')).not.toBeInTheDocument()
-    })
-    expect(putSpy).toHaveBeenCalledOnce()
-  })
-
-  it('shows unsupported label for non-text files in tree', async () => {
-    stubFetch((url) => {
-      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
-    })
-
-    renderWorkbench()
-    fireEvent.click(await screen.findByRole('button', { name: /job interview/i }))
-
-    await waitFor(() => {
-      expect(screen.getByText('unsupported')).toBeInTheDocument()
-    })
-  })
-
-  it('shows pack error when API fails', async () => {
-    stubFetch(() => ({ ok: false, status: 500, text: () => Promise.resolve('Server error') }))
-
-    renderWorkbench()
-
-    await waitFor(() => {
-      expect(screen.getByRole('alert')).toBeInTheDocument()
-    })
-  })
-
-  it('copy-to-local button triggers copy and switches to new pack', async () => {
-    const newPack: WorkbenchPack = { kind: 'local-dev', slug: 'job-interview-copy', pack_id: 'local.job_interview_copy', name: 'Job Interview', editable: true }
-    const copySpy = vi.fn().mockReturnValue(okJson(newPack))
-
-    stubFetch((url) => {
-      if (url.includes('/copy-to-local')) return copySpy()
-      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
-      if (url.includes('/file?')) return okJson({ content: MANIFEST_CONTENT, editable: false })
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
-    })
-
-    renderWorkbench()
-    fireEvent.click(await screen.findByRole('button', { name: /job interview/i }))
-    fireEvent.click(await screen.findByRole('button', { name: /open manifest\.yaml/i }))
-
-    const copyBtn = await screen.findByTestId('copy-to-local-button')
-    fireEvent.click(copyBtn)
-
-    await waitFor(() => {
-      expect(copySpy).toHaveBeenCalledOnce()
-    })
-
-    // After copy, the file editor should be cleared (no file selected)
-    await waitFor(() => {
-      expect(screen.queryByTestId('file-editor')).not.toBeInTheDocument()
-    })
-  })
-
-  it('shows a valid badge when the pack validates cleanly', async () => {
-    stubFetch((url) => {
-      if (url.includes('/validate')) return okJson({ valid: true, errors: [], warnings: [] })
-      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
-    })
-
-    renderWorkbench()
-    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
-
-    await waitFor(() => {
-      expect(screen.getByTestId('validation-panel')).toHaveTextContent(/valid/i)
-    })
-  })
-
-  it('lists validation errors when the pack is invalid', async () => {
-    stubFetch((url) => {
-      if (url.includes('/validate')) {
-        return okJson({
-          valid: false,
-          errors: [
-            { severity: 'error', rule_id: 'SCHEMA_VIOLATION', file: 'manifest.yaml', pointer: '/author', message: "'author' is a required property", suggested_fix: 'Add author' },
-          ],
-          warnings: [],
-        })
-      }
-      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
-    })
-
-    renderWorkbench()
-    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
-
-    await waitFor(() => {
-      const panel = screen.getByTestId('validation-panel')
-      expect(panel).toHaveTextContent(/1 validation error/i)
-      expect(panel).toHaveTextContent(/required property/i)
-    })
-  })
-
-  afterEach(() => {
-    vi.unstubAllGlobals()
-  })
-
-  it('refreshes validation from the save response', async () => {
-    const localContent = 'name: My Pack\n'
-    stubFetch((url, opts) => {
-      if (url.includes('/file?') && opts?.method === 'PUT') {
-        return okJson({
-          valid: false,
-          ok: true,
-          validation: {
-            valid: false,
-            errors: [
-              { severity: 'error', rule_id: 'INVALID_MANIFEST_YAML', file: 'manifest.yaml', pointer: '', message: 'manifest.yaml must be a YAML mapping', suggested_fix: 'Fix YAML' },
-            ],
-            warnings: [],
-          },
-        })
-      }
-      if (url.includes('/file?')) return okJson({ content: localContent, editable: true })
-      if (url.includes('/validate')) return okJson({ valid: true, errors: [], warnings: [] })
-      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
-    })
-
-    renderWorkbench()
-    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
-    fireEvent.click(await screen.findByRole('button', { name: /open manifest\.yaml/i }))
-    await waitFor(() => expect(screen.getByTestId('file-editor')).toBeInTheDocument())
-
-    // Pack initially validates clean.
-    await waitFor(() => expect(screen.getByTestId('validation-panel')).toHaveTextContent(/valid/i))
-
-    fireEvent.change(screen.getByTestId('file-editor'), { target: { value: 'broken: [' } })
-    fireEvent.click(screen.getByTestId('save-button'))
-
-    // After save, the validation panel reflects the newly-returned errors.
-    await waitFor(() => {
-      expect(screen.getByTestId('validation-panel')).toHaveTextContent(/must be a YAML mapping/i)
-    })
-  })
-
-  it('clears a prior service error when a save returns fresh validation', async () => {
-    const localContent = 'name: My Pack\n'
-    stubFetch((url, opts) => {
-      // Save returns a clean validation once the validator has recovered.
-      if (url.includes('/file?') && opts?.method === 'PUT') {
-        return okJson({ ok: true, validation: { valid: true, errors: [], warnings: [] } })
-      }
-      if (url.includes('/file?')) return okJson({ content: localContent, editable: true })
-      // Initial on-select validation fails: the validator is down.
-      if (url.includes('/validate')) return { ok: false, status: 500, text: () => Promise.resolve('boom') }
-      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
-    })
-
-    renderWorkbench()
-    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
-    fireEvent.click(await screen.findByRole('button', { name: /open manifest\.yaml/i }))
-    await waitFor(() => expect(screen.getByTestId('file-editor')).toBeInTheDocument())
-
-    // Panel first reports the validator is unavailable.
-    await waitFor(() =>
-      expect(screen.getByTestId('validation-panel')).toHaveTextContent(/validator unavailable/i),
-    )
-
-    fireEvent.change(screen.getByTestId('file-editor'), { target: { value: 'name: Fixed\n' } })
-    fireEvent.click(screen.getByTestId('save-button'))
-
-    // The fresh, valid save result must replace the stale service error.
-    await waitFor(() => {
-      const panel = screen.getByTestId('validation-panel')
-      expect(panel).toHaveTextContent(/pack is valid/i)
-      expect(panel).not.toHaveTextContent(/validator unavailable/i)
-    })
-  })
-
-  it('groups validation errors by file', async () => {
-    stubFetch((url) => {
-      if (url.includes('/validate')) {
-        return okJson({
-          valid: false,
-          errors: [
-            { severity: 'error', rule_id: 'SCHEMA_VIOLATION', file: 'manifest.yaml', pointer: '/author', message: 'author is required', suggested_fix: 'Add author field' },
-            { severity: 'error', rule_id: 'SCHEMA_VIOLATION', file: 'scenarios/basic.yaml', pointer: '/summary', message: 'summary is required', suggested_fix: 'Add summary' },
-          ],
-          warnings: [],
-        })
-      }
-      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
-    })
-
-    renderWorkbench()
-    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
-
-    await waitFor(() => {
-      const panel = screen.getByTestId('validation-panel')
-      expect(panel).toHaveTextContent('manifest.yaml')
-      expect(panel).toHaveTextContent('scenarios/basic.yaml')
-      expect(panel).toHaveTextContent('author is required')
-      expect(panel).toHaveTextContent('summary is required')
-    })
-  })
-
-  it('shows a clickable file link for yaml findings', async () => {
-    stubFetch((url) => {
-      if (url.includes('/validate')) {
-        return okJson({
-          valid: false,
-          errors: [
-            { severity: 'error', rule_id: 'SCHEMA_VIOLATION', file: 'manifest.yaml', pointer: '/author', message: 'author is required', suggested_fix: 'Add author' },
-          ],
-          warnings: [],
-        })
-      }
-      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
-      if (url.includes('/file?')) return okJson({ content: 'pack_id: x\n', editable: true })
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
-    })
-
-    renderWorkbench()
-    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
-
-    const fileLink = await screen.findByTestId('validation-file-link-manifest.yaml')
-    expect(fileLink).toBeInTheDocument()
-
-    // Clicking the file link should open the file in the editor
-    fireEvent.click(fileLink)
-    await waitFor(() => {
-      expect(screen.getByTestId('file-editor')).toBeInTheDocument()
-    })
-  })
-
-  it('shows security badge and SECURITY label for forbidden file findings', async () => {
-    stubFetch((url) => {
-      if (url.includes('/validate')) {
-        return okJson({
-          valid: false,
-          errors: [
-            { severity: 'error', rule_id: 'FORBIDDEN_FILE', file: 'run.sh', pointer: '', message: "Executable file not allowed: 'run.sh'", suggested_fix: 'Remove this file', category: 'security' },
-          ],
-          warnings: [],
-        })
-      }
-      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
-    })
-
-    renderWorkbench()
-    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
-
-    await waitFor(() => {
-      const panel = screen.getByTestId('validation-panel')
-      expect(panel).toHaveTextContent('SECURITY')
-      expect(screen.getByTestId('security-badge')).toBeInTheDocument()
-    })
-  })
-
-  it('shows suggested fix text for each finding', async () => {
-    stubFetch((url) => {
-      if (url.includes('/validate')) {
-        return okJson({
-          valid: false,
-          errors: [
-            { severity: 'error', rule_id: 'SCHEMA_VIOLATION', file: 'manifest.yaml', pointer: '/author', message: 'author required', suggested_fix: 'Add the author field to manifest.yaml' },
-          ],
-          warnings: [],
-        })
-      }
-      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
-    })
-
-    renderWorkbench()
-    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
-
-    await waitFor(() => {
-      expect(screen.getByTestId('validation-panel')).toHaveTextContent('Add the author field to manifest.yaml')
-    })
-  })
-
-  // ---------------------------------------------------------------------------
-  // Import / Export
-  // ---------------------------------------------------------------------------
-
-  it('shows import pack button in pack list', async () => {
-    renderWorkbench()
-    expect(await screen.findByTestId('import-pack-button')).toBeInTheDocument()
-  })
-
-  it('shows export pack button when a pack is selected', async () => {
-    stubFetch((url) => {
-      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
-      if (url.includes('/validate')) return okJson({ valid: true, errors: [], warnings: [] })
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
-    })
-
-    renderWorkbench()
-    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
-
-    await waitFor(() => {
-      expect(screen.getByTestId('export-pack-button')).toBeInTheDocument()
-    })
-  })
-
-  it('import success adds new pack to list and shows it as selected', async () => {
-    const newPack: WorkbenchPack = { kind: 'local-dev', slug: 'imported-pack', pack_id: 'local.imported_pack', name: 'Imported Pack', editable: true }
-    const importSpy = vi.fn().mockReturnValue(okJson(newPack))
-
-    stubFetch((url, opts) => {
-      if (url.includes('/import') && opts?.method === 'POST') return importSpy()
-      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
-      if (url.includes('/validate')) return okJson({ valid: true, errors: [], warnings: [] })
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
-    })
-
-    renderWorkbench()
-    await screen.findByTestId('import-pack-button')
-
-    // Simulate file input change via the hidden input
-    const fileInput = screen.getByTestId('import-file-input') as HTMLInputElement
-    const zipFile = new File(['PK\x03\x04'], 'my-pack.zip', { type: 'application/zip' })
-    Object.defineProperty(fileInput, 'files', { value: [zipFile], writable: false })
-    fireEvent.change(fileInput)
-
-    await waitFor(() => {
-      expect(importSpy).toHaveBeenCalledOnce()
-    })
-  })
-
-  it('import with slug conflict shows the rename notice', async () => {
-    const renamedPack = { kind: 'local-dev', slug: 'local.imported_pack-2', pack_id: 'local.imported_pack', name: 'Imported Pack', editable: true, renamed_from: 'local.imported_pack' }
-    const importSpy = vi.fn().mockReturnValue(okJson(renamedPack))
-
-    stubFetch((url, opts) => {
-      if (url.includes('/import') && opts?.method === 'POST') return importSpy()
-      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
-      if (url.includes('/validate')) return okJson({ valid: true, errors: [], warnings: [] })
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
-    })
-
-    renderWorkbench()
-    await screen.findByTestId('import-pack-button')
-
-    const fileInput = screen.getByTestId('import-file-input') as HTMLInputElement
-    const zipFile = new File(['PK\x03\x04'], 'dup.zip', { type: 'application/zip' })
-    Object.defineProperty(fileInput, 'files', { value: [zipFile], writable: false })
-    fireEvent.change(fileInput)
-
-    // The rename notice must survive the pack-selection that follows a
-    // successful import (handleSelectPack resets import notices).
-    await waitFor(() => {
-      expect(screen.getByTestId('import-renamed-notice')).toBeInTheDocument()
-      expect(screen.getByTestId('import-renamed-notice')).toHaveTextContent('local.imported_pack-2')
-    })
-  })
-
-  it('import validation failure shows errors without crashing', async () => {
-    const validationError = {
-      valid: false,
-      errors: [
-        { severity: 'error', rule_id: 'SCHEMA_VIOLATION', file: 'manifest.yaml', pointer: '/author', message: 'author is required', suggested_fix: 'Add author' },
-      ],
-      warnings: [],
-    }
-    const importSpy = vi.fn().mockReturnValue({ ok: false, status: 422, json: () => Promise.resolve(validationError), text: () => Promise.resolve(JSON.stringify(validationError)) })
-
-    stubFetch((url, opts) => {
-      if (url.includes('/import') && opts?.method === 'POST') return importSpy()
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
-    })
-
-    renderWorkbench()
-    await screen.findByTestId('import-pack-button')
-
-    const fileInput = screen.getByTestId('import-file-input') as HTMLInputElement
-    const zipFile = new File(['PK\x03\x04'], 'bad.zip', { type: 'application/zip' })
-    Object.defineProperty(fileInput, 'files', { value: [zipFile], writable: false })
-    fireEvent.change(fileInput)
-
-    await waitFor(() => {
-      expect(screen.getByTestId('import-validation-errors')).toBeInTheDocument()
-      expect(screen.getByTestId('import-validation-errors')).toHaveTextContent(/author is required/i)
-    })
-  })
-
-  it('import of a corrupt/unsafe zip shows an error instead of crashing', async () => {
-    // Corrupt zip and zip-slip rejections come back as a 422 without a
-    // structured `errors` array (a plain thrown-Error body). The UI must render
-    // this as an error message, not crash trying to map over undefined errors.
-    const plainError = { statusCode: 422, error: 'Unprocessable Entity', message: 'Uploaded file is not a valid .zip archive' }
-    const importSpy = vi.fn().mockReturnValue({ ok: false, status: 422, json: () => Promise.resolve(plainError), text: () => Promise.resolve(JSON.stringify(plainError)) })
-
-    stubFetch((url, opts) => {
-      if (url.includes('/import') && opts?.method === 'POST') return importSpy()
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
-    })
-
-    renderWorkbench()
-    await screen.findByTestId('import-pack-button')
-
-    const fileInput = screen.getByTestId('import-file-input') as HTMLInputElement
-    const zipFile = new File(['not a zip'], 'corrupt.zip', { type: 'application/zip' })
-    Object.defineProperty(fileInput, 'files', { value: [zipFile], writable: false })
-    fireEvent.change(fileInput)
-
-    await waitFor(() => {
-      expect(screen.getByTestId('import-error')).toBeInTheDocument()
-      expect(screen.getByTestId('import-error')).toHaveTextContent(/request failed/i)
-    })
-    expect(screen.queryByTestId('import-validation-errors')).not.toBeInTheDocument()
-  })
-
-  it('export success shows filename confirmation', async () => {
-    const zipBlob = new Blob(['PK\x03\x04'], { type: 'application/zip' })
-    const exportSpy = vi.fn().mockReturnValue({
-      ok: true,
-      status: 200,
-      blob: () => Promise.resolve(zipBlob),
-      headers: { get: (h: string) => h === 'Content-Disposition' ? 'attachment; filename="my-pack-0.1.0.zip"' : null },
-    })
-
-    // jsdom does not implement URL.createObjectURL, so vi.spyOn can't wrap a
-    // non-existent method — define the property directly so triggerDownload
-    // doesn't throw.
-    const createObjectURL = vi.fn().mockReturnValue('blob:test')
-    const revokeObjectURL = vi.fn()
-    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: createObjectURL })
-    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: revokeObjectURL })
-
-    stubFetch((url) => {
-      if (url.includes('/export')) return exportSpy()
-      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
-      if (url.includes('/validate')) return okJson({ valid: true, errors: [], warnings: [] })
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
-    })
-
-    renderWorkbench()
-    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
-
-    const exportBtn = await screen.findByTestId('export-pack-button')
-    fireEvent.click(exportBtn)
-
-    await waitFor(() => {
-      expect(screen.getByTestId('export-success')).toBeInTheDocument()
-      expect(screen.getByTestId('export-success')).toHaveTextContent('my-pack-0.1.0.zip')
-    })
-  })
-
-  it('export validation failure shows error message', async () => {
-    const validationError = { valid: false, errors: [{ rule_id: 'SCHEMA_VIOLATION', file: 'manifest.yaml', message: 'name is required', suggested_fix: '' }] }
-    const exportSpy = vi.fn().mockReturnValue({ ok: false, status: 422, json: () => Promise.resolve(validationError), text: () => Promise.resolve(JSON.stringify(validationError)) })
-
-    stubFetch((url) => {
-      if (url.includes('/export')) return exportSpy()
-      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
-      if (url.includes('/validate')) return okJson({ valid: true, errors: [], warnings: [] })
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
-    })
-
-    renderWorkbench()
-    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
-    fireEvent.click(await screen.findByTestId('export-pack-button'))
-
-    await waitFor(() => {
-      expect(screen.getByTestId('export-error')).toBeInTheDocument()
-    })
-  })
-
-  it('shows links to authoring docs alongside findings', async () => {
-    stubFetch((url) => {
-      if (url.includes('/validate')) {
-        return okJson({
-          valid: false,
-          errors: [
-            { severity: 'error', rule_id: 'SCHEMA_VIOLATION', file: 'manifest.yaml', pointer: '/author', message: 'author required', suggested_fix: 'See the authoring guide' },
-          ],
-          warnings: [],
-        })
-      }
-      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
-    })
-
-    renderWorkbench()
-    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
-
-    const guideLink = await screen.findByRole('link', { name: /authoring guide/i })
-    expect(guideLink).toHaveAttribute('href', expect.stringContaining('scenario-authoring'))
-    expect(screen.getByRole('link', { name: /validation rules/i })).toBeInTheDocument()
-  })
-
-  it('shows copy validation button', async () => {
-    stubFetch((url) => {
-      if (url.includes('/validate')) {
-        return okJson({
-          valid: false,
-          errors: [
-            { severity: 'error', rule_id: 'SCHEMA_VIOLATION', file: 'manifest.yaml', pointer: '/author', message: 'author required', suggested_fix: 'Fix it' },
-          ],
-          warnings: [],
-        })
-      }
-      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
-    })
-
-    renderWorkbench()
-    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
-
-    await waitFor(() => {
-      expect(screen.getByTestId('copy-validation-button')).toBeInTheDocument()
-    })
-  })
-
-  it('shows service error when validator API fails', async () => {
-    stubFetch((url) => {
-      if (url.includes('/validate')) return { ok: false, status: 500, text: () => Promise.resolve('Internal server error') }
-      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
-    })
-
-    renderWorkbench()
-    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
-
-    await waitFor(() => {
-      const panel = screen.getByTestId('validation-panel')
-      expect(panel).toHaveTextContent(/validator unavailable/i)
-    })
-  })
-
-  it('clears dirty state immediately when switching to a different file', async () => {
-    const localContent = 'name: My Pack\n'
-    // jsdom doesn't implement window.confirm; stub it to return true (user confirms discard)
-    vi.stubGlobal('confirm', vi.fn().mockReturnValue(true))
-
-    stubFetch((url) => {
-      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
-      if (url.includes('/file?')) return okJson({ content: localContent, editable: true })
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
-    })
-
-    renderWorkbench()
-    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
-    fireEvent.click(await screen.findByRole('button', { name: /open manifest\.yaml/i }))
-    await waitFor(() => expect(screen.getByTestId('file-editor')).toBeInTheDocument())
-
-    // Make the editor dirty
-    fireEvent.change(screen.getByTestId('file-editor'), { target: { value: 'name: Changed\n' } })
-    expect(screen.getByTestId('dirty-indicator')).toBeInTheDocument()
-
-    // Switch to another file — dirty state must clear immediately (not wait for load to finish)
-    fireEvent.click(await screen.findByRole('button', { name: /open README\.md/i }))
-
-    await waitFor(() => {
-      expect(screen.queryByTestId('dirty-indicator')).not.toBeInTheDocument()
-    })
-  })
-})
-
-// ---------------------------------------------------------------------------
-// Test Chat Panel
-// ---------------------------------------------------------------------------
 
 const TEST_SESSION_RESPONSE = {
   session_id: 'test-abc123',
@@ -852,31 +102,627 @@ const TURN_RESPONSE = {
   ],
 }
 
-function stubFetchWithTestChat(handler: (url: string, opts?: RequestInit) => FetchResponse) {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn((url: string, opts?: RequestInit) => Promise.resolve(handler(url, opts))),
+function renderWorkbench() {
+  return render(
+    <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <CreatorWorkbench />
+    </MemoryRouter>,
   )
 }
 
-describe('CreatorWorkbench — Test Chat', () => {
+beforeEach(() => {
+  vi.mocked(api.workbench.listPacks).mockResolvedValue({ ok: true, data: [OFFICIAL_PACK, LOCAL_PACK] })
+  vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: [] } })
+  vi.mocked(api.workbench.readFile).mockResolvedValue({ ok: true, data: { content: '', editable: false } })
+  vi.mocked(api.workbench.writeFile).mockResolvedValue({ ok: true, data: { ok: true, validation: null } })
+  vi.mocked(api.workbench.validate).mockResolvedValue({ ok: true, data: { valid: true, errors: [], warnings: [] } })
+  vi.mocked(api.workbench.copyToLocal).mockResolvedValue({ ok: true, data: LOCAL_PACK })
+  vi.mocked(api.workbench.startTestSession).mockResolvedValue({ ok: true, data: TEST_SESSION_RESPONSE })
+  vi.mocked(api.workbench.importPack).mockResolvedValue({ ok: true, data: LOCAL_PACK })
+  vi.mocked(api.workbench.exportPack).mockResolvedValue({ ok: true, data: { blob: new Blob([]), filename: 'pack.zip' } })
+  vi.mocked(api.submitTurn).mockResolvedValue({ ok: true, data: TURN_RESPONSE })
+  vi.mocked(api.deleteSession).mockResolvedValue({ ok: true, data: undefined })
+})
+
+describe('CreatorWorkbench', () => {
   afterEach(() => {
-    vi.unstubAllGlobals()
+    vi.clearAllMocks()
   })
 
-  function setupBaseStub(extras?: (url: string, opts?: RequestInit) => FetchResponse | null) {
-    stubFetchWithTestChat((url, opts) => {
-      const extra = extras?.(url, opts)
-      if (extra) return extra
-      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
-      if (url.includes('/validate')) return okJson({ valid: true, errors: [], warnings: [] })
-      if (url.includes('/api/workbench/packs') && !url.includes('/')) return okJson([OFFICIAL_PACK, LOCAL_PACK])
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
+  it('renders the heading', () => {
+    renderWorkbench()
+    expect(screen.getByRole('heading', { name: /creator workbench/i })).toBeInTheDocument()
+  })
+
+  it('shows pack list after loading', async () => {
+    renderWorkbench()
+    expect(await screen.findByText('Job Interview')).toBeInTheDocument()
+    expect(await screen.findByText('My Pack')).toBeInTheDocument()
+  })
+
+  it('shows official label for official packs', async () => {
+    renderWorkbench()
+    await screen.findByText('Job Interview')
+    expect(screen.getByText('official')).toBeInTheDocument()
+  })
+
+  it('shows file tree when a pack is selected', async () => {
+    vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
+
+    renderWorkbench()
+    const packBtn = await screen.findByRole('button', { name: /job interview/i })
+    fireEvent.click(packBtn)
+
+    await waitFor(() => {
+      expect(screen.getByRole('tree')).toBeInTheDocument()
     })
-  }
+  })
+
+  it('shows file content when a YAML file is selected', async () => {
+    vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
+    vi.mocked(api.workbench.readFile).mockResolvedValue({ ok: true, data: { content: MANIFEST_CONTENT, editable: false } })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /job interview/i }))
+
+    const fileBtn = await screen.findByRole('button', { name: /open manifest\.yaml/i })
+    fireEvent.click(fileBtn)
+
+    await waitFor(() => {
+      const editor = screen.getByTestId('file-editor') as HTMLTextAreaElement
+      expect(editor.value).toContain('pack_id')
+    })
+  })
+
+  it('shows read-only badge for official pack file', async () => {
+    vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
+    vi.mocked(api.workbench.readFile).mockResolvedValue({ ok: true, data: { content: MANIFEST_CONTENT, editable: false } })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /job interview/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /open manifest\.yaml/i }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('read-only-badge')).toBeInTheDocument()
+    })
+  })
+
+  it('shows create-local-copy button for read-only files', async () => {
+    vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
+    vi.mocked(api.workbench.readFile).mockResolvedValue({ ok: true, data: { content: MANIFEST_CONTENT, editable: false } })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /job interview/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /open manifest\.yaml/i }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('copy-to-local-button')).toBeInTheDocument()
+    })
+  })
+
+  it('shows no save button for read-only official pack', async () => {
+    vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
+    vi.mocked(api.workbench.readFile).mockResolvedValue({ ok: true, data: { content: MANIFEST_CONTENT, editable: false } })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /job interview/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /open manifest\.yaml/i }))
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('save-button')).not.toBeInTheDocument()
+    })
+  })
+
+  it('shows editable textarea and save button for local-dev pack', async () => {
+    const localContent = 'name: My Pack\n'
+    vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
+    vi.mocked(api.workbench.readFile).mockResolvedValue({ ok: true, data: { content: localContent, editable: true } })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /open manifest\.yaml/i }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('save-button')).toBeInTheDocument()
+      expect(screen.queryByTestId('read-only-badge')).not.toBeInTheDocument()
+    })
+  })
+
+  it('shows dirty indicator after editing content', async () => {
+    const localContent = 'name: My Pack\n'
+    vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
+    vi.mocked(api.workbench.readFile).mockResolvedValue({ ok: true, data: { content: localContent, editable: true } })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /open manifest\.yaml/i }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('file-editor')).toBeInTheDocument()
+    })
+
+    fireEvent.change(screen.getByTestId('file-editor'), {
+      target: { value: 'name: Changed\n' },
+    })
+
+    expect(screen.getByTestId('dirty-indicator')).toBeInTheDocument()
+  })
+
+  it('clears dirty state after saving', async () => {
+    const localContent = 'name: My Pack\n'
+    vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
+    vi.mocked(api.workbench.readFile).mockResolvedValue({ ok: true, data: { content: localContent, editable: true } })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /open manifest\.yaml/i }))
+    await waitFor(() => expect(screen.getByTestId('file-editor')).toBeInTheDocument())
+
+    fireEvent.change(screen.getByTestId('file-editor'), {
+      target: { value: 'name: Changed\n' },
+    })
+    expect(screen.getByTestId('dirty-indicator')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('save-button'))
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('dirty-indicator')).not.toBeInTheDocument()
+    })
+    expect(vi.mocked(api.workbench.writeFile)).toHaveBeenCalledOnce()
+  })
+
+  it('shows unsupported label for non-text files in tree', async () => {
+    vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /job interview/i }))
+
+    await waitFor(() => {
+      expect(screen.getByText('unsupported')).toBeInTheDocument()
+    })
+  })
+
+  it('shows pack error when API fails', async () => {
+    vi.mocked(api.workbench.listPacks).mockResolvedValue({ ok: false, error: { kind: 'network', message: 'Connection refused' } })
+
+    renderWorkbench()
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toBeInTheDocument()
+    })
+  })
+
+  it('copy-to-local button triggers copy and switches to new pack', async () => {
+    const newPack: WorkbenchPack = { kind: 'local-dev', slug: 'job-interview-copy', pack_id: 'local.job_interview_copy', name: 'Job Interview', editable: true }
+    vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
+    vi.mocked(api.workbench.readFile).mockResolvedValue({ ok: true, data: { content: MANIFEST_CONTENT, editable: false } })
+    vi.mocked(api.workbench.copyToLocal).mockResolvedValue({ ok: true, data: newPack })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /job interview/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /open manifest\.yaml/i }))
+
+    const copyBtn = await screen.findByTestId('copy-to-local-button')
+    fireEvent.click(copyBtn)
+
+    await waitFor(() => {
+      expect(vi.mocked(api.workbench.copyToLocal)).toHaveBeenCalledOnce()
+    })
+
+    // After copy, the file editor should be cleared (no file selected)
+    await waitFor(() => {
+      expect(screen.queryByTestId('file-editor')).not.toBeInTheDocument()
+    })
+  })
+
+  it('shows a valid badge when the pack validates cleanly', async () => {
+    vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('validation-panel')).toHaveTextContent(/valid/i)
+    })
+  })
+
+  it('lists validation errors when the pack is invalid', async () => {
+    vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
+    vi.mocked(api.workbench.validate).mockResolvedValue({ ok: true, data: {
+      valid: false,
+      errors: [
+        { severity: 'error', rule_id: 'SCHEMA_VIOLATION', file: 'manifest.yaml', pointer: '/author', message: "'author' is a required property", suggested_fix: 'Add author' },
+      ],
+      warnings: [],
+    } })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+
+    await waitFor(() => {
+      const panel = screen.getByTestId('validation-panel')
+      expect(panel).toHaveTextContent(/1 validation error/i)
+      expect(panel).toHaveTextContent(/required property/i)
+    })
+  })
+
+  it('refreshes validation from the save response', async () => {
+    const localContent = 'name: My Pack\n'
+    vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
+    vi.mocked(api.workbench.readFile).mockResolvedValue({ ok: true, data: { content: localContent, editable: true } })
+    vi.mocked(api.workbench.writeFile).mockResolvedValue({ ok: true, data: {
+      ok: true,
+      validation: {
+        valid: false,
+        errors: [
+          { severity: 'error', rule_id: 'INVALID_MANIFEST_YAML', file: 'manifest.yaml', pointer: '', message: 'manifest.yaml must be a YAML mapping', suggested_fix: 'Fix YAML' },
+        ],
+        warnings: [],
+      },
+    } })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /open manifest\.yaml/i }))
+    await waitFor(() => expect(screen.getByTestId('file-editor')).toBeInTheDocument())
+
+    // Pack initially validates clean.
+    await waitFor(() => expect(screen.getByTestId('validation-panel')).toHaveTextContent(/valid/i))
+
+    fireEvent.change(screen.getByTestId('file-editor'), { target: { value: 'broken: [' } })
+    fireEvent.click(screen.getByTestId('save-button'))
+
+    // After save, the validation panel reflects the newly-returned errors.
+    await waitFor(() => {
+      expect(screen.getByTestId('validation-panel')).toHaveTextContent(/must be a YAML mapping/i)
+    })
+  })
+
+  it('clears a prior service error when a save returns fresh validation', async () => {
+    const localContent = 'name: My Pack\n'
+    vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
+    vi.mocked(api.workbench.readFile).mockResolvedValue({ ok: true, data: { content: localContent, editable: true } })
+    // Initial on-select validation fails: the validator is down.
+    vi.mocked(api.workbench.validate).mockResolvedValue({ ok: false, error: { kind: 'network', message: 'boom' } })
+    // Save returns a clean validation once the validator has recovered.
+    vi.mocked(api.workbench.writeFile).mockResolvedValue({ ok: true, data: {
+      ok: true,
+      validation: { valid: true, errors: [], warnings: [] },
+    } })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /open manifest\.yaml/i }))
+    await waitFor(() => expect(screen.getByTestId('file-editor')).toBeInTheDocument())
+
+    // Panel first reports the validator is unavailable.
+    await waitFor(() =>
+      expect(screen.getByTestId('validation-panel')).toHaveTextContent(/validator unavailable/i),
+    )
+
+    fireEvent.change(screen.getByTestId('file-editor'), { target: { value: 'name: Fixed\n' } })
+    fireEvent.click(screen.getByTestId('save-button'))
+
+    // The fresh, valid save result must replace the stale service error.
+    await waitFor(() => {
+      const panel = screen.getByTestId('validation-panel')
+      expect(panel).toHaveTextContent(/pack is valid/i)
+      expect(panel).not.toHaveTextContent(/validator unavailable/i)
+    })
+  })
+
+  it('groups validation errors by file', async () => {
+    vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
+    vi.mocked(api.workbench.validate).mockResolvedValue({ ok: true, data: {
+      valid: false,
+      errors: [
+        { severity: 'error', rule_id: 'SCHEMA_VIOLATION', file: 'manifest.yaml', pointer: '/author', message: 'author is required', suggested_fix: 'Add author field' },
+        { severity: 'error', rule_id: 'SCHEMA_VIOLATION', file: 'scenarios/basic.yaml', pointer: '/summary', message: 'summary is required', suggested_fix: 'Add summary' },
+      ],
+      warnings: [],
+    } })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+
+    await waitFor(() => {
+      const panel = screen.getByTestId('validation-panel')
+      expect(panel).toHaveTextContent('manifest.yaml')
+      expect(panel).toHaveTextContent('scenarios/basic.yaml')
+      expect(panel).toHaveTextContent('author is required')
+      expect(panel).toHaveTextContent('summary is required')
+    })
+  })
+
+  it('shows a clickable file link for yaml findings', async () => {
+    vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
+    vi.mocked(api.workbench.validate).mockResolvedValue({ ok: true, data: {
+      valid: false,
+      errors: [
+        { severity: 'error', rule_id: 'SCHEMA_VIOLATION', file: 'manifest.yaml', pointer: '/author', message: 'author is required', suggested_fix: 'Add author' },
+      ],
+      warnings: [],
+    } })
+    vi.mocked(api.workbench.readFile).mockResolvedValue({ ok: true, data: { content: 'pack_id: x\n', editable: true } })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+
+    const fileLink = await screen.findByTestId('validation-file-link-manifest.yaml')
+    expect(fileLink).toBeInTheDocument()
+
+    // Clicking the file link should open the file in the editor
+    fireEvent.click(fileLink)
+    await waitFor(() => {
+      expect(screen.getByTestId('file-editor')).toBeInTheDocument()
+    })
+  })
+
+  it('shows security badge and SECURITY label for forbidden file findings', async () => {
+    vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
+    vi.mocked(api.workbench.validate).mockResolvedValue({ ok: true, data: {
+      valid: false,
+      errors: [
+        { severity: 'error', rule_id: 'FORBIDDEN_FILE', file: 'run.sh', pointer: '', message: "Executable file not allowed: 'run.sh'", suggested_fix: 'Remove this file', category: 'security' },
+      ],
+      warnings: [],
+    } })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+
+    await waitFor(() => {
+      const panel = screen.getByTestId('validation-panel')
+      expect(panel).toHaveTextContent('SECURITY')
+      expect(screen.getByTestId('security-badge')).toBeInTheDocument()
+    })
+  })
+
+  it('shows suggested fix text for each finding', async () => {
+    vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
+    vi.mocked(api.workbench.validate).mockResolvedValue({ ok: true, data: {
+      valid: false,
+      errors: [
+        { severity: 'error', rule_id: 'SCHEMA_VIOLATION', file: 'manifest.yaml', pointer: '/author', message: 'author required', suggested_fix: 'Add the author field to manifest.yaml' },
+      ],
+      warnings: [],
+    } })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('validation-panel')).toHaveTextContent('Add the author field to manifest.yaml')
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Import / Export
+  // ---------------------------------------------------------------------------
+
+  it('shows import pack button in pack list', async () => {
+    renderWorkbench()
+    expect(await screen.findByTestId('import-pack-button')).toBeInTheDocument()
+  })
+
+  it('shows export pack button when a pack is selected', async () => {
+    vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('export-pack-button')).toBeInTheDocument()
+    })
+  })
+
+  it('import success adds new pack to list and shows it as selected', async () => {
+    const newPack: WorkbenchPack = { kind: 'local-dev', slug: 'imported-pack', pack_id: 'local.imported_pack', name: 'Imported Pack', editable: true }
+    vi.mocked(api.workbench.importPack).mockResolvedValue({ ok: true, data: newPack })
+
+    renderWorkbench()
+    await screen.findByTestId('import-pack-button')
+
+    // Simulate file input change via the hidden input
+    const fileInput = screen.getByTestId('import-file-input') as HTMLInputElement
+    const zipFile = new File(['PK\x03\x04'], 'my-pack.zip', { type: 'application/zip' })
+    Object.defineProperty(fileInput, 'files', { value: [zipFile], writable: false })
+    fireEvent.change(fileInput)
+
+    await waitFor(() => {
+      expect(vi.mocked(api.workbench.importPack)).toHaveBeenCalledOnce()
+    })
+  })
+
+  it('import with slug conflict shows the rename notice', async () => {
+    const renamedPack = { kind: 'local-dev' as const, slug: 'local.imported_pack-2', pack_id: 'local.imported_pack', name: 'Imported Pack', editable: true, renamed_from: 'local.imported_pack' }
+    vi.mocked(api.workbench.importPack).mockResolvedValue({ ok: true, data: renamedPack })
+
+    renderWorkbench()
+    await screen.findByTestId('import-pack-button')
+
+    const fileInput = screen.getByTestId('import-file-input') as HTMLInputElement
+    const zipFile = new File(['PK\x03\x04'], 'dup.zip', { type: 'application/zip' })
+    Object.defineProperty(fileInput, 'files', { value: [zipFile], writable: false })
+    fireEvent.change(fileInput)
+
+    // The rename notice must survive the pack-selection that follows a
+    // successful import (handleSelectPack resets import notices).
+    await waitFor(() => {
+      expect(screen.getByTestId('import-renamed-notice')).toBeInTheDocument()
+      expect(screen.getByTestId('import-renamed-notice')).toHaveTextContent('local.imported_pack-2')
+    })
+  })
+
+  it('import validation failure shows errors without crashing', async () => {
+    vi.mocked(api.workbench.importPack).mockResolvedValue({ ok: true, data: {
+      kind: 'validation',
+      valid: false,
+      errors: [
+        { severity: 'error', rule_id: 'SCHEMA_VIOLATION', file: 'manifest.yaml', pointer: '/author', message: 'author is required', suggested_fix: 'Add author' },
+      ],
+      warnings: [],
+    } })
+
+    renderWorkbench()
+    await screen.findByTestId('import-pack-button')
+
+    const fileInput = screen.getByTestId('import-file-input') as HTMLInputElement
+    const zipFile = new File(['PK\x03\x04'], 'bad.zip', { type: 'application/zip' })
+    Object.defineProperty(fileInput, 'files', { value: [zipFile], writable: false })
+    fireEvent.change(fileInput)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('import-validation-errors')).toBeInTheDocument()
+      expect(screen.getByTestId('import-validation-errors')).toHaveTextContent(/author is required/i)
+    })
+  })
+
+  it('import of a corrupt/unsafe zip shows an error instead of crashing', async () => {
+    // Corrupt zip and zip-slip rejections come back as an http-error. The UI must render
+    // this as an error, not crash trying to map over undefined errors.
+    vi.mocked(api.workbench.importPack).mockResolvedValue({ ok: false, error: { kind: 'http-error', message: 'Uploaded file is not a valid .zip archive', status: 422 } })
+
+    renderWorkbench()
+    await screen.findByTestId('import-pack-button')
+
+    const fileInput = screen.getByTestId('import-file-input') as HTMLInputElement
+    const zipFile = new File(['not a zip'], 'corrupt.zip', { type: 'application/zip' })
+    Object.defineProperty(fileInput, 'files', { value: [zipFile], writable: false })
+    fireEvent.change(fileInput)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('import-error')).toBeInTheDocument()
+    })
+    expect(screen.queryByTestId('import-validation-errors')).not.toBeInTheDocument()
+  })
+
+  it('export success shows filename confirmation', async () => {
+    const zipBlob = new Blob(['PK\x03\x04'], { type: 'application/zip' })
+
+    // jsdom does not implement URL.createObjectURL, so vi.spyOn can't wrap a
+    // non-existent method — define the property directly so triggerDownload
+    // doesn't throw.
+    const createObjectURL = vi.fn().mockReturnValue('blob:test')
+    const revokeObjectURL = vi.fn()
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: createObjectURL })
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: revokeObjectURL })
+
+    vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
+    vi.mocked(api.workbench.exportPack).mockResolvedValue({ ok: true, data: { blob: zipBlob, filename: 'my-pack-0.1.0.zip' } })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+
+    const exportBtn = await screen.findByTestId('export-pack-button')
+    fireEvent.click(exportBtn)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('export-success')).toBeInTheDocument()
+      expect(screen.getByTestId('export-success')).toHaveTextContent('my-pack-0.1.0.zip')
+    })
+  })
+
+  it('export validation failure shows error message', async () => {
+    vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
+    vi.mocked(api.workbench.exportPack).mockResolvedValue({ ok: false, error: { kind: 'http-error', message: 'Export blocked: name is required (SCHEMA_VIOLATION)', status: 422 } })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+    fireEvent.click(await screen.findByTestId('export-pack-button'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('export-error')).toBeInTheDocument()
+    })
+  })
+
+  it('shows links to authoring docs alongside findings', async () => {
+    vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
+    vi.mocked(api.workbench.validate).mockResolvedValue({ ok: true, data: {
+      valid: false,
+      errors: [
+        { severity: 'error', rule_id: 'SCHEMA_VIOLATION', file: 'manifest.yaml', pointer: '/author', message: 'author required', suggested_fix: 'See the authoring guide' },
+      ],
+      warnings: [],
+    } })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+
+    const guideLink = await screen.findByRole('link', { name: /authoring guide/i })
+    expect(guideLink).toHaveAttribute('href', expect.stringContaining('scenario-authoring'))
+    expect(screen.getByRole('link', { name: /validation rules/i })).toBeInTheDocument()
+  })
+
+  it('shows copy validation button', async () => {
+    vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
+    vi.mocked(api.workbench.validate).mockResolvedValue({ ok: true, data: {
+      valid: false,
+      errors: [
+        { severity: 'error', rule_id: 'SCHEMA_VIOLATION', file: 'manifest.yaml', pointer: '/author', message: 'author required', suggested_fix: 'Fix it' },
+      ],
+      warnings: [],
+    } })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('copy-validation-button')).toBeInTheDocument()
+    })
+  })
+
+  it('shows service error when validator API fails', async () => {
+    vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
+    vi.mocked(api.workbench.validate).mockResolvedValue({ ok: false, error: { kind: 'http-error', message: 'Internal server error', status: 500 } })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+
+    await waitFor(() => {
+      const panel = screen.getByTestId('validation-panel')
+      expect(panel).toHaveTextContent(/validator unavailable/i)
+    })
+  })
+
+  it('clears dirty state immediately when switching to a different file', async () => {
+    const localContent = 'name: My Pack\n'
+    // jsdom doesn't implement window.confirm; stub it to return true (user confirms discard)
+    vi.stubGlobal('confirm', vi.fn().mockReturnValue(true))
+
+    vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
+    vi.mocked(api.workbench.readFile).mockResolvedValue({ ok: true, data: { content: localContent, editable: true } })
+
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /open manifest\.yaml/i }))
+    await waitFor(() => expect(screen.getByTestId('file-editor')).toBeInTheDocument())
+
+    // Make the editor dirty
+    fireEvent.change(screen.getByTestId('file-editor'), { target: { value: 'name: Changed\n' } })
+    expect(screen.getByTestId('dirty-indicator')).toBeInTheDocument()
+
+    // Switch to another file — dirty state must clear immediately (not wait for load to finish)
+    fireEvent.click(await screen.findByRole('button', { name: /open README\.md/i }))
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('dirty-indicator')).not.toBeInTheDocument()
+    })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Test Chat Panel
+// ---------------------------------------------------------------------------
+
+describe('CreatorWorkbench — Test Chat', () => {
+  afterEach(() => {
+    vi.clearAllMocks()
+  })
 
   it('shows Edit and Test Chat tabs when a pack is selected', async () => {
-    setupBaseStub()
+    vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
+
     renderWorkbench()
     fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
 
@@ -887,14 +733,14 @@ describe('CreatorWorkbench — Test Chat', () => {
   })
 
   it('does not show tabs when no pack is selected', () => {
-    setupBaseStub()
     renderWorkbench()
     expect(screen.queryByTestId('tab-edit')).not.toBeInTheDocument()
     expect(screen.queryByTestId('tab-test')).not.toBeInTheDocument()
   })
 
   it('switches to Test Chat tab and shows Start Test button', async () => {
-    setupBaseStub()
+    vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
+
     renderWorkbench()
     fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
     await waitFor(() => expect(screen.getByTestId('tab-test')).toBeInTheDocument())
@@ -906,17 +752,12 @@ describe('CreatorWorkbench — Test Chat', () => {
   })
 
   it('shows validation error message and disables Start Test when pack has errors', async () => {
-    stubFetchWithTestChat((url) => {
-      if (url.includes('/validate')) {
-        return okJson({
-          valid: false,
-          errors: [{ severity: 'error', rule_id: 'SCHEMA_VIOLATION', file: 'manifest.yaml', pointer: '/name', message: 'name is required', suggested_fix: 'Add name' }],
-          warnings: [],
-        })
-      }
-      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
-    })
+    vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
+    vi.mocked(api.workbench.validate).mockResolvedValue({ ok: true, data: {
+      valid: false,
+      errors: [{ severity: 'error', rule_id: 'SCHEMA_VIOLATION', file: 'manifest.yaml', pointer: '/name', message: 'name is required', suggested_fix: 'Add name' }],
+      warnings: [],
+    } })
 
     renderWorkbench()
     fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
@@ -930,13 +771,7 @@ describe('CreatorWorkbench — Test Chat', () => {
   })
 
   it('starts a test session and shows NPC opening in transcript', async () => {
-    const startSpy = vi.fn().mockReturnValue(okJson(TEST_SESSION_RESPONSE))
-    stubFetchWithTestChat((url, opts) => {
-      if (url.includes('/test-session') && opts?.method === 'POST') return startSpy()
-      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
-      if (url.includes('/validate')) return okJson({ valid: true, errors: [], warnings: [] })
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
-    })
+    vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
 
     renderWorkbench()
     fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
@@ -948,16 +783,11 @@ describe('CreatorWorkbench — Test Chat', () => {
       expect(screen.getByTestId('test-transcript')).toBeInTheDocument()
       expect(screen.getByText('Ready to test. Send a message to begin.')).toBeInTheDocument()
     })
-    expect(startSpy).toHaveBeenCalledOnce()
+    expect(vi.mocked(api.workbench.startTestSession)).toHaveBeenCalledOnce()
   })
 
   it('shows state inspector with initial state variables after start', async () => {
-    stubFetchWithTestChat((url, opts) => {
-      if (url.includes('/test-session') && opts?.method === 'POST') return okJson(TEST_SESSION_RESPONSE)
-      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
-      if (url.includes('/validate')) return okJson({ valid: true, errors: [], warnings: [] })
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
-    })
+    vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
 
     renderWorkbench()
     fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
@@ -972,14 +802,7 @@ describe('CreatorWorkbench — Test Chat', () => {
   })
 
   it('submits a message and adds player and NPC entries to transcript', async () => {
-    const turnSpy = vi.fn().mockReturnValue(okJson(TURN_RESPONSE))
-    stubFetchWithTestChat((url, opts) => {
-      if (url.includes('/test-session') && opts?.method === 'POST') return okJson(TEST_SESSION_RESPONSE)
-      if (url.includes('/turn') && opts?.method === 'POST') return turnSpy()
-      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
-      if (url.includes('/validate')) return okJson({ valid: true, errors: [], warnings: [] })
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
-    })
+    vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
 
     renderWorkbench()
     fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
@@ -995,17 +818,11 @@ describe('CreatorWorkbench — Test Chat', () => {
       expect(screen.getByText('Hello there.')).toBeInTheDocument()
       expect(screen.getByText('Hello! I am a simulated NPC.')).toBeInTheDocument()
     })
-    expect(turnSpy).toHaveBeenCalledOnce()
+    expect(vi.mocked(api.submitTurn)).toHaveBeenCalledOnce()
   })
 
   it('shows state delta indicators after a turn with non-zero delta', async () => {
-    stubFetchWithTestChat((url, opts) => {
-      if (url.includes('/test-session') && opts?.method === 'POST') return okJson(TEST_SESSION_RESPONSE)
-      if (url.includes('/turn') && opts?.method === 'POST') return okJson(TURN_RESPONSE)
-      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
-      if (url.includes('/validate')) return okJson({ valid: true, errors: [], warnings: [] })
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
-    })
+    vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
 
     renderWorkbench()
     fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
@@ -1023,14 +840,7 @@ describe('CreatorWorkbench — Test Chat', () => {
   })
 
   it('discard button calls DELETE and returns to idle state', async () => {
-    const deleteSpy = vi.fn().mockReturnValue({ ok: true, status: 204, json: () => Promise.resolve(null), text: () => Promise.resolve('') })
-    stubFetchWithTestChat((url, opts) => {
-      if (url.includes('/test-session') && opts?.method === 'POST') return okJson(TEST_SESSION_RESPONSE)
-      if (url.includes('/api/sessions/') && opts?.method === 'DELETE') return deleteSpy()
-      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
-      if (url.includes('/validate')) return okJson({ valid: true, errors: [], warnings: [] })
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
-    })
+    vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
 
     renderWorkbench()
     fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
@@ -1043,21 +853,15 @@ describe('CreatorWorkbench — Test Chat', () => {
     await waitFor(() => {
       expect(screen.getByTestId('start-test-btn')).toBeInTheDocument()
     })
-    expect(deleteSpy).toHaveBeenCalledOnce()
+    expect(vi.mocked(api.deleteSession)).toHaveBeenCalledOnce()
   })
 
   it('reset button discards current session and starts a new one', async () => {
     const startCount = { n: 0 }
-    const deleteSpy = vi.fn().mockReturnValue({ ok: true, status: 204, json: () => Promise.resolve(null), text: () => Promise.resolve('') })
-    stubFetchWithTestChat((url, opts) => {
-      if (url.includes('/test-session') && opts?.method === 'POST') {
-        startCount.n++
-        return okJson({ ...TEST_SESSION_RESPONSE, session_id: `test-${startCount.n}` })
-      }
-      if (url.includes('/api/sessions/') && opts?.method === 'DELETE') return deleteSpy()
-      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
-      if (url.includes('/validate')) return okJson({ valid: true, errors: [], warnings: [] })
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
+    vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
+    vi.mocked(api.workbench.startTestSession).mockImplementation(() => {
+      startCount.n++
+      return Promise.resolve({ ok: true as const, data: { ...TEST_SESSION_RESPONSE, session_id: `test-${startCount.n}` } })
     })
 
     renderWorkbench()
@@ -1085,13 +889,8 @@ describe('CreatorWorkbench — Test Chat', () => {
         },
       ],
     }
-    stubFetchWithTestChat((url, opts) => {
-      if (url.includes('/test-session') && opts?.method === 'POST') return okJson(TEST_SESSION_RESPONSE)
-      if (url.includes('/turn') && opts?.method === 'POST') return okJson(endedTurnResponse)
-      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
-      if (url.includes('/validate')) return okJson({ valid: true, errors: [], warnings: [] })
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
-    })
+    vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
+    vi.mocked(api.submitTurn).mockResolvedValue({ ok: true, data: endedTurnResponse })
 
     renderWorkbench()
     fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
@@ -1110,13 +909,8 @@ describe('CreatorWorkbench — Test Chat', () => {
 
   it('switching back to Edit tab preserves editor state', async () => {
     const localContent = 'name: My Pack\n'
-    stubFetchWithTestChat((url) => {
-      if (url.includes('/test-session')) return okJson(TEST_SESSION_RESPONSE)
-      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
-      if (url.includes('/file?')) return okJson({ content: localContent, editable: true })
-      if (url.includes('/validate')) return okJson({ valid: true, errors: [], warnings: [] })
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
-    })
+    vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
+    vi.mocked(api.workbench.readFile).mockResolvedValue({ ok: true, data: { content: localContent, editable: true } })
 
     renderWorkbench()
     fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
@@ -1136,11 +930,8 @@ describe('CreatorWorkbench — Test Chat', () => {
 
   it('shows form editor mode toggle for editable recognized YAML files', async () => {
     const localContent = 'pack_id: local.my_pack\nname: My Pack\n'
-    stubFetch((url) => {
-      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
-      if (url.includes('/file?')) return okJson({ content: localContent, editable: true })
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
-    })
+    vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
+    vi.mocked(api.workbench.readFile).mockResolvedValue({ ok: true, data: { content: localContent, editable: true } })
 
     renderWorkbench()
     fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
@@ -1155,11 +946,8 @@ describe('CreatorWorkbench — Test Chat', () => {
 
   it('switches to form editor when form mode button is clicked', async () => {
     const localContent = 'pack_id: local.my_pack\nname: My Pack\n'
-    stubFetch((url) => {
-      if (url.includes('/files')) return okJson({ tree: MOCK_TREE })
-      if (url.includes('/file?')) return okJson({ content: localContent, editable: true })
-      return okJson([OFFICIAL_PACK, LOCAL_PACK])
-    })
+    vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
+    vi.mocked(api.workbench.readFile).mockResolvedValue({ ok: true, data: { content: localContent, editable: true } })
 
     renderWorkbench()
     fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
