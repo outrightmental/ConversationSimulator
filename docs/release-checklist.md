@@ -480,8 +480,8 @@ Complete B.11 on this Windows machine before checking the items below.
 - [ ] B.11 Steam Cloud sync verification completed (Windows)
 - [ ] `steam_cloud_settings.json` contains only `last_model_id` — no transcripts,
   audio paths, or session content
-- [ ] `.nosteamcloudpath` markers present in `db\`, `logs\`, `models\llm\`,
-  `packs\`, `exports\`, `cache\`, and `crashes\` subdirectories
+- [ ] `.nosteamcloudpath` markers present in `data\`, `db\`, `logs\`,
+  `models\llm\`, `packs\`, `exports\`, `cache\`, and `crashes\` subdirectories
 
 ### E.11 Support bundle flow
 
