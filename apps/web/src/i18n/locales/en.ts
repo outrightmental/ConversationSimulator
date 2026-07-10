@@ -162,6 +162,7 @@ export const en = {
       importButton: 'Import pack (.zip)',
       importing: 'Importing…',
       importedSuccess: 'Imported “{{name}}”',
+      importError: 'Import failed.',
       loadError: 'Could not load installed packs.',
       noPacks: 'No packs installed yet.',
       scenarioCount_one: '{{count}} scenario',
@@ -198,6 +199,7 @@ export const en = {
       done_other: '{{count}} sessions deleted.',
       doneLocal: 'Local data has been cleared.',
       error: 'Failed to clear data. Please try again.',
+      unknownError: 'Unknown error.',
       clearing: 'Clearing…',
       confirm: 'Confirm — delete everything',
       clear: 'Clear all local data',
@@ -207,6 +209,8 @@ export const en = {
       heading: 'Your sessions',
       description: 'Export a session as JSON or delete it permanently.',
       loadError: 'Could not load sessions.',
+      deleteError: 'Failed to delete session.',
+      exportError: 'Failed to export session.',
       loading: 'Loading…',
       noSessions: 'No sessions yet.',
       export: 'Export',
@@ -274,6 +278,22 @@ export const en = {
     },
     debugJson: 'Full debrief JSON (debug)',
     latency: 'Debrief generation: {{ms}} ms',
+    score: {
+      overall: 'Overall score: {{score}} out of 100 — {{grade}}',
+      dimension: '{{label}}: {{score}} out of 100',
+      gradeGood: 'Good',
+      gradeFair: 'Fair',
+      gradeNeedsImprovement: 'Needs improvement',
+    },
+    keyMoment: {
+      impact: 'Impact: {{impact}}',
+    },
+    chart: {
+      ariaLabel: '{{variable}} over turns',
+    },
+    outcomeBadge: {
+      ariaLabel: 'Outcome: {{outcome}}',
+    },
     actions: {
       replayVariation: 'Replay variation',
       replaySameSetup: 'Replay same setup',

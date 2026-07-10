@@ -761,13 +761,19 @@ export default function Debrief() {
 }
 
 function OverallScore({ score }: { score: number }) {
+  const { t } = useTranslation()
   const color = score >= 70 ? '#86efac' : score >= 40 ? '#fbbf24' : '#fca5a5'
   const rounded = Math.round(score)
-  const grade = rounded >= 70 ? 'Good' : rounded >= 40 ? 'Fair' : 'Needs improvement'
+  const grade =
+    rounded >= 70
+      ? t('debrief.score.gradeGood')
+      : rounded >= 40
+        ? t('debrief.score.gradeFair')
+        : t('debrief.score.gradeNeedsImprovement')
   return (
     <div
       data-testid="overall-score"
-      aria-label={`Overall score: ${rounded} out of 100 — ${grade}`}
+      aria-label={t('debrief.score.overall', { score: rounded, grade })}
       role="meter"
       aria-valuenow={rounded}
       aria-valuemin={0}
@@ -781,6 +787,7 @@ function OverallScore({ score }: { score: number }) {
 }
 
 function DimensionRow({ dimension, score }: { dimension: string; score: number }) {
+  const { t } = useTranslation()
   const label = dimension.replace(/_/g, ' ')
   const barColor = score >= 70 ? '#22c55e' : score >= 40 ? '#f97316' : '#ef4444'
   const rounded = Math.round(score)
@@ -801,7 +808,7 @@ function DimensionRow({ dimension, score }: { dimension: string; score: number }
       </span>
       <div
         role="meter"
-        aria-label={`${label}: ${rounded} out of 100`}
+        aria-label={t('debrief.score.dimension', { label, score: rounded })}
         aria-valuenow={rounded}
         aria-valuemin={0}
         aria-valuemax={100}
@@ -902,7 +909,7 @@ function TurningPointCard({
         </p>
         {point.impact && (
           <span
-            aria-label={`Impact: ${point.impact}`}
+            aria-label={t('debrief.keyMoment.impact', { impact: point.impact })}
             style={{ fontSize: '0.75rem', color: impactColor, textTransform: 'capitalize' }}
           >
             {point.impact === 'positive' ? '▲ ' : point.impact === 'negative' ? '▼ ' : ''}
@@ -968,6 +975,7 @@ function TranscriptTurn({
 }
 
 function StateArcSparkline({ arc, variable }: { arc: DebriefMetrics['state_arc']; variable: string }) {
+  const { t } = useTranslation()
   const values = arc.map((e) => e.state[variable]).filter((v) => v !== undefined) as number[]
   if (values.length < 2) return null
   const W = 120
@@ -983,7 +991,7 @@ function StateArcSparkline({ arc, variable }: { arc: DebriefMetrics['state_arc']
     <svg
       width={W}
       height={H}
-      aria-label={`${variable} over turns`}
+      aria-label={t('debrief.chart.ariaLabel', { variable })}
       style={{ overflow: 'visible', flexShrink: 0 }}
     >
       <polyline
@@ -1112,6 +1120,7 @@ function TelemetryStat({ label, value, sub }: { label: string; value: string; su
 }
 
 function OutcomeBadge({ outcome, testId }: { outcome?: string; testId?: string }) {
+  const { t } = useTranslation()
   if (!outcome) return null
   const colors: Record<string, string> = {
     success: '#166534',
@@ -1132,7 +1141,7 @@ function OutcomeBadge({ outcome, testId }: { outcome?: string; testId?: string }
   return (
     <span
       data-testid={testId}
-      aria-label={`Outcome: ${outcome.replace(/_/g, ' ')}`}
+      aria-label={t('debrief.outcomeBadge.ariaLabel', { outcome: outcome.replace(/_/g, ' ') })}
       style={{
         padding: '0.2rem 0.7rem',
         borderRadius: 12,

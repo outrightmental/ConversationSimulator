@@ -169,7 +169,7 @@ export default function Settings() {
       setPackImportState('success')
       loadInstalledPacks()
     } catch (err) {
-      setPackImportError(err instanceof Error ? err.message : 'Import failed')
+      setPackImportError(err instanceof Error ? err.message : t('settings.packs.importError'))
       setPackImportState('error')
     }
   }
@@ -219,7 +219,7 @@ export default function Settings() {
         setClearState('done')
         loadSessions()
       } catch (err) {
-        setClearError(err instanceof Error ? err.message : 'Unknown error')
+        setClearError(err instanceof Error ? err.message : t('settings.clearData.unknownError'))
         setClearState('error')
       }
     }
@@ -237,7 +237,7 @@ export default function Settings() {
       await api.deleteSession(sessionId)
       setSessions((prev) => prev?.filter((s) => s.session_id !== sessionId) ?? null)
     } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : 'Failed to delete session')
+      setDeleteError(err instanceof Error ? err.message : t('settings.sessions.deleteError'))
     } finally {
       setDeletingId(null)
       setDeleteConfirmId(null)
@@ -258,7 +258,7 @@ export default function Settings() {
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
     } catch (err) {
-      setExportError(err instanceof Error ? err.message : 'Failed to export session')
+      setExportError(err instanceof Error ? err.message : t('settings.sessions.exportError'))
     }
   }
 

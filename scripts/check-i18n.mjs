@@ -43,6 +43,13 @@ const VIOLATION_PATTERNS = [
   { re: /placeholder="([A-Z][a-z]+ .{2,})"/g, label: 'placeholder attribute', attr: true },
   // title="..." with English prose
   { re: /(?<![a-z])title="([A-Z][a-z]+ .{2,})"/g, label: 'title attribute', attr: true },
+  // Template-literal attributes — aria-label={`... literal prose ${x}`}. The literal-string
+  // patterns above cannot see prose that lives in a template literal alongside ${} interpolation
+  // (e.g. `Outcome: ${outcome}`), which is how several hardcoded a11y labels slipped through. The
+  // `template` flag tells the scanner to strip ${...} and flag any residual literal word.
+  { re: /aria-label=\{`([^`]*)`\}/g, label: 'aria-label template literal', attr: true, template: true },
+  { re: /(?<![a-z])title=\{`([^`]*)`\}/g, label: 'title template literal', attr: true, template: true },
+  { re: /placeholder=\{`([^`]*)`\}/g, label: 'placeholder template literal', attr: true, template: true },
 ]
 
 // Patterns to allowlist — matches that are never violations.
@@ -90,12 +97,18 @@ for (const relPath of MIGRATED_FILES) {
     // match hardcoded aria-label/placeholder/title values.
     const lineAllowlisted = ALLOWLIST_PATTERNS.some((p) => p.test(line))
 
-    for (const { re, label, attr } of VIOLATION_PATTERNS) {
+    for (const { re, label, attr, template } of VIOLATION_PATTERNS) {
       if (!attr && lineAllowlisted) continue
       re.lastIndex = 0
       let match
       while ((match = re.exec(line)) !== null) {
-        const text = match[1].trim()
+        let text = match[1].trim()
+        if (template) {
+          // Strip ${...} interpolation and flag only residual literal prose. A fully
+          // interpolated label (e.g. `${label}`) leaves no words and is not a violation.
+          text = text.replace(/\$\{[^}]*\}/g, ' ').trim()
+          if (!/[A-Za-z]{3,}/.test(text)) continue
+        }
         // Skip short strings (single word, all-caps constants, etc.)
         if (!text.includes(' ') && text === text.toUpperCase()) continue
         if (text.length < 4) continue

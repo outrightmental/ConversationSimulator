@@ -171,6 +171,7 @@ export const de: LocaleMessages = {
       importButton: 'Paket importieren (.zip)',
       importing: 'Importiere…',
       importedSuccess: '„{{name}}" importiert',
+      importError: 'Import fehlgeschlagen.',
       loadError: 'Installierte Pakete konnten nicht geladen werden.',
       noPacks: 'Noch keine Pakete installiert.',
       scenarioCount_one: '{{count}} Szenario',
@@ -207,6 +208,7 @@ export const de: LocaleMessages = {
       done_other: '{{count}} Sitzungen gelöscht.',
       doneLocal: 'Lokale Daten wurden gelöscht.',
       error: 'Daten konnten nicht gelöscht werden. Bitte versuchen Sie es erneut.',
+      unknownError: 'Unbekannter Fehler.',
       clearing: 'Lösche…',
       confirm: 'Bestätigen – alles löschen',
       clear: 'Alle lokalen Daten löschen',
@@ -216,6 +218,8 @@ export const de: LocaleMessages = {
       heading: 'Ihre Sitzungen',
       description: 'Sitzung als JSON exportieren oder dauerhaft löschen.',
       loadError: 'Sitzungen konnten nicht geladen werden.',
+      deleteError: 'Sitzung konnte nicht gelöscht werden.',
+      exportError: 'Sitzung konnte nicht exportiert werden.',
       loading: 'Lade…',
       noSessions: 'Noch keine Sitzungen.',
       export: 'Exportieren',
@@ -284,6 +288,22 @@ export const de: LocaleMessages = {
     },
     debugJson: 'Vollständiges Nachbesprechungs-JSON (Debug)',
     latency: 'Nachbesprechungserstellung: {{ms}} ms',
+    score: {
+      overall: 'Gesamtpunktzahl: {{score}} von 100 — {{grade}}',
+      dimension: '{{label}}: {{score}} von 100',
+      gradeGood: 'Gut',
+      gradeFair: 'Befriedigend',
+      gradeNeedsImprovement: 'Verbesserungswürdig',
+    },
+    keyMoment: {
+      impact: 'Auswirkung: {{impact}}',
+    },
+    chart: {
+      ariaLabel: '{{variable}} über die Züge',
+    },
+    outcomeBadge: {
+      ariaLabel: 'Ergebnis: {{outcome}}',
+    },
     actions: {
       replayVariation: 'Variation wiederholen',
       replaySameSetup: 'Gleiche Einrichtung wiederholen',
