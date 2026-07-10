@@ -794,8 +794,9 @@ ldd --version | head -1
 
 - [ ] Tauri window opens and displays the home screen
 - [ ] No terminal window visible (convsim-core runs as hidden child process)
-- [ ] `~/.local/share/convsim/` or `~/.config/com.outrightmental.convsim/` is
-  created on first launch (platform-native data directory; confirm in startup log)
+- [ ] `~/.local/share/convsim/` (or `$XDG_DATA_HOME/convsim` when `XDG_DATA_HOME`
+  is set) is created on first launch (platform-native data directory; confirm in
+  startup log)
 
 ### H.3 First-run model wizard
 
