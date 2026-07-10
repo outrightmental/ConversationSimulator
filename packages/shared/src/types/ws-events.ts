@@ -108,6 +108,13 @@ export interface WsTtsAudioChunkEvent extends WsEventBase {
     cache_path: string | null;
     /** Error message if synthesis failed; null on success. */
     error: string | null;
+    /**
+     * NPC thinking-pause duration in ms. Only present on the first chunk
+     * (chunk_index === 0) when the feature is enabled. The client should
+     * delay playback start by this many ms to simulate the NPC pausing
+     * before speaking.
+     */
+    thinking_pause_ms?: number;
   };
 }
 
