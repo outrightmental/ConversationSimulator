@@ -120,8 +120,7 @@ describe('voice readiness cards', () => {
 
   it('shows VAD as ready when vadHealth returns ready', async () => {
     render(<VoiceSettingsPanel />)
-    await waitFor(() => expect(screen.getByTestId('readiness-vad')).toBeInTheDocument())
-    expect(screen.getByTestId('readiness-vad')).toHaveTextContent('ready')
+    await waitFor(() => expect(screen.getByTestId('readiness-vad')).toHaveTextContent('ready'))
   })
 
   it('shows Microphone as ready when permission is granted', async () => {
