@@ -469,6 +469,112 @@ and verification checklist required for the Steam Deck Verified tier.
 
 ---
 
+## CI secrets and rotation procedures
+
+All secrets live in **GitHub → Settings → Secrets and variables → Actions → Secrets**.
+Variables (non-secret, visible in logs) live under **→ Variables**.
+
+### Apple secrets (macOS signing and notarisation)
+
+| Secret | Contents | Expiry |
+|--------|----------|--------|
+| `APPLE_CERTIFICATE` | Base64-encoded Developer ID Application `.p12` certificate | Certificates expire after 5 years |
+| `APPLE_CERTIFICATE_PASSWORD` | Passphrase for the `.p12` file | No expiry |
+| `APPLE_SIGNING_IDENTITY` | Full identity string, e.g. `Developer ID Application: Outright Mental (TEAMID)` | Changes only if the team name changes |
+| `APPLE_ID` | Apple ID email of the dedicated notarisation account | No expiry |
+| `APPLE_PASSWORD` | App-specific password for the Apple ID | Apple revokes app-specific passwords periodically; rotate when prompted |
+| `APPLE_TEAM_ID` | 10-character Apple Developer Team ID | Permanent (tied to the developer account) |
+
+**Obtaining a certificate:**
+
+1. Log in to [developer.apple.com](https://developer.apple.com) as the team admin.
+2. Navigate to **Certificates, Identifiers & Profiles → Certificates**.
+3. Click **+** and choose **Developer ID Application**.
+4. Generate a CSR with Keychain Access, upload it, and download the resulting `.cer` file.
+5. Double-click the `.cer` to import it into Keychain Access.
+6. In Keychain Access, find the imported certificate, right-click → **Export** → save as a `.p12` file with a strong passphrase.
+7. Base64-encode it: `base64 -i certificate.p12 | pbcopy`
+8. Paste the result as `APPLE_CERTIFICATE` in repository secrets.
+9. Store the passphrase as `APPLE_CERTIFICATE_PASSWORD`.
+
+**Obtaining an app-specific password:**
+
+1. Sign in to [appleid.apple.com](https://appleid.apple.com).
+2. Navigate to **Sign-In and Security → App-Specific Passwords**.
+3. Click **+**, name it `convsim-notarise-ci`, and copy the generated password.
+4. Store it as `APPLE_PASSWORD` in repository secrets.
+
+**Rotation procedure (certificate expiry):**
+
+1. Generate a new Developer ID Application certificate on developer.apple.com (step above).
+2. Update `APPLE_CERTIFICATE` and `APPLE_CERTIFICATE_PASSWORD` in repository secrets.
+3. The signing identity string (`APPLE_SIGNING_IDENTITY`) usually stays the same — update it only if it changed.
+4. Trigger a manual `desktop-distro` dispatch build to confirm signing and notarisation succeed.
+5. Document the rotation date in the compliance register (`publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md`).
+
+**Rotation procedure (app-specific password revoked by Apple):**
+
+1. Generate a new app-specific password on appleid.apple.com.
+2. Update `APPLE_PASSWORD` in repository secrets.
+3. Verify that a notarisation run in CI completes without `APPLE_PASSWORD` errors.
+
+---
+
+### Windows secrets (Authenticode signing)
+
+| Secret | Contents | Expiry |
+|--------|----------|--------|
+| `WINDOWS_SIGN_CERT_PFX` | Base64-encoded PFX file (certificate + private key chain) | OV certificates: 1–3 years. EV certificates: 1–2 years |
+| `WINDOWS_SIGN_CERT_PASSWORD` | Password for the PFX file | No expiry |
+
+**Obtaining a certificate:**
+
+1. Purchase an Extended Validation (EV) or Organisation Validation (OV)
+   code-signing certificate from DigiCert, Sectigo, GlobalSign, or similar CA.
+   EV certificates suppress SmartScreen warnings immediately; OV certificates
+   build trust over time (required before Stage 3 gate G3-01).
+2. Export the private key and certificate chain as a `.pfx` file from your
+   certificate management portal or HSM.
+3. Base64-encode it: `certutil -encode cert.pfx cert.b64` (Windows) or
+   `base64 -i cert.pfx` (macOS / Linux).
+4. Add the `.b64` contents as `WINDOWS_SIGN_CERT_PFX` in repository secrets.
+5. Add the PFX password as `WINDOWS_SIGN_CERT_PASSWORD`.
+
+**Rotation procedure (certificate expiry):**
+
+1. Renew the certificate with your CA (typically 30–60 days before expiry; most CAs send email reminders).
+2. Export the renewed certificate as a new `.pfx` file.
+3. Base64-encode and update `WINDOWS_SIGN_CERT_PFX` in repository secrets.
+4. Update `WINDOWS_SIGN_CERT_PASSWORD` if the passphrase changed.
+5. Trigger a `desktop-distro` dispatch build; confirm the "Verify Windows Authenticode signature" step passes.
+6. Document the rotation date in the compliance register.
+
+---
+
+### Optional secrets
+
+| Secret | Contents | Used by |
+|--------|----------|---------|
+| `VIRUSTOTAL_API_KEY` | VirusTotal Public API v3 key | Malware scan step in `release.yml` and `desktop-distro.yml` |
+
+**VirusTotal setup:**
+
+1. Create a free account at [virustotal.com](https://www.virustotal.com).
+2. Navigate to your profile → **API Key**.
+3. Copy the key and add it as `VIRUSTOTAL_API_KEY` in repository secrets.
+4. Free tier: 4 file uploads/minute, 500/day.  The malware scan step is
+   non-blocking — VirusTotal detections on freshly compiled Rust/Tauri
+   binaries are often heuristic false positives.  Review results manually
+   and submit false-positive reports through the VirusTotal partner portal
+   or your AV vendor if detections appear on signed release builds.
+
+**Rotation procedure:**
+
+1. Go to your VirusTotal profile → **API Key** → **Regenerate**.
+2. Update `VIRUSTOTAL_API_KEY` in repository secrets.
+
+---
+
 ## Cross-platform differences summary
 
 | Feature | macOS | Windows | Linux |
