@@ -3,6 +3,7 @@ import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { api, type ImportPackResponse, type PackSummary } from '../api/client'
 import { readPrivacyPref, writePrivacyPref, PRIVACY_KEYS, isDevModeEnabled } from '../privacyPrefs'
+import { useSteamStatus } from '../hooks/useSteamStatus'
 import RuntimeSettingsPanel from '../components/RuntimeSettingsPanel'
 import VoiceSettingsPanel from '../components/VoiceSettingsPanel'
 
@@ -79,6 +80,7 @@ export default function Settings() {
   const [saveRawAudio, setSaveRawAudio] = useState(() => readPrivacyPref(PRIVACY_KEYS.saveRawAudio, false))
   const [devMode, setDevMode] = useState(() => isDevModeEnabled())
   const [isTauri] = useState(detectTauri)
+  const steamStatus = useSteamStatus()
 
   function handleSaveTranscriptsChange(v: boolean) {
     setSaveTranscripts(v)
@@ -345,6 +347,62 @@ export default function Settings() {
           description="Caching generated speech speeds up repeated phrases. Cached audio stays on your device and is never shared."
         />
         <VoiceSettingsPanel />
+      </section>
+
+      {/* Steam Cloud sync */}
+      <section
+        aria-label="Steam Cloud sync"
+        data-testid="steam-cloud-section"
+        style={{ marginBottom: '2rem' }}
+      >
+        <SectionHeading>Steam Cloud sync</SectionHeading>
+
+        {/* Active indicator: shown only when the app is running under Steam */}
+        {steamStatus?.launched_by_steam && (
+          <div
+            aria-label="steam-cloud-active"
+            style={{
+              background: 'rgba(103,193,245,0.08)',
+              border: '1px solid rgba(103,193,245,0.25)',
+              borderRadius: '6px',
+              padding: '0.5rem 0.875rem',
+              marginBottom: '0.75rem',
+              fontSize: '0.85rem',
+              color: '#7dd3fc',
+            }}
+          >
+            Steam Cloud is active for this session.
+          </div>
+        )}
+
+        <p style={{ fontSize: '0.875rem', color: '#a1a1aa', marginBottom: '0.75rem' }}>
+          When launched via Steam, a small file is synced across your devices so your
+          settings carry over automatically. All conversation data remains exclusively
+          on each device.
+        </p>
+
+        <div aria-label="steam-cloud-synced-items" style={{ marginBottom: '0.75rem' }}>
+          <p style={{ fontSize: '0.875rem', color: '#d4d4d8', marginBottom: '0.4rem', fontWeight: 500 }}>
+            What Steam Cloud syncs:
+          </p>
+          <ul style={{ margin: '0 0 0 1.25rem', padding: 0, fontSize: '0.85rem', color: '#a1a1aa' }}>
+            <li>Last-used model selection</li>
+          </ul>
+        </div>
+
+        <div aria-label="steam-cloud-excluded-items">
+          <p style={{ fontSize: '0.875rem', color: '#d4d4d8', marginBottom: '0.4rem', fontWeight: 500 }}>
+            What always stays on this device only:
+          </p>
+          <ul style={{ margin: '0 0 0 1.25rem', padding: 0, fontSize: '0.85rem', color: '#a1a1aa' }}>
+            <li>Conversation transcripts and session history</li>
+            <li>Prompts and scenario responses</li>
+            <li>Raw audio recordings</li>
+            <li>Downloaded AI model files</li>
+            <li>Crash bundles and diagnostic logs</li>
+            <li>Imported private scenario packs</li>
+          </ul>
+        </div>
       </section>
 
       {/* Pack management */}
