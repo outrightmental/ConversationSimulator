@@ -1,0 +1,161 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: golden_ask_for_raise
+scenario_id: ask_for_raise
+description: >-
+  Golden transcript property test: verifies that a player who opens with a
+  specific track record of impact before naming a number, anchors a concrete
+  salary range to market and scope evidence, responds to Diane's probing with
+  specific data rather than reassertion, and reframes the ask as a business
+  decision Diane can take upward causes case_clarity to exceed the success
+  threshold. Also verifies that vague_claim_probe fires when evidence is thin,
+  strong_case_acknowledged fires when evidence is strong, and that no_number_anchor
+  fires before a figure is on the table.
+
+seed: 42
+input_mode: text
+difficulty: normal
+
+turns:
+  - turn: 1
+    player_input: >-
+      Thank you for the time. I want to walk you through what has changed in my
+      role over the last six months and make the case for a compensation
+      adjustment. When I joined, my scope was individual delivery on the
+      payments team — three services, one stakeholder group. In the last two
+      quarters I led the cross-team API migration that involved six teams and
+      shipped three weeks early, I onboarded two new engineers who are now
+      independent contributors, and I picked up the Q3 regulatory reporting
+      project after the original owner left. That is a materially larger role
+      than my current compensation reflects.
+    expect:
+      state_delta_contains:
+        - impression
+        - evidence_strength
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 2
+    player_input: >-
+      Based on comparable senior individual contributor roles at similar-stage
+      B2B companies in this market — I looked at three current postings and
+      two recent offers from people in my network — the range sits between
+      ninety-five and one-ten. My current base is eighty-four. I am asking
+      for a move to ninety-eight, which is the lower end of that range and
+      reflects the scope I am already carrying. I am not asking for the top
+      of the band; I am asking for alignment with what this scope actually
+      costs on the open market.
+    expect:
+      state_delta_contains:
+        - case_clarity
+        - evidence_strength
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 3
+    player_input: >-
+      On the API migration specifically — I can send you the project retrospective,
+      which has the timeline, the teams involved, and the outcome metrics. The
+      original estimate was a twelve-week project; we shipped in nine. The
+      project lead role was not in my job description when I was hired. I took
+      it on at your request and I delivered. That is the scope change I am
+      pointing at, and I think it is specific enough to substantiate the ask.
+    expect:
+      state_delta_contains:
+        - evidence_strength
+        - impression
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 4
+    player_input: >-
+      I want to make this easy for you to take upward if you decide to. The
+      business case in one sentence: I am doing the work of a senior contributor
+      at a junior contributor's pay rate, and the cost of not correcting that
+      is either the adjustment eventually happens under worse circumstances,
+      or you start a backfill process. Neither of those is cheaper than a
+      fourteen-thousand-dollar correction now. I am not making a threat —
+      I am trying to frame this the way I would if I were in your position.
+    expect:
+      state_delta_contains:
+        - case_clarity
+        - impression
+      session_control: continue_session
+      safety_status: ok
+
+static_assertions:
+  - description: Scenario opening line is non-empty
+    path: opening.npc_says
+    check: non_empty_string
+
+  - description: At least one event is defined
+    path: events
+    check: min_length_1
+
+  - description: vague_claim_probe fires when evidence_strength is below 30
+    path: events[id=vague_claim_probe].when
+    check: "type=variable_below AND variable=evidence_strength AND threshold=30"
+
+  - description: vague_claim_probe can repeat
+    path: events[id=vague_claim_probe].repeat
+    check: "equals true"
+
+  - description: no_number_anchor fires when case_clarity is below 25
+    path: events[id=no_number_anchor].when
+    check: "type=variable_below AND variable=case_clarity AND threshold=25"
+
+  - description: no_number_anchor fires only once
+    path: events[id=no_number_anchor].repeat
+    check: "equals false"
+
+  - description: strong_case_acknowledged fires when evidence_strength exceeds 70
+    path: events[id=strong_case_acknowledged].when
+    check: "type=variable_above AND variable=evidence_strength AND threshold=70"
+
+  - description: strong_case_acknowledged fires only once
+    path: events[id=strong_case_acknowledged].repeat
+    check: "equals false"
+
+  - description: deflation_signal fires when impression falls below 25
+    path: events[id=deflation_signal].when
+    check: "type=variable_below AND variable=impression AND threshold=25"
+
+  - description: Success ending condition targets case_clarity above 65
+    path: ending_conditions.success
+    check: "type=variable_above AND variable=case_clarity AND threshold=65"
+
+  - description: Failure ending condition targets impression below 15
+    path: ending_conditions.failure
+    check: "type=variable_below AND variable=impression AND threshold=15"
+
+  - description: impression is player-visible
+    path: state.variables.impression.visibility
+    check: "equals visible"
+
+  - description: evidence_strength is hidden from player
+    path: state.variables.evidence_strength.visibility
+    check: "equals hidden"
+
+  - description: case_clarity is hidden from player
+    path: state.variables.case_clarity.visibility
+    check: "equals hidden"
+
+  - description: NPC is marked fictional
+    path: npc.fictional
+    check: "equals true"
+
+  - description: Safety policy stops nsfw_sexual_content
+    path: safety.content_categories.nsfw_sexual_content
+    check: "equals stop"
+
+  - description: Safety policy fires stop_with_resource_message for self_harm_crisis
+    path: safety.content_categories.self_harm_crisis
+    check: "equals stop_with_resource_message"
+
+  - description: Pack manifest declares ask_for_raise as an entry scenario
+    path: manifest.entry_scenarios
+    check: "contains scenarios/ask_for_raise.yaml"
+
+  - description: Hard difficulty applies a negative patience modifier
+    path: scenario.difficulty.options.hard.npc_patience_modifier
+    check: "equals -20"
