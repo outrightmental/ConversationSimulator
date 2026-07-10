@@ -70,7 +70,7 @@ When creating a pack:
 
 To ship a new UI locale (e.g. Spanish):
 
-1. Add the BCP 47 tag to `SUPPORTED_LOCALES` in `apps/web/src/i18n/index.ts`.
+1. Add the BCP 47 tag to `SUPPORTED_LOCALES` in `apps/web/src/i18n/index.tsx`.
 2. Create `apps/web/src/i18n/locales/es.ts` implementing the `LocaleMessages` type exported from `en.ts`. TypeScript enforces completeness: the build fails if any key is missing.
 3. Add a `LOCALE_DISPLAY_NAMES` entry in `apps/web/src/screens/Settings.tsx` (native name, e.g. `'Español'`).
 4. Run `pnpm --filter @convsim/web check-i18n` and `pnpm --filter @convsim/web test` to confirm no regressions.

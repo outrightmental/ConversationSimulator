@@ -8,6 +8,7 @@ export const de: LocaleMessages = {
   errors: {
     schemaValidation: 'Die Anfrage enthielt ungültige Daten.',
     packNotFound: 'Das angeforderte Paket wurde nicht gefunden.',
+    scenarioNotFound: 'Das angeforderte Szenario wurde nicht gefunden.',
     sessionNotFound: 'Sitzung nicht gefunden.',
     modelNotLoaded:
       'Kein KI-Modell geladen. Öffnen Sie die Einstellungen, um ein Modell zu installieren.',

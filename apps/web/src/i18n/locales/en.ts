@@ -5,6 +5,7 @@ export const en = {
   errors: {
     schemaValidation: 'The request contained invalid data.',
     packNotFound: 'The requested pack was not found.',
+    scenarioNotFound: 'The requested scenario was not found.',
     sessionNotFound: 'Session not found.',
     modelNotLoaded: 'No AI model is loaded. Open Settings to install a model.',
     runtimeUnavailable: 'The local runtime is unavailable. Check the logs for details.',

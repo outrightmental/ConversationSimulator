@@ -9,6 +9,7 @@ import type { TranslateFn } from './i18n'
 const ERROR_KEYS: Record<string, string> = {
   SCHEMA_VALIDATION_ERROR: 'errors.schemaValidation',
   PACK_NOT_FOUND: 'errors.packNotFound',
+  SCENARIO_NOT_FOUND: 'errors.scenarioNotFound',
   SESSION_NOT_FOUND: 'errors.sessionNotFound',
   MODEL_NOT_LOADED: 'errors.modelNotLoaded',
   RUNTIME_UNAVAILABLE: 'errors.runtimeUnavailable',
