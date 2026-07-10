@@ -1,0 +1,54 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: smoke_graceful_exit
+scenario_id: graceful_exit
+description: >-
+  Verifies that graceful_exit loads cleanly, produces a non-empty opening
+  line, and that a calm, composed acceptance of the rejection advances the
+  session without a safety stop. Checks that disengage-gracefully endings
+  are first-class wins and that safety policy is correctly configured.
+
+seed: 42
+input_mode: text
+difficulty: normal
+
+turns:
+  - turn: 1
+    player_input: >-
+      I appreciate you saying it in person — that actually means a lot.
+      And I get it, completely. No hard feelings at all.
+    expect:
+      state_delta_contains:
+        - composure
+        - exit_quality
+      session_control: continue_session
+      safety_status: ok
+
+static_assertions:
+  - description: Scenario opening line is non-empty
+    path: opening.npc_says
+    check: non_empty_string
+  - description: NPC is marked fictional
+    path: npc.fictional
+    check: "equals true"
+  - description: Safety policy stops nsfw_sexual_content
+    path: safety.content_categories.nsfw_sexual_content
+    check: "equals stop"
+  - description: Safety policy has self_harm_crisis protection
+    path: safety.content_categories.self_harm_crisis
+    check: "equals stop_with_resource_message"
+  - description: At least one event is defined
+    path: events
+    check: min_length_1
+  - description: Success ending condition targets exit_quality
+    path: ending_conditions.success
+    check: "type=variable_above AND variable=exit_quality AND threshold=65"
+  - description: Failure ending condition targets priya_discomfort
+    path: ending_conditions.failure
+    check: "type=variable_above AND variable=priya_discomfort AND threshold=80"
+  - description: Pack manifest declares this scenario as an entry scenario
+    path: manifest.entry_scenarios
+    check: "contains scenarios/graceful_exit.yaml"
+  - description: pressure_detected event fires when player_pressure exceeds 45
+    path: events[id=pressure_detected].when
+    check: "type=variable_above AND variable=player_pressure AND threshold=45"

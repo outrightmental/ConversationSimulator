@@ -1,0 +1,55 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: smoke_the_ask
+scenario_id: the_ask
+description: >-
+  Verifies that the_ask scenario loads cleanly, produces a non-empty opening
+  line, and that a genuine, curious opener advances the session without
+  triggering a safety stop. Checks structural integrity of state variables,
+  events, and ending conditions.
+
+seed: 42
+input_mode: text
+difficulty: normal
+
+turns:
+  - turn: 1
+    player_input: >-
+      Ha — honestly, the flat white is better than you'd expect for a cart.
+      The espresso is actually decent. I'm Jordan, by the way. I think we
+      have the Thursday afternoon seminar together?
+    expect:
+      state_delta_contains:
+        - rapport
+        - jordan_interest
+      session_control: continue_session
+      safety_status: ok
+
+static_assertions:
+  - description: Scenario opening line is non-empty
+    path: opening.npc_says
+    check: non_empty_string
+  - description: NPC is marked fictional
+    path: npc.fictional
+    check: "equals true"
+  - description: Safety policy stops nsfw_sexual_content
+    path: safety.content_categories.nsfw_sexual_content
+    check: "equals stop"
+  - description: Safety policy has self_harm_crisis protection
+    path: safety.content_categories.self_harm_crisis
+    check: "equals stop_with_resource_message"
+  - description: At least one event is defined
+    path: events
+    check: min_length_1
+  - description: Success ending condition targets jordan_interest
+    path: ending_conditions.success
+    check: "type=variable_above AND variable=jordan_interest AND threshold=68"
+  - description: Failure ending condition targets jordan_comfort
+    path: ending_conditions.failure
+    check: "type=variable_below AND variable=jordan_comfort AND threshold=12"
+  - description: Pack manifest declares this scenario as an entry scenario
+    path: manifest.entry_scenarios
+    check: "contains scenarios/the_ask.yaml"
+  - description: positive_signal event fires when jordan_interest exceeds 60
+    path: events[id=positive_signal].when
+    check: "type=variable_above AND variable=jordan_interest AND threshold=60"

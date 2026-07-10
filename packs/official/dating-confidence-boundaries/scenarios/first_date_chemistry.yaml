@@ -1,0 +1,143 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scenario_id: first_date_chemistry
+title: First Impressions
+summary: >-
+  You matched with Sam Rivera online and this is your first time meeting in
+  person at a wine bar. You have both just arrived and settled in with your
+  first drinks. Sam seems curious and a little nervous. Your job is to build
+  genuine connection, make Sam feel comfortable, and express your interest in
+  a way that invites theirs — without overwhelming them.
+player_role:
+  label: Date
+  brief: >-
+    This is the first time you and Sam have met in person. You like what you
+    have seen online and you want to see if the connection is real. Your goal
+    is to have a genuine conversation — listen more than you perform, make
+    Sam feel at ease, and let the chemistry develop naturally if it is there.
+npc:
+  ref: ../npcs/sam_rivera.yaml
+scene:
+  ref: ../scenes/wine_bar.yaml
+rubric:
+  ref: ../rubrics/connection_building_rubric.yaml
+duration:
+  max_turns: 18
+  soft_time_limit_minutes: 13
+opening:
+  npc_says: >-
+    Hi! Okay, this is — it's a little weird at first, right? Like, we've
+    been texting for a week and now we're actually here. You look exactly
+    like your photos, which is apparently something I should say out loud.
+    I'm Sam. I'm slightly nervous. How are you doing?
+goals:
+  player_visible:
+    - "Build a real connection — not a performance, just a genuine exchange"
+    - "Make Sam feel comfortable enough to open up"
+    - "Express your interest clearly, but at a pace that matches Sam's"
+  hidden:
+    - "Sam is evaluating whether the player is actually listening or waiting for their turn — a player who builds on what Sam says earns far more than a player who runs their own track"
+    - "Sam's comfort signals are subtle at first: a longer answer, a reciprocal question, a small laugh — the player who notices and responds to these creates the best dynamic"
+    - "Dominating the conversation or asking several questions in a row makes Sam quieter — the player who leaves space for Sam to direct the conversation gets the best version of them"
+    - "Sam will share something personal and specific once they feel genuinely comfortable — this moment is the clearest signal the date is going well"
+state:
+  variables:
+    connection:
+      min: 0
+      max: 100
+      default: 25
+      visibility: visible
+      max_delta_per_turn: 14
+    comfort:
+      min: 0
+      max: 100
+      default: 50
+      visibility: visible
+      max_delta_per_turn: 12
+    sam_interest:
+      min: 0
+      max: 100
+      default: 40
+      visibility: hidden
+      max_delta_per_turn: 16
+    awkwardness:
+      min: 0
+      max: 100
+      default: 20
+      visibility: hidden
+      max_delta_per_turn: 15
+difficulty:
+  default: normal
+  options:
+    easy:
+      npc_patience_modifier: 25
+      challenge_frequency: low
+    normal:
+      npc_patience_modifier: 0
+      challenge_frequency: medium
+    hard:
+      npc_patience_modifier: -20
+      challenge_frequency: high
+events:
+  - id: genuine_spark
+    when:
+      type: variable_above
+      variable: sam_interest
+      threshold: 65
+    npc_instruction: >-
+      Sam has become noticeably more engaged. Show it in their energy — they
+      lean in slightly, their answers get a little longer, they laugh more
+      easily. They ask the player something back that is not just polite
+      reciprocation but genuine curiosity. Do not announce it; let the player
+      notice the shift.
+    repeat: false
+  - id: personal_share
+    when:
+      type: variable_above
+      variable: comfort
+      threshold: 72
+    npc_instruction: >-
+      Sam offers something personal and specific — a story, a small
+      admission, or an opinion they might not share on a first date with
+      someone they were not comfortable with. This is the signal that trust
+      has been built. It is offered naturally, not as a declaration. A
+      suggested share: "I should probably admit I almost cancelled tonight
+      because I was nervous, but I'm really glad I didn't."
+    repeat: false
+  - id: oversharing_check
+    when:
+      type: variable_above
+      variable: awkwardness
+      threshold: 48
+    npc_instruction: >-
+      The player has been too intense, asked too many questions in a row,
+      or the conversation has taken an uncomfortable turn. Sam gives a
+      polite but brief response and does not ask a follow-up — a clear
+      signal that something needs to shift. Their answers do not become
+      cold, just shorter and more measured.
+    repeat: true
+  - id: connection_stall
+    when:
+      type: variable_below
+      variable: connection
+      threshold: 20
+    npc_instruction: >-
+      The conversation has hit a flat spot. There is a beat of silence that
+      is mildly awkward rather than easy. Sam looks at their drink, glances
+      around the room. They are not leaving but the energy has drained.
+      The player needs to find a genuine re-entry point or the date will
+      coast to an uninspiring end.
+    repeat: true
+ending_conditions:
+  success:
+    type: variable_above
+    variable: sam_interest
+    threshold: 70
+  failure:
+    type: variable_above
+    variable: awkwardness
+    threshold: 82
+response_style:
+  max_words: 85
+  verbosity: moderate
+  formality: casual

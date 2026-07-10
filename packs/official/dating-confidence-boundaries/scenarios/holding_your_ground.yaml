@@ -1,0 +1,144 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scenario_id: holding_your_ground
+title: The Neighbor
+summary: >-
+  Ryan Kowalski, the neighbor who lives one floor above you, has been
+  increasingly warm for the past two months — and has now texted to ask
+  you out. You responded that you would talk in person, and you have both
+  met in the park near your building. Ryan is hoping you have changed your
+  mind. You have not. Your job is to say no clearly and kindly, and hold
+  that position if Ryan tests it.
+player_role:
+  label: Neighbor
+  brief: >-
+    Ryan is a genuinely decent person who has misread the situation. You
+    are not interested romantically, and you need to make that clear without
+    making the rest of your time in the building awkward. Say no, hold the
+    boundary if Ryan pushes back, and aim to preserve the basic warmth of
+    the neighborly relationship.
+npc:
+  ref: ../npcs/ryan_kowalski.yaml
+scene:
+  ref: ../scenes/neighborhood_park.yaml
+rubric:
+  ref: ../rubrics/dating_boundary_rubric.yaml
+duration:
+  max_turns: 16
+  soft_time_limit_minutes: 11
+opening:
+  npc_says: >-
+    Hey — thanks for actually agreeing to talk about it instead of just
+    sending a thumbs-down emoji or something. I appreciate that. So...
+    yeah. I've been kind of working up to asking for a while, and I figured
+    at some point I'd just do it. What did you want to say?
+goals:
+  player_visible:
+    - "Say no clearly — not maybe, not not right now, but no"
+    - "Hold the boundary if Ryan tries a different angle or a lighter ask"
+    - "Keep the neighborly relationship from going sideways"
+  hidden:
+    - "Ryan will try a reframe after the first no — probably 'just as friends?' — this is hope, not manipulation, but the player has to hold the line through it"
+    - "After the second clear no, Ryan makes one more wistful attempt before genuinely accepting — a player who holds it calmly through all three earns Ryan's quiet respect"
+    - "Naming the neighborly relationship explicitly alongside the no helps Ryan accept — it makes the boundary about this specific thing, not a rejection of Ryan as a person"
+    - "A no that sounds apologetic signals ambivalence — Ryan will interpret hedging as an invitation to try again"
+state:
+  variables:
+    boundary_clarity:
+      min: 0
+      max: 100
+      default: 0
+      visibility: visible
+      max_delta_per_turn: 20
+    rapport:
+      min: 0
+      max: 100
+      default: 60
+      visibility: visible
+      max_delta_per_turn: 12
+    ryan_persistence:
+      min: 0
+      max: 100
+      default: 75
+      visibility: hidden
+      max_delta_per_turn: 15
+    ryan_understanding:
+      min: 0
+      max: 100
+      default: 15
+      visibility: hidden
+      max_delta_per_turn: 18
+difficulty:
+  default: normal
+  options:
+    easy:
+      npc_patience_modifier: 30
+      challenge_frequency: low
+    normal:
+      npc_patience_modifier: 0
+      challenge_frequency: medium
+    hard:
+      npc_patience_modifier: -20
+      challenge_frequency: high
+events:
+  - id: first_test
+    when:
+      type: variable_above
+      variable: ryan_persistence
+      threshold: 70
+    npc_instruction: >-
+      Ryan tries a lighter reframe — this is hope, not manipulation. They
+      suggest maybe coffee "just as friends" or point out that "it doesn't
+      have to be a big deal." Keep the tone easy and a little self-deprecating.
+      A suggested line: "I mean — no pressure at all. It doesn't even have
+      to be a date thing. We could just grab a beer and see how it goes."
+    repeat: false
+  - id: second_test
+    when:
+      type: variable_above
+      variable: ryan_persistence
+      threshold: 85
+    npc_instruction: >-
+      Ryan makes one more attempt, this time quieter and more wistful. They
+      are not pushing for a win now — they are making sure the door is really
+      closed. Something like: "I guess I just thought — I don't know. I
+      might have been reading things wrong this whole time." Let the player
+      respond to this before Ryan genuinely accepts.
+    repeat: false
+  - id: breakthrough
+    when:
+      type: variable_above
+      variable: ryan_understanding
+      threshold: 60
+    npc_instruction: >-
+      Something has shifted. Ryan has heard the same clear, warm position
+      three times and it has finally landed. Their tone changes — less
+      searching, more accepting. They might say: "Okay. I hear you. I
+      think I needed to hear it a few times before it actually got in."
+      Let the energy settle. This is the resolution.
+    repeat: false
+  - id: rapport_warning
+    when:
+      type: variable_below
+      variable: rapport
+      threshold: 25
+    npc_instruction: >-
+      The conversation has gone somewhere uncomfortable. Ryan has pulled back
+      emotionally — shorter answers, a cooler tone, less eye contact. The
+      neighborly warmth has drained out. Ryan is not hostile, just closed.
+      The player has failed to say no in a way that preserved the basic
+      warmth of the relationship.
+    repeat: false
+ending_conditions:
+  success:
+    type: variable_above
+    variable: ryan_understanding
+    threshold: 60
+  failure:
+    type: variable_below
+    variable: rapport
+    threshold: 15
+response_style:
+  max_words: 80
+  verbosity: moderate
+  formality: casual
