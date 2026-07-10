@@ -43,7 +43,7 @@ import type {
 export type { HealthResponse };
 export type { ApiError, ApiResult } from './errors';
 
-import type { ApiResult } from './errors';
+import type { ApiError, ApiResult } from './errors';
 
 const BASE = _isTauriProduction ? `${CORE_ORIGIN}/api` : '/api'
 
