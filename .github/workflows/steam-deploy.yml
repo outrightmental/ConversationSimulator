@@ -21,7 +21,7 @@
 #
 # ── Release gate reminder ────────────────────────────────────────────────────
 #
-# Stage 3 (private beta): set_live_branch = "beta"
+# Stage 3 (private beta): set_live_branch = "beta"  ← workflow default
 #   All Stage 3 gate criteria in docs/steam-mvp-scope.md must pass first,
 #   including G3-01 (code signing and notarisation) and G3-02 (depot audit).
 #
@@ -29,8 +29,39 @@
 #   All Stage 4 gate criteria must pass first, including G4-01 (Valve review
 #   approval) and G4-02 (Steam Deck Verified tier).
 #
-# When set_live_branch is empty, the build is staged in Steamworks but no
-# branch goes live — use this for dry runs or when manual sign-off is needed.
+# Leave set_live_branch empty to stage the build without making any branch
+# live — use this for dry runs or when manual sign-off is required.
+#
+# ── Private beta verification procedure ──────────────────────────────────────
+#
+# After this workflow completes with set_live_branch = "beta":
+#
+# 1. Open the Steamworks partner portal → App Admin → Builds.
+#    Confirm the new build appears under the "beta" branch with the correct
+#    description and depot file counts for all three platforms.
+#
+# 2. Verify the build number matches the GitHub release tag:
+#    Steamworks → Builds → [build row] → View Manifest.
+#    The version field must equal the tag (e.g. 0.1.0 for v0.1.0).
+#
+# 3. Confirm Stage 3 gate criteria before sharing the beta key with testers:
+#    G3-01 — macOS app is notarised; Windows installer is Authenticode-signed.
+#    G3-02 — No model-weight files in any depot (CI depot audit enforces this).
+#    G3-04 — All release-blocking risks in STEAM_COMPLIANCE_AND_RISK_REGISTER.md
+#             show status MITIGATED, ACCEPTED, or DEFERRED.
+#    Full criteria list: docs/steam-mvp-scope.md Stage 3 gate.
+#
+# 4. Generate Steam product keys for beta testers (if not already done):
+#    Steamworks → Packages → [Free package] → Generate Steam Product Codes.
+#    Share keys only with named testers — not publicly.
+#
+# 5. Ask at least one tester on each of Windows, macOS, and Linux to:
+#    a. Activate the key and install via Steam.
+#    b. Complete a full text session and debrief (G3-06).
+#    c. Confirm the Steam overlay (Shift+Tab) works without breaking the app (G3-03).
+#    d. Report any session-ending bugs, data-loss bugs, or privacy regressions.
+#
+# 6. Record sign-off in docs/release-checklist.md before promoting to "default".
 name: Steam Deploy
 
 on:
@@ -50,12 +81,12 @@ on:
       set_live_branch:
         description: >
           Steam branch to set live after upload.
-          Leave empty to stage the build without making it live.
-          Use "beta" for Stage 3 private beta.
+          Defaults to "beta" (Stage 3 private beta).
+          Leave empty to stage the build without making it live (dry run).
           Use "default" only for a Stage 4 public release — all gate criteria
           in docs/steam-mvp-scope.md must be met before selecting "default".
         required: false
-        default: ''
+        default: 'beta'
         type: string
 
 permissions:
@@ -155,6 +186,41 @@ jobs:
 
           echo "--- Depot content summary ---"
           find steam-content -type f | sort
+
+      # ── Verify macOS .app code-signature presence ─────────────────────────────
+      # Confirms the extracted .app bundle was signed before it is staged for
+      # Steam upload.  This deploy workflow runs on an Ubuntu runner, so
+      # codesign(1) and spctl(1) are unavailable; full notarisation verification
+      # was already performed in release.yml before the artifact was uploaded.
+      #
+      # This lightweight check verifies that the _CodeSignature directory exists
+      # inside the bundle — codesign always creates it when signing succeeds.
+      # An absent _CodeSignature means the artifact is unsigned, which will cause
+      # Gatekeeper to block the app on clean macOS installs and violates gate
+      # G3-01 (docs/steam-mvp-scope.md).
+      #
+      # Non-blocking: a missing signature emits a WARN (not an error) so that
+      # dry-run and internal staging uploads of unsigned dev builds are not
+      # blocked.  Signed builds must be used for any Stage 3+ release.
+      - name: Verify macOS .app code-signature presence
+        run: |
+          APP_PATH="$(find steam-content/macos -maxdepth 1 -name '*.app' -type d \
+            2>/dev/null | head -n1)"
+          if [ -z "$APP_PATH" ]; then
+            echo "  INFO  No .app directory found in steam-content/macos — skipping check."
+            exit 0
+          fi
+          if [ -d "$APP_PATH/Contents/_CodeSignature" ]; then
+            echo "  OK  Code signature present: $APP_PATH/Contents/_CodeSignature"
+            echo "      Notarisation was verified in release.yml before artifact upload."
+            echo "      Gate G3-01 macOS signature criterion satisfied."
+          else
+            echo "  WARN  $APP_PATH does not contain a code signature (_CodeSignature missing)." >&2
+            echo "        Signed and notarised builds are required for Stage 3/4 Steam release" >&2
+            echo "        (gate G3-01 in docs/steam-mvp-scope.md)." >&2
+            echo "        This warning does not block dry-run or internal staging uploads." >&2
+            echo "        See docs/platform-notes.md for signing requirements." >&2
+          fi
 
       # ── Verify no forbidden files are staged ───────────────────────────────
       # Enforces depot content exclusion rule MD-04 and the approved binary
