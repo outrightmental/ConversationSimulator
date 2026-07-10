@@ -29,6 +29,7 @@ export default function Home() {
   const [isRestartingSidecar, setIsRestartingSidecar] = useState(false)
   const [reseeding, setReseeding] = useState(false)
   const [reseedDone, setReseedDone] = useState(false)
+  const [reseedFailed, setReseedFailed] = useState(false)
 
   const runtime = health.runtime
   const llmReady = runtime?.llm_ready ?? false
@@ -460,6 +461,7 @@ export default function Home() {
                 if (reseeding) return
                 setReseeding(true)
                 setReseedDone(false)
+                setReseedFailed(false)
                 void apiClient.reseedOfficialPacks().then((r) => {
                   setReseeding(false)
                   if (r.ok) {
@@ -467,6 +469,8 @@ export default function Home() {
                     // Refresh the pack count so the "None installed" badge and
                     // this missing-pack notice clear once packs are restored.
                     refetchPackCount()
+                  } else {
+                    setReseedFailed(true)
                   }
                 })
               }}
@@ -486,6 +490,8 @@ export default function Home() {
                 ? t('home.missingPack.restoring')
                 : reseedDone
                 ? t('home.missingPack.restoreDone')
+                : reseedFailed
+                ? t('home.missingPack.restoreFailed')
                 : t('home.missingPack.restoreAction')}
             </button>
             <Link

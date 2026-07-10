@@ -503,6 +503,43 @@ describe('Home — missing-pack section', () => {
       ).toBeNull()
     })
   })
+
+  it('shows a retry affordance when restoring official packs fails', async () => {
+    const mockFetch = vi.fn((url: string) => {
+      let body: object
+      if (url.includes('/packs/reseed')) {
+        return Promise.resolve({
+          ok: false,
+          status: 500,
+          json: () => Promise.resolve({ detail: 'internal error' }),
+          text: () => Promise.resolve('internal error'),
+        })
+      } else if (url.includes('/packs')) {
+        body = { packs: [], total: 0 }
+      } else if (url.includes('/logbook')) {
+        body = makeLogbook()
+      } else {
+        body = makeHealth({ llm_ready: true, llm_model_name: 'TestModel' })
+      }
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve(body),
+        text: () => Promise.resolve(JSON.stringify(body)),
+      })
+    })
+    vi.stubGlobal('fetch', mockFetch)
+
+    renderHome()
+    await screen.findByRole('status', { name: /no scenario packs installed/i })
+
+    fireEvent.click(screen.getByRole('button', { name: /restore official packs/i }))
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole('button', { name: /retry/i }),
+      ).toBeInTheDocument(),
+    )
+  })
 })
 
 describe('Home — help section', () => {

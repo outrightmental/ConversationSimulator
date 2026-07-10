@@ -145,6 +145,7 @@ export const de: LocaleMessages = {
       restoreAction: 'Offizielle Pakete wiederherstellen',
       restoring: 'Wird wiederhergestellt…',
       restoreDone: 'Offizielle Pakete wiederhergestellt ✓',
+      restoreFailed: 'Wiederherstellung fehlgeschlagen — erneut versuchen',
       action: 'Zur Bibliothek →',
     },
     help: {

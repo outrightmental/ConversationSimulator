@@ -137,6 +137,7 @@ export const en = {
       restoreAction: 'Restore official packs',
       restoring: 'Restoring…',
       restoreDone: 'Official packs restored ✓',
+      restoreFailed: 'Restore failed — retry',
       action: 'Go to library →',
     },
     help: {
