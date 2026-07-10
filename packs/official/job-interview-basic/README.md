@@ -27,7 +27,7 @@ using the STAR method earn a stronger impression; vague platitudes lower it.
 **Scene:** Meridian Systems conference room
 **Rubric:** Clarity / Specificity / Rapport / Self-Awareness
 **Duration:** Up to 20 turns (≈ 15 minutes)
-**Difficulty options:** easy / normal / hard
+**Difficulty options:** warm / standard / hard / adversarial
 **Model recommendation:** Any supported model; works well in text-only mode
 **Voice support:** Placeholder (no voice engine configured)
 **Content rating:** PG
@@ -70,7 +70,7 @@ respectfully when you are right.
 **Scene:** Vantage Fintech executive corner office
 **Rubric:** Composure / Credibility / Directness / Resilience
 **Duration:** Up to 18 turns (≈ 12 minutes)
-**Difficulty options:** easy / normal / hard (hard is significantly more hostile)
+**Difficulty options:** warm / standard / hard / adversarial (hard is significantly more hostile)
 **Model recommendation:** Any supported model; works well in text-only mode
 **Voice support:** Placeholder (no voice engine configured)
 **Content rating:** PG
@@ -114,7 +114,7 @@ jargon will not help here — plain, specific, honest answers will.
 **Scene:** Crestview Distribution break room
 **Rubric:** Practicality / Reliability / Crew Awareness / Motivation Fit
 **Duration:** Up to 16 turns (≈ 12 minutes)
-**Difficulty options:** easy / normal / hard (hard adds suspicion about candidate's motives)
+**Difficulty options:** warm / standard / hard / adversarial (hard adds suspicion about candidate's motives)
 **Model recommendation:** Any supported model; works well in text-only mode
 **Voice support:** Placeholder (no voice engine configured)
 **Content rating:** PG
@@ -157,7 +157,7 @@ transferable examples, and demonstrate you have done genuine research on the rol
 **Scene:** Nexus Analytics open office product team area
 **Rubric:** Self-Awareness / Transferable Evidence / Preparation / Learning Velocity
 **Duration:** Up to 20 turns (≈ 15 minutes)
-**Difficulty options:** easy / normal / hard (hard requires more evidence to reach conviction threshold)
+**Difficulty options:** warm / standard / hard / adversarial (hard requires more evidence to reach conviction threshold)
 **Model recommendation:** Any supported model; works well in text-only mode
 **Voice support:** Placeholder (no voice engine configured)
 **Content rating:** PG

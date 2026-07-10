@@ -82,12 +82,12 @@ describe('parseScenarioYaml', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.data.title).toBe('Behavioral Interview');
-    expect(result.data.difficulty).toBe('medium');
+    expect(result.data.difficulty).toBe('standard');
     expect(result.data.state_defaults.trust).toBe(50);
   });
 
   it('rejects invalid difficulty value', () => {
-    const yaml = VALID_SCENARIO_YAML.replace('difficulty: medium', 'difficulty: extreme');
+    const yaml = VALID_SCENARIO_YAML.replace('difficulty: standard', 'difficulty: extreme');
     const result = parseScenarioYaml(yaml);
     expect(result.ok).toBe(false);
     expect(result.errors.some((e) => e.path === 'difficulty')).toBe(true);

@@ -1,8 +1,12 @@
-export type ScenarioDifficulty = 'easy' | 'normal' | 'hard';
+export type ScenarioDifficulty = 'warm' | 'standard' | 'hard' | 'adversarial';
 
 export interface DifficultyOption {
-  npc_patience_modifier: number;
-  challenge_frequency: 'low' | 'medium' | 'high';
+  patience?: number;
+  volatility?: number;
+  disclosure?: number;
+  time_pressure?: number;
+  label?: string;
+  description?: string;
 }
 
 export interface ScenarioDifficultyConfig {

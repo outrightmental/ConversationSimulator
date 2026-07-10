@@ -157,22 +157,22 @@
     "difficulty": {
       "type": "object",
       "additionalProperties": false,
+      "description": "Standardised difficulty system. 'default' names the author's recommended preset. 'options' maps each named preset to its four knobs.",
       "properties": {
         "default": {
           "type": "string",
-          "enum": ["easy", "normal", "hard"]
+          "enum": ["warm", "standard", "hard", "adversarial"],
+          "description": "Author's recommended preset shown pre-selected in setup UI."
         },
         "options": {
           "type": "object",
-          "additionalProperties": {
-            "type": "object",
-            "properties": {
-              "npc_patience_modifier": { "type": "integer" },
-              "challenge_frequency": {
-                "type": "string",
-                "enum": ["low", "medium", "high"]
-              }
-            }
+          "description": "Per-preset knob overrides. Keys must be preset names.",
+          "additionalProperties": false,
+          "properties": {
+            "warm":        { "$ref": "#/$defs/DifficultyPreset" },
+            "standard":    { "$ref": "#/$defs/DifficultyPreset" },
+            "hard":        { "$ref": "#/$defs/DifficultyPreset" },
+            "adversarial": { "$ref": "#/$defs/DifficultyPreset" }
           }
         }
       }
@@ -367,6 +367,48 @@
             }
           ],
           "description": "Optional explicit timeout condition (turn-count-based timeout is always enforced via duration.max_turns)."
+        }
+      }
+    }
+  },
+  "$defs": {
+    "DifficultyPreset": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Knob values for one named difficulty preset.",
+      "properties": {
+        "patience": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Tolerance before the NPC disengages (higher = more patient)."
+        },
+        "volatility": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "State-meter sensitivity per turn (higher = meters shift more)."
+        },
+        "disclosure": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "How freely the NPC volunteers information (higher = more open)."
+        },
+        "time_pressure": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100,
+          "description": "Turn-budget urgency the NPC conveys (higher = more time pressure)."
+        },
+        "label": {
+          "type": "string",
+          "description": "Short human-readable label shown in setup UI (e.g. 'Warm-up')."
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 120,
+          "description": "One-line description of what changes at this preset, shown in setup UI."
         }
       }
     }

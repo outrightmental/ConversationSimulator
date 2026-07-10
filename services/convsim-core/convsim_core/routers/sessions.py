@@ -64,7 +64,7 @@ _DEFAULT_TTS_VOICE_ID = "af_heart"
 
 class SessionCreateRequest(BaseModel):
     scenario_id: str
-    difficulty: Literal["easy", "normal", "hard"] = "normal"
+    difficulty: Literal["warm", "standard", "hard", "adversarial"] = "standard"
     player_role_name: str
     language: str = "en"
     input_mode: Literal["text-only", "push-to-talk", "hands-free"] = "text-only"
@@ -464,7 +464,7 @@ async def submit_turn(session_id: str, body: TurnSubmitRequest, request: Request
 
     setup = json.loads(row["setup_json"])
     scenario_id = row["scenario_id"]
-    difficulty = setup.get("difficulty", "normal")
+    difficulty = setup.get("difficulty", "standard")
     info = get_scenario_info(scenario_id)
     if info is None:
         raise HTTPException(status_code=500, detail=f"Scenario {scenario_id!r} not found in registry")
@@ -697,7 +697,7 @@ async def create_debrief(session_id: str, request: Request) -> DebriefResponse:
 
     scenario_id = row["scenario_id"]
     setup = json.loads(row["setup_json"])
-    difficulty = setup.get("difficulty", "normal")
+    difficulty = setup.get("difficulty", "standard")
     info = get_scenario_info(scenario_id)
     if info is None:
         raise HTTPException(status_code=500, detail=f"Scenario {scenario_id!r} not found in registry")

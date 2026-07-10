@@ -24,7 +24,7 @@ afterEach(async () => {
 
 const validRequest: SessionCreateRequest = {
   scenario_id: 'behavioral_interview',
-  difficulty: 'normal',
+  difficulty: 'standard',
   player_role_name: 'Alice',
   language: 'en',
   input_mode: 'text-only',
@@ -103,7 +103,7 @@ describe('POST /api/sessions', () => {
     expect(body.session_id).toMatch(/^sess-/);
     expect(body.scenario_id).toBe('behavioral_interview');
     expect(body.state).toBe('NotStarted');
-    expect(body.setup.difficulty).toBe('normal');
+    expect(body.setup.difficulty).toBe('standard');
     expect(body.setup.player_role_name).toBe('Alice');
     expect(body.setup.language).toBe('en');
     expect(body.setup.input_mode).toBe('text-only');
@@ -150,7 +150,7 @@ describe('POST /api/sessions', () => {
     const res = await app.inject({
       method: 'POST',
       url: '/api/sessions',
-      payload: { ...validRequest, scenario_id: 'hostile_executive_interview', difficulty: 'easy' },
+      payload: { ...validRequest, scenario_id: 'hostile_executive_interview', difficulty: 'warm' },
     });
     expect(res.statusCode).toBe(400);
   });

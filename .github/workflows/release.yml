@@ -136,6 +136,42 @@ jobs:
       - name: Build Tauri desktop
         run: pnpm --filter @convsim/desktop build
 
+      # ── Verify Linux artifact permissions ────────────────────────────────────
+      # AppImage files must be executable before upload so that players can run
+      # them directly after downloading.  Tauri sets the bit, but we verify here
+      # so the CI log records the exact permissions of what was uploaded.
+      - name: Verify Linux artifact permissions
+        if: runner.os == 'Linux'
+        run: |
+          BUNDLE_ROOT=apps/desktop/src-tauri/target/release/bundle
+
+          echo "── convsim-core binary ──"
+          ls -lh apps/desktop/src-tauri/resources/bin/convsim-core
+          test -x apps/desktop/src-tauri/resources/bin/convsim-core || {
+            echo "ERROR: convsim-core is not executable" >&2; exit 1
+          }
+
+          echo ""
+          echo "── AppImage ──"
+          find "$BUNDLE_ROOT/appimage" -name "*.AppImage" | while read -r f; do
+            ls -lh "$f"
+            if [[ ! -x "$f" ]]; then
+              echo "WARNING: $f is not executable — fixing..."
+              chmod +x "$f"
+            fi
+          done
+
+          echo ""
+          echo "── Debian package ──"
+          find "$BUNDLE_ROOT/deb" -name "*.deb" | while read -r f; do
+            ls -lh "$f"
+          done
+
+          echo ""
+          echo "── SHA-256 checksums ──"
+          find "$BUNDLE_ROOT" \( -name "*.AppImage" -o -name "*.deb" \) | \
+            sort | xargs sha256sum
+
       # ── Collect installers ───────────────────────────────────────────────────
       # Tauri v2 places bundles under target/release/bundle/<format>/.
       - name: Upload desktop installer artifacts

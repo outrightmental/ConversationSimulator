@@ -125,11 +125,13 @@ smoke_setup() {
         scripts/smoke-check.sh scripts/smoke-check.ps1
         scripts/release-smoke.sh scripts/release-smoke.ps1
         scripts/build-core.sh scripts/build-core.ps1
+        scripts/build-linux.sh
         scripts/depot-audit.sh scripts/depot-audit.ps1
         .github/workflows/ci.yml .github/workflows/release.yml
         .github/workflows/release-smoke.yml
         docs/release-checklist.md
         docs/platform-notes.md docs/release-notes-template.md
+        docs/linux-steamos-requirements.md
         docs/install.md docs/voice-smoke-tests.md
         services/convsim-core/pyproject.toml
         services/convsim-core/convsim-core.spec
@@ -455,7 +457,7 @@ smoke_text_session() {
     create_resp="$(curl -s --max-time 10 -w '\n%{http_code}' \
         -X POST "$CORE_URL/api/sessions" \
         -H 'Content-Type: application/json' \
-        -d '{"scenario_id":"behavioral_interview","player_role_name":"Smoke Tester","difficulty":"normal","language":"en","input_mode":"text-only","tts_enabled":false}' \
+        -d '{"scenario_id":"behavioral_interview","player_role_name":"Smoke Tester","difficulty":"standard","language":"en","input_mode":"text-only","tts_enabled":false}' \
         2>&1)" || {
         fail "text-session" "POST /api/sessions failed"
         return

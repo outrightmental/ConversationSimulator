@@ -334,17 +334,29 @@ response_style:
   formality: professional
 
 difficulty:
-  default: normal
+  default: standard
   options:
-    easy:
-      npc_patience_modifier: 20
-      challenge_frequency: low
-    normal:
-      npc_patience_modifier: 0
-      challenge_frequency: medium
+    warm:
+      patience: 80
+      volatility: 20
+      disclosure: 70
+      time_pressure: 20
+      label: Warm-up
+      description: Patient NPC who cues you when needed — good for first attempts.
+    standard:
+      patience: 50
+      volatility: 50
+      disclosure: 50
+      time_pressure: 50
+      label: Standard
+      description: Balanced realism — the author's recommended starting point.
     hard:
-      npc_patience_modifier: -20
-      challenge_frequency: high
+      patience: 25
+      volatility: 70
+      disclosure: 25
+      time_pressure: 60
+      label: Hard
+      description: Terse, reactive NPC; one weak answer can shift the posture quickly.
 ```
 
 > **Rename the file.** The file is still called `behavioral_interview.yaml`.
@@ -670,7 +682,7 @@ description: >-
   advances the session without triggering a safety stop.
 seed: 42
 input_mode: text
-difficulty: normal
+difficulty: standard
 turns:
   - turn: 1
     player_input: >-
@@ -732,7 +744,7 @@ description: >-
 
 seed: 42
 input_mode: text
-difficulty: normal
+difficulty: standard
 
 turns:
   - turn: 1
@@ -802,9 +814,9 @@ static_assertions:
     path: safety.content_categories.nsfw_sexual_content
     check: "equals stop"
 
-  - description: Hard difficulty applies a negative patience modifier
-    path: scenario.difficulty.options.hard.npc_patience_modifier
-    check: "equals -20"
+  - description: Hard difficulty lowers NPC patience
+    path: scenario.difficulty.options.hard.patience
+    check: "lte 33"
 
   - description: Pack manifest declares raise_conversation as an entry scenario
     path: manifest.entry_scenarios

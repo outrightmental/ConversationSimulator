@@ -196,7 +196,7 @@ class TestDebugLogging:
             with TestClient(app) as c:
                 c.post("/api/sessions", json={
                     "scenario_id": "behavioral_interview",
-                    "difficulty": "normal",
+                    "difficulty": "standard",
                     "player_role_name": "Dev Tester",
                     "language": "en",
                     "input_mode": "text-only",

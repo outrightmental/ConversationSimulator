@@ -29,7 +29,7 @@ player_role: "You are interviewing for a software engineering position."
 goals:
   - "Demonstrate relevant past experience"
   - "Answer with the STAR method"
-difficulty: medium
+difficulty: standard
 duration_minutes: 20
 npc_ref: hiring-manager
 rubric_ref: interview-quality
