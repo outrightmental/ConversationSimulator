@@ -133,7 +133,11 @@ export const en = {
     missingPack: {
       title: 'No scenario packs installed',
       description:
-        'Your model is ready but there are no packs to play. Import a pack or browse the scenario library.',
+        'Your model is ready but there are no packs to play. Restore the official packs, import a pack, or browse the library.',
+      restoreAction: 'Restore official packs',
+      restoring: 'Restoring…',
+      restoreDone: 'Official packs restored ✓',
+      restoreFailed: 'Restore failed — retry',
       action: 'Go to library →',
     },
     help: {

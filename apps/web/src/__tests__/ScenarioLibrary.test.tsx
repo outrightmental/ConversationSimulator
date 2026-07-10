@@ -13,11 +13,15 @@ vi.mock('../api/client', () => ({
     importPack: vi.fn(),
     getModels: vi.fn(),
   },
+  apiClient: {
+    reseedOfficialPacks: vi.fn(),
+  },
 }))
 
-import { api } from '../api/client'
+import { api, apiClient } from '../api/client'
 import type { ModelsResponse } from '@convsim/shared'
 const mockApi = vi.mocked(api)
+const mockApiClient = vi.mocked(apiClient)
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -228,6 +232,46 @@ describe('empty state', () => {
     renderLibrary()
     await waitFor(() => screen.getByTestId('empty-state'))
     expect(screen.getByTestId('empty-import-pack-button')).toBeInTheDocument()
+  })
+
+  it('empty state has a restore official packs button', async () => {
+    mockApi.listScenarios.mockResolvedValue({ ok: true, data: [] })
+    renderLibrary()
+    await waitFor(() => screen.getByTestId('empty-state'))
+    expect(screen.getByTestId('restore-official-packs-button')).toBeInTheDocument()
+  })
+
+  it('restoring official packs reseeds and refreshes the scenario list', async () => {
+    // Start empty; after a successful reseed the scenarios reload with content.
+    mockApi.listScenarios.mockResolvedValue({ ok: true, data: [] })
+    mockApiClient.reseedOfficialPacks.mockResolvedValue({ ok: true, data: { seeded: 4 } })
+    renderLibrary()
+    await waitFor(() => screen.getByTestId('empty-state'))
+
+    // Once restore succeeds, the list is reloaded so newly seeded scenarios appear.
+    mockApi.listScenarios.mockResolvedValue({ ok: true, data: ALL_SCENARIOS })
+    fireEvent.click(screen.getByTestId('restore-official-packs-button'))
+
+    await waitFor(() => expect(mockApiClient.reseedOfficialPacks).toHaveBeenCalled())
+    await waitFor(() =>
+      expect(screen.queryByTestId('empty-state')).toBeNull(),
+    )
+  })
+
+  it('shows a retry affordance when restoring official packs fails', async () => {
+    mockApi.listScenarios.mockResolvedValue({ ok: true, data: [] })
+    mockApiClient.reseedOfficialPacks.mockResolvedValue({
+      ok: false,
+      error: { kind: 'network', message: 'network' },
+    })
+    renderLibrary()
+    await waitFor(() => screen.getByTestId('empty-state'))
+
+    fireEvent.click(screen.getByTestId('restore-official-packs-button'))
+
+    await waitFor(() =>
+      expect(screen.getByTestId('restore-official-packs-button')).toHaveTextContent(/retry/i),
+    )
   })
 })
 
