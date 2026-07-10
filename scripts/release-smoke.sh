@@ -125,11 +125,13 @@ smoke_setup() {
         scripts/smoke-check.sh scripts/smoke-check.ps1
         scripts/release-smoke.sh scripts/release-smoke.ps1
         scripts/build-core.sh scripts/build-core.ps1
+        scripts/build-linux.sh
         scripts/depot-audit.sh scripts/depot-audit.ps1
         .github/workflows/ci.yml .github/workflows/release.yml
         .github/workflows/release-smoke.yml
         docs/release-checklist.md
         docs/platform-notes.md docs/release-notes-template.md
+        docs/linux-steamos-requirements.md
         docs/install.md docs/voice-smoke-tests.md
         services/convsim-core/pyproject.toml
         services/convsim-core/convsim-core.spec
