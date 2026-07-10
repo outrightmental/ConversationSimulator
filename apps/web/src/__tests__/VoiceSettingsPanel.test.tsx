@@ -125,8 +125,7 @@ describe('voice readiness cards', () => {
 
   it('shows Microphone as ready when permission is granted', async () => {
     render(<VoiceSettingsPanel />)
-    await waitFor(() => expect(screen.getByTestId('readiness-mic')).toBeInTheDocument())
-    expect(screen.getByTestId('readiness-mic')).toHaveTextContent('permission granted')
+    await waitFor(() => expect(screen.getByTestId('readiness-mic')).toHaveTextContent('permission granted'))
   })
 
   it('shows STT as unavailable when health reports stt_ready=false', async () => {
