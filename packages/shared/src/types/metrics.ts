@@ -5,9 +5,9 @@
  * All values in milliseconds. PerformanceWarning thresholds are derived from
  * these constants rather than scattered ad-hoc numbers.
  *
- * Reference machine: Apple M2 / NVIDIA RTX 3060 equivalent (the "Comfortable"
- * hardware tier). Nightly CI smoke tests fail when any measured value exceeds
- * the budget by more than 20 %.
+ * Reference machine: Apple M2 / NVIDIA RTX 3060 equivalent — the mid-spec
+ * "Fast" tier documented in docs/performance.md. Nightly CI smoke tests fail
+ * when any measured value exceeds the budget by more than 20 %.
  */
 export const LATENCY_BUDGETS = {
   /** Cold start → interactive Home. */
