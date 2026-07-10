@@ -73,7 +73,6 @@ export function useAppUpdate(): {
         setUpdate({ status: 'idle', version: null, releaseUrl: null })
       })
   // Run once on mount; no deps needed
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   function dismiss() {
