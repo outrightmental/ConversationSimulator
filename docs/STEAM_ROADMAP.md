@@ -76,7 +76,7 @@ met and its tracking issue is closed.
 | **2. Packaged desktop alpha** | Tauri desktop app bundles `convsim-core` as a sidecar. Single installer on Windows, macOS, Linux. No Steam involvement yet. | GitHub MVP is tagged. Installer boots without CLI setup. Offline smoke test passes from the installed app. |
 | **3. Steam private beta** | App is submitted to the Steam partner portal. Invited testers (developers, Outright Mental staff, select community members) validate the Steam overlay, controller navigation, and platform-specific quirks. | Packaged desktop alpha passes internal QA on all three desktop platforms. Steam page draft is approved by Valve. |
 | **4. Public free Steam release** | App is published as a free title on Steam. All four official packs are available. Model Manager UI is stable. | Steam private beta exit criteria are met. Code signing is in place on macOS and Windows. Steam Deck verification is complete (see [Target platforms](#target-platforms)). |
-| **5. Post-launch: marketplace exploration** | Evaluate whether a community pack browser or optional Outright Mental-curated content makes sense as a zero-cost or patron-supported layer. No decision has been made; this is a research milestone only. | Public release has been live for at least 90 days. Community feedback and usage signals inform the evaluation. |
+| **5. Post-launch: marketplace exploration** | Evaluate whether a community pack browser or optional Outright Mental-curated content makes sense as a zero-cost or patron-supported layer. No decision has been made; this is a research milestone only. See [`docs/marketplace-architecture.md`](marketplace-architecture.md) for the entry gate criteria and design baseline. | Public release has been live for at least 90 days. Community feedback and usage signals inform the evaluation. Entry gate from [`docs/marketplace-architecture.md`](marketplace-architecture.md) must be satisfied before any implementation issue is opened. |
 
 ---
 
@@ -221,6 +221,7 @@ issue must not be started until the upstream issue is merged and closed.
 | [[Steam Roadmap] Define Steam MVP scope and release gates](https://github.com/outrightmental/ConversationSimulator/issues?q=is%3Aissue+steam-mvp-scope+in%3Atitle) | [docs/steam-mvp-scope.md](steam-mvp-scope.md) | Stage 2 prerequisite |
 | [[Steam Roadmap] Add issue templates for Steam QA, platform bugs, and content-pack bugs](https://github.com/outrightmental/ConversationSimulator/issues/185) | [docs/steam-triage.md](steam-triage.md) | Stage 3 prerequisite |
 | [[Steamworks] Register Steam app, depots, packages, and free-to-play configuration](https://github.com/outrightmental/ConversationSimulator/issues/226) | [publishing/STEAM_APP_REGISTRATION.md](../publishing/STEAM_APP_REGISTRATION.md), [`steam/`](../steam/), [`.github/workflows/steam-deploy.yml`](../.github/workflows/steam-deploy.yml) | Stage 3 prerequisite (must be complete before first depot submission) |
+| [[Marketplace] Design future in-game content marketplace architecture](https://github.com/outrightmental/ConversationSimulator/issues/233) | [docs/marketplace-architecture.md](marketplace-architecture.md) | Stage 5 design baseline (post-launch, not launch-blocking) |
 
 All open and closed issues in this work stream:
 [GitHub — issues with `[Steam Roadmap]` prefix](https://github.com/outrightmental/ConversationSimulator/issues?q=is%3Aissue+%5BSteam+Roadmap%5D+in%3Atitle)
@@ -237,4 +238,5 @@ All open and closed issues in this work stream:
 - [network-security.md](network-security.md) — runtime network enforcement
 - [release-checklist.md](release-checklist.md) — platform smoke matrix
 - [model-registry/](../model-registry/) — authoritative model checksums and license metadata
+- [marketplace-architecture.md](marketplace-architecture.md) — post-launch marketplace design baseline; entry gate criteria, distribution path comparison, and schema/signing/moderation/payment scope
 - [GitHub Milestones](https://github.com/outrightmental/ConversationSimulator/milestones) — issue tracking
