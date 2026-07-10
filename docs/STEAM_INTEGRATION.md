@@ -137,17 +137,27 @@ semantics are documented in `services/convsim-core/convsim_core/steam_cloud.py`.
 
 ### `steam_cloud_settings.json` schema
 
-This is the only file allowed to reach Steam Cloud. Its purpose is to carry
-non-sensitive UI preferences across the player's machines.
+This is the only file allowed to reach Steam Cloud. It carries a small set of
+non-sensitive preferences so a second machine can pick up where the last one
+left off. The schema is the `CloudSettings` model in
+[`services/convsim-core/convsim_core/steam_cloud.py`](../services/convsim-core/convsim_core/steam_cloud.py);
+today it holds a single field:
 
 ```json
 {
-  "schema_version": 1,
-  "display_theme": "system",
-  "last_used_model_id": "qwen3-4b-q4_k_m",
-  "ui_layout": {}
+  "last_model_id": "qwen3-4b-q4_k_m"
 }
 ```
+
+`last_model_id` pre-selects the same model on a new device. It must be an
+opaque model identifier — a `field_validator` in `CloudSettings` rejects any
+value containing a path separator on both write and read, so a filesystem path
+(which could leak a username or home directory) can never reach the cloud file.
+
+The `docs/steam-mvp-scope.md` sync scope also permits display preferences and
+UI layout state as future additions, but only `last_model_id` is synced today.
+Any new field must be added to `CloudSettings` and reviewed for privacy impact
+before it ships.
 
 Fields that may **never** appear in this file:
 - Conversation text, prompts, or transcript excerpts
@@ -156,8 +166,7 @@ Fields that may **never** appear in this file:
 - Audio data of any kind
 - Personal or identifying information
 
-If a field is added to `steam_cloud_settings.json`, it must be reviewed for
-privacy impact before the feature is merged. The authoritative sync scope is
+The authoritative sync scope is
 the **Steam Cloud sync for non-sensitive settings** row in
 [`docs/steam-mvp-scope.md`](steam-mvp-scope.md) (display preferences,
 last-used model ID, UI layout state only — transcripts, model weights, audio
