@@ -104,6 +104,14 @@ async def post_beta_report(
         "tts": tts_health.model_dump() if hasattr(tts_health, "model_dump") else str(tts_health),
     }
 
+    # Include the full self-test snapshot (7-check preflight pipeline with fix
+    # actions) when one has been run, so the beta report carries the same
+    # diagnostic verdict a maintainer sees in Support.  The snapshot is redacted
+    # for home paths inside create_beta_report_bundle like the rest of preflight.
+    self_test = getattr(request.app.state, "last_preflight", None)
+    if self_test is not None:
+        preflight["self_test"] = self_test
+
     db_conn = request.app.state.db.connection() if body.include_session_metadata else None
 
     # Embed the most recent crash bundle (#288) when one exists — it is written
