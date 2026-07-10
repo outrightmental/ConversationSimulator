@@ -11,7 +11,7 @@ vi.mock('@convsim/ui', () => ({
     <span data-status={status}>{children}</span>
   ),
 }))
-import type { HealthResponse } from '@convsim/shared'
+import type { HealthResponse, LogbookProfile } from '@convsim/shared'
 import type { PacksResponse } from '../api/client'
 
 function makeHealth(overrides: Partial<HealthResponse['runtime']> = {}): HealthResponse {
@@ -34,6 +34,21 @@ function makePacks(total = 0): PacksResponse {
   return { packs: [], total }
 }
 
+function makeLogbook(overrides: Partial<LogbookProfile> = {}): LogbookProfile {
+  return {
+    total_sessions: 0,
+    total_practice_seconds: 0,
+    streak_days: 0,
+    last_session_date: null,
+    dimension_scores: [],
+    personal_records: [],
+    strongest_dimension: null,
+    weakest_dimension: null,
+    last_session_delta: null,
+    ...overrides,
+  }
+}
+
 // Returns a testing-library function matcher that checks an element's full textContent
 // against a list item whose content matches `expected`.
 function liText(expected: string) {
@@ -41,13 +56,15 @@ function liText(expected: string) {
     el?.tagName === 'LI' && el.textContent?.trim() === expected
 }
 
-// Stub fetch: routes /health → healthResp and /packs → packsResp by URL.
+// Stub fetch: routes by URL pattern to the appropriate response.
 // Includes text() because handleResponse now reads the body as text first.
-function stubFetches(healthResp: object, packsResp: object) {
+function stubFetches(healthResp: object, packsResp: object, logbookResp: object = makeLogbook()) {
   vi.stubGlobal(
     'fetch',
     vi.fn((url: string) => {
-      const body = url.includes('/packs') ? packsResp : healthResp
+      let body: object = healthResp
+      if (url.includes('/packs')) body = packsResp
+      else if (url.includes('/logbook')) body = logbookResp
       const text = JSON.stringify(body)
       return Promise.resolve({ ok: true, json: () => Promise.resolve(body), text: () => Promise.resolve(text) })
     }),
@@ -368,5 +385,39 @@ describe('Home — help section', () => {
   it('shows the data folder path', () => {
     renderHome()
     expect(screen.getByText(/~\/\.convsim$/)).toBeInTheDocument()
+  })
+})
+
+describe('Home — your training panel', () => {
+  it('shows a "Your training" section heading', () => {
+    renderHome()
+    expect(screen.getByRole('heading', { name: /your training/i })).toBeInTheDocument()
+  })
+
+  it('shows empty state message when no sessions exist', async () => {
+    stubFetches(makeHealth(), makePacks(0), makeLogbook({ total_sessions: 0 }))
+    renderHome()
+    expect(await screen.findByText(/no sessions yet/i)).toBeInTheDocument()
+  })
+
+  it('shows session count when sessions exist', async () => {
+    stubFetches(makeHealth(), makePacks(1), makeLogbook({ total_sessions: 5, streak_days: 2 }))
+    renderHome()
+    expect(await screen.findByText(/sessions:/i)).toBeInTheDocument()
+    expect(await screen.findByText(/streak:/i)).toBeInTheDocument()
+  })
+
+  it('links to the logbook when sessions exist', async () => {
+    stubFetches(makeHealth(), makePacks(1), makeLogbook({ total_sessions: 3, streak_days: 1 }))
+    renderHome()
+    const link = await screen.findByRole('link', { name: /view full logbook/i })
+    expect(link).toHaveAttribute('href', '/logbook')
+  })
+
+  it('shows start-now link in empty state pointing to library', async () => {
+    stubFetches(makeHealth(), makePacks(0), makeLogbook({ total_sessions: 0 }))
+    renderHome()
+    const link = await screen.findByRole('link', { name: /start now/i })
+    expect(link).toHaveAttribute('href', '/library')
   })
 })

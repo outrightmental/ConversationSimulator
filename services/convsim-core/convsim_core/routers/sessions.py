@@ -585,7 +585,8 @@ async def end_session(session_id: str, request: Request) -> SessionEndResponse:
 
     ending_type: str = row["ending_type"] or "player_exit"
     conn.execute(
-        "UPDATE turn_sessions SET flow_state = 'Ended', ending_type = ? WHERE session_id = ?",
+        "UPDATE turn_sessions SET flow_state = 'Ended', ending_type = ?, "
+        "ended_at = COALESCE(ended_at, datetime('now')) WHERE session_id = ?",
         (ending_type, session_id),
     )
     conn.commit()
