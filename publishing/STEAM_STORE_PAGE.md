@@ -38,7 +38,7 @@ difficult talks, and language skills. AI characters run entirely on your
 computer. No internet needed during play. Free forever.
 ```
 
-Character count: 193. Within the 300-character limit.
+Character count: 202. Within the 300-character limit.
 
 ---
 
