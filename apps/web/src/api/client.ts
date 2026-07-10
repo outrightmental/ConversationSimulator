@@ -406,6 +406,9 @@ export const api = {
   createCrashBundle(): Promise<ApiResult<{ bundle_path: string; notice: string }>> {
     return post<{ bundle_path: string; notice: string }>('/diag/crash-bundle')
   },
+  createBetaReport(includeSessionMetadata: boolean): Promise<ApiResult<{ bundle_path: string; manifest: string[]; notice: string }>> {
+    return post<{ bundle_path: string; manifest: string[]; notice: string }>('/diag/beta-report', { include_session_metadata: includeSessionMetadata })
+  },
   deleteSession(sessionId: string): Promise<ApiResult<undefined>> {
     return del(`/sessions/${sessionId}`)
   },

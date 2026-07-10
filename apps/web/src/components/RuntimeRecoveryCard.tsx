@@ -25,6 +25,8 @@ interface RuntimeRecoveryCardProps {
   secondaryAction?: RecoveryAction
   /** Tertiary action — e.g. "Get support bundle". */
   tertiaryAction?: RecoveryAction
+  /** When set, renders a "Report a problem" link pointing to this URL. */
+  reportProblemHref?: string
 }
 
 const cardStyle: React.CSSProperties = {
@@ -126,6 +128,7 @@ export default function RuntimeRecoveryCard({
   primaryAction,
   secondaryAction,
   tertiaryAction,
+  reportProblemHref,
 }: RuntimeRecoveryCardProps) {
   return (
     <div role="alert" style={cardStyle}>
@@ -146,6 +149,17 @@ export default function RuntimeRecoveryCard({
         <a href={troubleshootingHref} target="_blank" rel="noreferrer" style={linkStyle}>
           {troubleshootingLabel}
         </a>
+        {reportProblemHref && (
+          <a
+            href={reportProblemHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={linkStyle}
+            data-testid="recovery-card-report-problem"
+          >
+            Report a problem →
+          </a>
+        )}
       </div>
     </div>
   )
