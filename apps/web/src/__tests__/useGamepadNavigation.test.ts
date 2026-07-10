@@ -266,4 +266,25 @@ describe('useGamepadNavigation', () => {
     expect(clickHandler).toHaveBeenCalledTimes(1)
     document.body.removeChild(btn)
   })
+
+  it('dispatches an Escape keydown when B is pressed (back / close)', () => {
+    const seen: string[] = []
+    const listener = (e: Event) => {
+      seen.push((e as KeyboardEvent).key)
+    }
+    document.addEventListener('keydown', listener)
+
+    const BTN_B = 1
+    getGamepadsMock
+      .mockReturnValueOnce([makeGamepad({ buttons: makeButtons([]) })])
+      .mockReturnValueOnce([makeGamepad({ buttons: makeButtons([BTN_B]) })])
+
+    renderHook(() => useGamepadNavigation())
+    flushRaf() // idle
+    flushRaf() // B rising edge → Escape
+
+    expect(seen).toContain('Escape')
+
+    document.removeEventListener('keydown', listener)
+  })
 })

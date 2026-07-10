@@ -109,4 +109,63 @@ describe('useSteamKeyboard', () => {
     unmount()
     document.body.removeChild(btn)
   })
+
+  // ── Behaviour under Tauri (window.__TAURI__ present) ──────────────────────────
+  // These verify the actual Steam Deck requirement: the correct bridge command
+  // fires when a text field gains/loses focus.  Without them a wrong command
+  // name or global path would pass every other test while shipping broken.
+
+  it('invokes steam_show_floating_keyboard on input focus under Tauri', async () => {
+    const invoke = vi.fn().mockResolvedValue(true)
+    ;(window as unknown as Record<string, unknown>)['__TAURI__'] = { core: { invoke } }
+
+    const { unmount } = renderHook(() => useSteamKeyboard())
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+
+    await act(async () => {
+      input.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
+    })
+
+    expect(invoke).toHaveBeenCalledWith('steam_show_floating_keyboard')
+
+    unmount()
+    document.body.removeChild(input)
+  })
+
+  it('invokes steam_hide_floating_keyboard on input blur under Tauri', async () => {
+    const invoke = vi.fn().mockResolvedValue(false)
+    ;(window as unknown as Record<string, unknown>)['__TAURI__'] = { core: { invoke } }
+
+    const { unmount } = renderHook(() => useSteamKeyboard())
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+
+    await act(async () => {
+      input.dispatchEvent(new FocusEvent('focusout', { bubbles: true }))
+    })
+
+    expect(invoke).toHaveBeenCalledWith('steam_hide_floating_keyboard')
+
+    unmount()
+    document.body.removeChild(input)
+  })
+
+  it('does not invoke the keyboard bridge when a button gains focus under Tauri', async () => {
+    const invoke = vi.fn().mockResolvedValue(true)
+    ;(window as unknown as Record<string, unknown>)['__TAURI__'] = { core: { invoke } }
+
+    const { unmount } = renderHook(() => useSteamKeyboard())
+    const btn = document.createElement('button')
+    document.body.appendChild(btn)
+
+    await act(async () => {
+      btn.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
+    })
+
+    expect(invoke).not.toHaveBeenCalled()
+
+    unmount()
+    document.body.removeChild(btn)
+  })
 })
