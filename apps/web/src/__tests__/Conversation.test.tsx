@@ -122,8 +122,8 @@ beforeEach(() => {
   vi.clearAllMocks()
   // Default: connectSession returns a no-op connection; getScenario returns null
   mockApi.connectSession.mockReturnValue({ close: vi.fn() })
-  mockApi.getScenario.mockResolvedValue({ ok: true, data: null } as unknown as ScenarioInfo)
-  mockApiClient.uploadAudio.mockResolvedValue({ transcript: null, status: 'unavailable' })
+  mockApi.getScenario.mockResolvedValue({ ok: true, data: null } as never)
+  mockApiClient.uploadAudio.mockResolvedValue({ ok: true, data: { transcript: null, status: 'unavailable' } })
 })
 
 describe('Conversation screen', () => {
@@ -1345,7 +1345,7 @@ describe('Conversation screen', () => {
     })
 
     it('renders VoiceInput with mic button when input_mode is push-to-talk', async () => {
-      mockApiClient.uploadAudio.mockResolvedValue({ transcript: null, status: 'unavailable' })
+      mockApiClient.uploadAudio.mockResolvedValue({ ok: true, data: { transcript: null, status: 'unavailable' } })
       renderConversation({ input_mode: 'push-to-talk' })
       await waitFor(() =>
         expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument(),

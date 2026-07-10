@@ -76,7 +76,7 @@ const TEST_SESSION_RESPONSE = {
 
 const TURN_RESPONSE = {
   session_id: 'test-abc123',
-  state: 'PlayerTurnListening',
+  state: 'PlayerTurnListening' as const,
   events: [
     {
       event_id: 1,
@@ -880,7 +880,7 @@ describe('CreatorWorkbench — Test Chat', () => {
   it('session ended banner appears when state transitions to Ended', async () => {
     const endedTurnResponse = {
       ...TURN_RESPONSE,
-      state: 'Ended',
+      state: 'Ended' as const,
       events: [
         TURN_RESPONSE.events[0],
         {

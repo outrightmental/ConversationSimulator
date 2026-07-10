@@ -118,7 +118,7 @@ export default function VoiceSettingsPanel() {
 
   const loadCacheSize = useCallback(() => {
     api.getTtsCacheSize()
-      .then((r) => { if (r.ok) { setCacheFiles(r.data.file_count); setCacheSizeBytes(r.data.bytes) } else setCacheError(r.error) })
+      .then((r) => { if (r.ok) { setCacheFiles(r.data.files); setCacheSizeBytes(r.data.size_bytes) } else setCacheError(r.error) })
   }, [])
 
   useEffect(() => {
