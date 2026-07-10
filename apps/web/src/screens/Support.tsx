@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import type { ApiError } from '../api/errors'
 import { ApiErrorView } from '../components/ApiErrorView'
+import type { PreflightResponse, PreflightCheck } from '@convsim/shared'
 
 const ISSUES_URL = 'https://github.com/outrightmental/ConversationSimulator/issues/new/choose'
 const TEMPLATE_BASE = 'https://github.com/outrightmental/ConversationSimulator/issues/new?template='
@@ -21,6 +23,70 @@ const ISSUE_TEMPLATES = [
 ]
 
 type CrashBundleState = 'idle' | 'creating' | 'done' | 'error'
+type SelfTestState = 'idle' | 'running' | 'done' | 'error'
+
+const STATUS_COLORS: Record<string, string> = {
+  pass: '#86efac',
+  warn: '#fde68a',
+  fail: '#fca5a5',
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  pass: 'Pass',
+  warn: 'Warn',
+  fail: 'Fail',
+}
+
+function CheckRow({ check, onFixAction }: { check: PreflightCheck; onFixAction: (href: string) => void }) {
+  const color = STATUS_COLORS[check.status] ?? '#e8e8ea'
+  return (
+    <div
+      data-testid={`preflight-check-${check.id}`}
+      style={{
+        display: 'flex',
+        alignItems: 'flex-start',
+        gap: '0.75rem',
+        padding: '0.6rem 0',
+        borderBottom: '1px solid rgba(255,255,255,0.06)',
+      }}
+    >
+      <span
+        aria-label={`Status: ${STATUS_LABELS[check.status] ?? check.status}`}
+        style={{
+          minWidth: '3rem',
+          fontSize: '0.75rem',
+          fontWeight: 600,
+          color,
+          paddingTop: '0.1rem',
+        }}
+      >
+        {STATUS_LABELS[check.status] ?? check.status.toUpperCase()}
+      </span>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontWeight: 500, fontSize: '0.875rem' }}>{check.name}</div>
+        <div style={{ fontSize: '0.8rem', color: '#a1a1aa', marginTop: '0.15rem' }}>{check.message}</div>
+        {check.fix_action && check.status !== 'pass' && (
+          <button
+            onClick={() => onFixAction(check.fix_action!.href)}
+            data-testid={`preflight-fix-${check.id}`}
+            style={{
+              marginTop: '0.4rem',
+              padding: '0.25rem 0.6rem',
+              borderRadius: '4px',
+              border: '1px solid rgba(255,255,255,0.15)',
+              background: 'rgba(255,255,255,0.06)',
+              color: '#93c5fd',
+              fontSize: '0.8rem',
+              cursor: 'pointer',
+            }}
+          >
+            {check.fix_action.label} →
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
 
 function SectionHeading({ children }: { children: React.ReactNode }) {
   return (
@@ -31,10 +97,37 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
 }
 
 export default function Support() {
+  const navigate = useNavigate()
   const [crashState, setCrashState] = useState<CrashBundleState>('idle')
   const [bundlePath, setBundlePath] = useState<string | null>(null)
   const [bundleNotice, setBundleNotice] = useState<string | null>(null)
   const [crashError, setCrashError] = useState<ApiError | null>(null)
+
+  const [selfTestState, setSelfTestState] = useState<SelfTestState>('idle')
+  const [selfTestResult, setSelfTestResult] = useState<PreflightResponse | null>(null)
+  const [selfTestError, setSelfTestError] = useState<ApiError | null>(null)
+
+  function handleFixAction(href: string) {
+    if (href.startsWith('http://') || href.startsWith('https://')) {
+      window.open(href, '_blank', 'noopener,noreferrer')
+    } else {
+      navigate(href)
+    }
+  }
+
+  async function handleRunSelfTest() {
+    setSelfTestState('running')
+    setSelfTestError(null)
+    setSelfTestResult(null)
+    const r = await api.preflight()
+    if (r.ok) {
+      setSelfTestResult(r.data)
+      setSelfTestState('done')
+    } else {
+      setSelfTestError(r.error)
+      setSelfTestState('error')
+    }
+  }
 
   async function handleCreateCrashBundle() {
     setCrashState('creating')
@@ -59,6 +152,76 @@ export default function Support() {
         Get help, report a bug, or request a feature. All data stays local — nothing is uploaded
         automatically.
       </p>
+
+      {/* Self-test */}
+      <section style={{ marginBottom: '2rem' }}>
+        <SectionHeading>Self-test</SectionHeading>
+        <p style={{ fontSize: '0.875rem', color: '#a1a1aa', marginBottom: '0.75rem' }}>
+          Run a quick health check to diagnose common problems. Results show the status of each
+          system component with a fix action for anything that needs attention.
+        </p>
+
+        <button
+          onClick={handleRunSelfTest}
+          disabled={selfTestState === 'running'}
+          aria-label="Run self-test"
+          data-testid="run-self-test-button"
+          style={{
+            padding: '0.4rem 0.9rem',
+            borderRadius: '6px',
+            border: '1px solid rgba(255,255,255,0.15)',
+            background: 'rgba(255,255,255,0.05)',
+            color: selfTestState === 'running' ? '#71717a' : '#e8e8ea',
+            fontSize: '0.875rem',
+            cursor: selfTestState === 'running' ? 'wait' : 'pointer',
+          }}
+        >
+          {selfTestState === 'running' ? 'Running…' : 'Run self-test'}
+        </button>
+
+        {selfTestState === 'done' && selfTestResult && (
+          <div
+            data-testid="preflight-results"
+            style={{ marginTop: '1rem' }}
+            aria-label="Self-test results"
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                marginBottom: '0.75rem',
+              }}
+            >
+              <span
+                style={{
+                  fontSize: '0.8rem',
+                  fontWeight: 600,
+                  color: STATUS_COLORS[selfTestResult.overall] ?? '#e8e8ea',
+                }}
+              >
+                Overall: {selfTestResult.overall.toUpperCase()}
+              </span>
+              <span style={{ fontSize: '0.75rem', color: '#71717a' }}>
+                — {new Date(selfTestResult.ran_at).toLocaleTimeString()}
+              </span>
+            </div>
+            {selfTestResult.checks.map((check) => (
+              <CheckRow key={check.id} check={check} onFixAction={handleFixAction} />
+            ))}
+          </div>
+        )}
+
+        {selfTestState === 'error' && selfTestError && (
+          <div data-testid="self-test-error" style={{ marginTop: '0.5rem' }}>
+            <ApiErrorView
+              error={selfTestError}
+              onRetry={handleRunSelfTest}
+              context="Support-SelfTest"
+            />
+          </div>
+        )}
+      </section>
 
       {/* Report an issue */}
       <section style={{ marginBottom: '2rem' }}>

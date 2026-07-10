@@ -41,6 +41,7 @@ import type {
   BackchannelsResponse,
   LogbookProfile,
   LogbookExport,
+  PreflightResponse,
 } from '@convsim/shared';
 
 export type { HealthResponse };
@@ -401,6 +402,9 @@ export const api = {
   },
   createCrashBundle(): Promise<ApiResult<{ bundle_path: string; notice: string }>> {
     return post<{ bundle_path: string; notice: string }>('/diag/crash-bundle')
+  },
+  preflight(): Promise<ApiResult<PreflightResponse>> {
+    return get<PreflightResponse>('/preflight')
   },
   deleteSession(sessionId: string): Promise<ApiResult<undefined>> {
     return del(`/sessions/${sessionId}`)
