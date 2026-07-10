@@ -36,7 +36,13 @@ from convsim_prompt import (
 )
 from convsim_prompt.types import ScenarioData
 
-from convsim_core.input_router import SafetyPolicyConfig
+from convsim_core.input_router import (
+    DEFAULT_REDIRECT_MESSAGE,
+    RouteAction,
+    RouteDecision,
+    SafetyPolicyConfig,
+    route_player_input,
+)
 from convsim_core.runtime.base import ChatRuntime
 from convsim_core.runtime.types import ChatFinal, ChatMessage, ChatRequest, ChatToken
 from convsim_core.scenario_state import (
@@ -67,6 +73,26 @@ _DEFAULT_SAFETY_POLICY = SafetyPolicy(
         "nsfw": "I'd prefer to keep our conversation professional. Let's refocus.",
         "illegal": "That's not something I can discuss. Let me steer us back on track.",
     },
+)
+
+# Default SafetyPolicyConfig for the local input router, used when no pack
+# provides a scenario-specific safety YAML.  All nine MVP categories are enabled
+# at their standard PG actions.
+_DEFAULT_SAFETY_POLICY_CONFIG = SafetyPolicyConfig(
+    policy_id="default_pg",
+    content_rating="PG",
+    categories={
+        "nsfw_sexual_content": RouteAction.STOP,
+        "minors_romantic_or_sexual": RouteAction.STOP,
+        "real_person_impersonation": RouteAction.REFUSE,
+        "voice_cloning_request": RouteAction.REFUSE,
+        "medical_or_therapy_claim": RouteAction.REDIRECT,
+        "legal_claim": RouteAction.REDIRECT,
+        "criminal_instruction": RouteAction.REFUSE,
+        "harassment_extreme": RouteAction.REDIRECT,
+        "self_harm_crisis": RouteAction.STOP_WITH_RESOURCE,
+    },
+    global_redirect_message=DEFAULT_REDIRECT_MESSAGE,
 )
 
 
@@ -154,15 +180,119 @@ def _normalize_text(text: str) -> str:
     return text.strip()
 
 
-def _safety_precheck(normalized: str) -> None:
-    """Placeholder input safety precheck.
+def _persist_input_safety_stop(
+    session_row: sqlite3.Row,
+    normalized: str,
+    decision: RouteDecision,
+    conn: sqlite3.Connection,
+    source_mode: str,
+    save_transcript: bool,
+) -> "TurnPipelineResult":
+    """Short-circuit persist for a STOP / STOP_WITH_RESOURCE from the input router.
 
-    Validates that the player input does not contain obviously prohibited
-    content before forwarding it to the LLM. This hook is intentionally
-    minimal — a production implementation would call a safety classifier.
+    Writes the player turn, a synthetic NPC stop/crisis response, and a
+    sanitised safety event (category + action only, no raw player text) to the
+    DB, then marks the session as Ended.  The LLM is never called.
     """
-    # Placeholder: accept all input. Replace with a classifier call when ready.
-    pass
+    session_id: str = session_row["session_id"]
+    turn_number: int = int(session_row["turn_count"]) + 1
+    player_turn_number = turn_number * 2 - 1
+    npc_turn_number = turn_number * 2
+    now = datetime.now(timezone.utc).isoformat()
+    ending_type = "safety_stop"
+    new_flow_state = "Ended"
+
+    npc_utterance = (
+        decision.message
+        or "This conversation has been stopped for safety reasons."
+    )
+    safety_status = (
+        "stop_with_resource_message"
+        if decision.action == RouteAction.STOP_WITH_RESOURCE
+        else "stop"
+    )
+
+    logger.warning(
+        "Input safety gate: session=%s turn=%d category=%s action=%s",
+        session_id, turn_number, decision.category, decision.action.value,
+    )
+
+    with conn:
+        player_cursor = conn.execute(
+            "INSERT INTO turn_session_turns "
+            "(session_id, turn_number, role, content, source_mode, flow_state_after, created_at) "
+            "VALUES (?, ?, 'player', ?, ?, ?, ?)",
+            (session_id, player_turn_number, normalized, source_mode, new_flow_state, now),
+        )
+        npc_cursor = conn.execute(
+            "INSERT INTO turn_session_turns "
+            "(session_id, turn_number, role, content, emotion, state_delta_json, event_flags_json, "
+            "safety_json, raw_output_json, flow_state_after, created_at) "
+            "VALUES (?, ?, 'npc', ?, 'neutral', '{}', '[]', ?, NULL, ?, ?)",
+            (
+                session_id,
+                npc_turn_number,
+                npc_utterance,
+                json.dumps({"status": safety_status, "reason": decision.category}),
+                new_flow_state,
+                now,
+            ),
+        )
+        # Sanitised event log: category and action only — never the raw player text.
+        conn.executemany(
+            "INSERT INTO turn_session_events "
+            "(session_id, turn_number, event_type, payload_json, occurred_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            [
+                (
+                    session_id, turn_number, "input_safety_stop",
+                    json.dumps({
+                        "category": decision.category,
+                        "action": decision.action.value,
+                    }),
+                    now,
+                ),
+                (
+                    session_id, turn_number, "session_ending",
+                    json.dumps({"ending_type": ending_type, "summary": None}),
+                    now,
+                ),
+            ],
+        )
+        if save_transcript:
+            conn.executemany(
+                "INSERT INTO session_transcript_fts(session_id, turn_number, role, content) "
+                "VALUES (?, ?, ?, ?)",
+                [
+                    (session_id, player_turn_number, "player", normalized),
+                    (session_id, npc_turn_number, "npc", npc_utterance),
+                ],
+            )
+        conn.execute(
+            "UPDATE turn_sessions SET turn_count = ?, flow_state = ?, ending_type = ? "
+            "WHERE session_id = ?",
+            (turn_number, new_flow_state, ending_type, session_id),
+        )
+
+    return TurnPipelineResult(
+        player_content=normalized,
+        player_event_id=player_cursor.lastrowid,
+        npc_utterance=npc_utterance,
+        npc_emotion="neutral",
+        npc_event_id=npc_cursor.lastrowid,
+        state_delta={},
+        new_state_vars={},
+        visible_state={},
+        event_flags=[],
+        triggered_scenario_events=[],
+        safety_status=safety_status,
+        safety_reason=decision.category,
+        ending_type=ending_type,
+        ending_summary=None,
+        new_flow_state=new_flow_state,
+        turn_number=turn_number,
+        used_fallback=False,
+    )
 
 
 def _load_recent_turns(session_id: str, conn: sqlite3.Connection, limit: int = 12) -> List[TranscriptEntry]:
@@ -234,8 +364,27 @@ async def process_turn(
             f"Turn content is {len(normalized)} characters; maximum is {MAX_TURN_CONTENT_CHARS}"
         )
 
-    # 2. Input safety precheck.
-    _safety_precheck(normalized)
+    # 2. Local input safety gate — deterministic rule checks before the LLM.
+    #    Global non-overridable rules (minors, self-harm) always fire.
+    #    Pack-specific or default policy rules fire for all other categories.
+    effective_policy_config = (
+        safety_policy_config if safety_policy_config is not None
+        else _DEFAULT_SAFETY_POLICY_CONFIG
+    )
+    decision = route_player_input(normalized, effective_policy_config)
+    if decision.action == RouteAction.REFUSE:
+        raise TurnInputError(decision.message or "Input refused by safety policy")
+    if decision.action in (RouteAction.STOP, RouteAction.STOP_WITH_RESOURCE):
+        return _persist_input_safety_stop(
+            session_row=session_row,
+            normalized=normalized,
+            decision=decision,
+            conn=conn,
+            source_mode=source_mode,
+            save_transcript=save_transcript,
+        )
+    # REDIRECT: safety policy is already injected into the LLM prompt; continue.
+    # OK: proceed normally.
 
     # 3. Load session state.
     session_id: str = session_row["session_id"]
