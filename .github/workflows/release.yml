@@ -608,7 +608,8 @@ jobs:
       #
       # Required repository secrets (Settings → Secrets and variables → Actions):
       #   TAURI_SIGNING_PRIVATE_KEY          Base64-encoded Ed25519 private key.
-      #                                      Generate with: cargo tauri signer generate
+      #                                      Generate with:
+      #                                        pnpm --filter @convsim/desktop exec tauri signer generate
       #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD Passphrase for the key (may be empty).
       #
       # When either secret is absent this step exits 0 with an INFO message;
@@ -622,12 +623,17 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          BUNDLE_ROOT=apps/desktop/src-tauri/target/release/bundle
+          # Absolute so paths still resolve after `pnpm --filter` changes the
+          # working directory to apps/desktop.
+          BUNDLE_ROOT="$PWD/apps/desktop/src-tauri/target/release/bundle"
 
+          # Sign via the JS Tauri CLI (@tauri-apps/cli) already installed as the
+          # desktop dev-dependency.  `cargo tauri` would require the separate
+          # cargo-tauri binary, which this workflow does not install.
           sign_file() {
             local FILE="$1"
             echo "  Signing: $FILE"
-            cargo tauri signer sign \
+            pnpm --filter @convsim/desktop exec tauri signer sign \
               --private-key "$TAURI_SIGNING_PRIVATE_KEY" \
               ${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:+--password "$TAURI_SIGNING_PRIVATE_KEY_PASSWORD"} \
               "$FILE"
