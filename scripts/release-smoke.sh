@@ -11,16 +11,17 @@
 #   ./scripts/release-smoke.sh --help
 #
 # Subsystem labels in output:
-#   [setup]        monorepo paths and developer scripts
-#   [health]       backend /api/health endpoint
-#   [web]          web frontend build and reachability
-#   [model-mgr]    model manager in fake-runtime mode (no downloads)
-#   [scenario-lib] scenario library API
-#   [text-session] create a session and complete one turn
-#   [debrief]      debrief report generation
-#   [pack-valid]   official pack schema validation
-#   [voice]        voice fallback (TTS-disabled path)
-#   [offline]      no outbound network calls during a scripted play session
+#   [setup]            monorepo paths and developer scripts
+#   [health]           backend /api/health endpoint
+#   [web]              web frontend build and reachability
+#   [model-mgr]        model manager in fake-runtime mode (no downloads)
+#   [scenario-lib]     scenario library API
+#   [text-session]     create a session and complete one turn
+#   [debrief]          debrief report generation
+#   [pack-valid]       official pack schema validation
+#   [voice]            voice fallback (TTS-disabled path)
+#   [offline]          no outbound network calls during a scripted play session
+#   [packaged-startup] packaged binary build infrastructure and startup tests
 #
 # Exit 0: all required checks passed.
 # Exit 1: one or more required checks failed; see FAIL lines and artifact dir.
@@ -123,13 +124,17 @@ smoke_setup() {
         scripts/first-run-check.sh scripts/first-run-check.ps1
         scripts/smoke-check.sh scripts/smoke-check.ps1
         scripts/release-smoke.sh scripts/release-smoke.ps1
+        scripts/build-core.sh scripts/build-core.ps1
+        scripts/depot-audit.sh scripts/depot-audit.ps1
         .github/workflows/ci.yml .github/workflows/release.yml
         .github/workflows/release-smoke.yml
         docs/release-checklist.md
         docs/platform-notes.md docs/release-notes-template.md
         docs/install.md docs/voice-smoke-tests.md
         services/convsim-core/pyproject.toml
+        services/convsim-core/convsim-core.spec
         apps/web/package.json apps/desktop/package.json
+        apps/desktop/src-tauri/resources/bin/.gitkeep
     )
 
     for d in "${required_dirs[@]}"; do
@@ -601,6 +606,72 @@ smoke_offline() {
     fi
 }
 
+# ── [packaged-startup] Packaged startup verification ─────────────────────────
+
+smoke_packaged_startup() {
+    label "[packaged-startup] Packaged startup verification"
+
+    # Always run the unit-level packaged startup tests regardless of mode.
+    local test_file="$REPO_ROOT/services/convsim-core/tests/test_packaged_startup.py"
+    if [[ ! -f "$test_file" ]]; then
+        fail "packaged-startup" "test_packaged_startup.py not found"
+        return
+    fi
+
+    local venv="$REPO_ROOT/services/convsim-core/.venv"
+    local pytest_cmd
+    if [[ -f "$venv/bin/pytest" ]]; then
+        pytest_cmd="$venv/bin/pytest"
+    elif command -v pytest &>/dev/null; then
+        pytest_cmd="pytest"
+    else
+        skip "packaged-startup" "pytest not found — run setup.sh first"
+        return
+    fi
+
+    local out
+    out="$(cd "$REPO_ROOT/services/convsim-core" && \
+           "$pytest_cmd" tests/test_packaged_startup.py -v 2>&1)" || {
+        fail "packaged-startup" "Packaged startup unit tests failed"
+        echo "$out" >> "$ARTIFACT_DIR/packaged-startup-error.txt"
+        _ARTIFACTS_WRITTEN=1
+        return
+    }
+    pass "packaged-startup" "Packaged startup unit tests passed"
+
+    # Check that the required build infrastructure files are present.
+    local missing=0
+    local required_build_files=(
+        "services/convsim-core/convsim-core.spec"
+        "scripts/build-core.sh"
+        "scripts/build-core.ps1"
+        "scripts/depot-audit.sh"
+        "scripts/depot-audit.ps1"
+        "apps/desktop/src-tauri/resources/bin/.gitkeep"
+    )
+    for f in "${required_build_files[@]}"; do
+        if [[ ! -f "$REPO_ROOT/$f" ]]; then
+            fail "packaged-startup" "Missing required build file: $f"
+            missing=$((missing + 1))
+        fi
+    done
+
+    if [[ "$missing" -eq 0 ]]; then
+        pass "packaged-startup" "All required packaging infrastructure files present"
+    fi
+
+    if [[ "$MODE" == "full" ]]; then
+        local built_bin="$REPO_ROOT/apps/desktop/src-tauri/resources/bin/convsim-core"
+        local built_bin_win="${built_bin}.exe"
+        if [[ -f "$built_bin" || -f "$built_bin_win" ]]; then
+            info "packaged-startup" "convsim-core binary present — full launch test skipped (run manually)"
+            pass "packaged-startup" "Packaged binary found in resources/bin"
+        else
+            skip "packaged-startup" "No packaged binary found — run: ./scripts/build-core.sh first"
+        fi
+    fi
+}
+
 # ── [web] Web frontend build and reachability ─────────────────────────────────
 
 smoke_web() {
@@ -696,6 +767,7 @@ main() {
     smoke_text_session
     smoke_debrief
     smoke_offline
+    smoke_packaged_startup
     smoke_web
 
     print_summary

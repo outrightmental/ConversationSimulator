@@ -10,16 +10,17 @@
 #   .\scripts\release-smoke.ps1 -Help
 #
 # Subsystem labels in output:
-#   [setup]        monorepo paths and developer scripts
-#   [health]       backend /api/health endpoint
-#   [web]          web frontend typecheck
-#   [model-mgr]    model manager in fake-runtime mode (no downloads)
-#   [scenario-lib] scenario library API
-#   [text-session] create a session and complete one turn
-#   [debrief]      debrief report generation
-#   [pack-valid]   official pack schema validation
-#   [voice]        voice fallback (TTS-disabled path)
-#   [offline]      no outbound network calls during a scripted play session
+#   [setup]            monorepo paths and developer scripts
+#   [health]           backend /api/health endpoint
+#   [web]              web frontend typecheck
+#   [model-mgr]        model manager in fake-runtime mode (no downloads)
+#   [scenario-lib]     scenario library API
+#   [text-session]     create a session and complete one turn
+#   [debrief]          debrief report generation
+#   [pack-valid]       official pack schema validation
+#   [voice]            voice fallback (TTS-disabled path)
+#   [offline]          no outbound network calls during a scripted play session
+#   [packaged-startup] packaged binary build infrastructure and startup tests
 
 [CmdletBinding()]
 param(
@@ -116,13 +117,17 @@ function Invoke-SmokSetup {
         "scripts\first-run-check.sh", "scripts\first-run-check.ps1",
         "scripts\smoke-check.sh", "scripts\smoke-check.ps1",
         "scripts\release-smoke.sh", "scripts\release-smoke.ps1",
+        "scripts\build-core.sh", "scripts\build-core.ps1",
+        "scripts\depot-audit.sh", "scripts\depot-audit.ps1",
         ".github\workflows\ci.yml", ".github\workflows\release.yml",
         ".github\workflows\release-smoke.yml",
         "docs\release-checklist.md",
         "docs\platform-notes.md", "docs\release-notes-template.md",
         "docs\install.md", "docs\voice-smoke-tests.md",
         "services\convsim-core\pyproject.toml",
-        "apps\web\package.json", "apps\desktop\package.json"
+        "services\convsim-core\convsim-core.spec",
+        "apps\web\package.json", "apps\desktop\package.json",
+        "apps\desktop\src-tauri\resources\bin\.gitkeep"
     )
 
     foreach ($d in $requiredDirs) {
@@ -492,6 +497,68 @@ function Invoke-SmokeOffline {
     }
 }
 
+# ── [packaged-startup] ────────────────────────────────────────────────────────
+
+function Invoke-SmokePackagedStartup {
+    Write-Label "[packaged-startup] Packaged startup verification"
+
+    $testFile = Join-Path $RepoRoot "services\convsim-core\tests\test_packaged_startup.py"
+    if (-not (Test-Path $testFile)) {
+        Write-Fail "packaged-startup" "test_packaged_startup.py not found"
+        return
+    }
+    $pytestPath = Get-PytestPath
+    if (-not $pytestPath) {
+        Write-Skip "packaged-startup" "pytest not found — run setup.ps1 first"
+        return
+    }
+
+    $prevLocation = Get-Location
+    Set-Location (Join-Path $RepoRoot "services\convsim-core")
+    try {
+        $out = & $pytestPath tests/test_packaged_startup.py -v 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            Write-Fail "packaged-startup" "Packaged startup unit tests failed"
+            Save-ArtifactText "packaged-startup-error.txt" ($out -join "`n")
+            return
+        }
+    } finally {
+        Set-Location $prevLocation
+    }
+    Write-Pass "packaged-startup" "Packaged startup unit tests passed"
+
+    # Check required build infrastructure files.
+    $missing = 0
+    $requiredBuildFiles = @(
+        "services\convsim-core\convsim-core.spec",
+        "scripts\build-core.sh",
+        "scripts\build-core.ps1",
+        "scripts\depot-audit.sh",
+        "scripts\depot-audit.ps1",
+        "apps\desktop\src-tauri\resources\bin\.gitkeep"
+    )
+    foreach ($f in $requiredBuildFiles) {
+        if (-not (Test-Path -PathType Leaf (Join-Path $RepoRoot $f))) {
+            Write-Fail "packaged-startup" "Missing required build file: $f"
+            $missing++
+        }
+    }
+    if ($missing -eq 0) {
+        Write-Pass "packaged-startup" "All required packaging infrastructure files present"
+    }
+
+    if ($Mode -eq "full") {
+        $builtBin  = Join-Path $RepoRoot "apps\desktop\src-tauri\resources\bin\convsim-core"
+        $builtExe  = Join-Path $RepoRoot "apps\desktop\src-tauri\resources\bin\convsim-core.exe"
+        if ((Test-Path $builtBin) -or (Test-Path $builtExe)) {
+            Write-Info "packaged-startup" "convsim-core binary present — full launch test skipped (run manually)"
+            Write-Pass "packaged-startup" "Packaged binary found in resources\bin"
+        } else {
+            Write-Skip "packaged-startup" "No packaged binary — run: .\scripts\build-core.ps1 first"
+        }
+    }
+}
+
 # ── [web] ─────────────────────────────────────────────────────────────────────
 
 function Invoke-SmokeWeb {
@@ -581,6 +648,7 @@ Invoke-SmokeScenarioLibrary
 Invoke-SmokeTextSession
 Invoke-SmokeDebrief
 Invoke-SmokeOffline
+Invoke-SmokePackagedStartup
 Invoke-SmokeWeb
 
 Write-Summary

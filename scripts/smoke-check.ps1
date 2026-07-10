@@ -113,6 +113,14 @@ Check-File "scripts\release-smoke.ps1"
 Check-File "scripts\desktop-smoke.sh"
 Check-File "scripts\desktop-smoke.ps1"
 
+# Packaging and audit scripts
+Check-File "scripts\build-core.sh"
+Check-File "scripts\build-core.ps1"
+Check-File "scripts\depot-audit.sh"
+Check-File "scripts\depot-audit.ps1"
+Check-File "services\convsim-core\convsim-core.spec"
+Check-File "apps\desktop\src-tauri\resources\bin\.gitkeep"
+
 Write-Host ""
 
 # Release infrastructure
