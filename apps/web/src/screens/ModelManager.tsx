@@ -6,6 +6,27 @@ import type { ModelsResponse, ModelRegistryEntry, DetectedOllamaModel, Installed
 
 const SETUP_DOCS_URL = 'https://github.com/outrightmental/ConversationSimulator/wiki'
 
+interface SpeedClass {
+  label: string
+  color: string
+  detail: string
+}
+
+function modelSpeedClass(role: string | null): SpeedClass {
+  switch (role) {
+    case 'starter':
+      return { label: 'Fast', color: '#6ee7b7', detail: '~0.8–2.4 s TTFT on recommended tier' }
+    case 'standard':
+      return { label: 'Standard', color: '#93c5fd', detail: '~1.5–5 s TTFT on recommended tier' }
+    case 'high-quality':
+      return { label: 'Slower', color: '#fbbf24', detail: '~3–10 s TTFT; high-end GPU recommended' }
+    case 'user-supplied':
+      return { label: 'Varies', color: '#a1a1aa', detail: 'Speed depends on model size and your hardware' }
+    default:
+      return { label: 'Unknown', color: '#71717a', detail: 'Speed varies by hardware' }
+  }
+}
+
 type WizardStep =
   | 'loading'
   | 'choose'
@@ -329,6 +350,35 @@ export default function ModelManager() {
                 {recommendedModel.name} · {recommendedModel.size_gb} GB ·{' '}
                 {recommendedModel.license_spdx} · Requires {recommendedModel.min_vram_gb} GB VRAM
               </CardDescription>
+              {(() => {
+                const sc = modelSpeedClass(recommendedModel.role)
+                return (
+                  <div
+                    aria-label="expected speed class"
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '0.4rem',
+                      marginBottom: '0.75rem',
+                      fontSize: '0.8rem',
+                    }}
+                  >
+                    <span
+                      style={{
+                        padding: '0.1rem 0.45rem',
+                        borderRadius: 4,
+                        border: `1px solid ${sc.color}55`,
+                        background: `${sc.color}18`,
+                        color: sc.color,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {sc.label}
+                    </span>
+                    <span style={{ color: '#71717a' }}>{sc.detail}</span>
+                  </div>
+                )
+              })()}
               <ActionButton
                 onClick={() => {
                   setSelectedModel(recommendedModel)
