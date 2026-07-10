@@ -5,7 +5,7 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
 import { healthRoutes } from './routes/health.js';
-import { packsRoutes, packRoutes, setPacksDbPath } from './routes/packs.js';
+import { packsRoutes, packRoutes, setPacksDbPath, setPacksDataDir } from './routes/packs.js';
 import { scenarioRoutes } from './routes/scenarios.js';
 import { sessionRoutes } from './routes/sessions.js';
 import { sessionWsRoutes } from './routes/session-ws.js';
@@ -58,9 +58,14 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
   const listenConfig = getListenConfig();
   fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   fs.mkdirSync(path.dirname(packsDbPath), { recursive: true });
+  const packsDataDir =
+    process.env['PACKS_DATA_DIR'] ??
+    path.join(path.dirname(packsDbPath), 'packs');
+  fs.mkdirSync(packsDataDir, { recursive: true });
   initDb(dbPath);
   setDataFolderPath(path.dirname(dbPath));
   setPacksDbPath(packsDbPath);
+  setPacksDataDir(packsDataDir);
   setWorkbenchRoots(
     process.env['PACKS_OFFICIAL_ROOT'] ?? path.join(process.cwd(), 'packs', 'official'),
     process.env['PACKS_LOCAL_DEV_ROOT'] ?? path.join(os.homedir(), '.convsim', 'packs', 'local-dev'),
