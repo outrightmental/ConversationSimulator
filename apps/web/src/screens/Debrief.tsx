@@ -60,14 +60,21 @@ export default function Debrief() {
         achievementsGranted.current = true
         void unlock(SteamAchievement.FIRST_DEBRIEF)
         void incrementStat(SteamStat.DEBRIEFS_GENERATED)
-        if (result.outcome === 'success') {
-          void unlock(SteamAchievement.FIRST_SCENARIO)
-          // Count each completed scenario once, at the moment of completion —
-          // this is the cumulative stat Steam maps the "10 scenarios"
-          // milestone onto. (Incrementing it on the Logbook screen instead
-          // would inflate it on every page visit.)
-          void incrementStat(SteamStat.SCENARIOS_COMPLETED)
-        }
+        // Reaching a debrief means the session ended. Per the shipped Steam
+        // framework (#230), that is exactly the boundary for FIRST_SCENARIO
+        // ("session ends normally or is manually ended") and the
+        // SCENARIOS_COMPLETED stat ("session ends"). These fire for every
+        // ending type — not only 'success' — so a player who ends a scenario
+        // manually (player_exit) still gets credit; gating on 'success' would
+        // never unlock FIRST_SCENARIO for the manual-end case the framework
+        // explicitly names, and would stall the "10 scenarios" milestone.
+        void unlock(SteamAchievement.FIRST_SCENARIO)
+        // Count each completed scenario once, at the moment of completion —
+        // this is the cumulative stat Steam maps the "10 scenarios" milestone
+        // onto. (Incrementing it on the Logbook screen instead would inflate
+        // it on every page visit; the achievementsGranted ref keeps it to
+        // once per debrief.)
+        void incrementStat(SteamStat.SCENARIOS_COMPLETED)
       }
 
       if (!result.transcript_saving_disabled) {
