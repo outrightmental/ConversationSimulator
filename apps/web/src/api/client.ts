@@ -84,6 +84,15 @@ export interface VadHealthResponse {
   checked_at: string
 }
 
+export interface SttHealthResponse {
+  worker_id: string
+  worker_name: string
+  status: 'unavailable' | 'starting' | 'ready' | 'degraded' | 'error'
+  model_path?: string | null
+  message?: string | null
+  checked_at: string
+}
+
 async function parseErrorMessage(res: Response): Promise<string> {
   const text = await res.text()
   let message = text || `${res.status} ${res.statusText}`
@@ -168,6 +177,10 @@ export const apiClient = {
       form.append('language', language)
     }
     return postForm<SttUploadResponse>('/stt/upload', form)
+  },
+
+  sttHealth(): Promise<SttHealthResponse> {
+    return get<SttHealthResponse>('/stt/health')
   },
 
   vadHealth(): Promise<VadHealthResponse> {
