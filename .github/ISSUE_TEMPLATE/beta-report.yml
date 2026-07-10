@@ -1,0 +1,98 @@
+name: Beta feedback / bug report
+description: Report a bug or give feedback during the beta. Use the one-click bundle from Support → Report a problem for fastest turnaround.
+labels: ["beta-feedback"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping test Conversation Simulator! Beta feedback makes the
+        product better for everyone.
+
+        **Before filing:** use the **Support → Report a problem** flow in the
+        app to assemble a diagnostics bundle — it captures versions, OS info,
+        and recent error logs automatically.  Attach the resulting ZIP below.
+
+        **Privacy note:** Do not paste conversation transcripts, NPC session
+        logs, or audio recordings here. If the bug is transcript-specific,
+        describe it in general terms or use a made-up example.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the bug or unexpected behaviour clearly.
+      placeholder: "Example: The debrief screen froze after I ended the conversation — no score appeared."
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+      placeholder: "Example: The debrief score and strengths summary should have appeared within a few seconds."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps that reliably trigger the issue.
+      placeholder: |
+        1. Launch the app
+        2. Select "Job Interview Basics" → "The Executive Gauntlet"
+        3. Complete all turns and press "End conversation"
+        4. Debrief screen loads but score section never appears
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Build and environment
+      description: >
+        Paste the info from the diagnostics bundle's **versions.json** and
+        **system.txt**, or fill in manually.  The one-click bundle captures
+        this automatically.
+      placeholder: |
+        App version: 0.9.0-beta.3
+        OS: macOS 14.6.1 (Apple Silicon)
+        Model in use: Qwen3 8B Q4_K_M
+        Desktop app or browser: Desktop (Tauri)
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Error messages or log snippet
+      description: >
+        Paste relevant lines from recent_errors.txt in the diagnostics bundle,
+        or from the browser console.  Do not paste transcript content.
+      render: text
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: bundle
+    attributes:
+      label: Diagnostics bundle
+      options:
+        - label: >
+            I used **Support → Report a problem** to create a diagnostics
+            bundle and will attach the ZIP to this issue.
+          required: false
+        - label: >
+            I reviewed the bundle contents and confirmed it contains no
+            transcript text, personal information, or audio.
+          required: false
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this has not been reported before.
+          required: true
+        - label: This issue is reproducible — I can trigger it consistently.
+          required: false
