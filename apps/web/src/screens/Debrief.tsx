@@ -54,6 +54,11 @@ export default function Debrief() {
           void incrementStat(SteamStat.DEBRIEFS_GENERATED)
           if (result.outcome === 'success') {
             void unlock(SteamAchievement.FIRST_SCENARIO)
+            // Count each completed scenario once, at the moment of completion —
+            // this is the cumulative stat Steam maps the "10 scenarios"
+            // milestone onto. (Incrementing it on the Logbook screen instead
+            // would inflate it on every page visit.)
+            void incrementStat(SteamStat.SCENARIOS_COMPLETED)
           }
         }
 

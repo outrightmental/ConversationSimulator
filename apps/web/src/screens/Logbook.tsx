@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useLogbookProfile } from '../api/useLogbookProfile'
 import { api } from '../api/client'
-import { useSteamAchievements, SteamAchievement, SteamStat } from '../hooks/useSteamAchievements'
+import { useSteamAchievements, SteamAchievement } from '../hooks/useSteamAchievements'
 import { useEffect, useRef } from 'react'
 
 function formatDuration(seconds: number): string {
@@ -61,7 +61,7 @@ function DeltaBadge({ delta }: { delta: number }) {
 
 export default function Logbook() {
   const { state, profile } = useLogbookProfile()
-  const { unlock, incrementStat } = useSteamAchievements()
+  const { unlock } = useSteamAchievements()
   const achievementsChecked = useRef(false)
   const [exporting, setExporting] = useState(false)
   const [exportError, setExportError] = useState<string | null>(null)
@@ -70,13 +70,13 @@ export default function Logbook() {
     if (state !== 'ready' || !profile || achievementsChecked.current) return
     achievementsChecked.current = true
 
+    // Unlocking is idempotent, so it is safe to re-check on every visit. The
+    // cumulative scenario-count stat is NOT idempotent, so it is incremented at
+    // the point of completion (Debrief), never here on page load.
     if (profile.streak_days >= 7) {
       void unlock(SteamAchievement.PRACTICE_STREAK)
     }
-    if (profile.total_sessions >= 10) {
-      void incrementStat(SteamStat.SCENARIOS_COMPLETED)
-    }
-  }, [state, profile, unlock, incrementStat])
+  }, [state, profile, unlock])
 
   async function handleExport() {
     setExporting(true)
