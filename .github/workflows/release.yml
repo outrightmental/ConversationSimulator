@@ -104,13 +104,14 @@ jobs:
       - name: Build convsim-core standalone binary
         shell: bash
         run: |
-          cd services/convsim-core
+          # working-directory (below) already places us in services/convsim-core;
+          # all paths here are relative to it.
           python -m pip install -q -e "../../packages/prompt-composer"
           python -m pip install -q -e ".[build]"
           python -m PyInstaller convsim-core.spec --noconfirm
 
           # Copy to the Tauri resources directory for bundling.
-          mkdir -p apps/desktop/src-tauri/resources/bin
+          mkdir -p ../../apps/desktop/src-tauri/resources/bin
           if [ -f dist/convsim-core.exe ]; then
             cp dist/convsim-core.exe ../../apps/desktop/src-tauri/resources/bin/
           else
