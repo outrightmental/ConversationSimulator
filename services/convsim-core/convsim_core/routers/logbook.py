@@ -78,11 +78,22 @@ class LogbookExport(BaseModel):
 
 
 def _parse_dt(value: str) -> Optional[datetime]:
-    """Parse a stored timestamp (SQLite 'YYYY-MM-DD HH:MM:SS' or ISO-8601)."""
+    """Parse a stored timestamp (SQLite 'YYYY-MM-DD HH:MM:SS' or ISO-8601).
+
+    Stored timestamps are all UTC but inconsistently formatted: session
+    created_at is written as tz-aware ISO ('...+00:00') while ended_at is
+    written by SQLite's datetime('now') as a naive 'YYYY-MM-DD HH:MM:SS'.
+    Normalise naive values to UTC so an aware created_at and a naive ended_at
+    can be subtracted without raising "can't subtract offset-naive and
+    offset-aware datetimes".
+    """
     try:
-        return datetime.fromisoformat(value)
+        dt = datetime.fromisoformat(value)
     except (ValueError, TypeError):
         return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
 
 
 def _to_date_str(value: str) -> str:

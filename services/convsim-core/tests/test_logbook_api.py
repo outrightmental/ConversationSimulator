@@ -122,6 +122,26 @@ def test_practice_time_ignores_sessions_without_ended_at(client):
     assert data["total_practice_seconds"] == 0
 
 
+def test_practice_time_with_production_timestamp_formats(client):
+    # Production writes created_at as tz-aware ISO (_now_iso, '...+00:00') but
+    # ended_at via SQLite datetime('now') as a naive 'YYYY-MM-DD HH:MM:SS'.
+    # Subtracting the two must not raise (regression: aware/naive mismatch).
+    conn = _conn(client)
+    created_dt = datetime.now(timezone.utc).replace(microsecond=0)
+    created = created_dt.isoformat()  # aware, ends in "+00:00"
+    ended = (created_dt + timedelta(seconds=240)).strftime("%Y-%m-%d %H:%M:%S")  # naive
+    conn.execute(
+        "INSERT INTO turn_sessions "
+        "(session_id, scenario_id, flow_state, setup_json, created_at, ended_at) "
+        "VALUES (?, ?, 'DebriefReady', ?, ?, ?)",
+        ("mixed", "job_interview", json.dumps({"difficulty": "standard"}), created, ended),
+    )
+    conn.commit()
+    resp = client.get("/api/logbook/profile")
+    assert resp.status_code == 200
+    assert resp.json()["total_practice_seconds"] == 240
+
+
 # ── Streak ───────────────────────────────────────────────────────────────────
 
 def test_streak_counts_consecutive_days(client):
