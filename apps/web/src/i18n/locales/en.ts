@@ -1,0 +1,283 @@
+// SPDX-License-Identifier: Apache-2.0
+// English message catalog — source of truth for all user-visible strings.
+
+export const en = {
+  errors: {
+    schemaValidation: 'The request contained invalid data.',
+    packNotFound: 'The requested pack was not found.',
+    sessionNotFound: 'Session not found.',
+    modelNotLoaded: 'No AI model is loaded. Open Settings to install a model.',
+    runtimeUnavailable: 'The local runtime is unavailable. Check the logs for details.',
+    safetyViolation: 'The content was blocked by the safety policy.',
+    turnLimitExceeded: 'The turn limit for this scenario has been reached.',
+    turnTimeout: 'The turn timed out. Please try again.',
+    internalError: 'An internal error occurred.',
+    unauthorized: 'Unauthorized.',
+    unknown: 'An unexpected error occurred.',
+  },
+  error: {
+    heading: 'Something went wrong',
+    subheading: 'An unexpected error occurred in the app.',
+    details: 'Error details',
+    tryAgain: 'Try again',
+    goHome: 'Go to home',
+    reportIssue: 'Report this issue',
+    documentation: 'Documentation',
+    logsLabel: 'Logs:',
+  },
+  nav: {
+    appTitle: 'Conversation Simulator',
+    skipToMain: 'Skip to main content',
+    home: 'Home',
+    scenarios: 'Scenarios',
+    workbench: 'Workbench',
+    settings: 'Settings',
+    support: 'Support',
+  },
+  home: {
+    title: 'Conversation Simulator',
+    tagline: 'Practice interviews, negotiations, language, and difficult conversations.',
+    startScenario: 'Start a scenario',
+    createEdit: 'Create / edit a scenario',
+    installModel: 'Install model',
+    importPack: 'Import pack',
+    creatorWorkbenchGuide: 'Creator workbench guide',
+    readDocs: 'Read docs',
+    status: {
+      heading: 'Status',
+      localRuntime: 'Local runtime',
+      llm: 'LLM',
+      stt: 'STT',
+      tts: 'TTS',
+      networkRequired: 'Network required to play',
+      packs: 'Packs',
+      checking: 'Checking…',
+      ready: 'Ready',
+      unavailable: 'Unavailable',
+      notInstalled: 'Not installed',
+      yes: 'Yes',
+      no: 'No',
+      noneInstalled: 'None installed',
+      packsInstalledCount: '{{count}} installed',
+    },
+    unreachable: {
+      title: 'Cannot reach the local runtime',
+      message:
+        'Ensure the API server is running. If this persists, check the logs folder or report an issue.',
+      troubleshootingDocs: 'Troubleshooting docs',
+      reportIssue: 'Report an issue',
+    },
+    portConflict: {
+      title: 'Port conflict',
+      message:
+        'A required port is already in use by another process. Try closing other apps, then restart Conversation Simulator.',
+      details: 'Details: {{error}}',
+      portTroubleshooting: 'Port troubleshooting',
+      reportIssue: 'Report an issue',
+    },
+    lastError: {
+      message: 'Last error: {{error}}',
+      reportIssue: 'Report an issue',
+    },
+    noModel: {
+      heading: 'No model configured',
+      description:
+        'Choose how to get started. You can change this at any time from Settings.',
+      gguf: {
+        title: 'Install a GGUF model',
+        description: 'Download a local model file. Works offline after the initial download.',
+        action: 'Install a GGUF model →',
+      },
+      ollama: {
+        title: 'Connect Ollama',
+        description: 'Use an existing Ollama installation. No additional download required.',
+        action: 'Connect Ollama →',
+      },
+      demo: {
+        title: 'Try text-only demo',
+        description:
+          'Explore the interface now using scripted NPC responses — no model needed. Response quality is limited compared to a real AI model.',
+        action: 'Try text-only demo →',
+      },
+    },
+    missingPack: {
+      title: 'No scenario packs installed',
+      description:
+        'Your model is ready but there are no packs to play. Import a pack or browse the scenario library.',
+      action: 'Go to library →',
+    },
+    help: {
+      heading: 'Help',
+      documentation: 'Documentation',
+      reportIssue: 'Report an issue',
+      logsFolder: 'Logs folder:',
+      logsPath: '~/.convsim/logs',
+      logsContext: '(exact path shown in the local folders panel)',
+      dataFolder: 'Data folder:',
+      dataPath: '~/.convsim',
+      dataContext: '(exact path shown in the local folders panel)',
+    },
+  },
+  settings: {
+    title: 'Settings',
+    localFirst: {
+      label: 'Local-first.',
+      description:
+        'Conversations are processed entirely on your device. No telemetry is collected, no transcript is uploaded automatically, and no model or pack is downloaded without an explicit action from you.',
+    },
+    transcript: {
+      heading: 'Transcript',
+      saveLabel: 'Save transcripts locally',
+      saveOn:
+        'Conversation transcripts are saved to your local data folder only — never uploaded anywhere.',
+      saveOff:
+        "Transcripts will not be saved. This session's conversation cannot be exported or searched after it ends.",
+      notSavedWarning: 'Not saved — transcript will be lost when this session ends.',
+    },
+    runtime: {
+      heading: 'Runtime',
+      description:
+        'Select the active AI provider and model. Advanced knobs are hidden by default.',
+      openModelManagerLink: 'Open model manager →',
+      openModelManagerLabel: 'Open model manager',
+    },
+    voice: {
+      heading: 'Voice output',
+      cacheLabel: 'Cache TTS audio locally',
+      cacheDescription:
+        'Caching generated speech speeds up repeated phrases. Cached audio stays on your device and is never shared.',
+    },
+    packs: {
+      heading: 'Pack management',
+      description:
+        'Packs add scenarios to your library. Import a pack zip file — no executable content is accepted. Packs are validated on import and stored only on this device.',
+      importFileLabel: 'Select pack zip file',
+      importButton: 'Import pack (.zip)',
+      importing: 'Importing…',
+      importedSuccess: 'Imported “{{name}}”',
+      loadError: 'Could not load installed packs.',
+      noPacks: 'No packs installed yet.',
+      scenarioCount_one: '{{count}} scenario',
+      scenarioCount_other: '{{count}} scenarios',
+    },
+    folders: {
+      heading: 'Local folders',
+      description:
+        'All data stays on this device. Use these paths for manual inspection or backup.',
+      loadError: 'Could not retrieve folder paths.',
+      loading: 'Loading…',
+      data: 'Data',
+      logs: 'Logs',
+      models: 'Models',
+      packs: 'Packs',
+      exports: 'Exports',
+      copy: 'Copy',
+      copied: 'Copied!',
+      open: 'Open',
+      copyLabel: 'Copy {{folder}} folder path',
+      openLabel: 'Open {{folder}} folder',
+      openError:
+        'Could not open the folder automatically. Copy the path and open it manually.',
+    },
+    clearData: {
+      heading: 'Clear local data',
+      description:
+        'Permanently deletes all sessions, transcripts, and cached data from your device. Installed models are not removed.',
+      confirmMessage:
+        'This will permanently delete all sessions and transcripts from this device. This cannot be undone.',
+      done_one: '1 session deleted.',
+      done_other: '{{count}} sessions deleted.',
+      doneLocal: 'Local data has been cleared.',
+      error: 'Failed to clear data. Please try again.',
+      clearing: 'Clearing…',
+      confirm: 'Confirm — delete everything',
+      clear: 'Clear all local data',
+      cancel: 'Cancel',
+    },
+    sessions: {
+      heading: 'Your sessions',
+      description: 'Export a session as JSON or delete it permanently.',
+      loadError: 'Could not load sessions.',
+      loading: 'Loading…',
+      noSessions: 'No sessions yet.',
+      export: 'Export',
+      exportLabel: 'Export session {{id}}',
+      delete: 'Delete',
+      deleteLabel: 'Delete session {{id}}',
+      confirmDelete: 'Confirm delete',
+      confirmDeleteLabel: 'Confirm delete session {{id}}',
+      cancelDelete: 'Cancel',
+      cancelDeleteLabel: 'Cancel delete session {{id}}',
+    },
+    advanced: {
+      showAdvanced: 'Show advanced',
+      hideAdvanced: 'Hide advanced',
+      heading: 'Advanced',
+      rawAudioLabel: 'Save raw audio recordings (advanced)',
+      rawAudioDescription:
+        'Off by default. When enabled, unprocessed microphone recordings are saved to your data folder for debugging voice input. Enable only if you are diagnosing STT accuracy issues.',
+      rawAudioWarning:
+        'Raw audio saving is on. Recordings will be stored locally until you clear local data.',
+      devModeLabel: 'Developer debug mode',
+      devModeDescription:
+        'Shows a debug drawer in the conversation screen with raw model output, state deltas, event evaluations, and hidden NPC fields. For developers diagnosing model drift or scenario behaviour. Reload the conversation screen after toggling.',
+      devModeWarning:
+        'Developer debug drawer is active. Internal model data is visible on the conversation screen. Disable before sharing your screen.',
+    },
+    language: {
+      heading: 'Language',
+      description: 'Select the language for the user interface.',
+      label: 'Interface language',
+    },
+  },
+  debrief: {
+    title: 'Session Debrief',
+    sessionLabel: 'Session:',
+    backToLibrary: '← Back to library',
+    generating: 'Generating debrief…',
+    error: {
+      prefix: 'Failed to generate debrief:',
+      tryAgain: 'Try again',
+      transcriptOnly: 'Show transcript only',
+    },
+    fallback:
+      'Debrief generated from a template — install a local model for detailed feedback.',
+    transcriptDisabled:
+      'Transcript saving was disabled for this session. Turn details are not available.',
+    scenario: 'Scenario:',
+    turns: 'Turns:',
+    summary: 'Summary',
+    scorecard: 'Scorecard',
+    strengths: 'Strengths',
+    improvements: 'Areas for improvement',
+    missedOpportunities: 'Missed opportunities',
+    keyMoments: 'Key moments',
+    tryNextTime: 'Try next time',
+    transcript: {
+      heading: 'Transcript',
+      noSaved: 'No transcript was saved for this session.',
+      ariaLabel: 'Conversation transcript',
+      transcriptOnlyNotice: 'Debrief generation failed. Showing transcript only.',
+      turn: 'Turn {{number}}',
+      you: 'You',
+      npc: 'NPC',
+      goToTurn: 'Go to turn {{number}}',
+    },
+    debugJson: 'Full debrief JSON (debug)',
+    latency: 'Debrief generation: {{ms}} ms',
+    actions: {
+      replayVariation: 'Replay variation',
+      replaySameSetup: 'Replay same setup',
+      starting: 'Starting…',
+      retryDebrief: 'Retry debrief',
+      exportJSON: 'Export session JSON',
+      exporting: 'Exporting…',
+      exportMarkdown: 'Export transcript (Markdown)',
+      tryAnother: 'Try another scenario',
+      privacyNotice:
+        'Exported files are saved to your local download folder and never leave your device.',
+    },
+  },
+}
+
+export type LocaleMessages = typeof en
