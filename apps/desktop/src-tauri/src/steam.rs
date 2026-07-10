@@ -103,8 +103,11 @@ impl SteamRuntime {
     pub fn unlock_achievement(&self, api_name: &str) -> bool {
         #[cfg(feature = "steam")]
         if let Some(ref client) = self.client {
-            let ok = client.user_stats().achievement(api_name).set();
-            let _ = client.user_stats().store_stats();
+            let us = client.user_stats();
+            // `set()` and `store_stats()` return `Result<(), ()>`; treat a
+            // successful `set` as the unlock result and best-effort persist.
+            let ok = us.achievement(api_name).set().is_ok();
+            let _ = us.store_stats();
             return ok;
         }
         false
@@ -117,8 +120,10 @@ impl SteamRuntime {
         #[cfg(feature = "steam")]
         if let Some(ref client) = self.client {
             let us = client.user_stats();
-            let current = us.stat_i32(api_name).unwrap_or(0);
-            let ok = us.set_stat_i32(api_name, current + 1);
+            // `get_stat_i32` returns `Err` until stats have been received from
+            // Steam; falling back to 0 keeps the increment best-effort.
+            let current = us.get_stat_i32(api_name).unwrap_or(0);
+            let ok = us.set_stat_i32(api_name, current + 1).is_ok();
             let _ = us.store_stats();
             return ok;
         }
