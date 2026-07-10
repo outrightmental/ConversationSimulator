@@ -171,6 +171,8 @@ export const en = {
       models: 'Models',
       packs: 'Packs',
       exports: 'Exports',
+      cache: 'Cache',
+      crash_bundles: 'Crash bundles',
       copy: 'Copy',
       copied: 'Copied!',
       open: 'Open',

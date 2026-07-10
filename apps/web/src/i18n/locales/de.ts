@@ -180,6 +180,8 @@ export const de: LocaleMessages = {
       models: 'Modelle',
       packs: 'Pakete',
       exports: 'Exporte',
+      cache: 'Cache',
+      crash_bundles: 'Absturzberichte',
       copy: 'Kopieren',
       copied: 'Kopiert!',
       open: 'Öffnen',
