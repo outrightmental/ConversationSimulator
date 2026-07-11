@@ -306,7 +306,10 @@ export async function workshopRoutes(app: FastifyInstance): Promise<void> {
   //
   // Remove a Workshop pack from the local index after the player unsubscribes.
   // Respects sessions that still reference the pack: when active or in-progress
-  // sessions exist, the pack record is kept but marked for cleanup on next sync.
+  // sessions exist, nothing is removed and the endpoint returns removed:false
+  // with has_active_sessions:true. The caller must not unsubscribe from Steam in
+  // that case (doing so would delete files out from under a running session) and
+  // should retry the unsubscribe once the referencing sessions have ended.
   //
   // The Workshop files themselves are removed by Steam — this only cleans up
   // the in-app metadata and pack index entries.
