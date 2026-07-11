@@ -19,11 +19,10 @@ app = create_app(_config)
 
 def main() -> None:
     uvicorn.run(
-        "convsim_core.main:app",
+        app,
         host=_config.host,
         port=_config.port,
         log_config=None,
-        reload=False,
     )
 
 
