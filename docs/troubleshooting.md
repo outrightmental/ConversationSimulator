@@ -23,7 +23,7 @@ The packaged app writes logs to the platform-specific application data directory
 |---|---|
 | Windows | `%LOCALAPPDATA%\com.outrightmental.convsim\logs\` |
 | macOS | `~/Library/Application Support/com.outrightmental.convsim/logs/` |
-| Linux / Steam Deck | `~/.local/share/convsim/logs/` (or `$XDG_DATA_HOME/convsim/logs/`) |
+| Linux / Steam Deck | `~/.local/share/com.outrightmental.convsim/logs/` (or `$XDG_DATA_HOME/com.outrightmental.convsim/logs/`) |
 
 The recovery card shows the exact path for your machine and includes an **Open logs folder** button. In developer mode (running without Tauri), logs go to `~/.convsim/logs/` unless `CONVSIM_DATA_ROOT` is set.
 
