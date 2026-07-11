@@ -1,0 +1,318 @@
+name: Marketplace demand spike — creator survey
+description: >
+  Share your experience as a pack creator. This survey feeds the post-launch
+  marketplace demand spike documented in docs/marketplace-demand-spike.md.
+  Responses are anonymised before use; please do not include personally
+  identifying information.
+labels:
+  - marketplace
+  - creator-survey
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Thank you for contributing to the marketplace demand spike
+
+        Outright Mental is evaluating whether a content marketplace makes sense
+        for Conversation Simulator. Your experience as a pack creator is the most
+        important input to that decision.
+
+        **Privacy:** Responses are collected in aggregate. Your GitHub username
+        will appear on this issue but your answers will be anonymised before they
+        are summarised in the spike document. Do not include personally identifying
+        information in your answers.
+
+        **Time:** This survey takes approximately 10–15 minutes to complete.
+
+        This survey corresponds to the interview guide in
+        [docs/marketplace-demand-spike.md](https://github.com/outrightmental/ConversationSimulator/blob/main/docs/marketplace-demand-spike.md#22-interview-guide).
+
+  - type: markdown
+    attributes:
+      value: "## Pack creation experience"
+
+  - type: textarea
+    id: creation-process
+    attributes:
+      label: "1. How did you build your pack?"
+      description: >
+        Describe your process. What tools did you use? What was your biggest
+        friction point from idea to first playable scenario?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: used-validate-pack
+    attributes:
+      label: "2. Did you use the convsim validate-pack CLI?"
+      options:
+        - "Yes — it was helpful"
+        - "Yes — but I ran into problems (describe below)"
+        - "No — I didn't know it existed"
+        - "No — I used a different method"
+        - "No — I haven't published a pack yet"
+    validations:
+      required: true
+
+  - type: textarea
+    id: validate-pack-notes
+    attributes:
+      label: Validate-pack notes (optional)
+      description: >
+        If you selected "ran into problems" or used a different method above,
+        describe what happened or what you used instead.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: used-workbench
+    attributes:
+      label: "3. Did you use the Creator Workbench?"
+      options:
+        - "Yes — it was helpful"
+        - "Yes — but it has friction points (describe below)"
+        - "No — I used a text editor / CLI only"
+        - "No — I didn't know it existed"
+    validations:
+      required: true
+
+  - type: textarea
+    id: workbench-notes
+    attributes:
+      label: Creator Workbench notes (optional)
+      description: >
+        What worked well and what did not? What would you change?
+    validations:
+      required: false
+
+  - type: dropdown
+    id: first-pack-time
+    attributes:
+      label: "4. How long did your first pack take from idea to playable?"
+      options:
+        - Less than 1 hour
+        - 1–4 hours
+        - Half a day (4–8 hours)
+        - 1–2 days
+        - 3–7 days
+        - More than a week
+        - Still in progress
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: "## Distribution"
+
+  - type: dropdown
+    id: distribution-method
+    attributes:
+      label: "5. How are you currently distributing your pack?"
+      description: Select all that apply by listing them in the notes below.
+      options:
+        - GitHub release
+        - itch.io
+        - Direct link / file share
+        - Not distributing yet
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: distribution-notes
+    attributes:
+      label: Distribution method notes (optional)
+      description: >
+        If you selected "Other" or use multiple methods, describe here.
+    validations:
+      required: false
+
+  - type: textarea
+    id: discoverability
+    attributes:
+      label: "6. What would make it meaningfully easier for players to find your pack?"
+      description: >
+        Be specific. What is the single biggest barrier to players discovering
+        your pack today?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: in-app-browser-interest
+    attributes:
+      label: "7. Would you want your pack listed in an in-app browser even if it remained free?"
+      options:
+        - "Yes — discoverability is the main goal"
+        - "Yes — but only if curation is light-touch"
+        - "Not sure"
+        - "No — I prefer to manage distribution myself"
+        - "No — not interested in wider distribution"
+    validations:
+      required: true
+
+  - type: textarea
+    id: in-app-browser-reasoning
+    attributes:
+      label: Why or why not? (optional)
+      description: Expand on your answer to question 7.
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: "## Attribution and licensing"
+
+  - type: dropdown
+    id: pack-license
+    attributes:
+      label: "8. What license does your pack use?"
+      options:
+        - CC BY 4.0 (open, attribution required)
+        - CC BY-SA 4.0 (open, share-alike)
+        - CC BY-NC 4.0 (non-commercial)
+        - CC0 (public domain)
+        - All rights reserved (proprietary)
+        - Other open-source license
+        - Not decided yet
+    validations:
+      required: true
+
+  - type: textarea
+    id: license-reasoning
+    attributes:
+      label: Why did you choose that license? (optional)
+    validations:
+      required: false
+
+  - type: dropdown
+    id: attribution-adequate
+    attributes:
+      label: "9. Does the current author field in the pack manifest give you adequate attribution?"
+      options:
+        - "Yes — the author field is sufficient"
+        - "Mostly — but I'd add a website or social link"
+        - "No — I need a richer attribution block"
+        - "I haven't thought about it"
+    validations:
+      required: true
+
+  - type: textarea
+    id: attribution-additions
+    attributes:
+      label: What would you add to the attribution block? (optional)
+      description: >
+        E.g. website URL, social handle, creator profile page, donation link.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: reposting-experience
+    attributes:
+      label: "10. Has someone reposted or modified your pack without permission?"
+      options:
+        - "Yes — and it was a problem"
+        - "Yes — but I didn't mind"
+        - "No"
+        - "I haven't published widely enough to know"
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: "## Moderation expectations"
+
+  - type: dropdown
+    id: review-turnaround-expectation
+    attributes:
+      label: "11. If Outright Mental operated a curated registry, how long would you expect review to take?"
+      options:
+        - Same day (< 24 hours)
+        - 1–3 days
+        - Up to 1 week
+        - Up to 2 weeks
+        - Longer is fine as long as it's predictable
+    validations:
+      required: true
+
+  - type: textarea
+    id: content-rules
+    attributes:
+      label: "12. What content moderation rules should apply to community packs in an official channel?"
+      description: >
+        What content should be allowed, and what should be prohibited? Consider
+        age ratings, sensitive topics, NPC personas, and safety policies.
+    validations:
+      required: true
+
+  - type: markdown
+    attributes:
+      value: "## Monetisation"
+
+  - type: dropdown
+    id: monetisation-interest
+    attributes:
+      label: "13. Would you want the option to charge for your packs?"
+      options:
+        - "Yes — strongly"
+        - "Yes — weakly / open to it"
+        - "No — I prefer free distribution"
+        - "Not sure"
+    validations:
+      required: true
+
+  - type: textarea
+    id: monetisation-details
+    attributes:
+      label: Price point and revenue split (optional)
+      description: >
+        If yes, what price range ($USD) per pack and what revenue split
+        (creator % / platform %) would make it worth the effort?
+    validations:
+      required: false
+
+  - type: dropdown
+    id: free-only-impact
+    attributes:
+      label: "14. If you could not charge for your packs, would that stop you from creating them?"
+      options:
+        - "No — I would create packs anyway"
+        - "It would reduce my output but not stop me"
+        - "Yes — monetisation is necessary for me to invest the time"
+        - "I haven't created a pack yet so I don't know"
+    validations:
+      required: true
+
+  - type: textarea
+    id: revenue-use
+    attributes:
+      label: "15. What would you do with revenue from pack sales? (optional)"
+      description: >
+        E.g. reinvest in more packs, cover your time, donate to the project,
+        something else.
+    validations:
+      required: false
+
+  - type: markdown
+    attributes:
+      value: "## Anything else"
+
+  - type: textarea
+    id: anything-else
+    attributes:
+      label: Is there anything else you want the team to know?
+      description: >
+        Features not covered above, blockers you've run into, or things
+        you'd like to see prioritised.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: consent
+    attributes:
+      label: Consent
+      options:
+        - label: >
+            I understand that my answers will be anonymised and summarised in
+            the marketplace demand spike document. No personally identifying
+            information has been included in my responses.
+          required: true
