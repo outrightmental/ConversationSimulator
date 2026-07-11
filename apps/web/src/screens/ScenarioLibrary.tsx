@@ -72,6 +72,7 @@ export default function ScenarioLibrary() {
   const [workshopSyncState, setWorkshopSyncState] = useState<'idle' | 'syncing' | 'done' | 'error'>('idle')
   const [workshopSyncSummary, setWorkshopSyncSummary] = useState<string | null>(null)
   const [workshopItems, setWorkshopItems] = useState<Record<string, { author_name: string; workshop_updated_at: number }>>({})
+  const [workshopQuarantine, setWorkshopQuarantine] = useState<Array<{ item_id: string; reason: string }>>([])
 
   const isSteamEnabled = steamStatus?.is_steam_enabled ?? false
 
@@ -111,6 +112,14 @@ export default function ScenarioLibrary() {
     })
   }
 
+  function loadWorkshopQuarantine() {
+    void api.workshop.listQuarantine().then((r) => {
+      if (r.ok) {
+        setWorkshopQuarantine(r.data.items.map((i) => ({ item_id: i.item_id, reason: i.reason })))
+      }
+    })
+  }
+
   async function handleWorkshopSync() {
     setWorkshopSyncState('syncing')
     setWorkshopSyncSummary(null)
@@ -136,6 +145,9 @@ export default function ScenarioLibrary() {
           loadIndexedPacks()
           loadWorkshopItems()
         }
+        // Always refresh quarantine so newly-rejected packs (and packs that
+        // were fixed upstream and cleared) are reflected with their reasons.
+        loadWorkshopQuarantine()
       } else {
         setWorkshopSyncState('error')
         setWorkshopSyncSummary(errorHeadline(r.error))
@@ -150,6 +162,7 @@ export default function ScenarioLibrary() {
     loadScenarios()
     loadIndexedPacks()
     loadWorkshopItems()
+    loadWorkshopQuarantine()
 
     void api.getModels().then((r) => {
       if (r.ok) {
@@ -337,6 +350,35 @@ export default function ScenarioLibrary() {
           </button>
         </div>
       </div>
+
+      {workshopQuarantine.length > 0 && (
+        <div
+          role="alert"
+          data-testid="workshop-quarantine-banner"
+          style={{
+            background: 'rgba(248,113,113,0.08)',
+            border: '1px solid rgba(248,113,113,0.3)',
+            borderRadius: '6px',
+            padding: '0.75rem 1rem',
+            marginBottom: '1.25rem',
+            fontSize: '0.85rem',
+            color: '#fca5a5',
+          }}
+        >
+          <div style={{ fontWeight: 600, marginBottom: '0.4rem' }}>
+            {workshopQuarantine.length === 1
+              ? '1 Workshop pack was quarantined and not imported:'
+              : `${workshopQuarantine.length} Workshop packs were quarantined and not imported:`}
+          </div>
+          <ul style={{ margin: 0, paddingLeft: '1.1rem' }}>
+            {workshopQuarantine.map((q) => (
+              <li key={q.item_id} data-testid={`workshop-quarantine-item-${q.item_id}`}>
+                <span style={{ color: '#e2e8f0' }}>Item {q.item_id}</span>: {q.reason}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {modelMissing && (
         <div

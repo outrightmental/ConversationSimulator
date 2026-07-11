@@ -15,7 +15,7 @@ vi.mock('../api/client', () => ({
     workshop: {
       listItems: vi.fn().mockResolvedValue({ ok: true, data: { items: [] } }),
       sync: vi.fn(),
-      listQuarantine: vi.fn(),
+      listQuarantine: vi.fn().mockResolvedValue({ ok: true, data: { items: [] } }),
       remove: vi.fn(),
     },
   },
@@ -182,6 +182,7 @@ beforeEach(() => {
   }})
   // Workshop items: restore resolved value after vi.restoreAllMocks() clears it.
   vi.mocked(api.workshop.listItems).mockResolvedValue({ ok: true, data: { items: [] } })
+  vi.mocked(api.workshop.listQuarantine).mockResolvedValue({ ok: true, data: { items: [] } })
 })
 
 // ---------------------------------------------------------------------------
@@ -1009,5 +1010,44 @@ describe('Workshop badge unsubscribe', () => {
     await waitFor(() =>
       expect(mockApi.listScenarios.mock.calls.length).toBeGreaterThan(scenarioLoadsBefore),
     )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Workshop quarantine — invalid packs are surfaced with a readable reason
+// ---------------------------------------------------------------------------
+
+describe('Workshop quarantine banner', () => {
+  it('shows quarantined Workshop packs and their rejection reason', async () => {
+    mockApi.workshop.listQuarantine.mockResolvedValue({
+      ok: true,
+      data: {
+        items: [
+          {
+            item_id: '1234567890',
+            install_path: '/steam/workshop/1234567890',
+            reason: 'FORBIDDEN_FILE: executable content detected (evil.sh)',
+            quarantined_at: 1710000000,
+          },
+        ],
+      },
+    })
+
+    renderLibrary()
+
+    const banner = await screen.findByTestId('workshop-quarantine-banner')
+    expect(banner).toHaveTextContent('1 Workshop pack was quarantined')
+    const item = screen.getByTestId('workshop-quarantine-item-1234567890')
+    expect(item).toHaveTextContent('executable content detected')
+  })
+
+  it('renders no banner when there are no quarantined items', async () => {
+    renderLibrary()
+    // Let the mount effects settle.
+    await screen.findByText('Scenario Library')
+    await waitFor(() =>
+      expect(mockApi.workshop.listQuarantine).toHaveBeenCalled(),
+    )
+    expect(screen.queryByTestId('workshop-quarantine-banner')).not.toBeInTheDocument()
   })
 })

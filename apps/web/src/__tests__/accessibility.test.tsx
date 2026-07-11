@@ -81,7 +81,7 @@ vi.mock('../api/client', () => ({
     workshop: {
       listItems: vi.fn().mockResolvedValue({ ok: true, data: { items: [] } }),
       sync: vi.fn(),
-      listQuarantine: vi.fn(),
+      listQuarantine: vi.fn().mockResolvedValue({ ok: true, data: { items: [] } }),
       remove: vi.fn(),
     },
   },
