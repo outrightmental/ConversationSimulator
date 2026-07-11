@@ -25,7 +25,7 @@ The packaged app writes logs to the platform-specific application data directory
 | macOS | `~/Library/Application Support/com.outrightmental.convsim/logs/` |
 | Linux / Steam Deck | `~/.local/share/com.outrightmental.convsim/logs/` (or `$XDG_DATA_HOME/com.outrightmental.convsim/logs/`) |
 
-The recovery card shows the exact path for your machine and includes an **Open logs folder** button. In developer mode (running without Tauri), logs go to `~/.convsim/logs/` unless `CONVSIM_DATA_ROOT` is set.
+The recovery card shows the exact path for your machine and includes an **Open logs folder** button. In developer mode (running without Tauri), the `./scripts/dev.sh` and `./scripts/dev-desktop.sh` helpers set `CONVSIM_LOG_DIR=~/.convsim/logs`, so logs go there. Running `convsim-core` directly without `CONVSIM_LOG_DIR` writes to the platform-specific directory above (or `<CONVSIM_DATA_ROOT>/logs` when `CONVSIM_DATA_ROOT` is set).
 
 > **Legacy `~/.convsim` directory:** versions before v0.2.0 stored all app data under `~/.convsim/`. The packaged app no longer writes there. On first launch it runs a one-time migration that **copies** (never moves) `db/`, `packs/`, and other data into the platform-specific directory above — but only when that directory is still empty. If the new location already had data, migration is skipped and your `~/.convsim/` files are left untouched. Because the originals are only ever copied, `~/.convsim/` is safe to keep as a backup. Before deleting it, open the platform-specific directory above and confirm your `db/` and `packs/` folders are present there; a `.convsim_migrated_to_platform_dir` marker file inside `~/.convsim/` indicates a completed migration.
 
