@@ -1,0 +1,144 @@
+# SPDX-License-Identifier: Apache-2.0
+# Regression guard for issue #352: verify that the PyInstaller-built
+# convsim-core binary starts successfully and answers /api/health within 10 s.
+#
+# In a frozen PyInstaller bundle the entry script executes as __main__, so the
+# module convsim_core.main is not present in the frozen importer's namespace.
+# Passing an import string to uvicorn.run() causes uvicorn to call
+# importlib.import_module("convsim_core.main"), which raises ModuleNotFoundError
+# and kills the binary before it binds a port.  This workflow catches that class
+# of regression automatically on all three shipping platforms.
+#
+# The binary is built from source on each runner so the test exercises exactly
+# the same PyInstaller code path used by the release workflow.
+
+name: Binary health check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'services/convsim-core/**'
+      - '.github/workflows/binary-health-check.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'services/convsim-core/**'
+      - '.github/workflows/binary-health-check.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  binary-health-check:
+    name: Binary health check / ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux-x86_64
+            runner: ubuntu-latest
+          - name: macOS-aarch64
+            runner: macos-latest
+          - name: Windows-x86_64
+            runner: windows-2022
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            services/convsim-core/pyproject.toml
+            packages/prompt-composer/pyproject.toml
+
+      - name: Install prompt-composer
+        run: pip install -e "packages/prompt-composer"
+
+      - name: Install convsim-core with build extras
+        run: pip install -e "services/convsim-core[build]"
+
+      - name: Build convsim-core binary with PyInstaller
+        shell: bash
+        working-directory: services/convsim-core
+        run: python -m PyInstaller convsim-core.spec --noconfirm
+
+      # ── Linux / macOS ──────────────────────────────────────────────────────────
+      - name: Start binary and verify /api/health (Linux / macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        working-directory: services/convsim-core
+        run: |
+          set -euo pipefail
+          BINARY=dist/convsim-core
+
+          echo "=== Starting $BINARY ==="
+          "$BINARY" &
+          BINARY_PID=$!
+          echo "Binary PID: $BINARY_PID"
+
+          echo "=== Polling /api/health (10 s deadline) ==="
+          python3 - <<'PYEOF'
+          import sys, time, urllib.request, urllib.error
+
+          deadline = time.time() + 10
+          last_err = None
+          while time.time() < deadline:
+              try:
+                  with urllib.request.urlopen("http://127.0.0.1:7355/api/health", timeout=2) as r:
+                      if r.status == 200:
+                          print(f"OK: /api/health responded with HTTP {r.status}")
+                          sys.exit(0)
+              except Exception as exc:
+                  last_err = exc
+              time.sleep(0.5)
+
+          print(f"FAIL: /api/health did not respond within 10 s. Last error: {last_err}", file=sys.stderr)
+          sys.exit(1)
+          PYEOF
+
+          echo "=== Stopping binary ==="
+          kill "$BINARY_PID" 2>/dev/null || true
+
+      # ── Windows ───────────────────────────────────────────────────────────────
+      - name: Start binary and verify /api/health (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        working-directory: services/convsim-core
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $binary = "dist\convsim-core.exe"
+
+          Write-Host "=== Starting $binary ==="
+          $proc = Start-Process -FilePath $binary -PassThru -WindowStyle Hidden
+          Write-Host "Binary PID: $($proc.Id)"
+
+          Write-Host "=== Polling /api/health (10 s deadline) ==="
+          $deadline = (Get-Date).AddSeconds(10)
+          $ok = $false
+          while ((Get-Date) -lt $deadline) {
+              try {
+                  $resp = Invoke-WebRequest -Uri "http://127.0.0.1:7355/api/health" `
+                      -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop
+                  if ($resp.StatusCode -eq 200) {
+                      Write-Host "OK: /api/health responded with HTTP $($resp.StatusCode)"
+                      $ok = $true
+                      break
+                  }
+              } catch {
+                  # not ready yet
+              }
+              Start-Sleep -Milliseconds 500
+          }
+
+          Write-Host "=== Stopping binary ==="
+          try { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue } catch {}
+
+          if (-not $ok) {
+              Write-Error "FAIL: /api/health did not respond within 10 s"
+              exit 1
+          }
