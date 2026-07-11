@@ -55,9 +55,10 @@ That means:
 - No conversation logs on our end — there are none to subpoena, leak, or sell.
 - No internet required once your model is downloaded. Fly, commute, practise
   anywhere.
-- Your data directory is yours: `~/.local/share/convsim/` on Linux/Steam Deck,
-  `~/Library/Application Support/convsim/` on macOS, or
-  `%APPDATA%\convsim\` on Windows. Move it, back it up,
+- Your data directory is yours: `~/.local/share/convsim/` on Linux/Steam Deck
+  (or `$XDG_DATA_HOME/convsim` if set),
+  `~/Library/Application Support/com.outrightmental.convsim/` on macOS, or
+  `%LOCALAPPDATA%\outrightmental\convsim\` on Windows. Move it, back it up,
   or delete it from **Settings → Privacy → Clear all data**.
 
 ---
