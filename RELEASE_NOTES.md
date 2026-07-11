@@ -1,4 +1,41 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
+# Conversation Simulator v0.2.1 — Release Notes
+
+> **Patch release** — hotfix for the v0.2.0 Windows DOA (dead on arrival) bug.
+> All Windows users on v0.2.0 must update; macOS and Linux are unaffected but
+> are included in this release for consistency.
+
+---
+
+## What's fixed in v0.2.1
+
+### [Bug] Windows: `convsim-core.exe` exited immediately on any invocation (#352)
+
+Fresh v0.2.0 installs on Windows were broken: the sidecar process died the
+instant it was launched (exit code 1, recovery card shown every time). The
+root cause was an import-string passed to `uvicorn.run()` inside the
+PyInstaller bundle.
+
+**Root cause:** `main()` called `uvicorn.run("convsim_core.main:app", ...)`.
+In a frozen PyInstaller executable the entry script runs as `__main__`, so
+`convsim_core.main` is not present in the frozen importer's namespace. When
+uvicorn tried to resolve the string via `importlib.import_module`, it raised
+`ModuleNotFoundError` before the server ever bound a port. This was
+undetectable in a standard developer-venv run, where the package is always
+importable.
+
+**Fix:** `main()` now passes the ASGI app object directly:
+`uvicorn.run(app, ...)`. Since `reload=False` is the default, the import-string
+indirection bought nothing; the object form is equivalent in behaviour and works
+correctly inside a frozen executable.
+
+**Regression guard added:** A new CI workflow (`binary-health-check.yml`) builds
+the PyInstaller binary from source on Linux, macOS, and Windows and verifies
+that the binary starts and answers `GET /api/health` within 10 s. This catches
+any future recurrence of this class of frozen-importer regression.
+
+---
+
 # Conversation Simulator v0.1.0-alpha.1 — Release Notes
 
 > **Alpha release** — This build is an early preview. Expect rough edges and
