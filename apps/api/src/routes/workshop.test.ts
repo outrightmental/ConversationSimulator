@@ -400,11 +400,21 @@ describe('DELETE /api/workshop/:pack_id', () => {
   });
 
   it('returns removed:false when active sessions reference the pack', async () => {
+    // Import a real pack so its scenarios are registered in the shared index —
+    // the pack→scenario mapping the endpoint uses to detect referencing sessions.
+    const packDir = setupValidPack(tmpBase, 'item-22222', 'workshop.active_pack');
+    await app.inject({
+      method: 'POST',
+      url: '/api/workshop/sync',
+      payload: {
+        items: [{ item_id: '22222', install_path: packDir, needs_update: false, updated_at: 1710000000 }],
+      },
+    });
+
+    // Insert an in-progress session that references the pack's scenario_id.
+    // Real sessions store a SessionCreateRequest (scenario_id only, no pack_id),
+    // so the endpoint must resolve the reference via scenario_id, not pack_id.
     const db = getDb();
-    db.prepare(
-      'INSERT INTO workshop_items (item_id, pack_id, author_name, install_path, workshop_updated_at, synced_at) VALUES (?,?,?,?,?,?)',
-    ).run('22222', 'workshop.active_pack', 'Creator', '/path', 1710000000, 1710000000);
-    // Insert a session that references the pack_id
     db.prepare(
       `INSERT INTO sessions (session_id, scenario_id, state, created_at, setup_json, state_vars_json)
        VALUES (?, ?, ?, ?, ?, ?)`,
@@ -413,7 +423,7 @@ describe('DELETE /api/workshop/:pack_id', () => {
       'ws_basic',
       'PlayerTurnListening',
       new Date().toISOString(),
-      JSON.stringify({ pack_id: 'workshop.active_pack', scenario_id: 'ws_basic' }),
+      JSON.stringify({ scenario_id: 'ws_basic' }),
       '{}',
     );
 
@@ -422,5 +432,43 @@ describe('DELETE /api/workshop/:pack_id', () => {
     const body = res.json() as { removed: boolean; has_active_sessions: boolean };
     expect(body.removed).toBe(false);
     expect(body.has_active_sessions).toBe(true);
+
+    // The pack must remain in the library index while the session is active.
+    const packsBody = (await app.inject({ method: 'GET', url: '/api/packs' })).json() as { packs: Array<{ pack_id: string }> };
+    expect(packsBody.packs.some((p) => p.pack_id === 'workshop.active_pack')).toBe(true);
+  });
+
+  it('removes the pack when only ended sessions reference it', async () => {
+    // An Ended session references the pack's scenario but must not block removal.
+    const packDir = setupValidPack(tmpBase, 'item-21212', 'workshop.ended_pack');
+    await app.inject({
+      method: 'POST',
+      url: '/api/workshop/sync',
+      payload: {
+        items: [{ item_id: '21212', install_path: packDir, needs_update: false, updated_at: 1710000000 }],
+      },
+    });
+
+    const db = getDb();
+    db.prepare(
+      `INSERT INTO sessions (session_id, scenario_id, state, created_at, setup_json, state_vars_json)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run(
+      'ended-session-1',
+      'ws_basic',
+      'Ended',
+      new Date().toISOString(),
+      JSON.stringify({ scenario_id: 'ws_basic' }),
+      '{}',
+    );
+
+    const res = await app.inject({ method: 'DELETE', url: '/api/workshop/workshop.ended_pack' });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { removed: boolean; has_active_sessions: boolean };
+    expect(body.removed).toBe(true);
+    expect(body.has_active_sessions).toBe(false);
+
+    const packsBody = (await app.inject({ method: 'GET', url: '/api/packs' })).json() as { packs: Array<{ pack_id: string }> };
+    expect(packsBody.packs.some((p) => p.pack_id === 'workshop.ended_pack')).toBe(false);
   });
 });

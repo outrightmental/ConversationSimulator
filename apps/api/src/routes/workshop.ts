@@ -307,12 +307,33 @@ export async function workshopRoutes(app: FastifyInstance): Promise<void> {
 
       const db = getDb();
 
-      // Check for sessions that reference this pack's scenarios.
-      const activeCount = (db.prepare(`
-        SELECT COUNT(*) as cnt FROM sessions
-        WHERE setup_json LIKE ?
-          AND state NOT IN ('Ended', 'Abandoned')
-      `).get(`%"pack_id":"${pack_id}"%`) as { cnt: number }).cnt;
+      // Resolve the scenario_ids that belong to this pack. Sessions are keyed by
+      // scenario_id (their setup_json is a SessionCreateRequest, which carries
+      // scenario_id but NOT pack_id), so we cannot match sessions by a pack_id
+      // substring. The pack→scenario mapping lives in the shared pack index,
+      // which is a separate SQLite database from the app db that owns sessions.
+      let packScenarioIds: string[] = [];
+      if (_packsDbPath) {
+        const index = PackIndex.open(_packsDbPath);
+        try {
+          packScenarioIds = index.listScenarios(pack_id).map((s) => s.scenario_id);
+        } finally {
+          index.close();
+        }
+      }
+
+      // Check for in-progress sessions that reference this pack's scenarios.
+      // Any session that has not reached its terminal ('Ended') state is treated
+      // as active, so unsubscribe defers cleanup until the session finishes.
+      let activeCount = 0;
+      if (packScenarioIds.length > 0) {
+        const placeholders = packScenarioIds.map(() => '?').join(',');
+        activeCount = (db.prepare(`
+          SELECT COUNT(*) as cnt FROM sessions
+          WHERE scenario_id IN (${placeholders})
+            AND state != 'Ended'
+        `).get(...packScenarioIds) as { cnt: number }).cnt;
+      }
 
       if (activeCount > 0) {
         return {
