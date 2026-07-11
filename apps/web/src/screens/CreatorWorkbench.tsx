@@ -541,10 +541,10 @@ const SECURITY_RULES = new Set(['FORBIDDEN_FILE', 'FORBIDDEN_BINARY'])
 // Authoring documentation the suggested fixes refer to ("See the authoring
 // guide"). Surfaced as links so creators can reach them without leaving the
 // workbench.
-const AUTHORING_DOCS_URL = 'https://github.com/outrightmental/ConversationSimulator/blob/main/docs/scenario-authoring.md'
-const VALIDATION_DOCS_URL = 'https://github.com/outrightmental/ConversationSimulator/blob/main/docs/pack-validation.md'
-const QUALITY_BAR_DOCS_URL = 'https://github.com/outrightmental/ConversationSimulator/blob/main/docs/official-pack-quality-bar.md'
-const SAMPLE_PACK_DOCS_URL = 'https://github.com/outrightmental/ConversationSimulator/blob/main/packs/sample/hello-conversation/README.md'
+const AUTHORING_DOCS_URL = 'https://docs.conversationsimulator.com/create/scenario-authoring/'
+const VALIDATION_DOCS_URL = 'https://docs.conversationsimulator.com/create/pack-validation/'
+const QUALITY_BAR_DOCS_URL = 'https://docs.conversationsimulator.com/create/quality-bar/'
+const SAMPLE_PACK_DOCS_URL = 'https://docs.conversationsimulator.com/create/sample-pack/'
 
 function isSecurityIssue(issue: WorkbenchValidationIssue): boolean {
   return SECURITY_RULES.has(issue.rule_id) || issue.category === 'security'

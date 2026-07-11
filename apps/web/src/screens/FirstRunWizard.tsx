@@ -13,7 +13,7 @@ import type {
   PreflightCheck,
 } from '@convsim/shared'
 
-const SETUP_DOCS_URL = 'https://github.com/outrightmental/ConversationSimulator/wiki'
+const SETUP_DOCS_URL = 'https://docs.conversationsimulator.com/start/install/'
 const ISSUES_URL = 'https://github.com/outrightmental/ConversationSimulator/issues/new/choose'
 
 // Marks the one-time setup wizard complete so the FirstRunGuard stops redirecting here.

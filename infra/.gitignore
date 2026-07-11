@@ -1,0 +1,7 @@
+# Terraform local state and workspace files
+.terraform/
+terraform.tfstate
+terraform.tfstate.*
+*.tfvars
+*.tfplan
+crash.log

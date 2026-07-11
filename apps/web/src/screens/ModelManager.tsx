@@ -7,7 +7,7 @@ import type { ApiError } from '../api/errors'
 import { errorHeadline } from '../api/errors'
 import { ApiErrorView } from '../components/ApiErrorView'
 
-const SETUP_DOCS_URL = 'https://github.com/outrightmental/ConversationSimulator/wiki'
+const SETUP_DOCS_URL = 'https://docs.conversationsimulator.com/play/local-models/'
 
 interface SpeedClass {
   label: string

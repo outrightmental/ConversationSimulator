@@ -18,8 +18,8 @@ body:
         failures should not involve any session content — if they do, describe
         the content in general terms only.
 
-        See [docs/local-models.md](https://github.com/outrightmental/ConversationSimulator/blob/main/docs/local-models.md)
-        and [docs/troubleshooting.md](https://github.com/outrightmental/ConversationSimulator/blob/main/docs/troubleshooting.md)
+        See [Local models](https://docs.conversationsimulator.com/play/local-models/)
+        and [Troubleshooting](https://docs.conversationsimulator.com/start/troubleshooting/)
         before filing — common download and runtime issues are documented there.
 
   - type: dropdown

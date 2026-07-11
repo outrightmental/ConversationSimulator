@@ -1,4 +1,33 @@
 /* SPDX-License-Identifier: Apache-2.0 */
+/* Conversation Simulator — brand design tokens.
+   Two voices on a dark stage: violet is the player ("you"), emerald is the
+   character ("them"), amber marks scenario events. Screens currently use
+   these values as literals; new code should prefer the tokens.
+   Full visual identity guide: docs/brand.md */
+
+:root {
+  /* the stage */
+  --cs-stage: #0f0f11;
+  --cs-stage-deep: #09090b;
+  --cs-raise: #18181b;
+  --cs-border: #27272a;
+  /* text */
+  --cs-text: #e8e8ea;
+  --cs-text-strong: #f4f4f5;
+  --cs-text-muted: #a1a1aa;
+  --cs-text-faint: #71717a;
+  /* the two voices */
+  --cs-you: #a78bfa;
+  --cs-you-deep: #7c5cdb;
+  --cs-you-dim: #1e1b4b;
+  --cs-them: #6ee7b7;
+  --cs-them-deep: #10b981;
+  --cs-them-dim: #052e16;
+  /* the moment */
+  --cs-event: #fbbf24;
+  --cs-event-dim: #1c0a00;
+}
+
 *, *::before, *::after {
   box-sizing: border-box;
 }
@@ -6,8 +35,8 @@
 body {
   margin: 0;
   font-family: system-ui, -apple-system, sans-serif;
-  background: #0f0f11;
-  color: #e8e8ea;
+  background: var(--cs-stage);
+  color: var(--cs-text);
   min-height: 100vh;
 }
 
@@ -18,4 +47,15 @@ a {
 
 button {
   cursor: pointer;
+}
+
+/* Brand-colored keyboard focus ring — the player's voice */
+:focus-visible {
+  outline: 2px solid var(--cs-you);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--cs-you-dim);
+  color: var(--cs-text-strong);
 }

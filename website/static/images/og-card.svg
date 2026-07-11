@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <radialGradient id="glowV" cx="0.12" cy="0.0" r="0.9">
+      <stop offset="0" stop-color="#7c5cdb" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#7c5cdb" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowE" cx="0.95" cy="1.05" r="0.85">
+      <stop offset="0" stop-color="#10b981" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#10b981" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="630" fill="#0a0a0c"/>
+  <rect width="1200" height="630" fill="url(#glowV)"/>
+  <rect width="1200" height="630" fill="url(#glowE)"/>
+
+  <!-- mark -->
+  <g transform="translate(96,120) scale(1.9)">
+    <g fill="#a78bfa"><rect x="6" y="18" width="36" height="26" rx="8"/><path d="M13 40 L13 54 L27 40 Z"/></g>
+    <g fill="#6ee7b7"><rect x="22" y="6" width="36" height="26" rx="8"/><path d="M51 30 L51 44 L37 30 Z"/></g>
+  </g>
+
+  <text x="96" y="330" font-family="Segoe UI, Arial, sans-serif" font-size="78" font-weight="800" fill="#f4f4f5" letter-spacing="-1.5">Conversation Simulator</text>
+  <text x="96" y="398" font-family="Segoe UI, Arial, sans-serif" font-size="40" font-weight="500" fill="#a78bfa">The simulator for conversations.</text>
+
+  <text x="96" y="500" font-family="Segoe UI, Arial, sans-serif" font-size="27" fill="#a1a1aa">Practice interviews, negotiations, language, and difficult</text>
+  <text x="96" y="540" font-family="Segoe UI, Arial, sans-serif" font-size="27" fill="#a1a1aa">conversations — with AI characters that run 100% on your computer.</text>
+
+  <text x="96" y="594" font-family="Consolas, monospace" font-size="22" fill="#6ee7b7">no cloud · no account · no telemetry · free &amp; open source</text>
+</svg>

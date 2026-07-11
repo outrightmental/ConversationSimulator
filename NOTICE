@@ -34,6 +34,17 @@ Licensing summary by content type (SPDX identifiers):
            docs/assets/screenshots/06-model-manager.svg
     Content: All fictional NPCs and scenario data. No real people, voices, or private data.
 
+  Brand assets (docs/assets/brand/, site favicons and logos in website/,
+    docs-site/, apps/web/public/):
+    SPDX-License-Identifier: CC-BY-4.0
+    https://creativecommons.org/licenses/by/4.0/
+
+  Fraunces typeface (website/static/fonts/, docs-site/public/fonts/):
+    Copyright 2020 The Fraunces Project Authors
+    (https://github.com/undercasetype/Fraunces)
+    SPDX-License-Identifier: OFL-1.1
+    SIL Open Font License 1.1 — https://openfontlicense.org/
+
   Model weights:
     Not bundled in this repository.
     Downloaded by the user through explicit action only.

@@ -49,6 +49,61 @@ rubrics.
 
 ---
 
+## Visual identity
+
+The identity has one story: **two voices on a dark stage.** Everything else
+derives from it.
+
+### The mark — "The Exchange"
+
+Two speech bubbles mid-turn: violet underneath (the player, speaking up),
+emerald above (the character, replying). Source: `docs/assets/brand/mark.svg`.
+It is the favicon of the app, the website, and the docs site. Don't recolor
+it, don't separate the bubbles, don't add a third.
+
+### The two voices (palette)
+
+The colour system is the product's own transcript colour coding, promoted to
+brand. Use the CSS custom properties in `apps/web/src/index.css`.
+
+| Token | Hex | Role |
+|-------|-----|------|
+| `--cs-you` / deep / dim | `#a78bfa` / `#7c5cdb` / `#1e1b4b` | **You** — the player's voice. Primary actions, links, focus rings. |
+| `--cs-them` / deep / dim | `#6ee7b7` / `#10b981` / `#052e16` | **Them** — the character's voice. NPC labels, positive/ready state. |
+| `--cs-event` / dim | `#fbbf24` / `#1c0a00` | **The moment** — scenario events, turning points, warnings. |
+| `--cs-stage` / deep / raise | `#0f0f11` / `#09090b` / `#18181b` | **The stage** — background surfaces, darkest to raised. |
+| `--cs-border` | `#27272a` | Hairlines and card borders. |
+| `--cs-text` strong/base/muted/faint | `#f4f4f5` / `#e8e8ea` / `#a1a1aa` / `#71717a` | Type ramp. On marketing surfaces, keep small informative text at `#8b8b94` or lighter for WCAG AA. |
+
+Violet always means the player; emerald always means the character. Never
+swap them, and never use either as mere decoration where the you/them
+meaning could confuse.
+
+### Typography
+
+- **Display ("the playbill")**: [Fraunces](https://github.com/undercasetype/Fraunces)
+  (SIL OFL 1.1) — headlines and the wordmark on the website and docs site.
+  Warm, literary, a little theatrical; optical sizing on. The hero headline
+  may switch the WONK axis on. Self-hosted (`website/static/fonts/`,
+  `docs-site/public/fonts/`); never loaded from a third-party CDN.
+- **UI & body ("the instrument")**: the system stack
+  (`system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif`) — everything
+  in the app, and body text everywhere. Fast, native, offline-true.
+- **Stage directions**: the system mono stack, uppercase, letter-spaced —
+  micro-labels like `TURN 4 · NPC` and `SCENARIO EVENT`. This is the
+  identity's signature texture; use it for meter names, turn labels, and
+  data callouts.
+
+### Motifs
+
+- **The transcript card**: a conversation exchange with you/them colour
+  coding is the brand's hero image — prefer it over abstract illustration.
+- **State meters**: thin rounded bars in the voice colours. The number shown
+  always matches the fill.
+- **The wordmark** is set in Fraunces alongside the mark; the name is always
+  written out in full — "Conversation Simulator", never "ConvSim" in
+  user-facing surfaces (`convsim` survives only in code and CLI names).
+
 ## Tone guide
 
 **Authoritative, warm, concrete.** Conversation Simulator owns its category. It
