@@ -109,9 +109,17 @@ def fetch_fork_count(repo: str) -> int:
     return data.get("forks_count", 0)
 
 
-def fetch_pack_prs(repo: str) -> int:
-    """Return count of PRs with 'pack' in the title."""
-    items = _gh_search("prs", ["pack", "in:title"], repo)
+def fetch_pack_prs(repo: str, since: str | None = None) -> int:
+    """Return count of PRs with 'pack' in the title, optionally since a date.
+
+    Passing `since` (a YYYY-MM-DD string) restricts the count to PRs created on
+    or after that date via the `created:>=` search qualifier, so the number
+    reflects the observation window rather than the repository's lifetime.
+    """
+    terms = ["pack", "in:title"]
+    if since:
+        terms.append(f"created:>={since}")
+    items = _gh_search("prs", terms, repo)
     return len(items)
 
 
@@ -149,6 +157,14 @@ def main() -> None:
     print(f"Observation window: last {days} days (since {window_start})")
     print(f"Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
     print()
+    print(
+        "> Note: only the PR count below is restricted to the observation "
+        "window. Release download counts, label issue counts, and the fork "
+        "count are cumulative repository totals — the GitHub API does not "
+        "expose them per time window. Treat them as lifetime figures, not "
+        "90-day deltas."
+    )
+    print()
 
     # ── Section 1.1: Pack downloads and imports ────────────────────────────
     print("## 1.1 Pack downloads and imports")
@@ -185,14 +201,14 @@ def main() -> None:
     print("## 1.2 Creator activity on GitHub")
     print()
 
-    pack_pr_count = fetch_pack_prs(repo)
+    pack_pr_count = fetch_pack_prs(repo, since=window_start)
     fork_count = fetch_fork_count(repo)
     packs_contributors = fetch_packs_contributors()
 
     print("| Signal | Measurement method | Count / observation |")
     print("|--------|--------------------|---------------------|")
-    print(f"| PRs proposing new official packs | Search PRs with `pack` in title | {pack_pr_count} |")
-    print(f"| Forks of the repository | GitHub fork count | {fork_count} |")
+    print(f"| PRs proposing new official packs (created since {window_start}) | Search PRs with `pack` in title, `created:>={window_start}` | {pack_pr_count} |")
+    print(f"| Forks of the repository (cumulative total) | GitHub fork count | {fork_count} |")
     print(f"| Contributors who touched `packs/` | `git log --all -- packs/` unique authors | {len(packs_contributors)} |")
     print("| Issues requesting pack distribution improvements | Label filter + keyword search | _manual check required_ |")
     print("| Scenario authoring guide page views | GitHub Insights (traffic API) | _requires repo admin access_ |")
