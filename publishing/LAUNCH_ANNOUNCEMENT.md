@@ -56,8 +56,8 @@ That means:
 - No internet required once your model is downloaded. Fly, commute, practise
   anywhere.
 - Your data directory is yours: `~/.local/share/convsim/` on Linux/Steam Deck,
-  `~/Library/Application Support/com.outrightmental.convsim/` on macOS, or
-  `%LOCALAPPDATA%\outrightmental\convsim\` on Windows. Move it, back it up,
+  `~/Library/Application Support/convsim/` on macOS, or
+  `%APPDATA%\convsim\` on Windows. Move it, back it up,
   or delete it from **Settings → Privacy → Clear all data**.
 
 ---
@@ -81,9 +81,10 @@ before the bytes land on your machine. Here is how to get one:
 
 1. Launch the app. The **Model Manager** opens on first run.
 2. Choose a model from the built-in registry. We recommend starting with
-   **Qwen3 4B Instruct Q4\_K\_M** (~2.5 GB) for most hardware, or
-   **Qwen3 1.7B Instruct Q4\_K\_M** (~1 GB) if you are on a machine with
-   less than 8 GB of RAM.
+   **Qwen3 4B Instruct Q4\_K\_M** (~2.5 GB) — it is the lightest model in the
+   registry and the only practical choice for CPU-only machines. Larger models
+   (Qwen3 8B and up) are available if your hardware has the RAM/VRAM headroom
+   for them.
 3. Review the model name, licence, download size, SHA-256 checksum, and
    destination path shown in the Model Manager.
 4. Confirm the download. The app verifies the checksum automatically and
