@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState, useEffect, useMemo, useId, useRef } from 'react'
+import { useState, useEffect, useMemo, useId, useRef, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import type { ScenarioInfo, PackValidationResult } from '@convsim/shared'
 import { api, apiClient } from '../api/client'
@@ -111,7 +111,7 @@ export default function ScenarioLibrary() {
     })
   }
 
-  async function handleWorkshopSync() {
+  const handleWorkshopSync = useCallback(async () => {
     setWorkshopSyncState('syncing')
     setWorkshopSyncSummary(null)
     try {
@@ -144,7 +144,17 @@ export default function ScenarioLibrary() {
       setWorkshopSyncState('error')
       setWorkshopSyncSummary('Workshop sync failed.')
     }
-  }
+  }, [getSubscribedItems])
+
+  // Auto-sync Workshop subscriptions once on launch when Steam is available.
+  // This means a newly subscribed pack is ready to play without requiring a
+  // manual "Sync Workshop" click — fulfilling the "play it next launch" UX.
+  const hasAutoSyncedRef = useRef(false)
+  useEffect(() => {
+    if (!isSteamEnabled || hasAutoSyncedRef.current) return
+    hasAutoSyncedRef.current = true
+    void handleWorkshopSync()
+  }, [isSteamEnabled, handleWorkshopSync])
 
   useEffect(() => {
     loadScenarios()
