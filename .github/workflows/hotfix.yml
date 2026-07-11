@@ -1,0 +1,183 @@
+# SPDX-License-Identifier: Apache-2.0
+# Hotfix branch management for the Steam release.
+#
+# This workflow has two jobs:
+#
+#   create   — Opens a hotfix branch from a release tag, runs the smoke check,
+#              and prints the rollback record template for the maintainer to
+#              paste into publishing/ROLLBACK_AND_SUPPORT_MESSAGING.md.
+#
+#   validate — Runs the full smoke check on any branch named hotfix/* so that
+#              PRs targeting main or a release tag from a hotfix branch are
+#              validated before merge.
+#
+# ── When to use ──────────────────────────────────────────────────────────────
+#
+# Trigger `create` when a severity:critical or severity:high regression is
+# confirmed live on the default Steam branch.  The workflow:
+#   1. Creates `hotfix/<tag>-<slug>` from the given release tag.
+#   2. Runs the smoke check on the new branch.
+#   3. Prints the rollback record template (copy into ROLLBACK_AND_SUPPORT_MESSAGING.md).
+#
+# After the fix is committed to the hotfix branch, open a PR to main and tag
+# a new patch release.  Then re-run steam-deploy.yml + steam-promote.yml to
+# stage and promote the fixed build.
+#
+# See publishing/ROLLBACK_AND_SUPPORT_MESSAGING.md for the rollback procedure
+# and player-facing message templates.
+# See publishing/LAUNCH_DAY_RUNBOOK.md for the rollback trigger criteria.
+
+name: Hotfix
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: >
+          Release tag to branch from (e.g. v0.3.0).
+          The hotfix branch will be named hotfix/<tag>-<slug>.
+        required: true
+        type: string
+      slug:
+        description: >
+          Short kebab-case description of the defect (e.g. privacy-regression,
+          crash-on-launch-windows). Used as the branch name suffix.
+        required: true
+        type: string
+      severity:
+        description: Severity of the defect triggering this hotfix.
+        required: true
+        type: choice
+        options:
+          - critical
+          - high
+      defect_summary:
+        description: >
+          One-sentence plain-language description of the defect. Included in
+          the printed rollback record template.
+        required: true
+        type: string
+      rollback_initiated:
+        description: >
+          Has the default-branch rollback already been performed in Steamworks
+          App Admin? (yes / no — record for the provenance log)
+        required: true
+        type: choice
+        options:
+          - 'yes'
+          - 'no — rollback not yet performed'
+
+  # Validate any push to a hotfix branch so the fix is smoke-checked before merge.
+  push:
+    branches:
+      - 'hotfix/**'
+
+# Serialize hotfix creation so two dispatches cannot race on the same branch name;
+# validation pushes are keyed per branch so unrelated hotfix branches do not block
+# each other.
+concurrency:
+  group: hotfix-${{ github.event_name == 'workflow_dispatch' && 'create' || github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  # ── Create hotfix branch ───────────────────────────────────────────────────
+  create:
+    name: Create hotfix branch
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.release_tag }}
+
+      - name: Validate inputs
+        env:
+          SLUG: ${{ inputs.slug }}
+          TAG:  ${{ inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          if ! echo "$TAG" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]'; then
+            echo "ERROR: release_tag must start with 'v' followed by a semver (e.g. v0.3.0)." >&2
+            exit 1
+          fi
+          if ! echo "$SLUG" | grep -qE '^[a-z0-9]+(-[a-z0-9]+)*$'; then
+            echo "ERROR: slug must be kebab-case lowercase alphanumeric (e.g. privacy-regression)." >&2
+            exit 1
+          fi
+
+      - name: Create hotfix branch
+        env:
+          BRANCH: hotfix/${{ inputs.release_tag }}-${{ inputs.slug }}
+          TAG:    ${{ inputs.release_tag }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          if git ls-remote --exit-code origin "refs/heads/$BRANCH" > /dev/null 2>&1; then
+            echo "ERROR: Branch '$BRANCH' already exists on the remote." >&2
+            echo "       If this hotfix is already in progress, push commits to the" >&2
+            echo "       existing branch directly rather than re-running this workflow." >&2
+            exit 1
+          fi
+
+          git checkout -b "$BRANCH"
+          git push origin "$BRANCH"
+          echo "Created branch: $BRANCH (from $TAG)"
+
+      - name: Run smoke check
+        run: bash scripts/smoke-check.sh
+
+      - name: Print rollback record template
+        env:
+          TAG:      ${{ inputs.release_tag }}
+          SLUG:     ${{ inputs.slug }}
+          SEVERITY: ${{ inputs.severity }}
+          SUMMARY:  ${{ inputs.defect_summary }}
+          ROLLED_BACK: ${{ inputs.rollback_initiated }}
+          BRANCH:   hotfix/${{ inputs.release_tag }}-${{ inputs.slug }}
+          ACTOR:    ${{ github.actor }}
+          RUN_URL:  ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          echo "========================================================"
+          echo "  Hotfix Branch Record"
+          echo "========================================================"
+          echo "  Date (UTC)          : $(date -u '+%Y-%m-%d %H:%M UTC')"
+          echo "  Defective release   : $TAG"
+          echo "  Hotfix branch       : $BRANCH"
+          echo "  Defect severity     : $SEVERITY"
+          echo "  Defect summary      : $SUMMARY"
+          echo "  Rollback performed  : $ROLLED_BACK"
+          echo "  Initiated by        : $ACTOR"
+          echo "  CI run              : $RUN_URL"
+          echo "========================================================"
+          echo ""
+          echo "Next steps:"
+          echo "  1. Commit the fix to '$BRANCH'."
+          echo "  2. Open a PR from '$BRANCH' to main."
+          echo "  3. After merge, tag a new patch release (e.g. ${TAG%.*}.$((${TAG##*.} + 1)))."
+          echo "     (If the version has a pre-release suffix, increment the patch segment.)"
+          echo "  4. Run steam-deploy.yml with the new patch tag to stage the fixed build."
+          echo "  5. Run steam-promote.yml to record provenance, then set the fixed"
+          echo "     build live on 'default' in Steamworks App Admin."
+          echo "  6. Post the appropriate player-facing message from"
+          echo "     publishing/ROLLBACK_AND_SUPPORT_MESSAGING.md."
+          echo "  7. Close the severity:critical GitHub issue opened during rollback."
+          echo "========================================================"
+
+  # ── Validate hotfix branches on push / PR ─────────────────────────────────
+  validate:
+    name: Smoke check (hotfix branch)
+    runs-on: ubuntu-latest
+    if: >
+      github.event_name == 'push' &&
+      startsWith(github.ref, 'refs/heads/hotfix/')
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run smoke check
+        run: bash scripts/smoke-check.sh

@@ -71,11 +71,14 @@ Complete the day before the scheduled launch.
 ### Announcement content
 
 Draft the announcement before launch day so it can be posted within minutes of
-setting the app live:
+setting the app live. The canonical announcement text is in
+[`publishing/LAUNCH_ANNOUNCEMENT.md`](LAUNCH_ANNOUNCEMENT.md).
 
-- [ ] Steam announcement post drafted in Steamworks → Community Hub → Post Announcement.
-- [ ] Announcement saved as a draft (do not publish yet).
-- [ ] Outright Mental has approved the announcement text.
+- [ ] [`publishing/LAUNCH_ANNOUNCEMENT.md`](LAUNCH_ANNOUNCEMENT.md) reviewed
+      and all three sign-offs recorded (Outright Mental, platform lead, support
+      communications owner).
+- [ ] Steam announcement post pasted into Steamworks → Community Hub → Post
+      Announcement and saved as a draft (do not publish yet).
 - [ ] Any external announcement (social media, mailing list) is queued and ready
       to publish, coordinated with the Steam announcement.
 
@@ -206,6 +209,9 @@ See [Support monitoring](#support-monitoring) below.
 
 - [ ] All triage owners notified that monitoring has started.
 - [ ] Monitoring cadence established (see schedule below).
+- [ ] [`publishing/POST_LAUNCH_FEEDBACK_SUMMARY.md`](POST_LAUNCH_FEEDBACK_SUMMARY.md)
+      opened and ready to record findings — complete the 72-hour draft when the
+      monitoring window closes.
 
 ---
 
@@ -294,6 +300,22 @@ warrant a rollback unless they are the tip of a larger regression.
 For the full rollback runbook and player-facing support message templates, see
 [`publishing/ROLLBACK_AND_SUPPORT_MESSAGING.md`](ROLLBACK_AND_SUPPORT_MESSAGING.md).
 
+### Hotfix branch
+
+After the rollback is confirmed live, create a hotfix branch immediately so
+the fix can be tracked and reviewed:
+
+1. Trigger [`.github/workflows/hotfix.yml`](../.github/workflows/hotfix.yml)
+   with `release_tag` set to the version that was rolled back,
+   `slug` set to a short description of the defect (e.g. `privacy-regression`),
+   `severity` set to the issue severity, and `defect_summary` as a one sentence
+   description.
+2. The workflow creates `hotfix/<tag>-<slug>` and prints the rollback record
+   template. Copy the record block into
+   [`publishing/ROLLBACK_AND_SUPPORT_MESSAGING.md`](ROLLBACK_AND_SUPPORT_MESSAGING.md).
+3. Commit the fix to the hotfix branch and open a PR to main following the
+   printed next-steps instructions.
+
 ### Do not re-promote
 
 Do not re-promote the rolled-back build until:
@@ -338,6 +360,7 @@ Use these labels in GitHub Issues. The full triage flow is in
 | App does not launch, crashes, Steam overlay broken, controller broken, Steam Deck crash | `steam` + `platform-bug` | Platform lead |
 | Model download fails, checksum mismatch, model not loading | `steam` + `model-install` | Platform lead |
 | NPC gives wrong response, scoring incorrect, scenario broken | `steam` + `pack-bug` | Content / pack owner |
+| Slow inference, high CPU/GPU, long load times, audio stutter, UI frame-rate | `steam` + `performance` | Platform lead |
 | Unexpected network activity, "sent my data", privacy concern | `steam` + `privacy` + `safety` | **Privacy fast-path — escalate immediately** |
 | Creator Workbench crash, pack import fails | `steam` + `creator-workbench` | Platform lead |
 | Compliment / general feedback | No label needed | Support communications owner — respond and thank |
@@ -369,11 +392,14 @@ Add additional rows for any incidents, rollbacks, or escalations.
 
 ## Links
 
+- [`publishing/LAUNCH_ANNOUNCEMENT.md`](LAUNCH_ANNOUNCEMENT.md) — launch announcement copy (Steam post and external channels)
+- [`publishing/POST_LAUNCH_FEEDBACK_SUMMARY.md`](POST_LAUNCH_FEEDBACK_SUMMARY.md) — 72-hour feedback summary and next milestone plan template
 - [`publishing/STEAM_REVIEW_SUBMISSION.md`](STEAM_REVIEW_SUBMISSION.md) — Steamworks store review submission runbook
 - [`publishing/ROLLBACK_AND_SUPPORT_MESSAGING.md`](ROLLBACK_AND_SUPPORT_MESSAGING.md) — rollback procedure and player support messages
 - [`publishing/BETA_FEEDBACK_AND_LAUNCH_RISKS.md`](BETA_FEEDBACK_AND_LAUNCH_RISKS.md) — private beta feedback summary and accepted launch risks
 - [`publishing/STEAM_PUBLISHING_AND_DEPLOYMENT.md`](STEAM_PUBLISHING_AND_DEPLOYMENT.md) — SteamPipe build and deploy runbook
 - [`publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md`](STEAM_COMPLIANCE_AND_RISK_REGISTER.md) — compliance checklist and risk register
+- [`.github/workflows/hotfix.yml`](../.github/workflows/hotfix.yml) — hotfix branch creation and validation workflow
 - [`docs/steam-triage.md`](../docs/steam-triage.md) — full triage routing and SLA policy
 - [`docs/steam-mvp-scope.md`](../docs/steam-mvp-scope.md) — Stage 4 gate criteria
 - [`docs/release-checklist.md`](../docs/release-checklist.md) — platform smoke matrix and beta verification

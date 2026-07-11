@@ -18,6 +18,7 @@ auto-applies one or more labels via GitHub front matter.
 | Steam — platform bug | `steam`, `platform-bug` | Launcher, Steam overlay, controller navigation, Steam Deck, code-signing, or platform-specific crash |
 | Steam — local model install failure | `steam`, `model-install` | Model Manager download, checksum verification, or model-load failures |
 | Steam — pack validation or content bug | `steam`, `pack-bug` | Schema error, broken scenario, incorrect scoring, or content rating mismatch |
+| Steam — performance or frame-rate issue | `steam`, `performance` | Slow inference, high CPU/GPU usage, long load times, audio stuttering, or UI frame-rate problems |
 | Steam — privacy or safety report | `steam`, `privacy`, `safety` | Unexpected network activity, data written outside `~/.convsim/`, or content safety violations |
 | Steam — Creator Workbench bug | `steam`, `creator-workbench` | Pack authoring, scenario editing, asset management, or Workbench-specific crashes |
 
@@ -105,6 +106,8 @@ Apply the following adjustments to the private beta flow.
 | Reproducible only on a non-required platform | Label `platform:unsupported`, note in a comment, defer to post-launch milestone. |
 | `model-install` failure on a model not in the registry | Route to the model registry maintainer; label `triage:registry`. |
 | `pack-bug` in a community pack (not an official Outright Mental pack) | Confirm the pack source; if community-distributed, close with a pointer to the pack's own repository. |
+| `performance` report with no hardware details | Label `needs-info`, request CPU/GPU/RAM and model name/quantisation. |
+| `performance` report on hardware below minimum spec | Label `platform:below-spec`, close with a note about minimum requirements and the recommended lower-quantisation model option. |
 | `privacy` or `safety` escalation | Same fast-path as private beta — immediate escalation regardless of severity label. |
 | Reporter discloses session transcripts or audio in the issue | Add a maintainer comment reminding the reporter that session data is private, advise them to edit the issue or close and re-file without the content, and do not quote the disclosed content in any response. |
 
@@ -152,4 +155,7 @@ See [privacy.md](privacy.md) for the full local-first data handling policy and
 - [network-security.md](network-security.md) — runtime network enforcement
 - [safety-policy.md](safety-policy.md) — content safety policy
 - [SECURITY.md](../SECURITY.md) — security vulnerability disclosure
+- [publishing/LAUNCH_DAY_RUNBOOK.md](../publishing/LAUNCH_DAY_RUNBOOK.md) — launch day operations, rollback criteria, hotfix workflow
+- [publishing/POST_LAUNCH_FEEDBACK_SUMMARY.md](../publishing/POST_LAUNCH_FEEDBACK_SUMMARY.md) — 72-hour feedback summary and next milestone plan
+- [.github/workflows/hotfix.yml](../.github/workflows/hotfix.yml) — hotfix branch creation workflow
 - [GitHub issue templates](https://github.com/outrightmental/ConversationSimulator/tree/main/.github/ISSUE_TEMPLATE) — all available templates
