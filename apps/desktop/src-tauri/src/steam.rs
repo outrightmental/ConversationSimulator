@@ -242,14 +242,18 @@ impl SteamRuntime {
                         .contains(steamworks::ItemState::NEEDS_UPDATE);
                     WorkshopItem {
                         item_id: id.0.to_string(),
+                        // `item_install_info` returns `Option<InstallInfo>`, a
+                        // struct with `folder: String`, `size_on_disk: u64`, and
+                        // `timestamp: u32` — not a tuple. The folder is already a
+                        // `String`, so no lossy path conversion is needed.
                         install_path: install_info
                             .as_ref()
-                            .map(|(_, p, _)| p.to_string_lossy().into_owned())
+                            .map(|info| info.folder.clone())
                             .unwrap_or_default(),
                         needs_update,
                         updated_at: install_info
                             .as_ref()
-                            .map(|(_, _, ts)| *ts)
+                            .map(|info| info.timestamp)
                             .unwrap_or(0),
                     }
                 })
