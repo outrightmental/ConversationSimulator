@@ -13,7 +13,7 @@ interface RuntimeRecoveryCardProps {
   title: string
   description: string
   errorDetail?: string | null
-  /** Path to the log file shown to advanced users. */
+  /** Path to the log directory shown to advanced users. */
   logPath?: string | null
   /** URL of the troubleshooting guide anchor for this failure class. */
   troubleshootingHref: string
@@ -137,7 +137,7 @@ export default function RuntimeRecoveryCard({
       {errorDetail && <p style={detailStyle}>{errorDetail}</p>}
       {logPath && (
         <p style={{ ...bodyStyle, marginBottom: '0' }}>
-          Logs:{' '}
+          Logs folder:{' '}
           <code style={{ fontSize: '0.8rem', color: '#71717a' }}>{logPath}</code>
         </p>
       )}

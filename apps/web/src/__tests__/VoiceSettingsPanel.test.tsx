@@ -109,8 +109,7 @@ describe('voice readiness cards', () => {
 
   it('shows STT as ready when health reports stt_ready', async () => {
     render(<VoiceSettingsPanel />)
-    await waitFor(() => expect(screen.getByTestId('readiness-stt')).toBeInTheDocument())
-    expect(screen.getByTestId('readiness-stt')).toHaveTextContent('model loaded')
+    await waitFor(() => expect(screen.getByTestId('readiness-stt')).toHaveTextContent('model loaded'))
   })
 
   it('shows TTS as ready when health reports tts_ready', async () => {

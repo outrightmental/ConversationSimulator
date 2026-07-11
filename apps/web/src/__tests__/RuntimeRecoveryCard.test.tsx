@@ -63,16 +63,28 @@ describe('RuntimeRecoveryCard — basic rendering', () => {
     expect(screen.queryByText(/port/i)).not.toBeInTheDocument()
   })
 
-  it('shows the log path when provided', () => {
+  it('shows the log folder path when provided', () => {
     render(
       <RuntimeRecoveryCard
         title="Title"
         description="Desc"
-        logPath="~/.convsim/logs/app.log"
+        logPath="/home/user/.local/share/convsim/logs"
         troubleshootingHref={TROUBLESHOOTING_HREF}
       />,
     )
-    expect(screen.getByText('~/.convsim/logs/app.log')).toBeInTheDocument()
+    expect(screen.getByText('/home/user/.local/share/convsim/logs')).toBeInTheDocument()
+  })
+
+  it('shows "Logs folder:" label with the path', () => {
+    render(
+      <RuntimeRecoveryCard
+        title="Title"
+        description="Desc"
+        logPath="/home/user/.local/share/convsim/logs"
+        troubleshootingHref={TROUBLESHOOTING_HREF}
+      />,
+    )
+    expect(screen.getByRole('alert')).toHaveTextContent(/logs folder:/i)
   })
 })
 
