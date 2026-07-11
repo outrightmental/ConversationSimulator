@@ -34,14 +34,14 @@ from convsim_core.runtime.types import (
 # and trigger the debrief.
 
 _FIRST_WORDS_SCRIPT: list[dict] = [
-    # turn 1 — welcome and orient
+    # turn 1 — respond to the player's first message (the scenario's opening line
+    # already delivered the welcome, so this must NOT repeat it).
     {
         "npc_utterance": (
-            "Welcome! I'm Alex Chen, your tutorial guide. This is Conversation Simulator "
-            "— a private, offline practice space for conversations that matter. "
-            "Notice the two meters at the top: Engagement and Confidence. "
-            "They update every turn based on what you say. "
-            "Go ahead — say anything to get us started."
+            "There you go — you just took your very first turn! Look up at the two "
+            "meters: Engagement and Confidence both nudged the moment you hit send. "
+            "Every message you write moves them a little; that's the heartbeat of "
+            "every scenario. Keep going — tell me what brought you here today."
         ),
         "npc_emotion": "warm",
         "state_delta": {"engagement": 10, "confidence": 5},
