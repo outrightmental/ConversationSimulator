@@ -11,7 +11,7 @@ import { sessionRoutes } from './routes/sessions.js';
 import { sessionWsRoutes } from './routes/session-ws.js';
 import { privacyRoutes, setDataFolderPath, setExportsFolderPath, setLogsFolderPath, setModelsFolderPath, setPacksFolderPath } from './routes/privacy.js';
 import { workbenchRoutes, setWorkbenchRoots } from './routes/workbench.js';
-import { workshopRoutes, setWorkshopRoot } from './routes/workshop.js';
+import { workshopRoutes, setWorkshopRoot, setWorkshopPacksDbPath } from './routes/workshop.js';
 import { modelsRoutes } from './routes/models.js';
 import { runtimeSettingsRoutes } from './routes/runtime-settings.js';
 import { logbookRoutes } from './routes/logbook.js';
@@ -93,6 +93,7 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
   setWorkshopRoot(
     process.env['PACKS_WORKSHOP_ROOT'] ?? path.join(os.homedir(), '.convsim', 'packs', 'workshop'),
   );
+  setWorkshopPacksDbPath(packsDbPath);
   const app = await buildApp();
   await app.listen(listenConfig);
 }

@@ -14,7 +14,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
-import { loadPack, PackLoaderError } from '@convsim/pack-loader';
+import { loadPack, PackIndex, PackLoaderError, type LoadedPack } from '@convsim/pack-loader';
 import { getDb } from '../db.js';
 import {
   scanForbiddenFiles,
@@ -30,6 +30,19 @@ export function setWorkshopRoot(workshopRoot: string): void {
 
 export function getWorkshopRoot(): string {
   return _workshopRoot;
+}
+
+// Path to the shared pack index (installed_packs / indexed_scenarios). Workshop
+// packs are registered here through the same PackIndex used by manual import so
+// their scenarios become visible in the library and launchable at runtime.
+let _packsDbPath: string | null = null;
+
+export function setWorkshopPacksDbPath(dbPath: string | null): void {
+  _packsDbPath = dbPath;
+}
+
+export function getWorkshopPacksDbPath(): string | null {
+  return _packsDbPath;
 }
 
 // ---------------------------------------------------------------------------
@@ -150,9 +163,11 @@ export async function workshopRoutes(app: FastifyInstance): Promise<void> {
         let pack_id: string | null = null;
         let author_name = '';
         let packLoadWarnings: WorkbenchValidationIssue[] = [];
+        let loadedPack: LoadedPack | null = null;
 
         try {
           const loaded = loadPack(installPath, 'workshop');
+          loadedPack = loaded;
           pack_id = loaded.manifest.pack_id;
           author_name = loaded.manifest.author;
           // Convert pack-loader ValidationWarning to the workbench issue shape.
@@ -177,7 +192,7 @@ export async function workshopRoutes(app: FastifyInstance): Promise<void> {
 
         const errors = validationIssues.filter((i) => i.severity === 'error');
 
-        if (errors.length > 0 || pack_id === null) {
+        if (errors.length > 0 || pack_id === null || loadedPack === null) {
           // Quarantine the invalid pack — record the reason but never import it.
           const reason = errors.length > 0
             ? errors.map((e) => `${e.rule_id}: ${e.message}`).join('; ')
@@ -193,6 +208,20 @@ export async function workshopRoutes(app: FastifyInstance): Promise<void> {
 
           results.push({ item_id: item.item_id, pack_id: null, status: 'quarantined', reason });
           continue;
+        }
+
+        // Register the validated pack in the shared pack index — the exact same
+        // step manual zip import performs (packs.ts). Without this the pack's
+        // scenarios never appear in the library and cannot be launched. The pack
+        // is indexed in place at its Steam install path; Steam owns those files
+        // and updates them on the next sync.
+        if (_packsDbPath) {
+          const index = PackIndex.open(_packsDbPath);
+          try {
+            index.importPack(loadedPack);
+          } finally {
+            index.close();
+          }
         }
 
         // Remove from quarantine if it was previously listed there (pack was fixed upstream).
@@ -300,6 +329,18 @@ export async function workshopRoutes(app: FastifyInstance): Promise<void> {
 
       // Remove from workshop_items.
       db.prepare('DELETE FROM workshop_items WHERE pack_id = ?').run(pack_id);
+
+      // Remove the pack (and its scenarios) from the shared pack index so the
+      // imported content disappears from the library. Mirrors the registration
+      // performed during sync; the Workshop files themselves are removed by Steam.
+      if (_packsDbPath) {
+        const index = PackIndex.open(_packsDbPath);
+        try {
+          index.removePack(pack_id);
+        } finally {
+          index.close();
+        }
+      }
 
       // Clean up any quarantine record for the same Steam item (e.g. if the
       // pack was previously quarantined and then successfully imported).

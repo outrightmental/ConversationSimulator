@@ -5,11 +5,14 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../index.js';
-import { setWorkshopRoot } from './workshop.js';
+import { setWorkshopRoot, setWorkshopPacksDbPath } from './workshop.js';
+import { setPacksDbPath, setPacksDataDir } from './packs.js';
+import { setScenariosDbPath } from './scenarios.js';
 import { resetDb, getDb } from '../db.js';
 
 let app: FastifyInstance;
 let workshopRoot: string;
+let packsDbPath: string;
 let tmpBase: string;
 
 // Writes a minimal valid pack directory to the given parent dir under `slug`.
@@ -48,11 +51,23 @@ beforeEach(async () => {
   workshopRoot = join(tmpBase, 'workshop');
   mkdirSync(workshopRoot, { recursive: true });
   setWorkshopRoot(workshopRoot);
+  // Wire the shared pack index so workshop imports register into installed_packs
+  // and become visible via /api/packs and /api/scenarios, exactly like manual import.
+  packsDbPath = join(tmpBase, 'packs.db');
+  mkdirSync(join(tmpBase, 'packs-data'), { recursive: true });
+  setWorkshopPacksDbPath(packsDbPath);
+  setPacksDbPath(packsDbPath);
+  setPacksDataDir(join(tmpBase, 'packs-data'));
+  setScenariosDbPath(packsDbPath);
   app = await buildApp();
 });
 
 afterEach(async () => {
   await app.close();
+  setWorkshopPacksDbPath(null);
+  setPacksDbPath(null);
+  setPacksDataDir(null);
+  setScenariosDbPath(null);
   try { rmSync(tmpBase, { recursive: true, force: true }); } catch { /* ignore */ }
 });
 
@@ -130,6 +145,33 @@ describe('POST /api/workshop/sync', () => {
     expect(body.imported).toBe(1);
     expect(body.results[0]?.status).toBe('imported');
     expect(body.results[0]?.pack_id).toBe('workshop.valid_pack');
+  });
+
+  it('registers the imported pack in the shared index so its scenarios appear in the library', async () => {
+    const packDir = setupValidPack(tmpBase, 'item-44444', 'workshop.indexed_pack');
+
+    await app.inject({
+      method: 'POST',
+      url: '/api/workshop/sync',
+      payload: {
+        items: [{
+          item_id: '44444',
+          install_path: packDir,
+          needs_update: false,
+          updated_at: 1710000000,
+        }],
+      },
+    });
+
+    // The pack must show up in /api/packs (installed_packs index).
+    const packsRes = await app.inject({ method: 'GET', url: '/api/packs' });
+    const packsBody = packsRes.json() as { packs: Array<{ pack_id: string }> };
+    expect(packsBody.packs.some((p) => p.pack_id === 'workshop.indexed_pack')).toBe(true);
+
+    // And its scenario must be browsable/launchable via /api/scenarios.
+    const scenRes = await app.inject({ method: 'GET', url: '/api/scenarios' });
+    const scenBody = scenRes.json() as Array<{ scenario_id: string; pack_id: string }>;
+    expect(scenBody.some((s) => s.scenario_id === 'ws_basic' && s.pack_id === 'workshop.indexed_pack')).toBe(true);
   });
 
   it('records the import in workshop_items table', async () => {
@@ -322,6 +364,32 @@ describe('DELETE /api/workshop/:pack_id', () => {
     // Row should be gone from DB
     const row = db.prepare('SELECT * FROM workshop_items WHERE pack_id = ?').get('workshop.to_remove');
     expect(row).toBeUndefined();
+  });
+
+  it('removes the imported pack from the shared index on unsubscribe', async () => {
+    // Import a real pack so it lands in installed_packs, then unsubscribe it.
+    const packDir = setupValidPack(tmpBase, 'item-33333', 'workshop.cleanup_pack');
+    await app.inject({
+      method: 'POST',
+      url: '/api/workshop/sync',
+      payload: {
+        items: [{ item_id: '33333', install_path: packDir, needs_update: false, updated_at: 1710000000 }],
+      },
+    });
+
+    // Confirm it is present before removal.
+    let packsBody = (await app.inject({ method: 'GET', url: '/api/packs' })).json() as { packs: Array<{ pack_id: string }> };
+    expect(packsBody.packs.some((p) => p.pack_id === 'workshop.cleanup_pack')).toBe(true);
+
+    const res = await app.inject({ method: 'DELETE', url: '/api/workshop/workshop.cleanup_pack' });
+    expect(res.statusCode).toBe(200);
+    expect((res.json() as { removed: boolean }).removed).toBe(true);
+
+    // Pack and its scenarios must be gone from the library index.
+    packsBody = (await app.inject({ method: 'GET', url: '/api/packs' })).json() as { packs: Array<{ pack_id: string }> };
+    expect(packsBody.packs.some((p) => p.pack_id === 'workshop.cleanup_pack')).toBe(false);
+    const scenBody = (await app.inject({ method: 'GET', url: '/api/scenarios' })).json() as Array<{ pack_id: string }>;
+    expect(scenBody.some((s) => s.pack_id === 'workshop.cleanup_pack')).toBe(false);
   });
 
   it('returns removed:true when pack_id is not in workshop_items (idempotent)', async () => {
