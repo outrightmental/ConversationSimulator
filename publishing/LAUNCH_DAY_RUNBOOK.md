@@ -123,12 +123,18 @@ If the `beta` branch is not already live from Stage 3:
 This is the point of no return. The `default` branch immediately serves all
 new installs.
 
-**Preferred path — dedicated promote workflow (build already staged):**
+> **Note — the default-branch set-live is a manual App Admin action.**
+> Steam does **not** let CI set the `default` branch live for a released app:
+> the change requires an authorization prompt sent to the requesting account's
+> Steam Mobile Authenticator (or SMS). The promote workflow therefore gates the
+> release, captures the provenance record, and prints the exact App Admin steps —
+> a human completes the actual Set Build Live in Steamworks.
+
+**Preferred path — promote workflow + App Admin (build already staged):**
 
 If the build was previously uploaded with `set_live_branch` left empty or set
-to `beta` via `steam-deploy.yml`, use the promotion workflow instead of
-re-uploading content.  `+set_build_live_branch` is a metadata-only operation
-that sets an existing Steamworks build live without transferring depot files again.
+to `beta` via `steam-deploy.yml`, the depot content is already on Valve's CDN,
+so no re-upload is needed — only the branch pointer changes.
 
 1. Trigger the promote workflow (`.github/workflows/steam-promote.yml`):
    - `build_id`: the Build ID shown in Steamworks → App Admin → Builds for
@@ -142,17 +148,24 @@ that sets an existing Steamworks build live without transferring depot files aga
      criteria are met and the release owner has given go/no-go.
 2. Approve the workflow run in the `steam-release` environment (requires a
    reviewer with the required-reviewer role).
-3. Wait for the workflow to complete successfully.
-4. Copy the "Steam Promotion Record" block from the "Record promotion details"
+3. Wait for the workflow to complete successfully. It verifies the go/no-go
+   gate, hashes the release artifacts, and prints both the App Admin
+   instructions and the "Steam Promotion Record" block.
+4. In Steamworks → App Admin → Builds, set `build_id` live on the `default`
+   branch and approve the authorization prompt in your Steam Mobile
+   Authenticator (or via SMS), following the printed instructions.
+5. Copy the "Steam Promotion Record" block from the "Record promotion details"
    step output and add it to [`publishing/STEAM_PROMOTION_LOG.md`](STEAM_PROMOTION_LOG.md).
 
 **Fallback path — re-upload (build not yet staged):**
 
 If the build has not been uploaded to Steamworks yet, trigger `steam-deploy.yml`
-with the launch tag and `set_live_branch: default` instead.
+with the launch tag to stage the depot content, then set the build live on the
+`default` branch manually in App Admin as in step 4 above.
 
 - [ ] Workflow completed with exit code 0.
-- [ ] `default` branch shows the launch build in Steamworks App Admin → Builds.
+- [ ] `default` branch set live and shows the launch build in Steamworks App
+      Admin → Builds (App Admin authorization prompt approved).
 - [ ] Promotion record added to [`publishing/STEAM_PROMOTION_LOG.md`](STEAM_PROMOTION_LOG.md).
 
 ### Step 4 — Verify CDN propagation (T+15 minutes)
