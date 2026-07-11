@@ -27,9 +27,15 @@ from datetime import datetime, timedelta, timezone
 REPO_DEFAULT = "outrightmental/ConversationSimulator"
 
 
-def _gh(*args: str) -> dict | list | None:
-    """Run a `gh api` command and return parsed JSON, or None on error."""
-    cmd = ["gh", "api", "--paginate", *args]
+def _gh(*args: str, paginate: bool = True) -> dict | list | None:
+    """Run a `gh api` command and return parsed JSON, or None on error.
+
+    Pagination is only safe for array endpoints (`gh` merges pages into one
+    JSON array). For object endpoints such as `/search/*`, `--paginate` emits
+    one concatenated JSON object per page, which `json.loads` cannot parse, so
+    callers that read a single object must pass `paginate=False`.
+    """
+    cmd = ["gh", "api", *(["--paginate"] if paginate else []), *args]
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
         return json.loads(result.stdout)
@@ -69,13 +75,15 @@ def fetch_release_download_counts(repo: str) -> list[dict]:
     return rows
 
 
-def fetch_community_pack_repos(since_days: int) -> int:
+def fetch_community_pack_repos() -> int:
     """Return count of GitHub repos with the convsim-pack topic."""
-    data = _gh("/search/repositories?q=topic:convsim-pack&per_page=100")
-    if not data:
+    # Only the first page's total_count is needed, so do not paginate: the
+    # search endpoint returns an object, and --paginate would concatenate one
+    # object per page and break JSON parsing when the count exceeds one page.
+    data = _gh("/search/repositories?q=topic:convsim-pack&per_page=1", paginate=False)
+    if not isinstance(data, dict):
         return 0
-    total = data.get("total_count", 0)
-    return total
+    return data.get("total_count", 0)
 
 
 def fetch_label_issue_count(repo: str, label: str) -> int:
@@ -152,7 +160,7 @@ def main() -> None:
 
     pack_bug_count = fetch_label_issue_count(repo, "pack-bug")
     workbench_count = fetch_label_issue_count(repo, "creator-workbench")
-    community_repos = fetch_community_pack_repos(days)
+    community_repos = fetch_community_pack_repos()
 
     print("### Signal summary")
     print()
