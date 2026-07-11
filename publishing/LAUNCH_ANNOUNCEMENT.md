@@ -109,7 +109,7 @@ conversation types:
 | **Everyday Negotiation** | Salary discussions, pricing conversations, finding common ground |
 | **Language Café** | Casual conversation in a second language (English focus in v1) |
 | **Difficult Conversations** | Disagreements, feedback delivery, setting limits with someone you know |
-| **Dating: Confidence and Limits** | Meeting new people, expressing interest, maintaining personal limits |
+| **Dating — Confidence & Boundaries** | Meeting new people, expressing interest, setting and holding personal boundaries |
 
 Each pack contains four or more fully playable scenarios with a scored debrief
 at the end so you can see what went well and what you might try differently.
