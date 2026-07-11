@@ -206,6 +206,24 @@ export async function workshopRoutes(app: FastifyInstance): Promise<void> {
               quarantined_at = excluded.quarantined_at
           `).run(item.item_id, installPath, reason, now);
 
+          // If this item was previously imported successfully and a later Steam
+          // update turned it invalid (e.g. an attacker added disguised executable
+          // content to an update), the stale index entry and workshop_items row
+          // must not survive — otherwise the library keeps listing the pack as a
+          // valid Workshop pack pointing at the now-invalid install path. Remove
+          // both so only the quarantine reason remains visible to the user.
+          if (existing) {
+            if (_packsDbPath) {
+              const index = PackIndex.open(_packsDbPath);
+              try {
+                index.removePack(existing.pack_id);
+              } finally {
+                index.close();
+              }
+            }
+            db.prepare('DELETE FROM workshop_items WHERE item_id = ?').run(item.item_id);
+          }
+
           results.push({ item_id: item.item_id, pack_id: null, status: 'quarantined', reason });
           continue;
         }

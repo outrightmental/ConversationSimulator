@@ -243,6 +243,47 @@ describe('POST /api/workshop/sync', () => {
     expect(row).toBeDefined();
   });
 
+  it('removes a previously-imported pack from the index when a later update fails validation', async () => {
+    // Import a valid pack first so it lands in installed_packs + workshop_items.
+    const packDir = setupValidPack(tmpBase, 'item-70707', 'workshop.turns_bad');
+    await app.inject({
+      method: 'POST',
+      url: '/api/workshop/sync',
+      payload: {
+        items: [{ item_id: '70707', install_path: packDir, needs_update: false, updated_at: 1710000000 }],
+      },
+    });
+
+    // Confirm it is present and launchable.
+    let packsBody = (await app.inject({ method: 'GET', url: '/api/packs' })).json() as { packs: Array<{ pack_id: string }> };
+    expect(packsBody.packs.some((p) => p.pack_id === 'workshop.turns_bad')).toBe(true);
+
+    // Simulate a Steam update that introduces disguised executable content.
+    writeFileSync(join(packDir, 'evil.exe'), 'MZ\x00\x00');
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/workshop/sync',
+      payload: {
+        items: [{ item_id: '70707', install_path: packDir, needs_update: true, updated_at: 1710000500 }],
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { results: Array<{ status: string }>; quarantined: number };
+    expect(body.quarantined).toBe(1);
+    expect(body.results[0]?.status).toBe('quarantined');
+
+    // The stale index entry and workshop_items row must be gone so the library
+    // no longer lists the now-invalid pack as a valid Workshop pack.
+    packsBody = (await app.inject({ method: 'GET', url: '/api/packs' })).json() as { packs: Array<{ pack_id: string }> };
+    expect(packsBody.packs.some((p) => p.pack_id === 'workshop.turns_bad')).toBe(false);
+    const itemsBody = (await app.inject({ method: 'GET', url: '/api/workshop/items' })).json() as { items: Array<{ item_id: string }> };
+    expect(itemsBody.items.some((i) => i.item_id === '70707')).toBe(false);
+    // And the quarantine reason is surfaced.
+    const quarBody = (await app.inject({ method: 'GET', url: '/api/workshop/quarantine' })).json() as { items: Array<{ item_id: string }> };
+    expect(quarBody.items.some((i) => i.item_id === '70707')).toBe(true);
+  });
+
   it('marks unchanged when item_id + updated_at match existing record', async () => {
     const packDir = setupValidPack(tmpBase, 'item-66666', 'workshop.unchanged_pack');
 
