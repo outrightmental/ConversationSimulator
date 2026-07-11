@@ -9,6 +9,7 @@ export const PRIVACY_KEYS = {
 
 export const SETUP_KEYS = {
   firstRunComplete: 'convsim.setup.complete',
+  tutorialComplete: 'convsim.tutorial.complete',
 } as const
 
 export function readPrivacyPref(key: string, defaultValue: boolean): boolean {

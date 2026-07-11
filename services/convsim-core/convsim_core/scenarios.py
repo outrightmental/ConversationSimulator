@@ -306,6 +306,104 @@ SCENARIOS: Dict[str, ScenarioInfo] = {
             },
         },
     ),
+
+    # Zero-model instant-play tutorial (issue #305).  Played with the "scripted"
+    # runtime — deterministic, no inference.  Registered here so it is resolvable
+    # by get_scenario_info() and therefore playable through the normal
+    # session-create → turn pipeline, exactly like the other built-in scenarios.
+    # The matching pack (packs/official/first-words) supplies the library entry,
+    # rubric, and safety policy; this entry drives play.
+    "first_words_tutorial": ScenarioInfo(
+        scenario_data=ScenarioData(
+            scenario_id="first_words_tutorial",
+            title="First Words",
+            player_role_label="New Player",
+            player_role_brief=(
+                "You just installed Conversation Simulator. Alex Chen is here to "
+                "show you how the app works before you jump into a real scenario. "
+                "There's no wrong answer — just respond naturally and follow where "
+                "Alex leads."
+            ),
+            npc=NpcData(
+                npc_id="alex_chen_tutorial",
+                display_name="Alex Chen",
+                public_persona=NpcPublicPersona(
+                    occupation="Tutorial guide for Conversation Simulator.",
+                    speaking_style=(
+                        "Warm, clear, and direct. Uses short sentences. Names the "
+                        "mechanic being demonstrated before showing it."
+                    ),
+                    demeanor=(
+                        "Encouraging without being patronising. Celebrates small "
+                        "wins without overdoing it."
+                    ),
+                ),
+                private_persona=NpcPrivatePersona(
+                    hidden_agenda=[
+                        "Ensure the player leaves feeling confident enough to try a real scenario",
+                        "Demonstrate every core mechanic — meters, events, endings, debrief — exactly once",
+                    ],
+                    biases_to_simulate=[],
+                    boundaries=[
+                        "Never generate sexual, violent, or disturbing content",
+                        "Never impersonate a real person or real company",
+                        "Keep all language at a G content rating",
+                    ],
+                ),
+            ),
+            player_visible_goals=[
+                "Learn how state meters work by watching them change as you talk",
+                "Trigger a scenario event to see how events reshape a conversation",
+                "Complete the tutorial and unlock the scenario library",
+            ],
+        ),
+        max_turns=8,
+        supported_languages=["en"],
+        difficulty_options={
+            "standard": DifficultySettings(patience=100, volatility=0, disclosure=100, time_pressure=0),
+        },
+        opening_npc_says=(
+            "Welcome! I'm Alex Chen, your tutorial guide. This is Conversation "
+            "Simulator — a private, offline practice space for conversations that "
+            "matter. Notice the two meters at the top: Engagement and Confidence. "
+            "They update every turn based on what you say. Go ahead — say anything "
+            "to get us started."
+        ),
+        state_variable_overrides={
+            # The tutorial deliberately shows exactly two meters.  Add
+            # engagement/confidence as visible and hide every baseline variable so
+            # only these two render for the player.
+            "engagement": {"min": 0, "max": 100, "default": 30, "visibility": "visible", "max_delta_per_turn": 20},
+            "confidence": {"min": 0, "max": 100, "default": 50, "visibility": "visible", "max_delta_per_turn": 15},
+            "trust": {"visibility": "hidden"},
+            "patience": {"visibility": "hidden"},
+            "rapport": {"visibility": "hidden"},
+            "openness": {"visibility": "hidden"},
+            "objective_progress": {"visibility": "hidden"},
+        },
+        events=[
+            ScenarioEvent(
+                id="warm_moment",
+                when={"type": "variable_above", "variable": "engagement", "threshold": 60},
+                npc_instruction=(
+                    "The player has shown genuine engagement and Engagement has "
+                    "crossed 60. Warmly acknowledge the moment and use it as a "
+                    "teaching point: explain that this is what a scenario event "
+                    "looks like — a threshold crossing that shifts your hidden "
+                    "instructions and changes how you behave for the rest of the "
+                    "session."
+                ),
+                repeat=False,
+            ),
+        ],
+        # No variable-based success/failure: the scripted runtime ends the session
+        # on its final turn via session_control (see runtime/scripted.py).  A lower
+        # success threshold would trip before the warm_moment event (engagement>60)
+        # could fire.  Timeout is the only scenario-level safety net.
+        ending_conditions={
+            "timeout": {"type": "max_turns", "value": 8},
+        },
+    ),
 }
 
 

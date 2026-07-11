@@ -22,6 +22,7 @@ from convsim_core.runtime.types import (
 import convsim_core.runtime.fake  # noqa: F401, E402
 import convsim_core.runtime.llama_cpp  # noqa: F401, E402
 import convsim_core.runtime.ollama_adapter  # noqa: F401, E402
+import convsim_core.runtime.scripted  # noqa: F401, E402
 
 __all__ = [
     "ChatRuntime",

@@ -51,6 +51,9 @@ class ChatRequest(BaseModel):
     max_tokens: int = 512
     temperature: float = 0.8
     json_schema: dict[str, Any] | None = None
+    # 1-based game turn number; set by the turn pipeline so scripted adapters can
+    # return the correct sequential response without parsing the system prompt.
+    scripted_turn_index: int | None = None
 
 
 class ChatToken(BaseModel):
