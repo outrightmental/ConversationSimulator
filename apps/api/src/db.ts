@@ -82,6 +82,28 @@ const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    name: '0003_workshop_items',
+    up: (db) => {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS workshop_items (
+          item_id        TEXT PRIMARY KEY,
+          pack_id        TEXT NOT NULL,
+          author_name    TEXT NOT NULL DEFAULT '',
+          install_path   TEXT NOT NULL DEFAULT '',
+          workshop_updated_at INTEGER NOT NULL DEFAULT 0,
+          synced_at      INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS workshop_quarantine (
+          item_id        TEXT PRIMARY KEY,
+          install_path   TEXT NOT NULL,
+          reason         TEXT NOT NULL,
+          quarantined_at INTEGER NOT NULL
+        );
+      `);
+    },
+  },
 ];
 
 function runMigrations(db: Database.Database): void {

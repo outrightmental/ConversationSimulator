@@ -240,7 +240,7 @@ const ERROR_CATEGORY: Record<string, 'security' | 'schema' | 'structure' | 'synt
   UNSUPPORTED_VERSION: 'schema',
 };
 
-function convertPackLoaderError(e: PackLoaderError, packRoot: string): WorkbenchValidationIssue[] {
+export function convertPackLoaderError(e: PackLoaderError, packRoot: string): WorkbenchValidationIssue[] {
   const relFile = e.filePath
     ? path.relative(packRoot, e.filePath).replace(/\\/g, '/')
     : '';
@@ -287,7 +287,7 @@ function convertPackLoaderError(e: PackLoaderError, packRoot: string): Workbench
 
 // Scan the entire pack directory for forbidden file extensions, collecting all
 // violations instead of failing on the first one.
-function scanForbiddenFiles(packRoot: string): WorkbenchValidationIssue[] {
+export function scanForbiddenFiles(packRoot: string): WorkbenchValidationIssue[] {
   const issues: WorkbenchValidationIssue[] = [];
 
   function scan(dir: string): void {
