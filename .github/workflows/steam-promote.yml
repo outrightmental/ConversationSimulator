@@ -178,8 +178,10 @@ jobs:
             --skip-errors
 
       - name: Compute artifact SHA-256 hashes
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
-          echo "--- SHA-256 hashes for ${{ inputs.release_tag }} ---"
+          echo "--- SHA-256 hashes for $RELEASE_TAG ---"
           find release-artifacts -type f | sort | while IFS= read -r f; do
             sha256sum "$f"
           done | tee artifact-hashes.txt
