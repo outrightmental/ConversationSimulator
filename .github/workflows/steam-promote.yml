@@ -1,0 +1,260 @@
+# SPDX-License-Identifier: Apache-2.0
+# Steam default-branch promotion — gate, provenance capture, and instructions.
+#
+# Prepares and records the promotion of a previously uploaded SteamPipe build
+# to the `default` branch (public release).  Use this workflow after the build
+# has already been staged and verified on `beta`.
+#
+# ── Why this workflow does NOT set the build live itself ─────────────────────
+#
+# Valve does not allow the `default` branch of a RELEASED app to be set live
+# from CI.  Two independent Steamworks constraints make headless promotion of
+# the default branch impossible:
+#
+#   1. There is no steamcmd command that sets an already-uploaded build live.
+#      steamcmd only sets a branch live via the `SetLive` field of an
+#      app_build.vdf during `+run_app_build` (that is what steam-deploy.yml
+#      does), and Steamworks refuses `SetLive "default"` for released apps.
+#
+#   2. Any build set live on the default branch of a released app triggers an
+#      "additional authorization" step that Steamworks sends to the requesting
+#      account's Steam Mobile Authenticator (or by SMS).  That confirmation is
+#      interactive by design and cannot be completed on a CI runner.
+#      See https://partner.steamgames.com/doc/store/application/builds
+#
+# Therefore the actual "Set Build Live → default" action is performed by a
+# human in the Steamworks App Admin panel.  This workflow does everything
+# around that action: it enforces the go/no-go gate, downloads and hashes the
+# release artifacts for the provenance record, and prints the promotion record
+# and the exact App Admin steps to follow.
+#
+# ── When to use ─────────────────────────────────────────────────────────────
+#
+# Run this workflow for the Stage 4 public release when:
+#   - The build is already staged in Steamworks (uploaded with set_live_branch
+#     left empty or "beta" via steam-deploy.yml), AND
+#   - All Stage 4 gate criteria in docs/steam-mvp-scope.md are met, AND
+#   - Valve has approved the store page (gate G4-01).
+#
+# Do NOT use this workflow to push net-new content.  If the build has not
+# been uploaded yet, run steam-deploy.yml first, then run this workflow.
+#
+# ── Prerequisites ────────────────────────────────────────────────────────────
+#
+# GitHub Actions environment:
+#   steam-release             Required-reviewer environment; gates the job on
+#                             manual approval before it runs.
+#
+# The requesting operator must have Steamworks access to the App Admin panel
+# and a Steam Mobile Authenticator (or SMS) on the account, in order to
+# complete the default-branch authorization after this workflow finishes.
+#
+# See publishing/STEAM_APP_REGISTRATION.md for Steamworks access details.
+#
+# ── Inputs ───────────────────────────────────────────────────────────────────
+#
+# build_id          SteamPipe Build ID to promote.  Find it in the Steamworks
+#                   partner portal → App Admin → Builds.  The build must already
+#                   be uploaded (depot file count non-zero).
+#
+# release_tag       GitHub release tag corresponding to this build (e.g. v0.3.0).
+#                   Used to download and hash the release artifacts for the
+#                   promotion log — the hashes are recorded for provenance only.
+#
+# previous_build_id The Build ID currently live on the default branch.  Recorded
+#                   in the promotion log for rollback reference.  Find it in
+#                   Steamworks → App Admin → Builds (filter by branch: default).
+#                   Pass "none" if no build is currently live on default.
+#
+# go_nogo_confirmed Type exactly YES to confirm that:
+#                     • All Stage 4 gate criteria in docs/steam-mvp-scope.md
+#                       are met.
+#                     • Valve has approved the store page (G4-01).
+#                     • The release owner has given launch go/no-go.
+#                   Any other value aborts the workflow.
+#
+# ── After this workflow completes ────────────────────────────────────────────
+#
+# 1. Follow the "Set Build Live in App Admin" instructions printed by the
+#    "Print App Admin promotion instructions" step: set build_id live on the
+#    default branch in Steamworks and complete the Steam Mobile Authenticator
+#    (or SMS) confirmation.
+#
+# 2. Confirm the promoted build is shown as live on the default branch in
+#    Steamworks → App Admin → Builds.
+#
+# 3. Copy the promotion record printed by the "Record promotion details" step
+#    and add it to publishing/STEAM_PROMOTION_LOG.md.
+#
+# 4. Proceed with launch-day Steps 4–7 in publishing/LAUNCH_DAY_RUNBOOK.md:
+#    CDN propagation check, end-to-end install verification, announcement,
+#    and 72-hour monitoring.
+#
+name: Steam Promote to Default
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_id:
+        description: >
+          SteamPipe Build ID to promote
+          (Steamworks → App Admin → Builds — the numeric ID in the Build ID column).
+        required: true
+        type: string
+      release_tag:
+        description: 'GitHub release tag for this build (e.g. v0.3.0)'
+        required: true
+        type: string
+      previous_build_id:
+        description: >
+          Current default-branch Build ID (for rollback reference).
+          Pass "none" if no build is live on default yet.
+        required: true
+        type: string
+      go_nogo_confirmed:
+        description: >
+          Type exactly YES to confirm all Stage 4 gates are met and launch
+          go/no-go has been given by the release owner.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  promote:
+    name: Promote build ${{ inputs.build_id }} to default (${{ inputs.release_tag }})
+    runs-on: ubuntu-latest
+
+    # The steam-release environment gates this job behind a manual approval step.
+    # Create it in GitHub → Settings → Environments → New environment.
+    # Add required reviewers so the promotion is not prepared without sign-off.
+    environment: steam-release
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # ── Gate: explicit go/no-go confirmation ──────────────────────────────
+      # The required-reviewer check on the steam-release environment provides
+      # the primary approval gate.  This second check requires the operator to
+      # explicitly type YES, confirming they have verified all Stage 4 criteria
+      # before any provenance capture begins.
+      - name: Verify go/no-go confirmation
+        env:
+          GO_NOGO: ${{ inputs.go_nogo_confirmed }}
+        run: |
+          if [ "$GO_NOGO" != "YES" ]; then
+            echo "ERROR: go_nogo_confirmed must be exactly 'YES' to proceed." >&2
+            echo "" >&2
+            echo "Before typing YES, verify all of the following in docs/steam-mvp-scope.md:" >&2
+            echo "  G4-01  Valve store page approval received." >&2
+            echo "  G4-02  Steam Deck Verified tier granted by Valve." >&2
+            echo "  G4-03  Full release checklist (Parts A–J) passed on all platforms." >&2
+            echo "  G4-04  Store page copy accurate (no therapy/diagnosis language)." >&2
+            echo "  G4-05  Voice smoke test passed (if voice is included in the build)." >&2
+            echo "" >&2
+            echo "Also confirm:" >&2
+            echo "  •  The signed-off STEAM_BETA_VERIFICATION_REPORT.md is attached to the" >&2
+            echo "     release issue (gate G3-06 / SR-09)." >&2
+            echo "  •  The release owner has given explicit launch go/no-go." >&2
+            echo "  •  publishing/BETA_FEEDBACK_AND_LAUNCH_RISKS.md is complete and signed." >&2
+            exit 1
+          fi
+          echo "Go/no-go confirmed by ${{ github.actor }}."
+
+      # ── Compute artifact hashes from the GitHub release ───────────────────
+      # Downloads the release assets and computes their SHA-256 digests.
+      # These hashes are recorded in the promotion log for provenance — they
+      # are not used to validate the Steam upload (which was already done by
+      # steam-deploy.yml when the build was first staged).
+      - name: Download release artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          mkdir -p release-artifacts
+          gh release download "$RELEASE_TAG" \
+            --dir release-artifacts \
+            --skip-errors
+
+      - name: Compute artifact SHA-256 hashes
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          echo "--- SHA-256 hashes for $RELEASE_TAG ---"
+          find release-artifacts -type f | sort | while IFS= read -r f; do
+            sha256sum "$f"
+          done | tee artifact-hashes.txt
+          count=$(wc -l < artifact-hashes.txt)
+          echo "File count: $count"
+          if [ "$count" -eq 0 ]; then
+            echo "ERROR: no release artifacts were downloaded for $RELEASE_TAG." >&2
+            echo "The promotion log requires artifact SHA-256 hashes for provenance" >&2
+            echo "(definition of done). 'gh release download --skip-errors' can leave" >&2
+            echo "the directory empty if the tag has no assets or every asset failed" >&2
+            echo "to download. Confirm the release tag is correct and its assets are" >&2
+            echo "published, then re-run this workflow." >&2
+            exit 1
+          fi
+
+      # ── Print the manual App Admin promotion instructions ─────────────────
+      # The default-branch set-live cannot be done from CI (see the header
+      # comment).  Print the exact steps the operator must perform in the
+      # Steamworks App Admin panel to complete the promotion.
+      - name: Print App Admin promotion instructions
+        env:
+          BUILD_ID: ${{ inputs.build_id }}
+        run: |
+          echo "========================================================"
+          echo "  ACTION REQUIRED — Set Build Live in App Admin"
+          echo "========================================================"
+          echo "  The default branch cannot be set live from CI: Steamworks"
+          echo "  requires an interactive Steam Mobile Authenticator (or SMS)"
+          echo "  confirmation for the default branch of a released app."
+          echo ""
+          echo "  Complete the promotion manually now:"
+          echo "    1. Open Steamworks -> App Admin -> Builds."
+          echo "    2. Find Build ID $BUILD_ID in the list."
+          echo "    3. In the 'Set build live on branch' control for that build,"
+          echo "       select 'default', then Preview Change -> Set Build Live."
+          echo "    4. Approve the authorization prompt in your Steam Mobile"
+          echo "       Authenticator (or via the SMS code)."
+          echo "    5. Confirm the build now shows as live on the default branch."
+          echo "========================================================"
+
+      # ── Print promotion record ────────────────────────────────────────────
+      # Always print — even on failure — so there is a timestamped audit
+      # trail in the workflow log.  Copy this output into
+      # publishing/STEAM_PROMOTION_LOG.md after the App Admin set-live succeeds.
+      - name: Record promotion details
+        if: always()
+        env:
+          BUILD_ID:          ${{ inputs.build_id }}
+          RELEASE_TAG:       ${{ inputs.release_tag }}
+          PREVIOUS_BUILD_ID: ${{ inputs.previous_build_id }}
+          RUN_URL:           ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          ACTOR:             ${{ github.actor }}
+        run: |
+          echo "========================================================"
+          echo "  Steam Promotion Record"
+          echo "========================================================"
+          echo "  Date (UTC)        : $(date -u '+%Y-%m-%d %H:%M UTC')"
+          echo "  Release tag       : $RELEASE_TAG"
+          echo "  Build ID (new)    : $BUILD_ID"
+          echo "  Build ID (prev)   : $PREVIOUS_BUILD_ID"
+          echo "  Branch set live   : default"
+          echo "  Promoted by       : $ACTOR"
+          echo "  CI run            : $RUN_URL"
+          echo "--------------------------------------------------------"
+          echo "  Artifact SHA-256 hashes:"
+          if [ -f artifact-hashes.txt ]; then
+            sed 's/^/    /' artifact-hashes.txt
+          else
+            echo "    (hash file not generated — artifact download may have failed)"
+          fi
+          echo "========================================================"
+          echo ""
+          echo "Record this only AFTER the App Admin set-live has succeeded."
+          echo "Copy the block above into publishing/STEAM_PROMOTION_LOG.md."
+          echo "Then proceed with launch-day Steps 4–7 in"
+          echo "publishing/LAUNCH_DAY_RUNBOOK.md."
