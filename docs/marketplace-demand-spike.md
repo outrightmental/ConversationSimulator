@@ -302,7 +302,7 @@ Findings:
 ### 3.5 Entry gate status
 
 The five entry gate conditions from
-[`docs/marketplace-architecture.md` — Entry gate](#entry-gate-for-any-marketplace-work)
+[`docs/marketplace-architecture.md` — Entry gate](marketplace-architecture.md#entry-gate-for-any-marketplace-work)
 must all be confirmed before any implementation work begins. Record the status
 of each condition here.
 
