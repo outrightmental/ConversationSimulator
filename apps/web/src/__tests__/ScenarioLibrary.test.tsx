@@ -24,7 +24,7 @@ vi.mock('../api/client', () => ({
 
 import { api, apiClient } from '../api/client'
 import type { ModelsResponse } from '@convsim/shared'
-const mockApi = vi.mocked(api)
+const mockApi = vi.mocked(api, true)
 const mockApiClient = vi.mocked(apiClient)
 
 // ---------------------------------------------------------------------------
