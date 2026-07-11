@@ -7,6 +7,8 @@ import { api, apiClient, type WorkbenchPack, type FileNode, type WorkbenchValida
 import type { ApiError } from '../api/errors'
 import { ERROR_COPY } from '../api/errors'
 import { ApiErrorView } from '../components/ApiErrorView'
+import { useSteamStatus } from '../hooks/useSteamStatus'
+import { useSteamWorkshop } from '../hooks/useSteamWorkshop'
 
 // A validation response is only usable if it carries the expected error/warning
 // arrays. Backends without a validator (or unexpected shapes) are treated as
@@ -1420,6 +1422,13 @@ export default function CreatorWorkbench() {
   const [exportError, setExportError] = useState<ApiError | null>(null)
   const [exportFilename, setExportFilename] = useState<string | null>(null)
 
+  // Workshop publish state — only relevant in Steam builds
+  const steamStatus = useSteamStatus()
+  const { publishPack } = useSteamWorkshop()
+  const isSteamEnabled = steamStatus?.is_steam_enabled ?? false
+  const [publishState, setPublishState] = useState<'idle' | 'publishing' | 'done' | 'error'>('idle')
+  const [publishError, setPublishError] = useState<string | null>(null)
+
   const isDirty = selectedFile !== null && editorContent !== savedContent
 
   // Block in-app navigation when there are unsaved edits
@@ -1616,6 +1625,28 @@ export default function CreatorWorkbench() {
     setExporting(false)
   }
 
+  async function handlePublishToWorkshop() {
+    if (!selectedPack) return
+    // Validation must be green before publishing.
+    if (!validation?.valid) {
+      setPublishError('Fix all validation errors before publishing to Steam Workshop.')
+      return
+    }
+    setPublishState('publishing')
+    setPublishError(null)
+    // The Tauri bridge opens the Steam overlay for the creator to review and
+    // consent to the upload. The actual file transfer is handled by Steam.
+    // We pass the local pack root path via a workbench API call.
+    const packRoot = selectedPack.slug // local path hint; Tauri resolves the full path
+    const ok = await publishPack(packRoot)
+    if (ok) {
+      setPublishState('done')
+    } else {
+      setPublishState('error')
+      setPublishError('Steam overlay could not be opened. Ensure the app was launched via Steam.')
+    }
+  }
+
   return (
     <div>
       <h1 style={{ marginBottom: '0.25rem' }}>Creator Workbench</h1>
@@ -1773,6 +1804,45 @@ export default function CreatorWorkbench() {
                 >
                   {exporting ? 'Exporting…' : '⬇ Export .zip'}
                 </button>
+
+                {isSteamEnabled && selectedPack?.editable && (
+                  <>
+                    {publishState === 'done' && (
+                      <span
+                        data-testid="publish-workshop-success"
+                        style={{ fontSize: '0.72rem', color: '#7dd3fc' }}
+                      >
+                        Steam overlay opened ✓
+                      </span>
+                    )}
+                    {publishError && (
+                      <span
+                        data-testid="publish-workshop-error"
+                        role="alert"
+                        style={{ fontSize: '0.72rem', color: '#f87171' }}
+                      >
+                        {publishError}
+                      </span>
+                    )}
+                    <button
+                      data-testid="publish-workshop-button"
+                      onClick={() => { void handlePublishToWorkshop() }}
+                      disabled={publishState === 'publishing' || !validation?.valid}
+                      title={!validation?.valid ? 'Fix all validation errors before publishing' : 'Publish to Steam Workshop'}
+                      style={{
+                        ...BTN,
+                        fontSize: '0.75rem',
+                        padding: '0.25rem 0.6rem',
+                        border: '1px solid rgba(100,200,255,0.25)',
+                        color: '#7dd3fc',
+                        ...(publishState === 'publishing' || !validation?.valid ? BTN_DISABLED : {}),
+                      }}
+                      aria-label={publishState === 'publishing' ? 'Opening Steam overlay…' : 'Publish to Steam Workshop'}
+                    >
+                      {publishState === 'publishing' ? 'Opening overlay…' : '☁ Publish to Workshop'}
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           )}

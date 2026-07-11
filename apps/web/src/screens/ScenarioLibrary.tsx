@@ -7,6 +7,8 @@ import type { PackSummary, ImportPackResponse } from '../api/client'
 import type { ApiError } from '../api/errors'
 import { errorHeadline } from '../api/errors'
 import { ApiErrorView } from '../components/ApiErrorView'
+import { useSteamStatus } from '../hooks/useSteamStatus'
+import { useSteamWorkshop } from '../hooks/useSteamWorkshop'
 
 interface PackGroup {
   pack_id: string
@@ -64,6 +66,15 @@ export default function ScenarioLibrary() {
   // Model readiness warning
   const [modelMissing, setModelMissing] = useState(false)
 
+  // Steam Workshop sync state
+  const steamStatus = useSteamStatus()
+  const { getSubscribedItems } = useSteamWorkshop()
+  const [workshopSyncState, setWorkshopSyncState] = useState<'idle' | 'syncing' | 'done' | 'error'>('idle')
+  const [workshopSyncSummary, setWorkshopSyncSummary] = useState<string | null>(null)
+  const [workshopItems, setWorkshopItems] = useState<Record<string, { author_name: string; workshop_updated_at: number }>>({})
+
+  const isSteamEnabled = steamStatus?.is_steam_enabled ?? false
+
   const searchId = useId()
   const ratingId = useId()
   const languageId = useId()
@@ -88,9 +99,57 @@ export default function ScenarioLibrary() {
     })
   }
 
+  function loadWorkshopItems() {
+    void api.workshop.listItems().then((r) => {
+      if (r.ok) {
+        const map: Record<string, { author_name: string; workshop_updated_at: number }> = {}
+        for (const item of r.data.items) {
+          map[item.pack_id] = { author_name: item.author_name, workshop_updated_at: item.workshop_updated_at }
+        }
+        setWorkshopItems(map)
+      }
+    })
+  }
+
+  async function handleWorkshopSync() {
+    setWorkshopSyncState('syncing')
+    setWorkshopSyncSummary(null)
+    try {
+      const items = await getSubscribedItems()
+      if (items.length === 0) {
+        setWorkshopSyncState('done')
+        setWorkshopSyncSummary('No Workshop subscriptions found.')
+        return
+      }
+      const r = await api.workshop.sync(items)
+      if (r.ok) {
+        const { imported, updated, quarantined, unchanged } = r.data
+        const parts: string[] = []
+        if (imported > 0) parts.push(`${imported} imported`)
+        if (updated > 0) parts.push(`${updated} updated`)
+        if (unchanged > 0) parts.push(`${unchanged} unchanged`)
+        if (quarantined > 0) parts.push(`${quarantined} quarantined`)
+        setWorkshopSyncSummary(parts.length > 0 ? parts.join(', ') : 'Nothing changed.')
+        setWorkshopSyncState('done')
+        if (imported > 0 || updated > 0) {
+          loadScenarios()
+          loadIndexedPacks()
+          loadWorkshopItems()
+        }
+      } else {
+        setWorkshopSyncState('error')
+        setWorkshopSyncSummary(errorHeadline(r.error))
+      }
+    } catch {
+      setWorkshopSyncState('error')
+      setWorkshopSyncSummary('Workshop sync failed.')
+    }
+  }
+
   useEffect(() => {
     loadScenarios()
     loadIndexedPacks()
+    loadWorkshopItems()
 
     void api.getModels().then((r) => {
       if (r.ok) {
@@ -195,6 +254,44 @@ export default function ScenarioLibrary() {
         <h1 style={{ margin: 0 }}>Scenario Library</h1>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          {isSteamEnabled && (
+            <>
+              {workshopSyncState === 'done' && workshopSyncSummary && (
+                <span
+                  data-testid="workshop-sync-summary"
+                  style={{ fontSize: '0.85rem', color: '#86efac' }}
+                >
+                  Workshop: {workshopSyncSummary}
+                </span>
+              )}
+              {workshopSyncState === 'error' && workshopSyncSummary && (
+                <span
+                  role="alert"
+                  data-testid="workshop-sync-error"
+                  style={{ fontSize: '0.85rem', color: '#f87171' }}
+                >
+                  {workshopSyncSummary}
+                </span>
+              )}
+              <button
+                onClick={() => void handleWorkshopSync()}
+                disabled={workshopSyncState === 'syncing'}
+                data-testid="workshop-sync-button"
+                aria-label="Sync Steam Workshop subscriptions"
+                style={{
+                  padding: '0.4rem 0.85rem',
+                  borderRadius: '6px',
+                  border: '1px solid rgba(100,200,255,0.25)',
+                  background: 'rgba(100,200,255,0.06)',
+                  color: '#7dd3fc',
+                  fontSize: '0.875rem',
+                  cursor: workshopSyncState === 'syncing' ? 'wait' : 'pointer',
+                }}
+              >
+                {workshopSyncState === 'syncing' ? 'Syncing…' : 'Sync Workshop'}
+              </button>
+            </>
+          )}
           {importState === 'success' && importedPack && (
             <span
               data-testid="import-success"
@@ -544,6 +641,7 @@ export default function ScenarioLibrary() {
         const isExpanded = expandedValidation === pack.pack_id
         const indexedPack = indexedPacks[pack.pack_id]
         const isFolderOpen = folderOpen === pack.pack_id
+        const workshopMeta = workshopItems[pack.pack_id]
 
         return (
           <section
@@ -564,15 +662,26 @@ export default function ScenarioLibrary() {
             >
               <h2
                 id={`pack-heading-${pack.pack_id}`}
-                style={{ fontSize: '1rem', fontWeight: 600, margin: 0 }}
+                style={{ fontSize: '1rem', fontWeight: 600, margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}
               >
                 {pack.pack_name}
                 <span
-                  style={{ fontWeight: 400, color: '#71717a', marginLeft: '0.5rem', fontSize: '0.875rem' }}
+                  style={{ fontWeight: 400, color: '#71717a', marginLeft: '0.25rem', fontSize: '0.875rem' }}
                 >
                   ({pack.scenarios.length}{' '}
                   {pack.scenarios.length === 1 ? 'scenario' : 'scenarios'})
                 </span>
+                {workshopMeta && (
+                  <WorkshopBadge
+                    authorName={workshopMeta.author_name}
+                    packId={pack.pack_id}
+                    onUnsubscribed={() => {
+                      loadScenarios()
+                      loadIndexedPacks()
+                      loadWorkshopItems()
+                    }}
+                  />
+                )}
               </h2>
 
               <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
@@ -815,6 +924,73 @@ export default function ScenarioLibrary() {
         )
       })}
     </div>
+  )
+}
+
+function WorkshopBadge({
+  authorName,
+  packId,
+  onUnsubscribed,
+}: {
+  authorName: string
+  packId: string
+  onUnsubscribed: () => void
+}) {
+  const { unsubscribeItem } = useSteamWorkshop()
+  const workshopItemsRef = api.workshop
+
+  async function handleUnsubscribe() {
+    // Look up the item_id from the Workshop items list.
+    const r = await workshopItemsRef.listItems()
+    if (!r.ok) return
+    const meta = r.data.items.find((i) => i.pack_id === packId)
+    if (!meta) return
+
+    // Tell Steam to unsubscribe.
+    await unsubscribeItem(meta.item_id)
+
+    // Remove from local index.
+    await api.workshop.remove(packId)
+    onUnsubscribed()
+  }
+
+  return (
+    <span
+      data-testid={`workshop-badge-${packId}`}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '0.4rem',
+        padding: '0.1rem 0.5rem',
+        borderRadius: '4px',
+        fontSize: '0.72rem',
+        background: 'rgba(100,200,255,0.08)',
+        color: '#7dd3fc',
+        border: '1px solid rgba(100,200,255,0.2)',
+        fontWeight: 400,
+      }}
+    >
+      Workshop
+      {authorName && (
+        <span style={{ color: '#94a3b8', fontSize: '0.68rem' }}>by {authorName}</span>
+      )}
+      <button
+        onClick={() => void handleUnsubscribe()}
+        data-testid={`workshop-unsubscribe-${packId}`}
+        aria-label={`Unsubscribe from Workshop pack ${packId}`}
+        style={{
+          background: 'none',
+          border: 'none',
+          padding: '0 0.1rem',
+          cursor: 'pointer',
+          color: '#94a3b8',
+          fontSize: '0.68rem',
+          lineHeight: 1,
+        }}
+      >
+        ✕
+      </button>
+    </span>
   )
 }
 
