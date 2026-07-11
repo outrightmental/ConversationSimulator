@@ -26,7 +26,7 @@ vi.mock('../api/client', () => ({
 
 import { api, apiClient } from '../api/client'
 import type { ModelsResponse } from '@convsim/shared'
-const mockApi = vi.mocked(api)
+const mockApi = vi.mocked(api, true)
 const mockApiClient = vi.mocked(apiClient)
 
 // ---------------------------------------------------------------------------
@@ -173,6 +173,7 @@ beforeEach(() => {
   mockApi.validatePack.mockResolvedValue({ ok: true, data: VALID_RESULT })
   mockApi.listPacks.mockResolvedValue({ ok: true, data: INDEXED_PACKS_EMPTY })
   mockApi.getModels.mockResolvedValue({ ok: true, data: MODELS_READY })
+  mockApi.workshop.listItems.mockResolvedValue({ ok: true, data: { items: [] } })
   mockApi.importPack.mockResolvedValue({ ok: true, data: {
     pack_id: 'community.test_pack',
     name: 'Test Pack',
