@@ -13,13 +13,27 @@ The app could not start its background conversation engine (`convsim-core`). Com
 
 - **Port conflict:** another application is using port 7355. See [Port conflicts](#port-conflicts) below.
 - **Binary not found:** the `convsim-core` executable is missing. Reinstall the app or run `./scripts/setup.sh`.
-- **Crash on startup:** check the logs at `~/.convsim/logs/app.log` for the specific error.
+- **Crash on startup:** open the logs folder (the recovery card shows an **Open logs folder** button) and check `app.log` for the specific error.
+
+**Where are the logs?**
+
+The packaged app writes logs to the platform-specific application data directory:
+
+| Platform | Log directory |
+|---|---|
+| Windows | `%LOCALAPPDATA%\com.outrightmental.convsim\logs\` |
+| macOS | `~/Library/Application Support/com.outrightmental.convsim/logs/` |
+| Linux / Steam Deck | `~/.local/share/convsim/logs/` (or `$XDG_DATA_HOME/convsim/logs/`) |
+
+The recovery card shows the exact path for your machine and includes an **Open logs folder** button. In developer mode (running without Tauri), logs go to `~/.convsim/logs/` unless `CONVSIM_DATA_ROOT` is set.
+
+> **Legacy `~/.convsim` directory:** versions before v0.2.0 stored all app data under `~/.convsim/`. That directory is no longer used by the packaged app. If you have a `~/.convsim/db/` or `~/.convsim/packs/` left over from an older install, they can be safely deleted — the app migrated that data to the platform-specific directory on first launch.
 
 **Recovery steps:**
 
 1. Close other applications that might be using port 7355.
 2. Restart Conversation Simulator from Steam or your installation.
-3. If the problem persists, collect logs from `~/.convsim/logs/` and open a [GitHub issue](https://github.com/outrightmental/ConversationSimulator/issues).
+3. If the problem persists, open the logs folder using the **Open logs folder** button on the recovery card, collect `app.log`, and open a [GitHub issue](https://github.com/outrightmental/ConversationSimulator/issues).
 
 **"The conversation engine stopped"**
 
@@ -27,7 +41,7 @@ The engine started but stopped during a session. This can happen if the AI model
 
 1. Click **Restart conversation engine** in the status card on the home screen.
 2. If the problem repeats, try a lighter model from **Settings → Models**.
-3. Check `~/.convsim/logs/app.log` for crash details.
+3. Check `app.log` in the logs folder (see table above) for crash details.
 
 ---
 
@@ -81,7 +95,7 @@ Possible causes:
 
 1. **Insufficient VRAM:** the model requires more GPU memory than is available. Try the starter model (Qwen3 4B, ~2.6 GB, 4 GB VRAM minimum). To force CPU-only mode and bypass the GPU entirely, open **Settings → Advanced**, set GPU layers (`n_gpu_layers`) to 0, and reload the model. Inference will be slower but the model will load.
 
-2. **Corrupted download:** delete the file from `~/.convsim/models/llm/` and re-download through the model manager.
+2. **Corrupted download:** delete the file from the `models/llm/` subfolder inside your log directory (see [Where are the logs?](#engine-startup-failure) above for the platform-specific path) and re-download through the model manager.
 
 3. **llama-server binary not found:** the llama.cpp binary must be present before the LLM runtime can start. Run `./runtimes/llama_cpp/download-runtime.sh` to fetch the binary for your platform. If that script is not yet available, check the [GitHub releases](https://github.com/outrightmental/ConversationSimulator/releases) page for pre-built binaries.
 
@@ -95,7 +109,7 @@ The model is loaded but producing unexpected output. Try:
 
 1. Switching to a larger model from the registry.
 2. Reducing context length: open **Settings → Advanced**, lower the context length to 4 096, and restart the app.
-3. Checking `~/.convsim/logs/` for errors from convsim-core or the LLM runtime.
+3. Checking the logs folder (see [Where are the logs?](#engine-startup-failure) for the platform-specific path) for errors from convsim-core or the LLM runtime.
 
 ---
 
@@ -163,7 +177,7 @@ When STT is available, a microphone icon will appear in the conversation input. 
 
 1. Check that your browser has microphone permission for `127.0.0.1`.
 2. Confirm convsim-stt is running on port 7357 — look for it in the `./scripts/dev.sh` output.
-3. Check `~/.convsim/logs/` for errors from the STT service.
+3. Check the logs folder (see [Where are the logs?](#engine-startup-failure) for the platform-specific path) for errors from the STT service.
 
 **"Voice output unavailable" on the conversation screen**
 
