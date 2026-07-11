@@ -46,9 +46,17 @@ def _gh(*args: str, paginate: bool = True) -> dict | list | None:
         return None
 
 
-def _gh_search(query: str, type_: str = "issues") -> list:
-    """Run `gh search` and return items list."""
-    cmd = ["gh", "search", type_, query, "--json", "number,title,createdAt", "--limit", "200"]
+def _gh_search(type_: str, terms: list[str], repo: str) -> list:
+    """Run `gh search <type_>` and return the items list.
+
+    Each search term/qualifier must be a separate argument: `gh search` treats a
+    single multi-word positional as one quoted phrase, and appends its own
+    `type:` qualifier (so passing `is:pr` to `gh search issues` yields a
+    contradictory, always-failing query). Use the dedicated subcommand
+    (`prs`/`issues`) and the `--repo` flag instead of a `repo:` qualifier.
+    """
+    cmd = ["gh", "search", type_, *terms, "--repo", repo,
+           "--json", "number,title,createdAt", "--limit", "200"]
     try:
         result = subprocess.run(cmd, capture_output=True, text=True, check=True)
         return json.loads(result.stdout)
@@ -103,7 +111,7 @@ def fetch_fork_count(repo: str) -> int:
 
 def fetch_pack_prs(repo: str) -> int:
     """Return count of PRs with 'pack' in the title."""
-    items = _gh_search(f"repo:{repo} pack in:title is:pr")
+    items = _gh_search("prs", ["pack", "in:title"], repo)
     return len(items)
 
 
