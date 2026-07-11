@@ -343,8 +343,14 @@ option space.
 
 ### 4.2 Options
 
-Select one. The options are defined in full in
-[`docs/marketplace-architecture.md` — Distribution path comparison](marketplace-architecture.md#distribution-path-comparison).
+Select one. Options C, D, and E correspond to the paid-distribution
+mechanisms analysed in
+[`docs/marketplace-architecture.md` — Distribution path comparison](marketplace-architecture.md#distribution-path-comparison)
+— Steam DLC, an in-game Steam Wallet store, and an external registry
+respectively — but note that document labels those mechanisms differently
+(its Options A–D) and does not use the same lettering as the table below.
+Options A (do not build yet) and B (curated free registry) are decisions
+specific to this spike and are not enumerated in that comparison.
 
 | Option | When to choose |
 |--------|---------------|
