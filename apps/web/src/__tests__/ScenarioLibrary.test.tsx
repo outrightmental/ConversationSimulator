@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import type { ScenarioInfo, PackValidationResult } from '@convsim/shared'
@@ -933,6 +933,113 @@ describe('model-missing state', () => {
     renderLibrary()
     await waitFor(() => screen.getByText('Behavioral Interview'))
     expect(screen.queryByTestId('model-missing-banner')).not.toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Steam Workshop — auto-sync on launch
+// ---------------------------------------------------------------------------
+
+describe('Steam Workshop — auto-sync on launch', () => {
+  type InvokeFn = (cmd: string, args?: unknown) => Promise<unknown>
+
+  function stubTauriInvoke(invoke: InvokeFn) {
+    ;(window as { __TAURI__?: unknown }).__TAURI__ = { core: { invoke } }
+  }
+
+  afterEach(() => {
+    delete (window as { __TAURI__?: unknown }).__TAURI__
+  })
+
+  it('auto-syncs subscriptions on mount when Steam is enabled with pending items', async () => {
+    const invoke = vi.fn().mockImplementation((cmd: string) => {
+      if (cmd === 'get_steam_status') {
+        return Promise.resolve({ is_steam_enabled: true, launched_by_steam: true, app_id: 480, persona_name: 'Tester' })
+      }
+      if (cmd === 'steam_workshop_get_subscribed_items') {
+        return Promise.resolve([{ item_id: '99999', install_path: '/workshop/99999', needs_update: false, updated_at: 1710000000 }])
+      }
+      return Promise.resolve(null)
+    })
+    stubTauriInvoke(invoke)
+
+    vi.mocked(api.workshop.sync).mockResolvedValue({
+      ok: true,
+      data: {
+        results: [{ item_id: '99999', pack_id: 'workshop.test_pack', status: 'imported' }],
+        imported: 1,
+        updated: 0,
+        unchanged: 0,
+        quarantined: 0,
+        skipped: 0,
+      },
+    })
+
+    renderLibrary()
+    await waitFor(() => screen.getByText('Behavioral Interview'))
+
+    // Sync API must have been called automatically — no manual button click.
+    await waitFor(() => expect(vi.mocked(api.workshop.sync)).toHaveBeenCalledTimes(1))
+
+    // Summary should show the import result.
+    await waitFor(() =>
+      expect(screen.getByTestId('workshop-sync-summary')).toHaveTextContent('1 imported'),
+    )
+  })
+
+  it('shows "No Workshop subscriptions found." when subscribed items list is empty', async () => {
+    const invoke = vi.fn().mockImplementation((cmd: string) => {
+      if (cmd === 'get_steam_status') {
+        return Promise.resolve({ is_steam_enabled: true, launched_by_steam: true, app_id: 480, persona_name: 'Tester' })
+      }
+      if (cmd === 'steam_workshop_get_subscribed_items') {
+        return Promise.resolve([])
+      }
+      return Promise.resolve(null)
+    })
+    stubTauriInvoke(invoke)
+
+    renderLibrary()
+    await waitFor(() => screen.getByText('Behavioral Interview'))
+
+    // With no subscriptions the sync short-circuits before calling the API.
+    await waitFor(() =>
+      expect(screen.getByTestId('workshop-sync-summary')).toHaveTextContent(/no workshop subscriptions/i),
+    )
+    expect(vi.mocked(api.workshop.sync)).not.toHaveBeenCalled()
+  })
+
+  it('does not auto-sync when Steam is not enabled', async () => {
+    // No window.__TAURI__ → useSteamStatus returns null → isSteamEnabled false.
+    renderLibrary()
+    await waitFor(() => screen.getByText('Behavioral Interview'))
+
+    expect(vi.mocked(api.workshop.sync)).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('workshop-sync-button')).not.toBeInTheDocument()
+  })
+
+  it('auto-sync fires only once per mount even if isSteamEnabled is read multiple times', async () => {
+    const invoke = vi.fn().mockImplementation((cmd: string) => {
+      if (cmd === 'get_steam_status') {
+        return Promise.resolve({ is_steam_enabled: true, launched_by_steam: true, app_id: 480, persona_name: 'Tester' })
+      }
+      if (cmd === 'steam_workshop_get_subscribed_items') {
+        return Promise.resolve([])
+      }
+      return Promise.resolve(null)
+    })
+    stubTauriInvoke(invoke)
+
+    renderLibrary()
+    await waitFor(() =>
+      expect(screen.getByTestId('workshop-sync-summary')).toHaveTextContent(/no workshop subscriptions/i),
+    )
+
+    // get_steam_status called once on mount; get_subscribed_items called exactly once.
+    const subscribedCalls = invoke.mock.calls.filter(
+      ([cmd]) => cmd === 'steam_workshop_get_subscribed_items',
+    )
+    expect(subscribedCalls).toHaveLength(1)
   })
 })
 
