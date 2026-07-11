@@ -462,6 +462,7 @@ async def process_turn(
     request = ChatRequest(
         messages=messages,
         json_schema=NPC_TURN_OUTPUT_SCHEMA,
+        scripted_turn_index=turn_number,
     )
     logger.debug(
         "Calling runtime %s for session %s turn %d (estimated %d tokens, truncated=%s)",

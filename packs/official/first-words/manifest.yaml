@@ -1,0 +1,28 @@
+# SPDX-License-Identifier: Apache-2.0
+# First Words — the zero-model instant-play tutorial pack.
+# Runs fully offline on a clean install with no model downloaded.
+# Uses the "scripted" runtime (deterministic, no inference).
+schema_version: "0.1"
+pack_id: tutorial.first_words
+name: First Words (Tutorial)
+version: 1.0.0
+description: >-
+  A 3-5 minute scripted tutorial that teaches the app's grammar before any
+  model is downloaded. Alex Chen walks you through state meters, scenario
+  events, ending conditions, and the debrief rubric — all while the starter
+  model downloads in the background.
+author: Outright Mental
+license: Apache-2.0
+content_rating: G
+tags:
+  - tutorial
+  - scripted
+  - onboarding
+supported_languages:
+  - en
+entry_scenarios:
+  - scenarios/first_words_tutorial.yaml
+assets:
+  allow_external_urls: false
+safety:
+  policy: safety/tutorial_safety.yaml
