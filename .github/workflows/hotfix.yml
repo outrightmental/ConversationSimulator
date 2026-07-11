@@ -67,9 +67,16 @@ on:
           - 'yes'
           - 'no — rollback not yet performed'
 
-# Only one hotfix creation should run at a time to avoid branch-name collisions.
+  # Validate any push to a hotfix branch so the fix is smoke-checked before merge.
+  push:
+    branches:
+      - 'hotfix/**'
+
+# Serialize hotfix creation so two dispatches cannot race on the same branch name;
+# validation pushes are keyed per branch so unrelated hotfix branches do not block
+# each other.
 concurrency:
-  group: hotfix-create
+  group: hotfix-${{ github.event_name == 'workflow_dispatch' && 'create' || github.ref }}
   cancel-in-progress: false
 
 permissions:
