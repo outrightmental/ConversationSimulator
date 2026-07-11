@@ -1103,7 +1103,10 @@ export default function FirstRunWizard() {
       }
       markTutorialComplete()
       markFirstRunComplete()
-      navigate('/play/tutorial.first_words/first_words_tutorial')
+      // Enter the tutorial through the normal scenario-setup flow, which resolves
+      // the seeded scenario by id and creates a session against the active
+      // (scripted) runtime.  There is no dedicated /play route.
+      navigate('/setup/first_words_tutorial')
     }
 
     return (

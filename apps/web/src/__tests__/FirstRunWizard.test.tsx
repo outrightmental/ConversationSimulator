@@ -86,7 +86,7 @@ function renderWizard() {
         <Route path="/first-run" element={<FirstRunWizard />} />
         <Route path="/" element={<div data-testid="home-page" />} />
         <Route path="/library" element={<div data-testid="library-page" />} />
-        <Route path="/play/*" element={<div data-testid="play-page" />} />
+        <Route path="/setup/*" element={<div data-testid="setup-page" />} />
       </Routes>
     </MemoryRouter>,
   )
@@ -1108,6 +1108,13 @@ describe('FirstRunWizard — tutorial prompt step', () => {
     await waitFor(() =>
       expect(localStorage.getItem(SETUP_KEYS.tutorialComplete)).toBe('true'),
     )
+  })
+
+  it('navigates to the tutorial scenario setup route (a real, mounted route)', async () => {
+    await goToTutorialPrompt()
+    fireEvent.click(screen.getByRole('button', { name: /start the tutorial/i }))
+    // The setup route resolves the seeded scenario by id; there is no /play route.
+    await screen.findByTestId('setup-page')
   })
 })
 
