@@ -27,7 +27,7 @@ The packaged app writes logs to the platform-specific application data directory
 
 The recovery card shows the exact path for your machine and includes an **Open logs folder** button. In developer mode (running without Tauri), logs go to `~/.convsim/logs/` unless `CONVSIM_DATA_ROOT` is set.
 
-> **Legacy `~/.convsim` directory:** versions before v0.2.0 stored all app data under `~/.convsim/`. That directory is no longer used by the packaged app. If you have a `~/.convsim/db/` or `~/.convsim/packs/` left over from an older install, they can be safely deleted — the app migrated that data to the platform-specific directory on first launch.
+> **Legacy `~/.convsim` directory:** versions before v0.2.0 stored all app data under `~/.convsim/`. The packaged app no longer writes there. On first launch it runs a one-time migration that **copies** (never moves) `db/`, `packs/`, and other data into the platform-specific directory above — but only when that directory is still empty. If the new location already had data, migration is skipped and your `~/.convsim/` files are left untouched. Because the originals are only ever copied, `~/.convsim/` is safe to keep as a backup. Before deleting it, open the platform-specific directory above and confirm your `db/` and `packs/` folders are present there; a `.convsim_migrated_to_platform_dir` marker file inside `~/.convsim/` indicates a completed migration.
 
 **Recovery steps:**
 
@@ -95,7 +95,7 @@ Possible causes:
 
 1. **Insufficient VRAM:** the model requires more GPU memory than is available. Try the starter model (Qwen3 4B, ~2.6 GB, 4 GB VRAM minimum). To force CPU-only mode and bypass the GPU entirely, open **Settings → Advanced**, set GPU layers (`n_gpu_layers`) to 0, and reload the model. Inference will be slower but the model will load.
 
-2. **Corrupted download:** delete the file from the `models/llm/` subfolder inside your log directory (see [Where are the logs?](#engine-startup-failure) above for the platform-specific path) and re-download through the model manager.
+2. **Corrupted download:** delete the file from the `models/llm/` subfolder of the application data directory (the parent of the `logs/` folder shown in [Where are the logs?](#engine-startup-failure) above — e.g. `%LOCALAPPDATA%\com.outrightmental.convsim\models\llm\` on Windows) and re-download through the model manager.
 
 3. **llama-server binary not found:** the llama.cpp binary must be present before the LLM runtime can start. Run `./runtimes/llama_cpp/download-runtime.sh` to fetch the binary for your platform. If that script is not yet available, check the [GitHub releases](https://github.com/outrightmental/ConversationSimulator/releases) page for pre-built binaries.
 
