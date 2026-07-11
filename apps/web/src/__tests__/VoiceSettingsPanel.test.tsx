@@ -131,15 +131,13 @@ describe('voice readiness cards', () => {
   it('shows STT as unavailable when health reports stt_ready=false', async () => {
     mockApi.health.mockResolvedValue({ ok: true, data: STUB_HEALTH_NO_VOICE })
     render(<VoiceSettingsPanel />)
-    await waitFor(() => expect(screen.getByTestId('readiness-stt')).toBeInTheDocument())
-    expect(screen.getByTestId('readiness-stt')).toHaveTextContent('no model loaded')
+    await waitFor(() => expect(screen.getByTestId('readiness-stt')).toHaveTextContent('no model loaded'))
   })
 
   it('shows TTS as unavailable when health reports tts_ready=false', async () => {
     mockApi.health.mockResolvedValue({ ok: true, data: STUB_HEALTH_NO_VOICE })
     render(<VoiceSettingsPanel />)
-    await waitFor(() => expect(screen.getByTestId('readiness-tts')).toBeInTheDocument())
-    expect(screen.getByTestId('readiness-tts')).toHaveTextContent('no model loaded')
+    await waitFor(() => expect(screen.getByTestId('readiness-tts')).toHaveTextContent('no model loaded'))
     // Should show setup/fallback guidance
     expect(screen.getByText(/Install a text-to-speech model/i)).toBeInTheDocument()
   })
