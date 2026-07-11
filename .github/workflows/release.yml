@@ -225,13 +225,25 @@ jobs:
       # notarisation service automatically.  These env vars are no-ops on Linux
       # and Windows.  When the secrets are absent the build is unsigned (suitable
       # for dev/internal builds but blocked by Gatekeeper on clean installs).
+      #
+      # Absent secrets expand to *empty strings*, not unset variables. Tauri's
+      # macOS bundler reads APPLE_SIGNING_IDENTITY as Ok("") and tries to codesign
+      # with an empty identity ("Signing with identity \"\"" → "no identity found"
+      # → "failed to bundle project"). We must therefore fully *unset* the Apple
+      # signing env vars when no identity is configured, so Tauri skips signing and
+      # emits an unsigned .app instead of failing the build. No-op on Linux/Windows.
       - name: Build Tauri desktop
+        shell: bash
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: pnpm --filter @convsim/desktop build
+        run: |
+          if [ -z "${APPLE_SIGNING_IDENTITY:-}" ]; then
+            unset APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID
+          fi
+          pnpm --filter @convsim/desktop build
 
       # ── Verify macOS signature, entitlements, notarization, and stapling ──────
       # Confirms that Tauri's signing + Apple notarisation pipeline completed
@@ -572,8 +584,12 @@ jobs:
 
           echo ""
           echo "── SHA-256 checksums ──"
-          find "$BUNDLE_ROOT" \( -name "*.AppImage" -o -name "*.deb" \) | \
-            sort | xargs sha256sum
+          # Tauri bundle filenames contain a space ("Conversation Simulator_…"),
+          # so the stream must be NUL-delimited end-to-end — a plain
+          # `find | sort | xargs` word-splits on the space and hands sha256sum
+          # non-existent "Conversation" / "Simulator_…" fragments (exit 123).
+          find "$BUNDLE_ROOT" \( -name "*.AppImage" -o -name "*.deb" \) -print0 | \
+            sort -z | xargs -0 sha256sum
 
 
       # ── Package the macOS .app bundle for the Steam depot ────────────────────
