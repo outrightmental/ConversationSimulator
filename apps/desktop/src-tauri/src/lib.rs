@@ -391,10 +391,21 @@ fn launch_or_verify_core(
 
         // Compute the platform-specific log directory once so every status event
         // carries the correct absolute path for the recovery card to display.
+        //
+        // Create it eagerly: convsim-core normally creates logs/ when it runs
+        // configure_logging(), but if it never starts (binary missing, immediate
+        // exec failure) that never happens — leaving the recovery card's "Open
+        // logs folder" button pointing at a non-existent path and dead-ending the
+        // very stranded user the card exists to help. Making the directory here
+        // guarantees the path shown always exists and is openable.
         let log_dir: Option<String> = app.path()
             .app_local_data_dir()
             .ok()
-            .map(|p| p.join("logs").to_string_lossy().into_owned());
+            .map(|p| p.join("logs"))
+            .map(|p| {
+                let _ = std::fs::create_dir_all(&p);
+                p.to_string_lossy().into_owned()
+            });
         let log_dir_ref = log_dir.as_deref();
 
         // If core is already responding (e.g. started by dev-desktop.sh), signal
