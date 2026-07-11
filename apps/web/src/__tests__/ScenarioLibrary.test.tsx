@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import type { ScenarioInfo, PackValidationResult } from '@convsim/shared'
@@ -12,6 +12,12 @@ vi.mock('../api/client', () => ({
     listPacks: vi.fn(),
     importPack: vi.fn(),
     getModels: vi.fn(),
+    workshop: {
+      listItems: vi.fn().mockResolvedValue({ ok: true, data: { items: [] } }),
+      sync: vi.fn(),
+      listQuarantine: vi.fn().mockResolvedValue({ ok: true, data: { items: [] } }),
+      remove: vi.fn(),
+    },
   },
   apiClient: {
     reseedOfficialPacks: vi.fn(),
@@ -20,7 +26,7 @@ vi.mock('../api/client', () => ({
 
 import { api, apiClient } from '../api/client'
 import type { ModelsResponse } from '@convsim/shared'
-const mockApi = vi.mocked(api)
+const mockApi = vi.mocked(api, true)
 const mockApiClient = vi.mocked(apiClient)
 
 // ---------------------------------------------------------------------------
@@ -167,12 +173,16 @@ beforeEach(() => {
   mockApi.validatePack.mockResolvedValue({ ok: true, data: VALID_RESULT })
   mockApi.listPacks.mockResolvedValue({ ok: true, data: INDEXED_PACKS_EMPTY })
   mockApi.getModels.mockResolvedValue({ ok: true, data: MODELS_READY })
+  mockApi.workshop.listItems.mockResolvedValue({ ok: true, data: { items: [] } })
   mockApi.importPack.mockResolvedValue({ ok: true, data: {
     pack_id: 'community.test_pack',
     name: 'Test Pack',
     version: '1.0.0',
     dest: '/home/user/.convsim/packs/community.test_pack',
   }})
+  // Workshop items: restore resolved value after vi.restoreAllMocks() clears it.
+  vi.mocked(api.workshop.listItems).mockResolvedValue({ ok: true, data: { items: [] } })
+  vi.mocked(api.workshop.listQuarantine).mockResolvedValue({ ok: true, data: { items: [] } })
 })
 
 // ---------------------------------------------------------------------------
@@ -923,5 +933,228 @@ describe('model-missing state', () => {
     renderLibrary()
     await waitFor(() => screen.getByText('Behavioral Interview'))
     expect(screen.queryByTestId('model-missing-banner')).not.toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Steam Workshop — auto-sync on launch
+// ---------------------------------------------------------------------------
+
+describe('Steam Workshop — auto-sync on launch', () => {
+  type InvokeFn = (cmd: string, args?: unknown) => Promise<unknown>
+
+  function stubTauriInvoke(invoke: InvokeFn) {
+    ;(window as { __TAURI__?: unknown }).__TAURI__ = { core: { invoke } }
+  }
+
+  afterEach(() => {
+    delete (window as { __TAURI__?: unknown }).__TAURI__
+  })
+
+  it('auto-syncs subscriptions on mount when Steam is enabled with pending items', async () => {
+    const invoke = vi.fn().mockImplementation((cmd: string) => {
+      if (cmd === 'get_steam_status') {
+        return Promise.resolve({ is_steam_enabled: true, launched_by_steam: true, app_id: 480, persona_name: 'Tester' })
+      }
+      if (cmd === 'steam_workshop_get_subscribed_items') {
+        return Promise.resolve([{ item_id: '99999', install_path: '/workshop/99999', needs_update: false, updated_at: 1710000000 }])
+      }
+      return Promise.resolve(null)
+    })
+    stubTauriInvoke(invoke)
+
+    vi.mocked(api.workshop.sync).mockResolvedValue({
+      ok: true,
+      data: {
+        results: [{ item_id: '99999', pack_id: 'workshop.test_pack', status: 'imported' }],
+        imported: 1,
+        updated: 0,
+        unchanged: 0,
+        quarantined: 0,
+        skipped: 0,
+      },
+    })
+
+    renderLibrary()
+    await waitFor(() => screen.getByText('Behavioral Interview'))
+
+    // Sync API must have been called automatically — no manual button click.
+    await waitFor(() => expect(vi.mocked(api.workshop.sync)).toHaveBeenCalledTimes(1))
+
+    // Summary should show the import result.
+    await waitFor(() =>
+      expect(screen.getByTestId('workshop-sync-summary')).toHaveTextContent('1 imported'),
+    )
+  })
+
+  it('shows "No Workshop subscriptions found." when subscribed items list is empty', async () => {
+    const invoke = vi.fn().mockImplementation((cmd: string) => {
+      if (cmd === 'get_steam_status') {
+        return Promise.resolve({ is_steam_enabled: true, launched_by_steam: true, app_id: 480, persona_name: 'Tester' })
+      }
+      if (cmd === 'steam_workshop_get_subscribed_items') {
+        return Promise.resolve([])
+      }
+      return Promise.resolve(null)
+    })
+    stubTauriInvoke(invoke)
+
+    renderLibrary()
+    await waitFor(() => screen.getByText('Behavioral Interview'))
+
+    // With no subscriptions the sync short-circuits before calling the API.
+    await waitFor(() =>
+      expect(screen.getByTestId('workshop-sync-summary')).toHaveTextContent(/no workshop subscriptions/i),
+    )
+    expect(vi.mocked(api.workshop.sync)).not.toHaveBeenCalled()
+  })
+
+  it('does not auto-sync when Steam is not enabled', async () => {
+    // No window.__TAURI__ → useSteamStatus returns null → isSteamEnabled false.
+    renderLibrary()
+    await waitFor(() => screen.getByText('Behavioral Interview'))
+
+    expect(vi.mocked(api.workshop.sync)).not.toHaveBeenCalled()
+    expect(screen.queryByTestId('workshop-sync-button')).not.toBeInTheDocument()
+  })
+
+  it('auto-sync fires only once per mount even if isSteamEnabled is read multiple times', async () => {
+    const invoke = vi.fn().mockImplementation((cmd: string) => {
+      if (cmd === 'get_steam_status') {
+        return Promise.resolve({ is_steam_enabled: true, launched_by_steam: true, app_id: 480, persona_name: 'Tester' })
+      }
+      if (cmd === 'steam_workshop_get_subscribed_items') {
+        return Promise.resolve([])
+      }
+      return Promise.resolve(null)
+    })
+    stubTauriInvoke(invoke)
+
+    renderLibrary()
+    await waitFor(() =>
+      expect(screen.getByTestId('workshop-sync-summary')).toHaveTextContent(/no workshop subscriptions/i),
+    )
+
+    // get_steam_status called once on mount; get_subscribed_items called exactly once.
+    const subscribedCalls = invoke.mock.calls.filter(
+      ([cmd]) => cmd === 'steam_workshop_get_subscribed_items',
+    )
+    expect(subscribedCalls).toHaveLength(1)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Workshop badge — unsubscribe respects active sessions
+// ---------------------------------------------------------------------------
+
+describe('Workshop badge unsubscribe', () => {
+  const WORKSHOP_PACK_ID = 'official.job_interview_basic'
+  const WORKSHOP_ITEM = {
+    item_id: '9876543210',
+    pack_id: WORKSHOP_PACK_ID,
+    author_name: 'WorkshopCreator',
+    install_path: '/steam/workshop/9876543210',
+    workshop_updated_at: 1710000000,
+    synced_at: 1710000000,
+  }
+
+  beforeEach(() => {
+    mockApi.workshop.listItems.mockResolvedValue({ ok: true, data: { items: [WORKSHOP_ITEM] } })
+  })
+
+  it('badges a Workshop pack with its author', async () => {
+    renderLibrary()
+    const badge = await screen.findByTestId(`workshop-badge-${WORKSHOP_PACK_ID}`)
+    expect(badge).toHaveTextContent('Workshop')
+    expect(badge).toHaveTextContent('by WorkshopCreator')
+  })
+
+  it('does not unsubscribe (keeps the pack) when active sessions reference it', async () => {
+    mockApi.workshop.remove.mockResolvedValue({
+      ok: true,
+      data: {
+        removed: false,
+        has_active_sessions: true,
+        message: 'Pack has 1 active session(s). Unsubscribe will take effect after those sessions end.',
+      },
+    })
+
+    renderLibrary()
+    const btn = await screen.findByTestId(`workshop-unsubscribe-${WORKSHOP_PACK_ID}`)
+    await act(async () => {
+      fireEvent.click(btn)
+    })
+
+    // The server was asked to remove; it refused due to the active session.
+    expect(mockApi.workshop.remove).toHaveBeenCalledWith(WORKSHOP_PACK_ID)
+    // The deferral notice is surfaced to the user and the badge remains.
+    const notice = await screen.findByTestId(`workshop-unsubscribe-deferred-${WORKSHOP_PACK_ID}`)
+    expect(notice).toHaveTextContent(/active session/i)
+    expect(screen.getByTestId(`workshop-badge-${WORKSHOP_PACK_ID}`)).toBeInTheDocument()
+  })
+
+  it('removes the pack and refreshes the library when no active session references it', async () => {
+    mockApi.workshop.remove.mockResolvedValue({
+      ok: true,
+      data: { removed: true, has_active_sessions: false, message: 'removed' },
+    })
+
+    renderLibrary()
+    const btn = await screen.findByTestId(`workshop-unsubscribe-${WORKSHOP_PACK_ID}`)
+
+    const scenarioLoadsBefore = mockApi.listScenarios.mock.calls.length
+
+    await act(async () => {
+      fireEvent.click(btn)
+    })
+
+    expect(mockApi.workshop.remove).toHaveBeenCalledWith(WORKSHOP_PACK_ID)
+    // No deferral notice — removal succeeded.
+    expect(
+      screen.queryByTestId(`workshop-unsubscribe-deferred-${WORKSHOP_PACK_ID}`),
+    ).not.toBeInTheDocument()
+    // The library refreshes (onUnsubscribed reloads scenarios/packs/items).
+    await waitFor(() =>
+      expect(mockApi.listScenarios.mock.calls.length).toBeGreaterThan(scenarioLoadsBefore),
+    )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Workshop quarantine — invalid packs are surfaced with a readable reason
+// ---------------------------------------------------------------------------
+
+describe('Workshop quarantine banner', () => {
+  it('shows quarantined Workshop packs and their rejection reason', async () => {
+    mockApi.workshop.listQuarantine.mockResolvedValue({
+      ok: true,
+      data: {
+        items: [
+          {
+            item_id: '1234567890',
+            install_path: '/steam/workshop/1234567890',
+            reason: 'FORBIDDEN_FILE: executable content detected (evil.sh)',
+            quarantined_at: 1710000000,
+          },
+        ],
+      },
+    })
+
+    renderLibrary()
+
+    const banner = await screen.findByTestId('workshop-quarantine-banner')
+    expect(banner).toHaveTextContent('1 Workshop pack was quarantined')
+    const item = screen.getByTestId('workshop-quarantine-item-1234567890')
+    expect(item).toHaveTextContent('executable content detected')
+  })
+
+  it('renders no banner when there are no quarantined items', async () => {
+    renderLibrary()
+    // Let the mount effects settle.
+    await screen.findByText('Scenario Library')
+    await waitFor(() =>
+      expect(mockApi.workshop.listQuarantine).toHaveBeenCalled(),
+    )
+    expect(screen.queryByTestId('workshop-quarantine-banner')).not.toBeInTheDocument()
   })
 })

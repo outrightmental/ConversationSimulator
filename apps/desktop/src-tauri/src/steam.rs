@@ -58,6 +58,35 @@ pub mod rich_presence {
     pub const AT_MAIN_MENU: &str = "#AtMainMenu";
 }
 
+// ── Workshop UGC ──────────────────────────────────────────────────────────────
+
+pub mod workshop {
+    /// Steamworks tag applied to all scenario packs published via the in-app
+    /// Creator Workbench. Allows Workshop search to filter ConversationSimulator
+    /// content without requiring a dedicated Community Hub query.
+    pub const PACK_TAG: &str = "scenario-pack";
+}
+
+/// Metadata for a single Steam Workshop item the local user is subscribed to.
+///
+/// Fields are populated from synchronous UGC API calls; no async query is
+/// required for the subscribe-sync flow. The `title` and `author_name` are
+/// populated after the pack has been imported (from its validated manifest).
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct WorkshopItem {
+    /// Workshop item ID serialised as a decimal string to avoid JS precision
+    /// loss on 64-bit integers larger than `Number.MAX_SAFE_INTEGER`.
+    pub item_id: String,
+    /// Absolute path to the locally installed item content directory, or an
+    /// empty string when the item has not yet been downloaded by Steam.
+    pub install_path: String,
+    /// Whether the locally installed version is behind the current Workshop
+    /// version. The app should re-sync and re-validate when `true`.
+    pub needs_update: bool,
+    /// Unix timestamp (seconds) of the last Workshop update to this item.
+    pub updated_at: u32,
+}
+
 // ── Status payload sent to the front-end ──────────────────────────────────────
 
 /// Snapshot of the Steam integration state.
@@ -186,6 +215,96 @@ impl SteamRuntime {
     /// command and front-end wiring are kept so hide becomes effective for free
     /// once the crate exposes the binding.
     pub fn hide_floating_keyboard(&self) -> bool {
+        false
+    }
+
+    // ── Workshop / UGC ───────────────────────────────────────────────────────
+
+    /// Return the list of Workshop items the local user is currently subscribed
+    /// to, including their local install paths and update state.
+    ///
+    /// Only items that have been downloaded by Steam (non-empty `install_path`)
+    /// are suitable for immediate validation and import; items that are still
+    /// downloading will have an empty `install_path` and should be deferred.
+    ///
+    /// Returns an empty vector when Steam is unavailable.
+    pub fn get_subscribed_items(&self) -> Vec<WorkshopItem> {
+        #[cfg(feature = "steam")]
+        if let Some(ref client) = self.client {
+            let ugc = client.ugc();
+            return ugc
+                .subscribed_items()
+                .into_iter()
+                .map(|id| {
+                    let install_info = ugc.item_install_info(id);
+                    let needs_update = ugc
+                        .item_state(id)
+                        .contains(steamworks::ItemState::NEEDS_UPDATE);
+                    WorkshopItem {
+                        item_id: id.0.to_string(),
+                        // `item_install_info` returns `Option<InstallInfo>`, a
+                        // struct with `folder: String`, `size_on_disk: u64`, and
+                        // `timestamp: u32` — not a tuple. The folder is already a
+                        // `String`, so no lossy path conversion is needed.
+                        install_path: install_info
+                            .as_ref()
+                            .map(|info| info.folder.clone())
+                            .unwrap_or_default(),
+                        needs_update,
+                        updated_at: install_info
+                            .as_ref()
+                            .map(|info| info.timestamp)
+                            .unwrap_or(0),
+                    }
+                })
+                .collect();
+        }
+        Vec::new()
+    }
+
+    /// Open the Steam overlay to the Workshop submission flow for the given
+    /// validated pack directory. The overlay prompts the creator to authorise
+    /// the upload before any data leaves the local machine.
+    ///
+    /// This is a best-effort call: it opens the overlay and returns `true` if
+    /// Steam is available, or `false` if not. The actual upload is handled by
+    /// the Steam client — no pack content is transmitted by this function.
+    ///
+    /// The `pack_path` argument must be the absolute path to a directory that
+    /// has already passed two-phase pack validation; the caller is responsible
+    /// for running validation before invoking this.
+    pub fn publish_pack(&self, _pack_path: &str) -> bool {
+        #[cfg(feature = "steam")]
+        if let Some(ref client) = self.client {
+            // Open the Steam overlay to the Workshop landing page. The creator
+            // reviews and consents via the Steam UI before any upload occurs.
+            client
+                .friends()
+                .activate_game_overlay_to_web_page(
+                    "https://steamcommunity.com/workshop/edititem/",
+                );
+            return true;
+        }
+        false
+    }
+
+    /// Unsubscribe from a Workshop item by its numeric item ID.
+    ///
+    /// Returns `true` when the unsubscribe request was submitted to Steam.
+    /// Steam will remove the locally installed files asynchronously; call
+    /// `DELETE /api/workshop/:pack_id` to remove the pack from the local index
+    /// once the UI confirms the unsubscription.
+    pub fn unsubscribe_item(&self, item_id: u64) -> bool {
+        #[cfg(feature = "steam")]
+        if let Some(ref client) = self.client {
+            let published_file_id = steamworks::PublishedFileId(item_id);
+            client.ugc().unsubscribe_item(published_file_id, |_result| {
+                // Callback fires after Steam acknowledges the request.
+                // Errors are intentionally ignored: the front-end polls
+                // Workshop item state to confirm removal.
+            });
+            return true;
+        }
         false
     }
 }
@@ -463,5 +582,49 @@ mod tests {
             let (_status, runtime) = init();
             assert!(!runtime.hide_floating_keyboard());
         });
+    }
+
+    // ── Workshop graceful no-ops when steam feature is absent ─────────────────
+
+    #[test]
+    fn get_subscribed_items_returns_empty_without_steam() {
+        without_steam_env_vars(|| {
+            let (_status, runtime) = init();
+            let items = runtime.get_subscribed_items();
+            assert!(items.is_empty(), "expected empty vec without Steam");
+        });
+    }
+
+    #[test]
+    fn publish_pack_returns_false_without_steam() {
+        without_steam_env_vars(|| {
+            let (_status, runtime) = init();
+            assert!(!runtime.publish_pack("/tmp/some-pack"));
+        });
+    }
+
+    #[test]
+    fn unsubscribe_item_returns_false_without_steam() {
+        without_steam_env_vars(|| {
+            let (_status, runtime) = init();
+            assert!(!runtime.unsubscribe_item(12345678u64));
+        });
+    }
+
+    // ── Workshop constants ────────────────────────────────────────────────────
+
+    #[test]
+    fn workshop_pack_tag_is_non_empty() {
+        assert!(!workshop::PACK_TAG.is_empty());
+        assert_eq!(workshop::PACK_TAG, "scenario-pack");
+    }
+
+    #[test]
+    fn workshop_item_default_has_empty_item_id() {
+        let item = WorkshopItem::default();
+        assert!(item.item_id.is_empty());
+        assert!(item.install_path.is_empty());
+        assert!(!item.needs_update);
+        assert_eq!(item.updated_at, 0);
     }
 }

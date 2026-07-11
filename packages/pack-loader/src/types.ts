@@ -2,7 +2,7 @@
 
 export const SUPPORTED_SCHEMA_VERSION = '0.1';
 
-export type PackRootKind = 'official' | 'community' | 'local-dev';
+export type PackRootKind = 'official' | 'community' | 'local-dev' | 'workshop';
 
 // ---------------------------------------------------------------------------
 // Raw YAML shapes (schema_version "0.1")

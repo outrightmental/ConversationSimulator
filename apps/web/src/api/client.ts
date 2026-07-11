@@ -636,4 +636,45 @@ export const api = {
       }
     },
   },
+
+  workshop: {
+    /**
+     * Sync the given Steam Workshop subscribed items through the validation
+     * pipeline. Valid packs are imported into the pack index; invalid packs are
+     * quarantined with a readable reason and never crash the library.
+     */
+    sync(items: Array<{ item_id: string; install_path: string; needs_update: boolean; updated_at: number }>): Promise<ApiResult<{
+      results: Array<{ item_id: string; pack_id: string | null; status: string; reason?: string }>
+      imported: number
+      updated: number
+      unchanged: number
+      quarantined: number
+      skipped: number
+    }>> {
+      return post('/workshop/sync', { items })
+    },
+
+    /** List all successfully synced Workshop items with their metadata. */
+    listItems(): Promise<ApiResult<{ items: Array<{ item_id: string; pack_id: string; author_name: string; install_path: string; workshop_updated_at: number; synced_at: number }> }>> {
+      return get('/workshop/items')
+    },
+
+    /** List Workshop items that were quarantined due to validation failures. */
+    listQuarantine(): Promise<ApiResult<{ items: Array<{ item_id: string; install_path: string; reason: string; quarantined_at: number }> }>> {
+      return get('/workshop/quarantine')
+    },
+
+    /**
+     * Remove a Workshop pack from the local index after unsubscribing via Steam.
+     * Returns whether the pack was removed (false when active sessions exist).
+     */
+    async remove(packId: string): Promise<ApiResult<{ removed: boolean; has_active_sessions: boolean; message: string }>> {
+      try {
+        const res = await fetch(`${BASE}/workshop/${encodeURIComponent(packId)}`, { method: 'DELETE' })
+        return handleResponse<{ removed: boolean; has_active_sessions: boolean; message: string }>(res)
+      } catch (err) {
+        return { ok: false, error: { kind: 'network', message: err instanceof Error ? err.message : 'Network error' } }
+      }
+    },
+  },
 }
