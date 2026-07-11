@@ -181,6 +181,64 @@ fn steam_hide_floating_keyboard(state: tauri::State<'_, SteamRuntimeState>) -> b
         .unwrap_or(false)
 }
 
+/// Return the list of Steam Workshop items the local user is subscribed to.
+///
+/// Each item includes its install path and update state so the front-end can
+/// drive the subscribe-sync flow (validate → import via `/api/workshop/sync`).
+/// Returns an empty array when not running under Steam or the `steam` feature
+/// is disabled — the Workshop UI should be hidden in those cases.
+#[tauri::command]
+fn steam_workshop_get_subscribed_items(
+    state: tauri::State<'_, SteamRuntimeState>,
+) -> Vec<steam::WorkshopItem> {
+    state
+        .0
+        .lock()
+        .map(|r| r.get_subscribed_items())
+        .unwrap_or_default()
+}
+
+/// Open the Steam overlay to the Workshop submission flow for the given
+/// validated pack directory. The overlay prompts the creator to authorise the
+/// upload before any content leaves the local machine.
+///
+/// `pack_path` must be an absolute path to a pack that has already passed
+/// two-phase validation (the caller is responsible for this precondition).
+///
+/// Returns `false` when not running under Steam or the `steam` feature is off.
+#[tauri::command]
+fn steam_workshop_publish_pack(
+    pack_path: String,
+    state: tauri::State<'_, SteamRuntimeState>,
+) -> bool {
+    state
+        .0
+        .lock()
+        .map(|r| r.publish_pack(&pack_path))
+        .unwrap_or(false)
+}
+
+/// Unsubscribe from a Workshop item by its numeric item ID (decimal string).
+///
+/// Returns `false` when not running under Steam or the `steam` feature is off.
+/// On success the front-end should call `DELETE /api/workshop/:pack_id` to
+/// remove the pack from the local index once the files are gone.
+#[tauri::command]
+fn steam_workshop_unsubscribe(
+    item_id: String,
+    state: tauri::State<'_, SteamRuntimeState>,
+) -> bool {
+    let id: u64 = match item_id.parse() {
+        Ok(n) => n,
+        Err(_) => return false,
+    };
+    state
+        .0
+        .lock()
+        .map(|r| r.unsubscribe_item(id))
+        .unwrap_or(false)
+}
+
 // ── Managed state (owns the convsim-core child process) ───────────────────────
 
 struct CoreProcessState(Arc<Mutex<Option<Child>>>);
@@ -549,6 +607,9 @@ pub fn run() {
             steam_set_rich_presence,
             steam_show_floating_keyboard,
             steam_hide_floating_keyboard,
+            steam_workshop_get_subscribed_items,
+            steam_workshop_publish_pack,
+            steam_workshop_unsubscribe,
         ])
         .setup(move |app| {
             launch_or_verify_core(
