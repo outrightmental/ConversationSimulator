@@ -185,7 +185,17 @@ jobs:
           find release-artifacts -type f | sort | while IFS= read -r f; do
             sha256sum "$f"
           done | tee artifact-hashes.txt
-          echo "File count: $(wc -l < artifact-hashes.txt)"
+          count=$(wc -l < artifact-hashes.txt)
+          echo "File count: $count"
+          if [ "$count" -eq 0 ]; then
+            echo "ERROR: no release artifacts were downloaded for $RELEASE_TAG." >&2
+            echo "The promotion log requires artifact SHA-256 hashes for provenance" >&2
+            echo "(definition of done). 'gh release download --skip-errors' can leave" >&2
+            echo "the directory empty if the tag has no assets or every asset failed" >&2
+            echo "to download. Confirm the release tag is correct and its assets are" >&2
+            echo "published, then re-run this workflow." >&2
+            exit 1
+          fi
 
       # ── Print the manual App Admin promotion instructions ─────────────────
       # The default-branch set-live cannot be done from CI (see the header
