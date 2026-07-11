@@ -1,29 +1,23 @@
 ---
 title: "Quickstart"
-description: "Walk through your first conversation: start the services, install a model, choose a scenario, play, and review the debrief."
+description: "Walk through your first conversation: launch the app, install a model, choose a scenario, play, and review the debrief."
 sidebar:
   order: 2
 ---
 
-This guide walks through your first conversation. Complete [installation](/start/install/) before starting.
+This guide walks through your first conversation. Complete the
+[installation](/start/install/) before starting.
 
 ---
 
-## 1. Start the services
+## 1. Launch the app
 
-**macOS / Linux:**
+Open Conversation Simulator. The home screen shows green status indicators
+when the conversation engine and the LLM runtime are ready.
 
-```bash
-./scripts/dev.sh
-```
-
-**Windows (PowerShell):**
-
-```powershell
-.\scripts\dev.ps1
-```
-
-Open <http://127.0.0.1:7354> in your browser. The home screen shows green status indicators when convsim-core and the LLM runtime are ready.
+If the engine reports a problem instead, the home screen offers a restart
+button — see [Troubleshooting](/start/troubleshooting/#engine-startup-failure)
+if it persists.
 
 ---
 

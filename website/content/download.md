@@ -37,20 +37,14 @@ model; 6 GB+ of VRAM unlocks the larger, sharper models. Full details in the
 [install guide](https://docs.conversationsimulator.com/start/install/) and
 [local models guide](https://docs.conversationsimulator.com/play/local-models/).
 
-## Run from source
+## For developers
 
-The whole platform is open source, and the dev setup is two scripts:
-
-```
-git clone https://github.com/outrightmental/ConversationSimulator
-cd ConversationSimulator
-./scripts/setup.sh     # Windows: scripts\setup.ps1
-./scripts/dev.sh       # Windows: scripts\dev.ps1
-```
-
-Then open `http://127.0.0.1:7354` in your browser. The
-[quickstart](https://docs.conversationsimulator.com/start/quickstart/) takes
-it from there.
+The whole platform is open source (Apache-2.0) on
+[GitHub](https://github.com/outrightmental/ConversationSimulator) — see the
+[developer install guide](https://docs.conversationsimulator.com/dev/developer-install/)
+to run it from source and the
+[contributing guide](https://docs.conversationsimulator.com/project/contributing/)
+to get involved.
 
 ## Having trouble?
 

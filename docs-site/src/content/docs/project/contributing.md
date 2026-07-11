@@ -139,7 +139,7 @@ cd ConversationSimulator
 
 Then open **http://127.0.0.1:7354**.
 
-Full install details: [Install](/start/install/).
+Full install details: [Developer install](/dev/developer-install/).
 
 ---
 
