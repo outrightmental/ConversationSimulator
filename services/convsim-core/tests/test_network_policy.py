@@ -134,3 +134,58 @@ def test_network_mode_play_value():
 
 def test_network_mode_explicit_download_value():
     assert NetworkMode.EXPLICIT_DOWNLOAD.value == "explicit_download"
+
+
+# ---------------------------------------------------------------------------
+# Zero-model tutorial plays with the offline guard enforced (issue #305)
+# ---------------------------------------------------------------------------
+# The DoD requires the scripted "First Words" tutorial to work fully offline,
+# asserted in both the packaged smoke suite (test_packaged_smoke.py) and this
+# offline guard suite.  The packaged smoke test proves the tutorial plays when
+# nothing tries to reach the network; this test proves the stronger property:
+# the scripted runtime plays with play-mode network calls actively BLOCKED
+# (LOCAL_MODE=True), so a future network dependency sneaking into the scripted
+# path would fail here instead of shipping a tutorial that breaks offline.
+
+
+@pytest.mark.asyncio
+async def test_scripted_tutorial_plays_with_offline_guard_enforced():
+    from convsim_prompt import NPC_TURN_OUTPUT_SCHEMA
+
+    from convsim_core.runtime.scripted import ScriptedChatRuntime
+    from convsim_core.runtime.types import ChatFinal, ChatMessage, ChatRequest
+
+    policy.LOCAL_MODE = True  # enforce the offline guard for play-mode calls
+    runtime = ScriptedChatRuntime()
+
+    # Health checks must succeed with no network — the guard must not fire.
+    health = await runtime.health()
+    assert health.status.name == "READY"
+
+    # Drive every scripted turn plus the keyword-branched ending.  If any part of
+    # the scripted path attempted a play-mode network call, require_network would
+    # raise NetworkBlockedError and fail this test.
+    player_turns = [
+        "Hello!",
+        "I want to practise interviews.",
+        "The meter is moving!",
+        "Something changed.",
+        "Feeling good.",
+        "Yes, I'm excited and ready!",
+    ]
+    for idx, text in enumerate(player_turns, start=1):
+        request = ChatRequest(
+            messages=[ChatMessage(role="user", content=text)],
+            json_schema=NPC_TURN_OUTPUT_SCHEMA,
+            scripted_turn_index=idx,
+        )
+        final = None
+        async for chunk in runtime.chat_stream(request):
+            if isinstance(chunk, ChatFinal):
+                final = chunk
+        assert final is not None and final.structured is not None
+        assert final.structured["npc_utterance"]
+
+    # The final turn ends the session — confirming the whole tutorial completed
+    # offline with the guard enforced.
+    assert final.structured["session_control"]["continue_session"] is False
