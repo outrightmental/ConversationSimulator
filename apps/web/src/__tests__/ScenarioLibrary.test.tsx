@@ -12,6 +12,12 @@ vi.mock('../api/client', () => ({
     listPacks: vi.fn(),
     importPack: vi.fn(),
     getModels: vi.fn(),
+    workshop: {
+      listItems: vi.fn().mockResolvedValue({ ok: true, data: { items: [] } }),
+      sync: vi.fn(),
+      listQuarantine: vi.fn(),
+      remove: vi.fn(),
+    },
   },
   apiClient: {
     reseedOfficialPacks: vi.fn(),
@@ -173,6 +179,8 @@ beforeEach(() => {
     version: '1.0.0',
     dest: '/home/user/.convsim/packs/community.test_pack',
   }})
+  // Workshop items: restore resolved value after vi.restoreAllMocks() clears it.
+  vi.mocked(api.workshop.listItems).mockResolvedValue({ ok: true, data: { items: [] } })
 })
 
 // ---------------------------------------------------------------------------

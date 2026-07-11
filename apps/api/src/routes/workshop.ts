@@ -293,9 +293,19 @@ export async function workshopRoutes(app: FastifyInstance): Promise<void> {
         };
       }
 
-      // Remove from workshop_items and quarantine tables.
+      // Look up the Steam item_id before we delete the workshop_items row.
+      const existingItem = db
+        .prepare('SELECT item_id FROM workshop_items WHERE pack_id = ?')
+        .get(pack_id) as { item_id: string } | undefined;
+
+      // Remove from workshop_items.
       db.prepare('DELETE FROM workshop_items WHERE pack_id = ?').run(pack_id);
-      db.prepare('DELETE FROM workshop_quarantine WHERE item_id IN (SELECT item_id FROM workshop_items WHERE pack_id = ?)').run(pack_id);
+
+      // Clean up any quarantine record for the same Steam item (e.g. if the
+      // pack was previously quarantined and then successfully imported).
+      if (existingItem) {
+        db.prepare('DELETE FROM workshop_quarantine WHERE item_id = ?').run(existingItem.item_id);
+      }
 
       return {
         removed: true,
