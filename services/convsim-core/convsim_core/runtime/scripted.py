@@ -326,11 +326,10 @@ class ScriptedChatRuntime(ChatRuntime):
             player_text = _extract_player_text(request)
             return _pick_ending_turn(player_text)
 
-        # Clamp to valid range (cycle from last non-ending entry if we overshoot)
+        # A turn index at or past last_idx already returned above, so here
+        # turn_idx < last_idx; only guard against a non-positive index.
         if turn_idx < 0:
             turn_idx = 0
-        elif turn_idx >= last_idx:
-            turn_idx = last_idx - 1
 
         return script[turn_idx]
 
