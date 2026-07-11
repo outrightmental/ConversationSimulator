@@ -934,3 +934,80 @@ describe('model-missing state', () => {
     expect(screen.queryByTestId('model-missing-banner')).not.toBeInTheDocument()
   })
 })
+
+// ---------------------------------------------------------------------------
+// Workshop badge — unsubscribe respects active sessions
+// ---------------------------------------------------------------------------
+
+describe('Workshop badge unsubscribe', () => {
+  const WORKSHOP_PACK_ID = 'official.job_interview_basic'
+  const WORKSHOP_ITEM = {
+    item_id: '9876543210',
+    pack_id: WORKSHOP_PACK_ID,
+    author_name: 'WorkshopCreator',
+    install_path: '/steam/workshop/9876543210',
+    workshop_updated_at: 1710000000,
+    synced_at: 1710000000,
+  }
+
+  beforeEach(() => {
+    mockApi.workshop.listItems.mockResolvedValue({ ok: true, data: { items: [WORKSHOP_ITEM] } })
+  })
+
+  it('badges a Workshop pack with its author', async () => {
+    renderLibrary()
+    const badge = await screen.findByTestId(`workshop-badge-${WORKSHOP_PACK_ID}`)
+    expect(badge).toHaveTextContent('Workshop')
+    expect(badge).toHaveTextContent('by WorkshopCreator')
+  })
+
+  it('does not unsubscribe (keeps the pack) when active sessions reference it', async () => {
+    mockApi.workshop.remove.mockResolvedValue({
+      ok: true,
+      data: {
+        removed: false,
+        has_active_sessions: true,
+        message: 'Pack has 1 active session(s). Unsubscribe will take effect after those sessions end.',
+      },
+    })
+
+    renderLibrary()
+    const btn = await screen.findByTestId(`workshop-unsubscribe-${WORKSHOP_PACK_ID}`)
+    await act(async () => {
+      fireEvent.click(btn)
+    })
+
+    // The server was asked to remove; it refused due to the active session.
+    expect(mockApi.workshop.remove).toHaveBeenCalledWith(WORKSHOP_PACK_ID)
+    // The deferral notice is surfaced to the user and the badge remains.
+    const notice = await screen.findByTestId(`workshop-unsubscribe-deferred-${WORKSHOP_PACK_ID}`)
+    expect(notice).toHaveTextContent(/active session/i)
+    expect(screen.getByTestId(`workshop-badge-${WORKSHOP_PACK_ID}`)).toBeInTheDocument()
+  })
+
+  it('removes the pack and refreshes the library when no active session references it', async () => {
+    mockApi.workshop.remove.mockResolvedValue({
+      ok: true,
+      data: { removed: true, has_active_sessions: false, message: 'removed' },
+    })
+
+    renderLibrary()
+    const btn = await screen.findByTestId(`workshop-unsubscribe-${WORKSHOP_PACK_ID}`)
+
+    const scenarioLoadsBefore = mockApi.listScenarios.mock.calls.length
+
+    await act(async () => {
+      fireEvent.click(btn)
+    })
+
+    expect(mockApi.workshop.remove).toHaveBeenCalledWith(WORKSHOP_PACK_ID)
+    // No deferral notice — removal succeeded.
+    expect(
+      screen.queryByTestId(`workshop-unsubscribe-deferred-${WORKSHOP_PACK_ID}`),
+    ).not.toBeInTheDocument()
+    // The library refreshes (onUnsubscribed reloads scenarios/packs/items).
+    await waitFor(() =>
+      expect(mockApi.listScenarios.mock.calls.length).toBeGreaterThan(scenarioLoadsBefore),
+    )
+  })
+})

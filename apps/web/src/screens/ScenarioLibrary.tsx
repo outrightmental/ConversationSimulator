@@ -937,20 +937,33 @@ function WorkshopBadge({
   onUnsubscribed: () => void
 }) {
   const { unsubscribeItem } = useSteamWorkshop()
-  const workshopItemsRef = api.workshop
+  const [notice, setNotice] = useState<string | null>(null)
 
   async function handleUnsubscribe() {
+    setNotice(null)
     // Look up the item_id from the Workshop items list.
-    const r = await workshopItemsRef.listItems()
+    const r = await api.workshop.listItems()
     if (!r.ok) return
     const meta = r.data.items.find((i) => i.pack_id === packId)
     if (!meta) return
 
-    // Tell Steam to unsubscribe.
-    await unsubscribeItem(meta.item_id)
+    // Remove from the local index FIRST. The server refuses (removed: false)
+    // while in-progress sessions still reference the pack's scenarios. We must
+    // not unsubscribe from Steam in that case, because Steam would delete the
+    // pack's files out from under the running session — the imported content
+    // must be cleaned up only when no active session references it.
+    const removeRes = await api.workshop.remove(packId)
+    if (!removeRes.ok) {
+      setNotice('Could not unsubscribe. Please try again.')
+      return
+    }
+    if (!removeRes.data.removed) {
+      setNotice(removeRes.data.message)
+      return
+    }
 
-    // Remove from local index.
-    await api.workshop.remove(packId)
+    // Safe to unsubscribe: no active session references this pack any more.
+    await unsubscribeItem(meta.item_id)
     onUnsubscribed()
   }
 
@@ -978,6 +991,7 @@ function WorkshopBadge({
         onClick={() => void handleUnsubscribe()}
         data-testid={`workshop-unsubscribe-${packId}`}
         aria-label={`Unsubscribe from Workshop pack ${packId}`}
+        title={notice ?? undefined}
         style={{
           background: 'none',
           border: 'none',
@@ -990,6 +1004,15 @@ function WorkshopBadge({
       >
         ✕
       </button>
+      {notice && (
+        <span
+          role="alert"
+          data-testid={`workshop-unsubscribe-deferred-${packId}`}
+          style={{ color: '#fbbf24', fontSize: '0.68rem' }}
+        >
+          {notice}
+        </span>
+      )}
     </span>
   )
 }
