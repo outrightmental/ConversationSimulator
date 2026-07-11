@@ -223,6 +223,7 @@ issue must not be started until the upstream issue is merged and closed.
 | [[Steamworks] Register Steam app, depots, packages, and free-to-play configuration](https://github.com/outrightmental/ConversationSimulator/issues/226) | [publishing/STEAM_APP_REGISTRATION.md](../publishing/STEAM_APP_REGISTRATION.md), [`steam/`](../steam/), [`.github/workflows/steam-deploy.yml`](../.github/workflows/steam-deploy.yml) | Stage 3 prerequisite (must be complete before first depot submission) |
 | [[Publishing] Write Steam publishing docs matching the FeverTilt pattern](https://github.com/outrightmental/ConversationSimulator/issues/232) | [publishing/STEAM_STORE_AND_OPERATIONS.md](../publishing/STEAM_STORE_AND_OPERATIONS.md), [publishing/STEAM_PUBLISHING_AND_DEPLOYMENT.md](../publishing/STEAM_PUBLISHING_AND_DEPLOYMENT.md), [docs/STEAM_INTEGRATION.md](STEAM_INTEGRATION.md), [publishing/MACOS_SIGNING_AND_NOTARIZATION.md](../publishing/MACOS_SIGNING_AND_NOTARIZATION.md), [publishing/WINDOWS_CODE_SIGNING.md](../publishing/WINDOWS_CODE_SIGNING.md) | Stage 3 prerequisite (operational clarity before private beta) |
 | [[Marketplace] Design future in-game content marketplace architecture](https://github.com/outrightmental/ConversationSimulator/issues/233) | [docs/marketplace-architecture.md](marketplace-architecture.md) | Stage 5 design baseline (post-launch, not launch-blocking) |
+| [[Marketplace] Post-launch spike: validate creator marketplace demand and constraints](https://github.com/outrightmental/ConversationSimulator/issues/244) | [docs/marketplace-demand-spike.md](marketplace-demand-spike.md) | Stage 5 decision gate (complete at 90-day mark; required before any implementation issue is opened) |
 
 All open and closed issues in this work stream:
 [GitHub — issues with `[Steam Roadmap]` prefix](https://github.com/outrightmental/ConversationSimulator/issues?q=is%3Aissue+%5BSteam+Roadmap%5D+in%3Atitle)
@@ -241,6 +242,7 @@ All open and closed issues in this work stream:
 - [release-checklist.md](release-checklist.md) — platform smoke matrix
 - [model-registry/](../model-registry/) — authoritative model checksums and license metadata
 - [marketplace-architecture.md](marketplace-architecture.md) — post-launch marketplace design baseline; entry gate criteria, distribution path comparison, and schema/signing/moderation/payment scope
+- [marketplace-demand-spike.md](marketplace-demand-spike.md) — Stage 5 research spike: signal collection, creator survey, constraint revisit, and go/no-go recommendation
 - [publishing/STEAM_STORE_AND_OPERATIONS.md](../publishing/STEAM_STORE_AND_OPERATIONS.md) — store operations, launch runbook, support triage
 - [publishing/STEAM_PUBLISHING_AND_DEPLOYMENT.md](../publishing/STEAM_PUBLISHING_AND_DEPLOYMENT.md) — SteamPipe, CI deploy, manual upload, branch promotion, troubleshooting
 - [publishing/MACOS_SIGNING_AND_NOTARIZATION.md](../publishing/MACOS_SIGNING_AND_NOTARIZATION.md) — macOS signing and notarisation runbook

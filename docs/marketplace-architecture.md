@@ -410,15 +410,18 @@ the entry gate is satisfied. The entry gate requires 90 days of public release
 data plus confirmed player demand, legal review, Valve consultation, and a
 moderation capacity plan.
 
-When those conditions are met, a post-launch marketplace review issue will be
-opened. That issue — not this document — will define the specific work scope
-based on what the data shows. Options A through D above are starting points
-for that review, not committed decisions.
+When those conditions are met, the spike defined in
+[`docs/marketplace-demand-spike.md`](marketplace-demand-spike.md) is used to
+collect signals, interview creators, and produce a structured recommendation.
+That spike document — not this document — defines the specific work scope based
+on what the data shows. Options A through D above are starting points for that
+review, not committed decisions.
 
 ---
 
 ## Links
 
+- [`docs/marketplace-demand-spike.md`](marketplace-demand-spike.md) — Stage 5 research spike: signal collection, creator survey, constraint revisit, and go/no-go recommendation
 - [`docs/STEAM_ROADMAP.md`](STEAM_ROADMAP.md) — release train: Stage 5 is the marketplace exploration milestone
 - [`docs/steam-mvp-scope.md`](steam-mvp-scope.md) — what is required for the free Steam release
 - [`publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md`](../publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md) — risk SP-05: Steam Wallet and future paid DLC path (DEFERRED)
