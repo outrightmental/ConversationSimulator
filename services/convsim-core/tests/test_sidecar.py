@@ -658,6 +658,41 @@ async def test_start_crash_detected_on_immediate_exit(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_kill_on_start_produces_non_empty_runtime_log(tmp_path):
+    """runtime.log must be non-empty after a kill-on-start failure.
+
+    The sidecar writes a timestamped header to runtime.log before launching
+    the subprocess, so the file must have content even when the process exits
+    immediately without producing any output.
+    """
+    crasher = tmp_path / "crash-server"
+    # Write one line to stdout before exiting so the log captures subprocess output too.
+    crasher.write_text(
+        "#!/usr/bin/env python3\nimport sys\nprint('fatal: cannot initialise')\nsys.exit(1)\n"
+    )
+    crasher.chmod(0o755)
+
+    log_dir = tmp_path / "logs"
+    port = _free_port()
+    sidecar = LlamaCppSidecar(log_dir=str(log_dir))
+
+    with pytest.raises(Exception):
+        await sidecar.start(
+            "m.gguf",
+            executable=str(crasher),
+            port=port,
+            startup_timeout=5.0,
+        )
+
+    runtime_log = log_dir / "runtime.log"
+    assert runtime_log.exists(), "runtime.log was not created"
+    assert runtime_log.stat().st_size > 0, "runtime.log is empty after kill-on-start"
+    content = runtime_log.read_text(errors="replace")
+    # Header written before spawn must be present.
+    assert "llama-server start" in content
+
+
+@pytest.mark.asyncio
 async def test_start_twice_when_already_running_is_noop(tmp_path):
     exe = _write_fake_server(tmp_path)
     port = _free_port()

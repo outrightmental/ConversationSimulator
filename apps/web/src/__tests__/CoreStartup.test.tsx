@@ -289,6 +289,58 @@ describe('CoreStartupGuard — error state', () => {
 
     expect(screen.queryByText('App content loaded')).not.toBeInTheDocument()
   })
+
+  it('shows the resolved log directory from the event payload', async () => {
+    let handler: TauriListenHandler | undefined
+    stubTauri((_event, h) => {
+      handler = h
+      return Promise.resolve(() => {})
+    })
+
+    await act(async () => {
+      renderGuard()
+    })
+
+    await act(async () => {
+      handler?.({
+        payload: {
+          phase: 'error',
+          message: 'Failed.',
+          error: null,
+          log_dir: 'C:\\Users\\test\\AppData\\Local\\com.outrightmental.convsim\\logs',
+        },
+      })
+    })
+
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'C:\\Users\\test\\AppData\\Local\\com.outrightmental.convsim\\logs',
+    )
+  })
+
+  it('shows "Open logs folder" button when log_dir is present in error payload', async () => {
+    let handler: TauriListenHandler | undefined
+    stubTauri((_event, h) => {
+      handler = h
+      return Promise.resolve(() => {})
+    })
+
+    await act(async () => {
+      renderGuard()
+    })
+
+    await act(async () => {
+      handler?.({
+        payload: {
+          phase: 'error',
+          message: 'Failed.',
+          error: null,
+          log_dir: '/home/user/.local/share/convsim/logs',
+        },
+      })
+    })
+
+    expect(screen.getByRole('button', { name: /open logs folder/i })).toBeInTheDocument()
+  })
 })
 
 describe('CoreStartupGuard — health check fast-path', () => {

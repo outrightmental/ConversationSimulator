@@ -25,11 +25,20 @@ class _JsonFormatter(logging.Formatter):
 
 
 class _RuntimeFilter(logging.Filter):
-    """Accept only log records from the runtimes sub-package."""
+    """Accept only log records from the runtime sub-packages.
+
+    Matches both ``convsim_core.runtime.*`` (the actual package path) and the
+    historical ``convsim_core.runtimes.*`` alias so that neither naming variant
+    is silently dropped from runtime.log.
+    """
 
     def filter(self, record: logging.LogRecord) -> bool:
         name = record.name
-        return name == "convsim_core.runtimes" or name.startswith("convsim_core.runtimes.")
+        return (
+            name in ("convsim_core.runtime", "convsim_core.runtimes")
+            or name.startswith("convsim_core.runtime.")
+            or name.startswith("convsim_core.runtimes.")
+        )
 
 
 def configure_logging(log_dir: str, debug: bool = False) -> None:
@@ -76,10 +85,13 @@ def configure_logging(log_dir: str, debug: bool = False) -> None:
     rt_fh.setFormatter(json_fmt)
     rt_fh.addFilter(_RuntimeFilter())
 
-    # Attach to the runtimes logger so it propagates to app.log as well.
-    rt_logger = logging.getLogger("convsim_core.runtimes")
-    rt_logger.addHandler(rt_fh)
-    rt_logger.propagate = True
+    # Attach to both runtime logger trees so events propagate to app.log as well.
+    # convsim_core.runtime is the actual package path; convsim_core.runtimes is
+    # kept for compatibility with any code that used the old name.
+    for _rt_name in ("convsim_core.runtime", "convsim_core.runtimes"):
+        _rt_logger = logging.getLogger(_rt_name)
+        _rt_logger.addHandler(rt_fh)
+        _rt_logger.propagate = True
 
     ch = logging.StreamHandler(sys.stdout)
     ch.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
