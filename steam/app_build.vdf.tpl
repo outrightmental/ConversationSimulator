@@ -39,8 +39,15 @@
 
     "Depots"
     {
-        // One depot per platform. Depot IDs are assigned by Valve at registration
-        // and stored as GitHub repository variables — see publishing/STEAM_APP_REGISTRATION.md.
+        // One depot per platform for the BASE ($9.99) app. Depot IDs are assigned
+        // by Valve at registration and stored as GitHub repository variables — see
+        // publishing/STEAM_APP_REGISTRATION.md.
+        //
+        // NOTE: premium scenario-pack DLC is NOT built here. Each DLC has its own
+        // App ID and content depot, built and uploaded from the PRIVATE repo
+        // (ConversationSimulator-DLC) using steam/depot_dlc_scenariopacks.vdf.tpl.
+        // Paid content must never be staged into these base depots — see
+        // docs/DLC_MODEL.md and publishing/STEAM_DEPOT_CONTENTS.md.
         "${STEAM_DEPOT_WINDOWS_ID}"  "depot_windows.vdf"
         "${STEAM_DEPOT_MACOS_ID}"    "depot_macos.vdf"
         "${STEAM_DEPOT_LINUX_ID}"    "depot_linux.vdf"

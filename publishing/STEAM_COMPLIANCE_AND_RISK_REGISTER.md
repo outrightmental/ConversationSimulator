@@ -6,8 +6,8 @@
 > a mitigation, a release-blocking status, and a current disposition. Update
 > this register whenever a risk changes state.
 >
-> **Scope:** Steam edition of Conversation Simulator — a free, local-first,
-> Outright Mental-sponsored title. All risks must be resolved or formally
+> **Scope:** Steam edition of Conversation Simulator — a local-first,
+> Outright Mental-published title. All risks must be resolved or formally
 > accepted before the private beta gate opens (Stage 3 of the
 > [release train](../docs/STEAM_ROADMAP.md#release-train)).
 
@@ -324,16 +324,16 @@ the decisions for Steam review and partner portal audit purposes.
 | **Release-blocking** | YES |
 | **Status** | OPEN |
 
-### SP-05 — Steam Wallet and future paid DLC path
+### SP-05 — First-party Steam DLC path for premium scenario packs
 
 | | |
 |---|---|
 | **Area** | Platform / Licensing |
-| **Risk** | A future community pack browser or paid DLC path requires Steam Wallet integration, which requires Valve's approval for microtransaction-enabled titles and may trigger additional content review obligations. |
+| **Risk** | Shipping paid first-party premium scenario-pack DLC via Steam introduces platform obligations: each DLC must pass Valve's DLC review, VAT/sales tax on paid digital content must be handled correctly, refunds must follow Steam's policy, and DLC content must never leak into the base app depots. |
 | **Owner** | Outright Mental (publishing) |
-| **Mitigation** | The v1 Steam release ships with no payment rails, no premium pack tier, and no microtransactions. Any paid marketplace or DLC content path is explicitly deferred to Stage 5 (post-launch exploration) of the release train. If a paid path is ever pursued, it must go through a separate Valve review, a Steam Wallet integration audit, and a legal review of revenue-sharing obligations before implementation. |
-| **Release-blocking** | NO (deferred) |
-| **Status** | DEFERRED |
+| **Mitigation** | The base Steam app is a **$9.99 one-time purchase**, and first-party premium scenario-pack DLC ships as paid Steam DLC (each pack is its own Steam App ID and content depot). Controls: (1) every DLC build is submitted for Valve's standard DLC review before release; (2) VAT and sales tax on paid digital content are collected by Steam's storefront under Valve's regional tax rules, so prices are configured per Valve's tax-inclusive pricing model; (3) refunds follow Steam's standard policy (within two weeks of purchase and under two hours of playtime) for both the base app and every DLC; (4) DLC content is authored and built exclusively from the private `ConversationSimulator-DLC` repo and uploaded via `steam/depot_dlc_scenariopacks.vdf.tpl` — it is never committed to the public repo and never staged in the base app depots, which the SR-08 depot audit enforces. Ownership is checked at runtime via Steamworks `BIsDlcInstalled`, so only owned packs unlock. What remains deferred to Stage 5 is a third-party community-creator marketplace and Steam Wallet microtransactions (no in-app payment UI ships in v1). |
+| **Release-blocking** | YES |
+| **Status** | IN PROGRESS |
 
 ---
 
@@ -393,7 +393,7 @@ gate (Stage 3) or the public release gate (Stage 4).
 - [ ] Steam Deck verification checklist in `docs/STEAM_ROADMAP.md` is complete and all items pass.
 - [ ] Steam store page copy has been reviewed using the checklist in [`publishing/STEAM_STORE_PAGE.md`](STEAM_STORE_PAGE.md) — Store page review checklist.
 - [ ] Store page copy accuracy: no language claims AI therapy, diagnosis, or legal advice (gate G4-04).
-- [ ] Steam store page does not imply paid content or a marketplace that does not exist in v1 (gate G4-04).
+- [ ] Steam store page accurately states the $9.99 one-time base price and any first-party premium scenario-pack DLC, and does not imply a third-party community-creator marketplace that does not exist in v1 (gate G4-04).
 - [ ] All store page copy sign-off rows in [`publishing/STEAM_STORE_PAGE.md`](STEAM_STORE_PAGE.md) — Sign-off table are completed with reviewer name and date.
 - [ ] All capsule assets, screenshots, and trailer reviewed against the production brief in [`publishing/STEAM_ASSETS_SPEC.md`](STEAM_ASSETS_SPEC.md) and uploaded to Steamworks.
 
@@ -465,7 +465,7 @@ team is unblocked.
 | SP-02 | Platform | YES | OPEN |
 | SP-03 | Platform | NO | OPEN |
 | SP-04 | Platform | YES | OPEN |
-| SP-05 | Platform / Licensing | NO (deferred) | DEFERRED |
+| SP-05 | Platform / Licensing | YES | IN PROGRESS |
 
 ---
 

@@ -22,6 +22,7 @@
 | Python backend (`convsim-core`) | YES — bundled in app resources | No |
 | Runtime sidecars (llama-server, whisper-cli, sherpa-onnx-offline-tts) | YES — `runtimes/` directory | No |
 | Official scenario packs (4 packs) | YES — bundled in app resources | No |
+| Premium scenario-pack DLC | **FORBIDDEN in base depots** — separate DLC depot only | YES — via Steam DLC, owners only |
 | UI assets (icons, fonts, web bundle) | YES — embedded in app bundle | No |
 | License files (`LICENSE`, `NOTICE`) | YES — depot root | No |
 | LLM model weights (`.gguf`, `.safetensors`, etc.) | **FORBIDDEN** — see MD-04 | YES — explicit player download via model manager |
@@ -163,6 +164,53 @@ NOTICE                            # Third-party licence notices
 | `*.pt` | PyTorch model checkpoints — compliance rule MD-04 |
 | `*.pth` | PyTorch model checkpoints — compliance rule MD-04 |
 | `*.ckpt` | Model checkpoints — compliance rule MD-04 |
+
+### Premium scenario-pack DLC depot (`depot_dlc_scenariopacks.vdf.tpl`)
+
+Premium scenario packs ship as paid Steam DLC, **never** as part of the three
+base platform depots above. Each premium expansion pack is its own Steam DLC
+(its own DLC App ID) with its own dedicated **content depot**, separate from the
+base app depots and from every other DLC. Steam downloads a DLC depot only for
+players who own that DLC.
+
+> **Built and uploaded from the PRIVATE repo only.** The
+> [`steam/depot_dlc_scenariopacks.vdf.tpl`](../steam/depot_dlc_scenariopacks.vdf.tpl)
+> template lives in this public repo purely to define the canonical shape of a
+> DLC content depot — it is **not built here**. Premium pack content is authored
+> and uploaded from the private `ConversationSimulator-DLC` repository by that
+> repo's `dlc-steam-deploy.yml` workflow. No premium/DLC pack content lives in
+> this public repository. See [`docs/DLC_MODEL.md`](../docs/DLC_MODEL.md) for the
+> full DLC ownership and unlock contract.
+
+**Content root:** `dlc-content/<pack_id>/` in the private repo (supplied per DLC
+via the `DLC_CONTENT_ROOT` template variable; never a path inside this public
+repo).
+
+A DLC content depot contains **only** declarative scenario-pack YAML plus static
+pack assets (text, images, audio prompts). It carries no executable binaries, no
+runtimes, and no LLM model weights — the base app already ships the engine and
+sidecars, and DLC packs run on that same bundled runtime.
+
+**Excluded by VDF `FileExclusion` (mirrors the base depot exclusions exactly):**
+
+| Pattern | Reason |
+|---------|--------|
+| `*.pdb` | Debug symbols — not useful to players |
+| `*.gguf` | Model weight files — compliance rule MD-04 |
+| `*.bin` | Model weight files — compliance rule MD-04 |
+| `*.safetensors` | Model weight files — compliance rule MD-04 |
+| `*.pt` | PyTorch model checkpoints — compliance rule MD-04 |
+| `*.pth` | PyTorch model checkpoints — compliance rule MD-04 |
+| `*.ckpt` | Model checkpoints — compliance rule MD-04 |
+
+> **Base depots must NEVER contain premium/DLC pack content.** The four official
+> packs bundled in the base depots (`job-interview-basic`, `everyday-negotiation`,
+> `language-cafe`, `difficult-conversations`) are the only scenario packs that
+> ship inside the base Windows, macOS, and Linux depots. Premium/DLC packs are
+> delivered exclusively through their own DLC depots, downloaded by Steam only
+> for owning players. Placing paid pack content inside a base depot would push it
+> to every player (merely locked at runtime) and risk leaking paid content — it
+> must never happen.
 
 ---
 
