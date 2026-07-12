@@ -157,6 +157,22 @@ fn steam_set_rich_presence(
         .unwrap_or(false)
 }
 
+/// Report whether the premium DLC with the given Steam DLC App ID is owned and
+/// installed. Used to gate premium scenario-pack expansions (see
+/// docs/DLC_MODEL.md). Returns `false` outside Steam or when the DLC is not owned,
+/// so non-Steam builds treat every premium pack as available-to-buy.
+#[tauri::command]
+fn steam_is_dlc_installed(
+    dlc_app_id: u32,
+    state: tauri::State<'_, SteamRuntimeState>,
+) -> bool {
+    state
+        .0
+        .lock()
+        .map(|r| r.is_dlc_installed(dlc_app_id))
+        .unwrap_or(false)
+}
+
 /// Show the Steam floating on-screen keyboard over the game window.
 /// Called by the front-end whenever a text input gains focus so the
 /// Steam Deck keyboard appears without requiring manual player action.
@@ -605,6 +621,7 @@ pub fn run() {
             steam_unlock_achievement,
             steam_increment_stat,
             steam_set_rich_presence,
+            steam_is_dlc_installed,
             steam_show_floating_keyboard,
             steam_hide_floating_keyboard,
             steam_workshop_get_subscribed_items,
