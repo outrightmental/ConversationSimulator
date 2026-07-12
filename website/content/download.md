@@ -17,12 +17,18 @@ description: Download Conversation Simulator for Windows, macOS, or Linux — fr
     <strong>Linux</strong>
     <span>AppImage &amp; SteamOS-compatible builds</span>
   </a>
+  <!-- Replace the Steam href below with the live store URL once the App ID is
+       registered: https://store.steampowered.com/app/<STEAM_APP_ID>/ -->
+  <a class="dl-card" href="https://store.steampowered.com/">
+    <strong>Steam</strong>
+    <span>Windows · macOS · Linux &amp; Steam Deck — free</span>
+  </a>
 </div>
 
 All downloads are served from
 [GitHub Releases](https://github.com/outrightmental/ConversationSimulator/releases),
-with checksums published alongside every build. A free Steam release is in
-preparation and will carry the same local-first guarantee.
+with checksums published alongside every build. The Steam release carries the
+same local-first guarantee — free to download and play, no subscription.
 
 ## What to expect on first launch
 
