@@ -302,23 +302,37 @@ impl SteamRuntime {
         false
     }
 
-    // ── DLC ownership ────────────────────────────────────────────────────────
+    // ── DLC / purchased content ──────────────────────────────────────────────
 
-    /// Returns `true` when the DLC with the given Steam App ID is currently
-    /// installed (owned and downloaded) for the current user.
+    /// Check whether a Steam DLC is installed (i.e. owned and installed by Steam).
     ///
-    /// Pass the Valve-assigned DLC App ID (not the base game's App ID). Use
-    /// `dlc_registry_from_env()` to resolve a pack ID to its DLC App ID before
-    /// calling this.
+    /// Uses `ISteamApps::BIsDlcInstalled` which returns `true` only when the
+    /// DLC has been purchased and its files are present on disk. This is the
+    /// authoritative ownership signal for premium packs.
     ///
-    /// Returns `false` when Steam is unavailable or the `steam` Cargo feature
-    /// is disabled — callers should treat a `false` return as not-owned.
-    pub fn is_dlc_installed(&self, dlc_app_id: u32) -> bool {
+    /// Returns `false` when Steam is unavailable, the `steam` feature is off,
+    /// or the DLC has not been purchased by the current user.
+    pub fn is_dlc_installed(&self, app_id: u32) -> bool {
         #[cfg(feature = "steam")]
         if let Some(ref client) = self.client {
-            return client
-                .apps()
-                .is_dlc_installed(steamworks::AppId(dlc_app_id));
+            return client.apps().is_dlc_installed(steamworks::AppId(app_id));
+        }
+        false
+    }
+
+    /// Open the Steam overlay to the store page for a DLC so the player can
+    /// purchase it without leaving the app.
+    ///
+    /// Navigates the overlay to the Steam store page for `app_id`.
+    /// Returns `true` when the overlay was opened, `false` when Steam is
+    /// unavailable.
+    pub fn open_dlc_store_overlay(&self, app_id: u32) -> bool {
+        #[cfg(feature = "steam")]
+        if let Some(ref client) = self.client {
+            client.friends().activate_game_overlay_to_web_page(
+                &format!("https://store.steampowered.com/app/{}/", app_id),
+            );
+            return true;
         }
         false
     }
@@ -647,6 +661,25 @@ mod tests {
         });
     }
 
+    // ── DLC graceful no-ops when steam feature is absent ─────────────────────
+
+    #[test]
+    fn is_dlc_installed_returns_false_without_steam() {
+        without_steam_env_vars(|| {
+            let (_status, runtime) = init();
+            // Any app_id returns false when Steam is absent.
+            assert!(!runtime.is_dlc_installed(3000001));
+        });
+    }
+
+    #[test]
+    fn open_dlc_store_overlay_returns_false_without_steam() {
+        without_steam_env_vars(|| {
+            let (_status, runtime) = init();
+            assert!(!runtime.open_dlc_store_overlay(3000001));
+        });
+    }
+
     // ── Workshop graceful no-ops when steam feature is absent ─────────────────
 
     #[test]
@@ -689,16 +722,6 @@ mod tests {
         assert!(item.install_path.is_empty());
         assert!(!item.needs_update);
         assert_eq!(item.updated_at, 0);
-    }
-
-    // ── DLC ownership graceful no-op when steam feature is absent ─────────────
-
-    #[test]
-    fn is_dlc_installed_returns_false_without_steam() {
-        without_steam_env_vars(|| {
-            let (_status, runtime) = init();
-            assert!(!runtime.is_dlc_installed(2123456));
-        });
     }
 
     // ── DLC registry parsing ──────────────────────────────────────────────────

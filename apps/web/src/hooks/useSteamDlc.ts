@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -7,95 +7,158 @@ type TauriWindow = {
   __TAURI__?: { core?: { invoke<T>(cmd: string, args?: unknown): Promise<T> } }
 }
 
-// ── DLC App ID registry ───────────────────────────────────────────────────────
-
 /**
- * Parses the VITE_STEAM_DLC_APP_IDS build variable (set from the
- * STEAM_DLC_APP_IDS repository variable at build time) into a pack-id →
- * DLC App ID map.
+ * A premium DLC pack known to the app. Each entry maps a `pack_id` (as served
+ * by `/api/scenarios`) to the Steam DLC that unlocks it.
  *
- * Format: comma-separated `pack_id:dlc_app_id` pairs, e.g.
- *   `official.premium_pack:2123456,official.other_pack:2123457`
+ * Content is installed by Steam at `dlc/<steam_dlc_app_id>/` relative to the
+ * DLC install root. The backend discovers scenarios at this path automatically
+ * once the DLC is purchased and installed.
  *
- * Returns an empty record when the variable is absent or empty, so the
- * open-source and browser builds treat every premium pack as not-owned.
+ * See `docs/DLC_MODEL.md` for the full ownership model.
  */
-export function parseDlcRegistry(raw: string | undefined): Record<string, number> {
-  if (!raw) return {}
-  const registry: Record<string, number> = {}
-  for (const entry of raw.split(',')) {
-    const trimmed = entry.trim()
-    if (!trimmed) continue
-    const colon = trimmed.indexOf(':')
-    if (colon < 1) continue
-    const packId = trimmed.slice(0, colon).trim()
-    const appId = parseInt(trimmed.slice(colon + 1).trim(), 10)
-    if (packId && Number.isInteger(appId) && appId > 0) {
-      registry[packId] = appId
-    }
-  }
-  return registry
+export interface DlcEntry {
+  /** Stable pack identifier matching the pack manifest (`pack_id` field). */
+  pack_id: string
+  /** Display name shown in the Scenario Library. */
+  name: string
+  /** Short description shown on the "Available on Steam" card. */
+  description: string
+  /** Steam AppID of this DLC (distinct from the base-game AppID). */
+  steam_dlc_app_id: number
+  /** Steam store page URL used as a browser fallback outside of Steam. */
+  store_url: string
 }
 
-/**
- * Pack-id → DLC App ID map baked in at build time from VITE_STEAM_DLC_APP_IDS.
- *
- * Empty in open-source and browser builds (no STEAM_DLC_APP_IDS configured),
- * which means all premium packs are treated as not-owned.
- */
-export const DLC_REGISTRY: Readonly<Record<string, number>> = parseDlcRegistry(
-  import.meta.env.VITE_STEAM_DLC_APP_IDS as string | undefined,
-)
-
-// ── Hook ──────────────────────────────────────────────────────────────────────
+// ── DLC catalog ───────────────────────────────────────────────────────────────
 
 /**
- * Provides callbacks for Steam DLC ownership checks.
+ * Authoritative list of premium DLC packs.
  *
- * - In a browser context (no `window.__TAURI__`) all callbacks return
- *   `false` — every premium pack is treated as not-owned.
- * - In the Tauri shell, delegates to the `steam_is_dlc_installed` command,
- *   which is a no-op when Steam is absent or the `steam` Cargo feature is
- *   disabled.
+ * Ownership is checked via `steam_is_dlc_installed` for each entry. Packs
+ * not present in the installed scenarios list (unowned or not yet installed)
+ * are shown as "Available on Steam" cards in the Scenario Library.
  *
- * Usage — check whether a premium pack is owned:
- *   const { isDlcInstalled, isDlcInstalledForPack } = useSteamDlc()
- *   const owned = await isDlcInstalledForPack('official.premium_pack')
+ * Steam DLC AppIDs are pending registration in the Steamworks partner portal;
+ * placeholder IDs (3000001+) are used until registration is complete.
  */
-export function useSteamDlc() {
-  /**
-   * Returns `true` when the DLC with the given Steam App ID is installed
-   * (owned and downloaded) for the current user.
-   *
-   * Returns `false` in any non-Tauri context, when Steam is unavailable, or
-   * when the `steam` Cargo feature is disabled.
-   */
-  const isDlcInstalled = useCallback(
-    async (dlcAppId: number): Promise<boolean> => {
-      const tauri = (window as TauriWindow).__TAURI__
-      if (!tauri?.core) return false
-      return tauri.core
-        .invoke<boolean>('steam_is_dlc_installed', { dlc_app_id: dlcAppId })
+export const DLC_CATALOG: DlcEntry[] = [
+  {
+    pack_id: 'premium.dating_confidence',
+    name: 'Dating Confidence',
+    description:
+      'Practice asking someone out, navigating first-date conversation, and setting respectful boundaries in romantic social contexts.',
+    steam_dlc_app_id: 3000001,
+    store_url: 'https://store.steampowered.com/app/3000001/',
+  },
+  {
+    pack_id: 'premium.public_speaking',
+    name: 'Public Speaking',
+    description:
+      'Build confidence for presentations, pitches, and keynote talks — from small team stand-ups to auditorium-scale speeches.',
+    steam_dlc_app_id: 3000002,
+    store_url: 'https://store.steampowered.com/app/3000002/',
+  },
+]
+
+// ── useSteamDlcOwned ─────────────────────────────────────────────────────────
+
+/**
+ * Check ownership of a single Steam DLC by its AppID.
+ *
+ * - Returns `null` while the asynchronous check is in progress.
+ * - Returns `true` when the DLC is owned and installed (`BIsDlcInstalled`).
+ * - Returns `false` in a non-Tauri context or when the DLC is not owned.
+ *
+ * Callers should treat `false` as "available to buy" rather than hiding the
+ * pack — per the DLC model, premium packs are never hidden.
+ */
+export function useSteamDlcOwned(steamDlcAppId: number): boolean | null {
+  const [owned, setOwned] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    const tauri = (window as TauriWindow).__TAURI__
+    if (!tauri?.core) {
+      setOwned(false)
+      return
+    }
+    tauri.core
+      .invoke<boolean>('steam_is_dlc_installed', { app_id: steamDlcAppId })
+      .then(setOwned)
+      .catch(() => setOwned(false))
+  }, [steamDlcAppId])
+
+  return owned
+}
+
+// ── useSteamDlc ──────────────────────────────────────────────────────────────
+
+/**
+ * Returns DLC ownership state for all entries in `DLC_CATALOG`.
+ *
+ * `ownedPackIds` is a `Set<string>` of `pack_id` values the current Steam
+ * user owns. `isLoaded` is `false` until all ownership checks have resolved.
+ *
+ * In a non-Tauri context (browser / non-Steam build), resolves immediately
+ * with an empty `ownedPackIds` and `isLoaded: true`. Callers should treat
+ * installed packs as playable when Steam is unavailable — the check returning
+ * empty does not mean "unowned", it means "cannot verify".
+ */
+export function useSteamDlc(): { ownedPackIds: Set<string>; isLoaded: boolean } {
+  const [ownedPackIds, setOwnedPackIds] = useState<Set<string>>(new Set())
+  const [isLoaded, setIsLoaded] = useState(false)
+
+  useEffect(() => {
+    const tauri = (window as TauriWindow).__TAURI__
+    if (!tauri?.core || DLC_CATALOG.length === 0) {
+      setIsLoaded(true)
+      return
+    }
+
+    let cancelled = false
+
+    const checks = DLC_CATALOG.map((entry) =>
+      tauri.core!
+        .invoke<boolean>('steam_is_dlc_installed', { app_id: entry.steam_dlc_app_id })
+        .then((owned): string | null => (owned ? entry.pack_id : null))
+        .catch((): null => null),
+    )
+
+    void Promise.all(checks).then((results) => {
+      if (cancelled) return
+      const owned = new Set(results.filter((id): id is string => id !== null))
+      setOwnedPackIds(owned)
+      setIsLoaded(true)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  return { ownedPackIds, isLoaded }
+}
+
+// ── useSteamDlcStore ─────────────────────────────────────────────────────────
+
+/**
+ * Returns a callback that opens the Steam store page for a DLC entry.
+ *
+ * Under Steam (Tauri + `steam_open_dlc_store_overlay`), the store page opens
+ * inside the Steam overlay without leaving the app. When Steam is unavailable
+ * or the overlay fails, the store URL opens in the system browser instead.
+ */
+export function useSteamDlcStore() {
+  const openStorePage = useCallback(async (entry: DlcEntry): Promise<void> => {
+    const tauri = (window as TauriWindow).__TAURI__
+    if (tauri?.core) {
+      const opened = await tauri.core
+        .invoke<boolean>('steam_open_dlc_store_overlay', { app_id: entry.steam_dlc_app_id })
         .catch(() => false)
-    },
-    [],
-  )
+      if (opened) return
+    }
+    window.open(entry.store_url, '_blank', 'noopener,noreferrer')
+  }, [])
 
-  /**
-   * Looks up the DLC App ID for `packId` in the build-time registry and
-   * checks DLC ownership.
-   *
-   * Returns `false` when the pack has no DLC App ID registered (free pack,
-   * or this build was compiled without `STEAM_DLC_APP_IDS`).
-   */
-  const isDlcInstalledForPack = useCallback(
-    async (packId: string): Promise<boolean> => {
-      const appId = DLC_REGISTRY[packId]
-      if (appId === undefined) return false
-      return isDlcInstalled(appId)
-    },
-    [isDlcInstalled],
-  )
-
-  return { isDlcInstalled, isDlcInstalledForPack }
+  return { openStorePage }
 }

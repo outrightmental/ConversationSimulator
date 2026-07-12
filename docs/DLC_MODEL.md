@@ -1,128 +1,127 @@
-# DLC Model
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+# How the App Unlocks Owned DLC
 
-Conversation Simulator uses Steam DLC to gate premium scenario packs behind a
-one-time purchase. This document describes how DLC App IDs are configured,
-how ownership is checked at runtime, and how the open-source / browser build
-falls back gracefully when Steam is absent.
+This document describes the ownership model for premium DLC packs and how the
+Scenario Library UI surfaces them to players.
 
-## Concepts
+---
 
-| Term | Description |
-|---|---|
-| **Pack** | A directory of YAML scenario files identified by a `pack_id` string (e.g. `official.premium_conversations`). |
-| **DLC App ID** | A Valve-assigned Steam Application ID for a DLC item tied to the base game. Distinct from the base game's own App ID. |
-| **DLC registry** | The build-time mapping of `pack_id` → DLC App ID, encoded in `STEAM_DLC_APP_IDS` and baked into the desktop bundle. |
+## Pack categories
 
-## DLC App ID configuration
+| Category | Pack ID prefix | Always playable? |
+|----------|---------------|-----------------|
+| **Official** | `official.` | Yes — free and bundled. |
+| **Premium DLC** | `premium.` | Only when owned on Steam. |
+| **Workshop** | _(any other prefix)_ | Yes — player-imported content. |
 
-DLC App IDs are registered in the Steamworks App Admin portal (one child app per
-premium pack). The full registry is maintained in the private
-`STEAM_DLC_REGISTRY.md` and mirrored to the **`STEAM_DLC_APP_IDS` repository
-variable** in GitHub Actions (Settings → Secrets and variables → Actions →
-Variables).
+---
 
-### Variable format
+## Official packs (always free)
 
-```
-STEAM_DLC_APP_IDS = pack_id:dlc_app_id[,pack_id:dlc_app_id …]
-```
+The four bundled official packs are unconditionally playable for all players.
+They require no DLC purchase and are never hidden or gated:
 
-Example (hypothetical IDs):
+- `official.first_words`
+- `official.difficult_conversations`
+- `official.language_cafe`
+- `official.job_interview_basic`
 
-```
-official.premium_conversations:2123456,official.pro_scenarios:2123457
-```
+If an official pack is missing (e.g. the user deleted it), the Scenario Library
+offers a **Restore official packs** button that re-seeds them from the bundled
+source.
 
-Rules:
-- Each entry is `pack_id:dlc_app_id` — colon-separated, no spaces required (whitespace is trimmed).
-- Multiple entries are comma-separated.
-- DLC App IDs must be positive integers.
-- Malformed entries are silently skipped at runtime; the build script (`build.rs`) fails loudly at compile time so typos are caught before release.
+---
 
-## How the build pipeline threads the registry in
+## Premium DLC packs
 
-At Tauri build time (`pnpm --filter @convsim/desktop build`), the CI step sets:
+Premium packs are distributed as Steam DLC. Each DLC has its own Steam AppID
+separate from the base game. Ownership is determined via the Steamworks
+`ISteamApps::BIsDlcInstalled` API, which the desktop shell exposes as the
+`steam_is_dlc_installed` Tauri command.
 
-```yaml
-VITE_STEAM_DLC_APP_IDS: ${{ vars.STEAM_DLC_APP_IDS }}
-```
+### DLC catalog
 
-This env var is picked up in two places:
+The authoritative catalog is declared in
+`apps/web/src/hooks/useSteamDlc.ts` (`DLC_CATALOG`). Each entry stores:
 
-1. **`apps/desktop/src-tauri/build.rs`** — validates the format and emits
-   `cargo:rerun-if-env-changed=VITE_STEAM_DLC_APP_IDS` so Cargo re-runs
-   the build script when the variable changes.
+| Field | Description |
+|-------|-------------|
+| `pack_id` | Stable identifier matching the pack manifest |
+| `name` | Display name shown in the Scenario Library |
+| `description` | Short marketing copy shown on the "Available to buy" card |
+| `steam_dlc_app_id` | Steam AppID of the DLC (unique per DLC title) |
+| `store_url` | Steam store page URL for the DLC |
 
-2. **Vite frontend bundle** — Vite automatically bakes all `VITE_*` env vars
-   into the JavaScript bundle as `import.meta.env.VITE_STEAM_DLC_APP_IDS`.
-   The `DLC_REGISTRY` export in `useSteamDlc.ts` is parsed from this value at
-   bundle load time.
+### Install path convention
 
-The `tauri.conf.json` `beforeBuildCommand` re-runs `pnpm --filter @convsim/web build`
-as part of `tauri build`, so both targets receive the env var in a single CI step.
-
-## Runtime ownership check
+When a player owns a DLC and Steam installs it, the content lands at:
 
 ```
-pack_id  →  DLC_REGISTRY lookup  →  dlc_app_id
-                                         │
-                                         ▼
-                               steam_is_dlc_installed (Tauri command)
-                                         │
-                                         ▼
-                               SteamRuntime::is_dlc_installed
-                                         │
-                                         ▼
-                               ISteamApps::IsDlcInstalled(appId)
+dlc/<steam_dlc_app_id>/
 ```
 
-### TypeScript (pack layer)
+relative to the Steam DLC install root for the base game. The `convsim-core`
+backend discovers pack manifests at this path and serves the scenarios through
+the `/api/scenarios` endpoint exactly like any other installed pack.
 
-```typescript
-import { useSteamDlc, DLC_REGISTRY } from '../hooks/useSteamDlc'
+### Ownership check flow
 
-const { isDlcInstalled, isDlcInstalledForPack } = useSteamDlc()
-
-// Option 1 — convenience wrapper (preferred):
-const owned = await isDlcInstalledForPack('official.premium_conversations')
-
-// Option 2 — explicit App ID:
-const appId = DLC_REGISTRY['official.premium_conversations']
-if (appId !== undefined) {
-  const owned = await isDlcInstalled(appId)
-}
+```
+On Scenario Library mount
+  │
+  ├── Query /api/scenarios  →  list of installed packs
+  │
+  └── For each entry in DLC_CATALOG:
+        invoke steam_is_dlc_installed(entry.steam_dlc_app_id)
+            │
+            ├─ true   →  DLC is owned; show scenarios as playable if installed
+            └─ false  →  DLC is not owned; show "Available on Steam" card
 ```
 
-### Rust (Tauri command, `lib.rs`)
+---
 
-```rust
-steam_is_dlc_installed(dlc_app_id: u32, state: tauri::State<SteamRuntimeState>) -> bool
-```
+## UI rules
 
-Delegates to `SteamRuntime::is_dlc_installed(dlc_app_id)`, which calls
-`ISteamApps::IsDlcInstalled` via the `steamworks` crate.
+1. **Never hide premium packs.** Every entry in the DLC catalog is always
+   shown in the Scenario Library — either as a playable pack (owned) or as an
+   "Available on Steam" card (not owned).
 
-## Open-source / browser build behavior
+2. **Owned DLC = playable.** When `steam_is_dlc_installed` returns `true` and
+   the pack's scenarios are in the API response, each scenario has a **Launch**
+   button that routes to `/setup/<scenario_id>`.
 
-When `STEAM_DLC_APP_IDS` is not configured (open-source contributors, browser
-builds, any non-Steam distribution):
+3. **Unowned DLC = available to buy.** When a DLC catalog entry is not in the
+   installed scenarios list (or the DLC is confirmed not owned), the library
+   shows a locked card with the pack name, a short description, and a
+   **Get on Steam** button.
 
-- `VITE_STEAM_DLC_APP_IDS` is absent → `DLC_REGISTRY` is an empty object.
-- `isDlcInstalledForPack(packId)` returns `false` for every pack ID
-  (no DLC App ID to look up).
-- `isDlcInstalled(appId)` returns `false` (no `window.__TAURI__` in a browser,
-  or Steam is absent in the Tauri shell).
+4. **Steam overlay for purchases.** The **Get on Steam** button invokes
+   `steam_open_dlc_store_overlay` which opens the Steam overlay to the DLC
+   store page. Outside of Steam (e.g. dev / browser), it falls back to opening
+   the `store_url` in the system browser.
 
-Premium packs are therefore treated as **not owned** in all non-Steam contexts.
-The pack layer should gate premium content behind this check and surface an
-appropriate upgrade prompt rather than showing an error.
+5. **Graceful non-Steam fallback.** When Steam is unavailable (not running,
+   or the `steam` Cargo feature is disabled), installed packs are assumed
+   owned and shown as playable. Unowned DLC cards still appear (using browser
+   fallback for the store link) so the catalog is always visible.
 
-## Adding a new DLC pack
+---
 
-1. Register a child DLC app in Steamworks App Admin (parent: the base game's
-   App ID). Note the assigned DLC App ID.
-2. Add the new pack manifest under `packs/` with a unique `pack_id`.
-3. Append `new_pack_id:dlc_app_id` to the `STEAM_DLC_APP_IDS` repository
-   variable in GitHub Actions settings.
-4. Update `STEAM_DLC_REGISTRY.md` in the private repo.
-5. Trigger a new release build — the DLC registry is baked in at compile time.
+## Adding a new premium DLC pack
+
+1. Register the DLC in the Steamworks partner portal and obtain its AppID.
+2. Create the pack manifest under `packs/premium/<pack-slug>/`.
+3. Add an entry to `DLC_CATALOG` in `apps/web/src/hooks/useSteamDlc.ts`
+   with the confirmed `steam_dlc_app_id` and `store_url`.
+4. Update the depot VDF in `steam/` to include the DLC content path.
+5. Bump the DLC AppID placeholder comment in this document.
+
+---
+
+## References
+
+- `apps/web/src/hooks/useSteamDlc.ts` — `DLC_CATALOG`, `useSteamDlc`, `useSteamDlcOwned`, `useSteamDlcStore`
+- `apps/web/src/screens/ScenarioLibrary.tsx` — Scenario Library UI
+- `apps/desktop/src-tauri/src/steam.rs` — `SteamRuntime::is_dlc_installed`, `SteamRuntime::open_dlc_store_overlay`
+- `apps/desktop/src-tauri/src/lib.rs` — `steam_is_dlc_installed`, `steam_open_dlc_store_overlay` Tauri commands
+- `docs/STEAM_ROADMAP.md` — Release principles and stage requirements

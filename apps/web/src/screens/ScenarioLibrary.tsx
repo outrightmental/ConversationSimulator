@@ -9,6 +9,8 @@ import { errorHeadline } from '../api/errors'
 import { ApiErrorView } from '../components/ApiErrorView'
 import { useSteamStatus } from '../hooks/useSteamStatus'
 import { useSteamWorkshop } from '../hooks/useSteamWorkshop'
+import { useSteamDlc, useSteamDlcStore, DLC_CATALOG } from '../hooks/useSteamDlc'
+import type { DlcEntry } from '../hooks/useSteamDlc'
 
 interface PackGroup {
   pack_id: string
@@ -69,6 +71,8 @@ export default function ScenarioLibrary() {
   // Steam Workshop sync state
   const steamStatus = useSteamStatus()
   const { getSubscribedItems } = useSteamWorkshop()
+  const { ownedPackIds, isLoaded: dlcLoaded } = useSteamDlc()
+  const { openStorePage } = useSteamDlcStore()
   const [workshopSyncState, setWorkshopSyncState] = useState<'idle' | 'syncing' | 'done' | 'error'>('idle')
   const [workshopSyncSummary, setWorkshopSyncSummary] = useState<string | null>(null)
   const [workshopItems, setWorkshopItems] = useState<Record<string, { author_name: string; workshop_updated_at: number }>>({})
@@ -225,6 +229,31 @@ export default function ScenarioLibrary() {
   }, [scenarios, search, filterRating, filterLanguage, filterDifficulty, filterTag, filterModel, voiceOnly])
 
   const totalVisible = packs.reduce((n, p) => n + p.scenarios.length, 0)
+
+  // Set of pack_ids present in the installed scenarios (used to determine which
+  // DLC catalog entries are missing / unowned).
+  const installedPackIds = useMemo(
+    () => new Set((scenarios ?? []).map((s) => s.pack_id)),
+    [scenarios],
+  )
+
+  // DLC catalog entries whose content is not yet installed (not in scenario list).
+  // Always show these as "Available on Steam" regardless of current search/filters.
+  const unownedDlcEntries = useMemo(
+    () => DLC_CATALOG.filter((e) => !installedPackIds.has(e.pack_id)),
+    [installedPackIds],
+  )
+
+  // Returns true when an installed pack's scenarios can be launched.
+  // Official and community packs are always playable. For DLC packs, we check
+  // ownership only when Steam is enabled and the ownership state has loaded;
+  // when Steam is unavailable, installed packs are treated as playable.
+  function isPackPlayable(packId: string): boolean {
+    const dlcEntry = DLC_CATALOG.find((e) => e.pack_id === packId)
+    if (!dlcEntry) return true
+    if (!isSteamEnabled || !dlcLoaded) return true
+    return ownedPackIds.has(packId)
+  }
 
   async function handleValidate(packId: string) {
     setValidations((prev) => ({ ...prev, [packId]: { status: 'loading' } }))
@@ -694,6 +723,8 @@ export default function ScenarioLibrary() {
         const indexedPack = indexedPacks[pack.pack_id]
         const isFolderOpen = folderOpen === pack.pack_id
         const workshopMeta = workshopItems[pack.pack_id]
+        const packPlayable = isPackPlayable(pack.pack_id)
+        const dlcEntry = DLC_CATALOG.find((e) => e.pack_id === pack.pack_id)
 
         return (
           <section
@@ -733,6 +764,9 @@ export default function ScenarioLibrary() {
                       loadWorkshopItems()
                     }}
                   />
+                )}
+                {dlcEntry && !packPlayable && (
+                  <DlcLockedBadge />
                 )}
               </h2>
 
@@ -948,25 +982,47 @@ export default function ScenarioLibrary() {
                         </div>
                       </div>
 
-                      <Link
-                        to={`/setup/${scenario.scenario_id}`}
-                        aria-label={`Launch ${scenario.title}`}
-                        data-testid={`launch-${scenario.scenario_id}`}
-                        style={{
-                          flexShrink: 0,
-                          padding: '0.4rem 1rem',
-                          borderRadius: '6px',
-                          background: 'rgba(99,102,241,0.15)',
-                          border: '1px solid rgba(99,102,241,0.4)',
-                          color: '#a5b4fc',
-                          textDecoration: 'none',
-                          fontSize: '0.875rem',
-                          fontWeight: 500,
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        Launch
-                      </Link>
+                      {packPlayable ? (
+                        <Link
+                          to={`/setup/${scenario.scenario_id}`}
+                          aria-label={`Launch ${scenario.title}`}
+                          data-testid={`launch-${scenario.scenario_id}`}
+                          style={{
+                            flexShrink: 0,
+                            padding: '0.4rem 1rem',
+                            borderRadius: '6px',
+                            background: 'rgba(99,102,241,0.15)',
+                            border: '1px solid rgba(99,102,241,0.4)',
+                            color: '#a5b4fc',
+                            textDecoration: 'none',
+                            fontSize: '0.875rem',
+                            fontWeight: 500,
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          Launch
+                        </Link>
+                      ) : (
+                        <button
+                          onClick={() => dlcEntry && void openStorePage(dlcEntry)}
+                          aria-label={`Get ${pack.pack_name} on Steam`}
+                          data-testid={`dlc-get-${pack.pack_id}`}
+                          style={{
+                            flexShrink: 0,
+                            padding: '0.4rem 1rem',
+                            borderRadius: '6px',
+                            background: 'rgba(100,200,255,0.08)',
+                            border: '1px solid rgba(100,200,255,0.25)',
+                            color: '#7dd3fc',
+                            fontSize: '0.875rem',
+                            fontWeight: 500,
+                            whiteSpace: 'nowrap',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Get on Steam
+                        </button>
+                      )}
                     </div>
                   </article>
                 </li>
@@ -975,6 +1031,14 @@ export default function ScenarioLibrary() {
           </section>
         )
       })}
+
+      {unownedDlcEntries.map((entry) => (
+        <UnownedDlcCard
+          key={entry.pack_id}
+          entry={entry}
+          onGetOnSteam={() => void openStorePage(entry)}
+        />
+      ))}
     </div>
   )
 }
@@ -1066,6 +1130,115 @@ function WorkshopBadge({
         </span>
       )}
     </span>
+  )
+}
+
+function DlcLockedBadge() {
+  return (
+    <span
+      data-testid="dlc-locked-badge"
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        padding: '0.1rem 0.5rem',
+        borderRadius: '4px',
+        fontSize: '0.72rem',
+        background: 'rgba(251,191,36,0.08)',
+        color: '#fbbf24',
+        border: '1px solid rgba(251,191,36,0.25)',
+        fontWeight: 400,
+      }}
+    >
+      Premium DLC
+    </span>
+  )
+}
+
+function UnownedDlcCard({
+  entry,
+  onGetOnSteam,
+}: {
+  entry: DlcEntry
+  onGetOnSteam: () => void
+}) {
+  return (
+    <section
+      aria-labelledby={`dlc-heading-${entry.pack_id}`}
+      data-testid={`dlc-unowned-${entry.pack_id}`}
+      style={{ marginBottom: '2.5rem' }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'baseline',
+          justifyContent: 'space-between',
+          gap: '1rem',
+          marginBottom: '0.5rem',
+          borderBottom: '1px solid rgba(255,255,255,0.08)',
+          paddingBottom: '0.5rem',
+        }}
+      >
+        <h2
+          id={`dlc-heading-${entry.pack_id}`}
+          style={{
+            fontSize: '1rem',
+            fontWeight: 600,
+            margin: 0,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            flexWrap: 'wrap',
+          }}
+        >
+          {entry.name}
+          <DlcLockedBadge />
+        </h2>
+      </div>
+
+      <div
+        style={{
+          border: '1px solid rgba(251,191,36,0.15)',
+          borderRadius: '8px',
+          padding: '1rem 1.25rem',
+          background: 'rgba(251,191,36,0.03)',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: '1rem',
+        }}
+      >
+        <p
+          style={{
+            fontSize: '0.875rem',
+            color: '#a1a1aa',
+            margin: 0,
+            lineHeight: '1.5',
+            flex: 1,
+          }}
+        >
+          {entry.description}
+        </p>
+        <button
+          onClick={onGetOnSteam}
+          aria-label={`Get ${entry.name} on Steam`}
+          data-testid={`dlc-buy-${entry.pack_id}`}
+          style={{
+            flexShrink: 0,
+            padding: '0.4rem 1rem',
+            borderRadius: '6px',
+            background: 'rgba(100,200,255,0.08)',
+            border: '1px solid rgba(100,200,255,0.25)',
+            color: '#7dd3fc',
+            fontSize: '0.875rem',
+            fontWeight: 500,
+            whiteSpace: 'nowrap',
+            cursor: 'pointer',
+          }}
+        >
+          Get on Steam
+        </button>
+      </div>
+    </section>
   )
 }
 

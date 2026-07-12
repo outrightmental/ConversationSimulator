@@ -185,6 +185,45 @@ fn steam_hide_floating_keyboard(state: tauri::State<'_, SteamRuntimeState>) -> b
         .unwrap_or(false)
 }
 
+/// Check whether a Steam DLC is installed (owned and installed by Steam).
+///
+/// Uses `ISteamApps::BIsDlcInstalled` which returns `true` only when the
+/// DLC has been purchased and its content files are on disk. Use this to
+/// gate premium pack playback in the Scenario Library.
+///
+/// Returns `false` when not running under Steam, the `steam` feature is off,
+/// or the DLC is not owned by the current user.
+#[tauri::command]
+fn steam_is_dlc_installed(
+    app_id: u32,
+    state: tauri::State<'_, SteamRuntimeState>,
+) -> bool {
+    state
+        .0
+        .lock()
+        .map(|r| r.is_dlc_installed(app_id))
+        .unwrap_or(false)
+}
+
+/// Open the Steam overlay to the store page for a DLC so the player can
+/// purchase it without leaving the app.
+///
+/// Returns `true` when the overlay was opened.
+/// Returns `false` when not running under Steam or the `steam` feature is off.
+/// The frontend should fall back to opening the store URL in the system browser
+/// when this returns `false`.
+#[tauri::command]
+fn steam_open_dlc_store_overlay(
+    app_id: u32,
+    state: tauri::State<'_, SteamRuntimeState>,
+) -> bool {
+    state
+        .0
+        .lock()
+        .map(|r| r.open_dlc_store_overlay(app_id))
+        .unwrap_or(false)
+}
+
 /// Return the list of Steam Workshop items the local user is subscribed to.
 ///
 /// Each item includes its install path and update state so the front-end can
@@ -219,27 +258,6 @@ fn steam_workshop_publish_pack(
         .0
         .lock()
         .map(|r| r.publish_pack(&pack_path))
-        .unwrap_or(false)
-}
-
-/// Check whether a Steam DLC App is currently installed (owned and downloaded)
-/// for the current user.
-///
-/// `dlc_app_id` is the Valve-assigned Steam App ID for the DLC — not the base
-/// game's App ID. Use the pack-id → DLC App ID registry (built from
-/// `VITE_STEAM_DLC_APP_IDS` at compile time) to resolve a pack ID before
-/// calling this command.
-///
-/// Returns `false` when not running under Steam or the `steam` feature is off.
-#[tauri::command]
-fn steam_is_dlc_installed(
-    dlc_app_id: u32,
-    state: tauri::State<'_, SteamRuntimeState>,
-) -> bool {
-    state
-        .0
-        .lock()
-        .map(|r| r.is_dlc_installed(dlc_app_id))
         .unwrap_or(false)
 }
 
@@ -659,6 +677,7 @@ pub fn run() {
             steam_show_floating_keyboard,
             steam_hide_floating_keyboard,
             steam_is_dlc_installed,
+            steam_open_dlc_store_overlay,
             steam_workshop_get_subscribed_items,
             steam_workshop_publish_pack,
             steam_workshop_unsubscribe,
