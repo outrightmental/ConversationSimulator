@@ -58,6 +58,20 @@ pub mod rich_presence {
     pub const AT_MAIN_MENU: &str = "#AtMainMenu";
 }
 
+// ── DLC ownership ─────────────────────────────────────────────────────────────
+//
+// DLC App IDs are not hard-coded here; they are resolved at build time from the
+// VITE_STEAM_DLC_APP_IDS build variable (set via the STEAM_DLC_APP_IDS
+// repository variable).  The open-source repo therefore contains no live Valve
+// App IDs — the pack layer reads `dlc_registry_from_env()` to map pack IDs to
+// their corresponding DLC App IDs.
+
+pub mod dlc {
+    // Intentionally empty: live DLC App IDs are not committed to the public
+    // repository.  Use `dlc_registry_from_env()` to load them at build time
+    // from the STEAM_DLC_APP_IDS repository variable.
+}
+
 // ── Workshop UGC ──────────────────────────────────────────────────────────────
 
 pub mod workshop {
@@ -288,6 +302,27 @@ impl SteamRuntime {
         false
     }
 
+    // ── DLC ownership ────────────────────────────────────────────────────────
+
+    /// Returns `true` when the DLC with the given Steam App ID is currently
+    /// installed (owned and downloaded) for the current user.
+    ///
+    /// Pass the Valve-assigned DLC App ID (not the base game's App ID). Use
+    /// `dlc_registry_from_env()` to resolve a pack ID to its DLC App ID before
+    /// calling this.
+    ///
+    /// Returns `false` when Steam is unavailable or the `steam` Cargo feature
+    /// is disabled — callers should treat a `false` return as not-owned.
+    pub fn is_dlc_installed(&self, dlc_app_id: u32) -> bool {
+        #[cfg(feature = "steam")]
+        if let Some(ref client) = self.client {
+            return client
+                .apps()
+                .is_dlc_installed(steamworks::AppId(dlc_app_id));
+        }
+        false
+    }
+
     /// Unsubscribe from a Workshop item by its numeric item ID.
     ///
     /// Returns `true` when the unsubscribe request was submitted to Steam.
@@ -323,6 +358,34 @@ fn app_id_from_env() -> Option<u32> {
     std::env::var("SteamAppId")
         .ok()
         .and_then(|s| s.parse::<u32>().ok())
+}
+
+/// Parses `VITE_STEAM_DLC_APP_IDS` (the STEAM_DLC_APP_IDS repository variable
+/// injected at build time) into a pack-id → DLC App ID registry.
+///
+/// Expected format: comma-separated `pack_id:dlc_app_id` pairs, e.g.
+///   `official.premium_pack:2123456,official.other_pack:2123457`
+///
+/// Silently skips malformed entries so a single typo does not block the whole
+/// registry. Returns an empty `Vec` when the variable is absent or empty —
+/// all DLC is treated as not-owned in that case (open-source / browser build).
+pub fn dlc_registry_from_env() -> Vec<(String, u32)> {
+    let raw = match std::env::var("VITE_STEAM_DLC_APP_IDS") {
+        Ok(s) if !s.is_empty() => s,
+        _ => return Vec::new(),
+    };
+    raw.split(',')
+        .filter_map(|entry| {
+            let entry = entry.trim();
+            let colon = entry.find(':')?;
+            let pack_id = entry[..colon].trim().to_string();
+            let app_id: u32 = entry[colon + 1..].trim().parse().ok()?;
+            if pack_id.is_empty() {
+                return None;
+            }
+            Some((pack_id, app_id))
+        })
+        .collect()
 }
 
 // ── Feature-gated Steamworks SDK bridge ──────────────────────────────────────
@@ -626,5 +689,102 @@ mod tests {
         assert!(item.install_path.is_empty());
         assert!(!item.needs_update);
         assert_eq!(item.updated_at, 0);
+    }
+
+    // ── DLC ownership graceful no-op when steam feature is absent ─────────────
+
+    #[test]
+    fn is_dlc_installed_returns_false_without_steam() {
+        without_steam_env_vars(|| {
+            let (_status, runtime) = init();
+            assert!(!runtime.is_dlc_installed(2123456));
+        });
+    }
+
+    // ── DLC registry parsing ──────────────────────────────────────────────────
+
+    fn with_dlc_app_ids(value: &str, f: impl FnOnce()) {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let prev = std::env::var("VITE_STEAM_DLC_APP_IDS").ok();
+        std::env::set_var("VITE_STEAM_DLC_APP_IDS", value);
+        f();
+        match prev {
+            Some(v) => std::env::set_var("VITE_STEAM_DLC_APP_IDS", v),
+            None => std::env::remove_var("VITE_STEAM_DLC_APP_IDS"),
+        }
+    }
+
+    fn without_dlc_app_ids(f: impl FnOnce()) {
+        let _g = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let prev = std::env::var("VITE_STEAM_DLC_APP_IDS").ok();
+        std::env::remove_var("VITE_STEAM_DLC_APP_IDS");
+        f();
+        if let Some(v) = prev {
+            std::env::set_var("VITE_STEAM_DLC_APP_IDS", v);
+        }
+    }
+
+    #[test]
+    fn dlc_registry_empty_when_var_absent() {
+        without_dlc_app_ids(|| {
+            assert!(dlc_registry_from_env().is_empty());
+        });
+    }
+
+    #[test]
+    fn dlc_registry_empty_when_var_is_empty_string() {
+        with_dlc_app_ids("", || {
+            assert!(dlc_registry_from_env().is_empty());
+        });
+    }
+
+    #[test]
+    fn dlc_registry_parses_single_entry() {
+        with_dlc_app_ids("official.premium_pack:2123456", || {
+            let reg = dlc_registry_from_env();
+            assert_eq!(reg.len(), 1);
+            assert_eq!(reg[0], ("official.premium_pack".to_string(), 2123456u32));
+        });
+    }
+
+    #[test]
+    fn dlc_registry_parses_multiple_entries() {
+        with_dlc_app_ids("official.pack_a:2000001,official.pack_b:2000002", || {
+            let reg = dlc_registry_from_env();
+            assert_eq!(reg.len(), 2);
+            assert_eq!(reg[0].0, "official.pack_a");
+            assert_eq!(reg[0].1, 2000001u32);
+            assert_eq!(reg[1].0, "official.pack_b");
+            assert_eq!(reg[1].1, 2000002u32);
+        });
+    }
+
+    #[test]
+    fn dlc_registry_skips_malformed_entries() {
+        with_dlc_app_ids("official.good:2000001,bad-no-colon,official.also_good:2000002", || {
+            let reg = dlc_registry_from_env();
+            assert_eq!(reg.len(), 2);
+            assert_eq!(reg[0].0, "official.good");
+            assert_eq!(reg[1].0, "official.also_good");
+        });
+    }
+
+    #[test]
+    fn dlc_registry_skips_non_numeric_app_ids() {
+        with_dlc_app_ids("official.pack:not_a_number,official.valid:2000001", || {
+            let reg = dlc_registry_from_env();
+            assert_eq!(reg.len(), 1);
+            assert_eq!(reg[0].0, "official.valid");
+        });
+    }
+
+    #[test]
+    fn dlc_registry_trims_whitespace() {
+        with_dlc_app_ids(" official.pack : 2000001 , official.pack2:2000002 ", || {
+            let reg = dlc_registry_from_env();
+            assert_eq!(reg.len(), 2);
+            assert_eq!(reg[0].0, "official.pack");
+            assert_eq!(reg[0].1, 2000001u32);
+        });
     }
 }
