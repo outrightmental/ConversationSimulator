@@ -218,6 +218,32 @@ impl SteamRuntime {
         false
     }
 
+    // ── DLC ownership ────────────────────────────────────────────────────────
+
+    /// Return `true` when the local Steam user owns and has installed the DLC
+    /// identified by `dlc_app_id`.
+    ///
+    /// Uses `ISteamApps::BIsDlcInstalled` — a synchronous API that reads
+    /// locally cached license data and does not make a network call.
+    ///
+    /// Returns `false` when:
+    /// - the `steam` Cargo feature is disabled,
+    /// - the Steamworks SDK is not initialized (Steam not running),
+    /// - the user does not own the DLC, or
+    /// - the DLC content is not yet installed locally.
+    ///
+    /// Callers should treat `false` as "not accessible" and show the
+    /// pack-library "Available on Steam" state. See `docs/DLC_MODEL.md`.
+    pub fn is_dlc_installed(&self, dlc_app_id: u32) -> bool {
+        #[cfg(feature = "steam")]
+        if let Some(ref client) = self.client {
+            return client
+                .apps()
+                .is_dlc_installed(steamworks::AppId(dlc_app_id));
+        }
+        false
+    }
+
     // ── Workshop / UGC ───────────────────────────────────────────────────────
 
     /// Return the list of Workshop items the local user is currently subscribed
@@ -608,6 +634,26 @@ mod tests {
         without_steam_env_vars(|| {
             let (_status, runtime) = init();
             assert!(!runtime.unsubscribe_item(12345678u64));
+        });
+    }
+
+    // ── DLC ownership ─────────────────────────────────────────────────────────
+
+    #[test]
+    fn is_dlc_installed_returns_false_without_steam() {
+        without_steam_env_vars(|| {
+            let (_status, runtime) = init();
+            // Without the `steam` feature (or without Steam running) the DLC
+            // check must always return false — treat as "not accessible".
+            assert!(!runtime.is_dlc_installed(1234567));
+        });
+    }
+
+    #[test]
+    fn is_dlc_installed_returns_false_for_zero_app_id() {
+        without_steam_env_vars(|| {
+            let (_status, runtime) = init();
+            assert!(!runtime.is_dlc_installed(0));
         });
     }
 

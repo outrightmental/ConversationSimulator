@@ -222,6 +222,24 @@ fn steam_workshop_publish_pack(
         .unwrap_or(false)
 }
 
+/// Check whether the local Steam user owns and has installed the DLC identified
+/// by `dlc_app_id`.
+///
+/// Uses `ISteamApps::BIsDlcInstalled` — synchronous, no network call.
+/// Returns `false` when not running under Steam, the user does not own the DLC,
+/// or the DLC content is not yet downloaded. See `docs/DLC_MODEL.md`.
+#[tauri::command]
+fn steam_is_dlc_installed(
+    dlc_app_id: u32,
+    state: tauri::State<'_, SteamRuntimeState>,
+) -> bool {
+    state
+        .0
+        .lock()
+        .map(|r| r.is_dlc_installed(dlc_app_id))
+        .unwrap_or(false)
+}
+
 /// Unsubscribe from a Workshop item by its numeric item ID (decimal string).
 ///
 /// Returns `false` when not running under Steam or the `steam` feature is off.
@@ -640,6 +658,7 @@ pub fn run() {
             steam_workshop_get_subscribed_items,
             steam_workshop_publish_pack,
             steam_workshop_unsubscribe,
+            steam_is_dlc_installed,
         ])
         .setup(move |app| {
             launch_or_verify_core(
