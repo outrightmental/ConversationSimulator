@@ -87,6 +87,19 @@ def test_runtime_filter_accepts_runtimes_root():
     assert f.filter(record) is True
 
 
+def test_runtime_filter_accepts_runtime_package():
+    """convsim_core.runtime.* (without s) must also route to runtime.log."""
+    f = _RuntimeFilter()
+    record = _make_record("convsim_core.runtime.supervisor", logging.WARNING, "msg")
+    assert f.filter(record) is True
+
+
+def test_runtime_filter_accepts_runtime_root():
+    f = _RuntimeFilter()
+    record = _make_record("convsim_core.runtime", logging.INFO, "msg")
+    assert f.filter(record) is True
+
+
 def test_runtime_filter_rejects_app_logger():
     f = _RuntimeFilter()
     record = _make_record("convsim_core.app", logging.WARNING, "msg")
@@ -105,6 +118,12 @@ def test_runtime_filter_rejects_partial_prefix():
     assert f.filter(record) is False
 
 
+def test_runtime_filter_rejects_partial_runtime_prefix():
+    f = _RuntimeFilter()
+    record = _make_record("convsim_core.runtime_extra", logging.INFO, "msg")
+    assert f.filter(record) is False
+
+
 # ---------------------------------------------------------------------------
 # configure_logging — called with an isolated fresh logger to avoid conflicts
 # with pytest's own root-logger capture handler.
@@ -120,14 +139,17 @@ def _call_configure_logging_isolated(log_dir: str, debug: bool = False) -> None:
     original handlers and any new ones after the call, leaving global state
     intact for the remainder of the test.
 
-    Also tracks new handlers added to the runtimes sub-logger (rt_fh) so the
+    Also tracks new handlers added to both runtime sub-loggers (rt_fh) so the
     autouse cleanup fixture can close and remove them; without this they would
     accumulate across tests and leak open file handles.
     """
     root = logging.getLogger()
-    rt = logging.getLogger("convsim_core.runtimes")
+    rt_loggers = [
+        logging.getLogger("convsim_core.runtime"),
+        logging.getLogger("convsim_core.runtimes"),
+    ]
     original_root = root.handlers[:]
-    original_rt = rt.handlers[:]
+    original_rt = {rt: rt.handlers[:] for rt in rt_loggers}
     root.handlers.clear()
     try:
         configure_logging(log_dir, debug=debug)
@@ -135,7 +157,12 @@ def _call_configure_logging_isolated(log_dir: str, debug: bool = False) -> None:
         # Keep the newly added file handlers so the test can assert on files,
         # but also restore any original handlers that were removed.
         new_root_handlers = [h for h in root.handlers if h not in original_root]
-        new_rt_handlers = [h for h in rt.handlers if h not in original_rt]
+        new_rt_handlers = [
+            h
+            for rt in rt_loggers
+            for h in rt.handlers
+            if h not in original_rt[rt]
+        ]
         for h in original_root:
             if h not in root.handlers:
                 root.addHandler(h)
@@ -152,14 +179,18 @@ def _cleanup_file_handlers():
     _handlers_to_close.clear()
     yield
     root = logging.getLogger()
-    rt = logging.getLogger("convsim_core.runtimes")
+    rt_loggers = [
+        logging.getLogger("convsim_core.runtime"),
+        logging.getLogger("convsim_core.runtimes"),
+    ]
     for h in list(_handlers_to_close):
         h.flush()
         h.close()
         if h in root.handlers:
             root.removeHandler(h)
-        if h in rt.handlers:
-            rt.removeHandler(h)
+        for rt in rt_loggers:
+            if h in rt.handlers:
+                rt.removeHandler(h)
     _handlers_to_close.clear()
 
 
@@ -236,6 +267,24 @@ def test_runtime_events_also_propagate_to_app_log(tmp_path):
     logging.getLogger("convsim_core.runtimes.stt").warning("propagation test")
     content = (log_dir / "app.log").read_text(encoding="utf-8")
     assert "propagation test" in content
+
+
+def test_runtime_package_events_appear_in_runtime_log(tmp_path):
+    """Events from convsim_core.runtime.* (without s) must appear in runtime.log."""
+    log_dir = tmp_path / "logs"
+    _call_configure_logging_isolated(str(log_dir))
+    logging.getLogger("convsim_core.runtime.supervisor").warning("supervisor shutdown warning")
+    content = (log_dir / "runtime.log").read_text(encoding="utf-8")
+    assert "supervisor shutdown warning" in content
+
+
+def test_runtime_package_events_also_propagate_to_app_log(tmp_path):
+    """convsim_core.runtime.* events propagate to app.log via root handler."""
+    log_dir = tmp_path / "logs"
+    _call_configure_logging_isolated(str(log_dir))
+    logging.getLogger("convsim_core.runtime.sidecar").warning("sidecar propagation check")
+    content = (log_dir / "app.log").read_text(encoding="utf-8")
+    assert "sidecar propagation check" in content
 
 
 def test_non_runtime_events_absent_from_runtime_log(tmp_path):

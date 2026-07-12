@@ -156,6 +156,31 @@ class TestStableDataPaths:
             )
             _ = cfg_mod  # suppress unused import warning
 
+    def test_recovery_card_log_dir_matches_python_log_dir(self, tmp_path):
+        """The recovery card log path (Rust: app_local_data_dir/logs) must match
+        the Python log_dir when CONVSIM_DATA_ROOT equals app_local_data_dir.
+
+        The Tauri shell sets CONVSIM_DATA_ROOT=app_local_data_dir() before
+        launching convsim-core, and emits log_dir=app_local_data_dir()/logs in
+        CoreStatusPayload. This test verifies that when CONVSIM_DATA_ROOT is set
+        to a given value, Python's log_dir matches what Tauri would emit.
+        """
+        simulated_app_local_data_dir = tmp_path / "com.outrightmental.convsim"
+        simulated_log_dir = simulated_app_local_data_dir / "logs"
+
+        with patch.dict(os.environ, {"CONVSIM_DATA_ROOT": str(simulated_app_local_data_dir)}):
+            # config.py computes _DEFAULT_LOG_DIR at module-load time, so reload
+            # while the env var is active to pick up the new value.
+            cfg_mod = _reload_config()
+            from convsim_core.config import ServiceConfig
+            cfg = ServiceConfig()
+            assert Path(cfg.log_dir) == simulated_log_dir, (
+                f"Python log_dir {cfg.log_dir!r} does not match Tauri-emitted log_dir "
+                f"{simulated_log_dir!r}. The recovery card would show a path that does "
+                "not exist on disk."
+            )
+            _ = cfg_mod  # suppress unused import warning
+
 
 # ── Packaged environment simulation ──────────────────────────────────────────
 

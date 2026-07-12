@@ -19,6 +19,10 @@ struct CoreStatusPayload {
     phase: String,
     message: String,
     error: Option<String>,
+    /// Absolute path to the app log directory on this platform.
+    /// Included so the recovery card can show (and open) the correct path
+    /// without hardcoding ~/.convsim or any other platform-specific default.
+    log_dir: Option<String>,
 }
 
 // ── Update check ─────────────────────────────────────────────────────────────
@@ -286,11 +290,13 @@ fn emit_core_status(
     phase: &str,
     message: &str,
     error: Option<&str>,
+    log_dir: Option<&str>,
 ) {
     let payload = CoreStatusPayload {
         phase: phase.to_string(),
         message: message.to_string(),
         error: error.map(|s| s.to_string()),
+        log_dir: log_dir.map(|s| s.to_string()),
     };
     if let Ok(mut guard) = store.lock() {
         *guard = Some(payload.clone());
@@ -399,10 +405,29 @@ fn launch_or_verify_core(
     std::thread::spawn(move || {
         const CORE_PORT: u16 = 7355;
 
+        // Compute the platform-specific log directory once so every status event
+        // carries the correct absolute path for the recovery card to display.
+        //
+        // Create it eagerly: convsim-core normally creates logs/ when it runs
+        // configure_logging(), but if it never starts (binary missing, immediate
+        // exec failure) that never happens — leaving the recovery card's "Open
+        // logs folder" button pointing at a non-existent path and dead-ending the
+        // very stranded user the card exists to help. Making the directory here
+        // guarantees the path shown always exists and is openable.
+        let log_dir: Option<String> = app.path()
+            .app_local_data_dir()
+            .ok()
+            .map(|p| p.join("logs"))
+            .map(|p| {
+                let _ = std::fs::create_dir_all(&p);
+                p.to_string_lossy().into_owned()
+            });
+        let log_dir_ref = log_dir.as_deref();
+
         // If core is already responding (e.g. started by dev-desktop.sh), signal
         // ready immediately.
         if is_port_open(CORE_PORT) {
-            emit_core_status(&app, &status_arc, "ready", "Core service is ready.", None);
+            emit_core_status(&app, &status_arc, "ready", "Core service is ready.", None, log_dir_ref);
             return;
         }
 
@@ -412,7 +437,7 @@ fn launch_or_verify_core(
             for _ in 0..20u32 {
                 std::thread::sleep(Duration::from_millis(500));
                 if is_port_open(CORE_PORT) {
-                    emit_core_status(&app, &status_arc, "ready", "Core service is ready.", None);
+                    emit_core_status(&app, &status_arc, "ready", "Core service is ready.", None, log_dir_ref);
                     return;
                 }
             }
@@ -425,13 +450,14 @@ fn launch_or_verify_core(
                     "In dev mode, start convsim-core before launching the desktop app:\n\
                      ./scripts/dev-desktop.sh",
                 ),
+                log_dir_ref,
             );
             return;
         }
 
         // ── Release mode: find, launch, and supervise convsim-core ───────────
 
-        emit_core_status(&app, &status_arc, "starting", "Locating core service…", None);
+        emit_core_status(&app, &status_arc, "starting", "Locating core service…", None, log_dir_ref);
 
         let resource_dir = app.path().resource_dir().ok();
 
@@ -444,12 +470,13 @@ fn launch_or_verify_core(
                     "error",
                     "Could not locate core service.",
                     Some(&e),
+                    log_dir_ref,
                 );
                 return;
             }
         };
 
-        emit_core_status(&app, &status_arc, "starting", "Starting core service…", None);
+        emit_core_status(&app, &status_arc, "starting", "Starting core service…", None, log_dir_ref);
 
         // convsim-core reads its bind address from CONVSIM_HOST / CONVSIM_PORT
         // (see services/convsim-core/convsim_core/config.py); it does not parse
@@ -501,10 +528,9 @@ fn launch_or_verify_core(
                     "The core service binary is not executable. \
                      This may indicate a corrupted installation — reinstall the app."
                 } else {
-                    "Failed to start the core service process. \
-                     Check the logs at ~/.convsim/logs for details."
+                    "Failed to start the core service process."
                 };
-                emit_core_status(&app, &status_arc, "error", hint, Some(&e.to_string()));
+                emit_core_status(&app, &status_arc, "error", hint, Some(&e.to_string()), log_dir_ref);
                 return;
             }
         };
@@ -522,6 +548,7 @@ fn launch_or_verify_core(
             "starting",
             "Waiting for core service to be ready…",
             None,
+            log_dir_ref,
         );
 
         for attempt in 0..30u32 {
@@ -541,7 +568,8 @@ fn launch_or_verify_core(
                             &status_arc,
                             "error",
                             &msg,
-                            Some("Check the logs at ~/.convsim/logs for details."),
+                            None,
+                            log_dir_ref,
                         );
                         return;
                     }
@@ -549,7 +577,7 @@ fn launch_or_verify_core(
             }
 
             if is_port_open(CORE_PORT) {
-                emit_core_status(&app, &status_arc, "ready", "Core service is ready.", None);
+                emit_core_status(&app, &status_arc, "ready", "Core service is ready.", None, log_dir_ref);
                 return;
             }
 
@@ -560,6 +588,7 @@ fn launch_or_verify_core(
                     "starting",
                     "Still starting core service — this may take a moment on first run…",
                     None,
+                    log_dir_ref,
                 );
             }
         }
@@ -572,8 +601,9 @@ fn launch_or_verify_core(
             "Core service did not become ready in time.",
             Some(
                 "The service started but did not respond within 15 seconds. \
-                 Check the logs at ~/.convsim/logs, then restart the app.",
+                 Open the logs folder for details, then restart the app.",
             ),
+            log_dir_ref,
         );
     });
 }

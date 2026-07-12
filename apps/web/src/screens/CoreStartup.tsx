@@ -8,6 +8,7 @@ interface CoreStatusPayload {
   phase: 'starting' | 'ready' | 'error'
   message: string
   error: string | null
+  log_dir?: string | null
 }
 
 interface TauriGlobal {
@@ -68,8 +69,7 @@ function classifyError(message: string, error: string | null): ErrorInfo {
   return {
     kind: 'crash',
     title: "The conversation engine didn't start",
-    description:
-      'Something went wrong when the app tried to start. Check the logs for details.',
+    description: 'Something went wrong when the app tried to start.',
     anchor: '#engine-startup-failure',
   }
 }
@@ -181,14 +181,25 @@ export default function CoreStartupGuard({ children }: { children: React.ReactNo
             title={errorInfo.title}
             description={errorInfo.description}
             errorDetail={status!.error}
-            logPath="~/.convsim/logs/app.log"
+            logPath={status!.log_dir ?? null}
             troubleshootingHref={`${TROUBLESHOOTING_BASE}${errorInfo.anchor}`}
             troubleshootingLabel="Troubleshooting guide"
             primaryAction={{
               label: 'Restart the app',
               onClick: () => window.location.reload(),
             }}
-            secondaryAction={{
+            secondaryAction={
+              status!.log_dir
+                ? {
+                    label: 'Open logs folder',
+                    onClick: () => {
+                      const logDir = status!.log_dir!
+                      void window.__TAURI__?.core?.invoke('plugin:shell|open', { path: logDir })
+                    },
+                  }
+                : undefined
+            }
+            tertiaryAction={{
               // The in-app support/crash-bundle screen is behind CoreStartupGuard
               // and needs the (currently down) core API, so it is unreachable
               // during a startup failure. Point players at the report-issue flow
