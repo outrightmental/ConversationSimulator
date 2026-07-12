@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useNavigate, Navigate } from 'react-router-dom'
 import { api } from '../api/client'
+import { openExternal } from '../lib/openExternal'
 import { SETUP_KEYS } from '../privacyPrefs'
 import type {
   ModelsResponse,
@@ -479,7 +480,7 @@ export default function FirstRunWizard() {
                     onClick={() => {
                       const { kind, href } = check.fix_action!
                       if (kind === 'open-url') {
-                        window.open(href, '_blank', 'noopener,noreferrer')
+                        void openExternal(href)
                       } else {
                         navigate(href)
                       }

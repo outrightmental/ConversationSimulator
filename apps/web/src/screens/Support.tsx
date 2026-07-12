@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
+import { openExternal } from '../lib/openExternal'
 import type { ApiError } from '../api/errors'
 import { ApiErrorView } from '../components/ApiErrorView'
 import type { PreflightResponse, PreflightCheck } from '@convsim/shared'
@@ -141,7 +142,7 @@ export default function Support() {
 
   function handleFixAction(href: string) {
     if (href.startsWith('http://') || href.startsWith('https://')) {
-      window.open(href, '_blank', 'noopener,noreferrer')
+      void openExternal(href)
     } else {
       navigate(href)
     }
