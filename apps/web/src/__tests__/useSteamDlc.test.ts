@@ -104,31 +104,32 @@ describe('DLC_REGISTRY', () => {
 describe('useSteamDlc — non-Tauri context', () => {
   it('isDlcInstalled returns false when __TAURI__ is absent', async () => {
     const { result } = renderHook(() => useSteamDlc())
-    let ok = true
+    let owned = true
     await act(async () => {
-      ok = await result.current.isDlcInstalled(2123456)
+      owned = await result.current.isDlcInstalled(1234567)
     })
-    expect(ok).toBe(false)
+    expect(owned).toBe(false)
   })
 
   it('isDlcInstalledForPack returns false when __TAURI__ is absent', async () => {
     const { result } = renderHook(() => useSteamDlc())
-    let ok = true
+    let owned = true
     await act(async () => {
-      ok = await result.current.isDlcInstalledForPack('official.some_pack')
+      owned = await result.current.isDlcInstalledForPack('official.some_pack')
     })
-    expect(ok).toBe(false)
+    expect(owned).toBe(false)
   })
 
   it('returns false when __TAURI__ has no core.invoke', async () => {
     const win = window as { __TAURI__?: unknown }
     win.__TAURI__ = { event: { listen: vi.fn() } }
+
     const { result } = renderHook(() => useSteamDlc())
-    let ok = true
+    let owned = true
     await act(async () => {
-      ok = await result.current.isDlcInstalled(2123456)
+      owned = await result.current.isDlcInstalled(1234567)
     })
-    expect(ok).toBe(false)
+    expect(owned).toBe(false)
   })
 })
 
@@ -140,25 +141,27 @@ describe('useSteamDlc — isDlcInstalled', () => {
     stubTauriInvoke(invoke)
     const { result } = renderHook(() => useSteamDlc())
 
-    let ok = false
+    let owned = false
     await act(async () => {
-      ok = await result.current.isDlcInstalled(2123456)
+      owned = await result.current.isDlcInstalled(1234567)
     })
 
-    expect(ok).toBe(true)
-    expect(invoke).toHaveBeenCalledWith('steam_is_dlc_installed', { dlc_app_id: 2123456 })
+    expect(owned).toBe(true)
+    expect(invoke).toHaveBeenCalledWith('steam_is_dlc_installed', {
+      dlc_app_id: 1234567,
+    })
   })
 
-  it('returns false when Steam reports DLC not installed', async () => {
+  it('returns false when the user does not own the DLC', async () => {
     const invoke = vi.fn().mockResolvedValue(false)
     stubTauriInvoke(invoke)
     const { result } = renderHook(() => useSteamDlc())
 
-    let ok = true
+    let owned = true
     await act(async () => {
-      ok = await result.current.isDlcInstalled(2123456)
+      owned = await result.current.isDlcInstalled(1234567)
     })
-    expect(ok).toBe(false)
+    expect(owned).toBe(false)
   })
 
   it('returns false and does not throw when invoke rejects', async () => {
@@ -166,11 +169,44 @@ describe('useSteamDlc — isDlcInstalled', () => {
     stubTauriInvoke(invoke)
     const { result } = renderHook(() => useSteamDlc())
 
-    let ok = true
+    let owned = true
     await act(async () => {
-      ok = await result.current.isDlcInstalled(2123456)
+      owned = await result.current.isDlcInstalled(1234567)
     })
-    expect(ok).toBe(false)
+    expect(owned).toBe(false)
+  })
+
+  it('returns false for a DLC App ID of 0', async () => {
+    const invoke = vi.fn().mockResolvedValue(false)
+    stubTauriInvoke(invoke)
+    const { result } = renderHook(() => useSteamDlc())
+
+    let owned = true
+    await act(async () => {
+      owned = await result.current.isDlcInstalled(0)
+    })
+    expect(owned).toBe(false)
+    expect(invoke).toHaveBeenCalledWith('steam_is_dlc_installed', {
+      dlc_app_id: 0,
+    })
+  })
+
+  it('handles multiple DLC App IDs independently', async () => {
+    const invoke = vi.fn().mockImplementation((_cmd, args) => {
+      const { dlc_app_id } = args as { dlc_app_id: number }
+      return Promise.resolve(dlc_app_id === 1111111)
+    })
+    stubTauriInvoke(invoke)
+    const { result } = renderHook(() => useSteamDlc())
+
+    let owned1 = false
+    let owned2 = true
+    await act(async () => {
+      owned1 = await result.current.isDlcInstalled(1111111)
+      owned2 = await result.current.isDlcInstalled(2222222)
+    })
+    expect(owned1).toBe(true)
+    expect(owned2).toBe(false)
   })
 })
 
@@ -182,12 +218,12 @@ describe('useSteamDlc — isDlcInstalledForPack', () => {
     stubTauriInvoke(invoke)
     const { result } = renderHook(() => useSteamDlc())
 
-    let ok = true
+    let owned = true
     await act(async () => {
-      ok = await result.current.isDlcInstalledForPack('official.free_pack')
+      owned = await result.current.isDlcInstalledForPack('official.free_pack')
     })
 
-    expect(ok).toBe(false)
+    expect(owned).toBe(false)
     expect(invoke).not.toHaveBeenCalled()
   })
 

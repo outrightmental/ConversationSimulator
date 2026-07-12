@@ -50,25 +50,30 @@ export const DLC_REGISTRY: Readonly<Record<string, number>> = parseDlcRegistry(
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
 /**
- * Provides callbacks for Steam DLC ownership checks.
+ * Ownership gate for premium Steam DLC packs.
  *
- * - In a browser context (no `window.__TAURI__`) all callbacks return
- *   `false` — every premium pack is treated as not-owned.
- * - In the Tauri shell, delegates to the `steam_is_dlc_installed` command,
- *   which is a no-op when Steam is absent or the `steam` Cargo feature is
- *   disabled.
+ * Calls the `steam_is_dlc_installed` Tauri command, which uses the Steamworks
+ * SDK to confirm that the local Steam user owns and has installed the DLC with
+ * the given App ID. Degrades gracefully to `false` in a browser context or
+ * when the `steam` Cargo feature is disabled — callers do not need to guard on
+ * `SteamStatus.is_steam_enabled` before calling.
+ *
+ * A pack whose `manifest.yaml` carries a non-zero `dlc_app_id` should be
+ * passed through this check before allowing a scenario launch. Packs without
+ * `dlc_app_id` are always playable and do not need this check.
  *
  * Usage — check whether a premium pack is owned:
  *   const { isDlcInstalled, isDlcInstalledForPack } = useSteamDlc()
  *   const owned = await isDlcInstalledForPack('official.premium_pack')
+ *
+ * See docs/DLC_MODEL.md for the full ownership-gate contract.
  */
 export function useSteamDlc() {
   /**
-   * Returns `true` when the DLC with the given Steam App ID is installed
-   * (owned and downloaded) for the current user.
-   *
-   * Returns `false` in any non-Tauri context, when Steam is unavailable, or
-   * when the `steam` Cargo feature is disabled.
+   * Returns `true` when the local Steam user owns and has installed the DLC
+   * identified by `dlcAppId`. Returns `false` when Steam is unavailable,
+   * the user does not own the DLC, the DLC is not yet installed, or this is
+   * a non-Tauri context.
    */
   const isDlcInstalled = useCallback(
     async (dlcAppId: number): Promise<boolean> => {
