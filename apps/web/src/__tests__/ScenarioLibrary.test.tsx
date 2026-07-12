@@ -24,10 +24,23 @@ vi.mock('../api/client', () => ({
   },
 }))
 
+// Default: no DLC owned, loaded immediately so tests don't depend on async Tauri calls.
+vi.mock('../hooks/useSteamDlc', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../hooks/useSteamDlc')>()
+  return {
+    ...actual,
+    useSteamDlc: vi.fn(() => ({ ownedPackIds: new Set<string>(), isLoaded: true })),
+    useSteamDlcStore: vi.fn(() => ({ openStorePage: vi.fn() })),
+  }
+})
+
 import { api, apiClient } from '../api/client'
 import type { ModelsResponse } from '@convsim/shared'
+import { useSteamDlc, useSteamDlcStore, DLC_CATALOG } from '../hooks/useSteamDlc'
 const mockApi = vi.mocked(api, true)
 const mockApiClient = vi.mocked(apiClient)
+const mockUseSteamDlc = vi.mocked(useSteamDlc)
+const mockUseSteamDlcStore = vi.mocked(useSteamDlcStore)
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -1156,5 +1169,168 @@ describe('Workshop quarantine banner', () => {
       expect(mockApi.workshop.listQuarantine).toHaveBeenCalled(),
     )
     expect(screen.queryByTestId('workshop-quarantine-banner')).not.toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Premium DLC — unowned cards
+// ---------------------------------------------------------------------------
+
+describe('premium DLC — unowned catalog entries', () => {
+  // The first DLC catalog entry is used as the test subject.
+  const FIRST_DLC = DLC_CATALOG[0]!
+
+  it('shows an "Available on Steam" card for each unowned DLC entry', async () => {
+    renderLibrary()
+    await waitFor(() => screen.getByText('Behavioral Interview'))
+    // All catalog entries are unowned (default mock); each should have a card.
+    for (const entry of DLC_CATALOG) {
+      expect(screen.getByTestId(`dlc-unowned-${entry.pack_id}`)).toBeInTheDocument()
+    }
+  })
+
+  it('shows the DLC name in the unowned card', async () => {
+    renderLibrary()
+    await waitFor(() => screen.getByText('Behavioral Interview'))
+    expect(screen.getByTestId(`dlc-unowned-${FIRST_DLC.pack_id}`)).toHaveTextContent(FIRST_DLC.name)
+  })
+
+  it('shows the DLC description in the unowned card', async () => {
+    renderLibrary()
+    await waitFor(() => screen.getByText('Behavioral Interview'))
+    expect(screen.getByTestId(`dlc-unowned-${FIRST_DLC.pack_id}`)).toHaveTextContent(
+      FIRST_DLC.description,
+    )
+  })
+
+  it('renders a "Get on Steam" button for each unowned DLC card', async () => {
+    renderLibrary()
+    await waitFor(() => screen.getByText('Behavioral Interview'))
+    for (const entry of DLC_CATALOG) {
+      expect(screen.getByTestId(`dlc-buy-${entry.pack_id}`)).toBeInTheDocument()
+    }
+  })
+
+  it('"Get on Steam" button has an accessible aria-label', async () => {
+    renderLibrary()
+    await waitFor(() => screen.getByText('Behavioral Interview'))
+    expect(
+      screen.getByRole('button', { name: new RegExp(`get ${FIRST_DLC.name} on steam`, 'i') }),
+    ).toBeInTheDocument()
+  })
+
+  it('clicking "Get on Steam" calls openStorePage with the DLC entry', async () => {
+    const mockOpenStorePage = vi.fn()
+    mockUseSteamDlcStore.mockReturnValue({ openStorePage: mockOpenStorePage })
+
+    renderLibrary()
+    await waitFor(() => screen.getByText('Behavioral Interview'))
+
+    fireEvent.click(screen.getByTestId(`dlc-buy-${FIRST_DLC.pack_id}`))
+    expect(mockOpenStorePage).toHaveBeenCalledWith(FIRST_DLC)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Premium DLC — owned scenarios are playable
+// ---------------------------------------------------------------------------
+
+describe('premium DLC — owned pack scenarios are playable', () => {
+  afterEach(() => {
+    delete (window as { __TAURI__?: unknown }).__TAURI__
+  })
+
+  const DLC_SCENARIO: ScenarioInfo = {
+    scenario_id: 'dating_intro',
+    title: 'First Date Conversation',
+    summary: 'Practice asking someone out and keeping the conversation flowing.',
+    content_rating: 'PG-13',
+    pack_id: DLC_CATALOG[0]!.pack_id,
+    pack_name: DLC_CATALOG[0]!.name,
+    player_role: { label: 'Player', brief: 'You are on a first date.' },
+    difficulty: {
+      default: 'warm',
+      options: { warm: { patience: 80, volatility: 10, disclosure: 70, time_pressure: 10 } },
+    },
+    supported_languages: ['en'],
+    duration: { max_turns: 20, soft_time_limit_minutes: 25 },
+    state_meters_permitted: false,
+    voice_supported: false,
+    safety_summary: 'Respectful romantic scenario.',
+    estimated_length_label: '15–25 minutes',
+  }
+
+  it('shows Launch button when the DLC is owned', async () => {
+    mockUseSteamDlc.mockReturnValue({
+      ownedPackIds: new Set([DLC_CATALOG[0]!.pack_id]),
+      isLoaded: true,
+    })
+    mockApi.listScenarios.mockResolvedValue({ ok: true, data: [DLC_SCENARIO, ...ALL_SCENARIOS] })
+
+    renderLibrary()
+    await waitFor(() => screen.getByText('First Date Conversation'))
+    expect(screen.getByTestId(`launch-dating_intro`)).toBeInTheDocument()
+  })
+
+  it('does not show an unowned DLC card for an owned and installed pack', async () => {
+    mockUseSteamDlc.mockReturnValue({
+      ownedPackIds: new Set([DLC_CATALOG[0]!.pack_id]),
+      isLoaded: true,
+    })
+    mockApi.listScenarios.mockResolvedValue({ ok: true, data: [DLC_SCENARIO, ...ALL_SCENARIOS] })
+
+    renderLibrary()
+    await waitFor(() => screen.getByText('First Date Conversation'))
+    // Installed and owned → no "available to buy" card.
+    expect(
+      screen.queryByTestId(`dlc-unowned-${DLC_CATALOG[0]!.pack_id}`),
+    ).not.toBeInTheDocument()
+  })
+
+  it('shows "Get on Steam" for installed DLC pack when ownership check says not owned', async () => {
+    // DLC content is installed but steam_is_dlc_installed says false (edge case).
+    // Steam must be enabled so the ownership check is consulted.
+    ;(window as { __TAURI__?: unknown }).__TAURI__ = {
+      core: {
+        invoke: vi.fn().mockImplementation((cmd: string) => {
+          if (cmd === 'get_steam_status') {
+            return Promise.resolve({ is_steam_enabled: true, launched_by_steam: true, app_id: 480, persona_name: 'Tester' })
+          }
+          return Promise.resolve(null)
+        }),
+      },
+    }
+    mockUseSteamDlc.mockReturnValue({ ownedPackIds: new Set(), isLoaded: true })
+    mockApi.listScenarios.mockResolvedValue({ ok: true, data: [DLC_SCENARIO, ...ALL_SCENARIOS] })
+
+    renderLibrary()
+    await waitFor(() => screen.getByText('First Date Conversation'))
+    // The scenario is shown but its launch button is replaced by "Get on Steam".
+    expect(screen.getByTestId(`dlc-get-${DLC_CATALOG[0]!.pack_id}`)).toBeInTheDocument()
+    expect(screen.queryByTestId('launch-dating_intro')).not.toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Official packs are always playable
+// ---------------------------------------------------------------------------
+
+describe('official packs are always playable', () => {
+  it('official pack scenarios always have a Launch button regardless of DLC state', async () => {
+    // Even if DLC checks fail completely, official packs remain playable.
+    mockUseSteamDlc.mockReturnValue({ ownedPackIds: new Set(), isLoaded: true })
+    renderLibrary()
+    await waitFor(() => screen.getByTestId('launch-behavioral_interview'))
+    expect(screen.getByTestId('launch-behavioral_interview')).toBeInTheDocument()
+    expect(screen.getByTestId('launch-hostile_executive_interview')).toBeInTheDocument()
+    expect(screen.getByTestId('launch-spanish_coffee')).toBeInTheDocument()
+  })
+
+  it('official packs do not show a DLC locked badge', async () => {
+    renderLibrary()
+    await waitFor(() => screen.getByText('Behavioral Interview'))
+    // No "Premium DLC" badge should appear on official pack headings.
+    const jobSection = screen.getByRole('heading', { name: /job interview basics/i }).closest('section')!
+    expect(jobSection).not.toHaveTextContent('Premium DLC')
   })
 })

@@ -185,6 +185,45 @@ fn steam_hide_floating_keyboard(state: tauri::State<'_, SteamRuntimeState>) -> b
         .unwrap_or(false)
 }
 
+/// Check whether a Steam DLC is installed (owned and installed by Steam).
+///
+/// Uses `ISteamApps::BIsDlcInstalled` which returns `true` only when the
+/// DLC has been purchased and its content files are on disk. Use this to
+/// gate premium pack playback in the Scenario Library.
+///
+/// Returns `false` when not running under Steam, the `steam` feature is off,
+/// or the DLC is not owned by the current user.
+#[tauri::command]
+fn steam_is_dlc_installed(
+    app_id: u32,
+    state: tauri::State<'_, SteamRuntimeState>,
+) -> bool {
+    state
+        .0
+        .lock()
+        .map(|r| r.is_dlc_installed(app_id))
+        .unwrap_or(false)
+}
+
+/// Open the Steam overlay to the store page for a DLC so the player can
+/// purchase it without leaving the app.
+///
+/// Returns `true` when the overlay was opened.
+/// Returns `false` when not running under Steam or the `steam` feature is off.
+/// The frontend should fall back to opening the store URL in the system browser
+/// when this returns `false`.
+#[tauri::command]
+fn steam_open_dlc_store_overlay(
+    app_id: u32,
+    state: tauri::State<'_, SteamRuntimeState>,
+) -> bool {
+    state
+        .0
+        .lock()
+        .map(|r| r.open_dlc_store_overlay(app_id))
+        .unwrap_or(false)
+}
+
 /// Return the list of Steam Workshop items the local user is subscribed to.
 ///
 /// Each item includes its install path and update state so the front-end can
@@ -637,6 +676,8 @@ pub fn run() {
             steam_set_rich_presence,
             steam_show_floating_keyboard,
             steam_hide_floating_keyboard,
+            steam_is_dlc_installed,
+            steam_open_dlc_store_overlay,
             steam_workshop_get_subscribed_items,
             steam_workshop_publish_pack,
             steam_workshop_unsubscribe,
