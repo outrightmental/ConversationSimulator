@@ -153,7 +153,7 @@ def _check_llama_cpp_binary() -> CheckResult:
         ),
         fix_action=FixAction(
             kind="open-url",
-            href="https://github.com/outrightmental/ConversationSimulator/blob/main/docs/local-models.md",
+            href="https://docs.conversationsimulator.com/play/local-models/",
             label="Setup guide",
         ),
     )

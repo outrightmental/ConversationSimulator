@@ -1,0 +1,45 @@
+// SPDX-License-Identifier: Apache-2.0
+// CloudFront Function (cloudfront-js-2.0), viewer-request.
+// 1. 301s the bare apex to the canonical www host. (GoDaddy DNS hosts the
+//    zone during the domain lease and cannot alias an apex to CloudFront, so
+//    www is the canonical host; the apex is forwarded at the DNS/registrar
+//    layer and this redirect is the belt-and-suspenders for any path where
+//    apex traffic still reaches CloudFront, e.g. a future Route 53 cutover.)
+// 2. Rewrites pretty URLs to the underlying S3 object: directory requests and
+//    extensionless paths both resolve to .../index.html, which is how Hugo
+//    and Astro lay out their build output.
+
+function handler(event) {
+  var request = event.request;
+  var host = request.headers.host ? request.headers.host.value : '';
+
+  if (host === '${apex_domain}') {
+    var location = 'https://www.${apex_domain}' + request.uri;
+    if (Object.keys(request.querystring).length > 0) {
+      var parts = [];
+      for (var key in request.querystring) {
+        if (request.querystring[key].multiValue) {
+          request.querystring[key].multiValue.forEach(function (entry) {
+            parts.push(key + '=' + entry.value);
+          });
+        } else {
+          parts.push(key + '=' + request.querystring[key].value);
+        }
+      }
+      location += '?' + parts.join('&');
+    }
+    return {
+      statusCode: 301,
+      statusDescription: 'Moved Permanently',
+      headers: { location: { value: location } },
+    };
+  }
+
+  var uri = request.uri;
+  if (uri.endsWith('/')) {
+    request.uri = uri + 'index.html';
+  } else if (!uri.split('/').pop().includes('.')) {
+    request.uri = uri + '/index.html';
+  }
+  return request;
+}

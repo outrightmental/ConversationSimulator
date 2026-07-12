@@ -7,7 +7,7 @@ import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { useTranslation, type TranslateFn } from '../i18n'
 
 const ISSUES_URL = 'https://github.com/outrightmental/ConversationSimulator/issues/new/choose'
-const DOCS_URL = 'https://github.com/outrightmental/ConversationSimulator/wiki'
+const DOCS_URL = 'https://docs.conversationsimulator.com/start/troubleshooting/'
 
 interface Props {
   children: ReactNode

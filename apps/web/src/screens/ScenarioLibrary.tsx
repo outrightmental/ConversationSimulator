@@ -614,7 +614,7 @@ export default function ScenarioLibrary() {
           </p>
           <p style={{ fontSize: '0.875rem', color: '#71717a', marginBottom: '1.25rem' }}>
             <a
-              href="https://github.com/outrightmental/ConversationSimulator/wiki"
+              href="https://docs.conversationsimulator.com/create/scenario-authoring/"
               target="_blank"
               rel="noreferrer"
               style={{ color: '#71717a' }}
@@ -851,7 +851,7 @@ export default function ScenarioLibrary() {
                     <p style={{ margin: '0.6rem 0 0', fontSize: '0.8rem', color: '#a1a1aa' }}>
                       Fix the errors above in the pack source files, then re-import the pack.{' '}
                       <a
-                        href="https://github.com/outrightmental/ConversationSimulator/wiki"
+                        href="https://docs.conversationsimulator.com/create/scenario-authoring/"
                         target="_blank"
                         rel="noreferrer"
                         style={{ color: '#94a3b8' }}

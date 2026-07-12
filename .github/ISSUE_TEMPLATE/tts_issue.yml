@@ -9,7 +9,7 @@ body:
         Use this template for issues with NPC voice playback, audio quality,
         voice selection, or the TTS service.
 
-        See [docs/voice-smoke-tests.md](https://github.com/outrightmental/ConversationSimulator/blob/main/docs/voice-smoke-tests.md) for
+        See [Voice smoke tests](https://docs.conversationsimulator.com/dev/voice-smoke-tests/) for
         the manual test suite.
 
   - type: textarea

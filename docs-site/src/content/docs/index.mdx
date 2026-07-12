@@ -1,0 +1,67 @@
+---
+title: Documentation
+description: The simulator for conversations. Practice interviews, negotiations, language, and difficult conversations with AI characters that run entirely on your computer.
+template: splash
+hero:
+  tagline: >-
+    The simulator for conversations. Practice interviews, negotiations,
+    language, and difficult conversations with AI characters — running 100%
+    on your computer. No account, no cloud, no telemetry.
+  image:
+    file: ../../assets/logo.svg
+  actions:
+    - text: Install the app
+      link: /start/install/
+      icon: rocket
+      variant: primary
+    - text: Your first scenario
+      link: /start/quickstart/
+      icon: right-arrow
+    - text: conversationsimulator.com
+      link: https://www.conversationsimulator.com/
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components'
+
+## Find your way
+
+<CardGrid stagger>
+  <Card title="Getting started" icon="rocket">
+    Get the app running and play your first scenario in minutes.
+
+    [Install guide](/start/install/) · [Quickstart](/start/quickstart/) ·
+    [Troubleshooting](/start/troubleshooting/)
+  </Card>
+  <Card title="Playing" icon="comment">
+    Local models, voice input and output, performance tuning, and
+    platform-specific notes.
+
+    [Local models](/play/local-models/) · [Platform notes](/play/platform-notes/)
+  </Card>
+  <Card title="Creating packs" icon="pencil">
+    A pack is a folder of YAML files — no code, no build step. Author
+    scenarios, NPCs, rubrics, and safety policies.
+
+    [Scenario authoring](/create/scenario-authoring/) ·
+    [Pack validation](/create/pack-validation/)
+  </Card>
+  <Card title="Safety &amp; privacy" icon="approve-check">
+    What runs locally (everything), what leaves your machine (nothing), and
+    the layered safety system every session runs through.
+
+    [Privacy](/trust/privacy/) · [Safety policy](/trust/safety-policy/)
+  </Card>
+  <Card title="Reference" icon="open-book">
+    Architecture, the full product specification, runtime adapters, and
+    schema versioning.
+
+    [Architecture](/reference/architecture/) · [Specification](/reference/spec/)
+  </Card>
+  <Card title="Project" icon="setting">
+    Roadmap, beta testing, contributing, and how to report problems.
+
+    [Roadmap](/project/roadmap/) · [Contributing](/project/contributing/)
+  </Card>
+</CardGrid>

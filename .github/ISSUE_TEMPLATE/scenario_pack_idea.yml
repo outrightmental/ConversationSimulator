@@ -11,8 +11,8 @@ body:
         and submit directly — but it is a good way to check that the concept
         fits the project's scope and safety policy.
 
-        Read [docs/safety-policy.md](https://github.com/outrightmental/ConversationSimulator/blob/main/docs/safety-policy.md) and
-        [docs/official-pack-quality-bar.md](https://github.com/outrightmental/ConversationSimulator/blob/main/docs/official-pack-quality-bar.md)
+        Read [Safety policy](https://docs.conversationsimulator.com/trust/safety-policy/) and
+        [Official pack quality bar](https://docs.conversationsimulator.com/create/quality-bar/)
         before submitting.
 
   - type: input

@@ -1,0 +1,224 @@
+{{ define "main" }}
+
+<section class="hero">
+  <div class="container hero-grid">
+    <div class="hero-copy">
+      <p class="hero-badge"><span class="badge-dot"></span>Free &amp; open source · Runs 100% on your machine</p>
+      <h1>The simulator for&nbsp;conversations.</h1>
+      <p class="hero-lede">
+        Practice interviews, negotiations, language, and difficult conversations
+        with AI characters whose reactions evolve as you speak — all running
+        locally on your computer. No account. No cloud. No telemetry.
+      </p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="/download/">Download free</a>
+        <a class="btn btn-ghost" href="{{ site.Params.docsURL }}/start/quickstart/">Your first scenario</a>
+      </div>
+      <p class="hero-fineprint">Windows · macOS · Linux &nbsp;—&nbsp; Apache-2.0, no strings attached.</p>
+    </div>
+
+    <figure class="demo-card" aria-label="A practice interview in progress. The NPC challenges a claim, the player answers, a scenario event fires, and the NPC state meters shift.">
+      <figcaption class="demo-head">
+        <span class="demo-title">The Executive Gauntlet</span>
+        <span class="demo-meta">Job Interview Basics · Turn 4</span>
+      </figcaption>
+      <div class="demo-lines">
+        <div class="demo-line demo-npc anim anim-1">
+          <span class="demo-speaker speaker-npc">Victor · NPC</span>
+          <p>“That’s a headline number. Walk me through the trade-off you made
+          to get there. What did you give up — and was it the right call?”</p>
+        </div>
+        <div class="demo-line demo-you anim anim-2">
+          <span class="demo-speaker speaker-you">You</span>
+          <p>“We gave up real-time freshness — reports now lag five minutes
+          behind. For nightly analytics, that was the right trade.”</p>
+        </div>
+        <div class="demo-event anim anim-3">Scenario event: <code>grudging_respect</code> triggered</div>
+      </div>
+      <div class="demo-meters anim anim-4">
+        <div class="meter">
+          <span class="meter-name">credibility</span>
+          <span class="meter-bar"><span class="meter-fill fill-emerald w-74"></span></span>
+          <span class="meter-val">74</span>
+        </div>
+        <div class="meter">
+          <span class="meter-name">composure</span>
+          <span class="meter-bar"><span class="meter-fill fill-violet w-65"></span></span>
+          <span class="meter-val">65</span>
+        </div>
+        <div class="meter">
+          <span class="meter-name">pressure</span>
+          <span class="meter-bar"><span class="meter-fill fill-amber w-40"></span></span>
+          <span class="meter-val">40</span>
+        </div>
+      </div>
+    </figure>
+  </div>
+</section>
+
+<section class="strip" aria-label="Local-first guarantees">
+  <div class="container strip-inner">
+    <span class="strip-item">No cloud inference</span>
+    <span class="strip-item">No account</span>
+    <span class="strip-item">No telemetry</span>
+    <span class="strip-item">No subscription</span>
+  </div>
+</section>
+
+<section class="section" id="packs">
+  <div class="container">
+    <h2>Practice the conversation before it&nbsp;matters.</h2>
+    <p class="section-lede">Six official scenario packs ship with the app — every one of them
+    free, openly licensed, and yours to remix. Four favourites:</p>
+    <div class="card-grid">
+      <article class="card">
+        <h3>Job Interview Basics</h3>
+        <p class="card-tag">Walk in ready.</p>
+        <ul class="chip-list">
+          <li>Behavioral interview</li><li>Hostile executive</li>
+          <li>Blue-collar trade</li><li>Stretch role</li>
+        </ul>
+      </article>
+      <article class="card">
+        <h3>Everyday Negotiation</h3>
+        <p class="card-tag">Get to yes without giving in.</p>
+        <ul class="chip-list">
+          <li>Used car</li><li>Apartment lease</li>
+          <li>Freelance scope</li><li>Customer-service refund</li>
+        </ul>
+      </article>
+      <article class="card">
+        <h3>Language Café</h3>
+        <p class="card-tag">Order the coffee in Spanish.</p>
+        <ul class="chip-list">
+          <li>Spanish coffee shop</li><li>French hotel check-in</li>
+          <li>Japanese convenience store</li><li>English small talk</li>
+        </ul>
+      </article>
+      <article class="card">
+        <h3>Difficult Conversations</h3>
+        <p class="card-tag">Say the hard thing well.</p>
+        <ul class="chip-list">
+          <li>Coworker feedback</li><li>Missed-deadline apology</li>
+          <li>Boundary with a friend</li><li>Ask for a raise</li>
+        </ul>
+      </article>
+    </div>
+  </div>
+</section>
+
+<section class="section section-alt" id="how">
+  <div class="container">
+    <h2>How a session works</h2>
+    <ol class="steps">
+      <li>
+        <h3>Choose a scenario</h3>
+        <p>Browse the library, read your player brief, and set the difficulty.
+        Every scenario has goals, state variables, and events waiting to fire.</p>
+      </li>
+      <li>
+        <h3>Talk it out</h3>
+        <p>Type or speak. The character across the table pushes back, warms up,
+        loses patience — its reactions evolve with every turn you take.</p>
+      </li>
+      <li>
+        <h3>Watch the state shift</h3>
+        <p>Live meters — credibility, composure, pressure — show the dynamic
+        changing in real time. Say the wrong thing and you’ll see it.</p>
+      </li>
+      <li>
+        <h3>Debrief. Then run it again.</h3>
+        <p>A scored debrief shows what you said clearly, where you hedged, and
+        the turning points. Adjust, rerun, improve. That’s the whole point.</p>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<section class="section" id="local-first">
+  <div class="container local-grid">
+    <div>
+      <h2>Local-first is not a feature. It’s the architecture.</h2>
+      <p class="section-lede">
+        The conversations you most need to practice are exactly the ones you’d
+        never type into someone else’s server. So there is no server.
+      </p>
+      <table class="promise-table">
+        <thead><tr><th>What</th><th>Where it runs</th></tr></thead>
+        <tbody>
+          <tr><td>Language model</td><td>Your machine — llama.cpp</td></tr>
+          <tr><td>Speech-to-text</td><td>Your machine — whisper.cpp</td></tr>
+          <tr><td>Text-to-speech</td><td>Your machine — Kokoro / sherpa-onnx</td></tr>
+          <tr><td>Transcripts &amp; scores</td><td>Your disk — SQLite, never uploaded</td></tr>
+          <tr><td>Telemetry</td><td>Nowhere — none is built in</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="verify-panel">
+      <h3>Don’t take our word for it</h3>
+      <p>The code is open. And any time you like, one command runs a scripted
+      conversation and confirms not a single byte left your machine:</p>
+      <pre class="cmd"><code>npx convsim offline-smoke-test \
+  packs/official/job-interview-basic</code></pre>
+      <p>It exits with an error if any subsystem so much as tries to reach an
+      external host.</p>
+      <p><a class="text-link" href="{{ site.Params.docsURL }}/trust/privacy/">Read the full privacy policy →</a></p>
+    </div>
+  </div>
+</section>
+
+<section class="section section-alt" id="screens">
+  <div class="container">
+    <h2>Have a look around</h2>
+    <div class="shot-grid">
+      <figure><img src="/images/screenshots/02-scenario-library.svg" alt="Scenario Library with the Job Interview Basics pack expanded, showing The Executive Gauntlet card with difficulty, rating, and tags." loading="lazy" width="900" height="620"><figcaption>Scenario Library — browse and filter packs</figcaption></figure>
+      <figure><img src="/images/screenshots/03-conversation.svg" alt="Conversation screen mid-session with live NPC state meters for credibility, composure, and pressure below the transcript." loading="lazy" width="900" height="620"><figcaption>Conversation — live state meters and events</figcaption></figure>
+      <figure><img src="/images/screenshots/04-debrief.svg" alt="Session debrief showing a 74 out of 100 score with a success badge, a scorecard, strengths, and key turning points." loading="lazy" width="900" height="620"><figcaption>Debrief — score, strengths, turning points</figcaption></figure>
+      <figure><img src="/images/screenshots/05-creator-workbench.svg" alt="Creator Workbench three-panel view with pack list, file tree, and YAML editor showing a green validation banner." loading="lazy" width="900" height="620"><figcaption>Creator Workbench — build packs in YAML</figcaption></figure>
+    </div>
+    <p class="shot-note">Current UI, placeholder art — real recordings land with the Milestone&nbsp;1 launch.</p>
+  </div>
+</section>
+
+<section class="section" id="create">
+  <div class="container create-grid">
+    <div>
+      <h2>Write your own scenarios. No code required.</h2>
+      <p class="section-lede">
+        A scenario pack is a folder of YAML files — the situation, the
+        character, the scoring rubric, the safety rules. If you can describe a
+        conversation, you can build one.
+      </p>
+      <p>The built-in Creator Workbench lets you copy an official pack, edit,
+      validate with one click, test in the browser, and export a shareable
+      zip. Publish to Steam Workshop or hand the file to a friend.</p>
+      <div class="hero-actions">
+        <a class="btn btn-ghost" href="{{ site.Params.docsURL }}/create/scenario-authoring/">Read the authoring guide</a>
+      </div>
+    </div>
+    <pre class="code-card"><code><span class="c-key">scenario_id:</span> ask_for_a_raise
+<span class="c-key">title:</span> The Salary Conversation
+<span class="c-key">player_role:</span>
+  <span class="c-key">brief:</span> Make the case for the raise
+    you already deserve.
+<span class="c-key">npc:</span>
+  <span class="c-key">ref:</span> ../npcs/your_manager.yaml
+<span class="c-key">state:</span>
+  <span class="c-key">variables:</span>
+    <span class="c-key">rapport:</span>
+      <span class="c-key">default:</span> <span class="c-num">50</span>
+      <span class="c-key">visibility:</span> visible</code></pre>
+  </div>
+</section>
+
+<section class="cta-band">
+  <div class="container cta-inner">
+    <h2>Practice the conversation<br>before it matters.</h2>
+    <div class="hero-actions cta-actions">
+      <a class="btn btn-primary btn-lg" href="/download/">Download free</a>
+      <a class="btn btn-ghost btn-lg" href="/manifesto/">Read the manifesto</a>
+    </div>
+  </div>
+</section>
+
+{{ end }}

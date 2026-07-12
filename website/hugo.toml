@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: Apache-2.0
+# Public marketing site for https://conversationsimulator.com
+# Built with Hugo (extended). Deployed by .github/workflows/deploy-website.yml.
+
+# www is the canonical host: during the domain lease, DNS is served by
+# GoDaddy DNS, which cannot alias the bare apex to CloudFront; the apex
+# 301-forwards to www instead.
+baseURL = 'https://www.conversationsimulator.com/'
+languageCode = 'en-us'
+title = 'Conversation Simulator'
+timeZone = 'UTC'
+
+# Marketing site: no taxonomies, no RSS. Sitemap and 404 stay on.
+disableKinds = ['taxonomy', 'term', 'rss']
+
+[params]
+  description = 'The simulator for conversations. Practice interviews, negotiations, language, and difficult conversations with AI characters that run 100% on your computer — no account, no cloud, no telemetry.'
+  docsURL = 'https://docs.conversationsimulator.com'
+  githubURL = 'https://github.com/outrightmental/ConversationSimulator'
+  releasesURL = 'https://github.com/outrightmental/ConversationSimulator/releases/latest'
+
+[markup.goldmark.renderer]
+  # Content pages embed small pieces of structural HTML (e.g. the download cards).
+  unsafe = true
+
+[sitemap]
+  changefreq = 'weekly'

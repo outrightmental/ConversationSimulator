@@ -12,7 +12,7 @@ const TEMPLATE_BASE = 'https://github.com/outrightmental/ConversationSimulator/i
 const BETA_REPORT_TEMPLATE_URL =
   'https://github.com/outrightmental/ConversationSimulator/issues/new?template=beta-report.yml&labels=beta-feedback'
 const BETA_GUIDE_URL =
-  'https://github.com/outrightmental/ConversationSimulator/blob/main/docs/beta-testing.md'
+  'https://docs.conversationsimulator.com/project/beta-testing/'
 
 const ISSUE_TEMPLATES = [
   { key: 'bug_report', label: 'Bug report', template: 'bug_report.yml' },
