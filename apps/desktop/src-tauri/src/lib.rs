@@ -222,15 +222,18 @@ fn steam_workshop_publish_pack(
         .unwrap_or(false)
 }
 
-/// Check whether a Steam DLC App is currently installed (owned and downloaded)
-/// for the current user.
+/// Check whether the local Steam user owns and has installed the DLC identified
+/// by `dlc_app_id`.
 ///
 /// `dlc_app_id` is the Valve-assigned Steam App ID for the DLC — not the base
 /// game's App ID. Use the pack-id → DLC App ID registry (built from
 /// `VITE_STEAM_DLC_APP_IDS` at compile time) to resolve a pack ID before
 /// calling this command.
 ///
-/// Returns `false` when not running under Steam or the `steam` feature is off.
+/// Uses `ISteamApps::BIsDlcInstalled` — synchronous, no network call.
+/// Returns `false` when not running under Steam, the user does not own the DLC,
+/// the DLC content is not yet downloaded, or the `steam` feature is off.
+/// See `docs/DLC_MODEL.md`.
 #[tauri::command]
 fn steam_is_dlc_installed(
     dlc_app_id: u32,
@@ -662,6 +665,7 @@ pub fn run() {
             steam_workshop_get_subscribed_items,
             steam_workshop_publish_pack,
             steam_workshop_unsubscribe,
+            steam_is_dlc_installed,
         ])
         .setup(move |app| {
             launch_or_verify_core(
