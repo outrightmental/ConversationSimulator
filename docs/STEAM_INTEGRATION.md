@@ -83,6 +83,7 @@ The bridge consists of:
 | `steam_unlock_achievement` | `name: String` | Calls `steamworks::UserStats::achievement(name).set()` then `store_stats()` | Returns `false`, no-op |
 | `steam_increment_stat` | `name: String` | Reads current value, increments by 1, calls `store_stats()` | Returns `false`, no-op |
 | `steam_set_rich_presence` | `value: String` | Calls `steamworks::Friends::set_rich_presence("steam_display", Some(value))` — the key is fixed internally | Returns `false`, no-op |
+| `steam_is_dlc_installed` | `dlc_app_id: u32` | Calls `steamworks::Apps::is_dlc_installed(AppId)` — reports whether the player owns and installed that premium DLC | Returns `false`, treated as not-owned |
 
 Commands can be called freely without checking whether Steam is available.
 The `SteamRuntime` managed-state object absorbs all failures silently.
@@ -277,6 +278,38 @@ setPresence(SteamActivity.IN_SCENARIO)
 The `steam_display` key is the only key used. Valve uses the
 `#<token>` value to look up the localized string from the uploaded
 `richpresence.vdf` file.
+
+---
+
+## DLC ownership (premium scenario packs)
+
+Premium scenario-pack expansions ship as **paid Steam DLC**; their content is
+authored in the private `ConversationSimulator-DLC` repository and is never in this
+public repo. The full private-repo → Steam-DLC contract is in
+[`docs/DLC_MODEL.md`](DLC_MODEL.md). This section covers only the integration point.
+
+The base app is the **same open-source binary for everyone**. Premium packs are
+gated purely by Steam ownership, checked at runtime:
+
+- **`SteamRuntime::is_dlc_installed(dlc_app_id)`** in `steam.rs` wraps
+  `steamworks::Apps::is_dlc_installed(AppId)`. It returns `false` when the `steam`
+  feature is off, Steam is not running, or the player does not own the DLC.
+- The **`steam_is_dlc_installed`** Tauri command exposes it to the front end.
+- The **`useSteamDlc`** / **`useSteamDlcOwned`** hooks
+  (`apps/web/src/hooks/useSteamDlc.ts`) resolve to "not owned" in any non-Tauri /
+  non-Steam context, so the open-source and browser builds treat every premium pack
+  as available-to-buy without special-casing.
+
+Privacy: the ownership check reads local Steam state only. No DLC-usage event,
+pack identifier, or conversation content is transmitted to Steam or any server —
+consistent with the local-first guarantee above. Once a DLC is owned and installed,
+playing it requires no network.
+
+```typescript
+// apps/web/src/hooks/useSteamDlc.ts
+const owned = useSteamDlcOwned(dlcAppId)   // false outside Steam / when unowned
+// owned packs load and show as playable; unowned show as "available to buy"
+```
 
 ---
 
