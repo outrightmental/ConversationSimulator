@@ -51,9 +51,13 @@ never relocked as paid DLC. DLC is only ever *additional* content.
 | DLC App IDs / depot IDs | ✅ (as CI variables, non-secret) | ✅ |
 
 The public repo carries the **contract** — the integration points and the depot
-template — but **no DLC content**. The `.gitignore` and CI depot audit
-(`scripts/depot-audit.sh`) must ensure premium pack content never lands in a public
-depot or a public commit.
+template — but **no DLC content**. The guarantee is *repo separation*: premium pack
+content only ever exists in the private repo, so it cannot enter a public commit or
+a base depot built from this repo. `.gitignore` guards against a stray local copy
+being committed; the CI depot audit (`scripts/depot-audit.sh`) catches weights,
+binaries, and secrets in staged depots but **cannot itself tell a premium pack from
+a free one** — both are declarative YAML + assets — so it is not the control that
+keeps premium content out. Keeping that content in the private repo entirely is.
 
 ---
 
