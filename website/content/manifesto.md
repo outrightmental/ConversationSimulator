@@ -82,11 +82,17 @@ configuration can weaken them: content that sexualizes minors ends the
 session, and self-harm crisis language ends the session and surfaces real
 resources. Community packs can make safety rules stricter. Never looser.
 
-## Free means free
+## Open source and fairly priced
 
 No premium tier. No ads. No locked scenarios. No data resale — there is no
-data to sell. The code is Apache-2.0, the packs are CC BY 4.0, and the Steam
-release is sponsored so it can stay free there too.
+data to sell. The engine is Apache-2.0, the official packs are CC BY 4.0,
+and building from source on GitHub is free, always.
+
+On Steam the app costs $9.99 once. That purchase funds development; it does
+not unlock anything the source build lacks, and nothing that ships free today
+will ever move behind a paywall. Premium expansion packs, written by Outright
+Mental and sold as Steam DLC, are the only paid content — and they are always
+additions, never relocations.
 
 ---
 

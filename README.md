@@ -285,8 +285,11 @@ deliberately out of scope, and links to the acceptance criteria and docs.
 
 ### Steam release
 
-The project is being prepared for a free, Outright Mental-sponsored Steam release.
-The Steam edition makes the same local-first guarantee as the open-source build.
+The project is being prepared for a $9.99 one-time Steam release.
+The Steam edition is the same open-source build packaged for non-technical
+players — signed, notarised, auto-updating, and Steam Deck–verified.
+It makes the same local-first guarantee as the open-source build.
+Building from source on GitHub is and will remain free.
 
 | Document | Purpose |
 |----------|---------|

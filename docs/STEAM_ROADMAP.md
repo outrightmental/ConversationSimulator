@@ -2,22 +2,26 @@
 # Steam Edition Roadmap Addendum
 
 > **Purpose of this document:** Define the product target for shipping
-> Conversation Simulator as a free, sponsored Steam edition for non-technical
-> players — without compromising the local-first, open-source, no-telemetry
-> principles of the base project. Every downstream Steam-release issue should
-> reference this document as its shared product target.
+> Conversation Simulator as a $9.99 one-time-purchase Steam edition for
+> non-technical players — without compromising the local-first, open-source,
+> no-telemetry principles of the base project. Every downstream Steam-release
+> issue should reference this document as its shared product target.
 
 ---
 
 ## Release principles
 
-### Free on Steam, sponsored by Outright Mental
+### Open source on GitHub, $9.99 on Steam
 
-The Steam edition is and will remain **free to download and play**. There is no
-base purchase price, no subscription, and no pay-to-unlock core content.
-Outright Mental sponsors the distribution costs (Steam partner fees, code
-signing, CI infrastructure, release tooling) so the project can reach
-non-technical players without charging them.
+The engine and four official packs are **free and open source on GitHub**
+(Apache-2.0 / CC BY 4.0). The Steam edition is the same open-source build
+packaged for non-technical players: signed, notarised, auto-updating, and
+Steam Deck–verified. It is sold at a **one-time price of $9.99** — no
+subscription, no pay-to-unlock core content. The purchase funds ongoing
+development; it does not unlock anything the source build lacks.
+
+**Invariant:** the open core never shrinks — nothing that ships free today
+will ever be relocked as paid content.
 
 ### Local-first play, no exceptions
 
@@ -54,13 +58,18 @@ player's knowledge. Every model download must:
 Players must confirm each download. Cancelling a download must leave no partial
 files. Pack downloads follow the same rules.
 
-### No paid marketplace in v1
+### Premium DLC — Steam only
 
-The Steam release does not include a paid content marketplace. Community packs
-may be distributed outside the app (GitHub, itch.io, direct links), but the
-in-app experience ships no payment rails, no premium pack tier, and no
-microtransactions in v1. Post-launch marketplace exploration is recorded as
-stage 5 of the [release train](#release-train) and is explicitly deferred.
+First-party expansion packs authored in the private
+[`ConversationSimulator-DLC`](https://github.com/outrightmental/ConversationSimulator-DLC)
+repo are sold as paid Steam DLC. DLC content never enters this public repo;
+the app gates playability by Steam ownership check (`is_dlc_installed`).
+
+Community packs remain free and may be distributed outside the app (GitHub,
+itch.io, direct links). The community pack path carries no payment rails.
+
+See [`docs/DLC_MODEL.md`](DLC_MODEL.md) for the full DLC contract: what can
+be DLC, what can never be DLC, depot layout, and the ownership-gate API.
 
 ---
 
@@ -75,8 +84,8 @@ met and its tracking issue is closed.
 | **1. GitHub MVP** | Open-source build reaches Milestone 1: stable text loop, voice I/O, workbench, official packs, offline smoke gate, full docs. | All [ROADMAP.md](../ROADMAP.md) Milestone 1 items are checked off. |
 | **2. Packaged desktop alpha** | Tauri desktop app bundles `convsim-core` as a sidecar. Single installer on Windows, macOS, Linux. No Steam involvement yet. | GitHub MVP is tagged. Installer boots without CLI setup. Offline smoke test passes from the installed app. |
 | **3. Steam private beta** | App is submitted to the Steam partner portal. Invited testers (developers, Outright Mental staff, select community members) validate the Steam overlay, controller navigation, and platform-specific quirks. | Packaged desktop alpha passes internal QA on all three desktop platforms. Steam page draft is approved by Valve. |
-| **4. Public free Steam release** | App is published as a free title on Steam. All four official packs are available. Model Manager UI is stable. | Steam private beta exit criteria are met. Code signing is in place on macOS and Windows. Steam Deck verification is complete (see [Target platforms](#target-platforms)). |
-| **5. Post-launch: marketplace exploration** | Evaluate whether a community pack browser or optional Outright Mental-curated content makes sense as a zero-cost or patron-supported layer. No decision has been made; this is a research milestone only. See [`docs/marketplace-architecture.md`](marketplace-architecture.md) for the entry gate criteria and design baseline. | Public release has been live for at least 90 days. Community feedback and usage signals inform the evaluation. Entry gate from [`docs/marketplace-architecture.md`](marketplace-architecture.md) must be satisfied before any implementation issue is opened. |
+| **4. Public $9.99 Steam release** | App is published on Steam at $9.99 one-time. All four official packs are available. Model Manager UI is stable. | Steam private beta exit criteria are met. Code signing is in place on macOS and Windows. Steam Deck verification is complete (see [Target platforms](#target-platforms)). |
+| **5. Premium DLC** | First-party expansion packs published as paid Steam DLC, sourced from the private [`ConversationSimulator-DLC`](https://github.com/outrightmental/ConversationSimulator-DLC) repo. DLC is gated by Steam ownership check. | Public release has been live for at least 90 days. DLC pipeline is operational (outrightmental/ConversationSimulator-DLC#2). At least one premium pack is authored and validated (outrightmental/ConversationSimulator-DLC#1). |
 
 ---
 
