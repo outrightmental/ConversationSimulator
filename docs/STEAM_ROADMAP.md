@@ -2,22 +2,27 @@
 # Steam Edition Roadmap Addendum
 
 > **Purpose of this document:** Define the product target for shipping
-> Conversation Simulator as a free, sponsored Steam edition for non-technical
-> players — without compromising the local-first, open-source, no-telemetry
-> principles of the base project. Every downstream Steam-release issue should
-> reference this document as its shared product target.
+> Conversation Simulator as a $9.99 paid Steam app with optional premium
+> scenario-pack DLC — without compromising the local-first, open-source,
+> no-telemetry principles of the base project. Every downstream Steam-release
+> issue should reference this document as its shared product target.
 
 ---
 
 ## Release principles
 
-### Free on Steam, sponsored by Outright Mental
+### $9.99 paid app with premium DLC
 
-The Steam edition is and will remain **free to download and play**. There is no
-base purchase price, no subscription, and no pay-to-unlock core content.
-Outright Mental sponsors the distribution costs (Steam partner fees, code
-signing, CI infrastructure, release tooling) so the project can reach
-non-technical players without charging them.
+The Steam edition is a **paid application at $9.99 USD**. The base purchase
+includes four complete scenario packs with no time limits and no subscriptions.
+Optional premium scenario packs are sold separately as Steam DLC at individual
+prices. There is no in-app purchase system, no community marketplace, and no
+microtransaction model — all purchasable content is sold through Steam's
+standard app and DLC purchase flow.
+
+See [`publishing/STEAM_APP_REGISTRATION.md`](../publishing/STEAM_APP_REGISTRATION.md)
+for the Steamworks pricing and DLC registration details, and
+[`docs/DLC_MODEL.md`](DLC_MODEL.md) for the pack → DLC contract.
 
 ### Local-first play, no exceptions
 
@@ -54,13 +59,15 @@ player's knowledge. Every model download must:
 Players must confirm each download. Cancelling a download must leave no partial
 files. Pack downloads follow the same rules.
 
-### No paid marketplace in v1
+### No community marketplace in v1
 
-The Steam release does not include a paid content marketplace. Community packs
-may be distributed outside the app (GitHub, itch.io, direct links), but the
-in-app experience ships no payment rails, no premium pack tier, and no
-microtransactions in v1. Post-launch marketplace exploration is recorded as
-stage 5 of the [release train](#release-train) and is explicitly deferred.
+The Steam release does not include a community content marketplace. Community
+packs may be distributed outside the app (GitHub, itch.io, direct links), but
+the in-app experience ships no community purchase rails and no in-app store in
+v1. First-party premium packs are sold as Valve-reviewed Steam DLC only —
+there is no mechanism for third-party creators to list paid content in v1.
+Post-launch marketplace exploration is recorded as stage 5 of the
+[release train](#release-train) and is explicitly deferred.
 
 ---
 
@@ -75,7 +82,7 @@ met and its tracking issue is closed.
 | **1. GitHub MVP** | Open-source build reaches Milestone 1: stable text loop, voice I/O, workbench, official packs, offline smoke gate, full docs. | All [ROADMAP.md](../ROADMAP.md) Milestone 1 items are checked off. |
 | **2. Packaged desktop alpha** | Tauri desktop app bundles `convsim-core` as a sidecar. Single installer on Windows, macOS, Linux. No Steam involvement yet. | GitHub MVP is tagged. Installer boots without CLI setup. Offline smoke test passes from the installed app. |
 | **3. Steam private beta** | App is submitted to the Steam partner portal. Invited testers (developers, Outright Mental staff, select community members) validate the Steam overlay, controller navigation, and platform-specific quirks. | Packaged desktop alpha passes internal QA on all three desktop platforms. Steam page draft is approved by Valve. |
-| **4. Public free Steam release** | App is published as a free title on Steam. All four official packs are available. Model Manager UI is stable. | Steam private beta exit criteria are met. Code signing is in place on macOS and Windows. Steam Deck verification is complete (see [Target platforms](#target-platforms)). |
+| **4. Public paid Steam release** | App is published at $9.99 on Steam. All four official packs are included. Premium DLC packs are listed. Model Manager UI is stable. | Steam private beta exit criteria are met. Code signing is in place on macOS and Windows. Steam Deck verification is complete (see [Target platforms](#target-platforms)). DLC registrations in `publishing/STEAM_DLC_REGISTRY.md` are complete. |
 | **5. Post-launch: marketplace exploration** | Evaluate whether a community pack browser or optional Outright Mental-curated content makes sense as a zero-cost or patron-supported layer. No decision has been made; this is a research milestone only. See [`docs/marketplace-architecture.md`](marketplace-architecture.md) for the entry gate criteria and design baseline. | Public release has been live for at least 90 days. Community feedback and usage signals inform the evaluation. Entry gate from [`docs/marketplace-architecture.md`](marketplace-architecture.md) must be satisfied before any implementation issue is opened. |
 
 ---

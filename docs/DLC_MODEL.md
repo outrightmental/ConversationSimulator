@@ -1,128 +1,190 @@
-# DLC Model
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+# DLC Model — Pack → Steam DLC Contract
 
-Conversation Simulator uses Steam DLC to gate premium scenario packs behind a
-one-time purchase. This document describes how DLC App IDs are configured,
-how ownership is checked at runtime, and how the open-source / browser build
-falls back gracefully when Steam is absent.
+> **Purpose:** Define the contract between premium scenario packs in this
+> repository and their corresponding Steamworks DLC applications. This document
+> specifies which packs qualify as premium DLC, the manifest fields the app
+> loader uses to identify and gate DLC packs, how the app checks Steam DLC
+> ownership at runtime, and how CI deploys DLC content depots.
+>
+> **Audience:** Platform team members, Outright Mental staff, and anyone adding
+> a new premium pack to the DLC catalogue.
+>
+> **Authoritative ID mapping:** App ID ↔ pack ID ↔ depot ID is recorded in
+> [`publishing/STEAM_DLC_REGISTRY.md`](../publishing/STEAM_DLC_REGISTRY.md).
+> This document defines the _rules_; the registry records the _values_.
 
-## Concepts
+---
 
-| Term | Description |
-|---|---|
-| **Pack** | A directory of YAML scenario files identified by a `pack_id` string (e.g. `official.premium_conversations`). |
-| **DLC App ID** | A Valve-assigned Steam Application ID for a DLC item tied to the base game. Distinct from the base game's own App ID. |
-| **DLC registry** | The build-time mapping of `pack_id` → DLC App ID, encoded in `STEAM_DLC_APP_IDS` and baked into the desktop bundle. |
+## Overview
 
-## DLC App ID configuration
+Conversation Simulator uses Steam DLC as the distribution mechanism for premium
+first-party scenario packs. Each premium pack is a Steamworks DLC App — a child
+application of the base app — with its own store page, price, and a single
+cross-platform content depot.
 
-DLC App IDs are registered in the Steamworks App Admin portal (one child app per
-premium pack). The full registry is maintained in the private
-`STEAM_DLC_REGISTRY.md` and mirrored to the **`STEAM_DLC_APP_IDS` repository
-variable** in GitHub Actions (Settings → Secrets and variables → Actions →
-Variables).
+The app loader checks Steam DLC ownership at pack load time. A player who has
+not purchased a DLC pack sees the pack listed (so they can discover and buy it)
+but cannot start a session from it. The session start button is replaced with a
+"Get on Steam" link to the DLC's store page.
 
-### Variable format
+Community packs and base-app-bundled packs are unaffected by this mechanism.
 
-```
-STEAM_DLC_APP_IDS = pack_id:dlc_app_id[,pack_id:dlc_app_id …]
-```
+---
 
-Example (hypothetical IDs):
+## Which packs are DLC
 
-```
-official.premium_conversations:2123456,official.pro_scenarios:2123457
-```
+A pack is premium DLC if and only if its `manifest.yaml` contains a non-zero
+`steam_dlc_app_id` field. Packs without this field (or with `steam_dlc_app_id:
+0`) are treated as freely available to all players.
 
-Rules:
-- Each entry is `pack_id:dlc_app_id` — colon-separated, no spaces required (whitespace is trimmed).
-- Multiple entries are comma-separated.
-- DLC App IDs must be positive integers.
-- Malformed entries are silently skipped at runtime; the build script (`build.rs`) fails loudly at compile time so typos are caught before release.
+The four packs bundled with the base app — Job Interview Basics, Everyday
+Negotiation, Difficult Conversations, and Language Café — do **not** carry a
+`steam_dlc_app_id` and are always accessible after purchasing the base app.
 
-## How the build pipeline threads the registry in
+The tutorial pack (`tutorial.first_words`) is also always accessible and never
+gated.
 
-At Tauri build time (`pnpm --filter @convsim/desktop build`), the CI step sets:
+---
+
+## Manifest contract
+
+To register a pack as premium DLC, add the following field to its
+`manifest.yaml`:
 
 ```yaml
-VITE_STEAM_DLC_APP_IDS: ${{ vars.STEAM_DLC_APP_IDS }}
+# Steamworks DLC App ID assigned by Valve for this pack.
+# 0 or absent = freely accessible to all owners of the base app.
+# Non-zero = requires DLC ownership check via Steam API.
+steam_dlc_app_id: 0  # replace with the actual App ID from STEAM_DLC_REGISTRY.md
 ```
 
-This env var is picked up in two places:
+The value must match the DLC App ID recorded in
+[`publishing/STEAM_DLC_REGISTRY.md`](../publishing/STEAM_DLC_REGISTRY.md).
+Setting an incorrect App ID causes all players to see the pack as unpurchased.
 
-1. **`apps/desktop/src-tauri/build.rs`** — validates the format and emits
-   `cargo:rerun-if-env-changed=VITE_STEAM_DLC_APP_IDS` so Cargo re-runs
-   the build script when the variable changes.
+### Full manifest example (premium DLC pack)
 
-2. **Vite frontend bundle** — Vite automatically bakes all `VITE_*` env vars
-   into the JavaScript bundle as `import.meta.env.VITE_STEAM_DLC_APP_IDS`.
-   The `DLC_REGISTRY` export in `useSteamDlc.ts` is parsed from this value at
-   bundle load time.
-
-The `tauri.conf.json` `beforeBuildCommand` re-runs `pnpm --filter @convsim/web build`
-as part of `tauri build`, so both targets receive the env var in a single CI step.
-
-## Runtime ownership check
-
-```
-pack_id  →  DLC_REGISTRY lookup  →  dlc_app_id
-                                         │
-                                         ▼
-                               steam_is_dlc_installed (Tauri command)
-                                         │
-                                         ▼
-                               SteamRuntime::is_dlc_installed
-                                         │
-                                         ▼
-                               ISteamApps::IsDlcInstalled(appId)
+```yaml
+schema_version: "0.1"
+pack_id: official.dating_confidence_boundaries
+name: Dating — Confidence & Boundaries
+version: 1.0.0
+description: >-
+  Practice the social skills that make dating feel less daunting and more
+  human: starting a conversation, asking someone out, accepting a no with
+  grace, setting a clear boundary, and building genuine first-date connection.
+author: Outright Mental
+license: CC-BY-4.0
+content_rating: PG-13
+steam_dlc_app_id: 0  # replace with assigned DLC App ID
 ```
 
-### TypeScript (pack layer)
+---
 
-```typescript
-import { useSteamDlc, DLC_REGISTRY } from '../hooks/useSteamDlc'
+## App-side ownership check
 
-const { isDlcInstalled, isDlcInstalledForPack } = useSteamDlc()
+The app loader (`packages/pack-loader`) calls
+`SteamAPI_ISteamApps_BIsDlcInstalled(dlc_app_id)` from the Steamworks SDK
+before allowing a session to start from any pack where
+`steam_dlc_app_id > 0`.
 
-// Option 1 — convenience wrapper (preferred):
-const owned = await isDlcInstalledForPack('official.premium_conversations')
+Behaviour by context:
 
-// Option 2 — explicit App ID:
-const appId = DLC_REGISTRY['official.premium_conversations']
-if (appId !== undefined) {
-  const owned = await isDlcInstalled(appId)
-}
+| Context | `steam_dlc_app_id` | Ownership check | Result |
+|---------|-------------------|-----------------|--------|
+| Running under Steam, DLC owned | non-zero | `BIsDlcInstalled` → `true` | Full access |
+| Running under Steam, DLC not owned | non-zero | `BIsDlcInstalled` → `false` | Pack visible, session blocked, "Get on Steam" link shown |
+| Running outside Steam (dev/CLI) | non-zero | Steam not initialised | Full access — DLC gate is a Steam-only control |
+| Any pack | 0 or absent | Not called | Full access |
+
+The ownership check is non-blocking — the pack card renders immediately and the
+check result updates the UI asynchronously. This prevents a slow or unavailable
+Steam client from blocking the pack library from loading.
+
+---
+
+## Content depot layout
+
+Each DLC App gets a single cross-platform content depot. The depot contains
+only the pack directory for the corresponding `pack_id`:
+
+```
+<depot root>/
+  packs/
+    official/
+      <pack-slug>/
+        manifest.yaml
+        scenarios/
+        npcs/
+        safety/
+        assets/
 ```
 
-### Rust (Tauri command, `lib.rs`)
+The pack directory layout mirrors the layout in the repository's `packs/official/`
+directory. The loader resolves DLC pack paths through Steam's
+`ISteamApps::GetAppInstallDir()` on the DLC App ID, then appends the relative
+pack path.
 
-```rust
-steam_is_dlc_installed(dlc_app_id: u32, state: tauri::State<SteamRuntimeState>) -> bool
-```
+DLC depot VDF templates are not yet checked into the `steam/` directory. When
+a new DLC is registered, add a `steam/depot_dlc_<pack-slug>.vdf.tpl` following
+the same pattern as the existing platform depot templates, substituting the DLC
+depot ID from `publishing/STEAM_DLC_REGISTRY.md`.
 
-Delegates to `SteamRuntime::is_dlc_installed(dlc_app_id)`, which calls
-`ISteamApps::IsDlcInstalled` via the `steamworks` crate.
+---
 
-## Open-source / browser build behavior
+## CI deployment
 
-When `STEAM_DLC_APP_IDS` is not configured (open-source contributors, browser
-builds, any non-Steam distribution):
+The base-app deploy workflow (`.github/workflows/steam-deploy.yml`) deploys
+only the three platform depots for the base app. DLC depots are deployed
+separately by extending the workflow with a DLC depot push step.
 
-- `VITE_STEAM_DLC_APP_IDS` is absent → `DLC_REGISTRY` is an empty object.
-- `isDlcInstalledForPack(packId)` returns `false` for every pack ID
-  (no DLC App ID to look up).
-- `isDlcInstalled(appId)` returns `false` (no `window.__TAURI__` in a browser,
-  or Steam is absent in the Tauri shell).
+For each registered DLC:
 
-Premium packs are therefore treated as **not owned** in all non-Steam contexts.
-The pack layer should gate premium content behind this check and surface an
-appropriate upgrade prompt rather than showing an error.
+1. Add a `vars.STEAM_DLC_DEPOT_<PACK_SLUG>_ID` GitHub repository variable
+   containing the DLC's depot ID from `publishing/STEAM_DLC_REGISTRY.md`.
+2. Add a `steam/depot_dlc_<pack-slug>.vdf.tpl` depot VDF template that maps
+   the depot to `packs/official/<pack-slug>/`.
+3. Add the DLC depot to the `Depots` block in a DLC-specific app build VDF
+   (`steam/app_build_dlc_<pack-slug>.vdf.tpl`), referencing the DLC App ID
+   (not the base App ID).
+4. Trigger a `steamcmd +run_app_build` for the DLC app build VDF after the base
+   app build completes.
 
-## Adding a new DLC pack
+DLC builds are staged to the same `beta` / `default` branch strategy as the
+base app. A DLC build must not be set live before the base app build that
+contains the matching `steam_dlc_app_id` value in the pack manifest.
 
-1. Register a child DLC app in Steamworks App Admin (parent: the base game's
-   App ID). Note the assigned DLC App ID.
-2. Add the new pack manifest under `packs/` with a unique `pack_id`.
-3. Append `new_pack_id:dlc_app_id` to the `STEAM_DLC_APP_IDS` repository
-   variable in GitHub Actions settings.
-4. Update `STEAM_DLC_REGISTRY.md` in the private repo.
-5. Trigger a new release build — the DLC registry is baked in at compile time.
+---
+
+## Adding a new premium DLC pack — checklist
+
+Follow these steps when promoting an existing pack to premium DLC status.
+
+- [ ] Confirm the pack passes all content quality criteria
+      ([`docs/official-pack-quality-bar.md`](official-pack-quality-bar.md))
+      and has an approved content rating.
+- [ ] Register the DLC App ID and depot in Steamworks — see
+      [`publishing/STEAM_APP_REGISTRATION.md`](../publishing/STEAM_APP_REGISTRATION.md#dlc-registration).
+- [ ] Record the assigned App ID, depot ID, and price in
+      [`publishing/STEAM_DLC_REGISTRY.md`](../publishing/STEAM_DLC_REGISTRY.md).
+- [ ] Set `steam_dlc_app_id` in the pack's `manifest.yaml` to the assigned
+      DLC App ID.
+- [ ] Add the `vars.STEAM_DLC_DEPOT_<PACK_SLUG>_ID` GitHub repository variable.
+- [ ] Add `steam/depot_dlc_<pack-slug>.vdf.tpl` and
+      `steam/app_build_dlc_<pack-slug>.vdf.tpl`.
+- [ ] Extend `.github/workflows/steam-deploy.yml` with the DLC depot push step.
+- [ ] Verify the ownership gate in a local dev build (run without Steam to
+      confirm `steam_dlc_app_id > 0` packs are fully accessible outside Steam).
+- [ ] Verify the "Get on Steam" link in a test build running under the Steam
+      client without the DLC owned.
+
+---
+
+## Links
+
+- [`publishing/STEAM_DLC_REGISTRY.md`](../publishing/STEAM_DLC_REGISTRY.md) — authoritative App ID ↔ pack ID ↔ depot ID mapping
+- [`publishing/STEAM_APP_REGISTRATION.md`](../publishing/STEAM_APP_REGISTRATION.md) — base app registration, pricing, and DLC registration steps
+- [`docs/STEAM_ROADMAP.md`](STEAM_ROADMAP.md) — release principles and paid model rationale
+- [`docs/official-pack-quality-bar.md`](official-pack-quality-bar.md) — content quality criteria that any DLC pack must meet
+- [`packs/official/`](../packs/official/) — official pack directory; DLC packs live here like any other pack
