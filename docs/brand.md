@@ -43,9 +43,10 @@ An internet connection is only needed for the one-time model download. Once
 installed, the app runs entirely offline — your conversations never leave your
 machine.
 
-Conversation Simulator is free and open-source. Build your own scenario packs in
-YAML, share them with other players, or extend the platform with new runtimes and
-rubrics.
+Conversation Simulator is free and open-source — $9.99 on Steam, free to build
+from source, with premium expansion packs on Steam. Build your own scenario packs
+in YAML, share them with other players, or extend the platform with new runtimes
+and rubrics.
 
 ---
 

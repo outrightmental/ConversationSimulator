@@ -82,11 +82,21 @@ configuration can weaken them: content that sexualizes minors ends the
 session, and self-harm crisis language ends the session and surfaces real
 resources. Community packs can make safety rules stricter. Never looser.
 
-## Free means free
+## Free to build. Fair to buy.
 
-No premium tier. No ads. No locked scenarios. No data resale — there is no
-data to sell. The code is Apache-2.0, the packs are CC BY 4.0, and the Steam
-release is sponsored so it can stay free there too.
+The engine is Apache-2.0. The four official packs are CC BY 4.0. Clone the
+repository, build it, and run it for nothing — that door is open, and it stays
+open. Free and open source is not a launch promotion here; it is the license.
+
+The $9.99 version on Steam is that same software, packaged: signed, notarized,
+auto-updating, Steam Deck–ready, nothing to assemble. You are not paying to
+unlock the product — you already have it, in the open, for free. You are paying
+for the convenience of not building it yourself, and so the work can continue.
+
+Still no ads. No subscription. No telemetry. No data resale — there is no data
+to sell. Premium scenario packs — new expansions, sold on Steam — pay for what
+comes next. And a promise about them: nothing that is free today is ever moved
+behind that price. The paid content is only ever *more*. The open core only grows.
 
 ---
 

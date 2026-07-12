@@ -283,10 +283,25 @@ deliberately out of scope, and links to the acceptance criteria and docs.
 > [Full specification](docs/SPEC.md) &nbsp;·&nbsp;
 > [Post-alpha issues](docs/post-alpha-issues.md)
 
-### Steam release
+### How it's distributed
 
-The project is being prepared for a free, Outright Mental-sponsored Steam release.
-The Steam edition makes the same local-first guarantee as the open-source build.
+Conversation Simulator is **free and open source, and fairly priced**:
+
+- **GitHub — free.** Clone this repository, build it with the quickstart above,
+  and run it at no cost. The engine is Apache-2.0 and the four official packs are
+  CC BY 4.0.
+- **Steam — $9.99.** The [Steam edition](publishing/STEAM_STORE_PAGE.md) is the
+  same software, packaged: signed, notarized, auto-updating, Steam Deck–verified.
+  The price funds continued development; it does not unlock anything the source
+  build lacks. The Steam edition makes the same local-first guarantee as the
+  open-source build.
+- **Premium scenario-pack DLC — Steam only.** First-party expansion packs beyond
+  the four free official ones are developed in a separate **private** repository
+  and sold as paid Steam DLC. Their content is never in this public repository.
+  See [docs/DLC_MODEL.md](docs/DLC_MODEL.md) for the private-repo → Steam-DLC
+  contract. The open core never shrinks: nothing that ships free is relocked as DLC.
+
+The Steam release documents:
 
 | Document | Purpose |
 |----------|---------|
@@ -365,6 +380,13 @@ scripts/           Developer setup and launch scripts
 | Documentation | CC BY 4.0 |
 | Placeholder assets | CC0-1.0 |
 | Model weights | Not bundled — user-installed with full license disclosure |
+| Premium scenario-pack DLC | Proprietary — not in this repository; sold on Steam |
+
+Everything in **this** repository is open source: the code is Apache-2.0, the four
+official packs and the docs are CC BY 4.0. The paid Steam build is a packaging of
+this same open code — buying it funds development, not access. Premium expansion
+packs are the only proprietary content; they live in a separate private repository
+and are never included here.
 
 `LICENSE` contains the full Apache-2.0 text.  
 `NOTICE` lists copyright notices and per-artifact license details.

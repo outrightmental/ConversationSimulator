@@ -110,7 +110,7 @@ work in these areas needs its own proposal, design, and acceptance criteria.
 - Pack signing and trust tiers
 - Hosted pack registry (CDN or P2P distribution)
 
-See [`docs/marketplace-architecture.md`](docs/marketplace-architecture.md) for the post-launch marketplace design baseline — entry gate criteria, distribution path comparison, and scope of schema, signing, moderation, payment, and reporting changes required before any paid content ships.
+See [`docs/marketplace-architecture.md`](docs/marketplace-architecture.md) for the post-launch community marketplace design baseline — entry gate criteria, distribution path comparison, and scope of schema, signing, moderation, payment, and reporting changes required before any community-authored paid content ships. First-party premium scenario-pack DLC does not wait on this marketplace: it ships separately via Steam's DLC storefront (see [`docs/DLC_MODEL.md`](docs/DLC_MODEL.md)), while the open core stays free.
 
 ### Education and enterprise
 
@@ -133,7 +133,7 @@ must not compromise offline-first, local-model, or open-source principles.
 | **Multiplayer** | Server infrastructure, latency, identity — all the things MVP deliberately avoids |
 | **Cloud inference** | Contradicts the local-first promise; would require an account and send user content to a third party |
 | **Mobile apps** | App store rules, on-device model size, and touch UI are a separate product effort |
-| **Marketplace / monetization** | Payment rails, refund policy, fraud, curation burden — not a developer tool concern |
+| **In-app marketplace / microtransactions** | In-app payment rails, fraud, and curation burden stay out of scope — the paid ($9.99) Steam edition and first-party premium scenario-pack DLC are sold through Steam's storefront, with no in-app payment UI |
 | **NSFW content** | Above PG-13 is a hard platform boundary; the safety system enforces this at the validator level |
 | **Celebrity or public-figure packs** | Defamation, right-of-publicity, and likeness risk with no upside for the simulator's core use case |
 | **Complex character animation** | Requires a game-engine-class renderer; out of proportion for a conversation tool |
@@ -149,7 +149,7 @@ must not compromise offline-first, local-model, or open-source principles.
 - [Pack validation](docs/pack-validation.md) — schema rules and the validator CLI
 - [Safety policy](docs/safety-policy.md) — content boundaries and the layered safety system
 - [Privacy and data policy](docs/privacy.md) — what stays local and how to verify it
-- [Steam edition roadmap](docs/STEAM_ROADMAP.md) — release principles, release train, and platform targets for the free Steam edition
+- [Steam edition roadmap](docs/STEAM_ROADMAP.md) — release principles, release train, and platform targets for the paid ($9.99) Steam edition
 - [Steam MVP scope and release gates](docs/steam-mvp-scope.md) — minimum playable release features, optional targeted features, pass/fail gates, and post-launch deferrals
 - [GitHub Milestones](https://github.com/outrightmental/ConversationSimulator/milestones) — issue tracking
 - [Full specification](docs/SPEC.md) — technical requirements per milestone
