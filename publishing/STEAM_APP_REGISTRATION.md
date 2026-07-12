@@ -1,10 +1,11 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 # Steam App Registration
 
-> **Purpose:** Record the Steamworks partner portal configuration for the free
-> Outright Mental-sponsored edition of Conversation Simulator. This document is
-> the authoritative reference for app identity, depot layout, package
-> configuration, branch strategy, and the location of CI credentials.
+> **Purpose:** Record the Steamworks partner portal configuration for the
+> $9.99 one-time-purchase Steam edition of Conversation Simulator. This document
+> is the authoritative reference for app identity, depot layout, package
+> configuration, DLC registration, branch strategy, and the location of CI
+> credentials.
 >
 > **Audience:** Platform team members and Outright Mental staff with Steamworks
 > partner portal access.
@@ -47,18 +48,23 @@ Mark each item when done and record the assigned identifiers in the
 - [ ] Enter the store page title: `Conversation Simulator`.
 - [ ] Record the assigned **App ID** in the [Identifiers](#identifiers) table and set it as the `STEAM_APP_ID` repository variable.
 
-### Free-to-play configuration
+### $9.99 base price configuration
 
-- [ ] Under **Pricing & Availability**, set the **Base price** to `Free to Play`.
-- [ ] Do **not** set a purchase price or create a paid package. The base package is always free.
-- [ ] Verify the app does **not** appear in the "Set up pricing" wizard with a price — it must be marked Free on Steam from the first configuration step.
-- [ ] Confirm no DLC or microtransaction package is created during initial setup.
-- [ ] Verify the free default package (automatically created by Valve for free-to-play apps) contains all three platform depots once they are created.
+- [ ] Under **Pricing & Availability**, set the **Base price** to `$9.99` (USD).
+- [ ] Use the **Set a price** wizard; do **not** mark the app as Free to Play.
+- [ ] Verify prices in all supported regional currencies are populated by Valve's
+      conversion; adjust any region where Valve's converted price is materially
+      incorrect.
+- [ ] Create one **paid package** (the base app package) that contains all three
+      platform depots.
+- [ ] Do **not** create a separate free or demo package unless a demo build is
+      explicitly scoped.
 
-The Steam release is and will remain free to download and play. There is no
-base purchase price, no subscription, and no pay-to-unlock core content.
-See [`docs/STEAM_ROADMAP.md`](../docs/STEAM_ROADMAP.md) — Free on Steam,
-sponsored by Outright Mental.
+The Steam edition costs **$9.99 one-time**. There is no subscription and no
+pay-to-unlock core content. The same engine and official packs are available
+free on GitHub (Apache-2.0 / CC BY 4.0) — the purchase price covers packaging,
+signing, and distribution, not exclusive access. See
+[`docs/STEAM_ROADMAP.md`](../docs/STEAM_ROADMAP.md).
 
 ### Depots
 
@@ -74,12 +80,15 @@ content rules.
 ### Packages
 
 A **package** in Steamworks bundles one or more depots and determines what a
-player owns. For a free-to-play title, Valve automatically creates a **free
-default package** containing all depots.
+player owns.
 
-- [ ] Verify the automatic free package exists and contains all three depots.
-- [ ] Do **not** create a paid package or a retail activation package.
-- [ ] Record the free package ID (assigned by Valve) in the [Identifiers](#identifiers) table.
+- [ ] Create one **base app package** at $9.99 containing all three platform
+      depots. This is the package players purchase to install the app.
+- [ ] Record the base package ID in the [Identifiers](#identifiers) table.
+- [ ] For each premium DLC pack: create a separate **DLC package** at the
+      appropriate price, linked to the DLC's own App ID and depot. See
+      [DLC registration](#dlc-registration) below.
+- [ ] Do **not** create a free or free-to-play package for the base app.
 
 ### Release state
 
@@ -102,7 +111,8 @@ source files.
 | Windows depot ID | `vars.STEAM_DEPOT_WINDOWS_ID` | First depot created; Windows x86-64 content. Valve assigns depot IDs sequentially after the App ID. |
 | macOS depot ID | `vars.STEAM_DEPOT_MACOS_ID` | Second depot created; macOS (Apple Silicon + Intel) content. |
 | Linux/SteamOS depot ID | `vars.STEAM_DEPOT_LINUX_ID` | Third depot created; Linux x86-64 and Steam Deck content. |
-| Free package ID | *(record here after registration)* | Automatically created by Valve for free-to-play apps. Not referenced in CI. |
+| Base package ID | *(record here after registration)* | The $9.99 paid package created for the base app. Not referenced in CI. |
+| DLC App ID(s) | `vars.STEAM_DLC_APP_IDS` | Comma-separated list of DLC App IDs registered for premium packs. Consumed by the ownership-gate build (see #363). |
 
 **To set a repository variable:** GitHub → repository Settings → Secrets and
 variables → Actions → Variables tab → New repository variable.
@@ -149,6 +159,35 @@ These exclusions are enforced in the SteamPipe depot VDF templates:
 A depot content audit is required before each Steam build submission — see
 checklist item SR-08 in
 [`publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md`](STEAM_COMPLIANCE_AND_RISK_REGISTER.md).
+
+---
+
+## DLC registration
+
+Each premium scenario pack DLC is registered as a separate Steamworks app
+(type: DLC) under the base App ID.
+
+### Steps for each new DLC pack
+
+- [ ] Register a new DLC app under the base app in the Steamworks partner portal.
+      App type must be **DLC**, parent set to the base app's App ID.
+- [ ] Set the DLC app's title to the pack display name (e.g. `Advanced Professional Skills`).
+- [ ] Set the DLC price in Steamworks Pricing & Availability.
+- [ ] Create one depot for the DLC content (pack YAML files + assets). Use
+      [`steam/depot_dlc.vdf.tpl`](../steam/depot_dlc.vdf.tpl) as the template.
+- [ ] Record the new DLC App ID in the `STEAM_DLC_APP_IDS` repository variable
+      (comma-separated if multiple packs exist).
+- [ ] Confirm the runtime ownership check (`is_dlc_installed`) references the
+      correct App ID. See [`docs/DLC_MODEL.md`](../docs/DLC_MODEL.md) for the
+      gate API contract.
+
+### DLC invariant
+
+> Nothing that ships free in the base app may be relocked as DLC. DLC is
+> always additive.
+
+This is enforced by policy, not code — the compliance checklist (SR-10) must
+confirm it before each DLC release.
 
 ---
 

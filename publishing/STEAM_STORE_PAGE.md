@@ -11,7 +11,7 @@
 >
 > **Constraints enforced here:**
 > - No language claiming AI therapy, diagnosis, or legal advice (gate G4-04).
-> - No implied marketplace or paid content (gate G4-04, SP-05).
+> - Price claims must be accurate: $9.99 one-time base app; DLC sold separately.
 > - Local-first and privacy-first copy must be factually accurate (PR-01–PR-03).
 > - Content-boundary statements must match the safety policy in
 >   [`schemas/safety.schema.json`](../schemas/safety.schema.json).
@@ -35,10 +35,10 @@ Limit: **300 characters**.
 ```
 Conversation Simulator is the practice tool for interviews, negotiations,
 difficult talks, and language skills. AI characters run entirely on your
-computer. No internet needed during play. Free forever.
+computer. No internet needed during play. Open source — $9.99 on Steam.
 ```
 
-Character count: 202. Within the 300-character limit.
+Character count: 206. Within the 300-character limit.
 
 ---
 
@@ -53,11 +53,10 @@ statement.
 <h2>Conversation Simulator is the simulator for conversations.</h2>
 
 <p>
-  Conversation Simulator is a free, local-first practice tool that lets you
-  rehearse real-life conversations before they happen. Choose a scenario, talk
-  to an AI character running entirely on your computer, watch the situation
-  evolve, and review what went well — or what you would say differently next
-  time.
+  Conversation Simulator is a local-first practice tool that lets you rehearse
+  real-life conversations before they happen. Choose a scenario, talk to an AI
+  character running entirely on your computer, watch the situation evolve, and
+  review what went well — or what you would say differently next time.
 </p>
 
 <p>
@@ -193,19 +192,21 @@ statement.
   Steam Deck's shared RAM configuration.
 </p>
 
-<h2>Free forever</h2>
+<h2>Open source, fairly priced</h2>
 
 <p>
-  Conversation Simulator is free to download and play. There is no base
-  purchase price, no subscription, and no pay-to-unlock core content.
-  The Steam release is sponsored by <strong>Outright Mental</strong>, who
-  covers distribution costs so this tool can reach players who benefit from
-  it.
+  The engine and four built-in packs are <strong>free and open source on
+  GitHub</strong> (Apache-2.0 / CC BY 4.0). Building from source is free,
+  forever. The Steam edition is a packaged, signed, notarised, auto-updating
+  build of the same open source — sold at a one-time price of
+  <strong>$9.99</strong>. No subscription. Nothing the source build includes
+  is locked behind that price.
 </p>
 
 <p>
-  The source code is open and available on GitHub. Community-created scenario
-  packs can be installed manually and shared freely.
+  Premium expansion packs, authored by Outright Mental, are sold as optional
+  paid Steam DLC. Community-created packs remain free and can be installed
+  manually.
 </p>
 ```
 
@@ -281,23 +282,24 @@ This is the short-form content-boundaries statement for the store page
 
 ---
 
-## Free edition wording
+## Pricing wording
 
-Use this copy wherever the free-to-play nature needs to be stated explicitly
+Use this copy wherever the pricing model needs to be stated explicitly
 (store description, FAQ, press kit).
 
 ```
-Free forever — not a demo, not a time-limited trial.
+Open source and fairly priced.
 
-Conversation Simulator is free to download and play on Steam. There is no
-purchase price, no subscription, and no paywall in front of the built-in
-scenario packs. Outright Mental sponsors distribution so the tool reaches
-players who can benefit from it.
+The engine and four built-in packs are free and open source on GitHub.
+Building from source costs nothing, forever.
 
-There are no microtransactions, no premium content tier, and no in-app
-purchase system in the current release. Community packs can be installed
-manually and are distributed outside the app by their authors — the app
-itself does not host or sell them.
+The Steam edition is $9.99 one-time — the same open-source build, packaged
+for non-technical players: signed, notarised, and auto-updating. That
+purchase funds development; it unlocks nothing the source build lacks.
+
+Premium scenario packs by Outright Mental are available as optional paid
+Steam DLC — always additions, never relocations of free content. Community
+packs remain free and can be installed manually.
 ```
 
 ---
@@ -415,7 +417,7 @@ These reflect the built-in safety policy (see
 | Does the game contain strong language? | Mild — language appropriate to workplace and social conflict scenarios |
 | Does the game involve online interaction with other players? | No |
 | Is the game intended only for adults? | No |
-| Does the game involve real-money purchases? | No |
+| Does the game involve real-money purchases? | Yes — $9.99 base app + optional paid DLC |
 
 **Expected rating outcome:**
 
@@ -466,14 +468,14 @@ This is a supplement to the compliance checklist (SR-07) in
 - [ ] Short description is ≤ 300 characters and accurately describes the app.
 - [ ] Long description contains no claim of AI therapy, diagnosis, or clinical
       authority.
-- [ ] Long description contains no implication of a paid marketplace, premium
-      tier, or microtransactions.
+- [ ] Long description accurately states $9.99 one-time base price and optional
+      paid DLC; no false implications of a free-to-play model.
 - [ ] Local-first privacy copy is consistent with [`docs/privacy.md`](../docs/privacy.md)
       and the runtime behaviour confirmed in SR-01 and SR-02.
 - [ ] Content-boundaries list matches the safety policy schema
       ([`schemas/safety.schema.json`](../schemas/safety.schema.json)).
-- [ ] Free edition wording accurately states that the app is free forever with
-      no time limit or demo restriction.
+- [ ] Pricing wording accurately states the open-source / $9.99 model and that
+      DLC is always additive (nothing free is ever relocked as paid content).
 - [ ] System requirements have been verified against actual test results from
       the platform smoke matrix ([`docs/release-checklist.md`](../docs/release-checklist.md)).
 - [ ] Steam Deck notes accurately reflect the text-mode fallback (AU-03) and
@@ -530,7 +532,7 @@ This is a supplement to the compliance checklist (SR-07) in
 | Feature bullets | | | |
 | Privacy copy | | | |
 | Content boundaries | | | |
-| Free edition wording | | | |
+| Pricing wording | | | |
 | System requirements | | | |
 | Genres and tags | | | |
 | Age disclosures | | | |

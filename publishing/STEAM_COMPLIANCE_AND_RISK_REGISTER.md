@@ -324,16 +324,16 @@ the decisions for Steam review and partner portal audit purposes.
 | **Release-blocking** | YES |
 | **Status** | OPEN |
 
-### SP-05 — Steam Wallet and future paid DLC path
+### SP-05 — Paid DLC requires Valve compliance and ownership-gate review
 
 | | |
 |---|---|
 | **Area** | Platform / Licensing |
-| **Risk** | A future community pack browser or paid DLC path requires Steam Wallet integration, which requires Valve's approval for microtransaction-enabled titles and may trigger additional content review obligations. |
+| **Risk** | Selling premium DLC on Steam requires Valve approval for paid DLC, correct IARC questionnaire answers (real-money purchases → Yes), and a correct runtime ownership check — failure to satisfy any of these blocks the DLC release or triggers Valve store violations. |
 | **Owner** | Outright Mental (publishing) |
-| **Mitigation** | The v1 Steam release ships with no payment rails, no premium pack tier, and no microtransactions. Any paid marketplace or DLC content path is explicitly deferred to Stage 5 (post-launch exploration) of the release train. If a paid path is ever pursued, it must go through a separate Valve review, a Steam Wallet integration audit, and a legal review of revenue-sharing obligations before implementation. |
-| **Release-blocking** | NO (deferred) |
-| **Status** | DEFERRED |
+| **Mitigation** | Base app is registered at $9.99; DLC packs are registered as separate Steamworks DLC apps with their own App IDs. IARC questionnaire updated: "Does the game involve real-money purchases?" → Yes. Runtime ownership check (`is_dlc_installed` / `useSteamDlc`) gates DLC content by Steam ownership — players who do not own a DLC App ID cannot access its packs. Valve DLC review must be completed before each DLC release. Legal review of revenue-sharing obligations completed before any DLC is published. DLC invariant enforced: nothing previously free may be relocked as DLC. See `docs/DLC_MODEL.md` for the full contract. |
+| **Release-blocking** | YES (for each DLC release) |
+| **Status** | IN PROGRESS |
 
 ---
 
@@ -393,7 +393,7 @@ gate (Stage 3) or the public release gate (Stage 4).
 - [ ] Steam Deck verification checklist in `docs/STEAM_ROADMAP.md` is complete and all items pass.
 - [ ] Steam store page copy has been reviewed using the checklist in [`publishing/STEAM_STORE_PAGE.md`](STEAM_STORE_PAGE.md) — Store page review checklist.
 - [ ] Store page copy accuracy: no language claims AI therapy, diagnosis, or legal advice (gate G4-04).
-- [ ] Steam store page does not imply paid content or a marketplace that does not exist in v1 (gate G4-04).
+- [ ] Steam store page accurately states $9.99 one-time base price and optional paid DLC; no false free-to-play claim (gate G4-04).
 - [ ] All store page copy sign-off rows in [`publishing/STEAM_STORE_PAGE.md`](STEAM_STORE_PAGE.md) — Sign-off table are completed with reviewer name and date.
 - [ ] All capsule assets, screenshots, and trailer reviewed against the production brief in [`publishing/STEAM_ASSETS_SPEC.md`](STEAM_ASSETS_SPEC.md) and uploaded to Steamworks.
 
@@ -465,7 +465,7 @@ team is unblocked.
 | SP-02 | Platform | YES | OPEN |
 | SP-03 | Platform | NO | OPEN |
 | SP-04 | Platform | YES | OPEN |
-| SP-05 | Platform / Licensing | NO (deferred) | DEFERRED |
+| SP-05 | Platform / Licensing | YES (per DLC release) | IN PROGRESS |
 
 ---
 
