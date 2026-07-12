@@ -45,11 +45,21 @@ patterns and the pre-upload audit script.
 ### Packages
 
 A **package** bundles one or more depots and represents what a player "owns".
-Valve automatically creates a **free default package** for free-to-play apps.
-This package must contain all three platform depots and must not be converted
-to a paid package.
+Conversation Simulator ships as a **paid app**: the base app is a one-time
+**$9.99 USD** purchase, so it uses a normal **paid package** (the automatic
+free default package Valve provisions for free-to-play apps does not apply).
+This base package must contain all three platform depots.
 
-For Conversation Simulator: one package, three depots, zero cost, no exceptions.
+For the base app: one paid package, three depots, no exceptions.
+
+**Premium scenario-pack DLC is out of scope for this base-app pipeline.** Each
+premium pack is a separate Steam DLC (its own App ID and content depot), built
+and uploaded **separately** from the private `ConversationSimulator-DLC` repo
+using [`steam/depot_dlc_scenariopacks.vdf.tpl`](../steam/depot_dlc_scenariopacks.vdf.tpl).
+DLC content must **never** be staged into the base app depots — the depot audit
+and `FileExclusion` patterns exist in part to enforce that boundary. See
+[`docs/DLC_MODEL.md`](../docs/DLC_MODEL.md) and
+[`publishing/STEAM_DEPOT_CONTENTS.md`](STEAM_DEPOT_CONTENTS.md).
 
 ### Branches
 
@@ -232,7 +242,7 @@ that branch. Always follow the staged-then-promote pattern.
 2. Trigger the deploy workflow with the Stage 3 release tag and
    `set_live_branch: beta`.
 3. Provide beta testers with Steam keys (generated in Steamworks → Packages →
-   Free package → Generate Steam Product Codes).
+   the base app package → Generate Steam Product Codes).
 4. Document the promoted build version and date in the release notes.
 
 ### Stage 4 → default branch (public release)

@@ -1,7 +1,7 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
-# Launch Announcement — Conversation Simulator (Free Steam Edition)
+# Launch Announcement — Conversation Simulator (Steam Edition)
 
-> **Purpose:** Canonical draft of the public launch announcement for the free
+> **Purpose:** Canonical draft of the public launch announcement for the
 > Steam edition of Conversation Simulator. Post this text as a Steam Community
 > Hub announcement immediately after Step 5 (end-to-end install verification)
 > in [`publishing/LAUNCH_DAY_RUNBOOK.md`](LAUNCH_DAY_RUNBOOK.md). Mirror it
@@ -13,7 +13,8 @@
 >
 > **Review checklist before publishing:**
 > - [ ] No therapy/diagnosis/legal-advice language (gate G4-04).
-> - [ ] No implied paid marketplace or paid content (gate G4-04, SP-05).
+> - [ ] No in-app payment UI or microtransactions implied — paid content is
+>   delivered as Steam DLC only (gate G4-04, SP-05).
 > - [ ] Local-first privacy claims are factually accurate (PR-01–PR-03).
 > - [ ] All named platforms have passed the Stage 4 gate check.
 > - [ ] Model download links and pack names match the shipped build.
@@ -23,11 +24,11 @@
 
 ## Steam Community Hub post
 
-**Subject:** Conversation Simulator is live on Steam — free, local, yours
+**Subject:** Conversation Simulator is live on Steam — open source, local, yours
 
 ---
 
-**Conversation Simulator is now available free on Steam.**
+**Conversation Simulator is now available on Steam.**
 
 We built it to help you practice the conversations that matter — job interviews,
 difficult talks, negotiations, language practice — in private, before they
@@ -35,11 +36,19 @@ happen for real. Today it ships to anyone who wants it.
 
 ---
 
-### Free, and free forever
+### Open source, fairly priced
 
-There is no base price, no subscription, and no hidden unlock. Conversation
-Simulator is sponsored by [Outright Mental](https://outrightmental.com) so it
-can reach players who would not otherwise have access to AI-assisted practice.
+Conversation Simulator is open source. The full engine and the official
+scenario packs live on GitHub — clone it, build it, and run it yourself at zero
+cost, forever. The **$9.99 one-time purchase** on Steam buys the ready-to-run,
+code-signed, notarized, auto-updating, Steam Deck-verified package of that same
+open source, and it funds continued development. It is not a subscription, and
+it does not unlock anything the source build lacks.
+
+Premium scenario-pack DLC is available separately for players who want more
+ready-made content. The open core stays free: nothing that ships free today is
+ever relocked as paid content. [Outright Mental](https://outrightmental.com)
+publishes Conversation Simulator.
 
 ---
 
@@ -173,11 +182,15 @@ further as needed.
 
 ---
 
-Conversation Simulator is now free on Steam.
+Conversation Simulator is out now on Steam — open source, fairly priced.
 
 Practice job interviews, negotiations, difficult talks, and language learning
 with AI characters that run entirely on your machine. No account. No
 subscription. No data sent anywhere. Local-first, always.
+
+Free to build from source on GitHub. The $9.99 one-time Steam purchase gets you
+the packaged, auto-updating build and funds development. Premium scenario-pack
+DLC is available — the open core stays free.
 
 Five official scenario packs ship today. Create your own with the built-in
 Creator Workbench — it's YAML, no coding needed.

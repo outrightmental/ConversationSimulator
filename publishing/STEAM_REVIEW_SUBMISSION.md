@@ -4,7 +4,7 @@
 > **Purpose:** Step-by-step instructions for preparing and submitting
 > Conversation Simulator to Valve for store review. Covers all Steamworks portal
 > configuration that must be complete before submission: store page, assets,
-> system requirements, depots, packages, free product settings, content survey
+> system requirements, depots, packages, pricing and DLC settings, content survey
 > (IARC), and release date settings.
 >
 > **Audience:** Platform team member or Outright Mental staff with Steamworks
@@ -57,7 +57,7 @@ Limit is 300 characters. Do not truncate or paraphrase the approved copy.
 
 - [ ] Short description entered, ≤ 300 characters.
 - [ ] No language claiming therapy, diagnosis, or legal advice.
-- [ ] No implied paid content or marketplace.
+- [ ] No implied in-app marketplace or microtransactions.
 
 ### 1.3 Long description
 
@@ -67,8 +67,8 @@ using the Steamworks rich text editor.
 
 - [ ] Long description entered in HTML format.
 - [ ] All section headers, bullet lists, and privacy statement text preserved.
-- [ ] Free edition wording block included verbatim.
-- [ ] Outright Mental sponsorship statement included.
+- [ ] Pricing and open-source wording block included verbatim.
+- [ ] Outright Mental publisher and pricing statement ($9.99, one-time) included.
 - [ ] Store page reviewed in Steamworks preview mode for formatting errors.
 
 ### 1.4 System requirements
@@ -98,7 +98,7 @@ Enter minimum and recommended system requirements exactly as specified in
 - [ ] Secondary genre set to: **Casual**.
 - [ ] User-defined tags applied: `Simulation`, `Casual`, `Education`,
       `Singleplayer`, `Local Only` (or nearest available equivalent).
-- [ ] No genres or tags imply multiplayer, online features, or purchased DLC.
+- [ ] No genres or tags imply multiplayer or online features.
 
 ### 1.6 Languages
 
@@ -159,19 +159,26 @@ Specifications for each asset are in
 
 ---
 
-## 3. Free product configuration
+## 3. Pricing and DLC configuration
 
 Navigate to **Steamworks App Admin → Pricing & Availability**.
 
-- [ ] Base price is set to `Free to Play`. No numeric price appears.
-- [ ] No paid package exists under this App ID.
-- [ ] No DLC package exists under this App ID.
-- [ ] The free default package (created automatically by Valve) is visible in
-      **Steamworks → Packages** and contains all three platform depots:
-      Windows, macOS, and Linux.
-- [ ] The free default package does **not** have a purchase price.
-- [ ] Confirm there is no "Set up pricing" link on the store admin page — this
-      link appears only if the app is not yet configured as free.
+- [ ] Base price is set to **$9.99 USD** — a one-time purchase, **not** `Free to
+      Play`. A numeric price appears on the store page.
+- [ ] Regional pricing is generated from the USD base price and reviewed: Steam's
+      suggested regional prices are applied (or intentionally overridden) for all
+      territories, with no missing, zero, or unconverted-currency regions.
+- [ ] A single paid base package exists under this App ID, priced at $9.99 USD.
+- [ ] Premium scenario-pack DLC, if launching alongside the base app, is listed as
+      separate Steam DLC — each with its own Steam App ID and its own price — per
+      [`docs/DLC_MODEL.md`](../docs/DLC_MODEL.md). If no DLC ships in this
+      submission, no DLC package appears under this App ID yet.
+- [ ] The paid base package is visible in **Steamworks → Packages** and contains
+      all three platform depots: Windows, macOS, and Linux.
+- [ ] The base package depots exclude all premium DLC content (DLC ships from its
+      own separate content depots and App IDs).
+- [ ] Confirm the base app is configured with its $9.99 USD price — the "Set up
+      pricing" step is complete and the app is **not** left as Free to Play.
 
 ---
 
@@ -194,8 +201,8 @@ Navigate to **Steamworks App Admin → SteamPipe → Depots**.
 
 Navigate to **Steamworks → Packages**.
 
-- [ ] The free default package contains all three platform depots.
-- [ ] Free package ID is recorded in
+- [ ] The paid base package contains all three platform depots.
+- [ ] Base package ID is recorded in
       [`publishing/STEAM_APP_REGISTRATION.md` — Identifiers](STEAM_APP_REGISTRATION.md#identifiers).
 
 ---
@@ -236,7 +243,7 @@ Answer all IARC questions based on the content present in the v1 launch build:
 | Gambling | **None** — no gambling, no simulated gambling. |
 | Drug / alcohol | **None** — no drug or alcohol depictions in official packs. |
 | Online features | **None** — no online multiplayer, no user-generated content submission, no online purchases. The app runs offline. |
-| In-app purchases | **No** — the app is free with no in-app purchases. |
+| In-app purchases | **No in-app purchase UI** — there is no in-app payment UI or Steam Wallet microtransaction system inside the app. The base app is a one-time $9.99 USD purchase and premium scenario-pack DLC is sold separately through Steam's DLC storefront, so IARC **real-money purchases is answered Yes** (paid base app + optional DLC). |
 | User interaction | **None** — no user-to-user interaction; all AI characters are local. |
 
 ### 6.2 Expected IARC rating
@@ -336,7 +343,7 @@ Navigate to **Steamworks App Admin → Publish → Review and Publish**.
 | Gameplay trailer uploaded | | | |
 | System requirements entered | | | |
 | Genres and tags confirmed | | | |
-| Free product configuration verified | | | |
+| Pricing and DLC configuration verified | | | |
 | Depots and packages confirmed | | | |
 | Steam Cloud configuration confirmed | | | |
 | IARC content survey complete | | | |

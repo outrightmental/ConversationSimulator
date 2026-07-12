@@ -9,7 +9,7 @@
 > **Audience:** Publishing team, platform team, Outright Mental staff, and
 > any contractor brought in to help with launch or support operations.
 >
-> **Scope:** Steam store page setup, free product configuration, asset
+> **Scope:** Steam store page setup, product and pricing configuration, asset
 > production status, compliance sign-off, launch-day operations, and
 > post-launch support triage. For SteamPipe build and depot operations see
 > [`publishing/STEAM_PUBLISHING_AND_DEPLOYMENT.md`](STEAM_PUBLISHING_AND_DEPLOYMENT.md).
@@ -22,7 +22,7 @@
 |-------|------------------------|
 | Store copy (short desc, long desc, feature bullets, system requirements) | [`publishing/STEAM_STORE_PAGE.md`](STEAM_STORE_PAGE.md) |
 | Store assets (capsules, screenshots, trailer brief) | [`publishing/STEAM_ASSETS_SPEC.md`](STEAM_ASSETS_SPEC.md) |
-| Free product and depot registration | [`publishing/STEAM_APP_REGISTRATION.md`](STEAM_APP_REGISTRATION.md) |
+| Product and depot registration | [`publishing/STEAM_APP_REGISTRATION.md`](STEAM_APP_REGISTRATION.md) |
 | Risk register and compliance checklists (SR-01 through SR-09) | [`publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md`](STEAM_COMPLIANCE_AND_RISK_REGISTER.md) |
 | Depot contents and exclusions | [`publishing/STEAM_DEPOT_CONTENTS.md`](STEAM_DEPOT_CONTENTS.md) |
 | SteamPipe build, CI deploy, and troubleshooting | [`publishing/STEAM_PUBLISHING_AND_DEPLOYMENT.md`](STEAM_PUBLISHING_AND_DEPLOYMENT.md) |
@@ -39,11 +39,12 @@
 
 ---
 
-## Free product configuration
+## Product and pricing configuration
 
-Conversation Simulator is a **free-to-play** title on Steam. This section
-summarises the store-page and partner-portal settings that enforce that
-commitment; the checklist item numbers refer to
+Conversation Simulator is a **paid** title on Steam, priced at **$9.99 USD**
+as a one-time purchase (not a subscription). This section summarises the
+store-page and partner-portal settings that establish that pricing and the
+premium scenario-pack DLC; the checklist item numbers refer to
 [`publishing/STEAM_APP_REGISTRATION.md`](STEAM_APP_REGISTRATION.md).
 
 ### Key settings
@@ -51,23 +52,29 @@ commitment; the checklist item numbers refer to
 | Setting | Required value |
 |---------|---------------|
 | App type | `Game` |
-| Base price | `Free to Play` |
-| Paid package | None — do not create |
-| DLC or microtransaction package | None — do not create |
+| Base price | `$9.99 USD` — one-time purchase (not a subscription) |
+| Base store package | Standard paid package for the base app — base depots only, must exclude premium DLC content |
+| Premium DLC packages | Paid Steam DLC for first-party scenario packs — each its own App ID and content depot, built and uploaded from the private `ConversationSimulator-DLC` repo |
+| In-app microtransaction package | None — no in-app payment UI or Steam Wallet microtransactions; paid content is delivered only via Steam's DLC storefront |
 | Release state at registration | `Coming Soon` |
 
-### Free-forever invariants
+### Pricing and product invariants
 
-- No base purchase price is set now or in the future without an explicit
-  Outright Mental decision recorded in a new document.
-- No premium content tier or content unlock exists in any release branch.
-- The free default package (created by Valve automatically for free-to-play
-  apps) contains all three platform depots.
+- The base price is `$9.99 USD` (one-time purchase); any change to it requires
+  an explicit Outright Mental decision recorded in a new document.
+- Premium content ships as paid Steam DLC (first-party scenario packs) delivered
+  through Steam's DLC storefront; the app unlocks only DLC the player owns
+  (checked via Steamworks `BIsDlcInstalled`). Nothing that ships with the base
+  app is ever relocked as paid DLC.
+- There is no Valve free default package (that automation applies only to
+  Free-to-Play apps). A normal paid store package contains all three platform
+  base depots, which must exclude premium DLC content.
 - All store copy, trailers, and screenshots must accurately represent the
-  free nature of the product (risk SP-05 in the compliance register).
+  product's `$9.99` price and paid nature (gate G4-04 / checklist item SR-07 in
+  the compliance register).
 
-See [`publishing/STEAM_STORE_PAGE.md` — Free edition wording](STEAM_STORE_PAGE.md#free-edition-wording)
-for the canonical approved copy to use wherever the free nature must be stated.
+See [`publishing/STEAM_STORE_PAGE.md` — Pricing and open-source wording](STEAM_STORE_PAGE.md#pricing-and-open-source-wording)
+for the canonical approved copy to use wherever the product's pricing must be stated.
 
 ---
 
@@ -114,7 +121,7 @@ register is the single source of truth for whether a risk is open or closed.
 |-------|--------------------------|
 | Stage 2 — packaged desktop alpha | All privacy risks (PR-01, PR-02, PR-03) MITIGATED |
 | Stage 3 — Steam private beta | All release-blocking risks MITIGATED or ACCEPTED; SR-01 through SR-08 passed (including SR-08 depot audit) and the SR-09 private beta sign-off completed |
-| Stage 4 — public free release | All Stage 4 gates (G4-01 through G4-05 in [`docs/steam-mvp-scope.md`](../docs/steam-mvp-scope.md)) met; SR-08 depot audit re-run clean on the launch build |
+| Stage 4 — public release | All Stage 4 gates (G4-01 through G4-05 in [`docs/steam-mvp-scope.md`](../docs/steam-mvp-scope.md)) met; SR-08 depot audit re-run clean on the launch build |
 
 Run the store-page review checklist in
 [`publishing/STEAM_STORE_PAGE.md` — Store page review checklist](STEAM_STORE_PAGE.md#store-page-review-checklist)
@@ -212,8 +219,8 @@ as the live checklist on launch day. The condensed sequence is:
 4. **Set the default branch live:**
    trigger the deploy workflow with `set_live_branch: default` and the launch tag.
 5. Wait 10–15 minutes for Steam CDN propagation.
-6. Verify the app is publicly visible on its store page and that the install
-   button is active and set to `Free`.
+6. Verify the app is publicly visible on its store page and that the store page
+   shows the `$9.99` purchase price with an active buy button.
 7. Install from a fresh account (not the partner account) on each required
    platform to confirm end-to-end installation.
 8. **Publish the announcement** — Steam community post and any external channels.
@@ -228,7 +235,7 @@ During the first 72 hours after public launch, monitor the following:
 | Steam review sentiment | Steamworks App Admin → Reviews | Any review mentioning unexpected network activity or privacy concern — escalate immediately |
 | GitHub Steam issue queue | GitHub → Issues, filter `label:steam` | Any `severity:critical` — 24-hour response SLA |
 | Crash rate | Steamworks App Admin → Stats (if crash reporting is configured in future) | Baseline comparison against private beta |
-| Store refund rate | Steamworks App Admin → Financials | Not applicable (free game, no purchase price) |
+| Store refund rate | Steamworks App Admin → Financials | Steam standard refund policy applies (2 weeks / 2 hours) — monitor the base app and DLC refund rate and investigate any spike above baseline |
 
 See [`docs/steam-triage.md`](../docs/steam-triage.md) for the full triage
 routing and SLA policy.

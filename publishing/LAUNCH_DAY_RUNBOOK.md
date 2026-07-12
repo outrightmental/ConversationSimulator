@@ -55,10 +55,11 @@ Complete the day before the scheduled launch.
 ### Store page
 
 - [ ] Store page has been reviewed in the Steamworks preview since Valve approval:
-      no placeholder text, no wrong screenshots, no pricing shown.
+      no placeholder text, no wrong screenshots, and the correct `$9.99` price is shown.
 - [ ] Release date field shows the correct launch date (not `Coming Soon`).
 - [ ] All five screenshots show the current build UI.
-- [ ] `Free to Play` label and "Free" button are visible in the store page preview.
+- [ ] The `$9.99` price and the `Buy` button are visible in the store page preview,
+      and any premium scenario-pack DLC launching alongside the base app is listed on the store page.
 
 ### CI and infrastructure
 
@@ -176,8 +177,9 @@ with the launch tag to stage the depot content, then set the build live on the
 Wait 10–15 minutes for the Steam CDN to propagate the new build.
 
 - [ ] The app store page is publicly visible (not returning 404).
-- [ ] The install button reads `Play Game` (not `Purchase` or `Pre-purchase`).
-- [ ] The price shown is `Free`.
+- [ ] The store page shows the `Buy` button at `$9.99` (not `Pre-purchase`, which would
+      mean the app is not yet released).
+- [ ] The price shown is `$9.99`.
 - [ ] Release date shown on the page matches today's date.
 
 ### Step 5 — End-to-end install verification
