@@ -1,10 +1,11 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 # Steam App Registration
 
-> **Purpose:** Record the Steamworks partner portal configuration for the free
-> Outright Mental-sponsored edition of Conversation Simulator. This document is
-> the authoritative reference for app identity, depot layout, package
-> configuration, branch strategy, and the location of CI credentials.
+> **Purpose:** Record the Steamworks partner portal configuration for the
+> $9.99 paid edition of Conversation Simulator, including the base app and
+> premium scenario-pack DLC. This document is the authoritative reference for
+> app identity, pricing, depot layout, package configuration, DLC registration,
+> branch strategy, and the location of CI credentials.
 >
 > **Audience:** Platform team members and Outright Mental staff with Steamworks
 > partner portal access.
@@ -47,18 +48,20 @@ Mark each item when done and record the assigned identifiers in the
 - [ ] Enter the store page title: `Conversation Simulator`.
 - [ ] Record the assigned **App ID** in the [Identifiers](#identifiers) table and set it as the `STEAM_APP_ID` repository variable.
 
-### Free-to-play configuration
+### Pricing configuration
 
-- [ ] Under **Pricing & Availability**, set the **Base price** to `Free to Play`.
-- [ ] Do **not** set a purchase price or create a paid package. The base package is always free.
-- [ ] Verify the app does **not** appear in the "Set up pricing" wizard with a price — it must be marked Free on Steam from the first configuration step.
-- [ ] Confirm no DLC or microtransaction package is created during initial setup.
-- [ ] Verify the free default package (automatically created by Valve for free-to-play apps) contains all three platform depots once they are created.
+- [ ] Under **Pricing & Availability**, set the **Base price** to **$9.99 USD**.
+      Do **not** mark the app as Free to Play — this is a normal paid application.
+- [ ] Apply Valve's suggested regional pricing tiers for the $9.99 price point.
+      Do not set custom regional prices without Outright Mental approval; use
+      Valve's automatic regional conversion from the USD tier.
+- [ ] Verify the app appears in the "Set up pricing" wizard with the $9.99 price
+      selected before submitting for Valve review.
 
-The Steam release is and will remain free to download and play. There is no
-base purchase price, no subscription, and no pay-to-unlock core content.
-See [`docs/STEAM_ROADMAP.md`](../docs/STEAM_ROADMAP.md) — Free on Steam,
-sponsored by Outright Mental.
+The Steam release is a paid application at $9.99 USD. Premium scenario-pack
+DLC is available separately at individual prices — see
+[DLC registration](#dlc-registration) below.
+See [`docs/DLC_MODEL.md`](../docs/DLC_MODEL.md) for the pack → DLC contract.
 
 ### Depots
 
@@ -74,12 +77,28 @@ content rules.
 ### Packages
 
 A **package** in Steamworks bundles one or more depots and determines what a
-player owns. For a free-to-play title, Valve automatically creates a **free
-default package** containing all depots.
+player owns. For a paid application, a **paid base package** must be created
+manually — do not rely on Valve's automatic free-to-play package.
 
-- [ ] Verify the automatic free package exists and contains all three depots.
-- [ ] Do **not** create a paid package or a retail activation package.
-- [ ] Record the free package ID (assigned by Valve) in the [Identifiers](#identifiers) table.
+- [ ] Create a **paid base package** (type: Store) containing all three platform
+      depots (Windows, macOS, Linux).
+- [ ] Set the package price to match the base app price ($9.99 USD, with the same
+      regional tier applied to the app).
+- [ ] Do **not** create a free package or rely on Valve's auto-generated
+      free-to-play package. A paid app's default package must be paid.
+- [ ] Record the paid package ID (assigned by Valve) in the
+      [Identifiers](#identifiers) table.
+
+### IARC questionnaire
+
+Complete the IARC content questionnaire in Steamworks with the following
+answers that reflect the paid base app and premium DLC model:
+
+- **Does the game involve real-money purchases?** → **Yes** — the base app costs
+  $9.99 and optional premium scenario-pack DLC is available at additional cost.
+- All other answers remain as documented in
+  [`publishing/STEAM_STORE_PAGE.md`](STEAM_STORE_PAGE.md) — PG/PG-13 content,
+  no violence, no sexual content, no gambling, no substances.
 
 ### Release state
 
@@ -102,10 +121,54 @@ source files.
 | Windows depot ID | `vars.STEAM_DEPOT_WINDOWS_ID` | First depot created; Windows x86-64 content. Valve assigns depot IDs sequentially after the App ID. |
 | macOS depot ID | `vars.STEAM_DEPOT_MACOS_ID` | Second depot created; macOS (Apple Silicon + Intel) content. |
 | Linux/SteamOS depot ID | `vars.STEAM_DEPOT_LINUX_ID` | Third depot created; Linux x86-64 and Steam Deck content. |
-| Free package ID | *(record here after registration)* | Automatically created by Valve for free-to-play apps. Not referenced in CI. |
+| Paid base package ID | *(record here after registration)* | Created manually for the $9.99 paid app. Contains all three platform depots. Not referenced in CI. |
+
+DLC App IDs and their associated depot IDs are recorded separately in
+[`publishing/STEAM_DLC_REGISTRY.md`](STEAM_DLC_REGISTRY.md). Each DLC has its
+own App ID (a child of the base App ID) and a single cross-platform content
+depot. DLC App IDs do **not** use the `vars.STEAM_*` GitHub repository
+variables — they are static values baked into the registry file.
 
 **To set a repository variable:** GitHub → repository Settings → Secrets and
 variables → Actions → Variables tab → New repository variable.
+
+---
+
+## DLC registration
+
+Each premium scenario pack is registered as a Steamworks DLC App — a child
+application of the base app. A DLC App has its own App ID, its own store page,
+its own price, and a single content depot (the pack files).
+
+See [`docs/DLC_MODEL.md`](../docs/DLC_MODEL.md) for the full pack → DLC
+contract: which packs qualify as DLC, how the app checks DLC ownership via the
+Steam API, and how CI deploys DLC depots.
+
+See [`publishing/STEAM_DLC_REGISTRY.md`](STEAM_DLC_REGISTRY.md) for the
+authoritative App ID ↔ pack ID ↔ depot ID mapping table.
+
+### Steps to register a new premium DLC pack
+
+Perform these steps in the Steamworks partner portal for **each** premium pack.
+Record all assigned IDs in `publishing/STEAM_DLC_REGISTRY.md` immediately.
+
+- [ ] In the Steamworks partner portal, open the base app → **DLC** tab →
+      **Add New DLC**.
+- [ ] Set **App type** to `DLC`.
+- [ ] Set the DLC display name to the pack's `name` field from `manifest.yaml`
+      (e.g. "Dating — Confidence & Boundaries").
+- [ ] Record the assigned **DLC App ID** in `STEAM_DLC_REGISTRY.md`.
+- [ ] Under the DLC app, create one content depot named after the pack
+      (e.g. "Dating — Confidence & Boundaries (Content)").
+- [ ] Record the assigned **depot ID** in `STEAM_DLC_REGISTRY.md`.
+- [ ] Under **Pricing & Availability** for the DLC app, set the price
+      per the value in `STEAM_DLC_REGISTRY.md`.
+- [ ] Apply Valve's suggested regional pricing tiers for the DLC price point.
+- [ ] Set the DLC `steam_dlc_app_id` field in the pack's `manifest.yaml` to the
+      assigned DLC App ID (see [`docs/DLC_MODEL.md`](../docs/DLC_MODEL.md) for
+      the manifest contract).
+- [ ] Add a `vars.STEAM_DLC_DEPOT_<PACK_SLUG>_ID` GitHub repository variable
+      for the DLC depot ID so the deploy workflow can push the DLC depot.
 
 ---
 
@@ -274,7 +337,7 @@ Before sharing keys with testers, all Stage 3 gate criteria in
 
 **Step 4 — Generate beta tester keys**
 
-Steamworks → **Packages → [Free package] → Generate Steam Product Codes**.
+Steamworks → **Packages → [Paid base package] → Generate Steam Product Codes**.
 Request one key batch per named tester group. Share keys only with named testers
 — do not post them publicly.
 
@@ -315,7 +378,7 @@ role to individuals who do not own the partner account.
 
 **Beta tester access** is granted through a Steam key batch — not through
 partner portal roles. Keys for Stage 3 private testers are generated in
-Steamworks → Packages → [Free package] → Generate Steam Product Codes.
+Steamworks → Packages → [Paid base package] → Generate Steam Product Codes.
 
 ---
 
@@ -364,6 +427,8 @@ error:
 - [`.github/workflows/steam-deploy.yml`](../.github/workflows/steam-deploy.yml) — Steam deploy workflow
 - [`docs/STEAM_ROADMAP.md`](../docs/STEAM_ROADMAP.md) — Release train and release principles
 - [`docs/steam-mvp-scope.md`](../docs/steam-mvp-scope.md) — Stage gate criteria
+- [`docs/DLC_MODEL.md`](../docs/DLC_MODEL.md) — Pack → DLC contract: manifest fields, ownership checks, CI deployment
+- [`publishing/STEAM_DLC_REGISTRY.md`](STEAM_DLC_REGISTRY.md) — App ID ↔ pack ID ↔ depot ID mapping for all registered DLC
 - [`publishing/STEAM_STORE_PAGE.md`](STEAM_STORE_PAGE.md) — Canonical store copy, system requirements, genres/tags, age disclosures, and store review checklist
 - [`publishing/STEAM_ASSETS_SPEC.md`](STEAM_ASSETS_SPEC.md) — Capsule art, screenshot, and trailer production briefs
 - [`publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md`](STEAM_COMPLIANCE_AND_RISK_REGISTER.md) — Risk register (MD-04, SR-08)

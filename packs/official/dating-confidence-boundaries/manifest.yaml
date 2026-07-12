@@ -11,6 +11,9 @@ description: >-
 author: Outright Mental
 license: CC-BY-4.0
 content_rating: PG-13
+# Steamworks DLC App ID — see publishing/STEAM_DLC_REGISTRY.md.
+# 0 = not yet registered; update to the Valve-assigned App ID after registration.
+steam_dlc_app_id: 0
 tags:
   - dating
   - social-skills
