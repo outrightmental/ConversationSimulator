@@ -10,8 +10,8 @@ body:
         Simulator, one that has issues, or one that should be added to the
         model registry.
 
-        See [docs/local-models.md](https://github.com/outrightmental/ConversationSimulator/blob/main/docs/local-models.md) and
-        [docs/runtime-adapters.md](https://github.com/outrightmental/ConversationSimulator/blob/main/docs/runtime-adapters.md) for context.
+        See [Local models](https://docs.conversationsimulator.com/play/local-models/) and
+        [Runtime adapters](https://docs.conversationsimulator.com/reference/runtime-adapters/) for context.
 
   - type: dropdown
     id: report-type

@@ -1,0 +1,81 @@
+<!-- SPDX-License-Identifier: CC0-1.0 -->
+<!-- Screenshot placeholder: Model Manager — installed model and registry with download options.
+     Licensed CC0-1.0. No real people or private data. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="580" viewBox="0 0 900 580">
+  <rect width="900" height="580" fill="#09090b" rx="8"/>
+  <rect x="1" y="1" width="898" height="578" fill="none" stroke="#27272a" stroke-width="1" rx="8"/>
+
+  <!-- App header -->
+  <rect x="0" y="0" width="900" height="44" fill="#18181b" rx="8"/>
+  <rect x="0" y="30" width="900" height="14" fill="#18181b"/>
+  <line x1="0" y1="44" x2="900" y2="44" stroke="#27272a" stroke-width="1"/>
+  <text x="20" y="28" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="#e8e8ea">Conversation Simulator</text>
+  <text x="218" y="26" font-family="system-ui,sans-serif" font-size="12" fill="#71717a">Home</text>
+  <text x="252" y="26" font-family="system-ui,sans-serif" font-size="12" fill="#71717a">Scenarios</text>
+  <text x="330" y="26" font-family="system-ui,sans-serif" font-size="12" fill="#71717a">Workbench</text>
+  <!-- Settings active -->
+  <rect x="408" y="10" width="62" height="24" rx="4" fill="#252528"/>
+  <text x="439" y="26" font-family="system-ui,sans-serif" font-size="12" font-weight="600" fill="#e8e8ea" text-anchor="middle">Settings</text>
+
+  <!-- Page title -->
+  <text x="32" y="80" font-family="system-ui,sans-serif" font-size="20" font-weight="700" fill="#f4f4f5">Model Manager</text>
+  <text x="32" y="98" font-family="system-ui,sans-serif" font-size="12" fill="#a1a1aa">Install and manage local language models. No model is ever bundled — you decide what to install.</text>
+
+  <!-- Installed model section -->
+  <text x="32" y="130" font-family="system-ui,sans-serif" font-size="14" font-weight="600" fill="#f4f4f5">Installed</text>
+
+  <!-- Installed model card -->
+  <rect x="32" y="140" width="836" height="86" rx="8" fill="rgba(34,197,94,0.04)" stroke="rgba(34,197,94,0.2)" stroke-width="1"/>
+  <text x="48" y="164" font-family="system-ui,sans-serif" font-size="13" font-weight="600" fill="#f4f4f5">Qwen3 8B Instruct Q4_K_M</text>
+  <!-- Loaded badge -->
+  <rect x="260" y="150" width="64" height="20" rx="10" fill="rgba(34,197,94,0.15)" stroke="rgba(34,197,94,0.3)" stroke-width="1"/>
+  <text x="292" y="163" font-family="system-ui,sans-serif" font-size="10" fill="#86efac" text-anchor="middle">● Loaded</text>
+
+  <text x="48" y="182" font-family="system-ui,sans-serif" font-size="12" fill="#a1a1aa">License: Apache-2.0  ·  Size: 5.0 GB  ·  VRAM: 6 GB+  ·  Context: 32k tokens</text>
+  <text x="48" y="200" font-family="system-ui,sans-serif" font-size="12" fill="#71717a">SHA-256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855</text>
+  <rect x="728" y="152" width="80" height="28" rx="4" fill="transparent" stroke="rgba(255,255,255,0.15)" stroke-width="1"/>
+  <text x="768" y="170" font-family="system-ui,sans-serif" font-size="12" fill="#a1a1aa" text-anchor="middle">Unload</text>
+  <rect x="818" y="152" width="36" height="28" rx="4" fill="rgba(127,29,29,0.3)" stroke="rgba(239,68,68,0.3)" stroke-width="1"/>
+  <text x="836" y="170" font-family="system-ui,sans-serif" font-size="12" fill="#fca5a5" text-anchor="middle">✕</text>
+
+  <!-- Registry section -->
+  <text x="32" y="252" font-family="system-ui,sans-serif" font-size="14" font-weight="600" fill="#f4f4f5">Available to install</text>
+
+  <!-- Registry entry 1: Qwen3 4B (starter) -->
+  <rect x="32" y="262" width="836" height="72" rx="8" fill="rgba(255,255,255,0.02)" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+  <text x="48" y="284" font-family="system-ui,sans-serif" font-size="13" font-weight="600" fill="#f4f4f5">Qwen3 4B Instruct Q4_K_M</text>
+  <rect x="280" y="272" width="56" height="18" rx="9" fill="rgba(99,102,241,0.15)" stroke="rgba(99,102,241,0.3)" stroke-width="1"/>
+  <text x="308" y="284" font-family="system-ui,sans-serif" font-size="10" fill="#a5b4fc" text-anchor="middle">Starter</text>
+  <text x="48" y="302" font-family="system-ui,sans-serif" font-size="12" fill="#a1a1aa">Apache-2.0  ·  2.6 GB  ·  4 GB VRAM+  ·  Good for lower-spec machines</text>
+  <text x="48" y="318" font-family="system-ui,sans-serif" font-size="11" fill="#71717a">SHA-256: abc123…  ·  Source: Hugging Face (Qwen team)</text>
+  <rect x="764" y="274" width="88" height="28" rx="4" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.15)" stroke-width="1"/>
+  <text x="808" y="292" font-family="system-ui,sans-serif" font-size="12" fill="#e8e8ea" text-anchor="middle">Download</text>
+
+  <!-- Registry entry 2: Qwen3 14B — installing -->
+  <rect x="32" y="344" width="836" height="86" rx="8" fill="rgba(255,255,255,0.02)" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+  <text x="48" y="366" font-family="system-ui,sans-serif" font-size="13" font-weight="600" fill="#f4f4f5">Qwen3 14B Instruct Q4_K_M</text>
+  <text x="48" y="384" font-family="system-ui,sans-serif" font-size="12" fill="#a1a1aa">Apache-2.0  ·  9.0 GB  ·  10 GB VRAM+  ·  High quality</text>
+  <!-- Download progress -->
+  <text x="48" y="400" font-family="system-ui,sans-serif" font-size="11" fill="#fbbf24">Downloading…  3.2 GB / 9.0 GB</text>
+  <rect x="48" y="408" width="628" height="8" rx="4" fill="#27272a"/>
+  <rect x="48" y="408" width="224" height="8" rx="4" fill="#fbbf24"/>
+  <rect x="764" y="358" width="88" height="28" rx="4" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
+  <text x="808" y="376" font-family="system-ui,sans-serif" font-size="12" fill="#71717a" text-anchor="middle">Cancel</text>
+
+  <!-- Registry entry 3: Mistral 24B -->
+  <rect x="32" y="440" width="836" height="72" rx="8" fill="rgba(255,255,255,0.02)" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+  <text x="48" y="462" font-family="system-ui,sans-serif" font-size="13" font-weight="600" fill="#f4f4f5">Mistral Small 3.1 24B Q4_K_M</text>
+  <text x="48" y="480" font-family="system-ui,sans-serif" font-size="12" fill="#a1a1aa">Apache-2.0  ·  14.8 GB  ·  16 GB VRAM+  ·  High quality, long context</text>
+  <text x="48" y="496" font-family="system-ui,sans-serif" font-size="11" fill="#71717a">SHA-256: def456…  ·  Source: Hugging Face (Mistral AI)</text>
+  <rect x="764" y="452" width="88" height="28" rx="4" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.15)" stroke-width="1"/>
+  <text x="808" y="470" font-family="system-ui,sans-serif" font-size="12" fill="#e8e8ea" text-anchor="middle">Download</text>
+
+  <!-- Load own GGUF section -->
+  <rect x="32" y="524" width="836" height="40" rx="6" fill="rgba(255,255,255,0.02)" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+  <text x="48" y="540" font-family="system-ui,sans-serif" font-size="12" fill="#a1a1aa">Or load any llama.cpp-compatible GGUF from your filesystem:</text>
+  <rect x="48" y="530" width="0" height="0"/>
+  <rect x="534" y="530" width="238" height="24" rx="4" fill="rgba(255,255,255,0.04)" stroke="rgba(255,255,255,0.12)" stroke-width="1"/>
+  <text x="548" y="546" font-family="system-ui,sans-serif" font-size="11" fill="#52525b">/path/to/model.gguf</text>
+  <rect x="782" y="530" width="70" height="24" rx="4" fill="rgba(255,255,255,0.06)" stroke="rgba(255,255,255,0.15)" stroke-width="1"/>
+  <text x="817" y="546" font-family="system-ui,sans-serif" font-size="11" fill="#e8e8ea" text-anchor="middle">Browse…</text>
+</svg>

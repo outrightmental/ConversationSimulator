@@ -6,6 +6,10 @@
 
 > The simulator for conversations.
 
+**[conversationsimulator.com](https://conversationsimulator.com)** &nbsp;·&nbsp;
+**[Documentation](https://docs.conversationsimulator.com)** &nbsp;·&nbsp;
+**[Download](https://conversationsimulator.com/download/)**
+
 Practice interviews, negotiations, language, and difficult social situations with AI
 NPCs — running **100% on your computer**, no account, no cloud, no telemetry.
 

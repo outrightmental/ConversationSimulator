@@ -1,0 +1,113 @@
+# SPDX-License-Identifier: Apache-2.0
+# Deploys conversationsimulator.com (Hugo, /website) and
+# docs.conversationsimulator.com (Astro Starlight, /docs-site) to S3 +
+# CloudFront. AWS access is via OIDC role assumption; all secrets are
+# provisioned by Terraform in /infra — never set them by hand.
+name: Deploy website
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "website/**"
+      - "docs-site/**"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/deploy-website.yml"
+  workflow_dispatch:
+
+permissions:
+  id-token: write # OIDC token for AWS role assumption
+  contents: read
+
+concurrency:
+  group: deploy-website
+  cancel-in-progress: false
+
+env:
+  HUGO_VERSION: 0.145.0
+
+jobs:
+  website:
+    name: Deploy conversationsimulator.com
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Hugo ${{ env.HUGO_VERSION }} (extended)
+        run: |
+          curl -fsSL "https://github.com/gohugoio/hugo/releases/download/v${HUGO_VERSION}/hugo_extended_${HUGO_VERSION}_linux-amd64.tar.gz" -o /tmp/hugo.tar.gz
+          tar -xzf /tmp/hugo.tar.gz -C /tmp hugo
+          sudo install /tmp/hugo /usr/local/bin/hugo
+          hugo version
+
+      - name: Build site
+        run: |
+          echo "Local: hugo --minify -s website"
+          hugo --minify -s website
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Sync to S3
+        run: |
+          aws s3 sync website/public "s3://${{ secrets.SITE_BUCKET }}" \
+            --delete \
+            --cache-control "public,max-age=0,must-revalidate"
+          # Fingerprinted CSS is immutable — recopy with a long cache lifetime.
+          aws s3 cp "website/public/css" "s3://${{ secrets.SITE_BUCKET }}/css" \
+            --recursive \
+            --cache-control "public,max-age=31536000,immutable"
+
+      - name: Invalidate CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ secrets.SITE_CLOUDFRONT_DISTRIBUTION_ID }}" \
+            --paths "/*"
+
+  docs:
+    name: Deploy docs.conversationsimulator.com
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build docs site
+        run: |
+          echo "Local: pnpm --filter @convsim/docs-site build"
+          pnpm --filter @convsim/docs-site build
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Sync to S3
+        run: |
+          aws s3 sync docs-site/dist "s3://${{ secrets.DOCS_BUCKET }}" \
+            --delete \
+            --cache-control "public,max-age=0,must-revalidate"
+          # Astro writes hashed assets to _astro/ — safe to cache forever.
+          aws s3 cp "docs-site/dist/_astro" "s3://${{ secrets.DOCS_BUCKET }}/_astro" \
+            --recursive \
+            --cache-control "public,max-age=31536000,immutable"
+
+      - name: Invalidate CloudFront
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id "${{ secrets.DOCS_CLOUDFRONT_DISTRIBUTION_ID }}" \
+            --paths "/*"

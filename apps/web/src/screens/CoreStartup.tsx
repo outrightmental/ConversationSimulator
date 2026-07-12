@@ -30,7 +30,7 @@ declare global {
 }
 
 const TROUBLESHOOTING_BASE =
-  'https://github.com/outrightmental/ConversationSimulator/blob/main/docs/troubleshooting.md'
+  'https://docs.conversationsimulator.com/start/troubleshooting/'
 const ISSUES_URL =
   'https://github.com/outrightmental/ConversationSimulator/issues/new/choose'
 

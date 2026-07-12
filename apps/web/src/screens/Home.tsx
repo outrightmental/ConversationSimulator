@@ -15,10 +15,10 @@ import UpdateBanner from '../components/UpdateBanner'
 import { useAppUpdate } from '../hooks/useAppUpdate'
 import type { BadgeStatus } from '@convsim/ui'
 
-const DOCS_URL = 'https://github.com/outrightmental/ConversationSimulator/wiki'
+const DOCS_URL = 'https://docs.conversationsimulator.com/'
 const ISSUES_URL = 'https://github.com/outrightmental/ConversationSimulator/issues/new/choose'
 const TROUBLESHOOTING_BASE =
-  'https://github.com/outrightmental/ConversationSimulator/blob/main/docs/troubleshooting.md'
+  'https://docs.conversationsimulator.com/start/troubleshooting/'
 const BETA_REPORT_URL =
   'https://github.com/outrightmental/ConversationSimulator/issues/new?template=beta-report.yml&labels=beta-feedback'
 
@@ -143,10 +143,10 @@ export default function Home() {
         <Link to="/workbench">{t('home.createEdit')}</Link>
         <Link to="/settings">{t('home.installModel')}</Link>
         <Link to="/settings">{t('home.importPack')}</Link>
-        <a href="https://github.com/outrightmental/ConversationSimulator/blob/main/docs/scenario-authoring.md" target="_blank" rel="noreferrer">
+        <a href="https://docs.conversationsimulator.com/create/scenario-authoring/" target="_blank" rel="noreferrer">
           {t('home.creatorWorkbenchGuide')}
         </a>
-        <a href="https://github.com/outrightmental/ConversationSimulator/wiki" target="_blank" rel="noreferrer">
+        <a href="https://docs.conversationsimulator.com/" target="_blank" rel="noreferrer">
           {t('home.readDocs')}
         </a>
       </nav>

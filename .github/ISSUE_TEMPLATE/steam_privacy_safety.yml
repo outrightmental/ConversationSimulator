@@ -31,8 +31,8 @@ body:
         session data on your machine — there is no need to share it to report a
         privacy or safety concern. Describe the concern in general terms.
 
-        See [docs/privacy.md](https://github.com/outrightmental/ConversationSimulator/blob/main/docs/privacy.md)
-        and [docs/network-security.md](https://github.com/outrightmental/ConversationSimulator/blob/main/docs/network-security.md)
+        See [Privacy & your data](https://docs.conversationsimulator.com/trust/privacy/)
+        and [Network security](https://docs.conversationsimulator.com/trust/network-security/)
         for the local-first data guarantees.
 
   - type: dropdown

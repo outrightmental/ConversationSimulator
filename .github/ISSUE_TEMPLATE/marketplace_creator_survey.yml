@@ -25,7 +25,7 @@ body:
         **Time:** This survey takes approximately 10–15 minutes to complete.
 
         This survey corresponds to the interview guide in
-        [docs/marketplace-demand-spike.md](https://github.com/outrightmental/ConversationSimulator/blob/main/docs/marketplace-demand-spike.md#22-interview-guide).
+        [Marketplace demand spike](https://docs.conversationsimulator.com/dev/marketplace-demand-spike/#22-interview-guide).
 
   - type: markdown
     attributes:
