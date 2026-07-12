@@ -109,6 +109,11 @@
           "description": "Relative path to the safety policy YAML file."
         }
       }
+    },
+    "steam_dlc_app_id": {
+      "type": "integer",
+      "description": "Steamworks DLC App ID assigned by Valve. 0 means not yet registered.",
+      "minimum": 0
     }
   },
   "not": {
