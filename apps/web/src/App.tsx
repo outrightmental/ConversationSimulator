@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
+import { useEffect } from 'react'
 import { Routes, Route, Navigate, Outlet } from 'react-router-dom'
 import { I18nProvider } from './i18n'
+import { installExternalLinkHandler } from './lib/openExternal'
 import AppLayout from './layout/AppLayout'
 import ErrorBoundary from './components/ErrorBoundary'
 import Home from './screens/Home'
@@ -27,6 +29,11 @@ function FirstRunGuard() {
 }
 
 export default function App() {
+  // In the desktop shell, route external-link clicks through the OS browser;
+  // the webview swallows target="_blank" navigations otherwise. No-op in a
+  // plain browser.
+  useEffect(() => installExternalLinkHandler(), [])
+
   return (
     <I18nProvider>
     <ErrorBoundary>
