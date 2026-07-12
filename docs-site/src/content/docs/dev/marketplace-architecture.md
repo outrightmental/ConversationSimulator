@@ -1,15 +1,18 @@
 ---
 title: "Marketplace architecture (future)"
-description: "Design baseline for a possible post-launch paid and community content marketplace, covering the entry gate, guiding principles, distribution options, and required system changes."
+description: "Design baseline for a possible post-launch third-party community-creator content marketplace, covering the entry gate, guiding principles, distribution options, and required system changes. First-party premium DLC is already the chosen paid path (see the DLC model)."
 sidebar:
   order: 40
 ---
 
 > **Status: Post-launch, not launch-blocking.**
-> This document describes a possible future paid and community content marketplace
-> for Conversation Simulator. Nothing in this document is required for the free
-> Steam release. No marketplace code, payment rails, or premium content should
-> be built before the criteria in the
+> This document describes a possible future **third-party community-creator**
+> content marketplace for Conversation Simulator — the open question of letting
+> outside creators sell their own packs. First-party premium DLC is a separate,
+> already-chosen path (see [DLC model](/dev/dlc-model/)) and is **not** gated by
+> this document. Nothing in this document is required for the $9.99 Steam
+> release. No community-marketplace code, third-party payment rails, or
+> creator-revenue infrastructure should be built before the criteria in the
 > [entry gate](#entry-gate-for-any-marketplace-work) are satisfied. Follow-up
 > implementation issues must not be created until those criteria are met.
 
@@ -17,22 +20,27 @@ sidebar:
 
 ## Purpose of this document
 
-The free Steam release ships with four official packs and community packs that
+The $9.99 Steam release ships with four official packs and community packs that
 players install manually (local folder or zip). That is enough for launch.
+First-party premium expansion packs ship separately as Steam DLC (see
+[DLC model](/dev/dlc-model/)).
 
-This document sketches the post-launch content distribution path so that, if
-marketplace demand is confirmed after launch, the team has a shared design
-baseline to work from — not a blank page. Writing the design now prevents
-hasty decisions made under pressure; it does not commit anyone to building it.
+This document sketches the post-launch **community-creator** distribution path —
+letting outside creators sell their own packs — so that, if that demand is
+confirmed after launch, the team has a shared design baseline to work from — not
+a blank page. Writing the design now prevents hasty decisions made under
+pressure; it does not commit anyone to building the community marketplace.
 
 ---
 
 ## Entry gate for any marketplace work
 
-No implementation work on paid or in-app community content may start until
-**all** of the following conditions are met:
+No implementation work on the third-party community-creator marketplace — outside
+creators selling their own packs — may start until **all** of the following
+conditions are met. (First-party Steam DLC is out of scope for this gate; it is
+the already-chosen first-party paid path — see [DLC model](/dev/dlc-model/).)
 
-1. The public free Steam release (Stage 4) has been live for **at least 90 days**.
+1. The public $9.99 Steam release (Stage 4) has been live for **at least 90 days**.
 2. Qualitative player feedback — Steam reviews, community posts, support tickets —
    confirms meaningful demand for additional paid or community content beyond
    what players can install manually today.
@@ -44,9 +52,9 @@ No implementation work on paid or in-app community content may start until
    review cannot be handled ad-hoc at scale.
 
 Until all five conditions are confirmed in a written post-launch review, this
-document is the only marketplace artifact in the repository. Do not create
-implementation issues, prototypes, or schema changes in anticipation of a
-marketplace that has not yet been validated.
+document is the only community-marketplace artifact in the repository. Do not
+create implementation issues, prototypes, or schema changes in anticipation of a
+community marketplace that has not yet been validated.
 
 ---
 
@@ -187,13 +195,23 @@ packs) is proven.
 ## Distribution path comparison
 
 Four distribution paths have been identified. They are not mutually exclusive,
-but each carries a different set of tradeoffs. This section compares them so
-that, when the entry gate is open, the team can choose quickly.
+but each carries a different set of tradeoffs. **Option A (Steam DLC) is already
+the chosen path for first-party premium packs** (see [DLC model](/dev/dlc-model/));
+the remaining options are compared for the still-deferred third-party
+community-creator marketplace, so that when the entry gate is open the team can
+choose quickly.
 
 ### Option A — Steam DLC
 
 Steam supports paid downloadable content attached to a base game. Each DLC
 is a separate Steam product with its own store page, price, and depot.
+
+**This is the chosen, in-scope path for first-party premium content — not
+deferred.** Premium scenario-pack expansions are authored in a private repo and
+sold as Steam DLC, with ownership verified through Steamworks. See the
+[DLC model](/dev/dlc-model/) for the full public-repo → Steam-DLC contract. The
+table below and Options B–D remain the comparison for the still-deferred
+third-party community-creator marketplace.
 
 | Dimension | Assessment |
 |-----------|------------|
@@ -280,9 +298,11 @@ risk; can be done with zero infrastructure changes.
 
 ## What must change before any paid content ships
 
-This section catalogues every system that would need to change before the
-first paid pack could ship, regardless of which distribution path is chosen.
-It is intended as a scope estimate, not a design specification.
+This section catalogues every system that would need to change before an outside
+creator's paid pack could ship through a **community marketplace**, regardless of
+which distribution path is chosen for it. First-party Steam DLC (see
+[DLC model](/dev/dlc-model/)) is already covered and does not require this
+infrastructure. It is intended as a scope estimate, not a design specification.
 
 ### Schema changes
 
@@ -383,11 +403,12 @@ For platform health and creator accountability:
 
 ---
 
-## Explicitly deferred: not required for free Steam release
+## Explicitly deferred: not required for the $9.99 Steam release
 
-The following are **confirmed out of scope** for the Milestone 4 public free
+The following are **confirmed out of scope** for the Milestone 4 public $9.99
 Steam release. No code, schema change, or infrastructure for any of these
-items may be merged before the entry gate conditions are satisfied.
+items may be merged before the entry gate conditions are satisfied. (First-party
+Steam DLC is a separate, already-chosen path — see [DLC model](/dev/dlc-model/).)
 
 | Item | Deferred to |
 |------|-------------|
@@ -418,8 +439,9 @@ When those conditions are met, the spike defined in
 [`docs/marketplace-demand-spike.md`](/dev/marketplace-demand-spike/) is used to
 collect signals, interview creators, and produce a structured recommendation.
 That spike document — not this document — defines the specific work scope based
-on what the data shows. Options A through D above are starting points for that
-review, not committed decisions.
+on what the data shows. Options B through D above are starting points for that
+review, not committed decisions; Option A (Steam DLC) is already the committed
+first-party paid path (see [DLC model](/dev/dlc-model/)).
 
 ---
 
@@ -427,8 +449,9 @@ review, not committed decisions.
 
 - [`docs/marketplace-demand-spike.md`](/dev/marketplace-demand-spike/) — Stage 5 research spike: signal collection, creator survey, constraint revisit, and go/no-go recommendation
 - [`docs/STEAM_ROADMAP.md`](/dev/steam-roadmap/) — release train: Stage 5 is the marketplace exploration milestone
-- [`docs/steam-mvp-scope.md`](/dev/steam-mvp-scope/) — what is required for the free Steam release
-- [`publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md`](https://github.com/outrightmental/ConversationSimulator/blob/main/publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md) — risk SP-05: Steam Wallet and future paid DLC path (DEFERRED)
+- [`docs/steam-mvp-scope.md`](/dev/steam-mvp-scope/) — what is required for the $9.99 Steam release
+- [`docs/DLC_MODEL.md`](/dev/dlc-model/) — the chosen first-party paid path: premium scenario-pack expansions shipped as Steam DLC from a private repo
+- [`publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md`](https://github.com/outrightmental/ConversationSimulator/blob/main/publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md) — risk SP-05: first-party Steam DLC path for premium scenario packs (IN PROGRESS); only Steam Wallet microtransactions and a third-party creator marketplace remain deferred
 - [`docs/safety-policy.md`](/trust/safety-policy/) — content policy that any marketplace pack must satisfy
 - [`docs/privacy.md`](/trust/privacy/) — local-first promise that marketplace infrastructure must not break
 - [`schemas/pack.schema.json`](https://github.com/outrightmental/ConversationSimulator/blob/main/schemas/pack.schema.json) — current pack manifest schema; see [Schema changes](#schema-changes) above for what would be added

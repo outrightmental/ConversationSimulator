@@ -86,7 +86,7 @@ gate checklist.
 
 ## Public launch triage (Stage 4+)
 
-After the public free Steam release the reporter pool is the general public.
+After the public paid Steam release ($9.99) the reporter pool is the general public.
 Issue volume will be higher and the fraction of actionable reports lower.
 Apply the following adjustments to the private beta flow.
 

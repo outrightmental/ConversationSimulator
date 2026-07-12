@@ -1,34 +1,50 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 # Marketplace Architecture — Future In-Game Content
 
-> **Status: Post-launch, not launch-blocking.**
-> This document describes a possible future paid and community content marketplace
-> for Conversation Simulator. Nothing in this document is required for the free
-> Steam release. No marketplace code, payment rails, or premium content should
-> be built before the criteria in the
+> **Status: First-party DLC is in scope; the community-creator marketplace is post-launch.**
+> First-party premium scenario-pack DLC via **Option A — Steam DLC** (below) is the
+> chosen paid-content path and is in scope now — its contract lives in
+> [`docs/DLC_MODEL.md`](DLC_MODEL.md). What remains a future, unvalidated question
+> is a **third-party community-creator marketplace** (Options B and C, an external
+> pack registry, creator revenue share, a pack submission portal, and any in-app
+> store). No community-marketplace code, payment rails, or creator-payout
+> infrastructure should be built before the criteria in the
 > [entry gate](#entry-gate-for-any-marketplace-work) are satisfied. Follow-up
-> implementation issues must not be created until those criteria are met.
+> community-marketplace implementation issues must not be created until those
+> criteria are met.
 
 ---
 
 ## Purpose of this document
 
-The free Steam release ships with four official packs and community packs that
-players install manually (local folder or zip). That is enough for launch.
+The $9.99 Steam release ships with four official packs and community packs that
+players install manually (local folder or zip). Beyond those, first-party
+premium scenario-pack DLC is the chosen way to deliver additional paid content —
+see **Option A — Steam DLC** below and the contract in
+[`docs/DLC_MODEL.md`](DLC_MODEL.md).
 
-This document sketches the post-launch content distribution path so that, if
-marketplace demand is confirmed after launch, the team has a shared design
-baseline to work from — not a blank page. Writing the design now prevents
-hasty decisions made under pressure; it does not commit anyone to building it.
+This document has two jobs. First, it holds the design that first-party DLC
+relies on — safety review, pack signing, refunds, and schema changes all apply
+to those packs. Second, it sketches the still-deferred community-creator
+distribution path so that, if marketplace demand is confirmed after launch, the
+team has a shared design baseline to work from — not a blank page. Writing that
+design now prevents hasty decisions made under pressure; it does not commit
+anyone to building the community marketplace.
 
 ---
 
 ## Entry gate for any marketplace work
 
-No implementation work on paid or in-app community content may start until
+This gate governs the **third-party community-creator marketplace** — an in-app
+store, an external pack registry, creator accounts, and creator revenue share.
+It does **not** apply to first-party premium scenario-pack DLC, which is already
+in scope via **Option A — Steam DLC** (below) and delivered under
+[`docs/DLC_MODEL.md`](DLC_MODEL.md).
+
+No implementation work on the community-creator marketplace may start until
 **all** of the following conditions are met:
 
-1. The public free Steam release (Stage 4) has been live for **at least 90 days**.
+1. The public $9.99 Steam release (Stage 4) has been live for **at least 90 days**.
 2. Qualitative player feedback — Steam reviews, community posts, support tickets —
    confirms meaningful demand for additional paid or community content beyond
    what players can install manually today.
@@ -39,10 +55,12 @@ No implementation work on paid or in-app community content may start until
 5. A dedicated safety moderation capacity plan exists — community pack
    review cannot be handled ad-hoc at scale.
 
-Until all five conditions are confirmed in a written post-launch review, this
-document is the only marketplace artifact in the repository. Do not create
-implementation issues, prototypes, or schema changes in anticipation of a
-marketplace that has not yet been validated.
+Until all five conditions are confirmed in a written post-launch review, the
+community-creator marketplace stays on paper. Do not create implementation
+issues, prototypes, or schema changes in anticipation of a community marketplace
+that has not yet been validated. This restriction does not touch first-party
+DLC: its signing, schema, and refund work proceeds under
+[`docs/DLC_MODEL.md`](DLC_MODEL.md).
 
 ---
 
@@ -183,8 +201,11 @@ packs) is proven.
 ## Distribution path comparison
 
 Four distribution paths have been identified. They are not mutually exclusive,
-but each carries a different set of tradeoffs. This section compares them so
-that, when the entry gate is open, the team can choose quickly.
+but each carries a different set of tradeoffs. Option A (Steam DLC) is the chosen
+path for first-party premium packs and is in scope now; the comparison below
+frames the remaining choice among Options B, C, and D for a future
+community-creator marketplace, so that when the entry gate is open the team can
+choose quickly.
 
 ### Option A — Steam DLC
 
@@ -204,8 +225,9 @@ is a separate Steam product with its own store page, price, and depot.
 | **Community packs** | Not practical — individual community creators cannot submit their own DLC. |
 
 **Best fit for:** Outright Mental first-party expansion packs (e.g. an advanced
-professional skills bundle, a language-learning expansion). Not suited to a
-community creator ecosystem.
+professional skills bundle, a language-learning expansion). **This is the chosen
+first-party paid-content path** — see [`docs/DLC_MODEL.md`](DLC_MODEL.md). Not
+suited to a community creator ecosystem.
 
 ### Option B — In-game item store using Steam Wallet
 
@@ -379,11 +401,14 @@ For platform health and creator accountability:
 
 ---
 
-## Explicitly deferred: not required for free Steam release
+## Explicitly deferred: community marketplace, not required for the $9.99 Steam release
 
-The following are **confirmed out of scope** for the Milestone 4 public free
-Steam release. No code, schema change, or infrastructure for any of these
-items may be merged before the entry gate conditions are satisfied.
+The following are **confirmed out of scope** for the Milestone 4 public $9.99
+Steam release. They are all pieces of the deferred **community-creator
+marketplace**. No code, schema change, or infrastructure for any of these items
+may be merged before the entry gate conditions are satisfied. (First-party DLC
+is separate: its own signing, schema, and refund work proceeds under
+[`docs/DLC_MODEL.md`](DLC_MODEL.md) and is not gated here.)
 
 | Item | Deferred to |
 |------|-------------|
@@ -423,8 +448,8 @@ review, not committed decisions.
 
 - [`docs/marketplace-demand-spike.md`](marketplace-demand-spike.md) — Stage 5 research spike: signal collection, creator survey, constraint revisit, and go/no-go recommendation
 - [`docs/STEAM_ROADMAP.md`](STEAM_ROADMAP.md) — release train: Stage 5 is the marketplace exploration milestone
-- [`docs/steam-mvp-scope.md`](steam-mvp-scope.md) — what is required for the free Steam release
-- [`publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md`](../publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md) — risk SP-05: Steam Wallet and future paid DLC path (DEFERRED)
+- [`docs/steam-mvp-scope.md`](steam-mvp-scope.md) — what is required for the $9.99 Steam release
+- [`publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md`](../publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md) — risk SP-05: first-party Steam DLC path for premium scenario packs (IN PROGRESS); only Steam Wallet microtransactions and a third-party creator marketplace remain deferred
 - [`docs/safety-policy.md`](safety-policy.md) — content policy that any marketplace pack must satisfy
 - [`docs/privacy.md`](privacy.md) — local-first promise that marketplace infrastructure must not break
 - [`schemas/pack.schema.json`](../schemas/pack.schema.json) — current pack manifest schema; see [Schema changes](#schema-changes) above for what would be added
