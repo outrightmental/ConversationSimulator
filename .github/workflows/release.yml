@@ -67,6 +67,52 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # ── Enforce signing secrets on release tags ───────────────────────────────
+      # A versioned release tag (v*) must produce a signed binary: unsigned macOS
+      # builds are blocked by Gatekeeper and unsigned Windows installers trigger
+      # SmartScreen — both violate gate G3-01 (docs/steam-mvp-scope.md).
+      #
+      # This step fails fast so the gap is caught before a 15-minute build
+      # completes.  Contributor fork builds and workflow_dispatch runs without a
+      # v* tag are treated as unsigned dev builds and are not affected.
+      - name: Enforce signing secrets on release tags
+        if: startsWith(github.ref, 'refs/tags/v') || startsWith(github.event.inputs.tag, 'v')
+        shell: bash
+        env:
+          _HAS_APPLE_CERT: ${{ env.HAS_APPLE_CERT }}
+          _HAS_NOTARIZATION: ${{ env.HAS_NOTARIZATION }}
+          _HAS_WINDOWS_CERT: ${{ env.HAS_WINDOWS_CERT }}
+        run: |
+          fail=0
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            if [ "$_HAS_APPLE_CERT" != "true" ]; then
+              echo "ERROR: APPLE_CERTIFICATE is required for a v* release tag but is not set." >&2
+              echo "       Unsigned macOS builds are blocked by Gatekeeper (gate G3-01)." >&2
+              echo "       See docs/platform-notes.md for certificate setup instructions." >&2
+              fail=1
+            fi
+            if [ "$_HAS_NOTARIZATION" != "true" ]; then
+              echo "ERROR: APPLE_ID is required for notarisation on a v* release tag but is not set." >&2
+              echo "       Non-notarised macOS builds fail Gatekeeper on clean installs (gate G3-01)." >&2
+              echo "       Set APPLE_ID, APPLE_PASSWORD, and APPLE_TEAM_ID secrets to enable notarisation." >&2
+              fail=1
+            fi
+          fi
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            if [ "$_HAS_WINDOWS_CERT" != "true" ]; then
+              echo "ERROR: WINDOWS_SIGN_CERT_PFX is required for a v* release tag but is not set." >&2
+              echo "       Unsigned Windows builds trigger SmartScreen 'unknown publisher' (gate G3-01)." >&2
+              echo "       See docs/platform-notes.md for certificate setup instructions." >&2
+              fail=1
+            fi
+          fi
+          if [ "$fail" -eq 1 ]; then
+            echo ""
+            echo "Add the missing secrets under GitHub → Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          echo "  OK  All required signing secrets are present for this release tag."
+
       # ── Linux system packages required by Tauri / WebKitGTK ──────────────────
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
@@ -592,6 +638,96 @@ jobs:
         with:
           name: virustotal-scan-${{ matrix.name }}
           path: ${{ runner.temp }}/virustotal-scan-record.txt
+          if-no-files-found: ignore
+          retention-days: 90
+
+      # ── Scan Windows installers with Windows Defender ─────────────────────────
+      # Runs Windows Defender (MpCmdRun.exe) against each signed installer and
+      # records the verdict.  A clean verdict is required before the G3-01
+      # signing gate can be declared PASS (docs/steam-mvp-scope.md).
+      #
+      # The step is non-blocking: freshly compiled Rust/Tauri executables
+      # occasionally trigger Defender heuristics as false positives, and
+      # blocking CI on a false positive would prevent publishing a clean build.
+      # The verdict is uploaded as a retained artifact so the release drafter
+      # can confirm "Defender verdict: clean" before signing off on G3-01.
+      #
+      # MpCmdRun.exe is present on all GitHub-hosted Windows runners under
+      # C:\ProgramData\Microsoft\Windows Defender\platform\<version>\.
+      # Exit code 0 = clean; exit code 2 = threat found.
+      - name: Scan Windows installers with Windows Defender
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $bundleDir = "apps\desktop\src-tauri\target\release\bundle"
+          $installers = Get-ChildItem -Recurse -Path $bundleDir `
+            -Include "*.exe","*.msi" -ErrorAction SilentlyContinue
+          if (-not $installers) {
+            Write-Host "  WARN  No installers found — skipping Defender scan."
+            exit 0
+          }
+
+          # Locate MpCmdRun.exe — it lives in a versioned subdirectory of
+          # the Defender platform directory on GitHub-hosted Windows runners.
+          $mpCmdRun = Get-ChildItem `
+            -Path 'C:\ProgramData\Microsoft\Windows Defender\platform' `
+            -Recurse -Filter MpCmdRun.exe -ErrorAction SilentlyContinue |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1 -ExpandProperty FullName
+          if (-not $mpCmdRun) {
+            $mpCmdRun = (Get-Command MpCmdRun.exe -ErrorAction SilentlyContinue).Source
+          }
+          if (-not $mpCmdRun) {
+            Write-Host "  WARN  MpCmdRun.exe not found — skipping Defender scan."
+            Write-Host "        Windows Defender may not be present on this runner configuration."
+            exit 0
+          }
+          Write-Host "  Using Defender: $mpCmdRun"
+
+          $recordPath = Join-Path $env:RUNNER_TEMP "defender-scan-record.txt"
+          $allClean = $true
+
+          foreach ($installer in $installers) {
+            $name = $installer.Name
+            Write-Host ""
+            Write-Host "  Scanning: $($installer.FullName)"
+            & $mpCmdRun -Scan -ScanType 3 -File $installer.FullName 2>&1 |
+              ForEach-Object { Write-Host "    $_" }
+            switch ($LASTEXITCODE) {
+              0 {
+                Write-Host "    PASS  Defender verdict: clean"
+                Add-Content -Path $recordPath -Value "${name}: clean (exit 0)"
+              }
+              2 {
+                Write-Host "    FAIL  Defender verdict: THREAT FOUND in ${name}" -ForegroundColor Red
+                Add-Content -Path $recordPath -Value "${name}: THREAT FOUND (exit 2)"
+                $allClean = $false
+              }
+              default {
+                $code = $LASTEXITCODE
+                Write-Host "    WARN  Defender exit code ${code} for ${name} — see scan log above"
+                Add-Content -Path $recordPath -Value "${name}: exit code ${code} (review required)"
+              }
+            }
+          }
+
+          Write-Host ""
+          if ($allClean) {
+            Write-Host "  PASS  All installers passed Windows Defender scan — no threats detected."
+            Write-Host "        Record 'Defender verdict: clean' in the release notes (gate G3-01)."
+          } else {
+            Write-Host "  WARN  One or more installers triggered a Defender detection."
+            Write-Host "        Freshly compiled Rust/Tauri binaries can produce false positives."
+            Write-Host "        Review the scan record, assess whether it is a true positive,"
+            Write-Host "        and do NOT publish until the verdict is understood."
+          }
+
+      - name: Upload Defender scan record
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v6
+        with:
+          name: defender-scan-${{ matrix.name }}
+          path: ${{ runner.temp }}/defender-scan-record.txt
           if-no-files-found: ignore
           retention-days: 90
 

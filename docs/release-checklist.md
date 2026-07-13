@@ -1050,6 +1050,111 @@ attached to the release issue before the Stage 3 gate is declared open.
 
 ---
 
+## Part K — Steam release dress rehearsal
+
+Run this section for the **first `vX.Y.Z-rc.1`** (or next release candidate)
+tag that exercises the entire pipeline end-to-end: build → sign (Win
+Authenticode + Defender scan, macOS Developer ID + notarize + staple) → GitHub
+release → gated Steam upload → `beta` live on App 4963030.  This is the Stage 3
+gate rehearsal required by `docs/steam-mvp-scope.md`.
+
+Complete this section **once per rehearsal run**.  Any failure must be filed as
+a new GitHub issue (no blocking-by — it is by definition the new critical path)
+before the Stage 3 gate can be declared PASS.
+
+### K.1 Pipeline observation (GitHub Actions)
+
+Open the Actions run for the rehearsal tag and confirm each item.
+
+**Build chain:**
+- [ ] Tag push → `validate` → `build-desktop` (macOS-aarch64, Linux-x86_64, Windows-x86_64) — all three matrix jobs green
+- [ ] Signing enforcement step: no `ERROR:` lines on any platform (secrets present for `v*` tag)
+
+**Windows signing and scanning:**
+- [ ] Authenticode signing step log shows all `.exe` / `.msi` installers signed successfully
+- [ ] Authenticode verification step shows `signtool verify /pa` exits 0 for all installers
+- [ ] VirusTotal scan record artifact uploaded; analysis URLs recorded (non-blocking, informational)
+- [ ] Defender scan record artifact uploaded; **Defender verdict: clean** for all installers
+
+**macOS signing and notarization:**
+- [ ] `codesign --verify --deep --strict` exits 0 — no `ERROR:` lines
+- [ ] Hardened Runtime entitlement verification shows all five entitlements present — no `ERROR: expected entitlement … missing` lines
+- [ ] `spctl --assess` exits 0 and prints `accepted` — **no `SKIP` or `INFO` line** (notarisation secrets present)
+- [ ] `xcrun stapler validate` exits 0 — **no `SKIP` line** (stapled ticket present)
+- [ ] `Gate G3-01 macOS criterion met` confirmation line present in the step log
+
+**Updater manifest:**
+- [ ] Updater artifacts signed: `.sig` files present for macOS `.app.tar.gz`, Linux `.AppImage`, and Windows `.exe`
+- [ ] `latest.json` generated and uploaded to the versioned GitHub release
+- [ ] Beta-channel release updated with new `latest.json`
+
+**Steam deploy:**
+- [ ] Steam Deploy workflow triggered manually with `set_live_branch = beta`
+- [ ] Job pauses at `steam-release` environment approval gate — no credentials exposed before approval
+- [ ] **Refusal test** (decline once): workflow exits cleanly; no secret is printed; re-trigger works
+- [ ] Approval granted → `steamcmd +run_app_build` completes without error
+- [ ] `steam-build/output/` log files confirm successful upload
+
+### K.2 Steamworks verification
+
+After the Steam deploy workflow completes with `set_live_branch = beta`:
+
+- [ ] Steamworks → App Admin → Builds: new build visible on the `beta` branch
+- [ ] Build description matches the release tag (e.g. "Conversation Simulator v0.1.0-rc.1")
+- [ ] Depot file counts are **non-zero for all three platforms** (Windows, macOS, Linux) — **App 4963030**, three depots
+- [ ] Steamworks → Builds → [build row] → View Manifest: version field equals the tag (without `v` prefix)
+
+### K.3 Product key install matrix
+
+Request Steam product keys via Steamworks → Packages → [paid package] →
+Request Steam Product Keys.  Distribute only to named testers — never publicly.
+
+At minimum, one tester per platform must complete a full text session and reach
+the debrief screen (satisfies G3-06 beta session verification).
+
+| Platform | Tester | Session + debrief | Steam overlay Shift+Tab (G3-03) | No SmartScreen / Gatekeeper (G3-01) | No outbound TCP (PR-01–03) | Date | Sign-off |
+|----------|--------|-------------------|---------------------------------|--------------------------------------|---------------------------|------|---------|
+| Windows 10/11 clean VM | | ☐ | ☐ | ☐ no SmartScreen | ☐ | | |
+| macOS (Apple Silicon) | | ☐ | ☐ | ☐ Gatekeeper silent | ☐ | | |
+| Linux (Ubuntu 22.04 or Steam Deck Desktop) | | ☐ | ☐ | ☐ AppImage executable | ☐ | | |
+
+### K.4 Dress rehearsal sign-off
+
+Fill this in after K.1, K.2, and K.3 are all complete.
+
+```
+Rehearsal tag        : vX.Y.Z-rc.N
+Rehearsal date       : YYYY-MM-DD
+Release operator     :
+
+CI run URL           :
+Steam deploy run URL :
+
+Pipeline result      : PASS / FAIL
+Steamworks build ID  :
+Defender verdict     : clean / THREAT FOUND (see artifact: defender-scan-Windows-x86_64)
+Depot audit          : PASS / FAIL
+
+Windows tester       :
+macOS tester         :
+Linux tester         :
+
+G3-01 Signing + notarization    : PASS / FAIL  evidence: <CI run URL>
+G3-02 Depot content audit       : PASS / FAIL  evidence: <CI run URL> (Audit depot content step)
+G3-03 Steam overlay             : PASS / FAIL  testers: <names>
+G3-06 Beta session verification : PASS / FAIL  testers: <names>
+
+Notes:
+  -
+  -
+```
+
+> Any failure found during the rehearsal must be filed as a new GitHub issue
+> before the Stage 3 gate is declared PASS.  The issue must reference
+> the rehearsal tag in its body.
+
+---
+
 ## Smoke log
 
 Fill this in for each manual release smoke run.
