@@ -21,7 +21,7 @@
   issued certificate, and catches wrong chain order (leaf must be first).
 
 .PARAMETER FilePath
-  Path to the binary to sign. Supplied as the {path} placeholder from Tauri's
+  Path to the binary to sign. Supplied via the %1 placeholder from Tauri's
   bundle.windows.signCommand, or passed directly from the release workflow.
 
 .NOTES
@@ -210,17 +210,15 @@ if ($hasKms) {
     $certPem  = if ($rawCert -match '-----BEGIN') { $rawCert }
                 else { [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($rawCert)) }
 
-    $saKeyFile = $null
     $certFile  = $null
     try {
-        $saKeyFile = [IO.Path]::Combine([IO.Path]::GetTempPath(),
-                         [IO.Path]::GetRandomFileName() + '.json')
-        $env:GCP_SA_KEY_JSON | Set-Content -Path $saKeyFile -Encoding UTF8
-
         $certFile = [IO.Path]::Combine([IO.Path]::GetTempPath(),
                         [IO.Path]::GetRandomFileName() + '.pem')
         $certPem | Set-Content -Path $certFile -Encoding UTF8
 
+        # OAuth access token — jsign's GOOGLECLOUD storetype expects the token as
+        # --storepass (not a service-account key file), so the SA key never lands
+        # on disk. The same token authenticates the KMS REST calls below.
         $token       = Get-GcpAccessToken -Sa $sa
         $versionName = Find-MatchingKeyVersion -Token $token `
                            -KeyRingPath $keyRingPath -KeyName $keyName -CertPem $certPem
@@ -233,7 +231,7 @@ if ($hasKms) {
         Write-Step "Invoking jsign (alias: $alias)..."
         & java -jar $jar `
             --storetype GOOGLECLOUD `
-            --storepass $saKeyFile `
+            --storepass $token `
             --keystore  $keyRingPath `
             --alias     $alias `
             --certfile  $certFile `
@@ -244,7 +242,6 @@ if ($hasKms) {
         Write-Info "Signed (KMS): $FilePath"
 
     } finally {
-        if ($saKeyFile -and (Test-Path $saKeyFile)) { Remove-Item $saKeyFile -Force }
         if ($certFile  -and (Test-Path $certFile))  { Remove-Item $certFile  -Force }
     }
 

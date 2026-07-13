@@ -546,7 +546,8 @@ jobs:
       #   3. Skip    — neither set (fork-friendly, unsigned dev build)
       #
       # The private key never touches the runner in the KMS path; the service-
-      # account key is written to RUNNER_TEMP and removed in a finally block.
+      # account key is exchanged for a short-lived OAuth token in-memory and
+      # only the decoded cert PEM is written to disk (removed in a finally block).
       # Gate G3-01 (docs/steam-mvp-scope.md): signed installer required before
       # Stage 3 Steam private beta. See publishing/WINDOWS_CODE_SIGNING.md.
       - name: Sign Windows installers (Authenticode)
