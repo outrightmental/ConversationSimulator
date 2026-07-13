@@ -811,9 +811,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HAS_UPDATER_KEY: ${{ env.HAS_UPDATER_KEY }}
+          # Bind the tag through the environment rather than interpolating it
+          # directly into the script: a git tag name can legally contain shell
+          # metacharacters, so `${{ }}`-pasting it into `run:` would be a
+          # template-injection vector. Reading it from $TAG_INPUT is inert.
+          TAG_INPUT: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
-          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          TAG="$TAG_INPUT"
 
           # Pre-release iff the tag carries a semver pre-release suffix (a hyphen):
           # v0.1.0 -> stable/Latest, v0.1.0-beta.1 -> pre-release. This mirrors the
