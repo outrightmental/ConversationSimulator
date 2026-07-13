@@ -1354,8 +1354,14 @@ jobs:
 
       - name: Create signed-build zip
         if: steps.secrets_check.outputs.skip == 'false'
+        # Pass the tag through the environment rather than interpolating the
+        # ${{ }} expression straight into the script: a tag name can legally
+        # contain shell metacharacters (`$`, backticks, ...) that would
+        # otherwise be evaluated here (command injection). Quoting "$TAG" below
+        # keeps it inert — same care as the release job's metadata step.
+        env:
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
-          TAG="${{ github.event.inputs.tag || github.ref_name }}"
           BLOB_NAME="${TAG}-signed-build.zip"
           echo "BLOB_NAME=$BLOB_NAME" >> "$GITHUB_ENV"
           cd windows-artifact && zip -r "../$BLOB_NAME" . && cd ..
@@ -1405,9 +1411,11 @@ jobs:
           AZURE_SUBSCRIPTION_ID:      ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           AZURE_SCAN_STORAGE_ACCOUNT: ${{ secrets.AZURE_SCAN_STORAGE_ACCOUNT }}
           AZURE_SCAN_CONTAINER:       ${{ secrets.AZURE_SCAN_CONTAINER }}
+          # Passed via env (not ${{ }} interpolation) to keep a tag containing
+          # shell metacharacters inert — see the zip step above.
+          TAG:                        ${{ github.event.inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
-          TAG="${{ github.event.inputs.tag || github.ref_name }}"
 
           # Resolve the resource group containing the storage account.
           RG="$(az storage account show \
