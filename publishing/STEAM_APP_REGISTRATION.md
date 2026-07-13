@@ -137,9 +137,25 @@ the binaries and resources for that platform.
 
 | Depot variable | Platform | Content |
 |----------------|----------|---------|
-| `STEAM_DEPOT_WINDOWS_ID` | Windows 10 / 11 (x86-64) | Tauri application directory; no NSIS installer |
+| `STEAM_DEPOT_WINDOWS_ID` | Windows 10 / 11 (x86-64) | Portable application tree — `ConversationSimulator.exe` at depot root; no NSIS installer |
 | `STEAM_DEPOT_MACOS_ID` | macOS 13+ (Apple Silicon + Intel) | Tauri `.app` bundle |
 | `STEAM_DEPOT_LINUX_ID` | Linux x86-64 + SteamOS 3.x | Tauri binary and resources |
+
+### Launch options
+
+Configure these in Steamworks App Admin → General → Launch Options.
+
+| Platform | Executable | Arguments | Working directory | OS |
+|----------|-----------|-----------|------------------|----|
+| Windows | `ConversationSimulator.exe` | *(none)* | *(depot root — leave blank)* | Windows |
+| macOS | `ConversationSimulator.app/Contents/MacOS/ConversationSimulator` | *(none)* | *(depot root)* | macOS |
+| Linux | `conversation-simulator` | *(none)* | *(depot root)* | Linux |
+
+**Windows launch options note:** The working directory field should be left blank
+(or set to `.`); Steam resolves it relative to the depot install root, which is
+where `ConversationSimulator.exe` lives.  The app uses `app.path().resource_dir()`
+via Tauri, which resolves relative to the executable — no registry keys or
+installer-created shortcuts are required.
 
 **No shared data depot in v1.** Scenario packs and model weights are distributed
 separately:

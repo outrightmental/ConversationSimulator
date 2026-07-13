@@ -203,18 +203,41 @@ jobs:
       # by the release workflow — NOT the .dmg disk image.  The .app is signed
       # and notarised by Apple (gate G3-01) in release.yml before it reaches here.
       # Linux ships the AppImage (portable, runs without installation).
-      # Windows still stages the .exe/.msi installers below — a portable-app
-      # depot layout for Windows is tracked separately and not part of this
-      # macOS-focused change.
+      # Windows ships the portable application tree from steam-depot-windows.tar.gz,
+      # assembled in the Windows build leg of release.yml (issue #408).  The tarball
+      # is extracted with --strip-components=1 so ConversationSimulator.exe lands
+      # directly at steam-content/windows/ (the depot root).
       - name: Organise depot content
         if: env.HAS_STEAM_CREDS == 'true'
         run: |
           mkdir -p steam-content/windows steam-content/macos steam-content/linux
 
-          find release-artifacts -name "*.exe" \
-            -exec cp -v {} steam-content/windows/ \;
-          find release-artifacts -name "*.msi" \
-            -exec cp -v {} steam-content/windows/ \;
+          # ── Windows: extract the portable depot tarball ──────────────────────
+          # The preferred path: steam-depot-windows.tar.gz produced by the
+          # "Package Windows portable depot layout" step in release.yml.
+          # This contains the raw application binary tree (ConversationSimulator.exe,
+          # resources/, installscript.vdf, MicrosoftEdgeWebView2Setup.exe, etc.)
+          # as required by Steam — NOT the NSIS installer or MSI package.
+          if find release-artifacts -name "steam-depot-windows.tar.gz" | grep -q .; then
+            find release-artifacts -name "steam-depot-windows.tar.gz" | \
+              while IFS= read -r f; do
+                echo "Extracting $f -> steam-content/windows/"
+                tar -xzf "$f" --strip-components=1 -C steam-content/windows/
+              done
+          else
+            # Fallback: warn loudly and stage the installer files.  This path is
+            # DEPRECATED and exists only to allow deploys of artifacts built before
+            # issue #408 was implemented.  A depot containing installer packages
+            # WILL FAIL Valve review — do not promote to default with this layout.
+            echo "DEPRECATION WARNING: steam-depot-windows.tar.gz not found." >&2
+            echo "  Falling back to staging NSIS/.msi installers — THIS WILL" >&2
+            echo "  FAIL VALVE REVIEW.  Rebuild from a release tagged after" >&2
+            echo "  issue #408 to get the correct portable depot layout." >&2
+            find release-artifacts -name "*-setup.exe" \
+              -exec cp -v {} steam-content/windows/ \;
+            find release-artifacts -name "*.msi" \
+              -exec cp -v {} steam-content/windows/ \;
+          fi
 
           # macOS: extract the .app bundle from the .app.tar.gz published by
           # the release workflow. Steam depots require the raw application

@@ -198,6 +198,24 @@ done < <(find "$DEPOT_DIR" -type f \( \
     -o -name "config.vdf" \
 \) -print0 2>/dev/null)
 
+# ── [installer-in-depot] Installer packages must never ship in a Steam depot ──
+#
+# Steam depots must contain the *installed* application files so the Steam
+# client can lay them out directly on the player's disk.  Shipping a setup
+# wizard or MSI package causes "Play" on Steam to launch the installer UI
+# (or nothing at all), which fails Valve review immediately and strands every
+# beta tester.  See issue #408 and publishing/STEAM_DEPOT_CONTENTS.md.
+
+section "[installer-in-depot] NSIS/MSI installer packages in depot"
+
+while IFS= read -r -d '' f; do
+    violation "installer-in-depot" "$f"
+done < <(find "$DEPOT_DIR" -type f -name "*-setup.exe" -print0 2>/dev/null)
+
+while IFS= read -r -d '' f; do
+    violation "installer-in-depot" "$f"
+done < <(find "$DEPOT_DIR" -type f -name "*.msi" -print0 2>/dev/null)
+
 # ── [fixtures] Test fixture files ──────────────────────────────────────────────
 
 section "[fixtures] Test fixture files"
