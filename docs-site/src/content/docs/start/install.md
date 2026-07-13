@@ -80,10 +80,9 @@ screen reports that the engine did not start, see
 
 ## 3. Set up your AI (first launch)
 
-On first launch the app shows the **welcome screen**. Click **Set me up**.
-
-The app detects your hardware, selects the recommended model, shows you its
-details and license, and asks you to confirm. After you confirm:
+On first launch the app shows the **welcome screen**. The **Set me up** card
+names the recommended model for your hardware and shows its download size and
+license. Click **Set me up** to begin — the download starts right away.
 
 - A progress screen shows each installation stage (engine check → model
   download → verification → warmup).

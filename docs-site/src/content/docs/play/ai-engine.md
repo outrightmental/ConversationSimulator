@@ -33,11 +33,12 @@ No external software to install.
 ### How to set it up
 
 1. Open Conversation Simulator. On first launch the welcome screen appears.
-2. Click **Set me up**. The app selects the recommended model for your hardware,
-   shows you what will be downloaded and its license, and asks you to confirm.
-3. After you confirm, a progress screen shows each installation stage. You can
-   click **Play the tutorial while you wait** to try the simulator immediately
-   using scripted (non-AI) responses.
+2. The **Set me up** card names the recommended model for your hardware and
+   shows its download size and license. Click **Set me up** to begin — the
+   download starts right away.
+3. A progress screen shows each installation stage. You can click **Play the
+   tutorial while you wait** to try the simulator immediately using scripted
+   (non-AI) responses.
 4. When all stages complete, click **Continue to Home** to start playing.
 
 That is the complete process — no additional steps are required.
