@@ -467,8 +467,8 @@
     dots[current].setAttribute('aria-current', 'true');
   }
 
-  function startTimer() { timer = setInterval(function () { goTo(current + 1); }, INTERVAL); }
   function stopTimer()  { clearInterval(timer); timer = null; }
+  function startTimer() { stopTimer(); timer = setInterval(function () { goTo(current + 1); }, INTERVAL); }
 
   dots.forEach(function (dot, i) {
     dot.addEventListener('click', function () {
