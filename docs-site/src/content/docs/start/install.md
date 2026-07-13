@@ -86,8 +86,9 @@ license. Click **Set me up** to begin — the download starts right away.
 
 - A progress screen shows each installation stage (engine check → model
   download → verification → warmup).
-- While the model downloads you can click **Play the tutorial while you
-  wait** to try the simulator with scripted, non-AI responses.
+- While the model downloads you can click **Start now** on the **Have your
+  first conversation** card to try the simulator with scripted, non-AI
+  responses.
 - When all stages complete, click **Continue to Home** to start playing.
 
 No model weights are bundled with the installer. The one-time download is

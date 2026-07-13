@@ -11,7 +11,7 @@
 #   0 — all verified_against fields are current
 #   1 — one or more pages are stale; list printed to stdout
 #
-# Called by .github/workflows/deploy-website.yml on every release-tag push.
+# Called by .github/workflows/release.yml on every release-tag push.
 # Run locally before cutting a release:
 #   bash scripts/check-docs-freshness.sh v0.2.2
 

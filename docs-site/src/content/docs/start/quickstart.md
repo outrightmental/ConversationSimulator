@@ -18,10 +18,10 @@ Open Conversation Simulator. On first launch the **welcome screen** appears.
 Click **Set me up**. The app downloads and configures a local AI model
 in the background. A progress screen shows each stage of the setup.
 
-While the model downloads you can click **Play the tutorial while you wait**
-to try the simulator right away with scripted, non-AI responses — it teaches
-you the conversation UI, state meters, and the debrief rubric without needing
-the AI to be ready.
+While the model downloads you can click **Start now** on the **Have your first
+conversation** card to try the simulator right away with scripted, non-AI
+responses — it teaches you the conversation UI, state meters, and the debrief
+rubric without needing the AI to be ready.
 
 When all stages complete, click **Continue to Home**.
 

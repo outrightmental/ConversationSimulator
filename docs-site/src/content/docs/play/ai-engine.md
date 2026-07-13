@@ -36,9 +36,9 @@ No external software to install.
 2. The **Set me up** card names the recommended model for your hardware and
    shows its download size and license. Click **Set me up** to begin — the
    download starts right away.
-3. A progress screen shows each installation stage. You can click **Play the
-   tutorial while you wait** to try the simulator immediately using scripted
-   (non-AI) responses.
+3. A progress screen shows each installation stage. While it downloads, the
+   **Have your first conversation** card offers a **Start now** button — click
+   it to try the simulator immediately with a scripted (non-AI) tutorial.
 4. When all stages complete, click **Continue to Home** to start playing.
 
 That is the complete process — no additional steps are required.
