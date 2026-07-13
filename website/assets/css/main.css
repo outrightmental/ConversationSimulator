@@ -226,27 +226,8 @@ h3 { font-size: 1.12rem; margin: 0 0 0.4em; }
 .fill-violet { background: var(--violet-deep); }
 .fill-amber { background: var(--amber); }
 
-/* demo animation timeline */
-.anim { opacity: 0; transform: translateY(8px); animation: rise 500ms ease forwards; }
-.anim-1 { animation-delay: 300ms; }
-.anim-2 { animation-delay: 1150ms; }
-.anim-3 { animation-delay: 2050ms; }
-.anim-4 { animation-delay: 2500ms; }
-.w-74 { animation: grow74 900ms ease-out 2650ms forwards; }
-.w-65 { animation: grow65 900ms ease-out 2800ms forwards; }
-.w-40 { animation: grow40 900ms ease-out 2950ms forwards; }
-
-@keyframes rise { to { opacity: 1; transform: none; } }
-@keyframes grow74 { to { width: 74%; } }
-@keyframes grow65 { to { width: 65%; } }
-@keyframes grow40 { to { width: 40%; } }
-
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  .anim { animation: none; opacity: 1; transform: none; }
-  .w-74 { animation: none; width: 74%; }
-  .w-65 { animation: none; width: 65%; }
-  .w-40 { animation: none; width: 40%; }
 }
 
 /* ---------- hero carousel ---------- */
