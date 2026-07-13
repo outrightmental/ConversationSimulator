@@ -265,6 +265,33 @@ suppress SmartScreen warnings immediately. The same key can back an EV certifica
 
 ---
 
+## Malware scanning
+
+Every tagged release uploads the signed Windows installer to the Azure storage
+container monitored by **Microsoft Defender for Storage** (on-upload malware
+scanning). Defender is the engine behind SmartScreen and Windows Security
+verdicts — scanning the *signed* bits before a release is the most meaningful
+pre-release health-check for a Windows binary.
+
+The `defender-scan` job in `release.yml` runs automatically in parallel with
+the Steam publication job. The GitHub release body gains a
+`🛡️ **Microsoft Defender Malware Scan**` note with a portal link once the
+upload completes.
+
+See **[`publishing/WINDOWS_MALWARE_SCANNING.md`](WINDOWS_MALWARE_SCANNING.md)**
+for:
+
+- Azure storage account and Defender for Storage setup
+- The six `AZURE_*` org secrets required by the job
+- How to read Defender verdicts and handle false positives
+- EICAR dry-run to verify the scanner is active
+- Service-principal rotation runbook
+
+The existing VirusTotal step (non-blocking, 70 engines) in `build-desktop`
+remains unchanged. Both scanners stay non-blocking.
+
+---
+
 ## Antivirus false positives
 
 Freshly compiled Rust/Tauri executables are occasionally flagged by heuristic
