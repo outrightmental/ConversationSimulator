@@ -3,7 +3,7 @@ title: "Choosing how to run the AI"
 description: "Compare the three ways to run local AI in Conversation Simulator — built-in engine, Ollama, and custom GGUF — and choose the right setup for your machine."
 sidebar:
   order: 1
-verified_against: v0.2.2
+verified_against: v0.3.0
 ---
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 

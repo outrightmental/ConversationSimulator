@@ -3,7 +3,7 @@ title: "Installation"
 description: "Download, verify, and install Conversation Simulator on Windows, macOS, or Linux, and set up your first local model."
 sidebar:
   order: 1
-verified_against: v0.2.2
+verified_against: v0.3.0
 ---
 
 Conversation Simulator runs entirely on your computer — no cloud inference,

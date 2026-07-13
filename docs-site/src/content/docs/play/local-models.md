@@ -3,7 +3,7 @@ title: "Local models"
 description: "This page has moved. See Choosing how to run the AI."
 sidebar:
   hidden: true
-verified_against: v0.2.2
+verified_against: v0.3.0
 ---
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 

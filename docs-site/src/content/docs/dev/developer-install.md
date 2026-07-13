@@ -3,7 +3,7 @@ title: "Developer install (run from source)"
 description: "Clone the repository and run the full Conversation Simulator platform locally — for contributors and anyone who wants full control."
 sidebar:
   order: 9
-verified_against: v0.2.2
+verified_against: v0.3.0
 ---
 
 This is the contributor path: clone the source and run the dev services
