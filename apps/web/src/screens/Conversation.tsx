@@ -769,7 +769,7 @@ export default function Conversation() {
         <div
           role="status"
           data-testid="model-ready-toast"
-          aria-label="AI model is ready"
+          aria-label={t('conversation.modelReady.toast')}
           style={{
             display: 'flex',
             justifyContent: 'space-between',
