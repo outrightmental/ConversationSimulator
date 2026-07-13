@@ -23,6 +23,16 @@
         "Recursive"     "1"
     }
 
+    // Register the Steam InstallScript that bootstraps the WebView2 Evergreen
+    // Runtime on first launch (see steam/installscript.vdf and issue #408).
+    // Shipping installscript.vdf as depot content is NOT enough: the Steam
+    // client only executes it when the depot build config marks the file with
+    // the "InstallScript" key. Path is relative to ContentRoot — the file lands
+    // at the depot root next to ConversationSimulator.exe. Without this line the
+    // WebView2 runtime is never installed and the app fails to launch on a clean
+    // Windows 10 machine (portable depot cannot run the NSIS bootstrapper).
+    "InstallScript" "installscript.vdf"
+
     // Exclude debug symbols — not useful to players.
     "FileExclusion" "*.pdb"
 
