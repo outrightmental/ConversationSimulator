@@ -314,6 +314,39 @@ export const de: LocaleMessages = {
       clearing: 'Wird gelöscht…',
     },
   },
+  setup: {
+    welcome: {
+      headline: 'Üben Sie Gespräche, die zählen.',
+      subheadline: 'Privat. Auf Ihrem Gerät. Für Sie.',
+      setMeUp: {
+        title: 'Einrichten',
+        description: 'Lädt das KI-Modell herunter ({{size}} GB, {{license}}). Danach offline nutzbar.',
+        descriptionLoading: 'Lädt das empfohlene KI-Modell herunter. Danach offline nutzbar.',
+        badge: 'Empfohlen',
+      },
+      tryNow: {
+        title: 'Sofort ausprobieren',
+        description: 'Spielen Sie sofort ein Szenario — kein Download nötig. Jederzeit upgraden.',
+        disclaimer: 'Antworten sind geskriptet, nicht KI-generiert.',
+      },
+      privacy: {
+        summary: '🔒 Alles bleibt auf Ihrem Gerät.',
+        toggle: 'Details',
+        details: 'Gespräche, Transkripte, Audioaufnahmen und KI-Antworten werden lokal verarbeitet und verlassen Ihren Computer nicht, sofern Sie sie nicht exportieren oder teilen. Nach der Modellinstallation können Sie offline spielen.',
+      },
+      advanced: {
+        toggle: 'Erweitert: Ollama oder lokale GGUF-Datei verwenden',
+        ollama: {
+          why: 'Nutzen Sie bereits Ollama? Modelle wiederverwenden — kein neuer Download nötig.',
+          action: 'Ollama-Modelle durchsuchen',
+        },
+        gguf: {
+          why: 'Haben Sie eine vertraute .gguf-Datei? Wählen Sie sie aus.',
+          action: 'GGUF-Datei verwenden',
+        },
+      },
+    },
+  },
   debrief: {
     title: 'Sitzungsnachbesprechung',
     sessionLabel: 'Sitzung:',
