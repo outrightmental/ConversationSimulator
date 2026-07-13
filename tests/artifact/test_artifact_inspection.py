@@ -69,6 +69,21 @@ _PORTABLE_APP_BINARIES = frozenset({
 })
 
 
+def _is_windows_portable_depot(artifact_dir: Path) -> bool:
+    """Return True if artifact_dir looks like a Windows portable Steam depot.
+
+    The portable depot ships ``ConversationSimulator.exe`` at its root (see
+    the "Package Windows portable depot layout" step in release.yml).  It also
+    ships a whole tree of unversioned application binaries — the sidecar, the
+    bundled llama.cpp runtime and *its* sibling tools (llama-cli.exe,
+    llama-bench.exe, …) — none of which carry a semver in their filename.  The
+    filename-based version checks below can never enumerate that set with an
+    allowlist, so they skip for a portable depot and rely on ``version.txt``
+    (validated by TestWindowsPortableLayout.test_windows_depot_has_version_stamp).
+    """
+    return (artifact_dir / "ConversationSimulator.exe").is_file()
+
+
 def _is_pyinstaller_internal(path: Path) -> bool:
     """Return True if path is inside a PyInstaller _internal/ directory.
 
@@ -232,16 +247,23 @@ class TestIconPresence:
 
 class TestVersionStamping:
     def test_installer_filename_contains_semver(
-        self, all_file_paths: list[Path]
+        self, all_file_paths: list[Path], artifact_dir: Path
     ) -> None:
         """Installer filenames must contain a semantic version number.
 
-        Windows portable depot layout binaries (ConversationSimulator.exe,
-        convsim-core.exe, etc.) are excluded: their version is recorded in
-        version.txt at the depot root instead of in the filename.  The check
-        is for installer/archive filenames such as
+        The Windows portable depot ships an unversioned application tree (main
+        exe, sidecar, and the llama.cpp runtime plus its sibling tools) whose
+        version lives in version.txt at the depot root, not in any filename, so
+        this filename check skips for it (version.txt is validated separately by
+        TestWindowsPortableLayout.test_windows_depot_has_version_stamp).  The
+        check is for installer/archive filenames such as
         "Conversation Simulator_0.1.0_x64-setup.exe" or "*.AppImage".
         """
+        if _is_windows_portable_depot(artifact_dir):
+            pytest.skip(
+                "Windows portable depot — version is in version.txt, "
+                "not in binary filenames"
+            )
         installers = [
             f
             for f in all_file_paths
@@ -260,9 +282,14 @@ class TestVersionStamping:
         )
 
     def test_version_is_not_zero_placeholder(
-        self, all_file_paths: list[Path]
+        self, all_file_paths: list[Path], artifact_dir: Path
     ) -> None:
         """Version stamp must not be the default placeholder 0.0.0."""
+        if _is_windows_portable_depot(artifact_dir):
+            pytest.skip(
+                "Windows portable depot — version.txt (not a filename) is "
+                "checked for the 0.0.0 placeholder by TestWindowsPortableLayout"
+            )
         installers = [
             f
             for f in all_file_paths
@@ -487,7 +514,7 @@ class TestWindowsPortableLayout:
 
     def _is_windows_portable_depot(self, artifact_dir: Path) -> bool:
         """Return True if this looks like a Windows portable depot."""
-        return (artifact_dir / "ConversationSimulator.exe").is_file()
+        return _is_windows_portable_depot(artifact_dir)
 
     def test_main_exe_at_depot_root(
         self, all_file_paths: list[Path], artifact_dir: Path
