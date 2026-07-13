@@ -11,8 +11,8 @@
 >
 > **Sensitive data:** No secret credentials appear in this document. App IDs and
 > depot IDs are non-secret identifiers assigned by Valve. Steam partner
-> credentials are stored as GitHub Actions secrets — see
-> [CI credentials](#ci-credentials).
+> credentials are stored as **outrightmental org-level GitHub Actions secrets**,
+> scoped to selected repositories — see [CI credentials](#ci-credentials).
 
 ---
 
@@ -347,11 +347,16 @@ to Steam using a **dedicated build account**, not the main Outright Mental
 partner account. A separate account limits the blast radius of a compromised CI
 credential.
 
-### Required GitHub Actions secrets
+### Org-level GitHub Actions secrets
+
+These secrets are stored at the **outrightmental organisation level**, scoped
+to `ConversationSimulator` and `FeverTilt`. Entering them once at org level
+means all scoped repositories pick them up automatically — no duplicate secrets
+in each repo.
 
 | Secret name | Description | How to obtain |
 |------------|-------------|---------------|
-| `STEAM_USERNAME` | Steam username of the dedicated CI build account | Create a new Steam account for CI use; grant it Developer access in the Steamworks partner portal under Users & Permissions |
+| `STEAM_USERNAME` | Steam username of the dedicated CI build account | Create a new Steam account for CI use; grant it Developer access in the Steamworks partner portal under Users & Permissions → verify it has App 4963030 permissions |
 | `STEAM_CONFIG_VDF` | Base64-encoded `config.vdf` from an authenticated Steam session on the build account | Log in as the build account on a machine with Steam installed; complete the SteamGuard prompt; copy `~/.steam/steam/config/config.vdf`; encode it: `base64 -w0 ~/.steam/steam/config/config.vdf` |
 
 **Why `STEAM_CONFIG_VDF` instead of a password:** Steam requires two-factor
@@ -360,8 +365,28 @@ session bypasses the interactive 2FA prompt in headless CI environments. Treat
 this file with the same confidentiality as a password — rotate it if the build
 account is ever compromised.
 
-**To set a GitHub Actions secret:** GitHub → repository Settings → Secrets and
-variables → Actions → Secrets tab → New repository secret.
+**To set an org-level secret** (via CLI — values are supplied interactively, never
+committed):
+
+```bash
+gh secret set STEAM_USERNAME \
+  --org outrightmental \
+  --visibility selected \
+  --repos ConversationSimulator,FeverTilt
+
+gh secret set STEAM_CONFIG_VDF \
+  --org outrightmental \
+  --visibility selected \
+  --repos ConversationSimulator,FeverTilt
+```
+
+Or use the org Settings UI: GitHub → outrightmental org **Settings → Secrets
+and variables → Actions → Secrets → New organisation secret**, then set
+**Repository access** to *Selected repositories: ConversationSimulator, FeverTilt*.
+
+**Rotation:** Because the secrets are org-level, rotating a credential once
+updates it for all scoped repositories simultaneously. Run
+`gh secret list --org outrightmental` to confirm the inventory after any change.
 
 ### Refreshing `STEAM_CONFIG_VDF`
 
@@ -372,7 +397,14 @@ error:
 1. Log in as the build account on a local machine with Steam installed.
 2. Complete the SteamGuard prompt.
 3. Copy and re-encode the updated `config.vdf`.
-4. Update the `STEAM_CONFIG_VDF` secret in GitHub.
+4. Update the org-level `STEAM_CONFIG_VDF` secret:
+   ```bash
+   gh secret set STEAM_CONFIG_VDF \
+     --org outrightmental \
+     --visibility selected \
+     --repos ConversationSimulator,FeverTilt
+   ```
+   All scoped repositories pick up the refreshed config automatically.
 
 ---
 
