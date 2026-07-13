@@ -801,34 +801,33 @@ jobs:
           echo "=== Generated latest.json ==="
           cat latest.json
 
-      # ── Resolve release metadata ─────────────────────────────────────────────
-      # Decides pre-release/Latest and whether to author or preserve the release
-      # title & notes, so the publish step below never clobbers a release a human
-      # created by hand.
+      # Derive all release metadata before touching the release so we can:
+      #   - detect a pre-existing (hand-authored) release and preserve its title/body
+      #   - set prerelease from the tag semver suffix rather than hardcoding true
+      #   - set make_latest only for stable tags that will be published immediately
       - name: Resolve release metadata
         id: relmeta
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HAS_UPDATER_KEY: ${{ env.HAS_UPDATER_KEY }}
-          # Bind the tag through the environment rather than interpolating it
-          # directly into the script: a git tag name can legally contain shell
-          # metacharacters, so `${{ }}`-pasting it into `run:` would be a
-          # template-injection vector. Reading it from $TAG_INPUT is inert.
-          TAG_INPUT: ${{ github.event.inputs.tag || github.ref_name }}
+          # Pass the tag through the environment rather than interpolating the
+          # ${{ }} expression straight into the script: a tag name can legally
+          # contain shell metacharacters (`$`, backticks, ...) that would
+          # otherwise be evaluated here (command injection). Quoting "$TAG"
+          # below keeps it inert.
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
-          TAG="$TAG_INPUT"
 
           # Pre-release iff the tag carries a semver pre-release suffix (a hyphen):
-          # v0.1.0 -> stable/Latest, v0.1.0-beta.1 -> pre-release. This mirrors the
-          # updater's version ordering (beta < release) used to build latest.json.
+          # v0.1.0 -> stable/Latest, v0.1.0-beta.1 -> pre-release. Mirrors the updater's
+          # version ordering (beta < release) used to build latest.json.
           if [[ "$TAG" == *-* ]]; then PRERELEASE=true; else PRERELEASE=false; fi
 
-          # Does a release for this tag already exist? Creating a release in the
-          # GitHub UI pushes the tag (triggering this workflow) once the release
-          # row already exists, so a hand-authored title/body/"Latest" flag is
-          # already live and must not be overwritten.
+          # Does a release for this tag already exist? Creating a release in the GitHub
+          # UI pushes the tag (triggering this workflow) once the release row already
+          # exists, so a hand-authored title/body/"Latest" flag is already live.
           if gh release view "$TAG" >/dev/null 2>&1; then EXISTS=true; else EXISTS=false; fi
 
           # Mark as "Latest" only for a stable tag that will actually be published
@@ -839,10 +838,8 @@ jobs:
             MAKE_LATEST=false
           fi
 
-          # Preserve an existing release's human-authored title and notes by
-          # passing empty name/body — action-gh-release leaves the current values
-          # untouched when these inputs are blank. For a brand-new release, seed
-          # the default title and the notes template.
+          # Preserve an existing release's human-authored title and notes by passing
+          # empty name/body. For a brand-new release, seed the default title + template.
           if [[ "$EXISTS" == true ]]; then
             NAME=""
             BODY_PATH=""
@@ -864,19 +861,12 @@ jobs:
 
           echo "Resolved: tag=$TAG prerelease=$PRERELEASE make_latest=$MAKE_LATEST exists=$EXISTS draft=$DRAFT"
 
-      # When the updater manifest is being produced (HAS_UPDATER_KEY), a *new*
-      # versioned release MUST be published immediately as a pre-release rather
-      # than left as a draft: the beta-channel `latest.json` uploaded in the next
-      # step points at this release's `.../releases/download/<tag>/...` assets and
-      # `.../releases/tag/<tag>` page, and the in-app banner's "View notes" /
-      # "Install" links open that page. Draft-release assets and tag pages 404 for
-      # the public, so advertising the manifest before the target is live would
-      # send beta testers to a dead link. When signing is off there is no manifest
-      # to advertise, so a new release is left as a draft for manual review.
-      #
-      # If a release for this tag already exists (created by hand), its title,
-      # body, and published/Latest state are preserved — this step only attaches
-      # the built assets and sets the pre-release flag derived from the tag.
+      # When the updater manifest is being produced (HAS_UPDATER_KEY), the
+      # versioned release MUST be published immediately rather than left as a
+      # draft: the beta-channel `latest.json` uploaded in the next step points at
+      # this release's assets and tag page, and draft assets 404 for the public.
+      # When signing is off and no pre-existing release exists, we keep the
+      # previous draft/manual-review behaviour (relmeta sets draft=true).
       - name: Create versioned GitHub release
         id: versioned_release
         uses: softprops/action-gh-release@v3
