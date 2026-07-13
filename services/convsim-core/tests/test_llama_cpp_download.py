@@ -733,6 +733,79 @@ async def test_download_binary_asset_404_raises(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_download_binary_offline_fetching_release_raises_friendly(tmp_path):
+    """A network error while fetching the latest tag surfaces an offline message."""
+    import httpx
+
+    client = _mock_async_client(api_error=httpx.ConnectError("no route to host"))
+
+    with patch("convsim_core.runtime.llama_cpp_download.httpx.AsyncClient", return_value=client):
+        with pytest.raises(RuntimeError, match="internet connection") as excinfo:
+            await download_binary(
+                dest_dir=tmp_path / "bin",
+                version=None,  # force the latest-release lookup
+                platform_string="linux-x64",
+            )
+
+    # The raw httpx error must be wrapped, not leaked to the user.
+    assert "Cannot reach GitHub" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_download_binary_offline_during_download_raises_friendly(tmp_path):
+    """A network drop mid-download surfaces an offline message and FAILED state."""
+    import httpx
+
+    client = _mock_async_client(
+        latest_tag="b1",
+        download_error=httpx.ConnectError("connection reset"),
+    )
+
+    states: list[str] = []
+
+    def _cb(p: DownloadProgress) -> None:
+        states.append(p.state.value)
+
+    with patch("convsim_core.runtime.llama_cpp_download.httpx.AsyncClient", return_value=client):
+        with pytest.raises(RuntimeError, match="Network error while downloading"):
+            await download_binary(
+                dest_dir=tmp_path / "bin",
+                version="b1",
+                platform_string="linux-x64",
+                progress_cb=_cb,
+            )
+
+    assert states[-1] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_download_binary_locked_destination_raises_and_cleans_part(tmp_path, monkeypatch):
+    """A locked destination (PermissionError on replace) is reported and the .part removed."""
+    zip_data = _make_zip("llama-server", b"bin")
+    client = _mock_async_client(latest_tag="b1", asset_data=zip_data)
+
+    def _raise_locked(src, dst):
+        raise PermissionError("[WinError 5] Access is denied")
+
+    monkeypatch.setattr(
+        "convsim_core.runtime.llama_cpp_download.os.replace", _raise_locked
+    )
+
+    dest = tmp_path / "bin"
+    with patch("convsim_core.runtime.llama_cpp_download.httpx.AsyncClient", return_value=client):
+        with pytest.raises(RuntimeError, match="in use"):
+            await download_binary(
+                dest_dir=dest,
+                version="b1",
+                platform_string="linux-x64",
+            )
+
+    # The failed .part write must not leave a stray file behind.
+    assert not list(dest.glob("*.part"))
+    assert not (dest / "llama-server").exists()
+
+
+@pytest.mark.asyncio
 async def test_download_binary_binary_missing_from_zip_raises(tmp_path):
     """If the ZIP doesn't contain llama-server, RuntimeError must be raised."""
     zip_data = _make_zip("README.txt", b"nope")
