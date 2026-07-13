@@ -3,6 +3,7 @@ title: "Installation"
 description: "Download, verify, and install Conversation Simulator on Windows, macOS, or Linux, and set up your first local model."
 sidebar:
   order: 1
+verified_against: v0.2.2
 ---
 
 Conversation Simulator runs entirely on your computer — no cloud inference,
@@ -60,8 +61,9 @@ Get-FileHash "ConversationSimulator_<version>_x64-setup.exe" -Algorithm SHA256
 - **macOS:** open the `.dmg` and drag the app to `/Applications`. On first
   launch, Gatekeeper may warn about an unidentified developer (pre-release
   builds are unsigned). Right-click the app → **Open** → **Open** to proceed.
-- **Windows:** run the `.exe` installer. SmartScreen may warn about an
-  unrecognised publisher — click **More info → Run anyway**.
+- **Windows:** run the `.exe` installer. Windows 10/11 release builds are
+  Authenticode-signed, so no SmartScreen warning appears. If you see one on
+  a pre-release build, click **More info → Run anyway**.
 - **Linux:** make the AppImage executable and run it directly — no
   installation needed:
 
@@ -74,27 +76,27 @@ The app starts its local conversation engine automatically. If the home
 screen reports that the engine did not start, see
 [Troubleshooting](/start/troubleshooting/#engine-startup-failure).
 
-:::note
-The unsigned-build warnings disappear automatically once code-signing
-certificates land (tracked in
-[#235](https://github.com/outrightmental/ConversationSimulator/issues/235)).
-:::
-
 ---
 
-## 3. Install a local model
+## 3. Set up your AI (first launch)
 
-On first launch the app shows a **"No model loaded"** banner. Open
-**Settings → Models**, pick a model, and accept its license to start the
-download. No model weights are bundled with the installer, and every
-download is verified against its SHA-256 checksum before loading.
+On first launch the app shows the **welcome screen**. Click **Set me up**.
 
-The recommended starter is **Qwen3 4B Instruct Q4_K_M** (~2.5 GB,
-Apache-2.0). See [Local models](/play/local-models/) for recommendations by
-hardware.
+The app detects your hardware, selects the recommended model, shows you its
+details and license, and asks you to confirm. After you confirm:
 
-The one-time model download is the only step that needs an internet
-connection. After it completes, everything works offline.
+- A progress screen shows each installation stage (engine check → model
+  download → verification → warmup).
+- While the model downloads you can click **Play the tutorial while you
+  wait** to try the simulator with scripted, non-AI responses.
+- When all stages complete, click **Continue to Home** to start playing.
+
+No model weights are bundled with the installer. The one-time download is
+the only step that requires an internet connection — after it completes,
+everything works offline.
+
+Want to use Ollama or a custom model file instead? See
+[Choosing how to run the AI](/play/ai-engine/).
 
 ---
 
@@ -141,6 +143,6 @@ Override any of these with environment variables: `CONVSIM_DB_DIR`,
 ## Next steps
 
 - [Quickstart](/start/quickstart/) — run your first conversation
-- [Local models](/play/local-models/) — choose a model for your hardware
+- [Choosing how to run the AI](/play/ai-engine/) — built-in engine, Ollama, GGUF, and hardware recommendations
 - [Troubleshooting](/start/troubleshooting/) — common setup problems
 - [Platform notes](/play/platform-notes/) — Gatekeeper, SmartScreen, WebView2, audio permissions

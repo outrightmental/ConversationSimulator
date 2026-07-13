@@ -8,6 +8,10 @@ import starlight from '@astrojs/starlight'
 // contributors from the engineering docs in /docs.
 export default defineConfig({
   site: 'https://docs.conversationsimulator.com',
+  // Redirect old URLs so links in shipped app versions don't break.
+  redirects: {
+    '/play/local-models/': '/play/ai-engine/',
+  },
   integrations: [
     starlight({
       title: 'Conversation Simulator',

@@ -1,8 +1,9 @@
 ---
 title: "Quickstart"
-description: "Walk through your first conversation: launch the app, install a model, choose a scenario, play, and review the debrief."
+description: "Walk through your first conversation: complete first-run setup, choose a scenario, play, and review the debrief."
 sidebar:
   order: 2
+verified_against: v0.2.2
 ---
 
 This guide walks through your first conversation. Complete the
@@ -10,34 +11,38 @@ This guide walks through your first conversation. Complete the
 
 ---
 
-## 1. Launch the app
+## 1. First-run setup (first launch only)
 
-Open Conversation Simulator. The home screen shows green status indicators
-when the conversation engine and the LLM runtime are ready.
+Open Conversation Simulator. On first launch the **welcome screen** appears.
 
-If the engine reports a problem instead, the home screen offers a restart
-button — see [Troubleshooting](/start/troubleshooting/#engine-startup-failure)
-if it persists.
+Click **Set me up**. The app downloads and configures a local AI model
+in the background. A progress screen shows each stage of the setup.
 
----
+While the model downloads you can click **Play the tutorial while you wait**
+to try the simulator right away with scripted, non-AI responses — it teaches
+you the conversation UI, state meters, and the debrief rubric without needing
+the AI to be ready.
 
-## 2. Install a model (first run only)
+When all stages complete, click **Continue to Home**.
 
-If no model is loaded the home screen shows a **"No model loaded"** banner. Click **Install model** or go to **Settings → Models**.
-
-The in-app model manager:
-
-1. Lists curated models from the registry with size, license, and hardware requirements.
-2. Shows the license text and asks you to accept before downloading.
-3. Downloads the model file, verifies its SHA-256 checksum, and loads it.
-
-The recommended starter is **Qwen3 4B Instruct Q4_K_M** (~2.6 GB, Apache-2.0 licensed). It works on machines with as little as 4 GB of GPU VRAM, or runs on CPU with no GPU at all.
-
-No internet connection is needed after the model is downloaded. See [local-models.md](/play/local-models/) for all available models and hardware recommendations.
+No internet connection is needed after this one-time setup. Want to use
+Ollama or a custom model instead of the default? See
+[Choosing how to run the AI](/play/ai-engine/).
 
 ---
 
-## 3. Choose a scenario
+## 2. Check the home screen
+
+The home screen shows green status indicators when the conversation engine
+and LLM runtime are ready.
+
+If the engine reports a problem, the home screen shows a remediation card
+with a fix action — see
+[Troubleshooting](/start/troubleshooting/#engine-startup-failure) if it persists.
+
+---
+
+## 3. Choose a scenario (first conversation)
 
 From the home screen, click **Browse scenarios** (or the scenario icon in the sidebar).
 
@@ -85,7 +90,7 @@ You can export the transcript to a text file from the debrief screen. Transcript
 
 - **Remix the scenario** — adjust NPC difficulty or starting state from the scenario setup screen before starting.
 - **Create a custom scenario** — see the [scenario authoring guide](/create/scenario-authoring/).
-- **Upgrade your model** — if responses feel slow or generic, try a larger model; see [local-models.md](/play/local-models/).
+- **Upgrade your model** — if responses feel slow or generic, try a larger model; see [Choosing how to run the AI](/play/ai-engine/).
 
 ---
 
@@ -100,6 +105,6 @@ You can export the transcript to a text file from the debrief screen. Transcript
 
 ## Next steps
 
-- [Local models](/play/local-models/) — choose the right model for your hardware
+- [Choosing how to run the AI](/play/ai-engine/) — built-in engine, Ollama, GGUF, hardware recommendations
 - [Troubleshooting](/start/troubleshooting/) — if something does not work
 - [README](https://github.com/outrightmental/ConversationSimulator) — project overview
