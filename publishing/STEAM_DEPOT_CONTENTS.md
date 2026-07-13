@@ -44,13 +44,23 @@ SteamPipe VDF templates in `steam/` configure the file mappings and exclusions.
 
 **Content root:** `steam-content/windows/` (populated by the deploy workflow)
 
+The Windows depot ships a **portable application tree** — raw application files
+the Steam client installs directly, never an NSIS setup wizard or MSI package.
+Steam's "Play" button must launch `ConversationSimulator.exe` at the depot root;
+shipping an installer instead would launch the installer UI (or nothing),
+causing instant Valve review failure and stranding every beta tester.
+
+The portable layout is assembled by the `Package Windows portable depot layout`
+step in `release.yml` (after Authenticode signing) and uploaded as
+`steam-depot-windows.tar.gz`.  The `steam-deploy.yml` workflow extracts this
+tarball into `steam-content/windows/`.
+
 ```
-ConversationSimulator.exe         # Tauri shell — main app entry point
-WebView2Loader.dll                # Microsoft WebView2 runtime loader
-*.dll                             # Tauri / WRY / WebView2 support DLLs
+ConversationSimulator.exe         # Tauri shell — main app entry point (Authenticode-signed)
+*.dll                             # Tauri / WebView2 support DLLs (if any)
 resources/
   bin/
-    convsim-core.exe              # PyInstaller-bundled Python backend
+    convsim-core.exe              # PyInstaller-bundled Python backend (Authenticode-signed)
   runtimes/
     llama-server.exe              # llama.cpp inference server (LLM)
     whisper-cli.exe               # Whisper.cpp speech-to-text binary
@@ -60,9 +70,51 @@ resources/
     everyday-negotiation/         # Official scenario pack (bundled)
     language-cafe/                # Official scenario pack (bundled)
     difficult-conversations/      # Official scenario pack (bundled)
-LICENSE                           # Apache 2.0 (top-level, not inside resources/)
+installscript.vdf                 # Steam InstallScript — WebView2 bootstrapper (see below)
+MicrosoftEdgeWebView2Setup.exe    # WebView2 Evergreen Bootstrapper (~2 MB, from Microsoft)
+LICENSE                           # Apache 2.0 (depot root)
 NOTICE                            # Third-party licence notices (MIT, Apache 2.0)
+version.txt                       # Semver version stamp (read by artifact inspection tests)
 ```
+
+#### WebView2 runtime — InstallScript strategy
+
+Tauri Windows apps require the Microsoft WebView2 Evergreen Runtime.  The NSIS
+installer normally bootstraps it; the portable depot cannot run the NSIS installer.
+
+**Chosen approach — Steam InstallScript (`steam/installscript.vdf`):**
+
+The depot includes `MicrosoftEdgeWebView2Setup.exe` (the WebView2 Evergreen
+Bootstrapper, ~2 MB) at the depot root.  `installscript.vdf` tells Steam to run
+the bootstrapper with `/silent /install` on first launch, using the elevated
+privileges Steam provides.  The `HasRunKey` registry key ensures the bootstrapper
+runs exactly once per machine; subsequent launches skip it.
+
+On Windows 11 and most current Windows 10 machines, WebView2 ships with the OS
+and the bootstrapper is a no-op.
+
+**Rejected alternative — WebView2 Fixed Version (~180 MB per depot):**
+
+Fixed Version would eliminate the internet requirement (the bootstrapper downloads
+only the runtime components needed, but does require internet access on first
+launch) at the cost of adding ~180 MB to every Steam install.  This is
+disproportionate to the 2 MB bootstrapper approach and is the official Microsoft
+recommendation for this distribution model.
+
+#### Updater policy
+
+The Tauri built-in updater (`tauri-plugin-updater`) is **disabled for Steam
+builds**.  Steam owns the update lifecycle via SteamPipe; the Tauri updater and
+SteamPipe fighting over binary versions is a support nightmare (update banners,
+version mismatches, players confused about which channel to follow).
+
+Implementation: the `release.yml` Steam build leg passes
+`--config '{"plugins":{"updater":null}}'` to `tauri build`.  This removes the
+updater plugin configuration via RFC 7396 JSON Merge Patch so the updater has no
+endpoints to poll.  The `check_for_update` Tauri command returns `None` (no
+update found) when unconfigured, so no update banner is ever displayed.
+
+All updates for Steam players arrive exclusively through SteamPipe.
 
 **Excluded by VDF `FileExclusion`:**
 
