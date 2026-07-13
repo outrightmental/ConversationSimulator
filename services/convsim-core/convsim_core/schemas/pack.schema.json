@@ -50,8 +50,9 @@
     },
     "license": {
       "type": "string",
-      "description": "SPDX license identifier.",
-      "minLength": 1
+      "description": "SPDX license identifier (e.g. 'CC-BY-4.0', 'MIT') or a LicenseRef-* custom identifier for proprietary packs (e.g. 'LicenseRef-OutrightMental-Proprietary'). Must not contain spaces.",
+      "minLength": 1,
+      "pattern": "^[a-zA-Z0-9][-a-zA-Z0-9.+]*$"
     },
     "content_rating": {
       "type": "string",
