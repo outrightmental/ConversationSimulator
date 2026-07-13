@@ -39,6 +39,18 @@ intend to tag.
 | `build-desktop` | `validate` | Cross-platform Tauri builds (macOS, Linux, Windows) |
 | `release` | `build-desktop` | Publishes GitHub release; updates beta-channel updater manifest |
 | `steam` | `release` | Stages the build to Steam and sets `beta` live — **pauses for `steam-release` environment approval** |
+| `defender-scan` | `build-desktop`, `release` | Uploads signed Windows build to Azure; Defender for Storage scans on upload; appends scan note to release — **runs in parallel with `steam`** |
+
+> **Defender scan and Steam approval sequence:** `defender-scan` runs in
+> parallel with the `steam` job. The `steam-release` environment approval gate
+> is the human moment to glance at the Defender verdict in the release notes
+> before clicking **Approve** for Steam go-live. If the `defender-scan` job
+> has not yet finished when the Steam approval dialog appears, wait for it —
+> a clean Defender verdict should precede Steam beta publication.
+>
+> If the six `AZURE_*` org secrets are not configured, `defender-scan` emits a
+> `::warning` and exits cleanly; release and Steam are unaffected.
+> See `publishing/WINDOWS_MALWARE_SCANNING.md` for secret setup.
 
 > **Steam step:** After pushing a tag, the `steam` job appears in Actions →
 > Release and waits for a required reviewer to click **Approve** before any
@@ -1130,7 +1142,10 @@ Open the Actions run for the rehearsal tag and confirm each item.
 - [ ] Authenticode signing step log shows all `.exe` / `.msi` installers signed successfully
 - [ ] Authenticode verification step shows `signtool verify /pa` exits 0 for all installers
 - [ ] VirusTotal scan record artifact uploaded; analysis URLs recorded (non-blocking, informational)
-- [ ] Defender scan record artifact uploaded; **Defender verdict: clean** for all installers
+- [ ] Local Defender scan record artifact uploaded; **local Defender verdict: clean** for all installers
+- [ ] `defender-scan` job green — `<tag>-signed-build.zip` uploaded to Azure scan container
+- [ ] `🛡️ Microsoft Defender Malware Scan` note present in the GitHub release body (with portal link)
+- [ ] Azure portal / Defender for Cloud shows **no security alert** for the uploaded blob (clean verdict) — check before approving Steam go-live (see `publishing/WINDOWS_MALWARE_SCANNING.md`)
 
 **macOS signing and notarization:**
 - [ ] `codesign --verify --deep --strict` exits 0 — no `ERROR:` lines
@@ -1188,7 +1203,9 @@ Steam deploy run URL :
 
 Pipeline result      : PASS / FAIL
 Steamworks build ID  :
-Defender verdict     : clean / THREAT FOUND (see artifact: defender-scan-Windows-x86_64)
+Local Defender verdict  : clean / THREAT FOUND (artifact: defender-scan-Windows-x86_64)
+Azure Defender verdict  : clean / THREAT FOUND / PENDING (portal URL in release notes)
+EICAR dry-run verified  : YES / NO (one-time; see publishing/WINDOWS_MALWARE_SCANNING.md)
 Depot audit          : PASS / FAIL
 
 Windows tester       :

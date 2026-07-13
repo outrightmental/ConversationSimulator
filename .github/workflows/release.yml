@@ -1536,3 +1536,179 @@ jobs:
       release_tag: ${{ github.event.inputs.tag || github.ref_name }}
       set_live_branch: beta
     secrets: inherit
+
+  # ── Microsoft Defender for Storage malware scan (Windows) ──────────────────
+  # Uploads the signed Windows installer artifact to the Azure storage container
+  # configured with Microsoft Defender for Storage on-upload malware scanning,
+  # then appends a single "🛡️ Microsoft Defender Malware Scan" note to the
+  # GitHub release body (idempotent — safe on re-runs, never duplicates, never
+  # clobbers hand-authored release notes).
+  #
+  # Runs in parallel with the Steam publication job. The steam-release
+  # environment approval gate is the human moment to check the Defender verdict
+  # before approving beta go-live — see docs/release-checklist.md §K.
+  #
+  # This job complements the existing VirusTotal step (breadth: 70 engines) with
+  # Defender for Storage depth: Defender is the engine behind SmartScreen and
+  # Windows Security verdicts that actually block users, making it the most
+  # important engine to clear for a freshly-signed indie binary.
+  #
+  # Required org-level secrets (all six must be present; any absent → job skips
+  # with a ::warning; release and Steam jobs are unaffected):
+  #   AZURE_CLIENT_ID             Service-principal application (client) ID
+  #   AZURE_CLIENT_SECRET         Service-principal client secret
+  #   AZURE_TENANT_ID             Azure AD tenant ID
+  #   AZURE_SUBSCRIPTION_ID       Azure subscription ID
+  #   AZURE_SCAN_STORAGE_ACCOUNT  Storage account with Defender for Storage enabled
+  #   AZURE_SCAN_CONTAINER        Blob container in that storage account
+  #
+  # Org-side prerequisites (one-time, per publishing/WINDOWS_MALWARE_SCANNING.md):
+  #   • Microsoft Defender for Storage enabled on the storage account (Standard
+  #     plan, on-upload scanning enabled)
+  #   • Service principal has Storage Blob Data Contributor on the container
+  defender-scan:
+    name: Upload to Defender [Windows]
+    needs: [build-desktop, release]
+    runs-on: ubuntu-latest
+    if: ${{ !cancelled() && needs.release.result == 'success' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      # Check that all six AZURE_* secrets are configured. If any is missing,
+      # emit a ::warning and set skip=true — all subsequent steps are bypassed.
+      # The release and Steam jobs are not affected.
+      - name: Check Azure secrets presence
+        id: secrets_check
+        env:
+          _CLIENT_ID:       ${{ secrets.AZURE_CLIENT_ID }}
+          _CLIENT_SECRET:   ${{ secrets.AZURE_CLIENT_SECRET }}
+          _TENANT_ID:       ${{ secrets.AZURE_TENANT_ID }}
+          _SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          _STORAGE_ACCOUNT: ${{ secrets.AZURE_SCAN_STORAGE_ACCOUNT }}
+          _CONTAINER:       ${{ secrets.AZURE_SCAN_CONTAINER }}
+        run: |
+          missing=()
+          [ -z "$_CLIENT_ID" ]       && missing+=(AZURE_CLIENT_ID)
+          [ -z "$_CLIENT_SECRET" ]   && missing+=(AZURE_CLIENT_SECRET)
+          [ -z "$_TENANT_ID" ]       && missing+=(AZURE_TENANT_ID)
+          [ -z "$_SUBSCRIPTION_ID" ] && missing+=(AZURE_SUBSCRIPTION_ID)
+          [ -z "$_STORAGE_ACCOUNT" ] && missing+=(AZURE_SCAN_STORAGE_ACCOUNT)
+          [ -z "$_CONTAINER" ]       && missing+=(AZURE_SCAN_CONTAINER)
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::warning::Defender for Storage scan skipped — missing Azure org secrets: ${missing[*]}. Configure all six AZURE_* secrets to enable. See publishing/WINDOWS_MALWARE_SCANNING.md."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Download the signed Windows installers from the build-desktop matrix job.
+      # The artifact is retained for 7 days (see the upload step in build-desktop),
+      # well within the window of a successful release run.
+      - name: Download Windows desktop artifact
+        if: steps.secrets_check.outputs.skip == 'false'
+        uses: actions/download-artifact@v7
+        with:
+          name: desktop-Windows-x86_64
+          path: windows-artifact
+
+      - name: Create signed-build zip
+        if: steps.secrets_check.outputs.skip == 'false'
+        # Pass the tag through the environment rather than interpolating the
+        # ${{ }} expression straight into the script: a tag name can legally
+        # contain shell metacharacters (`$`, backticks, ...) that would
+        # otherwise be evaluated here (command injection). Quoting "$TAG" below
+        # keeps it inert — same care as the release job's metadata step.
+        env:
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          BLOB_NAME="${TAG}-signed-build.zip"
+          echo "BLOB_NAME=$BLOB_NAME" >> "$GITHUB_ENV"
+          cd windows-artifact && zip -r "../$BLOB_NAME" . && cd ..
+          ls -lh "$BLOB_NAME"
+
+      # Log in with the service-principal credentials assembled from the four
+      # Azure identity secrets. GitHub Actions masks each secret value
+      # individually, so the interpolated JSON does not leak credentials.
+      - name: Azure login
+        if: steps.secrets_check.outputs.skip == 'false'
+        uses: azure/login@v2
+        with:
+          creds: '{"clientId":"${{ secrets.AZURE_CLIENT_ID }}","clientSecret":"${{ secrets.AZURE_CLIENT_SECRET }}","tenantId":"${{ secrets.AZURE_TENANT_ID }}","subscriptionId":"${{ secrets.AZURE_SUBSCRIPTION_ID }}"}'
+
+      # --auth-mode login uses the Azure AD token from the login step above;
+      # no storage-account key is required or stored in CI.
+      # --overwrite makes the job idempotent: re-runs replace the same blob
+      # rather than creating a versioned duplicate.
+      - name: Upload signed build to Azure Blob Storage
+        if: steps.secrets_check.outputs.skip == 'false'
+        env:
+          AZURE_SCAN_STORAGE_ACCOUNT: ${{ secrets.AZURE_SCAN_STORAGE_ACCOUNT }}
+          AZURE_SCAN_CONTAINER:       ${{ secrets.AZURE_SCAN_CONTAINER }}
+        run: |
+          az storage blob upload \
+            --auth-mode login \
+            --overwrite \
+            --account-name "$AZURE_SCAN_STORAGE_ACCOUNT" \
+            --container-name "$AZURE_SCAN_CONTAINER" \
+            --name "$BLOB_NAME" \
+            --file "$BLOB_NAME"
+          echo "  Uploaded $BLOB_NAME → $AZURE_SCAN_STORAGE_ACCOUNT/$AZURE_SCAN_CONTAINER"
+          echo "  Defender for Storage scans the blob on upload; results appear in"
+          echo "  Microsoft Defender for Cloud → Security alerts within minutes."
+          echo "  See publishing/WINDOWS_MALWARE_SCANNING.md for how to read verdicts."
+
+      # Resolve the storage account's resource group via the Azure CLI (requires
+      # the Reader role on the storage account — granted in the service-principal
+      # setup in publishing/WINDOWS_MALWARE_SCANNING.md; Storage Blob Data
+      # Contributor alone is data-plane only and cannot read the account), then
+      # compose a stable Azure
+      # portal deep-link and append the scan note to the GitHub release body
+      # exactly once. The HTML marker prevents duplication on re-runs without
+      # requiring a separate API call to check for the note.
+      - name: Compose portal URL and append release note
+        if: steps.secrets_check.outputs.skip == 'false'
+        id: defender_note
+        env:
+          GITHUB_TOKEN:               ${{ secrets.GITHUB_TOKEN }}
+          AZURE_SUBSCRIPTION_ID:      ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          AZURE_SCAN_STORAGE_ACCOUNT: ${{ secrets.AZURE_SCAN_STORAGE_ACCOUNT }}
+          AZURE_SCAN_CONTAINER:       ${{ secrets.AZURE_SCAN_CONTAINER }}
+          # Passed via env (not ${{ }} interpolation) to keep a tag containing
+          # shell metacharacters inert — see the zip step above.
+          TAG:                        ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          # Resolve the resource group containing the storage account.
+          RG="$(az storage account show \
+            --name "$AZURE_SCAN_STORAGE_ACCOUNT" \
+            --query resourceGroup -o tsv 2>/dev/null)" || RG=""
+          if [ -z "$RG" ]; then
+            echo "  WARN  Could not resolve resource group for $AZURE_SCAN_STORAGE_ACCOUNT — using placeholder."
+            RG="(unknown)"
+          fi
+
+          # Compose a stable Azure portal deep-link to the storage account.
+          # From the overview page, navigate to Microsoft Defender for Cloud to
+          # see the per-blob scan verdict and any security alerts.
+          RESOURCE_PATH="subscriptions/${AZURE_SUBSCRIPTION_ID}/resourceGroups/${RG}/providers/Microsoft.Storage/storageAccounts/${AZURE_SCAN_STORAGE_ACCOUNT}"
+          PORTAL_URL="https://portal.azure.com/#@/resource/${RESOURCE_PATH}/overview"
+          echo "portal_url=$PORTAL_URL" >> "$GITHUB_OUTPUT"
+          echo "  Portal URL: $PORTAL_URL"
+
+          # Idempotent release-note append.
+          # The HTML marker string is searched in the current release body; if
+          # already present (re-run), the step exits without editing. If absent,
+          # the note is appended AFTER the existing body — hand-authored content
+          # is never overwritten (same care as the release job's metadata logic).
+          MARKER="<!-- defender-scan-note -->"
+          CURRENT_BODY="$(gh release view "$TAG" --json body -q .body)"
+          if printf '%s' "$CURRENT_BODY" | grep -qF "$MARKER"; then
+            echo "  INFO  Defender scan note already present in release $TAG — skipping (idempotent re-run)."
+          else
+            SCAN_NOTE="$(printf '\n\n%s\n🛡️ **Microsoft Defender Malware Scan** — [View scan results](%s) (`%s`)' \
+              "$MARKER" "$PORTAL_URL" "$BLOB_NAME")"
+            printf '%s%s' "$CURRENT_BODY" "$SCAN_NOTE" > /tmp/release-body-updated.md
+            gh release edit "$TAG" --notes-file /tmp/release-body-updated.md
+            echo "  INFO  Defender scan note appended to release $TAG."
+          fi
