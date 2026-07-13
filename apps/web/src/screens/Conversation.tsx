@@ -1162,7 +1162,14 @@ export default function Conversation() {
           </p>
           <button
             onClick={() => navigate(`/debrief/${sessionId}`, {
-              state: { modelReadyAfterTutorial: modelReadyState === 'deferred' },
+              // Offer the "Try it with the real AI" upgrade whenever the model
+              // became ready during this scene — whether the user explicitly
+              // deferred ('deferred') or simply left the non-blocking toast
+              // untouched ('shown'). "After this conversation" is the default,
+              // so ignoring the toast must not lose the upgrade CTA. Only the
+              // 'hidden' state (model never became ready, or the user already
+              // switched now and navigated away) suppresses it.
+              state: { modelReadyAfterTutorial: modelReadyState !== 'hidden' },
             })}
             style={{
               padding: '0.5rem 1.5rem',
