@@ -15,9 +15,8 @@ Supported platforms
   Linux  aarch64 → linux-arm64
   macOS  arm64   → macos-arm64  (Apple Silicon)
   macOS  x86_64  → macos-x64   (Intel Mac)
-
-Windows native binaries are not supported here; Windows users should use
-WSL2 (targeting the linux-x64 asset) or build from source.
+  Windows x86_64 → win-x64
+  Windows arm64  → win-arm64
 
 Usage
 -----
@@ -37,7 +36,10 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import io
+import os
 import platform as _platform
+import shutil
+import subprocess
 import sys
 import zipfile
 from dataclasses import dataclass, field
@@ -61,6 +63,7 @@ class DownloadState(str, Enum):
     VERIFYING = "verifying"
     EXTRACTING = "extracting"
     COMPLETE = "complete"
+    CHECKSUM_MISMATCH = "checksum_mismatch"
     FAILED = "failed"
     CANCELLED = "cancelled"
 
@@ -99,11 +102,10 @@ def detect_platform_string() -> str:
         if machine in ("x86_64", "amd64"):
             return "macos-x64"
     elif system == "win32":
-        raise RuntimeError(
-            "Native Windows binary download is not supported. "
-            "Use WSL2 with the Linux binary, or build from source: "
-            "https://github.com/ggml-org/llama.cpp#build"
-        )
+        if machine in ("x86_64", "amd64"):
+            return "win-x64"
+        if machine in ("aarch64", "arm64"):
+            return "win-arm64"
 
     raise RuntimeError(
         f"Unsupported platform: {system}/{machine}. "
@@ -111,12 +113,57 @@ def detect_platform_string() -> str:
     )
 
 
-def build_asset_name(release_tag: str, platform_string: str) -> str:
+def detect_windows_gpu_variant() -> str:
+    """Probe for GPU acceleration on Windows; return the best available variant.
+
+    Returns one of: ``"cuda"``, ``"vulkan"``, ``"cpu"`` (default).
+
+    Never raises — detection failures always fall back to ``"cpu"``.  Callers
+    should treat this as advisory: the CPU variant always works; GPU variants
+    are offered as *opt-in* upgrades, never required for first-run.
+    """
+    try:
+        if shutil.which("nvidia-smi"):
+            result = subprocess.run(
+                ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
+                capture_output=True,
+                timeout=5,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                return "cuda"
+    except Exception:  # noqa: BLE001
+        pass
+
+    try:
+        if shutil.which("vulkaninfo"):
+            result = subprocess.run(
+                ["vulkaninfo", "--summary"],
+                capture_output=True,
+                timeout=10,
+            )
+            if result.returncode == 0:
+                return "vulkan"
+    except Exception:  # noqa: BLE001
+        pass
+
+    return "cpu"
+
+
+def build_asset_name(release_tag: str, platform_string: str, *, variant: str = "cpu") -> str:
     """Return the expected ZIP asset name for a llama.cpp release.
 
-    Convention: ``llama-{tag}-bin-{platform}-cpu.zip``
+    For Windows (``platform_string`` starts with ``"win-"``), the naming
+    convention is ``llama-{tag}-bin-win-{variant}-{arch}.zip``
+    e.g. ``llama-b5140-bin-win-cpu-x64.zip``.
+
+    For Linux / macOS the convention is
+    ``llama-{tag}-bin-{platform}-{variant}.zip``
+    e.g. ``llama-b5140-bin-linux-x64-cpu.zip``.
     """
-    return f"llama-{release_tag}-bin-{platform_string}-cpu.zip"
+    if platform_string.startswith("win-"):
+        arch = platform_string[len("win-"):]  # "x64" or "arm64"
+        return f"llama-{release_tag}-bin-win-{variant}-{arch}.zip"
+    return f"llama-{release_tag}-bin-{platform_string}-{variant}.zip"
 
 
 def build_asset_url(release_tag: str, asset_name: str) -> str:
@@ -196,6 +243,7 @@ async def download_binary(
     dest_dir: Path,
     version: str | None = None,
     platform_string: str | None = None,
+    variant: str = "cpu",
     cancel_event: asyncio.Event | None = None,
     progress_cb: Callable[[DownloadProgress], None] | None = None,
     _client: httpx.AsyncClient | None = None,
@@ -209,7 +257,11 @@ async def download_binary(
             auto-fetch the latest release.
         platform_string: Override the auto-detected platform (useful in
             tests).  Must match a llama.cpp release asset segment, e.g.
-            ``"linux-x64"``.
+            ``"linux-x64"`` or ``"win-x64"``.
+        variant: Build variant — ``"cpu"`` (default, universally safe),
+            ``"cuda"``, or ``"vulkan"``.  On Windows, use
+            :func:`detect_windows_gpu_variant` to discover available variants;
+            on Linux/macOS ``"cpu"`` is the only supported variant here.
         cancel_event: When set, the download stops cleanly and
             ``asyncio.CancelledError`` is raised.  Checked between chunks.
         progress_cb: Called after each significant state or byte-count change
@@ -223,7 +275,7 @@ async def download_binary(
 
     Raises:
         RuntimeError: Platform not supported, download failed, checksum
-            mismatch, or binary missing from archive.
+            mismatch, binary missing from archive, or destination locked.
         asyncio.CancelledError: *cancel_event* was set.
     """
     if platform_string is None:
@@ -243,10 +295,17 @@ async def download_binary(
     try:
         release_tag = version
         if release_tag is None:
-            release_tag = await fetch_latest_release_tag(client)
+            try:
+                release_tag = await fetch_latest_release_tag(client)
+            except (httpx.ConnectError, httpx.NetworkError, httpx.TimeoutException) as exc:
+                raise RuntimeError(
+                    "Cannot reach GitHub to fetch the latest release — "
+                    "check your internet connection. "
+                    "Engine download requires a network connection (~5 MB)."
+                ) from exc
         progress.release_tag = release_tag
 
-        asset_name = build_asset_name(release_tag, platform_string)
+        asset_name = build_asset_name(release_tag, platform_string, variant=variant)
         asset_url = build_asset_url(release_tag, asset_name)
         sha256sum_url = build_sha256sum_url(release_tag)
 
@@ -258,21 +317,28 @@ async def download_binary(
             progress_cb(progress)
 
         data = bytearray()
-        async with client.stream("GET", asset_url) as resp:
-            if resp.status_code != 200:
-                raise RuntimeError(
-                    f"Download failed: HTTP {resp.status_code} for {asset_url}. "
-                    f"Check that release {release_tag} has asset {asset_name}. "
-                    f"Browse releases: https://github.com/{_GITHUB_REPO}/releases"
-                )
-            content_length = resp.headers.get("content-length")
-            progress.total_bytes = int(content_length) if content_length else None
-            async for chunk in resp.aiter_bytes(_CHUNK_SIZE):
-                _check_cancel()
-                data.extend(chunk)
-                progress.bytes_downloaded = len(data)
-                if progress_cb:
-                    progress_cb(progress)
+        try:
+            async with client.stream("GET", asset_url) as resp:
+                if resp.status_code != 200:
+                    raise RuntimeError(
+                        f"Download failed: HTTP {resp.status_code} for {asset_url}. "
+                        f"Check that release {release_tag} has asset {asset_name}. "
+                        f"Browse releases: https://github.com/{_GITHUB_REPO}/releases"
+                    )
+                content_length = resp.headers.get("content-length")
+                progress.total_bytes = int(content_length) if content_length else None
+                async for chunk in resp.aiter_bytes(_CHUNK_SIZE):
+                    _check_cancel()
+                    data.extend(chunk)
+                    progress.bytes_downloaded = len(data)
+                    if progress_cb:
+                        progress_cb(progress)
+        except (httpx.ConnectError, httpx.NetworkError, httpx.TimeoutException) as exc:
+            raise RuntimeError(
+                "Network error while downloading engine binary — "
+                "check your internet connection and try again. "
+                "Engine download requires a network connection (~5 MB)."
+            ) from exc
 
         _check_cancel()
         progress.state = DownloadState.VERIFYING
@@ -281,6 +347,9 @@ async def download_binary(
 
         actual_sha256 = await asyncio.to_thread(_sha256_of_bytes, bytes(data))
         if expected_sha256 is not None and actual_sha256 != expected_sha256:
+            progress.state = DownloadState.CHECKSUM_MISMATCH
+            if progress_cb:
+                progress_cb(progress)
             raise RuntimeError(
                 f"SHA-256 checksum mismatch for {asset_name}. "
                 f"Expected {expected_sha256}, got {actual_sha256}. "
@@ -297,10 +366,26 @@ async def download_binary(
         dest_dir.mkdir(parents=True, exist_ok=True)
         suffix = ".exe" if sys.platform == "win32" else ""
         dest_path = dest_dir / f"{_BINARY_NAME}{suffix}"
+        part_path = dest_dir / f"{_BINARY_NAME}{suffix}.part"
 
         def _write() -> None:
-            dest_path.write_bytes(binary_data)
-            dest_path.chmod(0o755)
+            try:
+                part_path.write_bytes(binary_data)
+                if sys.platform != "win32":
+                    part_path.chmod(0o755)
+                try:
+                    os.replace(str(part_path), str(dest_path))
+                except PermissionError as exc:
+                    raise RuntimeError(
+                        f"Cannot replace {dest_path.name}: the file is in use. "
+                        "Stop the running inference engine before upgrading."
+                    ) from exc
+            except BaseException:
+                try:
+                    part_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+                raise
 
         await asyncio.to_thread(_write)
 
@@ -318,7 +403,8 @@ async def download_binary(
         raise
 
     except Exception as exc:
-        progress.state = DownloadState.FAILED
+        if progress.state not in (DownloadState.CHECKSUM_MISMATCH, DownloadState.CANCELLED):
+            progress.state = DownloadState.FAILED
         progress.error = str(exc)
         if progress_cb:
             progress_cb(progress)
