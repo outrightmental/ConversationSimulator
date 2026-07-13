@@ -21,6 +21,7 @@ from convsim_core.runtime.llama_cpp_download import (
     DownloadProgress,
     DownloadState,
     _extract_binary_from_zip,
+    _extract_runtime_files_from_zip,
     _sha256_of_bytes,
     build_asset_name,
     build_asset_url,
@@ -403,6 +404,53 @@ def test_extract_binary_from_zip_missing_raises():
 
 
 # ---------------------------------------------------------------------------
+# _extract_runtime_files_from_zip — binary + sibling DLLs
+# ---------------------------------------------------------------------------
+
+
+def _make_zip_multi(files: dict[str, bytes]) -> bytes:
+    """Return a ZIP archive containing every ``{path: content}`` entry."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        for name, content in files.items():
+            zf.writestr(name, content)
+    return buf.getvalue()
+
+
+def test_extract_runtime_files_returns_binary_and_siblings():
+    data = _make_zip_multi(
+        {
+            "llama-server.exe": b"exe",
+            "ggml.dll": b"ggml",
+            "llama.dll": b"llama",
+        }
+    )
+    binary, siblings = _extract_runtime_files_from_zip(data)
+    assert binary == b"exe"
+    assert siblings == {"ggml.dll": b"ggml", "llama.dll": b"llama"}
+
+
+def test_extract_runtime_files_only_same_directory():
+    """Siblings from unrelated archive directories are not collected."""
+    data = _make_zip_multi(
+        {
+            "build/bin/llama-server.exe": b"exe",
+            "build/bin/ggml.dll": b"ggml",
+            "docs/README.txt": b"readme",
+        }
+    )
+    binary, siblings = _extract_runtime_files_from_zip(data)
+    assert binary == b"exe"
+    assert siblings == {"ggml.dll": b"ggml"}
+
+
+def test_extract_runtime_files_missing_binary_raises():
+    data = _make_zip_multi({"ggml.dll": b"ggml"})
+    with pytest.raises(RuntimeError, match="not found"):
+        _extract_runtime_files_from_zip(data)
+
+
+# ---------------------------------------------------------------------------
 # detect_windows_gpu_variant
 # ---------------------------------------------------------------------------
 
@@ -650,6 +698,42 @@ async def test_download_binary_windows_uses_exe_suffix(tmp_path, monkeypatch):
 
     assert result.endswith("llama-server.exe")
     assert Path(result).read_bytes() == b"win-binary"
+
+
+@pytest.mark.asyncio
+async def test_download_binary_windows_installs_sibling_dlls(tmp_path, monkeypatch):
+    """On win32, the DLLs shipped next to llama-server.exe must be installed too.
+
+    Windows llama.cpp archives ship the executable dynamically linked against
+    ggml*.dll / llama.dll; without them the engine cannot start.
+    """
+    monkeypatch.setattr("sys.platform", "win32")
+
+    zip_data = _make_zip_multi(
+        {
+            "llama-server.exe": b"win-binary",
+            "ggml.dll": b"ggml-bytes",
+            "ggml-base.dll": b"ggml-base-bytes",
+            "llama.dll": b"llama-bytes",
+        }
+    )
+    client = _mock_async_client(latest_tag="b1", asset_data=zip_data)
+
+    dest = tmp_path / "bin"
+    with patch("convsim_core.runtime.llama_cpp_download.httpx.AsyncClient", return_value=client):
+        result = await download_binary(
+            dest_dir=dest,
+            version="b1",
+            platform_string="win-x64",
+        )
+
+    assert result.endswith("llama-server.exe")
+    assert Path(result).read_bytes() == b"win-binary"
+    assert (dest / "ggml.dll").read_bytes() == b"ggml-bytes"
+    assert (dest / "ggml-base.dll").read_bytes() == b"ggml-base-bytes"
+    assert (dest / "llama.dll").read_bytes() == b"llama-bytes"
+    # No stray .part file remains.
+    assert not list(dest.glob("*.part"))
 
 
 @pytest.mark.asyncio

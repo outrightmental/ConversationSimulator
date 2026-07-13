@@ -162,11 +162,21 @@ if (-not $extractedBin) {
 }
 
 # ── Install (atomic replace) ──────────────────────────────────────────────────
+# llama-server.exe is dynamically linked against sibling DLLs (ggml*.dll,
+# llama.dll, …) shipped in the same archive directory; copy them alongside the
+# exe or it cannot start ("ggml.dll was not found"). Install the DLLs first so
+# the executable never resolves before its dependencies are in place.
 
 $destBin  = Join-Path $Dest "llama-server.exe"
 $partPath = Join-Path $Dest "llama-server.exe.part"
+$srcDir   = $extractedBin.Directory.FullName
 
 try {
+    Get-ChildItem -Path $srcDir -File |
+        Where-Object { $_.Name -ne "llama-server.exe" } |
+        ForEach-Object {
+            Copy-Item -Path $_.FullName -Destination (Join-Path $Dest $_.Name) -Force
+        }
     Copy-Item -Path $extractedBin.FullName -Destination $partPath -Force
     # Move-Item with -Force is the closest atomic replace available on Windows.
     # If llama-server.exe is currently running this will fail with a sharing

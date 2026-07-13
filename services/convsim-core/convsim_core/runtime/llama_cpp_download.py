@@ -249,6 +249,45 @@ def _extract_binary_from_zip(data: bytes) -> bytes:
     )
 
 
+def _extract_runtime_files_from_zip(data: bytes) -> tuple[bytes, dict[str, bytes]]:
+    """Return the llama-server binary bytes plus its sibling runtime files.
+
+    Windows llama.cpp release archives ship ``llama-server.exe`` *dynamically*
+    linked against DLLs (``ggml.dll``, ``ggml-base.dll``, ``ggml-cpu.dll``,
+    ``llama.dll``, …) that live in the same archive directory.  Extracting the
+    executable alone yields a binary that cannot start ("the code execution
+    cannot proceed because ggml.dll was not found"), so this returns the binary
+    bytes together with a ``{basename: bytes}`` map of every *other* file in the
+    same directory so the caller can install them alongside the executable.
+
+    Raises RuntimeError when the binary is not found.
+    """
+    target_names = {"llama-server", "llama-server.exe"}
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        server_name: str | None = None
+        for name in zf.namelist():
+            if Path(name).name.lower() in target_names:
+                server_name = name
+                break
+        if server_name is None:
+            raise RuntimeError(
+                "llama-server binary not found in the downloaded archive. "
+                "The release asset format may have changed."
+            )
+        server_dir = Path(server_name).parent
+        binary_basename = Path(server_name).name
+        binary_bytes = zf.read(server_name)
+        siblings: dict[str, bytes] = {}
+        for name in zf.namelist():
+            if name.endswith("/"):
+                continue
+            candidate = Path(name)
+            if candidate.parent != server_dir or candidate.name == binary_basename:
+                continue
+            siblings[candidate.name] = zf.read(name)
+        return binary_bytes, siblings
+
+
 async def download_binary(
     *,
     dest_dir: Path,
@@ -374,25 +413,45 @@ async def download_binary(
         if progress_cb:
             progress_cb(progress)
 
-        binary_data: bytes = await asyncio.to_thread(_extract_binary_from_zip, bytes(data))
-
         dest_dir.mkdir(parents=True, exist_ok=True)
         suffix = ".exe" if sys.platform == "win32" else ""
         dest_path = dest_dir / f"{_BINARY_NAME}{suffix}"
         part_path = dest_dir / f"{_BINARY_NAME}{suffix}.part"
 
+        if sys.platform == "win32":
+            # Windows binaries are dynamically linked against sibling DLLs that
+            # ship in the same archive directory; install them alongside the
+            # executable or it cannot start.
+            binary_data, sibling_files = await asyncio.to_thread(
+                _extract_runtime_files_from_zip, bytes(data)
+            )
+        else:
+            binary_data = await asyncio.to_thread(_extract_binary_from_zip, bytes(data))
+            sibling_files = {}
+
+        def _locked_error(name: str) -> RuntimeError:
+            return RuntimeError(
+                f"Cannot replace {name}: the file is in use. "
+                "Stop the running inference engine before upgrading."
+            )
+
         def _write() -> None:
             try:
+                # Install sibling runtime files (DLLs) first so the executable
+                # never resolves before its dependencies are present on disk.
+                for fname, content in sibling_files.items():
+                    sib = dest_dir / fname
+                    try:
+                        sib.write_bytes(content)
+                    except PermissionError as exc:
+                        raise _locked_error(sib.name) from exc
                 part_path.write_bytes(binary_data)
                 if sys.platform != "win32":
                     part_path.chmod(0o755)
                 try:
                     os.replace(str(part_path), str(dest_path))
                 except PermissionError as exc:
-                    raise RuntimeError(
-                        f"Cannot replace {dest_path.name}: the file is in use. "
-                        "Stop the running inference engine before upgrading."
-                    ) from exc
+                    raise _locked_error(dest_path.name) from exc
             except BaseException:
                 try:
                     part_path.unlink(missing_ok=True)
