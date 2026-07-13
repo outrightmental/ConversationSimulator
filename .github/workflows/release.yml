@@ -46,8 +46,11 @@ jobs:
       # KMS signing requires all three GCP secrets; PFX is the legacy fallback.
       HAS_KMS_SIGNING: ${{ secrets.GCP_SA_KEY_JSON != '' && secrets.GCP_KMS_KEY != '' && secrets.WINDOWS_CODESIGN_CERT != '' }}
       HAS_PFX_SIGNING: ${{ secrets.WINDOWS_SIGN_CERT_PFX != '' }}
-      # Verification step runs when either signing path is configured.
-      HAS_WINDOWS_CERT: ${{ secrets.GCP_SA_KEY_JSON != '' || secrets.WINDOWS_SIGN_CERT_PFX != '' }}
+      # Verification step runs only when a COMPLETE signing path is configured.
+      # A partial KMS config (e.g. GCP_SA_KEY_JSON set but not the key/cert)
+      # makes jsign-sign.ps1 INFO-skip (unsigned), so treating it as "signed"
+      # here would fail the verify step and pass the enforce gate misleadingly.
+      HAS_WINDOWS_CERT: ${{ (secrets.GCP_SA_KEY_JSON != '' && secrets.GCP_KMS_KEY != '' && secrets.WINDOWS_CODESIGN_CERT != '') || secrets.WINDOWS_SIGN_CERT_PFX != '' }}
       HAS_UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
       # REQUIRE_SIGNED_MACOS is true on release tags (any v*) regardless of
       # whether the run was triggered by a git push or workflow_dispatch.
@@ -114,9 +117,11 @@ jobs:
           fi
           if [ "$RUNNER_OS" = "Windows" ]; then
             if [ "$_HAS_WINDOWS_CERT" != "true" ]; then
-              echo "ERROR: WINDOWS_SIGN_CERT_PFX is required for a v* release tag but is not set." >&2
+              echo "ERROR: Windows code-signing secrets are required for a v* release tag but are not set." >&2
+              echo "       Provide EITHER the KMS path (GCP_SA_KEY_JSON + GCP_KMS_KEY + WINDOWS_CODESIGN_CERT)" >&2
+              echo "       OR the legacy PFX path (WINDOWS_SIGN_CERT_PFX + WINDOWS_SIGN_CERT_PASSWORD)." >&2
               echo "       Unsigned Windows builds trigger SmartScreen 'unknown publisher' (gate G3-01)." >&2
-              echo "       See docs/platform-notes.md for certificate setup instructions." >&2
+              echo "       See publishing/WINDOWS_CODE_SIGNING.md and docs/platform-notes.md for setup." >&2
               fail=1
             fi
           fi
