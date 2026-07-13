@@ -17,42 +17,266 @@
       <p class="hero-fineprint">Windows · macOS · Linux · Steam Deck &nbsp;—&nbsp; or build the Apache-2.0 source for free.</p>
     </div>
 
-    <figure class="demo-card" aria-label="A practice interview in progress. The NPC challenges a claim, the player answers, a scenario event fires, and the NPC state meters shift.">
-      <figcaption class="demo-head">
-        <span class="demo-title">The Executive Gauntlet</span>
-        <span class="demo-meta">Job Interview Basics · Turn 4</span>
-      </figcaption>
-      <div class="demo-lines">
-        <div class="demo-line demo-npc anim anim-1">
-          <span class="demo-speaker speaker-npc">Victor · NPC</span>
-          <p>“That’s a headline number. Walk me through the trade-off you made
-          to get there. What did you give up — and was it the right call?”</p>
-        </div>
-        <div class="demo-line demo-you anim anim-2">
-          <span class="demo-speaker speaker-you">You</span>
-          <p>“We gave up real-time freshness — reports now lag five minutes
-          behind. For nightly analytics, that was the right trade.”</p>
-        </div>
-        <div class="demo-event anim anim-3">Scenario event: <code>grudging_respect</code> triggered</div>
+    <div class="demo-carousel" aria-label="Use case examples" aria-roledescription="carousel">
+      <div class="demo-slides">
+
+        <figure class="demo-card is-active" role="group" aria-roledescription="slide" aria-label="Slide 1 of 7: The Executive Gauntlet">
+          <figcaption class="demo-head">
+            <span class="demo-title">The Executive Gauntlet</span>
+            <span class="demo-meta">Job Interview Basics · Turn 4</span>
+          </figcaption>
+          <div class="demo-lines">
+            <div class="demo-line demo-npc">
+              <span class="demo-speaker speaker-npc">Victor · NPC</span>
+              <p>“That’s a headline number. Walk me through the trade-off you made to get there. What did you give up — and was it the right call?”</p>
+            </div>
+            <div class="demo-line demo-you">
+              <span class="demo-speaker speaker-you">You</span>
+              <p>“We gave up real-time freshness — reports now lag five minutes behind. For nightly analytics, that was the right trade.”</p>
+            </div>
+            <div class="demo-event">Scenario event: <code>grudging_respect</code> triggered</div>
+          </div>
+          <div class="demo-meters">
+            <div class="meter">
+              <span class="meter-name">credibility</span>
+              <span class="meter-bar"><span class="meter-fill fill-emerald" style="width:74%"></span></span>
+              <span class="meter-val">74</span>
+            </div>
+            <div class="meter">
+              <span class="meter-name">composure</span>
+              <span class="meter-bar"><span class="meter-fill fill-violet" style="width:65%"></span></span>
+              <span class="meter-val">65</span>
+            </div>
+            <div class="meter">
+              <span class="meter-name">pressure</span>
+              <span class="meter-bar"><span class="meter-fill fill-amber" style="width:40%"></span></span>
+              <span class="meter-val">40</span>
+            </div>
+          </div>
+        </figure>
+
+        <figure class="demo-card" role="group" aria-roledescription="slide" aria-label="Slide 2 of 7: The Salary Conversation" aria-hidden="true">
+          <figcaption class="demo-head">
+            <span class="demo-title">The Salary Conversation</span>
+            <span class="demo-meta">Difficult Conversations · Turn 6</span>
+          </figcaption>
+          <div class="demo-lines">
+            <div class="demo-line demo-npc">
+              <span class="demo-speaker speaker-npc">Dana · NPC</span>
+              <p>“Your work has been solid. But we’re at band ceiling for your level. What’s your thinking here?”</p>
+            </div>
+            <div class="demo-line demo-you">
+              <span class="demo-speaker speaker-you">You</span>
+              <p>“I’ve checked market data — my comp sits 18% below median for this scope. I’d like to talk about a path to close that gap.”</p>
+            </div>
+            <div class="demo-event">Scenario event: <code>case_acknowledged</code> triggered</div>
+          </div>
+          <div class="demo-meters">
+            <div class="meter">
+              <span class="meter-name">rapport</span>
+              <span class="meter-bar"><span class="meter-fill fill-emerald" style="width:65%"></span></span>
+              <span class="meter-val">65</span>
+            </div>
+            <div class="meter">
+              <span class="meter-name">confidence</span>
+              <span class="meter-bar"><span class="meter-fill fill-violet" style="width:71%"></span></span>
+              <span class="meter-val">71</span>
+            </div>
+            <div class="meter">
+              <span class="meter-name">resolve</span>
+              <span class="meter-bar"><span class="meter-fill fill-amber" style="width:58%"></span></span>
+              <span class="meter-val">58</span>
+            </div>
+          </div>
+        </figure>
+
+        <figure class="demo-card" role="group" aria-roledescription="slide" aria-label="Slide 3 of 7: The Car Lot" aria-hidden="true">
+          <figcaption class="demo-head">
+            <span class="demo-title">The Car Lot</span>
+            <span class="demo-meta">Everyday Negotiation · Turn 3</span>
+          </figcaption>
+          <div class="demo-lines">
+            <div class="demo-line demo-npc">
+              <span class="demo-speaker speaker-npc">Dale · NPC</span>
+              <p>“That’s already our best number — I’m basically handing you this car. We can’t go lower and keep the lights on.”</p>
+            </div>
+            <div class="demo-line demo-you">
+              <span class="demo-speaker speaker-you">You</span>
+              <p>“I’ve got a check from my credit union for the out-the-door price, minus the two recalls that are still open.”</p>
+            </div>
+            <div class="demo-event">Scenario event: <code>sticker_shock_override</code> triggered</div>
+          </div>
+          <div class="demo-meters">
+            <div class="meter">
+              <span class="meter-name">leverage</span>
+              <span class="meter-bar"><span class="meter-fill fill-emerald" style="width:52%"></span></span>
+              <span class="meter-val">52</span>
+            </div>
+            <div class="meter">
+              <span class="meter-name">patience</span>
+              <span class="meter-bar"><span class="meter-fill fill-violet" style="width:68%"></span></span>
+              <span class="meter-val">68</span>
+            </div>
+            <div class="meter">
+              <span class="meter-name">firmness</span>
+              <span class="meter-bar"><span class="meter-fill fill-amber" style="width:75%"></span></span>
+              <span class="meter-val">75</span>
+            </div>
+          </div>
+        </figure>
+
+        <figure class="demo-card" role="group" aria-roledescription="slide" aria-label="Slide 4 of 7: Feedback Without Fallout" aria-hidden="true">
+          <figcaption class="demo-head">
+            <span class="demo-title">Feedback Without Fallout</span>
+            <span class="demo-meta">Difficult Conversations · Turn 5</span>
+          </figcaption>
+          <div class="demo-lines">
+            <div class="demo-line demo-npc">
+              <span class="demo-speaker speaker-npc">Morgan · NPC</span>
+              <p>“I don’t even know what you mean by ‘interrupting the meeting.’ I was just being enthusiastic.”</p>
+            </div>
+            <div class="demo-line demo-you">
+              <span class="demo-speaker speaker-you">You</span>
+              <p>“Your energy is one of the best things about working with you. It’s specifically the part where others stop finishing their sentences.”</p>
+            </div>
+            <div class="demo-event">Scenario event: <code>defensiveness_spike</code> triggered</div>
+          </div>
+          <div class="demo-meters">
+            <div class="meter">
+              <span class="meter-name">openness</span>
+              <span class="meter-bar"><span class="meter-fill fill-emerald" style="width:42%"></span></span>
+              <span class="meter-val">42</span>
+            </div>
+            <div class="meter">
+              <span class="meter-name">tension</span>
+              <span class="meter-bar"><span class="meter-fill fill-violet" style="width:71%"></span></span>
+              <span class="meter-val">71</span>
+            </div>
+            <div class="meter">
+              <span class="meter-name">clarity</span>
+              <span class="meter-bar"><span class="meter-fill fill-amber" style="width:58%"></span></span>
+              <span class="meter-val">58</span>
+            </div>
+          </div>
+        </figure>
+
+        <figure class="demo-card" role="group" aria-roledescription="slide" aria-label="Slide 5 of 7: Spanish Coffee Shop" aria-hidden="true">
+          <figcaption class="demo-head">
+            <span class="demo-title">Spanish Coffee Shop</span>
+            <span class="demo-meta">Language Café · Turn 2</span>
+          </figcaption>
+          <div class="demo-lines">
+            <div class="demo-line demo-npc">
+              <span class="demo-speaker speaker-npc">Sofía · NPC</span>
+              <p>“¿Qué le pongo? ¿Lo quiere solo o cortado?”</p>
+            </div>
+            <div class="demo-line demo-you">
+              <span class="demo-speaker speaker-you">You</span>
+              <p>“Un cortado, por favor. Y — ¿tiene algo dulce para el desayuno?”</p>
+            </div>
+            <div class="demo-event">Scenario event: <code>vocabulary_gap_detected</code> triggered</div>
+          </div>
+          <div class="demo-meters">
+            <div class="meter">
+              <span class="meter-name">fluency</span>
+              <span class="meter-bar"><span class="meter-fill fill-emerald" style="width:48%"></span></span>
+              <span class="meter-val">48</span>
+            </div>
+            <div class="meter">
+              <span class="meter-name">confidence</span>
+              <span class="meter-bar"><span class="meter-fill fill-violet" style="width:55%"></span></span>
+              <span class="meter-val">55</span>
+            </div>
+            <div class="meter">
+              <span class="meter-name">rapport</span>
+              <span class="meter-bar"><span class="meter-fill fill-amber" style="width:72%"></span></span>
+              <span class="meter-val">72</span>
+            </div>
+          </div>
+        </figure>
+
+        <figure class="demo-card" role="group" aria-roledescription="slide" aria-label="Slide 6 of 7: The Missed Deadline" aria-hidden="true">
+          <figcaption class="demo-head">
+            <span class="demo-title">The Missed Deadline</span>
+            <span class="demo-meta">Difficult Conversations · Turn 4</span>
+          </figcaption>
+          <div class="demo-lines">
+            <div class="demo-line demo-npc">
+              <span class="demo-speaker speaker-npc">Alex · NPC</span>
+              <p>“The sprint ends Friday. You told me yesterday it’d be done. I had to tell the client something. Help me understand.”</p>
+            </div>
+            <div class="demo-line demo-you">
+              <span class="demo-speaker speaker-you">You</span>
+              <p>“You’re right to be frustrated. I underestimated the integration work. It ships Tuesday — here’s what changed and why.”</p>
+            </div>
+            <div class="demo-event">Scenario event: <code>trust_repair_initiated</code> triggered</div>
+          </div>
+          <div class="demo-meters">
+            <div class="meter">
+              <span class="meter-name">trust</span>
+              <span class="meter-bar"><span class="meter-fill fill-emerald" style="width:35%"></span></span>
+              <span class="meter-val">35</span>
+            </div>
+            <div class="meter">
+              <span class="meter-name">clarity</span>
+              <span class="meter-bar"><span class="meter-fill fill-violet" style="width:79%"></span></span>
+              <span class="meter-val">79</span>
+            </div>
+            <div class="meter">
+              <span class="meter-name">tension</span>
+              <span class="meter-bar"><span class="meter-fill fill-amber" style="width:61%"></span></span>
+              <span class="meter-val">61</span>
+            </div>
+          </div>
+        </figure>
+
+        <figure class="demo-card" role="group" aria-roledescription="slide" aria-label="Slide 7 of 7: Scope Creep Defense" aria-hidden="true">
+          <figcaption class="demo-head">
+            <span class="demo-title">Scope Creep Defense</span>
+            <span class="demo-meta">Everyday Negotiation · Turn 7</span>
+          </figcaption>
+          <div class="demo-lines">
+            <div class="demo-line demo-npc">
+              <span class="demo-speaker speaker-npc">Client · NPC</span>
+              <p>“While you’re in there, can you also rework the onboarding flow? It shouldn’t take long.”</p>
+            </div>
+            <div class="demo-line demo-you">
+              <span class="demo-speaker speaker-you">You</span>
+              <p>“I’ve flagged it for a future phase. Adding it to this contract shifts delivery by two weeks and adds roughly 40 hours.”</p>
+            </div>
+            <div class="demo-event">Scenario event: <code>boundary_held</code> triggered</div>
+          </div>
+          <div class="demo-meters">
+            <div class="meter">
+              <span class="meter-name">clarity</span>
+              <span class="meter-bar"><span class="meter-fill fill-emerald" style="width:83%"></span></span>
+              <span class="meter-val">83</span>
+            </div>
+            <div class="meter">
+              <span class="meter-name">firmness</span>
+              <span class="meter-bar"><span class="meter-fill fill-violet" style="width:70%"></span></span>
+              <span class="meter-val">70</span>
+            </div>
+            <div class="meter">
+              <span class="meter-name">goodwill</span>
+              <span class="meter-bar"><span class="meter-fill fill-amber" style="width:52%"></span></span>
+              <span class="meter-val">52</span>
+            </div>
+          </div>
+        </figure>
+
       </div>
-      <div class="demo-meters anim anim-4">
-        <div class="meter">
-          <span class="meter-name">credibility</span>
-          <span class="meter-bar"><span class="meter-fill fill-emerald w-74"></span></span>
-          <span class="meter-val">74</span>
-        </div>
-        <div class="meter">
-          <span class="meter-name">composure</span>
-          <span class="meter-bar"><span class="meter-fill fill-violet w-65"></span></span>
-          <span class="meter-val">65</span>
-        </div>
-        <div class="meter">
-          <span class="meter-name">pressure</span>
-          <span class="meter-bar"><span class="meter-fill fill-amber w-40"></span></span>
-          <span class="meter-val">40</span>
-        </div>
+
+      <div class="carousel-dots" role="group" aria-label="Slide navigation">
+        <button class="carousel-dot is-active" aria-label="Go to slide 1" aria-current="true" data-slide="0"></button>
+        <button class="carousel-dot" aria-label="Go to slide 2" data-slide="1"></button>
+        <button class="carousel-dot" aria-label="Go to slide 3" data-slide="2"></button>
+        <button class="carousel-dot" aria-label="Go to slide 4" data-slide="3"></button>
+        <button class="carousel-dot" aria-label="Go to slide 5" data-slide="4"></button>
+        <button class="carousel-dot" aria-label="Go to slide 6" data-slide="5"></button>
+        <button class="carousel-dot" aria-label="Go to slide 7" data-slide="6"></button>
       </div>
-    </figure>
+    </div>
   </div>
 </section>
 
@@ -220,5 +444,52 @@
     </div>
   </div>
 </section>
+
+<script>
+(function () {
+  'use strict';
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.demo-slides .demo-card'));
+  var dots   = Array.prototype.slice.call(document.querySelectorAll('.carousel-dot'));
+  if (!slides.length) return;
+
+  var current  = 0;
+  var timer    = null;
+  var INTERVAL = 4500;
+  var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  function goTo(n) {
+    slides[current].classList.remove('is-active');
+    slides[current].setAttribute('aria-hidden', 'true');
+    dots[current].classList.remove('is-active');
+    dots[current].removeAttribute('aria-current');
+    current = ((n % slides.length) + slides.length) % slides.length;
+    slides[current].classList.add('is-active');
+    slides[current].removeAttribute('aria-hidden');
+    dots[current].classList.add('is-active');
+    dots[current].setAttribute('aria-current', 'true');
+  }
+
+  function stopTimer()  { clearInterval(timer); timer = null; }
+  function startTimer() { stopTimer(); timer = setInterval(function () { goTo(current + 1); }, INTERVAL); }
+
+  dots.forEach(function (dot, i) {
+    dot.addEventListener('click', function () {
+      stopTimer();
+      goTo(i);
+      if (!reducedMotion) startTimer();
+    });
+  });
+
+  var carousel = document.querySelector('.demo-carousel');
+  if (carousel) {
+    carousel.addEventListener('mouseenter', stopTimer);
+    carousel.addEventListener('mouseleave', function () { if (!reducedMotion) startTimer(); });
+    carousel.addEventListener('focusin',    stopTimer);
+    carousel.addEventListener('focusout',   function () { if (!reducedMotion) startTimer(); });
+  }
+
+  if (!reducedMotion) startTimer();
+}());
+</script>
 
 {{ end }}
