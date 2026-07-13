@@ -31,6 +31,21 @@ intend to tag.
 | Release smoke — macOS aarch64 | `.github/workflows/release-smoke.yml` (job: `smoke-macos / aarch64`) | All CI-subset subsystems on Apple Silicon |
 | Release smoke — Windows x86_64 | `.github/workflows/release-smoke.yml` (job: `smoke-windows`) | All CI-subset subsystems on Windows |
 
+**Release workflow job chain** (triggered by pushing a `vX.Y.Z` tag):
+
+| Job | Depends on | What it does |
+|---|---|---|
+| `validate` | — | Smoke check |
+| `build-desktop` | `validate` | Cross-platform Tauri builds (macOS, Linux, Windows) |
+| `release` | `build-desktop` | Publishes GitHub release; updates beta-channel updater manifest |
+| `steam` | `release` | Stages the build to Steam and sets `beta` live — **pauses for `steam-release` environment approval** |
+
+> **Steam step:** After pushing a tag, the `steam` job appears in Actions →
+> Release and waits for a required reviewer to click **Approve** before any
+> Steam credential is used. Approving uploads all three depots and sets the
+> `beta` branch live. If Steam secrets are not yet configured, the job emits an
+> INFO and completes without uploading — the release remains green.
+
 **CI-subset subsystems (no model downloads, fake runtime):**
 
 - [ ] `[setup]` — All expected monorepo paths present
