@@ -467,7 +467,16 @@ jobs:
             # it regardless of its working directory; a missing file makes the
             # CLI fail loudly rather than silently leaving the updater enabled.
             # See publishing/STEAM_DEPOT_CONTENTS.md — updater policy.
-            pnpm --filter @convsim/desktop build -- \
+            #
+            # Invoke `tauri build` directly via `exec` rather than the `build`
+            # package script with `pnpm run build -- --config …`.  pnpm forwards
+            # the literal `--` to the script, so `pnpm build -- --config X` runs
+            # `tauri build -- --config X`; tauri treats everything after `--` as
+            # trailing runner args (passed to cargo), NOT its own `-c/--config`
+            # option — the overlay would be silently ignored (updater left on)
+            # and cargo would choke on the JSON path.  `exec tauri build
+            # --config X` places the flag before any `--` so tauri parses it.
+            pnpm --filter @convsim/desktop exec tauri build \
               --config "$GITHUB_WORKSPACE/apps/desktop/src-tauri/tauri.steam.conf.json"
           else
             pnpm --filter @convsim/desktop build
