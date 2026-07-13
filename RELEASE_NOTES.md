@@ -1,4 +1,123 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
+# Conversation Simulator v0.3.0 — Release Notes
+
+> **Minor release** — onboarding overhaul. A new user reaches their first
+> conversation in under 60 seconds on every supported platform, with zero error
+> screens on the happy path.
+
+---
+
+## What's new in v0.3.0
+
+### Onboarding overhaul — first conversation in 60 seconds (Epic #388)
+
+v0.2.2 greeted new users with a "System Check" wall of infrastructure failures
+(`llama-server binary not found`). Fix buttons either opened docs describing UI
+that didn't exist or dead-looped back to the Welcome screen. On Windows the
+engine wasn't provisionable natively at all.
+
+v0.3.0 replaces that experience end-to-end.
+
+#### Welcome: one decision, two cards (#381)
+
+The new Welcome screen presents a single choice between two clearly labelled
+cards:
+
+- **"Set me up ⭐"** — one click starts the full install pipeline (engine →
+  model → verify → warmup → packs). The AI model arrives in the background while
+  you play.
+- **"Try it right now"** — launches the scripted "First Words" tutorial
+  immediately, with no download required, in under 15 seconds.
+
+Ollama and local GGUF paths are demoted to a collapsible **Advanced** disclosure
+with an explanation of when and why you'd use them. The privacy promise appears
+as a calm one-liner in the Advanced section, not as a gate.
+
+#### Play while it downloads (#383)
+
+The scripted tutorial (`first-words` pack) runs with the built-in fake runtime —
+no model required. A persistent header pill shows download progress. When the
+real model is ready, a toast offers an immediate switch. The happy path is
+playable before any download completes.
+
+#### One-click background install pipeline (#382, #379)
+
+`POST /api/setup/install` starts a resumable pipeline: engine provisioning →
+model download (with SHA-256 checksum) → verify → warmup → pack registration.
+Progress is streamed via `GET /api/setup/install/{id}`. If the app is closed
+mid-download and relaunched, `pending_setup_job_id` in the status response
+re-attaches the UI to the running job automatically.
+
+Windows now provisions the inference engine natively — no WSL2 required.
+
+#### Self-healing checks and remediation cards (#384)
+
+The old "System Check" wall is gone. Auto-fixable failures are resolved silently.
+Only decisions that genuinely require the user (insufficient disk, offline,
+platform choice) surface as remediation cards in plain language with a single
+action and a text-only escape hatch. The forbidden-vocabulary invariant ensures
+no card ever shows internal terms (`binary`, `sidecar`, `llama`, `preflight`,
+`gguf`).
+
+#### Dead-loop fixed (#378)
+
+In v0.2.2 every fix button on the System Check screen redirected back to Welcome
+because `FirstRunGuard` treated `/model-manager` as an unauthenticated route and
+rewrote it to `/first-run`. Every `fix_action.href` is now verified in CI to
+never point at `welcome` or `/first-run`.
+
+#### Server-authoritative setup state (#380)
+
+`GET /api/setup/status` is the single source of truth — `{ kind: "never-run" |
+"incomplete" | "ready", pending_setup_job_id, onboarding_outcome }`. The browser
+keeps a localStorage fast-path mirror but always defers to the server. The
+`ModelManager` and `FirstRunWizard` routes share one `SetupFlowView` component.
+
+#### Voice invite deferred to after first real conversation (#385)
+
+Voice setup no longer blocks first-run. After the first real AI conversation
+ends in a debrief, the app shows a one-time voice invite. Users who never want
+voice are never asked about it during onboarding.
+
+#### Setup docs rewrite (#386)
+
+The published install and quickstart guides (`docs-site/.../start/`) describe the
+actual shipped UI — the two-card Welcome, the background download pill, and Ollama
+as an advanced option. A CI drift-prevention check (`scripts/check-docs-freshness.sh`)
+compares each page's `verified_against` version against the release and fails the
+release if any UI-referencing page has not been re-verified for the new minor.
+
+#### Onboarding e2e suite as merge and release gate (#387)
+
+`e2e/onboarding/` covers all eight journey paths (P1–P8) starting from a wiped
+profile with no localStorage, no models, and no prior outcome. A mechanical
+network-allowlist fixture blocks all non-loopback connections in every test.
+
+| Journey | What it covers |
+|---------|---------------|
+| P1 | Full pipeline install → `status: ready` → session reachable |
+| P2 | Scripted tutorial < 15 s → debrief → demo outcome |
+| P3 | Ollama model → `llm-present` → `status: ready` |
+| P4 | Local .gguf registered → `status: ready` |
+| P5 | Remediation cards for disk-full / offline / checksum failures; text-only escape; forbidden-vocabulary invariant |
+| P6 | Orphaned job on kill → relaunch → job re-attached |
+| P7 | Regression: no fix action ever loops to Welcome (v0.2.2 regression guard) |
+| P8 | `voice-ready` severity is `informational`; debrief reachable without voice |
+
+The fast trio (P1, P2, P7) runs as a required check on every PR touching
+onboarding code. The full P1–P8 matrix runs on all three platforms as a release
+gate.
+
+---
+
+## Upgrade notes
+
+No data migration required. If you have a `convsim.setup.complete` flag in
+localStorage from v0.2.x, it is ignored; setup state is now read from
+`GET /api/setup/status`.
+
+---
+
 # Conversation Simulator v0.2.1 — Release Notes
 
 > **Patch release** — hotfix for the v0.2.0 Windows DOA (dead on arrival) bug.

@@ -3,7 +3,7 @@ title: "Troubleshooting"
 description: "Solutions for common Conversation Simulator problems, including engine startup failures, model load errors, slow inference, port conflicts, and offline mode."
 sidebar:
   order: 3
-verified_against: v0.2.2
+verified_against: v0.3.0
 ---
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 

@@ -3,7 +3,7 @@ title: "Quickstart"
 description: "Walk through your first conversation: complete first-run setup, choose a scenario, play, and review the debrief."
 sidebar:
   order: 2
-verified_against: v0.2.2
+verified_against: v0.3.0
 ---
 
 This guide walks through your first conversation. Complete the

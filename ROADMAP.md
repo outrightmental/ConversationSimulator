@@ -45,6 +45,20 @@ criteria.
 
 ## Status
 
+### Done — shipped in v0.3.0
+
+- [x] Onboarding overhaul — first conversation in 60 seconds, zero error walls (#388)
+  - Welcome screen: "Set me up" vs "Try it right now" (two-card, one decision)
+  - Play while it downloads: scripted tutorial starts in < 15 s, real model arrives in background
+  - One-click resumable install pipeline (engine → model → verify → warmup → packs)
+  - Windows native engine provisioning — no WSL2 required
+  - Self-healing checks: auto-fixable failures silent, remediation cards only for genuine user decisions
+  - Dead-loop fixed: no fix action ever redirects back to Welcome
+  - Server-authoritative setup state (`GET /api/setup/status`)
+  - Voice invite deferred to after first real AI conversation
+  - Setup docs describe the actual shipped UI; CI drift-prevention check enforces it
+  - Onboarding e2e suite (P1–P8 wiped-profile journeys) as merge and release gate
+
 ### Done — shipped in v0.1.0-alpha.1
 
 - [x] Monorepo skeleton — directory structure, licensing, tooling
