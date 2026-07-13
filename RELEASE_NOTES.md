@@ -81,10 +81,11 @@ voice are never asked about it during onboarding.
 
 #### Setup docs rewrite (#386)
 
-`docs/install.md` and the quick-start guide describe the actual shipped UI — the
-two-card Welcome, the background download pill, and Ollama as an advanced option.
-A CI drift-prevention check compares UI strings in the docs against the source
-and fails on mismatch.
+The published install and quickstart guides (`docs-site/.../start/`) describe the
+actual shipped UI — the two-card Welcome, the background download pill, and Ollama
+as an advanced option. A CI drift-prevention check (`scripts/check-docs-freshness.sh`)
+compares each page's `verified_against` version against the release and fails the
+release if any UI-referencing page has not been re-verified for the new minor.
 
 #### Onboarding e2e suite as merge and release gate (#387)
 
