@@ -114,9 +114,9 @@ function ConversationRouteStub() {
   )
 }
 
-function renderDebrief() {
+function renderDebrief(routeState?: unknown) {
   return render(
-    <MemoryRouter initialEntries={[`/debrief/${SESSION_ID}`]}>
+    <MemoryRouter initialEntries={[{ pathname: `/debrief/${SESSION_ID}`, state: routeState }]}>
       <Routes>
         <Route path="/debrief/:sessionId" element={<Debrief />} />
         <Route path="/library" element={<div>Library page</div>} />
@@ -430,6 +430,38 @@ describe('Debrief screen', () => {
       fireEvent.click(screen.getByTestId('replay-btn'))
       await waitFor(() =>
         expect(screen.getByText('Setup page')).toBeInTheDocument(),
+      )
+    })
+  })
+
+  describe('model-ready upgrade CTA (issue #383)', () => {
+    it('does not render "Try it with the real AI" without the modelReadyAfterTutorial route state', async () => {
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
+      renderDebrief()
+      await waitFor(() =>
+        expect(screen.getByTestId('replay-btn')).toBeInTheDocument(),
+      )
+      expect(screen.queryByTestId('try-real-ai-btn')).not.toBeInTheDocument()
+    })
+
+    it('renders "Try it with the real AI" when the model became ready during the tutorial', async () => {
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
+      renderDebrief({ modelReadyAfterTutorial: true })
+      await waitFor(() =>
+        expect(screen.getByTestId('try-real-ai-btn')).toBeInTheDocument(),
+      )
+      expect(screen.getByTestId('try-real-ai-btn')).toHaveTextContent(/try it with the real ai/i)
+    })
+
+    it('navigates to the library when "Try it with the real AI" is clicked', async () => {
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
+      renderDebrief({ modelReadyAfterTutorial: true })
+      await waitFor(() =>
+        expect(screen.getByTestId('try-real-ai-btn')).toBeInTheDocument(),
+      )
+      fireEvent.click(screen.getByTestId('try-real-ai-btn'))
+      await waitFor(() =>
+        expect(screen.getByText('Library page')).toBeInTheDocument(),
       )
     })
   })
