@@ -152,9 +152,9 @@ def _check_llama_cpp_binary() -> CheckResult:
             "The inference engine is missing from this installation."
         ),
         fix_action=FixAction(
-            kind="open-url",
-            href="https://docs.conversationsimulator.com/play/local-models/",
-            label="Setup guide",
+            kind="install-engine",
+            href="/settings/install-engine",
+            label="Install engine",
         ),
     )
 

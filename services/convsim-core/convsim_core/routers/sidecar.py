@@ -25,6 +25,7 @@ from convsim_core.runtime.llama_cpp_download import (
     DownloadProgress,
     DownloadState,
     detect_platform_string,
+    detect_windows_gpu_variant,
     download_binary,
 )
 from convsim_core.runtime.sidecar import LlamaCppSidecar, SidecarState
@@ -102,10 +103,17 @@ class DownloadRuntimeRequest(BaseModel):
     ``dest_dir`` overrides the default install directory
     (``~/.convsim/bin``). The binary is placed inside this directory as
     ``llama-server`` (or ``llama-server.exe`` on Windows).
+
+    ``variant`` selects the build variant: ``"cpu"`` (default, always safe),
+    ``"cuda"`` (NVIDIA GPU), or ``"vulkan"`` (Vulkan-capable GPU).  Use
+    ``detect_windows_gpu_variant()`` to discover what is available; GPU
+    variants are never required for first-run.  Only meaningful on Windows;
+    Linux and macOS always use ``"cpu"``.
     """
 
     version: Optional[str] = None
     dest_dir: Optional[str] = None
+    variant: str = "cpu"
 
 
 class DownloadRuntimeStatusResponse(BaseModel):
@@ -263,6 +271,7 @@ async def start_download_runtime(body: DownloadRuntimeRequest) -> DownloadRuntim
                 dest_dir=dest,
                 version=body.version,
                 platform_string=platform_str,
+                variant=body.variant,
                 cancel_event=_download_cancel,
                 progress_cb=_on_progress,
             )
@@ -325,6 +334,42 @@ async def cancel_download_runtime() -> None:
             status_code=409,
         )
     _download_cancel.set()
+
+
+# ── GPU variant detection endpoint ───────────────────────────────────────────
+
+
+class GpuVariantResponse(BaseModel):
+    """Detected GPU acceleration variant available on this machine."""
+
+    variant: str
+    platform: Optional[str] = None
+
+
+@router.get("/api/sidecar/gpu-variant", response_model=GpuVariantResponse)
+async def get_gpu_variant() -> GpuVariantResponse:
+    """Return the best available GPU variant for this machine.
+
+    On Windows, probes for NVIDIA (nvidia-smi) and Vulkan (vulkaninfo).
+    On other platforms, always returns ``"cpu"``.  Never blocks — probe
+    failures fall back to ``"cpu"`` immediately.
+
+    Clients may use this to offer GPU-accelerated engine downloads as an
+    opt-in upgrade; the default ``"cpu"`` variant is always safe.
+    """
+    import sys as _sys
+
+    try:
+        platform_str: Optional[str] = detect_platform_string()
+    except RuntimeError:
+        platform_str = None
+
+    if _sys.platform == "win32":
+        variant = detect_windows_gpu_variant()
+    else:
+        variant = "cpu"
+
+    return GpuVariantResponse(variant=variant, platform=platform_str)
 
 
 # ── Runtime capabilities endpoint ─────────────────────────────────────────────
