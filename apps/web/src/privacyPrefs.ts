@@ -1,5 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 
+export const VOICE_KEYS = {
+  inviteState: 'convsim.voice.inviteState',
+} as const
+
+export type VoiceInviteState = 'pending' | 'dismissed' | 'setup'
+
+export function readVoiceInviteState(): VoiceInviteState {
+  if (typeof localStorage === 'undefined') return 'pending'
+  const v = localStorage.getItem(VOICE_KEYS.inviteState)
+  if (v === 'dismissed' || v === 'setup') return v
+  return 'pending'
+}
+
+export function writeVoiceInviteState(state: VoiceInviteState): void {
+  if (typeof localStorage === 'undefined') return
+  localStorage.setItem(VOICE_KEYS.inviteState, state)
+}
+
 export const PRIVACY_KEYS = {
   saveTranscripts: 'convsim.privacy.saveTranscripts',
   saveTtsCache: 'convsim.privacy.saveTtsCache',
