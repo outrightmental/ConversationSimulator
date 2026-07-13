@@ -1085,6 +1085,25 @@ jobs:
           )
           Write-Host "  Downloaded: MicrosoftEdgeWebView2Setup.exe (${wv2KB} KB)"
 
+          # Verify the bootstrapper is validly Authenticode-signed by Microsoft
+          # before it ships in the depot.  This binary is downloaded from the
+          # internet and runs *elevated on first launch* via installscript.vdf,
+          # so it must be integrity-checked here — the earlier signtool verify
+          # step ran before this download and never sees it.  This also upholds
+          # issue #408's "every PE file in the depot is Authenticode-signed"
+          # criterion for the one depot PE the project does not sign itself.
+          $wv2Sig = Get-AuthenticodeSignature "$depotStage\MicrosoftEdgeWebView2Setup.exe"
+          if ($wv2Sig.Status -ne 'Valid') {
+            Write-Error "WebView2 bootstrapper Authenticode signature is not valid (status: $($wv2Sig.Status)) — refusing to ship an unverified elevated-launch binary in the depot."
+            exit 1
+          }
+          $wv2Subject = $wv2Sig.SignerCertificate.Subject
+          if ($wv2Subject -notmatch 'Microsoft Corporation') {
+            Write-Error "WebView2 bootstrapper is signed by an unexpected publisher ($wv2Subject); expected Microsoft Corporation. Refusing to ship."
+            exit 1
+          }
+          Write-Host "  Verified: MicrosoftEdgeWebView2Setup.exe Authenticode signature is valid ($wv2Subject)"
+
           # ── Steam InstallScript ──────────────────────────────────────────────
           Copy-Item "steam\installscript.vdf" "$depotStage\"
           Write-Host "  Copied: installscript.vdf"
