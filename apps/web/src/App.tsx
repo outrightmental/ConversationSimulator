@@ -50,7 +50,8 @@ function useSetupStatus(): { status: GuardStatus; pendingInstallId: number | nul
         setStatus((prev) => (prev.kind === 'loading' ? { kind: 'never-run' } : prev))
         return
       }
-      setPendingInstallId(r.data.pending_install_id ?? null)
+      // Prefer the new pipeline job ID; fall back to legacy per-model install id.
+      setPendingInstallId(r.data.pending_setup_job_id ?? r.data.pending_install_id ?? null)
       const derived = deriveSetupStatus(r.data)
       setStatus(derived)
       if (derived.kind === 'ready') {

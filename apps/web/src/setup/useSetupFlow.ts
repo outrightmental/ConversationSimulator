@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
 import { SETUP_KEYS } from '../privacyPrefs'
+import { useSetupInstall } from './useSetupInstall'
 import type {
   ModelsResponse,
   ModelRegistryEntry,
@@ -10,6 +11,7 @@ import type {
   InstalledModelInfo,
   BenchmarkResponse,
   PreflightResponse,
+  SetupInstallJob,
 } from '@convsim/shared'
 import type { ApiError } from '../api/errors'
 
@@ -45,7 +47,11 @@ export interface UseSetupFlowReturn {
   setActionError: (e: ApiError | null) => void
   actionLoading: boolean
   setActionLoading: (b: boolean) => void
+  /** ID of the active setup-install pipeline job (set by handleStartInstall). */
   installId: number | null
+  /** Live snapshot of the active setup-install job; null until first poll. */
+  setupInstallJob: SetupInstallJob | null
+  /** @deprecated Legacy per-model install record; null in the pipeline path. */
   installRecord: InstalledModelInfo | null
   benchmarkRunning: boolean
   benchmarkResult: BenchmarkResponse | null
@@ -93,7 +99,10 @@ function isTutorialComplete(): boolean {
   try { return localStorage.getItem(SETUP_KEYS.tutorialComplete) === 'true' } catch { return false }
 }
 
-export function useSetupFlow(initialStep: SetupFlowStep, initialInstallId?: number): UseSetupFlowReturn {
+export function useSetupFlow(
+  initialStep: SetupFlowStep,
+  initialInstallId?: number,
+): UseSetupFlowReturn {
   const navigate = useNavigate()
   const [step, setStep] = useState<SetupFlowStep>(initialStep)
   const [modelsData, setModelsData] = useState<ModelsResponse | null>(null)
@@ -106,11 +115,12 @@ export function useSetupFlow(initialStep: SetupFlowStep, initialInstallId?: numb
   const [actionError, setActionError] = useState<ApiError | null>(null)
   const [actionLoading, setActionLoading] = useState(false)
 
-  // Seed installId from initialInstallId so a wizard opened at 'installing'
-  // (resuming an interrupted download) immediately begins polling that record.
+  // installId now refers to the setup-install pipeline job ID.
+  // Seeded from initialInstallId so resuming mid-install (forwarded via URL
+  // by FirstRunGuard) opens straight to the installing step.
   const [installId, setInstallId] = useState<number | null>(initialInstallId ?? null)
-  const [installRecord, setInstallRecord] = useState<InstalledModelInfo | null>(null)
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // installRecord kept for backwards-compat (Ollama/GGUF paths never use it now).
+  const [installRecord] = useState<InstalledModelInfo | null>(null)
 
   const [benchmarkRunning, setBenchmarkRunning] = useState(false)
   const [benchmarkResult, setBenchmarkResult] = useState<BenchmarkResponse | null>(null)
@@ -118,6 +128,9 @@ export function useSetupFlow(initialStep: SetupFlowStep, initialInstallId?: numb
   const benchmarkStartedRef = useRef(false)
 
   const [preflightResult, setPreflightResult] = useState<PreflightResponse | null>(null)
+
+  // useSetupInstall polls GET /api/setup/install/{installId} every second.
+  const setupInstallJob = useSetupInstall(step === 'installing' ? installId : null)
 
   const stepHeadingRef = useRef<HTMLHeadingElement>(null)
   const isInitialStep = useRef(true)
@@ -150,34 +163,21 @@ export function useSetupFlow(initialStep: SetupFlowStep, initialInstallId?: numb
     })
   }, [step])
 
-  // Poll install status while on the 'installing' step
+  // React to pipeline job terminal states while on the 'installing' step.
   useEffect(() => {
-    if (step !== 'installing' || installId == null) return
-
-    function stopPoll() {
-      if (pollRef.current != null) { clearInterval(pollRef.current); pollRef.current = null }
-    }
-
-    pollRef.current = setInterval(() => {
-      void api.getInstallStatus(installId).then(async (r) => {
-        if (!r.ok) return
-        const record = r.data
-        setInstallRecord(record)
-        const terminal = ['ready', 'complete', 'failed', 'cancelled', 'checksum_mismatch']
-        if (terminal.includes(record.install_status)) {
-          stopPoll()
-          if (record.install_status === 'ready' || record.install_status === 'complete') {
-            await markFirstRunComplete()
-            navigate(isTutorialComplete() ? '/library' : '/')
-          } else {
-            setActionError({ kind: 'http-error', message: record.error_message ?? 'Download failed. Please try again.' })
-          }
-        }
+    if (step !== 'installing' || setupInstallJob == null) return
+    const { status } = setupInstallJob
+    if (status === 'complete') {
+      void markFirstRunComplete().then(() => {
+        navigate(isTutorialComplete() ? '/library' : '/')
       })
-    }, 2000)
-
-    return stopPoll
-  }, [step, installId, navigate])
+    } else if (status === 'failed' || status === 'cancelled') {
+      setActionError({
+        kind: 'http-error',
+        message: setupInstallJob.error_message ?? 'Install failed. Please try again.',
+      })
+    }
+  }, [step, setupInstallJob, navigate])
 
   // Auto-run benchmark once on entering the 'benchmark' step
   useEffect(() => {
@@ -207,12 +207,11 @@ export function useSetupFlow(initialStep: SetupFlowStep, initialInstallId?: numb
     setActionLoading(true)
     setActionError(null)
     try {
-      const resp = await api.installModel({ registry_id: registryId })
+      const resp = await api.startSetupInstall(registryId)
       if (!resp.ok) {
         setActionError(resp.error)
       } else {
-        setInstallId(resp.data.install_id)
-        setInstallRecord(null)
+        setInstallId(resp.data.id)
         setStep('installing')
       }
     } catch (err: unknown) {
@@ -266,7 +265,7 @@ export function useSetupFlow(initialStep: SetupFlowStep, initialInstallId?: numb
 
   async function handleCancelInstall() {
     if (installId != null) {
-      try { await api.cancelInstall(installId) } catch { /* best-effort */ }
+      try { await api.cancelSetupInstall(installId) } catch { /* best-effort */ }
     }
     await markFirstRunComplete()
     navigate('/')
@@ -289,7 +288,7 @@ export function useSetupFlow(initialStep: SetupFlowStep, initialInstallId?: numb
     ggufPathError, setGgufPathError,
     actionError, setActionError,
     actionLoading, setActionLoading,
-    installId, installRecord,
+    installId, installRecord, setupInstallJob,
     benchmarkRunning, benchmarkResult, benchmarkError,
     preflightResult,
     stepHeadingRef,
