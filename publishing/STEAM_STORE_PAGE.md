@@ -38,7 +38,7 @@ difficult talks, and language skills. AI characters run entirely on your
 computer. No internet needed during play. Premium scenario packs available.
 ```
 
-Character count: 207. Within the 300-character limit.
+Character count: 222. Within the 300-character limit.
 
 ---
 
