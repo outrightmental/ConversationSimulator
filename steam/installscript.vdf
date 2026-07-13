@@ -1,0 +1,58 @@
+// Steam InstallScript — Windows x86-64 depot.
+//
+// Installs the Microsoft WebView2 Evergreen Runtime on first launch via Steam.
+// This runs once (keyed with HasRunKey) with the elevated privileges Steam
+// provides, so the player never sees a separate UAC prompt.
+//
+// The WebView2 Evergreen Bootstrapper (MicrosoftEdgeWebView2Setup.exe, ~2 MB)
+// is included at the depot root.  The bootstrapper downloads and installs only
+// the runtime components needed for the installed architecture — it is not a
+// full offline installer.  Internet access is required on first launch when
+// WebView2 is not already present on the player's system.
+//
+// On Windows 11 and most current Windows 10 installs, WebView2 ships with the
+// OS and this script is a no-op (HasRunKey causes it to skip on subsequent
+// launches regardless).
+//
+// Alternative considered and rejected: WebView2 Fixed Version (~180 MB per
+// depot).  Fixed Version would remove the internet requirement but adds 180 MB
+// to every Steam install, which is disproportionate to the 2 MB bootstrapper.
+// The Evergreen Bootstrapper approach is the official Microsoft recommendation
+// for Steam-distributed Tauri/WebView2 applications.
+//
+// See publishing/STEAM_DEPOT_CONTENTS.md — Windows depot section for the full
+// WebView2 runtime strategy and updater policy.
+"InstallScript"
+{
+    "Run Process"
+    {
+        // Each process to run is a named block inside "Run Process" (per the
+        // Steamworks InstallScripts schema — the friendly name is arbitrary but
+        // required; keys placed directly under "Run Process" are not executed).
+        "WebView2Runtime"
+        {
+            // HasRunKey ensures this process runs exactly once per machine.
+            // Steam writes this registry key after the process exits 0; on every
+            // subsequent launch (including app updates), the key is found and the
+            // block is skipped entirely.
+            "HasRunKey"     "HKEY_LOCAL_MACHINE\\SOFTWARE\\Outright Mental\\Conversation Simulator\\WebView2Bootstrapped"
+
+            // The bootstrapper is shipped at the depot root alongside the app
+            // binary.  %INSTALLDIR% expands to the depot install directory (no
+            // trailing backslash), so this resolves to the bootstrapper at the
+            // depot root.  A bare relative filename is NOT used: the Steamworks
+            // InstallScript docs only ever show %INSTALLDIR%-anchored process
+            // paths, and Steam does not guarantee its working directory equals
+            // the install dir when it runs the script — a bare filename could
+            // fail to resolve, leaving WebView2 uninstalled and the app unable
+            // to launch on a clean Windows 10 machine.
+            "Process 1"     "%INSTALLDIR%\\MicrosoftEdgeWebView2Setup.exe"
+            "Command 1"     "/silent /install"
+
+            // NoCleanUp "1": do not delete the bootstrapper exe after running.
+            // Keeping it in the depot means it is present for future repairs
+            // without requiring a re-download.
+            "NoCleanUp"     "1"
+        }
+    }
+}
