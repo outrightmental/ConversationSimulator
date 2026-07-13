@@ -63,6 +63,103 @@ def test_preflight_check_schema(client):
         assert check["status"] in ("pass", "warn", "fail")
         assert "message" in check
         assert "fix_action" in check
+        assert check["severity"] in ("auto-fixable", "needs-human", "informational"), \
+            f"Check {check['id']} has invalid severity: {check['severity']}"
+        assert isinstance(check["autofix"], bool), \
+            f"Check {check['id']} autofix field must be bool"
+
+
+# ── Triage metadata exhaustiveness ────────────────────────────────────────────
+
+
+def test_preflight_triage_is_exhaustive(client):
+    """Every check ID must appear exactly once in CHECK_TRIAGE.
+
+    This test fails when a new check is added to the endpoint without
+    assigning it a severity class, preventing silent regression.
+    """
+    from convsim_core.routers.preflight import CHECK_TRIAGE
+    data = _get_preflight(client)
+    returned_ids = {c["id"] for c in data["checks"]}
+    triaged_ids = set(CHECK_TRIAGE.keys())
+    assert returned_ids == triaged_ids, (
+        f"Triage map mismatch. "
+        f"Missing from triage: {returned_ids - triaged_ids}. "
+        f"Extra in triage: {triaged_ids - returned_ids}."
+    )
+
+
+def test_preflight_triage_classes():
+    """Verify the three severity classes contain the expected check IDs."""
+    from convsim_core.routers.preflight import CHECK_TRIAGE
+    auto_fixable = {cid for cid, (sev, _) in CHECK_TRIAGE.items() if sev == "auto-fixable"}
+    needs_human = {cid for cid, (sev, _) in CHECK_TRIAGE.items() if sev == "needs-human"}
+    informational = {cid for cid, (sev, _) in CHECK_TRIAGE.items() if sev == "informational"}
+
+    assert "llama-cpp-binary" in auto_fixable, "llama-cpp-binary must be auto-fixable"
+    assert "llm-present" in auto_fixable, "llm-present must be auto-fixable"
+    assert "packs-seeded" in auto_fixable, "packs-seeded must be auto-fixable"
+
+    assert "disk-space" in needs_human, "disk-space must be needs-human"
+    assert "data-dir-writable" in needs_human, "data-dir-writable must be needs-human"
+
+    assert "voice-ready" in informational, "voice-ready must be informational"
+    assert "runtime-handshake" in informational, "runtime-handshake must be informational"
+
+    # No check should appear in more than one class
+    all_ids = list(CHECK_TRIAGE.keys())
+    assert len(all_ids) == len(set(all_ids)), "Duplicate check ID in CHECK_TRIAGE"
+
+
+def test_preflight_autofix_matches_triage():
+    """Checks marked auto-fixable in the triage map must have autofix=True."""
+    from convsim_core.routers.preflight import CHECK_TRIAGE
+    for cid, (severity, autofix) in CHECK_TRIAGE.items():
+        if severity == "auto-fixable":
+            assert autofix is True, f"{cid}: auto-fixable checks must have autofix=True"
+        else:
+            assert autofix is False, f"{cid}: only auto-fixable checks should have autofix=True"
+
+
+def test_needs_human_messages_have_no_banned_vocabulary():
+    """needs-human checks must not use technical jargon in their fail messages.
+
+    Words like 'binary', 'llama', 'sidecar' are banned from any message a
+    first-run user can see. This test samples the fail messages for the two
+    needs-human checks.
+    """
+    from convsim_core.routers.preflight import _check_data_dir, _check_disk_space
+    import pathlib
+    import tempfile
+
+    BANNED = {"binary", "llama", "sidecar", "preflight", "GGUF", "checksum", "llama-server"}
+
+    # data-dir-writable fail
+    with tempfile.TemporaryDirectory() as td:
+        import stat
+        ro = pathlib.Path(td) / "ro"
+        ro.mkdir()
+        ro.chmod(stat.S_IRUSR | stat.S_IXUSR)
+        try:
+            result = _check_data_dir(str(ro / "nested"))
+            assert result.status == "fail"
+            words = set(result.message.lower().split())
+            banned_found = BANNED & {w.strip(".,!?") for w in words}
+            assert not banned_found, f"data-dir-writable fail message contains banned words: {banned_found}"
+        finally:
+            ro.chmod(stat.S_IRWXU)
+
+    # disk-space fail
+    from unittest.mock import patch
+    from collections import namedtuple
+    Usage = namedtuple("Usage", ["total", "used", "free"])
+    with patch("convsim_core.routers.preflight.shutil.disk_usage") as mock_du:
+        mock_du.return_value = Usage(total=10 * 1024**3, used=9 * 1024**3, free=1 * 1024**3)
+        result = _check_disk_space("/tmp", required_gb=5.0)
+    assert result.status == "fail"
+    words = set(result.message.lower().split())
+    banned_found = BANNED & {w.strip(".,!?") for w in words}
+    assert not banned_found, f"disk-space fail message contains banned words: {banned_found}"
 
 
 # ── Check 1: Runtime handshake ────────────────────────────────────────────────
@@ -133,6 +230,12 @@ def test_disk_space_fails_when_insufficient(tmp_path):
         result = _check_disk_space(str(tmp_path), required_gb=5.0)
     assert result.status == "fail"
     assert result.fix_action is not None
+    assert result.severity == "needs-human"
+    assert result.autofix is False
+    # detail carries the concrete numbers for the remediation card
+    assert result.detail is not None
+    assert "free_gb" in result.detail
+    assert "required_gb" in result.detail
 
 
 def test_disk_space_warns_when_tight(tmp_path):
@@ -145,6 +248,7 @@ def test_disk_space_warns_when_tight(tmp_path):
         mock_du.return_value = Usage(total=10 * 1024**3, used=5 * 1024**3 - 1, free=int(5.1 * 1024**3))
         result = _check_disk_space(str(tmp_path), required_gb=5.0)
     assert result.status == "warn"
+    assert result.severity == "needs-human"
 
 
 # ── Check 4: llama.cpp binary ─────────────────────────────────────────────────
@@ -158,6 +262,9 @@ def test_llama_cpp_binary_fails_when_missing(client):
     assert result.fix_action is not None
     assert result.fix_action.kind == "install-engine"
     assert result.fix_action.href == "/settings/install-engine"
+    # auto-fixable: setup pipeline resolves this silently
+    assert result.severity == "auto-fixable"
+    assert result.autofix is True
 
 
 def test_llama_cpp_binary_passes_when_found(tmp_path):
@@ -166,7 +273,7 @@ def test_llama_cpp_binary_passes_when_found(tmp_path):
     with patch("convsim_core.routers.preflight.find_executable", return_value=fake_binary):
         result = _check_llama_cpp_binary()
     assert result.status == "pass"
-    assert fake_binary in result.message
+    assert result.severity == "auto-fixable"
 
 
 # ── Check 5: LLM present ─────────────────────────────────────────────────────
