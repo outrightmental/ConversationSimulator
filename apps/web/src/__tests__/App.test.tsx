@@ -153,6 +153,21 @@ describe('First-run guard', () => {
     expect(screen.queryByRole('button', { name: /get started/i })).not.toBeInTheDocument()
   })
 
+  it('shows the wizard (and clears the stale mirror) when the data dir was wiped but the cache survived', async () => {
+    // Issue-380 acceptance criterion: wiping the data dir must show the wizard.
+    // Here the server (authoritative) reports never-run while a stale localStorage
+    // mirror still reads 'true' (beforeEach set it). Without clearing the mirror,
+    // the guard redirects to /first-run, the wizard reads the stale mirror and
+    // bounces straight back to the app — an infinite redirect loop. The guard must
+    // clear the mirror so the wizard actually renders.
+    expect(localStorage.getItem('convsim.setup.complete')).toBe('true')
+    mockSetupStatus({ kind: 'never-run' })
+    renderAt('/settings')
+    expect(await screen.findByRole('button', { name: /get started/i })).toBeInTheDocument()
+    // The stale mirror was cleared so the wizard no longer bounces back.
+    expect(localStorage.getItem('convsim.setup.complete')).toBeNull()
+  })
+
   it('lets a returning user reach protected routes without the wizard', () => {
     // beforeEach already set the completion flag; the localStorage fast-path
     // renders the app synchronously without waiting on the server.

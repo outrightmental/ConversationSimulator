@@ -53,6 +53,13 @@ function useSetupStatus(): { status: GuardStatus; pendingInstallId: number | nul
       setStatus(derived)
       if (derived.kind === 'ready') {
         try { localStorage.setItem(SETUP_KEYS.firstRunComplete, 'true') } catch { /* ignore */ }
+      } else if (derived.kind === 'never-run') {
+        // The server (authoritative) has no recorded outcome, so a lingering
+        // 'true' mirror is stale — e.g. the data dir was wiped but the webview
+        // cache survived. Clear it, otherwise the wizard we are about to
+        // redirect to would read the stale mirror and bounce straight back to
+        // the app, producing an infinite redirect loop.
+        try { localStorage.removeItem(SETUP_KEYS.firstRunComplete) } catch { /* ignore */ }
       }
     })
   }, [])
