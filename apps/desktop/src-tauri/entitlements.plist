@@ -31,10 +31,18 @@
     <true/>
 
     <!--
-      The Steamworks SDK (libsteam_api.dylib) and llama.cpp runtime are signed
-      by their respective vendors, not by Apple.  Library validation must be
-      disabled so these third-party dylibs load correctly under Hardened Runtime.
-      This is the standard entitlement for Steam-distributed apps.
+      The Steamworks SDK (libsteam_api.dylib / steamclient.dylib) and the
+      llama.cpp runtime are signed by their respective vendors, not by Apple.
+      Library validation must be disabled so these third-party dylibs load
+      correctly under Hardened Runtime.  This is the standard entitlement for
+      Steam-distributed apps.
+
+      FeverTilt lesson: this entitlement is specifically what allows Hardened
+      Runtime apps to load Valve's steamclient.dylib — without it the Steam
+      overlay and Steamworks SDK calls fail silently at launch.  Keep this
+      entitlement even if Steamworks SDK integration appears inactive; it
+      becomes load-bearing the moment steam feature compilation is enabled.
+      See docs/steam-achievements-stats-rich-presence.md for context.
     -->
     <key>com.apple.security.cs.disable-library-validation</key>
     <true/>

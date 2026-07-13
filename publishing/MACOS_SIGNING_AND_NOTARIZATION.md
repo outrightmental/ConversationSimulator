@@ -73,15 +73,112 @@ The string in quotes is the `APPLE_SIGNING_IDENTITY` value.
 
 ---
 
-## App-specific password for notarisation
+## App Store Connect API key for notarisation (preferred)
 
-The notary service authenticates with an Apple ID and an **app-specific
-password** (not the Apple ID login password).
+The ASC API key is the **preferred** authentication method for notarytool.
+It has no 2FA coupling, can be revoked without touching the Apple ID account,
+and is scoped to the App Manager role — making it safer than an app-specific
+password tied to the organisation's Apple ID.
+
+### Minting an ASC API key
+
+1. Sign in to [App Store Connect](https://appstoreconnect.apple.com) as an
+   Admin under the Outright Mental team.
+2. Navigate to **Users and Access → Integrations → App Store Connect API**.
+3. Under **Team Keys**, click **+** to generate a new key.
+   - **Name:** `convsim-notarytool` (or include the date for rotation traceability)
+   - **Access:** `App Manager`
+4. Download the generated `.p8` private key file — it can only be downloaded
+   **once**.  Store it securely before leaving this page.
+5. Note the **Key ID** (alphanumeric, e.g. `ABCDE12345`) and the **Issuer ID**
+   (UUID shown at the top of the Integrations page).
+
+### Storing as org-level secrets
+
+Base64-encode the `.p8` file for secret storage:
+
+```bash
+base64 -i AuthKey_ABCDE12345.p8 -o AuthKey_ABCDE12345.b64
+# On Linux (no -i/-o flags required):
+base64 AuthKey_ABCDE12345.p8 > AuthKey_ABCDE12345.b64
+```
+
+Add the three secrets at the org level:
+
+```bash
+# Key ID (short alphanumeric, not the full filename):
+gh secret set APPLE_API_KEY \
+  --org outrightmental \
+  --visibility selected \
+  --repos ConversationSimulator,FeverTilt
+
+# Issuer UUID from the App Store Connect Integrations page:
+gh secret set APPLE_API_ISSUER \
+  --org outrightmental \
+  --visibility selected \
+  --repos ConversationSimulator,FeverTilt
+
+# Base64-encoded .p8 file content:
+gh secret set APPLE_API_KEY_PATH \
+  --org outrightmental \
+  --visibility selected \
+  --repos ConversationSimulator,FeverTilt
+```
+
+The release workflow decodes `APPLE_API_KEY_PATH` to a temp file at runtime,
+sets `APPLE_API_KEY_PATH` in the environment to that file path (the variable
+name Tauri expects), and deletes the file the moment the Tauri build completes.
+
+### Apple ID fallback
+
+If the ASC API key is not configured, the workflow falls back to Apple ID
+authentication using `APPLE_ID`, `APPLE_PASSWORD`, and `APPLE_TEAM_ID`.
 
 1. Sign in to [appleid.apple.com](https://appleid.apple.com).
 2. Under Security → App-Specific Passwords, generate a new password.
 3. Label it `convsim-notarytool` or similar for traceability.
 4. Copy the password — it is shown only once.
+
+Add the three secrets:
+
+```bash
+gh secret set APPLE_ID --org outrightmental \
+  --visibility selected --repos ConversationSimulator,FeverTilt
+gh secret set APPLE_PASSWORD --org outrightmental \
+  --visibility selected --repos ConversationSimulator,FeverTilt
+gh secret set APPLE_TEAM_ID --org outrightmental \
+  --visibility selected --repos ConversationSimulator,FeverTilt
+```
+
+---
+
+## Release enforcement (REQUIRE_SIGNED_MACOS)
+
+The release workflow sets `REQUIRE_SIGNED_MACOS=true` for any workflow run
+triggered by a `v*` tag (push or workflow_dispatch).  When this flag is true:
+
+- **Missing `APPLE_CERTIFICATE`** → the verify step fails with an actionable
+  error and the build is rejected before any artifact is uploaded.
+- **Missing notarisation credentials** → the verify step fails (even if the
+  build was signed) with a message listing both the preferred ASC API key and
+  the Apple ID fallback.
+
+This turns gate G3-01 from a checklist item into CI law.  Contributor forks
+and PR builds are unaffected — they never carry a `v*` tag and the enforcement
+block is never reached.
+
+### Testing enforcement
+
+To confirm the enforcement is wired correctly, trigger a `workflow_dispatch`
+run with a `v*` tag **while the `APPLE_CERTIFICATE` org secret is temporarily
+absent** (or renamed).  The verify step should exit non-zero with the message:
+
+```
+ERROR: APPLE_CERTIFICATE is not configured but a signed macOS build
+       is required for this release tag.
+```
+
+Restore the secret after the dry run and confirm the next `v*` run passes.
 
 ---
 
@@ -91,14 +188,29 @@ These secrets are stored at the **outrightmental organisation level**, scoped to
 `ConversationSimulator` and `FeverTilt`. They are entered once and rotated in one
 place — all scoped repositories pick up the change automatically.
 
+**Code-signing secrets (required for all signed builds):**
+
 | Secret name | Contents | Source |
 |-------------|----------|--------|
 | `APPLE_CERTIFICATE` | Base64-encoded `.p12` file | Export from Keychain, then `base64 -i DeveloperID.p12` |
 | `APPLE_CERTIFICATE_PASSWORD` | Passphrase for the `.p12` file | Set when exporting the `.p12` |
 | `APPLE_SIGNING_IDENTITY` | Full identity string: `Developer ID Application: Outright Mental (TEAMID)` | `security find-identity -v -p codesigning` |
+
+**Notarisation secrets — ASC API key (preferred, see above for minting):**
+
+| Secret name | Contents | Source |
+|-------------|----------|--------|
+| `APPLE_API_KEY` | Key ID (e.g. `ABCDE12345`) | App Store Connect → Users and Access → Integrations → Key ID |
+| `APPLE_API_ISSUER` | Issuer UUID | App Store Connect → Users and Access → Integrations → Issuer ID |
+| `APPLE_API_KEY_PATH` | Base64-encoded `.p8` private key content | `base64 -i AuthKey_ABCDE12345.p8` |
+| `APPLE_TEAM_ID` | Ten-character Outright Mental team ID | Apple Developer portal (required for both auth paths) |
+
+**Notarisation secrets — Apple ID fallback (used when ASC API key is absent):**
+
+| Secret name | Contents | Source |
+|-------------|----------|--------|
 | `APPLE_ID` | Apple ID email used for notarisation | Outright Mental Apple Developer account |
 | `APPLE_PASSWORD` | App-specific password for notarytool | appleid.apple.com → Security → App-Specific Passwords |
-| `APPLE_TEAM_ID` | Ten-character Outright Mental team ID | Apple Developer portal |
 
 **To set or rotate** (values supplied interactively, never committed):
 
@@ -107,7 +219,7 @@ gh secret set APPLE_CERTIFICATE \
   --org outrightmental \
   --visibility selected \
   --repos ConversationSimulator,FeverTilt
-# repeat for each secret in the table above
+# repeat for each secret in the tables above
 ```
 
 Or use the org Settings UI: GitHub → outrightmental org **Settings → Secrets
@@ -361,12 +473,15 @@ for notary service outages.
 
 ## Links
 
-- [`apps/desktop/src-tauri/entitlements.plist`](../apps/desktop/src-tauri/entitlements.plist) — Hardened Runtime entitlements
+- [`apps/desktop/src-tauri/entitlements.plist`](../apps/desktop/src-tauri/entitlements.plist) — Hardened Runtime entitlements (with rationale for each)
 - [`apps/desktop/src-tauri/tauri.conf.json`](../apps/desktop/src-tauri/tauri.conf.json) — Tauri bundle configuration
 - [`docs/platform-notes.md` — macOS section](../docs/platform-notes.md#macos) — system requirements, supported versions, build prerequisites
 - [`docs/steam-mvp-scope.md` — G3-01](../docs/steam-mvp-scope.md) — Stage 3 gate: notarised macOS build required
+- [`docs/release-checklist.md` — Part G](../docs/release-checklist.md#part-g--macos-steam-beta-install-verification) — macOS Steam beta install checklist including `.app.tar.gz` round-trip verification
+- [`docs/steam-achievements-stats-rich-presence.md`](../docs/steam-achievements-stats-rich-presence.md) — Steamworks SDK integration context (relevant to `disable-library-validation` entitlement)
 - [`publishing/STEAM_DEPOT_CONTENTS.md` — macOS depot](STEAM_DEPOT_CONTENTS.md#macos-depot-depot_macosvdftpl) — macOS depot layout and notarisation requirement
 - [`publishing/STEAM_PUBLISHING_AND_DEPLOYMENT.md`](STEAM_PUBLISHING_AND_DEPLOYMENT.md) — Steam deploy workflow and troubleshooting
 - [Tauri macOS signing docs](https://tauri.app/distribute/sign/macos) — upstream reference for `tauri build` signing variables
 - [Apple Developer — Developer ID](https://developer.apple.com/developer-id/) — official certificate documentation
+- [Apple — App Store Connect API](https://developer.apple.com/documentation/appstoreconnectapi) — ASC API key management
 - [Apple — notarytool man page](https://developer.apple.com/documentation/technotes/tn3147-migrating-to-the-latest-notarization-tool) — notarytool migration guide
