@@ -337,6 +337,27 @@ export const en = {
         },
       },
     },
+    gettingReady: {
+      heading: 'Getting things ready',
+      oneIssue: 'One thing needs your attention before setup can continue.',
+      manyIssues: '{{count}} things need your attention before setup can continue.',
+    },
+    remediation: {
+      textOnly: 'Try text-only instead',
+      details: 'Details',
+      detailsOpen: 'Details ▾',
+      detailsClosed: 'Details ▸',
+      copy: 'Copy',
+      copied: 'Copied!',
+    },
+    systemHealth: {
+      heading: 'System health',
+      checkButton: 'Run system check',
+      checking: 'Checking…',
+      allGood: 'Everything looks good.',
+      issuesFound_one: '{{count}} issue found.',
+      issuesFound_other: '{{count}} issues found.',
+    },
   },
   debrief: {
     title: 'Session Debrief',

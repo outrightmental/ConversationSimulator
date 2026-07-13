@@ -288,56 +288,93 @@ describe('FirstRunWizard — welcome step', () => {
 // ── Preflight step ────────────────────────────────────────────────────────────
 
 describe('FirstRunWizard — preflight step', () => {
-  const INFRA_FAIL_PREFLIGHT = {
+  // Only needs-human checks route to the preflight step.
+  // Auto-fixable (engine, model, packs) and informational (voice) checks
+  // are never rendered as errors during onboarding.
+  const DISK_SPACE_FAIL_PREFLIGHT = {
     overall: 'fail' as const,
     ran_at: '2026-01-01T00:00:00.000+00:00',
     checks: [
       {
-        id: 'llama-cpp-binary',
-        name: 'Inference engine',
+        id: 'disk-space',
+        name: 'Not enough disk space',
         status: 'fail' as const,
-        message: 'llama-server binary not found.',
-        fix_action: { kind: 'open-url' as const, href: 'https://example.com/setup', label: 'Setup guide' },
+        message: 'The AI model needs 5.0 GB and this disk has 1.0 GB free.',
+        severity: 'needs-human' as const,
+        autofix: false,
+        fix_action: {
+          kind: 'navigate' as const,
+          href: '/settings',
+          label: 'Choose another location',
+        },
       },
     ],
   }
 
   async function goToPreflight() {
-    mockApi.preflight.mockResolvedValue({ ok: true, data: INFRA_FAIL_PREFLIGHT })
+    mockApi.preflight.mockResolvedValue({ ok: true, data: DISK_SPACE_FAIL_PREFLIGHT })
     renderWizard()
     fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
-    await screen.findByRole('heading', { name: /system check/i })
+    await screen.findByRole('heading', { name: /getting things ready/i })
   }
 
-  it('shows the system check heading when infra checks fail', async () => {
+  it('shows "Getting things ready" heading (not "System Check") when a needs-human check fails', async () => {
     await goToPreflight()
-    expect(screen.getByRole('heading', { name: /system check/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /getting things ready/i })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /system check/i })).not.toBeInTheDocument()
   })
 
-  it('shows failing check details in the wizard', async () => {
+  it('shows the remediation card for the failing needs-human check', async () => {
     await goToPreflight()
-    expect(screen.getByTestId('wizard-preflight-check-llama-cpp-binary')).toBeInTheDocument()
+    expect(screen.getByTestId('wizard-preflight-check-disk-space')).toBeInTheDocument()
+    expect(screen.getByTestId('remediation-card-disk-space')).toBeInTheDocument()
   })
 
-  it('shows a fix action button for the failing check', async () => {
+  it('shows the fix action button inside the remediation card', async () => {
     await goToPreflight()
-    expect(screen.getByTestId('wizard-preflight-fix-llama-cpp-binary')).toBeInTheDocument()
+    expect(screen.getByTestId('remediation-action-disk-space')).toBeInTheDocument()
+    expect(screen.getByTestId('remediation-action-disk-space').textContent).toBe('Choose another location')
   })
 
-  it('shows a Continue anyway button', async () => {
+  it('shows the text-only escape hatch on every remediation card', async () => {
     await goToPreflight()
-    expect(screen.getByRole('button', { name: /continue anyway/i })).toBeInTheDocument()
+    expect(screen.getByTestId('remediation-text-only-disk-space')).toBeInTheDocument()
   })
 
-  it('shows a Retry system check button', async () => {
+  it('does not show a "Retry system check" button (retrying is automatic)', async () => {
     await goToPreflight()
-    expect(screen.getByRole('button', { name: /retry system check/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /retry system check/i })).not.toBeInTheDocument()
   })
 
-  it('proceeds to choose step when Continue anyway is clicked', async () => {
+  it('proceeds to choose step when "Try text-only instead" is clicked', async () => {
     await goToPreflight()
-    fireEvent.click(screen.getByRole('button', { name: /continue anyway/i }))
+    fireEvent.click(screen.getByTestId('remediation-text-only-disk-space'))
     await screen.findByRole('heading', { name: /choose how to get started/i })
+  })
+
+  it('auto-fixable checks (engine, model, packs) do not route to preflight', async () => {
+    // llama-cpp-binary is auto-fixable and must never appear as a wall
+    mockApi.preflight.mockResolvedValue({
+      ok: true,
+      data: {
+        overall: 'fail' as const,
+        ran_at: '2026-01-01T00:00:00.000+00:00',
+        checks: [{
+          id: 'llama-cpp-binary',
+          name: 'AI engine',
+          status: 'fail' as const,
+          message: 'The AI engine is not installed.',
+          severity: 'auto-fixable' as const,
+          autofix: true,
+          fix_action: { kind: 'install-engine' as const, href: '/settings/install-engine', label: 'Install engine' },
+        }],
+      },
+    })
+    renderWizard()
+    fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
+    // Should go straight to installing (not preflight)
+    await screen.findByRole('heading', { name: /setting up your ai/i })
+    expect(screen.queryByRole('heading', { name: /getting things ready/i })).not.toBeInTheDocument()
   })
 
   it('skips preflight step when all infra checks pass', async () => {
@@ -361,132 +398,137 @@ describe('FirstRunWizard — preflight step', () => {
 
 // ── Issue-378 regression: preflight fix-action dead-loop ─────────────────────
 // Covers the exact loop: preflight-fail → click fix → assert NOT on welcome step.
+// Only needs-human checks appear in the preflight step. Auto-fixable and
+// informational checks are never rendered as errors during onboarding.
 
 describe('FirstRunWizard — issue-378: preflight fix actions never loop back to welcome', () => {
-  function makePreflightWith(checks: PreflightCheck[]) {
+  function makeNeedsHumanPreflight(fixAction: import('@convsim/shared').PreflightFixAction) {
     return {
       ok: true as const,
       data: {
         overall: 'fail' as const,
         ran_at: '2026-01-01T00:00:00.000+00:00',
-        checks,
+        checks: [{
+          id: 'disk-space',
+          name: 'Not enough disk space',
+          status: 'fail' as const,
+          message: 'The AI model needs 5.0 GB and this disk has 1.0 GB free.',
+          severity: 'needs-human' as const,
+          autofix: false,
+          fix_action: fixAction,
+        }],
       },
     }
   }
 
-  it('wizard-step fix action (llm-present) advances to choose step, not welcome', async () => {
-    mockApi.preflight.mockResolvedValue(makePreflightWith([
+  it('navigate /settings fix action opens settings without returning to welcome', async () => {
+    mockApi.preflight.mockResolvedValue(makeNeedsHumanPreflight(
+      { kind: 'navigate', href: '/settings', label: 'Choose another location' },
+    ))
+    const { unmount } = renderWizard()
+    fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
+    await screen.findByRole('heading', { name: /getting things ready/i })
+
+    // The primary action is "Choose another location" (navigate to /settings)
+    fireEvent.click(screen.getByTestId('remediation-action-disk-space'))
+    // Should NOT loop back to the welcome heading
+    await new Promise((r) => setTimeout(r, 50))
+    expect(screen.queryByRole('heading', { name: /practice conversations that matter/i })).not.toBeInTheDocument()
+    unmount()
+  })
+
+  it('auto-fixable checks (llama-cpp-binary, llm-present) never appear in preflight step', async () => {
+    // Auto-fixable failures are handled silently by the setup pipeline.
+    // They must never block the user with a remediation card.
+    const autoFixableChecks: PreflightCheck[] = [
       {
         id: 'llama-cpp-binary',
-        name: 'Inference engine',
+        name: 'AI engine',
         status: 'fail',
-        message: 'llama-server binary not found.',
-        fix_action: { kind: 'open-url', href: 'https://example.com/setup', label: 'Setup guide' },
+        message: 'The AI engine is not installed.',
+        severity: 'auto-fixable',
+        autofix: true,
+        fix_action: { kind: 'install-engine', href: '/settings/install-engine', label: 'Install engine' },
       },
       {
         id: 'llm-present',
-        name: 'Language model',
+        name: 'AI model',
         status: 'fail',
-        message: 'No language model installed.',
+        message: 'No AI model is installed.',
+        severity: 'auto-fixable',
+        autofix: true,
         fix_action: { kind: 'wizard-step', href: 'choose', label: 'Open Model Manager' },
       },
-    ]))
+    ]
+    mockApi.preflight.mockResolvedValue({
+      ok: true,
+      data: {
+        overall: 'fail' as const,
+        ran_at: '2026-01-01T00:00:00.000+00:00',
+        checks: autoFixableChecks,
+      },
+    })
     renderWizard()
     fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
-    await screen.findByRole('heading', { name: /system check/i })
-
-    fireEvent.click(screen.getByTestId('wizard-preflight-fix-llm-present'))
-
-    await screen.findByRole('heading', { name: /choose how to get started/i })
-    expect(screen.queryByRole('heading', { name: /practice conversations that matter/i })).not.toBeInTheDocument()
+    // Auto-fixable only → should NOT route to preflight step; goes to installing
+    await screen.findByRole('heading', { name: /setting up your ai/i })
+    expect(screen.queryByRole('heading', { name: /getting things ready/i })).not.toBeInTheDocument()
   })
 
-  it('legacy navigate /model-manager fix action also advances to choose step', async () => {
-    mockApi.preflight.mockResolvedValue(makePreflightWith([
-      {
-        id: 'llama-cpp-binary',
-        name: 'Inference engine',
-        status: 'fail',
-        message: 'llama-server binary not found.',
-        fix_action: { kind: 'open-url', href: 'https://example.com/setup', label: 'Setup guide' },
+  it('informational checks (voice-ready) are never shown in the preflight step', async () => {
+    mockApi.preflight.mockResolvedValue({
+      ok: true,
+      data: {
+        overall: 'fail' as const,
+        ran_at: '2026-01-01T00:00:00.000+00:00',
+        checks: [
+          {
+            id: 'disk-space',
+            name: 'Not enough disk space',
+            status: 'fail' as const,
+            message: 'The AI model needs 5.0 GB and this disk has 1.0 GB free.',
+            severity: 'needs-human' as const,
+            autofix: false,
+            fix_action: { kind: 'navigate' as const, href: '/settings', label: 'Choose another location' },
+          },
+          {
+            id: 'voice-ready',
+            name: 'Voice features',
+            status: 'warn' as const,
+            message: 'Some voice features are unavailable.',
+            severity: 'informational' as const,
+            autofix: false,
+            fix_action: { kind: 'navigate' as const, href: '/settings', label: 'Voice Settings' },
+          },
+        ],
       },
-      {
-        id: 'llm-present',
-        name: 'Language model',
-        status: 'fail',
-        message: 'No language model installed.',
-        fix_action: { kind: 'navigate', href: '/model-manager', label: 'Open Model Manager' },
-      },
-    ]))
+    })
     renderWizard()
     fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
-    await screen.findByRole('heading', { name: /system check/i })
+    await screen.findByRole('heading', { name: /getting things ready/i })
 
-    fireEvent.click(screen.getByTestId('wizard-preflight-fix-llm-present'))
-
-    await screen.findByRole('heading', { name: /choose how to get started/i })
-    expect(screen.queryByRole('heading', { name: /practice conversations that matter/i })).not.toBeInTheDocument()
+    // Only disk-space (needs-human) renders as a card; voice-ready (informational) does not
+    expect(screen.getByTestId('wizard-preflight-check-disk-space')).toBeInTheDocument()
+    expect(screen.queryByTestId('wizard-preflight-check-voice-ready')).not.toBeInTheDocument()
   })
 
-  it('voice-ready navigate /settings fix action renders as informational only (no button)', async () => {
-    mockApi.preflight.mockResolvedValue(makePreflightWith([
-      {
-        id: 'llama-cpp-binary',
-        name: 'Inference engine',
-        status: 'fail',
-        message: 'llama-server binary not found.',
-        fix_action: { kind: 'open-url', href: 'https://example.com/setup', label: 'Setup guide' },
-      },
-      {
-        id: 'voice-ready',
-        name: 'Voice features',
-        status: 'warn',
-        message: 'Some voice features are unavailable.',
-        fix_action: { kind: 'navigate', href: '/settings', label: 'Voice Settings' },
-      },
-    ]))
-    renderWizard()
-    fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
-    await screen.findByRole('heading', { name: /system check/i })
-
-    expect(screen.getByTestId('wizard-preflight-check-voice-ready')).toBeInTheDocument()
-    expect(screen.queryByTestId('wizard-preflight-fix-voice-ready')).not.toBeInTheDocument()
-  })
-
-  it('no fix-action button produced by the preflight step can trigger the FirstRunGuard redirect', async () => {
-    const ALL_POSSIBLE_FIX_ACTIONS: import('@convsim/shared').PreflightFixAction[] = [
-      { kind: 'open-url', href: 'https://example.com', label: 'Docs' },
-      { kind: 'wizard-step', href: 'choose', label: 'Choose model' },
-      { kind: 'navigate', href: '/model-manager', label: 'Model Manager' },
+  it('no fix-action button in the preflight step loops back to the welcome screen', async () => {
+    // All fix actions reachable from needs-human cards must not navigate to welcome.
+    const FIX_ACTIONS: import('@convsim/shared').PreflightFixAction[] = [
       { kind: 'navigate', href: '/settings', label: 'Open Settings' },
       { kind: 'navigate', href: '/library', label: 'Browse Scenarios' },
     ]
-    for (const fix_action of ALL_POSSIBLE_FIX_ACTIONS) {
+    for (const fix_action of FIX_ACTIONS) {
       localStorage.clear()
-      mockApi.preflight.mockResolvedValue(makePreflightWith([
-        {
-          id: 'llama-cpp-binary',
-          name: 'Inference engine',
-          status: 'fail',
-          message: 'Binary missing.',
-          fix_action,
-        },
-      ]))
+      mockApi.preflight.mockResolvedValue(makeNeedsHumanPreflight(fix_action))
       const { unmount } = renderWizard()
       fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
-      await screen.findByRole('heading', { name: /system check/i })
+      await screen.findByRole('heading', { name: /getting things ready/i })
 
-      const fixBtn = screen.queryByTestId('wizard-preflight-fix-llama-cpp-binary')
-      const resolvableInWizard =
-        fix_action.kind !== 'navigate' || fix_action.href === '/model-manager'
-      if (resolvableInWizard) {
-        expect(fixBtn).not.toBeNull()
-        fireEvent.click(fixBtn!)
-        await new Promise((r) => setTimeout(r, 50))
-        expect(screen.queryByRole('heading', { name: /practice conversations that matter/i })).not.toBeInTheDocument()
-      } else {
-        expect(fixBtn).toBeNull()
-      }
+      const fixBtn = screen.getByTestId('remediation-action-disk-space')
+      fireEvent.click(fixBtn)
+      await new Promise((r) => setTimeout(r, 50))
+      expect(screen.queryByRole('heading', { name: /practice conversations that matter/i })).not.toBeInTheDocument()
       unmount()
     }
   })

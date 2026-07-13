@@ -29,7 +29,16 @@ export type SetupFlowStep =
   | 'demo-warning'
   | 'load-error'
 
-export const BLOCKING_CHECK_IDS = new Set(['llama-cpp-binary', 'disk-space', 'data-dir-writable'])
+/**
+ * Check IDs that represent genuine blockers requiring a human decision.
+ * Auto-fixable checks (engine, model, packs) are resolved silently by the
+ * setup pipeline and must never appear here.
+ *
+ * @deprecated Prefer checking `check.severity === 'needs-human'` from the API
+ * response. This set is kept as a fallback for API responses that predate the
+ * severity field.
+ */
+export const BLOCKING_CHECK_IDS = new Set(['disk-space', 'data-dir-writable'])
 
 export interface UseSetupFlowReturn {
   step: SetupFlowStep
@@ -169,8 +178,15 @@ export function useSetupFlow(
       setModelsData(modelsResult.data)
       if (preflightRes.ok) {
         setPreflightResult(preflightRes.data)
+        // Only block on checks that genuinely require human intervention.
+        // Auto-fixable failures (engine, model, packs) are handled silently by
+        // the setup pipeline and must never route to the preflight step.
         const blockingFails = preflightRes.data.checks.filter(
-          (c) => c.status === 'fail' && BLOCKING_CHECK_IDS.has(c.id),
+          (c) =>
+            c.status === 'fail' &&
+            (c.severity
+              ? c.severity === 'needs-human'
+              : BLOCKING_CHECK_IDS.has(c.id)), // fallback for older API
         )
         if (blockingFails.length > 0) { setStep('preflight'); return }
       }

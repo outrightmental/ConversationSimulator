@@ -4,6 +4,16 @@
 Runs all readiness checks concurrently and returns structured results with
 per-check remediation actions. Completes in < 5 s. Designed to run both on
 first launch (via FirstRunWizard) and on demand from the Support screen.
+
+Check severity classes
+----------------------
+auto-fixable   — the app resolves this silently as a stage in the setup
+                 pipeline; never rendered as an error during onboarding.
+needs-human    — requires a user decision (disk space, permissions, offline);
+                 shown as a remediation card and always offers a text-only
+                 escape hatch.
+informational  — voice readiness, non-default paths; never shown during
+                 first-run, visible in Settings → System health only.
 """
 from __future__ import annotations
 
@@ -27,6 +37,19 @@ router = APIRouter()
 _MIN_FREE_GB_BUFFER = 1.1   # 10 % headroom above model size
 _MIN_PACKS = 4
 
+# Exhaustive triage map — every check id must appear here exactly once.
+# Enforced by test_preflight_triage_is_exhaustive.
+CHECK_TRIAGE: dict[str, tuple[str, bool]] = {
+    #             id                  severity          autofix
+    "runtime-handshake":    ("informational",  False),
+    "data-dir-writable":    ("needs-human",    False),
+    "disk-space":           ("needs-human",    False),
+    "llama-cpp-binary":     ("auto-fixable",   True),
+    "llm-present":          ("auto-fixable",   True),
+    "packs-seeded":         ("auto-fixable",   True),
+    "voice-ready":          ("informational",  False),
+}
+
 
 # ── Response schemas ──────────────────────────────────────────────────────────
 
@@ -42,9 +65,12 @@ class FixAction(BaseModel):
 class CheckResult(BaseModel):
     id: str
     name: str
-    status: str         # "pass" | "warn" | "fail"
+    status: str             # "pass" | "warn" | "fail"
     message: str
+    severity: str           # "auto-fixable" | "needs-human" | "informational"
+    autofix: bool           # True if the setup pipeline can resolve this silently
     fix_action: Optional[FixAction] = None
+    detail: Optional[dict] = None   # check-specific structured data (e.g. {free_gb, required_gb})
 
 
 class PreflightResponse(BaseModel):
@@ -58,16 +84,20 @@ class PreflightResponse(BaseModel):
 
 def _check_runtime_handshake() -> CheckResult:
     """Check 1: Core service is reachable and reports its version."""
+    severity, autofix = CHECK_TRIAGE["runtime-handshake"]
     return CheckResult(
         id="runtime-handshake",
         name="Runtime handshake",
         status="pass",
         message=f"convsim-core {__version__} is running.",
+        severity=severity,
+        autofix=autofix,
     )
 
 
 def _check_data_dir(data_dir: str) -> CheckResult:
     """Check 2: Data directory exists and is writable."""
+    severity, autofix = CHECK_TRIAGE["data-dir-writable"]
     path = Path(data_dir)
     try:
         path.mkdir(parents=True, exist_ok=True)
@@ -76,22 +106,28 @@ def _check_data_dir(data_dir: str) -> CheckResult:
         probe.unlink()
         return CheckResult(
             id="data-dir-writable",
-            name="Data directory",
+            name="Data folder",
             status="pass",
-            message=f"Data directory is writable at {data_dir}.",
+            message="The data folder is writable.",
+            severity=severity,
+            autofix=autofix,
         )
     except OSError as exc:
         return CheckResult(
             id="data-dir-writable",
-            name="Data directory",
+            name="Data folder",
             status="fail",
-            message=f"Cannot write to data directory: {exc}",
+            message="The app can't write to its data folder. You may need to check your disk permissions.",
+            severity=severity,
+            autofix=autofix,
             fix_action=FixAction(kind="navigate", href="/settings", label="Open Settings"),
+            detail={"path": data_dir, "error": str(exc)},
         )
 
 
 def _check_disk_space(models_dir: str, required_gb: float) -> CheckResult:
     """Check 3: Sufficient free disk space for the active or starter model."""
+    severity, autofix = CHECK_TRIAGE["disk-space"]
     try:
         usage = shutil.disk_usage(models_dir)
     except OSError:
@@ -109,7 +145,10 @@ def _check_disk_space(models_dir: str, required_gb: float) -> CheckResult:
             id="disk-space",
             name="Disk space",
             status="pass",
-            message=f"{free_gb:.1f} GB free — {required_gb:.1f} GB required.",
+            message=f"{free_gb:.1f} GB free — {required_gb:.1f} GB needed.",
+            severity=severity,
+            autofix=autofix,
+            detail={"free_gb": round(free_gb, 2), "required_gb": round(required_gb, 2)},
         )
     if free_gb >= required_gb:
         return CheckResult(
@@ -117,40 +156,48 @@ def _check_disk_space(models_dir: str, required_gb: float) -> CheckResult:
             name="Disk space",
             status="warn",
             message=(
-                f"Disk space is tight: {free_gb:.1f} GB free, "
-                f"{needed_gb:.1f} GB recommended for the selected model."
+                f"Space is tight: {free_gb:.1f} GB free, "
+                f"{needed_gb:.1f} GB recommended for the AI model."
             ),
+            severity=severity,
+            autofix=autofix,
+            detail={"free_gb": round(free_gb, 2), "required_gb": round(required_gb, 2)},
         )
     return CheckResult(
         id="disk-space",
-        name="Disk space",
+        name="Not enough disk space",
         status="fail",
         message=(
-            f"Insufficient disk space: {free_gb:.1f} GB free, "
-            f"{required_gb:.1f} GB required for the selected model."
+            f"The AI model needs {required_gb:.1f} GB "
+            f"and this disk has {free_gb:.1f} GB free."
         ),
-        fix_action=FixAction(kind="navigate", href="/settings", label="Open Settings"),
+        severity=severity,
+        autofix=autofix,
+        fix_action=FixAction(kind="navigate", href="/settings", label="Choose another location"),
+        detail={"free_gb": round(free_gb, 2), "required_gb": round(required_gb, 2)},
     )
 
 
 def _check_llama_cpp_binary() -> CheckResult:
-    """Check 4: llama-server binary is present and executable."""
+    """Check 4: AI engine executable is present. Auto-fixable by the setup pipeline."""
+    severity, autofix = CHECK_TRIAGE["llama-cpp-binary"]
     binary = find_executable()
     if binary is not None:
         return CheckResult(
             id="llama-cpp-binary",
-            name="Inference engine",
+            name="AI engine",
             status="pass",
-            message=f"llama-server found at {binary}.",
+            message="The AI engine is ready.",
+            severity=severity,
+            autofix=autofix,
         )
     return CheckResult(
         id="llama-cpp-binary",
-        name="Inference engine",
+        name="AI engine",
         status="fail",
-        message=(
-            "llama-server binary not found. "
-            "The inference engine is missing from this installation."
-        ),
+        message="The AI engine is not installed. It will be set up automatically.",
+        severity=severity,
+        autofix=autofix,
         fix_action=FixAction(
             kind="install-engine",
             href="/settings/install-engine",
@@ -160,7 +207,8 @@ def _check_llama_cpp_binary() -> CheckResult:
 
 
 def _check_llm_present(conn, active_model_id: Optional[str]) -> CheckResult:
-    """Check 5: At least one LLM model file is installed and ready."""
+    """Check 5: At least one AI model is installed. Auto-fixable by the setup pipeline."""
+    severity, autofix = CHECK_TRIAGE["llm-present"]
     row = conn.execute(
         "SELECT COUNT(*) AS cnt FROM installed_models "
         "WHERE install_status IN ('ready', 'complete')"
@@ -170,28 +218,31 @@ def _check_llm_present(conn, active_model_id: Optional[str]) -> CheckResult:
     if count > 0:
         return CheckResult(
             id="llm-present",
-            name="Language model",
+            name="AI model",
             status="pass",
-            message=f"{count} model{'s' if count != 1 else ''} installed and ready.",
+            message=f"{count} AI model{'s' if count != 1 else ''} installed and ready.",
+            severity=severity,
+            autofix=autofix,
         )
 
     # An active_model_id without an install record means Ollama or a user-supplied path.
     if active_model_id:
         return CheckResult(
             id="llm-present",
-            name="Language model",
+            name="AI model",
             status="pass",
-            message=f"Active model configured: {active_model_id}.",
+            message="Active AI model configured.",
+            severity=severity,
+            autofix=autofix,
         )
 
     return CheckResult(
         id="llm-present",
-        name="Language model",
+        name="AI model",
         status="fail",
-        message=(
-            "No language model installed. "
-            "Install a starter model to enable AI responses."
-        ),
+        message="No AI model is installed. It will be downloaded automatically during setup.",
+        severity=severity,
+        autofix=autofix,
         fix_action=FixAction(
             kind="wizard-step",
             href="choose",
@@ -201,7 +252,8 @@ def _check_llm_present(conn, active_model_id: Optional[str]) -> CheckResult:
 
 
 def _check_packs_seeded(conn) -> CheckResult:
-    """Check 6: At least four scenario packs are present."""
+    """Check 6: At least four scenario packs are present. Auto-fixable by the setup pipeline."""
+    severity, autofix = CHECK_TRIAGE["packs-seeded"]
     row = conn.execute("SELECT COUNT(*) AS cnt FROM packs").fetchone()
     count = row["cnt"] if row else 0
 
@@ -211,6 +263,8 @@ def _check_packs_seeded(conn) -> CheckResult:
             name="Scenario packs",
             status="pass",
             message=f"{count} scenario pack{'s' if count != 1 else ''} available.",
+            severity=severity,
+            autofix=autofix,
         )
     if count > 0:
         return CheckResult(
@@ -221,19 +275,24 @@ def _check_packs_seeded(conn) -> CheckResult:
                 f"Only {count} scenario pack{'s' if count != 1 else ''} found "
                 f"({_MIN_PACKS}+ recommended)."
             ),
+            severity=severity,
+            autofix=autofix,
             fix_action=FixAction(kind="navigate", href="/library", label="Browse Scenarios"),
         )
     return CheckResult(
         id="packs-seeded",
         name="Scenario packs",
         status="fail",
-        message="No scenario packs found. The app needs at least one pack to play.",
+        message="No scenario packs are installed. They will be added automatically during setup.",
+        severity=severity,
+        autofix=autofix,
         fix_action=FixAction(kind="navigate", href="/library", label="Browse Scenarios"),
     )
 
 
 async def _check_voice_ready(stt_worker, tts_worker, vad_worker) -> CheckResult:
-    """Check 7: Optional voice feature readiness — warns, never fails."""
+    """Check 7: Optional voice feature readiness — informational, never blocks onboarding."""
+    severity, autofix = CHECK_TRIAGE["voice-ready"]
 
     async def _safe(worker):
         try:
@@ -265,6 +324,8 @@ async def _check_voice_ready(stt_worker, tts_worker, vad_worker) -> CheckResult:
             name="Voice features",
             status="pass",
             message=f"Voice features ready: {', '.join(ready)}.",
+            severity=severity,
+            autofix=autofix,
         )
     return CheckResult(
         id="voice-ready",
@@ -274,6 +335,8 @@ async def _check_voice_ready(stt_worker, tts_worker, vad_worker) -> CheckResult:
             f"Some voice features are unavailable: {'; '.join(issues)}. "
             "Text-only mode is always available."
         ),
+        severity=severity,
+        autofix=autofix,
         fix_action=FixAction(kind="navigate", href="/settings", label="Voice Settings"),
     )
 
