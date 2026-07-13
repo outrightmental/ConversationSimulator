@@ -11,6 +11,10 @@ out/
 .output/
 *.local
 *.tsbuildinfo
+# Compiled outputs of vite.config.ts (emitted by `tsc -b`). Committing the .js
+# is a footgun: Vite resolves vite.config.js *before* vite.config.ts, so a stale
+# compiled copy would silently shadow edits to the .ts source.
+vite.config.js
 vite.config.d.ts
 
 # --- Python / Backend ---
