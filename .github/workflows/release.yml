@@ -25,6 +25,14 @@ jobs:
       - uses: actions/checkout@v5
       - name: Smoke check
         run: bash scripts/smoke-check.sh
+      - name: Check docs freshness
+        run: |
+          # Tag pushes expose the tag as github.ref_name; workflow_dispatch
+          # passes it via the `tag` input. Strip any pre-release suffix so
+          # v0.2.2-beta.1 verifies against the v0.2.2 base version.
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          VERSION="${TAG%%-*}"
+          bash scripts/check-docs-freshness.sh "$VERSION"
 
   # ── Cross-platform desktop builds ─────────────────────────────────────────────
   build-desktop:
