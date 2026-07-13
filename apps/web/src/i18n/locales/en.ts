@@ -305,6 +305,39 @@ export const en = {
       clearing: 'Clearing…',
     },
   },
+  setup: {
+    welcome: {
+      headline: 'Practice conversations that matter.',
+      subheadline: 'Private. On your machine. Yours.',
+      setMeUp: {
+        title: 'Set me up',
+        description: 'Downloads the AI model ({{size}} GB, {{license}}). Works offline afterwards.',
+        descriptionLoading: 'Downloads the recommended AI model. Works offline afterwards.',
+        badge: 'Recommended',
+      },
+      tryNow: {
+        title: 'Try it right now',
+        description: 'Play a scripted scenario instantly, no download. Upgrade any time.',
+        disclaimer: 'Responses are scripted, not AI-generated.',
+      },
+      privacy: {
+        summary: '🔒 Everything stays on this machine.',
+        toggle: 'Details',
+        details: 'Conversations, transcripts, audio recordings, and AI responses are processed locally and never leave your computer unless you choose to export or share them. You can play offline once the model is installed.',
+      },
+      advanced: {
+        toggle: 'Advanced: use Ollama or a local GGUF file',
+        ollama: {
+          why: 'Already run models with Ollama? Reuse them — nothing new to download.',
+          action: 'Browse Ollama models',
+        },
+        gguf: {
+          why: 'Have a .gguf you trust? Point us at it.',
+          action: 'Use a GGUF file',
+        },
+      },
+    },
+  },
   debrief: {
     title: 'Session Debrief',
     sessionLabel: 'Session:',

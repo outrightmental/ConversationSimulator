@@ -163,38 +163,34 @@ beforeEach(() => {
 // ── Welcome step ─────────────────────────────────────────────────────────────
 
 describe('FirstRunWizard — welcome step', () => {
-  it('shows a welcome heading', () => {
+  it('shows the main headline', () => {
     renderWizard()
-    expect(screen.getByRole('heading', { name: /welcome to conversation simulator/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /practice conversations that matter/i })).toBeInTheDocument()
   })
 
-  it('shows the privacy and offline-play guarantee note', () => {
+  it('shows a Set me up card button', () => {
     renderWizard()
-    expect(
-      screen.getByRole('note', { name: /privacy and offline-play guarantee/i }),
-    ).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /set me up/i })).toBeInTheDocument()
   })
 
-  it('states conversations stay on this machine', () => {
+  it('shows a Try it right now card button', () => {
     renderWizard()
-    expect(screen.getByText(/your data stays on this machine/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /try it right now/i })).toBeInTheDocument()
   })
 
-  it('shows a Get started button', () => {
+  it('pre-fetches the model registry on mount', async () => {
     renderWizard()
-    expect(screen.getByRole('button', { name: /get started/i })).toBeInTheDocument()
+    await waitFor(() => expect(mockApi.getModels).toHaveBeenCalledOnce())
   })
 
-  it('does not call the API on the welcome step', () => {
+  it('shows model size from the registry once loaded', async () => {
     renderWizard()
-    expect(mockApi.getModels).not.toHaveBeenCalled()
+    expect(await screen.findByText(/2\.6 gb/i)).toBeInTheDocument()
   })
 
-  it('advances to loading then choose step when Get started is clicked', async () => {
+  it('shows model license from the registry once loaded', async () => {
     renderWizard()
-    fireEvent.click(screen.getByRole('button', { name: /get started/i }))
-    expect(await screen.findByRole('heading', { name: /choose how to get started/i })).toBeInTheDocument()
-    expect(mockApi.getModels).toHaveBeenCalledOnce()
+    expect(await screen.findByText(/apache-2\.0/i)).toBeInTheDocument()
   })
 
   it('redirects to home when setup is already complete', () => {
@@ -203,37 +199,82 @@ describe('FirstRunWizard — welcome step', () => {
     expect(screen.getByTestId('home-page')).toBeInTheDocument()
   })
 
-  it('shows a How it works section', () => {
+  it('Set me up goes directly to the installing step without a confirm interstitial', async () => {
     renderWizard()
-    expect(screen.getByText(/how it works/i)).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
+    await screen.findByRole('heading', { name: /installing model/i })
+    expect(screen.queryByRole('heading', { name: /confirm model install/i })).not.toBeInTheDocument()
   })
 
-  it('explains that a local AI model powers conversations', () => {
+  it('calls installModel with the recommended model id when Set me up is clicked', async () => {
     renderWizard()
-    expect(
-      screen.getByText(/a local ai model powers the conversations/i),
-    ).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
+    await screen.findByRole('heading', { name: /installing model/i })
+    expect(mockApi.installModel).toHaveBeenCalledWith({ registry_id: 'qwen3-4b-instruct-q4_k_m' })
   })
 
-  it('explains what scenario packs are', () => {
+  it('Try it right now navigates directly to the library', async () => {
     renderWizard()
-    expect(
-      screen.getByText(/packs give you scenarios to practise/i),
-    ).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /try it right now/i }))
+    await waitFor(() => expect(screen.getByTestId('library-page')).toBeInTheDocument())
   })
 
-  it('mentions the text-only demo option', () => {
+  it('marks setup complete when Try it right now is clicked', async () => {
     renderWizard()
-    expect(
-      screen.getByText(/no download\? try the text-only demo/i),
-    ).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /try it right now/i }))
+    await waitFor(() => expect(screen.getByTestId('library-page')).toBeInTheDocument())
+    expect(localStorage.getItem(SETUP_KEYS.firstRunComplete)).toBe('true')
   })
 
-  it('explains that the model runs without internet after download', () => {
+  it('states everything stays on this machine', () => {
     renderWizard()
-    expect(
-      screen.getByText(/works without internet/i),
-    ).toBeInTheDocument()
+    expect(screen.getByText(/everything stays on this machine/i)).toBeInTheDocument()
+  })
+
+  it('shows an Advanced section toggle button', () => {
+    renderWizard()
+    expect(screen.getByRole('button', { name: /advanced/i })).toBeInTheDocument()
+  })
+
+  it('shows Browse Ollama models button when Advanced is expanded', async () => {
+    renderWizard()
+    fireEvent.click(screen.getByRole('button', { name: /advanced/i }))
+    expect(await screen.findByRole('button', { name: /browse ollama models/i })).toBeInTheDocument()
+  })
+
+  it('shows Use a GGUF file button when Advanced is expanded', async () => {
+    renderWizard()
+    fireEvent.click(screen.getByRole('button', { name: /advanced/i }))
+    expect(await screen.findByRole('button', { name: /use a gguf file/i })).toBeInTheDocument()
+  })
+
+  it('Advanced Ollama option leads to the ollama-select step', async () => {
+    renderWizard()
+    fireEvent.click(screen.getByRole('button', { name: /advanced/i }))
+    await screen.findByRole('button', { name: /browse ollama models/i })
+    fireEvent.click(screen.getByRole('button', { name: /browse ollama models/i }))
+    await screen.findByRole('heading', { name: /use ollama model/i })
+  })
+
+  it('Advanced GGUF option leads to the gguf-path step', async () => {
+    renderWizard()
+    fireEvent.click(screen.getByRole('button', { name: /advanced/i }))
+    await screen.findByRole('button', { name: /use a gguf file/i })
+    fireEvent.click(screen.getByRole('button', { name: /use a gguf file/i }))
+    await screen.findByRole('heading', { name: /use a gguf file/i })
+  })
+
+  it('Try it right now card does not use the words warning, without, or only', () => {
+    renderWizard()
+    const btn = screen.getByRole('button', { name: /try it right now/i })
+    expect(btn.textContent).not.toMatch(/warning/i)
+    expect(btn.textContent).not.toMatch(/\bwithout\b/i)
+    expect(btn.textContent).not.toMatch(/\bonly\b/i)
+  })
+
+  it('states responses are scripted, not AI-generated', () => {
+    renderWizard()
+    expect(screen.getByText(/scripted, not ai-generated/i)).toBeInTheDocument()
   })
 
   it('shows a Read setup docs link', () => {
@@ -264,7 +305,7 @@ describe('FirstRunWizard — preflight step', () => {
   async function goToPreflight() {
     mockApi.preflight.mockResolvedValue({ ok: true, data: INFRA_FAIL_PREFLIGHT })
     renderWizard()
-    fireEvent.click(screen.getByRole('button', { name: /get started/i }))
+    fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
     await screen.findByRole('heading', { name: /system check/i })
   }
 
@@ -305,15 +346,16 @@ describe('FirstRunWizard — preflight step', () => {
       data: { overall: 'pass', checks: [], ran_at: '2026-01-01T00:00:00.000+00:00' },
     })
     renderWizard()
-    fireEvent.click(screen.getByRole('button', { name: /get started/i }))
-    await screen.findByRole('heading', { name: /choose how to get started/i })
+    fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
+    // Set me up goes directly to installing (not choose) when preflight passes
+    await screen.findByRole('heading', { name: /installing model/i })
   })
 
   it('skips preflight step when preflight API call fails (graceful degradation)', async () => {
     mockApi.preflight.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'unavailable' } })
     renderWizard()
-    fireEvent.click(screen.getByRole('button', { name: /get started/i }))
-    await screen.findByRole('heading', { name: /choose how to get started/i })
+    fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
+    await screen.findByRole('heading', { name: /installing model/i })
   })
 })
 
@@ -333,8 +375,6 @@ describe('FirstRunWizard — issue-378: preflight fix actions never loop back to
   }
 
   it('wizard-step fix action (llm-present) advances to choose step, not welcome', async () => {
-    // Reproduces the exact first-run loop from issue #378:
-    // llama-cpp-binary blocks → preflight shown → click "Open Model Manager" → must NOT be welcome.
     mockApi.preflight.mockResolvedValue(makePreflightWith([
       {
         id: 'llama-cpp-binary',
@@ -352,18 +392,16 @@ describe('FirstRunWizard — issue-378: preflight fix actions never loop back to
       },
     ]))
     renderWizard()
-    fireEvent.click(screen.getByRole('button', { name: /get started/i }))
+    fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
     await screen.findByRole('heading', { name: /system check/i })
 
     fireEvent.click(screen.getByTestId('wizard-preflight-fix-llm-present'))
 
-    // Must land on the choose step — never the welcome screen.
     await screen.findByRole('heading', { name: /choose how to get started/i })
-    expect(screen.queryByRole('heading', { name: /welcome to conversation simulator/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /practice conversations that matter/i })).not.toBeInTheDocument()
   })
 
   it('legacy navigate /model-manager fix action also advances to choose step', async () => {
-    // Backward-compat path for older backends that still emit navigate /model-manager.
     mockApi.preflight.mockResolvedValue(makePreflightWith([
       {
         id: 'llama-cpp-binary',
@@ -381,18 +419,16 @@ describe('FirstRunWizard — issue-378: preflight fix actions never loop back to
       },
     ]))
     renderWizard()
-    fireEvent.click(screen.getByRole('button', { name: /get started/i }))
+    fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
     await screen.findByRole('heading', { name: /system check/i })
 
     fireEvent.click(screen.getByTestId('wizard-preflight-fix-llm-present'))
 
     await screen.findByRole('heading', { name: /choose how to get started/i })
-    expect(screen.queryByRole('heading', { name: /welcome to conversation simulator/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /practice conversations that matter/i })).not.toBeInTheDocument()
   })
 
   it('voice-ready navigate /settings fix action renders as informational only (no button)', async () => {
-    // Voice check warns with a /settings navigate action; during first-run that
-    // route is guarded, so the button must be suppressed entirely.
     mockApi.preflight.mockResolvedValue(makePreflightWith([
       {
         id: 'llama-cpp-binary',
@@ -410,22 +446,14 @@ describe('FirstRunWizard — issue-378: preflight fix actions never loop back to
       },
     ]))
     renderWizard()
-    fireEvent.click(screen.getByRole('button', { name: /get started/i }))
+    fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
     await screen.findByRole('heading', { name: /system check/i })
 
-    // The check is rendered but no fix button appears.
     expect(screen.getByTestId('wizard-preflight-check-voice-ready')).toBeInTheDocument()
     expect(screen.queryByTestId('wizard-preflight-fix-voice-ready')).not.toBeInTheDocument()
   })
 
   it('no fix-action button produced by the preflight step can trigger the FirstRunGuard redirect', async () => {
-    // Exhaustively asserts that every fix_action the backend can emit is handled
-    // inside the wizard without routing to a guarded path.
-    // Mirrors every fix_action the backend can actually emit from preflight.py:
-    // open-url (setup guide), wizard-step (llm-present), and navigate to
-    // /model-manager, /settings, and /library. Any navigate target that isn't
-    // resolvable inside the wizard must be suppressed (no button) rather than
-    // rendered as a loop-inducing FirstRunGuard redirect.
     const ALL_POSSIBLE_FIX_ACTIONS: import('@convsim/shared').PreflightFixAction[] = [
       { kind: 'open-url', href: 'https://example.com', label: 'Docs' },
       { kind: 'wizard-step', href: 'choose', label: 'Choose model' },
@@ -445,25 +473,18 @@ describe('FirstRunWizard — issue-378: preflight fix actions never loop back to
         },
       ]))
       const { unmount } = renderWizard()
-      fireEvent.click(screen.getByRole('button', { name: /get started/i }))
+      fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
       await screen.findByRole('heading', { name: /system check/i })
 
-      // After clicking the fix button (if rendered), the user must never see the
-      // welcome screen again (which is what happens when FirstRunGuard sends them
-      // back to /first-run and the wizard resets).
       const fixBtn = screen.queryByTestId('wizard-preflight-fix-llama-cpp-binary')
       const resolvableInWizard =
         fix_action.kind !== 'navigate' || fix_action.href === '/model-manager'
       if (resolvableInWizard) {
-        // A button is rendered and clicking it must resolve inside the wizard.
         expect(fixBtn).not.toBeNull()
         fireEvent.click(fixBtn!)
-        // Give React time to process; welcome heading must NOT appear.
         await new Promise((r) => setTimeout(r, 50))
-        expect(screen.queryByRole('heading', { name: /welcome to conversation simulator/i })).not.toBeInTheDocument()
+        expect(screen.queryByRole('heading', { name: /practice conversations that matter/i })).not.toBeInTheDocument()
       } else {
-        // A navigate to any other guarded route is suppressed entirely — no button,
-        // no way to trigger the FirstRunGuard loop.
         expect(fixBtn).toBeNull()
       }
       unmount()
@@ -471,112 +492,16 @@ describe('FirstRunWizard — issue-378: preflight fix actions never loop back to
   })
 })
 
-// ── Choose step ───────────────────────────────────────────────────────────────
-
-describe('FirstRunWizard — choose step', () => {
-  async function goToChoose() {
-    renderWizard()
-    fireEvent.click(screen.getByRole('button', { name: /get started/i }))
-    await screen.findByRole('heading', { name: /choose how to get started/i })
-  }
-
-  it('shows Install recommended model option', async () => {
-    await goToChoose()
-    expect(screen.getByRole('button', { name: /install qwen3/i })).toBeInTheDocument()
-  })
-
-  it('shows Browse Ollama models option', async () => {
-    await goToChoose()
-    expect(screen.getByRole('button', { name: /browse ollama models/i })).toBeInTheDocument()
-  })
-
-  it('shows Use a GGUF file option', async () => {
-    await goToChoose()
-    expect(screen.getByRole('button', { name: /use a gguf file/i })).toBeInTheDocument()
-  })
-
-  it('shows Continue without a model option', async () => {
-    await goToChoose()
-    expect(screen.getByRole('button', { name: /continue in text-only demo/i })).toBeInTheDocument()
-  })
-})
-
-// ── Confirm install step ──────────────────────────────────────────────────────
-
-describe('FirstRunWizard — confirm install step', () => {
-  async function goToConfirm() {
-    renderWizard()
-    fireEvent.click(screen.getByRole('button', { name: /get started/i }))
-    await screen.findByRole('button', { name: /install qwen3/i })
-    fireEvent.click(screen.getByRole('button', { name: /install qwen3/i }))
-    await screen.findByRole('heading', { name: /confirm model install/i })
-  }
-
-  it('shows the confirm heading', async () => {
-    await goToConfirm()
-    expect(screen.getByRole('heading', { name: /confirm model install/i })).toBeInTheDocument()
-  })
-
-  it('shows the model size', async () => {
-    await goToConfirm()
-    expect(screen.getByText(/2\.6 gb/i)).toBeInTheDocument()
-  })
-
-  it('shows the license', async () => {
-    await goToConfirm()
-    expect(screen.getByText(/apache-2\.0/i)).toBeInTheDocument()
-  })
-
-  it('shows the destination path', async () => {
-    await goToConfirm()
-    expect(
-      screen.getByText(/~\/.convsim\/models\/llm\/qwen3-4b-instruct-q4_k_m\.gguf/),
-    ).toBeInTheDocument()
-  })
-
-  it('shows the min VRAM requirement', async () => {
-    await goToConfirm()
-    expect(screen.getByText('4 GB')).toBeInTheDocument()
-  })
-
-  it('shows the offline-play explanation note', async () => {
-    await goToConfirm()
-    expect(
-      screen.getByRole('note', { name: /offline-play explanation/i }),
-    ).toBeInTheDocument()
-  })
-
-  it('states the model plays offline after install', async () => {
-    await goToConfirm()
-    expect(screen.getByText(/plays offline after install/i)).toBeInTheDocument()
-  })
-
-  it('states no data is sent to any server', async () => {
-    await goToConfirm()
-    expect(screen.getByText(/no data is sent to any server/i)).toBeInTheDocument()
-  })
-
-  it('does not start the download until Confirm is clicked', async () => {
-    await goToConfirm()
-    expect(mockApi.startSetupInstall).not.toHaveBeenCalled()
-  })
-
-})
-
 // ── Successful install ────────────────────────────────────────────────────────
 
 describe('FirstRunWizard — successful install', () => {
   async function goToInstalling() {
     renderWizard()
-    fireEvent.click(screen.getByRole('button', { name: /get started/i }))
-    await screen.findByRole('button', { name: /install qwen3/i })
-    fireEvent.click(screen.getByRole('button', { name: /install qwen3/i }))
-    await screen.findByRole('button', { name: /confirm & install/i })
-    fireEvent.click(screen.getByRole('button', { name: /confirm & install/i }))
-    await screen.findByRole('heading', { name: /setting up your ai/i })
+    fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
+    await screen.findByRole('heading', { name: /installing model/i })
   }
 
-  it('shows the installing heading after confirmation', async () => {
+  it('shows the installing heading after Set me up is clicked', async () => {
     await goToInstalling()
     expect(screen.getByRole('heading', { name: /setting up your ai/i })).toBeInTheDocument()
   })
@@ -676,12 +601,8 @@ describe('FirstRunWizard — successful install', () => {
 describe('FirstRunWizard — no network error', () => {
   async function goToInstalling() {
     renderWizard()
-    fireEvent.click(screen.getByRole('button', { name: /get started/i }))
-    await screen.findByRole('button', { name: /install qwen3/i })
-    fireEvent.click(screen.getByRole('button', { name: /install qwen3/i }))
-    await screen.findByRole('button', { name: /confirm & install/i })
-    fireEvent.click(screen.getByRole('button', { name: /confirm & install/i }))
-    await screen.findByRole('heading', { name: /setting up your ai/i })
+    fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
+    await screen.findByRole('heading', { name: /installing model/i })
   }
 
   it('shows a network error alert when download fails with a network error', async () => {
@@ -875,12 +796,8 @@ describe('FirstRunWizard — insufficient disk error', () => {
   async function triggerDiskError() {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     renderWizard()
-    fireEvent.click(screen.getByRole('button', { name: /get started/i }))
-    await screen.findByRole('button', { name: /install qwen3/i })
-    fireEvent.click(screen.getByRole('button', { name: /install qwen3/i }))
-    await screen.findByRole('button', { name: /confirm & install/i })
-    fireEvent.click(screen.getByRole('button', { name: /confirm & install/i }))
-    await screen.findByRole('heading', { name: /setting up your ai/i })
+    fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
+    await screen.findByRole('heading', { name: /installing model/i })
 
     mockApi.getSetupInstallStatus.mockResolvedValue({ ok: true, data: {
       id: 1,
@@ -966,12 +883,8 @@ describe('FirstRunWizard — insufficient disk error', () => {
 describe('FirstRunWizard — cancelled download', () => {
   async function goToInstalling() {
     renderWizard()
-    fireEvent.click(screen.getByRole('button', { name: /get started/i }))
-    await screen.findByRole('button', { name: /install qwen3/i })
-    fireEvent.click(screen.getByRole('button', { name: /install qwen3/i }))
-    await screen.findByRole('button', { name: /confirm & install/i })
-    fireEvent.click(screen.getByRole('button', { name: /confirm & install/i }))
-    await screen.findByRole('heading', { name: /setting up your ai/i })
+    fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
+    await screen.findByRole('heading', { name: /installing model/i })
   }
 
   it('shows a Cancel and go home button while downloading', async () => {
@@ -1027,7 +940,7 @@ describe('FirstRunWizard — cancelled download', () => {
 describe('FirstRunWizard — existing Ollama path', () => {
   async function goToOllama() {
     renderWizard()
-    fireEvent.click(screen.getByRole('button', { name: /get started/i }))
+    fireEvent.click(screen.getByRole('button', { name: /advanced/i }))
     await screen.findByRole('button', { name: /browse ollama models/i })
     fireEvent.click(screen.getByRole('button', { name: /browse ollama models/i }))
     await screen.findByRole('heading', { name: /use ollama model/i })
@@ -1103,7 +1016,7 @@ describe('FirstRunWizard — existing Ollama path', () => {
   it('shows "No Ollama models detected" when the list is empty', async () => {
     mockApi.getModels.mockResolvedValue({ ok: true, data: makeModelsResponse({ ollama_models: [] }) })
     renderWizard()
-    fireEvent.click(screen.getByRole('button', { name: /get started/i }))
+    fireEvent.click(screen.getByRole('button', { name: /advanced/i }))
     await screen.findByRole('button', { name: /browse ollama models/i })
     fireEvent.click(screen.getByRole('button', { name: /browse ollama models/i }))
     await screen.findByText(/no ollama models detected/i)
@@ -1120,50 +1033,25 @@ describe('FirstRunWizard — existing Ollama path', () => {
 // ── Demo / text-only path ─────────────────────────────────────────────────────
 
 describe('FirstRunWizard — text-only demo path', () => {
-  async function goToDemo() {
+  it('calls useModel with the fake runtime when Try it right now is clicked', async () => {
     renderWizard()
-    fireEvent.click(screen.getByRole('button', { name: /get started/i }))
-    await screen.findByRole('button', { name: /continue in text-only demo/i })
-    fireEvent.click(screen.getByRole('button', { name: /continue in text-only demo/i }))
-    await screen.findByRole('heading', { name: /text-only demo/i })
-  }
-
-  it('shows a disclaimer that this is not production quality', async () => {
-    await goToDemo()
-    expect(screen.getByText(/this is a demo, not production quality/i)).toBeInTheDocument()
-  })
-
-  it('mentions scripted responses in the disclaimer', async () => {
-    await goToDemo()
-    expect(screen.getByText(/scripted responses/i)).toBeInTheDocument()
-  })
-
-  it('calls useModel with the fake runtime when confirmed', async () => {
-    mockApi.useModel.mockResolvedValue({ ok: true, data: {
-      runtime_id: 'fake',
-      model_id: null,
-      runtime_name: 'Fake (deterministic)',
-      status: 'ready',
-      message: null,
-    } })
-    await goToDemo()
-    fireEvent.click(screen.getByRole('button', { name: /i understand/i }))
+    fireEvent.click(screen.getByRole('button', { name: /try it right now/i }))
     await waitFor(() =>
       expect(mockApi.useModel).toHaveBeenCalledWith({ runtime_id: 'fake', model_id: null }),
     )
   })
 
-  it('navigates to the library and marks setup complete after confirming demo', async () => {
-    await goToDemo()
-    fireEvent.click(screen.getByRole('button', { name: /i understand/i }))
+  it('navigates to the library and marks setup complete', async () => {
+    renderWizard()
+    fireEvent.click(screen.getByRole('button', { name: /try it right now/i }))
     await waitFor(() => expect(screen.getByTestId('library-page')).toBeInTheDocument())
     expect(localStorage.getItem(SETUP_KEYS.firstRunComplete)).toBe('true')
   })
 
   it('still navigates to library even when useModel fails in demo mode', async () => {
     mockApi.useModel.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'runtime unavailable' } })
-    await goToDemo()
-    fireEvent.click(screen.getByRole('button', { name: /i understand/i }))
+    renderWizard()
+    fireEvent.click(screen.getByRole('button', { name: /try it right now/i }))
     await waitFor(() => expect(screen.getByTestId('library-page')).toBeInTheDocument())
   })
 })
@@ -1173,12 +1061,8 @@ describe('FirstRunWizard — text-only demo path', () => {
 describe('FirstRunWizard — tutorial CTA during install', () => {
   async function goToInstalling() {
     renderWizard()
-    fireEvent.click(screen.getByRole('button', { name: /get started/i }))
-    await screen.findByRole('button', { name: /install qwen3/i })
-    fireEvent.click(screen.getByRole('button', { name: /install qwen3/i }))
-    await screen.findByRole('button', { name: /confirm & install/i })
-    fireEvent.click(screen.getByRole('button', { name: /confirm & install/i }))
-    await screen.findByRole('heading', { name: /setting up your ai/i })
+    fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
+    await screen.findByRole('heading', { name: /installing model/i })
   }
 
   it('shows the play tutorial note while downloading', async () => {
@@ -1217,12 +1101,8 @@ describe('FirstRunWizard — tutorial CTA during install', () => {
 describe('FirstRunWizard — tutorial prompt step', () => {
   async function goToTutorialPrompt() {
     renderWizard()
-    fireEvent.click(screen.getByRole('button', { name: /get started/i }))
-    await screen.findByRole('button', { name: /install qwen3/i })
-    fireEvent.click(screen.getByRole('button', { name: /install qwen3/i }))
-    await screen.findByRole('button', { name: /confirm & install/i })
-    fireEvent.click(screen.getByRole('button', { name: /confirm & install/i }))
-    await screen.findByRole('heading', { name: /setting up your ai/i })
+    fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
+    await screen.findByRole('heading', { name: /installing model/i })
     fireEvent.click(screen.getByRole('button', { name: /play the tutorial while you wait/i }))
     await screen.findByRole('heading', { name: /first words tutorial/i })
   }
@@ -1304,7 +1184,6 @@ describe('FirstRunWizard — tutorial prompt step', () => {
   it('navigates to the tutorial scenario setup route (a real, mounted route)', async () => {
     await goToTutorialPrompt()
     fireEvent.click(screen.getByRole('button', { name: /start the tutorial/i }))
-    // The setup route resolves the seeded scenario by id; there is no /play route.
     await screen.findByTestId('setup-page')
   })
 })
@@ -1314,12 +1193,8 @@ describe('FirstRunWizard — tutorial prompt step', () => {
 describe('FirstRunWizard — post-install navigation with tutorial completed', () => {
   async function goToInstalling() {
     renderWizard()
-    fireEvent.click(screen.getByRole('button', { name: /get started/i }))
-    await screen.findByRole('button', { name: /install qwen3/i })
-    fireEvent.click(screen.getByRole('button', { name: /install qwen3/i }))
-    await screen.findByRole('button', { name: /confirm & install/i })
-    fireEvent.click(screen.getByRole('button', { name: /confirm & install/i }))
-    await screen.findByRole('heading', { name: /setting up your ai/i })
+    fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
+    await screen.findByRole('heading', { name: /installing model/i })
   }
 
   it('navigates to /library (not home) when install completes and tutorial was completed', async () => {
@@ -1384,7 +1259,7 @@ describe('FirstRunWizard — load error state', () => {
   it('shows an error alert when getModels fails', async () => {
     mockApi.getModels.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'service unavailable' } })
     renderWizard()
-    fireEvent.click(screen.getByRole('button', { name: /get started/i }))
+    fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent(/service unavailable/i),
     )
@@ -1393,7 +1268,7 @@ describe('FirstRunWizard — load error state', () => {
   it('mentions the text-only demo as a fallback when the runtime is unavailable', async () => {
     mockApi.getModels.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'runtime unreachable' } })
     renderWizard()
-    fireEvent.click(screen.getByRole('button', { name: /get started/i }))
+    fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
     await waitFor(() =>
       expect(screen.getByRole('alert')).toBeInTheDocument(),
     )
@@ -1403,9 +1278,9 @@ describe('FirstRunWizard — load error state', () => {
   it('back button from load error returns to the welcome step', async () => {
     mockApi.getModels.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'network error' } })
     renderWizard()
-    fireEvent.click(screen.getByRole('button', { name: /get started/i }))
+    fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
     fireEvent.click(screen.getByRole('button', { name: /back to welcome/i }))
-    await screen.findByRole('heading', { name: /welcome to conversation simulator/i })
+    await screen.findByRole('heading', { name: /practice conversations that matter/i })
   })
 })

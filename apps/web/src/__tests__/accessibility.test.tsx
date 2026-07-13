@@ -501,7 +501,7 @@ describe('Accessibility: FirstRunWizard', () => {
     expect(busyEl).not.toBeNull()
   })
 
-  it('welcome step has a privacy and offline-play guarantee note', () => {
+  it('welcome step has a privacy toggle button', () => {
     const { container } = render(
       <MemoryRouter initialEntries={['/first-run']}>
         <Routes>
@@ -510,13 +510,31 @@ describe('Accessibility: FirstRunWizard', () => {
         </Routes>
       </MemoryRouter>,
     )
+    // Privacy is behind a disclosure toggle; the toggle button must be present.
+    const privacyBtn = container.querySelector('button[aria-controls="welcome-privacy-details"]')
+    expect(privacyBtn).not.toBeNull()
+  })
+
+  it('welcome step privacy note is accessible when expanded', () => {
+    const { container } = render(
+      <MemoryRouter initialEntries={['/first-run']}>
+        <Routes>
+          <Route path="/first-run" element={<FirstRunWizard />} />
+          <Route path="/" element={<div />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    // Expand the privacy disclosure.
+    const toggle = container.querySelector('button[aria-controls="welcome-privacy-details"]')!
+    fireEvent.click(toggle)
     expect(container.querySelector('[role="note"][aria-label*="privacy"]')).not.toBeNull()
   })
 
   it('choose step option cards are presented as a list', async () => {
-    // Override getModels to resolve immediately so the wizard reaches the choose step.
+    // Override getModels to resolve for all calls (pre-fetch + loading step).
+    // An empty registry causes handleSetMeUp to fall back to the choose step.
     const { api: mockApi } = await import('../api/client')
-    vi.mocked(mockApi.getModels).mockResolvedValueOnce({ ok: true, data: {
+    vi.mocked(mockApi.getModels).mockResolvedValue({ ok: true, data: {
       registry: [],
       installed: [],
       ollama_models: [],
@@ -543,6 +561,8 @@ describe('Accessibility: FirstRunWizard', () => {
       </MemoryRouter>,
     )
 
+    // Click "Set me up" — with an empty registry there is no starter model,
+    // so the loading step falls back to the choose step.
     fireEvent.click(container.querySelector('button')!)
 
     // Wait for the choose step to appear.

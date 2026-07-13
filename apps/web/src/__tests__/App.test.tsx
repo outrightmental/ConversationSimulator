@@ -130,7 +130,7 @@ describe('First-run guard', () => {
     mockSetupStatus({ kind: 'never-run' })
     renderAt('/')
     // …the welcome step's "Get started" call to action is shown instead.
-    expect(await screen.findByRole('button', { name: /get started/i })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /set me up/i })).toBeInTheDocument()
     // The wizard renders outside AppLayout, so no nav chrome is present.
     expect(screen.queryByRole('link', { name: /settings/i })).not.toBeInTheDocument()
   })
@@ -139,7 +139,7 @@ describe('First-run guard', () => {
     localStorage.removeItem('convsim.setup.complete')
     mockSetupStatus({ kind: 'never-run' })
     renderAt('/settings')
-    expect(await screen.findByRole('button', { name: /get started/i })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /set me up/i })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: /^settings$/i })).not.toBeInTheDocument()
   })
 
@@ -150,7 +150,7 @@ describe('First-run guard', () => {
     mockSetupStatus({ kind: 'ready' })
     renderAt('/settings')
     expect(await screen.findByRole('heading', { name: /settings/i })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /get started/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /set me up/i })).not.toBeInTheDocument()
   })
 
   it('shows the wizard (and clears the stale mirror) when the data dir was wiped but the cache survived', async () => {
@@ -163,7 +163,7 @@ describe('First-run guard', () => {
     expect(localStorage.getItem('convsim.setup.complete')).toBe('true')
     mockSetupStatus({ kind: 'never-run' })
     renderAt('/settings')
-    expect(await screen.findByRole('button', { name: /get started/i })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /set me up/i })).toBeInTheDocument()
     // The stale mirror was cleared so the wizard no longer bounces back.
     expect(localStorage.getItem('convsim.setup.complete')).toBeNull()
   })
@@ -173,7 +173,7 @@ describe('First-run guard', () => {
     // renders the app synchronously without waiting on the server.
     renderAt('/settings')
     expect(screen.getByRole('heading', { name: /settings/i })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /get started/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /set me up/i })).not.toBeInTheDocument()
   })
 
   it('preserves the intended destination in a next= query param when redirecting to first-run', async () => {
@@ -192,7 +192,7 @@ describe('First-run guard', () => {
       </MemoryRouter>,
     )
     // The wizard is shown (guard redirected us)…
-    expect(await screen.findByRole('button', { name: /get started/i })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /set me up/i })).toBeInTheDocument()
     // …and the guard redirected to /first-run while preserving the original
     // destination in `next=` (URL-encoded) so it is never silently swallowed.
     const location = screen.getByTestId('location-probe').textContent ?? ''
