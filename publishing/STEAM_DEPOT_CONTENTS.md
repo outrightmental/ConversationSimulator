@@ -109,9 +109,10 @@ SteamPipe fighting over binary versions is a support nightmare (update banners,
 version mismatches, players confused about which channel to follow).
 
 Implementation: the `release.yml` Steam build leg passes
-`--config '{"plugins":{"updater":null}}'` to `tauri build`.  This removes the
-updater plugin configuration via RFC 7396 JSON Merge Patch so the updater has no
-endpoints to poll.  The `check_for_update` Tauri command returns `None` (no
+`--config apps/desktop/src-tauri/tauri.steam.conf.json` to `tauri build`.  That
+overlay sets `plugins.updater` to `null`, removing the updater plugin
+configuration via RFC 7396 JSON Merge Patch so the updater has no endpoints to
+poll.  The `check_for_update` Tauri command returns `None` (no
 update found) when unconfigured, so no update banner is ever displayed.
 
 All updates for Steam players arrive exclusively through SteamPipe.
