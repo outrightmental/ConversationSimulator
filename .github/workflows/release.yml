@@ -383,6 +383,16 @@ jobs:
             chmod 600 "$ASC_KEY_FILE"
             export APPLE_API_KEY_PATH="$ASC_KEY_FILE"
             unset APPLE_ID APPLE_PASSWORD
+          else
+            # Apple ID fallback: the ASC key trio is not (fully) configured.
+            # The step env block still injected APPLE_API_KEY / APPLE_API_ISSUER
+            # as *empty strings*, and Tauri's bundler selects the notarisation
+            # auth path by the *presence* of APPLE_API_KEY, not by whether it is
+            # non-empty (the same Ok("") footgun that forces us to unset an empty
+            # APPLE_SIGNING_IDENTITY above).  A present-but-empty APPLE_API_KEY
+            # would make Tauri attempt the ASC key path with no key and fail, so
+            # unset them and let Tauri use the Apple ID trio.
+            unset APPLE_API_KEY APPLE_API_ISSUER APPLE_API_KEY_PATH
           fi
           pnpm --filter @convsim/desktop build
 
