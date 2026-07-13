@@ -291,12 +291,15 @@ jobs:
             # Steam builds disable the Tauri updater plugin so the app never
             # shows an update banner or polls GitHub — Steam owns updates via
             # SteamPipe and the two updaters fighting each other is a support
-            # nightmare.  The JSON Merge Patch overlay (RFC 7396) sets
-            # plugins.updater to null, removing the key from the merged config
-            # so the updater plugin has no endpoints to poll.
+            # nightmare.  tauri.steam.conf.json is a JSON Merge Patch overlay
+            # (RFC 7396) that sets plugins.updater to null, removing the key
+            # from the merged config so the updater plugin has no endpoints to
+            # poll.  It is passed as an absolute path so the tauri CLI resolves
+            # it regardless of its working directory; a missing file makes the
+            # CLI fail loudly rather than silently leaving the updater enabled.
             # See publishing/STEAM_DEPOT_CONTENTS.md — updater policy.
             pnpm --filter @convsim/desktop build -- \
-              --config '{"plugins":{"updater":null}}'
+              --config "$GITHUB_WORKSPACE/apps/desktop/src-tauri/tauri.steam.conf.json"
           else
             pnpm --filter @convsim/desktop build
           fi
