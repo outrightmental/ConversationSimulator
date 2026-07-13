@@ -236,3 +236,102 @@ def test_settings_persist_across_restarts(tmp_path):
 
     assert settings_out.save_transcripts is True
     assert settings_out.tts_cache_enabled is False
+
+
+def _apply_migrations_before(conn, cutoff):
+    """Apply the bootstrap and every migration preceding `cutoff` (exclusive)."""
+    from convsim_core.storage.migrations import MIGRATIONS, _BOOTSTRAP_SQL
+
+    conn.executescript(_BOOTSTRAP_SQL)
+    for name, sql in MIGRATIONS:
+        if name == cutoff:
+            break
+        conn.executescript(
+            f"BEGIN;\n{sql}\nINSERT INTO schema_migrations(name) VALUES('{name}');\nCOMMIT;\n"
+        )
+
+
+def test_0017_backfills_onboarding_outcome_for_configured_model(tmp_path):
+    """An upgrade with an active model already configured must not be dragged
+    back through the first-run wizard: migration 0017 synthesizes a
+    completed-with-model outcome so the server no longer reports never-run."""
+    import sqlite3
+
+    db_path = str(tmp_path / "db" / "app.db")
+    (tmp_path / "db").mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+
+    cutoff = "0017_onboarding_outcome"
+    _apply_migrations_before(conn, cutoff)
+
+    # Simulate a returning user who already selected a model under the old scheme.
+    conn.execute(
+        "INSERT INTO user_settings (key, value, updated_at) "
+        "VALUES ('active_model_id', 'qwen3-4b-q4', datetime('now'))"
+    )
+    conn.commit()
+
+    from convsim_core.storage.migrations import run_migrations
+
+    run_migrations(conn)
+
+    rows = conn.execute("SELECT outcome FROM onboarding_outcomes").fetchall()
+    assert [r["outcome"] for r in rows] == ["completed-with-model"]
+    conn.close()
+
+
+def test_0017_backfills_onboarding_outcome_for_installed_model(tmp_path):
+    """A finished model download also counts as prior onboarding for the backfill."""
+    import sqlite3
+
+    db_path = str(tmp_path / "db" / "app.db")
+    (tmp_path / "db").mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+
+    cutoff = "0017_onboarding_outcome"
+    _apply_migrations_before(conn, cutoff)
+
+    conn.execute(
+        "INSERT INTO installed_models (registry_id, filename, file_path, install_status) "
+        "VALUES ('qwen3-4b-q4', 'qwen3-4b-q4.gguf', '/models/qwen3-4b-q4.gguf', 'ready')"
+    )
+    conn.commit()
+
+    from convsim_core.storage.migrations import run_migrations
+
+    run_migrations(conn)
+
+    rows = conn.execute("SELECT COUNT(*) AS cnt FROM onboarding_outcomes").fetchone()
+    assert rows["cnt"] == 1
+    conn.close()
+
+
+def test_0017_does_not_backfill_for_fresh_install(tmp_path):
+    """A fresh install (no active model, no completed download) must still report
+    never-run after migration — the backfill must not fire for it."""
+    import sqlite3
+
+    db_path = str(tmp_path / "db" / "app.db")
+    (tmp_path / "db").mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+
+    cutoff = "0017_onboarding_outcome"
+    _apply_migrations_before(conn, cutoff)
+
+    # A pending (not-yet-complete) download must not count as prior onboarding.
+    conn.execute(
+        "INSERT INTO installed_models (registry_id, filename, file_path, install_status) "
+        "VALUES ('qwen3-4b-q4', 'qwen3-4b-q4.gguf', '/models/qwen3-4b-q4.gguf', 'downloading')"
+    )
+    conn.commit()
+
+    from convsim_core.storage.migrations import run_migrations
+
+    run_migrations(conn)
+
+    rows = conn.execute("SELECT COUNT(*) AS cnt FROM onboarding_outcomes").fetchone()
+    assert rows["cnt"] == 0
+    conn.close()

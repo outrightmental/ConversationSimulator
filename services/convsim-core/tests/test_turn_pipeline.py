@@ -22,9 +22,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-import tempfile
-from typing import AsyncGenerator
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -35,12 +33,8 @@ from convsim_core.input_router import RouteAction, SafetyPolicyConfig
 from convsim_core.runtime.fake import FakeChatRuntime
 from convsim_core.runtime.types import (
     ChatFinal,
-    ChatMessage,
     ChatRequest,
     ChatToken,
-    RuntimeCapabilities,
-    RuntimeHealth,
-    RuntimeStatus,
 )
 from convsim_core.scenario_state import build_variable_defs, initialize_state
 from convsim_core.scenarios import get_scenario_data, get_scenario_info
@@ -57,24 +51,9 @@ from convsim_prompt.turn_output import SafetyStatus, SessionControl, TurnOutput
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
-
-
-@pytest.fixture()
-def tmp_config(tmp_path):
-    return ServiceConfig(
-        host="127.0.0.1",
-        port=7355,
-        data_dir=str(tmp_path / "data"),
-        log_dir=str(tmp_path / "logs"),
-        db_dir=str(tmp_path / "db"),
-    )
-
-
-@pytest.fixture()
-def client(tmp_config):
-    app = create_app(tmp_config)
-    with TestClient(app) as c:
-        yield c
+# tmp_config and client are provided by conftest.py, which fully isolates all
+# platform directories (models_dir, official_packs_dir, etc.) to tmp_path so
+# that tests do not scan or seed real pack/model data on every run.
 
 
 _VALID_SETUP = {

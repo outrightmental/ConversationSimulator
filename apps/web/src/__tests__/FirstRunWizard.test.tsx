@@ -17,6 +17,8 @@ vi.mock('../api/client', () => ({
     registerGguf: vi.fn(),
     startSidecar: vi.fn(),
     benchmarkModel: vi.fn(),
+    recordOnboardingOutcome: vi.fn().mockResolvedValue({ ok: true, data: undefined }),
+    getSetupStatus: vi.fn().mockResolvedValue({ ok: true, data: { kind: 'ready' } }),
   },
 }))
 
@@ -151,6 +153,8 @@ beforeEach(() => {
     port: 7356,
   } })
   mockApi.benchmarkModel.mockResolvedValue({ ok: true, data: DEFAULT_BENCHMARK })
+  mockApi.recordOnboardingOutcome.mockResolvedValue({ ok: true, data: undefined })
+  mockApi.getSetupStatus.mockResolvedValue({ ok: true, data: { kind: 'ready' } })
 })
 
 // ── Welcome step ─────────────────────────────────────────────────────────────
