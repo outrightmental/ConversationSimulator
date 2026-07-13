@@ -91,6 +91,12 @@ _SPDX_LICENSES = frozenset({
     "Unlicense", "WTFPL", "Proprietary",
 })
 
+# SPDX allows custom license identifiers with the LicenseRef- prefix.
+# Proprietary or commercial packs use identifiers like
+# 'LicenseRef-OutrightMental-Proprietary'.  These are valid per SPDX and must
+# not trigger an UNKNOWN_LICENSE warning.
+_LICENSEREF_RE = _re.compile(r"^LicenseRef-[a-zA-Z0-9][a-zA-Z0-9.+\-]*$")
+
 
 class _PackValidator:
     """Accumulates all validation issues for a single pack directory.
@@ -357,14 +363,16 @@ class _PackValidator:
 
     def _check_license(self, raw: dict, manifest_file: str) -> None:
         lic = raw.get("license", "")
-        if lic and lic not in _SPDX_LICENSES:
+        if lic and lic not in _SPDX_LICENSES and not _LICENSEREF_RE.match(lic):
             self._warning(
                 "UNKNOWN_LICENSE",
                 manifest_file,
                 "/license",
                 f"'{lic}' is not a recognised SPDX license identifier.",
-                "Use a standard SPDX identifier such as 'CC-BY-4.0', 'MIT', or 'Apache-2.0'. "
-                "A full list is at https://spdx.org/licenses/",
+                "Use a standard SPDX identifier such as 'CC-BY-4.0', 'MIT', or 'Apache-2.0', "
+                "or a LicenseRef-* custom identifier for proprietary packs "
+                "(e.g. 'LicenseRef-OutrightMental-Proprietary'). "
+                "A full list of SPDX identifiers is at https://spdx.org/licenses/",
             )
 
     def _check_external_url_policy(self, raw: dict, manifest_file: str) -> None:

@@ -410,7 +410,7 @@ def test_import_manifest_yaml_pack(client, tmp_path):
         "version: 1.0.0\n"
         "description: Pack using manifest.yaml format\n"
         "author: Test Suite\n"
-        "license: CC BY 4.0\n"
+        "license: CC-BY-4.0\n"
         "content_rating: G\n"
         "tags:\n"
         "  - yaml\n"

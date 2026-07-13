@@ -376,7 +376,22 @@ def test_unknown_license_returns_warning(tmp_path):
     pack_dir = make_pack_dir(tmp_path, manifest={"license": "All Rights Reserved"})
     result = validate_pack_dir(pack_dir)
     assert _has_warning(result, rule_id="UNKNOWN_LICENSE")
-    assert result.valid is True  # warning does not block validity
+    assert result.valid is False  # schema pattern rejects spaces; this is an error
+
+
+def test_licenseref_identifiers_no_warning(tmp_path):
+    for lic in (
+        "LicenseRef-OutrightMental-Proprietary",
+        "LicenseRef-Custom-Commercial",
+        "LicenseRef-1234",
+    ):
+        sub = tmp_path / lic.replace("-", "_")
+        pack_dir = make_pack_dir(sub, manifest={"license": lic})
+        result = validate_pack_dir(pack_dir)
+        assert not _has_warning(result, rule_id="UNKNOWN_LICENSE"), (
+            f"License {lic!r} should be recognised as a valid LicenseRef-* identifier"
+        )
+        assert result.valid is True
 
 
 # ---------------------------------------------------------------------------
@@ -624,13 +639,14 @@ def test_broken_pack_golden_snapshot(tmp_path):
         assert issue.message, "message must not be empty"
         assert issue.suggested_fix, "suggested_fix must not be empty"
 
-    # Exact snapshot: two SCHEMA_VIOLATIONs come from JSON Schema itself
-    # (content_rating enum and fictional const:true), plus the dedicated
-    # semantic checks that produce actionable rule_ids and messages.
+    # Exact snapshot: three SCHEMA_VIOLATIONs come from JSON Schema itself
+    # (license pattern, content_rating enum, and fictional const:true), plus the
+    # dedicated semantic checks that produce actionable rule_ids and messages.
     assert error_rule_ids == sorted([
         "INVALID_CONTENT_RATING",  # content_rating: Adult — semantic check
         "MISSING_FILE",             # safety/default.yaml removed
         "NPC_NOT_FICTIONAL",        # fictional: false — semantic check
+        "SCHEMA_VIOLATION",         # license: "All Rights Reserved" violates pattern
         "SCHEMA_VIOLATION",         # content_rating: Adult violates pack schema enum
         "SCHEMA_VIOLATION",         # fictional: false violates npc schema const: true
     ])

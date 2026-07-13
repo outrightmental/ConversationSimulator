@@ -1102,6 +1102,50 @@ describe('validate-pack — enriched JSON output fields', () => {
 });
 
 // ===========================================================================
+// validate-pack — LicenseRef-* proprietary license identifiers
+// ===========================================================================
+
+describe('validate-pack — LicenseRef-* proprietary license', () => {
+  function makeProprietaryPackDir(): string {
+    const packDir = mkdtempSync(join(tmpdir(), 'convsim-proprietary-'));
+    for (const sub of ['scenarios', 'npcs', 'rubrics', 'safety']) {
+      mkdirSync(join(packDir, sub), { recursive: true });
+    }
+    writeFileSync(
+      join(packDir, 'manifest.yaml'),
+      VALID_MANIFEST.replace('license: MIT', 'license: LicenseRef-OutrightMental-Proprietary'),
+    );
+    writeFileSync(join(packDir, 'safety', 'policy.yaml'), VALID_SAFETY);
+    writeFileSync(join(packDir, 'npcs', 'cli_test_npc.yaml'), VALID_NPC);
+    writeFileSync(join(packDir, 'rubrics', 'cli_test_rubric.yaml'), VALID_RUBRIC);
+    writeFileSync(join(packDir, 'scenarios', 'cli_test_scenario.yaml'), VALID_SCENARIO);
+    return packDir;
+  }
+
+  it('returns exit code 0 for a pack with a LicenseRef-* license', () => {
+    const packDir = track(makeProprietaryPackDir());
+    const code = runValidatePack(packDir, false);
+    expect(code).toBe(0);
+  });
+
+  it('JSON output shows the LicenseRef-* license and no warnings about it', () => {
+    const packDir = track(makeProprietaryPackDir());
+    let captured = '';
+    const spy = vi.spyOn(process.stdout, 'write').mockImplementation((d) => {
+      captured += String(d);
+      return true;
+    });
+    runValidatePack(packDir, true);
+    spy.mockRestore();
+    const result = JSON.parse(captured) as Record<string, unknown>;
+    expect(result['status']).toBe('ok');
+    expect(result['license']).toBe('LicenseRef-OutrightMental-Proprietary');
+    const warnings = result['warnings'] as Array<Record<string, string>>;
+    expect(warnings.every((w) => w['code'] !== 'UNKNOWN_LICENSE')).toBe(true);
+  });
+});
+
+// ===========================================================================
 // validate-pack — official packs (acceptance criterion: exit 0 for all of them)
 // ===========================================================================
 
