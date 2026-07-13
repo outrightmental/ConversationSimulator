@@ -90,15 +90,28 @@ class TestP6Resume:
         )
 
         from convsim_core.routers import setup_install as si
-        with patch.object(si, "_launch_pipeline_task"):
-            # _launch_pipeline_task is patched: resume_orphaned_jobs finds the job
-            # and calls the mock (which does nothing), leaving the job in 'running'
-            # state so get_active_job returns it.
-            new_app = create_app(new_config)
-
         from fastapi.testclient import TestClient
-        with TestClient(new_app, raise_server_exceptions=True) as new_client:
-            status = new_client.get("/api/setup/status").json()
+
+        # resume_orphaned_jobs runs inside the app lifespan (TestClient __enter__),
+        # NOT at create_app(). The patch must therefore stay active across both
+        # create_app AND the TestClient context; otherwise the real pipeline task
+        # launches in the background and races the status poll (flaky), instead of
+        # leaving the orphaned job cleanly in 'running' for get_active_job to
+        # return. With the mock in place resume_orphaned_jobs finds the job and
+        # calls it (a no-op), so the job stays 'running' deterministically.
+        with patch.object(si, "_launch_pipeline_task") as launch:
+            new_app = create_app(new_config)
+            with TestClient(new_app, raise_server_exceptions=True) as new_client:
+                status = new_client.get("/api/setup/status").json()
+
+        assert launch.call_count == 1, (
+            "resume_orphaned_jobs must re-drive exactly the orphaned job on relaunch; "
+            f"_launch_pipeline_task was called {launch.call_count} times"
+        )
+        assert launch.call_args[1].get("job_id") == job_id, (
+            "resume must re-drive the orphaned job, not a different one; "
+            f"got job_id={launch.call_args[1].get('job_id')!r}"
+        )
 
         assert status.get("pending_setup_job_id") == job_id, (
             f"After relaunch the orphaned job (id={job_id}) must appear as "
