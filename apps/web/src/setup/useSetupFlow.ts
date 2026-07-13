@@ -122,6 +122,7 @@ export function useSetupFlow(
   // Seeded from initialInstallId so resuming mid-install (forwarded via URL
   // by FirstRunGuard) opens straight to the installing step.
   const [installId, setInstallId] = useState<number | null>(initialInstallId ?? null)
+  const setupInstallJob = useSetupInstall(installId)
   // installRecord kept for backwards-compat (Ollama/GGUF paths never use it now).
   const [installRecord] = useState<InstalledModelInfo | null>(null)
 
@@ -184,13 +185,12 @@ export function useSetupFlow(
         setActionLoading(true)
         setActionError(null)
         try {
-          const resp = await api.installModel({ registry_id: rec.id })
+          const resp = await api.startSetupInstall(rec.id)
           if (!resp.ok) {
             setActionError(resp.error)
             setStep('confirm-install')
           } else {
-            setInstallId(resp.data.install_id)
-            setInstallRecord(null)
+            setInstallId(resp.data.id)
             setStep('installing')
           }
         } catch (err: unknown) {

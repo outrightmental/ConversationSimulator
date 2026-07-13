@@ -297,22 +297,18 @@ describe('useSetupFlow step machine', () => {
   })
 
   it('handleSetMeUp transitions welcome → loading → installing via auto-install', async () => {
-    mockApi.installModel.mockResolvedValue({ ok: true, data: { install_id: 99, registry_id: 'qwen3-4b-q4', status: 'pending', message: 'ok' } })
-    mockApi.getInstallStatus.mockResolvedValue({
-      ok: true, data: { id: 99, registry_id: 'qwen3-4b-q4', filename: 'model.gguf', file_path: '', size_bytes: null, install_status: 'downloading' as const, progress_bytes: null, error_message: null, verified_sha256: null, installed_at: '' },
-    })
     const { result } = renderHook(() => useSetupFlow('welcome'), { wrapper })
     expect(result.current.step).toBe('welcome')
 
     act(() => { result.current.handleSetMeUp() })
 
     await waitFor(() => expect(result.current.step).toBe('installing'))
-    expect(result.current.installId).toBe(99)
-    expect(mockApi.installModel).toHaveBeenCalledWith({ registry_id: 'qwen3-4b-q4' })
+    expect(result.current.installId).toBe(42)
+    expect(mockApi.startSetupInstall).toHaveBeenCalledWith('qwen3-4b-q4')
   })
 
-  it('handleSetMeUp falls back to confirm-install when installModel fails', async () => {
-    mockApi.installModel.mockResolvedValue({ ok: false, error: { kind: 'http-error', message: 'disk full', status: 507 } })
+  it('handleSetMeUp falls back to confirm-install when startSetupInstall fails', async () => {
+    mockApi.startSetupInstall.mockResolvedValue({ ok: false, error: { kind: 'http-error', message: 'disk full', status: 507 } })
     const { result } = renderHook(() => useSetupFlow('welcome'), { wrapper })
 
     act(() => { result.current.handleSetMeUp() })

@@ -202,15 +202,15 @@ describe('FirstRunWizard — welcome step', () => {
   it('Set me up goes directly to the installing step without a confirm interstitial', async () => {
     renderWizard()
     fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
-    await screen.findByRole('heading', { name: /installing model/i })
+    await screen.findByRole('heading', { name: /setting up your ai/i })
     expect(screen.queryByRole('heading', { name: /confirm model install/i })).not.toBeInTheDocument()
   })
 
-  it('calls installModel with the recommended model id when Set me up is clicked', async () => {
+  it('calls startSetupInstall with the recommended model id when Set me up is clicked', async () => {
     renderWizard()
     fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
-    await screen.findByRole('heading', { name: /installing model/i })
-    expect(mockApi.installModel).toHaveBeenCalledWith({ registry_id: 'qwen3-4b-instruct-q4_k_m' })
+    await screen.findByRole('heading', { name: /setting up your ai/i })
+    expect(mockApi.startSetupInstall).toHaveBeenCalledWith('qwen3-4b-instruct-q4_k_m')
   })
 
   it('Try it right now navigates directly to the library', async () => {
@@ -348,14 +348,14 @@ describe('FirstRunWizard — preflight step', () => {
     renderWizard()
     fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
     // Set me up goes directly to installing (not choose) when preflight passes
-    await screen.findByRole('heading', { name: /installing model/i })
+    await screen.findByRole('heading', { name: /setting up your ai/i })
   })
 
   it('skips preflight step when preflight API call fails (graceful degradation)', async () => {
     mockApi.preflight.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'unavailable' } })
     renderWizard()
     fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
-    await screen.findByRole('heading', { name: /installing model/i })
+    await screen.findByRole('heading', { name: /setting up your ai/i })
   })
 })
 
@@ -498,7 +498,7 @@ describe('FirstRunWizard — successful install', () => {
   async function goToInstalling() {
     renderWizard()
     fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
-    await screen.findByRole('heading', { name: /installing model/i })
+    await screen.findByRole('heading', { name: /setting up your ai/i })
   }
 
   it('shows the installing heading after Set me up is clicked', async () => {
@@ -602,7 +602,7 @@ describe('FirstRunWizard — no network error', () => {
   async function goToInstalling() {
     renderWizard()
     fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
-    await screen.findByRole('heading', { name: /installing model/i })
+    await screen.findByRole('heading', { name: /setting up your ai/i })
   }
 
   it('shows a network error alert when download fails with a network error', async () => {
@@ -797,7 +797,7 @@ describe('FirstRunWizard — insufficient disk error', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     renderWizard()
     fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
-    await screen.findByRole('heading', { name: /installing model/i })
+    await screen.findByRole('heading', { name: /setting up your ai/i })
 
     mockApi.getSetupInstallStatus.mockResolvedValue({ ok: true, data: {
       id: 1,
@@ -884,7 +884,7 @@ describe('FirstRunWizard — cancelled download', () => {
   async function goToInstalling() {
     renderWizard()
     fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
-    await screen.findByRole('heading', { name: /installing model/i })
+    await screen.findByRole('heading', { name: /setting up your ai/i })
   }
 
   it('shows a Cancel and go home button while downloading', async () => {
@@ -1062,7 +1062,7 @@ describe('FirstRunWizard — tutorial CTA during install', () => {
   async function goToInstalling() {
     renderWizard()
     fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
-    await screen.findByRole('heading', { name: /installing model/i })
+    await screen.findByRole('heading', { name: /setting up your ai/i })
   }
 
   it('shows the play tutorial note while downloading', async () => {
@@ -1102,7 +1102,7 @@ describe('FirstRunWizard — tutorial prompt step', () => {
   async function goToTutorialPrompt() {
     renderWizard()
     fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
-    await screen.findByRole('heading', { name: /installing model/i })
+    await screen.findByRole('heading', { name: /setting up your ai/i })
     fireEvent.click(screen.getByRole('button', { name: /play the tutorial while you wait/i }))
     await screen.findByRole('heading', { name: /first words tutorial/i })
   }
@@ -1194,7 +1194,7 @@ describe('FirstRunWizard — post-install navigation with tutorial completed', (
   async function goToInstalling() {
     renderWizard()
     fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
-    await screen.findByRole('heading', { name: /installing model/i })
+    await screen.findByRole('heading', { name: /setting up your ai/i })
   }
 
   it('navigates to /library (not home) when install completes and tutorial was completed', async () => {
