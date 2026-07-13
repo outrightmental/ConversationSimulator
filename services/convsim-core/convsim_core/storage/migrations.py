@@ -361,18 +361,6 @@ CREATE TABLE relationship_state (
 # model that finished downloading, has necessarily been through onboarding under
 # the old scheme, so synthesize a 'completed-with-model' outcome for it. (Fresh
 # installs seed neither, so their first run still correctly reports never-run.)
-_SETUP_INSTALL_JOBS_SQL = """
-CREATE TABLE setup_install_jobs (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    status          TEXT    NOT NULL DEFAULT 'pending',
-    registry_id     TEXT,
-    stages_json     TEXT    NOT NULL DEFAULT '[]',
-    error_message   TEXT,
-    created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
-    updated_at      TEXT    NOT NULL DEFAULT (datetime('now'))
-);
-"""
-
 _ONBOARDING_OUTCOME_SQL = """
 CREATE TABLE onboarding_outcomes (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -389,6 +377,21 @@ WHERE EXISTS (
 ) OR EXISTS (
     SELECT 1 FROM installed_models
     WHERE install_status IN ('ready', 'complete')
+);
+"""
+
+# One-click install pipeline job tracking (issue #382): one row per orchestrated
+# engine→model→verify→warmup→packs run, so the client can poll unified progress
+# and a killed job can be re-driven on relaunch (resume_orphaned_jobs).
+_SETUP_INSTALL_JOBS_SQL = """
+CREATE TABLE setup_install_jobs (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    status          TEXT    NOT NULL DEFAULT 'pending',
+    registry_id     TEXT,
+    stages_json     TEXT    NOT NULL DEFAULT '[]',
+    error_message   TEXT,
+    created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT    NOT NULL DEFAULT (datetime('now'))
 );
 """
 
