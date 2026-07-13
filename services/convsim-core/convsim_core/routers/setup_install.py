@@ -360,6 +360,12 @@ async def _run_pipeline(
 
             rec = get_install_record(conn, install_id)
             final_status = rec["install_status"] if rec else "failed"
+            # A cancel during the silent retry is still a user abort, not a
+            # failure — mirror the first-attempt path so the job lands in
+            # 'cancelled' rather than 'failed' (the guarantee b694d7b added).
+            if final_status == "cancelled" or _is_cancelled():
+                _cancel("model")
+                return
             if final_status != "ready":
                 err = (rec.get("error_message") if rec else None) or (
                     "SHA-256 checksum mismatch after two attempts. "

@@ -462,3 +462,38 @@ async def test_checksum_mismatch_twice_fails_verify_stage(tmp_path):
         assert stages["verify"]["state"] == "failed"
     finally:
         db.close()
+
+
+@pytest.mark.asyncio
+async def test_cancel_during_silent_retry_marks_job_cancelled_not_failed(tmp_path):
+    """A cancel that arrives during the silent checksum retry is a user abort,
+    not a failure — the job must land in 'cancelled', matching the first-attempt
+    cancel path, so a mid-retry cancel is never mislabelled 'failed'."""
+    db = Database.open(str(tmp_path / "db"))
+    try:
+        cancel_event = asyncio.Event()
+        calls = {"n": 0}
+
+        async def _dl(conn, install_id, url, sha, models_dir, filename, *, cancel_event=None):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                # First attempt mismatches, triggering the silent retry.
+                conn.execute(
+                    "UPDATE installed_models SET install_status = 'checksum_mismatch', "
+                    "error_message = 'bad hash' WHERE id = ?", (install_id,))
+            else:
+                # User cancels mid-retry; the download aborts as 'cancelled'.
+                pipeline_cancel.set()
+                conn.execute(
+                    "UPDATE installed_models SET install_status = 'cancelled', "
+                    "error_message = 'Download cancelled by user.' WHERE id = ?", (install_id,))
+            conn.commit()
+
+        pipeline_cancel = cancel_event
+        job_id = await _drive_pipeline(db, tmp_path, _dl, cancel_event=cancel_event)
+
+        assert calls["n"] == 2, "expected the silent retry to run before the cancel"
+        job = get_job(db.connection(), job_id)
+        assert job["status"] == "cancelled"
+    finally:
+        db.close()
