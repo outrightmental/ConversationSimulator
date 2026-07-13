@@ -120,13 +120,18 @@ Press **Ctrl-C** to stop everything cleanly. Logs are written to `~/.convsim/log
 
 Navigate to <http://127.0.0.1:7354> in your browser. The home screen shows the status of each service and whether a model is loaded.
 
-## 6. Install a local model
+## 6. Set up a local model
 
-On first run the home screen shows a **"No model loaded"** banner. Click **Install model** or go to **Settings → Models**.
+On first run the app shows the **welcome screen**. Click **Set me up** to
+download and configure the recommended model, or expand **Advanced options**
+to use Ollama or a custom GGUF file.
 
-The in-app model manager lists curated models with license, size, and hardware requirements. You must accept the license before a download begins. The downloaded file is verified against its SHA-256 checksum before loading.
+The model manager shows curated models with license, size, and hardware
+requirements. You must accept the license before a download begins. Downloads
+are verified against their SHA-256 checksum before loading.
 
-See [Local models](/play/local-models/) for model recommendations by hardware.
+See [Choosing how to run the AI](/play/ai-engine/) for model recommendations
+by hardware and all runtime options.
 
 ## 7. Verify the installation
 
