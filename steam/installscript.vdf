@@ -38,8 +38,15 @@
             "HasRunKey"     "HKEY_LOCAL_MACHINE\\SOFTWARE\\Outright Mental\\Conversation Simulator\\WebView2Bootstrapped"
 
             // The bootstrapper is shipped at the depot root alongside the app
-            // binary.  Steam resolves the path relative to the depot install dir.
-            "Process 1"     "MicrosoftEdgeWebView2Setup.exe"
+            // binary.  %INSTALLDIR% expands to the depot install directory (no
+            // trailing backslash), so this resolves to the bootstrapper at the
+            // depot root.  A bare relative filename is NOT used: the Steamworks
+            // InstallScript docs only ever show %INSTALLDIR%-anchored process
+            // paths, and Steam does not guarantee its working directory equals
+            // the install dir when it runs the script — a bare filename could
+            // fail to resolve, leaving WebView2 uninstalled and the app unable
+            // to launch on a clean Windows 10 machine.
+            "Process 1"     "%INSTALLDIR%\\MicrosoftEdgeWebView2Setup.exe"
             "Command 1"     "/silent /install"
 
             // NoCleanUp "1": do not delete the bootstrapper exe after running.
