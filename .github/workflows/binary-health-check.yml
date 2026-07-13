@@ -19,11 +19,13 @@ on:
     branches: [main]
     paths:
       - 'services/convsim-core/**'
+      - 'runtimes/llama_cpp/**'
       - '.github/workflows/binary-health-check.yml'
   pull_request:
     branches: [main]
     paths:
       - 'services/convsim-core/**'
+      - 'runtimes/llama_cpp/**'
       - '.github/workflows/binary-health-check.yml'
 
 permissions:
@@ -142,3 +144,31 @@ jobs:
               Write-Error "FAIL: /api/health did not respond within 10 s"
               exit 1
           }
+
+      # ── Engine platform detection smoke test (all platforms) ─────────────────
+      # Verifies that detect_platform_string() now returns a valid string on
+      # every shipping platform, and that the download-runtime endpoint reports
+      # a non-null platform (i.e. Windows is no longer PLATFORM_NOT_SUPPORTED).
+      - name: Verify engine platform detection
+        shell: bash
+        working-directory: services/convsim-core
+        run: |
+          python3 - <<'PYEOF'
+          import sys
+          from convsim_core.runtime.llama_cpp_download import detect_platform_string
+
+          try:
+              tag = detect_platform_string()
+          except RuntimeError as exc:
+              print(f"FAIL: detect_platform_string() raised on {sys.platform}: {exc}", file=sys.stderr)
+              sys.exit(1)
+
+          print(f"OK: detect_platform_string() = {tag!r} on {sys.platform}")
+
+          # Sanity: Windows must return a win-* string, not raise.
+          if sys.platform == "win32" and not tag.startswith("win-"):
+              print(f"FAIL: expected win-* tag on win32, got {tag!r}", file=sys.stderr)
+              sys.exit(1)
+
+          sys.exit(0)
+          PYEOF

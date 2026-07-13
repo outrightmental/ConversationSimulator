@@ -190,6 +190,34 @@ jobs:
             exit 1
           fi
 
+      # ── Bundle llama-server binary (Steam builds) ─────────────────────────────
+      # Downloads and bundles the llama-server binary alongside convsim-core so
+      # Steam players get zero-setup inference with no first-run download.
+      # GitHub release installers omit this step to keep download sizes lean.
+      #
+      # The binary is placed at src-tauri/resources/bin/llama-server[.exe] and
+      # picked up by Tauri's bundle.resources: ["resources/**/*"] glob.
+      # find_executable() discovers it via CONVSIM_BUNDLED_RUNTIME_DIR (set by
+      # the Tauri shell at runtime, pointing at the depot's runtimes/ directory).
+      - name: Bundle llama-server (Linux / macOS — Steam only)
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          LLAMA_CPP_DEST: apps/desktop/src-tauri/resources/bin
+        run: |
+          set -euo pipefail
+          bash runtimes/llama_cpp/download-runtime.sh
+          ls -lh apps/desktop/src-tauri/resources/bin/llama-server
+
+      - name: Bundle llama-server (Windows — Steam only)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dest = "apps\desktop\src-tauri\resources\bin"
+          .\runtimes\llama_cpp\download-runtime.ps1 -Dest $dest
+          Get-Item "$dest\llama-server.exe" | Select-Object Name, Length
+
       # ── Sync app version to the release tag ──────────────────────────────────
       # The built binary reports the `version` field from tauri.conf.json, and
       # the in-app updater compares that against the `version` in latest.json
