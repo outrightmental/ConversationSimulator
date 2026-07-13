@@ -348,6 +348,18 @@ CREATE TABLE relationship_state (
 );
 """
 
+# Server-side onboarding outcome persistence (issue #380): record when the
+# user completes, demos, or skips onboarding so that clearing localStorage
+# does not resurrect the first-run wizard on a working install.
+_ONBOARDING_OUTCOME_SQL = """
+CREATE TABLE onboarding_outcomes (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    outcome     TEXT    NOT NULL,
+    app_version TEXT,
+    recorded_at TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+"""
+
 MIGRATIONS: list[tuple[str, str]] = [
     ("0001_initial_schema", _INITIAL_SCHEMA_SQL),
     ("0002_model_registry_v2", _MODEL_REGISTRY_V2_SQL),
@@ -365,6 +377,7 @@ MIGRATIONS: list[tuple[str, str]] = [
     ("0014_barge_in", _BARGE_IN_SQL),
     ("0015_turn_sessions_ended_at", _SESSION_ENDED_AT_SQL),
     ("0016_relationship_memory", _RELATIONSHIP_MEMORY_SQL),
+    ("0017_onboarding_outcome", _ONBOARDING_OUTCOME_SQL),
 ]
 
 
