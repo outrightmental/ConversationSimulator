@@ -90,7 +90,7 @@ function FinishSetupBanner() {
   const navigate = useNavigate()
   return (
     <div
-      role="banner"
+      role="status"
       aria-label="finish setup"
       style={{
         background: 'rgba(251,191,36,0.1)',
