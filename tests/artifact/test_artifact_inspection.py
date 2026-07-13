@@ -56,6 +56,18 @@ _SECRET_PATTERN = re.compile(
 # Recognised installer / bundle extensions used to detect the artifact type.
 _INSTALLER_EXTENSIONS = (".AppImage", ".deb", ".exe", ".msi", ".tar.gz")
 
+# Application binaries that ship by name in the Windows portable depot layout
+# and are NOT installer packages.  Excluded from the semver filename check,
+# which is designed for installer filenames like "Conversation Simulator_0.1.0_x64-setup.exe".
+_PORTABLE_APP_BINARIES = frozenset({
+    "ConversationSimulator.exe",
+    "MicrosoftEdgeWebView2Setup.exe",
+    "convsim-core.exe",
+    "llama-server.exe",
+    "whisper-cli.exe",
+    "sherpa-onnx-offline-tts.exe",
+})
+
 
 def _is_pyinstaller_internal(path: Path) -> bool:
     """Return True if path is inside a PyInstaller _internal/ directory.
@@ -222,11 +234,19 @@ class TestVersionStamping:
     def test_installer_filename_contains_semver(
         self, all_file_paths: list[Path]
     ) -> None:
-        """Installer filenames must contain a semantic version number."""
+        """Installer filenames must contain a semantic version number.
+
+        Windows portable depot layout binaries (ConversationSimulator.exe,
+        convsim-core.exe, etc.) are excluded: their version is recorded in
+        version.txt at the depot root instead of in the filename.  The check
+        is for installer/archive filenames such as
+        "Conversation Simulator_0.1.0_x64-setup.exe" or "*.AppImage".
+        """
         installers = [
             f
             for f in all_file_paths
             if any(f.name.endswith(ext) for ext in _INSTALLER_EXTENSIONS)
+            and f.name not in _PORTABLE_APP_BINARIES
         ]
         if not installers:
             pytest.skip(
@@ -247,6 +267,7 @@ class TestVersionStamping:
             f
             for f in all_file_paths
             if any(f.name.endswith(ext) for ext in _INSTALLER_EXTENSIONS)
+            and f.name not in _PORTABLE_APP_BINARIES
         ]
         if not installers:
             pytest.skip(
@@ -445,4 +466,165 @@ class TestForbiddenPatterns:
         assert not models_dirs, (
             "models/ directory found in artifact — model files must not be bundled: "
             + ", ".join(str(d.relative_to(artifact_dir)) for d in models_dirs)
+        )
+
+
+# ---------------------------------------------------------------------------
+# Windows portable depot layout
+# ---------------------------------------------------------------------------
+
+
+class TestWindowsPortableLayout:
+    """Windows Steam depot portable layout checks.
+
+    The Windows Steam depot ships the raw application binary tree (not an NSIS
+    installer or MSI package) so the Steam client can install the files directly.
+    These tests run only when the artifact directory looks like a Windows portable
+    depot (ConversationSimulator.exe at the root).
+
+    See publishing/STEAM_DEPOT_CONTENTS.md — Windows depot section.
+    """
+
+    def _is_windows_portable_depot(self, artifact_dir: Path) -> bool:
+        """Return True if this looks like a Windows portable depot."""
+        return (artifact_dir / "ConversationSimulator.exe").is_file()
+
+    def test_main_exe_at_depot_root(
+        self, all_file_paths: list[Path], artifact_dir: Path
+    ) -> None:
+        """ConversationSimulator.exe must be at the depot root.
+
+        Steam launch options point directly to this binary with the depot root
+        as the working directory.  Placing it in a subdirectory would break
+        both Steam launch and relative resource resolution.
+        """
+        if not self._is_windows_portable_depot(artifact_dir):
+            pytest.skip("Not a Windows portable depot — skipping main exe check")
+        root_exe = artifact_dir / "ConversationSimulator.exe"
+        assert root_exe.is_file(), (
+            "ConversationSimulator.exe not found at depot root. "
+            "The Windows Steam depot must ship the application binary directly "
+            "at the depot root, not wrapped in an installer. "
+            "Check the packaging step in release.yml."
+        )
+
+    def test_convsim_core_sidecar_present(
+        self, all_file_paths: list[Path], artifact_dir: Path
+    ) -> None:
+        """convsim-core.exe sidecar must be present under resources/bin/."""
+        if not self._is_windows_portable_depot(artifact_dir):
+            pytest.skip("Not a Windows portable depot — skipping sidecar check")
+        sidecar = artifact_dir / "resources" / "bin" / "convsim-core.exe"
+        assert sidecar.is_file(), (
+            "convsim-core.exe sidecar not found at resources/bin/convsim-core.exe. "
+            "The PyInstaller backend binary must be present in the Windows Steam depot. "
+            "Verify the convsim-core build step and the Tauri resources/ bundling."
+        )
+
+    def test_installscript_vdf_present_and_parseable(
+        self, all_file_paths: list[Path], artifact_dir: Path
+    ) -> None:
+        """installscript.vdf must be at the depot root and reference the WebView2 bootstrapper.
+
+        Steam runs InstallScript with elevated privileges on first launch, which
+        is required to install the WebView2 Evergreen Runtime on systems that do
+        not already have it (Windows 10 without the runtime pre-installed).
+        """
+        if not self._is_windows_portable_depot(artifact_dir):
+            pytest.skip("Not a Windows portable depot — skipping installscript.vdf check")
+        vdf_path = artifact_dir / "installscript.vdf"
+        assert vdf_path.is_file(), (
+            "installscript.vdf not found at depot root. "
+            "The Windows Steam depot requires a Steam InstallScript to bootstrap "
+            "the WebView2 Evergreen Runtime on first launch. "
+            "See steam/installscript.vdf and publishing/STEAM_DEPOT_CONTENTS.md."
+        )
+        content = vdf_path.read_text(encoding="utf-8", errors="replace")
+        assert "InstallScript" in content, (
+            "installscript.vdf does not contain the 'InstallScript' root key — "
+            "the file may be truncated or malformed."
+        )
+        assert "MicrosoftEdgeWebView2Setup" in content or "WebView2" in content, (
+            "installscript.vdf does not reference the WebView2 bootstrapper. "
+            "Tauri Windows apps require the WebView2 Evergreen Runtime; "
+            "the InstallScript must invoke MicrosoftEdgeWebView2Setup.exe."
+        )
+
+    def test_webview2_bootstrapper_present(
+        self, all_file_paths: list[Path], artifact_dir: Path
+    ) -> None:
+        """MicrosoftEdgeWebView2Setup.exe bootstrapper must be at the depot root.
+
+        The Steam InstallScript in installscript.vdf invokes this bootstrapper
+        to install the WebView2 Evergreen Runtime on first launch.  The bootstrapper
+        must be present at the depot root so Steam can resolve the path.
+        """
+        if not self._is_windows_portable_depot(artifact_dir):
+            pytest.skip(
+                "Not a Windows portable depot — skipping WebView2 bootstrapper check"
+            )
+        bootstrapper = artifact_dir / "MicrosoftEdgeWebView2Setup.exe"
+        assert bootstrapper.is_file(), (
+            "MicrosoftEdgeWebView2Setup.exe not found at depot root. "
+            "The WebView2 Evergreen Bootstrapper must be included in the Windows "
+            "Steam depot so the Steam InstallScript can install the WebView2 Runtime "
+            "on first launch. See the packaging step in release.yml."
+        )
+
+    def test_no_installer_packages_in_depot(
+        self, all_file_paths: list[Path], artifact_dir: Path
+    ) -> None:
+        """NSIS setup installers and MSI packages must never appear in the depot.
+
+        A Steam depot must contain application files, not installer packages.
+        Shipping a setup wizard causes Steam's "Play" button to launch the
+        installer UI (or fail silently), which fails Valve review and strands
+        every beta tester.  See issue #408.
+        """
+        if not self._is_windows_portable_depot(artifact_dir):
+            pytest.skip(
+                "Not a Windows portable depot — skipping installer-in-depot check"
+            )
+        installer_files = [
+            f
+            for f in all_file_paths
+            if f.name.endswith("-setup.exe") or f.suffix == ".msi"
+        ]
+        assert not installer_files, (
+            "NSIS installer or MSI package found in Windows Steam depot "
+            "(Steam depots must ship app files, not installer packages — "
+            "this will fail Valve review): "
+            + ", ".join(str(f.relative_to(artifact_dir)) for f in installer_files)
+        )
+
+    def test_windows_depot_has_version_stamp(
+        self, all_file_paths: list[Path], artifact_dir: Path
+    ) -> None:
+        """version.txt must be present at the depot root with a valid semver string.
+
+        The Windows portable depot binary (ConversationSimulator.exe) has no
+        version in its filename, unlike installer filenames.  The packaging step
+        writes version.txt so artifact inspection can verify the version stamp
+        without parsing PE resources or installer metadata.
+        """
+        if not self._is_windows_portable_depot(artifact_dir):
+            pytest.skip(
+                "Not a Windows portable depot — skipping version.txt check"
+            )
+        version_file = artifact_dir / "version.txt"
+        assert version_file.is_file(), (
+            "version.txt not found at Windows depot root. "
+            "The packaging step in release.yml must write version.txt with the "
+            "release tag version so artifact inspection can verify the version stamp."
+        )
+        version = version_file.read_text(encoding="utf-8").strip()
+        assert _SEMVER.search(version), (
+            f"version.txt contains {version!r}, not a semantic version string "
+            "(expected e.g. '0.1.0'). "
+            "The version stamp step in the build workflow may not have run."
+        )
+        assert _SEMVER.search(version).group() != "0.0.0", (
+            f"version.txt contains '0.0.0' placeholder in Windows depot. "
+            "The version stamp step may not have run, or the wrong tag was "
+            "supplied to the build workflow."
         )
