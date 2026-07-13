@@ -17,9 +17,10 @@ from __future__ import annotations
 # These are internal implementation details that are confusing or alarming
 # when surfaced in the first-run UI.
 #
-# "GGUF" is allowed only inside the Advanced disclosure section; the
-# check here is at the API message level so it applies to preflight check
-# messages and install error text, not to UI labels we do not control.
+# "GGUF" (issue #387) is allowed only inside the Advanced disclosure section;
+# the check here is at the API message level so it applies to preflight check
+# messages and install error text — the general first-run surface — not to the
+# Advanced GGUF-import UI labels we do not control from these responses.
 _FORBIDDEN: frozenset[str] = frozenset({
     "binary",
     "sidecar",
@@ -27,6 +28,7 @@ _FORBIDDEN: frozenset[str] = frozenset({
     "preflight",
     "checksum",
     "llama-server",
+    "gguf",
 })
 
 # Hosts that onboarding requests are permitted to reach.  Any URL not
