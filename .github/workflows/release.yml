@@ -684,12 +684,25 @@ jobs:
             exit 0
           }
 
+          # The main app binary is named after Tauri's mainBinaryName, which
+          # defaults to productName — and productName contains a space, so the
+          # installed file is "Conversation Simulator.exe", NOT
+          # "ConversationSimulator.exe". Read the real name from the config so
+          # this check can never drift from what the bundler actually produces
+          # (a hardcoded name silently matched nothing and skipped verification).
+          $conf     = Get-Content "apps\desktop\src-tauri\tauri.conf.json" -Raw | ConvertFrom-Json
+          $mainName = if ($conf.mainBinaryName) { $conf.mainBinaryName } else { $conf.productName }
+
           $fail = $false
-          foreach ($name in @('ConversationSimulator.exe', 'convsim-core.exe')) {
+          foreach ($name in @("$mainName.exe", 'convsim-core.exe')) {
             $inner = Get-ChildItem -Recurse -Path $extractDir -Filter $name |
                      Select-Object -First 1
             if (-not $inner) {
-              Write-Host "  WARN  $name not found in extracted NSIS archive — skipping."
+              # Extraction succeeded (checked above) but the signed payload is
+              # missing — that is a real failure of the signing gate, not a
+              # tolerable skip, so surface it instead of passing G3-01 blind.
+              Write-Error "  FAIL  $name not found in extracted NSIS archive — cannot prove it is signed."
+              $fail = $true
               continue
             }
             Write-Host "  Verifying: $($inner.FullName)"
