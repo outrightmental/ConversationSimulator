@@ -299,10 +299,12 @@ gated purely by Steam ownership, checked at runtime:
   `steamworks::Apps::is_dlc_installed(AppId)`. It returns `false` when the `steam`
   feature is off, Steam is not running, or the player does not own the DLC.
 - The **`steam_is_dlc_installed`** Tauri command exposes it to the front end.
-- The **`useSteamDlc`** / **`useSteamDlcOwned`** hooks
-  (`apps/web/src/hooks/useSteamDlc.ts`) resolve to "not owned" in any non-Tauri /
-  non-Steam context, so the open-source and browser builds treat every premium pack
-  as available-to-buy without special-casing.
+- The **`useSteamDlc`** hook (`apps/web/src/hooks/useSteamDlc.ts`) exposes
+  `isDlcInstalled(dlcAppId)` and `isDlcInstalledForPack(packId)` (the latter resolves
+  the pack's DLC App ID from the build-time `DLC_REGISTRY`, populated from
+  `STEAM_DLC_APP_IDS`). Both resolve to "not owned" in any non-Tauri / non-Steam
+  context, so the open-source and browser builds treat every premium pack as
+  available-to-buy without special-casing.
 
 Privacy: the ownership check reads local Steam state only. No DLC-usage event,
 pack identifier, or conversation content is transmitted to Steam or any server —
