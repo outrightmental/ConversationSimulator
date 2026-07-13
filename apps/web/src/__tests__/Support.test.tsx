@@ -1,8 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import Support from '../screens/Support'
+
+// Surfaces the in-memory router location so tests can assert where a fix button navigated.
+function LocationProbe() {
+  const location = useLocation()
+  return <span data-testid="location-probe">{location.pathname + location.search}</span>
+}
 
 vi.mock('../api/client', () => ({
   api: {
@@ -392,7 +398,7 @@ const FAIL_PREFLIGHT = {
   ran_at: '2026-01-01T00:00:00.000+00:00',
   checks: [
     { id: 'llama-cpp-binary', name: 'Inference engine', status: 'fail' as const, message: 'llama-server binary not found.', fix_action: { kind: 'open-url' as const, href: 'https://example.com/setup', label: 'Setup guide' } },
-    { id: 'llm-present', name: 'Language model', status: 'fail' as const, message: 'No language model installed.', fix_action: { kind: 'navigate' as const, href: '/model-manager', label: 'Open Model Manager' } },
+    { id: 'llm-present', name: 'Language model', status: 'fail' as const, message: 'No language model installed.', fix_action: { kind: 'wizard-step' as const, href: 'choose', label: 'Open Model Manager' } },
   ],
 }
 
@@ -444,6 +450,23 @@ describe('self-test', () => {
     await waitFor(() =>
       expect(screen.getByTestId('preflight-fix-llama-cpp-binary')).toBeInTheDocument(),
     )
+  })
+
+  it('routes the llm-present wizard-step fix action to /model-manager, not a dead /choose path', async () => {
+    // Issue-378 regression guard: the shared llm-present check emits a wizard-step
+    // fix action (href="choose"). Post-setup the wizard isn't mounted, so Support must
+    // translate it to the standalone /model-manager route rather than navigate('choose').
+    mockApi.preflight.mockResolvedValue({ ok: true, data: FAIL_PREFLIGHT })
+    render(
+      <MemoryRouter initialEntries={['/support']}>
+        <Support />
+        <LocationProbe />
+      </MemoryRouter>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /run self-test/i }))
+    await waitFor(() => expect(screen.getByTestId('preflight-fix-llm-present')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('preflight-fix-llm-present'))
+    expect(screen.getByTestId('location-probe').textContent).toBe('/model-manager')
   })
 
   it('shows overall fail status when preflight fails', async () => {
