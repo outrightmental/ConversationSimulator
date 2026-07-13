@@ -1,0 +1,74 @@
+# SPDX-License-Identifier: Apache-2.0
+# Onboarding e2e — fast trio required check (issue #387)
+#
+# Runs the P1/P2/P7 fast trio on every PR that touches the onboarding surface.
+# These three paths together catch:
+#   P1 — the full setup pipeline reaching "ready" from a wiped profile
+#   P2 — the scripted tutorial completing within the 15 s wall-clock budget
+#   P7 — the v0.2.2 regression (fix_action looping back to Welcome)
+#
+# Triggered by path filter so it only fires on PRs that touch the onboarding
+# code paths.  Always runs on pushes to main so regressions on main are caught
+# immediately.
+#
+# Full P1–P8 matrix (release gate) lives in release-smoke.yml.
+#
+# Local equivalent:
+#   pip install -e "packages/prompt-composer[dev]"
+#   pip install -e "services/convsim-core[dev]"
+#   python -m pytest e2e/onboarding/test_p1_happy_path.py \
+#                    e2e/onboarding/test_p2_instant_play.py \
+#                    e2e/onboarding/test_p7_regression_loop.py -v
+
+name: Onboarding e2e (fast trio)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/web/src/setup/**'
+      - 'apps/web/src/App.tsx'
+      - 'apps/web/src/screens/FirstRunWizard.tsx'
+      - 'apps/web/src/screens/CoreStartup.tsx'
+      - 'services/convsim-core/convsim_core/routers/preflight.py'
+      - 'services/convsim-core/convsim_core/routers/sidecar.py'
+      - 'services/convsim-core/convsim_core/routers/setup.py'
+      - 'services/convsim-core/convsim_core/routers/setup_install.py'
+      - 'services/convsim-core/convsim_core/services/setup_install_service.py'
+      - 'e2e/onboarding/**'
+
+permissions:
+  contents: read
+
+jobs:
+  onboarding-fast-trio:
+    name: Onboarding e2e / fast trio (P1, P2, P7)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            services/convsim-core/pyproject.toml
+            packages/prompt-composer/pyproject.toml
+
+      - name: Install prompt-composer
+        run: pip install -e "packages/prompt-composer[dev]"
+
+      - name: Install convsim-core
+        run: pip install -e "services/convsim-core[dev]"
+
+      - name: Run onboarding fast trio (P1 / P2 / P7)
+        run: |
+          echo "Local: python -m pytest e2e/onboarding/test_p1_happy_path.py e2e/onboarding/test_p2_instant_play.py e2e/onboarding/test_p7_regression_loop.py -v"
+          python -m pytest \
+            e2e/onboarding/test_p1_happy_path.py \
+            e2e/onboarding/test_p2_instant_play.py \
+            e2e/onboarding/test_p7_regression_loop.py \
+            -v --tb=short

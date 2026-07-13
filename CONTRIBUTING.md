@@ -198,6 +198,57 @@ pip install -e "services/convsim-core[dev]"
 for d in packs/official/*/; do convsim-validate-pack "$d"; done
 ```
 
+### Onboarding e2e suite
+
+The onboarding e2e suite (issue #387) covers the first-run journeys P1–P8
+from a wiped profile.  It is a release gate and a required check on PRs
+touching the onboarding surface (`apps/web/src/setup/**`, `App.tsx`,
+`routers/preflight.py`, `routers/sidecar.py`, and related install services).
+
+**Run locally:**
+
+```sh
+pip install -e "packages/prompt-composer[dev]"
+pip install -e "services/convsim-core[dev]"
+
+# Fast trio (P1 / P2 / P7) — same as the PR required check, ~1-2 min
+python -m pytest \
+  e2e/onboarding/test_p1_happy_path.py \
+  e2e/onboarding/test_p2_instant_play.py \
+  e2e/onboarding/test_p7_regression_loop.py -v
+
+# Full suite P1–P8 — same as the release gate
+python -m pytest e2e/onboarding/ -v
+```
+
+**Adding a new first-run journey test:**
+
+Every test in `e2e/onboarding/` starts from a wiped profile using the
+`fresh_profile` fixture.  Use it as a one-liner:
+
+```python
+def test_my_new_journey(fresh_profile):
+    client, app = fresh_profile
+    # client is a FastAPI TestClient; app exposes app.state.db, app.state.sidecar, etc.
+    assert client.get("/api/setup/status").json()["kind"] == "never-run"
+```
+
+The `fresh_profile` fixture creates a fresh temporary data directory with no
+recorded onboarding outcome, no installed models, and the same environment
+variables the Tauri shell sets on a real first-run install.  This ensures every
+journey test starts from a genuinely clean slate.
+
+Include the `assert_no_forbidden_in_preflight` and `assert_fix_action_not_welcome`
+helpers from `e2e/onboarding/helpers.py` in every new path test so the
+forbidden-vocabulary and loop-regression invariants are always active.
+
+**Fixture server:**
+
+Tests that exercise model downloads use the `fixture_server` fixture, which
+starts a local HTTP server serving a deterministic 64 KB file.  No test depends
+on Hugging Face or GitHub availability — the suite passes with networking
+disabled except for localhost.
+
 ---
 
 ## Pull request checklist
