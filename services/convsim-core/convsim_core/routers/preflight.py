@@ -34,7 +34,7 @@ _MIN_PACKS = 4
 class FixAction(BaseModel):
     """A single actionable remedy for a failing or warning check."""
 
-    kind: str   # "navigate" | "open-url"
+    kind: str   # "navigate" | "open-url" | "wizard-step"
     href: str
     label: str
 
@@ -193,8 +193,8 @@ def _check_llm_present(conn, active_model_id: Optional[str]) -> CheckResult:
             "Install a starter model to enable AI responses."
         ),
         fix_action=FixAction(
-            kind="navigate",
-            href="/model-manager",
+            kind="wizard-step",
+            href="choose",
             label="Open Model Manager",
         ),
     )

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect } from 'react'
-import { Routes, Route, Navigate, Outlet } from 'react-router-dom'
+import { Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom'
 import { I18nProvider } from './i18n'
 import { installExternalLinkHandler } from './lib/openExternal'
 import AppLayout from './layout/AppLayout'
@@ -20,10 +20,14 @@ import Logbook from './screens/Logbook'
 import { SETUP_KEYS } from './privacyPrefs'
 
 // Redirects to /first-run until the setup wizard has been completed once.
+// Preserves the intended destination in a `next` query param so that any future
+// fix_action pointing at a guarded route degrades gracefully instead of silently
+// discarding the navigation intent.
 function FirstRunGuard() {
+  const location = useLocation()
   const complete = localStorage.getItem(SETUP_KEYS.firstRunComplete) === 'true'
   if (!complete) {
-    return <Navigate to="/first-run" replace />
+    return <Navigate to={`/first-run?next=${encodeURIComponent(location.pathname)}`} replace />
   }
   return <Outlet />
 }

@@ -5,7 +5,7 @@ import { api } from '../api/client'
 import { openExternal } from '../lib/openExternal'
 import type { ApiError } from '../api/errors'
 import { ApiErrorView } from '../components/ApiErrorView'
-import type { PreflightResponse, PreflightCheck } from '@convsim/shared'
+import type { PreflightResponse, PreflightCheck, PreflightFixAction } from '@convsim/shared'
 
 const ISSUES_URL = 'https://github.com/outrightmental/ConversationSimulator/issues/new/choose'
 const TEMPLATE_BASE = 'https://github.com/outrightmental/ConversationSimulator/issues/new?template='
@@ -63,7 +63,7 @@ const STATUS_LABELS: Record<string, string> = {
   fail: 'Fail',
 }
 
-function CheckRow({ check, onFixAction }: { check: PreflightCheck; onFixAction: (href: string) => void }) {
+function CheckRow({ check, onFixAction }: { check: PreflightCheck; onFixAction: (action: PreflightFixAction) => void }) {
   const color = STATUS_COLORS[check.status] ?? '#e8e8ea'
   return (
     <div
@@ -93,7 +93,7 @@ function CheckRow({ check, onFixAction }: { check: PreflightCheck; onFixAction: 
         <div style={{ fontSize: '0.8rem', color: '#a1a1aa', marginTop: '0.15rem' }}>{check.message}</div>
         {check.fix_action && check.status !== 'pass' && (
           <button
-            onClick={() => onFixAction(check.fix_action!.href)}
+            onClick={() => onFixAction(check.fix_action!)}
             data-testid={`preflight-fix-${check.id}`}
             style={{
               marginTop: '0.4rem',
@@ -140,9 +140,18 @@ export default function Support() {
   const [selfTestResult, setSelfTestResult] = useState<PreflightResponse | null>(null)
   const [selfTestError, setSelfTestError] = useState<ApiError | null>(null)
 
-  function handleFixAction(href: string) {
-    if (href.startsWith('http://') || href.startsWith('https://')) {
+  // Maps a wizard-step fix action to its standalone post-setup route. `wizard-step`
+  // hrefs (e.g. "choose") name a step inside the first-run wizard, which isn't mounted
+  // here — so translate the known steps to the equivalent route (issue #378).
+  const WIZARD_STEP_ROUTES: Record<string, string> = { choose: '/model-manager' }
+
+  function handleFixAction(action: PreflightFixAction) {
+    const { kind, href } = action
+    if (kind === 'open-url' || href.startsWith('http://') || href.startsWith('https://')) {
       void openExternal(href)
+    } else if (kind === 'wizard-step') {
+      const route = WIZARD_STEP_ROUTES[href]
+      if (route) navigate(route)
     } else {
       navigate(href)
     }

@@ -4,7 +4,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import FirstRunWizard from '../screens/FirstRunWizard'
 import { SETUP_KEYS } from '../privacyPrefs'
-import type { ModelsResponse, BenchmarkResponse } from '@convsim/shared'
+import type { ModelsResponse, BenchmarkResponse, PreflightCheck } from '@convsim/shared'
 
 vi.mock('../api/client', () => ({
   api: {
@@ -307,6 +307,160 @@ describe('FirstRunWizard — preflight step', () => {
     renderWizard()
     fireEvent.click(screen.getByRole('button', { name: /get started/i }))
     await screen.findByRole('heading', { name: /choose how to get started/i })
+  })
+})
+
+// ── Issue-378 regression: preflight fix-action dead-loop ─────────────────────
+// Covers the exact loop: preflight-fail → click fix → assert NOT on welcome step.
+
+describe('FirstRunWizard — issue-378: preflight fix actions never loop back to welcome', () => {
+  function makePreflightWith(checks: PreflightCheck[]) {
+    return {
+      ok: true as const,
+      data: {
+        overall: 'fail' as const,
+        ran_at: '2026-01-01T00:00:00.000+00:00',
+        checks,
+      },
+    }
+  }
+
+  it('wizard-step fix action (llm-present) advances to choose step, not welcome', async () => {
+    // Reproduces the exact first-run loop from issue #378:
+    // llama-cpp-binary blocks → preflight shown → click "Open Model Manager" → must NOT be welcome.
+    mockApi.preflight.mockResolvedValue(makePreflightWith([
+      {
+        id: 'llama-cpp-binary',
+        name: 'Inference engine',
+        status: 'fail',
+        message: 'llama-server binary not found.',
+        fix_action: { kind: 'open-url', href: 'https://example.com/setup', label: 'Setup guide' },
+      },
+      {
+        id: 'llm-present',
+        name: 'Language model',
+        status: 'fail',
+        message: 'No language model installed.',
+        fix_action: { kind: 'wizard-step', href: 'choose', label: 'Open Model Manager' },
+      },
+    ]))
+    renderWizard()
+    fireEvent.click(screen.getByRole('button', { name: /get started/i }))
+    await screen.findByRole('heading', { name: /system check/i })
+
+    fireEvent.click(screen.getByTestId('wizard-preflight-fix-llm-present'))
+
+    // Must land on the choose step — never the welcome screen.
+    await screen.findByRole('heading', { name: /choose how to get started/i })
+    expect(screen.queryByRole('heading', { name: /welcome to conversation simulator/i })).not.toBeInTheDocument()
+  })
+
+  it('legacy navigate /model-manager fix action also advances to choose step', async () => {
+    // Backward-compat path for older backends that still emit navigate /model-manager.
+    mockApi.preflight.mockResolvedValue(makePreflightWith([
+      {
+        id: 'llama-cpp-binary',
+        name: 'Inference engine',
+        status: 'fail',
+        message: 'llama-server binary not found.',
+        fix_action: { kind: 'open-url', href: 'https://example.com/setup', label: 'Setup guide' },
+      },
+      {
+        id: 'llm-present',
+        name: 'Language model',
+        status: 'fail',
+        message: 'No language model installed.',
+        fix_action: { kind: 'navigate', href: '/model-manager', label: 'Open Model Manager' },
+      },
+    ]))
+    renderWizard()
+    fireEvent.click(screen.getByRole('button', { name: /get started/i }))
+    await screen.findByRole('heading', { name: /system check/i })
+
+    fireEvent.click(screen.getByTestId('wizard-preflight-fix-llm-present'))
+
+    await screen.findByRole('heading', { name: /choose how to get started/i })
+    expect(screen.queryByRole('heading', { name: /welcome to conversation simulator/i })).not.toBeInTheDocument()
+  })
+
+  it('voice-ready navigate /settings fix action renders as informational only (no button)', async () => {
+    // Voice check warns with a /settings navigate action; during first-run that
+    // route is guarded, so the button must be suppressed entirely.
+    mockApi.preflight.mockResolvedValue(makePreflightWith([
+      {
+        id: 'llama-cpp-binary',
+        name: 'Inference engine',
+        status: 'fail',
+        message: 'llama-server binary not found.',
+        fix_action: { kind: 'open-url', href: 'https://example.com/setup', label: 'Setup guide' },
+      },
+      {
+        id: 'voice-ready',
+        name: 'Voice features',
+        status: 'warn',
+        message: 'Some voice features are unavailable.',
+        fix_action: { kind: 'navigate', href: '/settings', label: 'Voice Settings' },
+      },
+    ]))
+    renderWizard()
+    fireEvent.click(screen.getByRole('button', { name: /get started/i }))
+    await screen.findByRole('heading', { name: /system check/i })
+
+    // The check is rendered but no fix button appears.
+    expect(screen.getByTestId('wizard-preflight-check-voice-ready')).toBeInTheDocument()
+    expect(screen.queryByTestId('wizard-preflight-fix-voice-ready')).not.toBeInTheDocument()
+  })
+
+  it('no fix-action button produced by the preflight step can trigger the FirstRunGuard redirect', async () => {
+    // Exhaustively asserts that every fix_action the backend can emit is handled
+    // inside the wizard without routing to a guarded path.
+    // Mirrors every fix_action the backend can actually emit from preflight.py:
+    // open-url (setup guide), wizard-step (llm-present), and navigate to
+    // /model-manager, /settings, and /library. Any navigate target that isn't
+    // resolvable inside the wizard must be suppressed (no button) rather than
+    // rendered as a loop-inducing FirstRunGuard redirect.
+    const ALL_POSSIBLE_FIX_ACTIONS: import('@convsim/shared').PreflightFixAction[] = [
+      { kind: 'open-url', href: 'https://example.com', label: 'Docs' },
+      { kind: 'wizard-step', href: 'choose', label: 'Choose model' },
+      { kind: 'navigate', href: '/model-manager', label: 'Model Manager' },
+      { kind: 'navigate', href: '/settings', label: 'Open Settings' },
+      { kind: 'navigate', href: '/library', label: 'Browse Scenarios' },
+    ]
+    for (const fix_action of ALL_POSSIBLE_FIX_ACTIONS) {
+      localStorage.clear()
+      mockApi.preflight.mockResolvedValue(makePreflightWith([
+        {
+          id: 'llama-cpp-binary',
+          name: 'Inference engine',
+          status: 'fail',
+          message: 'Binary missing.',
+          fix_action,
+        },
+      ]))
+      const { unmount } = renderWizard()
+      fireEvent.click(screen.getByRole('button', { name: /get started/i }))
+      await screen.findByRole('heading', { name: /system check/i })
+
+      // After clicking the fix button (if rendered), the user must never see the
+      // welcome screen again (which is what happens when FirstRunGuard sends them
+      // back to /first-run and the wizard resets).
+      const fixBtn = screen.queryByTestId('wizard-preflight-fix-llama-cpp-binary')
+      const resolvableInWizard =
+        fix_action.kind !== 'navigate' || fix_action.href === '/model-manager'
+      if (resolvableInWizard) {
+        // A button is rendered and clicking it must resolve inside the wizard.
+        expect(fixBtn).not.toBeNull()
+        fireEvent.click(fixBtn!)
+        // Give React time to process; welcome heading must NOT appear.
+        await new Promise((r) => setTimeout(r, 50))
+        expect(screen.queryByRole('heading', { name: /welcome to conversation simulator/i })).not.toBeInTheDocument()
+      } else {
+        // A navigate to any other guarded route is suppressed entirely — no button,
+        // no way to trigger the FirstRunGuard loop.
+        expect(fixBtn).toBeNull()
+      }
+      unmount()
+    }
   })
 })
 
