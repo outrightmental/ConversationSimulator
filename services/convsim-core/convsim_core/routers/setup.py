@@ -79,14 +79,19 @@ async def get_setup_status(request: Request) -> SetupStatusResponse:
     active_cfg = get_active_config(conn)
     active_model_id: Optional[str] = active_cfg.get("model_id")
 
-    # Check LLM presence
+    # Check LLM presence. Per issue #380, "ready" is engine + (model | demo
+    # choice) + packs — so a deliberate demo choice satisfies this requirement
+    # even though no real model is installed. Keying on the recorded outcome
+    # (not the default 'fake' runtime) keeps a failed model install from being
+    # mistaken for an intentional demo.
     installed_row = conn.execute(
         "SELECT COUNT(*) AS cnt FROM installed_models "
         "WHERE install_status IN ('ready', 'complete')"
     ).fetchone()
     installed_count = installed_row["cnt"] if installed_row else 0
 
-    if installed_count == 0 and not active_model_id:
+    chose_demo = outcome_row["outcome"] == "demo"
+    if installed_count == 0 and not active_model_id and not chose_demo:
         missing.append("llm-present")
 
     # Check packs

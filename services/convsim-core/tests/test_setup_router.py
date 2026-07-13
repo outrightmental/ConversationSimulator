@@ -45,3 +45,26 @@ def test_most_recent_outcome_wins(client):
 
     body = client.get("/api/setup/status").json()
     assert body["onboarding_outcome"]["outcome"] == "demo"
+
+
+def test_demo_choice_satisfies_the_llm_requirement(client):
+    """A deliberate demo choice counts as a model per issue #380.
+
+    'ready' is engine + (model | demo choice) + packs, so a demo user with no
+    installed model must NOT be told the LLM is missing — otherwise they'd see a
+    permanent, wrong "finish setup" banner. (packs-seeded is still reported
+    missing here because the throwaway DB seeds none.)
+    """
+    client.post("/api/setup/outcome", json={"outcome": "demo"})
+
+    body = client.get("/api/setup/status").json()
+    assert "llm-present" not in body["missing"]
+
+
+def test_completed_with_model_still_reports_missing_llm_without_a_model(client):
+    """Contrast with demo: a completed-with-model outcome but no installed model
+    still reports the LLM as missing, so a failed install is not hidden."""
+    client.post("/api/setup/outcome", json={"outcome": "completed-with-model"})
+
+    body = client.get("/api/setup/status").json()
+    assert "llm-present" in body["missing"]
