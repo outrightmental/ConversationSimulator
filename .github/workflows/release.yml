@@ -801,26 +801,77 @@ jobs:
           echo "=== Generated latest.json ==="
           cat latest.json
 
+      # Derive all release metadata before touching the release so we can:
+      #   - detect a pre-existing (hand-authored) release and preserve its title/body
+      #   - set prerelease from the tag semver suffix rather than hardcoding true
+      #   - set make_latest only for stable tags that will be published immediately
+      - name: Resolve release metadata
+        id: relmeta
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HAS_UPDATER_KEY: ${{ env.HAS_UPDATER_KEY }}
+        run: |
+          set -euo pipefail
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+
+          # Pre-release iff the tag carries a semver pre-release suffix (a hyphen):
+          # v0.1.0 -> stable/Latest, v0.1.0-beta.1 -> pre-release. Mirrors the updater's
+          # version ordering (beta < release) used to build latest.json.
+          if [[ "$TAG" == *-* ]]; then PRERELEASE=true; else PRERELEASE=false; fi
+
+          # Does a release for this tag already exist? Creating a release in the GitHub
+          # UI pushes the tag (triggering this workflow) once the release row already
+          # exists, so a hand-authored title/body/"Latest" flag is already live.
+          if gh release view "$TAG" >/dev/null 2>&1; then EXISTS=true; else EXISTS=false; fi
+
+          # Mark as "Latest" only for a stable tag that will actually be published
+          # (a draft release can never be Latest).
+          if [[ "$PRERELEASE" == false && ( "$HAS_UPDATER_KEY" == true || "$EXISTS" == true ) ]]; then
+            MAKE_LATEST=true
+          else
+            MAKE_LATEST=false
+          fi
+
+          # Preserve an existing release's human-authored title and notes by passing
+          # empty name/body. For a brand-new release, seed the default title + template.
+          if [[ "$EXISTS" == true ]]; then
+            NAME=""
+            BODY_PATH=""
+            DRAFT=false            # never demote an already-published release to draft
+          else
+            NAME="Conversation Simulator $TAG"
+            BODY_PATH="docs/release-notes-template.md"
+            if [[ "$HAS_UPDATER_KEY" == true ]]; then DRAFT=false; else DRAFT=true; fi
+          fi
+
+          {
+            echo "tag=$TAG"
+            echo "prerelease=$PRERELEASE"
+            echo "make_latest=$MAKE_LATEST"
+            echo "name=$NAME"
+            echo "body_path=$BODY_PATH"
+            echo "draft=$DRAFT"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "Resolved: tag=$TAG prerelease=$PRERELEASE make_latest=$MAKE_LATEST exists=$EXISTS draft=$DRAFT"
+
       # When the updater manifest is being produced (HAS_UPDATER_KEY), the
-      # versioned release MUST be published immediately as a pre-release rather
-      # than left as a draft: the beta-channel `latest.json` uploaded in the next
-      # step points at this release's `.../releases/download/<tag>/...` assets and
-      # `.../releases/tag/<tag>` page, and the in-app banner's "View notes" /
-      # "Install" links open that page. Draft-release assets and tag pages 404 for
-      # the public, so advertising the manifest before the target is live would
-      # send beta testers to a dead link. When signing is off there is no manifest
-      # to advertise, so we keep the previous draft/manual-review behaviour.
+      # versioned release MUST be published immediately rather than left as a
+      # draft: the beta-channel `latest.json` uploaded in the next step points at
+      # this release's assets and tag page, and draft assets 404 for the public.
+      # When signing is off and no pre-existing release exists, we keep the
+      # previous draft/manual-review behaviour (relmeta sets draft=true).
       - name: Create versioned GitHub release
         id: versioned_release
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
-          name: >-
-            Conversation Simulator
-            ${{ github.event.inputs.tag || github.ref_name }}
-          body_path: docs/release-notes-template.md
-          draft: ${{ env.HAS_UPDATER_KEY != 'true' }}
-          prerelease: true
+          tag_name: ${{ steps.relmeta.outputs.tag }}
+          name: ${{ steps.relmeta.outputs.name }}
+          body_path: ${{ steps.relmeta.outputs.body_path }}
+          draft: ${{ steps.relmeta.outputs.draft }}
+          prerelease: ${{ steps.relmeta.outputs.prerelease }}
+          make_latest: ${{ steps.relmeta.outputs.make_latest }}
           files: |
             release-artifacts/**
             checksums-sha256.txt
