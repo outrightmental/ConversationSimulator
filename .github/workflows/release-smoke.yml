@@ -40,6 +40,58 @@ permissions:
   contents: read
 
 jobs:
+  # ── Onboarding e2e — full P1–P8 matrix (release gate) ───────────────────────
+  #
+  # Runs the complete onboarding journey suite on all three platforms before
+  # any release is published.  Release is blocked on this job.
+  #
+  # The fast trio (P1/P2/P7) also runs as a required PR check via
+  # .github/workflows/onboarding-e2e.yml for path-filtered PRs.
+  onboarding-e2e:
+    name: Onboarding e2e P1–P8 / ${{ matrix.os }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: Linux x86_64
+            runner: ubuntu-latest
+          - os: macOS aarch64
+            runner: macos-latest
+          - os: Windows x86_64
+            runner: windows-2022
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: |
+            services/convsim-core/pyproject.toml
+            packages/prompt-composer/pyproject.toml
+
+      - name: Install prompt-composer
+        run: pip install -e "packages/prompt-composer[dev]"
+
+      - name: Install convsim-core
+        run: pip install -e "services/convsim-core[dev]"
+
+      - name: Run onboarding e2e suite (P1–P8)
+        run: |
+          python -m pytest e2e/onboarding/ -v --tb=short
+
+      - name: Upload onboarding e2e failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: onboarding-e2e-${{ matrix.os }}
+          path: /tmp/pytest-*
+          retention-days: 7
+          if-no-files-found: ignore
+
   # ── Linux (primary CI target) ────────────────────────────────────────────────
   smoke-linux:
     name: Release smoke / Linux x86_64
