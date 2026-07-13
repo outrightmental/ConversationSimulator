@@ -414,10 +414,17 @@ describe('FirstRunWizard — issue-378: preflight fix actions never loop back to
   it('no fix-action button produced by the preflight step can trigger the FirstRunGuard redirect', async () => {
     // Exhaustively asserts that every fix_action the backend can emit is handled
     // inside the wizard without routing to a guarded path.
+    // Mirrors every fix_action the backend can actually emit from preflight.py:
+    // open-url (setup guide), wizard-step (llm-present), and navigate to
+    // /model-manager, /settings, and /library. Any navigate target that isn't
+    // resolvable inside the wizard must be suppressed (no button) rather than
+    // rendered as a loop-inducing FirstRunGuard redirect.
     const ALL_POSSIBLE_FIX_ACTIONS: import('@convsim/shared').PreflightFixAction[] = [
       { kind: 'open-url', href: 'https://example.com', label: 'Docs' },
       { kind: 'wizard-step', href: 'choose', label: 'Choose model' },
       { kind: 'navigate', href: '/model-manager', label: 'Model Manager' },
+      { kind: 'navigate', href: '/settings', label: 'Open Settings' },
+      { kind: 'navigate', href: '/library', label: 'Browse Scenarios' },
     ]
     for (const fix_action of ALL_POSSIBLE_FIX_ACTIONS) {
       localStorage.clear()
@@ -438,11 +445,19 @@ describe('FirstRunWizard — issue-378: preflight fix actions never loop back to
       // welcome screen again (which is what happens when FirstRunGuard sends them
       // back to /first-run and the wizard resets).
       const fixBtn = screen.queryByTestId('wizard-preflight-fix-llama-cpp-binary')
-      if (fixBtn) {
-        fireEvent.click(fixBtn)
+      const resolvableInWizard =
+        fix_action.kind !== 'navigate' || fix_action.href === '/model-manager'
+      if (resolvableInWizard) {
+        // A button is rendered and clicking it must resolve inside the wizard.
+        expect(fixBtn).not.toBeNull()
+        fireEvent.click(fixBtn!)
         // Give React time to process; welcome heading must NOT appear.
         await new Promise((r) => setTimeout(r, 50))
         expect(screen.queryByRole('heading', { name: /welcome to conversation simulator/i })).not.toBeInTheDocument()
+      } else {
+        // A navigate to any other guarded route is suppressed entirely — no button,
+        // no way to trigger the FirstRunGuard loop.
+        expect(fixBtn).toBeNull()
       }
       unmount()
     }

@@ -475,7 +475,11 @@ export default function FirstRunWizard() {
                   {check.name}
                 </p>
                 <p style={{ margin: 0, fontSize: '0.825rem', color: '#a1a1aa' }}>{check.message}</p>
-                {check.fix_action && !(check.fix_action.kind === 'navigate' && check.fix_action.href === '/settings') && (
+                {/* Only render a fix button the wizard can resolve without leaving first-run.
+                    Every `navigate` target except /model-manager (mapped to the 'choose' step
+                    below) is behind FirstRunGuard, so rendering it would dead-loop back to
+                    welcome (issue #378) — suppress those and show the check as informational. */}
+                {check.fix_action && !(check.fix_action.kind === 'navigate' && check.fix_action.href !== '/model-manager') && (
                   <button
                     onClick={() => {
                       const { kind, href } = check.fix_action!
