@@ -5,11 +5,11 @@ description: Get Conversation Simulator for Windows, macOS, or Linux — $9.99 o
 ---
 
 <div class="dl-grid">
-  <a class="dl-card" href="https://store.steampowered.com/">
+  <a class="dl-card" href="https://store.steampowered.com/" target="_blank" rel="noopener noreferrer">
     <strong>Buy on Steam — $9.99</strong>
     <span>Windows · macOS · Linux · Steam Deck · ready to run, auto-updating</span>
   </a>
-  <a class="dl-card" href="https://github.com/outrightmental/ConversationSimulator">
+  <a class="dl-card" href="https://github.com/outrightmental/ConversationSimulator" target="_blank" rel="noopener noreferrer">
     <strong>Build from source — free</strong>
     <span>Clone the Apache-2.0 repository and build it yourself</span>
   </a>
