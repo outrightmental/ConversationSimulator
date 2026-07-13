@@ -99,6 +99,7 @@ describe('DLC_REGISTRY', () => {
   })
 })
 
+
 // ── Non-Tauri (browser) context ───────────────────────────────────────────────
 
 describe('useSteamDlc — non-Tauri context', () => {
@@ -119,6 +120,7 @@ describe('useSteamDlc — non-Tauri context', () => {
     })
     expect(owned).toBe(false)
   })
+
 
   it('returns false when __TAURI__ has no core.invoke', async () => {
     const win = window as { __TAURI__?: unknown }

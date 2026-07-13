@@ -50,6 +50,7 @@ only on Steam.
 
 ---
 
+
 ## Steamworks registration
 
 Each premium pack is registered as a separate **DLC app** under the base
@@ -79,6 +80,7 @@ Rules:
 - Multiple entries are comma-separated.
 - DLC App IDs must be positive integers.
 - Malformed entries are silently skipped at runtime; the build script (`build.rs`) fails loudly at compile time so typos are caught before release.
+
 
 ---
 
@@ -126,6 +128,7 @@ as part of `tauri build`, so both targets receive the env var in a single CI ste
 
 ---
 
+
 ## Runtime ownership gate
 
 The app gates DLC pack playability by Steam ownership. A player who does not
@@ -145,6 +148,7 @@ pack_id  →  DLC_REGISTRY lookup  →  dlc_app_id
                                ISteamApps::IsDlcInstalled(appId)
 ```
 
+
 ### Rust: `SteamRuntime::is_dlc_installed`
 
 ```rust
@@ -161,6 +165,7 @@ The Tauri command wrapper in `lib.rs`:
 ```rust
 steam_is_dlc_installed(dlc_app_id: u32, state: tauri::State<SteamRuntimeState>) -> bool
 ```
+
 
 ### React hook: `useSteamDlc`
 
@@ -213,6 +218,7 @@ appropriate upgrade prompt rather than showing an error.
 
 ---
 
+
 ## Pack library UI
 
 See #364 for the pack library UI changes that show owned DLC as playable and
@@ -232,6 +238,7 @@ unowned DLC as available-to-buy (with a Steam store link).
 5. Trigger a new release build — the DLC registry is baked in at compile time.
 
 ---
+
 
 ## Links
 
