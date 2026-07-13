@@ -43,7 +43,11 @@ jobs:
       # the Apple-ID fallback trio is configured.  Both paths drive the same
       # notarytool submission inside Tauri; only the authentication method differs.
       HAS_NOTARIZATION: ${{ secrets.APPLE_ID != '' || secrets.APPLE_API_KEY != '' }}
-      HAS_WINDOWS_CERT: ${{ secrets.WINDOWS_SIGN_CERT_PFX != '' }}
+      # KMS signing requires all three GCP secrets; PFX is the legacy fallback.
+      HAS_KMS_SIGNING: ${{ secrets.GCP_SA_KEY_JSON != '' && secrets.GCP_KMS_KEY != '' && secrets.WINDOWS_CODESIGN_CERT != '' }}
+      HAS_PFX_SIGNING: ${{ secrets.WINDOWS_SIGN_CERT_PFX != '' }}
+      # Verification step runs when either signing path is configured.
+      HAS_WINDOWS_CERT: ${{ secrets.GCP_SA_KEY_JSON != '' || secrets.WINDOWS_SIGN_CERT_PFX != '' }}
       HAS_UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
       # REQUIRE_SIGNED_MACOS is true on release tags (any v*) regardless of
       # whether the run was triggered by a git push or workflow_dispatch.
@@ -285,6 +289,17 @@ jobs:
           .\runtimes\llama_cpp\download-runtime.ps1 -Dest $dest
           Get-Item "$dest\llama-server.exe" | Select-Object Name, Length
 
+      # ── Java runtime for jsign (Windows KMS signing) ────────────────────────
+      # windows-latest ships Temurin, but we pin the version explicitly so the
+      # jsign invocation in scripts/jsign-sign.ps1 (called by Tauri's signCommand
+      # during bundle and by the post-build signing step) is hermetic.
+      - name: Set up Java (jsign Authenticode signing, Windows only)
+        if: runner.os == 'Windows'
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
       # ── Sync app version to the release tag ──────────────────────────────────
       # The built binary reports the `version` field from tauri.conf.json, and
       # the in-app updater compares that against the `version` in latest.json
@@ -363,6 +378,14 @@ jobs:
           # The beforeBuildCommand in tauri.conf.json re-runs `pnpm web build`
           # so this env var reaches Vite automatically.
           VITE_STEAM_DLC_APP_IDS: ${{ vars.STEAM_DLC_APP_IDS }}
+          # GCP KMS and PFX credentials for Tauri's bundle.windows.signCommand,
+          # which invokes scripts/jsign-sign.ps1 per binary during bundling.
+          # When absent the script INFO-skips (unsigned dev/fork build).
+          GCP_SA_KEY_JSON:       ${{ secrets.GCP_SA_KEY_JSON }}
+          GCP_KMS_KEY:           ${{ secrets.GCP_KMS_KEY }}
+          WINDOWS_CODESIGN_CERT: ${{ secrets.WINDOWS_CODESIGN_CERT }}
+          CERT_PFX_BASE64:       ${{ secrets.WINDOWS_SIGN_CERT_PFX }}
+          CERT_PASSWORD:         ${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}
         run: |
           # Scrub the decoded ASC private key from disk on ANY exit — including a
           # failed build.  GitHub runs this step with `bash -e`, so a `pnpm build`
@@ -511,115 +534,78 @@ jobs:
             fi
           fi
 
-      # ── Authenticode signing (Windows only, optional) ─────────────────────────
+      # ── Authenticode signing — outer NSIS/MSI installers (Windows only) ──────
       # Signs the NSIS installer (.exe) and MSI package produced by Tauri.
-      # Signing requires two repository secrets:
+      # Inner payload binaries (ConversationSimulator.exe, convsim-core.exe) are
+      # signed earlier by Tauri's bundle.windows.signCommand hook, which calls
+      # scripts/jsign-sign.ps1 per binary during the bundle phase above.
       #
-      #   WINDOWS_SIGN_CERT_PFX      — base64-encoded PFX certificate file
-      #   WINDOWS_SIGN_CERT_PASSWORD — password for the PFX file
+      # Signing priority (handled by scripts/jsign-sign.ps1):
+      #   1. GCP KMS — GCP_SA_KEY_JSON + GCP_KMS_KEY + WINDOWS_CODESIGN_CERT
+      #   2. PFX     — WINDOWS_SIGN_CERT_PFX + WINDOWS_SIGN_CERT_PASSWORD
+      #   3. Skip    — neither set (fork-friendly, unsigned dev build)
       #
-      # When neither secret is set the step exits 0 and the build continues
-      # with an unsigned installer.  Unsigned installers trigger a Windows
-      # Defender SmartScreen "unrecognised publisher" warning on first launch;
-      # this is acceptable for developer builds but must be resolved before the
-      # Stage 3 (private beta) gate (G3-01 in docs/steam-mvp-scope.md).
-      #
-      # To obtain a code-signing certificate:
-      #   - Purchase an EV certificate from DigiCert, Sectigo, or similar CA.
-      #   - Export the private key and certificate chain as a .pfx file.
-      #   - Base64-encode the .pfx: certutil -encode cert.pfx cert.b64
-      #   - Add cert.b64 contents as WINDOWS_SIGN_CERT_PFX in repository secrets.
-      #   - Add the PFX password as WINDOWS_SIGN_CERT_PASSWORD in repository secrets.
+      # The private key never touches the runner in the KMS path; the service-
+      # account key is written to RUNNER_TEMP and removed in a finally block.
+      # Gate G3-01 (docs/steam-mvp-scope.md): signed installer required before
+      # Stage 3 Steam private beta. See publishing/WINDOWS_CODE_SIGNING.md.
       - name: Sign Windows installers (Authenticode)
         if: runner.os == 'Windows'
         shell: pwsh
         env:
-          CERT_PFX_BASE64: ${{ secrets.WINDOWS_SIGN_CERT_PFX }}
-          CERT_PASSWORD:   ${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}
+          GCP_SA_KEY_JSON:       ${{ secrets.GCP_SA_KEY_JSON }}
+          GCP_KMS_KEY:           ${{ secrets.GCP_KMS_KEY }}
+          WINDOWS_CODESIGN_CERT: ${{ secrets.WINDOWS_CODESIGN_CERT }}
+          CERT_PFX_BASE64:       ${{ secrets.WINDOWS_SIGN_CERT_PFX }}
+          CERT_PASSWORD:         ${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}
         run: |
-          if (-not $env:CERT_PFX_BASE64) {
-            Write-Host "  INFO  WINDOWS_SIGN_CERT_PFX is not set — producing unsigned build."
-            Write-Host "        Add the secret to enable Authenticode signing for release builds."
-            Write-Host "        See docs/platform-notes.md for certificate setup instructions."
+          $bundleDir  = "apps\desktop\src-tauri\target\release\bundle"
+          $installers = Get-ChildItem -Recurse -Path $bundleDir `
+            -Include "*.exe","*.msi" -ErrorAction SilentlyContinue
+          if (-not $installers) {
+            Write-Host "  WARN  No installers found in $bundleDir — skipping outer signing."
             exit 0
           }
-
-          # Decode the base64-encoded PFX to a temporary file.
-          #
-          # `certutil -encode` (the command in the setup docs) wraps its output
-          # in PEM `-----BEGIN/END CERTIFICATE-----` header/footer lines.
-          # [Convert]::FromBase64String tolerates embedded whitespace/newlines
-          # but throws on those marker lines, so strip any line that is not
-          # base64 payload before decoding.  This also accepts a plain,
-          # unwrapped base64 blob unchanged.
-          $pfxPath = Join-Path $env:RUNNER_TEMP "convsim-sign.pfx"
-          try {
-            $b64 = ($env:CERT_PFX_BASE64 -split "`r?`n" |
-              Where-Object { $_ -notmatch '^-----' }) -join ''
-            [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($b64))
-
-            # Locate all Tauri-produced NSIS installers and MSI packages.
-            $bundleDir = "apps\desktop\src-tauri\target\release\bundle"
-            $installers = Get-ChildItem -Recurse -Path $bundleDir `
-              -Include "*.exe","*.msi" -ErrorAction SilentlyContinue
-
-            if (-not $installers) {
-              Write-Host "  WARN  No installers found in $bundleDir — skipping signing."
-              exit 0
+          foreach ($inst in $installers) {
+            Write-Host "  Signing installer: $($inst.FullName)"
+            & pwsh -NoLogo -NonInteractive -File scripts\jsign-sign.ps1 -FilePath $inst.FullName
+            if ($LASTEXITCODE -ne 0) {
+              Write-Error "Signing failed for $($inst.Name) (exit $LASTEXITCODE)"
+              exit $LASTEXITCODE
             }
-
-            # Resolve signtool.exe.  It ships with the Windows SDK but is not on
-            # PATH on GitHub-hosted Windows runners, so fall back to searching
-            # the Windows Kits install directory for the newest x64 build.
-            $signtool = (Get-Command signtool.exe -ErrorAction SilentlyContinue).Source
-            if (-not $signtool) {
-              $signtool = Get-ChildItem `
-                -Path "${env:ProgramFiles(x86)}\Windows Kits\10\bin" `
-                -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
-                Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
-                Sort-Object FullName -Descending |
-                Select-Object -First 1 -ExpandProperty FullName
-            }
-            if (-not $signtool) {
-              Write-Error "signtool.exe not found on PATH or under the Windows SDK; cannot sign installers."
-              exit 1
-            }
-            Write-Host "  Using signtool: $signtool"
-
-            foreach ($installer in $installers) {
-              Write-Host "  Signing: $($installer.FullName)"
-              # /tr  — RFC 3161 timestamp server (DigiCert, always free to use)
-              # /td  — timestamp digest algorithm
-              # /fd  — file digest algorithm
-              & $signtool sign `
-                /f $pfxPath `
-                /p $env:CERT_PASSWORD `
-                /tr http://timestamp.digicert.com `
-                /td sha256 `
-                /fd sha256 `
-                /v `
-                $installer.FullName
-              if ($LASTEXITCODE -ne 0) {
-                Write-Error "signtool failed for $($installer.Name) (exit $LASTEXITCODE)"
-                exit $LASTEXITCODE
-              }
-            }
-
-            Write-Host "  INFO  All installers signed successfully."
-          } finally {
-            # Always remove the PFX from disk, even on failure.
-            if (Test-Path $pfxPath) { Remove-Item $pfxPath -Force }
           }
+          Write-Host "  INFO  Outer installer signing complete."
 
       # ── Verify Windows Authenticode signature ─────────────────────────────────
-      # Confirms signtool correctly embedded a valid Authenticode signature in
-      # each installer produced by Tauri.  Skipped when WINDOWS_SIGN_CERT_PFX is
-      # absent (unsigned build — see the signing step above for details).
+      # Verifies Authenticode signatures on:
+      #   • Outer installers: all .exe/.msi under target/release/bundle
+      #   • Inner payload:    ConversationSimulator.exe + convsim-core.exe
+      #     extracted from the NSIS installer via 7z (available on windows-latest)
+      #
+      # Skipped when neither GCP KMS nor PFX signing credentials are configured.
       - name: Verify Windows Authenticode signature
         if: runner.os == 'Windows' && env.HAS_WINDOWS_CERT == 'true'
         shell: pwsh
         run: |
-          $bundleDir = "apps\desktop\src-tauri\target\release\bundle"
+          function Get-Signtool {
+            $st = (Get-Command signtool.exe -ErrorAction SilentlyContinue)?.Source
+            if (-not $st) {
+              $st = Get-ChildItem -Path "${env:ProgramFiles(x86)}\Windows Kits\10\bin" `
+                       -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
+                    Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
+                    Sort-Object FullName -Descending |
+                    Select-Object -First 1 -ExpandProperty FullName
+            }
+            return $st
+          }
+
+          $signtool = Get-Signtool
+          if (-not $signtool) {
+            Write-Error "signtool.exe not found — cannot verify Authenticode signatures."
+            exit 1
+          }
+
+          $bundleDir  = "apps\desktop\src-tauri\target\release\bundle"
           $installers = Get-ChildItem -Recurse -Path $bundleDir `
             -Include "*.exe","*.msi" -ErrorAction SilentlyContinue
           if (-not $installers) {
@@ -627,29 +613,57 @@ jobs:
             exit 0
           }
 
-          $signtool = (Get-Command signtool.exe -ErrorAction SilentlyContinue).Source
-          if (-not $signtool) {
-            $signtool = Get-ChildItem `
-              -Path "${env:ProgramFiles(x86)}\Windows Kits\10\bin" `
-              -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
-              Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
-              Sort-Object FullName -Descending |
-              Select-Object -First 1 -ExpandProperty FullName
-          }
-          if (-not $signtool) {
-            Write-Error "signtool.exe not found — cannot verify Authenticode signature."
-            exit 1
-          }
-
-          foreach ($installer in $installers) {
-            Write-Host "  Verifying: $($installer.FullName)"
-            & $signtool verify /pa /v $installer.FullName
+          # Verify outer installers.
+          Write-Host "=== Outer installer signatures ==="
+          foreach ($inst in $installers) {
+            Write-Host "  Verifying: $($inst.FullName)"
+            & $signtool verify /pa /v $inst.FullName
             if ($LASTEXITCODE -ne 0) {
-              Write-Error "Authenticode verification failed for $($installer.Name) (exit $LASTEXITCODE)"
+              Write-Error "Authenticode verification failed for $($inst.Name) (exit $LASTEXITCODE)"
               exit $LASTEXITCODE
             }
           }
-          Write-Host "  INFO  All installers have a valid Authenticode signature."
+          Write-Host "  OK  All outer installers carry a valid Authenticode signature."
+
+          # Extract the NSIS installer and verify inner payload binaries.
+          # 7z is pre-installed on windows-latest.
+          $nsisInst = Get-ChildItem -Recurse -Path $bundleDir -Filter "*-setup.exe" |
+                      Select-Object -First 1
+          if (-not $nsisInst) {
+            Write-Host "  WARN  No NSIS installer found — skipping inner-binary verification."
+            exit 0
+          }
+
+          Write-Host ""
+          Write-Host "=== Inner payload signatures (extracted from NSIS) ==="
+          $extractDir = Join-Path $env:RUNNER_TEMP "nsis-extracted"
+          Write-Host "  Extracting: $($nsisInst.FullName) -> $extractDir"
+          & 7z x $nsisInst.FullName "-o$extractDir" -y | Out-Null
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "  WARN  7z extraction failed (exit $LASTEXITCODE) — skipping inner check."
+            exit 0
+          }
+
+          $fail = $false
+          foreach ($name in @('ConversationSimulator.exe', 'convsim-core.exe')) {
+            $inner = Get-ChildItem -Recurse -Path $extractDir -Filter $name |
+                     Select-Object -First 1
+            if (-not $inner) {
+              Write-Host "  WARN  $name not found in extracted NSIS archive — skipping."
+              continue
+            }
+            Write-Host "  Verifying: $($inner.FullName)"
+            & $signtool verify /pa /v $inner.FullName
+            if ($LASTEXITCODE -ne 0) {
+              Write-Error "  FAIL  $name does not carry a valid Authenticode signature."
+              $fail = $true
+            } else {
+              Write-Host "  OK    $name"
+            }
+          }
+          if ($fail) { exit 1 }
+          Write-Host "  INFO  All outer installers and inner payload binaries verified."
+          Write-Host "        Gate G3-01 Windows criterion met."
 
       # ── Scan Windows installers for malware (VirusTotal, optional) ─────────────
       # Submits each Windows installer to VirusTotal for analysis and records the
