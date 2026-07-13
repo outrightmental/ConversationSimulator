@@ -811,9 +811,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HAS_UPDATER_KEY: ${{ env.HAS_UPDATER_KEY }}
+          # Pass the tag through the environment rather than interpolating the
+          # ${{ }} expression straight into the script: a tag name can legally
+          # contain shell metacharacters (`$`, backticks, ...) that would
+          # otherwise be evaluated here (command injection). Quoting "$TAG"
+          # below keeps it inert.
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
-          TAG="${{ github.event.inputs.tag || github.ref_name }}"
 
           # Pre-release iff the tag carries a semver pre-release suffix (a hyphen):
           # v0.1.0 -> stable/Latest, v0.1.0-beta.1 -> pre-release. Mirrors the updater's
