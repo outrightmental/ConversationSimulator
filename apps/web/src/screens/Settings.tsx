@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { api, type ImportPackResponse, type PackSummary, type RelationshipRecapSummary } from '../api/client'
 import type { ApiError } from '../api/errors'
 import { errorHeadline } from '../api/errors'
@@ -10,6 +10,9 @@ import { useSteamStatus } from '../hooks/useSteamStatus'
 import RuntimeSettingsPanel from '../components/RuntimeSettingsPanel'
 import VoiceSettingsPanel from '../components/VoiceSettingsPanel'
 import { useTranslation, formatDate, SUPPORTED_LOCALES } from '../i18n'
+import { RemediationCard } from '../setup/RemediationCard'
+import { openExternal } from '../lib/openExternal'
+import type { PreflightResponse, PreflightFixAction } from '@convsim/shared'
 
 type ClearState = 'idle' | 'confirming' | 'clearing' | 'done' | 'error'
 type PackImportState = 'idle' | 'uploading' | 'success' | 'error'
@@ -85,6 +88,7 @@ const LOCALE_DISPLAY_NAMES: Record<string, string> = {
 
 export default function Settings() {
   const { t, locale, setLocale } = useTranslation()
+  const navigate = useNavigate()
 
   const [saveTranscripts, setSaveTranscripts] = useState(() => readPrivacyPref(PRIVACY_KEYS.saveTranscripts, true))
   const [saveTtsCache, setSaveTtsCache] = useState(() => readPrivacyPref(PRIVACY_KEYS.saveTtsCache, true))
@@ -93,6 +97,34 @@ export default function Settings() {
   const [devMode, setDevMode] = useState(() => isDevModeEnabled())
   const [isTauri] = useState(detectTauri)
   const steamStatus = useSteamStatus()
+
+  // ── System health ────────────────────────────────────────────────────────────
+
+  const [healthResult, setHealthResult] = useState<PreflightResponse | null>(null)
+  const [healthChecking, setHealthChecking] = useState(false)
+
+  async function handleRunHealthCheck() {
+    setHealthChecking(true)
+    setHealthResult(null)
+    const r = await api.preflight()
+    if (r.ok) setHealthResult(r.data)
+    setHealthChecking(false)
+  }
+
+  function handleHealthFixAction(action: PreflightFixAction) {
+    const { kind, href } = action
+    if (kind === 'open-url') {
+      void openExternal(href)
+    } else if (kind === 'wizard-step' || kind === 'install-engine') {
+      navigate('/model-manager')
+    } else {
+      navigate(href)
+    }
+  }
+
+  function handleHealthTextOnly() {
+    navigate('/library')
+  }
 
   function handleSaveTranscriptsChange(v: boolean) {
     setSaveTranscripts(v)
@@ -962,6 +994,73 @@ export default function Settings() {
             </button>
           </>
         )}
+      </section>
+
+      {/* System health */}
+      <section data-testid="settings-system-health">
+        <SectionHeading>{t('setup.systemHealth.heading')}</SectionHeading>
+        <button
+          onClick={() => { void handleRunHealthCheck() }}
+          disabled={healthChecking}
+          data-testid="settings-health-check-button"
+          style={{
+            padding: '0.4rem 0.9rem',
+            borderRadius: '6px',
+            border: '1px solid rgba(255,255,255,0.15)',
+            background: 'rgba(255,255,255,0.06)',
+            color: '#a1a1aa',
+            fontSize: '0.875rem',
+            cursor: healthChecking ? 'wait' : 'pointer',
+            marginBottom: '0.75rem',
+          }}
+        >
+          {healthChecking ? t('setup.systemHealth.checking') : t('setup.systemHealth.checkButton')}
+        </button>
+
+        {healthResult && (() => {
+          const needsHuman = healthResult.checks.filter(
+            (c) => c.status === 'fail' && c.severity === 'needs-human',
+          )
+          const coreVersion = healthResult.checks.find(
+            (c) => c.id === 'runtime-handshake',
+          )?.message
+          const nonPassCount = healthResult.checks.filter((c) => c.status !== 'pass').length
+
+          return (
+            <div aria-live="polite">
+              {healthResult.overall === 'pass' ? (
+                <p style={{ fontSize: '0.875rem', color: '#86efac' }}>{t('setup.systemHealth.allGood')}</p>
+              ) : (
+                <p style={{ fontSize: '0.875rem', color: '#a1a1aa', marginBottom: '0.5rem' }}>
+                  {nonPassCount === 1
+                    ? t('setup.systemHealth.issuesFound_one', { count: String(nonPassCount) })
+                    : t('setup.systemHealth.issuesFound_other', { count: String(nonPassCount) })}
+                </p>
+              )}
+              {needsHuman.map((check) => (
+                <RemediationCard
+                  key={check.id}
+                  check={check}
+                  onAction={handleHealthFixAction}
+                  onTextOnly={handleHealthTextOnly}
+                  coreVersion={coreVersion}
+                />
+              ))}
+              {/* Informational and auto-fixable checks: compact list */}
+              {healthResult.checks
+                .filter((c) => c.status !== 'pass' && c.severity !== 'needs-human')
+                .map((c) => (
+                  <p
+                    key={c.id}
+                    style={{ fontSize: '0.8rem', color: c.status === 'fail' ? '#f87171' : '#fde68a', marginBottom: '0.25rem' }}
+                    data-testid={`settings-health-check-${c.id}`}
+                  >
+                    {c.name}: {c.message}
+                  </p>
+                ))}
+            </div>
+          )
+        })()}
       </section>
 
       {/* Advanced */}

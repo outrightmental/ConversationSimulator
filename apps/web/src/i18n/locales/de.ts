@@ -357,6 +357,27 @@ export const de: LocaleMessages = {
         },
       },
     },
+    gettingReady: {
+      heading: 'Wird vorbereitet',
+      oneIssue: 'Ein Problem muss gelöst werden, bevor die Einrichtung fortgesetzt werden kann.',
+      manyIssues: '{{count}} Probleme müssen gelöst werden, bevor die Einrichtung fortgesetzt werden kann.',
+    },
+    remediation: {
+      textOnly: 'Stattdessen nur Text verwenden',
+      details: 'Details',
+      detailsOpen: 'Details ▾',
+      detailsClosed: 'Details ▸',
+      copy: 'Kopieren',
+      copied: 'Kopiert!',
+    },
+    systemHealth: {
+      heading: 'Systemstatus',
+      checkButton: 'Systemprüfung durchführen',
+      checking: 'Wird geprüft…',
+      allGood: 'Alles in Ordnung.',
+      issuesFound_one: '{{count}} Problem gefunden.',
+      issuesFound_other: '{{count}} Probleme gefunden.',
+    },
   },
   debrief: {
     title: 'Sitzungsnachbesprechung',
