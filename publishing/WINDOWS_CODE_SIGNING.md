@@ -15,14 +15,21 @@
 
 ## Architecture
 
-Signing is split into two phases:
+Signing is split into three phases, all driven by `scripts/jsign-sign.ps1`:
 
-1. **Payload signing (during `tauri build`)** — Tauri's `bundle.windows.signCommand`
-   hook calls `scripts/jsign-sign.ps1` for each binary it packages
-   (`ConversationSimulator.exe`, `convsim-core.exe`, and any other bundled
-   executables). This means the NSIS payload is signed before it is packaged.
+1. **Main executable (during `tauri build`)** — Tauri's `bundle.windows.signCommand`
+   hook calls `scripts/jsign-sign.ps1` for `ConversationSimulator.exe`. Tauri's
+   sign hook covers the main app binary and the installers it produces, but
+   **not** files added via `bundle.resources`.
 
-2. **Installer signing (post-build)** — The release workflow's "Sign Windows
+2. **Resource binaries (before `tauri build`)** — `convsim-core.exe` (and
+   `llama-server.exe` on Steam builds) are bundled as resources, so the release
+   workflow's "Sign bundled resource binaries" step signs them in
+   `resources/` before the Tauri build packages them into the installer.
+   Without this, the extracted payload would be unsigned and SmartScreen would
+   flag the installed app.
+
+3. **Outer installers (post-build)** — The release workflow's "Sign Windows
    installers (Authenticode)" step calls the same script for the outer NSIS `.exe`
    and MSI packages.
 
