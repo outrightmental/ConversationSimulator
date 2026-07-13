@@ -1,8 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { MemoryRouter } from 'react-router-dom'
+import { MemoryRouter, useLocation } from 'react-router-dom'
 import App from '../App'
+
+// Surfaces the in-memory router location so tests can assert on it. `window.location`
+// is NOT updated by MemoryRouter (it stays http://localhost/), so asserting against
+// it would be vacuous — read the router location via useLocation instead.
+function LocationProbe() {
+  const location = useLocation()
+  return <span data-testid="location-probe">{location.pathname + location.search}</span>
+}
 
 // @convsim/ui re-exports FormEditor which transitively imports @convsim/scenario-schema
 // (requires zod at runtime).  Stub the package to avoid that peer dependency in tests.
@@ -122,5 +130,28 @@ describe('First-run guard', () => {
     renderAt('/settings')
     expect(screen.getByRole('heading', { name: /settings/i })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /get started/i })).not.toBeInTheDocument()
+  })
+
+  it('preserves the intended destination in a next= query param when redirecting to first-run', () => {
+    // Issue-378 defense-in-depth: the guard must never silently discard navigation
+    // intent — any future fix_action pointing at a guarded route should be recorded
+    // (in `next=`) rather than looped away to welcome.
+    localStorage.removeItem('convsim.setup.complete')
+    render(
+      <MemoryRouter
+        initialEntries={['/model-manager']}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
+        <App />
+        <LocationProbe />
+      </MemoryRouter>,
+    )
+    // The wizard is shown (guard redirected us)…
+    expect(screen.getByRole('button', { name: /get started/i })).toBeInTheDocument()
+    // …and the guard redirected to /first-run while preserving the original
+    // destination in `next=` (URL-encoded) so it is never silently swallowed.
+    const location = screen.getByTestId('location-probe').textContent ?? ''
+    expect(location).toMatch(/^\/first-run\b/)
+    expect(decodeURIComponent(location)).toContain('next=/model-manager')
   })
 })

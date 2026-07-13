@@ -475,12 +475,23 @@ export default function FirstRunWizard() {
                   {check.name}
                 </p>
                 <p style={{ margin: 0, fontSize: '0.825rem', color: '#a1a1aa' }}>{check.message}</p>
-                {check.fix_action && (
+                {/* Only render a fix button the wizard can resolve without leaving first-run.
+                    Every `navigate` target except /model-manager (mapped to the 'choose' step
+                    below) is behind FirstRunGuard, so rendering it would dead-loop back to
+                    welcome (issue #378) — suppress those and show the check as informational. */}
+                {check.fix_action && !(check.fix_action.kind === 'navigate' && check.fix_action.href !== '/model-manager') && (
                   <button
                     onClick={() => {
                       const { kind, href } = check.fix_action!
                       if (kind === 'open-url') {
                         void openExternal(href)
+                      } else if (kind === 'wizard-step') {
+                        // Backend-signalled in-wizard step: navigate without leaving the wizard.
+                        setStep(href as WizardStep)
+                      } else if (href === '/model-manager') {
+                        // Backward-compat for older backends: /model-manager is behind
+                        // FirstRunGuard, so map it to the in-wizard model-selection step.
+                        setStep('choose')
                       } else {
                         navigate(href)
                       }

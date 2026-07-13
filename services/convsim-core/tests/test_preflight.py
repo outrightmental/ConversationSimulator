@@ -177,7 +177,10 @@ def test_llm_present_fails_when_no_model_installed(client):
     check = _find_check(_get_preflight(client), "llm-present")
     assert check["status"] == "fail"
     assert check["fix_action"] is not None
-    assert check["fix_action"]["href"] == "/model-manager"
+    # wizard-step/choose so the frontend can navigate inside the wizard without
+    # hitting FirstRunGuard (issue #378).
+    assert check["fix_action"]["kind"] == "wizard-step"
+    assert check["fix_action"]["href"] == "choose"
 
 
 def test_llm_present_passes_when_model_ready(client):

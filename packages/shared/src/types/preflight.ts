@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 export interface PreflightFixAction {
-  kind: 'navigate' | 'open-url'
+  kind: 'navigate' | 'open-url' | 'wizard-step'
   href: string
   label: string
 }
