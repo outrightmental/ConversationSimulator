@@ -1420,5 +1420,75 @@ describe('Conversation screen', () => {
       expect(localStorage.getItem('convsim.active_runtime_hint')).toBeNull()
       expect(localStorage.getItem('convsim.tutorial.install_id')).toBeNull()
     })
+
+    it('labels a fake session with the "Demo mode" badge', async () => {
+      localStorage.setItem('convsim.active_runtime_hint', 'fake')
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
+      renderConversation()
+      await waitFor(() =>
+        expect(screen.getByTestId('runtime-label')).toHaveTextContent(/demo mode/i),
+      )
+    })
+
+    it('toast "Switch now" clears the runtime hint and navigates to the library', async () => {
+      localStorage.setItem('convsim.active_runtime_hint', 'scripted')
+      localStorage.setItem('convsim.tutorial.install_id', '42')
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
+      mockApi.getSetupInstallStatus.mockResolvedValue({
+        ok: true,
+        data: { id: 42, status: 'complete', registry_id: 'qwen3-4b-q4', stages: [], error_message: null, created_at: '', updated_at: '' },
+      } as never)
+
+      renderConversation()
+
+      await waitFor(() => expect(screen.getByTestId('model-ready-toast')).toBeInTheDocument())
+      fireEvent.click(screen.getByRole('button', { name: /switch now/i }))
+
+      await waitFor(() => expect(screen.getByText('Library page')).toBeInTheDocument())
+      expect(localStorage.getItem('convsim.active_runtime_hint')).toBeNull()
+      expect(localStorage.getItem('convsim.tutorial.install_id')).toBeNull()
+    })
+
+    it('toast "After this conversation" dismisses the toast without leaving the session', async () => {
+      localStorage.setItem('convsim.active_runtime_hint', 'scripted')
+      localStorage.setItem('convsim.tutorial.install_id', '42')
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
+      mockApi.getSetupInstallStatus.mockResolvedValue({
+        ok: true,
+        data: { id: 42, status: 'complete', registry_id: 'qwen3-4b-q4', stages: [], error_message: null, created_at: '', updated_at: '' },
+      } as never)
+
+      renderConversation()
+
+      await waitFor(() => expect(screen.getByTestId('model-ready-toast')).toBeInTheDocument())
+      fireEvent.click(screen.getByRole('button', { name: /after this conversation/i }))
+
+      await waitFor(() =>
+        expect(screen.queryByTestId('model-ready-toast')).not.toBeInTheDocument(),
+      )
+      // Still in the conversation — the runtime is never swapped mid-scene.
+      expect(screen.queryByText('Library page')).not.toBeInTheDocument()
+    })
+
+    it('a failed background install clears the install-id key and shows no toast', async () => {
+      localStorage.setItem('convsim.active_runtime_hint', 'scripted')
+      localStorage.setItem('convsim.tutorial.install_id', '42')
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
+      mockApi.getSetupInstallStatus.mockResolvedValue({
+        ok: true,
+        data: { id: 42, status: 'failed', registry_id: 'qwen3-4b-q4', stages: [], error_message: 'disk full', created_at: '', updated_at: '' },
+      } as never)
+
+      renderConversation()
+
+      // The install-id key is cleared so we stop polling a dead job…
+      await waitFor(() =>
+        expect(localStorage.getItem('convsim.tutorial.install_id')).toBeNull(),
+      )
+      // …no error modal interrupts the scene, and the scripted badge stays put
+      // because the real model never became active.
+      expect(screen.queryByTestId('model-ready-toast')).not.toBeInTheDocument()
+      expect(localStorage.getItem('convsim.active_runtime_hint')).toBe('scripted')
+    })
   })
 })
