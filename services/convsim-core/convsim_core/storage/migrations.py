@@ -361,6 +361,18 @@ CREATE TABLE relationship_state (
 # model that finished downloading, has necessarily been through onboarding under
 # the old scheme, so synthesize a 'completed-with-model' outcome for it. (Fresh
 # installs seed neither, so their first run still correctly reports never-run.)
+_SETUP_INSTALL_JOBS_SQL = """
+CREATE TABLE setup_install_jobs (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    status          TEXT    NOT NULL DEFAULT 'pending',
+    registry_id     TEXT,
+    stages_json     TEXT    NOT NULL DEFAULT '[]',
+    error_message   TEXT,
+    created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+"""
+
 _ONBOARDING_OUTCOME_SQL = """
 CREATE TABLE onboarding_outcomes (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -398,6 +410,7 @@ MIGRATIONS: list[tuple[str, str]] = [
     ("0015_turn_sessions_ended_at", _SESSION_ENDED_AT_SQL),
     ("0016_relationship_memory", _RELATIONSHIP_MEMORY_SQL),
     ("0017_onboarding_outcome", _ONBOARDING_OUTCOME_SQL),
+    ("0018_setup_install_jobs", _SETUP_INSTALL_JOBS_SQL),
 ]
 
 
