@@ -5,8 +5,7 @@ import { errorMessage } from '../errorMessage'
 import { computeSetupInstallPct } from '../useSetupInstall'
 import type { UseSetupFlowReturn } from '../useSetupFlow'
 import type { SetupInstallStage } from '@convsim/shared'
-
-const SETUP_DOCS_URL = 'https://docs.conversationsimulator.com/start/install/'
+import { SETUP_DOCS_URL } from '../docsUrls'
 
 interface InstallingStepProps {
   flow: UseSetupFlowReturn

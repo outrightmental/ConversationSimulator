@@ -4,8 +4,7 @@ import { api } from '../api/client'
 import type { ModelsResponse, RuntimeSettings } from '@convsim/shared'
 import type { ApiError } from '../api/errors'
 import { ApiErrorView } from './ApiErrorView'
-
-const DOCS_URL = 'https://docs.conversationsimulator.com/play/local-models/'
+import { AI_ENGINE_DOCS_URL as DOCS_URL } from '../setup/docsUrls'
 
 const PROVIDER_NAMES: Record<string, string> = {
   llama_cpp: 'llama.cpp',
