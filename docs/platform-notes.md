@@ -199,7 +199,7 @@ Tauri produces two Windows installers:
 Both installers are self-contained; no separate runtime installation is needed
 (WebView2 is bundled with the NSIS installer if not already present).
 
-### Code signing (SmartScreen)
+### Code signing (SmartScreen) {#code-signing-smartscreen}
 
 Alpha builds are **not code-signed**. Windows Defender SmartScreen will warn
 "Windows protected your PC" with an **unrecognised publisher** message.
@@ -208,48 +208,59 @@ To run an unsigned build:
 1. Click **More info** in the SmartScreen dialog.
 2. Click **Run anyway**.
 
-For distributable and Steam release builds, sign with an Extended Validation
-(EV) or standard OV code-signing certificate using Authenticode.
+For distributable and Steam release builds, signing uses **Google Cloud KMS +
+jsign** so the private key never resides on the build runner. The certificate
+is issued against the KMS key (see the CSR flow in
+[`publishing/WINDOWS_CODE_SIGNING.md`](../publishing/WINDOWS_CODE_SIGNING.md)).
 
 #### Authenticode signing in CI (Release workflow)
 
-The release workflow (`release.yml`) signs Windows installers automatically
-when two repository secrets are present:
+Signing runs in two phases controlled by `scripts/jsign-sign.ps1`:
 
-| Secret | Contents |
-|--------|----------|
-| `WINDOWS_SIGN_CERT_PFX` | Base64-encoded PFX certificate file (cert + private key) |
-| `WINDOWS_SIGN_CERT_PASSWORD` | Password for the PFX file |
+1. **Main executable** — `ConversationSimulator.exe` is signed by Tauri's
+   `bundle.windows.signCommand` hook during `tauri build`.
+2. **Resource binaries** — `convsim-core.exe` (and `llama-server.exe` on Steam
+   builds) are bundled via `bundle.resources`, which `signCommand` does **not**
+   cover, so the "Sign bundled resource binaries" step signs them before the
+   Tauri build packages them into the installer.
+3. **Outer installers** — the NSIS `.exe` and MSI are signed post-build by the
+   "Sign Windows installers (Authenticode)" step.
 
-When the secrets are absent the build continues and produces an unsigned
-installer.  Unsigned installers are blocked by SmartScreen on end-user
-machines; signing is **required** before the Stage 3 private beta gate
-(G3-01 in `docs/steam-mvp-scope.md`).
+Both phases share the same script and the same signing priority:
 
-**Obtaining a certificate:**
+| Priority | Credential secrets | Notes |
+|----------|--------------------|-------|
+| 1. GCP KMS | `GCP_SA_KEY_JSON` + `GCP_KMS_KEY` + `WINDOWS_CODESIGN_CERT` | Org-level; key stays in Cloud HSM |
+| 2. PFX fallback | `WINDOWS_SIGN_CERT_PFX` + `WINDOWS_SIGN_CERT_PASSWORD` | Legacy; key decoded to `RUNNER_TEMP` per build |
+| 3. Skip | (neither set) | Fork-friendly; produces unsigned artifact |
 
-1. Purchase an EV or OV code-signing certificate from DigiCert, Sectigo,
-   GlobalSign, or another trusted CA.
-2. Export the private key and certificate chain as a `.pfx` file.
-3. Base64-encode it: `certutil -encode cert.pfx cert.b64`
-4. Add the contents of `cert.b64` as the `WINDOWS_SIGN_CERT_PFX` repository
-   secret (Settings → Secrets and variables → Actions → Secrets).
-5. Add the PFX password as `WINDOWS_SIGN_CERT_PASSWORD`.
+Signing is **required** before the Stage 3 private beta gate (G3-01 in
+`docs/steam-mvp-scope.md`).
 
-**Local signing:**
+#### Setting up KMS signing
+
+See [`publishing/WINDOWS_CODE_SIGNING.md`](../publishing/WINDOWS_CODE_SIGNING.md)
+for the full runbook including:
+- Cloud KMS key ring and key creation
+- CSR generation and CA submission
+- Org-level secret configuration
+- Key-version rotation procedure
+- SmartScreen reputation notes
+
+#### Local signing (manual / one-off)
 
 ```powershell
-# Sign a specific installer with signtool.exe (included in the Windows SDK)
-signtool.exe sign `
-  /f path\to\cert.pfx `
-  /p <password> `
-  /tr http://timestamp.digicert.com `
-  /td sha256 /fd sha256 /v `
-  "apps\desktop\src-tauri\target\release\bundle\nsis\ConversationSimulator_*_x64-setup.exe"
-```
+# Set environment variables (values from org-level secrets)
+$env:GCP_SA_KEY_JSON       = Get-Content path\to\sa-key.json -Raw
+$env:GCP_KMS_KEY           = 'projects/P/locations/global/keyRings/convsim-signing/cryptoKeys/windows-codesign'
+$env:WINDOWS_CODESIGN_CERT = [Convert]::ToBase64String([IO.File]::ReadAllBytes('fullchain.pem'))
 
-See [tauri.app/distribute/sign/windows](https://tauri.app/distribute/sign/windows) for
-additional options including HSM/EV token signing.
+# Sign a specific binary
+pwsh -File scripts\jsign-sign.ps1 -FilePath .\path\to\ConversationSimulator.exe
+
+# Verify the signature
+signtool.exe verify /pa /v .\path\to\ConversationSimulator.exe
+```
 
 ### Antivirus false positives
 
@@ -522,32 +533,29 @@ Variables (non-secret, visible in logs) live under **→ Variables**.
 
 ### Windows secrets (Authenticode signing)
 
-| Secret | Contents | Expiry |
-|--------|----------|--------|
-| `WINDOWS_SIGN_CERT_PFX` | Base64-encoded PFX file (certificate + private key chain) | OV certificates: 1–3 years. EV certificates: 1–2 years |
-| `WINDOWS_SIGN_CERT_PASSWORD` | Password for the PFX file | No expiry |
+Signing uses **Google Cloud KMS + jsign** (org-level secrets). The legacy PFX
+secrets remain recognised as a fallback.
 
-**Obtaining a certificate:**
+| Secret | Level | Contents | Expiry |
+|--------|-------|----------|--------|
+| `GCP_SA_KEY_JSON` | Org | GCP service-account key JSON with KMS signing permissions | Rotate on compromise or per org policy |
+| `GCP_KMS_KEY` | Org | Fully-qualified Cloud KMS key resource path | Permanent (update on key rename) |
+| `WINDOWS_CODESIGN_CERT` | Org | Base64-encoded PEM certificate chain (leaf first) | 1–3 years depending on CA and cert type |
+| `WINDOWS_SIGN_CERT_PFX` | Repo | Base64-encoded PFX file (legacy fallback) | OV: 1–3 yr; EV: 1–2 yr |
+| `WINDOWS_SIGN_CERT_PASSWORD` | Repo | PFX passphrase (legacy fallback) | No expiry |
 
-1. Purchase an Extended Validation (EV) or Organisation Validation (OV)
-   code-signing certificate from DigiCert, Sectigo, GlobalSign, or similar CA.
-   EV certificates suppress SmartScreen warnings immediately; OV certificates
-   build trust over time (required before Stage 3 gate G3-01).
-2. Export the private key and certificate chain as a `.pfx` file from your
-   certificate management portal or HSM.
-3. Base64-encode it: `certutil -encode cert.pfx cert.b64` (Windows) or
-   `base64 -i cert.pfx` (macOS / Linux).
-4. Add the `.b64` contents as `WINDOWS_SIGN_CERT_PFX` in repository secrets.
-5. Add the PFX password as `WINDOWS_SIGN_CERT_PASSWORD`.
+**Setup and rotation:** See [`publishing/WINDOWS_CODE_SIGNING.md`](../publishing/WINDOWS_CODE_SIGNING.md)
+for the full CSR flow, Cloud KMS configuration, and rotation runbook.
 
-**Rotation procedure (certificate expiry):**
+**Rotation procedure summary (KMS path):**
 
-1. Renew the certificate with your CA (typically 30–60 days before expiry; most CAs send email reminders).
-2. Export the renewed certificate as a new `.pfx` file.
-3. Base64-encode and update `WINDOWS_SIGN_CERT_PFX` in repository secrets.
-4. Update `WINDOWS_SIGN_CERT_PASSWORD` if the passphrase changed.
-5. Trigger a `desktop-distro` dispatch build; confirm the "Verify Windows Authenticode signature" step passes.
-6. Document the rotation date in the compliance register.
+1. If the *certificate* expires but the *KMS key version* is unchanged: issue a new cert
+   against the same key version, update `WINDOWS_CODESIGN_CERT`.
+2. If the *KMS key version* is rotated: create a new key version, issue a new cert
+   against it, update `WINDOWS_CODESIGN_CERT`. The key-version pinning logic in
+   `scripts/jsign-sign.ps1` automatically selects the new version.
+3. Trigger a dispatch build and confirm the "Verify Windows Authenticode signature" step passes.
+4. Document the rotation date in the compliance register.
 
 ---
 

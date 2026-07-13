@@ -1,339 +1,344 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
 # Windows Code Signing
 
-> **Purpose:** Step-by-step runbook for signing the Windows Conversation
-> Simulator installer with an Authenticode certificate so that Windows Defender
-> SmartScreen does not block the installer on end-user machines.
+> **Purpose:** Runbook for Windows Authenticode signing via Google Cloud KMS +
+> jsign. The private key never exists on the runner; signing uses a Cloud HSM key
+> whose public certificate is stored as an org-level GitHub Actions secret.
 >
-> **Audience:** Platform team members who run the release CI pipeline and
-> any maintainer performing a manual release build.
+> **Audience:** Platform team members who manage the release CI pipeline and any
+> maintainer performing a manual release build.
 >
 > **Gate:** A signed Windows installer is required before Stage 3 (Steam private
 > beta). See gate G3-01 in [`docs/steam-mvp-scope.md`](../docs/steam-mvp-scope.md).
 
 ---
 
-## Background
+## Architecture
 
-Windows Defender SmartScreen applies a reputation score to executables. An
-unsigned installer (one with no Authenticode signature) shows "Windows protected
-your PC" and requires the user to click "More info → Run anyway" to proceed.
-A signed installer from a recognised publisher suppresses the SmartScreen
-warning once the certificate has accumulated download reputation.
+Signing is split into three phases, all driven by `scripts/jsign-sign.ps1`:
 
-### EV vs OV certificates
+1. **Main executable (during `tauri build`)** — Tauri's `bundle.windows.signCommand`
+   hook calls `scripts/jsign-sign.ps1` for `ConversationSimulator.exe`. Tauri's
+   sign hook covers the main app binary and the installers it produces, but
+   **not** files added via `bundle.resources`.
 
-| Type | Immediate SmartScreen reputation | HSM required | Cost |
-|------|----------------------------------|--------------|------|
-| Extended Validation (EV) | Yes — trust is granted immediately | Yes (USB token or cloud HSM) | Higher |
-| Organisation Validation (OV) | No — reputation builds from download count | No | Lower |
+2. **Resource binaries (before `tauri build`)** — `convsim-core.exe` (and
+   `llama-server.exe` on Steam builds) are bundled as resources, so the release
+   workflow's "Sign bundled resource binaries" step signs them in
+   `resources/` before the Tauri build packages them into the installer.
+   Without this, the extracted payload would be unsigned and SmartScreen would
+   flag the installed app.
 
-Outright Mental should obtain an **EV certificate** for the Stage 4 public
-release to avoid SmartScreen warnings on first install. An OV certificate is
-acceptable for Stage 3 private beta where the tester pool is small.
+3. **Outer installers (post-build)** — The release workflow's "Sign Windows
+   installers (Authenticode)" step calls the same script for the outer NSIS `.exe`
+   and MSI packages.
+
+### Why Cloud KMS?
+
+| Property | Cloud KMS (current) | PFX / signtool (legacy) |
+|----------|---------------------|-----------------------------|
+| Private key location | Google Cloud HSM — never on runner | Decoded to `RUNNER_TEMP` per run |
+| Key rotation | Issue new cert against new key version; pinning catches stale pairs | Replace the PFX secret |
+| Shared across products | Yes — same key signs FeverTilt and ConversationSimulator | No — separate PFX per repo |
+| SmartScreen immediate trust | Requires EV cert (applies regardless of signing method) | Same |
+
+### Signing priority in `scripts/jsign-sign.ps1`
+
+1. **GCP KMS** — when `GCP_SA_KEY_JSON` + `GCP_KMS_KEY` + `WINDOWS_CODESIGN_CERT` are all present.
+2. **PFX fallback** — when `WINDOWS_SIGN_CERT_PFX` + `WINDOWS_SIGN_CERT_PASSWORD` are present.
+3. **INFO-skip** — when neither is configured (fork builds, local dev — produces an unsigned artifact).
 
 ---
 
-## Certificate procurement
+## Key-version pinning
 
-Purchase an Authenticode code-signing certificate from a CA trusted by
-Microsoft, such as DigiCert, Sectigo, or GlobalSign. The certificate must be
-issued to **Outright Mental**.
+At signing time, `jsign-sign.ps1` calls the Cloud KMS API to enumerate all
+**ENABLED** `CryptoKeyVersions` for the configured key. It compares each
+version's public key (SubjectPublicKeyInfo DER) with the leaf certificate in
+`WINDOWS_CODESIGN_CERT`. Signing proceeds only with the version whose public key
+matches the certificate.
 
-### EV certificate delivery
+**Why this matters:**
 
-EV certificates are delivered on a hardware security module (USB token or
-via a cloud HSM service). The signing process uses the HSM directly:
+- If the KMS key is rotated (new version enabled, old version disabled), the
+  script fails loudly with an actionable message rather than producing a
+  signature that chains to the wrong certificate.
+- The certificate in `WINDOWS_CODESIGN_CERT` and the active KMS key version must
+  be consistent at all times.
 
-```powershell
-# Sign with an EV USB token using signtool (Windows SDK)
-signtool.exe sign `
-  /n "Outright Mental" `
-  /tr http://timestamp.digicert.com `
-  /td sha256 /fd sha256 /v `
-  "apps\desktop\src-tauri\target\release\bundle\nsis\ConversationSimulator_*_x64-setup.exe"
+**If pinning fails:** the script exits with:
+
+```
+ERROR: Key-version pinning failed — no ENABLED CryptoKeyVersion in
+<keyring>/cryptoKeys/<key> has a public key matching the leaf certificate
+in WINDOWS_CODESIGN_CERT. Check that the leaf cert is listed first in the PEM
+chain and that the certificate was issued against the current key version. ...
 ```
 
-For cloud HSM (e.g. DigiCert KeyLocker), install the vendor's signing client
-and use the same `signtool.exe` command with the cloud-signed identity.
-
-### OV certificate delivery
-
-OV certificates are delivered as a `.pfx` file containing the certificate
-chain and private key.
-
-1. Purchase the certificate from a trusted CA.
-2. Complete identity verification (they will contact Outright Mental directly).
-3. Download the `.pfx` file after issuance.
-4. Set a strong passphrase on the `.pfx`.
-
 ---
 
-## CI setup (GitHub Actions secrets)
+## Org-level secret inventory
 
-### Org-level secret inventory
-
-The following Windows signing and scanning secrets are stored at the
-**outrightmental organisation level**, scoped to `ConversationSimulator` and
-`FeverTilt`. They are entered once and rotated in one place.
+All secrets below are stored at the **outrightmental organisation level**,
+scoped to `ConversationSimulator` and `FeverTilt`. Set or rotate them in one
+place and both products pick up the change automatically.
 
 | Secret name | Contents | Used by |
 |-------------|----------|---------|
-| `WINDOWS_CODESIGN_CERT` | Base64-encoded PEM chain (leaf first) matching the Cloud KMS key | Future KMS/jsign signing step (see note below) |
-| `GCP_SA_KEY_JSON` | GCP service-account key JSON for Cloud KMS access | Future KMS/jsign signing step |
-| `GCP_KMS_KEY` | Fully-qualified Cloud KMS key resource path | Future KMS/jsign signing step |
-| `AZURE_CLIENT_ID` | Azure service-principal client ID for Defender storage | Future Defender upload step |
-| `AZURE_CLIENT_SECRET` | Azure service-principal secret | Future Defender upload step |
-| `AZURE_TENANT_ID` | Azure tenant ID | Future Defender upload step |
-| `AZURE_SUBSCRIPTION_ID` | Azure subscription ID | Future Defender upload step |
-| `AZURE_SCAN_STORAGE_ACCOUNT` | Storage account name for Defender-monitored upload | Future Defender upload step |
-| `AZURE_SCAN_CONTAINER` | Blob container name for Defender-monitored upload | Future Defender upload step |
+| `WINDOWS_CODESIGN_CERT` | Base64-encoded PEM certificate chain (leaf first) matching the Cloud KMS key | `jsign-sign.ps1` KMS path |
+| `GCP_SA_KEY_JSON` | GCP service-account key JSON for Cloud KMS access | `jsign-sign.ps1` KMS path |
+| `GCP_KMS_KEY` | Fully-qualified Cloud KMS key resource path, e.g. `projects/P/locations/global/keyRings/KR/cryptoKeys/K` | `jsign-sign.ps1` KMS path |
+| `WINDOWS_SIGN_CERT_PFX` | Base64-encoded PFX (legacy fallback only) | `jsign-sign.ps1` PFX path |
+| `WINDOWS_SIGN_CERT_PASSWORD` | PFX passphrase (legacy fallback only) | `jsign-sign.ps1` PFX path |
 
-> **Note:** The KMS/jsign signing migration and the Azure Defender upload job
-> are tracked as separate issues. Until those land, `release.yml` uses the
-> PFX-based approach described below, with `WINDOWS_SIGN_CERT_PFX` and
-> `WINDOWS_SIGN_CERT_PASSWORD` set as repo-level secrets.
-
-**To set or rotate org-level secrets** (values supplied interactively, never
-committed):
+**Setting or rotating org-level secrets** (supply values interactively, never commit):
 
 ```bash
 gh secret set WINDOWS_CODESIGN_CERT \
   --org outrightmental \
   --visibility selected \
   --repos ConversationSimulator,FeverTilt
-# repeat for each secret in the table above
+# Repeat for GCP_SA_KEY_JSON and GCP_KMS_KEY.
 ```
 
-Or use the org Settings UI: GitHub → outrightmental org **Settings → Secrets
-and variables → Actions → Secrets → New organisation secret**, then set
-**Repository access** to *Selected repositories: ConversationSimulator, FeverTilt*.
+Or via the GitHub UI: **outrightmental org → Settings → Secrets and variables →
+Actions → New organisation secret → Repository access: Selected repositories**.
 
-**Rotation:** Rotating a secret at org level updates it for all scoped
-repositories simultaneously. Run `gh secret list --org outrightmental` to
-confirm the inventory after any change.
+---
 
-### Current approach: PFX-based signing (repo-level secrets)
+## Certificate issuance against a Cloud KMS key (CSR flow)
 
-Until the KMS migration lands, the release workflow uses `.pfx`-based
-Authenticode signing via `signtool.exe`. Store the following as
-**repository-level** GitHub Actions secrets (Settings → Secrets and variables
-→ Actions → Secrets):
+Certificates are issued to the Cloud KMS key rather than a locally-generated
+private key. The CA signs a CSR whose private key lives in Cloud KMS and never
+leaves it.
 
-| Secret name | Contents |
-|-------------|----------|
-| `WINDOWS_SIGN_CERT_PFX` | Base64-encoded `.pfx` file |
-| `WINDOWS_SIGN_CERT_PASSWORD` | Passphrase for the `.pfx` file |
+### Step 1 — Create a Cloud KMS key ring and asymmetric signing key
 
-**To base64-encode the `.pfx` on Windows:**
-```powershell
-certutil -encode cert.pfx cert.b64
-# Copy the content between -----BEGIN CERTIFICATE----- and -----END CERTIFICATE-----
-# (including all lines) into the secret value.
-```
-
-**To base64-encode on macOS / Linux:**
 ```bash
-base64 -i cert.pfx -o cert.b64
+gcloud kms keyrings create convsim-signing \
+  --location global \
+  --project YOUR_PROJECT
+
+gcloud kms keys create windows-codesign \
+  --location global \
+  --keyring convsim-signing \
+  --purpose asymmetric-signing \
+  --default-algorithm rsa-sign-pkcs1-4096-sha256 \
+  --project YOUR_PROJECT
 ```
 
-The release workflow (`release.yml`) signs the installers in a dedicated
-**"Sign Windows installers (Authenticode)"** step that runs *after*
-`cargo tauri build`, not through Tauri's own bundler. That step decodes
-`WINDOWS_SIGN_CERT_PFX` to a temporary `.pfx`, locates `signtool.exe` from the
-Windows SDK, and signs every `.exe` and `.msi` under
-`apps\desktop\src-tauri\target\release\bundle`. When `WINDOWS_SIGN_CERT_PFX`
-is absent (contributor forks, unsigned local builds), the step logs a notice
-and exits 0, producing an unsigned installer. The step only runs on Windows
-runners (`if: runner.os == 'Windows'`).
+### Step 2 — Export the public key and generate a CSR
 
-For **EV certificates via cloud HSM**, the CI integration depends on the
-vendor. Consult DigiCert's or Sectigo's CI documentation for the required
-environment variables and CLI tooling for GitHub Actions.
+```bash
+# Export the public key from KMS
+gcloud kms keys versions get-public-key 1 \
+  --key windows-codesign \
+  --keyring convsim-signing \
+  --location global \
+  --project YOUR_PROJECT \
+  --output-file kms-public.pem
+
+# Generate a CSR using OpenSSL with the KMS public key.
+# Replace the distinguished name fields with the organisation's details.
+openssl req -new \
+  -key kms-public.pem \
+  -keyform PEM \
+  -subj "/C=CA/ST=Ontario/L=Toronto/O=Outright Mental Inc/CN=Outright Mental Inc" \
+  -out codesign.csr
+```
+
+> For RSA PKCS#1 CSRs against a KMS key where you cannot sign locally, use the
+> `kms_csr_helper.py` script from the FeverTilt repo
+> (`publishing/signing/windows/kms_csr_helper.py`) which signs the CSR
+> TBSCertificateRequest using the KMS signing API.
+
+### Step 3 — Submit the CSR to the CA
+
+Submit `codesign.csr` to DigiCert, Sectigo, or your chosen CA through their
+code-signing order flow. The CA will verify Outright Mental's identity and issue
+a certificate. Download the full chain as a PEM file (leaf certificate first,
+followed by any intermediates).
+
+### Step 4 — Store the certificate chain
+
+```bash
+# Verify the chain:
+openssl verify -CAfile chain.pem leaf.pem
+
+# Base64-encode the full PEM chain (leaf first):
+base64 -i fullchain.pem | tr -d '\n' > fullchain.b64
+
+# Set the org-level secret:
+gh secret set WINDOWS_CODESIGN_CERT \
+  --org outrightmental \
+  --visibility selected \
+  --repos ConversationSimulator,FeverTilt \
+  < fullchain.b64
+```
+
+### Step 5 — Configure the remaining KMS secrets
+
+```bash
+# GCP_KMS_KEY: full resource path of the key (not a version)
+# e.g. projects/my-project/locations/global/keyRings/convsim-signing/cryptoKeys/windows-codesign
+gh secret set GCP_KMS_KEY --org outrightmental --visibility selected \
+  --repos ConversationSimulator,FeverTilt
+
+# GCP_SA_KEY_JSON: service-account key with cloudkms.cryptoKeyVersions.list
+# and cloudkms.cryptoKeyVersions.useToSign permissions on the key
+gh secret set GCP_SA_KEY_JSON --org outrightmental --visibility selected \
+  --repos ConversationSimulator,FeverTilt
+```
+
+### Step 6 — Pin the jsign SHA-256
+
+After verifying the first signed build, pin the jsign jar hash:
+
+```powershell
+# On a Windows machine where jsign was already downloaded:
+$jar = "$env:RUNNER_TOOL_CACHE\jsign\7.0\jsign-7.0.jar"
+(Get-FileHash $jar -Algorithm SHA256).Hash.ToLower()
+```
+
+Update `JSIGN_SHA256` in `scripts/jsign-sign.ps1` with the result.
 
 ---
 
-## Manual signing
+## Rotation runbook
 
-Use this procedure for local testing or one-off manual signing.
+### Scenario A — Certificate expiry (key version unchanged)
 
-### Prerequisites
+1. Generate a new CSR against the **same** KMS key version (Step 2 above).
+2. Submit to the CA; download the new certificate chain.
+3. Update `WINDOWS_CODESIGN_CERT` at org level with the new chain.
+4. No change needed to `GCP_KMS_KEY` or `GCP_SA_KEY_JSON`.
+5. Trigger a manual release workflow dispatch build and confirm the verify step passes.
+6. Log the rotation in `publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md`.
 
-- Windows SDK installed (provides `signtool.exe`)
-  - Install via: Visual Studio Installer → Individual Components → Windows 10 SDK
-  - Or download the [Windows SDK](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/)
-  directly.
-- The `.pfx` file accessible on disk (OV), or the EV USB token plugged in (EV).
+### Scenario B — Key rotation (new KMS key version)
 
-### Step 1 — Build the unsigned installer
+1. Create a new key version in Cloud KMS:
+   ```bash
+   gcloud kms keys versions create \
+     --key windows-codesign \
+     --keyring convsim-signing \
+     --location global \
+     --project YOUR_PROJECT
+   ```
+2. Generate a CSR against the new version and obtain a new certificate (Steps 2–4).
+3. Update `WINDOWS_CODESIGN_CERT` with the new chain.
+4. The key-version pinning logic automatically selects the new version because its
+   public key now matches the updated certificate.
+5. Disable the old key version in Cloud KMS once the new certificate is confirmed:
+   ```bash
+   gcloud kms keys versions disable 1 \
+     --key windows-codesign --keyring convsim-signing --location global
+   ```
+6. Binaries signed under the old version **remain valid** because of the RFC 3161
+   timestamp embedded at signing time. Only new builds use the new key version.
 
-```powershell
-# From the repo root in PowerShell:
-pnpm --filter @convsim/desktop build
+### Dry-run rotation test (CI acceptance criterion)
 
-# Unsigned installers are in:
-#   apps\desktop\src-tauri\target\release\bundle\nsis\ConversationSimulator_*_x64-setup.exe
-#   apps\desktop\src-tauri\target\release\bundle\msi\ConversationSimulator_*_x64.msi
-```
-
-### Step 2 — Sign the installers
-
-```powershell
-# OV certificate (.pfx)
-signtool.exe sign `
-  /f path\to\cert.pfx `
-  /p <password> `
-  /tr http://timestamp.digicert.com `
-  /td sha256 /fd sha256 /v `
-  "apps\desktop\src-tauri\target\release\bundle\nsis\ConversationSimulator_*_x64-setup.exe"
-
-# Sign the MSI as well if distributing it
-signtool.exe sign `
-  /f path\to\cert.pfx `
-  /p <password> `
-  /tr http://timestamp.digicert.com `
-  /td sha256 /fd sha256 /v `
-  "apps\desktop\src-tauri\target\release\bundle\msi\ConversationSimulator_*_x64.msi"
-```
-
-The `/tr` flag adds a trusted timestamp so the signature remains valid after
-the certificate expires. Always include it.
-
-### Step 3 — Verify the signature
-
-```powershell
-# Verify via signtool
-signtool.exe verify /pa /v `
-  "apps\desktop\src-tauri\target\release\bundle\nsis\ConversationSimulator_*_x64-setup.exe"
-
-# Or check the Properties dialog: right-click the .exe → Properties → Digital Signatures tab
-```
-
-A valid signature shows `Verified: Outright Mental` in the Properties dialog
-and `Number of files successfully Verified: 1` in the signtool output.
+To verify that the pinning logic hard-fails when the matching version is
+disabled, disable the active key version in Cloud KMS, trigger a test build, and
+confirm the signing step exits non-zero with the pinning error message. Re-enable
+the version before the next release.
 
 ---
 
-## SmartScreen reputation building
+## SmartScreen reputation
 
-Even a signed installer will initially show a SmartScreen warning if the
-certificate is new or the download count is low (this applies to OV certificates;
-EV certificates bypass this check).
+Even with a valid Authenticode signature, Windows SmartScreen evaluates download
+reputation separately.
 
-### For Stage 3 private beta (OV certificate)
+| Certificate type | SmartScreen behaviour |
+|------------------|-----------------------|
+| Extended Validation (EV) | Immediate trust — no download count required |
+| Organisation Validation (OV) | Trust builds with download volume; new certs show "unrecognised publisher" until a few hundred downloads from diverse IPs have accumulated |
 
-- Advise testers: click **More info → Run anyway**. This is expected during
-  the private beta with a new certificate.
-- Each "Run anyway" click contributes download signal to SmartScreen.
-- After a few hundred downloads from diverse IPs, the warning typically stops
-  appearing for most users.
+**Stage 3 private beta (OV):** Advise testers to click **More info → Run anyway**.
+Each accepted install contributes reputation signal.
 
-### For Stage 4 public release (EV certificate recommended)
-
-- An EV certificate grants immediate SmartScreen trust — no download reputation
-  required.
-- If using an OV certificate at public launch, communicate clearly in the
-  Steam store page that users may see a SmartScreen warning and provide the
-  "More info → Run anyway" instructions.
-- Monitor the Steam review queue for reports of SmartScreen warnings; they are
-  a signal that reputation building is incomplete.
+**Stage 4 public release:** Use an EV certificate backed by the KMS HSM key to
+suppress SmartScreen warnings immediately. The same key can back an EV certificate
+— request one from DigiCert or Sectigo. The CSR flow above applies unchanged.
 
 ---
 
 ## Antivirus false positives
 
-Freshly compiled Rust / Tauri executables are occasionally flagged by antivirus
-heuristic detection.
+Freshly compiled Rust/Tauri executables are occasionally flagged by heuristic
+engines. The VirusTotal step in `release.yml` is non-blocking; review results
+manually and submit false-positive reports if fewer than three engines flag the
+binary.
 
-### Triage steps
-
-1. Download a copy of the flagged binary.
-2. Submit it to [VirusTotal](https://www.virustotal.com/) for a multi-engine scan.
-3. If fewer than 3 engines flag it: the binary is likely safe; submit a
-   false-positive report through each flagging vendor's portal.
-4. If 3 or more engines flag it: investigate the build pipeline for unexpected
-   file inclusions; run the depot audit to confirm no prohibited content is
-   embedded.
-5. Wait 24–48 hours after submitting false-positive reports; vendor definitions
-   update on that cycle.
-
-The depot audit (`./scripts/depot-audit.sh` or `depot-audit.ps1`) catches the
-most common sources of false positives — large binary files, Python pickles,
-and unexpected model checkpoints.
+The depot audit (`scripts/depot-audit.ps1`) catches the most common causes of
+false positives (unexpected large binaries, pickle files, ONNX models).
 
 ---
 
-## Rotating the certificate
+## Manual signing (local dev or one-off)
 
-When the code-signing certificate approaches expiry:
+Prerequisites: Java 17+, `scripts/jsign-sign.ps1`, and the GCP credentials
+available as environment variables.
 
-1. Purchase a new certificate from the same or another trusted CA.
-2. Export as `.pfx` and base64-encode as described above.
-3. Update `WINDOWS_SIGN_CERT_PFX` and `WINDOWS_SIGN_CERT_PASSWORD` as
-   repository-level GitHub Actions secrets.
-   Once the KMS migration lands, update the org-level `WINDOWS_CODESIGN_CERT`
-   secret instead (see [Org-level secret inventory](#ci-setup-github-actions-secrets)):
-   ```bash
-   gh secret set WINDOWS_CODESIGN_CERT \
-     --org outrightmental \
-     --visibility selected \
-     --repos ConversationSimulator,FeverTilt
-   ```
-4. Rebuild and sign the current release to confirm the new certificate works.
-5. Files signed with the old certificate remain valid because of the trusted
-   timestamp embedded at signing time (`/tr`).
+```powershell
+# Set credentials
+$env:GCP_SA_KEY_JSON       = Get-Content path\to\sa-key.json -Raw
+$env:GCP_KMS_KEY           = 'projects/P/locations/global/keyRings/convsim-signing/cryptoKeys/windows-codesign'
+$env:WINDOWS_CODESIGN_CERT = [Convert]::ToBase64String([IO.File]::ReadAllBytes('fullchain.pem'))
+
+# Sign a specific binary
+pwsh -File scripts\jsign-sign.ps1 -FilePath .\path\to\ConversationSimulator.exe
+
+# Verify
+signtool.exe verify /pa /v .\path\to\ConversationSimulator.exe
+```
 
 ---
 
 ## Troubleshooting
 
-### SmartScreen blocks the installer despite a valid signature
+### Key-version pinning fails with "no ENABLED CryptoKeyVersion"
 
-**Cause:** The certificate is newly issued (OV) and has not yet built reputation.
+All key versions are disabled or the key name in `GCP_KMS_KEY` is wrong. List
+enabled versions:
+```bash
+gcloud kms keys versions list \
+  --key windows-codesign --keyring convsim-signing --location global \
+  --filter 'state=ENABLED'
+```
 
-**Fix:** Advise users to click "More info → Run anyway". Continue distributing
-the signed installer — each install contributes to SmartScreen reputation. If
-this is the Stage 4 public release, obtain an EV certificate for the next build.
+### Key-version pinning fails with "no public key matching the leaf certificate"
 
-### `signtool.exe` exits with error 0x800b0101 (certificate expired)
+The certificate in `WINDOWS_CODESIGN_CERT` was not issued against the currently
+active key version, or the PEM chain is in the wrong order (leaf must be first).
+Verify with:
+```bash
+openssl x509 -in leaf.pem -noout -pubkey | openssl pkey -pubin -outform DER | sha256sum
+gcloud kms keys versions get-public-key 1 ... | openssl pkey -pubin -outform DER | sha256sum
+```
+The two hashes must match.
 
-**Cause:** The signing certificate has expired.
+### jsign SHA-256 mismatch
 
-**Fix:** Rotate to a new certificate as described above. Files previously signed
-with a valid timestamp are unaffected; only new builds need to be signed with
-the new certificate.
+The jar was updated without updating the pin. Download the new jar, compute its
+hash, and update `JSIGN_SHA256` in `scripts/jsign-sign.ps1`.
 
-### `signtool.exe` exits with error 0x80096010 (subject does not match)
+### SmartScreen blocks despite a valid signature
 
-**Cause:** The installer file path pattern does not match any files, or the
-wrong working directory was used.
-
-**Fix:** Use the full absolute path to the installer or confirm the glob pattern
-matches the actual filename. Run `dir apps\desktop\src-tauri\target\release\bundle\nsis\`
-to see the exact file name.
-
-### CI build produces unsigned installer even when secrets are set
-
-**Cause:** The "Sign Windows installers (Authenticode)" step only runs on
-Windows runners, and it skips (exits 0) when `WINDOWS_SIGN_CERT_PFX` is empty.
-If the `windows-latest` runner was not used, or the secret was not exposed to
-the step's `env:` block, the installer is produced unsigned.
-
-**Fix:** Confirm the release workflow runs the Windows build job on
-`windows-latest` and that `WINDOWS_SIGN_CERT_PFX` / `WINDOWS_SIGN_CERT_PASSWORD`
-are mapped in that step's `env:` block. In the step log, look for
-`Using signtool: ...` and `Signing: ...` lines. The message
-`WINDOWS_SIGN_CERT_PFX is not set — producing unsigned build` means the secret
-did not reach the step.
+OV certificate with low download count. Advise users to click **More info → Run
+anyway** and continue distribution. Each accepted install increases reputation.
+Consider upgrading to an EV certificate backed by the same KMS key.
 
 ---
 
 ## Links
 
-- [`docs/platform-notes.md` — Windows section](../docs/platform-notes.md#windows) — system requirements, build prerequisites, code signing overview
-- [`docs/steam-mvp-scope.md` — G3-01](../docs/steam-mvp-scope.md) — Stage 3 gate: signed Windows installer required
-- [`publishing/STEAM_PUBLISHING_AND_DEPLOYMENT.md`](STEAM_PUBLISHING_AND_DEPLOYMENT.md) — Steam deploy workflow and troubleshooting
-- [`publishing/STEAM_DEPOT_CONTENTS.md`](STEAM_DEPOT_CONTENTS.md) — depot content policy and approved binary payload list
-- [Tauri Windows signing docs](https://tauri.app/distribute/sign/windows) — upstream reference for Tauri signing variables
-- [Microsoft — signtool reference](https://docs.microsoft.com/en-us/windows/win32/seccrypto/signtool) — full signtool flag reference
-- [DigiCert timestamp URL](http://timestamp.digicert.com) — recommended timestamp authority (also: Sectigo `http://timestamp.sectigo.com`, GlobalSign `http://timestamp.globalsign.com`)
+- [`docs/platform-notes.md` — Windows signing section](../docs/platform-notes.md#code-signing-smartscreen)
+- [`docs/steam-mvp-scope.md` — G3-01](../docs/steam-mvp-scope.md) — Stage 3 gate
+- [`scripts/jsign-sign.ps1`](../scripts/jsign-sign.ps1) — signing script
+- [`publishing/STEAM_DEPOT_CONTENTS.md`](STEAM_DEPOT_CONTENTS.md) — depot content policy
+- [jsign documentation](https://ebourg.github.io/jsign/) — `--storetype GOOGLECLOUD` reference
+- [Google Cloud KMS — asymmetric signing](https://cloud.google.com/kms/docs/create-validate-signatures)
+- [Sectigo timestamp URL](http://timestamp.sectigo.com) — RFC 3161 TSA used by jsign
