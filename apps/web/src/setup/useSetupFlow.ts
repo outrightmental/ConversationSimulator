@@ -22,7 +22,6 @@ export type SetupFlowStep =
   | 'choose'
   | 'confirm-install'
   | 'installing'
-  | 'tutorial-prompt'
   | 'benchmark'
   | 'ollama-select'
   | 'gguf-path'

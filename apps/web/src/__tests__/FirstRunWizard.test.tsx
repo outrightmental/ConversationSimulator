@@ -213,16 +213,16 @@ describe('FirstRunWizard — welcome step', () => {
     expect(mockApi.startSetupInstall).toHaveBeenCalledWith('qwen3-4b-instruct-q4_k_m')
   })
 
-  it('Try it right now navigates directly to the library', async () => {
+  it('Try it right now starts the scripted tutorial (navigates to the tutorial scenario setup route)', async () => {
     renderWizard()
     fireEvent.click(screen.getByRole('button', { name: /try it right now/i }))
-    await waitFor(() => expect(screen.getByTestId('library-page')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByTestId('setup-page')).toBeInTheDocument())
   })
 
   it('marks setup complete when Try it right now is clicked', async () => {
     renderWizard()
     fireEvent.click(screen.getByRole('button', { name: /try it right now/i }))
-    await waitFor(() => expect(screen.getByTestId('library-page')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByTestId('setup-page')).toBeInTheDocument())
     expect(localStorage.getItem(SETUP_KEYS.firstRunComplete)).toBe('true')
   })
 
@@ -1032,27 +1032,34 @@ describe('FirstRunWizard — existing Ollama path', () => {
 
 // ── Demo / text-only path ─────────────────────────────────────────────────────
 
-describe('FirstRunWizard — text-only demo path', () => {
-  it('calls useModel with the fake runtime when Try it right now is clicked', async () => {
+describe('FirstRunWizard — "Try it right now" tutorial path', () => {
+  it('calls useModel with the scripted runtime when Try it right now is clicked', async () => {
     renderWizard()
     fireEvent.click(screen.getByRole('button', { name: /try it right now/i }))
     await waitFor(() =>
-      expect(mockApi.useModel).toHaveBeenCalledWith({ runtime_id: 'fake', model_id: null }),
+      expect(mockApi.useModel).toHaveBeenCalledWith({ runtime_id: 'scripted', model_id: null }),
     )
   })
 
-  it('navigates to the library and marks setup complete', async () => {
+  it('navigates to the tutorial and marks setup complete', async () => {
     renderWizard()
     fireEvent.click(screen.getByRole('button', { name: /try it right now/i }))
-    await waitFor(() => expect(screen.getByTestId('library-page')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByTestId('setup-page')).toBeInTheDocument())
     expect(localStorage.getItem(SETUP_KEYS.firstRunComplete)).toBe('true')
   })
 
-  it('still navigates to library even when useModel fails in demo mode', async () => {
+  it('labels the session as scripted via localStorage', async () => {
+    renderWizard()
+    fireEvent.click(screen.getByRole('button', { name: /try it right now/i }))
+    await waitFor(() => expect(screen.getByTestId('setup-page')).toBeInTheDocument())
+    expect(localStorage.getItem(SETUP_KEYS.activeRuntimeHint)).toBe('scripted')
+  })
+
+  it('still navigates to the tutorial even when useModel fails', async () => {
     mockApi.useModel.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'runtime unavailable' } })
     renderWizard()
     fireEvent.click(screen.getByRole('button', { name: /try it right now/i }))
-    await waitFor(() => expect(screen.getByTestId('library-page')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByTestId('setup-page')).toBeInTheDocument())
   })
 })
 
@@ -1065,17 +1072,17 @@ describe('FirstRunWizard — tutorial CTA during install', () => {
     await screen.findByRole('heading', { name: /setting up your ai/i })
   }
 
-  it('shows the play tutorial note while downloading', async () => {
+  it('shows the play tutorial region while downloading', async () => {
     await goToInstalling()
     expect(
-      screen.getByRole('note', { name: /play tutorial while downloading/i }),
+      screen.getByRole('region', { name: /start tutorial while downloading/i }),
     ).toBeInTheDocument()
   })
 
-  it('shows the Play the tutorial while you wait button', async () => {
+  it('shows the ▶ Start now button as the primary CTA', async () => {
     await goToInstalling()
     expect(
-      screen.getByRole('button', { name: /play the tutorial while you wait/i }),
+      screen.getByRole('button', { name: /start now/i }),
     ).toBeInTheDocument()
   })
 
@@ -1089,59 +1096,7 @@ describe('FirstRunWizard — tutorial CTA during install', () => {
     expect(screen.getByRole('button', { name: /cancel and go home/i })).toBeInTheDocument()
   })
 
-  it('advances to the tutorial-prompt step when the CTA is clicked', async () => {
-    await goToInstalling()
-    fireEvent.click(screen.getByRole('button', { name: /play the tutorial while you wait/i }))
-    await screen.findByRole('heading', { name: /first words tutorial/i })
-  })
-})
-
-// ── Tutorial prompt step ──────────────────────────────────────────────────────
-
-describe('FirstRunWizard — tutorial prompt step', () => {
-  async function goToTutorialPrompt() {
-    renderWizard()
-    fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
-    await screen.findByRole('heading', { name: /setting up your ai/i })
-    fireEvent.click(screen.getByRole('button', { name: /play the tutorial while you wait/i }))
-    await screen.findByRole('heading', { name: /first words tutorial/i })
-  }
-
-  it('shows the scripted tutorial disclaimer', async () => {
-    await goToTutorialPrompt()
-    expect(
-      screen.getByRole('note', { name: /scripted tutorial disclaimer/i }),
-    ).toBeInTheDocument()
-  })
-
-  it('labels the tutorial as scripted and not AI-generated', async () => {
-    await goToTutorialPrompt()
-    expect(screen.getByText(/scripted tutorial — not ai-generated/i)).toBeInTheDocument()
-  })
-
-  it('lists what the player will learn', async () => {
-    await goToTutorialPrompt()
-    expect(screen.getByText(/state meters/i)).toBeInTheDocument()
-    expect(screen.getByText(/scenario events/i)).toBeInTheDocument()
-  })
-
-  it('shows a Start the tutorial button', async () => {
-    await goToTutorialPrompt()
-    expect(screen.getByRole('button', { name: /start the tutorial/i })).toBeInTheDocument()
-  })
-
-  it('shows a Back button to return to the installing step', async () => {
-    await goToTutorialPrompt()
-    expect(screen.getByRole('button', { name: /back/i })).toBeInTheDocument()
-  })
-
-  it('back button returns to the installing step', async () => {
-    await goToTutorialPrompt()
-    fireEvent.click(screen.getByRole('button', { name: /back/i }))
-    await screen.findByRole('heading', { name: /setting up your ai/i })
-  })
-
-  it('calls useModel with scripted runtime when Start the tutorial is clicked', async () => {
+  it('starts the scripted tutorial directly (no interstitial) when Start now is clicked', async () => {
     mockApi.useModel.mockResolvedValue({ ok: true, data: {
       runtime_id: 'scripted',
       model_id: null,
@@ -1149,41 +1104,51 @@ describe('FirstRunWizard — tutorial prompt step', () => {
       status: 'ready',
       message: null,
     } })
-    await goToTutorialPrompt()
-    fireEvent.click(screen.getByRole('button', { name: /start the tutorial/i }))
+    await goToInstalling()
+    fireEvent.click(screen.getByRole('button', { name: /start now/i }))
     await waitFor(() =>
       expect(mockApi.useModel).toHaveBeenCalledWith({ runtime_id: 'scripted', model_id: null }),
     )
+    await screen.findByTestId('setup-page')
   })
 
   it('marks tutorial complete in localStorage when starting the tutorial', async () => {
-    await goToTutorialPrompt()
-    fireEvent.click(screen.getByRole('button', { name: /start the tutorial/i }))
+    await goToInstalling()
+    fireEvent.click(screen.getByRole('button', { name: /start now/i }))
     await waitFor(() =>
       expect(localStorage.getItem(SETUP_KEYS.tutorialComplete)).toBe('true'),
     )
   })
 
   it('marks first-run complete in localStorage when starting the tutorial', async () => {
-    await goToTutorialPrompt()
-    fireEvent.click(screen.getByRole('button', { name: /start the tutorial/i }))
+    await goToInstalling()
+    fireEvent.click(screen.getByRole('button', { name: /start now/i }))
     await waitFor(() =>
       expect(localStorage.getItem(SETUP_KEYS.firstRunComplete)).toBe('true'),
     )
   })
 
+  it('records the background install id so the model-ready toast can fire mid-tutorial', async () => {
+    await goToInstalling()
+    fireEvent.click(screen.getByRole('button', { name: /start now/i }))
+    await waitFor(() =>
+      expect(localStorage.getItem(SETUP_KEYS.tutorialInstallId)).toBe(String(RUNNING_JOB.id)),
+    )
+    expect(localStorage.getItem(SETUP_KEYS.activeRuntimeHint)).toBe('scripted')
+  })
+
   it('proceeds even when useModel fails for the scripted runtime', async () => {
     mockApi.useModel.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'scripted unavailable' } })
-    await goToTutorialPrompt()
-    fireEvent.click(screen.getByRole('button', { name: /start the tutorial/i }))
+    await goToInstalling()
+    fireEvent.click(screen.getByRole('button', { name: /start now/i }))
     await waitFor(() =>
       expect(localStorage.getItem(SETUP_KEYS.tutorialComplete)).toBe('true'),
     )
   })
 
   it('navigates to the tutorial scenario setup route (a real, mounted route)', async () => {
-    await goToTutorialPrompt()
-    fireEvent.click(screen.getByRole('button', { name: /start the tutorial/i }))
+    await goToInstalling()
+    fireEvent.click(screen.getByRole('button', { name: /start now/i }))
     await screen.findByTestId('setup-page')
   })
 })
