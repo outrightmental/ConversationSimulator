@@ -665,6 +665,47 @@ profile where the app has never been opened before.
 - [ ] No persistent security exception in System Settings → Privacy & Security
   is required after first launch
 
+#### G.1a `.app.tar.gz` round-trip signature preservation (one-time per release)
+
+Verifies that the signature and stapled ticket survive the `.app.tar.gz`
+packaging step in `release.yml` and the extraction step in `steam-deploy.yml`.
+Run this once per release on a macOS machine **before** declaring G3-01 closed.
+
+```bash
+# Download the .app.tar.gz from the GitHub release page (or from release-artifacts/).
+# Replace <tag> with the release tag, e.g. v0.1.0.
+gh release download <tag> --pattern "*.app.tar.gz" --dir /tmp/convsim-roundtrip/
+
+# Extract the .app bundle.
+mkdir -p /tmp/convsim-roundtrip/app
+tar -xzf /tmp/convsim-roundtrip/*.app.tar.gz -C /tmp/convsim-roundtrip/app/
+
+APP="$(find /tmp/convsim-roundtrip/app -maxdepth 1 -name '*.app' | head -n1)"
+
+# Verify Gatekeeper still accepts the bundle after the tar round-trip.
+spctl --assess --type execute --verbose "$APP"
+# Expected: ConversationSimulator.app: accepted
+#           source=Notarized Developer ID
+
+# Confirm the stapled ticket survives (offline check — no Apple CDN required).
+xcrun stapler validate "$APP"
+# Expected: The validate action worked!
+
+# Confirm the deep signature is intact.
+codesign --verify --deep --strict --verbose=2 "$APP"
+```
+
+- [ ] `spctl --assess` prints `accepted` with `source=Notarized Developer ID`
+- [ ] `xcrun stapler validate` prints `The validate action worked!`
+- [ ] `codesign --verify --deep --strict` exits 0
+- [ ] Record the tester name, macOS version, and date in the smoke log below
+
+> **Why this matters:** `tar` with `bsdtar` on macOS preserves extended
+> attributes (where the stapled ticket lives) and resource forks.  A Linux
+> `tar` used in the release or deploy workflow could strip them, causing
+> Gatekeeper to reject the installed build even though the CI verify step passed
+> on the runner before packaging.
+
 ### G.2 Fresh install from Steam
 
 - [ ] Tauri window opens and displays the home screen
