@@ -121,7 +121,14 @@ function Find-MatchingKeyVersion {
     $listUri = ("https://cloudkms.googleapis.com/v1/$KeyRingPath/cryptoKeys/$KeyName/" +
                 "cryptoKeyVersions?filter=state%3DENABLED")
     $resp    = Invoke-RestMethod -Uri $listUri -Headers $hdrs -ErrorAction Stop
-    $vers    = @($resp.cryptoKeyVersions)
+    # Cloud KMS omits `cryptoKeyVersions` entirely when the ENABLED filter
+    # matches nothing (e.g. the only version was disabled — the key-rotation
+    # dry run). Under Set-StrictMode -Version Latest, reading a missing property
+    # throws a cryptic PropertyNotFoundException, which would mask the actionable
+    # pinning message below, so probe for the property before dereferencing it.
+    $vers    = if ($resp.PSObject.Properties.Name -contains 'cryptoKeyVersions') {
+                   @($resp.cryptoKeyVersions)
+               } else { @() }
 
     if ($vers.Count -eq 0) {
         Fail ("ERROR: Key-version pinning failed — no ENABLED CryptoKeyVersion found under " +
