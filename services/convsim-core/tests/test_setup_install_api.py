@@ -224,24 +224,31 @@ def test_disk_space_failure_marks_model_stage_failed(client_with_registry):
     conn.commit()
 
     # Return 0 free bytes — always insufficient.
-    with patch("shutil.disk_usage") as mock_du:
+    # Also skip the engine stage: fake find_executable so the pipeline doesn't
+    # try to download the llama-server binary in the test environment (which
+    # would fail and exit before reaching the disk check).
+    # Keep both patches active through the polling loop: the checks run inside
+    # an asyncio task that the background event loop processes after the POST
+    # response is sent, so patches must stay in scope until the task completes.
+    with patch("shutil.disk_usage") as mock_du, \
+         patch("convsim_core.routers.setup_install.find_executable", return_value="/fake/llama-server"):
         mock_du.return_value = MagicMock(free=0)
         resp = client.post("/api/setup/install", json={"registry_id": registry_id})
 
-    assert resp.status_code == 200
-    job_id = resp.json()["id"]
+        assert resp.status_code == 200
+        job_id = resp.json()["id"]
 
-    # Poll until the pipeline task updates the job (give it up to 3 s).
-    import time
-    deadline = time.monotonic() + 3.0
-    final_body = None
-    while time.monotonic() < deadline:
-        r = client.get(f"/api/setup/install/{job_id}")
-        b = r.json()
-        if b["status"] in ("failed", "complete", "cancelled"):
-            final_body = b
-            break
-        time.sleep(0.1)
+        # Poll until the pipeline task updates the job (give it up to 3 s).
+        import time
+        deadline = time.monotonic() + 3.0
+        final_body = None
+        while time.monotonic() < deadline:
+            r = client.get(f"/api/setup/install/{job_id}")
+            b = r.json()
+            if b["status"] in ("failed", "complete", "cancelled"):
+                final_body = b
+                break
+            time.sleep(0.1)
 
     assert final_body is not None, "Pipeline did not reach a terminal state in time"
     assert final_body["status"] == "failed"

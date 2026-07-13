@@ -19,6 +19,9 @@ vi.mock('../api/client', () => ({
     benchmarkModel: vi.fn(),
     recordOnboardingOutcome: vi.fn().mockResolvedValue({ ok: true, data: undefined }),
     getSetupStatus: vi.fn().mockResolvedValue({ ok: true, data: { kind: 'ready' } }),
+    startSetupInstall: vi.fn(),
+    getSetupInstallStatus: vi.fn(),
+    cancelSetupInstall: vi.fn(),
   },
 }))
 
@@ -52,6 +55,22 @@ const DEFAULT_BENCHMARK: BenchmarkResponse = {
   warnings: [],
   output_tokens: 5,
   benchmarked_at: '2026-01-01T00:00:00.000Z',
+}
+
+const RUNNING_JOB = {
+  id: 1,
+  status: 'running' as const,
+  registry_id: 'qwen3-4b-instruct-q4_k_m',
+  stages: [
+    { id: 'engine' as const, label: 'Getting the AI engine', state: 'skipped' as const, bytes_downloaded: null, bytes_total: null, error: null },
+    { id: 'model' as const, label: 'Downloading Qwen3 4B Instruct Q4_K_M', state: 'running' as const, bytes_downloaded: null, bytes_total: null, error: null },
+    { id: 'verify' as const, label: 'Verifying (SHA-256)', state: 'pending' as const, bytes_downloaded: null, bytes_total: null, error: null },
+    { id: 'warmup' as const, label: 'First launch of the model', state: 'pending' as const, bytes_downloaded: null, bytes_total: null, error: null },
+    { id: 'packs' as const, label: 'Preparing scenarios', state: 'pending' as const, bytes_downloaded: null, bytes_total: null, error: null },
+  ],
+  error_message: null,
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-01T00:00:00Z',
 }
 
 function makeModelsResponse(overrides: Partial<ModelsResponse> = {}): ModelsResponse {
@@ -115,25 +134,9 @@ beforeEach(() => {
     status: 'ready',
     message: null,
   } })
-  mockApi.installModel.mockResolvedValue({ ok: true, data: {
-    install_id: 1,
-    registry_id: 'qwen3-4b-instruct-q4_k_m',
-    status: 'pending',
-    message: 'Install queued.',
-  } })
-  mockApi.getInstallStatus.mockResolvedValue({ ok: true, data: {
-    id: 1,
-    registry_id: 'qwen3-4b-instruct-q4_k_m',
-    filename: 'qwen3-4b-instruct-q4_k_m.gguf',
-    file_path: '',
-    size_bytes: null,
-    install_status: 'downloading',
-    progress_bytes: null,
-    error_message: null,
-    verified_sha256: null,
-    installed_at: '2026-01-01T00:00:00Z',
-  } })
-  mockApi.cancelInstall.mockResolvedValue({ ok: true, data: undefined })
+  mockApi.startSetupInstall.mockResolvedValue({ ok: true, data: RUNNING_JOB })
+  mockApi.getSetupInstallStatus.mockResolvedValue({ ok: true, data: RUNNING_JOB })
+  mockApi.cancelSetupInstall.mockResolvedValue({ ok: true, data: undefined })
   mockApi.registerGguf.mockResolvedValue({ ok: true, data: {
     profile_id: 1,
     file_path: '/home/user/models/my-model.gguf',
@@ -555,7 +558,7 @@ describe('FirstRunWizard — confirm install step', () => {
 
   it('does not start the download until Confirm is clicked', async () => {
     await goToConfirm()
-    expect(mockApi.installModel).not.toHaveBeenCalled()
+    expect(mockApi.startSetupInstall).not.toHaveBeenCalled()
   })
 
 })
@@ -570,34 +573,37 @@ describe('FirstRunWizard — successful install', () => {
     fireEvent.click(screen.getByRole('button', { name: /install qwen3/i }))
     await screen.findByRole('button', { name: /confirm & install/i })
     fireEvent.click(screen.getByRole('button', { name: /confirm & install/i }))
-    await screen.findByRole('heading', { name: /installing model/i })
+    await screen.findByRole('heading', { name: /setting up your ai/i })
   }
 
   it('shows the installing heading after confirmation', async () => {
     await goToInstalling()
-    expect(screen.getByRole('heading', { name: /installing model/i })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: /setting up your ai/i })).toBeInTheDocument()
   })
 
   it('shows a download progress bar', async () => {
     await goToInstalling()
-    expect(screen.getByRole('progressbar', { name: /download progress/i })).toBeInTheDocument()
+    expect(screen.getByRole('progressbar', { name: /overall install progress/i })).toBeInTheDocument()
   })
 
   it('shows percentage and GB when progress data is available', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
       await goToInstalling()
-      mockApi.getInstallStatus.mockResolvedValue({ ok: true, data: {
+      mockApi.getSetupInstallStatus.mockResolvedValue({ ok: true, data: {
         id: 1,
+        status: 'running' as const,
         registry_id: 'qwen3-4b-instruct-q4_k_m',
-        filename: 'qwen3-4b-instruct-q4_k_m.gguf',
-        file_path: '',
-        size_bytes: 2_000_000_000,
-        install_status: 'downloading',
-        progress_bytes: 1_000_000_000,
+        stages: [
+          { id: 'engine', label: 'Getting the AI engine', state: 'skipped', bytes_downloaded: null, bytes_total: null, error: null },
+          { id: 'model', label: 'Downloading Qwen3 4B Instruct Q4_K_M', state: 'running', bytes_downloaded: 1_000_000_000, bytes_total: 2_000_000_000, error: null },
+          { id: 'verify', label: 'Verifying (SHA-256)', state: 'pending', bytes_downloaded: null, bytes_total: null, error: null },
+          { id: 'warmup', label: 'First launch of the model', state: 'pending', bytes_downloaded: null, bytes_total: null, error: null },
+          { id: 'packs', label: 'Preparing scenarios', state: 'pending', bytes_downloaded: null, bytes_total: null, error: null },
+        ],
         error_message: null,
-        verified_sha256: null,
-        installed_at: '2026-01-01T00:00:00Z',
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
       } })
       await vi.advanceTimersByTimeAsync(2000)
 
@@ -613,17 +619,20 @@ describe('FirstRunWizard — successful install', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
       await goToInstalling()
-      mockApi.getInstallStatus.mockResolvedValue({ ok: true, data: {
+      mockApi.getSetupInstallStatus.mockResolvedValue({ ok: true, data: {
         id: 1,
+        status: 'complete' as const,
         registry_id: 'qwen3-4b-instruct-q4_k_m',
-        filename: 'qwen3-4b-instruct-q4_k_m.gguf',
-        file_path: '/home/user/.convsim/models/llm/qwen3-4b-instruct-q4_k_m.gguf',
-        size_bytes: 2_000_000_000,
-        install_status: 'ready',
-        progress_bytes: 2_000_000_000,
+        stages: [
+          { id: 'engine', label: 'Getting the AI engine', state: 'complete', bytes_downloaded: null, bytes_total: null, error: null },
+          { id: 'model', label: 'Downloading Qwen3 4B Instruct Q4_K_M', state: 'complete', bytes_downloaded: null, bytes_total: null, error: null },
+          { id: 'verify', label: 'Verifying (SHA-256)', state: 'complete', bytes_downloaded: null, bytes_total: null, error: null },
+          { id: 'warmup', label: 'First launch of the model', state: 'complete', bytes_downloaded: null, bytes_total: null, error: null },
+          { id: 'packs', label: 'Preparing scenarios', state: 'complete', bytes_downloaded: null, bytes_total: null, error: null },
+        ],
         error_message: null,
-        verified_sha256: 'a'.repeat(64),
-        installed_at: '2026-01-01T00:00:00Z',
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
       } })
       await vi.advanceTimersByTimeAsync(2000)
 
@@ -637,17 +646,20 @@ describe('FirstRunWizard — successful install', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
       await goToInstalling()
-      mockApi.getInstallStatus.mockResolvedValue({ ok: true, data: {
+      mockApi.getSetupInstallStatus.mockResolvedValue({ ok: true, data: {
         id: 1,
+        status: 'complete' as const,
         registry_id: 'qwen3-4b-instruct-q4_k_m',
-        filename: 'qwen3-4b-instruct-q4_k_m.gguf',
-        file_path: '/home/user/.convsim/models/llm/qwen3-4b-instruct-q4_k_m.gguf',
-        size_bytes: 2_000_000_000,
-        install_status: 'ready',
-        progress_bytes: 2_000_000_000,
+        stages: [
+          { id: 'engine', label: 'Getting the AI engine', state: 'complete', bytes_downloaded: null, bytes_total: null, error: null },
+          { id: 'model', label: 'Downloading Qwen3 4B Instruct Q4_K_M', state: 'complete', bytes_downloaded: null, bytes_total: null, error: null },
+          { id: 'verify', label: 'Verifying (SHA-256)', state: 'complete', bytes_downloaded: null, bytes_total: null, error: null },
+          { id: 'warmup', label: 'First launch of the model', state: 'complete', bytes_downloaded: null, bytes_total: null, error: null },
+          { id: 'packs', label: 'Preparing scenarios', state: 'complete', bytes_downloaded: null, bytes_total: null, error: null },
+        ],
         error_message: null,
-        verified_sha256: 'a'.repeat(64),
-        installed_at: '2026-01-01T00:00:00Z',
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
       } })
       await vi.advanceTimersByTimeAsync(2000)
       await waitFor(() => expect(screen.getByTestId('home-page')).toBeInTheDocument())
@@ -669,24 +681,27 @@ describe('FirstRunWizard — no network error', () => {
     fireEvent.click(screen.getByRole('button', { name: /install qwen3/i }))
     await screen.findByRole('button', { name: /confirm & install/i })
     fireEvent.click(screen.getByRole('button', { name: /confirm & install/i }))
-    await screen.findByRole('heading', { name: /installing model/i })
+    await screen.findByRole('heading', { name: /setting up your ai/i })
   }
 
   it('shows a network error alert when download fails with a network error', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
       await goToInstalling()
-      mockApi.getInstallStatus.mockResolvedValue({ ok: true, data: {
+      mockApi.getSetupInstallStatus.mockResolvedValue({ ok: true, data: {
         id: 1,
+        status: 'failed' as const,
         registry_id: 'qwen3-4b-instruct-q4_k_m',
-        filename: 'qwen3-4b-instruct-q4_k_m.gguf',
-        file_path: '',
-        size_bytes: null,
-        install_status: 'failed',
-        progress_bytes: 0,
+        stages: [
+          { id: 'engine', label: 'Getting the AI engine', state: 'skipped', bytes_downloaded: null, bytes_total: null, error: null },
+          { id: 'model', label: 'Downloading Qwen3 4B Instruct Q4_K_M', state: 'failed', bytes_downloaded: 0, bytes_total: null, error: 'no network connection available' },
+          { id: 'verify', label: 'Verifying (SHA-256)', state: 'pending', bytes_downloaded: null, bytes_total: null, error: null },
+          { id: 'warmup', label: 'First launch of the model', state: 'pending', bytes_downloaded: null, bytes_total: null, error: null },
+          { id: 'packs', label: 'Preparing scenarios', state: 'pending', bytes_downloaded: null, bytes_total: null, error: null },
+        ],
         error_message: 'no network connection available',
-        verified_sha256: null,
-        installed_at: '2026-01-01T00:00:00Z',
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
       } })
       await vi.advanceTimersByTimeAsync(2000)
 
@@ -703,24 +718,27 @@ describe('FirstRunWizard — no network error', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
       await goToInstalling()
-      mockApi.getInstallStatus.mockResolvedValue({ ok: true, data: {
+      mockApi.getSetupInstallStatus.mockResolvedValue({ ok: true, data: {
         id: 1,
+        status: 'failed' as const,
         registry_id: 'qwen3-4b-instruct-q4_k_m',
-        filename: 'qwen3-4b-instruct-q4_k_m.gguf',
-        file_path: '',
-        size_bytes: null,
-        install_status: 'failed',
-        progress_bytes: 0,
+        stages: [
+          { id: 'engine', label: 'Getting the AI engine', state: 'skipped', bytes_downloaded: null, bytes_total: null, error: null },
+          { id: 'model', label: 'Downloading Qwen3 4B Instruct Q4_K_M', state: 'failed', bytes_downloaded: 0, bytes_total: null, error: 'network error: connection refused' },
+          { id: 'verify', label: 'Verifying (SHA-256)', state: 'pending', bytes_downloaded: null, bytes_total: null, error: null },
+          { id: 'warmup', label: 'First launch of the model', state: 'pending', bytes_downloaded: null, bytes_total: null, error: null },
+          { id: 'packs', label: 'Preparing scenarios', state: 'pending', bytes_downloaded: null, bytes_total: null, error: null },
+        ],
         error_message: 'network error: connection refused',
-        verified_sha256: null,
-        installed_at: '2026-01-01T00:00:00Z',
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
       } })
       await vi.advanceTimersByTimeAsync(2000)
 
       await waitFor(() =>
         expect(screen.getByRole('alert', { name: /network error/i })).toBeInTheDocument(),
       )
-      expect(screen.getByRole('heading', { name: /installing model/i })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: /setting up your ai/i })).toBeInTheDocument()
     } finally {
       vi.useRealTimers()
     }
@@ -730,22 +748,25 @@ describe('FirstRunWizard — no network error', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
       await goToInstalling()
-      mockApi.getInstallStatus.mockResolvedValue({ ok: true, data: {
+      mockApi.getSetupInstallStatus.mockResolvedValue({ ok: true, data: {
         id: 1,
+        status: 'failed' as const,
         registry_id: 'qwen3-4b-instruct-q4_k_m',
-        filename: 'qwen3-4b-instruct-q4_k_m.gguf',
-        file_path: '',
-        size_bytes: null,
-        install_status: 'failed',
-        progress_bytes: 0,
+        stages: [
+          { id: 'engine', label: 'Getting the AI engine', state: 'skipped', bytes_downloaded: null, bytes_total: null, error: null },
+          { id: 'model', label: 'Downloading Qwen3 4B Instruct Q4_K_M', state: 'failed', bytes_downloaded: 0, bytes_total: null, error: 'no network connection' },
+          { id: 'verify', label: 'Verifying (SHA-256)', state: 'pending', bytes_downloaded: null, bytes_total: null, error: null },
+          { id: 'warmup', label: 'First launch of the model', state: 'pending', bytes_downloaded: null, bytes_total: null, error: null },
+          { id: 'packs', label: 'Preparing scenarios', state: 'pending', bytes_downloaded: null, bytes_total: null, error: null },
+        ],
         error_message: 'no network connection',
-        verified_sha256: null,
-        installed_at: '2026-01-01T00:00:00Z',
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
       } })
       await vi.advanceTimersByTimeAsync(2000)
 
       await waitFor(() =>
-        expect(screen.getByRole('button', { name: /retry download/i })).toBeInTheDocument(),
+        expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument(),
       )
     } finally {
       vi.useRealTimers()
@@ -756,17 +777,20 @@ describe('FirstRunWizard — no network error', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
       await goToInstalling()
-      mockApi.getInstallStatus.mockResolvedValue({ ok: true, data: {
+      mockApi.getSetupInstallStatus.mockResolvedValue({ ok: true, data: {
         id: 1,
+        status: 'failed' as const,
         registry_id: 'qwen3-4b-instruct-q4_k_m',
-        filename: 'qwen3-4b-instruct-q4_k_m.gguf',
-        file_path: '',
-        size_bytes: null,
-        install_status: 'failed',
-        progress_bytes: 0,
+        stages: [
+          { id: 'engine', label: 'Getting the AI engine', state: 'skipped', bytes_downloaded: null, bytes_total: null, error: null },
+          { id: 'model', label: 'Downloading Qwen3 4B Instruct Q4_K_M', state: 'failed', bytes_downloaded: 0, bytes_total: null, error: 'no network connection' },
+          { id: 'verify', label: 'Verifying (SHA-256)', state: 'pending', bytes_downloaded: null, bytes_total: null, error: null },
+          { id: 'warmup', label: 'First launch of the model', state: 'pending', bytes_downloaded: null, bytes_total: null, error: null },
+          { id: 'packs', label: 'Preparing scenarios', state: 'pending', bytes_downloaded: null, bytes_total: null, error: null },
+        ],
         error_message: 'no network connection',
-        verified_sha256: null,
-        installed_at: '2026-01-01T00:00:00Z',
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
       } })
       await vi.advanceTimersByTimeAsync(2000)
 
@@ -784,24 +808,27 @@ describe('FirstRunWizard — no network error', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
       await goToInstalling()
-      mockApi.getInstallStatus.mockResolvedValue({ ok: true, data: {
+      mockApi.getSetupInstallStatus.mockResolvedValue({ ok: true, data: {
         id: 1,
+        status: 'failed' as const,
         registry_id: 'qwen3-4b-instruct-q4_k_m',
-        filename: 'qwen3-4b-instruct-q4_k_m.gguf',
-        file_path: '',
-        size_bytes: null,
-        install_status: 'failed',
-        progress_bytes: 0,
+        stages: [
+          { id: 'engine', label: 'Getting the AI engine', state: 'skipped', bytes_downloaded: null, bytes_total: null, error: null },
+          { id: 'model', label: 'Downloading Qwen3 4B Instruct Q4_K_M', state: 'failed', bytes_downloaded: 0, bytes_total: null, error: 'no network connection' },
+          { id: 'verify', label: 'Verifying (SHA-256)', state: 'pending', bytes_downloaded: null, bytes_total: null, error: null },
+          { id: 'warmup', label: 'First launch of the model', state: 'pending', bytes_downloaded: null, bytes_total: null, error: null },
+          { id: 'packs', label: 'Preparing scenarios', state: 'pending', bytes_downloaded: null, bytes_total: null, error: null },
+        ],
         error_message: 'no network connection',
-        verified_sha256: null,
-        installed_at: '2026-01-01T00:00:00Z',
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
       } })
       await vi.advanceTimersByTimeAsync(2000)
       await waitFor(() =>
-        expect(screen.getByRole('button', { name: /retry download/i })).toBeInTheDocument(),
+        expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument(),
       )
 
-      fireEvent.click(screen.getByRole('button', { name: /retry download/i }))
+      fireEvent.click(screen.getByRole('button', { name: /retry/i }))
       await screen.findByRole('heading', { name: /confirm model install/i })
     } finally {
       vi.useRealTimers()
@@ -812,17 +839,20 @@ describe('FirstRunWizard — no network error', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
       await goToInstalling()
-      mockApi.getInstallStatus.mockResolvedValue({ ok: true, data: {
+      mockApi.getSetupInstallStatus.mockResolvedValue({ ok: true, data: {
         id: 1,
+        status: 'failed' as const,
         registry_id: 'qwen3-4b-instruct-q4_k_m',
-        filename: 'qwen3-4b-instruct-q4_k_m.gguf',
-        file_path: '',
-        size_bytes: null,
-        install_status: 'failed',
-        progress_bytes: 0,
+        stages: [
+          { id: 'engine', label: 'Getting the AI engine', state: 'skipped', bytes_downloaded: null, bytes_total: null, error: null },
+          { id: 'model', label: 'Downloading Qwen3 4B Instruct Q4_K_M', state: 'failed', bytes_downloaded: 0, bytes_total: null, error: 'no network connection' },
+          { id: 'verify', label: 'Verifying (SHA-256)', state: 'pending', bytes_downloaded: null, bytes_total: null, error: null },
+          { id: 'warmup', label: 'First launch of the model', state: 'pending', bytes_downloaded: null, bytes_total: null, error: null },
+          { id: 'packs', label: 'Preparing scenarios', state: 'pending', bytes_downloaded: null, bytes_total: null, error: null },
+        ],
         error_message: 'no network connection',
-        verified_sha256: null,
-        installed_at: '2026-01-01T00:00:00Z',
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
       } })
       await vi.advanceTimersByTimeAsync(2000)
       await waitFor(() =>
@@ -850,19 +880,22 @@ describe('FirstRunWizard — insufficient disk error', () => {
     fireEvent.click(screen.getByRole('button', { name: /install qwen3/i }))
     await screen.findByRole('button', { name: /confirm & install/i })
     fireEvent.click(screen.getByRole('button', { name: /confirm & install/i }))
-    await screen.findByRole('heading', { name: /installing model/i })
+    await screen.findByRole('heading', { name: /setting up your ai/i })
 
-    mockApi.getInstallStatus.mockResolvedValue({ ok: true, data: {
+    mockApi.getSetupInstallStatus.mockResolvedValue({ ok: true, data: {
       id: 1,
+      status: 'failed' as const,
       registry_id: 'qwen3-4b-instruct-q4_k_m',
-      filename: 'qwen3-4b-instruct-q4_k_m.gguf',
-      file_path: '',
-      size_bytes: 2_000_000_000,
-      install_status: 'failed',
-      progress_bytes: 0,
+      stages: [
+        { id: 'engine', label: 'Getting the AI engine', state: 'skipped', bytes_downloaded: null, bytes_total: null, error: null },
+        { id: 'model', label: 'Downloading Qwen3 4B Instruct Q4_K_M', state: 'failed', bytes_downloaded: 0, bytes_total: null, error: 'insufficient disk space' },
+        { id: 'verify', label: 'Verifying (SHA-256)', state: 'pending', bytes_downloaded: null, bytes_total: null, error: null },
+        { id: 'warmup', label: 'First launch of the model', state: 'pending', bytes_downloaded: null, bytes_total: null, error: null },
+        { id: 'packs', label: 'Preparing scenarios', state: 'pending', bytes_downloaded: null, bytes_total: null, error: null },
+      ],
       error_message: 'insufficient disk space',
-      verified_sha256: null,
-      installed_at: '2026-01-01T00:00:00Z',
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
     } })
     await vi.advanceTimersByTimeAsync(2000)
 
@@ -892,7 +925,7 @@ describe('FirstRunWizard — insufficient disk error', () => {
   it('stays on the installing step when a disk error occurs', async () => {
     try {
       await triggerDiskError()
-      expect(screen.getByRole('heading', { name: /installing model/i })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: /setting up your ai/i })).toBeInTheDocument()
     } finally {
       vi.useRealTimers()
     }
@@ -938,7 +971,7 @@ describe('FirstRunWizard — cancelled download', () => {
     fireEvent.click(screen.getByRole('button', { name: /install qwen3/i }))
     await screen.findByRole('button', { name: /confirm & install/i })
     fireEvent.click(screen.getByRole('button', { name: /confirm & install/i }))
-    await screen.findByRole('heading', { name: /installing model/i })
+    await screen.findByRole('heading', { name: /setting up your ai/i })
   }
 
   it('shows a Cancel and go home button while downloading', async () => {
@@ -949,7 +982,7 @@ describe('FirstRunWizard — cancelled download', () => {
   it('calls cancelInstall when Cancel and go home is clicked', async () => {
     await goToInstalling()
     fireEvent.click(screen.getByRole('button', { name: /cancel and go home/i }))
-    await waitFor(() => expect(mockApi.cancelInstall).toHaveBeenCalledWith(1))
+    await waitFor(() => expect(mockApi.cancelSetupInstall).toHaveBeenCalledWith(1))
   })
 
   it('navigates home after cancelling the download', async () => {
@@ -966,7 +999,7 @@ describe('FirstRunWizard — cancelled download', () => {
   })
 
   it('navigates home even when cancelInstall API call fails', async () => {
-    mockApi.cancelInstall.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'server error' } })
+    mockApi.cancelSetupInstall.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'server error' } })
     await goToInstalling()
     fireEvent.click(screen.getByRole('button', { name: /cancel and go home/i }))
     await waitFor(() => expect(screen.getByTestId('home-page')).toBeInTheDocument())
@@ -976,13 +1009,13 @@ describe('FirstRunWizard — cancelled download', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
       await goToInstalling()
-      mockApi.getInstallStatus.mockResolvedValueOnce({ ok: false, error: { kind: 'network', message: 'network blip' } })
+      mockApi.getSetupInstallStatus.mockResolvedValueOnce({ ok: false, error: { kind: 'network', message: 'network blip' } })
 
       await vi.advanceTimersByTimeAsync(2000)
-      expect(screen.getByRole('heading', { name: /installing model/i })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: /setting up your ai/i })).toBeInTheDocument()
 
       await vi.advanceTimersByTimeAsync(2000)
-      expect(mockApi.getInstallStatus.mock.calls.length).toBeGreaterThanOrEqual(2)
+      expect(mockApi.getSetupInstallStatus.mock.calls.length).toBeGreaterThanOrEqual(2)
     } finally {
       vi.useRealTimers()
     }
@@ -1145,7 +1178,7 @@ describe('FirstRunWizard — tutorial CTA during install', () => {
     fireEvent.click(screen.getByRole('button', { name: /install qwen3/i }))
     await screen.findByRole('button', { name: /confirm & install/i })
     fireEvent.click(screen.getByRole('button', { name: /confirm & install/i }))
-    await screen.findByRole('heading', { name: /installing model/i })
+    await screen.findByRole('heading', { name: /setting up your ai/i })
   }
 
   it('shows the play tutorial note while downloading', async () => {
@@ -1164,7 +1197,7 @@ describe('FirstRunWizard — tutorial CTA during install', () => {
 
   it('still shows the download progress bar alongside the tutorial CTA', async () => {
     await goToInstalling()
-    expect(screen.getByRole('progressbar', { name: /download progress/i })).toBeInTheDocument()
+    expect(screen.getByRole('progressbar', { name: /overall install progress/i })).toBeInTheDocument()
   })
 
   it('still shows the Cancel and go home button alongside the tutorial CTA', async () => {
@@ -1189,7 +1222,7 @@ describe('FirstRunWizard — tutorial prompt step', () => {
     fireEvent.click(screen.getByRole('button', { name: /install qwen3/i }))
     await screen.findByRole('button', { name: /confirm & install/i })
     fireEvent.click(screen.getByRole('button', { name: /confirm & install/i }))
-    await screen.findByRole('heading', { name: /installing model/i })
+    await screen.findByRole('heading', { name: /setting up your ai/i })
     fireEvent.click(screen.getByRole('button', { name: /play the tutorial while you wait/i }))
     await screen.findByRole('heading', { name: /first words tutorial/i })
   }
@@ -1225,7 +1258,7 @@ describe('FirstRunWizard — tutorial prompt step', () => {
   it('back button returns to the installing step', async () => {
     await goToTutorialPrompt()
     fireEvent.click(screen.getByRole('button', { name: /back/i }))
-    await screen.findByRole('heading', { name: /installing model/i })
+    await screen.findByRole('heading', { name: /setting up your ai/i })
   })
 
   it('calls useModel with scripted runtime when Start the tutorial is clicked', async () => {
@@ -1286,7 +1319,7 @@ describe('FirstRunWizard — post-install navigation with tutorial completed', (
     fireEvent.click(screen.getByRole('button', { name: /install qwen3/i }))
     await screen.findByRole('button', { name: /confirm & install/i })
     fireEvent.click(screen.getByRole('button', { name: /confirm & install/i }))
-    await screen.findByRole('heading', { name: /installing model/i })
+    await screen.findByRole('heading', { name: /setting up your ai/i })
   }
 
   it('navigates to /library (not home) when install completes and tutorial was completed', async () => {
@@ -1294,17 +1327,20 @@ describe('FirstRunWizard — post-install navigation with tutorial completed', (
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
       await goToInstalling()
-      mockApi.getInstallStatus.mockResolvedValue({ ok: true, data: {
+      mockApi.getSetupInstallStatus.mockResolvedValue({ ok: true, data: {
         id: 1,
+        status: 'complete' as const,
         registry_id: 'qwen3-4b-instruct-q4_k_m',
-        filename: 'qwen3-4b-instruct-q4_k_m.gguf',
-        file_path: '/home/user/.convsim/models/llm/qwen3-4b-instruct-q4_k_m.gguf',
-        size_bytes: 2_000_000_000,
-        install_status: 'ready',
-        progress_bytes: 2_000_000_000,
+        stages: [
+          { id: 'engine', label: 'Getting the AI engine', state: 'complete', bytes_downloaded: null, bytes_total: null, error: null },
+          { id: 'model', label: 'Downloading Qwen3 4B Instruct Q4_K_M', state: 'complete', bytes_downloaded: null, bytes_total: null, error: null },
+          { id: 'verify', label: 'Verifying (SHA-256)', state: 'complete', bytes_downloaded: null, bytes_total: null, error: null },
+          { id: 'warmup', label: 'First launch of the model', state: 'complete', bytes_downloaded: null, bytes_total: null, error: null },
+          { id: 'packs', label: 'Preparing scenarios', state: 'complete', bytes_downloaded: null, bytes_total: null, error: null },
+        ],
         error_message: null,
-        verified_sha256: 'a'.repeat(64),
-        installed_at: '2026-01-01T00:00:00Z',
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
       } })
       await vi.advanceTimersByTimeAsync(2000)
 
@@ -1318,17 +1354,20 @@ describe('FirstRunWizard — post-install navigation with tutorial completed', (
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
       await goToInstalling()
-      mockApi.getInstallStatus.mockResolvedValue({ ok: true, data: {
+      mockApi.getSetupInstallStatus.mockResolvedValue({ ok: true, data: {
         id: 1,
+        status: 'complete' as const,
         registry_id: 'qwen3-4b-instruct-q4_k_m',
-        filename: 'qwen3-4b-instruct-q4_k_m.gguf',
-        file_path: '/home/user/.convsim/models/llm/qwen3-4b-instruct-q4_k_m.gguf',
-        size_bytes: 2_000_000_000,
-        install_status: 'ready',
-        progress_bytes: 2_000_000_000,
+        stages: [
+          { id: 'engine', label: 'Getting the AI engine', state: 'complete', bytes_downloaded: null, bytes_total: null, error: null },
+          { id: 'model', label: 'Downloading Qwen3 4B Instruct Q4_K_M', state: 'complete', bytes_downloaded: null, bytes_total: null, error: null },
+          { id: 'verify', label: 'Verifying (SHA-256)', state: 'complete', bytes_downloaded: null, bytes_total: null, error: null },
+          { id: 'warmup', label: 'First launch of the model', state: 'complete', bytes_downloaded: null, bytes_total: null, error: null },
+          { id: 'packs', label: 'Preparing scenarios', state: 'complete', bytes_downloaded: null, bytes_total: null, error: null },
+        ],
         error_message: null,
-        verified_sha256: 'a'.repeat(64),
-        installed_at: '2026-01-01T00:00:00Z',
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
       } })
       await vi.advanceTimersByTimeAsync(2000)
 

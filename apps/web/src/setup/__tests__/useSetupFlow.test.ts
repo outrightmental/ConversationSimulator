@@ -26,6 +26,9 @@ vi.mock('../../api/client', () => ({
     benchmarkModel: vi.fn(),
     recordOnboardingOutcome: vi.fn().mockResolvedValue({ ok: true, data: undefined }),
     getSetupStatus: vi.fn().mockResolvedValue({ ok: true, data: { kind: 'ready' } }),
+    startSetupInstall: vi.fn(),
+    getSetupInstallStatus: vi.fn(),
+    cancelSetupInstall: vi.fn(),
   },
 }))
 
@@ -69,11 +72,24 @@ function wrapper({ children }: { children: React.ReactNode }) {
   return React.createElement(MemoryRouter, { future: { v7_startTransition: true, v7_relativeSplatPath: true } }, children)
 }
 
+const RUNNING_JOB = {
+  id: 42,
+  status: 'running' as const,
+  registry_id: 'qwen3-4b-q4',
+  stages: [],
+  error_message: null,
+  created_at: '',
+  updated_at: '',
+}
+
 beforeEach(() => {
   vi.clearAllMocks()
   localStorage.clear()
   mockApi.getModels.mockResolvedValue({ ok: true, data: MODELS_DATA })
   mockApi.preflight.mockResolvedValue({ ok: true, data: PREFLIGHT_PASS })
+  mockApi.startSetupInstall.mockResolvedValue({ ok: true, data: RUNNING_JOB })
+  mockApi.getSetupInstallStatus.mockResolvedValue({ ok: true, data: RUNNING_JOB })
+  mockApi.cancelSetupInstall.mockResolvedValue({ ok: true, data: undefined })
 })
 
 describe('useSetupFlow step machine', () => {
@@ -131,10 +147,10 @@ describe('useSetupFlow step machine', () => {
 
   // confirm-install → installing via handleStartInstall
   it('transitions confirm-install → installing via handleStartInstall', async () => {
-    mockApi.installModel.mockResolvedValue({ ok: true, data: { install_id: 42, registry_id: 'qwen3-4b-q4', status: 'pending', message: 'ok' } })
-    // Polling should keep returning 'downloading' so we stay on installing
-    mockApi.getInstallStatus.mockResolvedValue({
-      ok: true, data: { id: 42, registry_id: 'qwen3-4b-q4', filename: 'model.gguf', file_path: '', size_bytes: null, install_status: 'downloading' as const, progress_bytes: null, error_message: null, verified_sha256: null, installed_at: '' },
+    mockApi.startSetupInstall.mockResolvedValue({ ok: true, data: { id: 42, status: 'running' as const, registry_id: 'qwen3-4b-q4', stages: [], error_message: null, created_at: '', updated_at: '' } })
+    // Polling should keep returning 'running' so we stay on installing
+    mockApi.getSetupInstallStatus.mockResolvedValue({
+      ok: true, data: { id: 42, status: 'running' as const, registry_id: 'qwen3-4b-q4', stages: [], error_message: null, created_at: '', updated_at: '' },
     })
 
     const { result } = renderHook(() => useSetupFlow('loading'), { wrapper })
@@ -151,12 +167,12 @@ describe('useSetupFlow step machine', () => {
 
     expect(result.current.step).toBe('installing')
     expect(result.current.installId).toBe(42)
-    expect(mockApi.installModel).toHaveBeenCalledWith({ registry_id: 'qwen3-4b-q4' })
+    expect(mockApi.startSetupInstall).toHaveBeenCalledWith('qwen3-4b-q4')
   })
 
   // handleStartInstall error → stays on confirm-install with actionError set
   it('handleStartInstall failure sets actionError and stays on confirm-install', async () => {
-    mockApi.installModel.mockResolvedValue({ ok: false, error: { kind: 'http-error', message: 'No space left', status: 500 } })
+    mockApi.startSetupInstall.mockResolvedValue({ ok: false, error: { kind: 'http-error', message: 'No space left', status: 500 } })
     const { result } = renderHook(() => useSetupFlow('loading'), { wrapper })
     await waitFor(() => expect(result.current.step).toBe('choose'))
 
@@ -230,7 +246,7 @@ describe('useSetupFlow step machine', () => {
   })
 
   it('resetAction clears actionError and actionLoading', async () => {
-    mockApi.installModel.mockResolvedValue({ ok: false, error: { kind: 'http-error', message: 'err', status: 500 } })
+    mockApi.startSetupInstall.mockResolvedValue({ ok: false, error: { kind: 'http-error', message: 'err', status: 500 } })
     const { result } = renderHook(() => useSetupFlow('loading'), { wrapper })
     await waitFor(() => expect(result.current.step).toBe('choose'))
 
