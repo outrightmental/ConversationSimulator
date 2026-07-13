@@ -42,7 +42,7 @@ In a developer build the application is started directly from the repository
 (`uvicorn convsim_core.app:app` or `python -m convsim_core`). Sidecar
 binaries are expected to be on the developer's `PATH`.
 
-**Install sidecars for development:**
+**Install sidecars for development (Linux / macOS):**
 
 ```sh
 # llama.cpp (llama-server)
@@ -58,10 +58,36 @@ binaries are expected to be on the developer's `PATH`.
 # → binary at ~/.convsim/bin/sherpa-onnx-offline-tts; add to PATH
 ```
 
+**Install sidecars for development (Windows):**
+
+```powershell
+# llama.cpp (llama-server) — CPU variant (default, works on every machine)
+.\runtimes\llama_cpp\download-runtime.ps1
+# → binary at $HOME\.convsim\bin\llama-server.exe
+
+# GPU-accelerated variants (optional, never required for first-run):
+.\runtimes\llama_cpp\download-runtime.ps1 -Variant cuda   # NVIDIA
+.\runtimes\llama_cpp\download-runtime.ps1 -Variant vulkan # AMD / Intel / NVIDIA via Vulkan
+
+# Add to PATH (current session):
+$env:PATH = "$HOME\.convsim\bin;$env:PATH"
+```
+
+The `find_executable()` function also probes `~/.convsim/bin/llama-server.exe`
+directly (step 3 in the resolution order), so the binary is found immediately
+after an in-app install via `POST /api/sidecar/download-runtime` without
+needing a PATH change or app restart.
+
 You can also set the explicit override variable to point to any binary:
 
 ```sh
+# Linux / macOS
 export CONVSIM_LLAMA_CPP_EXECUTABLE=/path/to/llama-server
+```
+
+```powershell
+# Windows
+$env:CONVSIM_LLAMA_CPP_EXECUTABLE = "C:\path\to\llama-server.exe"
 ```
 
 ---
