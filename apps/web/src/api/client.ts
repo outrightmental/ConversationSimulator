@@ -520,6 +520,12 @@ export const api = {
   vadHealth(): Promise<ApiResult<VadHealthResponse>> {
     return get<VadHealthResponse>('/vad/health')
   },
+  recordOnboardingOutcome(outcome: string): Promise<ApiResult<undefined>> {
+    return post<undefined>('/setup/outcome', { outcome })
+  },
+  getSetupStatus(): Promise<ApiResult<import('../setup/SetupStatus').SetupStatusResponse>> {
+    return get<import('../setup/SetupStatus').SetupStatusResponse>('/setup/status')
+  },
   connectSession(
     sessionId: string,
     onEvent: (event: WsEvent) => void,
