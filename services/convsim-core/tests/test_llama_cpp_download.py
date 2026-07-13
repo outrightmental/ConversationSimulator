@@ -26,6 +26,7 @@ from convsim_core.runtime.llama_cpp_download import (
     build_asset_url,
     build_sha256sum_url,
     detect_platform_string,
+    detect_windows_gpu_variant,
     download_binary,
     fetch_expected_sha256,
     fetch_latest_release_tag,
@@ -166,11 +167,22 @@ def test_detect_platform_macos_amd64(monkeypatch):
     assert detect_platform_string() == "macos-x64"
 
 
-def test_detect_platform_windows_raises(monkeypatch):
+def test_detect_platform_windows_x64(monkeypatch):
     monkeypatch.setattr("sys.platform", "win32")
     monkeypatch.setattr("platform.machine", lambda: "amd64")
-    with pytest.raises(RuntimeError, match="Windows"):
-        detect_platform_string()
+    assert detect_platform_string() == "win-x64"
+
+
+def test_detect_platform_windows_x86_64(monkeypatch):
+    monkeypatch.setattr("sys.platform", "win32")
+    monkeypatch.setattr("platform.machine", lambda: "x86_64")
+    assert detect_platform_string() == "win-x64"
+
+
+def test_detect_platform_windows_arm64(monkeypatch):
+    monkeypatch.setattr("sys.platform", "win32")
+    monkeypatch.setattr("platform.machine", lambda: "arm64")
+    assert detect_platform_string() == "win-arm64"
 
 
 def test_detect_platform_unsupported_os_raises(monkeypatch):
@@ -200,6 +212,26 @@ def test_build_asset_name():
 def test_build_asset_name_macos():
     name = build_asset_name("b1234", "macos-arm64")
     assert name == "llama-b1234-bin-macos-arm64-cpu.zip"
+
+
+def test_build_asset_name_windows_x64_cpu():
+    name = build_asset_name("b5140", "win-x64")
+    assert name == "llama-b5140-bin-win-cpu-x64.zip"
+
+
+def test_build_asset_name_windows_arm64_cpu():
+    name = build_asset_name("b5140", "win-arm64")
+    assert name == "llama-b5140-bin-win-cpu-arm64.zip"
+
+
+def test_build_asset_name_windows_cuda():
+    name = build_asset_name("b5140", "win-x64", variant="cuda")
+    assert name == "llama-b5140-bin-win-cuda-x64.zip"
+
+
+def test_build_asset_name_windows_vulkan():
+    name = build_asset_name("b5140", "win-x64", variant="vulkan")
+    assert name == "llama-b5140-bin-win-vulkan-x64.zip"
 
 
 def test_build_asset_url():
@@ -371,6 +403,73 @@ def test_extract_binary_from_zip_missing_raises():
 
 
 # ---------------------------------------------------------------------------
+# detect_windows_gpu_variant
+# ---------------------------------------------------------------------------
+
+
+def test_detect_windows_gpu_variant_returns_cpu_by_default(monkeypatch):
+    """Without nvidia-smi or vulkaninfo, must return 'cpu'."""
+    monkeypatch.setattr("shutil.which", lambda _: None)
+    assert detect_windows_gpu_variant() == "cpu"
+
+
+def test_detect_windows_gpu_variant_cuda_when_nvidia_smi_succeeds(monkeypatch):
+    """Returns 'cuda' when nvidia-smi is present and reports a GPU name."""
+    import subprocess as _subprocess
+
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/nvidia-smi" if name == "nvidia-smi" else None)
+
+    fake_result = MagicMock()
+    fake_result.returncode = 0
+    fake_result.stdout = b"NVIDIA GeForce RTX 4090\n"
+    monkeypatch.setattr(_subprocess, "run", lambda *a, **kw: fake_result)
+
+    assert detect_windows_gpu_variant() == "cuda"
+
+
+def test_detect_windows_gpu_variant_cpu_when_nvidia_smi_fails(monkeypatch):
+    """Returns 'cpu' when nvidia-smi is present but returns no GPU name."""
+    import subprocess as _subprocess
+
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/nvidia-smi" if name == "nvidia-smi" else None)
+
+    fake_result = MagicMock()
+    fake_result.returncode = 1
+    fake_result.stdout = b""
+    monkeypatch.setattr(_subprocess, "run", lambda *a, **kw: fake_result)
+
+    assert detect_windows_gpu_variant() == "cpu"
+
+
+def test_detect_windows_gpu_variant_vulkan_fallback(monkeypatch):
+    """Returns 'vulkan' when vulkaninfo succeeds but nvidia-smi is absent."""
+    import subprocess as _subprocess
+
+    monkeypatch.setattr(
+        "shutil.which",
+        lambda name: "/usr/bin/vulkaninfo" if name == "vulkaninfo" else None,
+    )
+
+    fake_result = MagicMock()
+    fake_result.returncode = 0
+    fake_result.stdout = b"GPU info..."
+    monkeypatch.setattr(_subprocess, "run", lambda *a, **kw: fake_result)
+
+    assert detect_windows_gpu_variant() == "vulkan"
+
+
+def test_detect_windows_gpu_variant_never_raises(monkeypatch):
+    """detect_windows_gpu_variant() must not propagate exceptions."""
+    import subprocess as _subprocess
+
+    monkeypatch.setattr("shutil.which", lambda _: "/fake/nvidia-smi")
+    monkeypatch.setattr(_subprocess, "run", MagicMock(side_effect=OSError("no such file")))
+
+    result = detect_windows_gpu_variant()
+    assert result in ("cpu", "cuda", "vulkan")
+
+
+# ---------------------------------------------------------------------------
 # download_binary — happy path (mock client)
 # ---------------------------------------------------------------------------
 
@@ -469,6 +568,148 @@ async def test_download_binary_checksum_mismatch_raises(tmp_path):
 
     # Binary must not have been written
     assert not (dest / "llama-server").exists()
+
+
+@pytest.mark.asyncio
+async def test_download_binary_checksum_mismatch_sets_checksum_mismatch_state(tmp_path):
+    """A mismatched SHA-256 must set the progress state to checksum_mismatch."""
+    zip_data = _make_zip("llama-server", b"bin")
+    wrong_sha = "a" * 64
+    sha256sum_text = f"{wrong_sha}  llama-b1-bin-linux-x64-cpu.zip\n"
+    client = _mock_async_client(
+        latest_tag="b1",
+        sha256sum_text=sha256sum_text,
+        asset_data=zip_data,
+    )
+
+    states: list[str] = []
+
+    def _cb(p: DownloadProgress) -> None:
+        states.append(p.state.value)
+
+    dest = tmp_path / "bin"
+    with patch("convsim_core.runtime.llama_cpp_download.httpx.AsyncClient", return_value=client):
+        with pytest.raises(RuntimeError, match="checksum mismatch"):
+            await download_binary(
+                dest_dir=dest,
+                version="b1",
+                platform_string="linux-x64",
+                progress_cb=_cb,
+            )
+
+    assert "checksum_mismatch" in states
+    assert "failed" not in states  # checksum_mismatch is its own distinct terminal state
+
+
+@pytest.mark.asyncio
+async def test_download_binary_part_file_cleaned_on_checksum_mismatch(tmp_path):
+    """The .part file must be removed when a checksum mismatch occurs."""
+    zip_data = _make_zip("llama-server", b"bin")
+    wrong_sha = "a" * 64
+    sha256sum_text = f"{wrong_sha}  llama-b1-bin-linux-x64-cpu.zip\n"
+    client = _mock_async_client(
+        latest_tag="b1",
+        sha256sum_text=sha256sum_text,
+        asset_data=zip_data,
+    )
+
+    dest = tmp_path / "bin"
+    with patch("convsim_core.runtime.llama_cpp_download.httpx.AsyncClient", return_value=client):
+        with pytest.raises(RuntimeError, match="checksum mismatch"):
+            await download_binary(
+                dest_dir=dest,
+                version="b1",
+                platform_string="linux-x64",
+            )
+
+    # Neither the final binary nor any .part file should remain
+    assert not list(dest.glob("*.part"))
+    assert not (dest / "llama-server").exists()
+
+
+@pytest.mark.asyncio
+async def test_download_binary_windows_uses_exe_suffix(tmp_path, monkeypatch):
+    """On win32, the installed binary must be named llama-server.exe."""
+    monkeypatch.setattr("sys.platform", "win32")
+
+    zip_data = _make_zip("llama-server.exe", b"win-binary")
+    client = _mock_async_client(latest_tag="b1", asset_data=zip_data)
+
+    with patch("convsim_core.runtime.llama_cpp_download.httpx.AsyncClient", return_value=client):
+        result = await download_binary(
+            dest_dir=tmp_path / "bin",
+            version="b1",
+            platform_string="win-x64",
+        )
+
+    assert result.endswith("llama-server.exe")
+    assert Path(result).read_bytes() == b"win-binary"
+
+
+@pytest.mark.asyncio
+async def test_download_binary_windows_asset_name(tmp_path):
+    """download_binary with win-x64 requests the correct win-cpu-x64 asset."""
+    binary_content = b"windows-binary"
+    # The asset name for win-x64 default variant is llama-b1-bin-win-cpu-x64.zip
+    zip_data = _make_zip("llama-server.exe", binary_content)
+    sha256sum_text = f"{_sha256_of_bytes(zip_data)}  llama-b1-bin-win-cpu-x64.zip\n"
+    client = _mock_async_client(
+        latest_tag="b1",
+        sha256sum_text=sha256sum_text,
+        asset_data=zip_data,
+    )
+
+    captured_stream_url: list[str] = []
+    orig_stream = client.stream
+
+    def _recording_stream(method, url, **kw):
+        captured_stream_url.append(url)
+        return orig_stream(method, url, **kw)
+
+    client.stream = _recording_stream
+
+    with patch("convsim_core.runtime.llama_cpp_download.httpx.AsyncClient", return_value=client):
+        await download_binary(
+            dest_dir=tmp_path / "bin",
+            version="b1",
+            platform_string="win-x64",
+        )
+
+    assert len(captured_stream_url) == 1
+    assert "win-cpu-x64" in captured_stream_url[0]
+
+
+@pytest.mark.asyncio
+async def test_download_binary_variant_passed_to_asset_name(tmp_path):
+    """Passing variant='vulkan' selects the correct Vulkan asset for Windows."""
+    binary_content = b"vulkan-binary"
+    zip_data = _make_zip("llama-server.exe", binary_content)
+    sha256sum_text = f"{_sha256_of_bytes(zip_data)}  llama-b1-bin-win-vulkan-x64.zip\n"
+    client = _mock_async_client(
+        latest_tag="b1",
+        sha256sum_text=sha256sum_text,
+        asset_data=zip_data,
+    )
+
+    captured_stream_url: list[str] = []
+    orig_stream = client.stream
+
+    def _recording_stream(method, url, **kw):
+        captured_stream_url.append(url)
+        return orig_stream(method, url, **kw)
+
+    client.stream = _recording_stream
+
+    with patch("convsim_core.runtime.llama_cpp_download.httpx.AsyncClient", return_value=client):
+        await download_binary(
+            dest_dir=tmp_path / "bin",
+            version="b1",
+            platform_string="win-x64",
+            variant="vulkan",
+        )
+
+    assert len(captured_stream_url) == 1
+    assert "win-vulkan-x64" in captured_stream_url[0]
 
 
 @pytest.mark.asyncio

@@ -273,7 +273,58 @@ def test_find_executable_bundled_dir_missing_binary_falls_through(monkeypatch, t
     monkeypatch.setenv("CONVSIM_BUNDLED_RUNTIME_DIR", str(tmp_path))  # empty dir
     from unittest.mock import patch
     with patch("convsim_core.runtime.sidecar.shutil.which", return_value=None):
-        assert find_executable() is None
+        # Also patch Path.home so user-installed path doesn't accidentally exist.
+        with patch("convsim_core.runtime.sidecar.Path.home", return_value=tmp_path / "home"):
+            assert find_executable() is None
+
+
+def test_find_executable_finds_user_installed_path(monkeypatch, tmp_path):
+    """find_executable() resolves a binary installed to ~/.convsim/bin/ without PATH."""
+    monkeypatch.delenv("CONVSIM_LLAMA_CPP_EXECUTABLE", raising=False)
+    monkeypatch.delenv("CONVSIM_BUNDLED_RUNTIME_DIR", raising=False)
+
+    binary_name = "llama-server.exe" if sys.platform == "win32" else "llama-server"
+    user_bin = tmp_path / ".convsim" / "bin"
+    user_bin.mkdir(parents=True)
+    binary = user_bin / binary_name
+    binary.write_text("#!/bin/sh\n")
+    binary.chmod(0o755)
+
+    from unittest.mock import patch
+    with patch("convsim_core.runtime.sidecar.Path.home", return_value=tmp_path):
+        with patch("convsim_core.runtime.sidecar.shutil.which", return_value=None):
+            result = find_executable()
+
+    assert result == str(binary)
+
+
+def test_find_executable_user_installed_does_not_shadow_bundled(monkeypatch, tmp_path):
+    """The bundled dir (step 2) takes priority over user-installed (step 3)."""
+    monkeypatch.delenv("CONVSIM_LLAMA_CPP_EXECUTABLE", raising=False)
+
+    binary_name = "llama-server.exe" if sys.platform == "win32" else "llama-server"
+
+    # Bundled binary
+    bundled_bin = tmp_path / "bundled"
+    bundled_bin.mkdir()
+    bundled = bundled_bin / binary_name
+    bundled.write_text("bundled")
+    bundled.chmod(0o755)
+    monkeypatch.setenv("CONVSIM_BUNDLED_RUNTIME_DIR", str(bundled_bin))
+
+    # User-installed binary (should be shadowed)
+    user_home = tmp_path / "home"
+    user_bin = user_home / ".convsim" / "bin"
+    user_bin.mkdir(parents=True)
+    user_binary = user_bin / binary_name
+    user_binary.write_text("user-installed")
+    user_binary.chmod(0o755)
+
+    from unittest.mock import patch
+    with patch("convsim_core.runtime.sidecar.Path.home", return_value=user_home):
+        result = find_executable()
+
+    assert result == str(bundled)
 
 
 # ---------------------------------------------------------------------------

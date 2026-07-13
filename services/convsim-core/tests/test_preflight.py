@@ -156,7 +156,8 @@ def test_llama_cpp_binary_fails_when_missing(client):
         result = _check_llama_cpp_binary()
     assert result.status == "fail"
     assert result.fix_action is not None
-    assert result.fix_action.kind == "open-url"
+    assert result.fix_action.kind == "install-engine"
+    assert result.fix_action.href == "/settings/install-engine"
 
 
 def test_llama_cpp_binary_passes_when_found(tmp_path):
