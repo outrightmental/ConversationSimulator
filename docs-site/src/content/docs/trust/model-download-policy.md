@@ -97,8 +97,9 @@ demand warrants it.
 
 ### User-supplied GGUF files
 
-Players may load any GGUF file from their local filesystem by selecting it from
-the Settings → Models → Use custom GGUF path option. The app performs no
+Players may load any GGUF file from their local filesystem during first-run
+setup by expanding **Advanced** on the welcome screen and choosing **Use a
+GGUF file**. The app performs no
 network fetch for user-supplied files. The player is responsible for
 downloading the file themselves and verifying its provenance.
 
