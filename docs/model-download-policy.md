@@ -315,7 +315,8 @@ shown; the connection check is immediate.
 ### Steam builds
 
 Steam depot builds bundle `llama-server` directly in
-`apps/desktop/src-tauri/resources/bin/` — no download is needed at first
+`apps/desktop/src-tauri/resources/runtimes/` — the directory the Tauri shell
+exposes as `CONVSIM_BUNDLED_RUNTIME_DIR` — so no download is needed at first
 launch. The bundled binary is resolved by `CONVSIM_BUNDLED_RUNTIME_DIR` before
 any user-installed or PATH binary.
 
