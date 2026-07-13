@@ -8,6 +8,7 @@ import type { ModelsResponse } from '@convsim/shared'
 vi.mock('../api/client', () => ({
   api: {
     getModels: vi.fn(),
+    preflight: vi.fn().mockResolvedValue({ ok: true, data: { overall: 'pass', checks: [], ran_at: '2026-01-01T00:00:00Z' } }),
     useModel: vi.fn(),
     installModel: vi.fn(),
     getInstallStatus: vi.fn(),
@@ -15,6 +16,8 @@ vi.mock('../api/client', () => ({
     registerGguf: vi.fn(),
     startSidecar: vi.fn(),
     benchmarkModel: vi.fn(),
+    recordOnboardingOutcome: vi.fn().mockResolvedValue({ ok: true, data: undefined }),
+    getSetupStatus: vi.fn().mockResolvedValue({ ok: true, data: { kind: 'ready' } }),
   },
 }))
 
@@ -106,6 +109,7 @@ beforeEach(() => {
   vi.restoreAllMocks()
   vi.clearAllMocks()
   mockApi.getModels.mockResolvedValue({ ok: true, data: makeModelsResponse() })
+  mockApi.preflight.mockResolvedValue({ ok: true, data: { overall: 'pass', checks: [], ran_at: '2026-01-01T00:00:00Z' } })
   mockApi.useModel.mockResolvedValue({ ok: true, data: {
     runtime_id: 'ollama',
     model_id: 'llama3:latest',
@@ -135,6 +139,8 @@ beforeEach(() => {
   mockApi.registerGguf.mockResolvedValue({ ok: true, data: REGISTER_GGUF_RESPONSE })
   mockApi.startSidecar.mockResolvedValue({ ok: true, data: { state: 'running', pid: 1234, log_path: '/tmp/sidecar.log', host: '127.0.0.1', port: 7356 } })
   mockApi.benchmarkModel.mockResolvedValue({ ok: true, data: DEFAULT_BENCHMARK })
+  mockApi.recordOnboardingOutcome.mockResolvedValue({ ok: true, data: undefined })
+  mockApi.getSetupStatus.mockResolvedValue({ ok: true, data: { kind: 'ready' } })
 })
 
 // ── Loading state ────────────────────────────────────────────────────────────
