@@ -103,7 +103,7 @@ jobs:
     environment: steam-release
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # ── Resolve build description ──────────────────────────────────────────
       - name: Resolve build description
@@ -240,7 +240,7 @@ jobs:
       # depot content directory.  Catches issues the shell depot-audit cannot:
       # version stamping, icon presence, executable permissions, and depot
       # layout structure.  Skips a platform directory when it is empty.
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
 
