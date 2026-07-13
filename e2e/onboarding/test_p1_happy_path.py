@@ -195,3 +195,19 @@ class TestP1HappyPath:
             f"Session creation failed after setup (status {resp.status_code})"
         )
         assert "session_id" in resp.json()
+
+    def test_network_allowlist_guard_blocks_external_connections(self, fresh_profile):
+        """The autouse network guard must actively block non-loopback connections.
+
+        The whole suite's offline-safe / privacy guarantee (issue #387) rests on
+        the ``network_allowlist_guard`` fixture. This self-check proves the guard
+        is armed in every path — if it silently degraded to a no-op, the
+        "no network request escapes the fixture allowlist" invariant would pass
+        vacuously. A real external connection is never made: the guard raises
+        before delegating to the real socket connect.
+        """
+        import socket
+
+        with pytest.raises(AssertionError, match="non-allowlisted host"):
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.connect(("93.184.216.34", 80))  # example.com — must be blocked

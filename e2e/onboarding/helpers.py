@@ -81,6 +81,29 @@ def assert_url_is_allowlisted(url: str) -> None:
         )
 
 
+def is_allowlisted_host(host: str) -> bool:
+    """True if ``host`` is loopback — the only network onboarding may contact.
+
+    Used by the autouse ``network_allowlist_guard`` fixture to enforce the
+    privacy promise mechanically: any socket connection to a non-loopback host
+    during onboarding fails the test.
+    """
+    import ipaddress
+
+    if host in ("localhost", ""):
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        # Any hostname that is not a bare IP is off the allowlist — onboarding
+        # must never resolve an external name.
+        return False
+    if ip.is_loopback:
+        return True
+    mapped = getattr(ip, "ipv4_mapped", None)
+    return bool(mapped and mapped.is_loopback)
+
+
 def assert_fix_action_not_welcome(fix_action: dict | None, check_id: str) -> None:
     """P7 invariant: a fix_action must never navigate back to the Welcome step.
 

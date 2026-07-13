@@ -28,9 +28,40 @@ from convsim_core.app import create_app
 from convsim_core.config import ServiceConfig
 
 from .fixture_server import FixtureServer, start_fixture_server
+from .helpers import is_allowlisted_host
 
 _REPO_ROOT = Path(__file__).parent.parent.parent
 _OFFICIAL_PACKS_DIR = _REPO_ROOT / "packs" / "official"
+
+
+@pytest.fixture(autouse=True)
+def network_allowlist_guard(monkeypatch):
+    """Mechanically enforce the network allowlist in every path (issue #387).
+
+    Onboarding must only ever contact localhost — the fixture server and the
+    in-process API are the only endpoints a first-run flow may reach. This
+    autouse fixture wraps ``socket.connect`` so that any attempt to open a
+    connection to a non-loopback host during a test fails immediately, turning
+    the "no network request escapes the fixture allowlist" privacy promise into
+    a mechanical assertion that runs in every journey path rather than a helper
+    a test author has to remember to call.
+    """
+    import socket
+
+    real_connect = socket.socket.connect
+
+    def guarded_connect(self, address):
+        if self.family in (socket.AF_INET, socket.AF_INET6) and address:
+            host = address[0]
+            if not is_allowlisted_host(host):
+                raise AssertionError(
+                    f"Onboarding attempted a network connection to non-allowlisted "
+                    f"host {host!r}. First-run flows must only contact localhost; "
+                    "this enforces the offline-safe and privacy guarantees (issue #387)."
+                )
+        return real_connect(self, address)
+
+    monkeypatch.setattr(socket.socket, "connect", guarded_connect)
 
 
 @pytest.fixture()

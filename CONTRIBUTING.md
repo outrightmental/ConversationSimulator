@@ -242,6 +242,13 @@ Include the `assert_no_forbidden_in_preflight` and `assert_fix_action_not_welcom
 helpers from `e2e/onboarding/helpers.py` in every new path test so the
 forbidden-vocabulary and loop-regression invariants are always active.
 
+**Network allowlist (automatic):**
+
+The `network_allowlist_guard` fixture in `conftest.py` is `autouse`, so every
+journey test — existing or new — mechanically enforces the privacy promise: any
+socket connection to a non-loopback host fails the test immediately. New path
+tests inherit this invariant for free; no per-test call is required.
+
 **Fixture server:**
 
 Tests that exercise model downloads use the `fixture_server` fixture, which
