@@ -152,3 +152,32 @@ export interface RuntimeSettingsFieldError {
   field: string;
   message: string;
 }
+
+// ── One-click install pipeline ─────────────────────────────────────────────
+
+export type SetupInstallStageId = 'engine' | 'model' | 'verify' | 'warmup' | 'packs';
+export type SetupInstallStageState = 'pending' | 'running' | 'complete' | 'failed' | 'skipped';
+export type SetupInstallJobStatus = 'pending' | 'running' | 'cancelled' | 'complete' | 'failed';
+
+export interface SetupInstallStage {
+  id: SetupInstallStageId;
+  label: string;
+  state: SetupInstallStageState;
+  bytes_downloaded: number | null;
+  bytes_total: number | null;
+  error: string | null;
+}
+
+export interface SetupInstallJob {
+  id: number;
+  status: SetupInstallJobStatus;
+  registry_id: string | null;
+  stages: SetupInstallStage[];
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface StartInstallRequest {
+  registry_id: string;
+}

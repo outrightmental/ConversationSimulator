@@ -10,6 +10,15 @@ All downloads are streamed to a .part file, then:
   4. On network or disk error: the .part file is deleted (if present)
      and the record is marked 'failed'.
 
+A .part file that survives an interrupted download (e.g. the app was killed
+mid-transfer) is resumed on the next attempt: the download issues an HTTP
+Range request from the existing byte offset and appends, rather than
+restarting from zero.  If the server ignores the Range header (responds 200
+instead of 206) the transfer falls back to a clean restart.  This is the
+server half of the #382 "kill at 40%, resume from ~40%" guarantee; the final
+SHA-256 check still gates registration, so a corrupt resume can never be
+promoted to 'ready'.
+
 Network calls are gated by NetworkMode.EXPLICIT_DOWNLOAD, blocking
 any accidental call from play-mode code.
 """
@@ -35,6 +44,20 @@ logger = logging.getLogger(__name__)
 
 _CHUNK_SIZE = 65_536  # 64 KB
 _PROGRESS_INTERVAL = 1_048_576  # report progress every 1 MB
+
+
+def _parse_content_range_total(value: str | None) -> int | None:
+    """Extract the total size from a ``Content-Range: bytes <s>-<e>/<total>`` header.
+
+    Returns None when the header is absent, malformed, or the total is ``*``.
+    """
+    if not value:
+        return None
+    try:
+        total_part = value.split("/", 1)[1].strip()
+        return int(total_part)
+    except (IndexError, ValueError):
+        return None
 
 
 def verify_sha256(file_path: Path, expected_hex: str) -> bool:
@@ -87,6 +110,13 @@ async def execute_download(
     )
     conn.commit()
 
+    # Resume support: a .part file left behind by an interrupted download is
+    # continued from its byte offset via a Range request instead of restarting
+    # from zero.  When there is no partial file (resume_from == 0) the request
+    # is an ordinary full GET.
+    resume_from = part_path.stat().st_size if part_path.exists() else 0
+    headers = {"Range": f"bytes={resume_from}-"} if resume_from > 0 else {}
+
     bytes_written = 0
     bytes_since_update = 0
     own_client = _client is None
@@ -94,12 +124,34 @@ async def execute_download(
     try:
         client = _client or httpx.AsyncClient(follow_redirects=True, timeout=30.0)
         try:
-            async with client.stream("GET", download_url) as response:
+            async with client.stream("GET", download_url, headers=headers) as response:
                 response.raise_for_status()
-                content_length = response.headers.get("content-length")
-                size_bytes: int | None = int(content_length) if content_length else None
 
-                with open(part_path, "wb") as f:
+                # Honour the resume only when the server confirms it with a 206;
+                # a plain 200 means the Range was ignored, so start over cleanly.
+                resuming = resume_from > 0 and response.status_code == 206
+                if resuming:
+                    size_bytes: int | None = _parse_content_range_total(
+                        response.headers.get("content-range")
+                    )
+                    if size_bytes is None:
+                        cl = response.headers.get("content-length")
+                        size_bytes = resume_from + int(cl) if cl else None
+                    open_mode = "ab"
+                    bytes_written = resume_from
+                    logger.info(
+                        "download: resuming install_id=%d from byte %d", install_id, resume_from
+                    )
+                else:
+                    content_length = response.headers.get("content-length")
+                    size_bytes = int(content_length) if content_length else None
+                    open_mode = "wb"
+
+                # Reflect the resumed offset immediately so pollers don't briefly
+                # report 0 bytes before the first progress interval elapses.
+                update_install_progress(conn, install_id, bytes_written, size_bytes)
+
+                with open(part_path, open_mode) as f:
                     async for chunk in response.aiter_bytes(chunk_size=_CHUNK_SIZE):
                         if cancel_event is not None and cancel_event.is_set():
                             logger.info(

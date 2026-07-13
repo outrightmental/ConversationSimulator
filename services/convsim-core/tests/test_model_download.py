@@ -316,6 +316,101 @@ async def test_execute_download_sets_downloading_status_before_completion(db, tm
     assert status_during_download == ["downloading"]
 
 
+# ── Resume: interrupted .part continues from its byte offset ──────────────────
+
+
+def _make_mock_client_with_response(
+    *, status_code: int, chunks: bytes, extra_headers: dict[str, str] | None = None
+) -> httpx.AsyncClient:
+    """Mock client whose GET yields *chunks* with a given status and headers."""
+
+    async def _aiter_bytes(chunk_size=None):
+        yield chunks
+
+    headers = {"content-length": str(len(chunks))}
+    if extra_headers:
+        headers.update(extra_headers)
+
+    mock_response = MagicMock()
+    mock_response.status_code = status_code
+    mock_response.raise_for_status = MagicMock()
+    mock_response.headers = headers
+    mock_response.aiter_bytes = _aiter_bytes
+
+    mock_cm = MagicMock()
+    mock_cm.__aenter__ = AsyncMock(return_value=mock_response)
+    mock_cm.__aexit__ = AsyncMock(return_value=None)
+
+    mock_client = MagicMock(spec=httpx.AsyncClient)
+    mock_client.stream = MagicMock(return_value=mock_cm)
+    mock_client.aclose = AsyncMock()
+    return mock_client
+
+
+@pytest.mark.asyncio
+async def test_execute_download_resumes_from_part_offset(db, tmp_path):
+    """A surviving .part file is continued via a Range request, not restarted."""
+    first_half = b"the-first-half-of-the-weights"
+    second_half = b"and-the-remaining-second-half"
+    full = first_half + second_half
+    sha = _sha256_of(full)
+    conn = db.connection()
+    install_id = create_install_record(conn, None, "test.gguf", "")
+
+    dest_dir = tmp_path / "models"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    # Simulate an interrupted download: the first half is already on disk.
+    (dest_dir / "test.gguf.part").write_bytes(first_half)
+
+    total = len(full)
+    mock_client = _make_mock_client_with_response(
+        status_code=206,
+        chunks=second_half,
+        extra_headers={"content-range": f"bytes {len(first_half)}-{total - 1}/{total}"},
+    )
+
+    await execute_download(
+        conn, install_id, "http://example.test/model.gguf", sha, dest_dir, "test.gguf",
+        _client=mock_client,
+    )
+
+    # The Range header must have been sent from the existing offset.
+    _, kwargs = mock_client.stream.call_args
+    assert kwargs["headers"]["Range"] == f"bytes={len(first_half)}-"
+
+    record = get_install_record(conn, install_id)
+    assert record["install_status"] == "ready"
+    assert record["size_bytes"] == total
+    assert (dest_dir / "test.gguf").read_bytes() == full
+    assert not (dest_dir / "test.gguf.part").exists()
+
+
+@pytest.mark.asyncio
+async def test_execute_download_restarts_when_server_ignores_range(db, tmp_path):
+    """If the server answers 200 (Range ignored), the stale .part is overwritten."""
+    full = b"a-complete-fresh-download-of-the-model"
+    sha = _sha256_of(full)
+    conn = db.connection()
+    install_id = create_install_record(conn, None, "test.gguf", "")
+
+    dest_dir = tmp_path / "models"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    # A stale/partial .part exists, but the server will ignore the Range header.
+    (dest_dir / "test.gguf.part").write_bytes(b"stale-bytes-that-must-be-discarded")
+
+    mock_client = _make_mock_client_with_response(status_code=200, chunks=full)
+
+    await execute_download(
+        conn, install_id, "http://example.test/model.gguf", sha, dest_dir, "test.gguf",
+        _client=mock_client,
+    )
+
+    record = get_install_record(conn, install_id)
+    assert record["install_status"] == "ready"
+    assert record["size_bytes"] == len(full)
+    assert (dest_dir / "test.gguf").read_bytes() == full
+
+
 # ── Network policy: download must not work in PLAY mode ──────────────────────
 
 
