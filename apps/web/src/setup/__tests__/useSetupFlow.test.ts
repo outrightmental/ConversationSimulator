@@ -66,7 +66,25 @@ const MODELS_DATA: ModelsResponse = {
   last_benchmark: null,
 }
 
-const PREFLIGHT_PASS: PreflightResponse = { overall: 'pass', checks: [], ran_at: '2026-01-01T00:00:00Z' }
+const PREFLIGHT_PASS: PreflightResponse = {
+  overall: 'pass',
+  checks: [],
+  ran_at: '2026-01-01T00:00:00Z',
+}
+
+const DISK_SPACE_FAIL_CHECK: PreflightResponse = {
+  overall: 'fail',
+  checks: [{
+    id: 'disk-space',
+    name: 'Not enough disk space',
+    status: 'fail',
+    message: 'The AI model needs 5.0 GB and this disk has 1.0 GB free.',
+    severity: 'needs-human',
+    autofix: false,
+    fix_action: { kind: 'navigate', href: '/settings', label: 'Choose another location' },
+  }],
+  ran_at: '2026-01-01T00:00:00Z',
+}
 
 function wrapper({ children }: { children: React.ReactNode }) {
   return React.createElement(MemoryRouter, { future: { v7_startTransition: true, v7_relativeSplatPath: true } }, children)
@@ -109,18 +127,35 @@ describe('useSetupFlow step machine', () => {
     await waitFor(() => expect(result.current.step).toBe('choose'))
   })
 
-  // loading → preflight when blocking checks fail
-  it('transitions loading → preflight when a blocking check fails', async () => {
+  // loading → preflight when a needs-human check fails
+  it('transitions loading → preflight when a needs-human check fails', async () => {
+    mockApi.preflight.mockResolvedValue({ ok: true, data: DISK_SPACE_FAIL_CHECK })
+    const { result } = renderHook(() => useSetupFlow('loading'), { wrapper })
+    await waitFor(() => expect(result.current.step).toBe('preflight'))
+  })
+
+  // loading → does NOT route to preflight when an auto-fixable check fails
+  it('does not route to preflight when an auto-fixable check fails', async () => {
     mockApi.preflight.mockResolvedValue({
       ok: true,
       data: {
         overall: 'fail' as const,
-        checks: [{ id: 'llama-cpp-binary', name: 'llama.cpp binary', status: 'fail' as const, message: 'Binary not found', fix_action: null }],
+        checks: [{
+          id: 'llama-cpp-binary',
+          name: 'AI engine',
+          status: 'fail' as const,
+          message: 'The AI engine is not installed.',
+          severity: 'auto-fixable' as const,
+          autofix: true,
+          fix_action: { kind: 'install-engine' as const, href: '/settings/install-engine', label: 'Install engine' },
+        }],
         ran_at: '2026-01-01T00:00:00Z',
       },
     })
     const { result } = renderHook(() => useSetupFlow('loading'), { wrapper })
-    await waitFor(() => expect(result.current.step).toBe('preflight'))
+    // Should proceed past loading without hitting the preflight step
+    await waitFor(() => expect(result.current.step).not.toBe('loading'))
+    expect(result.current.step).not.toBe('preflight')
   })
 
   // loading → load-error when getModels fails
@@ -340,15 +375,8 @@ describe('useSetupFlow step machine', () => {
     expect(mockApi.preflight).toHaveBeenCalled()
   })
 
-  it('handleAdvancedGguf surfaces blocking preflight failures before gguf-path', async () => {
-    mockApi.preflight.mockResolvedValue({
-      ok: true,
-      data: {
-        overall: 'fail',
-        checks: [{ id: 'llama-cpp-binary', name: 'llama.cpp', status: 'fail' as const, message: 'missing', fix_action: null }],
-        ran_at: '2026-01-01T00:00:00Z',
-      },
-    })
+  it('handleAdvancedGguf surfaces needs-human preflight failures before gguf-path', async () => {
+    mockApi.preflight.mockResolvedValue({ ok: true, data: DISK_SPACE_FAIL_CHECK })
     const { result } = renderHook(() => useSetupFlow('welcome'), { wrapper })
 
     act(() => { result.current.handleAdvancedGguf() })

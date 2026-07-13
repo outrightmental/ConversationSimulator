@@ -388,8 +388,8 @@ const PASS_PREFLIGHT = {
   overall: 'pass' as const,
   ran_at: '2026-01-01T00:00:00.000+00:00',
   checks: [
-    { id: 'runtime-handshake', name: 'Runtime handshake', status: 'pass' as const, message: 'convsim-core 0.1.0 is running.', fix_action: null },
-    { id: 'llm-present', name: 'Language model', status: 'pass' as const, message: '1 model installed and ready.', fix_action: null },
+    { id: 'runtime-handshake', name: 'Runtime handshake', status: 'pass' as const, message: 'convsim-core 0.1.0 is running.', severity: 'informational' as const, autofix: false, fix_action: null },
+    { id: 'llm-present', name: 'AI model', status: 'pass' as const, message: '1 AI model installed and ready.', severity: 'auto-fixable' as const, autofix: true, fix_action: null },
   ],
 }
 
@@ -397,8 +397,8 @@ const FAIL_PREFLIGHT = {
   overall: 'fail' as const,
   ran_at: '2026-01-01T00:00:00.000+00:00',
   checks: [
-    { id: 'llama-cpp-binary', name: 'Inference engine', status: 'fail' as const, message: 'llama-server binary not found.', fix_action: { kind: 'open-url' as const, href: 'https://example.com/setup', label: 'Setup guide' } },
-    { id: 'llm-present', name: 'Language model', status: 'fail' as const, message: 'No language model installed.', fix_action: { kind: 'wizard-step' as const, href: 'choose', label: 'Open Model Manager' } },
+    { id: 'llama-cpp-binary', name: 'AI engine', status: 'fail' as const, message: 'The AI engine is not installed.', severity: 'auto-fixable' as const, autofix: true, fix_action: { kind: 'open-url' as const, href: 'https://example.com/setup', label: 'Setup guide' } },
+    { id: 'llm-present', name: 'AI model', status: 'fail' as const, message: 'No AI model is installed.', severity: 'auto-fixable' as const, autofix: true, fix_action: { kind: 'wizard-step' as const, href: 'choose', label: 'Open Model Manager' } },
   ],
 }
 
