@@ -26,26 +26,26 @@
 {
     "Run Process"
     {
-        // HasRunKey ensures this process runs exactly once per machine.
-        // Steam writes this registry key after the script completes; on every
-        // subsequent launch (including app updates), the key is found and the
-        // Run Process block is skipped entirely.
-        "HasRunKey"     "HKEY_LOCAL_MACHINE\\SOFTWARE\\Outright Mental\\Conversation Simulator\\WebView2Bootstrapped"
+        // Each process to run is a named block inside "Run Process" (per the
+        // Steamworks InstallScripts schema — the friendly name is arbitrary but
+        // required; keys placed directly under "Run Process" are not executed).
+        "WebView2Runtime"
+        {
+            // HasRunKey ensures this process runs exactly once per machine.
+            // Steam writes this registry key after the process exits 0; on every
+            // subsequent launch (including app updates), the key is found and the
+            // block is skipped entirely.
+            "HasRunKey"     "HKEY_LOCAL_MACHINE\\SOFTWARE\\Outright Mental\\Conversation Simulator\\WebView2Bootstrapped"
 
-        // The bootstrapper is shipped at the depot root alongside the app binary.
-        // Steam resolves the path relative to the depot install directory.
-        "Process 1"     "MicrosoftEdgeWebView2Setup.exe"
-        "Command 1"     "/silent /install"
+            // The bootstrapper is shipped at the depot root alongside the app
+            // binary.  Steam resolves the path relative to the depot install dir.
+            "Process 1"     "MicrosoftEdgeWebView2Setup.exe"
+            "Command 1"     "/silent /install"
 
-        "Description"   "Installing Microsoft WebView2 Runtime (required by Conversation Simulator)..."
-
-        // "none" type: no Steam overlay progress; the bootstrapper handles its
-        // own UI (minimal — a brief spinner, then completes silently).
-        "Type"          "none"
-
-        // NoCleanUp "1": do not delete the bootstrapper exe after running.
-        // Keeping it in the depot means it is present for future repairs
-        // without requiring a re-download.
-        "NoCleanUp"     "1"
+            // NoCleanUp "1": do not delete the bootstrapper exe after running.
+            // Keeping it in the depot means it is present for future repairs
+            // without requiring a re-download.
+            "NoCleanUp"     "1"
+        }
     }
 }
