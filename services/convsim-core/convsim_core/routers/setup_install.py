@@ -134,6 +134,19 @@ async def _run_pipeline(
         _save()
         update_job_status(conn, job_id, "failed", error)
 
+    def _cancel(stage_id: str) -> None:
+        # A user-requested cancel is a distinct terminal state from a failure:
+        # the job status must read 'cancelled', not 'failed' (the DELETE-with-no-
+        # running-task path already records it that way, so both paths agree and
+        # SetupInstallJobStatus consumers can tell an abort from a real error).
+        msg = "Cancelled by user."
+        for s in stages:
+            if s.id == stage_id:
+                s.state = "failed"
+                s.error = msg
+        _save()
+        update_job_status(conn, job_id, "cancelled", msg)
+
     def _is_cancelled() -> bool:
         return cancel_event.is_set()
 
@@ -167,14 +180,14 @@ async def _run_pipeline(
             stages[0].bytes_total = None
             _save()
         except asyncio.CancelledError:
-            _fail("engine", "Cancelled by user.")
+            _cancel("engine")
             return
         except Exception as exc:
             _fail("engine", str(exc))
             return
 
     if _is_cancelled():
-        _fail("engine", "Cancelled by user.")
+        _cancel("engine")
         return
 
     # ── Stage 2 + 3: Model download + verify ─────────────────────────────────
@@ -307,7 +320,7 @@ async def _run_pipeline(
         final_status = rec["install_status"] if rec else "failed"
 
         if final_status == "cancelled" or _is_cancelled():
-            _fail("model", "Cancelled by user.")
+            _cancel("model")
             return
 
         if final_status == "checksum_mismatch":
@@ -368,7 +381,7 @@ async def _run_pipeline(
         _save()
 
     if _is_cancelled():
-        _fail("warmup", "Cancelled by user.")
+        _cancel("warmup")
         return
 
     # ── Stage 4: Warmup ───────────────────────────────────────────────────────
@@ -436,7 +449,7 @@ async def _run_pipeline(
     _save()
 
     if _is_cancelled():
-        _fail("packs", "Cancelled by user.")
+        _cancel("packs")
         return
 
     # ── Stage 5: Packs ────────────────────────────────────────────────────────

@@ -349,7 +349,7 @@ def _insert_downloadable_model(conn: Any, registry_id: str = "cm") -> None:
     conn.commit()
 
 
-async def _drive_pipeline(db, tmp_path, download_side_effect):
+async def _drive_pipeline(db, tmp_path, download_side_effect, cancel_event=None):
     """Run _run_pipeline with the engine + warmup + packs stages stubbed out so
     only the model/verify download behaviour under test executes."""
     import types
@@ -378,7 +378,7 @@ async def _drive_pipeline(db, tmp_path, download_side_effect):
             config=config,
             sidecar=sidecar,
             model_cancel_events={},
-            cancel_event=asyncio.Event(),
+            cancel_event=cancel_event or asyncio.Event(),
         )
     return job_id
 
@@ -413,6 +413,31 @@ async def test_checksum_mismatch_retries_once_then_succeeds(tmp_path):
         stages = {s["id"]: s for s in job["stages"]}
         assert stages["model"]["state"] == "complete"
         assert stages["verify"]["state"] == "complete"
+    finally:
+        db.close()
+
+
+@pytest.mark.asyncio
+async def test_user_cancel_marks_job_cancelled_not_failed(tmp_path):
+    """A cancel signalled while the pipeline runs lands the job in 'cancelled'
+    (matching the DELETE-with-no-task path) — never 'failed', so consumers can
+    distinguish a user abort from a real error."""
+    db = Database.open(str(tmp_path / "db"))
+    try:
+        cancel_event = asyncio.Event()
+
+        async def _dl(conn, install_id, url, sha, models_dir, filename, *, cancel_event=None):
+            # Simulate the download aborting because the pipeline was cancelled.
+            conn.execute(
+                "UPDATE installed_models SET install_status = 'cancelled', "
+                "error_message = 'Download cancelled by user.' WHERE id = ?", (install_id,))
+            conn.commit()
+
+        cancel_event.set()
+        job_id = await _drive_pipeline(db, tmp_path, _dl, cancel_event=cancel_event)
+
+        job = get_job(db.connection(), job_id)
+        assert job["status"] == "cancelled"
     finally:
         db.close()
 
