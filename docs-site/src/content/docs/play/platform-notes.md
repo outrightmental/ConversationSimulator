@@ -607,16 +607,14 @@ API differences:
 ### llama.cpp binary
 
 The `runtimes/llama_cpp/download-runtime.sh` script downloads a pre-built
-`llama-server` binary for the current platform. On Windows, use WSL2 to run
-this script (the binary is the Linux x86_64 build) or build llama.cpp from
-source using MSVC:
+`llama-server` binary for the current platform. Release builds bundle a
+native Windows x64 binary — no WSL2 or manual build step is needed for
+end-user installs.
+
+For contributor builds on Windows, run the PowerShell equivalent:
 
 ```powershell
-# Windows — build from source
-git clone https://github.com/ggml-org/llama.cpp
-cd llama.cpp
-cmake -B build
-cmake --build build --config Release
+.\runtimes\llama_cpp\download-runtime.ps1
 ```
 
 See [`runtimes/llama_cpp/README.md`](https://github.com/outrightmental/ConversationSimulator/blob/main/runtimes/llama_cpp/README.md) for more

@@ -43,7 +43,7 @@ loader.
   service topology, turn pipeline, session state machine, WebSocket contract.
 - **Runtime adapters:** [Runtime Adapters](/reference/runtime-adapters/) —
   how to add support for a new local model backend.
-- **Local models guide:** [Local Models](/play/local-models/) —
+- **Local models guide:** [Choosing how to run the AI](/play/ai-engine/) —
   supported formats, download flow, and hardware requirements.
 - **Performance:** [Performance](/play/performance/) —
   latency targets and graceful degradation strategy.

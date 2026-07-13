@@ -255,19 +255,10 @@ Get-FileHash "ConversationSimulator_<version>_x64-setup.exe" -Algorithm SHA256
   publisher — click **More info → Run anyway**.
 - **Linux:** `chmod +x *.AppImage` then run it directly. No installation needed.
 
-### 4. Start the backend
+### 4. Launch the app
 
-> **Alpha limitation:** The desktop app wraps the browser UI but does not yet
-> launch the backend automatically. You must start `convsim-core` in a separate
-> terminal before using the app.
-
-```bash
-./scripts/dev.sh          # macOS / Linux
-.\scripts\dev.ps1         # Windows PowerShell
-```
-
-Then open the desktop app. The backend sidecar will be bundled in a future
-release, making this step unnecessary.
+Open the installed application. The backend sidecar (`convsim-core`) starts
+automatically — no separate terminal is required.
 
 ### 5. Set up a local model
 
