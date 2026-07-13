@@ -193,24 +193,6 @@ async def _run_pipeline(
         _fail("model", "No download URL configured for this model.")
         return
 
-    # Pre-flight disk check: need ~2.2× model size for .part file + final copy.
-    size_gb: float | None = model_row.get("size_gb")
-    if size_gb and size_gb > 0:
-        models_dir_path = Path(config.models_dir)
-        models_dir_path.mkdir(parents=True, exist_ok=True)
-        free_bytes = shutil.disk_usage(str(models_dir_path)).free
-        required_bytes = int(size_gb * 2.2 * 1024 ** 3)
-        if free_bytes < required_bytes:
-            free_gb = free_bytes / 1024 ** 3
-            shortfall_gb = (required_bytes / 1024 ** 3) - free_gb
-            _fail(
-                "model",
-                f"Not enough disk space: {free_gb:.1f} GB available, "
-                f"{size_gb * 2.2:.1f} GB needed ({shortfall_gb:.1f} GB short). "
-                "Free up space and try again.",
-            )
-            return
-
     # Check if already installed and ready.
     existing_ready = conn.execute(
         "SELECT id, file_path FROM installed_models "
@@ -230,6 +212,26 @@ async def _run_pipeline(
     else:
         filename = f"{registry_id}.gguf"
         models_dir = Path(config.models_dir)
+
+        # Pre-flight disk check (only when we will actually download): need
+        # ~2.2× model size for the .part file plus the final copy. Skipped on
+        # the already-installed path above so an idempotent repair re-run is
+        # never blocked by a full disk when nothing needs to be fetched.
+        size_gb: float | None = model_row.get("size_gb")
+        if size_gb and size_gb > 0:
+            models_dir.mkdir(parents=True, exist_ok=True)
+            free_bytes = shutil.disk_usage(str(models_dir)).free
+            required_bytes = int(size_gb * 2.2 * 1024 ** 3)
+            if free_bytes < required_bytes:
+                free_gb = free_bytes / 1024 ** 3
+                shortfall_gb = (required_bytes / 1024 ** 3) - free_gb
+                _fail(
+                    "model",
+                    f"Not enough disk space: {free_gb:.1f} GB available, "
+                    f"{size_gb * 2.2:.1f} GB needed ({shortfall_gb:.1f} GB short). "
+                    "Free up space and try again.",
+                )
+                return
 
         in_progress = conn.execute(
             "SELECT id FROM installed_models "
