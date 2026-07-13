@@ -3,8 +3,8 @@ import { ActionButton } from '../primitives'
 import { errorMessage } from '../errorMessage'
 import { ApiErrorView } from '../../components/ApiErrorView'
 import type { UseSetupFlowReturn } from '../useSetupFlow'
+import { TROUBLESHOOTING_DOCS_URL } from '../docsUrls'
 
-const SETUP_DOCS_URL = 'https://docs.conversationsimulator.com/start/install/'
 const ISSUES_URL = 'https://github.com/outrightmental/ConversationSimulator/issues'
 
 interface LoadErrorStepProps {
@@ -38,7 +38,7 @@ export function LoadErrorStep({ flow, mode }: LoadErrorStepProps) {
               If your hardware cannot run a full model, the text-only demo works without one.
             </p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.75rem' }}>
-              <a href={SETUP_DOCS_URL} target="_blank" rel="noreferrer" style={{ fontSize: '0.825rem', color: '#a1a1aa' }}>Troubleshooting docs</a>
+              <a href={TROUBLESHOOTING_DOCS_URL} target="_blank" rel="noreferrer" style={{ fontSize: '0.825rem', color: '#a1a1aa' }}>Troubleshooting docs</a>
               <span style={{ color: '#52525b', fontSize: '0.825rem' }}>·</span>
               <a href={ISSUES_URL} target="_blank" rel="noreferrer" style={{ fontSize: '0.825rem', color: '#a1a1aa' }}>Report an issue</a>
             </div>
