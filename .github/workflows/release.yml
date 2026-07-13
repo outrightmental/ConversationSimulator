@@ -239,6 +239,11 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Non-secret repo variable: pack-id ↔ DLC App ID mapping baked into
+          # both the Vite bundle (VITE_ prefix) and validated by build.rs.
+          # The beforeBuildCommand in tauri.conf.json re-runs `pnpm web build`
+          # so this env var reaches Vite automatically.
+          VITE_STEAM_DLC_APP_IDS: ${{ vars.STEAM_DLC_APP_IDS }}
         run: |
           if [ -z "${APPLE_SIGNING_IDENTITY:-}" ]; then
             unset APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID
