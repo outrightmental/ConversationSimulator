@@ -71,8 +71,54 @@ chain and private key.
 
 ## CI setup (GitHub Actions secrets)
 
-For OV certificates (`.pfx` file), store the following as **GitHub Actions
-secrets** (Settings → Secrets and variables → Actions → Secrets):
+### Org-level secret inventory
+
+The following Windows signing and scanning secrets are stored at the
+**outrightmental organisation level**, scoped to `ConversationSimulator` and
+`FeverTilt`. They are entered once and rotated in one place.
+
+| Secret name | Contents | Used by |
+|-------------|----------|---------|
+| `WINDOWS_CODESIGN_CERT` | Base64-encoded PEM chain (leaf first) matching the Cloud KMS key | Future KMS/jsign signing step (see note below) |
+| `GCP_SA_KEY_JSON` | GCP service-account key JSON for Cloud KMS access | Future KMS/jsign signing step |
+| `GCP_KMS_KEY` | Fully-qualified Cloud KMS key resource path | Future KMS/jsign signing step |
+| `AZURE_CLIENT_ID` | Azure service-principal client ID for Defender storage | Future Defender upload step |
+| `AZURE_CLIENT_SECRET` | Azure service-principal secret | Future Defender upload step |
+| `AZURE_TENANT_ID` | Azure tenant ID | Future Defender upload step |
+| `AZURE_SUBSCRIPTION_ID` | Azure subscription ID | Future Defender upload step |
+| `AZURE_SCAN_STORAGE_ACCOUNT` | Storage account name for Defender-monitored upload | Future Defender upload step |
+| `AZURE_SCAN_CONTAINER` | Blob container name for Defender-monitored upload | Future Defender upload step |
+
+> **Note:** The KMS/jsign signing migration and the Azure Defender upload job
+> are tracked as separate issues. Until those land, `release.yml` uses the
+> PFX-based approach described below, with `WINDOWS_SIGN_CERT_PFX` and
+> `WINDOWS_SIGN_CERT_PASSWORD` set as repo-level secrets.
+
+**To set or rotate org-level secrets** (values supplied interactively, never
+committed):
+
+```bash
+gh secret set WINDOWS_CODESIGN_CERT \
+  --org outrightmental \
+  --visibility selected \
+  --repos ConversationSimulator,FeverTilt
+# repeat for each secret in the table above
+```
+
+Or use the org Settings UI: GitHub → outrightmental org **Settings → Secrets
+and variables → Actions → Secrets → New organisation secret**, then set
+**Repository access** to *Selected repositories: ConversationSimulator, FeverTilt*.
+
+**Rotation:** Rotating a secret at org level updates it for all scoped
+repositories simultaneously. Run `gh secret list --org outrightmental` to
+confirm the inventory after any change.
+
+### Current approach: PFX-based signing (repo-level secrets)
+
+Until the KMS migration lands, the release workflow uses `.pfx`-based
+Authenticode signing via `signtool.exe`. Store the following as
+**repository-level** GitHub Actions secrets (Settings → Secrets and variables
+→ Actions → Secrets):
 
 | Secret name | Contents |
 |-------------|----------|
@@ -223,8 +269,16 @@ When the code-signing certificate approaches expiry:
 
 1. Purchase a new certificate from the same or another trusted CA.
 2. Export as `.pfx` and base64-encode as described above.
-3. Update `WINDOWS_SIGN_CERT_PFX` and `WINDOWS_SIGN_CERT_PASSWORD` in GitHub
-   Actions secrets.
+3. Update `WINDOWS_SIGN_CERT_PFX` and `WINDOWS_SIGN_CERT_PASSWORD` as
+   repository-level GitHub Actions secrets.
+   Once the KMS migration lands, update the org-level `WINDOWS_CODESIGN_CERT`
+   secret instead (see [Org-level secret inventory](#ci-setup-github-actions-secrets)):
+   ```bash
+   gh secret set WINDOWS_CODESIGN_CERT \
+     --org outrightmental \
+     --visibility selected \
+     --repos ConversationSimulator,FeverTilt
+   ```
 4. Rebuild and sign the current release to confirm the new certificate works.
 5. Files signed with the old certificate remain valid because of the trusted
    timestamp embedded at signing time (`/tr`).
