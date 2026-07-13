@@ -43,7 +43,6 @@ jobs:
       # the Apple-ID fallback trio is configured.  Both paths drive the same
       # notarytool submission inside Tauri; only the authentication method differs.
       HAS_NOTARIZATION: ${{ secrets.APPLE_ID != '' || secrets.APPLE_API_KEY != '' }}
-      HAS_ASC_API_KEY: ${{ secrets.APPLE_API_KEY != '' }}
       HAS_WINDOWS_CERT: ${{ secrets.WINDOWS_SIGN_CERT_PFX != '' }}
       HAS_UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
       # REQUIRE_SIGNED_MACOS is true on release tags (any v*) regardless of
