@@ -239,9 +239,12 @@ export default function ScenarioLibrary() {
 
   // DLC catalog entries whose content is not yet installed (not in scenario list).
   // Always show these as "Available on Steam" regardless of current search/filters.
+  // Wait until the scenario list has loaded before deciding what is unowned —
+  // otherwise every catalog entry (including packs the user owns) would briefly
+  // render as a buy card while `scenarios` is still null.
   const unownedDlcEntries = useMemo(
-    () => DLC_CATALOG.filter((e) => !installedPackIds.has(e.pack_id)),
-    [installedPackIds],
+    () => (scenarios === null ? [] : DLC_CATALOG.filter((e) => !installedPackIds.has(e.pack_id))),
+    [scenarios, installedPackIds],
   )
 
   // Returns true when an installed pack's scenarios can be launched.

@@ -6,3 +6,4 @@ allowBuilds:
   better-sqlite3: true
   esbuild: true
   "@tauri-apps/cli": true
+  sharp: set this to true or false

@@ -1219,6 +1219,26 @@ describe('premium DLC — unowned catalog entries', () => {
     ).toBeInTheDocument()
   })
 
+  it('does not render unowned DLC cards until the scenario list has loaded', async () => {
+    // Keep listScenarios pending so `scenarios` stays null (loading state).
+    let resolveScenarios: (v: { ok: true; data: ScenarioInfo[] }) => void
+    mockApi.listScenarios.mockReturnValue(
+      new Promise((r) => {
+        resolveScenarios = r
+      }),
+    )
+
+    renderLibrary()
+    await waitFor(() => screen.getByText('Loading scenarios…'))
+    // While loading, no premium buy card should flash — including for packs the
+    // user may own once the list resolves.
+    expect(screen.queryByTestId(`dlc-unowned-${FIRST_DLC.pack_id}`)).not.toBeInTheDocument()
+
+    resolveScenarios!({ ok: true, data: ALL_SCENARIOS })
+    await waitFor(() => screen.getByText('Behavioral Interview'))
+    expect(screen.getByTestId(`dlc-unowned-${FIRST_DLC.pack_id}`)).toBeInTheDocument()
+  })
+
   it('clicking "Get on Steam" calls openStorePage with the DLC entry', async () => {
     const mockOpenStorePage = vi.fn()
     mockUseSteamDlcStore.mockReturnValue({ openStorePage: mockOpenStorePage })
