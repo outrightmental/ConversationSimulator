@@ -319,6 +319,12 @@ jobs:
           # so this env var reaches Vite automatically.
           VITE_STEAM_DLC_APP_IDS: ${{ vars.STEAM_DLC_APP_IDS }}
         run: |
+          # Scrub the decoded ASC private key from disk on ANY exit — including a
+          # failed build.  GitHub runs this step with `bash -e`, so a `pnpm build`
+          # failure aborts before a trailing `rm` would run; an EXIT trap is the
+          # only way to guarantee the .p8 never outlives the step.
+          ASC_KEY_FILE=""
+          trap 'rm -f "${ASC_KEY_FILE:-}"' EXIT
           if [ -z "${APPLE_SIGNING_IDENTITY:-}" ]; then
             unset APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID
             unset APPLE_API_KEY APPLE_API_ISSUER
@@ -334,10 +340,6 @@ jobs:
             unset APPLE_ID APPLE_PASSWORD
           fi
           pnpm --filter @convsim/desktop build
-          # Scrub the decoded ASC private key from disk the moment the build ends.
-          if [ -n "${ASC_KEY_FILE:-}" ] && [ -f "${ASC_KEY_FILE:-}" ]; then
-            rm -f "$ASC_KEY_FILE"
-          fi
 
       # ── Verify macOS signature, entitlements, notarization, and stapling ──────
       # Confirms that Tauri's signing + Apple notarisation pipeline completed
