@@ -614,122 +614,78 @@ jobs:
           CERT_PFX_BASE64:       ${{ secrets.WINDOWS_SIGN_CERT_PFX }}
           CERT_PASSWORD:         ${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}
         run: |
+          $ErrorActionPreference = 'Stop'
+
+          # Collect all files to sign:
+          # 1. Tauri-produced NSIS installers and MSI packages.
           $bundleDir  = "apps\desktop\src-tauri\target\release\bundle"
-          $installers = Get-ChildItem -Recurse -Path $bundleDir `
-            -Include "*.exe","*.msi" -ErrorAction SilentlyContinue
-          if (-not $installers) {
-            Write-Host "  WARN  No installers found in $bundleDir — skipping outer signing."
+          $installers = @(Get-ChildItem -Recurse -Path $bundleDir `
+            -Include "*.exe","*.msi" -ErrorAction SilentlyContinue)
+
+          # 2. Every PE file that ships in the Windows Steam depot.  These go
+          #    into the depot with no installer wrapper, so each must carry its
+          #    own Authenticode signature (issue #408 acceptance criterion:
+          #    "every PE file in the depot is Authenticode-signed").  That is:
+          #      - the main binary at the release root (convsim-desktop.exe,
+          #        renamed to ConversationSimulator.exe during packaging),
+          #      - any root-level support DLLs (WebView2Loader.dll, …),
+          #      - every .exe/.dll under resources/ — the convsim-core sidecar
+          #        plus the bundled runtimes (llama-server.exe and its sibling
+          #        ggml*/llama DLLs, whisper/TTS binaries).
+          #    The WebView2 bootstrapper is downloaded later, during packaging,
+          #    and is already Microsoft-signed, so it is not in this list.
+          $releaseDir = "apps\desktop\src-tauri\target\release"
+          $depotBinaries = @(
+            Get-ChildItem -Path "$releaseDir\*" -File -Include "*.exe","*.dll" `
+              -ErrorAction SilentlyContinue
+          )
+          # Resolve the resources tree the SAME way the packaging step does:
+          # Tauri copies bundle.resources next to the release binary, but fall
+          # back to the source resources/ directory if that copy is absent.
+          # Signing and packaging must agree on the source, otherwise an
+          # unsigned sidecar/runtime binary could reach the depot via the
+          # fallback path while this signing step (and the verify step) only
+          # looked at target/release/resources — see issue #408's "every PE
+          # file in the depot is Authenticode-signed" criterion.
+          $resourcesDir = if (Test-Path "$releaseDir\resources") {
+            "$releaseDir\resources"
+          } elseif (Test-Path "apps\desktop\src-tauri\resources") {
+            "apps\desktop\src-tauri\resources"
+          } else {
+            $null
+          }
+          if ($resourcesDir) {
+            $depotBinaries += @(
+              Get-ChildItem -Path $resourcesDir -Recurse -File `
+                -Include "*.exe","*.dll" -ErrorAction SilentlyContinue
+            )
+          }
+
+          $allTargets = @($installers + $depotBinaries | Where-Object { $_ -ne $null })
+
+          if (-not $allTargets) {
+            Write-Host "  WARN  No files found to sign — skipping signing."
             exit 0
           }
 
-          # Decode the base64-encoded PFX to a temporary file.
-          #
-          # `certutil -encode` (the command in the setup docs) wraps its output
-          # in PEM `-----BEGIN/END CERTIFICATE-----` header/footer lines.
-          # [Convert]::FromBase64String tolerates embedded whitespace/newlines
-          # but throws on those marker lines, so strip any line that is not
-          # base64 payload before decoding.  This also accepts a plain,
-          # unwrapped base64 blob unchanged.
-          $pfxPath = Join-Path $env:RUNNER_TEMP "convsim-sign.pfx"
-          try {
-            $b64 = ($env:CERT_PFX_BASE64 -split "`r?`n" |
-              Where-Object { $_ -notmatch '^-----' }) -join ''
-            [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($b64))
-
-            # Collect all files to sign:
-            # 1. Tauri-produced NSIS installers and MSI packages.
-            $bundleDir = "apps\desktop\src-tauri\target\release\bundle"
-            $installers = @(Get-ChildItem -Recurse -Path $bundleDir `
-              -Include "*.exe","*.msi" -ErrorAction SilentlyContinue)
-
-            # 2. Every PE file that ships in the Windows Steam depot.  These go
-            #    into the depot with no installer wrapper, so each must carry its
-            #    own Authenticode signature (issue #408 acceptance criterion:
-            #    "every PE file in the depot is Authenticode-signed").  That is:
-            #      - the main binary at the release root (convsim-desktop.exe,
-            #        renamed to ConversationSimulator.exe during packaging),
-            #      - any root-level support DLLs (WebView2Loader.dll, …),
-            #      - every .exe/.dll under resources/ — the convsim-core sidecar
-            #        plus the bundled runtimes (llama-server.exe and its sibling
-            #        ggml*/llama DLLs, whisper/TTS binaries).
-            #    The WebView2 bootstrapper is downloaded later, during packaging,
-            #    and is already Microsoft-signed, so it is not in this list.
-            $releaseDir = "apps\desktop\src-tauri\target\release"
-            $depotBinaries = @(
-              Get-ChildItem -Path "$releaseDir\*" -File -Include "*.exe","*.dll" `
-                -ErrorAction SilentlyContinue
-            )
-            # Resolve the resources tree the SAME way the packaging step does:
-            # Tauri copies bundle.resources next to the release binary, but fall
-            # back to the source resources/ directory if that copy is absent.
-            # Signing and packaging must agree on the source, otherwise an
-            # unsigned sidecar/runtime binary could reach the depot via the
-            # fallback path while this signing step (and the verify step) only
-            # looked at target/release/resources — see issue #408's "every PE
-            # file in the depot is Authenticode-signed" criterion.
-            $resourcesDir = if (Test-Path "$releaseDir\resources") {
-              "$releaseDir\resources"
-            } elseif (Test-Path "apps\desktop\src-tauri\resources") {
-              "apps\desktop\src-tauri\resources"
-            } else {
-              $null
+          # Sign each file via scripts/jsign-sign.ps1, which selects the GCP KMS
+          # path (priority 1 — the private key never touches the runner), the
+          # PFX/signtool fallback (priority 2), or INFO-skips (exit 0) when
+          # neither credential set is configured (fork-friendly, unsigned dev
+          # builds).  Signing inline with signtool + a local PFX here would drop
+          # the KMS path entirely and hard-fail fork/dev builds that have no PFX
+          # secret — this step has no HAS_WINDOWS_CERT guard and relies on the
+          # script's own skip behaviour.  See publishing/WINDOWS_CODE_SIGNING.md.
+          foreach ($target in $allTargets) {
+            Write-Host "  Signing: $($target.FullName)"
+            & pwsh -NoLogo -NonInteractive -File scripts\jsign-sign.ps1 -FilePath $target.FullName
+            if ($LASTEXITCODE -ne 0) {
+              Write-Error "Signing failed for $($target.Name) (exit $LASTEXITCODE)"
+              exit $LASTEXITCODE
             }
-            if ($resourcesDir) {
-              $depotBinaries += @(
-                Get-ChildItem -Path $resourcesDir -Recurse -File `
-                  -Include "*.exe","*.dll" -ErrorAction SilentlyContinue
-              )
-            }
-
-            $allTargets = @($installers + $depotBinaries | Where-Object { $_ -ne $null })
-
-            if (-not $allTargets) {
-              Write-Host "  WARN  No files found to sign — skipping signing."
-              exit 0
-            }
-
-            # Resolve signtool.exe.  It ships with the Windows SDK but is not on
-            # PATH on GitHub-hosted Windows runners, so fall back to searching
-            # the Windows Kits install directory for the newest x64 build.
-            $signtool = (Get-Command signtool.exe -ErrorAction SilentlyContinue).Source
-            if (-not $signtool) {
-              $signtool = Get-ChildItem `
-                -Path "${env:ProgramFiles(x86)}\Windows Kits\10\bin" `
-                -Recurse -Filter signtool.exe -ErrorAction SilentlyContinue |
-                Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
-                Sort-Object FullName -Descending |
-                Select-Object -First 1 -ExpandProperty FullName
-            }
-            if (-not $signtool) {
-              Write-Error "signtool.exe not found on PATH or under the Windows SDK; cannot sign files."
-              exit 1
-            }
-            Write-Host "  Using signtool: $signtool"
-
-            foreach ($target in $allTargets) {
-              Write-Host "  Signing: $($target.FullName)"
-              # /tr  — RFC 3161 timestamp server (DigiCert, always free to use)
-              # /td  — timestamp digest algorithm
-              # /fd  — file digest algorithm
-              & $signtool sign `
-                /f $pfxPath `
-                /p $env:CERT_PASSWORD `
-                /tr http://timestamp.digicert.com `
-                /td sha256 `
-                /fd sha256 `
-                /v `
-                $target.FullName
-              if ($LASTEXITCODE -ne 0) {
-                Write-Error "signtool failed for $($target.Name) (exit $LASTEXITCODE)"
-                exit $LASTEXITCODE
-              }
-            }
-
-            Write-Host "  INFO  All files signed successfully."
-          } finally {
-            # Always remove the PFX from disk, even on failure.
-            if (Test-Path $pfxPath) { Remove-Item $pfxPath -Force }
           }
+
+          Write-Host "  INFO  All files signed successfully."
 
       # ── Verify Windows Authenticode signature ─────────────────────────────────
       # Verifies Authenticode signatures on:
