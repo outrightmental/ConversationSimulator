@@ -30,6 +30,20 @@ function mockFetch(response: object) {
   ))
 }
 
+// Resolve only the server-authoritative /setup/status endpoint (consumed by the
+// FirstRunGuard); leave every other call pending so screens that render behind
+// the guard don't receive this status shape as their own payload.
+function mockSetupStatus(status: object) {
+  const body = JSON.stringify(status)
+  vi.stubGlobal('fetch', vi.fn((input: unknown) => {
+    const url = String(input)
+    if (url.includes('/setup/status')) {
+      return Promise.resolve({ ok: true, status: 200, statusText: 'OK', json: () => Promise.resolve(status), text: () => Promise.resolve(body) })
+    }
+    return new Promise(() => {})
+  }))
+}
+
 // Prevent real fetch calls; return a promise that never resolves so the
 // pending-state async health check never triggers a post-render state update.
 // Simulate a returning user so the FirstRunGuard allows access to all routes.
@@ -108,35 +122,51 @@ describe('App shell', () => {
 })
 
 describe('First-run guard', () => {
-  it('redirects a first-time user from a protected route to the setup wizard', () => {
+  it('redirects a first-time user from a protected route to the setup wizard', async () => {
     // A fresh install has no completion flag; beforeEach sets it, so clear it here.
+    // The guard is server-authoritative: it waits for /setup/status (never-run)
+    // before redirecting, so the wizard appears asynchronously.
     localStorage.removeItem('convsim.setup.complete')
+    mockSetupStatus({ kind: 'never-run' })
     renderAt('/')
-    // The wizard renders outside AppLayout, so no nav chrome is present…
+    // …the welcome step's "Get started" call to action is shown instead.
+    expect(await screen.findByRole('button', { name: /get started/i })).toBeInTheDocument()
+    // The wizard renders outside AppLayout, so no nav chrome is present.
     expect(screen.queryByRole('link', { name: /settings/i })).not.toBeInTheDocument()
-    // …and the welcome step's "Get started" call to action is shown instead.
-    expect(screen.getByRole('button', { name: /get started/i })).toBeInTheDocument()
   })
 
-  it('redirects a first-time user away from a deep protected route too', () => {
+  it('redirects a first-time user away from a deep protected route too', async () => {
     localStorage.removeItem('convsim.setup.complete')
+    mockSetupStatus({ kind: 'never-run' })
     renderAt('/settings')
-    expect(screen.getByRole('button', { name: /get started/i })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /get started/i })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: /^settings$/i })).not.toBeInTheDocument()
   })
 
+  it('does not show the wizard on a working install when localStorage is cleared', async () => {
+    // Issue-380 acceptance criterion: a cleared webview cache must not resurrect
+    // the wizard — the server-side outcome (ready) wins over the missing mirror.
+    localStorage.removeItem('convsim.setup.complete')
+    mockSetupStatus({ kind: 'ready' })
+    renderAt('/settings')
+    expect(await screen.findByRole('heading', { name: /settings/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /get started/i })).not.toBeInTheDocument()
+  })
+
   it('lets a returning user reach protected routes without the wizard', () => {
-    // beforeEach already set the completion flag.
+    // beforeEach already set the completion flag; the localStorage fast-path
+    // renders the app synchronously without waiting on the server.
     renderAt('/settings')
     expect(screen.getByRole('heading', { name: /settings/i })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /get started/i })).not.toBeInTheDocument()
   })
 
-  it('preserves the intended destination in a next= query param when redirecting to first-run', () => {
+  it('preserves the intended destination in a next= query param when redirecting to first-run', async () => {
     // Issue-378 defense-in-depth: the guard must never silently discard navigation
     // intent — any future fix_action pointing at a guarded route should be recorded
     // (in `next=`) rather than looped away to welcome.
     localStorage.removeItem('convsim.setup.complete')
+    mockSetupStatus({ kind: 'never-run' })
     render(
       <MemoryRouter
         initialEntries={['/model-manager']}
@@ -147,7 +177,7 @@ describe('First-run guard', () => {
       </MemoryRouter>,
     )
     // The wizard is shown (guard redirected us)…
-    expect(screen.getByRole('button', { name: /get started/i })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /get started/i })).toBeInTheDocument()
     // …and the guard redirected to /first-run while preserving the original
     // destination in `next=` (URL-encoded) so it is never silently swallowed.
     const location = screen.getByTestId('location-probe').textContent ?? ''

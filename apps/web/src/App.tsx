@@ -22,20 +22,33 @@ import { api } from './api/client'
 import { deriveSetupStatus } from './setup'
 import type { SetupStatus } from './setup'
 
-function useSetupStatus(): SetupStatus {
+type GuardStatus = SetupStatus | { kind: 'loading' }
+
+function useSetupStatus(): { status: GuardStatus; pendingInstallId: number | null } {
   const localComplete = (() => {
     try { return localStorage.getItem(SETUP_KEYS.firstRunComplete) === 'true' } catch { return false }
   })()
 
-  // Fast-path: derive status from localStorage synchronously to avoid any
-  // redirect flash. Server response then overwrites this with the authoritative value.
-  const [status, setStatus] = useState<SetupStatus>(
-    localComplete ? { kind: 'ready' } : { kind: 'never-run' },
+  // Fast-path only in the direction that cannot lie: a localStorage mirror of
+  // 'true' means onboarding was completed here, so render the app immediately to
+  // avoid a redirect flash. The absence of the mirror is NOT authoritative — a
+  // cleared webview cache on a working install must not resurrect the wizard —
+  // so we hold in 'loading' until the server answers rather than assuming
+  // never-run and redirecting synchronously.
+  const [status, setStatus] = useState<GuardStatus>(
+    localComplete ? { kind: 'ready' } : { kind: 'loading' },
   )
+  const [pendingInstallId, setPendingInstallId] = useState<number | null>(null)
 
   useEffect(() => {
     void api.getSetupStatus().then((r) => {
-      if (!r.ok) return
+      if (!r.ok) {
+        // Server unreachable: fall back to the localStorage mirror so we never
+        // hang on a blank screen. Without a mirror, treat as never-run.
+        setStatus((prev) => (prev.kind === 'loading' ? { kind: 'never-run' } : prev))
+        return
+      }
+      setPendingInstallId(r.data.pending_install_id ?? null)
       const derived = deriveSetupStatus(r.data)
       setStatus(derived)
       if (derived.kind === 'ready') {
@@ -44,7 +57,7 @@ function useSetupStatus(): SetupStatus {
     })
   }, [])
 
-  return status
+  return { status, pendingInstallId }
 }
 
 function FinishSetupBanner() {
@@ -92,10 +105,19 @@ function FinishSetupBanner() {
 // The fast-path localStorage value is used synchronously; server result updates it.
 function FirstRunGuard() {
   const location = useLocation()
-  const status = useSetupStatus()
+  const { status, pendingInstallId } = useSetupStatus()
+
+  // Awaiting the authoritative server status. Render nothing briefly rather than
+  // redirect to the wizard on a stale/cleared localStorage mirror.
+  if (status.kind === 'loading') {
+    return null
+  }
 
   if (status.kind === 'never-run') {
-    return <Navigate to={`/first-run?next=${encodeURIComponent(location.pathname)}`} replace />
+    // Forward any pending install so the wizard resumes the download instead of
+    // restarting at Welcome.
+    const resume = pendingInstallId != null ? `&resume_install=${pendingInstallId}` : ''
+    return <Navigate to={`/first-run?next=${encodeURIComponent(location.pathname)}${resume}`} replace />
   }
 
   return (

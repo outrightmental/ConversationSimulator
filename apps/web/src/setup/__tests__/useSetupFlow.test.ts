@@ -248,4 +248,27 @@ describe('useSetupFlow step machine', () => {
     await waitFor(() => expect(result.current.step).toBe('choose'))
     expect(result.current.recommendedModel?.id).toBe('qwen3-4b-q4')
   })
+
+  // Resume mid-install: opening the wizard at 'installing' with a seeded install
+  // id lands on the progress step (bound to that record) instead of a fresh
+  // Welcome. The polling of the record is covered by the ModelManager tests.
+  it('resumes into installing when seeded with an install id', () => {
+    const { result } = renderHook(() => useSetupFlow('installing', 7), { wrapper })
+    expect(result.current.step).toBe('installing')
+    expect(result.current.installId).toBe(7)
+  })
+
+  it('starts at welcome with no install id when not resuming', () => {
+    const { result } = renderHook(() => useSetupFlow('welcome'), { wrapper })
+    expect(result.current.step).toBe('welcome')
+    expect(result.current.installId).toBeNull()
+  })
+
+  // Completing via the benchmark (Ollama/GGUF paths) must persist the server
+  // outcome, not just the localStorage mirror.
+  it('handleFinishBenchmark records the onboarding outcome server-side', async () => {
+    const { result } = renderHook(() => useSetupFlow('benchmark'), { wrapper })
+    act(() => { result.current.handleFinishBenchmark() })
+    expect(mockApi.recordOnboardingOutcome).toHaveBeenCalledWith('completed-with-model')
+  })
 })

@@ -63,6 +63,7 @@ export interface UseSetupFlowReturn {
   handleConfirmDemo: (markComplete?: boolean) => Promise<void>
   handleStartTutorial: () => Promise<void>
   handleCancelInstall: () => Promise<void>
+  handleFinishBenchmark: () => void
   reloadModels: () => Promise<void>
 }
 
@@ -84,7 +85,7 @@ function isTutorialComplete(): boolean {
   try { return localStorage.getItem(SETUP_KEYS.tutorialComplete) === 'true' } catch { return false }
 }
 
-export function useSetupFlow(initialStep: SetupFlowStep): UseSetupFlowReturn {
+export function useSetupFlow(initialStep: SetupFlowStep, initialInstallId?: number): UseSetupFlowReturn {
   const navigate = useNavigate()
   const [step, setStep] = useState<SetupFlowStep>(initialStep)
   const [modelsData, setModelsData] = useState<ModelsResponse | null>(null)
@@ -97,7 +98,9 @@ export function useSetupFlow(initialStep: SetupFlowStep): UseSetupFlowReturn {
   const [actionError, setActionError] = useState<ApiError | null>(null)
   const [actionLoading, setActionLoading] = useState(false)
 
-  const [installId, setInstallId] = useState<number | null>(null)
+  // Seed installId from initialInstallId so a wizard opened at 'installing'
+  // (resuming an interrupted download) immediately begins polling that record.
+  const [installId, setInstallId] = useState<number | null>(initialInstallId ?? null)
   const [installRecord, setInstallRecord] = useState<InstalledModelInfo | null>(null)
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -261,6 +264,15 @@ export function useSetupFlow(initialStep: SetupFlowStep): UseSetupFlowReturn {
     navigate('/')
   }
 
+  // Completing the benchmark (reached via the Ollama and GGUF paths) is a valid
+  // way to finish onboarding, so it must persist the server-side outcome — not
+  // just the localStorage mirror — otherwise clearing the cache resurrects the
+  // wizard for a working install (issue #380).
+  function handleFinishBenchmark() {
+    markFirstRunComplete()
+    navigate('/')
+  }
+
   return {
     step, setStep,
     modelsData, loadError,
@@ -282,6 +294,7 @@ export function useSetupFlow(initialStep: SetupFlowStep): UseSetupFlowReturn {
     handleConfirmDemo,
     handleStartTutorial,
     handleCancelInstall,
+    handleFinishBenchmark,
     reloadModels,
   }
 }

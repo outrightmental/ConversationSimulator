@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useNavigate } from 'react-router-dom'
 import type { UseSetupFlowReturn } from './useSetupFlow'
 import { WelcomeStep } from './steps/WelcomeStep'
 import { LoadingStep } from './steps/LoadingStep'
@@ -13,7 +12,6 @@ import { BenchmarkStep } from './steps/BenchmarkStep'
 import { OllamaSelectStep } from './steps/OllamaSelectStep'
 import { GgufPathStep } from './steps/GgufPathStep'
 import { DemoConfirmStep } from './steps/DemoConfirmStep'
-import { SETUP_KEYS } from '../privacyPrefs'
 
 interface SetupFlowViewProps {
   flow: UseSetupFlowReturn
@@ -21,13 +19,6 @@ interface SetupFlowViewProps {
 }
 
 export function SetupFlowView({ flow, mode }: SetupFlowViewProps) {
-  const navigate = useNavigate()
-
-  function handleBenchmarkComplete() {
-    try { localStorage.setItem(SETUP_KEYS.firstRunComplete, 'true') } catch { /* ignore */ }
-    navigate('/')
-  }
-
   switch (flow.step) {
     case 'welcome':
       return <WelcomeStep flow={flow} />
@@ -46,7 +37,7 @@ export function SetupFlowView({ flow, mode }: SetupFlowViewProps) {
     case 'tutorial-prompt':
       return <TutorialPromptStep flow={flow} />
     case 'benchmark':
-      return <BenchmarkStep flow={flow} mode={mode} onComplete={handleBenchmarkComplete} />
+      return <BenchmarkStep flow={flow} mode={mode} onComplete={flow.handleFinishBenchmark} />
     case 'ollama-select':
       return <OllamaSelectStep flow={flow} mode={mode} />
     case 'gguf-path':
