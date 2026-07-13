@@ -249,6 +249,41 @@ h3 { font-size: 1.12rem; margin: 0 0 0.4em; }
   .w-40 { animation: none; width: 40%; }
 }
 
+/* ---------- hero carousel ---------- */
+
+.demo-carousel { display: flex; flex-direction: column; gap: 0.85rem; }
+
+.demo-slides { display: grid; }
+
+.demo-slides .demo-card {
+  grid-area: 1 / 1;
+  opacity: 0;
+  transition: opacity 500ms ease;
+  pointer-events: none;
+}
+
+.demo-slides .demo-card.is-active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.carousel-dots {
+  display: flex; justify-content: center; gap: 0.5rem; padding: 0.15rem 0;
+}
+
+.carousel-dot {
+  width: 0.45rem; height: 0.45rem; border-radius: 50%;
+  background: var(--border); border: none; padding: 0; cursor: pointer;
+  transition: background 200ms ease, transform 200ms ease;
+}
+
+.carousel-dot.is-active { background: var(--violet); transform: scale(1.4); }
+.carousel-dot:hover:not(.is-active) { background: var(--text-faint); }
+
+@media (prefers-reduced-motion: reduce) {
+  .demo-slides .demo-card { transition: none; }
+}
+
 /* ---------- guarantee strip ---------- */
 
 .strip { border-block: 1px solid var(--border-soft); background: var(--bg-raise); }
