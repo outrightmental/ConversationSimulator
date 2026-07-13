@@ -269,7 +269,6 @@ jobs:
       # (set_live_branch='') still emit a WARN so unsigned dev builds can be
       # staged for inspection without being promoted to a live branch.
       - name: Verify macOS .app code-signature presence
-        if: env.HAS_STEAM_CREDS == 'true'
         env:
           SET_LIVE_BRANCH: ${{ inputs.set_live_branch }}
         run: |
