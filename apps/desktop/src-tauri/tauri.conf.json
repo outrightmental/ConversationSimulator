@@ -61,6 +61,7 @@
     },
     "windows": {
       "allowDowngrades": false,
+      "signCommand": "pwsh -NoLogo -NonInteractive -File ..\\..\\..\\scripts\\jsign-sign.ps1 -FilePath %1",
       "nsis": {
         "displayLanguageSelector": false
       }
