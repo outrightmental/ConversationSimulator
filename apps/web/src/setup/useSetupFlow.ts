@@ -224,6 +224,10 @@ export function useSetupFlow(
     if (step !== 'installing' || setupInstallJob == null) return
     const { status } = setupInstallJob
     if (status === 'complete') {
+      // A real model is now active — clear scripted/fake session labels so future
+      // conversations show no runtime hint banner.
+      try { localStorage.removeItem(SETUP_KEYS.activeRuntimeHint) } catch { /* ignore */ }
+      try { localStorage.removeItem(SETUP_KEYS.tutorialInstallId) } catch { /* ignore */ }
       void markFirstRunComplete().then(() => {
         navigate(isTutorialComplete() ? '/library' : '/')
       })
@@ -302,6 +306,9 @@ export function useSetupFlow(
     setActionError(null)
     const r = await api.useModel({ runtime_id: 'ollama', model_id: m.id })
     if (!r.ok) { setActionError(r.error); setActionLoading(false); return }
+    // Real model is now active — clear scripted/fake session hint.
+    try { localStorage.removeItem(SETUP_KEYS.activeRuntimeHint) } catch { /* ignore */ }
+    try { localStorage.removeItem(SETUP_KEYS.tutorialInstallId) } catch { /* ignore */ }
     benchmarkStartedRef.current = false
     setStep('benchmark')
     setActionLoading(false)
@@ -316,6 +323,9 @@ export function useSetupFlow(
     setActionError(null)
     const reg = await api.registerGguf({ path: trimmed })
     if (!reg.ok) { setActionError(reg.error); setActionLoading(false); return }
+    // Real model is now active — clear scripted/fake session hint.
+    try { localStorage.removeItem(SETUP_KEYS.activeRuntimeHint) } catch { /* ignore */ }
+    try { localStorage.removeItem(SETUP_KEYS.tutorialInstallId) } catch { /* ignore */ }
     void api.startSidecar(trimmed)
     benchmarkStartedRef.current = false
     setStep('benchmark')
@@ -326,16 +336,34 @@ export function useSetupFlow(
     setActionLoading(true)
     try { await api.useModel({ runtime_id: 'fake', model_id: null }) } catch { /* best-effort */ }
     finally { setActionLoading(false) }
+    // Write runtime hint so Conversation.tsx can label fake sessions "Demo mode".
+    try { localStorage.setItem(SETUP_KEYS.activeRuntimeHint, 'fake') } catch { /* ignore */ }
     if (markComplete) await markDemoComplete()
     navigate('/library')
   }
 
   async function handleStartTutorial() {
+    // Snapshot installId before the async useModel call; the value in the closure
+    // is stable for the lifetime of this invocation since setInstallId is not
+    // called here.
+    const activeInstallId = installId
     setActionLoading(true)
     try { await api.useModel({ runtime_id: 'scripted', model_id: null }) } catch { /* best-effort */ }
     finally { setActionLoading(false) }
     markTutorialComplete()
-    await markFirstRunComplete()
+    // Label all scripted sessions so the user knows they are not talking to the AI.
+    try { localStorage.setItem(SETUP_KEYS.activeRuntimeHint, 'scripted') } catch { /* ignore */ }
+    if (activeInstallId != null) {
+      // A background download is running. Tell Conversation.tsx so it can show
+      // the model-ready toast when the pipeline finishes.
+      try { localStorage.setItem(SETUP_KEYS.tutorialInstallId, String(activeInstallId)) } catch { /* ignore */ }
+      // Record a 'completed-with-model' outcome optimistically — the user already
+      // committed to the full install path.
+      await markFirstRunComplete()
+    } else {
+      // "Try it right now" path: no install in progress.
+      await markDemoComplete()
+    }
     navigate('/setup/first_words_tutorial')
   }
 

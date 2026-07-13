@@ -314,6 +314,17 @@ export const de: LocaleMessages = {
       clearing: 'Wird gelöscht…',
     },
   },
+  conversation: {
+    runtimeLabel: {
+      scripted: 'Skriptbasiertes Übungsgespräch',
+      fake: 'Demo-Modus',
+    },
+    modelReady: {
+      toast: 'Ihr KI-Modell ist bereit',
+      switchNow: 'Jetzt wechseln',
+      afterConversation: 'Nach diesem Gespräch',
+    },
+  },
   setup: {
     welcome: {
       headline: 'Üben Sie Gespräche, die zählen.',
@@ -408,6 +419,7 @@ export const de: LocaleMessages = {
       exporting: 'Exportiere…',
       exportMarkdown: 'Transkript exportieren (Markdown)',
       tryAnother: 'Anderes Szenario versuchen',
+      tryWithRealAi: 'Mit der echten KI ausprobieren',
       privacyNotice:
         'Exportierte Dateien werden in Ihrem lokalen Download-Ordner gespeichert und verlassen Ihr Gerät nicht.',
     },

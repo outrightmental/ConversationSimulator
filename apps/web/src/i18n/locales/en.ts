@@ -305,6 +305,17 @@ export const en = {
       clearing: 'Clearing…',
     },
   },
+  conversation: {
+    runtimeLabel: {
+      scripted: 'Scripted practice run',
+      fake: 'Demo mode',
+    },
+    modelReady: {
+      toast: 'Your AI model is ready',
+      switchNow: 'Switch now',
+      afterConversation: 'After this conversation',
+    },
+  },
   setup: {
     welcome: {
       headline: 'Practice conversations that matter.',
@@ -398,6 +409,7 @@ export const en = {
       exporting: 'Exporting…',
       exportMarkdown: 'Export transcript (Markdown)',
       tryAnother: 'Try another scenario',
+      tryWithRealAi: 'Try it with the real AI',
       privacyNotice:
         'Exported files are saved to your local download folder and never leave your device.',
     },

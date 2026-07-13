@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate, useLocation, Link } from 'react-router-dom'
 import type { DebriefTurningPoint, DebriefMetrics, SessionDebriefResponse, SessionCreateRequest, LogbookProfile } from '@convsim/shared'
 import { recommendNext } from '@convsim/shared'
 import { api } from '../api/client'
@@ -20,7 +20,12 @@ type TranscriptEvent = {
 export default function Debrief() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const navigate = useNavigate()
+  const { state: routeState } = useLocation()
   const { t, locale } = useTranslation()
+
+  // Set when the user deferred the model-ready switch during a tutorial session;
+  // the debrief becomes the upgrade moment.
+  const modelReadyAfterTutorial = (routeState as { modelReadyAfterTutorial?: boolean } | null)?.modelReadyAfterTutorial ?? false
 
   const [phase, setPhase] = useState<'loading' | 'loaded' | 'error' | 'transcript_only'>('loading')
   const [debrief, setDebrief] = useState<SessionDebriefResponse | null>(null)
@@ -733,6 +738,23 @@ export default function Debrief() {
 
           {/* Action buttons */}
           <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+            {modelReadyAfterTutorial && (
+              <button
+                data-testid="try-real-ai-btn"
+                onClick={() => navigate('/library')}
+                style={{
+                  padding: '0.5rem 1.5rem',
+                  borderRadius: 6,
+                  border: 'none',
+                  background: '#4f46e5',
+                  color: '#fff',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                {t('debrief.actions.tryWithRealAi')}
+              </button>
+            )}
             <button
               data-testid="replay-btn"
               onClick={handleReplayVariation}
@@ -740,10 +762,11 @@ export default function Debrief() {
                 padding: '0.5rem 1.5rem',
                 borderRadius: 6,
                 border: 'none',
-                background: '#4f46e5',
-                color: '#fff',
+                background: modelReadyAfterTutorial ? 'transparent' : '#4f46e5',
+                color: modelReadyAfterTutorial ? '#a1a1aa' : '#fff',
                 fontWeight: 600,
                 cursor: 'pointer',
+                ...(modelReadyAfterTutorial ? { border: '1px solid #52525b' } : {}),
               }}
             >
               {t('debrief.actions.replayVariation')}
