@@ -178,6 +178,11 @@ jobs:
         with:
           workspaces: apps/desktop/src-tauri -> target
       - name: Check desktop crate compiles
+        env:
+          # Non-secret repo variable: pack-id ↔ DLC App ID mapping used by the
+          # DLC ownership check.  Empty in open-source / contributor builds —
+          # the build script skips validation when the variable is unset.
+          VITE_STEAM_DLC_APP_IDS: ${{ vars.STEAM_DLC_APP_IDS }}
         run: |
           echo "Local: bash scripts/desktop-smoke.sh"
           bash scripts/desktop-smoke.sh

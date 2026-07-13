@@ -238,6 +238,27 @@ fn steam_workshop_publish_pack(
         .unwrap_or(false)
 }
 
+/// Check whether a Steam DLC App is currently installed (owned and downloaded)
+/// for the current user.
+///
+/// `dlc_app_id` is the Valve-assigned Steam App ID for the DLC — not the base
+/// game's App ID. Use the pack-id → DLC App ID registry (built from
+/// `VITE_STEAM_DLC_APP_IDS` at compile time) to resolve a pack ID before
+/// calling this command.
+///
+/// Returns `false` when not running under Steam or the `steam` feature is off.
+#[tauri::command]
+fn steam_is_dlc_installed(
+    dlc_app_id: u32,
+    state: tauri::State<'_, SteamRuntimeState>,
+) -> bool {
+    state
+        .0
+        .lock()
+        .map(|r| r.is_dlc_installed(dlc_app_id))
+        .unwrap_or(false)
+}
+
 /// Unsubscribe from a Workshop item by its numeric item ID (decimal string).
 ///
 /// Returns `false` when not running under Steam or the `steam` feature is off.
@@ -654,6 +675,7 @@ pub fn run() {
             steam_is_dlc_installed,
             steam_show_floating_keyboard,
             steam_hide_floating_keyboard,
+            steam_is_dlc_installed,
             steam_workshop_get_subscribed_items,
             steam_workshop_publish_pack,
             steam_workshop_unsubscribe,

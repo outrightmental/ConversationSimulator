@@ -1,18 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
-/**
- * Unit tests for useSteamDlc / useSteamDlcOwned.
- *
- * These verify the premium-DLC ownership gate (see docs/DLC_MODEL.md):
- *  - In a browser context (window.__TAURI__ absent) every premium pack is
- *    treated as not-owned, without attempting a Tauri invocation.
- *  - Under Tauri the hooks call `steam_is_dlc_installed` with the DLC App ID and
- *    reflect its boolean result (coercing anything non-`true` to `false`).
- *  - The command argument is the camelCase key `dlcAppId`, which is how Tauri v2
- *    maps to the Rust `dlc_app_id` parameter of a plain `#[tauri::command]`.
- */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { renderHook, act, waitFor } from '@testing-library/react'
-import { useSteamDlc, useSteamDlcOwned } from '../hooks/useSteamDlc'
+import { renderHook, act } from '@testing-library/react'
+import { useSteamDlc, parseDlcRegistry, DLC_REGISTRY } from '../hooks/useSteamDlc'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -28,8 +17,6 @@ function clearTauri() {
   delete win.__TAURI__
 }
 
-const SAMPLE_DLC_APP_ID = 3210000
-
 // ── Setup / teardown ──────────────────────────────────────────────────────────
 
 beforeEach(() => {
@@ -41,121 +28,177 @@ afterEach(() => {
   clearTauri()
 })
 
-// ── useSteamDlcOwned — non-Tauri (browser) context ────────────────────────────
+// ── parseDlcRegistry ──────────────────────────────────────────────────────────
 
-describe('useSteamDlcOwned — non-Tauri context', () => {
-  it('reports not-owned when __TAURI__ is absent', () => {
-    const { result } = renderHook(() => useSteamDlcOwned(SAMPLE_DLC_APP_ID))
-    expect(result.current).toBe(false)
+describe('parseDlcRegistry', () => {
+  it('returns empty record for undefined input', () => {
+    expect(parseDlcRegistry(undefined)).toEqual({})
   })
 
-  it('reports not-owned when __TAURI__ has no core.invoke', () => {
+  it('returns empty record for empty string', () => {
+    expect(parseDlcRegistry('')).toEqual({})
+  })
+
+  it('parses a single pack_id:app_id entry', () => {
+    expect(parseDlcRegistry('official.premium_pack:2123456')).toEqual({
+      'official.premium_pack': 2123456,
+    })
+  })
+
+  it('parses multiple comma-separated entries', () => {
+    const result = parseDlcRegistry('official.pack_a:2000001,official.pack_b:2000002')
+    expect(result).toEqual({
+      'official.pack_a': 2000001,
+      'official.pack_b': 2000002,
+    })
+  })
+
+  it('trims whitespace around pack IDs and app IDs', () => {
+    const result = parseDlcRegistry(' official.pack : 2000001 ')
+    expect(result).toEqual({ 'official.pack': 2000001 })
+  })
+
+  it('skips entries with no colon separator', () => {
+    const result = parseDlcRegistry('official.good:2000001,bad-no-colon,official.also_good:2000002')
+    expect(result).toEqual({
+      'official.good': 2000001,
+      'official.also_good': 2000002,
+    })
+  })
+
+  it('skips entries with non-numeric app IDs', () => {
+    const result = parseDlcRegistry('official.bad:not_a_number,official.good:2000001')
+    expect(result).toEqual({ 'official.good': 2000001 })
+  })
+
+  it('skips entries with zero or negative app IDs', () => {
+    const result = parseDlcRegistry('official.zero:0,official.neg:-1,official.good:2000001')
+    expect(result).toEqual({ 'official.good': 2000001 })
+  })
+
+  it('skips entries with empty pack IDs', () => {
+    const result = parseDlcRegistry(':2000001,official.good:2000002')
+    expect(result).toEqual({ 'official.good': 2000002 })
+  })
+
+  it('skips empty comma-separated slots', () => {
+    const result = parseDlcRegistry('official.good:2000001,,official.other:2000002')
+    expect(result).toEqual({
+      'official.good': 2000001,
+      'official.other': 2000002,
+    })
+  })
+})
+
+// ── DLC_REGISTRY ──────────────────────────────────────────────────────────────
+
+describe('DLC_REGISTRY', () => {
+  it('is an object (empty in test environment without VITE_STEAM_DLC_APP_IDS)', () => {
+    expect(typeof DLC_REGISTRY).toBe('object')
+    expect(DLC_REGISTRY).not.toBeNull()
+  })
+})
+
+// ── Non-Tauri (browser) context ───────────────────────────────────────────────
+
+describe('useSteamDlc — non-Tauri context', () => {
+  it('isDlcInstalled returns false when __TAURI__ is absent', async () => {
+    const { result } = renderHook(() => useSteamDlc())
+    let ok = true
+    await act(async () => {
+      ok = await result.current.isDlcInstalled(2123456)
+    })
+    expect(ok).toBe(false)
+  })
+
+  it('isDlcInstalledForPack returns false when __TAURI__ is absent', async () => {
+    const { result } = renderHook(() => useSteamDlc())
+    let ok = true
+    await act(async () => {
+      ok = await result.current.isDlcInstalledForPack('official.some_pack')
+    })
+    expect(ok).toBe(false)
+  })
+
+  it('returns false when __TAURI__ has no core.invoke', async () => {
     const win = window as { __TAURI__?: unknown }
     win.__TAURI__ = { event: { listen: vi.fn() } }
-
-    const { result } = renderHook(() => useSteamDlcOwned(SAMPLE_DLC_APP_ID))
-    expect(result.current).toBe(false)
+    const { result } = renderHook(() => useSteamDlc())
+    let ok = true
+    await act(async () => {
+      ok = await result.current.isDlcInstalled(2123456)
+    })
+    expect(ok).toBe(false)
   })
 })
 
-// ── useSteamDlcOwned — Tauri context ──────────────────────────────────────────
+// ── isDlcInstalled ────────────────────────────────────────────────────────────
 
-describe('useSteamDlcOwned — Tauri context', () => {
-  it('invokes steam_is_dlc_installed with the camelCase dlcAppId and reflects true', async () => {
+describe('useSteamDlc — isDlcInstalled', () => {
+  it('invokes steam_is_dlc_installed with the dlc_app_id', async () => {
     const invoke = vi.fn().mockResolvedValue(true)
     stubTauriInvoke(invoke)
+    const { result } = renderHook(() => useSteamDlc())
 
-    const { result } = renderHook(() => useSteamDlcOwned(SAMPLE_DLC_APP_ID))
-
-    await waitFor(() => expect(result.current).toBe(true))
-    expect(invoke).toHaveBeenCalledWith('steam_is_dlc_installed', {
-      dlcAppId: SAMPLE_DLC_APP_ID,
+    let ok = false
+    await act(async () => {
+      ok = await result.current.isDlcInstalled(2123456)
     })
+
+    expect(ok).toBe(true)
+    expect(invoke).toHaveBeenCalledWith('steam_is_dlc_installed', { dlc_app_id: 2123456 })
   })
 
-  it('reports not-owned when the command resolves false', async () => {
+  it('returns false when Steam reports DLC not installed', async () => {
     const invoke = vi.fn().mockResolvedValue(false)
     stubTauriInvoke(invoke)
+    const { result } = renderHook(() => useSteamDlc())
 
-    const { result } = renderHook(() => useSteamDlcOwned(SAMPLE_DLC_APP_ID))
-
-    // Give the effect a chance to run; ownership must remain false.
+    let ok = true
     await act(async () => {
-      await Promise.resolve()
+      ok = await result.current.isDlcInstalled(2123456)
     })
-    expect(result.current).toBe(false)
+    expect(ok).toBe(false)
   })
 
-  it('coerces a non-boolean result to false', async () => {
-    const invoke = vi.fn().mockResolvedValue('yes' as unknown as boolean)
+  it('returns false and does not throw when invoke rejects', async () => {
+    const invoke = vi.fn().mockRejectedValue(new Error('Steam not running'))
     stubTauriInvoke(invoke)
+    const { result } = renderHook(() => useSteamDlc())
 
-    const { result } = renderHook(() => useSteamDlcOwned(SAMPLE_DLC_APP_ID))
-
+    let ok = true
     await act(async () => {
-      await Promise.resolve()
+      ok = await result.current.isDlcInstalled(2123456)
     })
-    expect(result.current).toBe(false)
-  })
-
-  it('reports not-owned when the command rejects', async () => {
-    const invoke = vi.fn().mockRejectedValue(new Error('steam feature off'))
-    stubTauriInvoke(invoke)
-
-    const { result } = renderHook(() => useSteamDlcOwned(SAMPLE_DLC_APP_ID))
-
-    await act(async () => {
-      await Promise.resolve()
-    })
-    expect(result.current).toBe(false)
-  })
-
-  it('skips the check and stays not-owned when dlcAppId is null', () => {
-    const invoke = vi.fn().mockResolvedValue(true)
-    stubTauriInvoke(invoke)
-
-    const { result } = renderHook(() => useSteamDlcOwned(null))
-    expect(result.current).toBe(false)
-    expect(invoke).not.toHaveBeenCalled()
+    expect(ok).toBe(false)
   })
 })
 
-// ── useSteamDlc — imperative variant ──────────────────────────────────────────
+// ── isDlcInstalledForPack ─────────────────────────────────────────────────────
 
-describe('useSteamDlc — imperative isDlcOwned', () => {
-  it('resolves false when __TAURI__ is absent', async () => {
-    const { result } = renderHook(() => useSteamDlc())
-    const owned = await result.current.isDlcOwned(SAMPLE_DLC_APP_ID)
-    expect(owned).toBe(false)
-  })
-
-  it('invokes steam_is_dlc_installed with the camelCase dlcAppId and returns its result', async () => {
+describe('useSteamDlc — isDlcInstalledForPack', () => {
+  it('returns false for a pack with no DLC App ID in the registry', async () => {
     const invoke = vi.fn().mockResolvedValue(true)
     stubTauriInvoke(invoke)
-
     const { result } = renderHook(() => useSteamDlc())
 
-    let owned = false
+    let ok = true
     await act(async () => {
-      owned = await result.current.isDlcOwned(SAMPLE_DLC_APP_ID)
+      ok = await result.current.isDlcInstalledForPack('official.free_pack')
     })
 
-    expect(owned).toBe(true)
-    expect(invoke).toHaveBeenCalledWith('steam_is_dlc_installed', {
-      dlcAppId: SAMPLE_DLC_APP_ID,
-    })
+    expect(ok).toBe(false)
+    expect(invoke).not.toHaveBeenCalled()
   })
 
-  it('resolves false when the command rejects', async () => {
-    const invoke = vi.fn().mockRejectedValue(new Error('not running under Steam'))
+  it('does not call Tauri when the pack has no registered DLC App ID', async () => {
+    const invoke = vi.fn()
     stubTauriInvoke(invoke)
-
     const { result } = renderHook(() => useSteamDlc())
 
-    let owned = true
     await act(async () => {
-      owned = await result.current.isDlcOwned(SAMPLE_DLC_APP_ID)
+      await result.current.isDlcInstalledForPack('unknown.pack')
     })
-    expect(owned).toBe(false)
+    expect(invoke).not.toHaveBeenCalled()
   })
 })
