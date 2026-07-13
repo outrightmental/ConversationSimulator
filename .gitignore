@@ -10,6 +10,8 @@ out/
 .nuxt/
 .output/
 *.local
+*.tsbuildinfo
+vite.config.d.ts
 
 # --- Python / Backend ---
 __pycache__/
