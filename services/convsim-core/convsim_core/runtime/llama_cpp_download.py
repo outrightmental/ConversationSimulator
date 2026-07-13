@@ -133,12 +133,18 @@ def detect_windows_gpu_variant() -> str:
     GPU is therefore offered the Vulkan build; the NVIDIA driver ships the
     Vulkan runtime, so it accelerates on NVIDIA too.
     """
+    # Suppress the console window Windows would otherwise flash for each probe;
+    # this runs behind a GUI Tauri app with no attached console. The flag only
+    # exists on Windows, so fall back to 0 (no-op) everywhere else.
+    no_window = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
     try:
         if shutil.which("nvidia-smi"):
             result = subprocess.run(
                 ["nvidia-smi", "--query-gpu=name", "--format=csv,noheader"],
                 capture_output=True,
                 timeout=5,
+                creationflags=no_window,
             )
             if result.returncode == 0 and result.stdout.strip():
                 return "vulkan"
@@ -151,6 +157,7 @@ def detect_windows_gpu_variant() -> str:
                 ["vulkaninfo", "--summary"],
                 capture_output=True,
                 timeout=10,
+                creationflags=no_window,
             )
             if result.returncode == 0:
                 return "vulkan"
