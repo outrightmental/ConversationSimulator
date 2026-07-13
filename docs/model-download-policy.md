@@ -265,6 +265,63 @@ verified SHA-256 checksum; no entry ships a `PENDING` value.
 
 ---
 
+## 8. Engine binary download policy
+
+The inference engine (`llama-server`) follows the same `NetworkMode.EXPLICIT_DOWNLOAD`
+gate as model weights — nothing is downloaded silently at startup.
+
+### Trigger
+
+Engine download is user-initiated via `POST /api/sidecar/download-runtime` in
+the app's Settings screen. The preflight check (`GET /api/preflight`) surfaces
+an `install-engine` fix action when `llama-server` is absent; pressing
+**Install engine** in the UI is the only thing that starts a transfer.
+
+### Source
+
+Binaries are downloaded from the official llama.cpp GitHub release page
+(`https://github.com/ggml-org/llama.cpp/releases`). The exact release tag
+and asset URL are shown to the player before the transfer begins.
+
+### Integrity
+
+SHA-256 verification against `sha256sum.txt` published alongside each release.
+A mismatch transitions the download to `checksum_mismatch` state; the `.part`
+file is removed immediately and no partial binary is ever registered.
+
+### Variants
+
+| Variant | When to use |
+|---------|-------------|
+| `cpu` (default) | Universally safe; works on every machine |
+| `vulkan` | GPU acceleration via Vulkan; auto-offered as opt-in when a GPU is detected (`nvidia-smi` or `vulkaninfo`). Works on NVIDIA, AMD, and Intel |
+
+GPU variants are **never required** for first-run. The product offers them as
+optional upgrades; the CPU variant is always the default.
+
+The auto-detection (`GET /api/sidecar/gpu-variant`) only ever recommends `cpu`
+or `vulkan`. Vulkan is chosen for NVIDIA GPUs too because the NVIDIA driver
+ships the Vulkan runtime, and — unlike CUDA — Vulkan is a single, self-contained
+release asset. llama.cpp publishes CUDA builds per toolkit version
+(`win-cuda-12.4-x64`, `win-cuda-13.3-x64`, …) plus a separate `cudart-*` runtime
+archive, which the single-asset engine downloader cannot provision.
+
+### Offline behaviour
+
+When the network is unavailable, the download endpoint returns a clear error:
+"you're offline — engine download needs a connection (~5 MB)." No timeout is
+shown; the connection check is immediate.
+
+### Steam builds
+
+Steam depot builds bundle `llama-server` directly in
+`apps/desktop/src-tauri/resources/runtimes/` — the directory the Tauri shell
+exposes as `CONVSIM_BUNDLED_RUNTIME_DIR` — so no download is needed at first
+launch. The bundled binary is resolved by `CONVSIM_BUNDLED_RUNTIME_DIR` before
+any user-installed or PATH binary.
+
+---
+
 ## Links
 
 - [`model-registry/registry.yaml`](../model-registry/registry.yaml) — model metadata
@@ -274,3 +331,4 @@ verified SHA-256 checksum; no entry ships a `PENDING` value.
 - [`publishing/STEAM_DEPOT_CONTENTS.md`](../publishing/STEAM_DEPOT_CONTENTS.md) — what ships in the depot
 - [`docs/local-models.md`](local-models.md) — player-facing model installation guide
 - [`docs/STEAM_ROADMAP.md`](STEAM_ROADMAP.md) — model download transparency specification
+- [`docs/sidecar-bundling.md`](sidecar-bundling.md) — sidecar bundling and executable resolution

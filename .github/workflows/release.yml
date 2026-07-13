@@ -42,6 +42,12 @@ jobs:
       HAS_NOTARIZATION: ${{ secrets.APPLE_ID != '' }}
       HAS_WINDOWS_CERT: ${{ secrets.WINDOWS_SIGN_CERT_PFX != '' }}
       HAS_UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+      # Steam depot builds bundle llama-server so players get zero-setup
+      # inference; GitHub release installers stay lean and download it on first
+      # run (see docs/model-download-policy.md §8). This one workflow feeds both
+      # channels, so bundling is an explicit opt-in: set the BUNDLE_LLAMA_SERVER
+      # repository variable to 'true' only for Steam-depot builds.
+      BUNDLE_LLAMA_SERVER: ${{ vars.BUNDLE_LLAMA_SERVER == 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -189,6 +195,39 @@ jobs:
             echo "ERROR: convsim-core binary missing from $BIN_DIR" >&2
             exit 1
           fi
+
+      # ── Bundle llama-server binary (Steam builds only) ────────────────────────
+      # Downloads and bundles the llama-server binary alongside convsim-core so
+      # Steam players get zero-setup inference with no first-run download.
+      # Gated on the BUNDLE_LLAMA_SERVER repository variable (see the job `env`
+      # block): GitHub release installers leave it unset so they stay lean and
+      # download the engine on first run instead.
+      #
+      # The binary is placed at src-tauri/resources/runtimes/llama-server[.exe]
+      # and picked up by Tauri's bundle.resources: ["resources/**/*"] glob.
+      # At runtime the Tauri shell sets CONVSIM_BUNDLED_RUNTIME_DIR to the
+      # resources/runtimes directory (see src-tauri/src/lib.rs), and Python's
+      # find_executable() resolves <CONVSIM_BUNDLED_RUNTIME_DIR>/llama-server[.exe]
+      # from there. Do NOT place it under resources/bin/ — that is where
+      # convsim-core lives and is never scanned for sidecar binaries.
+      - name: Bundle llama-server (Linux / macOS — Steam only)
+        if: env.BUNDLE_LLAMA_SERVER == 'true' && runner.os != 'Windows'
+        shell: bash
+        env:
+          LLAMA_CPP_DEST: apps/desktop/src-tauri/resources/runtimes
+        run: |
+          set -euo pipefail
+          bash runtimes/llama_cpp/download-runtime.sh
+          ls -lh apps/desktop/src-tauri/resources/runtimes/llama-server
+
+      - name: Bundle llama-server (Windows — Steam only)
+        if: env.BUNDLE_LLAMA_SERVER == 'true' && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dest = "apps\desktop\src-tauri\resources\runtimes"
+          .\runtimes\llama_cpp\download-runtime.ps1 -Dest $dest
+          Get-Item "$dest\llama-server.exe" | Select-Object Name, Length
 
       # ── Sync app version to the release tag ──────────────────────────────────
       # The built binary reports the `version` field from tauri.conf.json, and

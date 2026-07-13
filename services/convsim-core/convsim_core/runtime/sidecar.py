@@ -83,7 +83,10 @@ def find_executable() -> str | None:
     2. Bundled path — ``<CONVSIM_BUNDLED_RUNTIME_DIR>/llama-server`` (Steam
        depot builds). The ``.exe`` suffix is appended on Windows. Only used
        when the file exists and is executable.
-    3. PATH lookup — ``shutil.which("llama-server")`` (developer builds).
+    3. User-installed path — ``~/.convsim/bin/llama-server[.exe]``, the
+       default destination used by ``download_binary()``. Resolves immediately
+       after an in-app install without requiring a PATH change or app restart.
+    4. PATH lookup — ``shutil.which("llama-server")`` (developer builds).
 
     Returns None when no candidate resolves.
     """
@@ -97,6 +100,11 @@ def find_executable() -> str | None:
         candidate = Path(bundled_dir) / f"{_BUNDLED_BINARY_NAME}{suffix}"
         if candidate.is_file() and os.access(candidate, os.X_OK):
             return str(candidate)
+
+    suffix = ".exe" if sys.platform == "win32" else ""
+    user_installed = Path.home() / ".convsim" / "bin" / f"{_BUNDLED_BINARY_NAME}{suffix}"
+    if user_installed.is_file() and os.access(user_installed, os.X_OK):
+        return str(user_installed)
 
     return shutil.which("llama-server") or shutil.which("llama_server")
 
