@@ -647,9 +647,24 @@ jobs:
             Get-ChildItem -Path "$releaseDir\*" -File -Include "*.exe","*.dll" `
               -ErrorAction SilentlyContinue
           )
-          if (Test-Path "$releaseDir\resources") {
+          # Resolve the resources tree the SAME way the packaging step does:
+          # Tauri copies bundle.resources next to the release binary, but fall
+          # back to the source resources/ directory if that copy is absent.
+          # Signing and packaging must agree on the source, otherwise an
+          # unsigned sidecar/runtime binary could reach the depot via the
+          # fallback path while this signing step (and the verify step) only
+          # looked at target/release/resources — see issue #408's "every PE
+          # file in the depot is Authenticode-signed" criterion.
+          $resourcesDir = if (Test-Path "$releaseDir\resources") {
+            "$releaseDir\resources"
+          } elseif (Test-Path "apps\desktop\src-tauri\resources") {
+            "apps\desktop\src-tauri\resources"
+          } else {
+            $null
+          }
+          if ($resourcesDir) {
             $depotBinaries += @(
-              Get-ChildItem -Path "$releaseDir\resources" -Recurse -File `
+              Get-ChildItem -Path $resourcesDir -Recurse -File `
                 -Include "*.exe","*.dll" -ErrorAction SilentlyContinue
             )
           }
@@ -714,7 +729,9 @@ jobs:
 
           # Verify every PE file that ships in the Windows Steam depot — the same
           # set the signing step covered so an unsigned runtime binary can never
-          # slip into the depot unnoticed.
+          # slip into the depot unnoticed.  Resolve resources/ with the same
+          # target/release → src-tauri fallback the signing and packaging steps
+          # use, so the fallback path cannot hide unsigned binaries from this gate.
           $fail = $false
           Write-Host ""
           Write-Host "=== Portable depot binary signatures ==="
@@ -723,9 +740,16 @@ jobs:
             Get-ChildItem -Path "$releaseDir\*" -File -Include "*.exe","*.dll" `
               -ErrorAction SilentlyContinue
           )
-          if (Test-Path "$releaseDir\resources") {
+          $resourcesDir = if (Test-Path "$releaseDir\resources") {
+            "$releaseDir\resources"
+          } elseif (Test-Path "apps\desktop\src-tauri\resources") {
+            "apps\desktop\src-tauri\resources"
+          } else {
+            $null
+          }
+          if ($resourcesDir) {
             $depotBinaries += @(
-              Get-ChildItem -Path "$releaseDir\resources" -Recurse -File `
+              Get-ChildItem -Path $resourcesDir -Recurse -File `
                 -Include "*.exe","*.dll" -ErrorAction SilentlyContinue
             )
           }
