@@ -39,9 +39,20 @@ jobs:
     # make Tauri attempt its own keychain import without the password).
     env:
       HAS_APPLE_CERT: ${{ secrets.APPLE_CERTIFICATE != '' }}
-      HAS_NOTARIZATION: ${{ secrets.APPLE_ID != '' }}
+      # HAS_NOTARIZATION is true when either the preferred ASC API key trio or
+      # the Apple-ID fallback trio is configured.  Both paths drive the same
+      # notarytool submission inside Tauri; only the authentication method differs.
+      HAS_NOTARIZATION: ${{ secrets.APPLE_ID != '' || secrets.APPLE_API_KEY != '' }}
+      HAS_ASC_API_KEY: ${{ secrets.APPLE_API_KEY != '' }}
       HAS_WINDOWS_CERT: ${{ secrets.WINDOWS_SIGN_CERT_PFX != '' }}
       HAS_UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+      # REQUIRE_SIGNED_MACOS is true on release tags (any v*) regardless of
+      # whether the run was triggered by a git push or workflow_dispatch.
+      # When true, the verify step fails (rather than INFO-skips) if the macOS
+      # build was not signed and notarised.  This turns gate G3-01 from a manual
+      # checklist item into a hard CI enforcement.  Contributor forks and PR
+      # builds are unaffected because they never carry a v* tag.
+      REQUIRE_SIGNED_MACOS: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && startsWith(github.event.inputs.tag, 'v')) }}
       # Steam depot builds bundle llama-server so players get zero-setup
       # inference; GitHub release installers stay lean and download it on first
       # run (see docs/model-download-policy.md §8). This one workflow feeds both
@@ -259,18 +270,34 @@ jobs:
           grep '"version"' "$CONF"
 
       # ── Tauri desktop build ──────────────────────────────────────────────────
-      # On macOS, Tauri reads APPLE_SIGNING_IDENTITY, APPLE_ID, APPLE_PASSWORD,
-      # and APPLE_TEAM_ID to sign the .app bundle and submit it to Apple's
-      # notarisation service automatically.  These env vars are no-ops on Linux
-      # and Windows.  When the secrets are absent the build is unsigned (suitable
-      # for dev/internal builds but blocked by Gatekeeper on clean installs).
+      # On macOS, Tauri reads APPLE_SIGNING_IDENTITY and notarisation credentials
+      # to sign the .app bundle and submit it to Apple's notary service.
+      # These env vars are no-ops on Linux and Windows.  When the secrets are
+      # absent the build is unsigned (suitable for dev/internal builds but
+      # blocked by Gatekeeper on clean installs).
       #
-      # Absent secrets expand to *empty strings*, not unset variables. Tauri's
-      # macOS bundler reads APPLE_SIGNING_IDENTITY as Ok("") and tries to codesign
-      # with an empty identity ("Signing with identity \"\"" → "no identity found"
-      # → "failed to bundle project"). We must therefore fully *unset* the Apple
-      # signing env vars when no identity is configured, so Tauri skips signing and
-      # emits an unsigned .app instead of failing the build. No-op on Linux/Windows.
+      # Notarisation auth — two supported paths, in order of preference:
+      #
+      # 1. App Store Connect API key (preferred):
+      #      APPLE_API_KEY      — key ID (e.g. "ABCDE12345")
+      #      APPLE_API_ISSUER   — issuer UUID from App Store Connect
+      #      APPLE_API_KEY_PATH — base64-encoded .p8 private key content
+      #                           (decoded to a temp file before the build)
+      #    No 2FA coupling; revocable and scoped to App Manager role.
+      #
+      # 2. Apple ID + app-specific password (fallback):
+      #      APPLE_ID           — Apple ID email used for notarisation
+      #      APPLE_PASSWORD     — app-specific password for Apple ID
+      #      APPLE_TEAM_ID      — ten-character team ID (required for both paths)
+      #
+      # When both are configured, ASC API key takes precedence: Apple ID
+      # credentials are unset so Tauri only uses the ASC key path.
+      #
+      # Absent APPLE_SIGNING_IDENTITY expands to an empty string. Tauri's
+      # macOS bundler reads Ok("") and tries to codesign with an empty identity
+      # ("Signing with identity \"\"" → "no identity found" → build failure).
+      # We therefore fully *unset* all Apple signing env vars when no identity
+      # is configured, so Tauri skips signing and emits an unsigned .app.
       - name: Build Tauri desktop
         shell: bash
         env:
@@ -278,6 +305,14 @@ jobs:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # ASC API key credentials (preferred notarisation auth — see above).
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          # APPLE_API_KEY_PATH secret stores the base64-encoded .p8 content;
+          # renamed here to avoid a collision with the APPLE_API_KEY_PATH env
+          # var that Tauri expects to hold a filesystem path.  The script below
+          # decodes this value to a temp file and then sets APPLE_API_KEY_PATH.
+          APPLE_API_KEY_PATH_B64: ${{ secrets.APPLE_API_KEY_PATH }}
           # Non-secret repo variable: pack-id ↔ DLC App ID mapping baked into
           # both the Vite bundle (VITE_ prefix) and validated by build.rs.
           # The beforeBuildCommand in tauri.conf.json re-runs `pnpm web build`
@@ -286,8 +321,23 @@ jobs:
         run: |
           if [ -z "${APPLE_SIGNING_IDENTITY:-}" ]; then
             unset APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID
+            unset APPLE_API_KEY APPLE_API_ISSUER
+          elif [ -n "${APPLE_API_KEY:-}" ] && [ -n "${APPLE_API_ISSUER:-}" ] && \
+               [ -n "${APPLE_API_KEY_PATH_B64:-}" ]; then
+            # ASC API key path (preferred): decode .p8 to a temp file and tell
+            # Tauri where it lives.  Clear Apple ID credentials so Tauri does
+            # not attempt both auth paths simultaneously.
+            ASC_KEY_FILE="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY}.p8"
+            printf '%s' "$APPLE_API_KEY_PATH_B64" | base64 --decode > "$ASC_KEY_FILE"
+            chmod 600 "$ASC_KEY_FILE"
+            export APPLE_API_KEY_PATH="$ASC_KEY_FILE"
+            unset APPLE_ID APPLE_PASSWORD
           fi
           pnpm --filter @convsim/desktop build
+          # Scrub the decoded ASC private key from disk the moment the build ends.
+          if [ -n "${ASC_KEY_FILE:-}" ] && [ -f "${ASC_KEY_FILE:-}" ]; then
+            rm -f "$ASC_KEY_FILE"
+          fi
 
       # ── Verify macOS signature, entitlements, notarization, and stapling ──────
       # Confirms that Tauri's signing + Apple notarisation pipeline completed
@@ -310,15 +360,39 @@ jobs:
       # Gate G3-01: notarised + Gatekeeper-accepted macOS build required for
       # Stage 3 Steam private beta — see docs/steam-mvp-scope.md.
       #
-      # When APPLE_CERTIFICATE is absent the step exits 0 with an INFO message
-      # (unsigned build — acceptable for dev/contributor builds).
+      # Enforcement: when REQUIRE_SIGNED_MACOS is true (any v* release tag) this
+      # step FAILS rather than INFO-skips when APPLE_CERTIFICATE is absent or
+      # notarisation was skipped.  This makes gate G3-01 a hard CI requirement
+      # on every tagged release.  Contributor forks and PR builds (no v* tag)
+      # continue to skip with an informational message.
       - name: Verify macOS signature, entitlements, notarization, and stapling
-        if: runner.os == 'macOS' && env.HAS_APPLE_CERT == 'true'
+        if: runner.os == 'macOS' && (env.HAS_APPLE_CERT == 'true' || env.REQUIRE_SIGNED_MACOS == 'true')
         shell: bash
         env:
+          HAS_APPLE_CERT: ${{ env.HAS_APPLE_CERT }}
           HAS_NOTARIZATION: ${{ env.HAS_NOTARIZATION }}
+          REQUIRE_SIGNED_MACOS: ${{ env.REQUIRE_SIGNED_MACOS }}
         run: |
           set -euo pipefail
+
+          # ── Enforcement gate ─────────────────────────────────────────────────
+          if [ "${HAS_APPLE_CERT:-}" != "true" ]; then
+            if [ "${REQUIRE_SIGNED_MACOS:-}" = "true" ]; then
+              echo "ERROR: APPLE_CERTIFICATE is not configured but a signed macOS build" >&2
+              echo "       is required for this release tag." >&2
+              echo "       Tagged releases (v*) enforce gate G3-01: the macOS .app must" >&2
+              echo "       be code-signed, notarised, and Gatekeeper-accepted." >&2
+              echo "       Set the APPLE_CERTIFICATE org secret and rerun this workflow." >&2
+              echo "       See publishing/MACOS_SIGNING_AND_NOTARIZATION.md." >&2
+              exit 1
+            else
+              echo "  INFO  APPLE_CERTIFICATE is not set — unsigned build (dev / contributor fork)."
+              echo "        Signing and notarisation are required for gate G3-01"
+              echo "        (Stage 3/4 Steam release).  See publishing/MACOS_SIGNING_AND_NOTARIZATION.md."
+              exit 0
+            fi
+          fi
+
           BUNDLE_DIR=apps/desktop/src-tauri/target/release/bundle/macos
           APP_PATH="$(find "$BUNDLE_DIR" -maxdepth 1 -name '*.app' | head -n1)"
           if [ -z "$APP_PATH" ]; then
@@ -359,12 +433,25 @@ jobs:
             xcrun stapler validate "$APP_PATH"
             echo "  Gate G3-01 macOS criterion met: signed, notarised, and Gatekeeper-accepted."
           else
-            echo ""
-            echo "  SKIP  APPLE_ID is not set — notarization and Gatekeeper checks skipped."
-            echo "        The .app is code-signed but not notarised."
-            echo "        Gatekeeper will block this build on clean macOS installs."
-            echo "        Set APPLE_ID, APPLE_PASSWORD, and APPLE_TEAM_ID secrets to enable"
-            echo "        notarisation (required for gate G3-01)."
+            if [ "${REQUIRE_SIGNED_MACOS:-}" = "true" ]; then
+              echo ""
+              echo "ERROR: No notarisation credentials are configured but a notarised" >&2
+              echo "       build is required for this release tag." >&2
+              echo "       Tagged releases (v*) enforce gate G3-01: the macOS .app must" >&2
+              echo "       be notarised and the ticket must be stapled." >&2
+              echo "       Preferred: set APPLE_API_KEY, APPLE_API_ISSUER, and APPLE_API_KEY_PATH." >&2
+              echo "       Fallback:  set APPLE_ID, APPLE_PASSWORD, and APPLE_TEAM_ID." >&2
+              echo "       See publishing/MACOS_SIGNING_AND_NOTARIZATION.md." >&2
+              exit 1
+            else
+              echo ""
+              echo "  SKIP  No notarisation credentials configured."
+              echo "        The .app is code-signed but not notarised."
+              echo "        Gatekeeper will block this build on clean macOS installs."
+              echo "        Preferred: set APPLE_API_KEY / APPLE_API_ISSUER / APPLE_API_KEY_PATH."
+              echo "        Fallback:  set APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID."
+              echo "        Notarisation is required for gate G3-01."
+            fi
           fi
 
       # ── Authenticode signing (Windows only, optional) ─────────────────────────

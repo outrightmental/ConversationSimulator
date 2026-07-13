@@ -263,11 +263,15 @@ jobs:
       # Gatekeeper to block the app on clean macOS installs and violates gate
       # G3-01 (docs/steam-mvp-scope.md).
       #
-      # Non-blocking: a missing signature emits a WARN (not an error) so that
-      # dry-run and internal staging uploads of unsigned dev builds are not
-      # blocked.  Signed builds must be used for any Stage 3+ release.
+      # Enforcement: when set_live_branch is non-empty (Stage 3+ deploy) a
+      # missing signature is a HARD ERROR — staging an unsigned build as live
+      # would close the "unsigned build set live" hole.  Dry-run uploads
+      # (set_live_branch='') still emit a WARN so unsigned dev builds can be
+      # staged for inspection without being promoted to a live branch.
       - name: Verify macOS .app code-signature presence
         if: env.HAS_STEAM_CREDS == 'true'
+        env:
+          SET_LIVE_BRANCH: ${{ inputs.set_live_branch }}
         run: |
           APP_PATH="$(find steam-content/macos -maxdepth 1 -name '*.app' -type d \
             2>/dev/null | head -n1)"
@@ -280,11 +284,21 @@ jobs:
             echo "      Notarisation was verified in release.yml before artifact upload."
             echo "      Gate G3-01 macOS signature criterion satisfied."
           else
-            echo "  WARN  $APP_PATH does not contain a code signature (_CodeSignature missing)." >&2
-            echo "        Signed and notarised builds are required for Stage 3/4 Steam release" >&2
-            echo "        (gate G3-01 in docs/steam-mvp-scope.md)." >&2
-            echo "        This warning does not block dry-run or internal staging uploads." >&2
-            echo "        See docs/platform-notes.md for signing requirements." >&2
+            if [ -n "${SET_LIVE_BRANCH:-}" ]; then
+              echo "  ERROR  $APP_PATH does not contain a code signature (_CodeSignature missing)." >&2
+              echo "         set_live_branch='$SET_LIVE_BRANCH' — refusing to promote an unsigned" >&2
+              echo "         macOS build to a live Steam branch." >&2
+              echo "         Signed and notarised builds are required for Stage 3/4 Steam release" >&2
+              echo "         (gate G3-01 in docs/steam-mvp-scope.md)." >&2
+              echo "         Re-run release.yml with signing secrets configured, then redeploy." >&2
+              exit 1
+            else
+              echo "  WARN  $APP_PATH does not contain a code signature (_CodeSignature missing)." >&2
+              echo "        Signed and notarised builds are required for Stage 3/4 Steam release" >&2
+              echo "        (gate G3-01 in docs/steam-mvp-scope.md)." >&2
+              echo "        Dry-run upload continues (set_live_branch is empty)." >&2
+              echo "        Do not promote this build to a live branch without signing first." >&2
+            fi
           fi
 
       # ── Verify no forbidden files are staged ───────────────────────────────
