@@ -57,6 +57,8 @@ export interface UseSetupFlowReturn {
   resetAction: () => void
   navigate: ReturnType<typeof useNavigate>
 
+  handleSetMeUp: () => void
+  handleAdvancedOllama: () => void
   handleStartInstall: (registryId: string) => Promise<void>
   handleSelectOllama: (m: DetectedOllamaModel) => Promise<void>
   handleUseGguf: () => Promise<void>
@@ -119,6 +121,10 @@ export function useSetupFlow(initialStep: SetupFlowStep, initialInstallId?: numb
 
   const [preflightResult, setPreflightResult] = useState<PreflightResponse | null>(null)
 
+  // Tracks what the user chose on the welcome screen so the loading step can
+  // route to the right destination without exposing the detail as UI state.
+  const intentRef = useRef<'set-me-up' | 'ollama' | null>(null)
+
   const stepHeadingRef = useRef<HTMLHeadingElement>(null)
   const isInitialStep = useRef(true)
   useEffect(() => {
@@ -126,10 +132,23 @@ export function useSetupFlow(initialStep: SetupFlowStep, initialInstallId?: numb
     stepHeadingRef.current?.focus()
   }, [step])
 
-  // Fetch models + preflight when entering loading step
+  // Pre-fetch the model registry when on the welcome step so the WelcomeStep
+  // can render model size + license before any user action, satisfying the
+  // acceptance criterion that these values come from the registry, not
+  // hardcoded strings.
+  useEffect(() => {
+    if (step !== 'welcome') return
+    let cancelled = false
+    void api.getModels().then((r) => {
+      if (!cancelled && r.ok) setModelsData(r.data)
+    })
+    return () => { cancelled = true }
+  }, [step])
+
+  // Fetch models + preflight when entering loading step, then route based on intent
   useEffect(() => {
     if (step !== 'loading') return
-    void Promise.all([api.getModels(), api.preflight()]).then(([modelsResult, preflightRes]) => {
+    void Promise.all([api.getModels(), api.preflight()]).then(async ([modelsResult, preflightRes]) => {
       if (!modelsResult.ok) {
         setLoadError(modelsResult.error)
         setStep('load-error')
@@ -143,6 +162,40 @@ export function useSetupFlow(initialStep: SetupFlowStep, initialInstallId?: numb
         )
         if (blockingFails.length > 0) { setStep('preflight'); return }
       }
+
+      const intent = intentRef.current
+      intentRef.current = null
+
+      if (intent === 'set-me-up') {
+        const rec = modelsResult.data.registry.find((m) => m.role === 'starter') ?? null
+        if (!rec) { setStep('choose'); return }
+        setSelectedModel(rec)
+        setActionLoading(true)
+        setActionError(null)
+        try {
+          const resp = await api.installModel({ registry_id: rec.id })
+          if (!resp.ok) {
+            setActionError(resp.error)
+            setStep('confirm-install')
+          } else {
+            setInstallId(resp.data.install_id)
+            setInstallRecord(null)
+            setStep('installing')
+          }
+        } catch (err: unknown) {
+          setActionError({ kind: 'network', message: err instanceof Error ? err.message : 'Install failed. Please try again.' })
+          setStep('confirm-install')
+        } finally {
+          setActionLoading(false)
+        }
+        return
+      }
+
+      if (intent === 'ollama') {
+        setStep('ollama-select')
+        return
+      }
+
       setStep('choose')
     }).catch((err: unknown) => {
       setLoadError({ kind: 'network', message: err instanceof Error ? err.message : 'Failed to load model information.' })
@@ -200,6 +253,16 @@ export function useSetupFlow(initialStep: SetupFlowStep, initialInstallId?: numb
   }
 
   async function reloadModels() {
+    setStep('loading')
+  }
+
+  function handleSetMeUp() {
+    intentRef.current = 'set-me-up'
+    setStep('loading')
+  }
+
+  function handleAdvancedOllama() {
+    intentRef.current = 'ollama'
     setStep('loading')
   }
 
@@ -296,6 +359,8 @@ export function useSetupFlow(initialStep: SetupFlowStep, initialInstallId?: numb
     recommendedModel,
     resetAction,
     navigate,
+    handleSetMeUp,
+    handleAdvancedOllama,
     handleStartInstall,
     handleSelectOllama,
     handleUseGguf,
