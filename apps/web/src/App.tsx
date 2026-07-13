@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Routes, Route, Navigate, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { I18nProvider } from './i18n'
 import { installExternalLinkHandler } from './lib/openExternal'
@@ -40,11 +40,13 @@ function useSetupStatus(): { status: GuardStatus; pendingInstallId: number | nul
   )
   const [pendingInstallId, setPendingInstallId] = useState<number | null>(null)
 
-  useEffect(() => {
+  const revalidate = useCallback(() => {
     void api.getSetupStatus().then((r) => {
       if (!r.ok) {
         // Server unreachable: fall back to the localStorage mirror so we never
-        // hang on a blank screen. Without a mirror, treat as never-run.
+        // hang on a blank screen. Without a mirror, treat as never-run. Only the
+        // initial 'loading' state falls through to never-run — a revalidation
+        // that fails keeps the last known status rather than downgrading it.
         setStatus((prev) => (prev.kind === 'loading' ? { kind: 'never-run' } : prev))
         return
       }
@@ -63,6 +65,23 @@ function useSetupStatus(): { status: GuardStatus; pendingInstallId: number | nul
       }
     })
   }, [])
+
+  useEffect(() => { revalidate() }, [revalidate])
+
+  // Per issue #380, setup status is derived, not stored, so it must be
+  // revalidated when the app regains focus — otherwise the "finish setup" banner
+  // (or a resolved-in-the-background completion) goes stale until a full reload.
+  // A user who finishes setup in the model manager and switches back sees the
+  // banner clear on the next focus rather than being stuck with a wrong banner.
+  useEffect(() => {
+    function onFocus() { revalidate() }
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onFocus)
+    return () => {
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onFocus)
+    }
+  }, [revalidate])
 
   return { status, pendingInstallId }
 }
