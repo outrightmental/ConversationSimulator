@@ -6,8 +6,11 @@ sidebar:
 ---
 
 > **Status: Stage 5 research milestone. Not launch-blocking.**
-> Complete this document after the public free Steam release (Stage 4) has been
-> live for at least 90 days. No implementation work on a marketplace may begin
+> Complete this document after the paid ($9.99) Steam release (Stage 4) has been
+> live for at least 90 days. This spike now scopes the third-party creator
+> marketplace specifically; first-party premium content is delivered as paid
+> Steam DLC and is out of scope here. No implementation work on that marketplace
+> may begin
 > until the entry gate in [`docs/marketplace-architecture.md`](/dev/marketplace-architecture/)
 > is satisfied and the decision at the end of this document is made.
 >
@@ -278,7 +281,7 @@ Findings:
 
 | Question | Answer |
 |----------|--------|
-| What is the current funding model for Outright Mental's sponsorship of distribution costs? | |
+| How well do base app ($9.99) sales and premium scenario-pack DLC revenue currently cover Outright Mental's development and distribution costs? | |
 | Would revenue from a marketplace materially reduce Outright Mental's out-of-pocket distribution costs? | |
 | Is there a revenue threshold below which the operational overhead of a marketplace is not worth it? If so, what is that threshold? | |
 | Has Outright Mental's board or leadership set a target or constraint on marketplace revenue expectations? | |
@@ -342,7 +345,7 @@ option space.
 | Is there evidence of meaningful demand for discoverable content beyond what manual install provides? | yes / no | If no: "do not build yet" is the recommendation. |
 | Did any creator express interest in paid content? | yes — strong / yes — weak / no | Weak or no: paid marketplace options are premature. |
 | Does Outright Mental have the capacity to review 10+ pack submissions per month? | yes / no | If no: external portal or Steam DLC (no community submissions) are the safer options. |
-| Has Valve microtransaction approval been received? | yes / no | If no: Steam DLC or in-game marketplace options require this first. |
+| Has Valve microtransaction approval been received? | yes / no | Applies only to an in-game Steam Wallet marketplace (Option D). First-party Steam DLC needs Valve's standard DLC review, not microtransaction approval, and already ships. |
 | Is the creator community large enough to populate a registry (≥ 10 community packs available or in progress)? | yes / no | If no: first-party options (curated free or Steam DLC) may be sufficient. |
 
 ### 4.2 Options
@@ -360,7 +363,7 @@ specific to this spike and are not enumerated in that comparison.
 |--------|---------------|
 | **A — Do not build yet** | Entry gate not passed, or demand signals are unclear or weak, or operational capacity is insufficient. The status quo (manual install from GitHub/itch.io) remains in place. Revisit in 6 months. |
 | **B — Curated free registry** | Demand for discoverability is confirmed but monetisation interest is weak or absent, and Outright Mental can handle review volume. A simple indexed list of community packs with validator-passed badges. No payment infrastructure required. |
-| **C — Steam DLC packs** | Demand exists for premium first-party content, Valve microtransaction approval is received, and Outright Mental is willing to commit first-party authoring resources. Community creator submissions are not part of this option. |
+| **C — More Steam DLC packs** | Demand exists for additional premium first-party content, and Outright Mental is willing to commit first-party authoring resources. Steam DLC uses Valve's standard DLC review (no Steam Wallet microtransaction approval needed) — this is the channel first-party premium packs already ship on. Community creator submissions are not part of this option. |
 | **D — In-game marketplace** | Strong demand for paid community content confirmed, entry gate fully passed including legal and Valve approvals, and Outright Mental has the moderation capacity and infrastructure budget to operate a marketplace. Highest complexity and highest upside. |
 | **E — External creator portal** | Similar demand profile to Option D but Outright Mental prefers to avoid Steam's 30% cut and has the infrastructure capacity to operate an external payment and distribution platform. Requires the most independent infrastructure. |
 
@@ -453,7 +456,7 @@ for the Stage 5 milestone.
 - [`docs/STEAM_ROADMAP.md`](/dev/steam-roadmap/) — release train: Stage 5 is the marketplace exploration milestone
 - [`docs/steam-mvp-scope.md`](/dev/steam-mvp-scope/) — what shipped in Stage 4; the post-launch baseline
 - [`publishing/POST_LAUNCH_FEEDBACK_SUMMARY.md`](https://github.com/outrightmental/ConversationSimulator/blob/main/publishing/POST_LAUNCH_FEEDBACK_SUMMARY.md) — 72-hour and two-week launch feedback; primary source for section 1
-- [`publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md`](https://github.com/outrightmental/ConversationSimulator/blob/main/publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md) — risk SP-05 (Steam Wallet and future paid DLC path)
+- [`publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md`](https://github.com/outrightmental/ConversationSimulator/blob/main/publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md) — risk SP-05 (first-party Steam DLC path for premium scenario packs)
 - [`docs/safety-policy.md`](/trust/safety-policy/) — content policy any marketplace pack must satisfy
 - [`docs/privacy.md`](/trust/privacy/) — local-first promise that marketplace infrastructure must not break
 - [`docs/scenario-authoring.md`](/create/scenario-authoring/) — creator documentation; starting point for section 2 recruits

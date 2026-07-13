@@ -101,7 +101,7 @@ approved by Valve for private access.
 | G3-05 | Compliance checklists signed off | Manual | All compliance checklist items `SR-01` through `SR-08` in the compliance register are signed off by their named owners with a date. |
 | G3-06 | Beta session verification | Manual (beta testers) | A minimum of five testers (at least one on each of Windows, macOS, and Linux) complete a full text session and view the debrief screen. No session-ending bugs, data-loss bugs, or privacy regressions remain open at the time the beta gate is declared. |
 
-### Stage 4 gate — Public free Steam release
+### Stage 4 gate — Public paid Steam release ($9.99)
 
 Entry criterion: Stage 3 gate fully passed and Valve private beta approval
 received.
@@ -111,7 +111,7 @@ received.
 | G4-01 | Valve Steam review approval | Valve review | Valve's Steam review team has approved the app for **public** release (not just private beta). The store page is live or scheduled. |
 | G4-02 | Steam Deck Verified tier | Valve review | Valve has granted the Verified tier. All items in the [Steam Deck verification checklist](/dev/steam-roadmap/#steam-deck-verification-checklist) passed during Stage 3 beta testing. |
 | G4-03 | Full release checklist | CI + manual | All parts (A, B, C, D) of [docs/release-checklist.md](/dev/release-checklist/) are complete with no unresolved failures. |
-| G4-04 | Store page accuracy | Manual | Steam store page is reviewed by the publishing owner: no claims of AI therapy, diagnosis, or legal advice; no implied marketplace or paid content; local-first and privacy-first copy is accurate. |
+| G4-04 | Store page accuracy | Manual | Steam store page is reviewed by the publishing owner: no claims of AI therapy, diagnosis, or legal advice; pricing is stated accurately — the base app is a $9.99 one-time purchase (not free-to-play and not a subscription) and premium scenario-pack DLC is sold separately as Steam DLC; no implied in-app marketplace or microtransactions; local-first and privacy-first copy is accurate. |
 | G4-05 | Voice smoke (if included) | CI + manual | If STT and/or TTS are included in the release build, voice smoke tests (`services/convsim-core/tests/test_voice_smoke.py`) pass end-to-end on all three target platforms. If voice is not included in the release build, the voice-unavailable fallback path must pass. |
 
 ---

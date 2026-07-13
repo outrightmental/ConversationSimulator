@@ -97,7 +97,7 @@ approved by Valve for private access.
 | G3-05 | Compliance checklists signed off | Manual | All compliance checklist items `SR-01` through `SR-08` in the compliance register are signed off by their named owners with a date. |
 | G3-06 | Beta session verification | Manual (beta testers) | A minimum of five testers (at least one on each of Windows, macOS, and Linux) complete a full text session and view the debrief screen. No session-ending bugs, data-loss bugs, or privacy regressions remain open at the time the beta gate is declared. |
 
-### Stage 4 gate — Public free Steam release
+### Stage 4 gate — Public paid ($9.99) Steam release
 
 Entry criterion: Stage 3 gate fully passed and Valve private beta approval
 received.
@@ -107,7 +107,7 @@ received.
 | G4-01 | Valve Steam review approval | Valve review | Valve's Steam review team has approved the app for **public** release (not just private beta). The store page is live or scheduled. |
 | G4-02 | Steam Deck Verified tier | Valve review | Valve has granted the Verified tier. All items in the [Steam Deck verification checklist](STEAM_ROADMAP.md#steam-deck-verification-checklist) passed during Stage 3 beta testing. |
 | G4-03 | Full release checklist | CI + manual | All parts (A, B, C, D) of [docs/release-checklist.md](release-checklist.md) are complete with no unresolved failures. |
-| G4-04 | Store page accuracy | Manual | Steam store page is reviewed by the publishing owner: no claims of AI therapy, diagnosis, or legal advice; no implied marketplace or paid content; local-first and privacy-first copy is accurate. |
+| G4-04 | Store page accuracy | Manual | Steam store page is reviewed by the publishing owner: no claims of AI therapy, diagnosis, or legal advice; the base app is listed at its one-time **$9.99** price with no misleading "free" or "free-to-play" claims — the free build-from-source path (GitHub, open source) is disclosed accurately, and the paid Steam package is described as funding development rather than unlocking anything the source build lacks; premium scenario-pack DLC is described accurately as first-party paid content delivered via Steam DLC (Option A), without claiming the DLC content is open source or that it lives in the public repo; local-first and privacy-first copy is accurate and is not undercut by the pricing copy (a price is not a privacy change). |
 | G4-05 | Voice smoke (if included) | CI + manual | If STT and/or TTS are included in the release build, voice smoke tests (`services/convsim-core/tests/test_voice_smoke.py`) pass end-to-end on all three target platforms. If voice is not included in the release build, the voice-unavailable fallback path must pass. |
 
 ---
@@ -126,7 +126,7 @@ local-first, open-source, and no-telemetry principles of the base project.
 |---------|-------------|
 | Community content marketplace | Requires payment rails, content moderation infrastructure, and Valve approval for in-app transactions. None of this exists in v1. Tracked in Stage 5 of the release train. |
 | Creator revenue sharing | Depends on the marketplace. Cannot exist independently of it. |
-| Paid DLC | Requires the same payment rails and Valve microtransaction review as the marketplace. |
+| Third-party / creator-sold DLC and in-app microtransactions | First-party premium scenario-pack DLC is **not** deferred: it ships as separate Steam DLC (Option A) with its own Steam App IDs and content depots, authored in the private `ConversationSimulator-DLC` repo and delivered through Steam's DLC storefront (base depots exclude DLC content), so it is simply out of scope for the base-app release gates in this document. What remains post-launch is a *third-party* creator marketplace with in-app payment rails and Valve microtransaction review, which does not exist in v1. First-party DLC content is paid, not open source. |
 | Multiplayer or shared sessions | Server infrastructure, latency management, identity, and live moderation are orthogonal to the local-first architecture and would require a fundamentally different backend. |
 | VR support | Platform-specific SDKs, a 3D renderer, and dedicated hardware targets are a separate product effort that the current stack does not address. |
 | Plugin execution in scenario packs | Executable plugins are explicitly prohibited by the safety policy (`CP-01` in the compliance register) and the pack schema (`scripts` field rejected). Revisiting this requires a sandboxing architecture and a separate security review — it cannot be added incrementally. |

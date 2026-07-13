@@ -260,7 +260,7 @@ do I actually do?") within the first 15 seconds.
 | 0:15–0:45 | **Core loop — 30 seconds of actual conversation.** Show a mid-session exchange in one of the four built-in packs. Player types a response; NPC replies; a state meter changes; a scenario event triggers. Show at least one moment where the NPC pushes back or the dynamic shifts. |
 | 0:45–1:00 | Debrief screen. Show the overall score, at least one scorecard dimension, and a key moment. Convey that the session produced useful feedback, not just a score. |
 | 1:00–1:10 | Optional: 3-second cuts showing Model Manager, Creator Workbench, and voice mode in action. Convey depth without dwelling. |
-| 1:10–1:20 | Closing title card: "Free forever. Everything runs on your computer." + Outright Mental mark. |
+| 1:10–1:20 | Closing title card: "Runs entirely on your computer. Open source." + Outright Mental mark. |
 
 **Narration / text cards:**
 - No voice-over is required. Text cards at key transitions are sufficient.

@@ -1,12 +1,12 @@
 ---
 title: "Steam roadmap"
-description: "Product target and release principles for shipping Conversation Simulator as a free, sponsored Steam edition without compromising local-first, no-telemetry guarantees."
+description: "Product target and release principles for shipping Conversation Simulator as a paid $9.99 Steam edition without compromising local-first, no-telemetry guarantees."
 sidebar:
   order: 31
 ---
 
 > **Purpose of this document:** Define the product target for shipping
-> Conversation Simulator as a free, sponsored Steam edition for non-technical
+> Conversation Simulator as a paid ($9.99) Steam edition for non-technical
 > players — without compromising the local-first, open-source, no-telemetry
 > principles of the base project. Every downstream Steam-release issue should
 > reference this document as its shared product target.
@@ -15,13 +15,18 @@ sidebar:
 
 ## Release principles
 
-### Free on Steam, sponsored by Outright Mental
+### Priced on Steam, free on GitHub
 
-The Steam edition is and will remain **free to download and play**. There is no
-base purchase price, no subscription, and no pay-to-unlock core content.
-Outright Mental sponsors the distribution costs (Steam partner fees, code
-signing, CI infrastructure, release tooling) so the project can reach
-non-technical players without charging them.
+The Steam edition costs **$9.99 (USD)**, a one-time purchase — no subscription.
+The identical software is **free and open source on GitHub**: anyone can clone the
+repository, build it, and run it at no cost. The $9.99 buys the ready-to-run,
+code-signed, notarized, auto-updating package (plus Steam Deck verification, Steam
+Cloud settings sync, and achievements) and funds continued development. It does not
+unlock anything the source build lacks — the paid build is a convenience and a way
+to support the work, not a gate on the product.
+
+Outright Mental publishes the Steam edition. The four official scenario packs remain
+free and openly licensed (CC BY 4.0) in both the source build and the Steam build.
 
 ### Local-first play, no exceptions
 
@@ -58,13 +63,23 @@ player's knowledge. Every model download must:
 Players must confirm each download. Cancelling a download must leave no partial
 files. Pack downloads follow the same rules.
 
-### No paid marketplace in v1
+### First-party premium DLC, no open marketplace
 
-The Steam release does not include a paid content marketplace. Community packs
-may be distributed outside the app (GitHub, itch.io, direct links), but the
-in-app experience ships no payment rails, no premium pack tier, and no
-microtransactions in v1. Post-launch marketplace exploration is recorded as
-stage 5 of the [release train](#release-train) and is explicitly deferred.
+Paid content ships through **Steam's own DLC system**, not an in-app marketplace.
+First-party **premium scenario-pack expansions** (advanced professional skills,
+extended language courses, themed conversation bundles) are sold as Steam DLC —
+each its own Steam product with its own price and depot. Their content is authored
+in a separate **private repository** (`ConversationSimulator-DLC`) and never enters
+this public repo. The app checks DLC ownership through the Steamworks API and
+unlocks only the packs the player owns.
+
+The four official packs stay free, and nothing that ships free is ever relocked as
+DLC. There is **no in-app payment UI, no Steam Wallet microtransactions, and no
+third-party creator marketplace** — community packs are still installed manually and
+distributed by their authors outside the app. A broader creator marketplace remains
+a post-launch research question (stage 5 of the [release train](#release-train));
+first-party DLC does not depend on it. See
+[`DLC_MODEL.md`](/dev/dlc-model/) for the private-repo → Steam-DLC contract.
 
 ---
 
@@ -79,8 +94,8 @@ met and its tracking issue is closed.
 | **1. GitHub MVP** | Open-source build reaches Milestone 1: stable text loop, voice I/O, workbench, official packs, offline smoke gate, full docs. | All [ROADMAP.md](/project/roadmap/) Milestone 1 items are checked off. |
 | **2. Packaged desktop alpha** | Tauri desktop app bundles `convsim-core` as a sidecar. Single installer on Windows, macOS, Linux. No Steam involvement yet. | GitHub MVP is tagged. Installer boots without CLI setup. Offline smoke test passes from the installed app. |
 | **3. Steam private beta** | App is submitted to the Steam partner portal. Invited testers (developers, Outright Mental staff, select community members) validate the Steam overlay, controller navigation, and platform-specific quirks. | Packaged desktop alpha passes internal QA on all three desktop platforms. Steam page draft is approved by Valve. |
-| **4. Public free Steam release** | App is published as a free title on Steam. All four official packs are available. Model Manager UI is stable. | Steam private beta exit criteria are met. Code signing is in place on macOS and Windows. Steam Deck verification is complete (see [Target platforms](#target-platforms)). |
-| **5. Post-launch: marketplace exploration** | Evaluate whether a community pack browser or optional Outright Mental-curated content makes sense as a zero-cost or patron-supported layer. No decision has been made; this is a research milestone only. See [`docs/marketplace-architecture.md`](/dev/marketplace-architecture/) for the entry gate criteria and design baseline. | Public release has been live for at least 90 days. Community feedback and usage signals inform the evaluation. Entry gate from [`docs/marketplace-architecture.md`](/dev/marketplace-architecture/) must be satisfied before any implementation issue is opened. |
+| **4. Public paid Steam release ($9.99)** | App is published as a **$9.99** title on Steam. All four official packs are included free. Model Manager UI is stable. The first premium scenario-pack DLC may launch alongside or shortly after the base game. | Steam private beta exit criteria are met. Code signing is in place on macOS and Windows. Steam Deck verification is complete (see [Target platforms](#target-platforms)). Store pricing and (if launching) DLC configuration are approved by Valve. |
+| **5. Post-launch: creator marketplace exploration** | First-party premium DLC ships via Steam's DLC system (stage 4 / ongoing). This stage evaluates only whether a **third-party community-creator** marketplace or pack browser is warranted on top of it. No decision has been made; this is a research milestone. See [`docs/marketplace-architecture.md`](/dev/marketplace-architecture/) for the entry gate criteria and design baseline. | Public release has been live for at least 90 days. Community feedback and usage signals inform the evaluation. Entry gate from [`docs/marketplace-architecture.md`](/dev/marketplace-architecture/) must be satisfied before any implementation issue is opened. |
 
 ---
 
@@ -205,8 +220,8 @@ on a dependent PR.
 | **Milestone 1** | GitHub MVP polish (screenshots, code signing groundwork, accessibility baseline) |
 | **Milestone 2** | Packaged desktop alpha (Tauri sidecar, auto-update, real-model CI, voice polish) |
 | **Milestone 3** | Steam private beta (Steam Deck verification, Steam overlay integration, beta tester program) |
-| **Milestone 4** | Public free Steam release |
-| **Milestone 5** | Post-launch (marketplace exploration, community pack browser, analytics opt-in) |
+| **Milestone 4** | Public paid Steam release ($9.99) and first premium scenario-pack DLC |
+| **Milestone 5** | Post-launch (third-party creator marketplace exploration, community pack browser, analytics opt-in) |
 
 Assign every Steam-roadmap issue to one of these milestones. Issues without a
 milestone are considered unscoped and will be left in triage.
@@ -224,7 +239,7 @@ issue must not be started until the upstream issue is merged and closed.
 | [[Steam Roadmap] Create Steam compliance and risk register for local-AI distribution](https://github.com/outrightmental/ConversationSimulator/issues?q=is%3Aissue+steam-compliance-risk-register+in%3Atitle) | [publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md](https://github.com/outrightmental/ConversationSimulator/blob/main/publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md) | Stage 3 prerequisite |
 | [[Steam Roadmap] Define Steam MVP scope and release gates](https://github.com/outrightmental/ConversationSimulator/issues?q=is%3Aissue+steam-mvp-scope+in%3Atitle) | [docs/steam-mvp-scope.md](/dev/steam-mvp-scope/) | Stage 2 prerequisite |
 | [[Steam Roadmap] Add issue templates for Steam QA, platform bugs, and content-pack bugs](https://github.com/outrightmental/ConversationSimulator/issues/185) | [docs/steam-triage.md](/dev/steam-triage/) | Stage 3 prerequisite |
-| [[Steamworks] Register Steam app, depots, packages, and free-to-play configuration](https://github.com/outrightmental/ConversationSimulator/issues/226) | [publishing/STEAM_APP_REGISTRATION.md](https://github.com/outrightmental/ConversationSimulator/blob/main/publishing/STEAM_APP_REGISTRATION.md), [`steam/`](https://github.com/outrightmental/ConversationSimulator/tree/main/steam/), [`.github/workflows/steam-deploy.yml`](https://github.com/outrightmental/ConversationSimulator/blob/main/.github/workflows/steam-deploy.yml) | Stage 3 prerequisite (must be complete before first depot submission) |
+| [[Steamworks] Register Steam app, depots, packages, and $9.99 paid + DLC configuration](https://github.com/outrightmental/ConversationSimulator/issues/226) | [publishing/STEAM_APP_REGISTRATION.md](https://github.com/outrightmental/ConversationSimulator/blob/main/publishing/STEAM_APP_REGISTRATION.md), [`steam/`](https://github.com/outrightmental/ConversationSimulator/tree/main/steam/), [`.github/workflows/steam-deploy.yml`](https://github.com/outrightmental/ConversationSimulator/blob/main/.github/workflows/steam-deploy.yml) | Stage 3 prerequisite (must be complete before first depot submission) |
 | [[Publishing] Write Steam publishing docs matching the FeverTilt pattern](https://github.com/outrightmental/ConversationSimulator/issues/232) | [publishing/STEAM_STORE_AND_OPERATIONS.md](https://github.com/outrightmental/ConversationSimulator/blob/main/publishing/STEAM_STORE_AND_OPERATIONS.md), [publishing/STEAM_PUBLISHING_AND_DEPLOYMENT.md](https://github.com/outrightmental/ConversationSimulator/blob/main/publishing/STEAM_PUBLISHING_AND_DEPLOYMENT.md), [docs/STEAM_INTEGRATION.md](/dev/steam-integration/), [publishing/MACOS_SIGNING_AND_NOTARIZATION.md](https://github.com/outrightmental/ConversationSimulator/blob/main/publishing/MACOS_SIGNING_AND_NOTARIZATION.md), [publishing/WINDOWS_CODE_SIGNING.md](https://github.com/outrightmental/ConversationSimulator/blob/main/publishing/WINDOWS_CODE_SIGNING.md) | Stage 3 prerequisite (operational clarity before private beta) |
 | [[Marketplace] Design future in-game content marketplace architecture](https://github.com/outrightmental/ConversationSimulator/issues/233) | [docs/marketplace-architecture.md](/dev/marketplace-architecture/) | Stage 5 design baseline (post-launch, not launch-blocking) |
 | [[Marketplace] Post-launch spike: validate creator marketplace demand and constraints](https://github.com/outrightmental/ConversationSimulator/issues/244) | [docs/marketplace-demand-spike.md](/dev/marketplace-demand-spike/) | Stage 5 decision gate (complete at 90-day mark; required before any implementation issue is opened) |
