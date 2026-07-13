@@ -10,6 +10,7 @@ import { useLatencyMetrics } from '../hooks/useLatencyMetrics'
 import { isDevModeEnabled, SETUP_KEYS } from '../privacyPrefs'
 import { getVoiceTimingPrefs } from '../components/VoiceSettingsPanel'
 import { useSetupInstall } from '../setup/useSetupInstall'
+import { useTranslation } from '../i18n'
 import type { ApiError } from '../api/errors'
 import type { ApiResult } from '../api/client'
 import { ApiErrorView } from '../components/ApiErrorView'
@@ -76,6 +77,7 @@ export default function Conversation() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const navigate = useNavigate()
   const { state } = useLocation()
+  const { t } = useTranslation()
   const routeState = state as {
     language?: string
     show_state_meters?: boolean
@@ -180,6 +182,12 @@ export default function Conversation() {
     const { status } = backgroundInstallJob
     if (status === 'complete') {
       try { localStorage.removeItem(SETUP_KEYS.tutorialInstallId) } catch { /* ignore */ }
+      // The real model is now the active runtime server-side, so any conversation
+      // started from here on (Switch now, or "Try it with the real AI" after the
+      // debrief) is genuine AI — drop the scripted/fake hint so it isn't mislabeled.
+      // The current session's badge is unaffected: runtimeHint was captured in a
+      // useState initializer at mount and does not re-read localStorage.
+      try { localStorage.removeItem(SETUP_KEYS.activeRuntimeHint) } catch { /* ignore */ }
       setModelReadyState('shown')
     } else if (status === 'failed' || status === 'cancelled') {
       try { localStorage.removeItem(SETUP_KEYS.tutorialInstallId) } catch { /* ignore */ }
@@ -692,7 +700,7 @@ export default function Conversation() {
             {runtimeHint === 'scripted' && (
               <span
                 data-testid="runtime-label"
-                aria-label="Scripted practice run — responses are not AI-generated"
+                aria-label={t('conversation.runtimeLabel.scripted')}
                 style={{
                   fontSize: '0.7rem',
                   fontWeight: 600,
@@ -704,13 +712,13 @@ export default function Conversation() {
                   letterSpacing: '0.04em',
                 }}
               >
-                Scripted practice run
+                {t('conversation.runtimeLabel.scripted')}
               </span>
             )}
             {runtimeHint === 'fake' && (
               <span
                 data-testid="runtime-label"
-                aria-label="Demo mode — responses are not AI-generated"
+                aria-label={t('conversation.runtimeLabel.fake')}
                 style={{
                   fontSize: '0.7rem',
                   fontWeight: 600,
@@ -722,7 +730,7 @@ export default function Conversation() {
                   letterSpacing: '0.04em',
                 }}
               >
-                Demo mode
+                {t('conversation.runtimeLabel.fake')}
               </span>
             )}
           </div>
@@ -776,7 +784,7 @@ export default function Conversation() {
             fontSize: '0.875rem',
           }}
         >
-          <span>Your AI model is ready ✨</span>
+          <span>{t('conversation.modelReady.toast')} ✨</span>
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <button
               onClick={handleModelReadySwitchNow}
@@ -791,7 +799,7 @@ export default function Conversation() {
                 fontSize: '0.8rem',
               }}
             >
-              Switch now
+              {t('conversation.modelReady.switchNow')}
             </button>
             <button
               onClick={handleModelReadyDefer}
@@ -805,7 +813,7 @@ export default function Conversation() {
                 fontSize: '0.8rem',
               }}
             >
-              After this conversation
+              {t('conversation.modelReady.afterConversation')}
             </button>
           </div>
         </div>
