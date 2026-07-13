@@ -437,6 +437,13 @@ export const en = {
     nextUp: {
       heading: 'Next up',
     },
+    voiceInvite: {
+      heading: 'Next time, say it out loud',
+      description:
+        'Practicing aloud is where the real gains are. Add voice — speech-to-text, replies read aloud, all processed on this machine (~350 MB download).',
+      setupButton: 'Set up voice',
+      laterButton: 'Maybe later',
+    },
   },
 }
 
