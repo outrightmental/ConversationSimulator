@@ -278,5 +278,5 @@ verified SHA-256 checksum; no entry ships a `PENDING` value.
 - [`schemas/model-registry.schema.json`](https://github.com/outrightmental/ConversationSimulator/blob/main/schemas/model-registry.schema.json) — JSON Schema
 - [`publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md`](https://github.com/outrightmental/ConversationSimulator/blob/main/publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md) — risk register (MD-01–MD-04)
 - [`publishing/STEAM_DEPOT_CONTENTS.md`](https://github.com/outrightmental/ConversationSimulator/blob/main/publishing/STEAM_DEPOT_CONTENTS.md) — what ships in the depot
-- [Local models guide](/play/local-models/) — player-facing model installation guide
+- [Choosing how to run the AI](/play/ai-engine/) — player-facing model installation guide
 - [Steam roadmap](/dev/steam-roadmap/) — model download transparency specification

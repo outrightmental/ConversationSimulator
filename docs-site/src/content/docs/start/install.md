@@ -25,7 +25,7 @@ should follow the [developer install](/dev/developer-install/) instead.
 | OS | macOS 13+, Ubuntu 22.04+, Windows 10 | macOS 12 Monterey is no longer supported (app minimum is macOS 13) |
 | CPU | Any 64-bit x86 or Apple Silicon | Apple Silicon recommended for CPU inference |
 | RAM | 8 GB | 16 GB recommended for standard-tier models |
-| GPU VRAM | 0 GB (CPU fallback available) | 4 GB+ for the starter model; see [Local models](/play/local-models/) |
+| GPU VRAM | 0 GB (CPU fallback available) | 4 GB+ for the starter model; see [Choosing how to run the AI](/play/ai-engine/) |
 | Disk | 20 GB free | 3–15 GB for model weights plus app data |
 
 ---
