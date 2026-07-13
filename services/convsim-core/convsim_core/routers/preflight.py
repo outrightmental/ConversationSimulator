@@ -34,7 +34,7 @@ _MIN_PACKS = 4
 class FixAction(BaseModel):
     """A single actionable remedy for a failing or warning check."""
 
-    kind: str   # "navigate" | "open-url" | "wizard-step"
+    kind: str   # "navigate" | "open-url" | "wizard-step" | "install-engine"
     href: str
     label: str
 

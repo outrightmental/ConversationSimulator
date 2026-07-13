@@ -429,6 +429,31 @@ def test_sidecar_start_returns_409_when_already_running(client):
     assert resp.json()["error"]["code"] == "SIDECAR_ALREADY_RUNNING"
 
 
+def test_gpu_variant_endpoint_non_windows_returns_cpu(client, monkeypatch):
+    """On non-Windows platforms the GPU-variant probe is skipped and returns cpu."""
+    # The endpoint reads platform via a local ``import sys as _sys``, which
+    # aliases the real sys module, so patch sys.platform directly.
+    monkeypatch.setattr(sys, "platform", "linux")
+
+    resp = client.get("/api/sidecar/gpu-variant")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["variant"] == "cpu"
+
+
+def test_gpu_variant_endpoint_windows_reports_probe_result(client, monkeypatch):
+    """On Windows the endpoint surfaces detect_windows_gpu_variant()'s result."""
+    monkeypatch.setattr(sys, "platform", "win32")
+    monkeypatch.setattr(
+        "convsim_core.routers.sidecar.detect_windows_gpu_variant",
+        lambda: "vulkan",
+    )
+
+    resp = client.get("/api/sidecar/gpu-variant")
+    assert resp.status_code == 200
+    assert resp.json()["variant"] == "vulkan"
+
+
 def test_sidecar_start_returns_409_when_starting(client):
     """POST /api/sidecar/start must return 409 if the sidecar is still STARTING.
 
