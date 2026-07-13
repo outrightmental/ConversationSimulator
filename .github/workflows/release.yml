@@ -300,6 +300,40 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      # ── Sign bundled resource binaries (Windows only) ───────────────────────
+      # Tauri's bundle.windows.signCommand signs the main app executable and the
+      # installers, but NOT files bundled via bundle.resources (resources/**/*).
+      # convsim-core.exe (always) and llama-server.exe (Steam builds) live under
+      # resources/ and must be signed HERE — before `tauri build` packages them
+      # into the NSIS/MSI. Otherwise SmartScreen flags the extracted payload and
+      # the "Verify Windows Authenticode signature" step fails on the inner
+      # binary. jsign-sign.ps1 INFO-skips (exit 0) when no signing credentials
+      # are configured, so fork/dev builds are unaffected.
+      - name: Sign bundled resource binaries (Authenticode)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          GCP_SA_KEY_JSON:       ${{ secrets.GCP_SA_KEY_JSON }}
+          GCP_KMS_KEY:           ${{ secrets.GCP_KMS_KEY }}
+          WINDOWS_CODESIGN_CERT: ${{ secrets.WINDOWS_CODESIGN_CERT }}
+          CERT_PFX_BASE64:       ${{ secrets.WINDOWS_SIGN_CERT_PFX }}
+          CERT_PASSWORD:         ${{ secrets.WINDOWS_SIGN_CERT_PASSWORD }}
+        run: |
+          $resDir  = "apps\desktop\src-tauri\resources"
+          $targets = @(
+            "$resDir\bin\convsim-core.exe",
+            "$resDir\runtimes\llama-server.exe"
+          )
+          foreach ($t in $targets) {
+            if (-not (Test-Path $t)) { continue }
+            Write-Host "  Signing resource binary: $t"
+            & pwsh -NoLogo -NonInteractive -File scripts\jsign-sign.ps1 -FilePath $t
+            if ($LASTEXITCODE -ne 0) {
+              Write-Error "Signing failed for $t (exit $LASTEXITCODE)"
+              exit $LASTEXITCODE
+            }
+          }
+
       # ── Sync app version to the release tag ──────────────────────────────────
       # The built binary reports the `version` field from tauri.conf.json, and
       # the in-app updater compares that against the `version` in latest.json

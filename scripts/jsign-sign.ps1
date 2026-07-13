@@ -25,10 +25,11 @@
   bundle.windows.signCommand, or passed directly from the release workflow.
 
 .NOTES
-  Pin JSIGN_SHA256 before first production use:
+  JSIGN_SHA256 is pinned to the official jsign-7.0.jar release asset. After any
+  version bump, re-pin it:
     Invoke-WebRequest -Uri $JSIGN_DOWNLOAD_URL -OutFile jsign.jar
     (Get-FileHash jsign.jar -Algorithm SHA256).Hash.ToLower()
-  Update the constant below with the result and remove the placeholder comment.
+  Update JSIGN_VERSION and JSIGN_SHA256 with the result.
 #>
 [CmdletBinding()]
 param(
@@ -41,9 +42,9 @@ $ErrorActionPreference = 'Stop'
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 $JSIGN_VERSION      = '7.0'
-# PLACEHOLDER — replace with real SHA-256 before production use:
-#   (Get-FileHash jsign-7.0.jar -Algorithm SHA256).Hash.ToLower()
-$JSIGN_SHA256       = '0000000000000000000000000000000000000000000000000000000000000000'
+# SHA-256 of the official jsign-7.0.jar GitHub release asset. Verify after any
+# version bump with: (Get-FileHash jsign-<ver>.jar -Algorithm SHA256).Hash.ToLower()
+$JSIGN_SHA256       = '325df319621e7fa74384c8852efdb5828871bf6405648a4c621ee5fc37c59b6c'
 $JSIGN_DOWNLOAD_URL = "https://github.com/ebourg/jsign/releases/download/$JSIGN_VERSION/jsign-$JSIGN_VERSION.jar"
 $JSIGN_CACHE_DIR    = if ($env:RUNNER_TOOL_CACHE) {
                           Join-Path $env:RUNNER_TOOL_CACHE "jsign\$JSIGN_VERSION"

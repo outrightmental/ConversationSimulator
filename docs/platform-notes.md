@@ -217,9 +217,13 @@ is issued against the KMS key (see the CSR flow in
 
 Signing runs in two phases controlled by `scripts/jsign-sign.ps1`:
 
-1. **Payload binaries** — signed by Tauri's `bundle.windows.signCommand` hook
-   during `tauri build` (`ConversationSimulator.exe`, `convsim-core.exe`).
-2. **Outer installers** — the NSIS `.exe` and MSI are signed post-build by the
+1. **Main executable** — `ConversationSimulator.exe` is signed by Tauri's
+   `bundle.windows.signCommand` hook during `tauri build`.
+2. **Resource binaries** — `convsim-core.exe` (and `llama-server.exe` on Steam
+   builds) are bundled via `bundle.resources`, which `signCommand` does **not**
+   cover, so the "Sign bundled resource binaries" step signs them before the
+   Tauri build packages them into the installer.
+3. **Outer installers** — the NSIS `.exe` and MSI are signed post-build by the
    "Sign Windows installers (Authenticode)" step.
 
 Both phases share the same script and the same signing priority:
