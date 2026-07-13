@@ -630,17 +630,34 @@ jobs:
             }
           }
 
-          # Also sign portable depot binaries for the Steam depot layout.
-          # These ship directly at the depot root without an installer wrapper, so
-          # each must carry its own Authenticode signature independently of the
-          # NSIS/MSI installers signed above.
+          # Sign every PE file that ships in the Windows Steam depot.
+          # These go into the depot with no installer wrapper, so each must carry its
+          # own Authenticode signature (issue #408 acceptance criterion:
+          # "every PE file in the depot is Authenticode-signed").  That is:
+          #   - the main binary at the release root (convsim-desktop.exe,
+          #     renamed to ConversationSimulator.exe during packaging),
+          #   - any root-level support DLLs (WebView2Loader.dll, …),
+          #   - every .exe/.dll under resources/ — the convsim-core sidecar
+          #     plus the bundled runtimes (llama-server.exe and its sibling
+          #     ggml*/llama DLLs, whisper/TTS binaries).
+          # The WebView2 bootstrapper is downloaded later, during packaging,
+          # and is already Microsoft-signed, so it is not in this list.
           $releaseDir = "apps\desktop\src-tauri\target\release"
-          foreach ($path in @("$releaseDir\convsim-desktop.exe", "$releaseDir\resources\bin\convsim-core.exe")) {
-            if (-not (Test-Path $path)) { continue }
-            Write-Host "  Signing depot binary: $path"
-            & pwsh -NoLogo -NonInteractive -File scripts\jsign-sign.ps1 -FilePath $path
+          $depotBinaries = @(
+            Get-ChildItem -Path "$releaseDir\*" -File -Include "*.exe","*.dll" `
+              -ErrorAction SilentlyContinue
+          )
+          if (Test-Path "$releaseDir\resources") {
+            $depotBinaries += @(
+              Get-ChildItem -Path "$releaseDir\resources" -Recurse -File `
+                -Include "*.exe","*.dll" -ErrorAction SilentlyContinue
+            )
+          }
+          foreach ($bin in ($depotBinaries | Where-Object { $_ -ne $null })) {
+            Write-Host "  Signing depot binary: $($bin.FullName)"
+            & pwsh -NoLogo -NonInteractive -File scripts\jsign-sign.ps1 -FilePath $bin.FullName
             if ($LASTEXITCODE -ne 0) {
-              Write-Error "Signing failed for $(Split-Path -Leaf $path) (exit $LASTEXITCODE)"
+              Write-Error "Signing failed for $($bin.Name) (exit $LASTEXITCODE)"
               exit $LASTEXITCODE
             }
           }
@@ -695,21 +712,31 @@ jobs:
           }
           Write-Host "  OK  All outer installers carry a valid Authenticode signature."
 
-          # Verify portable depot binaries.  These ship directly at the Steam depot
-          # root without an installer wrapper and must carry their own signatures.
+          # Verify every PE file that ships in the Windows Steam depot — the same
+          # set the signing step covered so an unsigned runtime binary can never
+          # slip into the depot unnoticed.
           $fail = $false
           Write-Host ""
           Write-Host "=== Portable depot binary signatures ==="
           $releaseDir = "apps\desktop\src-tauri\target\release"
-          foreach ($path in @("$releaseDir\convsim-desktop.exe", "$releaseDir\resources\bin\convsim-core.exe")) {
-            if (-not (Test-Path $path)) { continue }
-            Write-Host "  Verifying: $path"
-            & $signtool verify /pa /v $path
+          $depotBinaries = @(
+            Get-ChildItem -Path "$releaseDir\*" -File -Include "*.exe","*.dll" `
+              -ErrorAction SilentlyContinue
+          )
+          if (Test-Path "$releaseDir\resources") {
+            $depotBinaries += @(
+              Get-ChildItem -Path "$releaseDir\resources" -Recurse -File `
+                -Include "*.exe","*.dll" -ErrorAction SilentlyContinue
+            )
+          }
+          foreach ($bin in ($depotBinaries | Where-Object { $_ -ne $null })) {
+            Write-Host "  Verifying: $($bin.FullName)"
+            & $signtool verify /pa /v $bin.FullName
             if ($LASTEXITCODE -ne 0) {
-              Write-Error "  FAIL  $(Split-Path -Leaf $path) does not carry a valid Authenticode signature."
+              Write-Error "  FAIL  $($bin.Name) does not carry a valid Authenticode signature."
               $fail = $true
             } else {
-              Write-Host "  OK    $(Split-Path -Leaf $path)"
+              Write-Host "  OK    $($bin.Name)"
             }
           }
 
