@@ -123,4 +123,16 @@ describe('First-run guard', () => {
     expect(screen.getByRole('heading', { name: /settings/i })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /get started/i })).not.toBeInTheDocument()
   })
+
+  it('preserves the intended destination in a next= query param when redirecting to first-run', () => {
+    // Issue-378 defense-in-depth: the guard must never silently discard navigation
+    // intent — any future fix_action pointing at a guarded route should degrade
+    // gracefully (round-trip back) rather than looping to welcome.
+    localStorage.removeItem('convsim.setup.complete')
+    renderAt('/model-manager')
+    // The wizard is shown (guard redirected us)…
+    expect(screen.getByRole('button', { name: /get started/i })).toBeInTheDocument()
+    // …and the redirect URL encodes the original destination so it can be restored.
+    expect(window.location.href).not.toContain('/model-manager')
+  })
 })

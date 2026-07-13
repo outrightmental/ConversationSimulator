@@ -475,12 +475,19 @@ export default function FirstRunWizard() {
                   {check.name}
                 </p>
                 <p style={{ margin: 0, fontSize: '0.825rem', color: '#a1a1aa' }}>{check.message}</p>
-                {check.fix_action && (
+                {check.fix_action && !(check.fix_action.kind === 'navigate' && check.fix_action.href === '/settings') && (
                   <button
                     onClick={() => {
                       const { kind, href } = check.fix_action!
                       if (kind === 'open-url') {
                         void openExternal(href)
+                      } else if (kind === 'wizard-step') {
+                        // Backend-signalled in-wizard step: navigate without leaving the wizard.
+                        setStep(href as WizardStep)
+                      } else if (href === '/model-manager') {
+                        // Backward-compat for older backends: /model-manager is behind
+                        // FirstRunGuard, so map it to the in-wizard model-selection step.
+                        setStep('choose')
                       } else {
                         navigate(href)
                       }
