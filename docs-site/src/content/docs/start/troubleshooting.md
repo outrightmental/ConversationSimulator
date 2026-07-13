@@ -32,7 +32,7 @@ The app could not start its background conversation engine (`convsim-core`). Com
 The engine started but stopped during a session. This can happen if the AI model crashes the engine or the engine runs out of memory.
 
 1. Click **Restart conversation engine** in the status card on the home screen.
-2. If the problem repeats, try a lighter model — run setup again from the home screen and choose a smaller model.
+2. If the problem repeats, try a lighter model — open the model manager (**Settings → Runtime → Open model manager**) and choose a smaller model.
 3. Check `~/.convsim/logs/app.log` for crash details.
 
 ---
@@ -41,8 +41,12 @@ The engine started but stopped during a session. This can happen if the AI model
 
 **No model is installed yet**
 
-You need a local AI model before conversations can start. On the home screen,
-click **Set me up** to install one. See
+You need a local AI model before conversations can start. On first launch,
+click **Set me up** on the welcome screen. If you have already been to the
+home screen, the **No model configured** section there offers **Install a GGUF
+model**, **Connect Ollama**, and **Try text-only demo** — the first two open
+the model manager, where **Install recommended model** downloads the default.
+You can also reach it from **Settings → Runtime → Open model manager**. See
 [Choosing how to run the AI](/play/ai-engine/) for model options and hardware
 recommendations.
 
@@ -73,9 +77,10 @@ Model downloads require 2.5–14 GB of free disk space depending on the model.
 The setup screen shows the exact size before any download begins.
 
 1. Free up space on your drive — the setup screen shows the minimum required.
-2. If you cannot free enough space, choose a smaller model: expand
-   **Advanced** (*use Ollama or a local GGUF file*) on the welcome screen and
-   pick a lighter option.
+2. If you cannot free enough space, choose a lighter option: when the download
+   fails, click **Choose a different option** and use a smaller Ollama model or
+   a compact GGUF file instead. On first launch these are also under
+   **Advanced: use Ollama or a local GGUF file** on the welcome screen.
 
 **Check available space:**
 
