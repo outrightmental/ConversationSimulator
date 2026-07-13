@@ -3,8 +3,10 @@ import type { PreflightFixAction } from '@convsim/shared'
 import { RemediationCard } from '../RemediationCard'
 import type { UseSetupFlowReturn } from '../useSetupFlow'
 import { openExternal } from '../../lib/openExternal'
+import { useTranslation } from '../../i18n'
 
 export function PreflightStep({ flow }: { flow: UseSetupFlowReturn }) {
+  const { t } = useTranslation()
   if (!flow.preflightResult) return null
 
   // Only surface checks that genuinely need a human decision.
@@ -39,12 +41,12 @@ export function PreflightStep({ flow }: { flow: UseSetupFlowReturn }) {
   return (
     <div style={{ maxWidth: '640px', margin: '2rem auto', padding: '0 1rem' }}>
       <h1 ref={flow.stepHeadingRef} tabIndex={-1} style={{ outline: 'none' }}>
-        Getting things ready
+        {t('setup.gettingReady.heading')}
       </h1>
       <p style={{ color: '#a1a1aa', marginBottom: '1.25rem' }}>
         {needsHumanFails.length === 1
-          ? 'One thing needs your attention before setup can continue.'
-          : `${needsHumanFails.length} things need your attention before setup can continue.`}
+          ? t('setup.gettingReady.oneIssue')
+          : t('setup.gettingReady.manyIssues', { count: needsHumanFails.length })}
       </p>
 
       <div

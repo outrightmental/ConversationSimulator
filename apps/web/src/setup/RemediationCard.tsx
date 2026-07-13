@@ -12,6 +12,7 @@
  */
 import { useState } from 'react'
 import type { PreflightCheck, PreflightFixAction } from '@convsim/shared'
+import { useTranslation } from '../i18n'
 
 export interface RemediationCardProps {
   check: PreflightCheck
@@ -126,6 +127,7 @@ function buildCopyBlock(check: PreflightCheck, coreVersion?: string): string {
 }
 
 export function RemediationCard({ check, onAction, onTextOnly, coreVersion }: RemediationCardProps) {
+  const { t } = useTranslation()
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [copied, setCopied] = useState(false)
 
@@ -157,7 +159,7 @@ export function RemediationCard({ check, onAction, onTextOnly, coreVersion }: Re
           onClick={onTextOnly}
           data-testid={`remediation-text-only-${check.id}`}
         >
-          Try text-only instead
+          {t('setup.remediation.textOnly')}
         </button>
       </div>
 
@@ -167,7 +169,7 @@ export function RemediationCard({ check, onAction, onTextOnly, coreVersion }: Re
         aria-expanded={detailsOpen}
         data-testid={`remediation-details-toggle-${check.id}`}
       >
-        {detailsOpen ? 'Details ▾' : 'Details ▸'}
+        {detailsOpen ? t('setup.remediation.detailsOpen') : t('setup.remediation.detailsClosed')}
       </button>
 
       {detailsOpen && (
@@ -180,7 +182,7 @@ export function RemediationCard({ check, onAction, onTextOnly, coreVersion }: Re
             onClick={handleCopy}
             data-testid={`remediation-copy-${check.id}`}
           >
-            {copied ? 'Copied!' : 'Copy'}
+            {copied ? t('setup.remediation.copied') : t('setup.remediation.copy')}
           </button>
         </div>
       )}
