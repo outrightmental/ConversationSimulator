@@ -7,7 +7,6 @@ import { PreflightStep } from './steps/PreflightStep'
 import { ChooseStep } from './steps/ChooseStep'
 import { ConfirmInstallStep } from './steps/ConfirmInstallStep'
 import { InstallingStep } from './steps/InstallingStep'
-import { TutorialPromptStep } from './steps/TutorialPromptStep'
 import { BenchmarkStep } from './steps/BenchmarkStep'
 import { OllamaSelectStep } from './steps/OllamaSelectStep'
 import { GgufPathStep } from './steps/GgufPathStep'
@@ -34,8 +33,6 @@ export function SetupFlowView({ flow, mode }: SetupFlowViewProps) {
       return <ConfirmInstallStep flow={flow} mode={mode} />
     case 'installing':
       return <InstallingStep flow={flow} mode={mode} />
-    case 'tutorial-prompt':
-      return <TutorialPromptStep flow={flow} />
     case 'benchmark':
       return <BenchmarkStep flow={flow} mode={mode} onComplete={flow.handleFinishBenchmark} />
     case 'ollama-select':

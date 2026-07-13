@@ -7,8 +7,10 @@ import VoiceInput, { type SttReviewMeta } from '../components/VoiceInput'
 import DebugDrawer, { type DebugTurnEntry } from '../components/DebugDrawer'
 import PerformanceWarningBanner from '../components/PerformanceWarning'
 import { useLatencyMetrics } from '../hooks/useLatencyMetrics'
-import { isDevModeEnabled } from '../privacyPrefs'
+import { isDevModeEnabled, SETUP_KEYS } from '../privacyPrefs'
 import { getVoiceTimingPrefs } from '../components/VoiceSettingsPanel'
+import { useSetupInstall } from '../setup/useSetupInstall'
+import { useTranslation } from '../i18n'
 import type { ApiError } from '../api/errors'
 import type { ApiResult } from '../api/client'
 import { ApiErrorView } from '../components/ApiErrorView'
@@ -75,6 +77,7 @@ export default function Conversation() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const navigate = useNavigate()
   const { state } = useLocation()
+  const { t } = useTranslation()
   const routeState = state as {
     language?: string
     show_state_meters?: boolean
@@ -91,6 +94,33 @@ export default function Conversation() {
 
   // Voice timing preferences (issue #308) — read once at mount from localStorage.
   const voiceTimingPrefs = getVoiceTimingPrefs()
+
+  // Read the active runtime hint set by the setup flow so we can label scripted
+  // and fake sessions in-session. Read once at mount — the hint is stable for
+  // the lifetime of this component since the setup flow only writes it before
+  // navigating here.
+  const [runtimeHint] = useState<string | null>(() => {
+    try { return localStorage.getItem(SETUP_KEYS.activeRuntimeHint) } catch { return null }
+  })
+
+  // If a background install job was started before this tutorial conversation,
+  // poll its status and show the model-ready toast when it completes.
+  const [backgroundInstallId] = useState<number | null>(() => {
+    try {
+      const raw = localStorage.getItem(SETUP_KEYS.tutorialInstallId)
+      if (!raw) return null
+      const id = Number(raw)
+      return Number.isFinite(id) && id > 0 ? id : null
+    } catch { return null }
+  })
+
+  // 'hidden' = toast not yet shown; 'shown' = toast visible; 'deferred' = user
+  // picked "After this conversation" so the debrief should show the upgrade CTA.
+  const [modelReadyState, setModelReadyState] = useState<'hidden' | 'shown' | 'deferred'>('hidden')
+
+  const backgroundInstallJob = useSetupInstall(
+    modelReadyState === 'hidden' ? backgroundInstallId : null,
+  )
 
   const [phase, setPhase] = useState<Phase>('starting')
   const [sessionState, setSessionState] = useState('NotStarted')
@@ -143,6 +173,26 @@ export default function Conversation() {
       ttsQueueRef.current = []
     }
   }, [])
+
+  // Show the model-ready toast when the background install finishes. On failure,
+  // silently clear the key — remediation is deferred to after the conversation
+  // per issue #383 (never interrupt a session with an error modal).
+  useEffect(() => {
+    if (!backgroundInstallJob) return
+    const { status } = backgroundInstallJob
+    if (status === 'complete') {
+      try { localStorage.removeItem(SETUP_KEYS.tutorialInstallId) } catch { /* ignore */ }
+      // The real model is now the active runtime server-side, so any conversation
+      // started from here on (Switch now, or "Try it with the real AI" after the
+      // debrief) is genuine AI — drop the scripted/fake hint so it isn't mislabeled.
+      // The current session's badge is unaffected: runtimeHint was captured in a
+      // useState initializer at mount and does not re-read localStorage.
+      try { localStorage.removeItem(SETUP_KEYS.activeRuntimeHint) } catch { /* ignore */ }
+      setModelReadyState('shown')
+    } else if (status === 'failed' || status === 'cancelled') {
+      try { localStorage.removeItem(SETUP_KEYS.tutorialInstallId) } catch { /* ignore */ }
+    }
+  }, [backgroundInstallJob])
 
   function _playNextTtsChunk() {
     const url = ttsQueueRef.current.shift()
@@ -614,6 +664,16 @@ export default function Conversation() {
     setBanners((prev) => prev.filter((b) => b.id !== id))
   }
 
+  function handleModelReadySwitchNow() {
+    try { localStorage.removeItem(SETUP_KEYS.tutorialInstallId) } catch { /* ignore */ }
+    try { localStorage.removeItem(SETUP_KEYS.activeRuntimeHint) } catch { /* ignore */ }
+    navigate('/library')
+  }
+
+  function handleModelReadyDefer() {
+    setModelReadyState('deferred')
+  }
+
   const isIdle = phase === 'active'
   const isBusy = phase === 'submitting' || phase === 'ending'
   const isEnded = phase === 'ended'
@@ -635,7 +695,45 @@ export default function Conversation() {
         }}
       >
         <div>
-          <h1 style={{ margin: 0 }}>Conversation</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <h1 style={{ margin: 0 }}>Conversation</h1>
+            {runtimeHint === 'scripted' && (
+              <span
+                data-testid="runtime-label"
+                aria-label={t('conversation.runtimeLabel.scripted')}
+                style={{
+                  fontSize: '0.7rem',
+                  fontWeight: 600,
+                  color: '#a5b4fc',
+                  border: '1px solid rgba(165,180,252,0.4)',
+                  borderRadius: '4px',
+                  padding: '0.15rem 0.5rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}
+              >
+                {t('conversation.runtimeLabel.scripted')}
+              </span>
+            )}
+            {runtimeHint === 'fake' && (
+              <span
+                data-testid="runtime-label"
+                aria-label={t('conversation.runtimeLabel.fake')}
+                style={{
+                  fontSize: '0.7rem',
+                  fontWeight: 600,
+                  color: '#6ee7b7',
+                  border: '1px solid rgba(110,231,183,0.4)',
+                  borderRadius: '4px',
+                  padding: '0.15rem 0.5rem',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.04em',
+                }}
+              >
+                {t('conversation.runtimeLabel.fake')}
+              </span>
+            )}
+          </div>
           <p style={{ margin: 0, fontSize: '0.8rem', color: '#71717a' }}>
             Session: <code>{sessionId}</code> &nbsp;|&nbsp; State:{' '}
             <code>{sessionState}</code>
@@ -664,6 +762,62 @@ export default function Conversation() {
           </button>
         )}
       </div>
+
+      {/* Model-ready toast — shown when a background install completes mid-session.
+          Never shown mid-turn; user must explicitly switch or defer. */}
+      {modelReadyState === 'shown' && (
+        <div
+          role="status"
+          data-testid="model-ready-toast"
+          aria-label={t('conversation.modelReady.toast')}
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: '0.5rem',
+            padding: '0.65rem 1rem',
+            borderRadius: 6,
+            border: '1px solid rgba(99,102,241,0.45)',
+            background: 'rgba(99,102,241,0.1)',
+            color: '#c7d2fe',
+            fontSize: '0.875rem',
+          }}
+        >
+          <span>{t('conversation.modelReady.toast')} ✨</span>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <button
+              onClick={handleModelReadySwitchNow}
+              style={{
+                padding: '0.3rem 0.75rem',
+                borderRadius: 5,
+                border: 'none',
+                background: '#4f46e5',
+                color: '#fff',
+                fontWeight: 600,
+                cursor: 'pointer',
+                fontSize: '0.8rem',
+              }}
+            >
+              {t('conversation.modelReady.switchNow')}
+            </button>
+            <button
+              onClick={handleModelReadyDefer}
+              style={{
+                padding: '0.3rem 0.75rem',
+                borderRadius: 5,
+                border: '1px solid rgba(165,180,252,0.4)',
+                background: 'transparent',
+                color: '#a5b4fc',
+                cursor: 'pointer',
+                fontSize: '0.8rem',
+              }}
+            >
+              {t('conversation.modelReady.afterConversation')}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* NPC panel + scene card */}
       <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
@@ -1007,7 +1161,16 @@ export default function Conversation() {
             {endingType ? ` Outcome: ${endingType.replace(/_/g, ' ')}.` : ''}
           </p>
           <button
-            onClick={() => navigate(`/debrief/${sessionId}`)}
+            onClick={() => navigate(`/debrief/${sessionId}`, {
+              // Offer the "Try it with the real AI" upgrade whenever the model
+              // became ready during this scene — whether the user explicitly
+              // deferred ('deferred') or simply left the non-blocking toast
+              // untouched ('shown'). "After this conversation" is the default,
+              // so ignoring the toast must not lose the upgrade CTA. Only the
+              // 'hidden' state (model never became ready, or the user already
+              // switched now and navigated away) suppresses it.
+              state: { modelReadyAfterTutorial: modelReadyState !== 'hidden' },
+            })}
             style={{
               padding: '0.5rem 1.5rem',
               borderRadius: 6,

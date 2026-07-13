@@ -158,42 +158,65 @@ export function InstallingStep({ flow, mode }: InstallingStepProps) {
 
   return (
     <div {...wrapper}>
-      <h1 ref={flow.stepHeadingRef} tabIndex={-1} style={{ outline: 'none' }}>Setting up your AI</h1>
-      <p style={{ color: '#a1a1aa', fontSize: '0.9rem' }}>
-        {statusLabel} Download time depends on your {mode === 'wizard' ? 'internet speed.' : 'connection speed.'}
-        {mode === 'wizard' ? ' The app will be ready as soon as all stages complete.' : ''}
-      </p>
-
-      <div
-        role="progressbar"
-        aria-valuenow={pct ?? 0}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-label="Overall install progress"
-        style={{ marginTop: '1rem', height: '8px', borderRadius: '4px', background: 'rgba(255,255,255,0.1)', overflow: 'hidden' }}
-      >
-        <div style={{ height: '100%', width: pct != null ? `${pct}%` : '0%', background: 'rgba(99,102,241,0.85)', borderRadius: '4px', transition: 'width 0.4s ease' }} />
+      {/* Progress header — compact secondary section while the primary CTA is the tutorial card */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+        <h1 ref={flow.stepHeadingRef} tabIndex={-1} style={{ outline: 'none', margin: 0, fontSize: '1.05rem', fontWeight: 600, color: '#a1a1aa' }}>
+          Setting up your AI
+        </h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, minWidth: 160 }}>
+          <div
+            role="progressbar"
+            aria-valuenow={pct ?? 0}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-label="Overall install progress"
+            style={{ flex: 1, height: '6px', borderRadius: '3px', background: 'rgba(255,255,255,0.1)', overflow: 'hidden' }}
+          >
+            <div style={{ height: '100%', width: pct != null ? `${pct}%` : '0%', background: 'rgba(99,102,241,0.85)', borderRadius: '3px', transition: 'width 0.4s ease' }} />
+          </div>
+          <span aria-live="polite" style={{ fontSize: '0.8rem', color: '#71717a', flexShrink: 0 }}>
+            {pct != null ? `${pct}%` : statusLabel}
+          </span>
+        </div>
       </div>
-
-      <p aria-live="polite" style={{ fontSize: '0.8rem', color: '#71717a', marginTop: '0.4rem' }}>
-        {pct != null ? `${pct}% complete` : 'Waiting for progress data…'}
-      </p>
 
       {stages != null && <StageList stages={stages} />}
 
+      {/* Primary CTA — play the tutorial while the model downloads */}
       {mode === 'wizard' && (
-        <div role="note" aria-label="play tutorial while downloading" style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: '8px', padding: '1rem 1.25rem', marginTop: '1.5rem' }}>
-          <p style={{ margin: 0, fontWeight: 600, color: '#a5b4fc', fontSize: '0.9rem' }}>No need to wait — try the tutorial now</p>
-          <p style={{ margin: '0.4rem 0 0.75rem', fontSize: '0.825rem', color: '#c7d2fe' }}>
-            Play the 3–5 minute First Words tutorial while your model downloads.
-            It uses scripted (not AI) responses and teaches state meters, scenario
-            events, and the debrief rubric — no model needed.
+        <div
+          role="region"
+          aria-label="Start tutorial while downloading"
+          style={{
+            marginTop: '1.75rem',
+            padding: '1.25rem 1.5rem',
+            background: 'rgba(99,102,241,0.1)',
+            border: '2px solid rgba(99,102,241,0.45)',
+            borderRadius: '10px',
+          }}
+        >
+          <p style={{ margin: '0 0 0.25rem', fontSize: '0.8rem', color: '#a5b4fc', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>
+            While that downloads…
           </p>
-          <PrimaryButton onClick={() => flow.setStep('tutorial-prompt')}>Play the tutorial while you wait</PrimaryButton>
+          <h2 style={{ margin: '0 0 0.5rem', fontSize: '1.25rem', color: '#f4f4f5' }}>
+            Have your first conversation.
+          </h2>
+          <p style={{ margin: '0 0 0.25rem', fontSize: '0.95rem', color: '#c7d2fe', fontWeight: 600 }}>
+            First Words
+          </p>
+          <p style={{ margin: '0 0 1rem', fontSize: '0.85rem', color: '#a1a1aa', lineHeight: 1.5 }}>
+            A 3-minute guided scenario. Responses are scripted so you can play instantly — no model needed.
+          </p>
+          <PrimaryButton
+            onClick={() => void flow.handleStartTutorial()}
+            disabled={flow.actionLoading}
+          >
+            {flow.actionLoading ? 'Starting…' : '▶ Start now'}
+          </PrimaryButton>
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: '0.5rem', marginTop: mode === 'wizard' ? '1rem' : '1.5rem' }}>
+      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1.25rem' }}>
         <ActionButton onClick={() => void flow.handleCancelInstall()}>Cancel and go home</ActionButton>
       </div>
     </div>
