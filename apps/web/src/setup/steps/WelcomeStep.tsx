@@ -141,14 +141,7 @@ export function WelcomeStep({ flow }: { flow: UseSetupFlowReturn }) {
               <p style={{ margin: '0 0 0.5rem', fontSize: '0.875rem', color: '#a1a1aa' }}>
                 {t('setup.welcome.advanced.gguf.why')}
               </p>
-              <ActionButton
-                onClick={() => {
-                  flow.setGgufPath('')
-                  flow.setGgufPathError(null)
-                  flow.resetAction()
-                  flow.setStep('gguf-path')
-                }}
-              >
+              <ActionButton onClick={() => flow.handleAdvancedGguf()}>
                 {t('setup.welcome.advanced.gguf.action')}
               </ActionButton>
             </div>

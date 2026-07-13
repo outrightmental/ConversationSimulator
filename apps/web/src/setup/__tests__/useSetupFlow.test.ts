@@ -316,4 +316,31 @@ describe('useSetupFlow step machine', () => {
     expect(mockApi.getModels).toHaveBeenCalled()
     expect(mockApi.preflight).toHaveBeenCalled()
   })
+
+  it('handleAdvancedGguf transitions welcome → loading → gguf-path and runs preflight', async () => {
+    const { result } = renderHook(() => useSetupFlow('welcome'), { wrapper })
+    expect(result.current.step).toBe('welcome')
+
+    act(() => { result.current.handleAdvancedGguf() })
+
+    await waitFor(() => expect(result.current.step).toBe('gguf-path'))
+    // Preflight must run silently on the GGUF path too, so genuine blockers surface.
+    expect(mockApi.preflight).toHaveBeenCalled()
+  })
+
+  it('handleAdvancedGguf surfaces blocking preflight failures before gguf-path', async () => {
+    mockApi.preflight.mockResolvedValue({
+      ok: true,
+      data: {
+        overall: 'fail',
+        checks: [{ id: 'llama-cpp-binary', name: 'llama.cpp', status: 'fail' as const, message: 'missing', fix_action: null }],
+        ran_at: '2026-01-01T00:00:00Z',
+      },
+    })
+    const { result } = renderHook(() => useSetupFlow('welcome'), { wrapper })
+
+    act(() => { result.current.handleAdvancedGguf() })
+
+    await waitFor(() => expect(result.current.step).toBe('preflight'))
+  })
 })

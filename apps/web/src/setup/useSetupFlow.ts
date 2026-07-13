@@ -59,6 +59,7 @@ export interface UseSetupFlowReturn {
 
   handleSetMeUp: () => void
   handleAdvancedOllama: () => void
+  handleAdvancedGguf: () => void
   handleStartInstall: (registryId: string) => Promise<void>
   handleSelectOllama: (m: DetectedOllamaModel) => Promise<void>
   handleUseGguf: () => Promise<void>
@@ -123,7 +124,7 @@ export function useSetupFlow(initialStep: SetupFlowStep, initialInstallId?: numb
 
   // Tracks what the user chose on the welcome screen so the loading step can
   // route to the right destination without exposing the detail as UI state.
-  const intentRef = useRef<'set-me-up' | 'ollama' | null>(null)
+  const intentRef = useRef<'set-me-up' | 'ollama' | 'gguf' | null>(null)
 
   const stepHeadingRef = useRef<HTMLHeadingElement>(null)
   const isInitialStep = useRef(true)
@@ -196,6 +197,11 @@ export function useSetupFlow(initialStep: SetupFlowStep, initialInstallId?: numb
         return
       }
 
+      if (intent === 'gguf') {
+        setStep('gguf-path')
+        return
+      }
+
       setStep('choose')
     }).catch((err: unknown) => {
       setLoadError({ kind: 'network', message: err instanceof Error ? err.message : 'Failed to load model information.' })
@@ -263,6 +269,16 @@ export function useSetupFlow(initialStep: SetupFlowStep, initialInstallId?: numb
 
   function handleAdvancedOllama() {
     intentRef.current = 'ollama'
+    setStep('loading')
+  }
+
+  function handleAdvancedGguf() {
+    // Route through 'loading' (like the Ollama path) so preflight runs silently
+    // and any genuine blocker surfaces before the user picks a .gguf file.
+    setGgufPath('')
+    setGgufPathError(null)
+    resetAction()
+    intentRef.current = 'gguf'
     setStep('loading')
   }
 
@@ -361,6 +377,7 @@ export function useSetupFlow(initialStep: SetupFlowStep, initialInstallId?: numb
     navigate,
     handleSetMeUp,
     handleAdvancedOllama,
+    handleAdvancedGguf,
     handleStartInstall,
     handleSelectOllama,
     handleUseGguf,
