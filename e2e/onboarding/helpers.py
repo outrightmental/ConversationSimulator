@@ -21,13 +21,19 @@ from __future__ import annotations
 # the check here is at the API message level so it applies to preflight check
 # messages and install error text — the general first-run surface — not to the
 # Advanced GGUF-import UI labels we do not control from these responses.
+#
+# This is exactly the issue #387 list (binary/sidecar/llama/preflight/GGUF).
+# "llama-server" is already caught by the "llama" substring, and "checksum" is
+# deliberately NOT forbidden: the issue does not list it, and the checksum-
+# mismatch remediation card (P5) intentionally surfaces "SHA-256 checksum
+# mismatch" as a legitimate, user-facing error. Forbidding it here would have
+# forced the checksum path to skip the invariant, defeating the "runs in every
+# path" acceptance criterion.
 _FORBIDDEN: frozenset[str] = frozenset({
     "binary",
     "sidecar",
     "llama",
     "preflight",
-    "checksum",
-    "llama-server",
     "gguf",
 })
 

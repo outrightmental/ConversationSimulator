@@ -216,6 +216,9 @@ class TestP5RemediationChecksumMismatch:
         assert final["status"] == "failed", (
             "An install with a wrong SHA-256 must fail"
         )
+        # The forbidden-vocabulary invariant runs in every path, including this
+        # one: the checksum-mismatch card is a first-run surface too.
+        assert_no_forbidden_in_install_error(final.get("stages", []))
 
 
 class TestP5TextOnlyEscape:
