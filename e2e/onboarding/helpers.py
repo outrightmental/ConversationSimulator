@@ -52,12 +52,30 @@ def assert_no_forbidden_vocabulary(text: str, context: str = "") -> None:
 
 
 def assert_no_forbidden_in_preflight(checks: list[dict]) -> None:
-    """Assert no needs-human preflight failure message contains forbidden words."""
+    """Assert no user-visible preflight text contains forbidden vocabulary.
+
+    Every check surfaces its ``name`` and ``message`` to a first-run user (and
+    its ``fix_action.label`` when a remediation button is shown), regardless of
+    severity or status. Scanning only ``needs-human`` + ``fail`` checks would
+    make this invariant vacuous on a wiped profile — the checks a first-run user
+    actually reads (llm-present, llama-cpp-binary, packs-seeded) are
+    ``auto-fixable``, and the ``needs-human`` checks (disk-space,
+    data-dir-writable) *pass* on a clean machine. So we scan every check's
+    user-visible strings, which is what "no screen a first-run user sees
+    contains forbidden vocabulary" (issue #387) actually requires.
+    """
     for check in checks:
-        if check.get("severity") == "needs-human" and check.get("status") == "fail":
+        check_id = check.get("id")
+        for field in ("name", "message"):
             assert_no_forbidden_vocabulary(
-                check.get("message", ""),
-                context=f"preflight check {check.get('id')!r} fail message",
+                check.get(field, "") or "",
+                context=f"preflight check {check_id!r} {field}",
+            )
+        fix_action = check.get("fix_action")
+        if fix_action:
+            assert_no_forbidden_vocabulary(
+                fix_action.get("label", "") or "",
+                context=f"preflight check {check_id!r} fix_action label",
             )
 
 
