@@ -148,7 +148,7 @@ Open `http://127.0.0.1:7354` in the browser.
 
 ### B.5 Model manager (fake mode)
 
-In the browser, navigate to **Settings → Models**.
+In the browser, open **Settings → Runtime → Open model manager**.
 
 - [ ] Model list loads without errors (fake runtime shows no downloadable models or a stub list)
 - [ ] No download is triggered automatically
