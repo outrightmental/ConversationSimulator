@@ -23,17 +23,14 @@ Open <http://127.0.0.1:7354> in your browser. The home screen shows green status
 
 ---
 
-## 2. Install a model (first run only)
+## 2. Set up a model (first run only)
 
-If no model is loaded the home screen shows a **"No model loaded"** banner. Click **Install model** or go to **Settings → Models**.
+On first launch the app shows the **welcome screen**. Click **Set me up**.
+The app downloads and configures a local AI model automatically. Progress is
+shown per stage; you can also expand **Advanced options** on the welcome
+screen to use Ollama or a custom GGUF file instead.
 
-The in-app model manager:
-
-1. Lists curated models from the registry with size, license, and hardware requirements.
-2. Shows the license text and asks you to accept before downloading.
-3. Downloads the model file, verifies its SHA-256 checksum, and loads it.
-
-The recommended starter is **Qwen3 4B Instruct Q4_K_M** (~2.6 GB, Apache-2.0 licensed). It works on machines with as little as 4 GB of GPU VRAM, or runs on CPU with no GPU at all.
+The recommended starter is **Qwen3 4B Instruct Q4_K_M** (~2.5 GB, Apache-2.0 licensed). It works on machines with as little as 4 GB of GPU VRAM, or runs on CPU with no GPU at all.
 
 No internet connection is needed after the model is downloaded. See [local-models.md](local-models.md) for all available models and hardware recommendations.
 

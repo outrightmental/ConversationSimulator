@@ -40,7 +40,7 @@ The recovery card shows the exact path for your machine and includes an **Open l
 The engine started but stopped during a session. This can happen if the AI model crashes the engine or the engine runs out of memory.
 
 1. Click **Restart conversation engine** in the status card on the home screen.
-2. If the problem repeats, try a lighter model from **Settings → Models**.
+2. If the problem repeats, try a lighter model — run setup again from the home screen and choose a smaller model.
 3. Check `app.log` in the logs folder (see table above) for crash details.
 
 ---
@@ -85,9 +85,11 @@ services/convsim-core/.venv/bin/pip install --upgrade pip
 
 ## Model load failure
 
-**"No model loaded" banner on the home screen**
+**"No model loaded" — no AI is configured yet**
 
-A model must be installed before conversations can start. Open **Settings → Models** and install a model from the registry. See [local-models.md](local-models.md) for hardware requirements and recommendations.
+A model must be installed before conversations can start. Click **Set me up**
+on the home screen to run setup. See [local-models.md](local-models.md) for
+hardware requirements and model recommendations.
 
 **"Model failed to load" error in the model manager**
 

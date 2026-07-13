@@ -44,6 +44,7 @@ Closes #
 - [ ] New documentation files include `<!-- SPDX-License-Identifier: CC-BY-4.0 -->` header
 - [ ] New source files include `# SPDX-License-Identifier: Apache-2.0` header
 - [ ] Links in new or modified docs resolve correctly
+- [ ] **Docs impact** (required if this PR touches `apps/web/src/setup/**` or changes any UI visible during first-run setup): update `verified_against` in the affected `docs-site/src/content/docs/start/` or `docs-site/src/content/docs/play/ai-engine.md` pages, and verify every referenced UI control still exists
 
 ### Security (complete if this PR touches safety logic, pack loading, runtime binaries, or networking)
 
