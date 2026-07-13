@@ -342,27 +342,6 @@ impl SteamRuntime {
         }
         false
     }
-
-    // ── DLC ownership ────────────────────────────────────────────────────────
-
-    /// Return whether the premium DLC identified by its Steam **DLC App ID** is
-    /// owned and installed for the current user.
-    ///
-    /// Premium scenario-pack expansions ship as Steam DLC (see
-    /// docs/DLC_MODEL.md). The app calls this to decide whether to load a premium
-    /// pack and surface it as playable versus available-to-buy. Ownership is the
-    /// only gate — the same open-source binary ships to everyone.
-    ///
-    /// Returns `false` when the `steam` feature is disabled, Steam is not running,
-    /// or the player does not own the DLC, so the open-source and browser builds
-    /// treat every premium pack as not-owned without any special-casing.
-    pub fn is_dlc_installed(&self, dlc_app_id: u32) -> bool {
-        #[cfg(feature = "steam")]
-        if let Some(ref client) = self.client {
-            return client.apps().is_dlc_installed(steamworks::AppId(dlc_app_id));
-        }
-        false
-    }
 }
 
 // ── Environment-variable helpers (always compiled) ────────────────────────────
@@ -692,17 +671,6 @@ mod tests {
         without_steam_env_vars(|| {
             let (_status, runtime) = init();
             assert!(!runtime.unsubscribe_item(12345678u64));
-        });
-    }
-
-    // ── DLC ownership graceful no-op when steam feature is absent ──────────────
-
-    #[test]
-    fn is_dlc_installed_returns_false_without_steam() {
-        without_steam_env_vars(|| {
-            let (_status, runtime) = init();
-            // No Steam, no DLC ownership — premium packs are treated as not-owned.
-            assert!(!runtime.is_dlc_installed(3210000u32));
         });
     }
 
