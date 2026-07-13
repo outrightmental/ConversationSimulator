@@ -87,17 +87,36 @@ password** (not the Apple ID login password).
 
 ## CI setup (GitHub Actions secrets)
 
-Store the following as **GitHub Actions secrets** (Settings → Secrets and
-variables → Actions → Secrets):
+These secrets are stored at the **outrightmental organisation level**, scoped to
+`ConversationSimulator` and `FeverTilt`. They are entered once and rotated in one
+place — all scoped repositories pick up the change automatically.
 
-| Secret name | Contents |
-|-------------|----------|
-| `APPLE_CERTIFICATE` | Base64-encoded `.p12` file (the output of the `base64` command above) |
-| `APPLE_CERTIFICATE_PASSWORD` | Passphrase for the `.p12` file |
-| `APPLE_SIGNING_IDENTITY` | Full identity string: `Developer ID Application: Outright Mental (TEAMID)` |
-| `APPLE_ID` | Apple ID email used for notarisation |
-| `APPLE_PASSWORD` | App-specific password generated above |
-| `APPLE_TEAM_ID` | Ten-character Outright Mental team ID (visible in the Apple Developer portal) |
+| Secret name | Contents | Source |
+|-------------|----------|--------|
+| `APPLE_CERTIFICATE` | Base64-encoded `.p12` file | Export from Keychain, then `base64 -i DeveloperID.p12` |
+| `APPLE_CERTIFICATE_PASSWORD` | Passphrase for the `.p12` file | Set when exporting the `.p12` |
+| `APPLE_SIGNING_IDENTITY` | Full identity string: `Developer ID Application: Outright Mental (TEAMID)` | `security find-identity -v -p codesigning` |
+| `APPLE_ID` | Apple ID email used for notarisation | Outright Mental Apple Developer account |
+| `APPLE_PASSWORD` | App-specific password for notarytool | appleid.apple.com → Security → App-Specific Passwords |
+| `APPLE_TEAM_ID` | Ten-character Outright Mental team ID | Apple Developer portal |
+
+**To set or rotate** (values supplied interactively, never committed):
+
+```bash
+gh secret set APPLE_CERTIFICATE \
+  --org outrightmental \
+  --visibility selected \
+  --repos ConversationSimulator,FeverTilt
+# repeat for each secret in the table above
+```
+
+Or use the org Settings UI: GitHub → outrightmental org **Settings → Secrets
+and variables → Actions → Secrets → New organisation secret**, then set
+**Repository access** to *Selected repositories: ConversationSimulator, FeverTilt*.
+
+**Rotation:** Rotating any secret at org level updates it for all scoped
+repositories simultaneously. Run `gh secret list --org outrightmental` to
+confirm the inventory after any change.
 
 Tauri's bundler reads these environment variables from the CI environment
 automatically. The release workflow (`release.yml`) passes them through
@@ -288,9 +307,11 @@ approaches expiry:
 1. Generate a new Developer ID Application certificate in the Apple Developer
    portal.
 2. Export as `.p12` and base64-encode as described above.
-3. Update the `APPLE_CERTIFICATE` and `APPLE_CERTIFICATE_PASSWORD` GitHub
-   Actions secrets.
-4. Update the `APPLE_SIGNING_IDENTITY` secret if the team ID or name changed.
+3. Update the org-level `APPLE_CERTIFICATE` and `APPLE_CERTIFICATE_PASSWORD`
+   secrets (see [CI setup](#ci-setup-github-actions-secrets) for the `gh secret
+   set` command). All scoped repositories pick up the new certificate automatically.
+4. Update the org-level `APPLE_SIGNING_IDENTITY` secret if the team ID or name
+   changed.
 5. Rebuild and re-notarise the latest release to confirm the new certificate
    works end to end.
 6. Existing installed copies signed with the old certificate continue to work —
