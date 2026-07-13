@@ -129,9 +129,27 @@ Create a `steam-release` environment under Settings → Environments. Add at
 least one required reviewer so the workflow pauses for approval before secrets
 are used. This prevents accidental or unauthorised deployments.
 
-### Triggering a deployment
+### Automatic deployment (primary path)
 
-The workflow is triggered manually under Actions → Steam Deploy → Run workflow.
+Publishing a GitHub release (pushing a `vX.Y.Z` tag or running the release
+workflow manually) now **automatically chains** to `steam-deploy.yml` via the
+`steam` job appended to `release.yml`.
+
+The automatic chain always passes `set_live_branch: beta` — the `default`
+(public) branch can never be set live from an automated run. The
+`steam-release` GitHub environment gate still applies: every release pauses at
+**"Publish to Steam (beta)"** until a required reviewer approves in
+Actions → Release → steam job. Only after that approval are Steam credentials
+exposed and the upload proceeds.
+
+If `STEAM_USERNAME` or `STEAM_CONFIG_VDF` are not yet configured, the `steam`
+job emits an INFO message and exits 0 — the release itself stays green.
+
+### Manual deployment (workflow\_dispatch)
+
+`steam-deploy.yml` retains a `workflow_dispatch` trigger for dry-runs and
+out-of-band uploads. Trigger it manually under Actions → Steam Deploy → Run
+workflow.
 
 | Input | Required | Description |
 |-------|----------|-------------|

@@ -89,6 +89,28 @@ on:
         default: 'beta'
         type: string
 
+  # Reusable workflow target: called from release.yml after a successful
+  # GitHub release.  The steam-release environment gate (below) still applies
+  # on this path — a human click is required before Steam credentials are
+  # exposed.  Automatic runs always pass set_live_branch: beta; "default" is
+  # refused (see the Guard step).
+  workflow_call:
+    inputs:
+      release_tag:
+        description: 'GitHub release tag to upload (e.g. v0.1.0)'
+        required: true
+        type: string
+      build_description:
+        description: 'Human-readable build description shown in Steamworks. Defaults to "Conversation Simulator <tag>" if left empty.'
+        required: false
+        default: ''
+        type: string
+      set_live_branch:
+        description: 'Steam branch to set live. Automatic runs only target "beta" — "default" is refused on workflow_call.'
+        required: false
+        default: 'beta'
+        type: string
+
 permissions:
   contents: read
 
@@ -100,13 +122,52 @@ jobs:
     # The steam-release environment gates this job behind a manual approval step.
     # Create it in GitHub → Settings → Environments → New environment.
     # Add required reviewers so no Steam credential is exposed without sign-off.
+    # This gate applies on both workflow_dispatch and workflow_call trigger paths.
     environment: steam-release
+
+    # Expose a boolean presence flag so steps can gate on `env` rather than
+    # the secrets context (which cannot be used in step `if:` conditionals).
+    # When STEAM_USERNAME or STEAM_CONFIG_VDF are absent the job short-circuits
+    # with an INFO message, leaving the calling release workflow green.
+    env:
+      HAS_STEAM_CREDS: ${{ secrets.STEAM_USERNAME != '' && secrets.STEAM_CONFIG_VDF != '' }}
 
     steps:
       - uses: actions/checkout@v5
 
+      # ── Credential presence check ──────────────────────────────────────────
+      # If Steam secrets are not configured, emit INFO and let all subsequent
+      # steps skip — the release workflow stays green.  Matches the INFO
+      # convention used by the signing steps in release.yml.
+      - name: Check Steam credentials
+        if: env.HAS_STEAM_CREDS != 'true'
+        run: |
+          echo "  INFO  STEAM_USERNAME or STEAM_CONFIG_VDF is not set — skipping Steam upload."
+          echo "        Set both secrets in Settings → Secrets and variables → Actions → Secrets"
+          echo "        to enable automated Steam deployment from the release workflow."
+          echo "        See publishing/STEAM_APP_REGISTRATION.md for the setup procedure."
+
+      # ── Branch policy guard ────────────────────────────────────────────────
+      # Automatic (workflow_call) runs may only target the 'beta' branch.
+      # Promoting to 'default' (public) requires an explicit workflow_dispatch
+      # with the Stage 4 gate checklist — use steam-promote.yml after sign-off.
+      - name: Guard — refuse default branch on automatic runs
+        if: env.HAS_STEAM_CREDS == 'true'
+        env:
+          SET_LIVE_BRANCH: ${{ inputs.set_live_branch }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$SET_LIVE_BRANCH" = "default" ] && [ "$EVENT_NAME" != "workflow_dispatch" ]; then
+            echo "ERROR: set_live_branch=default is not permitted on automatic (workflow_call) runs." >&2
+            echo "       Automated releases always target the 'beta' branch." >&2
+            echo "       To promote to 'default', trigger steam-deploy.yml manually via" >&2
+            echo "       workflow_dispatch after all Stage 4 gate criteria are met." >&2
+            exit 1
+          fi
+
       # ── Resolve build description ──────────────────────────────────────────
       - name: Resolve build description
+        if: env.HAS_STEAM_CREDS == 'true'
         id: desc
         # Inputs are passed through env vars — never interpolated directly into
         # the shell — to avoid GitHub Actions expression injection (CWE-94).
@@ -122,6 +183,7 @@ jobs:
 
       # ── Download GitHub release assets ─────────────────────────────────────
       - name: Download release artifacts
+        if: env.HAS_STEAM_CREDS == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.release_tag }}
@@ -131,6 +193,7 @@ jobs:
             --skip-errors
 
       - name: List downloaded artifacts
+        if: env.HAS_STEAM_CREDS == 'true'
         run: find release-artifacts -type f | sort
 
       # ── Organise artifacts into per-platform depot content directories ──────
@@ -145,6 +208,7 @@ jobs:
       # is extracted with --strip-components=1 so ConversationSimulator.exe lands
       # directly at steam-content/windows/ (the depot root).
       - name: Organise depot content
+        if: env.HAS_STEAM_CREDS == 'true'
         run: |
           mkdir -p steam-content/windows steam-content/macos steam-content/linux
 
@@ -226,6 +290,7 @@ jobs:
       # dry-run and internal staging uploads of unsigned dev builds are not
       # blocked.  Signed builds must be used for any Stage 3+ release.
       - name: Verify macOS .app code-signature presence
+        if: env.HAS_STEAM_CREDS == 'true'
         run: |
           APP_PATH="$(find steam-content/macos -maxdepth 1 -name '*.app' -type d \
             2>/dev/null | head -n1)"
@@ -252,6 +317,7 @@ jobs:
       # expects: weight files (.gguf/.safetensors/.bin/.pt/.pth/.ckpt) and
       # unapproved binary payloads (large pickle/NumPy/ONNX files, models/ dirs).
       - name: Audit depot content
+        if: env.HAS_STEAM_CREDS == 'true'
         run: |
           for platform in windows macos linux; do
             echo "── Auditing steam-content/$platform ──"
@@ -264,15 +330,18 @@ jobs:
       # version stamping, icon presence, executable permissions, and depot
       # layout structure.  Skips a platform directory when it is empty.
       - uses: actions/setup-python@v6
+        if: env.HAS_STEAM_CREDS == 'true'
         with:
           python-version: "3.11"
 
       - name: Install Python test dependencies for artifact inspection
+        if: env.HAS_STEAM_CREDS == 'true'
         run: |
           pip install -e "packages/prompt-composer"
           pip install -e "services/convsim-core[dev]"
 
       - name: Run artifact inspection tests
+        if: env.HAS_STEAM_CREDS == 'true'
         run: |
           FAIL=0
           for platform in windows macos linux; do
@@ -289,6 +358,7 @@ jobs:
 
       # ── Generate SteamPipe build scripts from VDF templates ────────────────
       - name: Generate SteamPipe VDF files
+        if: env.HAS_STEAM_CREDS == 'true'
         env:
           STEAM_APP_ID:            ${{ vars.STEAM_APP_ID }}
           STEAM_DEPOT_WINDOWS_ID:  ${{ vars.STEAM_DEPOT_WINDOWS_ID }}
@@ -309,6 +379,7 @@ jobs:
 
       # ── Install steamcmd ───────────────────────────────────────────────────
       - name: Install steamcmd
+        if: env.HAS_STEAM_CREDS == 'true'
         run: |
           sudo add-apt-repository multiverse
           sudo dpkg --add-architecture i386
@@ -320,6 +391,7 @@ jobs:
       # Decodes the base64-encoded config.vdf from the STEAM_CONFIG_VDF secret.
       # This bypasses the interactive SteamGuard prompt in headless CI.
       - name: Restore Steam config
+        if: env.HAS_STEAM_CREDS == 'true'
         env:
           STEAM_CONFIG_VDF: ${{ secrets.STEAM_CONFIG_VDF }}
         run: |
@@ -330,6 +402,7 @@ jobs:
 
       # ── Upload to Steam ────────────────────────────────────────────────────
       - name: Upload build to Steam
+        if: env.HAS_STEAM_CREDS == 'true'
         env:
           STEAM_USERNAME: ${{ secrets.STEAM_USERNAME }}
         run: |
@@ -340,7 +413,7 @@ jobs:
 
       # ── Log build output ───────────────────────────────────────────────────
       - name: Show steamcmd build output
-        if: always()
+        if: always() && env.HAS_STEAM_CREDS == 'true'
         run: |
           if [ -d steam-build/output ]; then
             find steam-build/output -type f | sort
