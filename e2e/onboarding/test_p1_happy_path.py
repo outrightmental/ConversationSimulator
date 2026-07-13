@@ -20,7 +20,6 @@ import pytest
 from .helpers import (
     assert_no_forbidden_in_install_error,
     assert_no_forbidden_in_preflight,
-    assert_no_forbidden_vocabulary,
 )
 
 _FIXTURE_REGISTRY_ID = "fixture-model-p1"

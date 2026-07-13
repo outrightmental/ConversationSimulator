@@ -23,7 +23,6 @@ from .helpers import (
     assert_fix_action_not_welcome,
     assert_no_forbidden_in_install_error,
     assert_no_forbidden_in_preflight,
-    assert_no_forbidden_vocabulary,
 )
 
 _INSTALL_POLL_TIMEOUT = 10.0
