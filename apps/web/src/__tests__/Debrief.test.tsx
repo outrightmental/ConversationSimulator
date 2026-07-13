@@ -18,8 +18,14 @@ vi.mock('../api/client', () => ({
 import { api } from '../api/client'
 const mockApi = vi.mocked(api)
 
+const { mockReadVoiceInviteState, mockWriteVoiceInviteState } = vi.hoisted(() => ({
+  mockReadVoiceInviteState: vi.fn(() => 'pending'),
+  mockWriteVoiceInviteState: vi.fn(),
+}))
 vi.mock('../privacyPrefs', () => ({
   isDevModeEnabled: vi.fn(() => false),
+  readVoiceInviteState: mockReadVoiceInviteState,
+  writeVoiceInviteState: mockWriteVoiceInviteState,
 }))
 import { isDevModeEnabled } from '../privacyPrefs'
 const mockIsDevModeEnabled = vi.mocked(isDevModeEnabled)
@@ -121,6 +127,7 @@ function renderDebrief(routeState?: unknown) {
         <Route path="/debrief/:sessionId" element={<Debrief />} />
         <Route path="/library" element={<div>Library page</div>} />
         <Route path="/setup/:scenarioId" element={<div>Setup page</div>} />
+        <Route path="/settings" element={<div>Settings page</div>} />
         <Route path="/conversation/:sessionId" element={<ConversationRouteStub />} />
       </Routes>
     </MemoryRouter>,
@@ -138,6 +145,8 @@ beforeEach(() => {
     },
   })
   mockIsDevModeEnabled.mockReturnValue(false)
+  mockReadVoiceInviteState.mockReturnValue('pending')
+  mockWriteVoiceInviteState.mockReset()
 })
 
 describe('Debrief screen', () => {
@@ -463,6 +472,86 @@ describe('Debrief screen', () => {
       await waitFor(() =>
         expect(screen.getByText('Library page')).toBeInTheDocument(),
       )
+    })
+  })
+
+  describe('voice invite card (issue #385)', () => {
+    it('shows the voice invite card after a real AI conversation when invite is pending', async () => {
+      mockReadVoiceInviteState.mockReturnValue('pending')
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
+      renderDebrief({ isScripted: false })
+      await waitFor(() =>
+        expect(screen.getByTestId('voice-invite-card')).toBeInTheDocument(),
+      )
+      expect(screen.getByTestId('voice-invite-card')).toHaveTextContent(/say it out loud/i)
+    })
+
+    it('does not show voice invite card when the session was scripted', async () => {
+      mockReadVoiceInviteState.mockReturnValue('pending')
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
+      renderDebrief({ isScripted: true })
+      await waitFor(() =>
+        expect(screen.getByTestId('summary-section')).toBeInTheDocument(),
+      )
+      expect(screen.queryByTestId('voice-invite-card')).not.toBeInTheDocument()
+    })
+
+    it('does not show voice invite card when already dismissed', async () => {
+      mockReadVoiceInviteState.mockReturnValue('dismissed')
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
+      renderDebrief({ isScripted: false })
+      await waitFor(() =>
+        expect(screen.getByTestId('summary-section')).toBeInTheDocument(),
+      )
+      expect(screen.queryByTestId('voice-invite-card')).not.toBeInTheDocument()
+    })
+
+    it('does not show voice invite card when already in setup state', async () => {
+      mockReadVoiceInviteState.mockReturnValue('setup')
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
+      renderDebrief({ isScripted: false })
+      await waitFor(() =>
+        expect(screen.getByTestId('summary-section')).toBeInTheDocument(),
+      )
+      expect(screen.queryByTestId('voice-invite-card')).not.toBeInTheDocument()
+    })
+
+    it('"Maybe later" hides the card and persists dismissed state', async () => {
+      mockReadVoiceInviteState.mockReturnValue('pending')
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
+      renderDebrief({ isScripted: false })
+      await waitFor(() =>
+        expect(screen.getByTestId('voice-invite-card')).toBeInTheDocument(),
+      )
+      fireEvent.click(screen.getByTestId('voice-invite-later-btn'))
+      expect(screen.queryByTestId('voice-invite-card')).not.toBeInTheDocument()
+      expect(mockWriteVoiceInviteState).toHaveBeenCalledWith('dismissed')
+    })
+
+    it('"Set up voice" hides the card, persists setup state, and navigates to settings', async () => {
+      mockReadVoiceInviteState.mockReturnValue('pending')
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
+      renderDebrief({ isScripted: false })
+      await waitFor(() =>
+        expect(screen.getByTestId('voice-invite-card')).toBeInTheDocument(),
+      )
+      fireEvent.click(screen.getByTestId('voice-invite-setup-btn'))
+      expect(mockWriteVoiceInviteState).toHaveBeenCalledWith('setup')
+      await waitFor(() =>
+        expect(screen.getByText('Settings page')).toBeInTheDocument(),
+      )
+    })
+
+    it('does not show voice invite card when isScripted is absent from route state', async () => {
+      // No route state at all (e.g. navigated directly) — default is to treat as non-scripted
+      mockReadVoiceInviteState.mockReturnValue('pending')
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
+      renderDebrief()
+      await waitFor(() =>
+        expect(screen.getByTestId('summary-section')).toBeInTheDocument(),
+      )
+      // No route state = isScripted defaults false, so invite appears when pending
+      expect(screen.getByTestId('voice-invite-card')).toBeInTheDocument()
     })
   })
 

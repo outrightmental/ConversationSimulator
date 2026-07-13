@@ -6,7 +6,7 @@ import { recommendNext } from '@convsim/shared'
 import { api } from '../api/client'
 import type { ApiError } from '../api/errors'
 import { ApiErrorView } from '../components/ApiErrorView'
-import { isDevModeEnabled } from '../privacyPrefs'
+import { isDevModeEnabled, readVoiceInviteState, writeVoiceInviteState } from '../privacyPrefs'
 import { useTranslation, formatNumber } from '../i18n'
 import { useSteamAchievements, SteamAchievement, SteamStat } from '../hooks/useSteamAchievements'
 import { useScenarios } from '../api/useScenarios'
@@ -26,6 +26,16 @@ export default function Debrief() {
   // Set when the user deferred the model-ready switch during a tutorial session;
   // the debrief becomes the upgrade moment.
   const modelReadyAfterTutorial = (routeState as { modelReadyAfterTutorial?: boolean } | null)?.modelReadyAfterTutorial ?? false
+
+  // Set when the session was run with a scripted or demo runtime (not real AI).
+  // Voice invite is only offered after a genuine AI conversation.
+  const isScripted = (routeState as { isScripted?: boolean } | null)?.isScripted ?? false
+
+  // Voice invite card: shown once after the first real AI conversation's debrief.
+  // Reads localStorage so "Maybe later" persists across relaunches.
+  const [voiceInviteVisible, setVoiceInviteVisible] = useState(
+    () => !isScripted && readVoiceInviteState() === 'pending'
+  )
 
   const [phase, setPhase] = useState<'loading' | 'loaded' | 'error' | 'transcript_only'>('loading')
   const [debrief, setDebrief] = useState<SessionDebriefResponse | null>(null)
@@ -735,6 +745,68 @@ export default function Debrief() {
               {JSON.stringify(debrief, null, 2)}
             </pre>
           </details>
+
+          {/* Voice invite card — shown once after the first real AI conversation */}
+          {voiceInviteVisible && (
+            <div
+              data-testid="voice-invite-card"
+              role="region"
+              aria-label={t('debrief.voiceInvite.heading')}
+              style={{
+                padding: '1rem 1.25rem',
+                borderRadius: 8,
+                border: '1px solid rgba(99,102,241,0.35)',
+                background: 'rgba(99,102,241,0.06)',
+              }}
+            >
+              <p style={{ margin: '0 0 0.35rem', fontWeight: 600, fontSize: '0.975rem', color: '#e0e0ff' }}>
+                🎙️ {t('debrief.voiceInvite.heading')}
+              </p>
+              <p style={{ margin: '0 0 0.75rem', fontSize: '0.875rem', color: '#a1a1aa', lineHeight: 1.5 }}>
+                {t('debrief.voiceInvite.description')}
+              </p>
+              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                <button
+                  data-testid="voice-invite-setup-btn"
+                  onClick={() => {
+                    writeVoiceInviteState('setup')
+                    setVoiceInviteVisible(false)
+                    navigate('/settings')
+                  }}
+                  style={{
+                    padding: '0.4rem 1rem',
+                    borderRadius: 6,
+                    border: 'none',
+                    background: '#4f46e5',
+                    color: '#fff',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    fontSize: '0.875rem',
+                  }}
+                >
+                  {t('debrief.voiceInvite.setupButton')}
+                </button>
+                <button
+                  data-testid="voice-invite-later-btn"
+                  onClick={() => {
+                    writeVoiceInviteState('dismissed')
+                    setVoiceInviteVisible(false)
+                  }}
+                  style={{
+                    padding: '0.4rem 1rem',
+                    borderRadius: 6,
+                    border: '1px solid #52525b',
+                    background: 'transparent',
+                    color: '#a1a1aa',
+                    cursor: 'pointer',
+                    fontSize: '0.875rem',
+                  }}
+                >
+                  {t('debrief.voiceInvite.laterButton')}
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Action buttons */}
           <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>

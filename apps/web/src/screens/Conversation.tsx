@@ -1169,7 +1169,10 @@ export default function Conversation() {
               // so ignoring the toast must not lose the upgrade CTA. Only the
               // 'hidden' state (model never became ready, or the user already
               // switched now and navigated away) suppresses it.
-              state: { modelReadyAfterTutorial: modelReadyState !== 'hidden' },
+              state: {
+                modelReadyAfterTutorial: modelReadyState !== 'hidden',
+                isScripted: runtimeHint === 'scripted' || runtimeHint === 'fake',
+              },
             })}
             style={{
               padding: '0.5rem 1.5rem',
