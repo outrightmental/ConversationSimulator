@@ -68,3 +68,43 @@ def test_completed_with_model_still_reports_missing_llm_without_a_model(client):
 
     body = client.get("/api/setup/status").json()
     assert "llm-present" in body["missing"]
+
+
+def test_status_is_ready_when_outcome_model_and_packs_all_present(client):
+    """The other corner of the matrix: an outcome recorded plus a ready model
+    plus a seeded pack derives 'ready' with an empty missing list. Without this
+    the suite never proves the server can report ready at all — a regression
+    that permanently pinned every install to 'incomplete' would pass unnoticed."""
+    client.post("/api/setup/outcome", json={"outcome": "completed-with-model"})
+
+    conn = client.app.state.db.connection()
+    conn.execute(
+        "INSERT INTO packs (slug, name, version) VALUES ('starter.pack', 'Starter', '1.0.0')"
+    )
+    conn.execute(
+        "INSERT INTO installed_models (registry_id, filename, file_path, install_status) "
+        "VALUES (NULL, 'qwen3-4b-q4.gguf', '/models/qwen3-4b-q4.gguf', 'ready')"
+    )
+    conn.commit()
+
+    body = client.get("/api/setup/status").json()
+    assert body["kind"] == "ready"
+    assert body["missing"] == []
+
+
+def test_status_incomplete_when_model_present_but_packs_missing(client):
+    """A ready model without any seeded pack isolates the packs-seeded check:
+    llm-present must clear while packs-seeded alone keeps the status incomplete."""
+    client.post("/api/setup/outcome", json={"outcome": "completed-with-model"})
+
+    conn = client.app.state.db.connection()
+    conn.execute(
+        "INSERT INTO installed_models (registry_id, filename, file_path, install_status) "
+        "VALUES (NULL, 'qwen3-4b-q4.gguf', '/models/qwen3-4b-q4.gguf', 'ready')"
+    )
+    conn.commit()
+
+    body = client.get("/api/setup/status").json()
+    assert body["kind"] == "incomplete"
+    assert "llm-present" not in body["missing"]
+    assert "packs-seeded" in body["missing"]

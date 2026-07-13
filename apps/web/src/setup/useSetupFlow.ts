@@ -67,14 +67,22 @@ export interface UseSetupFlowReturn {
   reloadModels: () => Promise<void>
 }
 
-function markFirstRunComplete(): void {
+// Persist the onboarding outcome server-side BEFORE navigating into a guarded
+// route. The write must be awaited: FirstRunGuard mounts on the destination and
+// immediately revalidates via GET /setup/status. If that GET is served before
+// this POST commits, the server still reports 'never-run' and the guard would
+// clear the mirror and bounce the user straight back to the wizard's Welcome —
+// right after they finished installing a model. Awaiting the commit closes that
+// race; the localStorage mirror still covers the offline case (a failed write
+// leaves the guard's fast-path 'ready' intact rather than downgrading it).
+async function markFirstRunComplete(): Promise<void> {
   try { localStorage.setItem(SETUP_KEYS.firstRunComplete, 'true') } catch { /* ignore */ }
-  void api.recordOnboardingOutcome('completed-with-model').catch(() => { /* best-effort */ })
+  try { await api.recordOnboardingOutcome('completed-with-model') } catch { /* best-effort */ }
 }
 
-function markDemoComplete(): void {
+async function markDemoComplete(): Promise<void> {
   try { localStorage.setItem(SETUP_KEYS.firstRunComplete, 'true') } catch { /* ignore */ }
-  void api.recordOnboardingOutcome('demo').catch(() => { /* best-effort */ })
+  try { await api.recordOnboardingOutcome('demo') } catch { /* best-effort */ }
 }
 
 function markTutorialComplete(): void {
@@ -151,7 +159,7 @@ export function useSetupFlow(initialStep: SetupFlowStep, initialInstallId?: numb
     }
 
     pollRef.current = setInterval(() => {
-      void api.getInstallStatus(installId).then((r) => {
+      void api.getInstallStatus(installId).then(async (r) => {
         if (!r.ok) return
         const record = r.data
         setInstallRecord(record)
@@ -159,7 +167,7 @@ export function useSetupFlow(initialStep: SetupFlowStep, initialInstallId?: numb
         if (terminal.includes(record.install_status)) {
           stopPoll()
           if (record.install_status === 'ready' || record.install_status === 'complete') {
-            markFirstRunComplete()
+            await markFirstRunComplete()
             navigate(isTutorialComplete() ? '/library' : '/')
           } else {
             setActionError({ kind: 'http-error', message: record.error_message ?? 'Download failed. Please try again.' })
@@ -243,7 +251,7 @@ export function useSetupFlow(initialStep: SetupFlowStep, initialInstallId?: numb
     setActionLoading(true)
     try { await api.useModel({ runtime_id: 'fake', model_id: null }) } catch { /* best-effort */ }
     finally { setActionLoading(false) }
-    if (markComplete) markDemoComplete()
+    if (markComplete) await markDemoComplete()
     navigate('/library')
   }
 
@@ -252,7 +260,7 @@ export function useSetupFlow(initialStep: SetupFlowStep, initialInstallId?: numb
     try { await api.useModel({ runtime_id: 'scripted', model_id: null }) } catch { /* best-effort */ }
     finally { setActionLoading(false) }
     markTutorialComplete()
-    markFirstRunComplete()
+    await markFirstRunComplete()
     navigate('/setup/first_words_tutorial')
   }
 
@@ -260,7 +268,7 @@ export function useSetupFlow(initialStep: SetupFlowStep, initialInstallId?: numb
     if (installId != null) {
       try { await api.cancelInstall(installId) } catch { /* best-effort */ }
     }
-    markFirstRunComplete()
+    await markFirstRunComplete()
     navigate('/')
   }
 
@@ -268,8 +276,8 @@ export function useSetupFlow(initialStep: SetupFlowStep, initialInstallId?: numb
   // way to finish onboarding, so it must persist the server-side outcome — not
   // just the localStorage mirror — otherwise clearing the cache resurrects the
   // wizard for a working install (issue #380).
-  function handleFinishBenchmark() {
-    markFirstRunComplete()
+  async function handleFinishBenchmark() {
+    await markFirstRunComplete()
     navigate('/')
   }
 
