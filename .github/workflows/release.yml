@@ -1091,3 +1091,24 @@ jobs:
           files: latest.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── Steam publication (beta) ──────────────────────────────────────────────────
+  # Chains automatically after a successful GitHub release.  The steam-release
+  # GitHub environment gates this job behind a required-reviewer approval, so no
+  # Steam credential is exposed without a human click.
+  #
+  # Automatic runs always target the 'beta' branch.  'default' (public) must be
+  # promoted via steam-promote.yml after the Stage 4 gate passes.
+  #
+  # If STEAM_USERNAME / STEAM_CONFIG_VDF are not yet configured, steam-deploy
+  # short-circuits with an INFO message and this job succeeds, leaving the release
+  # green.  See publishing/STEAM_APP_REGISTRATION.md for credential setup.
+  steam:
+    name: Publish to Steam (beta)
+    needs: release
+    if: ${{ !cancelled() && needs.release.result == 'success' }}
+    uses: ./.github/workflows/steam-deploy.yml
+    with:
+      release_tag: ${{ github.event.inputs.tag || github.ref_name }}
+      set_live_branch: beta
+    secrets: inherit

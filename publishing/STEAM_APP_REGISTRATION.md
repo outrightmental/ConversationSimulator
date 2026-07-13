@@ -116,14 +116,14 @@ access to the app. They are stored as GitHub repository **variables** (not
 secrets) so that CI workflows can reference them without hardcoding values in
 source files.
 
-| Identifier | GitHub repository variable | Description |
-|-----------|---------------------------|-------------|
-| App ID | `vars.STEAM_APP_ID` | Assigned by Valve at registration. Seven-digit format, e.g. `1234567`. |
-| Windows depot ID | `vars.STEAM_DEPOT_WINDOWS_ID` | First depot created; Windows x86-64 content. Valve assigns depot IDs sequentially after the App ID. |
-| macOS depot ID | `vars.STEAM_DEPOT_MACOS_ID` | Second depot created; macOS (Apple Silicon + Intel) content. |
-| Linux/SteamOS depot ID | `vars.STEAM_DEPOT_LINUX_ID` | Third depot created; Linux x86-64 and Steam Deck content. |
-| Base package ID | *(record here after registration)* | The paid base package that grants the base app and its three platform depots. Not referenced in CI. |
-| DLC App IDs | `vars.STEAM_DLC_APP_IDS` | One Steam App ID per premium scenario-pack DLC (comma-separated). Non-secret. DLC content is built and uploaded from the private `ConversationSimulator-DLC` repo — see [`docs/DLC_MODEL.md`](../docs/DLC_MODEL.md). |
+| Identifier | Value | GitHub repository variable | Description |
+|-----------|-------|---------------------------|-------------|
+| App ID | **4963030** | `vars.STEAM_APP_ID` | Assigned by Valve at registration. |
+| Windows depot ID | *(assigned in partner portal — set as repo variable)* | `vars.STEAM_DEPOT_WINDOWS_ID` | First depot created; Windows x86-64 content. Valve assigns depot IDs sequentially after the App ID. |
+| macOS depot ID | *(assigned in partner portal — set as repo variable)* | `vars.STEAM_DEPOT_MACOS_ID` | Second depot created; macOS (Apple Silicon + Intel) content. |
+| Linux/SteamOS depot ID | *(assigned in partner portal — set as repo variable)* | `vars.STEAM_DEPOT_LINUX_ID` | Third depot created; Linux x86-64 and Steam Deck content. |
+| Base package ID | *(record here after registration)* | *(not referenced in CI)* | The paid base package that grants the base app and its three platform depots. |
+| DLC App IDs | *(record here per pack)* | `vars.STEAM_DLC_APP_IDS` | One Steam App ID per premium scenario-pack DLC (comma-separated). Non-secret. DLC content is built and uploaded from the private `ConversationSimulator-DLC` repo — see [`docs/DLC_MODEL.md`](../docs/DLC_MODEL.md). |
 
 **To set a repository variable:** GitHub → repository Settings → Secrets and
 variables → Actions → Variables tab → New repository variable.
