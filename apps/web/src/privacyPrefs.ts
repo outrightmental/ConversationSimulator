@@ -10,6 +10,12 @@ export const PRIVACY_KEYS = {
 export const SETUP_KEYS = {
   firstRunComplete: 'convsim.setup.complete',
   tutorialComplete: 'convsim.tutorial.complete',
+  // Written by handleStartTutorial when a background install is running so
+  // Conversation.tsx can show the model-ready toast when the download finishes.
+  tutorialInstallId: 'convsim.tutorial.install_id',
+  // Written by handleStartTutorial / handleConfirmDemo so Conversation.tsx can
+  // label the session ("Scripted practice run" / "Demo mode").
+  activeRuntimeHint: 'convsim.active_runtime_hint',
 } as const
 
 export function readPrivacyPref(key: string, defaultValue: boolean): boolean {

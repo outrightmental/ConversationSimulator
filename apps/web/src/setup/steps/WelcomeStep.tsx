@@ -57,7 +57,7 @@ export function WelcomeStep({ flow }: { flow: UseSetupFlowReturn }) {
 
         {/* Try it right now card */}
         <button
-          onClick={() => void flow.handleConfirmDemo(true)}
+          onClick={() => void flow.handleStartTutorial()}
           disabled={flow.actionLoading}
           style={{
             ...cardBase,
