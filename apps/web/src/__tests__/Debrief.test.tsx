@@ -486,6 +486,21 @@ describe('Debrief screen', () => {
       expect(screen.getByTestId('voice-invite-card')).toHaveTextContent(/say it out loud/i)
     })
 
+    it('persists "dismissed" as soon as the card is shown so it never re-nags', async () => {
+      // Issue #385: the card must appear exactly once. Merely rendering it (even
+      // if the user ignores it and navigates away) marks it seen so a later real
+      // conversation does not re-show it.
+      mockReadVoiceInviteState.mockReturnValue('pending')
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
+      renderDebrief({ isScripted: false })
+      await waitFor(() =>
+        expect(screen.getByTestId('voice-invite-card')).toBeInTheDocument(),
+      )
+      // Written without any button click — the card is still visible this time.
+      expect(mockWriteVoiceInviteState).toHaveBeenCalledWith('dismissed')
+      expect(screen.getByTestId('voice-invite-card')).toBeInTheDocument()
+    })
+
     it('does not show voice invite card when the session was scripted', async () => {
       mockReadVoiceInviteState.mockReturnValue('pending')
       mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })

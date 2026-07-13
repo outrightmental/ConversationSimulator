@@ -158,6 +158,18 @@ export default function Debrief() {
     // listed to satisfy exhaustive-deps without triggering re-runs.
   }, [sessionId, retryKey, unlock, incrementStat])
 
+  // Persist "seen" the moment the invite is actually rendered (debrief loaded),
+  // so it appears exactly once and never re-nags on later debriefs (issue #385).
+  // Without this, ignoring the card — the common case, since the debrief action
+  // buttons navigate away — leaves the state 'pending' and re-shows the card
+  // after every subsequent real conversation. The explicit "Set up voice" /
+  // "Maybe later" buttons overwrite this with 'setup'/'dismissed' when clicked.
+  useEffect(() => {
+    if (phase === 'loaded' && voiceInviteVisible) {
+      writeVoiceInviteState('dismissed')
+    }
+  }, [phase, voiceInviteVisible])
+
   const scrollToTurn = useCallback((turnNumber: number) => {
     const el = turnRefs.current.get(turnNumber)
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
