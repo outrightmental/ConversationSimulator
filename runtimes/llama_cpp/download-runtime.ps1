@@ -2,24 +2,28 @@
 # download-runtime.ps1 — Download a pre-built llama-server binary for Windows.
 #
 # Usage:
-#   .\runtimes\llama_cpp\download-runtime.ps1 [[-Version] <tag>] [[-Dest] <dir>] [-Variant <cpu|cuda|vulkan>]
+#   .\runtimes\llama_cpp\download-runtime.ps1 [[-Version] <tag>] [[-Dest] <dir>] [-Variant <cpu|vulkan>]
 #
 # Options:
 #   -Version <tag>      llama.cpp release tag to download (default: latest)
 #   -Dest    <dir>      directory to place the binary (default: $HOME\.convsim\bin)
-#   -Variant <name>     build variant: cpu (default), cuda, vulkan
+#   -Variant <name>     build variant: cpu (default), vulkan
 #
 # After the download, add the destination to PATH or pass its full path to
 # POST /api/sidecar/start as the "executable" field.
 #
 # Supported platforms:
-#   Windows x86_64 — win-x64  (cpu / cuda / vulkan variants)
+#   Windows x86_64 — win-x64  (cpu / vulkan variants)
 #   Windows arm64  — win-arm64 (cpu variant)
 #
 # Variant selection:
 #   cpu    — universally safe, works on every Windows machine (default)
-#   cuda   — NVIDIA GPU acceleration; requires CUDA runtime
 #   vulkan — GPU acceleration via Vulkan; works on NVIDIA, AMD, Intel
+#
+# CUDA builds are intentionally not offered: llama.cpp publishes them per CUDA
+# toolkit version (win-cuda-12.4-x64, win-cuda-13.3-x64, …) plus a separate
+# cudart runtime archive, so there is no single "cuda" asset to fetch. Vulkan
+# accelerates on NVIDIA too (the driver ships the Vulkan runtime).
 #
 # For Linux / macOS use runtimes/llama_cpp/download-runtime.sh instead.
 
@@ -27,7 +31,7 @@
 param(
     [string]$Version = "",
     [string]$Dest    = (Join-Path (Join-Path $HOME ".convsim") "bin"),
-    [ValidateSet("cpu", "cuda", "vulkan")]
+    [ValidateSet("cpu", "vulkan")]
     [string]$Variant = "cpu"
 )
 

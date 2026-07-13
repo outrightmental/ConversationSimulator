@@ -413,8 +413,14 @@ def test_detect_windows_gpu_variant_returns_cpu_by_default(monkeypatch):
     assert detect_windows_gpu_variant() == "cpu"
 
 
-def test_detect_windows_gpu_variant_cuda_when_nvidia_smi_succeeds(monkeypatch):
-    """Returns 'cuda' when nvidia-smi is present and reports a GPU name."""
+def test_detect_windows_gpu_variant_vulkan_when_nvidia_smi_succeeds(monkeypatch):
+    """Returns 'vulkan' when nvidia-smi reports a GPU.
+
+    CUDA is intentionally not recommended: llama.cpp CUDA builds are published
+    per toolkit version and need a separate cudart archive, so the single-asset
+    downloader can't fetch one. The NVIDIA driver ships the Vulkan runtime, so
+    the Vulkan build accelerates on NVIDIA too.
+    """
     import subprocess as _subprocess
 
     monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/nvidia-smi" if name == "nvidia-smi" else None)
@@ -424,7 +430,7 @@ def test_detect_windows_gpu_variant_cuda_when_nvidia_smi_succeeds(monkeypatch):
     fake_result.stdout = b"NVIDIA GeForce RTX 4090\n"
     monkeypatch.setattr(_subprocess, "run", lambda *a, **kw: fake_result)
 
-    assert detect_windows_gpu_variant() == "cuda"
+    assert detect_windows_gpu_variant() == "vulkan"
 
 
 def test_detect_windows_gpu_variant_cpu_when_nvidia_smi_fails(monkeypatch):

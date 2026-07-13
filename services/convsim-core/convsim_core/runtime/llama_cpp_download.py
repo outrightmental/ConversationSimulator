@@ -114,13 +114,24 @@ def detect_platform_string() -> str:
 
 
 def detect_windows_gpu_variant() -> str:
-    """Probe for GPU acceleration on Windows; return the best available variant.
+    """Probe for GPU acceleration on Windows; return the best *downloadable* variant.
 
-    Returns one of: ``"cuda"``, ``"vulkan"``, ``"cpu"`` (default).
+    Returns one of: ``"vulkan"`` or ``"cpu"`` (default).
 
     Never raises — detection failures always fall back to ``"cpu"``.  Callers
-    should treat this as advisory: the CPU variant always works; GPU variants
-    are offered as *opt-in* upgrades, never required for first-run.
+    should treat this as advisory: the CPU variant always works; the Vulkan
+    variant is offered as an *opt-in* upgrade, never required for first-run.
+
+    Vulkan is recommended for every GPU vendor (NVIDIA, AMD, Intel) because it
+    ships as a single, self-contained llama.cpp release asset
+    (``llama-{tag}-bin-win-vulkan-x64.zip``).  CUDA is deliberately *not*
+    recommended here: llama.cpp publishes CUDA builds per toolkit version
+    (``win-cuda-12.4-x64``, ``win-cuda-13.3-x64``, …) and each additionally
+    requires a separate ``cudart-*`` runtime archive — neither of which the
+    single-asset downloader in this module can satisfy, so recommending
+    ``"cuda"`` would send the download to a nonexistent asset (404).  An NVIDIA
+    GPU is therefore offered the Vulkan build; the NVIDIA driver ships the
+    Vulkan runtime, so it accelerates on NVIDIA too.
     """
     try:
         if shutil.which("nvidia-smi"):
@@ -130,7 +141,7 @@ def detect_windows_gpu_variant() -> str:
                 timeout=5,
             )
             if result.returncode == 0 and result.stdout.strip():
-                return "cuda"
+                return "vulkan"
     except Exception:  # noqa: BLE001
         pass
 
@@ -258,10 +269,12 @@ async def download_binary(
         platform_string: Override the auto-detected platform (useful in
             tests).  Must match a llama.cpp release asset segment, e.g.
             ``"linux-x64"`` or ``"win-x64"``.
-        variant: Build variant — ``"cpu"`` (default, universally safe),
-            ``"cuda"``, or ``"vulkan"``.  On Windows, use
-            :func:`detect_windows_gpu_variant` to discover available variants;
-            on Linux/macOS ``"cpu"`` is the only supported variant here.
+        variant: Build variant — ``"cpu"`` (default, universally safe) or
+            ``"vulkan"`` (GPU acceleration, Windows only).  On Windows, use
+            :func:`detect_windows_gpu_variant` to discover the recommended
+            variant; on Linux/macOS ``"cpu"`` is the only supported variant
+            here.  (``"cuda"`` is not supported — llama.cpp CUDA builds are
+            published per toolkit version and need a separate cudart archive.)
         cancel_event: When set, the download stops cleanly and
             ``asyncio.CancelledError`` is raised.  Checked between chunks.
         progress_cb: Called after each significant state or byte-count change

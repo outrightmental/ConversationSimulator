@@ -104,9 +104,9 @@ class DownloadRuntimeRequest(BaseModel):
     (``~/.convsim/bin``). The binary is placed inside this directory as
     ``llama-server`` (or ``llama-server.exe`` on Windows).
 
-    ``variant`` selects the build variant: ``"cpu"`` (default, always safe),
-    ``"cuda"`` (NVIDIA GPU), or ``"vulkan"`` (Vulkan-capable GPU).  Use
-    ``detect_windows_gpu_variant()`` to discover what is available; GPU
+    ``variant`` selects the build variant: ``"cpu"`` (default, always safe) or
+    ``"vulkan"`` (GPU acceleration on NVIDIA/AMD/Intel).  Use
+    ``detect_windows_gpu_variant()`` to discover the recommended variant; GPU
     variants are never required for first-run.  Only meaningful on Windows;
     Linux and macOS always use ``"cpu"``.
     """
@@ -350,8 +350,9 @@ async def get_gpu_variant() -> GpuVariantResponse:
     """Return the best available GPU variant for this machine.
 
     On Windows, probes for NVIDIA (nvidia-smi) and Vulkan (vulkaninfo).
-    On other platforms, always returns ``"cpu"``.  Never blocks — probe
-    failures fall back to ``"cpu"`` immediately.
+    On other platforms, always returns ``"cpu"``.  The probe runs off the
+    event loop and always falls back to ``"cpu"`` on failure, so this endpoint
+    never blocks other requests.
 
     Clients may use this to offer GPU-accelerated engine downloads as an
     opt-in upgrade; the default ``"cpu"`` variant is always safe.
@@ -364,7 +365,10 @@ async def get_gpu_variant() -> GpuVariantResponse:
         platform_str = None
 
     if _sys.platform == "win32":
-        variant = detect_windows_gpu_variant()
+        # The probe shells out to nvidia-smi / vulkaninfo (subprocess with
+        # multi-second timeouts); run it in a thread so it never stalls the
+        # event loop while the UI polls download progress.
+        variant = await asyncio.to_thread(detect_windows_gpu_variant)
     else:
         variant = "cpu"
 

@@ -294,11 +294,17 @@ file is removed immediately and no partial binary is ever registered.
 | Variant | When to use |
 |---------|-------------|
 | `cpu` (default) | Universally safe; works on every machine |
-| `cuda` | NVIDIA GPU acceleration; offered as opt-in when `nvidia-smi` is detected |
-| `vulkan` | GPU acceleration via Vulkan; offered as opt-in when `vulkaninfo` is detected |
+| `vulkan` | GPU acceleration via Vulkan; auto-offered as opt-in when a GPU is detected (`nvidia-smi` or `vulkaninfo`). Works on NVIDIA, AMD, and Intel |
 
 GPU variants are **never required** for first-run. The product offers them as
 optional upgrades; the CPU variant is always the default.
+
+The auto-detection (`GET /api/sidecar/gpu-variant`) only ever recommends `cpu`
+or `vulkan`. Vulkan is chosen for NVIDIA GPUs too because the NVIDIA driver
+ships the Vulkan runtime, and — unlike CUDA — Vulkan is a single, self-contained
+release asset. llama.cpp publishes CUDA builds per toolkit version
+(`win-cuda-12.4-x64`, `win-cuda-13.3-x64`, …) plus a separate `cudart-*` runtime
+archive, which the single-asset engine downloader cannot provision.
 
 ### Offline behaviour
 

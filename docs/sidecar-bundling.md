@@ -65,9 +65,8 @@ binaries are expected to be on the developer's `PATH`.
 .\runtimes\llama_cpp\download-runtime.ps1
 # → binary at $HOME\.convsim\bin\llama-server.exe
 
-# GPU-accelerated variants (optional, never required for first-run):
-.\runtimes\llama_cpp\download-runtime.ps1 -Variant cuda   # NVIDIA
-.\runtimes\llama_cpp\download-runtime.ps1 -Variant vulkan # AMD / Intel / NVIDIA via Vulkan
+# GPU-accelerated variant (optional, never required for first-run):
+.\runtimes\llama_cpp\download-runtime.ps1 -Variant vulkan # NVIDIA / AMD / Intel via Vulkan
 
 # Add to PATH (current session):
 $env:PATH = "$HOME\.convsim\bin;$env:PATH"
