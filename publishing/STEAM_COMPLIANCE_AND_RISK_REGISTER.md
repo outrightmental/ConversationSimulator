@@ -320,9 +320,9 @@ the decisions for Steam review and partner portal audit purposes.
 | **Area** | Platform |
 | **Risk** | The release build is not code-signed or notarised, causing macOS Gatekeeper or Windows SmartScreen to block installation and generating player support load. |
 | **Owner** | Platform team |
-| **Mitigation** | macOS: Gatekeeper notarisation is a hard requirement before public release (Stage 4). Windows: SmartScreen Extended Validation code signing is required. Both are tracked as release gates in `docs/STEAM_ROADMAP.md`. Certificates and signing infrastructure must be in place before the private beta depot is built. |
+| **Mitigation** | macOS: Gatekeeper notarisation is a hard requirement before public release (Stage 4). Windows: SmartScreen Extended Validation code signing is required. Both are tracked as release gates in `docs/STEAM_ROADMAP.md`. Certificates and signing infrastructure must be in place before the private beta depot is built. CI enforcement: the `build-desktop` job in `.github/workflows/release.yml` fails early when `APPLE_CERTIFICATE`, `APPLE_ID`, or `WINDOWS_SIGN_CERT_PFX` is absent on a `v*` tag, preventing an unsigned artifact from being published. The macOS signing step asserts all five Hardened Runtime entitlements and runs `spctl --assess` + `xcrun stapler validate` — any SKIP or FAIL on a `v*` tag causes the job to exit non-zero. |
 | **Release-blocking** | YES |
-| **Status** | OPEN |
+| **Status** | MITIGATED |
 
 ### SP-05 — First-party Steam DLC path for premium scenario packs
 
@@ -431,10 +431,51 @@ Complete before submitting to Valve for private beta review.
 | SR-08 Depot content audit | Platform team | | | |
 | Full `docs/release-checklist.md` Part A | CI | | | |
 | Full `docs/release-checklist.md` Parts B + C | Platform team | | | |
+| **G3-01 Signing + notarization** | Platform team | | | macOS: `spctl` + `stapler validate` green; Windows: `signtool verify` + Defender clean |
+| **G3-02 Steam depot content audit** | Platform team | | | `depot-audit.sh` exits 0 for all three platforms; no weight files |
+| **G3-03 Steam overlay compatibility** | Beta testers | | | Shift+Tab opens/closes without session disruption; push-to-talk key conflict-free |
+| **G3-06 Beta session verification** | Beta testers (≥ 3 platforms) | | | ≥ 1 tester per platform completes text session + debrief; no open blockers |
 
 All gates must show **Pass** before the private beta depot is submitted to Valve.
 Any **Fail** must have a tracked issue with an owner and a target date before the
 team is unblocked.
+
+---
+
+### SR-10 — Stage 3 dress rehearsal record
+
+Fill this section in after completing `docs/release-checklist.md` Part K for the
+first release candidate tag.  This record is the evidence that the entire pipeline
+has been exercised end-to-end before the real beta submission.
+
+```
+Rehearsal tag        : vX.Y.Z-rc.N
+Rehearsal date       : YYYY-MM-DD
+Release operator     :
+
+CI run URL           :
+Steam deploy run URL :
+
+Pipeline result      : PASS / FAIL
+Steamworks build ID  :
+Steam App ID         : 4963030
+Branch set live      : beta
+
+Defender verdict     : clean / THREAT FOUND (artifact: defender-scan-Windows-x86_64)
+Depot audit          : PASS / FAIL
+
+Windows tester       :
+macOS tester         :
+Linux tester         :
+
+G3-01 Signing + notarization    : PASS / FAIL  evidence: <CI run URL>
+G3-02 Depot content audit       : PASS / FAIL  evidence: <CI run URL>
+G3-03 Steam overlay             : PASS / FAIL  testers: <names>
+G3-06 Beta session verification : PASS / FAIL  testers: <names>
+
+Notes:
+  -
+```
 
 ---
 
@@ -464,7 +505,7 @@ team is unblocked.
 | SP-01 | Platform | YES | OPEN |
 | SP-02 | Platform | YES | OPEN |
 | SP-03 | Platform | NO | OPEN |
-| SP-04 | Platform | YES | OPEN |
+| SP-04 | Platform | YES | MITIGATED |
 | SP-05 | Platform / Licensing | YES | IN PROGRESS |
 
 ---
