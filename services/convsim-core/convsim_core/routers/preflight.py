@@ -34,7 +34,7 @@ _MIN_PACKS = 4
 class FixAction(BaseModel):
     """A single actionable remedy for a failing or warning check."""
 
-    kind: str   # "navigate" | "open-url" | "wizard-step"
+    kind: str   # "navigate" | "open-url" | "wizard-step" | "install-engine"
     href: str
     label: str
 
@@ -152,9 +152,9 @@ def _check_llama_cpp_binary() -> CheckResult:
             "The inference engine is missing from this installation."
         ),
         fix_action=FixAction(
-            kind="open-url",
-            href="https://docs.conversationsimulator.com/play/local-models/",
-            label="Setup guide",
+            kind="install-engine",
+            href="/settings/install-engine",
+            label="Install engine",
         ),
     )
 
