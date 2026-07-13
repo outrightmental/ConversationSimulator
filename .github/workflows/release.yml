@@ -456,7 +456,19 @@ jobs:
             # unset them and let Tauri use the Apple ID trio.
             unset APPLE_API_KEY APPLE_API_ISSUER APPLE_API_KEY_PATH
           fi
-          pnpm --filter @convsim/desktop build
+          if [ "$BUNDLE_LLAMA_SERVER" = "true" ]; then
+            # Steam builds disable the Tauri updater plugin so the app never
+            # shows an update banner or polls GitHub — Steam owns updates via
+            # SteamPipe and the two updaters fighting each other is a support
+            # nightmare.  The JSON Merge Patch overlay (RFC 7396) sets
+            # plugins.updater to null, removing the key from the merged config
+            # so the updater plugin has no endpoints to poll.
+            # See publishing/STEAM_DEPOT_CONTENTS.md — updater policy.
+            pnpm --filter @convsim/desktop build -- \
+              --config '{"plugins":{"updater":null}}'
+          else
+            pnpm --filter @convsim/desktop build
+          fi
 
       # ── Verify macOS signature, entitlements, notarization, and stapling ──────
       # Confirms that Tauri's signing + Apple notarisation pipeline completed
@@ -614,6 +626,21 @@ jobs:
               exit $LASTEXITCODE
             }
           }
+
+          # Also sign portable depot binaries for the Steam depot layout.
+          # These ship directly at the depot root without an installer wrapper, so
+          # each must carry its own Authenticode signature independently of the
+          # NSIS/MSI installers signed above.
+          $releaseDir = "apps\desktop\src-tauri\target\release"
+          foreach ($path in @("$releaseDir\convsim-desktop.exe", "$releaseDir\resources\bin\convsim-core.exe")) {
+            if (-not (Test-Path $path)) { continue }
+            Write-Host "  Signing depot binary: $path"
+            & pwsh -NoLogo -NonInteractive -File scripts\jsign-sign.ps1 -FilePath $path
+            if ($LASTEXITCODE -ne 0) {
+              Write-Error "Signing failed for $(Split-Path -Leaf $path) (exit $LASTEXITCODE)"
+              exit $LASTEXITCODE
+            }
+          }
           Write-Host "  INFO  Outer installer signing complete."
 
       # ── Verify Windows Authenticode signature ─────────────────────────────────
@@ -665,12 +692,31 @@ jobs:
           }
           Write-Host "  OK  All outer installers carry a valid Authenticode signature."
 
+          # Verify portable depot binaries.  These ship directly at the Steam depot
+          # root without an installer wrapper and must carry their own signatures.
+          $fail = $false
+          Write-Host ""
+          Write-Host "=== Portable depot binary signatures ==="
+          $releaseDir = "apps\desktop\src-tauri\target\release"
+          foreach ($path in @("$releaseDir\convsim-desktop.exe", "$releaseDir\resources\bin\convsim-core.exe")) {
+            if (-not (Test-Path $path)) { continue }
+            Write-Host "  Verifying: $path"
+            & $signtool verify /pa /v $path
+            if ($LASTEXITCODE -ne 0) {
+              Write-Error "  FAIL  $(Split-Path -Leaf $path) does not carry a valid Authenticode signature."
+              $fail = $true
+            } else {
+              Write-Host "  OK    $(Split-Path -Leaf $path)"
+            }
+          }
+
           # Extract the NSIS installer and verify inner payload binaries.
           # 7z is pre-installed on windows-latest.
           $nsisInst = Get-ChildItem -Recurse -Path $bundleDir -Filter "*-setup.exe" |
                       Select-Object -First 1
           if (-not $nsisInst) {
             Write-Host "  WARN  No NSIS installer found — skipping inner-binary verification."
+            if ($fail) { exit 1 }
             exit 0
           }
 
@@ -681,6 +727,7 @@ jobs:
           & 7z x $nsisInst.FullName "-o$extractDir" -y | Out-Null
           if ($LASTEXITCODE -ne 0) {
             Write-Host "  WARN  7z extraction failed (exit $LASTEXITCODE) — skipping inner check."
+            if ($fail) { exit 1 }
             exit 0
           }
 
@@ -693,7 +740,6 @@ jobs:
           $conf     = Get-Content "apps\desktop\src-tauri\tauri.conf.json" -Raw | ConvertFrom-Json
           $mainName = if ($conf.mainBinaryName) { $conf.mainBinaryName } else { $conf.productName }
 
-          $fail = $false
           foreach ($name in @("$mainName.exe", 'convsim-core.exe')) {
             $inner = Get-ChildItem -Recurse -Path $extractDir -Filter $name |
                      Select-Object -First 1
@@ -715,7 +761,7 @@ jobs:
             }
           }
           if ($fail) { exit 1 }
-          Write-Host "  INFO  All outer installers and inner payload binaries verified."
+          Write-Host "  INFO  All outer installers, depot binaries, and inner payload binaries verified."
           Write-Host "        Gate G3-01 Windows criterion met."
 
       # ── Scan Windows installers for malware (VirusTotal, optional) ─────────────
@@ -969,6 +1015,132 @@ jobs:
           tar -czf "$TARBALL" -C "$BUNDLE_DIR" "$APP_NAME"
           ls -lh "$TARBALL"
 
+      # ── Package Windows portable depot layout for Steam ─────────────────────────
+      # Assembles the raw application file tree from the Tauri build output and
+      # packages it as a tarball for the Steam depot.  This mirrors the macOS
+      # .app.tar.gz step: steam-deploy.yml extracts this tarball directly into
+      # steam-content/windows/ instead of staging the NSIS installer.
+      #
+      # The depot layout is:
+      #   ConversationSimulator.exe       ← main binary (renamed from Rust crate name)
+      #   *.dll                           ← WebView2Loader.dll and Tauri DLLs (if any)
+      #   resources/bin/convsim-core.exe  ← PyInstaller sidecar
+      #   resources/runtimes/…            ← llama-server.exe + sibling DLLs (Steam only)
+      #   resources/packs/…               ← bundled official scenario packs
+      #   installscript.vdf               ← Steam InstallScript (WebView2 bootstrap)
+      #   MicrosoftEdgeWebView2Setup.exe  ← WebView2 Evergreen Bootstrapper (~2 MB)
+      #   LICENSE / NOTICE                ← licence files
+      #   version.txt                     ← semver stamp for artifact inspection tests
+      #
+      # Gated on BUNDLE_LLAMA_SERVER (the Steam build indicator): GitHub release
+      # installers stay lean (no llama-server) and do not need a depot tarball.
+      # See publishing/STEAM_DEPOT_CONTENTS.md — Windows depot section.
+      - name: Package Windows portable depot layout for Steam depot (Windows Steam only)
+        if: runner.os == 'Windows' && env.BUNDLE_LLAMA_SERVER == 'true'
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $releaseDir   = "apps\desktop\src-tauri\target\release"
+          $depotStage   = "steam-depot-windows"
+
+          Write-Host "  Assembling Windows Steam depot layout at: $depotStage"
+          New-Item -ItemType Directory -Force -Path $depotStage | Out-Null
+
+          # ── Main binary ──────────────────────────────────────────────────────
+          # The Rust crate is named 'convsim-desktop'; the product name in the
+          # Steam depot is 'ConversationSimulator.exe' (matches Steam launch
+          # options and the layout documented in STEAM_DEPOT_CONTENTS.md).
+          $srcExe = "$releaseDir\convsim-desktop.exe"
+          if (-not (Test-Path $srcExe)) {
+            # Fallback: search for any exe at the release root (handles crate rename).
+            $srcExe = Get-ChildItem -Path $releaseDir -Filter "*.exe" -File `
+              -ErrorAction SilentlyContinue |
+              Where-Object { $_.Directory.FullName -eq (Resolve-Path $releaseDir).Path } |
+              Select-Object -First 1 -ExpandProperty FullName
+          }
+          if (-not $srcExe -or -not (Test-Path $srcExe)) {
+            Write-Error "Main Tauri binary not found at $releaseDir — Tauri build may have failed."
+            exit 1
+          }
+          Copy-Item $srcExe "$depotStage\ConversationSimulator.exe"
+          Write-Host "  Copied: $((Get-Item $srcExe).Name) -> ConversationSimulator.exe"
+
+          # ── Runtime DLLs (WebView2Loader.dll and Tauri support DLLs) ────────
+          $dlls = Get-ChildItem -Path $releaseDir -Filter "*.dll" -File `
+            -ErrorAction SilentlyContinue |
+            Where-Object { $_.Directory.FullName -eq (Resolve-Path $releaseDir).Path }
+          if ($dlls) {
+            $dlls | ForEach-Object {
+              Copy-Item $_.FullName "$depotStage\"
+              Write-Host "  Copied: $($_.Name)"
+            }
+          } else {
+            Write-Host "  INFO  No DLLs found at release root (static build — expected for Tauri v2)."
+          }
+
+          # ── Resources (bin/, runtimes/, packs/) ──────────────────────────────
+          # Tauri copies bundle.resources to target/release/resources/ during
+          # the build so the portable exe can resolve app.path().resource_dir().
+          # Fall back to src-tauri/resources/ if that directory is absent.
+          $resourcesSrc = if (Test-Path "$releaseDir\resources") {
+            "$releaseDir\resources"
+          } elseif (Test-Path "apps\desktop\src-tauri\resources") {
+            "apps\desktop\src-tauri\resources"
+          } else {
+            $null
+          }
+          if (-not $resourcesSrc) {
+            Write-Error "No resources/ directory found — Tauri build may have failed."
+            exit 1
+          }
+          Copy-Item $resourcesSrc "$depotStage\resources" -Recurse
+          Write-Host "  Copied: resources/ from $resourcesSrc"
+
+          # ── WebView2 Evergreen Bootstrapper ──────────────────────────────────
+          # Invoked by installscript.vdf on first launch to install WebView2
+          # on systems that do not yet have it.  ~2 MB — far smaller than the
+          # ~180 MB WebView2 Fixed Version alternative.
+          Write-Host "  Downloading WebView2 Evergreen Bootstrapper..."
+          Invoke-WebRequest `
+            -Uri "https://go.microsoft.com/fwlink/p/?LinkId=2124703" `
+            -OutFile "$depotStage\MicrosoftEdgeWebView2Setup.exe" `
+            -UseBasicParsing `
+            -MaximumRedirection 10
+          $wv2KB = [math]::Round(
+            (Get-Item "$depotStage\MicrosoftEdgeWebView2Setup.exe").Length / 1KB, 0
+          )
+          Write-Host "  Downloaded: MicrosoftEdgeWebView2Setup.exe (${wv2KB} KB)"
+
+          # ── Steam InstallScript ──────────────────────────────────────────────
+          Copy-Item "steam\installscript.vdf" "$depotStage\"
+          Write-Host "  Copied: installscript.vdf"
+
+          # ── Licence files ────────────────────────────────────────────────────
+          if (Test-Path "LICENSE") { Copy-Item "LICENSE" "$depotStage\" }
+          if (Test-Path "NOTICE")  { Copy-Item "NOTICE"  "$depotStage\" }
+
+          # ── Version stamp (read by artifact inspection tests) ────────────────
+          $version = $env:RELEASE_TAG -replace '^v', ''
+          [System.IO.File]::WriteAllText("$depotStage\version.txt", $version)
+          Write-Host "  Version stamp: $version"
+
+          # ── Summary ──────────────────────────────────────────────────────────
+          Write-Host ""
+          Write-Host "  Depot layout (top-level):"
+          Get-ChildItem $depotStage | ForEach-Object { Write-Host "    $($_.Name)" }
+
+          # ── Package as tarball ───────────────────────────────────────────────
+          # Tarball root = steam-depot-windows/, mirroring how macOS packages
+          # <name>.app at the archive root.  steam-deploy.yml extracts with
+          # --strip-components=1 to land files directly in steam-content/windows/.
+          $tarball = "$releaseDir\steam-depot-windows.tar.gz"
+          tar -czf $tarball -C . $depotStage
+          $tarMB = [math]::Round((Get-Item $tarball).Length / 1MB, 1)
+          Write-Host ""
+          Write-Host "  OK  Packaged: $tarball (${tarMB} MB)"
+
       # ── Sign updater artifacts (optional, requires TAURI_SIGNING_PRIVATE_KEY) ─
       # Generates .sig files alongside the updater-relevant installer/archive so
       # the release job can embed them in the Tauri updater manifest (latest.json).
@@ -1027,7 +1199,11 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: desktop-${{ matrix.name }}
-          # Glob patterns cover all known Tauri installer formats.
+          # Glob patterns cover all known Tauri installer formats plus the
+          # Windows Steam depot tarball (produced only for Steam/BUNDLE_LLAMA_SERVER
+          # builds).  The steam-deploy workflow downloads all release assets and
+          # extracts steam-depot-windows.tar.gz into steam-content/windows/ instead
+          # of staging the NSIS installer.
           path: |
             apps/desktop/src-tauri/target/release/bundle/**/*.dmg
             apps/desktop/src-tauri/target/release/bundle/**/*.app.tar.gz
@@ -1038,6 +1214,7 @@ jobs:
             apps/desktop/src-tauri/target/release/bundle/**/*.exe
             apps/desktop/src-tauri/target/release/bundle/**/*.exe.sig
             apps/desktop/src-tauri/target/release/bundle/**/*.msi
+            apps/desktop/src-tauri/target/release/steam-depot-windows.tar.gz
           if-no-files-found: warn
           retention-days: 7
 
