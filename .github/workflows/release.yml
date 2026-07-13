@@ -1399,7 +1399,10 @@ jobs:
           echo "  See publishing/WINDOWS_MALWARE_SCANNING.md for how to read verdicts."
 
       # Resolve the storage account's resource group via the Azure CLI (requires
-      # Contributor or Reader on the subscription), then compose a stable Azure
+      # the Reader role on the storage account — granted in the service-principal
+      # setup in publishing/WINDOWS_MALWARE_SCANNING.md; Storage Blob Data
+      # Contributor alone is data-plane only and cannot read the account), then
+      # compose a stable Azure
       # portal deep-link and append the scan note to the GitHub release body
       # exactly once. The HTML marker prevents duplication on re-runs without
       # requiring a separate API call to check for the note.
