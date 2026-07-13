@@ -265,8 +265,6 @@ verified SHA-256 checksum; no entry ships a `PENDING` value.
 
 ---
 
----
-
 ## 8. Engine binary download policy
 
 The inference engine (`llama-server`) follows the same `NetworkMode.EXPLICIT_DOWNLOAD`

@@ -230,9 +230,8 @@ async def start_download_runtime(body: DownloadRuntimeRequest) -> DownloadRuntim
     in progress. Poll ``GET /api/sidecar/download-runtime`` for progress.
 
     On completion the binary is placed in ``dest_dir`` (default:
-    ``~/.convsim/bin``) and ``find_executable()`` will discover it via PATH
-    or the ``CONVSIM_BUNDLED_RUNTIME_DIR`` convention (see
-    docs/sidecar-bundling.md).
+    ``~/.convsim/bin``), where ``find_executable()`` resolves it directly —
+    no PATH change or app restart is needed (see docs/sidecar-bundling.md).
     """
     global _download_progress, _download_task, _download_cancel
 
