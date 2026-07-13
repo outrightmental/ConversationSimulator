@@ -257,6 +257,65 @@ def test_disk_space_failure_marks_model_stage_failed(client_with_registry):
     assert "disk space" in (model_stage["error"] or "").lower()
 
 
+# ── Restart recovery: resume_orphaned_jobs ───────────────────────────────────
+
+
+def test_resume_orphaned_jobs_relaunches_newest_and_retires_older(client_with_registry):
+    """After a restart, only the newest non-terminal job is re-driven; older
+    orphans are retired so they don't linger as 'active' forever."""
+    client, app = client_with_registry
+    conn = app.state.db.connection()
+    registry_id = _pick_registry_id(conn)
+    if registry_id is None:
+        pytest.skip("No registry models with sha256 available")
+
+    from convsim_core.routers import setup_install
+
+    old_job = create_job(conn, registry_id=registry_id, model_label="old")
+    update_job_status(conn, old_job, "running")
+    new_job = create_job(conn, registry_id=registry_id, model_label="new")
+    update_job_status(conn, new_job, "running")
+
+    with patch.object(setup_install, "_launch_pipeline_task") as launch:
+        setup_install.resume_orphaned_jobs(app)
+
+    launch.assert_called_once()
+    assert launch.call_args.kwargs["job_id"] == new_job
+    # The stale older job is retired rather than left as a phantom active job.
+    assert get_job(conn, old_job)["status"] == "failed"
+
+
+def test_resume_orphaned_jobs_noop_when_none_active(client_with_registry):
+    client, app = client_with_registry
+    conn = app.state.db.connection()
+    job_id = create_job(conn, registry_id="x", model_label="x")
+    update_job_status(conn, job_id, "complete")
+
+    from convsim_core.routers import setup_install
+
+    with patch.object(setup_install, "_launch_pipeline_task") as launch:
+        setup_install.resume_orphaned_jobs(app)
+
+    launch.assert_not_called()
+
+
+def test_resume_orphaned_jobs_fails_job_with_unknown_registry(client):
+    """A resumable job whose model vanished from the registry is failed, not
+    relaunched (which would crash immediately)."""
+    app = client.app
+    conn = app.state.db.connection()
+    job_id = create_job(conn, registry_id="ghost-model", model_label="ghost")
+    update_job_status(conn, job_id, "running")
+
+    from convsim_core.routers import setup_install
+
+    with patch.object(setup_install, "_launch_pipeline_task") as launch:
+        setup_install.resume_orphaned_jobs(app)
+
+    launch.assert_not_called()
+    assert get_job(conn, job_id)["status"] == "failed"
+
+
 # ── get_active_job unit test ──────────────────────────────────────────────────
 
 

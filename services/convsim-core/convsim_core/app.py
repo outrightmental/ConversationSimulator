@@ -106,6 +106,9 @@ def create_app(config: ServiceConfig | None = None) -> FastAPI:
         supervisor.register(kokoro_sidecar)
         app.state.supervisor = supervisor
         seed_official_packs(config, db.connection())
+        # Re-drive any one-click install pipeline that a crash/kill left mid-flight
+        # so the download resumes from its .part offset instead of freezing.
+        setup_install_router.resume_orphaned_jobs(app)
         yield
         await supervisor.stop_all()
         db.close()

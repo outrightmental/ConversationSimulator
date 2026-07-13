@@ -452,6 +452,100 @@ async def _run_pipeline(
     logger.info("setup-install(%d): pipeline complete", job_id)
 
 
+# ── Task launch + restart recovery ────────────────────────────────────────────
+
+
+def _launch_pipeline_task(
+    *, app: Any, job_id: int, registry_id: str, model_label: str
+) -> None:
+    """Spawn the background pipeline task for *job_id* and track a strong ref.
+
+    Shared by the POST endpoint and the startup restart-recovery path so both
+    wire the cancel event, error handling, and task bookkeeping identically.
+    """
+    conn = app.state.db.connection()
+    config = app.state.service_config
+    sidecar: LlamaCppSidecar = app.state.sidecar
+    model_cancel_events: dict[int, asyncio.Event] = app.state.cancel_events
+    setup_cancel_events: dict[int, asyncio.Event] = app.state.setup_install_cancel_events
+
+    cancel_event = asyncio.Event()
+    setup_cancel_events[job_id] = cancel_event
+
+    async def _run() -> None:
+        try:
+            await _run_pipeline(
+                job_id=job_id,
+                registry_id=registry_id,
+                model_label=model_label,
+                conn=conn,
+                config=config,
+                sidecar=sidecar,
+                model_cancel_events=model_cancel_events,
+                cancel_event=cancel_event,
+            )
+        except Exception as exc:
+            logger.exception("setup-install(%d): unhandled error", job_id)
+            update_job_status(conn, job_id, "failed", str(exc))
+        finally:
+            setup_cancel_events.pop(job_id, None)
+
+    task = asyncio.create_task(_run())
+    _pipeline_tasks.add(task)
+    task.add_done_callback(_pipeline_tasks.discard)
+
+
+def resume_orphaned_jobs(app: Any) -> None:
+    """Re-drive any setup-install job left non-terminal by a crash or app kill.
+
+    Called once at startup. When the app is killed mid-install the job row
+    persists as 'running'/'pending' but the asyncio task that drove it dies with
+    the process, so nothing advances it on relaunch — the client would poll a
+    frozen job forever. Re-running the pipeline is safe: ``execute_download``
+    resumes from the ``.part`` byte offset and every stage's idempotency check
+    skips already-satisfied work, so an interrupted download continues rather
+    than restarting. This is the server half of the #382 resume acceptance
+    criterion (the client half routes the user back to the progress step).
+    """
+    conn = app.state.db.connection()
+    try:
+        rows = conn.execute(
+            "SELECT id, registry_id FROM setup_install_jobs "
+            "WHERE status IN ('pending', 'running') ORDER BY id DESC"
+        ).fetchall()
+    except sqlite3.Error:  # pragma: no cover - table missing shouldn't happen post-migration
+        return
+    if not rows:
+        return
+
+    # Only the newest non-terminal job is resumed; any older ones are stale
+    # orphans from earlier runs and are retired so they don't linger as active.
+    for stale in rows[1:]:
+        update_job_status(conn, stale["id"], "failed", "Superseded by a newer install job.")
+
+    newest = dict(rows[0])
+    job_id = newest["id"]
+    registry_id = newest.get("registry_id")
+    if not registry_id:
+        update_job_status(conn, job_id, "failed", "Missing model reference; cannot resume.")
+        return
+    model_row = _get_registry_row(conn, registry_id)
+    if model_row is None:
+        update_job_status(
+            conn, job_id, "failed",
+            f"Model '{registry_id}' is no longer in the registry; cannot resume.",
+        )
+        return
+
+    logger.info("setup-install(%d): resuming after app restart", job_id)
+    _launch_pipeline_task(
+        app=app,
+        job_id=job_id,
+        registry_id=registry_id,
+        model_label=f"Downloading {model_row['name']}",
+    )
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
 
@@ -461,13 +555,6 @@ async def start_setup_install(
 ) -> SetupInstallJobResponse:
     """Start the one-click install pipeline, or reattach to an in-progress job."""
     conn = request.app.state.db.connection()
-    config = request.app.state.service_config
-    sidecar: LlamaCppSidecar = request.app.state.sidecar
-    # model_cancel_events reuses the existing per-install cancel map from models.py
-    model_cancel_events: dict[int, asyncio.Event] = request.app.state.cancel_events
-    setup_cancel_events: dict[int, asyncio.Event] = (
-        request.app.state.setup_install_cancel_events
-    )
 
     model_row = _get_registry_row(conn, body.registry_id)
     if model_row is None:
@@ -492,30 +579,12 @@ async def start_setup_install(
             return _job_to_response(job)
 
     job_id = create_job(conn, registry_id=body.registry_id, model_label=model_label)
-    cancel_event = asyncio.Event()
-    setup_cancel_events[job_id] = cancel_event
-
-    async def _run() -> None:
-        try:
-            await _run_pipeline(
-                job_id=job_id,
-                registry_id=body.registry_id,
-                model_label=model_label,
-                conn=conn,
-                config=config,
-                sidecar=sidecar,
-                model_cancel_events=model_cancel_events,
-                cancel_event=cancel_event,
-            )
-        except Exception as exc:
-            logger.exception("setup-install(%d): unhandled error", job_id)
-            update_job_status(conn, job_id, "failed", str(exc))
-        finally:
-            setup_cancel_events.pop(job_id, None)
-
-    task = asyncio.create_task(_run())
-    _pipeline_tasks.add(task)
-    task.add_done_callback(_pipeline_tasks.discard)
+    _launch_pipeline_task(
+        app=request.app,
+        job_id=job_id,
+        registry_id=body.registry_id,
+        model_label=model_label,
+    )
 
     job = get_job(conn, job_id)
     return _job_to_response(job)  # type: ignore[arg-type]
