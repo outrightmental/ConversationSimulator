@@ -373,9 +373,6 @@ async def _run_pipeline(
     stages[3].state = "running"
     _save()
 
-    # Persist the runtime choice so the next app launch uses the downloaded model.
-    set_active_config(conn, runtime_id="llama_cpp", model_id=model_file_path)
-
     try:
         if sidecar.state == SidecarState.RUNNING:
             logger.info("setup-install(%d): sidecar already running, skipping start", job_id)
@@ -426,6 +423,13 @@ async def _run_pipeline(
     except Exception as exc:
         _fail("warmup", f"Warmup failed unexpectedly: {exc}")
         return
+
+    # Only now that the model has actually launched do we persist it as the
+    # active runtime. Setting it earlier would leave a model that fails warmup
+    # (e.g. too large for available RAM) as the active selection, so the next
+    # app boot would try to load it and crash-loop — exactly the failure this
+    # stage exists to catch before the user's first conversation.
+    set_active_config(conn, runtime_id="llama_cpp", model_id=model_file_path)
 
     _save()
 
