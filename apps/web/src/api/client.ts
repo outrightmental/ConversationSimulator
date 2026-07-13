@@ -42,6 +42,7 @@ import type {
   LogbookProfile,
   LogbookExport,
   PreflightResponse,
+  SetupInstallJob,
 } from '@convsim/shared';
 
 export type { HealthResponse };
@@ -525,6 +526,15 @@ export const api = {
   },
   getSetupStatus(): Promise<ApiResult<import('../setup/SetupStatus').SetupStatusResponse>> {
     return get<import('../setup/SetupStatus').SetupStatusResponse>('/setup/status')
+  },
+  startSetupInstall(registryId: string): Promise<ApiResult<SetupInstallJob>> {
+    return post<SetupInstallJob>('/setup/install', { registry_id: registryId })
+  },
+  getSetupInstallStatus(jobId: number): Promise<ApiResult<SetupInstallJob>> {
+    return get<SetupInstallJob>(`/setup/install/${jobId}`)
+  },
+  cancelSetupInstall(jobId: number): Promise<ApiResult<undefined>> {
+    return del(`/setup/install/${jobId}`)
   },
   connectSession(
     sessionId: string,

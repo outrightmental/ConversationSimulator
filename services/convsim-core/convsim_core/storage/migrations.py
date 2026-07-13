@@ -380,6 +380,21 @@ WHERE EXISTS (
 );
 """
 
+# One-click install pipeline job tracking (issue #382): one row per orchestrated
+# engine→model→verify→warmup→packs run, so the client can poll unified progress
+# and a killed job can be re-driven on relaunch (resume_orphaned_jobs).
+_SETUP_INSTALL_JOBS_SQL = """
+CREATE TABLE setup_install_jobs (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    status          TEXT    NOT NULL DEFAULT 'pending',
+    registry_id     TEXT,
+    stages_json     TEXT    NOT NULL DEFAULT '[]',
+    error_message   TEXT,
+    created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+"""
+
 MIGRATIONS: list[tuple[str, str]] = [
     ("0001_initial_schema", _INITIAL_SCHEMA_SQL),
     ("0002_model_registry_v2", _MODEL_REGISTRY_V2_SQL),
@@ -398,6 +413,7 @@ MIGRATIONS: list[tuple[str, str]] = [
     ("0015_turn_sessions_ended_at", _SESSION_ENDED_AT_SQL),
     ("0016_relationship_memory", _RELATIONSHIP_MEMORY_SQL),
     ("0017_onboarding_outcome", _ONBOARDING_OUTCOME_SQL),
+    ("0018_setup_install_jobs", _SETUP_INSTALL_JOBS_SQL),
 ]
 
 

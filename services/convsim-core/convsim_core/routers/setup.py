@@ -8,6 +8,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from convsim_core.services.model_manager_service import get_active_config
+from convsim_core.services.setup_install_service import get_active_job
 from convsim_core import __version__
 
 router = APIRouter()
@@ -23,6 +24,7 @@ class SetupStatusResponse(BaseModel):
     missing: list[str] = []
     onboarding_outcome: Optional[OnboardingOutcome] = None
     pending_install_id: Optional[int] = None
+    pending_setup_job_id: Optional[int] = None
 
 
 class RecordOutcomeRequest(BaseModel):
@@ -55,17 +57,22 @@ async def get_setup_status(request: Request) -> SetupStatusResponse:
         "SELECT outcome, recorded_at FROM onboarding_outcomes ORDER BY id DESC LIMIT 1"
     ).fetchone()
 
-    # Check for pending install (mid-install resume)
+    # Check for pending model-only install record (legacy / Ollama / GGUF resume)
     pending_row = conn.execute(
         "SELECT id FROM installed_models WHERE install_status IN ('pending', 'downloading') ORDER BY id DESC LIMIT 1"
     ).fetchone()
     pending_install_id: Optional[int] = pending_row["id"] if pending_row else None
+
+    # Check for an active pipeline job (setup-install resume)
+    active_job = get_active_job(conn)
+    pending_setup_job_id: Optional[int] = active_job["id"] if active_job else None
 
     if outcome_row is None:
         # User has never finished or skipped onboarding
         return SetupStatusResponse(
             kind="never-run",
             pending_install_id=pending_install_id,
+            pending_setup_job_id=pending_setup_job_id,
         )
 
     onboarding_outcome = OnboardingOutcome(
@@ -107,4 +114,5 @@ async def get_setup_status(request: Request) -> SetupStatusResponse:
         missing=missing,
         onboarding_outcome=onboarding_outcome,
         pending_install_id=pending_install_id,
+        pending_setup_job_id=pending_setup_job_id,
     )

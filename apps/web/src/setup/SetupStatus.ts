@@ -29,6 +29,8 @@ export interface SetupStatusResponse {
   missing?: CheckId[]
   onboarding_outcome?: { outcome: string; recorded_at: string } | null
   pending_install_id?: number | null
+  /** ID of an in-progress setup-install pipeline job; used to resume across restarts. */
+  pending_setup_job_id?: number | null
 }
 
 /**
