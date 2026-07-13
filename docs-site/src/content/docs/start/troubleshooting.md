@@ -74,7 +74,8 @@ The setup screen shows the exact size before any download begins.
 
 1. Free up space on your drive — the setup screen shows the minimum required.
 2. If you cannot free enough space, choose a smaller model: expand
-   **Advanced options** on the welcome screen and pick a lighter option.
+   **Advanced** (*use Ollama or a local GGUF file*) on the welcome screen and
+   pick a lighter option.
 
 **Check available space:**
 

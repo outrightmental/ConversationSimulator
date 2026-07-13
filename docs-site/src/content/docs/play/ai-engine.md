@@ -45,7 +45,8 @@ That is the complete process — no additional steps are required.
 ### Changing the model later
 
 You can switch to a different model after first-time setup. From the home screen
-open **Settings → AI Engine** and select a new model from the list.
+open **Settings**, find the **Runtime** section, and choose a different provider
+and model from the dropdowns.
 
 ### Hardware recommendations
 
@@ -107,9 +108,9 @@ If none of these apply, the built-in engine is simpler.
 
 ### How to select Ollama in the app
 
-1. Open Conversation Simulator. On the welcome screen, expand **Advanced
-   options** (the disclosure below the two main cards).
-2. Click the **Use Ollama** button.
+1. Open Conversation Simulator. On the welcome screen, expand **Advanced: use
+   Ollama or a local GGUF file** (the disclosure below the two main cards).
+2. Click **Browse Ollama models**.
 3. The app lists all models detected in your local Ollama installation.
    Click **Use this model** next to the one you want.
 
@@ -125,9 +126,10 @@ a different address or port.
 
 ### How to verify it worked
 
-On the home screen the runtime status indicator should show **Ollama · ready**
-in green. If it shows an error, confirm `ollama serve` is running and the
-selected model name is still valid (`ollama list` shows what is available).
+On the home screen the AI status indicator should turn green and show your
+selected Ollama model. If it shows an error, confirm `ollama serve` is running
+and the selected model name is still valid (`ollama list` shows what is
+available).
 
 ---
 
@@ -156,9 +158,9 @@ section above is a useful reference for Q4_K_M-quantized models of similar size.
 
 ### How to select a GGUF file in the app
 
-1. Open Conversation Simulator. On the welcome screen, expand **Advanced
-   options**.
-2. Click the **Use custom GGUF** button.
+1. Open Conversation Simulator. On the welcome screen, expand **Advanced: use
+   Ollama or a local GGUF file**.
+2. Click **Use a GGUF file**.
 3. Enter the full path to the file, for example:
    - **macOS / Linux:** `/home/you/Downloads/my-model.gguf`
    - **Windows:** `C:\Users\you\Downloads\my-model.gguf`

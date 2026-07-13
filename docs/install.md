@@ -129,8 +129,8 @@ Navigate to <http://127.0.0.1:7354> in your browser. The home screen shows the s
 On first run the app shows the **welcome screen**. Click **Set me up**. The
 app downloads and configures the recommended model automatically.
 
-Alternatively, expand **Advanced options** on the welcome screen to use Ollama
-or a custom GGUF file. See [local-models.md](local-models.md) for model
+Alternatively, expand **Advanced** (*use Ollama or a local GGUF file*) on the
+welcome screen to use Ollama or a custom GGUF file. See [local-models.md](local-models.md) for model
 recommendations by hardware and all runtime options.
 
 ### 7. Verify the installation

@@ -10,7 +10,8 @@ All inference happens on your computer. No prompts, transcripts, or model output
 ## How the model manager works
 
 During first-run setup, click **Set me up** on the welcome screen. After
-first-run setup completes you can change the model from **Settings → AI Engine**.
+first-run setup completes you can change the model from the **Runtime** section
+of **Settings**.
 
 The model manager shows curated models from the registry (`model-registry/registry.yaml`). For each model it displays:
 
@@ -100,9 +101,9 @@ Any Ollama model that supports system prompts and structured JSON output should 
 
 ### 3. Select the Ollama runtime
 
-On the welcome screen, expand **Advanced options** and click the **Use
-Ollama** button. The app lists detected Ollama models — click **Use this
-model** next to the one you want. The app connects to
+On the welcome screen, expand **Advanced: use Ollama or a local GGUF file** and
+click **Browse Ollama models**. The app lists detected Ollama models — click
+**Use this model** next to the one you want. The app connects to
 `http://127.0.0.1:11434` by default.
 
 Or set the runtime before starting the dev server:
@@ -143,8 +144,8 @@ Compare the output against the checksum in `model-registry/registry.yaml`.
 
 To use a GGUF file you obtained independently:
 
-1. On the welcome screen, expand **Advanced options** and click **Use custom
-   GGUF**.
+1. On the welcome screen, expand **Advanced: use Ollama or a local GGUF file**
+   and click **Use a GGUF file**.
 2. Enter the full path to the file (e.g., `~/.convsim/models/llm/my-model.gguf`).
 
 The app loads the file without checksum verification — only registry-managed models have known checksums. Ensure you have the right to use the model under its license; the application cannot verify the license of a user-supplied file.

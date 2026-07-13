@@ -123,8 +123,8 @@ Navigate to <http://127.0.0.1:7354> in your browser. The home screen shows the s
 ## 6. Set up a local model
 
 On first run the app shows the **welcome screen**. Click **Set me up** to
-download and configure the recommended model, or expand **Advanced options**
-to use Ollama or a custom GGUF file.
+download and configure the recommended model, or expand **Advanced** (*use
+Ollama or a local GGUF file*) to use Ollama or a custom GGUF file.
 
 The model manager shows curated models with license, size, and hardware
 requirements. You must accept the license before a download begins. Downloads

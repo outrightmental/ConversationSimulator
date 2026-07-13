@@ -27,8 +27,8 @@ Open <http://127.0.0.1:7354> in your browser. The home screen shows green status
 
 On first launch the app shows the **welcome screen**. Click **Set me up**.
 The app downloads and configures a local AI model automatically. Progress is
-shown per stage; you can also expand **Advanced options** on the welcome
-screen to use Ollama or a custom GGUF file instead.
+shown per stage; you can also expand **Advanced** (*use Ollama or a local GGUF
+file*) on the welcome screen to use Ollama or a custom GGUF file instead.
 
 The recommended starter is **Qwen3 4B Instruct Q4_K_M** (~2.5 GB, Apache-2.0 licensed). It works on machines with as little as 4 GB of GPU VRAM, or runs on CPU with no GPU at all.
 
