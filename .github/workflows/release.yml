@@ -652,6 +652,12 @@ jobs:
       # The verdict is uploaded as a retained artifact so the release drafter
       # can confirm "Defender verdict: clean" before signing off on G3-01.
       #
+      # -DisableRemediation makes the -File scan report-only: without it, a
+      # detection (including the false positives noted above) triggers Defender's
+      # default quarantine/remove action, which would delete the installer from
+      # the bundle directory before the "Upload desktop installer artifacts" step
+      # and silently drop the Windows installer from the release.
+      #
       # MpCmdRun.exe is present on all GitHub-hosted Windows runners under
       # C:\ProgramData\Microsoft\Windows Defender\platform\<version>\.
       # Exit code 0 = clean; exit code 2 = threat found.
@@ -691,7 +697,7 @@ jobs:
             $name = $installer.Name
             Write-Host ""
             Write-Host "  Scanning: $($installer.FullName)"
-            & $mpCmdRun -Scan -ScanType 3 -File $installer.FullName 2>&1 |
+            & $mpCmdRun -Scan -ScanType 3 -File $installer.FullName -DisableRemediation 2>&1 |
               ForEach-Object { Write-Host "    $_" }
             switch ($LASTEXITCODE) {
               0 {
