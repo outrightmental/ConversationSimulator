@@ -26,7 +26,7 @@
 [CmdletBinding()]
 param(
     [string]$Version = "",
-    [string]$Dest    = (Join-Path $HOME ".convsim" "bin"),
+    [string]$Dest    = (Join-Path (Join-Path $HOME ".convsim") "bin"),
     [ValidateSet("cpu", "cuda", "vulkan")]
     [string]$Variant = "cpu"
 )
