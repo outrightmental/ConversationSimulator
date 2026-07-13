@@ -3,8 +3,7 @@ import { useState } from 'react'
 import { useTranslation } from '../../i18n'
 import { ActionButton } from '../primitives'
 import type { UseSetupFlowReturn } from '../useSetupFlow'
-
-const SETUP_DOCS_URL = 'https://docs.conversationsimulator.com/start/install/'
+import { SETUP_DOCS_URL } from '../docsUrls'
 
 const cardBase: React.CSSProperties = {
   display: 'flex', flexDirection: 'column', alignItems: 'flex-start',

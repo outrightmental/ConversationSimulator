@@ -2,8 +2,7 @@
 import { PrimaryButton } from '../primitives'
 import { errorMessage } from '../errorMessage'
 import type { UseSetupFlowReturn } from '../useSetupFlow'
-
-const SETUP_DOCS_URL = 'https://docs.conversationsimulator.com/start/install/'
+import { SETUP_DOCS_URL } from '../docsUrls'
 
 interface BenchmarkStepProps {
   flow: UseSetupFlowReturn

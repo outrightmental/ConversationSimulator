@@ -65,7 +65,7 @@ cd ConversationSimulator
 
 ### P-M3 — Install or select real model (optional — requires adequate hardware)
 
-Navigate to **Settings → Models**.
+Navigate to **Settings**, find the **Runtime** section, and click **Open model manager**.
 
 - [ ] License acceptance dialog appears before download activates
 - [ ] Download completes with SHA-256 checksum verification

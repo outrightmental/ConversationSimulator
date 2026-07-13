@@ -3,6 +3,7 @@ title: "Model download policy"
 description: "Rules governing how LLM model weights are downloaded, verified with SHA-256 checksums, and disclosed to players — no silent downloads, no bundled weights."
 sidebar:
   order: 4
+verified_against: v0.2.2
 ---
 
 > **Purpose:** Define the rules that govern how LLM model weights are
@@ -97,8 +98,9 @@ demand warrants it.
 
 ### User-supplied GGUF files
 
-Players may load any GGUF file from their local filesystem by selecting it from
-the Settings → Models → Use custom GGUF path option. The app performs no
+Players may load any GGUF file from their local filesystem during first-run
+setup by expanding **Advanced** on the welcome screen and choosing **Use a
+GGUF file**. The app performs no
 network fetch for user-supplied files. The player is responsible for
 downloading the file themselves and verifying its provenance.
 
@@ -276,5 +278,5 @@ verified SHA-256 checksum; no entry ships a `PENDING` value.
 - [`schemas/model-registry.schema.json`](https://github.com/outrightmental/ConversationSimulator/blob/main/schemas/model-registry.schema.json) — JSON Schema
 - [`publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md`](https://github.com/outrightmental/ConversationSimulator/blob/main/publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md) — risk register (MD-01–MD-04)
 - [`publishing/STEAM_DEPOT_CONTENTS.md`](https://github.com/outrightmental/ConversationSimulator/blob/main/publishing/STEAM_DEPOT_CONTENTS.md) — what ships in the depot
-- [Local models guide](/play/local-models/) — player-facing model installation guide
+- [Choosing how to run the AI](/play/ai-engine/) — player-facing model installation guide
 - [Steam roadmap](/dev/steam-roadmap/) — model download transparency specification

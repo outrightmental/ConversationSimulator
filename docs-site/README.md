@@ -40,8 +40,12 @@ The app links to specific pages and anchors here (see
 do not rename these slugs without updating the app:
 
 - `/start/install/`, `/start/quickstart/`, `/start/troubleshooting/`
-  (anchors `#engine-startup-failure`, `#port-conflicts` must keep working)
-- `/play/local-models/` (the app's "Setup guide" target for a missing inference engine)
+  (anchors `#engine-startup-failure`, `#port-conflicts`, and the remediation
+  check-id anchors `#llm-present`, `#llama-cpp-binary`, `#disk-space`,
+  `#data-dir-writable`, `#voice-ready` must keep working — these are the
+  troubleshooting deep-link targets keyed to preflight check ids)
+- `/play/ai-engine/` (runtime and model options; Settings → Runtime links here.
+  The old `/play/local-models/` slug 301-redirects to it via `astro.config.mjs`)
 - `/create/scenario-authoring/`, `/create/pack-validation/`,
   `/create/quality-bar/`, `/create/sample-pack/`
 - `/project/beta-testing/`
