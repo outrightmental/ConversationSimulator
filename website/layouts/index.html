@@ -55,7 +55,7 @@
           </div>
         </figure>
 
-        <figure class="demo-card" role="group" aria-roledescription="slide" aria-label="Slide 2 of 7: The Salary Conversation">
+        <figure class="demo-card" role="group" aria-roledescription="slide" aria-label="Slide 2 of 7: The Salary Conversation" aria-hidden="true">
           <figcaption class="demo-head">
             <span class="demo-title">The Salary Conversation</span>
             <span class="demo-meta">Difficult Conversations · Turn 6</span>
@@ -90,7 +90,7 @@
           </div>
         </figure>
 
-        <figure class="demo-card" role="group" aria-roledescription="slide" aria-label="Slide 3 of 7: The Car Lot">
+        <figure class="demo-card" role="group" aria-roledescription="slide" aria-label="Slide 3 of 7: The Car Lot" aria-hidden="true">
           <figcaption class="demo-head">
             <span class="demo-title">The Car Lot</span>
             <span class="demo-meta">Everyday Negotiation · Turn 3</span>
@@ -125,7 +125,7 @@
           </div>
         </figure>
 
-        <figure class="demo-card" role="group" aria-roledescription="slide" aria-label="Slide 4 of 7: Feedback Without Fallout">
+        <figure class="demo-card" role="group" aria-roledescription="slide" aria-label="Slide 4 of 7: Feedback Without Fallout" aria-hidden="true">
           <figcaption class="demo-head">
             <span class="demo-title">Feedback Without Fallout</span>
             <span class="demo-meta">Difficult Conversations · Turn 5</span>
@@ -160,7 +160,7 @@
           </div>
         </figure>
 
-        <figure class="demo-card" role="group" aria-roledescription="slide" aria-label="Slide 5 of 7: Spanish Coffee Shop">
+        <figure class="demo-card" role="group" aria-roledescription="slide" aria-label="Slide 5 of 7: Spanish Coffee Shop" aria-hidden="true">
           <figcaption class="demo-head">
             <span class="demo-title">Spanish Coffee Shop</span>
             <span class="demo-meta">Language Café · Turn 2</span>
@@ -195,7 +195,7 @@
           </div>
         </figure>
 
-        <figure class="demo-card" role="group" aria-roledescription="slide" aria-label="Slide 6 of 7: The Missed Deadline">
+        <figure class="demo-card" role="group" aria-roledescription="slide" aria-label="Slide 6 of 7: The Missed Deadline" aria-hidden="true">
           <figcaption class="demo-head">
             <span class="demo-title">The Missed Deadline</span>
             <span class="demo-meta">Difficult Conversations · Turn 4</span>
@@ -230,7 +230,7 @@
           </div>
         </figure>
 
-        <figure class="demo-card" role="group" aria-roledescription="slide" aria-label="Slide 7 of 7: Scope Creep Defense">
+        <figure class="demo-card" role="group" aria-roledescription="slide" aria-label="Slide 7 of 7: Scope Creep Defense" aria-hidden="true">
           <figcaption class="demo-head">
             <span class="demo-title">Scope Creep Defense</span>
             <span class="demo-meta">Everyday Negotiation · Turn 7</span>
@@ -459,10 +459,12 @@
 
   function goTo(n) {
     slides[current].classList.remove('is-active');
+    slides[current].setAttribute('aria-hidden', 'true');
     dots[current].classList.remove('is-active');
     dots[current].removeAttribute('aria-current');
     current = ((n % slides.length) + slides.length) % slides.length;
     slides[current].classList.add('is-active');
+    slides[current].removeAttribute('aria-hidden');
     dots[current].classList.add('is-active');
     dots[current].setAttribute('aria-current', 'true');
   }
