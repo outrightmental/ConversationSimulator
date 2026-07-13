@@ -332,3 +332,108 @@ def test_get_active_job_returns_none_when_all_terminal():
         update_job_status(conn, jid, "complete")
         assert get_active_job(conn) is None
         db.close()
+
+
+# ── Checksum mismatch: one silent retry, then surface ─────────────────────────
+
+
+def _insert_downloadable_model(conn: Any, registry_id: str = "cm") -> None:
+    """Insert a registry row the pipeline treats as downloadable (verified sha,
+    URL present, size_gb 0 so the disk pre-flight is skipped)."""
+    conn.execute(
+        "INSERT INTO model_registry (id, name, provider, sha256, download_url, "
+        "source_type, license_spdx, size_gb) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (registry_id, "Checksum Model", "test", "a" * 64,
+         "http://example.test/model.gguf", "huggingface", "mit", 0.0),
+    )
+    conn.commit()
+
+
+async def _drive_pipeline(db, tmp_path, download_side_effect):
+    """Run _run_pipeline with the engine + warmup + packs stages stubbed out so
+    only the model/verify download behaviour under test executes."""
+    import types
+    from convsim_core.routers import setup_install
+    from convsim_core.runtime.sidecar import SidecarState
+
+    conn = db.connection()
+    _insert_downloadable_model(conn)
+    job_id = create_job(conn, registry_id="cm", model_label="Downloading Checksum Model")
+
+    config = types.SimpleNamespace(models_dir=str(tmp_path / "models"))
+    sidecar = MagicMock()
+    sidecar.state = SidecarState.RUNNING  # warmup start is skipped
+
+    with patch.object(setup_install, "find_executable", return_value="/fake/llama-server"), \
+         patch.object(setup_install, "seed_official_packs", return_value=0), \
+         patch.object(
+             setup_install, "execute_download",
+             new=AsyncMock(side_effect=download_side_effect),
+         ):
+        await setup_install._run_pipeline(
+            job_id=job_id,
+            registry_id="cm",
+            model_label="Downloading Checksum Model",
+            conn=conn,
+            config=config,
+            sidecar=sidecar,
+            model_cancel_events={},
+            cancel_event=asyncio.Event(),
+        )
+    return job_id
+
+
+@pytest.mark.asyncio
+async def test_checksum_mismatch_retries_once_then_succeeds(tmp_path):
+    """First download mismatches, the silent retry succeeds → job completes."""
+    from convsim_core.services.model_manager_service import get_install_record
+
+    db = Database.open(str(tmp_path / "db"))
+    try:
+        calls = {"n": 0}
+
+        async def _dl(conn, install_id, url, sha, models_dir, filename, *, cancel_event=None):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                conn.execute(
+                    "UPDATE installed_models SET install_status = 'checksum_mismatch', "
+                    "error_message = 'bad hash' WHERE id = ?", (install_id,))
+            else:
+                conn.execute(
+                    "UPDATE installed_models SET install_status = 'ready', "
+                    "file_path = ?, size_bytes = 10 WHERE id = ?",
+                    (str(models_dir / filename), install_id))
+            conn.commit()
+
+        job_id = await _drive_pipeline(db, tmp_path, _dl)
+
+        assert calls["n"] == 2, "expected exactly one silent retry"
+        job = get_job(db.connection(), job_id)
+        assert job["status"] == "complete"
+        stages = {s["id"]: s for s in job["stages"]}
+        assert stages["model"]["state"] == "complete"
+        assert stages["verify"]["state"] == "complete"
+    finally:
+        db.close()
+
+
+@pytest.mark.asyncio
+async def test_checksum_mismatch_twice_fails_verify_stage(tmp_path):
+    """Two consecutive mismatches surface a verify-stage failure — a corrupt
+    model is never registered as ready."""
+    db = Database.open(str(tmp_path / "db"))
+    try:
+        async def _dl(conn, install_id, url, sha, models_dir, filename, *, cancel_event=None):
+            conn.execute(
+                "UPDATE installed_models SET install_status = 'checksum_mismatch', "
+                "error_message = 'bad hash' WHERE id = ?", (install_id,))
+            conn.commit()
+
+        job_id = await _drive_pipeline(db, tmp_path, _dl)
+
+        job = get_job(db.connection(), job_id)
+        assert job["status"] == "failed"
+        stages = {s["id"]: s for s in job["stages"]}
+        assert stages["verify"]["state"] == "failed"
+    finally:
+        db.close()
