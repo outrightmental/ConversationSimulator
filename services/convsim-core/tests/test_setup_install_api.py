@@ -349,9 +349,13 @@ def _insert_downloadable_model(conn: Any, registry_id: str = "cm") -> None:
     conn.commit()
 
 
-async def _drive_pipeline(db, tmp_path, download_side_effect, cancel_event=None):
+async def _drive_pipeline(db, tmp_path, download_side_effect, cancel_event=None, sidecar=None):
     """Run _run_pipeline with the engine + warmup + packs stages stubbed out so
-    only the model/verify download behaviour under test executes."""
+    only the model/verify download behaviour under test executes.
+
+    Pass an explicit *sidecar* to exercise the warmup stage; by default a
+    RUNNING sidecar is supplied so the warmup start is skipped.
+    """
     import types
     from convsim_core.routers import setup_install
     from convsim_core.runtime.sidecar import SidecarState
@@ -361,8 +365,9 @@ async def _drive_pipeline(db, tmp_path, download_side_effect, cancel_event=None)
     job_id = create_job(conn, registry_id="cm", model_label="Downloading Checksum Model")
 
     config = types.SimpleNamespace(models_dir=str(tmp_path / "models"))
-    sidecar = MagicMock()
-    sidecar.state = SidecarState.RUNNING  # warmup start is skipped
+    if sidecar is None:
+        sidecar = MagicMock()
+        sidecar.state = SidecarState.RUNNING  # warmup start is skipped
 
     with patch.object(setup_install, "find_executable", return_value="/fake/llama-server"), \
          patch.object(setup_install, "seed_official_packs", return_value=0), \
@@ -495,5 +500,54 @@ async def test_cancel_during_silent_retry_marks_job_cancelled_not_failed(tmp_pat
         assert calls["n"] == 2, "expected the silent retry to run before the cancel"
         job = get_job(db.connection(), job_id)
         assert job["status"] == "cancelled"
+    finally:
+        db.close()
+
+
+# ── Warmup: catches "downloaded but won't start" during setup ─────────────────
+
+
+@pytest.mark.asyncio
+async def test_warmup_failure_fails_job_and_does_not_register_active_model(tmp_path):
+    """A model that downloads fine but won't launch (e.g. too big for RAM) must
+    fail at the warmup stage *during setup* — and must NOT be persisted as the
+    active runtime, or the next app boot would try to load it and crash-loop.
+    This is the acceptance criterion the warmup stage exists to satisfy."""
+    from convsim_core.runtime.sidecar import SidecarState
+    from convsim_core.services.model_manager_service import get_active_config
+
+    db = Database.open(str(tmp_path / "db"))
+    try:
+        async def _dl(conn, install_id, url, sha, models_dir, filename, *, cancel_event=None):
+            models_dir.mkdir(parents=True, exist_ok=True)
+            (models_dir / filename).write_bytes(b"gguf")
+            conn.execute(
+                "UPDATE installed_models SET install_status = 'ready', "
+                "file_path = ?, size_bytes = 4 WHERE id = ?",
+                (str(models_dir / filename), install_id))
+            conn.commit()
+
+        # Sidecar is stopped and refuses to start — mimics a model too large for
+        # available RAM. The RuntimeError must be caught and mapped to a warmup
+        # failure, not bubble up as an unhandled crash.
+        sidecar = MagicMock()
+        sidecar.state = SidecarState.STOPPED
+        sidecar.start = AsyncMock(
+            side_effect=RuntimeError("model failed to load: not enough RAM")
+        )
+
+        job_id = await _drive_pipeline(db, tmp_path, _dl, sidecar=sidecar)
+
+        conn = db.connection()
+        job = get_job(conn, job_id)
+        assert job["status"] == "failed"
+        stages = {s["id"]: s for s in job["stages"]}
+        # Model downloaded successfully; the failure is isolated to warmup.
+        assert stages["model"]["state"] == "complete"
+        assert stages["warmup"]["state"] == "failed"
+        assert "failed to start" in (stages["warmup"]["error"] or "").lower()
+        # The load-bearing guarantee: a model that fails warmup is never left as
+        # the active selection, so relaunch won't crash-loop on it.
+        assert get_active_config(conn)["model_id"] is None
     finally:
         db.close()
