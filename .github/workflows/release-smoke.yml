@@ -45,10 +45,10 @@ jobs:
     name: Release smoke / Linux x86_64
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # ── Python (convsim-core) ────────────────────────────────────────────────
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
@@ -63,11 +63,11 @@ jobs:
         run: pip install -e "services/convsim-core[dev]"
 
       # ── Node.js / pnpm (frontend) ─────────────────────────────────────────────
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5
         with:
           version: 9
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "24"
           cache: pnpm
@@ -92,7 +92,7 @@ jobs:
       # ── Capture artifacts on failure ───────────────────────────────────────────
       - name: Upload smoke artifacts
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: release-smoke-linux-x86_64
           path: ${{ runner.temp }}/convsim-release-smoke-*
@@ -114,9 +114,9 @@ jobs:
             runner: macos-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
@@ -130,11 +130,11 @@ jobs:
       - name: Install convsim-core
         run: pip install -e "services/convsim-core[dev]"
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5
         with:
           version: 9
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "24"
           cache: pnpm
@@ -154,7 +154,7 @@ jobs:
 
       - name: Upload smoke artifacts
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: release-smoke-macos-${{ matrix.arch }}
           path: ${{ runner.temp }}/convsim-release-smoke-*
@@ -166,9 +166,9 @@ jobs:
     name: Release smoke / Windows x86_64
     runs-on: windows-2022
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
@@ -182,11 +182,11 @@ jobs:
       - name: Install convsim-core
         run: pip install -e "services/convsim-core[dev]"
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5
         with:
           version: 9
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: "24"
           cache: pnpm
@@ -207,7 +207,7 @@ jobs:
 
       - name: Upload smoke artifacts
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: release-smoke-windows-x86_64
           path: ${{ runner.temp }}\convsim-release-smoke-*

@@ -42,9 +42,9 @@ jobs:
     timeout-minutes: 60
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
@@ -88,7 +88,7 @@ jobs:
 
       - name: Cache model file
         id: model-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.convsim/models/llm
           key: model-${{ steps.registry.outputs.model_sha256 }}
@@ -111,7 +111,7 @@ jobs:
 
       - name: Upload smoke report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: model-smoke-report
           path: /tmp/smoke-report.json

@@ -132,7 +132,7 @@ jobs:
     environment: steam-release
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # ── Gate: explicit go/no-go confirmation ──────────────────────────────
       # The required-reviewer check on the steam-release environment provides
