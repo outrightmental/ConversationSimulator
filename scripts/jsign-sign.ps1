@@ -6,7 +6,7 @@
 
 .DESCRIPTION
   Invoked by Tauri's bundle.windows.signCommand for each binary Tauri packages
-  (ConversationSimulator.exe, convsim-core.exe, etc.) and by the release workflow
+  (convsim-desktop.exe, convsim-core.exe, etc.) and by the release workflow
   post-build step for the outer NSIS installer and MSI.
 
   Priority order:
