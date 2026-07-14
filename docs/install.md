@@ -5,8 +5,12 @@ Conversation Simulator runs entirely on your computer — no cloud inference, no
 
 Two install paths are available:
 
-- **Path A — developer install:** clone the source and run the dev services locally. Suitable for contributors and users who want full control.
-- **Path B — alpha app install:** download and run the pre-built desktop application (see below). Note that the alpha build wraps the web UI in a native window; the backend must still be started separately until the sidecar is bundled.
+- **Path A — build from source (free):** clone the repository at a release tag and build it yourself. This is the free path, and the only one served from GitHub.
+- **Path B — Steam ($9.99):** the same software, packaged and ready to run — code-signed, notarized, auto-updating, with the AI engine bundled.
+
+> **There are no installers to download from GitHub.** Steam is the only channel
+> that ships prebuilt binaries. The GitHub releases page carries release notes and
+> source tags only — no `.dmg`, `.exe`, `.msi`, `.deb`, or `AppImage`.
 
 ---
 
@@ -210,62 +214,28 @@ page (e.g., `releases/tag/v0.1.0-beta.1`).  To roll back:
 
 ---
 
-## Path B — alpha app install
+## Path B — Steam
 
-When a release is published on the [GitHub releases page](https://github.com/outrightmental/ConversationSimulator/releases):
+Install **Conversation Simulator** from Steam on Windows, macOS, Linux, or Steam
+Deck. Steam handles installation and updates; there is nothing to download by hand
+and no checksum to verify.
 
-### 1. Pre-flight check
+The Steam build is Authenticode-signed on Windows, signed and notarised on macOS,
+and bundles the llama.cpp AI engine, so the app is standalone — your first
+conversation can start while the model is still downloading.
 
-Run the first-run check before downloading anything:
+### Why there is no GitHub installer
 
-```bash
-./scripts/first-run-check.sh        # macOS / Linux
-.\scripts\first-run-check.ps1       # Windows PowerShell
-```
+Publishing prebuilt binaries on GitHub would mean shipping a second, unsigned
+distribution channel that nobody pays for and nobody can auto-update. The project
+serves the free path as *source you build* and the paid path as *binaries we sign
+and support*. So:
 
-### 2. Download and verify
+- GitHub releases → release notes and a source tag. Nothing to download.
+- Steam → the prebuilt, signed, standalone binaries.
 
-Download the installer for your platform:
-
-| Platform | File |
-|---|---|
-| macOS (Apple Silicon) | `ConversationSimulator_<version>_aarch64.dmg` |
-| macOS (Intel) | `ConversationSimulator_<version>_x64.dmg` |
-| Linux (x86_64) | `conversation-simulator_<version>_amd64.AppImage` |
-| Windows (x86_64) | `ConversationSimulator_<version>_x64-setup.exe` |
-
-Verify the download against the `checksums-sha256.txt` file on the release page:
-
-```bash
-# macOS / Linux
-shasum -a 256 ConversationSimulator_<version>_aarch64.dmg
-```
-
-```powershell
-# Windows PowerShell
-Get-FileHash "ConversationSimulator_<version>_x64-setup.exe" -Algorithm SHA256
-```
-
-### 3. Install and launch
-
-- **macOS:** open the `.dmg` and drag the app to `/Applications`. On first
-  launch, Gatekeeper may warn about an unidentified developer (alpha builds are
-  unsigned). Right-click the app → **Open** → **Open** to proceed.
-- **Windows:** run the `.exe` installer. SmartScreen may warn about an unrecognised
-  publisher — click **More info → Run anyway**.
-- **Linux:** `chmod +x *.AppImage` then run it directly. No installation needed.
-
-### 4. Launch the app
-
-Open the installed application. The backend sidecar (`convsim-core`) starts
-automatically — no separate terminal is required.
-
-### 5. Set up a local model
-
-On first launch the app shows the **welcome screen**. Click **Set me up** to
-download and configure the recommended model automatically. Expand **Advanced
-options** to use Ollama or a custom GGUF file instead. No model weights are
-bundled with the installer.
+The release workflow enforces this: it publishes no binary assets, and its build
+output goes to the Steam depot.
 
 ---
 

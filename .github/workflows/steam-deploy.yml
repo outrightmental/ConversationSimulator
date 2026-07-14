@@ -88,6 +88,14 @@ on:
         required: false
         default: 'beta'
         type: string
+      run_id:
+        description: >
+          Run ID of the release workflow whose desktop-* build artifacts hold the
+          depot payload (Actions → the Release run → the number in its URL).
+          Required: GitHub releases carry no binaries, so there is nothing to
+          download from the release itself.
+        required: true
+        type: string
 
   # Reusable workflow target: called from release.yml after a successful
   # GitHub release.  The steam-release environment gate (below) still applies
@@ -110,9 +118,20 @@ on:
         required: false
         default: 'beta'
         type: string
+      run_id:
+        description: >
+          Workflow run whose desktop-* build artifacts supply the depot payload.
+          release.yml passes its own github.run_id. Depot content comes from build
+          artifacts, NOT from GitHub release assets — releases no longer carry
+          binaries, because Steam is the only prebuilt channel.
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
+  # Required to download build artifacts from the run identified by `run_id`.
+  actions: read
 
 jobs:
   steam-upload:
@@ -182,20 +201,21 @@ jobs:
           fi
 
       # ── Download GitHub release assets ─────────────────────────────────────
-      - name: Download release artifacts
+      # Depot payload comes from the BUILD ARTIFACTS of the release run, not from
+      # GitHub release assets. GitHub releases carry no binaries at all: Steam is the
+      # only prebuilt channel, the other supported path is building from source at a
+      # release tag. (This step used to `gh release download` the published
+      # installers — with a --skip-errors flag that does not exist in gh, so it had
+      # never once succeeded.)
+      - name: Download desktop build artifacts
         if: env.HAS_STEAM_CREDS == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ inputs.release_tag }}
-        run: |
-          # --clobber (not --skip-errors, which is not a gh flag and made this step
-          # fail instantly on every release) so a re-run overwrites a partial download
-          # instead of erroring on existing files. Downloading every asset is
-          # deliberate: if the release has none, this SHOULD fail rather than quietly
-          # push an empty depot to Steam.
-          gh release download "$RELEASE_TAG" \
-            --dir release-artifacts \
-            --clobber
+        uses: actions/download-artifact@v7
+        with:
+          path: release-artifacts
+          pattern: desktop-*
+          merge-multiple: true
+          run-id: ${{ inputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: List downloaded artifacts
         if: env.HAS_STEAM_CREDS == 'true'
@@ -230,18 +250,19 @@ jobs:
                 tar -xzf "$f" --strip-components=1 -C steam-content/windows/
               done
           else
-            # Fallback: warn loudly and stage the installer files.  This path is
-            # DEPRECATED and exists only to allow deploys of artifacts built before
-            # issue #408 was implemented.  A depot containing installer packages
-            # WILL FAIL Valve review — do not promote to default with this layout.
-            echo "DEPRECATION WARNING: steam-depot-windows.tar.gz not found." >&2
-            echo "  Falling back to staging NSIS/.msi installers — THIS WILL" >&2
-            echo "  FAIL VALVE REVIEW.  Rebuild from a release tagged after" >&2
-            echo "  issue #408 to get the correct portable depot layout." >&2
-            find release-artifacts -name "*-setup.exe" \
-              -exec cp -v {} steam-content/windows/ \;
-            find release-artifacts -name "*.msi" \
-              -exec cp -v {} steam-content/windows/ \;
+            # Fail rather than stage installers. A depot containing NSIS/MSI
+            # installer packages fails Valve review outright, so the old fallback
+            # could only ever produce a rejected build — it just did so slowly, via
+            # the depot audit, after burning a full upload. Every release build now
+            # sets BUNDLE_LLAMA_SERVER=true, so this tarball is always produced; if
+            # it is missing, the Windows build leg did not do its job and there is
+            # nothing valid to publish.
+            echo "ERROR: steam-depot-windows.tar.gz not found in the build artifacts." >&2
+            echo "       The Windows leg of release.yml must produce the portable depot" >&2
+            echo "       tree (see 'Package Windows portable depot layout for Steam depot')." >&2
+            echo "       Refusing to stage NSIS/MSI installers: a depot containing" >&2
+            echo "       installer packages fails Valve review." >&2
+            exit 1
           fi
 
           # macOS: extract the .app bundle from the .app.tar.gz published by

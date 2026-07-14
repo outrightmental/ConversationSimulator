@@ -84,12 +84,18 @@ jobs:
       # checklist item into a hard CI enforcement.  Contributor forks and PR
       # builds are unaffected because they never carry a v* tag.
       REQUIRE_SIGNED_MACOS: ${{ (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) || (github.event_name == 'workflow_dispatch' && startsWith(github.event.inputs.tag, 'v')) }}
-      # Steam depot builds bundle llama-server so players get zero-setup
-      # inference; GitHub release installers stay lean and download it on first
-      # run (see docs/model-download-policy.md §8). This one workflow feeds both
-      # channels, so bundling is an explicit opt-in: set the BUNDLE_LLAMA_SERVER
-      # repository variable to 'true' only for Steam-depot builds.
-      BUNDLE_LLAMA_SERVER: ${{ vars.BUNDLE_LLAMA_SERVER == 'true' }}
+      # Steam is the ONLY channel that ships prebuilt binaries. The other supported
+      # path is building from source at a release tag; no installer is published to
+      # GitHub or the website. Every release build is therefore a Steam depot build:
+      # it bundles llama-server so players get zero-setup inference, and it disables
+      # the in-app updater (Steam owns updates via SteamPipe).
+      #
+      # This used to be an opt-in repository variable, defaulting to false. Nobody
+      # ever set it, so every release built the non-Steam variant, published
+      # installers to GitHub that were not supposed to exist, and produced no depot
+      # payload — which made the Steam publish chained to each tag fail on a depot
+      # audit every single time.
+      BUNDLE_LLAMA_SERVER: true
     strategy:
       fail-fast: false
       matrix:
@@ -1394,157 +1400,53 @@ jobs:
 
   # ── Publish GitHub release ────────────────────────────────────────────────────
   release:
-    name: Publish release
+    name: Publish release notes
     needs: build-desktop
     runs-on: ubuntu-latest
-    env:
-      HAS_UPDATER_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
     steps:
       - uses: actions/checkout@v5
 
-      - name: Download all desktop artifacts
-        uses: actions/download-artifact@v7
-        with:
-          path: release-artifacts
-          pattern: desktop-*
-          merge-multiple: true
-
-      - name: List collected artifacts
-        run: find release-artifacts -type f | sort
-
-      - name: Generate SHA-256 checksums
-        # Record bare filenames (not the release-artifacts/... paths) so the
-        # manifest matches the flattened asset names on the release page and
-        # `sha256sum -c checksums-sha256.txt` works next to the downloads.
-        run: |
-          find release-artifacts -type f | sort | while IFS= read -r f; do
-            ( cd "$(dirname "$f")" && sha256sum "$(basename "$f")" )
-          done > checksums-sha256.txt
-          cat checksums-sha256.txt
-
-      # ── Generate Tauri updater manifest (latest.json) ─────────────────────────
-      # latest.json is the endpoint the app's tauri-plugin-updater polls on
-      # launch.  It lists the new version, per-platform download URLs, and the
-      # Ed25519 updater signatures produced by the "Sign updater artifacts" step.
+      # NO binaries are attached to GitHub releases. Conversation Simulator ships
+      # prebuilt binaries through Steam ONLY; the other supported path is building
+      # from source at a release tag. A GitHub release is therefore a changelog and
+      # a tag — there is nothing to download.
       #
-      # This step is skipped when TAURI_SIGNING_PRIVATE_KEY is absent; in that
-      # case the in-app update check fails silently (offline guard) and no banner
-      # is shown — acceptable until signing infrastructure lands in #235.
-      - name: Generate Tauri updater manifest (latest.json)
-        if: env.HAS_UPDATER_KEY == 'true'
-        run: |
-          set -euo pipefail
-
-          TAG="${{ github.event.inputs.tag || github.ref_name }}"
-          VERSION="${TAG#v}"
-          REPO="outrightmental/ConversationSimulator"
-          BASE_URL="https://github.com/${REPO}/releases/download/${TAG}"
-          PUB_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-
-          # Helper: read .sig content or emit empty string.
-          sig_content() {
-            local FILE="$1"
-            [ -f "$FILE" ] && cat "$FILE" || echo ""
-          }
-
-          # Locate each platform's updater artifact and its signature.
-          MACOS_ARCHIVE="$(find release-artifacts -name '*.app.tar.gz' | head -n1)"
-          MACOS_SIG_FILE="${MACOS_ARCHIVE}.sig"
-          MACOS_SIG="$(sig_content "$MACOS_SIG_FILE")"
-          MACOS_FILENAME="$(basename "$MACOS_ARCHIVE")"
-
-          LINUX_APPIMAGE="$(find release-artifacts -name '*.AppImage' | head -n1)"
-          LINUX_SIG_FILE="${LINUX_APPIMAGE}.sig"
-          LINUX_SIG="$(sig_content "$LINUX_SIG_FILE")"
-          LINUX_FILENAME="$(basename "$LINUX_APPIMAGE")"
-
-          WINDOWS_EXE="$(find release-artifacts -name '*-setup.exe' | head -n1)"
-          WINDOWS_SIG_FILE="${WINDOWS_EXE}.sig"
-          WINDOWS_SIG="$(sig_content "$WINDOWS_SIG_FILE")"
-          WINDOWS_FILENAME="$(basename "$WINDOWS_EXE")"
-
-          # Emit the manifest only when at least one sig file is present.
-          if [ -z "$MACOS_SIG" ] && [ -z "$LINUX_SIG" ] && [ -z "$WINDOWS_SIG" ]; then
-            echo "  WARN  No .sig files found — skipping latest.json generation."
-            echo "        Set TAURI_SIGNING_PRIVATE_KEY to enable updater manifests."
-            exit 0
-          fi
-
-          python3 - <<PYEOF > latest.json
-          import json, sys
-
-          platforms = {}
-          for key, sig, filename in [
-            ("darwin-aarch64", """$MACOS_SIG""", "$MACOS_FILENAME"),
-            ("linux-x86_64",   """$LINUX_SIG""",   "$LINUX_FILENAME"),
-            ("windows-x86_64", """$WINDOWS_SIG""", "$WINDOWS_FILENAME"),
-          ]:
-            sig = sig.strip()
-            if sig and filename:
-              platforms[key] = {
-                "signature": sig,
-                "url": "$BASE_URL/" + filename,
-              }
-
-          manifest = {
-            "version": "$VERSION",
-            "notes":   "See https://github.com/$REPO/releases/tag/$TAG for the full release notes.",
-            "pub_date": "$PUB_DATE",
-            "platforms": platforms,
-          }
-          print(json.dumps(manifest, indent=2))
-          PYEOF
-
-          echo "=== Generated latest.json ==="
-          cat latest.json
-
-      # Derive all release metadata before touching the release so we can:
-      #   - detect a pre-existing (hand-authored) release and preserve its title/body
-      #   - set prerelease from the tag semver suffix rather than hardcoding true
-      #   - set make_latest only for stable tags that will be published immediately
+      # This job used to upload installers for all three platforms, a SHA-256
+      # checksums manifest, and a Tauri updater manifest (latest.json + a
+      # beta-channel release). None of those were supposed to exist. They have been
+      # deleted from every published release, and the steps that produced them are
+      # gone from here so a future tag cannot recreate them.
+      #
+      # The in-app updater is gone with them: its endpoint was a GitHub release
+      # asset that will never exist again, and Steam owns updates via SteamPipe.
       - name: Resolve release metadata
         id: relmeta
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HAS_UPDATER_KEY: ${{ env.HAS_UPDATER_KEY }}
           # Pass the tag through the environment rather than interpolating the
           # ${{ }} expression straight into the script: a tag name can legally
-          # contain shell metacharacters (`$`, backticks, ...) that would
-          # otherwise be evaluated here (command injection). Quoting "$TAG"
-          # below keeps it inert.
+          # contain shell metacharacters that would otherwise be evaluated here.
           TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
           set -euo pipefail
 
-          # Pre-release iff the tag carries a semver pre-release suffix (a hyphen):
-          # v0.1.0 -> stable/Latest, v0.1.0-beta.1 -> pre-release. Mirrors the updater's
-          # version ordering (beta < release) used to build latest.json.
+          # Pre-release iff the tag carries a semver pre-release suffix (a hyphen).
           if [[ "$TAG" == *-* ]]; then PRERELEASE=true; else PRERELEASE=false; fi
 
-          # Does a release for this tag already exist? Creating a release in the GitHub
-          # UI pushes the tag (triggering this workflow) once the release row already
-          # exists, so a hand-authored title/body/"Latest" flag is already live.
+          # Creating a release in the GitHub UI pushes the tag (triggering this
+          # workflow) once the release row already exists, so a hand-authored
+          # title/body is already live. Preserve it by passing empty name/body.
           if gh release view "$TAG" >/dev/null 2>&1; then EXISTS=true; else EXISTS=false; fi
 
-          # Mark as "Latest" only for a stable tag that will actually be published
-          # (a draft release can never be Latest).
-          if [[ "$PRERELEASE" == false && ( "$HAS_UPDATER_KEY" == true || "$EXISTS" == true ) ]]; then
-            MAKE_LATEST=true
-          else
-            MAKE_LATEST=false
-          fi
+          if [[ "$PRERELEASE" == false ]]; then MAKE_LATEST=true; else MAKE_LATEST=false; fi
 
-          # Preserve an existing release's human-authored title and notes by passing
-          # empty name/body. For a brand-new release, seed the default title + template.
           if [[ "$EXISTS" == true ]]; then
             NAME=""
             BODY_PATH=""
-            DRAFT=false            # never demote an already-published release to draft
           else
             NAME="Conversation Simulator $TAG"
             BODY_PATH="docs/release-notes-template.md"
-            if [[ "$HAS_UPDATER_KEY" == true ]]; then DRAFT=false; else DRAFT=true; fi
           fi
 
           {
@@ -1553,58 +1455,20 @@ jobs:
             echo "make_latest=$MAKE_LATEST"
             echo "name=$NAME"
             echo "body_path=$BODY_PATH"
-            echo "draft=$DRAFT"
           } >> "$GITHUB_OUTPUT"
 
-          echo "Resolved: tag=$TAG prerelease=$PRERELEASE make_latest=$MAKE_LATEST exists=$EXISTS draft=$DRAFT"
+          echo "Resolved: tag=$TAG prerelease=$PRERELEASE make_latest=$MAKE_LATEST exists=$EXISTS"
 
-      # When the updater manifest is being produced (HAS_UPDATER_KEY), the
-      # versioned release MUST be published immediately rather than left as a
-      # draft: the beta-channel `latest.json` uploaded in the next step points at
-      # this release's assets and tag page, and draft assets 404 for the public.
-      # When signing is off and no pre-existing release exists, we keep the
-      # previous draft/manual-review behaviour (relmeta sets draft=true).
-      - name: Create versioned GitHub release
-        id: versioned_release
+      # No `files:` key — this publishes notes, never artifacts.
+      - name: Publish release notes (no binaries)
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.relmeta.outputs.tag }}
           name: ${{ steps.relmeta.outputs.name }}
           body_path: ${{ steps.relmeta.outputs.body_path }}
-          draft: ${{ steps.relmeta.outputs.draft }}
+          draft: false
           prerelease: ${{ steps.relmeta.outputs.prerelease }}
           make_latest: ${{ steps.relmeta.outputs.make_latest }}
-          files: |
-            release-artifacts/**
-            checksums-sha256.txt
-            ${{ env.HAS_UPDATER_KEY == 'true' && 'latest.json' || '' }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # ── Update beta-channel release ───────────────────────────────────────────
-      # The app's updater plugin checks a fixed URL:
-      #   .../releases/download/beta-channel/latest.json
-      # Uploading latest.json here means every new beta release is discovered
-      # automatically on next app launch without any URL change in the binary.
-      # Previous versioned releases (e.g. v0.1.0-beta.1) remain downloadable.
-      - name: Update beta-channel release with latest updater manifest
-        if: env.HAS_UPDATER_KEY == 'true'
-        uses: softprops/action-gh-release@v3
-        with:
-          tag_name: beta-channel
-          name: Beta channel — latest updater manifest
-          body: |
-            This release holds the Tauri updater manifest (`latest.json`) for the
-            beta channel.  The app's built-in update checker polls this asset on
-            launch to detect new beta builds.
-
-            **Do not install from this release directly** — download from the
-            corresponding versioned pre-release instead.
-
-            Latest beta: ${{ github.event.inputs.tag || github.ref_name }}
-          prerelease: true
-          draft: false
-          files: latest.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -1627,6 +1491,11 @@ jobs:
     with:
       release_tag: ${{ github.event.inputs.tag || github.ref_name }}
       set_live_branch: beta
+      # Steam takes its depot payload from THIS run's build artifacts. It used to
+      # `gh release download` the published installers, but GitHub releases no
+      # longer carry binaries — Steam is the only prebuilt channel, so the depot
+      # content has to come from the build that just ran.
+      run_id: ${{ github.run_id }}
     secrets: inherit
 
   # ── Microsoft Defender for Storage malware scan (Windows) ──────────────────
