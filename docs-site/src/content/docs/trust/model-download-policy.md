@@ -3,7 +3,7 @@ title: "Model download policy"
 description: "Rules governing how LLM model weights are downloaded, verified with SHA-256 checksums, and disclosed to players — no silent downloads, no bundled weights."
 sidebar:
   order: 4
-verified_against: v0.3.0
+verified_against: v0.2.3
 ---
 
 > **Purpose:** Define the rules that govern how LLM model weights are
