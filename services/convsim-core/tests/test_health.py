@@ -40,12 +40,61 @@ def test_health_database_migrations_applied(client):
     assert body["database"]["migrations_applied"] >= 1
 
 
-def test_health_runtime_fields_exist(client):
-    rt = client.get("/api/health").json()["runtime"]
+def test_health_llm_runtime_fields_exist(client):
+    rt = client.get("/api/health").json()["llm_runtime"]
     assert rt["runtime_id"] == "fake"
     assert rt["runtime_name"] == "Fake (deterministic)"
     assert rt["status"] == "ready"
     assert "checked_at" in rt
+
+
+# ── runtime readiness (shared RuntimeReadiness contract) ─────────────────────
+
+
+def test_health_runtime_readiness_shape(client):
+    rt = client.get("/api/health").json()["runtime"]
+    for key in (
+        "llm_ready",
+        "llm_model_name",
+        "stt_ready",
+        "tts_ready",
+        "tts_voice_name",
+        "network_required",
+        "last_error",
+    ):
+        assert key in rt
+
+
+def test_health_readiness_defaults(client):
+    rt = client.get("/api/health").json()["runtime"]
+    # Default test config: fake runtime is ready, no whisper binary installed.
+    assert rt["llm_ready"] is True
+    assert rt["stt_ready"] is False
+    assert rt["network_required"] is False
+
+
+def test_health_llm_ready_after_register_gguf(client, tmp_path):
+    model_file = tmp_path / "my-model.gguf"
+    model_file.write_bytes(b"\x00" * 16)
+    resp = client.post("/api/models/register-gguf", json={"path": str(model_file)})
+    assert resp.status_code == 200
+
+    rt = client.get("/api/health").json()["runtime"]
+    assert rt["llm_ready"] is True
+    assert rt["llm_model_name"] == "my-model.gguf"
+
+
+def test_health_llm_not_ready_when_model_file_deleted(client, tmp_path):
+    model_file = tmp_path / "gone-model.gguf"
+    model_file.write_bytes(b"\x00" * 16)
+    resp = client.post("/api/models/register-gguf", json={"path": str(model_file)})
+    assert resp.status_code == 200
+    model_file.unlink()
+
+    rt = client.get("/api/health").json()["runtime"]
+    assert rt["llm_ready"] is False
+    assert rt["last_error"] is not None
+    assert "not found" in rt["last_error"].lower()
 
 
 def test_health_config_path_present(client):

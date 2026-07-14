@@ -1,12 +1,13 @@
 # SPDX-License-Identifier: Apache-2.0
 import os
+import sqlite3
 from typing import Any, Optional
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from convsim_core import __version__
-from convsim_core.runtime.types import RuntimeHealth
+from convsim_core.runtime.types import RuntimeHealth, RuntimeStatus
 from convsim_core.services.model_manager_service import get_active_config, get_most_recent_benchmark
 from convsim_core.stt.types import SttHealth
 from convsim_core.tts.types import TtsHealth
@@ -126,19 +127,138 @@ class _BenchmarkSummary(BaseModel):
     benchmarked_at: str
 
 
+class _RuntimeReadiness(BaseModel):
+    """Matches ``RuntimeReadiness`` in packages/shared/src/types/runtime.ts.
+
+    This is the contract the web UI's Home screen, scenario setup, and voice
+    settings read from ``HealthResponse.runtime``. It must stay a superset-
+    compatible shape with the shared TypeScript type.
+    """
+
+    llm_ready: bool
+    llm_model_name: Optional[str] = None
+    stt_ready: bool
+    tts_ready: bool
+    tts_voice_name: Optional[str] = None
+    network_required: bool
+    last_error: Optional[str] = None
+
+
 class HealthResponse(BaseModel):
     status: str
     version: str
     pid: int
     config_path: str
     database: _DatabaseStatus
-    runtime: RuntimeHealth
+    # User-facing readiness summary consumed by the web UI (shared contract).
+    runtime: _RuntimeReadiness
+    # Detailed diagnostic health of the configured chat runtime.
+    llm_runtime: RuntimeHealth
     active_model: _ActiveModelConfig
     privacy: _PrivacyPosture
     stt: SttHealth
     tts: TtsHealth
     sidecar_diagnostics: _SidecarDiagnostics
     last_benchmark: Optional[_BenchmarkSummary] = None
+
+
+def _find_installed_model(
+    conn: sqlite3.Connection, model_id: str
+) -> Optional[dict[str, Any]]:
+    """Look up an installed model by file path or registry id.
+
+    Only rows in a usable terminal state count as installed.
+    """
+    row = conn.execute(
+        """
+        SELECT id, registry_id, filename, file_path, install_status, display_name
+        FROM installed_models
+        WHERE (file_path = ? OR registry_id = ?)
+          AND install_status IN ('complete', 'ready')
+        ORDER BY id DESC
+        LIMIT 1
+        """,
+        (model_id, model_id),
+    ).fetchone()
+    return dict(row) if row is not None else None
+
+
+def _build_readiness(
+    conn: sqlite3.Connection,
+    active_cfg: dict[str, Optional[str]],
+    runtime_health: RuntimeHealth,
+    stt_health: SttHealth,
+    tts_health: TtsHealth,
+) -> _RuntimeReadiness:
+    """Derive the user-facing readiness summary.
+
+    The LLM counts as installed/ready when the user has an active model
+    selection backed by a usable install record (or an existing GGUF file),
+    or — for runtimes without local model files (fake, scripted, ollama) —
+    when the selection was made or the configured runtime reports ready.
+    The live sidecar process state is deliberately NOT required here: it is
+    started on demand, and "installed but not currently loaded" must still
+    read as installed on the Home screen.
+    """
+    runtime_id = active_cfg.get("runtime_id")
+    model_id = active_cfg.get("model_id")
+
+    llm_ready = False
+    llm_model_name: Optional[str] = None
+    errors: list[str] = []
+
+    if model_id:
+        installed = _find_installed_model(conn, model_id)
+        if installed is not None and os.path.isfile(installed["file_path"]):
+            llm_ready = True
+            llm_model_name = installed.get("display_name") or installed.get("filename")
+        elif os.path.isfile(model_id):
+            # A user-supplied GGUF path that exists but has no DB row.
+            llm_ready = True
+            llm_model_name = os.path.basename(model_id)
+        elif runtime_id == "ollama":
+            # Ollama model tags are not files; availability was validated at
+            # selection time by /api/models/use.
+            llm_ready = True
+            llm_model_name = model_id
+        else:
+            errors.append(
+                f"Selected model file not found: {model_id}. "
+                "Re-select a model in the model manager."
+            )
+            llm_model_name = os.path.basename(model_id) or model_id
+    elif runtime_id:
+        # A runtime was actively selected without a model file (e.g. scripted
+        # or an external server). The selection endpoint validated it.
+        llm_ready = True
+        llm_model_name = runtime_id
+    elif runtime_health.status == RuntimeStatus.READY:
+        # No explicit selection, but the configured default runtime is usable
+        # (e.g. the deterministic fake runtime in dev/test builds).
+        llm_ready = True
+        llm_model_name = runtime_health.model_id or runtime_health.runtime_name
+    elif runtime_health.message:
+        errors.append(runtime_health.message)
+
+    stt_ready = stt_health.status in (RuntimeStatus.READY, RuntimeStatus.DEGRADED)
+    if not stt_ready and stt_health.message:
+        errors.append(stt_health.message)
+
+    tts_ready = tts_health.status in (RuntimeStatus.READY, RuntimeStatus.DEGRADED)
+    if not tts_ready and tts_health.message:
+        errors.append(tts_health.message)
+
+    return _RuntimeReadiness(
+        llm_ready=llm_ready,
+        llm_model_name=llm_model_name,
+        stt_ready=stt_ready,
+        tts_ready=tts_ready,
+        tts_voice_name=None,
+        # All supported runtimes (llama.cpp sidecar, Ollama, fake, scripted)
+        # run locally; nothing requires network to play.
+        network_required=False,
+        last_error=errors[0] if errors else None,
+    )
 
 
 @router.get("/api/health", response_model=HealthResponse)
@@ -164,6 +284,10 @@ async def health(request: Request) -> HealthResponse:
 
     supervisor = getattr(request.app.state, "supervisor", None)
 
+    runtime_health = await request.app.state.runtime.health()
+    stt_health = await request.app.state.stt_worker.health()
+    tts_health = await request.app.state.tts_worker.health()
+
     return HealthResponse(
         status="ok",
         version=__version__,
@@ -174,7 +298,8 @@ async def health(request: Request) -> HealthResponse:
             path=db.path,
             migrations_applied=db.migrations_applied,
         ),
-        runtime=await request.app.state.runtime.health(),
+        runtime=_build_readiness(conn, active_cfg, runtime_health, stt_health, tts_health),
+        llm_runtime=runtime_health,
         active_model=_ActiveModelConfig(**active_cfg),
         privacy=_PrivacyPosture(
             telemetry_enabled=app_settings.telemetry_enabled,
@@ -182,8 +307,8 @@ async def health(request: Request) -> HealthResponse:
             save_raw_audio=app_settings.save_raw_audio,
             crash_logging_enabled=app_settings.crash_logging_enabled,
         ),
-        stt=await request.app.state.stt_worker.health(),
-        tts=await request.app.state.tts_worker.health(),
+        stt=stt_health,
+        tts=tts_health,
         sidecar_diagnostics=_build_sidecar_diagnostics(supervisor),
         last_benchmark=last_benchmark,
     )

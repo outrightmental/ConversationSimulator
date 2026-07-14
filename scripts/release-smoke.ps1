@@ -253,7 +253,7 @@ function Invoke-SmokeBackendHealth {
             Write-Fail "health" "/api/health status=$($body.status) (expected ok)"
             return
         }
-        Write-Pass "health" "/api/health status=ok runtime=$($body.runtime.status)"
+        Write-Pass "health" "/api/health status=ok llm=$($body.llm_runtime.status) llm_ready=$($body.runtime.llm_ready)"
     } catch {
         Write-Fail "health" "GET $CoreUrl/api/health failed: $_ — is convsim-core running?"
     }
