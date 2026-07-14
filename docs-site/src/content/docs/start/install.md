@@ -1,6 +1,6 @@
 ---
 title: "Installation"
-description: "Download, verify, and install Conversation Simulator on Windows, macOS, or Linux, and set up your first local model."
+description: "Install Conversation Simulator on Windows, macOS, or Linux — from Steam, or by building the open-source code yourself."
 sidebar:
   order: 1
 verified_against: v0.2.3
@@ -10,10 +10,22 @@ Conversation Simulator runs entirely on your computer — no cloud inference,
 no account, no telemetry. You need a local model before any conversation can
 start; the app downloads one on first run after you accept its license.
 
-:::note
-This guide covers installing the **pre-built application** — the right path
-for almost everyone. Contributors who want to run the platform from source
-should follow the [developer install](/dev/developer-install/) instead.
+There are exactly **two ways to get it**:
+
+| | [Steam](#1-steam--the-ready-to-run-build) | [Build from source](#2-build-from-source--free) |
+|---|---|---|
+| **Cost** | $9.99 | Free |
+| **You get** | A ready-to-run app: code-signed, notarized, auto-updating via Steam, Steam Deck–verified. The AI engine is bundled, so there is nothing to install separately. | The same software, built by you from the Apache-2.0 source. |
+| **Best for** | Almost everyone. | Developers, and anyone who wants to inspect or modify the code. |
+
+:::caution[There are no installers to download]
+Conversation Simulator does **not** publish `.dmg`, `.exe`, `.msi`, `.deb`, or
+`AppImage` downloads — not on GitHub, not on our website. Steam is the only
+channel that ships prebuilt binaries. If you find an installer for this app
+anywhere else, it did not come from us.
+
+The GitHub releases page carries release notes and source tags only. To run the
+free version, build it from source at a release tag (below).
 :::
 
 ---
@@ -30,55 +42,51 @@ should follow the [developer install](/dev/developer-install/) instead.
 
 ---
 
-## 1. Download and verify
+## 1. Steam — the ready-to-run build
 
-Download the installer for your platform from the
-[releases page](https://github.com/outrightmental/ConversationSimulator/releases):
+Install **Conversation Simulator** from Steam on Windows, macOS, Linux, or Steam
+Deck. Steam handles installation and updates; there is nothing else to download
+and nothing to verify by hand.
 
-| Platform | File |
-|---|---|
-| macOS (Apple Silicon) | `ConversationSimulator_<version>_aarch64.dmg` |
-| macOS (Intel) | `ConversationSimulator_<version>_x64.dmg` |
-| Linux (x86_64) | `conversation-simulator_<version>_amd64.AppImage` |
-| Windows (x86_64) | `ConversationSimulator_<version>_x64-setup.exe` |
+The Steam build is code-signed on Windows, signed and notarized on macOS, and
+ships with the AI engine bundled — so your first conversation can start while the
+model is still downloading.
 
-Verify the download against the `checksums-sha256.txt` file on the release page:
-
-```bash
-# macOS / Linux
-shasum -a 256 ConversationSimulator_<version>_aarch64.dmg
-```
-
-```powershell
-# Windows PowerShell
-Get-FileHash "ConversationSimulator_<version>_x64-setup.exe" -Algorithm SHA256
-```
+That is the whole procedure. Skip to [First launch](#3-first-launch).
 
 ---
 
-## 2. Install and launch
+## 2. Build from source — free
 
-- **macOS:** open the `.dmg` and drag the app to `/Applications`. On first
-  launch, Gatekeeper may warn about an unidentified developer (pre-release
-  builds are unsigned). Right-click the app → **Open** → **Open** to proceed.
-- **Windows:** run the `.exe` installer. Windows 10/11 release builds are
-  Authenticode-signed, so no SmartScreen warning appears. If you see one on
-  a pre-release build, click **More info → Run anyway**.
-- **Linux:** make the AppImage executable and run it directly — no
-  installation needed:
+The engine is Apache-2.0 and the four official scenario packs are CC BY 4.0, so
+you can always build and run the app yourself at no cost. It is the same
+software; you are supplying the build instead of paying for one.
 
-  ```bash
-  chmod +x conversation-simulator_<version>_amd64.AppImage
-  ./conversation-simulator_<version>_amd64.AppImage
-  ```
+Check out a **release tag** rather than `main` — tags are the versions we test
+and ship:
 
-The app starts its local conversation engine automatically. If the home
-screen reports that the engine did not start, see
-[Troubleshooting](/start/troubleshooting/#engine-startup-failure).
+```bash
+git clone https://github.com/outrightmental/ConversationSimulator.git
+cd ConversationSimulator
+git checkout v0.2.3        # latest release tag
+```
+
+Then follow the [developer install](/dev/developer-install/), which covers
+prerequisites (Node, pnpm, Python, Rust) and building the desktop app.
+
+Note that a source build is not code-signed. macOS Gatekeeper will warn about an
+unidentified developer on first launch: right-click the app → **Open** → **Open**.
+On Windows, SmartScreen may show *"Windows protected your PC"* — click
+**More info → Run anyway**. This is expected for software you built yourself; the
+signed builds are the ones distributed through Steam.
 
 ---
 
 ## 3. Set up your AI (first launch)
+
+However you got the app, the first launch is the same. The app starts its local
+conversation engine automatically; if the home screen reports that the engine did
+not start, see [Troubleshooting](/start/troubleshooting/#engine-startup-failure).
 
 On first launch the app shows the **welcome screen**. The **Set me up** card
 names the recommended model for your hardware and shows its download size and
@@ -91,38 +99,28 @@ license. Click **Set me up** to begin — the download starts right away.
   responses.
 - When all stages complete, click **Continue to Home** to start playing.
 
-No model weights are bundled with the installer. The one-time download is
-the only step that requires an internet connection — after it completes,
-everything works offline.
+No model weights are bundled with the app. The one-time download is the only
+step that requires an internet connection — after it completes, everything works
+offline.
 
 Want to use Ollama or a custom model file instead? See
 [Choosing how to run the AI](/play/ai-engine/).
 
 ---
 
-## Beta builds — direct-download channel
+## Updates and rollback
 
-Beta builds are published to GitHub Releases as versioned pre-releases
-(e.g. `v0.1.0-beta.1`). They are distinct from the Steam beta branch.
+**On Steam,** Steam handles updates. Beta builds are published to the Steam
+**beta branch** — opt in from the app's Properties → Betas in your Steam library.
+To roll back, pick an earlier build from that same menu.
 
-### In-app update notice
+There is no in-app updater and no direct-download beta channel: the app never
+polls GitHub for a new version, because no binaries are published there.
 
-The app checks for a new beta on launch and shows a non-intrusive banner on
-the home screen when one is found. The banner never appears during an active
-conversation session. Click **View notes** to open the release page, or
-**Install** to open it and download the new build. The check is skipped
-silently when you are offline.
-
-### Rollback
-
-Every beta release remains permanently downloadable from its versioned
-release page (e.g., `releases/tag/v0.1.0-beta.1`). To roll back:
-
-1. Download the installer from the previous versioned release page.
-2. Install over the current version — the Windows installer and macOS DMG
-   both support in-place downgrades.
-3. Data created in a newer beta is forward-compatible with older betas at
-   the same schema version (see [Schema versioning](/reference/schema-versioning/)).
+**From source,** update by checking out a newer release tag and rebuilding; roll
+back by checking out an earlier one. Data created in a newer version is
+forward-compatible with older versions at the same schema version (see
+[Schema versioning](/reference/schema-versioning/)).
 
 ---
 
