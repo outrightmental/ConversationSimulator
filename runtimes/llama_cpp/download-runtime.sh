@@ -44,9 +44,11 @@ ARCH="$(uname -m)"
 
 case "$OS" in
   Linux)
+    # Upstream names the Linux builds "ubuntu-*", not "linux-*". Asking for
+    # linux-x64 yields a 404 on every release.
     case "$ARCH" in
-      x86_64)  PLATFORM="linux-x64" ;;
-      aarch64) PLATFORM="linux-arm64" ;;
+      x86_64)  PLATFORM="ubuntu-x64" ;;
+      aarch64) PLATFORM="ubuntu-arm64" ;;
       *)
         echo "Unsupported Linux architecture: $ARCH" >&2
         echo "Build from source: https://github.com/ggml-org/llama.cpp#build" >&2
@@ -108,11 +110,16 @@ if [[ -z "$RELEASE_TAG" ]]; then
 fi
 
 # ── Build download URL ────────────────────────────────────────────────────────
-# llama.cpp release assets follow this naming convention:
-#   llama-{tag}-bin-{platform}-{cuda/metal/cpu}.zip
-# We prefer the plain CPU build for portability.
+# llama.cpp names its Linux and macOS assets:
+#   llama-{tag}-bin-{ubuntu|macos}-{arch}.tar.gz
+# e.g. llama-b9996-bin-ubuntu-x64.tar.gz, llama-b9996-bin-macos-arm64.tar.gz
+#
+# NOT llama-{tag}-bin-{platform}-cpu.zip, which this script used to request: there
+# is no "-cpu" variant and no .zip outside Windows, so every Linux/macOS download
+# 404'd. (Windows keeps the -{variant}-.zip form — see download-runtime.ps1.)
+# There is no separate CPU build to prefer here; the plain archive is the CPU one.
 
-ASSET_NAME="llama-${RELEASE_TAG}-bin-${PLATFORM}-cpu.zip"
+ASSET_NAME="llama-${RELEASE_TAG}-bin-${PLATFORM}.tar.gz"
 DOWNLOAD_URL="https://github.com/${REPO}/releases/download/${RELEASE_TAG}/${ASSET_NAME}"
 
 echo ""
@@ -146,18 +153,47 @@ else
 fi
 
 echo "Extracting..."
-unzip -q "$ZIP_PATH" -d "$TMP_DIR/extracted"
+mkdir -p "$TMP_DIR/extracted"
+tar -xzf "$ZIP_PATH" -C "$TMP_DIR/extracted"
 
-# The binary may be at the root or in a subdirectory
-EXTRACTED_BIN="$(find "$TMP_DIR/extracted" \( -name "llama-server" -o -name "llama-server.exe" \) -type f | head -1)"
+# The binary sits under an archive-root directory (llama-{tag}/llama-server).
+EXTRACTED_BIN="$(find "$TMP_DIR/extracted" -name "llama-server" -type f | head -1)"
 if [[ -z "$EXTRACTED_BIN" ]]; then
   echo "llama-server binary not found in archive. Contents:" >&2
   find "$TMP_DIR/extracted" -type f >&2
   exit 1
 fi
+SRC_DIR="$(dirname "$EXTRACTED_BIN")"
 
-cp "$EXTRACTED_BIN" "${DEST_DIR}/${BINARY_NAME}"
-chmod +x "${DEST_DIR}/${BINARY_NAME}"
+# llama-server is dynamically linked against sibling shared libraries shipped in
+# the same archive directory (@rpath/libllama.0.dylib, libggml-cpu.so, …). Copying
+# only the executable — which this script used to do — produces a binary that
+# cannot start: "image not found" on macOS, "cannot open shared object file" on
+# Linux. download-runtime.ps1 has always copied the sibling DLLs on Windows; this
+# is the same requirement.
+#
+# Install the libraries FIRST so the executable never resolves before its
+# dependencies are in place, then move the binary into position atomically.
+#
+# `-type l` and `cp -a` are both load-bearing. llama.cpp ships the usual versioned
+# chain — libllama-common.dylib -> libllama-common.0.dylib ->
+# libllama-common.0.0.9996.dylib — and llama-server links against the SYMLINK name
+# (@rpath/libllama-common.0.dylib). Copying only regular files drops all 18
+# symlinks and the binary still refuses to start; `cp -a` preserves them as links
+# rather than duplicating ~24 MB of libraries into the depot.
+echo "Installing shared libraries..."
+find "$SRC_DIR" -maxdepth 1 \( -type f -o -type l \) \
+  \( -name '*.so' -o -name '*.so.*' -o -name '*.dylib' \) \
+  -exec cp -a {} "$DEST_DIR/" \;
+
+# llama.cpp is MIT-licensed; ship its licence with the binaries we redistribute.
+if [[ -f "$SRC_DIR/LICENSE" ]]; then
+  cp -f "$SRC_DIR/LICENSE" "${DEST_DIR}/LICENSE-llama.cpp.txt"
+fi
+
+cp -f "$EXTRACTED_BIN" "${DEST_DIR}/${BINARY_NAME}.part"
+chmod +x "${DEST_DIR}/${BINARY_NAME}.part"
+mv -f "${DEST_DIR}/${BINARY_NAME}.part" "${DEST_DIR}/${BINARY_NAME}"
 
 echo ""
 echo "Installed: ${DEST_DIR}/${BINARY_NAME}"
