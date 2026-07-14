@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import RuntimeSettingsPanel from '../components/RuntimeSettingsPanel'
+import { SETUP_DOCS_URL } from '../setup/docsUrls'
 import type { ModelsResponse, RuntimeSettingsResponse } from '@convsim/shared'
 
 vi.mock('../api/client', () => ({
@@ -105,16 +106,57 @@ describe('RuntimeSettingsPanel — loading', () => {
     )
   })
 
-  it('shows an actionable update message when getRuntimeSettings returns 404', async () => {
+  // A 404 from /api/runtime/settings means the bundled runtime predates the
+  // route (issue #429). The rest of the panel is served by /api/models and must
+  // stay usable, with plain-language guidance in place of the advanced section.
+  describe('when getRuntimeSettings returns 404', () => {
+    beforeEach(() => {
+      mockApi.getRuntimeSettings.mockResolvedValue({
+        ok: false,
+        error: { kind: 'http-error', status: 404, message: 'Not Found' },
+      })
+    })
+
+    it('does not block the panel behind an error view', async () => {
+      await renderPanel()
+      await waitFor(() =>
+        expect(screen.getByRole('combobox', { name: /provider/i })).toBeInTheDocument(),
+      )
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /apply provider and model/i })).toBeInTheDocument()
+    })
+
+    it('explains that an update is needed and links to the instructions', async () => {
+      await renderPanel()
+      const notice = await screen.findByRole('status', {
+        name: /runtime advanced settings unavailable/i,
+      })
+      expect(notice).toHaveTextContent(/not available in this version of ConversationSimulator/i)
+      expect(notice).toHaveTextContent(/update to the latest version/i)
+      expect(screen.getByRole('link', { name: /how to update/i })).toHaveAttribute(
+        'href',
+        SETUP_DOCS_URL,
+      )
+    })
+
+    it('hides the advanced settings toggle, which the missing endpoint backs', async () => {
+      await renderPanel()
+      await screen.findByRole('status', { name: /runtime advanced settings unavailable/i })
+      expect(
+        screen.queryByRole('button', { name: /show runtime advanced settings/i }),
+      ).not.toBeInTheDocument()
+    })
+  })
+
+  it('still shows a blocking error when getRuntimeSettings fails for a non-404 reason', async () => {
     mockApi.getRuntimeSettings.mockResolvedValue({
       ok: false,
-      error: { kind: 'http-error', status: 404, message: 'Not Found' },
+      error: { kind: 'http-error', status: 500, message: 'settings store is corrupt' },
     })
     await renderPanel()
-    await waitFor(() => {
-      const alert = screen.getByRole('alert')
-      expect(alert).toHaveTextContent(/update ConversationSimulator/i)
-    })
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(/settings store is corrupt/i),
+    )
   })
 })
 
