@@ -80,7 +80,11 @@ describe('LocalFilePicker — Tauri desktop environment', () => {
     expect(screen.getByRole('button', { name: /browse for file/i })).toBeInTheDocument()
   })
 
-  it('invokes plugin:dialog|open with correct payload when Browse is clicked', async () => {
+  // The Tauri IPC layer keys command arguments by the Rust parameter name. The
+  // `plugin:dialog|open` command takes `options: OpenDialogOptions`, so the args must
+  // be nested under `options` — anything else fails to deserialize and the dialog
+  // never opens. These tests mock `invoke`, so they are the only guard on that contract.
+  it('invokes plugin:dialog|open with the args nested under `options`', async () => {
     const invoke = vi.fn().mockResolvedValue(null)
     win.__TAURI__ = { core: { invoke } }
     render(
@@ -89,18 +93,34 @@ describe('LocalFilePicker — Tauri desktop environment', () => {
         value=""
         onChange={() => {}}
         filters={[{ name: 'GGUF Model', extensions: ['gguf'] }]}
+        title="Select GGUF model file"
       />,
     )
     fireEvent.click(screen.getByRole('button', { name: /browse for file/i }))
     await waitFor(() =>
       expect(invoke).toHaveBeenCalledWith('plugin:dialog|open', {
-        payload: {
-          title: 'Select file',
+        options: {
+          title: 'Select GGUF model file',
           filters: [{ name: 'GGUF Model', extensions: ['gguf'] }],
           multiple: false,
           directory: false,
         },
       }),
+    )
+  })
+
+  it('defaults the dialog title when no title prop is given', async () => {
+    const invoke = vi.fn().mockResolvedValue(null)
+    win.__TAURI__ = { core: { invoke } }
+    render(
+      <LocalFilePicker id="test-path" value="" onChange={() => {}} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /browse for file/i }))
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith(
+        'plugin:dialog|open',
+        expect.objectContaining({ options: expect.objectContaining({ title: 'Select file' }) }),
+      ),
     )
   })
 
@@ -127,16 +147,18 @@ describe('LocalFilePicker — Tauri desktop environment', () => {
     expect(onChange).not.toHaveBeenCalled()
   })
 
-  it('does not call onChange when the dialog throws (error / unavailable)', async () => {
+  it('logs and does not call onChange when the dialog throws (error / unavailable)', async () => {
     const onChange = vi.fn()
     const invoke = vi.fn().mockRejectedValue(new Error('dialog unavailable'))
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     win.__TAURI__ = { core: { invoke } }
     render(
       <LocalFilePicker id="test-path" value="/existing/path.gguf" onChange={onChange} />,
     )
     fireEvent.click(screen.getByRole('button', { name: /browse for file/i }))
-    await waitFor(() => expect(invoke).toHaveBeenCalled())
+    await waitFor(() => expect(errorSpy).toHaveBeenCalled())
     expect(onChange).not.toHaveBeenCalled()
+    errorSpy.mockRestore()
   })
 
   it('passes an empty filters array when no filters prop is given', async () => {
@@ -149,8 +171,21 @@ describe('LocalFilePicker — Tauri desktop environment', () => {
     await waitFor(() =>
       expect(invoke).toHaveBeenCalledWith(
         'plugin:dialog|open',
-        expect.objectContaining({ payload: expect.objectContaining({ filters: [] }) }),
+        expect.objectContaining({ options: expect.objectContaining({ filters: [] }) }),
       ),
     )
+  })
+
+  it('ignores a non-string dialog result instead of writing it into the path', async () => {
+    const onChange = vi.fn()
+    // `multiple: false` yields a string or null, but guard against an array leaking through.
+    const invoke = vi.fn().mockResolvedValue(['/a.gguf', '/b.gguf'])
+    win.__TAURI__ = { core: { invoke } }
+    render(
+      <LocalFilePicker id="test-path" value="" onChange={onChange} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /browse for file/i }))
+    await waitFor(() => expect(invoke).toHaveBeenCalled())
+    expect(onChange).not.toHaveBeenCalled()
   })
 })

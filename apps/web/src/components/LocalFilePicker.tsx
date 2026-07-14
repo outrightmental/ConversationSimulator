@@ -15,6 +15,8 @@ interface LocalFilePickerProps {
   onChange: (value: string) => void
   /** File type filters shown in the native dialog (e.g. [{name:'GGUF',extensions:['gguf']}]). */
   filters?: DialogFilter[]
+  /** Title of the native dialog window. */
+  title?: string
   placeholder?: string
   'aria-describedby'?: string
   'aria-invalid'?: boolean
@@ -36,6 +38,7 @@ export function LocalFilePicker({
   value,
   onChange,
   filters,
+  title,
   placeholder,
   disabled,
   inputStyle,
@@ -48,17 +51,22 @@ export function LocalFilePicker({
     const invoke = tauri?.core?.invoke
     if (!invoke) return
     try {
+      // Tauri keys command arguments by the Rust parameter name; `plugin:dialog|open`
+      // takes `options: OpenDialogOptions`, so the payload must be nested under `options`.
       const selected = await invoke<string | null>('plugin:dialog|open', {
-        payload: {
-          title: 'Select file',
+        options: {
+          title: title ?? 'Select file',
           filters: filters ?? [],
           multiple: false,
           directory: false,
         },
       })
-      if (selected != null) onChange(selected)
-    } catch {
-      // Dialog cancelled or shell unavailable — leave current value unchanged.
+      if (typeof selected === 'string') onChange(selected)
+    } catch (err) {
+      // Cancellation resolves to null rather than throwing, so a rejection here is a
+      // real failure (shell unavailable, permission denied). Surface it instead of
+      // failing silently, and leave the current value unchanged.
+      console.error('Native file dialog failed', err)
     }
   }
 

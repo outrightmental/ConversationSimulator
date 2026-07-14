@@ -33,6 +33,7 @@ export function GgufPathStep({ flow, mode }: GgufPathStepProps) {
           onChange={(v) => { flow.setGgufPath(v); flow.setGgufPathError(null) }}
           placeholder="/path/to/model.gguf"
           filters={[{ name: 'GGUF Model', extensions: ['gguf'] }]}
+          title="Select GGUF model file"
           aria-describedby="gguf-path-hint"
           aria-invalid={flow.ggufPathError != null}
         />
