@@ -135,31 +135,74 @@ const HTML_ERROR: Omit<ApiError, 'status'> = {
   message: 'API returned HTML instead of JSON — the local runtime is not running.',
 }
 
-// Turn an already-read error body into a clean message. Never returns HTML or
-// parser internals — an HTML body is handled upstream in errorFromResponse and
-// never reaches here.
+function str(v: unknown): string | undefined {
+  return typeof v === 'string' && v !== '' ? v : undefined
+}
+
+// Turn an already-read error body into a clean message. Never returns HTML,
+// parser internals, or a raw JSON body — an HTML body is handled upstream in
+// errorFromResponse and never reaches here.
 function parseErrorText(text: string, res: Response): string {
-  const fallback = text || `${res.status} ${res.statusText}`
+  const statusLine = `${res.status} ${res.statusText}`.trim()
+  let json: unknown
   try {
-    // convsim-core (Python) returns { error: { code, message } }; the interim
-    // convsim-api (TypeScript) returns { code?, message } at the top level.
-    // Accept either shape so error text is clean regardless of active backend.
-    const json = JSON.parse(text) as {
-      message?: string
-      code?: string
-      error?: { message?: string; code?: string } | string
-    }
-    let msg = json.message
-    let code = json.code
-    if (!msg && json.error && typeof json.error === 'object') {
-      msg = json.error.message
-      code = json.error.code
-    }
-    if (msg) return code ? `${code}: ${msg}` : msg
+    json = JSON.parse(text)
   } catch {
-    // text is not JSON; use as-is
+    // Not JSON — the body is already plain text.
+    return text || statusLine
   }
-  return fallback
+  if (typeof json === 'string') return json || statusLine
+  // A JSON scalar (null, a number, a bare true) parses fine but carries no
+  // sentence. Echoing `text` here would put the literal "null" in front of the
+  // user — the raw-body leak this function exists to prevent.
+  if (json === null || typeof json !== 'object') return statusLine
+
+  // convsim-core (Python) returns { error: { code, message } }; the interim
+  // convsim-api (TypeScript) returns { code?, message } at the top level.
+  // Accept either shape so error text is clean regardless of active backend.
+  const body = json as { message?: unknown; code?: unknown; detail?: unknown; error?: unknown }
+  let msg = str(body.message)
+  let code = str(body.code)
+  if (!msg && body.error && typeof body.error === 'object') {
+    const err = body.error as { message?: unknown; code?: unknown }
+    msg = str(err.message)
+    code = str(err.code)
+  }
+  // A bare sentence on `error`, e.g. { error: "disk is full" }. Nothing in-tree
+  // emits this today, but falling through to the status line would drop the only
+  // words in the body — the very failure this function exists to prevent.
+  if (!msg) msg = str(body.error)
+
+  // FastAPI serializes an HTTPException as { detail: … } and convsim-core registers
+  // no handler to reshape it, so both of its detail shapes reach us: a string for
+  // routing and simple errors (the 404 of issue #429, "Session not found", …), and
+  // an object whenever a route raises HTTPException(detail={ message, code, … }) —
+  // see sessions.py's INVALID_TRANSITION. A [{ loc, msg, type }] list is FastAPI's
+  // default 422 body; convsim-core's request_validation_error_handler reshapes those
+  // into { error: … } today, but an older bundled runtime need not have, and any
+  // 422 raised before that handler is installed still arrives in the default shape.
+  // Read the human sentence out of each, so none reaches the UI as raw JSON.
+  const detail = body.detail
+  if (!msg && typeof detail === 'string') {
+    msg = detail
+  }
+  if (!msg && Array.isArray(detail)) {
+    const sentences = detail
+      .map((d) => (d && typeof d === 'object' ? str((d as { msg?: unknown }).msg) : undefined))
+      .filter((m): m is string => m !== undefined)
+    if (sentences.length > 0) msg = sentences.join('; ')
+  }
+  if (!msg && detail && typeof detail === 'object') {
+    const d = detail as { message?: unknown; msg?: unknown; code?: unknown }
+    msg = str(d.message) ?? str(d.msg)
+    code = code ?? str(d.code)
+  }
+
+  if (msg) return code ? `${code}: ${msg}` : msg
+  // The body was structured but carried no human sentence. Showing it verbatim is
+  // how `{"detail":"Not Found"}` ended up in the UI (issue #429); the status line
+  // says no less, and says it in words.
+  return statusLine
 }
 
 // Build an ApiError for a non-2xx response. Reads the body once and applies the

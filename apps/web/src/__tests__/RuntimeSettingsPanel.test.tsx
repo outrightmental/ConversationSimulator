@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import RuntimeSettingsPanel from '../components/RuntimeSettingsPanel'
+import { UPDATE_DOCS_URL } from '../setup/docsUrls'
 import type { ModelsResponse, RuntimeSettingsResponse } from '@convsim/shared'
 
 vi.mock('../api/client', () => ({
@@ -103,6 +104,82 @@ describe('RuntimeSettingsPanel — loading', () => {
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent(/Connection failed/i),
     )
+  })
+
+  // A 404 from /api/runtime/settings means the bundled runtime predates the
+  // route (issue #429). The rest of the panel is served by /api/models and must
+  // stay usable, with plain-language guidance in place of the advanced section.
+  describe('when getRuntimeSettings returns 404', () => {
+    beforeEach(() => {
+      mockApi.getRuntimeSettings.mockResolvedValue({
+        ok: false,
+        error: { kind: 'http-error', status: 404, message: 'Not Found' },
+      })
+    })
+
+    it('does not block the panel behind an error view', async () => {
+      await renderPanel()
+      await waitFor(() =>
+        expect(screen.getByRole('combobox', { name: /provider/i })).toBeInTheDocument(),
+      )
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /apply provider and model/i })).toBeInTheDocument()
+    })
+
+    it('explains that an update is needed and links to the instructions', async () => {
+      await renderPanel()
+      const notice = await screen.findByRole('status', {
+        name: /runtime advanced settings unavailable/i,
+      })
+      expect(notice).toHaveTextContent(/not available in this version of ConversationSimulator/i)
+      expect(notice).toHaveTextContent(/update to the latest version/i)
+      // Deep-links to the "Updates and rollback" section, not the top of the long
+      // install page — the user needs the update steps, not a fresh install.
+      expect(screen.getByRole('link', { name: /how to update/i })).toHaveAttribute(
+        'href',
+        UPDATE_DOCS_URL,
+      )
+      expect(UPDATE_DOCS_URL).toContain('#updates-and-rollback')
+    })
+
+    it('hides the advanced settings toggle, which the missing endpoint backs', async () => {
+      await renderPanel()
+      await screen.findByRole('status', { name: /runtime advanced settings unavailable/i })
+      expect(
+        screen.queryByRole('button', { name: /show runtime advanced settings/i }),
+      ).not.toBeInTheDocument()
+    })
+  })
+
+  it('still shows a blocking error when getRuntimeSettings fails for a non-404 reason', async () => {
+    mockApi.getRuntimeSettings.mockResolvedValue({
+      ok: false,
+      error: { kind: 'http-error', status: 500, message: 'settings store is corrupt' },
+    })
+    await renderPanel()
+    await waitFor(() =>
+      expect(screen.getByRole('alert')).toHaveTextContent(/settings store is corrupt/i),
+    )
+  })
+
+  // A 404 carrying an HTML body means a static server or proxy answered while core
+  // was down — client.ts maps that to runtime-unreachable, not http-error. Only the
+  // latter proves the route is missing, so the leniency above must not extend here:
+  // telling this user to update the app would send them after the wrong problem.
+  it('still shows a blocking error on a 404 that means the runtime is unreachable', async () => {
+    mockApi.getRuntimeSettings.mockResolvedValue({
+      ok: false,
+      error: {
+        kind: 'runtime-unreachable',
+        status: 404,
+        message: 'API returned HTML instead of JSON — the local runtime is not running.',
+      },
+    })
+    await renderPanel()
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+    expect(
+      screen.queryByRole('status', { name: /runtime advanced settings unavailable/i }),
+    ).not.toBeInTheDocument()
   })
 })
 
