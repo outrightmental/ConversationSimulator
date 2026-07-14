@@ -40,6 +40,12 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# Pure certificate/key-path helpers live in a module so CI can unit-test them on
+# every PR without KMS credentials or a signable binary — see
+# tests/signing/CodeSigning.Tests.ps1. Before that existed, this file's first
+# execution of any kind was during a release.
+Import-Module (Join-Path $PSScriptRoot 'lib' 'CodeSigning.psm1') -Force
+
 # ── Constants ─────────────────────────────────────────────────────────────────
 $JSIGN_VERSION      = '7.0'
 # SHA-256 of the official jsign-7.0.jar GitHub release asset. Verify after any
@@ -58,12 +64,6 @@ $TSA_URL            = 'http://timestamp.sectigo.com'
 function Write-Info { param([string]$msg) Write-Host "  INFO  $msg" }
 function Write-Step { param([string]$msg) Write-Host "  -->   $msg" }
 function Fail       { param([string]$msg) Write-Error $msg; exit 1 }
-
-function ConvertTo-Base64Url {
-    param([string]$Text)
-    [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($Text)) `
-        -replace '=+$','' -replace '\+','-' -replace '/','_'
-}
 
 function Get-GcpAccessToken {
     param([psobject]$Sa)
@@ -104,17 +104,9 @@ function Find-MatchingKeyVersion {
         [string]$CertPem
     )
 
-    # Extract the leaf cert (first PEM block) and its SubjectPublicKeyInfo DER.
-    $leafPem    = ($CertPem -split '(?=-----BEGIN CERTIFICATE-----)' |
-                   Where-Object { $_ -match '-----BEGIN CERTIFICATE-----' })[0]
-    $leafB64    = $leafPem -replace '-----[^-]+-----','' -replace '\s',''
-    $cert       = [Security.Cryptography.X509Certificates.X509Certificate2]::new(
-                      [Convert]::FromBase64String($leafB64))
-    $certKey    = $cert.GetRSAPublicKey() ?? $cert.GetECDsaPublicKey()
-    if (-not $certKey) {
-        Fail 'Cannot extract RSA or ECDSA public key from leaf cert in WINDOWS_CODESIGN_CERT.'
-    }
-    $certSpkiB64 = [Convert]::ToBase64String($certKey.ExportSubjectPublicKeyInfo())
+    # Leaf cert (first PEM block) → SubjectPublicKeyInfo DER, base64. Unit-tested in
+    # tests/signing/CodeSigning.Tests.ps1 against synthetic RSA and ECDSA certificates.
+    $certSpkiB64 = Get-CertificateSpkiBase64 -CertPem $CertPem
 
     # List ENABLED CryptoKeyVersions.
     $hdrs    = @{ Authorization = "Bearer $Token" }
@@ -139,7 +131,7 @@ function Find-MatchingKeyVersion {
     foreach ($v in $vers) {
         $pkResp    = Invoke-RestMethod -Uri "https://cloudkms.googleapis.com/v1/$($v.name)/publicKey" `
                                        -Headers $hdrs -ErrorAction Stop
-        $kmsSpkiB64 = $pkResp.pem -replace '-----[^-]+-----','' -replace '\s',''
+        $kmsSpkiB64 = ConvertFrom-PemPublicKey -Pem $pkResp.pem
         if ($certSpkiB64 -eq $kmsSpkiB64) {
             Write-Step "Key-version pinning: matched $($v.name)"
             return $v.name
@@ -210,13 +202,11 @@ if ($hasKms) {
     Write-Step "Mode: Google Cloud KMS (jsign $JSIGN_VERSION)"
 
     $sa          = $env:GCP_SA_KEY_JSON | ConvertFrom-Json
-    $kmsKeyPath  = $env:GCP_KMS_KEY   # projects/P/locations/L/keyRings/KR/cryptoKeys/K
-    $keyRingPath = $kmsKeyPath -replace '/cryptoKeys/[^/]+$', ''
-    $keyName     = ($kmsKeyPath -split '/cryptoKeys/')[-1]
+    $kms         = Split-KmsKeyPath -KeyPath $env:GCP_KMS_KEY
+    $keyRingPath = $kms.KeyRingPath
+    $keyName     = $kms.KeyName
 
-    $rawCert  = $env:WINDOWS_CODESIGN_CERT
-    $certPem  = if ($rawCert -match '-----BEGIN') { $rawCert }
-                else { [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($rawCert)) }
+    $certPem     = Resolve-CertPem -RawCert $env:WINDOWS_CODESIGN_CERT
 
     $certFile  = $null
     try {
