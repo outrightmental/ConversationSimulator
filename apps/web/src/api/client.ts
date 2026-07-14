@@ -171,11 +171,14 @@ function parseErrorText(text: string, res: Response): string {
     code = str(err.code)
   }
 
-  // FastAPI serializes an uncaught HTTPException as { detail: … }, and convsim-core
-  // registers no handler to reshape it, so all three of its detail shapes reach us:
-  // a string for standard errors (404, 500, …), a [{ loc, msg, type }] list for
-  // request-validation failures (422), and an object whenever a route raises
-  // HTTPException(detail={ message, code, … }) — see sessions.py's INVALID_TRANSITION.
+  // FastAPI serializes an HTTPException as { detail: … } and convsim-core registers
+  // no handler to reshape it, so both of its detail shapes reach us: a string for
+  // routing and simple errors (the 404 of issue #429, "Session not found", …), and
+  // an object whenever a route raises HTTPException(detail={ message, code, … }) —
+  // see sessions.py's INVALID_TRANSITION. A [{ loc, msg, type }] list is FastAPI's
+  // default 422 body; convsim-core's request_validation_error_handler reshapes those
+  // into { error: … } today, but an older bundled runtime need not have, and any
+  // 422 raised before that handler is installed still arrives in the default shape.
   // Read the human sentence out of each, so none reaches the UI as raw JSON.
   const detail = body.detail
   if (!msg && typeof detail === 'string') {
