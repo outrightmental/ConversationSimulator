@@ -24,9 +24,10 @@ from malware" and requires manual intervention by the user.
 The signing and notarisation process:
 
 1. **Sign** — the `.app` bundle is code-signed with `codesign --options runtime`
-   using the Developer ID Application certificate. This covers the main binary
-   and all embedded binaries (including the `convsim-core` PyInstaller sidecar
-   and the llama-server, whisper-cli, and sherpa-onnx sidecars).
+   using the Developer ID Application certificate. Tauri signs the bundle and
+   its main binary; every binary bundled under `resources/` must already be
+   signed before `tauri build` runs (see
+   [Signing the sidecar binaries](#signing-the-sidecar-binaries)).
 2. **Notarise** — the signed bundle is submitted to Apple's notary service via
    `notarytool`. Apple scans it for malware and returns a ticket.
 3. **Staple** — the notarisation ticket is stapled to the `.app` bundle so that
@@ -277,16 +278,38 @@ entitlements.
 
 ## Signing the sidecar binaries
 
-All binaries embedded in the `.app` bundle must be individually signed before
-the bundle itself is signed. Tauri handles this automatically when
-`APPLE_SIGNING_IDENTITY` is set — it calls `codesign` on each file in
-`Contents/MacOS/`, `Contents/Resources/bin/`, and `Contents/Resources/runtimes/`
-before signing the outer `.app`.
+Apple's notary service rejects an app containing *any* unsigned Mach-O binary,
+so every binary embedded in the `.app` must be individually signed — with the
+Hardened Runtime and a secure timestamp — *before* the outer bundle is signed.
 
-The `convsim-core` PyInstaller bundle also reads `APPLE_SIGNING_IDENTITY`
-at build time (see `convsim-core.spec`) to sign the embedded Python C extensions
-before Tauri wraps them. Verify this is happening by inspecting the PyInstaller
-build log for `codesign` invocations.
+**Tauri does not do this for you.** Its bundler signs the `.app` and the main
+executable in `Contents/MacOS/`, but files bundled via `bundle.resources`
+(`resources/**/*` — everything under `Contents/Resources/bin/` and
+`Contents/Resources/runtimes/`) are copied in as-is. Whatever ships unsigned
+from upstream stays unsigned, and notarisation then fails inside `tauri build`
+with "The binary is not signed with a valid Developer ID certificate" and "The
+executable does not have the hardened runtime enabled" for each one.
+
+Each bundled binary is therefore signed by the step that produces it, ahead of
+`tauri build`:
+
+| Binary | Signed by |
+| --- | --- |
+| `resources/bin/convsim-core` (+ embedded Python C extensions) | `convsim-core.spec`, which reads `APPLE_SIGNING_IDENTITY` at PyInstaller build time. Confirm by looking for `codesign` invocations in the PyInstaller build log. |
+| `resources/runtimes/llama-server` and its ~35 `*.dylib` files | The "Sign bundled llama-server and libraries" step in `.github/workflows/release.yml`. The dylibs arrive unsigned from ggml-org. |
+
+Sign libraries first and the executable that links them last: signing a Mach-O
+binary seals the load commands that reference those libraries. Skip symlinks —
+llama.cpp ships the usual versioned chain (`libX.dylib` → `libX.0.dylib` →
+`libX.0.0.dylib`), so the real files are already covered and `codesign` would
+otherwise sign the same file repeatedly.
+
+The Windows equivalent is `scripts/jsign-sign.ps1`, invoked on the same
+resource binaries by the "Sign bundled resource binaries (Authenticode)" step.
+
+**Adding a new bundled binary?** It needs its own signing step in the release
+workflow on both macOS and Windows, or the next tagged release fails in
+notarisation.
 
 If a sidecar binary is updated independently of the Tauri build:
 
@@ -465,12 +488,15 @@ A dynamically linked library was not signed with `--options runtime`. Run
 `codesign -dv --verbose=4` on the `.app` and on each embedded binary to
 confirm all carry the Hardened Runtime flag.
 
-### "invalid signature" on embedded sidecar
+### "invalid signature" / "not signed with a valid Developer ID certificate" on an embedded binary
 
-The PyInstaller-bundled `convsim-core` or a sidecar runtime binary was not
-signed. Re-run the `convsim-core` build with `APPLE_SIGNING_IDENTITY` set
-(see the `convsim-core.spec` spec file for the codesign hook), then rebuild
-the Tauri bundle.
+A binary under `resources/` reached the notary unsigned. Tauri does not sign
+bundled resources — see [Signing the sidecar binaries](#signing-the-sidecar-binaries)
+for which step owns each one. For `convsim-core`, re-run its build with
+`APPLE_SIGNING_IDENTITY` set (see the `convsim-core.spec` codesign hook); for
+`llama-server` and its dylibs, check that the "Sign bundled llama-server and
+libraries" step ran rather than being skipped by its `HAS_APPLE_CERT` gate.
+Then rebuild the Tauri bundle.
 
 ### Notarisation timeout
 
