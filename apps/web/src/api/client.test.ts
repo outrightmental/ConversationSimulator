@@ -111,6 +111,41 @@ describe('api.createSession — ApiResult return type', () => {
     }
   });
 
+  it('extracts message and code from an object-shaped FastAPI detail', async () => {
+    // convsim-core raises HTTPException(detail={ message, code, … }) for state
+    // conflicts (sessions.py _conflict) and registers no handler to reshape it,
+    // so FastAPI passes the dict straight through as { detail: { … } }.
+    mockFetch(409, {
+      detail: {
+        message: 'Cannot start a session that is already Running',
+        code: 'INVALID_TRANSITION',
+        current_state: 'Running',
+      },
+    });
+    const result = await api.createSession(BASE_SESSION);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toBe(
+        'INVALID_TRANSITION: Cannot start a session that is already Running',
+      );
+      expect(result.error.message).not.toContain('{');
+      expect(result.error.message).not.toContain('current_state');
+    }
+  });
+
+  it('falls back to the status line rather than dumping a JSON body with no message', async () => {
+    // Any structured body we cannot read a sentence out of. Echoing it verbatim is
+    // exactly how `{"detail":"Not Found"}` reached the UI in issue #429.
+    mockFetch(500, { detail: { free_gb: 1.2, required_gb: 10 } });
+    const result = await api.createSession(BASE_SESSION);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toBe('500 Internal Server Error');
+      expect(result.error.message).not.toContain('{');
+      expect(result.error.message).not.toContain('free_gb');
+    }
+  });
+
   it('prefers an explicit message over detail when a body carries both', async () => {
     mockFetch(400, { message: 'player_role_name cannot be blank', detail: 'Bad Request' });
     const result = await api.createSession({ ...BASE_SESSION, player_role_name: '' });

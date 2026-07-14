@@ -135,45 +135,69 @@ const HTML_ERROR: Omit<ApiError, 'status'> = {
   message: 'API returned HTML instead of JSON — the local runtime is not running.',
 }
 
-// Turn an already-read error body into a clean message. Never returns HTML or
-// parser internals — an HTML body is handled upstream in errorFromResponse and
-// never reaches here.
+function str(v: unknown): string | undefined {
+  return typeof v === 'string' && v !== '' ? v : undefined
+}
+
+// Turn an already-read error body into a clean message. Never returns HTML,
+// parser internals, or a raw JSON body — an HTML body is handled upstream in
+// errorFromResponse and never reaches here.
 function parseErrorText(text: string, res: Response): string {
-  const fallback = text || `${res.status} ${res.statusText}`
+  const statusLine = `${res.status} ${res.statusText}`.trim()
+  let json: unknown
   try {
-    // convsim-core (Python) returns { error: { code, message } }; the interim
-    // convsim-api (TypeScript) returns { code?, message } at the top level;
-    // FastAPI standard errors (404, 422, etc.) return { detail: string }.
-    // Accept all shapes so error text is clean regardless of active backend.
-    const json = JSON.parse(text) as {
-      message?: string
-      code?: string
-      detail?: string | unknown[]
-      error?: { message?: string; code?: string } | string
-    }
-    let msg = json.message
-    let code = json.code
-    if (!msg && json.error && typeof json.error === 'object') {
-      msg = json.error.message
-      code = json.error.code
-    }
-    // FastAPI uses { detail: string } for standard HTTP errors (404, 500, …) and
-    // { detail: [{ loc, msg, type }] } for request-validation failures (422).
-    // Read the human sentence out of either, so neither reaches the UI as raw JSON.
-    if (!msg && typeof json.detail === 'string') {
-      msg = json.detail
-    }
-    if (!msg && Array.isArray(json.detail)) {
-      const sentences = json.detail
-        .map((d) => (d && typeof d === 'object' ? (d as { msg?: unknown }).msg : undefined))
-        .filter((m): m is string => typeof m === 'string' && m !== '')
-      if (sentences.length > 0) msg = sentences.join('; ')
-    }
-    if (msg) return code ? `${code}: ${msg}` : msg
+    json = JSON.parse(text)
   } catch {
-    // text is not JSON; use as-is
+    // Not JSON — the body is already plain text.
+    return text || statusLine
   }
-  return fallback
+  if (typeof json === 'string') return json || statusLine
+  if (json === null || typeof json !== 'object') return text || statusLine
+
+  // convsim-core (Python) returns { error: { code, message } }; the interim
+  // convsim-api (TypeScript) returns { code?, message } at the top level.
+  // Accept either shape so error text is clean regardless of active backend.
+  const body = json as {
+    message?: unknown
+    code?: unknown
+    detail?: unknown
+    error?: { message?: unknown; code?: unknown } | unknown
+  }
+  let msg = str(body.message)
+  let code = str(body.code)
+  if (!msg && body.error && typeof body.error === 'object') {
+    const err = body.error as { message?: unknown; code?: unknown }
+    msg = str(err.message)
+    code = str(err.code)
+  }
+
+  // FastAPI serializes an uncaught HTTPException as { detail: … }, and convsim-core
+  // registers no handler to reshape it, so all three of its detail shapes reach us:
+  // a string for standard errors (404, 500, …), a [{ loc, msg, type }] list for
+  // request-validation failures (422), and an object whenever a route raises
+  // HTTPException(detail={ message, code, … }) — see sessions.py's INVALID_TRANSITION.
+  // Read the human sentence out of each, so none reaches the UI as raw JSON.
+  const detail = body.detail
+  if (!msg && typeof detail === 'string') {
+    msg = detail
+  }
+  if (!msg && Array.isArray(detail)) {
+    const sentences = detail
+      .map((d) => (d && typeof d === 'object' ? str((d as { msg?: unknown }).msg) : undefined))
+      .filter((m): m is string => m !== undefined)
+    if (sentences.length > 0) msg = sentences.join('; ')
+  }
+  if (!msg && detail && typeof detail === 'object') {
+    const d = detail as { message?: unknown; msg?: unknown; code?: unknown }
+    msg = str(d.message) ?? str(d.msg)
+    code = code ?? str(d.code)
+  }
+
+  if (msg) return code ? `${code}: ${msg}` : msg
+  // The body was structured but carried no human sentence. Showing it verbatim is
+  // how `{"detail":"Not Found"}` ended up in the UI (issue #429); the status line
+  // says no less, and says it in words.
+  return statusLine
 }
 
 // Build an ApiError for a non-2xx response. Reads the body once and applies the
