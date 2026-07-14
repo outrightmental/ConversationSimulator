@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import ModelManager from '../screens/ModelManager'
@@ -508,7 +508,13 @@ describe('ModelManager — Ollama branch', () => {
 
 // ── GGUF branch ───────────────────────────────────────────────────────────────
 
+const winForGguf = window as unknown as { __TAURI__?: unknown }
+
 describe('ModelManager — GGUF branch', () => {
+  afterEach(() => {
+    delete winForGguf.__TAURI__
+  })
+
   async function goToGguf() {
     renderModelManager()
     await screen.findByRole('button', { name: /use a gguf file/i })
@@ -519,6 +525,29 @@ describe('ModelManager — GGUF branch', () => {
   it('shows the file path input', async () => {
     await goToGguf()
     expect(screen.getByRole('textbox', { name: /file path/i })).toBeInTheDocument()
+  })
+
+  it('shows a Browse button in the Tauri desktop shell', async () => {
+    winForGguf.__TAURI__ = { core: { invoke: vi.fn().mockResolvedValue(null) } }
+    await goToGguf()
+    expect(screen.getByRole('button', { name: /browse for file/i })).toBeInTheDocument()
+  })
+
+  it('fills the path input when the native dialog returns a path', async () => {
+    const invoke = vi.fn().mockResolvedValue('/home/user/models/my-model.gguf')
+    winForGguf.__TAURI__ = { core: { invoke } }
+    await goToGguf()
+    fireEvent.click(screen.getByRole('button', { name: /browse for file/i }))
+    await waitFor(() =>
+      expect(screen.getByRole('textbox', { name: /file path/i })).toHaveValue(
+        '/home/user/models/my-model.gguf',
+      ),
+    )
+  })
+
+  it('does not show a Browse button outside the Tauri desktop shell', async () => {
+    await goToGguf()
+    expect(screen.queryByRole('button', { name: /browse for file/i })).not.toBeInTheDocument()
   })
 
   it('shows the Use this file button', async () => {
