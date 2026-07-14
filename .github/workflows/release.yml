@@ -15,6 +15,12 @@ on:
 # Write permission needed to create GitHub releases and upload assets.
 permissions:
   contents: write
+  # Required by the called steam-deploy.yml, which downloads this run's desktop-*
+  # build artifacts to assemble the Steam depot. A reusable workflow's permissions
+  # must be a SUBSET of its caller's: granting `actions: read` there but not here
+  # fails the whole run at startup ("workflow file issue") before a single job
+  # starts — and actionlint does not check cross-workflow permission subsets.
+  actions: read
 
 jobs:
   # ── Smoke check ──────────────────────────────────────────────────────────────
