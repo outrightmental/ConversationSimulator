@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import RuntimeSettingsPanel from '../components/RuntimeSettingsPanel'
-import { SETUP_DOCS_URL } from '../setup/docsUrls'
+import { UPDATE_DOCS_URL } from '../setup/docsUrls'
 import type { ModelsResponse, RuntimeSettingsResponse } from '@convsim/shared'
 
 vi.mock('../api/client', () => ({
@@ -133,10 +133,13 @@ describe('RuntimeSettingsPanel — loading', () => {
       })
       expect(notice).toHaveTextContent(/not available in this version of ConversationSimulator/i)
       expect(notice).toHaveTextContent(/update to the latest version/i)
+      // Deep-links to the "Updates and rollback" section, not the top of the long
+      // install page — the user needs the update steps, not a fresh install.
       expect(screen.getByRole('link', { name: /how to update/i })).toHaveAttribute(
         'href',
-        SETUP_DOCS_URL,
+        UPDATE_DOCS_URL,
       )
+      expect(UPDATE_DOCS_URL).toContain('#updates-and-rollback')
     })
 
     it('hides the advanced settings toggle, which the missing endpoint backs', async () => {

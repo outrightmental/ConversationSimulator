@@ -4,7 +4,7 @@ import { api } from '../api/client'
 import type { ModelsResponse, RuntimeSettings } from '@convsim/shared'
 import type { ApiError } from '../api/errors'
 import { ApiErrorView } from './ApiErrorView'
-import { AI_ENGINE_DOCS_URL as DOCS_URL, SETUP_DOCS_URL } from '../setup/docsUrls'
+import { AI_ENGINE_DOCS_URL as DOCS_URL, UPDATE_DOCS_URL } from '../setup/docsUrls'
 
 const PROVIDER_NAMES: Record<string, string> = {
   llama_cpp: 'llama.cpp',
@@ -485,7 +485,7 @@ export default function RuntimeSettingsPanel() {
           Update to the latest version to change context length, GPU layers, CPU threads and
           sampling. The provider and model settings above still work.{' '}
           <a
-            href={SETUP_DOCS_URL}
+            href={UPDATE_DOCS_URL}
             target="_blank"
             rel="noreferrer"
             aria-label="how to update ConversationSimulator"

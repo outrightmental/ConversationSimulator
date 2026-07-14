@@ -133,6 +133,13 @@ describe('api.createSession — ApiResult return type', () => {
     }
   });
 
+  it('extracts a bare string error field rather than falling back to the status line', async () => {
+    mockFetch(500, { error: 'disk is full' });
+    const result = await api.createSession(BASE_SESSION);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.message).toBe('disk is full');
+  });
+
   it('falls back to the status line rather than dumping a JSON body with no message', async () => {
     // Any structured body we cannot read a sentence out of. Echoing it verbatim is
     // exactly how `{"detail":"Not Found"}` reached the UI in issue #429.

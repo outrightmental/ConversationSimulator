@@ -157,12 +157,7 @@ function parseErrorText(text: string, res: Response): string {
   // convsim-core (Python) returns { error: { code, message } }; the interim
   // convsim-api (TypeScript) returns { code?, message } at the top level.
   // Accept either shape so error text is clean regardless of active backend.
-  const body = json as {
-    message?: unknown
-    code?: unknown
-    detail?: unknown
-    error?: { message?: unknown; code?: unknown } | unknown
-  }
+  const body = json as { message?: unknown; code?: unknown; detail?: unknown; error?: unknown }
   let msg = str(body.message)
   let code = str(body.code)
   if (!msg && body.error && typeof body.error === 'object') {
@@ -170,6 +165,10 @@ function parseErrorText(text: string, res: Response): string {
     msg = str(err.message)
     code = str(err.code)
   }
+  // A bare sentence on `error`, e.g. { error: "disk is full" }. Nothing in-tree
+  // emits this today, but falling through to the status line would drop the only
+  // words in the body — the very failure this function exists to prevent.
+  if (!msg) msg = str(body.error)
 
   // FastAPI serializes an HTTPException as { detail: … } and convsim-core registers
   // no handler to reshape it, so both of its detail shapes reach us: a string for
