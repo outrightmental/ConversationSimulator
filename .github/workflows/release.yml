@@ -39,18 +39,35 @@ jobs:
     name: Desktop (${{ matrix.name }})
     needs: validate
     runs-on: ${{ matrix.runner }}
+    # Secret names here are the outrightmental ORG secret names, which differ from
+    # the env-var names the tooling expects (Tauri reads APPLE_CERTIFICATE,
+    # APPLE_PASSWORD, ...). The mapping lives in the step `env:` blocks below —
+    # env var on the left, org secret on the right. Do not "tidy" one side to match
+    # the other: renaming the env vars breaks Tauri, renaming the secrets breaks
+    # every other repo in the org.
+    #
+    #   env var                     ← org secret
+    #   APPLE_CERTIFICATE           ← MACOS_CODESIGN_CERT_BASE64
+    #   APPLE_CERTIFICATE_PASSWORD  ← MACOS_CODESIGN_CERT_PASSWORD
+    #   APPLE_PASSWORD              ← APPLE_ID_PASSWORD
+    #   APPLE_ID / APPLE_TEAM_ID    ← same name
+    #   APPLE_SIGNING_IDENTITY      ← not a secret; derived from the imported cert
+    #
     # The `secrets` context cannot be referenced from a step `if:` conditional
     # (it evaluates to empty and the condition is always false). Expose only a
     # boolean presence flag at the job level so the import step can gate on
     # `env` — deliberately NOT the certificate itself, which must stay scoped to
-    # the import step (leaking APPLE_CERTIFICATE into the Tauri build step would
+    # the import step (leaking the certificate into the Tauri build step would
     # make Tauri attempt its own keychain import without the password).
     env:
-      HAS_APPLE_CERT: ${{ secrets.APPLE_CERTIFICATE != '' }}
+      HAS_APPLE_CERT: ${{ secrets.MACOS_CODESIGN_CERT_BASE64 != '' }}
       # HAS_NOTARIZATION is true when either the preferred ASC API key trio or
-      # the Apple-ID fallback trio is configured.  Both paths drive the same
-      # notarytool submission inside Tauri; only the authentication method differs.
-      HAS_NOTARIZATION: ${{ secrets.APPLE_ID != '' || secrets.APPLE_API_KEY != '' }}
+      # the Apple-ID fallback trio is configured *completely*.  Both paths drive the
+      # same notarytool submission inside Tauri; only the authentication method
+      # differs.  Requiring the whole trio (not just the first secret) keeps a
+      # half-configured account from passing this gate and then failing inside
+      # notarytool 20 minutes into the build.
+      HAS_NOTARIZATION: ${{ (secrets.APPLE_ID != '' && secrets.APPLE_ID_PASSWORD != '' && secrets.APPLE_TEAM_ID != '') || (secrets.APPLE_API_KEY != '' && secrets.APPLE_API_ISSUER != '' && secrets.APPLE_API_KEY_PATH != '') }}
       # KMS signing requires all three GCP secrets; PFX is the legacy fallback.
       HAS_KMS_SIGNING: ${{ secrets.GCP_SA_KEY_JSON != '' && secrets.GCP_KMS_KEY != '' && secrets.WINDOWS_CODESIGN_CERT != '' }}
       HAS_PFX_SIGNING: ${{ secrets.WINDOWS_SIGN_CERT_PFX != '' }}
@@ -111,7 +128,7 @@ jobs:
           fail=0
           if [ "$RUNNER_OS" = "macOS" ]; then
             if [ "$_HAS_APPLE_CERT" != "true" ]; then
-              echo "ERROR: APPLE_CERTIFICATE is required for a v* release tag but is not set." >&2
+              echo "ERROR: MACOS_CODESIGN_CERT_BASE64 is required for a v* release tag but is not set." >&2
               echo "       Unsigned macOS builds are blocked by Gatekeeper (gate G3-01)." >&2
               echo "       See docs/platform-notes.md for certificate setup instructions." >&2
               fail=1
@@ -119,7 +136,7 @@ jobs:
             if [ "$_HAS_NOTARIZATION" != "true" ]; then
               echo "ERROR: APPLE_ID is required for notarisation on a v* release tag but is not set." >&2
               echo "       Non-notarised macOS builds fail Gatekeeper on clean installs (gate G3-01)." >&2
-              echo "       Set APPLE_ID, APPLE_PASSWORD, and APPLE_TEAM_ID secrets to enable notarisation." >&2
+              echo "       Set APPLE_ID, APPLE_ID_PASSWORD, and APPLE_TEAM_ID secrets to enable notarisation." >&2
               fail=1
             fi
           fi
@@ -187,14 +204,18 @@ jobs:
       # so that both PyInstaller (sidecar signing) and Tauri (bundle signing +
       # notarisation) can find it.
       #
-      # Required repository secrets (Settings → Secrets and variables → Actions):
-      #   APPLE_CERTIFICATE          Base64-encoded Developer ID Application .p12
-      #   APPLE_CERTIFICATE_PASSWORD Passphrase for the .p12 file
-      #   APPLE_SIGNING_IDENTITY     Full identity string, e.g.
-      #                              "Developer ID Application: Outright Mental (TEAMID)"
-      #   APPLE_ID                   Apple ID email of the notarisation account
-      #   APPLE_PASSWORD             App-specific password for the Apple ID
-      #   APPLE_TEAM_ID              10-character Apple Developer Team ID
+      # Required org secrets (outrightmental → Settings → Secrets → Actions):
+      #   MACOS_CODESIGN_CERT_BASE64    Base64-encoded Developer ID Application .p12
+      #   MACOS_CODESIGN_CERT_PASSWORD  Passphrase for the .p12 file
+      #   APPLE_ID                      Apple ID email of the notarisation account
+      #   APPLE_ID_PASSWORD             App-specific password for the Apple ID
+      #   APPLE_TEAM_ID                 10-character Apple Developer Team ID
+      #
+      # There is deliberately no APPLE_SIGNING_IDENTITY secret. The identity string
+      # ("Developer ID Application: NAME (TEAMID)") is a property OF the certificate,
+      # so we read it back out of the keychain after importing rather than asking a
+      # human to keep a second secret in sync with the first. A typo'd identity
+      # secret is otherwise invisible until Tauri fails with "no identity found".
       #
       # When these secrets are absent (contributor forks, unsigned local builds)
       # this step is skipped and the build produces an unsigned artifact — suitable
@@ -202,9 +223,11 @@ jobs:
       - name: Import Apple Developer certificate (macOS only)
         if: runner.os == 'macOS' && env.HAS_APPLE_CERT == 'true'
         env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ secrets.MACOS_CODESIGN_CERT_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CODESIGN_CERT_PASSWORD }}
         run: |
+          set -euo pipefail
+
           KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain"
           KEYCHAIN_PASSWORD="$(uuidgen)"
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
@@ -217,11 +240,30 @@ jobs:
             -P "$APPLE_CERTIFICATE_PASSWORD" \
             -A -t cert -f pkcs12 \
             -k "$KEYCHAIN_PATH"
+          # `codesign:` must be in the partition list or codesign blocks on a GUI
+          # keychain prompt that can never be answered on a runner, and the build
+          # hangs until the job times out rather than failing with a clear error.
           security set-key-partition-list \
-            -S apple-tool:,apple: \
+            -S apple-tool:,apple:,codesign: \
             -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security list-keychain -d user -s "$KEYCHAIN_PATH"
           rm -f "$CERT_PATH"
+
+          # Derive the signing identity from the certificate we just imported and
+          # publish it to later steps (PyInstaller sidecar signing, Tauri bundle
+          # signing + notarisation) via GITHUB_ENV.
+          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" |
+                      sed -n 's/.*"\(Developer ID Application: .*\)".*/\1/p' | head -n1)"
+          if [ -z "$IDENTITY" ]; then
+            echo "ERROR: no 'Developer ID Application' identity found in the imported certificate." >&2
+            echo "       MACOS_CODESIGN_CERT_BASE64 must hold a Developer ID Application .p12" >&2
+            echo "       (a Mac Development or Apple Distribution cert will not notarise)." >&2
+            echo "       Identities present in the keychain:" >&2
+            security find-identity -v -p codesigning "$KEYCHAIN_PATH" >&2
+            exit 1
+          fi
+          echo "Signing identity: $IDENTITY"
+          echo "APPLE_SIGNING_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
 
       # ── Python core build (PyInstaller standalone binary) ────────────────────
       # Produces apps/desktop/src-tauri/resources/bin/convsim-core[.exe] which
@@ -231,6 +273,12 @@ jobs:
       # On macOS with APPLE_SIGNING_IDENTITY set, convsim-core.spec signs the
       # sidecar binary and all embedded Python extensions with the Developer ID
       # certificate using the entitlements in apps/desktop/src-tauri/entitlements.plist.
+      #
+      # APPLE_SIGNING_IDENTITY is deliberately NOT declared in this step's `env:`
+      # block: it arrives from GITHUB_ENV, set by the certificate import step above.
+      # A step-level `env:` entry would take precedence over GITHUB_ENV and clobber
+      # the derived identity with an empty string, silently producing an unsigned
+      # sidecar.
       - name: Set up Python for core build
         uses: actions/setup-python@v6
         with:
@@ -238,8 +286,6 @@ jobs:
 
       - name: Build convsim-core standalone binary
         shell: bash
-        env:
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: |
           # working-directory (below) already places us in services/convsim-core;
           # all paths here are relative to it.
@@ -408,9 +454,13 @@ jobs:
       - name: Build Tauri desktop
         shell: bash
         env:
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          # APPLE_SIGNING_IDENTITY is intentionally absent here — it flows in from
+          # GITHUB_ENV (set by the certificate import step). Declaring it in this
+          # `env:` block would override GITHUB_ENV with an empty string and make the
+          # `-z "$APPLE_SIGNING_IDENTITY"` branch below unset every Apple credential,
+          # yielding an unsigned .app that then fails the G3-01 verify gate.
           APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           # ASC API key credentials (preferred notarisation auth — see above).
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
@@ -529,15 +579,15 @@ jobs:
           # ── Enforcement gate ─────────────────────────────────────────────────
           if [ "${HAS_APPLE_CERT:-}" != "true" ]; then
             if [ "${REQUIRE_SIGNED_MACOS:-}" = "true" ]; then
-              echo "ERROR: APPLE_CERTIFICATE is not configured but a signed macOS build" >&2
+              echo "ERROR: MACOS_CODESIGN_CERT_BASE64 is not configured but a signed macOS build" >&2
               echo "       is required for this release tag." >&2
               echo "       Tagged releases (v*) enforce gate G3-01: the macOS .app must" >&2
               echo "       be code-signed, notarised, and Gatekeeper-accepted." >&2
-              echo "       Set the APPLE_CERTIFICATE org secret and rerun this workflow." >&2
+              echo "       Set the MACOS_CODESIGN_CERT_BASE64 org secret and rerun this workflow." >&2
               echo "       See publishing/MACOS_SIGNING_AND_NOTARIZATION.md." >&2
               exit 1
             else
-              echo "  INFO  APPLE_CERTIFICATE is not set — unsigned build (dev / contributor fork)."
+              echo "  INFO  MACOS_CODESIGN_CERT_BASE64 is not set — unsigned build (dev / contributor fork)."
               echo "        Signing and notarisation are required for gate G3-01"
               echo "        (Stage 3/4 Steam release).  See publishing/MACOS_SIGNING_AND_NOTARIZATION.md."
               exit 0
@@ -591,7 +641,7 @@ jobs:
               echo "       Tagged releases (v*) enforce gate G3-01: the macOS .app must" >&2
               echo "       be notarised and the ticket must be stapled." >&2
               echo "       Preferred: set APPLE_API_KEY, APPLE_API_ISSUER, and APPLE_API_KEY_PATH." >&2
-              echo "       Fallback:  set APPLE_ID, APPLE_PASSWORD, and APPLE_TEAM_ID." >&2
+              echo "       Fallback:  set APPLE_ID, APPLE_ID_PASSWORD, and APPLE_TEAM_ID." >&2
               echo "       See publishing/MACOS_SIGNING_AND_NOTARIZATION.md." >&2
               exit 1
             else
@@ -600,7 +650,7 @@ jobs:
               echo "        The .app is code-signed but not notarised."
               echo "        Gatekeeper will block this build on clean macOS installs."
               echo "        Preferred: set APPLE_API_KEY / APPLE_API_ISSUER / APPLE_API_KEY_PATH."
-              echo "        Fallback:  set APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID."
+              echo "        Fallback:  set APPLE_ID / APPLE_ID_PASSWORD / APPLE_TEAM_ID."
               echo "        Notarisation is required for gate G3-01."
             fi
           fi

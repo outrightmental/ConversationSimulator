@@ -101,6 +101,13 @@ The `convsim-core` PyInstaller sidecar also reads `APPLE_SIGNING_IDENTITY`
 at build time (see `convsim-core.spec`) and signs its embedded Python extensions
 with the same entitlements before Tauri wraps them in the bundle.
 
+> **These are environment-variable names, not secret names.** Tauri requires them
+> verbatim, but the org secrets that feed them in CI are named differently
+> (`MACOS_CODESIGN_CERT_BASE64` → `APPLE_CERTIFICATE`, `APPLE_ID_PASSWORD` →
+> `APPLE_PASSWORD`). See [Apple secrets](#apple-secrets-macos-signing-and-notarisation)
+> below for the full mapping. In CI, `APPLE_SIGNING_IDENTITY` is *derived* from the
+> imported certificate rather than configured — you only set it by hand locally.
+
 See [tauri.app/distribute/sign/macos](https://tauri.app/distribute/sign/macos)
 for more details on the Tauri signing process.
 
@@ -487,47 +494,61 @@ Variables (non-secret, visible in logs) live under **→ Variables**.
 
 ### Apple secrets (macOS signing and notarisation)
 
-| Secret | Contents | Expiry |
-|--------|----------|--------|
-| `APPLE_CERTIFICATE` | Base64-encoded Developer ID Application `.p12` certificate | Certificates expire after 5 years |
-| `APPLE_CERTIFICATE_PASSWORD` | Passphrase for the `.p12` file | No expiry |
-| `APPLE_SIGNING_IDENTITY` | Full identity string, e.g. `Developer ID Application: Outright Mental (TEAMID)` | Changes only if the team name changes |
-| `APPLE_ID` | Apple ID email of the dedicated notarisation account | No expiry |
-| `APPLE_PASSWORD` | App-specific password for the Apple ID | Apple revokes app-specific passwords periodically; rotate when prompted |
-| `APPLE_TEAM_ID` | 10-character Apple Developer Team ID | Permanent (tied to the developer account) |
+These are **org-level** secrets on `outrightmental`, shared across repos. Their
+names deliberately differ from the environment variables Tauri reads: the org
+names describe the *credential*, the env vars are dictated by the *tool*. The
+release workflow maps one onto the other in its step `env:` blocks.
+
+| Org secret | Env var it supplies | Contents | Expiry |
+|------------|---------------------|----------|--------|
+| `MACOS_CODESIGN_CERT_BASE64` | `APPLE_CERTIFICATE` | Base64-encoded Developer ID Application `.p12` certificate | Certificates expire after 5 years |
+| `MACOS_CODESIGN_CERT_PASSWORD` | `APPLE_CERTIFICATE_PASSWORD` | Passphrase for the `.p12` file | No expiry |
+| `APPLE_ID` | `APPLE_ID` | Apple ID email of the dedicated notarisation account | No expiry |
+| `APPLE_ID_PASSWORD` | `APPLE_PASSWORD` | App-specific password for the Apple ID | Apple revokes app-specific passwords periodically; rotate when prompted |
+| `APPLE_TEAM_ID` | `APPLE_TEAM_ID` | 10-character Apple Developer Team ID | Permanent (tied to the developer account) |
+
+There is **no `APPLE_SIGNING_IDENTITY` secret.** The identity string
+(`Developer ID Application: NAME (TEAMID)`) is a property of the certificate, so
+CI reads it back out of the keychain with `security find-identity` after importing
+the `.p12` and exports it via `GITHUB_ENV`. Keeping a second secret in sync with
+the first only creates a way for them to disagree — and a typo'd identity is
+invisible until Tauri fails with "no identity found". Set it by hand only for
+**local** signing (see the `export` block earlier in this document).
 
 **Obtaining a certificate:**
 
 1. Log in to [developer.apple.com](https://developer.apple.com) as the team admin.
 2. Navigate to **Certificates, Identifiers & Profiles → Certificates**.
-3. Click **+** and choose **Developer ID Application**.
+3. Click **+** and choose **Developer ID Application**. (A Mac Development or
+   Apple Distribution certificate will *not* notarise — CI rejects it.)
 4. Generate a CSR with Keychain Access, upload it, and download the resulting `.cer` file.
 5. Double-click the `.cer` to import it into Keychain Access.
 6. In Keychain Access, find the imported certificate, right-click → **Export** → save as a `.p12` file with a strong passphrase.
 7. Base64-encode it: `base64 -i certificate.p12 | pbcopy`
-8. Paste the result as `APPLE_CERTIFICATE` in repository secrets.
-9. Store the passphrase as `APPLE_CERTIFICATE_PASSWORD`.
+8. Store the result as the `MACOS_CODESIGN_CERT_BASE64` org secret.
+9. Store the passphrase as `MACOS_CODESIGN_CERT_PASSWORD`.
 
 **Obtaining an app-specific password:**
 
 1. Sign in to [appleid.apple.com](https://appleid.apple.com).
 2. Navigate to **Sign-In and Security → App-Specific Passwords**.
 3. Click **+**, name it `convsim-notarise-ci`, and copy the generated password.
-4. Store it as `APPLE_PASSWORD` in repository secrets.
+4. Store it as the `APPLE_ID_PASSWORD` org secret.
 
 **Rotation procedure (certificate expiry):**
 
 1. Generate a new Developer ID Application certificate on developer.apple.com (step above).
-2. Update `APPLE_CERTIFICATE` and `APPLE_CERTIFICATE_PASSWORD` in repository secrets.
-3. The signing identity string (`APPLE_SIGNING_IDENTITY`) usually stays the same — update it only if it changed.
-4. Trigger a manual `desktop-distro` dispatch build to confirm signing and notarisation succeed.
+2. Update `MACOS_CODESIGN_CERT_BASE64` and `MACOS_CODESIGN_CERT_PASSWORD` in org secrets.
+3. Nothing else to update — CI re-derives the signing identity from the new certificate.
+4. Run the **Release preflight** workflow to confirm every credential is present,
+   then trigger a build to confirm signing and notarisation succeed.
 5. Document the rotation date in the compliance register (`publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md`).
 
 **Rotation procedure (app-specific password revoked by Apple):**
 
 1. Generate a new app-specific password on appleid.apple.com.
-2. Update `APPLE_PASSWORD` in repository secrets.
-3. Verify that a notarisation run in CI completes without `APPLE_PASSWORD` errors.
+2. Update `APPLE_ID_PASSWORD` in org secrets.
+3. Verify that a notarisation run in CI completes without authentication errors.
 
 ---
 

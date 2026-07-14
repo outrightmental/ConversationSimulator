@@ -1,0 +1,104 @@
+# SPDX-License-Identifier: Apache-2.0
+#
+# Release preflight — answers "would a v* tag build right now?" WITHOUT cutting a
+# release.
+#
+# Why this exists: every signing credential in release.yml is consumed only on a
+# v* tag, so a missing or renamed secret is invisible until a release is already
+# in flight. That is exactly how v0.2.3 failed — the macOS signing gate landed in
+# PR #413 demanding APPLE_CERTIFICATE, an org secret that has never existed under
+# that name (the org calls it MACOS_CODESIGN_CERT_BASE64). Nothing on the way to
+# main could have caught it, because nothing on the way to main runs the tag path.
+#
+# Runs on every push to main (secrets are available there) and on demand. Fork PRs
+# are deliberately excluded: they cannot read secrets, so they would always "fail".
+#
+# The presence flags below are the ONLY safe way to inspect a secret: comparing it
+# to '' yields a boolean and never puts the value itself into the log.
+name: Release preflight
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  signing-secrets:
+    name: Signing and publishing secrets
+    runs-on: ubuntu-latest
+    env:
+      # ── Required: a v* tag hard-fails without these ──────────────────────────
+      # env var the tooling reads   ← org secret that supplies it
+      HAS_MACOS_CERT:       ${{ secrets.MACOS_CODESIGN_CERT_BASE64 != '' }}
+      HAS_MACOS_CERT_PW:    ${{ secrets.MACOS_CODESIGN_CERT_PASSWORD != '' }}
+      HAS_APPLE_ID:         ${{ secrets.APPLE_ID != '' }}
+      HAS_APPLE_ID_PW:      ${{ secrets.APPLE_ID_PASSWORD != '' }}
+      HAS_APPLE_TEAM_ID:    ${{ secrets.APPLE_TEAM_ID != '' }}
+      HAS_GCP_SA_KEY:       ${{ secrets.GCP_SA_KEY_JSON != '' }}
+      HAS_GCP_KMS_KEY:      ${{ secrets.GCP_KMS_KEY != '' }}
+      HAS_WINDOWS_CERT:     ${{ secrets.WINDOWS_CODESIGN_CERT != '' }}
+      # ── Optional: degrade gracefully, must not fail the release ──────────────
+      HAS_UPDATER_KEY:      ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+      HAS_ASC_KEY:          ${{ secrets.APPLE_API_KEY != '' }}
+      HAS_AZURE_DEFENDER:   ${{ secrets.AZURE_CLIENT_ID != '' }}
+      HAS_STEAM:            ${{ secrets.STEAM_CONFIG_VDF != '' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check secrets required by a v* release tag
+        shell: bash
+        run: |
+          set -uo pipefail
+          fail=0
+
+          require() {
+            local flag="$1" secret="$2" purpose="$3"
+            if [ "$flag" = "true" ]; then
+              printf '  OK      %-30s %s\n' "$secret" "$purpose"
+            else
+              printf '  MISSING %-30s %s\n' "$secret" "$purpose"
+              fail=1
+            fi
+          }
+
+          optional() {
+            local flag="$1" secret="$2" consequence="$3"
+            if [ "$flag" = "true" ]; then
+              printf '  OK      %-30s %s\n' "$secret" "enabled"
+            else
+              printf '  ABSENT  %-30s %s\n' "$secret" "$consequence"
+            fi
+          }
+
+          echo "=== Required for a v* release tag ==="
+          require "$HAS_MACOS_CERT"    MACOS_CODESIGN_CERT_BASE64   "macOS Developer ID .p12 (gate G3-01)"
+          require "$HAS_MACOS_CERT_PW" MACOS_CODESIGN_CERT_PASSWORD "passphrase for the .p12"
+          require "$HAS_APPLE_ID"      APPLE_ID                     "notarisation account"
+          require "$HAS_APPLE_ID_PW"   APPLE_ID_PASSWORD            "app-specific password (Tauri APPLE_PASSWORD)"
+          require "$HAS_APPLE_TEAM_ID" APPLE_TEAM_ID                "Apple Developer Team ID"
+          require "$HAS_GCP_SA_KEY"    GCP_SA_KEY_JSON              "Cloud KMS service account"
+          require "$HAS_GCP_KMS_KEY"   GCP_KMS_KEY                  "Authenticode signing key"
+          require "$HAS_WINDOWS_CERT"  WINDOWS_CODESIGN_CERT        "Windows leaf cert chain (leaf FIRST)"
+
+          echo ""
+          echo "=== Optional (release still succeeds without these) ==="
+          optional "$HAS_UPDATER_KEY"    TAURI_SIGNING_PRIVATE_KEY "no latest.json; in-app updater stays silent"
+          optional "$HAS_ASC_KEY"        APPLE_API_KEY             "notarising via the APPLE_ID fallback instead"
+          optional "$HAS_AZURE_DEFENDER" AZURE_CLIENT_ID           "Defender malware scan skipped"
+          optional "$HAS_STEAM"          STEAM_CONFIG_VDF          "Steam publish skipped"
+
+          echo ""
+          if [ "$fail" -ne 0 ]; then
+            echo "PREFLIGHT FAILED — a v* tag pushed now would fail mid-release." >&2
+            echo "" >&2
+            echo "These are ORG secrets (outrightmental → Settings → Secrets → Actions)." >&2
+            echo "Note the workflow maps org secret names onto the env-var names the" >&2
+            echo "tooling expects — see the mapping table at the top of release.yml." >&2
+            echo "Setup: publishing/MACOS_SIGNING_AND_NOTARIZATION.md," >&2
+            echo "       publishing/WINDOWS_CODE_SIGNING.md" >&2
+            exit 1
+          fi
+          echo "PREFLIGHT PASSED — a v* tag has every credential it needs."

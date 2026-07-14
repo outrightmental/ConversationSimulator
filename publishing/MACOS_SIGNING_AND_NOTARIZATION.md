@@ -132,7 +132,9 @@ name Tauri expects), and deletes the file the moment the Tauri build completes.
 ### Apple ID fallback
 
 If the ASC API key is not configured, the workflow falls back to Apple ID
-authentication using `APPLE_ID`, `APPLE_PASSWORD`, and `APPLE_TEAM_ID`.
+authentication using the `APPLE_ID`, `APPLE_ID_PASSWORD`, and `APPLE_TEAM_ID`
+org secrets. (`APPLE_ID_PASSWORD` supplies the env var Tauri calls
+`APPLE_PASSWORD` — the workflow maps the name.)
 
 1. Sign in to [appleid.apple.com](https://appleid.apple.com).
 2. Under Security → App-Specific Passwords, generate a new password.
@@ -144,7 +146,7 @@ Add the three secrets:
 ```bash
 gh secret set APPLE_ID --org outrightmental \
   --visibility selected --repos ConversationSimulator,FeverTilt
-gh secret set APPLE_PASSWORD --org outrightmental \
+gh secret set APPLE_ID_PASSWORD --org outrightmental \
   --visibility selected --repos ConversationSimulator,FeverTilt
 gh secret set APPLE_TEAM_ID --org outrightmental \
   --visibility selected --repos ConversationSimulator,FeverTilt
@@ -157,8 +159,8 @@ gh secret set APPLE_TEAM_ID --org outrightmental \
 The release workflow sets `REQUIRE_SIGNED_MACOS=true` for any workflow run
 triggered by a `v*` tag (push or workflow_dispatch).  When this flag is true:
 
-- **Missing `APPLE_CERTIFICATE`** → the verify step fails with an actionable
-  error and the build is rejected before any artifact is uploaded.
+- **Missing `MACOS_CODESIGN_CERT_BASE64`** → the verify step fails with an
+  actionable error and the build is rejected before any artifact is uploaded.
 - **Missing notarisation credentials** → the verify step fails (even if the
   build was signed) with a message listing both the preferred ASC API key and
   the Apple ID fallback.
@@ -169,16 +171,17 @@ block is never reached.
 
 ### Testing enforcement
 
-To confirm the enforcement is wired correctly, trigger a `workflow_dispatch`
-run with a `v*` tag **while the `APPLE_CERTIFICATE` org secret is temporarily
-absent** (or renamed).  The verify step should exit non-zero with the message:
+Do **not** test this by removing a live org secret. Run the **Release preflight**
+workflow instead (`.github/workflows/release-preflight.yml`): it reports exactly
+which required credentials are present or missing without cutting a release, and
+it runs automatically on every push to `main`.
+
+If enforcement does trip on a real tag, the verify step exits non-zero with:
 
 ```
-ERROR: APPLE_CERTIFICATE is not configured but a signed macOS build
+ERROR: MACOS_CODESIGN_CERT_BASE64 is not configured but a signed macOS build
        is required for this release tag.
 ```
-
-Restore the secret after the dry run and confirm the next `v*` run passes.
 
 ---
 
@@ -190,11 +193,17 @@ place — all scoped repositories pick up the change automatically.
 
 **Code-signing secrets (required for all signed builds):**
 
-| Secret name | Contents | Source |
-|-------------|----------|--------|
-| `APPLE_CERTIFICATE` | Base64-encoded `.p12` file | Export from Keychain, then `base64 -i DeveloperID.p12` |
-| `APPLE_CERTIFICATE_PASSWORD` | Passphrase for the `.p12` file | Set when exporting the `.p12` |
-| `APPLE_SIGNING_IDENTITY` | Full identity string: `Developer ID Application: Outright Mental (TEAMID)` | `security find-identity -v -p codesigning` |
+Org secret names describe the credential; the environment variables Tauri reads
+are named differently and the release workflow maps between them.
+
+| Org secret name | Env var it supplies | Contents | Source |
+|-----------------|---------------------|----------|--------|
+| `MACOS_CODESIGN_CERT_BASE64` | `APPLE_CERTIFICATE` | Base64-encoded `.p12` file | Export from Keychain, then `base64 -i DeveloperID.p12` |
+| `MACOS_CODESIGN_CERT_PASSWORD` | `APPLE_CERTIFICATE_PASSWORD` | Passphrase for the `.p12` file | Set when exporting the `.p12` |
+
+There is **no `APPLE_SIGNING_IDENTITY` secret.** CI derives the identity from the
+imported certificate (`security find-identity -v -p codesigning`) and publishes it
+via `GITHUB_ENV`, so it cannot drift out of sync with the certificate it describes.
 
 **Notarisation secrets — ASC API key (preferred, see above for minting):**
 
@@ -210,12 +219,12 @@ place — all scoped repositories pick up the change automatically.
 | Secret name | Contents | Source |
 |-------------|----------|--------|
 | `APPLE_ID` | Apple ID email used for notarisation | Outright Mental Apple Developer account |
-| `APPLE_PASSWORD` | App-specific password for notarytool | appleid.apple.com → Security → App-Specific Passwords |
+| `APPLE_ID_PASSWORD` | App-specific password for notarytool (supplies Tauri's `APPLE_PASSWORD`) | appleid.apple.com → Security → App-Specific Passwords |
 
 **To set or rotate** (values supplied interactively, never committed):
 
 ```bash
-gh secret set APPLE_CERTIFICATE \
+gh secret set MACOS_CODESIGN_CERT_BASE64 \
   --org outrightmental \
   --visibility selected \
   --repos ConversationSimulator,FeverTilt
@@ -419,13 +428,14 @@ approaches expiry:
 1. Generate a new Developer ID Application certificate in the Apple Developer
    portal.
 2. Export as `.p12` and base64-encode as described above.
-3. Update the org-level `APPLE_CERTIFICATE` and `APPLE_CERTIFICATE_PASSWORD`
-   secrets (see [CI setup](#ci-setup-github-actions-secrets) for the `gh secret
-   set` command). All scoped repositories pick up the new certificate automatically.
-4. Update the org-level `APPLE_SIGNING_IDENTITY` secret if the team ID or name
-   changed.
-5. Rebuild and re-notarise the latest release to confirm the new certificate
-   works end to end.
+3. Update the org-level `MACOS_CODESIGN_CERT_BASE64` and
+   `MACOS_CODESIGN_CERT_PASSWORD` secrets (see
+   [CI setup](#ci-setup-github-actions-secrets) for the `gh secret set` command).
+   All scoped repositories pick up the new certificate automatically.
+4. Nothing else to update: CI re-derives the signing identity from the new
+   certificate, so there is no second secret to keep in sync.
+5. Run the **Release preflight** workflow, then rebuild and re-notarise the latest
+   release to confirm the new certificate works end to end.
 6. Existing installed copies signed with the old certificate continue to work —
    the stapled notarisation ticket is valid permanently.
 
