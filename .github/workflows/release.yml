@@ -351,6 +351,55 @@ jobs:
           bash runtimes/llama_cpp/download-runtime.sh
           ls -lh apps/desktop/src-tauri/resources/runtimes/llama-server
 
+      # ── Sign the bundled llama.cpp runtime (macOS) ───────────────────────────
+      # Apple notarisation rejects an app containing ANY unsigned Mach-O binary.
+      # llama-server and its ~35 dylibs arrive unsigned from ggml-org, so without
+      # this the notary returns "The binary is not signed with a valid Developer ID
+      # certificate" and "The executable does not have the hardened runtime
+      # enabled" for every one of them, and `tauri build` fails.
+      #
+      # Sign inside-out — libraries first, then the executable that links them —
+      # because signing a Mach-O binary seals the load commands referencing those
+      # libraries. Skip symlinks: codesign resolves them and would sign the same
+      # file repeatedly, and the versioned chain (libX.dylib -> libX.0.dylib) means
+      # the real files are already covered.
+      #
+      # The Windows equivalent is handled by jsign-sign.ps1, which already signs
+      # every bundled resource binary.
+      - name: Sign bundled llama-server and libraries (macOS only)
+        if: env.BUNDLE_LLAMA_SERVER == 'true' && runner.os == 'macOS' && env.HAS_APPLE_CERT == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          RUNTIME_DIR=apps/desktop/src-tauri/resources/runtimes
+          ENTITLEMENTS=apps/desktop/src-tauri/entitlements.plist
+
+          if [ -z "${APPLE_SIGNING_IDENTITY:-}" ]; then
+            echo "ERROR: APPLE_SIGNING_IDENTITY is not set — the certificate import step" >&2
+            echo "       must run before this one." >&2
+            exit 1
+          fi
+
+          echo "=== Signing bundled libraries ==="
+          while IFS= read -r lib; do
+            codesign --force --timestamp --options runtime \
+              --sign "$APPLE_SIGNING_IDENTITY" "$lib"
+            echo "  signed  $(basename "$lib")"
+          done < <(find "$RUNTIME_DIR" -type f -name '*.dylib')
+
+          echo "=== Signing llama-server ==="
+          # The sidecar runs as its own process under the Hardened Runtime, so it
+          # carries the same entitlements as the app (JIT, library validation
+          # disabled) — the engine loads the dylibs above at runtime.
+          codesign --force --timestamp --options runtime \
+            --entitlements "$ENTITLEMENTS" \
+            --sign "$APPLE_SIGNING_IDENTITY" "$RUNTIME_DIR/llama-server"
+
+          echo "=== Verifying ==="
+          codesign --verify --strict --verbose=1 "$RUNTIME_DIR/llama-server"
+          echo "  OK  llama-server and $(find "$RUNTIME_DIR" -type f -name '*.dylib' | wc -l | tr -d ' ') libraries signed"
+
       - name: Bundle llama-server (Windows — Steam only)
         if: env.BUNDLE_LLAMA_SERVER == 'true' && runner.os == 'Windows'
         shell: pwsh
