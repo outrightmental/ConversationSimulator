@@ -39,6 +39,17 @@ $ErrorActionPreference = "Stop"
 
 $REPO  = "ggml-org/llama.cpp"
 
+# Pinned llama.cpp release. Keep this in sync with download-runtime.sh.
+#
+# Pinned, not "latest", so that two releases built a day apart cannot ship
+# different inference engines, and so the build never depends on an
+# unauthenticated api.github.com call that GitHub rate-limits per IP (the macOS
+# leg of the release failed with a 403 doing exactly that).
+#
+# Pass -Version latest to resolve the newest release instead of the pin.
+$LLAMA_CPP_PINNED_VERSION = "b9996"
+if (-not $Version) { $Version = $LLAMA_CPP_PINNED_VERSION }
+
 # ── Platform detection ────────────────────────────────────────────────────────
 
 $arch = [System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture
@@ -54,7 +65,7 @@ switch ($arch) {
 
 # ── Resolve latest tag if not specified ───────────────────────────────────────
 
-if (-not $Version) {
+if ($Version -eq "latest") {
     Write-Host "Fetching latest llama.cpp release tag..."
     try {
         $apiUrl = "https://api.github.com/repos/$REPO/releases/latest"

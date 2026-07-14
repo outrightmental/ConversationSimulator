@@ -32,7 +32,23 @@ for _arg in "$@"; do
   fi
 done
 
-RELEASE_TAG="${LLAMA_CPP_VERSION:-}"  # empty = auto-detect latest
+# Pinned llama.cpp release. Keep this in sync with download-runtime.ps1.
+#
+# Pinned, not "latest", for two reasons:
+#   1. Reproducibility — "latest" meant two releases built a day apart shipped
+#      DIFFERENT inference engines, with nothing in the tag recording which.
+#   2. Resolving "latest" hits api.github.com unauthenticated, which GitHub
+#      rate-limits per IP. macOS runners share heavily-used IPs, so the release
+#      build failed with `curl: (56) ... 403` while Linux got through.
+#
+# To upgrade: bump this, re-run the script on each platform, and confirm
+# llama-server starts (`llama-server --version`) — that is what catches a
+# renamed asset or a changed archive layout.
+LLAMA_CPP_PINNED_VERSION="b9996"
+
+# Pass --version latest (or LLAMA_CPP_VERSION=latest) to resolve the newest
+# release instead of the pin.
+RELEASE_TAG="${LLAMA_CPP_VERSION:-$LLAMA_CPP_PINNED_VERSION}"
 DEST_DIR="${LLAMA_CPP_DEST:-$HOME/.convsim/bin}"
 BINARY_NAME="llama-server"
 REPO="ggml-org/llama.cpp"
@@ -92,18 +108,31 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# ── Resolve latest tag if not specified ───────────────────────────────────────
+# ── Resolve "latest" only when explicitly requested ───────────────────────────
+# Send the token when one is available: this endpoint is rate-limited per IP for
+# unauthenticated callers, and shared CI IPs hit that limit (403) routinely.
 
-if [[ -z "$RELEASE_TAG" ]]; then
+if [[ -z "$RELEASE_TAG" || "$RELEASE_TAG" == "latest" ]]; then
   echo "Fetching latest llama.cpp release tag..."
+  _API_URL="https://api.github.com/repos/${REPO}/releases/latest"
+  _TOKEN="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
   if command -v curl &>/dev/null; then
-    RELEASE_TAG="$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
-      | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')"
+    if [[ -n "$_TOKEN" ]]; then
+      _RESP="$(curl -fsSL -H "Authorization: Bearer ${_TOKEN}" "$_API_URL")"
+    else
+      _RESP="$(curl -fsSL "$_API_URL")"
+    fi
   elif command -v wget &>/dev/null; then
-    RELEASE_TAG="$(wget -qO- "https://api.github.com/repos/${REPO}/releases/latest" \
-      | grep '"tag_name"' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')"
+    _RESP="$(wget -qO- "$_API_URL")"
   else
     echo "curl or wget is required to fetch the latest release." >&2
+    exit 1
+  fi
+  RELEASE_TAG="$(printf '%s' "$_RESP" | grep '"tag_name"' | head -1 |
+                 sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')"
+  if [[ -z "$RELEASE_TAG" ]]; then
+    echo "Could not resolve the latest llama.cpp release (rate-limited?)." >&2
+    echo "Pass --version <tag> to pin one explicitly." >&2
     exit 1
   fi
   echo "Latest release: ${RELEASE_TAG}"
