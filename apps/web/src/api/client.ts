@@ -157,9 +157,17 @@ function parseErrorText(text: string, res: Response): string {
       msg = json.error.message
       code = json.error.code
     }
-    // FastAPI uses { detail: string } for standard HTTP errors (404, 500, etc.)
+    // FastAPI uses { detail: string } for standard HTTP errors (404, 500, …) and
+    // { detail: [{ loc, msg, type }] } for request-validation failures (422).
+    // Read the human sentence out of either, so neither reaches the UI as raw JSON.
     if (!msg && typeof json.detail === 'string') {
       msg = json.detail
+    }
+    if (!msg && Array.isArray(json.detail)) {
+      const sentences = json.detail
+        .map((d) => (d && typeof d === 'object' ? (d as { msg?: unknown }).msg : undefined))
+        .filter((m): m is string => typeof m === 'string' && m !== '')
+      if (sentences.length > 0) msg = sentences.join('; ')
     }
     if (msg) return code ? `${code}: ${msg}` : msg
   } catch {

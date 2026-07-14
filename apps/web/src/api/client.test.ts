@@ -79,6 +79,45 @@ describe('api.createSession — ApiResult return type', () => {
     }
   });
 
+  it('extracts message from a FastAPI { detail } error body', async () => {
+    // FastAPI's standard error shape. Without this, the user saw the raw
+    // `{"detail":"Not Found"}` JSON as the error message (issue #429).
+    mockFetch(404, { detail: 'Not Found' });
+    const result = await api.createSession(BASE_SESSION);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.kind).toBe('http-error');
+      expect(result.error.status).toBe(404);
+      expect(result.error.message).toBe('Not Found');
+      expect(result.error.message).not.toContain('{');
+    }
+  });
+
+  it('extracts messages from a FastAPI 422 validation detail list', async () => {
+    mockFetch(422, {
+      detail: [
+        { type: 'string_too_short', loc: ['body', 'player_role_name'], msg: 'String should have at least 1 character' },
+        { type: 'greater_than_equal', loc: ['body', 'seed'], msg: 'Input should be greater than or equal to 0' },
+      ],
+    });
+    const result = await api.createSession({ ...BASE_SESSION, player_role_name: '' });
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toBe(
+        'String should have at least 1 character; Input should be greater than or equal to 0',
+      );
+      expect(result.error.message).not.toContain('{');
+      expect(result.error.message).not.toContain('loc');
+    }
+  });
+
+  it('prefers an explicit message over detail when a body carries both', async () => {
+    mockFetch(400, { message: 'player_role_name cannot be blank', detail: 'Bad Request' });
+    const result = await api.createSession({ ...BASE_SESSION, player_role_name: '' });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.message).toBe('player_role_name cannot be blank');
+  });
+
   it('falls back to raw text for non-JSON error bodies', async () => {
     mockFetch(500, 'Internal server error (plain text)');
     const result = await api.createSession(BASE_SESSION);
