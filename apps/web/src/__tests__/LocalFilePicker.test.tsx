@@ -102,11 +102,41 @@ describe('LocalFilePicker — Tauri desktop environment', () => {
         options: {
           title: 'Select GGUF model file',
           filters: [{ name: 'GGUF Model', extensions: ['gguf'] }],
+          defaultPath: undefined,
           multiple: false,
           directory: false,
         },
       }),
     )
+  })
+
+  it('opens the dialog at the path already in the field', async () => {
+    const invoke = vi.fn().mockResolvedValue(null)
+    win.__TAURI__ = { core: { invoke } }
+    render(
+      <LocalFilePicker id="test-path" value="/home/user/models/current.gguf" onChange={() => {}} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /browse for file/i }))
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith(
+        'plugin:dialog|open',
+        expect.objectContaining({
+          options: expect.objectContaining({ defaultPath: '/home/user/models/current.gguf' }),
+        }),
+      ),
+    )
+  })
+
+  it('sends no defaultPath when the field is empty, rather than an empty string', async () => {
+    const invoke = vi.fn().mockResolvedValue(null)
+    win.__TAURI__ = { core: { invoke } }
+    render(
+      <LocalFilePicker id="test-path" value="" onChange={() => {}} />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /browse for file/i }))
+    await waitFor(() => expect(invoke).toHaveBeenCalled())
+    const options = (invoke.mock.calls[0][1] as { options: Record<string, unknown> }).options
+    expect(options.defaultPath).toBeUndefined()
   })
 
   it('defaults the dialog title when no title prop is given', async () => {
@@ -147,7 +177,7 @@ describe('LocalFilePicker — Tauri desktop environment', () => {
     expect(onChange).not.toHaveBeenCalled()
   })
 
-  it('logs and does not call onChange when the dialog throws (error / unavailable)', async () => {
+  it('tells the user and does not call onChange when the dialog throws (error / unavailable)', async () => {
     const onChange = vi.fn()
     const invoke = vi.fn().mockRejectedValue(new Error('dialog unavailable'))
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
@@ -156,9 +186,32 @@ describe('LocalFilePicker — Tauri desktop environment', () => {
       <LocalFilePicker id="test-path" value="/existing/path.gguf" onChange={onChange} />,
     )
     fireEvent.click(screen.getByRole('button', { name: /browse for file/i }))
-    await waitFor(() => expect(errorSpy).toHaveBeenCalled())
+    // A failed dialog must not leave a silently dead button: the user needs to know
+    // the picker is unavailable and that typing the path still works.
+    expect(await screen.findByRole('alert')).toHaveTextContent(/type the path directly/i)
+    expect(errorSpy).toHaveBeenCalled()
     expect(onChange).not.toHaveBeenCalled()
+    // The field keeps its value and the button is usable again for a retry.
+    expect(screen.getByRole('textbox')).toHaveValue('/existing/path.gguf')
+    expect(screen.getByRole('button', { name: /browse for file/i })).toBeEnabled()
     errorSpy.mockRestore()
+  })
+
+  it('does not open a second dialog while one is already open', async () => {
+    let resolveDialog: (path: string | null) => void = () => {}
+    const invoke = vi.fn().mockReturnValue(new Promise<string | null>((r) => { resolveDialog = r }))
+    win.__TAURI__ = { core: { invoke } }
+    render(
+      <LocalFilePicker id="test-path" value="" onChange={() => {}} />,
+    )
+    const browse = screen.getByRole('button', { name: /browse for file/i })
+    fireEvent.click(browse)
+    await waitFor(() => expect(browse).toBeDisabled())
+    fireEvent.click(browse)
+    expect(invoke).toHaveBeenCalledTimes(1)
+
+    resolveDialog(null)
+    await waitFor(() => expect(browse).toBeEnabled())
   })
 
   it('passes an empty filters array when no filters prop is given', async () => {
