@@ -122,7 +122,7 @@ curl http://127.0.0.1:7355/api/health | python3 -m json.tool
 
 - [ ] `status` is `"ok"`
 - [ ] `database.status` is `"ok"`
-- [ ] `runtime.status` is `"ready"` (fake runtime on source install is expected)
+- [ ] `llm_runtime.status` is `"ready"` (fake runtime on source install is expected)
 - [ ] `stt.status` and `tts.status` fields are present (value may be `"unavailable"` without runtimes installed)
 
 ### B.4 Web launch

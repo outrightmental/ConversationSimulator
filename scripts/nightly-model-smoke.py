@@ -296,7 +296,7 @@ def run_smoke(
 
             # Sanity-check that the real runtime is wired (not the fake default).
             health = _get_json(f"{base}/health")
-            runtime_id = health.get("runtime", {}).get("runtime_id")
+            runtime_id = health.get("llm_runtime", {}).get("runtime_id")
             print(f"[smoke] convsim-core ready (runtime_id={runtime_id}).")
             if runtime_id != "llama_cpp":
                 raise RuntimeError(

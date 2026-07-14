@@ -461,7 +461,10 @@ class TestNoCloudInference:
         app = create_app(tmp_config)
         with TestClient(app) as c:
             health = c.get("/api/health")
-        runtime_status = health.json().get("runtime", {})
+        # The detailed runtime diagnostics (runtime_id/status) live under
+        # llm_runtime; the top-level `runtime` is the user-facing readiness
+        # summary, which intentionally does not expose runtime_id.
+        runtime_status = health.json().get("llm_runtime", {})
         runtime_id = runtime_status.get("runtime_id", "") or runtime_status.get("id", "")
         # The default runtime must be the fake one — a ready *cloud* runtime would
         # also report "ready", so status alone cannot prove no cloud inference.
