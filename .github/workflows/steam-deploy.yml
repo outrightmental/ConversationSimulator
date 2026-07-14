@@ -188,9 +188,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
+          # --clobber (not --skip-errors, which is not a gh flag and made this step
+          # fail instantly on every release) so a re-run overwrites a partial download
+          # instead of erroring on existing files. Downloading every asset is
+          # deliberate: if the release has none, this SHOULD fail rather than quietly
+          # push an empty depot to Steam.
           gh release download "$RELEASE_TAG" \
             --dir release-artifacts \
-            --skip-errors
+            --clobber
 
       - name: List downloaded artifacts
         if: env.HAS_STEAM_CREDS == 'true'
