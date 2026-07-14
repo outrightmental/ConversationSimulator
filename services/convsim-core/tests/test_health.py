@@ -71,6 +71,10 @@ def test_health_readiness_defaults(client):
     assert rt["llm_ready"] is True
     assert rt["stt_ready"] is False
     assert rt["network_required"] is False
+    # The LLM is ready, so no blocking error. Optional voice (STT/TTS) being
+    # unavailable must NOT leak into last_error, or Home shows an error card
+    # for a text-ready app.
+    assert rt["last_error"] is None
 
 
 def test_health_llm_ready_after_register_gguf(client, tmp_path):

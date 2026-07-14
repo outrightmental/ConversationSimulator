@@ -193,12 +193,20 @@ def _build_readiness(
     """Derive the user-facing readiness summary.
 
     The LLM counts as installed/ready when the user has an active model
-    selection backed by a usable install record (or an existing GGUF file),
-    or — for runtimes without local model files (fake, scripted, ollama) —
-    when the selection was made or the configured runtime reports ready.
-    The live sidecar process state is deliberately NOT required here: it is
-    started on demand, and "installed but not currently loaded" must still
-    read as installed on the Home screen.
+    selection backed by a usable install record (an existing GGUF file, or an
+    Ollama tag validated at selection time). For a selected model the live
+    sidecar process state is deliberately NOT required: it is started on
+    demand, and "installed but not currently loaded" must still read as
+    installed on the Home screen.
+
+    When no local model file is involved — the fake/scripted runtimes or an
+    external server — we fall back to the live runtime health, so a llama.cpp
+    runtime selected without a model loaded does not falsely read as ready.
+
+    ``last_error`` reports only a *blocking* problem: why the LLM (which gates
+    play) is unavailable. Optional voice (STT/TTS) being uninstalled is
+    surfaced through ``stt_ready``/``tts_ready`` and must not populate
+    ``last_error``, or the Home screen shows an error card for a text-ready app.
     """
     runtime_id = active_cfg.get("runtime_id")
     model_id = active_cfg.get("model_id")
@@ -227,26 +235,25 @@ def _build_readiness(
                 "Re-select a model in the model manager."
             )
             llm_model_name = os.path.basename(model_id) or model_id
-    elif runtime_id:
-        # A runtime was actively selected without a model file (e.g. scripted
-        # or an external server). The selection endpoint validated it.
+    elif runtime_health.status in (RuntimeStatus.READY, RuntimeStatus.DEGRADED):
+        # No local model file is involved (fake/scripted runtime, or an
+        # external server), or nothing was explicitly selected and the default
+        # runtime is usable. With nothing to stat, the live runtime health is
+        # the only real signal — a llama.cpp runtime selected without a model
+        # loaded is not ready here and correctly reports so.
         llm_ready = True
-        llm_model_name = runtime_id
-    elif runtime_health.status == RuntimeStatus.READY:
-        # No explicit selection, but the configured default runtime is usable
-        # (e.g. the deterministic fake runtime in dev/test builds).
-        llm_ready = True
-        llm_model_name = runtime_health.model_id or runtime_health.runtime_name
+        llm_model_name = (
+            runtime_health.model_id or runtime_health.runtime_name or runtime_id
+        )
     elif runtime_health.message:
         errors.append(runtime_health.message)
 
+    # Optional voice: readiness is conveyed via the booleans below. Their
+    # "not installed" messages must NOT feed last_error — that field reports
+    # only blocking (LLM) problems, so a text-ready app doesn't surface a
+    # voice-unavailable message as a blocking error card on Home.
     stt_ready = stt_health.status in (RuntimeStatus.READY, RuntimeStatus.DEGRADED)
-    if not stt_ready and stt_health.message:
-        errors.append(stt_health.message)
-
     tts_ready = tts_health.status in (RuntimeStatus.READY, RuntimeStatus.DEGRADED)
-    if not tts_ready and tts_health.message:
-        errors.append(tts_health.message)
 
     return _RuntimeReadiness(
         llm_ready=llm_ready,
