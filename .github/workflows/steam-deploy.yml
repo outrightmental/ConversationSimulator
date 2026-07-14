@@ -21,7 +21,19 @@
 #
 # ── Release gate reminder ────────────────────────────────────────────────────
 #
-# Stage 3 (private beta): set_live_branch = "beta"  ← workflow default
+# Automatic runs (chained from release.yml) STAGE the build: it is committed and
+# appears in Steamworks → Builds, but no branch is moved live. A human sets it live
+# from the partner portal. That is deliberate — a git tag should not be able to put
+# a build in front of players on its own — and it also sidesteps two things CI
+# cannot see: whether the target branch exists, and whether the build account holds
+# the separate Steamworks permission to set builds live.
+#
+# Setting a branch live is therefore a manual workflow_dispatch:
+#
+# Stage 3 (private beta): set_live_branch = "beta"
+#   The "beta" branch must already exist (Steamworks → App Admin → Builds →
+#   Branches). SetLive against a branch that does not exist fails the COMMIT, after
+#   the depots have uploaded — which is exactly how the first v0.2.3 upload failed.
 #   All Stage 3 gate criteria in docs/steam-mvp-scope.md must pass first,
 #   including G3-01 (code signing and notarisation) and G3-02 (depot audit).
 #
@@ -29,8 +41,7 @@
 #   All Stage 4 gate criteria must pass first, including G4-01 (Valve review
 #   approval) and G4-02 (Steam Deck Verified tier).
 #
-# Leave set_live_branch empty to stage the build without making any branch
-# live — use this for dry runs or when manual sign-off is required.
+# Leave set_live_branch empty to stage the build without making any branch live.
 #
 # ── Private beta verification procedure ──────────────────────────────────────
 #
@@ -114,9 +125,12 @@ on:
         default: ''
         type: string
       set_live_branch:
-        description: 'Steam branch to set live. Automatic runs only target "beta" — "default" is refused on workflow_call.'
+        description: >
+          Steam branch to set live after upload. EMPTY on automatic runs: the build
+          is committed and appears in Steamworks, but no branch is moved without a
+          human. "default" is refused on workflow_call.
         required: false
-        default: 'beta'
+        default: ''
         type: string
       run_id:
         description: >
@@ -445,11 +459,57 @@ jobs:
         if: env.HAS_STEAM_CREDS == 'true'
         env:
           STEAM_USERNAME: ${{ secrets.STEAM_USERNAME }}
+          SET_LIVE_BRANCH: ${{ inputs.set_live_branch }}
         run: |
+          set -o pipefail
+          rc=0
           steamcmd \
             +login "$STEAM_USERNAME" \
             +run_app_build "$(pwd)/steam-build/app_build.vdf" \
-            +quit
+            +quit || rc=$?
+
+          if [ "$rc" -eq 0 ]; then
+            if [ -z "${SET_LIVE_BRANCH:-}" ]; then
+              echo ""
+              echo "  OK  Build committed and STAGED — no Steam branch was moved."
+              echo ""
+              echo "  To put it in front of testers:"
+              echo "    Steamworks → App Admin → Builds → find this build → Set Build Live"
+              echo "    on the 'beta' branch, then Publish."
+            else
+              echo ""
+              echo "  OK  Build committed and set live on branch: $SET_LIVE_BRANCH"
+            fi
+            exit 0
+          fi
+
+          # steamcmd's own message for a failed commit is just "Failure", so spell out
+          # what actually causes it. The depots upload BEFORE the commit, so reaching
+          # here with all depots uploaded means the content was fine and only the
+          # commit was refused.
+          echo "" >&2
+          echo "ERROR: steamcmd exited $rc." >&2
+          if grep -qs "Failed to commit build" steam-build/output/*.log; then
+            echo "" >&2
+            echo "The depots uploaded, but Steam refused to COMMIT the build." >&2
+            echo "That is a Steamworks-side configuration problem, not a content problem." >&2
+            echo "" >&2
+            if [ -n "${SET_LIVE_BRANCH:-}" ]; then
+              echo "  SetLive was '$SET_LIVE_BRANCH'. The two usual causes:" >&2
+              echo "    1. That branch does not exist. Create it first:" >&2
+              echo "       Steamworks → App Admin → Builds → Branches." >&2
+              echo "       (A new app has only 'default'.)" >&2
+              echo "    2. The build account can upload builds but lacks the separate" >&2
+              echo "       permission to set them live." >&2
+              echo "" >&2
+              echo "  Re-run with set_live_branch empty to stage the build instead, then" >&2
+              echo "  set it live by hand in Steamworks." >&2
+            else
+              echo "  Check that all three depots are assigned to this App ID and that the" >&2
+              echo "  app configuration has been published in Steamworks." >&2
+            fi
+          fi
+          exit "$rc"
 
       # ── Log build output ───────────────────────────────────────────────────
       - name: Show steamcmd build output

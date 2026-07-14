@@ -1545,7 +1545,13 @@ jobs:
     uses: ./.github/workflows/steam-deploy.yml
     with:
       release_tag: ${{ github.event.inputs.tag || github.ref_name }}
-      set_live_branch: beta
+      # Empty: stage the build, do not move a Steam branch. The build lands in
+      # Steamworks → Builds and a human sets it live. A git tag must not be able to
+      # put a build in front of players by itself, and CI cannot verify that the
+      # target branch exists or that the build account may set builds live — a
+      # SetLive against a branch that does not exist fails the commit AFTER every
+      # depot has uploaded, which is how the first v0.2.3 upload failed.
+      set_live_branch: ''
       # Steam takes its depot payload from THIS run's build artifacts. It used to
       # `gh release download` the published installers, but GitHub releases no
       # longer carry binaries — Steam is the only prebuilt channel, so the depot
