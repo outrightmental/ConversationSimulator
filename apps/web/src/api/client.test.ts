@@ -153,6 +153,15 @@ describe('api.createSession — ApiResult return type', () => {
     }
   });
 
+  it('falls back to the status line for a JSON scalar body rather than echoing it', async () => {
+    // `null` parses as valid JSON but carries no sentence; echoing the body would
+    // put the literal "null" in front of the user.
+    mockFetch(500, null);
+    const result = await api.createSession(BASE_SESSION);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.message).toBe('500 Internal Server Error');
+  });
+
   it('prefers an explicit message over detail when a body carries both', async () => {
     mockFetch(400, { message: 'player_role_name cannot be blank', detail: 'Bad Request' });
     const result = await api.createSession({ ...BASE_SESSION, player_role_name: '' });

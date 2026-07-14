@@ -161,6 +161,26 @@ describe('RuntimeSettingsPanel — loading', () => {
       expect(screen.getByRole('alert')).toHaveTextContent(/settings store is corrupt/i),
     )
   })
+
+  // A 404 carrying an HTML body means a static server or proxy answered while core
+  // was down — client.ts maps that to runtime-unreachable, not http-error. Only the
+  // latter proves the route is missing, so the leniency above must not extend here:
+  // telling this user to update the app would send them after the wrong problem.
+  it('still shows a blocking error on a 404 that means the runtime is unreachable', async () => {
+    mockApi.getRuntimeSettings.mockResolvedValue({
+      ok: false,
+      error: {
+        kind: 'runtime-unreachable',
+        status: 404,
+        message: 'API returned HTML instead of JSON — the local runtime is not running.',
+      },
+    })
+    await renderPanel()
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+    expect(
+      screen.queryByRole('status', { name: /runtime advanced settings unavailable/i }),
+    ).not.toBeInTheDocument()
+  })
 })
 
 // ── Basic settings — provider and model ──────────────────────────────────────

@@ -152,7 +152,10 @@ function parseErrorText(text: string, res: Response): string {
     return text || statusLine
   }
   if (typeof json === 'string') return json || statusLine
-  if (json === null || typeof json !== 'object') return text || statusLine
+  // A JSON scalar (null, a number, a bare true) parses fine but carries no
+  // sentence. Echoing `text` here would put the literal "null" in front of the
+  // user — the raw-body leak this function exists to prevent.
+  if (json === null || typeof json !== 'object') return statusLine
 
   // convsim-core (Python) returns { error: { code, message } }; the interim
   // convsim-api (TypeScript) returns { code?, message } at the top level.
