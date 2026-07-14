@@ -34,6 +34,32 @@ jobs:
           echo "Local: shellcheck scripts/*.sh"
           shellcheck scripts/*.sh
 
+  # ── Workflow linting ────────────────────────────────────────────────────────
+  # The release workflow is the least-tested code in the repo: most of it runs
+  # only on a v* tag, so a typo'd expression, a bad `needs:`, or a shell error in
+  # a run: block is discovered during a release. actionlint type-checks every
+  # workflow expression and shellchecks every run: block without executing them.
+  #
+  # It does NOT catch everything — an invalid CLI flag in an otherwise valid
+  # command (`gh release download --skip-errors`, which broke the Steam publish)
+  # still requires actually running the step. It does catch the whole class of
+  # errors that are statically visible.
+  #
+  # SC2016 is excluded: the workflows intentionally single-quote strings
+  # containing `$` that must reach a downstream shell or Python heredoc unexpanded.
+  actionlint:
+    name: Workflow lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Lint GitHub Actions workflows
+        env:
+          SHELLCHECK_OPTS: -e SC2016
+        run: |
+          echo "Local: brew install actionlint && SHELLCHECK_OPTS='-e SC2016' actionlint"
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          ./actionlint -color
+
   # ── PowerShell lint and unit tests ──────────────────────────────────────────
   # The .sh scripts have had shellcheck since day one; the .ps1 scripts had no CI
   # coverage of any kind. That gap is why the v0.2.3 release broke: the Windows
