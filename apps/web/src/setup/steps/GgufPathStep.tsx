@@ -2,6 +2,7 @@
 import { ActionButton, PrimaryButton } from '../primitives'
 import { errorMessage } from '../errorMessage'
 import { ApiErrorView } from '../../components/ApiErrorView'
+import { LocalFilePicker } from '../../components/LocalFilePicker'
 import type { UseSetupFlowReturn } from '../useSetupFlow'
 
 interface GgufPathStepProps {
@@ -26,15 +27,15 @@ export function GgufPathStep({ flow, mode }: GgufPathStepProps) {
 
       <div style={{ marginTop: '1.25rem' }}>
         <label htmlFor="gguf-path" style={{ display: 'block', marginBottom: '0.4rem', fontSize: '0.875rem' }}>File path</label>
-        <input
+        <LocalFilePicker
           id="gguf-path"
-          type="text"
           value={flow.ggufPath}
-          onChange={(e) => { flow.setGgufPath(e.target.value); flow.setGgufPathError(null) }}
+          onChange={(v) => { flow.setGgufPath(v); flow.setGgufPathError(null) }}
           placeholder="/path/to/model.gguf"
+          filters={[{ name: 'GGUF Model', extensions: ['gguf'] }]}
+          title="Select GGUF model file"
           aria-describedby="gguf-path-hint"
           aria-invalid={flow.ggufPathError != null}
-          style={{ width: '100%', padding: '0.5rem 0.75rem', borderRadius: '4px', background: 'rgba(255,255,255,0.05)', border: flow.ggufPathError ? '1px solid rgba(239,68,68,0.6)' : '1px solid rgba(255,255,255,0.15)', color: 'inherit', fontFamily: 'monospace', fontSize: '0.875rem', boxSizing: 'border-box' }}
         />
         <p id="gguf-path-hint" style={{ fontSize: '0.8rem', color: '#71717a', marginTop: '0.3rem' }}>
           {mode === 'wizard'
