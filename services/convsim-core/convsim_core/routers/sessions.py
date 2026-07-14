@@ -25,6 +25,7 @@ from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, field_validator
 
 from convsim_core.runtime import build_runtime
+from convsim_core.runtime.base import ChatRuntime
 from convsim_core.scenario_state import build_variable_defs, partition_state_by_visibility
 from convsim_core.scenarios import get_scenario_info
 from convsim_core.services.branch_service import fork_session
@@ -339,17 +340,32 @@ def _row_to_response(row: Any) -> SessionResponse:
 # ---------------------------------------------------------------------------
 
 
-def _resolve_runtime(request: Request):  # type: ignore[return]
-    """Return the scripted or fake runtime when the active DB config selects one.
+#: Runtimes that are stateless, model-free and cheap to instantiate per request.
+#: A session that starts on one of these keeps it for its whole lifetime, so a
+#: scripted tutorial cannot be hijacked by a model install that finishes mid-play.
+_SESSION_PINNED_RUNTIME_IDS = ("scripted", "fake")
 
-    The scripted and fake runtimes are stateless and cheap to instantiate per
-    request. For sidecar-based runtimes (llama.cpp, Ollama) — and when no
-    explicit selection exists — the shared app.state.runtime is returned to
-    preserve connection-pool state and support test-injected runtimes.
+
+def _pinned_runtime_id(conn: Any) -> str | None:
+    """Return the active runtime id if it is one that pins to a session."""
+    runtime_id = get_active_config(conn).get("runtime_id")
+    return runtime_id if runtime_id in _SESSION_PINNED_RUNTIME_IDS else None
+
+
+def _resolve_runtime(request: Request, setup: Dict[str, Any]) -> ChatRuntime:
+    """Return the runtime this session was pinned to, else the shared runtime.
+
+    ``setup["runtime_id"]`` is snapshotted at session creation (see
+    ``create_session``) when the active selection is scripted or fake, so a
+    tutorial keeps answering from its authored script even after a background
+    model install flips the global active runtime to llama.cpp.
+
+    For sidecar-based runtimes (llama.cpp, Ollama) — and for sessions created
+    before this snapshot existed — the shared ``app.state.runtime`` is returned
+    to preserve connection-pool state and support test-injected runtimes.
     """
-    active_cfg = get_active_config(request.app.state.db.connection())
-    runtime_id = active_cfg.get("runtime_id")
-    if runtime_id in ("scripted", "fake"):
+    runtime_id = setup.get("runtime_id")
+    if runtime_id in _SESSION_PINNED_RUNTIME_IDS:
         return build_runtime(runtime_id)
     return request.app.state.runtime
 
@@ -383,6 +399,13 @@ async def create_session(body: SessionCreateRequest, request: Request) -> Sessio
     session_id = _generate_session_id()
     now = _now_iso()
     setup_dict = body.model_dump()
+    # Pin scripted/fake sessions to the runtime that was active when they were
+    # created. Without this the tutorial would follow the global active runtime,
+    # which flips to llama.cpp the moment a background model install finishes —
+    # mid-conversation, or before the tutorial's authored debrief is generated.
+    pinned_runtime_id = _pinned_runtime_id(conn)
+    if pinned_runtime_id is not None:
+        setup_dict["runtime_id"] = pinned_runtime_id
 
     conn.execute(
         "INSERT INTO turn_sessions "
@@ -509,7 +532,7 @@ async def submit_turn(session_id: str, body: TurnSubmitRequest, request: Request
     scenario_data = info.get_scenario_data(difficulty)
     max_turns = info.max_turns
 
-    runtime = _resolve_runtime(request)
+    runtime = _resolve_runtime(request, setup)
     save_transcript = setup.get("save_transcript", True)
     source_mode = setup.get("input_mode", "text-only")
 
@@ -749,7 +772,7 @@ async def create_debrief(session_id: str, request: Request) -> DebriefResponse:
         raise HTTPException(status_code=500, detail=f"Scenario {scenario_id!r} not found in registry")
 
     scenario_data = info.get_scenario_data(difficulty)
-    runtime = _resolve_runtime(request)
+    runtime = _resolve_runtime(request, setup)
 
     try:
         result = await generate_debrief(

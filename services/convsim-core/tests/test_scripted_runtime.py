@@ -393,3 +393,52 @@ def test_tutorial_debrief_uses_scripted_debrief_when_active_config_is_scripted(t
         body = debrief_res.json()
         # Scripted debrief has the authored summary, not the fake boilerplate.
         assert body["summary"] == _DEBRIEF_RESPONSE["summary"]
+
+
+def test_tutorial_stays_scripted_after_a_model_install_flips_the_active_runtime(tmp_config):
+    """A tutorial in progress keeps its scripted runtime when an install completes mid-play.
+
+    The "Start now" CTA runs the tutorial while a model downloads in the
+    background; the setup-install pipeline calls set_active_config(llama_cpp)
+    when that download finishes. The session must stay pinned to the runtime it
+    was created with, or the rest of the tutorial — and its authored debrief —
+    would be routed to the freshly installed model.
+    """
+    from convsim_core.app import create_app
+    from convsim_core.services.model_manager_service import set_active_config
+    from convsim_core.runtime.scripted import _DEBRIEF_RESPONSE
+    from fastapi.testclient import TestClient
+
+    app = create_app(tmp_config)
+    with TestClient(app) as client:
+        conn = app.state.db.connection()
+        set_active_config(conn, runtime_id="scripted")
+
+        res = client.post("/api/sessions", json=_TUTORIAL_SESSION_SETUP)
+        assert res.status_code == 201, res.text
+        session_id = res.json()["session_id"]
+        client.post(f"/api/sessions/{session_id}/start")
+        client.post(f"/api/sessions/{session_id}/turn", json={"content": "Hello!"})
+
+        # The background install finishes: the pipeline flips the global runtime.
+        set_active_config(conn, runtime_id="llama_cpp", model_id="/tmp/model.gguf")
+
+        turn_res = client.post(
+            f"/api/sessions/{session_id}/turn",
+            json={"content": "Still here — what next?"},
+        )
+        assert turn_res.status_code == 200, turn_res.text
+        npc_events = [e for e in turn_res.json()["events"] if e["event_type"] == "npc_turn"]
+        assert npc_events, "No npc_turn event found in turn response"
+        npc_text = npc_events[0]["payload"]["content"]
+        assert "simulated npc" not in npc_text.lower(), (
+            f"Tutorial fell back to app.state.runtime after the install: {npc_text!r}"
+        )
+
+        for _ in range(5):
+            client.post(f"/api/sessions/{session_id}/turn", json={"content": "Go on."})
+        client.post(f"/api/sessions/{session_id}/end")
+
+        debrief_res = client.post(f"/api/sessions/{session_id}/debrief")
+        assert debrief_res.status_code == 200, debrief_res.text
+        assert debrief_res.json()["summary"] == _DEBRIEF_RESPONSE["summary"]
