@@ -363,23 +363,53 @@ export function useSetupFlow(
     // called here.
     const activeInstallId = installId
     setActionLoading(true)
-    try { await api.useModel({ runtime_id: 'scripted', model_id: null }) } catch { /* best-effort */ }
-    finally { setActionLoading(false) }
-    markTutorialComplete()
-    // Label all scripted sessions so the user knows they are not talking to the AI.
-    try { localStorage.setItem(SETUP_KEYS.activeRuntimeHint, 'scripted') } catch { /* ignore */ }
-    if (activeInstallId != null) {
-      // A background download is running. Tell Conversation.tsx so it can show
-      // the model-ready toast when the pipeline finishes.
-      try { localStorage.setItem(SETUP_KEYS.tutorialInstallId, String(activeInstallId)) } catch { /* ignore */ }
-      // Record a 'completed-with-model' outcome optimistically — the user already
-      // committed to the full install path.
-      await markFirstRunComplete()
-    } else {
-      // "Try it right now" path: no install in progress.
-      await markDemoComplete()
+    try {
+      try { await api.useModel({ runtime_id: 'scripted', model_id: null }) } catch { /* best-effort */ }
+      markTutorialComplete()
+      // Label all scripted sessions so the user knows they are not talking to the AI.
+      try { localStorage.setItem(SETUP_KEYS.activeRuntimeHint, 'scripted') } catch { /* ignore */ }
+      if (activeInstallId != null) {
+        // A background download is running. Tell Conversation.tsx so it can show
+        // the model-ready toast when the pipeline finishes.
+        try { localStorage.setItem(SETUP_KEYS.tutorialInstallId, String(activeInstallId)) } catch { /* ignore */ }
+        // Record a 'completed-with-model' outcome optimistically — the user already
+        // committed to the full install path.
+        await markFirstRunComplete()
+      } else {
+        // "Try it right now" path: no install in progress.
+        await markDemoComplete()
+      }
+      // Create the tutorial session directly so the user goes straight to the
+      // conversation without having to click through the scenario setup form.
+      // The scripted runtime needs no model, so this always succeeds on first open.
+      const sessionResult = await api.createSession({
+        scenario_id: 'first_words_tutorial',
+        difficulty: 'standard',
+        player_role_name: 'New Player',
+        language: 'en',
+        input_mode: 'text-only',
+        tts_enabled: false,
+        show_state_meters: true,
+        save_transcript: true,
+        seed: null,
+      })
+      if (sessionResult.ok) {
+        navigate(`/conversation/${sessionResult.data.session_id}`, {
+          state: {
+            language: 'en',
+            show_state_meters: true,
+            scenario_id: 'first_words_tutorial',
+            input_mode: 'text-only',
+            tts_enabled: false,
+          },
+        })
+      } else {
+        // Fall back to the setup form if session creation unexpectedly fails.
+        navigate('/setup/first_words_tutorial')
+      }
+    } finally {
+      setActionLoading(false)
     }
-    navigate('/setup/first_words_tutorial')
   }
 
   async function handleCancelInstall() {

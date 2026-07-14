@@ -29,11 +29,18 @@ vi.mock('../../api/client', () => ({
     startSetupInstall: vi.fn(),
     getSetupInstallStatus: vi.fn(),
     cancelSetupInstall: vi.fn(),
+    createSession: vi.fn().mockResolvedValue({ ok: true, data: { session_id: 'sess-tutorial-1', scenario_id: 'first_words_tutorial', state: 'NotStarted' as const, created_at: '', setup: { scenario_id: 'first_words_tutorial', difficulty: 'standard' as const, player_role_name: 'New Player', language: 'en', input_mode: 'text-only' as const, tts_enabled: false, show_state_meters: true, save_transcript: true, seed: null } } }),
   },
 }))
 
 import { api } from '../../api/client'
 const mockApi = vi.mocked(api)
+
+const mockNavigate = vi.fn()
+vi.mock('react-router-dom', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('react-router-dom')>()
+  return { ...actual, useNavigate: () => mockNavigate }
+})
 
 import type { ModelsResponse, PreflightResponse } from '@convsim/shared'
 
@@ -102,12 +109,14 @@ const RUNNING_JOB = {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mockNavigate.mockReset()
   localStorage.clear()
   mockApi.getModels.mockResolvedValue({ ok: true, data: MODELS_DATA })
   mockApi.preflight.mockResolvedValue({ ok: true, data: PREFLIGHT_PASS })
   mockApi.startSetupInstall.mockResolvedValue({ ok: true, data: RUNNING_JOB })
   mockApi.getSetupInstallStatus.mockResolvedValue({ ok: true, data: RUNNING_JOB })
   mockApi.cancelSetupInstall.mockResolvedValue({ ok: true, data: undefined })
+  mockApi.createSession.mockResolvedValue({ ok: true, data: { session_id: 'sess-tutorial-1', scenario_id: 'first_words_tutorial', state: 'NotStarted' as const, created_at: '', setup: { scenario_id: 'first_words_tutorial', difficulty: 'standard' as const, player_role_name: 'New Player', language: 'en', input_mode: 'text-only' as const, tts_enabled: false, show_state_meters: true, save_transcript: true, seed: null } } })
 })
 
 describe('useSetupFlow step machine', () => {
@@ -450,6 +459,47 @@ describe('useSetupFlow step machine', () => {
     await act(async () => { await result.current.handleStartTutorial() })
 
     expect(localStorage.getItem('convsim.tutorial.complete')).toBe('true')
+  })
+
+  it('handleStartTutorial creates tutorial session directly, bypassing setup form', async () => {
+    mockApi.useModel.mockResolvedValue(SCRIPTED_RUNTIME_RESPONSE)
+    const { result } = renderHook(() => useSetupFlow('welcome'), { wrapper })
+
+    await act(async () => { await result.current.handleStartTutorial() })
+
+    expect(mockApi.createSession).toHaveBeenCalledWith({
+      scenario_id: 'first_words_tutorial',
+      difficulty: 'standard',
+      player_role_name: 'New Player',
+      language: 'en',
+      input_mode: 'text-only',
+      tts_enabled: false,
+      show_state_meters: true,
+      save_transcript: true,
+      seed: null,
+    })
+  })
+
+  it('handleStartTutorial navigates to /conversation/:sessionId on successful session creation', async () => {
+    mockApi.useModel.mockResolvedValue(SCRIPTED_RUNTIME_RESPONSE)
+    const { result } = renderHook(() => useSetupFlow('welcome'), { wrapper })
+
+    await act(async () => { await result.current.handleStartTutorial() })
+
+    expect(mockNavigate).toHaveBeenCalledWith(
+      '/conversation/sess-tutorial-1',
+      expect.objectContaining({ state: expect.objectContaining({ scenario_id: 'first_words_tutorial', show_state_meters: true }) }),
+    )
+  })
+
+  it('handleStartTutorial falls back to /setup/first_words_tutorial when createSession fails', async () => {
+    mockApi.useModel.mockResolvedValue(SCRIPTED_RUNTIME_RESPONSE)
+    mockApi.createSession.mockResolvedValue({ ok: false, error: { kind: 'runtime-unreachable', message: 'Core not running' } })
+    const { result } = renderHook(() => useSetupFlow('welcome'), { wrapper })
+
+    await act(async () => { await result.current.handleStartTutorial() })
+
+    expect(mockNavigate).toHaveBeenCalledWith('/setup/first_words_tutorial')
   })
 
   it('install-complete effect clears runtime hint keys so real-model sessions are not mislabeled', async () => {

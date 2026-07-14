@@ -24,10 +24,12 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, field_validator
 
+from convsim_core.runtime import build_runtime
 from convsim_core.scenario_state import build_variable_defs, partition_state_by_visibility
 from convsim_core.scenarios import get_scenario_info
 from convsim_core.services.branch_service import fork_session
 from convsim_core.services.debrief_engine import generate_debrief
+from convsim_core.services.model_manager_service import get_active_config
 from convsim_core.services.relationship_memory import update_relationship_memory
 from convsim_core.services.timing import thinking_pause_ms_for_difficulty
 from convsim_core.services.transcript_export import format_transcript_as_markdown
@@ -333,6 +335,26 @@ def _row_to_response(row: Any) -> SessionResponse:
 
 
 # ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _resolve_runtime(request: Request):  # type: ignore[return]
+    """Return the scripted or fake runtime when the active DB config selects one.
+
+    The scripted and fake runtimes are stateless and cheap to instantiate per
+    request. For sidecar-based runtimes (llama.cpp, Ollama) — and when no
+    explicit selection exists — the shared app.state.runtime is returned to
+    preserve connection-pool state and support test-injected runtimes.
+    """
+    active_cfg = get_active_config(request.app.state.db.connection())
+    runtime_id = active_cfg.get("runtime_id")
+    if runtime_id in ("scripted", "fake"):
+        return build_runtime(runtime_id)
+    return request.app.state.runtime
+
+
+# ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
 
@@ -487,7 +509,7 @@ async def submit_turn(session_id: str, body: TurnSubmitRequest, request: Request
     scenario_data = info.get_scenario_data(difficulty)
     max_turns = info.max_turns
 
-    runtime = request.app.state.runtime
+    runtime = _resolve_runtime(request)
     save_transcript = setup.get("save_transcript", True)
     source_mode = setup.get("input_mode", "text-only")
 
@@ -727,7 +749,7 @@ async def create_debrief(session_id: str, request: Request) -> DebriefResponse:
         raise HTTPException(status_code=500, detail=f"Scenario {scenario_id!r} not found in registry")
 
     scenario_data = info.get_scenario_data(difficulty)
-    runtime = request.app.state.runtime
+    runtime = _resolve_runtime(request)
 
     try:
         result = await generate_debrief(
