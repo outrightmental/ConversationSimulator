@@ -382,6 +382,9 @@ export function useSetupFlow(
       // Create the tutorial session directly so the user goes straight to the
       // conversation without having to click through the scenario setup form.
       // The scripted runtime needs no model, so this always succeeds on first open.
+      // runtime_id pins the session to the authored script: the useModel call above
+      // only moves the *global* selection, which the background install flips back
+      // to llama.cpp the moment it finishes.
       const sessionResult = await api.createSession({
         scenario_id: 'first_words_tutorial',
         difficulty: 'standard',
@@ -392,6 +395,7 @@ export function useSetupFlow(
         show_state_meters: true,
         save_transcript: true,
         seed: null,
+        runtime_id: 'scripted',
       })
       if (sessionResult.ok) {
         navigate(`/conversation/${sessionResult.data.session_id}`, {

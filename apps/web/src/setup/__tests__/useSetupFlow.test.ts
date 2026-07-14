@@ -477,7 +477,23 @@ describe('useSetupFlow step machine', () => {
       show_state_meters: true,
       save_transcript: true,
       seed: null,
+      runtime_id: 'scripted',
     })
+  })
+
+  it('handleStartTutorial pins the tutorial session to the scripted runtime even if useModel fails', async () => {
+    // useModel only moves the global selection, and it can lose a race with the
+    // background install that flips it back to llama.cpp. The session must carry
+    // its own runtime so the tutorial never lands on the fake NPC.
+    mockApi.useModel.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'runtime unavailable' } })
+    const { result } = renderHook(() => useSetupFlow('welcome'), { wrapper })
+
+    await act(async () => { await result.current.handleStartTutorial() })
+
+    expect(mockApi.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({ runtime_id: 'scripted' }),
+    )
+    expect(mockNavigate).toHaveBeenCalledWith('/conversation/sess-tutorial-1', expect.anything())
   })
 
   it('handleStartTutorial navigates to /conversation/:sessionId on successful session creation', async () => {

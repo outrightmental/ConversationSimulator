@@ -442,3 +442,64 @@ def test_tutorial_stays_scripted_after_a_model_install_flips_the_active_runtime(
         debrief_res = client.post(f"/api/sessions/{session_id}/debrief")
         assert debrief_res.status_code == 200, debrief_res.text
         assert debrief_res.json()["summary"] == _DEBRIEF_RESPONSE["summary"]
+
+
+def test_session_runtime_id_pins_the_script_when_the_global_selection_is_not_scripted(tmp_config):
+    """An explicit runtime_id on the create request pins the session on its own.
+
+    The web client sets the global selection with use_model before creating the
+    tutorial session, but that call can fail, and the background install can flip
+    the selection to llama_cpp in the window between the two requests. Neither may
+    drop the tutorial onto the fake NPC.
+    """
+    from convsim_core.app import create_app
+    from convsim_core.services.model_manager_service import set_active_config
+    from fastapi.testclient import TestClient
+
+    app = create_app(tmp_config)
+    with TestClient(app) as client:
+        # Global selection is a real model — as if use_model('scripted') never landed.
+        set_active_config(app.state.db.connection(), runtime_id="llama_cpp", model_id="/tmp/model.gguf")
+
+        res = client.post(
+            "/api/sessions",
+            json={**_TUTORIAL_SESSION_SETUP, "runtime_id": "scripted"},
+        )
+        assert res.status_code == 201, res.text
+        session_id = res.json()["session_id"]
+
+        client.post(f"/api/sessions/{session_id}/start")
+        turn_res = client.post(f"/api/sessions/{session_id}/turn", json={"content": "Hello!"})
+        assert turn_res.status_code == 200, turn_res.text
+        npc_events = [e for e in turn_res.json()["events"] if e["event_type"] == "npc_turn"]
+        assert npc_events, "No npc_turn event found in turn response"
+        npc_text = npc_events[0]["payload"]["content"]
+        assert "simulated npc" not in npc_text.lower(), (
+            f"Explicit runtime_id was ignored; got the fake runtime: {npc_text!r}"
+        )
+
+
+def test_session_runtime_id_rejects_a_sidecar_backed_runtime(tmp_config):
+    """Only the model-free runtimes may be requested per-session."""
+    from convsim_core.app import create_app
+    from fastapi.testclient import TestClient
+
+    app = create_app(tmp_config)
+    with TestClient(app) as client:
+        res = client.post(
+            "/api/sessions",
+            json={**_TUTORIAL_SESSION_SETUP, "runtime_id": "llama_cpp"},
+        )
+        assert res.status_code == 422, res.text
+
+
+def test_session_without_runtime_id_stores_no_runtime_key(tmp_config):
+    """A normal session records no pin, so it keeps following the global selection."""
+    from convsim_core.app import create_app
+    from fastapi.testclient import TestClient
+
+    app = create_app(tmp_config)
+    with TestClient(app) as client:
+        res = client.post("/api/sessions", json=_TUTORIAL_SESSION_SETUP)
+        assert res.status_code == 201, res.text
+        assert "runtime_id" not in res.json()["setup"]
