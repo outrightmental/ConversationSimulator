@@ -104,6 +104,18 @@ describe('RuntimeSettingsPanel — loading', () => {
       expect(screen.getByRole('alert')).toHaveTextContent(/Connection failed/i),
     )
   })
+
+  it('shows an actionable update message when getRuntimeSettings returns 404', async () => {
+    mockApi.getRuntimeSettings.mockResolvedValue({
+      ok: false,
+      error: { kind: 'http-error', status: 404, message: 'Not Found' },
+    })
+    await renderPanel()
+    await waitFor(() => {
+      const alert = screen.getByRole('alert')
+      expect(alert).toHaveTextContent(/update ConversationSimulator/i)
+    })
+  })
 })
 
 // ── Basic settings — provider and model ──────────────────────────────────────

@@ -214,7 +214,23 @@ export default function RuntimeSettingsPanel() {
     setLoadError(null)
     const [modelsR, settingsR] = await Promise.all([api.getModels(), api.getRuntimeSettings()])
     if (!modelsR.ok) { setLoadError(modelsR.error); return }
-    if (!settingsR.ok) { setLoadError(settingsR.error); return }
+    if (!settingsR.ok) {
+      // A 404 on this endpoint means the bundled runtime service is an older
+      // build that predates the /api/runtime/settings route. Guide the user
+      // toward the only actionable fix rather than showing a raw HTTP error.
+      const err = settingsR.error
+      if (err.kind === 'http-error' && err.status === 404) {
+        setLoadError({
+          ...err,
+          message:
+            'Runtime settings are not available in this version. ' +
+            'Please update ConversationSimulator to the latest version to access these options.',
+        })
+      } else {
+        setLoadError(err)
+      }
+      return
+    }
     setModelsData(modelsR.data)
     setProvider(modelsR.data.active.runtime_id ?? 'llama_cpp')
     setModelId(modelsR.data.active.model_id ?? '')

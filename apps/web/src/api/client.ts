@@ -142,11 +142,13 @@ function parseErrorText(text: string, res: Response): string {
   const fallback = text || `${res.status} ${res.statusText}`
   try {
     // convsim-core (Python) returns { error: { code, message } }; the interim
-    // convsim-api (TypeScript) returns { code?, message } at the top level.
-    // Accept either shape so error text is clean regardless of active backend.
+    // convsim-api (TypeScript) returns { code?, message } at the top level;
+    // FastAPI standard errors (404, 422, etc.) return { detail: string }.
+    // Accept all shapes so error text is clean regardless of active backend.
     const json = JSON.parse(text) as {
       message?: string
       code?: string
+      detail?: string | unknown[]
       error?: { message?: string; code?: string } | string
     }
     let msg = json.message
@@ -154,6 +156,10 @@ function parseErrorText(text: string, res: Response): string {
     if (!msg && json.error && typeof json.error === 'object') {
       msg = json.error.message
       code = json.error.code
+    }
+    // FastAPI uses { detail: string } for standard HTTP errors (404, 500, etc.)
+    if (!msg && typeof json.detail === 'string') {
+      msg = json.detail
     }
     if (msg) return code ? `${code}: ${msg}` : msg
   } catch {
