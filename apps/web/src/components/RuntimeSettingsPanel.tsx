@@ -4,7 +4,7 @@ import { api } from '../api/client'
 import type { ModelsResponse, RuntimeSettings } from '@convsim/shared'
 import type { ApiError } from '../api/errors'
 import { ApiErrorView } from './ApiErrorView'
-import { AI_ENGINE_DOCS_URL as DOCS_URL } from '../setup/docsUrls'
+import { AI_ENGINE_DOCS_URL as DOCS_URL, UPDATE_DOCS_URL } from '../setup/docsUrls'
 
 const PROVIDER_NAMES: Record<string, string> = {
   llama_cpp: 'llama.cpp',
@@ -186,6 +186,7 @@ function FieldRow({
 export default function RuntimeSettingsPanel() {
   const [modelsData, setModelsData] = useState<ModelsResponse | null>(null)
   const [loadError, setLoadError] = useState<ApiError | null>(null)
+  const [settingsUnavailable, setSettingsUnavailable] = useState(false)
 
   const [provider, setProvider] = useState<string>('llama_cpp')
   const [modelId, setModelId] = useState<string>('')
@@ -214,11 +215,23 @@ export default function RuntimeSettingsPanel() {
     setLoadError(null)
     const [modelsR, settingsR] = await Promise.all([api.getModels(), api.getRuntimeSettings()])
     if (!modelsR.ok) { setLoadError(modelsR.error); return }
-    if (!settingsR.ok) { setLoadError(settingsR.error); return }
+
+    // Neither backend raises 404 from /api/runtime/settings once the route is
+    // registered, so a 404 means the bundled runtime is an older build that
+    // predates the route. Only the advanced fields depend on that endpoint —
+    // provider, model and health all come from /api/models and still work — so
+    // degrade to hiding the advanced section rather than blocking the whole
+    // panel behind an error the user cannot retry their way out of.
+    const settingsMissing =
+      !settingsR.ok && settingsR.error.kind === 'http-error' && settingsR.error.status === 404
+    if (!settingsR.ok && !settingsMissing) { setLoadError(settingsR.error); return }
+
+    setSettingsUnavailable(settingsMissing)
+    if (settingsMissing) setShowAdvanced(false)
     setModelsData(modelsR.data)
     setProvider(modelsR.data.active.runtime_id ?? 'llama_cpp')
     setModelId(modelsR.data.active.model_id ?? '')
-    setForm(settingsToForm(settingsR.data.settings))
+    if (settingsR.ok) setForm(settingsToForm(settingsR.data.settings))
     setRequiresRestart(false)
   }, [])
 
@@ -451,23 +464,57 @@ export default function RuntimeSettingsPanel() {
         </div>
       )}
 
+      {/* Advanced settings are served by /api/runtime/settings. When the bundled
+          runtime predates that route, say so in plain language and point at the
+          one step that fixes it — updating the app. */}
+      {settingsUnavailable && (
+        <div
+          role="status"
+          aria-label="runtime advanced settings unavailable"
+          style={{
+            padding: '0.6rem 0.75rem',
+            borderRadius: '6px',
+            background: 'rgba(251,191,36,0.08)',
+            border: '1px solid rgba(251,191,36,0.3)',
+            fontSize: '0.85rem',
+            color: '#fcd34d',
+            marginBottom: '1rem',
+          }}
+        >
+          Advanced runtime settings are not available in this version of ConversationSimulator.
+          Update to the latest version to change context length, GPU layers, CPU threads and
+          sampling. The provider and model settings above still work.{' '}
+          <a
+            href={UPDATE_DOCS_URL}
+            target="_blank"
+            rel="noreferrer"
+            aria-label="how to update ConversationSimulator"
+            style={{ color: '#fcd34d', textDecoration: 'underline' }}
+          >
+            How to update ↗
+          </a>
+        </div>
+      )}
+
       {/* Advanced toggle */}
-      <button
-        onClick={() => setShowAdvanced((v) => !v)}
-        aria-expanded={showAdvanced}
-        aria-label={showAdvanced ? 'hide runtime advanced settings' : 'show runtime advanced settings'}
-        style={{
-          background: 'none',
-          border: 'none',
-          cursor: 'pointer',
-          color: '#71717a',
-          fontSize: '0.85rem',
-          padding: 0,
-          marginBottom: '0.75rem',
-        }}
-      >
-        {showAdvanced ? '▾ Hide runtime advanced settings' : '▸ Show runtime advanced settings'}
-      </button>
+      {!settingsUnavailable && (
+        <button
+          onClick={() => setShowAdvanced((v) => !v)}
+          aria-expanded={showAdvanced}
+          aria-label={showAdvanced ? 'hide runtime advanced settings' : 'show runtime advanced settings'}
+          style={{
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            color: '#71717a',
+            fontSize: '0.85rem',
+            padding: 0,
+            marginBottom: '0.75rem',
+          }}
+        >
+          {showAdvanced ? '▾ Hide runtime advanced settings' : '▸ Show runtime advanced settings'}
+        </button>
+      )}
 
       {showAdvanced && (
         <div
