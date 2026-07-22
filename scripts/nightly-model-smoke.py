@@ -52,6 +52,7 @@ import threading
 import time
 import urllib.error
 import urllib.request
+from collections import deque
 from pathlib import Path
 from typing import Optional
 
@@ -232,11 +233,19 @@ def _npc_turn_content(events: list) -> str:
 # ── Smoke run ─────────────────────────────────────────────────────────────────
 
 
-def _drain(stream: object) -> None:
-    """Consume a subprocess pipe in the background to avoid a full-buffer deadlock."""
+def _drain(stream: object, sink: Optional["deque"] = None) -> None:
+    """Consume a subprocess pipe in the background to avoid a full-buffer deadlock.
+
+    When ``sink`` (a bounded deque) is given, the most recent lines are retained
+    so they can be surfaced if the smoke fails.  The child's stderr is otherwise
+    discarded, which makes a server-side 500 undiagnosable from the CI logs — the
+    client only ever sees ``HTTPError: 500`` with no server traceback.
+    """
     try:
-        for _ in stream:  # type: ignore[attr-defined]
-            pass
+        for raw in stream:  # type: ignore[attr-defined]
+            if sink is not None:
+                line = raw.decode(errors="replace") if isinstance(raw, bytes) else raw
+                sink.append(line.rstrip("\n"))
     except Exception:
         pass
 
@@ -267,9 +276,14 @@ def run_smoke(
 
     with tempfile.TemporaryDirectory(prefix="convsim-smoke-") as tmp:
         data_dir = Path(tmp)
+        # Bounded tails of each child's stderr, surfaced only if the smoke fails
+        # so a server-side error is diagnosable from the CI logs.
+        llama_stderr_tail: deque = deque(maxlen=200)
+        core_stderr_tail: deque = deque(maxlen=200)
+
         print(f"\n[smoke] Starting llama-server on port {LLAMA_SERVER_PORT} with model: {model_path.name}")
         llama_proc = _start_llama_server(model_path, LLAMA_SERVER_PORT)
-        threading.Thread(target=_drain, args=(llama_proc.stderr,), daemon=True).start()
+        threading.Thread(target=_drain, args=(llama_proc.stderr, llama_stderr_tail), daemon=True).start()
         threading.Thread(target=_drain, args=(llama_proc.stdout,), daemon=True).start()
 
         core_proc: Optional[subprocess.Popen] = None
@@ -284,7 +298,7 @@ def run_smoke(
 
             print(f"[smoke] Starting convsim-core on port {CORE_PORT}…")
             core_proc = _start_core(data_dir, CORE_PORT, LLAMA_SERVER_PORT, llama_timeout_s)
-            threading.Thread(target=_drain, args=(core_proc.stderr,), daemon=True).start()
+            threading.Thread(target=_drain, args=(core_proc.stderr, core_stderr_tail), daemon=True).start()
             threading.Thread(target=_drain, args=(core_proc.stdout,), daemon=True).start()
 
             _wait_for_http(
@@ -361,6 +375,17 @@ def run_smoke(
             results["failures"] = failures
             results["verdict"] = "pass" if not failures else "fail"
 
+        except BaseException as exc:
+            # The client-side error (e.g. HTTP 500 from a turn) says nothing about
+            # what went wrong inside convsim-core.  Surface the captured stderr
+            # tails so the real traceback is visible in the CI logs, then re-raise.
+            print(f"\n[smoke] ERROR during run: {exc!r}", file=sys.stderr)
+            for label, tail in (("convsim-core", core_stderr_tail), ("llama-server", llama_stderr_tail)):
+                if tail:
+                    print(f"\n[smoke] ── {label} stderr (last {len(tail)} lines) ──", file=sys.stderr)
+                    for line in tail:
+                        print(f"  {label[:4]}| {line}", file=sys.stderr)
+            raise
         finally:
             for proc in (core_proc, llama_proc):
                 if proc is None:

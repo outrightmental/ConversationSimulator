@@ -333,8 +333,10 @@ async def test_chat_stream_sends_response_format_hint_when_schema_provided(runti
     sent_payload = client.stream.call_args.kwargs["json"]
     assert "response_format" in sent_payload
     rf = sent_payload["response_format"]
-    assert rf["type"] == "json_schema"
-    assert rf["json_schema"]["schema"] == schema
+    # llama.cpp's ``json_object`` + top-level ``schema`` form — the shape
+    # accepted by both the bundled llama-server and llama-cpp-python's server.
+    assert rf["type"] == "json_object"
+    assert rf["schema"] == schema
 
 
 @pytest.mark.asyncio
