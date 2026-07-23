@@ -311,6 +311,17 @@ jobs:
           if [ -n "$APPIMAGE" ]; then
             echo "Staging $APPIMAGE -> steam-content/linux/ConversationSimulator.AppImage"
             cp "$APPIMAGE" steam-content/linux/ConversationSimulator.AppImage
+            # Depot version stamp: the AppImage ships under a version-stable
+            # filename, so the version lives in version.txt at the depot root
+            # (same convention as the Windows portable depot).  Derived from
+            # the versioned artifact filename produced by the release build.
+            V="$(basename "$APPIMAGE" | grep -oE '[0-9]+[.][0-9]+[.][0-9]+' | head -n1)"
+            if [ -n "$V" ]; then
+              printf '%s' "$V" > steam-content/linux/version.txt
+              echo "Stamped Linux depot version.txt: $V"
+            else
+              echo "WARNING: could not derive version from AppImage filename; no version.txt stamped" >&2
+            fi
           else
             echo "WARNING: no AppImage found in build artifacts - Linux depot will be empty" >&2
           fi
