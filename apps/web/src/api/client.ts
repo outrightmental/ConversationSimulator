@@ -227,6 +227,10 @@ async function handleResponse<T>(res: Response): Promise<ApiResult<T>> {
   if (!res.ok) {
     return { ok: false, error: await errorFromResponse(res) }
   }
+  // 204 No Content — the server intentionally sent no body.
+  if (res.status === 204) {
+    return { ok: true, data: undefined as T }
+  }
   let text = ''
   try { text = await res.text() } catch { /* ignore */ }
   let data: T

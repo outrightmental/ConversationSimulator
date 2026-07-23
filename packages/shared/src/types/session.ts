@@ -37,6 +37,10 @@ export interface SessionCreateRequest {
   show_state_meters: boolean;
   save_transcript: boolean;
   seed: number | null;
+  // Pins the session to a model-free runtime for its whole lifetime, instead of
+  // following the globally selected runtime. Only the scripted tutorial and demo
+  // mode need this; omit it and the backend uses the active selection.
+  runtime_id?: 'scripted' | 'fake';
 }
 
 export interface SessionCreateResponse {

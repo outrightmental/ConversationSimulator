@@ -264,6 +264,21 @@ describe('api — network errors', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Empty response bodies
+// ---------------------------------------------------------------------------
+
+describe('api — 204 No Content', () => {
+  it('returns ok:true for an endpoint that answers 204 with an empty body', async () => {
+    // POST /api/setup/outcome is declared status_code=204. Parsing its empty body
+    // as JSON throws, which used to surface a bogus runtime-unreachable error.
+    mockFetch(204, '');
+    const result = await api.recordOnboardingOutcome('demo');
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // api.getScenario
 // ---------------------------------------------------------------------------
 
