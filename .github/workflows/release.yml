@@ -1313,6 +1313,32 @@ jobs:
           }
           Copy-Item $resourcesSrc "$depotStage\resources" -Recurse
           Write-Host "  Copied: resources/ from $resourcesSrc"
+          # ── Microsoft Visual C++ runtime (app-local deployment) ──────────────
+          # The Rust/MSVC main exe links vcruntime140.dll dynamically by default
+          # and the bundled llama.cpp binaries additionally need msvcp140.dll and
+          # vcruntime140_1.dll.  None of these ship with a clean Windows 10/11
+          # install, and Valve's build-review machines are clean images: the
+          # v0.2.3 review (BuildID 24203272, Jul 22 2026) failed with "the app
+          # doesn't launch when done through the Steam client or through the game
+          # folders" for exactly this reason.  App-local deployment of these
+          # redistributable DLLs is Microsoft-supported and needs no installer.
+          # The main exe is ALSO built with +crt-static now (see
+          # apps/desktop/src-tauri/.cargo/config.toml), so for it these copies
+          # are belt-and-suspenders — but they are load-bearing for
+          # llama-server.exe and the ggml DLLs under resources/runtimes/.
+          $crtDlls = @('vcruntime140.dll', 'vcruntime140_1.dll', 'msvcp140.dll')
+          foreach ($dll in $crtDlls) {
+            $src = Join-Path $env:SystemRoot "System32\$dll"
+            if (-not (Test-Path $src)) {
+              Write-Error "VC++ runtime DLL not found on runner: $src — cannot ship a depot that launches on clean machines."
+              exit 1
+            }
+            Copy-Item $src "$depotStage\"
+            if (Test-Path "$depotStage\resources\runtimes") {
+              Copy-Item $src "$depotStage\resources\runtimes\"
+            }
+            Write-Host "  Copied (app-local VC++ runtime): $dll"
+          }
 
           # ── WebView2 Evergreen Bootstrapper ──────────────────────────────────
           # Invoked by installscript.vdf on first launch to install WebView2

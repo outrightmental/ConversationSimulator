@@ -299,10 +299,21 @@ jobs:
               -exec cp -v {} steam-content/macos/ \;
           fi
 
-          find release-artifacts -name "*.AppImage" \
-            -exec cp -v {} steam-content/linux/ \;
-          find release-artifacts -name "*.deb" \
-            -exec cp -v {} steam-content/linux/ \;
+          # Linux: stage the AppImage under a VERSION-STABLE filename so the
+          # Steamworks launch option (ConversationSimulator.AppImage) keeps
+          # working across releases.  v0.2.3 shipped as
+          # "Conversation Simulator_0.2.3_amd64.AppImage" with the launch option
+          # pinned to that exact name - guaranteeing a Linux launch failure on
+          # the next version bump.  The .deb is deliberately NOT staged: it is an
+          # installer package, not application files, and depots containing
+          # installer packages fail Valve review (same rule as NSIS/MSI above).
+          APPIMAGE="$(find release-artifacts -name "*.AppImage" | head -n1)"
+          if [ -n "$APPIMAGE" ]; then
+            echo "Staging $APPIMAGE -> steam-content/linux/ConversationSimulator.AppImage"
+            cp "$APPIMAGE" steam-content/linux/ConversationSimulator.AppImage
+          else
+            echo "WARNING: no AppImage found in build artifacts - Linux depot will be empty" >&2
+          fi
 
           # GitHub release assets do not carry the Unix executable bit, so the
           # AppImage arrives as mode 0644 after download + copy.  SteamPipe

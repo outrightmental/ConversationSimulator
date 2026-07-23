@@ -1,0 +1,21 @@
+# Statically link the MSVC C runtime into ConversationSimulator.exe so it
+# starts on clean Windows 10/11 installs that have no Visual C++
+# Redistributable present.
+#
+# Why: Valve's build review of v0.2.3 (BuildID 24203272, Jul 22 2026) failed
+# with "the app doesn't launch when done through the Steam client or through
+# the game folders".  Valve tests on clean Windows images; a default
+# Rust/MSVC build dynamically links vcruntime140.dll, which is NOT an OS
+# component - it arrives only with the VC++ Redistributable that some other
+# app happens to install.  With +crt-static the compiler support routines are
+# linked into the exe and that dependency disappears entirely.  The UCRT
+# (api-ms-win-crt-*) has shipped in-box since Windows 10 and is unaffected.
+#
+# The release workflow additionally ships vcruntime140.dll /
+# vcruntime140_1.dll / msvcp140.dll app-locally in the Steam depot for the
+# bundled llama.cpp runtime binaries, which remain dynamically linked - see
+# ".github/workflows/release.yml" (Package Windows portable depot layout).
+#
+# https://doc.rust-lang.org/reference/linkage.html#static-and-dynamic-c-runtimes
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
