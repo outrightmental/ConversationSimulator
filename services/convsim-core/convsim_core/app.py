@@ -117,6 +117,28 @@ def create_app(config: ServiceConfig | None = None) -> FastAPI:
         supervisor.register(kokoro_sidecar)
         app.state.supervisor = supervisor
         seed_official_packs(config, db.connection())
+        # Seed the model registry from the bundled catalogue so a fresh
+        # install has models to offer. Idempotent upsert; failures must not
+        # block startup (the models UI degrades to user-supplied GGUF only).
+        try:
+            from convsim_core.services.model_registry_service import (
+                load_and_persist_registry,
+            )
+
+            _registry_path = Path(config.model_registry_path)
+            if _registry_path.is_file():
+                load_and_persist_registry(db.connection(), _registry_path)
+            else:
+                import logging as _logging
+
+                _logging.getLogger(__name__).warning(
+                    "Model registry file not found at %s — model catalogue will be empty",
+                    _registry_path,
+                )
+        except Exception as _exc:  # noqa: BLE001
+            import logging as _logging
+
+            _logging.getLogger(__name__).warning("Model registry seeding failed: %s", _exc)
         # Re-drive any one-click install pipeline that a crash/kill left mid-flight
         # so the download resumes from its .part offset instead of freezing.
         setup_install_router.resume_orphaned_jobs(app)
