@@ -470,12 +470,77 @@ def _npc_data_from_dict(raw: Dict[str, Any]) -> NpcData:
     )
 
 
-def load_scenario_info_from_pack(pack_dir: Path, scenario_rel_path: str) -> ScenarioInfo:
+def _difficulty_options_from_yaml(raw: Dict[str, Any]) -> Dict[str, DifficultySettings]:
+    """Parse a scenario YAML ``difficulty.options`` block into engine presets.
+
+    Unknown/missing knobs fall back to the neutral 50 baseline. Always returns
+    at least a ``standard`` preset so session creation can validate against it.
+    """
+    difficulty_section = raw.get("difficulty") or {}
+    options_raw = difficulty_section.get("options") if isinstance(difficulty_section, dict) else None
+    options: Dict[str, DifficultySettings] = {}
+    if isinstance(options_raw, dict):
+        for name, knobs in options_raw.items():
+            knobs = knobs if isinstance(knobs, dict) else {}
+
+            def _knob(key: str) -> int:
+                value = knobs.get(key, 50)
+                try:
+                    return max(0, min(100, int(value)))
+                except (TypeError, ValueError):
+                    return 50
+
+            options[str(name)] = DifficultySettings(
+                patience=_knob("patience"),
+                volatility=_knob("volatility"),
+                disclosure=_knob("disclosure"),
+                time_pressure=_knob("time_pressure"),
+            )
+    if not options:
+        options["standard"] = DifficultySettings()
+    return options
+
+
+def _events_from_yaml(raw: Dict[str, Any]) -> Optional[List[ScenarioEvent]]:
+    """Parse a scenario YAML ``events`` list into engine ScenarioEvent objects."""
+    events_raw = raw.get("events")
+    if not isinstance(events_raw, list):
+        return None
+    events: List[ScenarioEvent] = []
+    for entry in events_raw:
+        if not isinstance(entry, dict):
+            continue
+        when = entry.get("when")
+        instruction = entry.get("npc_instruction")
+        event_id = entry.get("id")
+        if not (event_id and isinstance(when, dict) and instruction):
+            continue
+        events.append(
+            ScenarioEvent(
+                id=str(event_id),
+                when=when,
+                npc_instruction=str(instruction),
+                repeat=bool(entry.get("repeat", False)),
+            )
+        )
+    return events or None
+
+
+def load_scenario_info_from_pack(
+    pack_dir: Path,
+    scenario_rel_path: str,
+    *,
+    supported_languages: Optional[List[str]] = None,
+) -> ScenarioInfo:
     """Load a ScenarioInfo by reading scenario (and NPC) YAML files from a pack directory.
 
-    Raises ``ValueError`` or ``OSError`` if the files cannot be read or parsed.
+    Parses the full engine surface — difficulty presets, scenario events,
+    ending conditions, and state-variable overrides — so pack scenarios play
+    with the same mechanics as built-in ones (not just a neutral "standard"
+    preset). Raises ``ValueError`` or ``OSError`` if the files cannot be read
+    or parsed.
     """
-    import yaml  # local import — only needed for workbench test sessions
+    import yaml  # local import — only needed off the hot path
 
     scenario_file = (pack_dir / scenario_rel_path).resolve()
     raw: Dict[str, Any] = yaml.safe_load(scenario_file.read_text(encoding="utf-8")) or {}
@@ -508,6 +573,19 @@ def load_scenario_info_from_pack(pack_dir: Path, scenario_rel_path: str) -> Scen
     state_section = raw.get("state") or {}
     state_variable_overrides: Optional[Dict[str, Any]] = state_section.get("variables") or None
 
+    ending_raw = raw.get("ending_conditions")
+    ending_conditions: Optional[Dict[str, Any]] = (
+        ending_raw if isinstance(ending_raw, dict) and ending_raw else None
+    )
+
+    langs_raw = raw.get("supported_languages")
+    if isinstance(langs_raw, list) and langs_raw:
+        langs = [str(lang) for lang in langs_raw]
+    elif supported_languages:
+        langs = list(supported_languages)
+    else:
+        langs = ["en"]
+
     scenario_data = ScenarioData(
         scenario_id=raw.get("scenario_id") or "workbench_test",
         title=raw.get("title") or "Workbench Test",
@@ -520,8 +598,61 @@ def load_scenario_info_from_pack(pack_dir: Path, scenario_rel_path: str) -> Scen
     return ScenarioInfo(
         scenario_data=scenario_data,
         max_turns=max_turns,
-        supported_languages=["en"],
-        difficulty_options={"standard": DifficultySettings()},
+        supported_languages=langs,
+        difficulty_options=_difficulty_options_from_yaml(raw),
         opening_npc_says=opening_npc_says,
         state_variable_overrides=state_variable_overrides,
+        events=_events_from_yaml(raw),
+        ending_conditions=ending_conditions,
     )
+
+
+def resolve_scenario_info(scenario_id: str, conn: Any = None) -> ScenarioInfo | None:
+    """Resolve a scenario for the session engine, falling back to installed packs.
+
+    Resolution order: built-in catalog → dynamic registry → installed pack
+    lookup via the DB (slug → pack source path + scenario file). A pack hit is
+    registered in the dynamic registry so subsequent calls (start/turn/debrief
+    on the same session) resolve without touching the DB again.
+
+    Before this fallback existed only the handful of hardcoded catalog
+    scenarios were playable: every other seeded library scenario failed
+    session creation with "Unknown scenario_id" — the library advertised 21
+    scenarios and could start 6.
+    """
+    info = get_scenario_info(scenario_id)
+    if info is not None or conn is None:
+        return info
+
+    try:
+        row = conn.execute(
+            "SELECT s.rel_path, s.slug, p.source_path, p.supported_languages_json "
+            "FROM scenarios s JOIN packs p ON s.pack_id = p.id "
+            "WHERE s.slug = ? LIMIT 1",
+            (scenario_id,),
+        ).fetchone()
+    except Exception:
+        return None
+    if row is None or not row["source_path"] or not row["rel_path"]:
+        return None
+
+    try:
+        import json as _json
+
+        langs_json = row["supported_languages_json"]
+        langs = _json.loads(langs_json) if langs_json else []
+        langs = [str(lang) for lang in langs] if isinstance(langs, list) else []
+    except Exception:
+        langs = []
+
+    try:
+        info = load_scenario_info_from_pack(
+            Path(row["source_path"]),
+            row["rel_path"],
+            supported_languages=langs or None,
+        )
+    except Exception:
+        return None
+
+    register_dynamic_scenario(scenario_id, info)
+    return info
