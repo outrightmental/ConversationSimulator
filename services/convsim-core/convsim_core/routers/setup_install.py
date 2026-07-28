@@ -112,6 +112,7 @@ async def _run_pipeline(
     sidecar: LlamaCppSidecar,
     model_cancel_events: dict[int, asyncio.Event],
     cancel_event: asyncio.Event,
+    app: Any = None,
 ) -> None:
     """Orchestrate all five setup stages, persisting progress after each change."""
 
@@ -452,6 +453,18 @@ async def _run_pipeline(
     # stage exists to catch before the user's first conversation.
     set_active_config(conn, runtime_id="llama_cpp", model_id=model_file_path)
 
+    # Swap the LIVE runtime too: sessions read app.state.runtime, and without
+    # this swap the process keeps serving conversations on the startup runtime
+    # (the fake one in packaged builds) until the next restart — the install
+    # would "complete" yet the user would never actually talk to their model.
+    if app is not None:
+        try:
+            from convsim_core.runtime.active import activate_runtime
+
+            await activate_runtime(app, "llama_cpp")
+        except Exception as exc:  # pragma: no cover - never fail the pipeline here
+            logger.warning("setup-install(%d): runtime swap failed: %s", job_id, exc)
+
     _save()
 
     if _is_cancelled():
@@ -508,6 +521,7 @@ def _launch_pipeline_task(
                 sidecar=sidecar,
                 model_cancel_events=model_cancel_events,
                 cancel_event=cancel_event,
+                app=app,
             )
         except Exception as exc:
             logger.exception("setup-install(%d): unhandled error", job_id)

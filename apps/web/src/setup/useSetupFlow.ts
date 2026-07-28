@@ -341,7 +341,16 @@ export function useSetupFlow(
     // Real model is now active — clear scripted/fake session hint.
     try { localStorage.removeItem(SETUP_KEYS.activeRuntimeHint) } catch { /* ignore */ }
     try { localStorage.removeItem(SETUP_KEYS.tutorialInstallId) } catch { /* ignore */ }
-    void api.startSidecar(trimmed)
+    // AWAIT the engine start (it returns once the model is loaded) so the
+    // benchmark step never races a half-started engine. "Already running"
+    // (409) is success for our purposes; any other failure is surfaced here
+    // instead of as a confusing benchmark error one screen later.
+    const sidecar = await api.startSidecar(trimmed)
+    if (!sidecar.ok && sidecar.error.status !== 409) {
+      setActionError(sidecar.error)
+      setActionLoading(false)
+      return
+    }
     benchmarkStartedRef.current = false
     setStep('benchmark')
     setActionLoading(false)

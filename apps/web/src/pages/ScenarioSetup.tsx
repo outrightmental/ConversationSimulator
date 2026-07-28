@@ -127,9 +127,9 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
             : voiceList[0]?.voice_id ?? null
         return {
           ...prev,
-          difficulty: scenarioData.difficulty.default,
-          player_role_name: scenarioData.player_role.label,
-          language: scenarioData.supported_languages[0] ?? 'en',
+          difficulty: scenarioData.difficulty?.default ?? 'standard',
+          player_role_name: scenarioData.player_role?.label ?? '',
+          language: scenarioData.supported_languages?.[0] ?? 'en',
           tts_enabled: rt.tts_ready && (scenarioData.voice_supported !== false),
           voice_id: prev.voice_id && voiceList.some((v) => v.voice_id === prev.voice_id)
             ? prev.voice_id
@@ -214,7 +214,7 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
   }
 
   const availableDifficulties = Object.keys(
-    scenario.difficulty.options,
+    scenario.difficulty?.options ?? {},
   ) as ScenarioDifficulty[];
 
   const validationErrorMap = Object.fromEntries(
@@ -260,7 +260,7 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
             </h2>
             <div className="setup-radio-group" role="radiogroup" aria-label="Difficulty">
               {availableDifficulties.map((level) => {
-                const option = scenario.difficulty.options[level];
+                const option = scenario.difficulty?.options?.[level];
                 return (
                   <label key={level} className="setup-radio-label">
                     <input
@@ -273,7 +273,7 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
                     <span className="setup-radio-text">
                       <span className="setup-difficulty-name">
                         {difficultyLabel(level, option)}
-                        {level === scenario.difficulty.default && (
+                        {level === scenario.difficulty?.default && (
                           <span className="setup-difficulty-recommended"> (recommended)</span>
                         )}
                       </span>
@@ -291,7 +291,7 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
             <h2 id="player-heading" className="setup-section-title">
               Your role
             </h2>
-            <p className="setup-role-brief">{scenario.player_role.brief}</p>
+            <p className="setup-role-brief">{scenario.player_role?.brief ?? ''}</p>
             <label className="setup-field">
               <span className="setup-label">Name to use in this session</span>
               <input
@@ -326,7 +326,7 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack }: Prop
                 value={form.language}
                 onChange={(e) => setField('language', e.target.value)}
               >
-                {scenario.supported_languages.map((code) => (
+                {(scenario.supported_languages ?? ['en']).map((code) => (
                   <option key={code} value={code}>
                     {languageLabel(code)}
                   </option>

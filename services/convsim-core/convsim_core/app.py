@@ -93,7 +93,18 @@ def create_app(config: ServiceConfig | None = None) -> FastAPI:
         app.state.cancel_events = {}                 # install_id → asyncio.Event (model downloads)
         app.state.setup_install_cancel_events = {}   # job_id → asyncio.Event (pipeline jobs)
         app.state.app_settings = load_settings(db.connection(), config.data_dir, config.log_dir)
-        app.state.runtime = build_runtime(config.runtime_id)
+        # Boot with the user's persisted runtime selection (written by
+        # /api/models/use and the setup pipeline) rather than the static config
+        # default, so a restart keeps the chosen model instead of silently
+        # falling back to the fake runtime.
+        from convsim_core.runtime.active import (
+            resolve_startup_runtime_id,
+            schedule_startup_autostart,
+        )
+
+        app.state.runtime = build_runtime(
+            resolve_startup_runtime_id(db.connection(), config.runtime_id)
+        )
         app.state.stt_worker = build_stt_worker(config.stt_worker_id)
         app.state.tts_worker = build_tts_worker(config.tts_worker_id)
         app.state.vad_worker = build_vad_worker(config.vad_worker_id)
@@ -109,6 +120,10 @@ def create_app(config: ServiceConfig | None = None) -> FastAPI:
         # Re-drive any one-click install pipeline that a crash/kill left mid-flight
         # so the download resumes from its .part offset instead of freezing.
         setup_install_router.resume_orphaned_jobs(app)
+        # If the persisted runtime is llama_cpp, bring its engine up in the
+        # background so the first conversation after a restart works without
+        # a manual step. Failures are logged; health endpoints stay truthful.
+        schedule_startup_autostart(app)
         yield
         await supervisor.stop_all()
         db.close()

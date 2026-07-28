@@ -507,7 +507,9 @@ async def test_health_unavailable_on_connect_error(runtime):
 
     assert h.status == RuntimeStatus.UNAVAILABLE
     assert h.message is not None
-    assert "llama-server" in h.message
+    # Plain-language copy (no CLI/binary jargon reaches users): the engine
+    # is managed by the app, not run by hand.
+    assert "AI engine" in h.message
 
 
 @pytest.mark.asyncio
