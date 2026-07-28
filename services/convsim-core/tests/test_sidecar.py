@@ -1037,3 +1037,50 @@ async def test_structured_output_via_fake_server(tmp_path):
 
     finally:
         await sidecar.stop()
+
+
+@pytest.mark.asyncio
+async def test_start_disables_model_reasoning_via_env(tmp_path, monkeypatch):
+    """The spawned llama-server must run with LLAMA_ARG_REASONING=off.
+
+    Reasoning-family models (Qwen3, R1 distils) otherwise burn the turn token
+    budget on chain-of-thought: the structured turn JSON gets truncated, every
+    turn degrades to the fallback utterance, and latency multiplies. The env
+    var (unlike the CLI flag) is ignored by older llama-server binaries, so
+    user-installed engines keep starting.
+    """
+    from convsim_core.runtime.sidecar import LlamaCppSidecar
+
+    captured: dict = {}
+
+    async def _fake_exec(*args, **kwargs):
+        captured["env"] = kwargs.get("env")
+        raise OSError("stop after capture")
+
+    monkeypatch.setattr("asyncio.create_subprocess_exec", _fake_exec)
+    sidecar = LlamaCppSidecar(log_dir=str(tmp_path))
+    with pytest.raises(RuntimeError):
+        await sidecar.start("/tmp/model.gguf", executable="/tmp/llama-server")
+
+    assert captured["env"] is not None
+    assert captured["env"].get("LLAMA_ARG_REASONING") == "off"
+
+
+@pytest.mark.asyncio
+async def test_start_respects_existing_reasoning_env(tmp_path, monkeypatch):
+    """An explicit user override of LLAMA_ARG_REASONING wins over the default."""
+    from convsim_core.runtime.sidecar import LlamaCppSidecar
+
+    captured: dict = {}
+
+    async def _fake_exec(*args, **kwargs):
+        captured["env"] = kwargs.get("env")
+        raise OSError("stop after capture")
+
+    monkeypatch.setenv("LLAMA_ARG_REASONING", "on")
+    monkeypatch.setattr("asyncio.create_subprocess_exec", _fake_exec)
+    sidecar = LlamaCppSidecar(log_dir=str(tmp_path))
+    with pytest.raises(RuntimeError):
+        await sidecar.start("/tmp/model.gguf", executable="/tmp/llama-server")
+
+    assert captured["env"].get("LLAMA_ARG_REASONING") == "on"

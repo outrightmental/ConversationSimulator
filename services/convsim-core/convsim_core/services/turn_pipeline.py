@@ -463,6 +463,12 @@ async def process_turn(
         messages=messages,
         json_schema=NPC_TURN_OUTPUT_SCHEMA,
         scripted_turn_index=turn_number,
+        # Structured turn output (utterance + deltas + rubric observations)
+        # regularly lands in the 300-600 token range; the 512 default left no
+        # headroom and a truncated JSON object degrades to the fallback
+        # utterance. Reasoning is disabled at the engine level, so the extra
+        # budget costs nothing when unused.
+        max_tokens=1024,
     )
     logger.debug(
         "Calling runtime %s for session %s turn %d (estimated %d tokens, truncated=%s)",
