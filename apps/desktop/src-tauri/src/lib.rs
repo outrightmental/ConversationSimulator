@@ -539,6 +539,18 @@ fn launch_or_verify_core(
             }
         }
 
+        // convsim-core.exe is a console-subsystem binary; spawned from this GUI
+        // app without CREATE_NO_WINDOW it allocates a visible console window
+        // that pops over the UI for the whole session. Suppress it — core's
+        // output still lands in its own log files (and our inherited stdio when
+        // launched from a terminal on other platforms).
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            cmd.creation_flags(CREATE_NO_WINDOW);
+        }
+
         let child = match cmd.spawn() {
             Ok(c) => c,
             Err(e) => {

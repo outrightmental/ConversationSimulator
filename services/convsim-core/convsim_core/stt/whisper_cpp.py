@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import asyncio
+
+from convsim_core.runtime.procflags import CREATE_NO_WINDOW
 import json
 import logging
 import os
@@ -154,6 +156,7 @@ class WhisperCppWorker(SttWorker):
                     *cmd,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
+                    creationflags=CREATE_NO_WINDOW,
                 )
             except OSError as exc:
                 raise SttError(

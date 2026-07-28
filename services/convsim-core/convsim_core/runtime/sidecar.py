@@ -18,6 +18,7 @@ from enum import Enum
 from pathlib import Path
 from typing import IO
 
+from convsim_core.runtime.procflags import CREATE_NO_WINDOW
 from convsim_core.runtime.supervisor import SidecarProcess, assert_localhost
 
 
@@ -269,6 +270,7 @@ class LlamaCppSidecar(SidecarProcess):
                 *cmd,
                 stdout=log_fh,
                 stderr=subprocess.STDOUT,
+                creationflags=CREATE_NO_WINDOW,
             )
         except OSError as exc:
             self._state = SidecarState.CRASHED

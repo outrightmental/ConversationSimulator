@@ -256,8 +256,8 @@ class LlamaCppRuntime(ChatRuntime):
                 runtime_name=self.display_name,
                 status=RuntimeStatus.UNAVAILABLE,
                 message=(
-                    f"Cannot connect to llama-server at {self._base_url}. "
-                    "Start it with: llama-server --port 7356 --model /path/to/model.gguf"
+                    "The local AI engine isn't running. It starts automatically "
+                    "when a model is selected or installed."
                 ),
                 checked_at=checked_at,
             )

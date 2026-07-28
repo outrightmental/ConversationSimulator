@@ -312,6 +312,24 @@ async def use_model(request: Request, body: UseModelRequest) -> UseModelResponse
         test_runtime = build_runtime(body.runtime_id)
         health = await test_runtime.health()
 
+        # The managed local engine is not a user-run service: when it is not
+        # reachable, start it ourselves (bundled executable + newest ready
+        # model) instead of telling the user to run a server by hand. This is
+        # what makes "Use model" work in packaged builds where nothing else
+        # has started llama-server yet.
+        if body.runtime_id == "llama_cpp" and health.status in (
+            RuntimeStatus.UNAVAILABLE,
+            RuntimeStatus.ERROR,
+            RuntimeStatus.STARTING,
+        ):
+            from convsim_core.runtime.active import ensure_llama_sidecar_running
+
+            started = await ensure_llama_sidecar_running(
+                request.app, model_path=body.model_id
+            )
+            if started is not None:
+                health = await test_runtime.health()
+
         # When an Ollama model is explicitly selected, verify it is installed locally.
         # list_models() returns [] silently on connection failure, so this only fires
         # when Ollama is reachable but the model tag is missing.
@@ -342,6 +360,35 @@ async def use_model(request: Request, body: UseModelRequest) -> UseModelResponse
             await _client.aclose()
 
     if health.status in (RuntimeStatus.UNAVAILABLE, RuntimeStatus.ERROR):
+        if body.runtime_id == "llama_cpp":
+            from convsim_core.runtime.active import find_ready_model_path
+            from convsim_core.runtime.sidecar import find_executable
+
+            # Plain-language failure reasons — never CLI instructions.
+            if find_executable() is None:
+                friendly = (
+                    "The AI engine isn't installed yet. "
+                    "Use “Set me up” on the Welcome screen to install it."
+                )
+            elif (
+                find_ready_model_path(db.connection()) is None and not body.model_id
+            ):
+                friendly = (
+                    "No AI model is installed yet. "
+                    "Use “Set me up” on the Welcome screen, or install a model "
+                    "from the model manager."
+                )
+            else:
+                friendly = (
+                    "The AI engine couldn't start. "
+                    "Restart the app and try again; if it keeps happening, "
+                    "open the logs folder from the Support screen."
+                )
+            raise ConvsimError(
+                code="RUNTIME_UNAVAILABLE",
+                message=friendly,
+                status_code=503,
+            )
         raise ConvsimError(
             code="RUNTIME_UNAVAILABLE",
             message=health.message or f"Runtime '{body.runtime_id}' is not available.",
@@ -352,6 +399,14 @@ async def use_model(request: Request, body: UseModelRequest) -> UseModelResponse
         raise _ollama_model_error
 
     set_active_config(db.connection(), runtime_id=body.runtime_id, model_id=body.model_id)
+
+    # Swap the LIVE runtime so sessions immediately use the new selection.
+    # Persisting the config alone is not enough: app.state.runtime is what the
+    # session endpoints call, and before this swap existed it stayed on the
+    # startup default (the fake runtime in packaged builds) forever.
+    from convsim_core.runtime.active import activate_runtime
+
+    await activate_runtime(request.app, body.runtime_id)
 
     return UseModelResponse(
         runtime_id=body.runtime_id,
@@ -573,10 +628,25 @@ async def benchmark_model(request: Request, body: BenchmarkRequest) -> Benchmark
     model_id = body.model_id or active_cfg.get("model_id")
 
     health = await runtime.health()
+    if (
+        getattr(runtime, "id", None) == "llama_cpp"
+        and health.status in (RuntimeStatus.UNAVAILABLE, RuntimeStatus.ERROR, RuntimeStatus.STARTING)
+    ):
+        # Benchmark runs right after model selection; make sure the managed
+        # engine is actually up rather than failing on a race with its startup.
+        from convsim_core.runtime.active import ensure_llama_sidecar_running
+
+        if await ensure_llama_sidecar_running(request.app, model_path=model_id) is not None:
+            health = await runtime.health()
     if health.status in (RuntimeStatus.UNAVAILABLE, RuntimeStatus.ERROR):
         raise ConvsimError(
             code="RUNTIME_UNAVAILABLE",
-            message=health.message or "Runtime is not available for benchmarking.",
+            message=(
+                "The AI engine isn't running yet, so the speed check couldn't start. "
+                "Try again in a moment."
+                if getattr(runtime, "id", None) == "llama_cpp"
+                else health.message or "Runtime is not available for benchmarking."
+            ),
             status_code=503,
         )
 
