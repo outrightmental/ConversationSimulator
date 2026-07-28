@@ -608,8 +608,21 @@ describe('ModelManager — GGUF branch', () => {
     expect(mockApi.startSidecar).toHaveBeenCalledWith('/home/user/models/my-model.gguf')
   })
 
-  it('continues to the benchmark step even when the sidecar fails to start', async () => {
-    mockApi.startSidecar.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'sidecar failed' } })
+  it('surfaces a sidecar start failure on the GGUF step instead of racing into the benchmark', async () => {
+    // The engine start is now awaited: a real failure is shown here, where the
+    // user can act on it — not one screen later as a cryptic benchmark error.
+    mockApi.startSidecar.mockResolvedValue({ ok: false, error: { kind: 'http-error', message: 'The AI engine couldn\'t start.', status: 503 } })
+    await goToGguf()
+    fireEvent.change(screen.getByRole('textbox', { name: /file path/i }), {
+      target: { value: '/home/user/models/my-model.gguf' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /use this file/i }))
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+    expect(screen.queryByRole('heading', { name: /model benchmark/i })).not.toBeInTheDocument()
+  })
+
+  it('treats an already-running engine (409) as success and continues to the benchmark', async () => {
+    mockApi.startSidecar.mockResolvedValue({ ok: false, error: { kind: 'http-error', message: 'SIDECAR_ALREADY_RUNNING', status: 409 } })
     await goToGguf()
     fireEvent.change(screen.getByRole('textbox', { name: /file path/i }), {
       target: { value: '/home/user/models/my-model.gguf' },

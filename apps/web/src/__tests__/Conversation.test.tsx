@@ -20,6 +20,7 @@ vi.mock('../api/client', () => ({
     connectSession: vi.fn(),
     getScenario: vi.fn(),
     getSetupInstallStatus: vi.fn(),
+    getSessionTranscript: vi.fn(),
   },
   apiClient: {
     health: vi.fn(),
@@ -44,7 +45,10 @@ const startResponse: SessionStartResponse = {
       event_id: 1,
       session_id: SESSION_ID,
       event_type: 'npc_opening',
-      payload: { content: "Thanks for coming in. Tell me about yourself." },
+      payload: {
+        content: "Thanks for coming in. Tell me about yourself.",
+        visible_state: { trust: 50, patience: 75, rapport: 50, openness: 50, objective_progress: 0 },
+      },
       created_at: '2026-07-01T00:00:00Z',
     },
   ],
@@ -173,13 +177,31 @@ describe('Conversation screen', () => {
       )
     })
 
-    it('recovers gracefully when session was already started (409)', async () => {
+    it('recovers silently when session was already started (409): hydrates transcript, no error banner', async () => {
       mockApi.startSession.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'INVALID_TRANSITION' } })
+      mockApi.getSessionTranscript.mockResolvedValue({
+        ok: true,
+        data: {
+          session_id: SESSION_ID,
+          scenario_id: 'behavioral_interview',
+          transcript_saved: true,
+          turns: [
+            { turn_number: 0, role: 'npc_opening', content: 'Thanks for coming in. Tell me about yourself.', flow_state_after: 'PlayerTurnListening' },
+            { turn_number: 1, role: 'player', content: 'Happy to be here.', flow_state_after: 'NpcThinking' },
+            { turn_number: 2, role: 'npc', content: 'Great — walk me through your background.', flow_state_after: 'PlayerTurnListening' },
+          ],
+        },
+      })
       renderConversation()
+      // The prior turns are rehydrated (opening included) …
       await waitFor(() =>
-        expect(screen.getByRole('alert')).toHaveTextContent('Connection failed'),
+        expect(screen.getByText('Thanks for coming in. Tell me about yourself.')).toBeInTheDocument(),
       )
+      expect(screen.getByText('Great — walk me through your background.')).toBeInTheDocument()
+      // … the conversation is interactive …
       expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument()
+      // … and no scary error banner covers a working conversation.
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
     })
   })
 

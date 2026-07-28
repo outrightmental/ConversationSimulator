@@ -450,6 +450,27 @@ export const api = {
   createSession(request: SessionCreateRequest): Promise<ApiResult<SessionCreateResponse>> {
     return post<SessionCreateResponse>('/sessions', request)
   },
+  /** Persisted transcript rows for a session (convsim-core response shape).
+   *  Used to rehydrate the conversation view when the session was already
+   *  started (page reload / remount) so the opening and prior turns are not
+   *  lost. */
+  getSessionTranscript(sessionId: string): Promise<ApiResult<{
+    session_id: string
+    scenario_id: string
+    transcript_saved: boolean
+    message?: string
+    turns: Array<{
+      turn_number: number
+      role: 'npc_opening' | 'npc' | 'player'
+      content: string
+      source_mode?: string | null
+      emotion?: string | null
+      flow_state_after?: string | null
+      created_at?: string
+    }>
+  }>> {
+    return get(`/sessions/${sessionId}/transcript`)
+  },
   getDataFolder(): Promise<ApiResult<{ path: string }>> {
     return get<{ path: string }>('/privacy/data-folder')
   },

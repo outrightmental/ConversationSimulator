@@ -17,7 +17,7 @@ from convsim_core.errors import (
 from convsim_core.logging_setup import configure_logging
 from convsim_core.packs.seeder import seed_official_packs
 from convsim_core.paths import legacy_convsim_dir, platform_data_root
-from convsim_core.routers import cloud_settings as cloud_settings_router, diag as diag_router, health, logbook as logbook_router, models as models_router, packs as packs_router, preflight as preflight_router, privacy as privacy_router, relationship_memory as relationship_memory_router, runtime_settings as runtime_settings_router, scenarios as scenarios_router, sessions as sessions_router, settings as settings_router, setup as setup_router, setup_install as setup_install_router, sidecar as sidecar_router, stt as stt_router, tts as tts_router, vad as vad_router, workbench as workbench_router
+from convsim_core.routers import cloud_settings as cloud_settings_router, diag as diag_router, health, logbook as logbook_router, models as models_router, packs as packs_router, preflight as preflight_router, privacy as privacy_router, relationship_memory as relationship_memory_router, runtime_settings as runtime_settings_router, scenarios as scenarios_router, sessions as sessions_router, settings as settings_router, setup as setup_router, setup_install as setup_install_router, sidecar as sidecar_router, stt as stt_router, tts as tts_router, vad as vad_router, workbench as workbench_router, workshop as workshop_router
 from convsim_core.runtime import build_runtime
 from convsim_core.runtime.sidecar import LlamaCppSidecar
 from convsim_core.runtime.kokoro_sidecar import KokoroSidecar
@@ -161,6 +161,7 @@ def create_app(config: ServiceConfig | None = None) -> FastAPI:
     app.include_router(scenarios_router.router)
     app.include_router(sessions_router.router)
     app.include_router(workbench_router.router)
+    app.include_router(workshop_router.router)
     app.include_router(logbook_router.router)
     app.include_router(relationship_memory_router.router)
     app.include_router(setup_router.router)
