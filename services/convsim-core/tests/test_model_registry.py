@@ -482,10 +482,28 @@ def test_get_models_returns_200(client):
     assert resp.status_code == 200
 
 
-def test_get_models_empty_database_returns_empty_list(client):
-    body = client.get("/api/models").json()
-    assert body["registry"] == []
-    assert body["total"] == 0
+def test_get_models_empty_database_returns_empty_list(tmp_path):
+    # Startup now seeds the registry from the bundled catalogue by default, so
+    # an empty registry requires pointing the config at a missing file. The
+    # endpoint must still degrade to an empty list rather than erroring.
+    from convsim_core.app import create_app
+    from convsim_core.config import ServiceConfig
+    from fastapi.testclient import TestClient
+
+    config = ServiceConfig(
+        host="127.0.0.1",
+        port=7355,
+        data_dir=str(tmp_path / "data"),
+        log_dir=str(tmp_path / "logs"),
+        db_dir=str(tmp_path / "db"),
+        packs_dir=str(tmp_path / "packs"),
+        model_registry_path=str(tmp_path / "missing" / "registry.yaml"),
+    )
+    app = create_app(config)
+    with TestClient(app) as empty_client:
+        body = empty_client.get("/api/models").json()
+        assert body["registry"] == []
+        assert body["total"] == 0
 
 
 def test_get_models_after_registry_load_returns_sorted_entries(client):

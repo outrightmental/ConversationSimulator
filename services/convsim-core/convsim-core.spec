@@ -58,6 +58,10 @@ a = Analysis(
         # These land at sys._MEIPASS/packs/official/ and are found by config.py
         # when it detects the frozen (PyInstaller) environment.
         (str(_REPO_ROOT / 'packs' / 'official'), 'packs/official'),
+        # Model registry catalogue (names, licenses, pinned URLs + SHA-256).
+        # Seeded into SQLite at startup; without it a fresh install has no
+        # models to offer and "Set me up" dead-ends with MODEL_NOT_FOUND.
+        (str(_REPO_ROOT / 'model-registry' / 'registry.yaml'), 'model-registry'),
     ],
     hiddenimports=[
         # uvicorn resolves protocol and loop implementations at runtime.

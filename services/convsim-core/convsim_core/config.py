@@ -40,6 +40,21 @@ def _default_official_packs_dir() -> str:
 _DEFAULT_OFFICIAL_PACKS_DIR = _default_official_packs_dir()
 
 
+def _default_model_registry_path() -> str:
+    """Resolve the read-only bundled model registry YAML.
+
+    Frozen builds embed it at ``sys._MEIPASS/model-registry/registry.yaml``
+    (see convsim-core.spec); development resolves relative to the repo root.
+    """
+    meipass = getattr(sys, "_MEIPASS", None)
+    if meipass:
+        return str(Path(meipass) / "model-registry" / "registry.yaml")
+    return str(Path(__file__).resolve().parents[3] / "model-registry" / "registry.yaml")
+
+
+_DEFAULT_MODEL_REGISTRY_PATH = _default_model_registry_path()
+
+
 class ServiceConfig(BaseSettings):
     """Runtime configuration for the convsim-core process.
 
@@ -64,6 +79,7 @@ class ServiceConfig(BaseSettings):
     # Read-only official packs served (browse-only) by the Creator Workbench.
     # Defaults to the repo's bundled packs/official directory.
     official_packs_dir: str = _DEFAULT_OFFICIAL_PACKS_DIR
+    model_registry_path: str = _DEFAULT_MODEL_REGISTRY_PATH
     # Set CONVSIM_LOCAL_DEV_PACKS_DIR to a directory that contains in-progress
     # pack folders.  The /api/packs/import/folder endpoint only accepts source
     # paths that fall within packs_dir or this directory; leaving it unset
