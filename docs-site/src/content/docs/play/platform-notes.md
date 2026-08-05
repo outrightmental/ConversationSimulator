@@ -338,6 +338,31 @@ The app has been tested against **Steam client 1.0.0.81** and newer.  The
 minimum Steam client version to list on the store page is **Steam client
 1.0.0.81**.
 
+#### Steam overlay (WebView2 caveat)
+
+The Steam overlay does **not** work out of the box on this app the way it does
+on a native Windows game, because the UI renders in out-of-process WebView2
+rather than a swapchain the app owns. Steam's overlay compositing hook (which
+draws by intercepting the game's graphics `Present` call) finds nothing to draw
+into, and the Shift+Tab chord lands in the WebView2 process where Steam's input
+hook never sees it. The failure is silent and *looks like success* — Steam
+reports the player "In-Game", `is_overlay_enabled()` returns true, and
+`GameOverlayActivated` fires — so it is easy to sign off the `G3-03` gate broken.
+
+Two things are required to make it work on Windows:
+
+1. **Chord forwarding** — the front-end forwards Shift+Tab to Steam
+   (`useSteamOverlay` → `steam_activate_overlay`). Shipped.
+2. **A decoy compositing surface** — a transparent, click-through child window
+   presenting empty frames at vsync so Steam has somewhere to composite the
+   overlay. Not yet vendored (Win32 + wgpu native code).
+
+Known limitation: after alt-tabbing back in, the forwarder is deaf until the
+page is clicked once. See
+[Steam integration § Steam overlay (Windows WebView2 caveat)](/dev/steam-integration/#steam-overlay-windows-webview2-caveat)
+for the full explanation, the external plugin reference, and the trap to avoid
+(do not "fix" the focus limitation with `webview.set_focus()`).
+
 ### Port conflicts
 
 Find and stop conflicting processes on Windows:

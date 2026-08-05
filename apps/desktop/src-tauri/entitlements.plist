@@ -15,6 +15,16 @@
   the convsim-core sidecar needs unrestricted write access to the platform data
   directory (~/Library/Application Support/com.outrightmental.convsim).
 
+  NOTE on G3-03: this entitlement (and the Steamworks IPC it enables) is
+  necessary but NOT sufficient for the overlay to actually appear.  Because the
+  UI renders in WebView2/WKWebView rather than a swapchain the app owns, Steam's
+  overlay compositing hook has nothing to draw into, and the Shift+Tab chord is
+  delivered to the webview process instead of Steam's input hook.  The overlay
+  gate therefore also needs the front-end chord forwarder (useSteamOverlay) and,
+  on Windows, a decoy compositing surface.  See the "Steam overlay (Windows
+  WebView2 caveat)" section of docs/STEAM_INTEGRATION.md — do not read this
+  entitlement as evidence that G3-03 passes.
+
   Hardened Runtime (codesign's "runtime" option) is separate from App Sandbox
   and is what Apple requires for notarization — the two features are independent.
 
