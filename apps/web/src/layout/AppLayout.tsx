@@ -5,6 +5,7 @@ import OfflineIndicator from '../components/OfflineIndicator'
 import { useTranslation } from '../i18n'
 import { useGamepadNavigation } from '../hooks/useGamepadNavigation'
 import { useSteamKeyboard } from '../hooks/useSteamKeyboard'
+import { useSteamOverlay } from '../hooks/useSteamOverlay'
 
 const linkStyle = ({ isActive }: { isActive: boolean }): React.CSSProperties => ({
   padding: '0.4rem 0.75rem',
@@ -103,6 +104,10 @@ export default function AppLayout() {
   // Steam on-screen keyboard: show automatically when any text input is focused.
   // No-ops outside Tauri or when Steam is not running.
   useSteamKeyboard()
+  // Steam overlay: forward Shift+Tab to Steam so the overlay opens on a Tauri
+  // app (the chord otherwise lands in the WebView2 process and Steam never sees
+  // it). No-ops outside Tauri or when Steam is not running.
+  useSteamOverlay()
 
   // Move keyboard/screen-reader focus to the main landmark on route changes so
   // navigation is announced and the user lands at the new page's content.  Skip
