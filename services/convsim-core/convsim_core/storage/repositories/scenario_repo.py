@@ -264,21 +264,6 @@ def _row_to_detail(row: sqlite3.Row, *, include_hidden: bool) -> ScenarioDetail:
 
     difficulty_raw = yaml_data.get("difficulty") or {}
     difficulty_options: dict = difficulty_raw.get("options") or {}
-    if not difficulty_options:
-        difficulty_options = {"standard": {}}
-    difficulty_default_str = str(
-        difficulty_raw.get("default")
-        or row["difficulty_default"]
-        or next(iter(difficulty_options))
-    )
-    difficulty_nested = {"default": difficulty_default_str, "options": difficulty_options}
-
-    langs_raw = yaml_data.get("supported_languages")
-    supported_languages = (
-        [str(l) for l in langs_raw]
-        if isinstance(langs_raw, list) and langs_raw
-        else ["en"]
-    )
 
     return ScenarioDetail(
         scenario_id=row["scenario_id"],
@@ -290,8 +275,6 @@ def _row_to_detail(row: sqlite3.Row, *, include_hidden: bool) -> ScenarioDetail:
         content_rating=row["content_rating"],
         difficulty_default=row["difficulty_default"],
         difficulty_options=difficulty_options,
-        difficulty=difficulty_nested,
-        supported_languages=supported_languages,
         max_turns=row["max_turns"],
         estimated_length_minutes=row["soft_time_limit_minutes"],
         voice_support=bool(row["voice_support"]),
