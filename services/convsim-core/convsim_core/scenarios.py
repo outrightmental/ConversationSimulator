@@ -445,6 +445,39 @@ def get_scenario_data(scenario_id: str, difficulty: str = "standard") -> Scenari
     return info.get_scenario_data(difficulty)
 
 
+def resolve_scenario_info(scenario_id: str, conn: Any = None) -> "ScenarioInfo | None":
+    """Resolve a scenario for the session engine, falling back to installed packs.
+
+    Resolution order: built-in catalog → dynamic registry → installed pack
+    lookup via the DB (slug → pack source path + scenario YAML file). A pack
+    hit is registered in the dynamic registry so subsequent calls on the same
+    session resolve without touching the DB again.
+    """
+    info = get_scenario_info(scenario_id)
+    if info is not None or conn is None:
+        return info
+
+    try:
+        row = conn.execute(
+            "SELECT s.rel_path, p.source_path "
+            "FROM scenarios s JOIN packs p ON s.pack_id = p.id "
+            "WHERE s.slug = ? LIMIT 1",
+            (scenario_id,),
+        ).fetchone()
+    except Exception:
+        return None
+    if row is None or not row["source_path"] or not row["rel_path"]:
+        return None
+
+    try:
+        info = load_scenario_info_from_pack(Path(row["source_path"]), row["rel_path"])
+    except Exception:
+        return None
+
+    register_dynamic_scenario(scenario_id, info)
+    return info
+
+
 # ---------------------------------------------------------------------------
 # Pack scenario loader (for workbench test sessions)
 # ---------------------------------------------------------------------------

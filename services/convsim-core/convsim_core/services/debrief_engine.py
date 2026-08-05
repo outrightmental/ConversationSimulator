@@ -583,7 +583,8 @@ async def generate_debrief(
         with conn:
             conn.execute(
                 "INSERT INTO session_debriefs (session_id, content_json, metrics_json, generated_at) "
-                "VALUES (?, ?, ?, ?)",
+                "VALUES (?, ?, ?, ?) "
+                "ON CONFLICT(session_id) DO NOTHING",
                 (session_id, json.dumps(debrief_doc), json.dumps(metrics), now),
             )
             # Backfill ended_at for sessions that reached a terminal state

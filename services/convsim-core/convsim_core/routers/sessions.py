@@ -27,7 +27,7 @@ from pydantic import BaseModel, field_validator
 from convsim_core.runtime import build_runtime
 from convsim_core.runtime.base import ChatRuntime
 from convsim_core.scenario_state import build_variable_defs, partition_state_by_visibility
-from convsim_core.scenarios import get_scenario_info
+from convsim_core.scenarios import resolve_scenario_info
 from convsim_core.services.branch_service import fork_session
 from convsim_core.services.debrief_engine import generate_debrief
 from convsim_core.services.model_manager_service import get_active_config
@@ -392,7 +392,9 @@ def _resolve_runtime(request: Request, setup: Dict[str, Any]) -> ChatRuntime:
 
 @router.post("", status_code=201, response_model=SessionResponse)
 async def create_session(body: SessionCreateRequest, request: Request) -> SessionResponse:
-    info = get_scenario_info(body.scenario_id)
+    db = request.app.state.db
+    conn = db.connection()
+    info = resolve_scenario_info(body.scenario_id, conn)
     if info is None:
         raise HTTPException(status_code=400, detail=f"Unknown scenario_id: {body.scenario_id!r}")
 
@@ -409,8 +411,6 @@ async def create_session(body: SessionCreateRequest, request: Request) -> Sessio
             detail=f"Language {body.language!r} is not supported by scenario {body.scenario_id!r}",
         )
 
-    db = request.app.state.db
-    conn = db.connection()
     session_id = _generate_session_id()
     now = _now_iso()
     setup_dict = body.model_dump()
@@ -469,7 +469,7 @@ async def start_session(session_id: str, request: Request) -> SessionStartRespon
             current_state,
         )
 
-    info = get_scenario_info(row["scenario_id"])
+    info = resolve_scenario_info(row["scenario_id"], conn)
     opening_text = (
         info.opening_npc_says if info else "Hello! I am ready to begin. Please go ahead."
     )
@@ -544,7 +544,7 @@ async def submit_turn(session_id: str, body: TurnSubmitRequest, request: Request
     setup = json.loads(row["setup_json"])
     scenario_id = row["scenario_id"]
     difficulty = setup.get("difficulty", "standard")
-    info = get_scenario_info(scenario_id)
+    info = resolve_scenario_info(scenario_id, conn)
     if info is None:
         raise HTTPException(status_code=500, detail=f"Scenario {scenario_id!r} not found in registry")
 
@@ -786,7 +786,7 @@ async def create_debrief(session_id: str, request: Request) -> DebriefResponse:
     scenario_id = row["scenario_id"]
     setup = json.loads(row["setup_json"])
     difficulty = setup.get("difficulty", "standard")
-    info = get_scenario_info(scenario_id)
+    info = resolve_scenario_info(scenario_id, conn)
     if info is None:
         raise HTTPException(status_code=500, detail=f"Scenario {scenario_id!r} not found in registry")
 
@@ -1100,7 +1100,7 @@ async def export_session(session_id: str, request: Request) -> SessionExportResp
     setup = json.loads(row["setup_json"])
     save_transcript = setup.get("save_transcript", True)
     scenario_id = row["scenario_id"]
-    info = get_scenario_info(scenario_id)
+    info = resolve_scenario_info(scenario_id, conn)
     scenario_meta: Dict[str, Any] = {
         "id": scenario_id,
         "name": info.scenario_data.title if info else scenario_id,
