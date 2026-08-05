@@ -125,6 +125,10 @@ class ScenarioDetail(BaseModel):
     content_rating: Optional[str] = None
     difficulty_default: Optional[str] = None
     difficulty_options: dict = {}
+    # Nested difficulty shape matching the frontend ScenarioInfo.difficulty contract:
+    # { default: str, options: dict }. Always present so the setup form never crashes.
+    difficulty: dict = {}
+    supported_languages: list[str] = ["en"]
     max_turns: Optional[int] = None
     estimated_length_minutes: Optional[int] = None
     voice_support: bool = False

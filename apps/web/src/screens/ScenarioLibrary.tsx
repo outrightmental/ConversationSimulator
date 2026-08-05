@@ -191,8 +191,8 @@ export default function ScenarioLibrary() {
     const models = new Set<string>()
     for (const s of scenarios) {
       ratings.add(s.content_rating)
-      for (const l of s.supported_languages) languages.add(l)
-      for (const d of Object.keys(s.difficulty.options)) difficulties.add(d)
+      for (const l of (s.supported_languages ?? [])) languages.add(l)
+      for (const d of Object.keys(s.difficulty?.options ?? {})) difficulties.add(d)
       for (const t of s.tags ?? []) tags.add(t)
       for (const m of s.recommended_model ?? []) models.add(m)
     }
@@ -210,13 +210,13 @@ export default function ScenarioLibrary() {
     const q = search.trim().toLowerCase()
     const filtered = scenarios.filter((s) => {
       if (filterRating && s.content_rating !== filterRating) return false
-      if (filterLanguage && !s.supported_languages.includes(filterLanguage)) return false
-      if (filterDifficulty && !Object.keys(s.difficulty.options).includes(filterDifficulty)) return false
+      if (filterLanguage && !(s.supported_languages ?? []).includes(filterLanguage)) return false
+      if (filterDifficulty && !Object.keys(s.difficulty?.options ?? {}).includes(filterDifficulty)) return false
       if (filterTag && !(s.tags ?? []).includes(filterTag)) return false
       if (filterModel && !(s.recommended_model ?? []).includes(filterModel)) return false
       if (voiceOnly && !s.voice_supported) return false
       if (q) {
-        const hay = `${s.title} ${s.summary} ${s.pack_name} ${s.player_role.label}`.toLowerCase()
+        const hay = `${s.title} ${s.summary} ${s.pack_name} ${s.player_role?.label ?? ''}`.toLowerCase()
         if (!hay.includes(q)) return false
       }
       return true
@@ -928,15 +928,15 @@ export default function ScenarioLibrary() {
                           aria-label="Scenario details"
                         >
                           <Chip label={scenario.content_rating} />
-                          <Chip label={`Role: ${scenario.player_role.label}`} />
+                          <Chip label={`Role: ${scenario.player_role?.label ?? '—'}`} />
                           <Chip label={scenario.estimated_length_label} />
                           {scenario.voice_supported && (
                             <Chip label="Voice supported" accent="green" />
                           )}
-                          {scenario.supported_languages.map((l) => (
+                          {(scenario.supported_languages ?? []).map((l) => (
                             <Chip key={l} label={l.toUpperCase()} />
                           ))}
-                          {Object.keys(scenario.difficulty.options).map((d) => (
+                          {Object.keys(scenario.difficulty?.options ?? {}).map((d) => (
                             <Chip key={d} label={d.charAt(0).toUpperCase() + d.slice(1)} />
                           ))}
                           {(scenario.tags ?? []).map((t) => (
