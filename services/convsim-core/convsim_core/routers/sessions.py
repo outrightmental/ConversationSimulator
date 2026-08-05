@@ -409,6 +409,7 @@ async def create_session(body: SessionCreateRequest, request: Request) -> Sessio
             detail=f"Language {body.language!r} is not supported by scenario {body.scenario_id!r}",
         )
 
+    conn = request.app.state.db.connection()
     session_id = _generate_session_id()
     now = _now_iso()
     setup_dict = body.model_dump()
