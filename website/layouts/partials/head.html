@@ -20,3 +20,8 @@
 <link rel="preload" href="/fonts/fraunces-latin-var.woff2" as="font" type="font/woff2" crossorigin>
 {{- $css := resources.Get "css/main.css" | minify | fingerprint }}
 <link rel="stylesheet" href="{{ $css.RelPermalink }}" integrity="{{ $css.Data.Integrity }}">
+{{- /* Google Analytics (gtag.js) — production builds only, so `hugo server`
+       and other dev builds never send hits. */}}
+{{- if hugo.IsProduction }}
+{{- template "_internal/google_analytics.html" . }}
+{{- end }}

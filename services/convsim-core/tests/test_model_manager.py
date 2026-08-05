@@ -56,6 +56,12 @@ def tmp_config(tmp_path):
         data_dir=str(tmp_path / "data"),
         log_dir=str(tmp_path / "logs"),
         db_dir=str(tmp_path / "db"),
+        # Point at a nonexistent registry so startup does not auto-seed the
+        # bundled catalogue. These tests own their registry state: they assert
+        # the empty-install response shape and load the registry explicitly
+        # (via ``load_and_persist_registry``) only where a populated catalogue
+        # is required. Startup seeding is covered by test_model_registry_seeding.
+        model_registry_path=str(tmp_path / "nonexistent" / "registry.yaml"),
     )
 
 

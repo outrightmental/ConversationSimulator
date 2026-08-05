@@ -19,6 +19,12 @@ disableKinds = ['taxonomy', 'term', 'rss']
   githubURL = 'https://github.com/outrightmental/ConversationSimulator'
   releasesURL = 'https://github.com/outrightmental/ConversationSimulator/releases/latest'
 
+# Google Analytics (GA4) for the public marketing site only — the app itself
+# ships no telemetry. Hugo's built-in gtag.js template reads this ID and only
+# emits the tag in production builds, so `hugo server` never sends hits.
+[services.googleAnalytics]
+  ID = 'G-VVJELQ8MED'
+
 [markup.goldmark.renderer]
   # Content pages embed small pieces of structural HTML (e.g. the download cards).
   unsafe = true
