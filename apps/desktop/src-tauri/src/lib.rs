@@ -38,13 +38,26 @@ struct UpdateInfo {
 /// frontend.
 struct PendingUpdateState(Arc<Mutex<Option<String>>>);
 
+/// Whether the updater plugin was registered at startup.  Steam builds ship
+/// with `plugins.updater` removed from the merged Tauri config (Steam owns
+/// updates via SteamPipe), so the plugin is not registered — see `run()`.
+struct UpdaterEnabledState(bool);
+
 /// Check for a beta update.  Fails silently when offline or when the updater
 /// manifest is unavailable — the frontend shows nothing in that case.
 #[tauri::command]
 async fn check_for_update(
     app: AppHandle,
+    enabled: tauri::State<'_, UpdaterEnabledState>,
     state: tauri::State<'_, PendingUpdateState>,
 ) -> Result<Option<UpdateInfo>, String> {
+    // Steam builds do not register the updater plugin at all; touching
+    // `app.updater()` without the plugin's managed state would panic (and with
+    // `panic = "abort"` take the whole app down). Report "no update" — Steam
+    // delivers updates through SteamPipe.
+    if !enabled.0 {
+        return Ok(None);
+    }
     let updater = match app.updater() {
         Ok(u) => u,
         Err(e) => {
@@ -526,6 +539,18 @@ fn launch_or_verify_core(
             }
         }
 
+        // convsim-core.exe is a console-subsystem binary; spawned from this GUI
+        // app without CREATE_NO_WINDOW it allocates a visible console window
+        // that pops over the UI for the whole session. Suppress it — core's
+        // output still lands in its own log files (and our inherited stdio when
+        // launched from a terminal on other platforms).
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+            cmd.creation_flags(CREATE_NO_WINDOW);
+        }
+
         let child = match cmd.spawn() {
             Ok(c) => c,
             Err(e) => {
@@ -638,11 +663,37 @@ pub fn run() {
     let steam_status = Arc::new(Mutex::new(steam_status_val));
     let steam_runtime = Arc::new(Mutex::new(steam_runtime_val));
 
-    let app = tauri::Builder::default()
+    // Register the updater plugin ONLY when the merged Tauri config actually
+    // carries an updater entry.
+    //
+    // Steam builds pass `--config tauri.steam.conf.json`, whose
+    // `"updater": null` removes the key from the merged config (JSON Merge
+    // Patch, RFC 7396) so the app never polls GitHub for updates — Steam owns
+    // updates via SteamPipe. But `tauri_plugin_updater` REQUIRES its config
+    // (`pubkey` is a mandatory field): registering it while the config key is
+    // absent makes plugin initialisation fail, and with `panic = "abort"` the
+    // app dies before a window ever appears (Windows fail-fast 0xc0000409).
+    // That was exactly the "app doesn't launch" failure in the v0.2.4 Steam
+    // build (BuildID 24354771) — and invisible in non-Steam builds, whose
+    // tauri.conf.json carries a full updater config.
+    let context = tauri::generate_context!();
+    let updater_enabled = context
+        .config()
+        .plugins
+        .0
+        .get("updater")
+        .map(|v| !v.is_null())
+        .unwrap_or(false);
+
+    let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_fs::init());
+    if updater_enabled {
+        builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    }
+    let app = builder
+        .manage(UpdaterEnabledState(updater_enabled))
         .manage(CoreProcessState(Arc::clone(&process_inner)))
         .manage(CoreStatusState(Arc::clone(&status_inner)))
         .manage(PendingUpdateState(Arc::clone(&pending_update_inner)))
@@ -671,7 +722,7 @@ pub fn run() {
             );
             Ok(())
         })
-        .build(tauri::generate_context!())
+        .build(context)
         .expect("error while building tauri application");
 
     app.run(move |_app_handle, event| {

@@ -138,13 +138,22 @@ class LlamaCppRuntime(ChatRuntime):
         }
 
         if self._json_schema_enabled and request.json_schema is not None:
+            # Constrain output to the JSON schema via the ``json_object`` +
+            # top-level ``schema`` form. This is llama.cpp's original
+            # schema-constraint mechanism and is accepted by both servers we
+            # target: the bundled llama.cpp ``llama-server`` and
+            # llama-cpp-python's OpenAI server (used by the nightly smoke).
+            #
+            # We deliberately do NOT use the OpenAI ``{"type": "json_schema",
+            # "json_schema": {...}}`` form: llama-cpp-python's server rejects an
+            # unknown ``type`` with a 422 (which this adapter surfaces as a hard
+            # error), and even on llama.cpp's own server the ``json_schema`` type
+            # is unreliable on /v1/chat/completions (ggml-org/llama.cpp#11988).
+            # The ``json_object`` + ``schema`` form is the reliable common
+            # denominator.
             payload["response_format"] = {
-                "type": "json_schema",
-                "json_schema": {
-                    "name": "response",
-                    "schema": request.json_schema,
-                    "strict": False,
-                },
+                "type": "json_object",
+                "schema": request.json_schema,
             }
 
         full_text = ""
@@ -247,8 +256,8 @@ class LlamaCppRuntime(ChatRuntime):
                 runtime_name=self.display_name,
                 status=RuntimeStatus.UNAVAILABLE,
                 message=(
-                    f"Cannot connect to llama-server at {self._base_url}. "
-                    "Start it with: llama-server --port 7356 --model /path/to/model.gguf"
+                    "The local AI engine isn't running. It starts automatically "
+                    "when a model is selected or installed."
                 ),
                 checked_at=checked_at,
             )

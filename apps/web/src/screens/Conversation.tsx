@@ -126,7 +126,8 @@ export default function Conversation() {
   const [sessionState, setSessionState] = useState('NotStarted')
   const [endingType, setEndingType] = useState<string | null>(null)
   const [turns, setTurns] = useState<TurnEntry[]>([])
-  const [stateVars, setStateVars] = useState<Record<string, number>>(BASELINE_STATE_VARS)
+  // Populated from the server's visible_state snapshots (scenario-specific).
+  const [stateVars, setStateVars] = useState<Record<string, number>>({})
   const [allEventFlags, setAllEventFlags] = useState<string[]>([])
   const [error, setError] = useState<ApiError | null>(null)
   const [devMode] = useState(() => isDevModeEnabled())
@@ -318,17 +319,34 @@ export default function Conversation() {
       if (cancelled) return
       if (!startResult.ok) {
         // A 409 / INVALID_TRANSITION means the session was already started
-        // (e.g. a reload). That is recoverable: surface the notice but keep the
-        // conversation interactive rather than dropping into the dead-end error
-        // state, so the player can continue.
+        // (dev-mode double mount, or a page reload). That is fully
+        // recoverable: rehydrate the transcript (opening + any prior turns)
+        // and continue silently. Showing an error card here put a scary red
+        // "Request failed" banner over a perfectly working conversation and
+        // dropped Alex's opening message on the floor.
         const e = startResult.error
         const alreadyStarted =
           e.status === 409 || e.message.includes('INVALID_TRANSITION')
-        setError(e)
         if (alreadyStarted) {
-          setSessionState('PlayerTurnListening')
+          const tr = await api.getSessionTranscript(sessionId)
+          if (cancelled) return
+          if (tr.ok && tr.data.turns.length > 0) {
+            const hydrated = tr.data.turns.map((t) => ({
+              id: ++turnUidRef.current,
+              role: t.role,
+              content: t.content,
+              emotion: t.emotion ?? undefined,
+              turnNum: ++turnNumRef.current,
+            }))
+            setTurns(hydrated)
+          }
+          const lastState = tr.ok
+            ? tr.data.turns[tr.data.turns.length - 1]?.flow_state_after
+            : null
+          setSessionState(lastState ?? 'PlayerTurnListening')
           setPhase('active')
         } else {
+          setError(e)
           setPhase('error')
         }
         return
@@ -359,7 +377,10 @@ export default function Conversation() {
         }
       }
       setSessionState(startData.state)
-      setStateVars({ ...BASELINE_STATE_VARS })
+      const openingVisible = opening?.payload['visible_state']
+      if (openingVisible && typeof openingVisible === 'object') {
+        setStateVars({ ...(openingVisible as Record<string, number>) })
+      }
       setPhase('active')
     })()
 
@@ -379,13 +400,7 @@ export default function Conversation() {
           case 'session.state':
             setSessionState(event.payload.state)
             if (event.payload.state_vars) {
-              setStateVars((prev) => {
-                const next = { ...prev }
-                for (const [k, v] of Object.entries(event.payload.state_vars!)) {
-                  if (k in next) next[k] = v
-                }
-                return next
-              })
+              setStateVars((prev) => ({ ...prev, ...event.payload.state_vars! }))
             }
             break
           case 'npc.token':
@@ -616,7 +631,11 @@ export default function Conversation() {
         ])
       }
 
-      if (Object.keys(delta).length > 0) {
+      const visibleState = payload?.['visible_state']
+      if (visibleState && typeof visibleState === 'object' && Object.keys(visibleState).length > 0) {
+        // Authoritative snapshot of the scenario's visible variables.
+        setStateVars({ ...(visibleState as Record<string, number>) })
+      } else if (Object.keys(delta).length > 0) {
         setStateVars((prev) => {
           const next = { ...prev }
           for (const [k, d] of Object.entries(delta)) {
@@ -1061,8 +1080,8 @@ export default function Conversation() {
         )}
       </div>
 
-      {/* State meters — shown only when enabled in setup */}
-      {showStateMeters && (
+      {/* State meters — shown only when enabled in setup and hydrated */}
+      {showStateMeters && Object.keys(stateVars).length > 0 && (
         <details open>
           <summary
             style={{ cursor: 'pointer', fontSize: '0.8rem', color: '#71717a', userSelect: 'none' }}

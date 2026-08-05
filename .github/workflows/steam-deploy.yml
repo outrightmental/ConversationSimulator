@@ -299,10 +299,32 @@ jobs:
               -exec cp -v {} steam-content/macos/ \;
           fi
 
-          find release-artifacts -name "*.AppImage" \
-            -exec cp -v {} steam-content/linux/ \;
-          find release-artifacts -name "*.deb" \
-            -exec cp -v {} steam-content/linux/ \;
+          # Linux: stage the AppImage under a VERSION-STABLE filename so the
+          # Steamworks launch option (ConversationSimulator.AppImage) keeps
+          # working across releases.  v0.2.3 shipped as
+          # "Conversation Simulator_0.2.3_amd64.AppImage" with the launch option
+          # pinned to that exact name - guaranteeing a Linux launch failure on
+          # the next version bump.  The .deb is deliberately NOT staged: it is an
+          # installer package, not application files, and depots containing
+          # installer packages fail Valve review (same rule as NSIS/MSI above).
+          APPIMAGE="$(find release-artifacts -name "*.AppImage" | head -n1)"
+          if [ -n "$APPIMAGE" ]; then
+            echo "Staging $APPIMAGE -> steam-content/linux/ConversationSimulator.AppImage"
+            cp "$APPIMAGE" steam-content/linux/ConversationSimulator.AppImage
+            # Depot version stamp: the AppImage ships under a version-stable
+            # filename, so the version lives in version.txt at the depot root
+            # (same convention as the Windows portable depot).  Derived from
+            # the versioned artifact filename produced by the release build.
+            V="$(basename "$APPIMAGE" | grep -oE '[0-9]+[.][0-9]+[.][0-9]+' | head -n1)"
+            if [ -n "$V" ]; then
+              printf '%s' "$V" > steam-content/linux/version.txt
+              echo "Stamped Linux depot version.txt: $V"
+            else
+              echo "WARNING: could not derive version from AppImage filename; no version.txt stamped" >&2
+            fi
+          else
+            echo "WARNING: no AppImage found in build artifacts - Linux depot will be empty" >&2
+          fi
 
           # GitHub release assets do not carry the Unix executable bit, so the
           # AppImage arrives as mode 0644 after download + copy.  SteamPipe

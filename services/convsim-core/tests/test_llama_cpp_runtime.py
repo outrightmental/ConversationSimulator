@@ -333,8 +333,10 @@ async def test_chat_stream_sends_response_format_hint_when_schema_provided(runti
     sent_payload = client.stream.call_args.kwargs["json"]
     assert "response_format" in sent_payload
     rf = sent_payload["response_format"]
-    assert rf["type"] == "json_schema"
-    assert rf["json_schema"]["schema"] == schema
+    # llama.cpp's ``json_object`` + top-level ``schema`` form — the shape
+    # accepted by both the bundled llama-server and llama-cpp-python's server.
+    assert rf["type"] == "json_object"
+    assert rf["schema"] == schema
 
 
 @pytest.mark.asyncio
@@ -505,7 +507,9 @@ async def test_health_unavailable_on_connect_error(runtime):
 
     assert h.status == RuntimeStatus.UNAVAILABLE
     assert h.message is not None
-    assert "llama-server" in h.message
+    # Plain-language copy (no CLI/binary jargon reaches users): the engine
+    # is managed by the app, not run by hand.
+    assert "AI engine" in h.message
 
 
 @pytest.mark.asyncio

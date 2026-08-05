@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1232 706"><rect width="1232" height="706" fill="#0d0d15"/><rect width="1232" height="388" fill="#151522" opacity="0.55"/><rect y="388" width="1232" height="318" fill="#0d0d15"/>
+  <g transform="translate(452,96) scale(0.98)">
+    <rect x="122" y="0" width="218" height="126" rx="26" fill="#15803D"/>
+    <rect x="122" y="0" width="218" height="30" rx="26" fill="#1D9C4B" opacity="0.6"/>
+    <path d="M 296 124 L 296 160 L 260 124 Z" fill="#15803D"/>
+    <rect x="152" y="32" width="118" height="13" rx="6.5" fill="#ffffff" opacity="0.95"/>
+    <rect x="152" y="57" width="158" height="13" rx="6.5" fill="#ffffff" opacity="0.60"/>
+    <rect x="152" y="82" width="86"  height="13" rx="6.5" fill="#ffffff" opacity="0.32"/>
+    <rect x="0" y="92" width="198" height="116" rx="24" fill="#6D28D9"/>
+    <rect x="0" y="92" width="198" height="28" rx="24" fill="#7E3BF2" opacity="0.6"/>
+    <path d="M 40 206 L 40 242 L 76 206 Z" fill="#6D28D9"/>
+    <circle cx="64" cy="150" r="11" fill="#ffffff"/>
+    <circle cx="99" cy="150" r="11" fill="#ffffff" opacity="0.70"/>
+    <circle cx="134" cy="150" r="11" fill="#ffffff" opacity="0.42"/>
+  </g>
+  <g text-anchor="middle" font-family="Carlito" font-weight="700">
+    <text x="616" y="468" font-size="82" fill="#F4F4F5">CONVERSATION</text>
+    <text x="616" y="555" font-size="82" fill="#F4F4F5">SIMULATOR</text>
+  </g></svg>

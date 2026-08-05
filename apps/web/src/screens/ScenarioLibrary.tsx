@@ -191,7 +191,7 @@ export default function ScenarioLibrary() {
     const models = new Set<string>()
     for (const s of scenarios) {
       ratings.add(s.content_rating)
-      for (const l of (s.supported_languages ?? [])) languages.add(l)
+      for (const l of s.supported_languages ?? []) languages.add(l)
       for (const d of Object.keys(s.difficulty?.options ?? {})) difficulties.add(d)
       for (const t of s.tags ?? []) tags.add(t)
       for (const m of s.recommended_model ?? []) models.add(m)

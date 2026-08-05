@@ -7,6 +7,8 @@ import logging
 import os
 import struct
 import subprocess
+
+from convsim_core.runtime.procflags import CREATE_NO_WINDOW
 import tempfile
 import wave
 from datetime import datetime, timezone
@@ -71,6 +73,7 @@ def _try_ffmpeg_to_pcm(audio: bytes, audio_format: str) -> list[float] | None:
             ],
             capture_output=True,
             timeout=30.0,
+            creationflags=CREATE_NO_WINDOW,
         )
     except (OSError, subprocess.TimeoutExpired):
         return None

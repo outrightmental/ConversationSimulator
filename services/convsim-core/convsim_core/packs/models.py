@@ -96,44 +96,73 @@ class PlayerRoleInfo(BaseModel):
     brief: Optional[str] = None
 
 
+class DifficultyConfigInfo(BaseModel):
+    """Difficulty block in the shape the frontend's ScenarioInfo expects."""
+
+    default: str = "standard"
+    options: dict = {}
+
+
+class DurationInfo(BaseModel):
+    """Duration block in the shape the frontend's ScenarioInfo expects."""
+
+    max_turns: Optional[int] = None
+    soft_time_limit_minutes: Optional[int] = None
+
+
 class ScenarioCard(BaseModel):
-    """Summary of a scenario suitable for a library card view."""
+    """Summary of a scenario suitable for a library card view.
+
+    The field set is a superset of the frontend's canonical ``ScenarioInfo``
+    contract (packages/shared/src/types/scenario.ts). The frontend iterates
+    ``supported_languages``, ``difficulty.options``, and reads
+    ``player_role.label`` unconditionally — omitting any of them blank-screens
+    the scenario library (the v0.2.5 "supported_languages is not iterable"
+    startup-adjacent crash), so every canonical field is always present here
+    with a safe default. Legacy flat fields (``difficulty_default``,
+    ``voice_support``, ``model_recommendation``) are kept for compatibility
+    with existing consumers of this API.
+    """
 
     scenario_id: str
     pack_id: str
     pack_name: str
     title: str
-    summary: Optional[str] = None
+    summary: str = ""
     tags: list[str] = []
     content_rating: Optional[str] = None
-    difficulty_default: Optional[str] = None
-    max_turns: Optional[int] = None
-    estimated_length_minutes: Optional[int] = None
-    voice_support: bool = False
-    model_recommendation: Optional[str] = None
 
-
-class ScenarioDetail(BaseModel):
-    """Full scenario metadata without hidden agenda."""
-
-    scenario_id: str
-    pack_id: str
-    pack_name: str
-    title: str
-    summary: Optional[str] = None
-    tags: list[str] = []
-    content_rating: Optional[str] = None
-    difficulty_default: Optional[str] = None
-    difficulty_options: dict = {}
-    # Nested difficulty shape matching the frontend ScenarioInfo.difficulty contract:
-    # { default: str, options: dict }. Always present so the setup form never crashes.
-    difficulty: dict = {}
+    # ── Canonical ScenarioInfo contract fields ────────────────────────────────
+    player_role: PlayerRoleInfo = PlayerRoleInfo(label="")
+    difficulty: DifficultyConfigInfo = DifficultyConfigInfo()
     supported_languages: list[str] = ["en"]
+    duration: DurationInfo = DurationInfo()
+    state_meters_permitted: bool = False
+    voice_supported: bool = False
+    safety_summary: str = ""
+    estimated_length_label: str = ""
+    recommended_model: list[str] = []
+    ladder_position: Optional[str] = None
+    taught_dimensions: list[str] = []
+    tested_dimensions: list[str] = []
+
+    # ── Legacy flat fields (kept for API compatibility) ───────────────────────
+    difficulty_default: Optional[str] = None
     max_turns: Optional[int] = None
     estimated_length_minutes: Optional[int] = None
     voice_support: bool = False
     model_recommendation: Optional[str] = None
-    player_role: Optional[PlayerRoleInfo] = None
+
+
+class ScenarioDetail(ScenarioCard):
+    """Full scenario metadata without hidden agenda.
+
+    Extends the card (which already carries the full canonical ScenarioInfo
+    contract) with detail-only fields used by the setup and conversation
+    screens.
+    """
+
+    difficulty_options: dict = {}
     opening_npc_says: Optional[str] = None
     player_visible_goals: list[str] = []
     hidden_goals: Optional[list[str]] = None

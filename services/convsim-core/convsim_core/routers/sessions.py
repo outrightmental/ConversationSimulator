@@ -392,9 +392,7 @@ def _resolve_runtime(request: Request, setup: Dict[str, Any]) -> ChatRuntime:
 
 @router.post("", status_code=201, response_model=SessionResponse)
 async def create_session(body: SessionCreateRequest, request: Request) -> SessionResponse:
-    db = request.app.state.db
-    conn = db.connection()
-    info = resolve_scenario_info(body.scenario_id, conn)
+    info = resolve_scenario_info(body.scenario_id, request.app.state.db.connection())
     if info is None:
         raise HTTPException(status_code=400, detail=f"Unknown scenario_id: {body.scenario_id!r}")
 
@@ -469,7 +467,7 @@ async def start_session(session_id: str, request: Request) -> SessionStartRespon
             current_state,
         )
 
-    info = resolve_scenario_info(row["scenario_id"], conn)
+    info = resolve_scenario_info(row["scenario_id"], request.app.state.db.connection())
     opening_text = (
         info.opening_npc_says if info else "Hello! I am ready to begin. Please go ahead."
     )
@@ -495,11 +493,31 @@ async def start_session(session_id: str, request: Request) -> SessionStartRespon
                 (session_id, 0, "npc_opening", opening_text),
             )
 
+    # Include the scenario's initial VISIBLE state variables in the opening
+    # event so the meters render correct scenario-specific values from turn
+    # zero (the frontend previously guessed with a hardcoded baseline that
+    # matched no actual scenario).
+    initial_visible: Dict[str, int] = {}
+    if info is not None:
+        try:
+            from convsim_core.scenario_state import (
+                build_variable_defs,
+                initialize_state,
+                partition_state_by_visibility,
+            )
+
+            defs = build_variable_defs(info.state_variable_overrides)
+            initial_visible, _ = partition_state_by_visibility(
+                initialize_state(defs), defs
+            )
+        except Exception:  # pragma: no cover - meters are best-effort
+            initial_visible = {}
+
     opening_event = SessionEventPayload(
         event_id=cursor.lastrowid,
         session_id=session_id,
         event_type="npc_opening",
-        payload={"content": opening_text},
+        payload={"content": opening_text, "visible_state": initial_visible},
         created_at=now,
     )
 
@@ -544,7 +562,7 @@ async def submit_turn(session_id: str, body: TurnSubmitRequest, request: Request
     setup = json.loads(row["setup_json"])
     scenario_id = row["scenario_id"]
     difficulty = setup.get("difficulty", "standard")
-    info = resolve_scenario_info(scenario_id, conn)
+    info = resolve_scenario_info(scenario_id, request.app.state.db.connection())
     if info is None:
         raise HTTPException(status_code=500, detail=f"Scenario {scenario_id!r} not found in registry")
 
@@ -786,7 +804,7 @@ async def create_debrief(session_id: str, request: Request) -> DebriefResponse:
     scenario_id = row["scenario_id"]
     setup = json.loads(row["setup_json"])
     difficulty = setup.get("difficulty", "standard")
-    info = resolve_scenario_info(scenario_id, conn)
+    info = resolve_scenario_info(scenario_id, request.app.state.db.connection())
     if info is None:
         raise HTTPException(status_code=500, detail=f"Scenario {scenario_id!r} not found in registry")
 
@@ -1100,7 +1118,7 @@ async def export_session(session_id: str, request: Request) -> SessionExportResp
     setup = json.loads(row["setup_json"])
     save_transcript = setup.get("save_transcript", True)
     scenario_id = row["scenario_id"]
-    info = resolve_scenario_info(scenario_id, conn)
+    info = resolve_scenario_info(scenario_id, request.app.state.db.connection())
     scenario_meta: Dict[str, Any] = {
         "id": scenario_id,
         "name": info.scenario_data.title if info else scenario_id,

@@ -22,7 +22,7 @@ import json
 import logging
 import re
 import sqlite3
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields as dataclass_fields
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -445,6 +445,39 @@ async def generate_debrief(
     total_turns: int = int(session_row["turn_count"])
     now = datetime.now(timezone.utc).isoformat()
 
+    # Idempotent: a debrief already exists (double-click, remount, retry after a
+    # dropped response) → return it instead of violating the UNIQUE constraint
+    # with a 500. Generation is expensive and the content is deterministic per
+    # session end, so "generate" is naturally "generate-or-get".
+    existing = conn.execute(
+        "SELECT content_json FROM session_debriefs WHERE session_id = ?",
+        (session_id,),
+    ).fetchone()
+    if existing is not None:
+        try:
+            cached = json.loads(existing["content_json"])
+            # content_json is a superset of DebriefResult (schema_version,
+            # difficulty_preset, …) and may omit optional fields — filter and
+            # default rather than trusting an exact match.
+            allowed = {f.name for f in dataclass_fields(DebriefResult)}
+            data = {k: v for k, v in cached.items() if k in allowed}
+            data.setdefault("pack_id", None)
+            data.setdefault("used_fallback", False)
+            data.setdefault("metrics", {})
+            result = DebriefResult(**data)
+            conn.execute(
+                "UPDATE turn_sessions SET flow_state = 'DebriefReady' WHERE session_id = ?",
+                (session_id,),
+            )
+            conn.commit()
+            return result
+        except (TypeError, ValueError, KeyError):
+            # Corrupt cached row — fall through and regenerate over it.
+            conn.execute(
+                "DELETE FROM session_debriefs WHERE session_id = ?", (session_id,)
+            )
+            conn.commit()
+
     # Transition to DebriefGenerating.
     conn.execute(
         "UPDATE turn_sessions SET flow_state = 'DebriefGenerating' WHERE session_id = ?",
@@ -579,7 +612,11 @@ async def generate_debrief(
         if difficulty_preset:
             debrief_doc["difficulty_preset"] = difficulty_preset
 
-        # Persist and transition to DebriefReady.
+        # Persist and transition to DebriefReady. ON CONFLICT DO NOTHING makes
+        # concurrent generation attempts race-safe: the pre-generation
+        # existence check above covers sequential retries, but two overlapping
+        # requests (double-click, remount) both pass it and both generate —
+        # the second INSERT must not blow up the request with a 500.
         with conn:
             conn.execute(
                 "INSERT INTO session_debriefs (session_id, content_json, metrics_json, generated_at) "

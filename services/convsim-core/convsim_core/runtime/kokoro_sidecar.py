@@ -13,6 +13,8 @@ import os
 import shutil
 import socket
 import subprocess
+
+from convsim_core.runtime.procflags import CREATE_NO_WINDOW
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -209,6 +211,7 @@ class KokoroSidecar(SidecarProcess):
                 *cmd,
                 stdout=log_fh,
                 stderr=subprocess.STDOUT,
+                creationflags=CREATE_NO_WINDOW,
             )
         except OSError as exc:
             self._state = SidecarState.CRASHED

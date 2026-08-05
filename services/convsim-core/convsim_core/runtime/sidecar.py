@@ -18,6 +18,7 @@ from enum import Enum
 from pathlib import Path
 from typing import IO
 
+from convsim_core.runtime.procflags import CREATE_NO_WINDOW
 from convsim_core.runtime.supervisor import SidecarProcess, assert_localhost
 
 
@@ -264,11 +265,22 @@ class LlamaCppSidecar(SidecarProcess):
         log_fh.write(header)
         log_fh.flush()
 
+        # NPC turns need fast, in-character JSON — not visible chain-of-thought.
+        # Reasoning-family models (Qwen3, DeepSeek-R1 distils) otherwise spend
+        # hundreds of tokens thinking, blowing the turn token budget (truncated
+        # JSON → fallback utterance) and multiplying latency. LLAMA_ARG_REASONING
+        # is honoured by current llama-server builds and silently ignored by
+        # older ones, unlike the equivalent CLI flag which would fail startup.
+        env = dict(os.environ)
+        env.setdefault("LLAMA_ARG_REASONING", "off")
+
         try:
             self._process = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=log_fh,
                 stderr=subprocess.STDOUT,
+                creationflags=CREATE_NO_WINDOW,
+                env=env,
             )
         except OSError as exc:
             self._state = SidecarState.CRASHED

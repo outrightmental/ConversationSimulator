@@ -17,7 +17,7 @@ from convsim_core.errors import (
 from convsim_core.logging_setup import configure_logging
 from convsim_core.packs.seeder import seed_official_packs
 from convsim_core.paths import legacy_convsim_dir, platform_data_root
-from convsim_core.routers import cloud_settings as cloud_settings_router, diag as diag_router, health, logbook as logbook_router, models as models_router, packs as packs_router, preflight as preflight_router, privacy as privacy_router, relationship_memory as relationship_memory_router, runtime_settings as runtime_settings_router, scenarios as scenarios_router, sessions as sessions_router, settings as settings_router, setup as setup_router, setup_install as setup_install_router, sidecar as sidecar_router, stt as stt_router, tts as tts_router, vad as vad_router, workbench as workbench_router
+from convsim_core.routers import cloud_settings as cloud_settings_router, diag as diag_router, health, logbook as logbook_router, models as models_router, packs as packs_router, preflight as preflight_router, privacy as privacy_router, relationship_memory as relationship_memory_router, runtime_settings as runtime_settings_router, scenarios as scenarios_router, sessions as sessions_router, settings as settings_router, setup as setup_router, setup_install as setup_install_router, sidecar as sidecar_router, stt as stt_router, tts as tts_router, vad as vad_router, workbench as workbench_router, workshop as workshop_router
 from convsim_core.runtime import build_runtime
 from convsim_core.runtime.sidecar import LlamaCppSidecar
 from convsim_core.runtime.kokoro_sidecar import KokoroSidecar
@@ -93,7 +93,18 @@ def create_app(config: ServiceConfig | None = None) -> FastAPI:
         app.state.cancel_events = {}                 # install_id → asyncio.Event (model downloads)
         app.state.setup_install_cancel_events = {}   # job_id → asyncio.Event (pipeline jobs)
         app.state.app_settings = load_settings(db.connection(), config.data_dir, config.log_dir)
-        app.state.runtime = build_runtime(config.runtime_id)
+        # Boot with the user's persisted runtime selection (written by
+        # /api/models/use and the setup pipeline) rather than the static config
+        # default, so a restart keeps the chosen model instead of silently
+        # falling back to the fake runtime.
+        from convsim_core.runtime.active import (
+            resolve_startup_runtime_id,
+            schedule_startup_autostart,
+        )
+
+        app.state.runtime = build_runtime(
+            resolve_startup_runtime_id(db.connection(), config.runtime_id)
+        )
         app.state.stt_worker = build_stt_worker(config.stt_worker_id)
         app.state.tts_worker = build_tts_worker(config.tts_worker_id)
         app.state.vad_worker = build_vad_worker(config.vad_worker_id)
@@ -106,9 +117,35 @@ def create_app(config: ServiceConfig | None = None) -> FastAPI:
         supervisor.register(kokoro_sidecar)
         app.state.supervisor = supervisor
         seed_official_packs(config, db.connection())
+        # Seed the model registry from the bundled catalogue so a fresh
+        # install has models to offer. Idempotent upsert; failures must not
+        # block startup (the models UI degrades to user-supplied GGUF only).
+        try:
+            from convsim_core.services.model_registry_service import (
+                load_and_persist_registry,
+            )
+
+            _registry_path = Path(config.model_registry_path)
+            if _registry_path.is_file():
+                load_and_persist_registry(db.connection(), _registry_path)
+            else:
+                import logging as _logging
+
+                _logging.getLogger(__name__).warning(
+                    "Model registry file not found at %s — model catalogue will be empty",
+                    _registry_path,
+                )
+        except Exception as _exc:  # noqa: BLE001
+            import logging as _logging
+
+            _logging.getLogger(__name__).warning("Model registry seeding failed: %s", _exc)
         # Re-drive any one-click install pipeline that a crash/kill left mid-flight
         # so the download resumes from its .part offset instead of freezing.
         setup_install_router.resume_orphaned_jobs(app)
+        # If the persisted runtime is llama_cpp, bring its engine up in the
+        # background so the first conversation after a restart works without
+        # a manual step. Failures are logged; health endpoints stay truthful.
+        schedule_startup_autostart(app)
         yield
         await supervisor.stop_all()
         db.close()
@@ -146,6 +183,7 @@ def create_app(config: ServiceConfig | None = None) -> FastAPI:
     app.include_router(scenarios_router.router)
     app.include_router(sessions_router.router)
     app.include_router(workbench_router.router)
+    app.include_router(workshop_router.router)
     app.include_router(logbook_router.router)
     app.include_router(relationship_memory_router.router)
     app.include_router(setup_router.router)

@@ -83,6 +83,23 @@ def _is_windows_portable_depot(artifact_dir: Path) -> bool:
     """
     return (artifact_dir / "ConversationSimulator.exe").is_file()
 
+def _has_depot_version_stamp(artifact_dir: Path) -> bool:
+    """Return True if artifact_dir carries a semver version.txt depot stamp.
+
+    Depots that ship version-stable filenames carry their version in
+    version.txt at the depot root instead of in filenames: the Windows
+    portable depot (ConversationSimulator.exe tree) and the Linux depot
+    (ConversationSimulator.AppImage).  Steamworks launch options reference
+    these filenames, so a version bump must not rename them; v0.2.3 shipped
+    a versioned AppImage filename and left the Linux launch option pinned to
+    a name that would have broken on the next release.
+    """
+    stamp = artifact_dir / "version.txt"
+    try:
+        return bool(_SEMVER.search(stamp.read_text(encoding="utf-8").strip()))
+    except OSError:
+        return False
+
 
 def _is_pyinstaller_internal(path: Path) -> bool:
     """Return True if path is inside a PyInstaller _internal/ directory.
@@ -264,6 +281,12 @@ class TestVersionStamping:
                 "Windows portable depot — version is in version.txt, "
                 "not in binary filenames"
             )
+        if _has_depot_version_stamp(artifact_dir):
+            pytest.skip(
+                "Depot ships version-stable filenames (see the Steamworks "
+                "launch options) - version is stamped in version.txt at the "
+                "depot root"
+            )
         installers = [
             f
             for f in all_file_paths
@@ -289,6 +312,17 @@ class TestVersionStamping:
             pytest.skip(
                 "Windows portable depot — version.txt (not a filename) is "
                 "checked for the 0.0.0 placeholder by TestWindowsPortableLayout"
+            )
+        stamp = artifact_dir / "version.txt"
+        if stamp.is_file():
+            stamped = stamp.read_text(encoding="utf-8").strip()
+            assert stamped != "0.0.0", (
+                "version.txt contains the 0.0.0 placeholder - the version "
+                "stamp step may not have run for this depot."
+            )
+            pytest.skip(
+                "Depot version lives in version.txt (checked above), not in "
+                "filenames"
             )
         installers = [
             f

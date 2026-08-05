@@ -311,7 +311,7 @@ class _FakeProcess:
 def _make_mock_subprocess(json_output: dict, returncode: int = 0):
     """Return a mock for asyncio.create_subprocess_exec that writes a JSON sidecar."""
 
-    async def _fake_exec(*args, stdout=None, stderr=None):
+    async def _fake_exec(*args, stdout=None, stderr=None, **kwargs):
         # The worker writes audio to a temp file and passes it as --file arg.
         # Find the --file argument in the command to know where to write the JSON.
         file_idx = list(args).index("--file") + 1
@@ -394,7 +394,7 @@ async def test_transcribe_raises_stt_error_on_nonzero_returncode(tmp_path):
 
     worker = _make_worker(binary=_FAKE_BINARY, model=str(model_file))
 
-    async def _failing_exec(*args, stdout=None, stderr=None):
+    async def _failing_exec(*args, stdout=None, stderr=None, **kwargs):
         return _FakeProcess(b"", b"error: bad input", 1)
 
     with patch("os.path.isfile", return_value=True), \
@@ -413,7 +413,7 @@ async def test_transcribe_falls_back_to_stdout_when_json_sidecar_absent(tmp_path
 
     worker = _make_worker(binary=_FAKE_BINARY, model=str(model_file))
 
-    async def _no_sidecar_exec(*args, stdout=None, stderr=None):
+    async def _no_sidecar_exec(*args, stdout=None, stderr=None, **kwargs):
         # Deliberately do NOT write a JSON sidecar — simulates older binary.
         return _FakeProcess(b"hello world", b"", 0)
 
