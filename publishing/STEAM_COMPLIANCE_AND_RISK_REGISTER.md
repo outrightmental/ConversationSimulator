@@ -335,6 +335,17 @@ the decisions for Steam review and partner portal audit purposes.
 | **Release-blocking** | YES |
 | **Status** | IN PROGRESS |
 
+### SP-06 — Steam overlay does not render over WebView2 (silent G3-03 no-op)
+
+| | |
+|---|---|
+| **Area** | Platform |
+| **Risk** | The Steam overlay (`G3-03`) is a **silent no-op** on a Tauri app and, worse, fails in a way that reads as success. Steam draws its overlay by hooking the game's graphics `Present` call, but the UI renders in out-of-process WebView2 and composites through DWM, so the injected layer has nothing to draw into; separately, the Shift+Tab chord is delivered to the WebView2 process and never reaches Steam's input hook. Yet Steam still reports the player "In-Game", `is_overlay_enabled()` returns true, and `GameOverlayActivated` fires — so a beta tester following the G3-03 wording sees "nothing happened" and files an ambiguous report instead of a clear FAIL, and the gate can be signed off broken. |
+| **Owner** | Platform team |
+| **Mitigation** | Two-part fix. (1) **Chord forwarding (implemented, all platforms):** `useSteamOverlay` forwards Shift+Tab to the `steam_activate_overlay` command (`Friends::activate_game_overlay("")`); without it the chord is dead even when a surface exists. (2) **Decoy compositing surface (Windows, not yet vendored):** a transparent, click-through child window with a wgpu swapchain presenting empty frames at vsync, so Steam has a surface to composite the overlay into. An MIT extraction exists (<https://github.com/PSG-Team/tauri-steam-overlay-surface>, no `steamworks` dependency). The G3-03 pass criterion in `docs/steam-mvp-scope.md` and the QA step in `docs/QA_STEAM_PLATFORM_MATRIX.md` were tightened to require the overlay to **visibly composite over the app** on Windows, so "no crash" can no longer be recorded as a pass. Known limitation: after alt-tab the forwarder is deaf until the page is clicked once — do **not** attempt a `webview.set_focus()` workaround (it kills Shift+Tab entirely). macOS and Linux overlay-over-webview remain a separate open problem, so this closes only the Windows leg of G3-03. Full write-up: [STEAM_INTEGRATION.md § Steam overlay (Windows WebView2 caveat)](../docs/STEAM_INTEGRATION.md#steam-overlay-windows-webview2-caveat). |
+| **Release-blocking** | YES |
+| **Status** | IN PROGRESS |
+
 ---
 
 ## Release checklist for QA
@@ -433,7 +444,7 @@ Complete before submitting to Valve for private beta review.
 | Full `docs/release-checklist.md` Parts B + C | Platform team | | | |
 | **G3-01 Signing + notarization** | Platform team | | | macOS: `spctl` + `stapler validate` green; Windows: `signtool verify` + Defender clean |
 | **G3-02 Steam depot content audit** | Platform team | | | `depot-audit.sh` exits 0 for all three platforms; no weight files |
-| **G3-03 Steam overlay compatibility** | Beta testers | | | Shift+Tab opens/closes without session disruption; push-to-talk key conflict-free |
+| **G3-03 Steam overlay compatibility** | Beta testers | | | Shift+Tab **visibly opens the overlay over the app** and closes without session disruption; push-to-talk key conflict-free. Windows: "nothing happened" = FAIL, not PASS (see SP-06) |
 | **G3-06 Beta session verification** | Beta testers (≥ 3 platforms) | | | ≥ 1 tester per platform completes text session + debrief; no open blockers |
 
 All gates must show **Pass** before the private beta depot is submitted to Valve.
@@ -507,6 +518,7 @@ Notes:
 | SP-03 | Platform | NO | OPEN |
 | SP-04 | Platform | YES | MITIGATED |
 | SP-05 | Platform / Licensing | YES | IN PROGRESS |
+| SP-06 | Platform | YES | IN PROGRESS |
 
 ---
 

@@ -322,7 +322,7 @@ At least five testers (at least one on each of Windows, macOS, and Linux) must:
 1. Activate the key and install via the Steam client.
 2. Launch the app from the Steam Play button.
 3. Complete a full text session and view the debrief screen.
-4. Confirm the Steam overlay (Shift+Tab) opens without disrupting the session (G3-03).
+4. Confirm the Steam overlay (Shift+Tab) **visibly opens over the app** without disrupting the session (G3-03). On Windows the overlay is a silent no-op that still reports success unless the app ships a decoy compositing surface — treat "nothing happened" as FAIL, not PASS (see risk SP-06 in [`STEAM_COMPLIANCE_AND_RISK_REGISTER.md`](STEAM_COMPLIANCE_AND_RISK_REGISTER.md) and [`docs/STEAM_INTEGRATION.md`](../docs/STEAM_INTEGRATION.md#steam-overlay-windows-webview2-caveat)).
 5. Report any session-ending bugs, data-loss bugs, or privacy regressions.
 
 Record tester sign-offs and platform coverage in [`docs/release-checklist.md`](../docs/release-checklist.md).

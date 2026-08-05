@@ -89,7 +89,7 @@ SteamOS 3.x in Gaming Mode before G4-02 can be declared PASS.
 | DebugDrawer is excluded from the controller focus ring (dev builds only). | TC-11.11 | [ ] PASS / [ ] N/A |
 | Default Steam Input config (`steam/controller_config.vdf`) is loaded automatically. | Launch game; check Steam Input overlay | [ ] PASS / [ ] FAIL |
 | Offline smoke test passes under SteamOS 3.x (no outbound network during play). | TC-09 on Steam Deck | [ ] PASS / [ ] FAIL |
-| Steam overlay (Shift+Tab) opens and closes without breaking the current session. | TC-11.12 | [ ] PASS / [ ] FAIL |
+| Steam overlay (Shift+Tab) **visibly composites over the app** and closes without breaking the current session. On Windows, "nothing happened" (no visible overlay) is a FAIL even if Steam reports the player In-Game — see TC-11.12. | TC-11.12 | [ ] PASS / [ ] FAIL |
 | Approximate battery impact documented (see §5 performance thresholds). | Observe during TC-11 | [ ] Documented |
 
 ---
@@ -219,7 +219,7 @@ controller-only column added to §3 (Steam Deck verification checklist).
 | 11.9 | Navigate Debrief screen and confirm readability | All debrief scores and text readable at 1280×800; no clipped controls | Manual |
 | 11.10 | Navigate to Model Manager, Settings, Support, and Workbench screens | Each screen fully navigable; no interactive element requires mouse hover | Manual |
 | 11.11 | Confirm DebugDrawer is excluded from controller focus ring | DebugDrawer (dev-mode only) never receives focus during D-pad navigation | Manual — dev build only |
-| 11.12 | Open and close Steam overlay (Shift+Tab) during a session | Overlay opens and closes; controller focus resumes correctly in the app | Manual |
+| 11.12 | Open and close Steam overlay (Shift+Tab) during a session | Overlay **is visibly drawn over the app** and closes; controller focus resumes correctly in the app. **Windows:** the overlay is a silent no-op unless the app forwards the chord *and* provides a decoy compositing surface — Steam reports the player In-Game / `is_overlay_enabled()` true / `GameOverlayActivated` fired even when nothing is drawn, so treat an invisible overlay as FAIL. Record GPU, Windows build, and whether the surface came up (see [STEAM_INTEGRATION.md § Steam overlay (Windows WebView2 caveat)](STEAM_INTEGRATION.md#steam-overlay-windows-webview2-caveat)). | Manual |
 | 11.13 | Quit the app via controller | App closes cleanly; no orphaned processes | Manual |
 
 ---

@@ -87,6 +87,7 @@ The bridge consists of:
 | `steam_unlock_achievement` | `name: String` | Calls `steamworks::UserStats::achievement(name).set()` then `store_stats()` | Returns `false`, no-op |
 | `steam_increment_stat` | `name: String` | Reads current value, increments by 1, calls `store_stats()` | Returns `false`, no-op |
 | `steam_set_rich_presence` | `value: String` | Calls `steamworks::Friends::set_rich_presence("steam_display", Some(value))` — the key is fixed internally | Returns `false`, no-op |
+| `steam_activate_overlay` | — | Calls `steamworks::Friends::activate_game_overlay("")` to open the overlay (the Shift+Tab chord). See [Steam overlay (Windows WebView2 caveat)](#steam-overlay-windows-webview2-caveat) | Returns `false`, no-op |
 | `steam_is_dlc_installed` | `dlc_app_id: u32` | Calls `steamworks::Apps::is_dlc_installed(AppId)` — reports whether the player owns and installed that premium DLC | Returns `false`, treated as not-owned |
 
 Commands can be called freely without checking whether Steam is available.
@@ -310,6 +311,103 @@ Privacy: the ownership check reads local Steam state only. No DLC-usage event,
 pack identifier, or conversation content is transmitted to Steam or any server —
 consistent with the local-first guarantee above. Once a DLC is owned and installed,
 playing it requires no network.
+
+---
+
+## Steam overlay (Windows WebView2 caveat)
+
+The Steam overlay is the `G3-03` release gate. On a Tauri app it does **not**
+work the way it does on a native game, and — critically — **it fails in a way
+that looks like success**. Read this before signing off G3-03 on Windows.
+
+### Root cause
+
+Steam draws its overlay by injecting `gameoverlayrenderer64.dll` into the game
+process and hooking the graphics API's `Present` call, compositing the overlay
+into the frame the game is about to show. A Tauri app never creates a swapchain
+in its own process: the UI is rendered by **WebView2 in separate
+`msedgewebview2.exe` processes** and composited through DWM. Steam's hook finds
+nothing to draw into, so the overlay has no surface. This is the same class of
+problem that makes Electron games pass `--in-process-gpu`.
+
+There are two independent failures, and both must be fixed:
+
+1. **The Shift+Tab chord never reaches Steam.** Steam opens the overlay by
+   catching Shift+Tab in the game process via an input hook. In a Tauri app the
+   keystroke lands in the WebView2 process, which Steam's hook never sees, so the
+   default chord is a silent no-op.
+2. **The overlay has nothing to render into** (the swapchain problem above), so
+   even once opened it is not visible on Windows.
+
+### Why this is dangerous: every Steamworks signal says success
+
+When the overlay is activated on a Tauri app, Steam still reports success on
+every channel that a tester would check:
+
+- the friends list shows the player as **"In-Game"**;
+- `is_overlay_enabled()` returns **true**;
+- `GameOverlayActivated` **fires**.
+
+Only the *visible* overlay is missing. A tester following the G3-03 wording
+("Shift+Tab opens and closes without breaking the app or the current session")
+sees no crash and no session disruption, so the honest report is an ambiguous
+"nothing happened" rather than a clear FAIL. **Do not treat "no crash" as a pass
+on Windows.** See the G3-03 pass criterion in
+[Steam MVP scope](/dev/steam-mvp-scope/) and the QA step in
+[the QA platform matrix](/dev/qa-steam-platform-matrix/), which now require the
+overlay to be *visibly composited over the app* on Windows.
+
+### The fix has two halves
+
+**Half 1 — chord forwarding (implemented, all platforms).** The front-end
+`useSteamOverlay` hook (`apps/web/src/hooks/useSteamOverlay.ts`) listens for
+Shift+Tab in the webview and forwards it to the `steam_activate_overlay` Tauri
+command, which calls `steamworks::Friends::activate_game_overlay("")`. This is
+the portable half and is required on every platform — without it the chord is
+dead even when a compositing surface exists. It only repurposes Shift+Tab when
+`get_steam_status().is_steam_enabled` is true, so the standard reverse-tab
+keyboard affordance is untouched in the browser and non-Steam builds.
+
+**Half 2 — decoy compositing surface (Windows only, not yet vendored).** For the
+overlay to be *visible* on Windows, the app must give Steam's injected layer
+something to composite into: a **transparent, click-through, borderless child
+window** covering the main window, with a **wgpu swapchain presenting empty
+frames at vsync**. Steam composites the overlay, notifications, and toasts into
+those frames at `Present` time; the app stays visible through every untouched
+pixel. This is Win32 + wgpu native code and is intentionally **not** committed
+here yet — it needs verification on real Steam-launched Windows hardware before
+it ships. An MIT-licensed extraction that implements exactly this surface (with
+**no `steamworks` dependency** — the app owns SDK init and the callback pump and
+forwards one callback, so there is no version coupling) is available for
+integration:
+
+- Plugin: <https://github.com/PSG-Team/tauri-steam-overlay-surface>
+- Context and demo: issue #444 (outside-contributor finding; verified on a real
+  Steam build across open/close/alt-tab cycles and 1920×1080 → 2560×1440 →
+  5120×1440 including live resolution switches and fullscreen↔windowed).
+
+### Known limitation and a trap not to fall into
+
+- **Alt-tab deafness (Windows).** After alt-tabbing away and back, the Shift+Tab
+  forwarder is deaf until the user clicks the page once, because Windows
+  reactivates the native window without returning keyboard focus to the webview.
+- **Do NOT "fix" it with `webview.set_focus()`** in the Rust focus handlers.
+  Shipping exactly that was reported to kill Shift+Tab entirely, even on a fresh
+  launch (reverted). `useSteamOverlay` deliberately contains no focus workaround.
+
+### Platform scope
+
+The compositing surface is **Windows only**. It does nothing for the macOS and
+Linux legs, where overlay-over-webview is a separate and largely unsolved
+problem. So Half 1 + the surface closes **one third of G3-03** (the Windows leg),
+not the whole gate.
+
+### Compatibility data wanted
+
+Overlay behaviour is GPU- and driver-sensitive, and the surface's verification
+sample so far is small (hybrid-GPU laptops are the least-tested case). When
+testing G3-03 on Windows, record GPU, Windows build, and whether the surface
+came up in [the QA platform matrix](/dev/qa-steam-platform-matrix/).
 
 ---
 
