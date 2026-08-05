@@ -22,6 +22,7 @@ vi.mock('../api/client', () => ({
     startSetupInstall: vi.fn(),
     getSetupInstallStatus: vi.fn(),
     cancelSetupInstall: vi.fn(),
+    createSession: vi.fn().mockResolvedValue({ ok: true, data: { session_id: 'sess-tutorial-1', scenario_id: 'first_words_tutorial', state: 'NotStarted', created_at: '', setup: { scenario_id: 'first_words_tutorial', difficulty: 'standard', player_role_name: 'New Player', language: 'en', input_mode: 'text-only', tts_enabled: false, show_state_meters: true, save_transcript: true, seed: null } } }),
   },
 }))
 
@@ -108,6 +109,7 @@ function renderWizard() {
         <Route path="/" element={<div data-testid="home-page" />} />
         <Route path="/library" element={<div data-testid="library-page" />} />
         <Route path="/setup/*" element={<div data-testid="setup-page" />} />
+        <Route path="/conversation/:sessionId" element={<div data-testid="conversation-page" />} />
       </Routes>
     </MemoryRouter>,
   )
@@ -158,6 +160,7 @@ beforeEach(() => {
   mockApi.benchmarkModel.mockResolvedValue({ ok: true, data: DEFAULT_BENCHMARK })
   mockApi.recordOnboardingOutcome.mockResolvedValue({ ok: true, data: undefined })
   mockApi.getSetupStatus.mockResolvedValue({ ok: true, data: { kind: 'ready' } })
+  mockApi.createSession.mockResolvedValue({ ok: true, data: { session_id: 'sess-tutorial-1', scenario_id: 'first_words_tutorial', state: 'NotStarted' as const, created_at: '', setup: { scenario_id: 'first_words_tutorial', difficulty: 'standard' as const, player_role_name: 'New Player', language: 'en', input_mode: 'text-only' as const, tts_enabled: false, show_state_meters: true, save_transcript: true, seed: null } } })
 })
 
 // ── Welcome step ─────────────────────────────────────────────────────────────
@@ -213,16 +216,16 @@ describe('FirstRunWizard — welcome step', () => {
     expect(mockApi.startSetupInstall).toHaveBeenCalledWith('qwen3-4b-instruct-q4_k_m')
   })
 
-  it('Try it right now starts the scripted tutorial (navigates to the tutorial scenario setup route)', async () => {
+  it('Try it right now starts the scripted tutorial (navigates directly to the conversation)', async () => {
     renderWizard()
     fireEvent.click(screen.getByRole('button', { name: /try it right now/i }))
-    await waitFor(() => expect(screen.getByTestId('setup-page')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByTestId('conversation-page')).toBeInTheDocument())
   })
 
   it('marks setup complete when Try it right now is clicked', async () => {
     renderWizard()
     fireEvent.click(screen.getByRole('button', { name: /try it right now/i }))
-    await waitFor(() => expect(screen.getByTestId('setup-page')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByTestId('conversation-page')).toBeInTheDocument())
     expect(localStorage.getItem(SETUP_KEYS.firstRunComplete)).toBe('true')
   })
 
@@ -1083,17 +1086,17 @@ describe('FirstRunWizard — "Try it right now" tutorial path', () => {
     )
   })
 
-  it('navigates to the tutorial and marks setup complete', async () => {
+  it('navigates directly to the conversation and marks setup complete', async () => {
     renderWizard()
     fireEvent.click(screen.getByRole('button', { name: /try it right now/i }))
-    await waitFor(() => expect(screen.getByTestId('setup-page')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByTestId('conversation-page')).toBeInTheDocument())
     expect(localStorage.getItem(SETUP_KEYS.firstRunComplete)).toBe('true')
   })
 
   it('labels the session as scripted via localStorage', async () => {
     renderWizard()
     fireEvent.click(screen.getByRole('button', { name: /try it right now/i }))
-    await waitFor(() => expect(screen.getByTestId('setup-page')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByTestId('conversation-page')).toBeInTheDocument())
     expect(localStorage.getItem(SETUP_KEYS.activeRuntimeHint)).toBe('scripted')
   })
 
@@ -1101,7 +1104,7 @@ describe('FirstRunWizard — "Try it right now" tutorial path', () => {
     mockApi.useModel.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'runtime unavailable' } })
     renderWizard()
     fireEvent.click(screen.getByRole('button', { name: /try it right now/i }))
-    await waitFor(() => expect(screen.getByTestId('setup-page')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByTestId('conversation-page')).toBeInTheDocument())
   })
 })
 
@@ -1151,7 +1154,7 @@ describe('FirstRunWizard — tutorial CTA during install', () => {
     await waitFor(() =>
       expect(mockApi.useModel).toHaveBeenCalledWith({ runtime_id: 'scripted', model_id: null }),
     )
-    await screen.findByTestId('setup-page')
+    await screen.findByTestId('conversation-page')
   })
 
   it('marks tutorial complete in localStorage when starting the tutorial', async () => {
@@ -1188,10 +1191,10 @@ describe('FirstRunWizard — tutorial CTA during install', () => {
     )
   })
 
-  it('navigates to the tutorial scenario setup route (a real, mounted route)', async () => {
+  it('navigates directly to the tutorial conversation (a real, mounted route)', async () => {
     await goToInstalling()
     fireEvent.click(screen.getByRole('button', { name: /start now/i }))
-    await screen.findByTestId('setup-page')
+    await screen.findByTestId('conversation-page')
   })
 })
 

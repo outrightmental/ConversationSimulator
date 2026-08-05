@@ -310,3 +310,196 @@ def test_scripted_debrief_passes_debrief_validation():
     narrative = _validate_narrative(_DEBRIEF_RESPONSE)
     assert narrative.used_fallback is False
     assert narrative.turning_points  # scripted debrief keeps its turning point
+
+
+# ── Session router integration — scripted runtime selection (issue #427) ──────
+# When use_model selects the "scripted" runtime, submit_turn and generate_debrief
+# must use ScriptedChatRuntime (not the fake runtime stored in app.state.runtime).
+# These tests drive the tutorial scenario via the HTTP API to confirm end-to-end.
+
+_TUTORIAL_SESSION_SETUP = {
+    "scenario_id": "first_words_tutorial",
+    "difficulty": "standard",
+    "player_role_name": "New Player",
+    "language": "en",
+    "input_mode": "text-only",
+    "tts_enabled": False,
+    "show_state_meters": True,
+    "save_transcript": True,
+    "seed": None,
+}
+
+
+def test_tutorial_turn_uses_scripted_runtime_when_active_config_is_scripted(tmp_config):
+    """When active_runtime_id='scripted', submit_turn produces the tutorial script, not a fake response."""
+    from convsim_core.app import create_app
+    from convsim_core.services.model_manager_service import set_active_config
+    from fastapi.testclient import TestClient
+
+    app = create_app(tmp_config)
+    with TestClient(app) as client:
+        # Seed the official packs so first_words_tutorial is resolvable.
+        import convsim_core.scenarios  # noqa: F401
+        set_active_config(app.state.db.connection(), runtime_id="scripted")
+
+        res = client.post("/api/sessions", json=_TUTORIAL_SESSION_SETUP)
+        assert res.status_code == 201, res.text
+        session_id = res.json()["session_id"]
+
+        client.post(f"/api/sessions/{session_id}/start")
+        turn_res = client.post(
+            f"/api/sessions/{session_id}/turn",
+            json={"content": "Hello, let's get started!"},
+        )
+        assert turn_res.status_code == 200, turn_res.text
+        body = turn_res.json()
+        npc_events = [e for e in body["events"] if e["event_type"] == "npc_turn"]
+        assert npc_events, "No npc_turn event found in turn response"
+        npc_text = npc_events[0]["payload"]["content"]
+        # Scripted runtime produces the authored tutorial text, not the fake placeholder.
+        assert "meter" in npc_text.lower() or "engagement" in npc_text.lower() or "turn" in npc_text.lower(), (
+            f"Expected scripted tutorial response, got: {npc_text!r}"
+        )
+        assert "simulated npc" not in npc_text.lower(), (
+            f"Got fake runtime response instead of scripted: {npc_text!r}"
+        )
+
+
+def test_tutorial_debrief_uses_scripted_debrief_when_active_config_is_scripted(tmp_config):
+    """Debrief for a tutorial session uses the scripted runtime's authored debrief content."""
+    from convsim_core.app import create_app
+    from convsim_core.services.model_manager_service import set_active_config
+    from convsim_core.runtime.scripted import _DEBRIEF_RESPONSE
+    from fastapi.testclient import TestClient
+
+    app = create_app(tmp_config)
+    with TestClient(app) as client:
+        set_active_config(app.state.db.connection(), runtime_id="scripted")
+
+        res = client.post("/api/sessions", json=_TUTORIAL_SESSION_SETUP)
+        assert res.status_code == 201, res.text
+        session_id = res.json()["session_id"]
+
+        client.post(f"/api/sessions/{session_id}/start")
+        for _ in range(6):
+            client.post(
+                f"/api/sessions/{session_id}/turn",
+                json={"content": "I'm excited to learn!"},
+            )
+        client.post(f"/api/sessions/{session_id}/end")
+
+        debrief_res = client.post(f"/api/sessions/{session_id}/debrief")
+        assert debrief_res.status_code == 200, debrief_res.text
+        body = debrief_res.json()
+        # Scripted debrief has the authored summary, not the fake boilerplate.
+        assert body["summary"] == _DEBRIEF_RESPONSE["summary"]
+
+
+def test_tutorial_stays_scripted_after_a_model_install_flips_the_active_runtime(tmp_config):
+    """A tutorial in progress keeps its scripted runtime when an install completes mid-play.
+
+    The "Start now" CTA runs the tutorial while a model downloads in the
+    background; the setup-install pipeline calls set_active_config(llama_cpp)
+    when that download finishes. The session must stay pinned to the runtime it
+    was created with, or the rest of the tutorial — and its authored debrief —
+    would be routed to the freshly installed model.
+    """
+    from convsim_core.app import create_app
+    from convsim_core.services.model_manager_service import set_active_config
+    from convsim_core.runtime.scripted import _DEBRIEF_RESPONSE
+    from fastapi.testclient import TestClient
+
+    app = create_app(tmp_config)
+    with TestClient(app) as client:
+        conn = app.state.db.connection()
+        set_active_config(conn, runtime_id="scripted")
+
+        res = client.post("/api/sessions", json=_TUTORIAL_SESSION_SETUP)
+        assert res.status_code == 201, res.text
+        session_id = res.json()["session_id"]
+        client.post(f"/api/sessions/{session_id}/start")
+        client.post(f"/api/sessions/{session_id}/turn", json={"content": "Hello!"})
+
+        # The background install finishes: the pipeline flips the global runtime.
+        set_active_config(conn, runtime_id="llama_cpp", model_id="/tmp/model.gguf")
+
+        turn_res = client.post(
+            f"/api/sessions/{session_id}/turn",
+            json={"content": "Still here — what next?"},
+        )
+        assert turn_res.status_code == 200, turn_res.text
+        npc_events = [e for e in turn_res.json()["events"] if e["event_type"] == "npc_turn"]
+        assert npc_events, "No npc_turn event found in turn response"
+        npc_text = npc_events[0]["payload"]["content"]
+        assert "simulated npc" not in npc_text.lower(), (
+            f"Tutorial fell back to app.state.runtime after the install: {npc_text!r}"
+        )
+
+        for _ in range(5):
+            client.post(f"/api/sessions/{session_id}/turn", json={"content": "Go on."})
+        client.post(f"/api/sessions/{session_id}/end")
+
+        debrief_res = client.post(f"/api/sessions/{session_id}/debrief")
+        assert debrief_res.status_code == 200, debrief_res.text
+        assert debrief_res.json()["summary"] == _DEBRIEF_RESPONSE["summary"]
+
+
+def test_session_runtime_id_pins_the_script_when_the_global_selection_is_not_scripted(tmp_config):
+    """An explicit runtime_id on the create request pins the session on its own.
+
+    The web client sets the global selection with use_model before creating the
+    tutorial session, but that call can fail, and the background install can flip
+    the selection to llama_cpp in the window between the two requests. Neither may
+    drop the tutorial onto the fake NPC.
+    """
+    from convsim_core.app import create_app
+    from convsim_core.services.model_manager_service import set_active_config
+    from fastapi.testclient import TestClient
+
+    app = create_app(tmp_config)
+    with TestClient(app) as client:
+        # Global selection is a real model — as if use_model('scripted') never landed.
+        set_active_config(app.state.db.connection(), runtime_id="llama_cpp", model_id="/tmp/model.gguf")
+
+        res = client.post(
+            "/api/sessions",
+            json={**_TUTORIAL_SESSION_SETUP, "runtime_id": "scripted"},
+        )
+        assert res.status_code == 201, res.text
+        session_id = res.json()["session_id"]
+
+        client.post(f"/api/sessions/{session_id}/start")
+        turn_res = client.post(f"/api/sessions/{session_id}/turn", json={"content": "Hello!"})
+        assert turn_res.status_code == 200, turn_res.text
+        npc_events = [e for e in turn_res.json()["events"] if e["event_type"] == "npc_turn"]
+        assert npc_events, "No npc_turn event found in turn response"
+        npc_text = npc_events[0]["payload"]["content"]
+        assert "simulated npc" not in npc_text.lower(), (
+            f"Explicit runtime_id was ignored; got the fake runtime: {npc_text!r}"
+        )
+
+
+def test_session_runtime_id_rejects_a_sidecar_backed_runtime(tmp_config):
+    """Only the model-free runtimes may be requested per-session."""
+    from convsim_core.app import create_app
+    from fastapi.testclient import TestClient
+
+    app = create_app(tmp_config)
+    with TestClient(app) as client:
+        res = client.post(
+            "/api/sessions",
+            json={**_TUTORIAL_SESSION_SETUP, "runtime_id": "llama_cpp"},
+        )
+        assert res.status_code == 422, res.text
+
+
+def test_session_without_runtime_id_stores_no_runtime_key(tmp_config):
+    """A normal session records no pin, so it keeps following the global selection."""
+    from convsim_core.app import create_app
+    from fastapi.testclient import TestClient
+
+    app = create_app(tmp_config)
+    with TestClient(app) as client:
+        res = client.post("/api/sessions", json=_TUTORIAL_SESSION_SETUP)
+        assert res.status_code == 201, res.text
+        assert "runtime_id" not in res.json()["setup"]
