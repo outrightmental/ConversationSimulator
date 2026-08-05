@@ -232,6 +232,42 @@ impl SteamRuntime {
         false
     }
 
+    // ── Steam overlay ─────────────────────────────────────────────────────────
+
+    /// Open the Steam overlay in its default view (equivalent to the player
+    /// pressing Shift+Tab). Returns `false` when Steam is unavailable.
+    ///
+    /// Why the front-end has to call this at all: Steam's overlay opens on
+    /// Shift+Tab by intercepting the chord in the game process via its input
+    /// hook. In a Tauri app the keystroke is delivered to the WebView2 child
+    /// process (`msedgewebview2.exe`), which Steam's hook never sees, so the
+    /// default chord is a silent no-op. The front-end therefore listens for
+    /// Shift+Tab and forwards it here (see `useSteamOverlay`), and this command
+    /// asks Steam to open the overlay programmatically.
+    ///
+    /// IMPORTANT (Windows / WebView2): opening the overlay is necessary but not
+    /// sufficient for it to be *visible*. Steam draws the overlay by hooking the
+    /// game's graphics `Present` call, but a Tauri app never presents a swapchain
+    /// in its own process — WebView2 renders out-of-process and composites
+    /// through DWM — so there is nothing for the injected layer to draw into.
+    /// Making the overlay actually render on Windows requires a decoy
+    /// compositing surface (a transparent, click-through child window presenting
+    /// empty frames at vsync). See the "Steam overlay (Windows WebView2 caveat)"
+    /// section of docs/STEAM_INTEGRATION.md. On macOS and Linux the overlay
+    /// compositing path is a separate, still-open problem. This command is the
+    /// portable, correct way to request the overlay on every platform; the extra
+    /// Windows surface is what makes the request user-visible there.
+    pub fn activate_overlay(&self) -> bool {
+        #[cfg(feature = "steam")]
+        if let Some(ref client) = self.client {
+            // An empty dialog string opens the overlay in its default state,
+            // matching the behaviour of the Shift+Tab chord.
+            client.friends().activate_game_overlay("");
+            return true;
+        }
+        false
+    }
+
     // ── Workshop / UGC ───────────────────────────────────────────────────────
 
     /// Return the list of Workshop items the local user is currently subscribed
@@ -644,6 +680,14 @@ mod tests {
         without_steam_env_vars(|| {
             let (_status, runtime) = init();
             assert!(!runtime.hide_floating_keyboard());
+        });
+    }
+
+    #[test]
+    fn activate_overlay_returns_false_without_steam() {
+        without_steam_env_vars(|| {
+            let (_status, runtime) = init();
+            assert!(!runtime.activate_overlay());
         });
     }
 

@@ -198,6 +198,21 @@ fn steam_hide_floating_keyboard(state: tauri::State<'_, SteamRuntimeState>) -> b
         .unwrap_or(false)
 }
 
+/// Open the Steam overlay (equivalent to the Shift+Tab chord).
+///
+/// The front-end forwards Shift+Tab here because the chord is delivered to the
+/// WebView2 child process and never reaches Steam's input hook — see
+/// `useSteamOverlay` on the front-end and `SteamRuntime::activate_overlay`.
+/// Returns `false` when not running under Steam or the `steam` feature is off.
+#[tauri::command]
+fn steam_activate_overlay(state: tauri::State<'_, SteamRuntimeState>) -> bool {
+    state
+        .0
+        .lock()
+        .map(|r| r.activate_overlay())
+        .unwrap_or(false)
+}
+
 /// Return the list of Steam Workshop items the local user is subscribed to.
 ///
 /// Each item includes its install path and update state so the front-end can
@@ -709,6 +724,7 @@ pub fn run() {
             steam_set_rich_presence,
             steam_show_floating_keyboard,
             steam_hide_floating_keyboard,
+            steam_activate_overlay,
             steam_is_dlc_installed,
             steam_workshop_get_subscribed_items,
             steam_workshop_publish_pack,

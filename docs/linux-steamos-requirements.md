@@ -169,6 +169,13 @@ the general QA matrix in `docs/QA_STEAM_PLATFORM_MATRIX.md`.
       play).
 - [ ] Steam overlay (Shift+Tab) opens and closes without breaking the current
       session.
+      - Caveat: like Windows, the WebKitGTK webview renders out of process, so the
+        overlay-over-webview problem applies to Linux/SteamOS too and is a separate,
+        largely unsolved leg of G3-03. The Shift+Tab chord forwarder
+        (`useSteamOverlay`) ships on every platform, but the Windows decoy
+        compositing surface does not help here. Record what actually happens rather
+        than assuming a pass — see
+        [STEAM_INTEGRATION.md § Steam overlay (Windows WebView2 caveat)](STEAM_INTEGRATION.md#steam-overlay-windows-webview2-caveat).
 - [ ] Push-to-talk key (if using voice) does not conflict with the Steam overlay
       binding.
 - [ ] Battery draw during a text session is documented (target: < 15 W average).

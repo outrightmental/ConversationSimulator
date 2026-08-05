@@ -512,6 +512,9 @@ Navigate to **Settings → Support** (or the Help / Support screen).
   (Steam overlay toast or in-app indicator)
 - [ ] Steam overlay (Shift+Tab) shows the unlocked achievement in the
   overlay's achievement list
+  - Windows: the overlay (and its achievement toast) is invisible until the app
+    ships the decoy compositing surface, even though the unlock itself registers.
+    See [Steam integration § Steam overlay (Windows WebView2 caveat)](/dev/steam-integration/#steam-overlay-windows-webview2-caveat).
 - [ ] Rich presence text in the Steam Friends list reflects the current
   scenario or session state
 - [ ] No outbound HTTP calls outside the Steamworks SDK are observed during play
@@ -744,6 +747,8 @@ Navigate to **Settings → Support**.
 
 - [ ] Completing a scored session triggers an achievement notification
 - [ ] Steam overlay (Shift+Tab) reflects the unlocked achievement
+  - Windows: invisible until the decoy compositing surface ships (the unlock
+    still registers). See [Steam integration § Steam overlay (Windows WebView2 caveat)](/dev/steam-integration/#steam-overlay-windows-webview2-caveat).
 - [ ] Rich presence text updates to reflect the current session state
 - [ ] No outbound HTTP calls outside the Steamworks SDK observed during play
 
@@ -866,6 +871,8 @@ Navigate to **Settings → Support**.
 
 - [ ] Completing a scored session triggers an achievement notification
 - [ ] Steam overlay (Shift+Tab) reflects the unlocked achievement
+  - Windows: invisible until the decoy compositing surface ships (the unlock
+    still registers). See [Steam integration § Steam overlay (Windows WebView2 caveat)](/dev/steam-integration/#steam-overlay-windows-webview2-caveat).
 - [ ] Rich presence text updates in the Steam Friends list
 - [ ] No outbound HTTP calls outside the Steamworks SDK during play
 
@@ -1121,6 +1128,19 @@ the debrief screen (satisfies G3-06 beta session verification).
 | Windows 10/11 clean VM | | ☐ | ☐ | ☐ no SmartScreen | ☐ | | |
 | macOS (Apple Silicon) | | ☐ | ☐ | ☐ Gatekeeper silent | ☐ | | |
 | Linux (Ubuntu 22.04 or Steam Deck Desktop) | | ☐ | ☐ | ☐ AppImage executable | ☐ | | |
+
+> **G3-03 caveat — the overlay must be *visibly drawn*, not just "not broken".**
+> On a Tauri app the UI renders in out-of-process WebView2, so Steam's overlay
+> compositing hook has nothing to draw into and the Shift+Tab chord never reaches
+> Steam's input hook. The result is a **silent no-op that reports success**:
+> the friends list shows "In-Game", `is_overlay_enabled()` returns true, and
+> `GameOverlayActivated` fires even though nothing appears. Tick the G3-03 box
+> **only** when the overlay is visibly composited over the app. If a Windows
+> tester sees "nothing happened", that is a **FAIL**. The fix is the Shift+Tab
+> forwarder (`useSteamOverlay`, shipped) plus a Windows decoy compositing surface
+> (see risk SP-06 and
+> [Steam integration § Steam overlay (Windows WebView2 caveat)](/dev/steam-integration/#steam-overlay-windows-webview2-caveat)).
+> Record GPU and Windows build in the Notes below.
 
 ### K.4 Dress rehearsal sign-off
 
