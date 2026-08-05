@@ -82,14 +82,27 @@ def db(tmp_path):
 # ── GET /api/models (integration) ─────────────────────────────────────────────
 
 
-def test_get_models_empty_state_has_all_sections(client):
-    body = client.get("/api/models").json()
-    assert body["registry"] == []
-    assert body["installed"] == []
-    assert body["ollama_models"] == []
-    assert body["active"] == {"runtime_id": None, "model_id": None}
-    assert body["total"] == 0
-    assert "runtime_health" in body
+def test_get_models_empty_state_has_all_sections(tmp_path):
+    # Startup now seeds the registry from the bundled catalogue by default, so a
+    # genuinely empty state requires pointing the config at a missing registry
+    # file (mirrors test_model_registry.test_get_models_empty_database_returns_empty_list).
+    config = ServiceConfig(
+        host="127.0.0.1",
+        port=7355,
+        data_dir=str(tmp_path / "data"),
+        log_dir=str(tmp_path / "logs"),
+        db_dir=str(tmp_path / "db"),
+        model_registry_path=str(tmp_path / "missing" / "registry.yaml"),
+    )
+    app = create_app(config)
+    with TestClient(app) as client:
+        body = client.get("/api/models").json()
+        assert body["registry"] == []
+        assert body["installed"] == []
+        assert body["ollama_models"] == []
+        assert body["active"] == {"runtime_id": None, "model_id": None}
+        assert body["total"] == 0
+        assert "runtime_health" in body
 
 
 def test_get_models_runtime_health_present(client):
