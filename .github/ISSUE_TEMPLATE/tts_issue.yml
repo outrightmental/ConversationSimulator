@@ -1,7 +1,6 @@
 name: TTS issue
 description: Report a problem with speech output or the text-to-speech pipeline.
-labels:
-  - speech
+labels: ["bug", "area:models"]
 body:
   - type: markdown
     attributes:

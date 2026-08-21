@@ -2,9 +2,7 @@ name: Steam — performance or frame-rate issue
 description: >
   Report a performance problem in the Steam edition: slow inference, high CPU/GPU
   usage, long load times, audio stuttering, or frame-rate problems in the UI.
-labels:
-  - steam
-  - performance
+labels: ["bug", "area:steam"]
 body:
   - type: markdown
     attributes:

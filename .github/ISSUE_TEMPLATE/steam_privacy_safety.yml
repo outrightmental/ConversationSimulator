@@ -2,10 +2,7 @@ name: Steam — privacy or safety report
 description: >
   Report a concern about local data handling, unexpected network activity, or
   content safety in the Steam edition.
-labels:
-  - steam
-  - privacy
-  - safety
+labels: ["area:safety", "area:steam"]
 body:
   - type: markdown
     attributes:

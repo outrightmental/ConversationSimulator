@@ -123,6 +123,28 @@ existing packs.
 
 ---
 
+## Labels
+
+The tracker runs on a deliberately small labeling system — four axes, one question each:
+
+| Axis | Labels | Question it answers |
+| ---- | ------ | ------------------- |
+| Type | `bug` · `enhancement` · `docs` · `chore` · `epic` | What kind of change is this? |
+| Priority | `priority:P0` · `priority:P1` · `priority:P2` | P0 blocks the next release; P1 is next up; P2 is opportunistic |
+| Area | `area:engine` · `area:ui` · `area:models` · `area:packs` · `area:steam` · `area:safety` | Which product surface does it touch? |
+| Workflow | `manual` · `review` · `good first issue` · `help wanted` | Who picks it up, and how |
+
+Conventions:
+
+- Every issue gets **one type** label. Add **one or two** `area:*` labels when the surface is clear; epics that span areas carry none.
+- `manual` and `review` are contracts with the [vibrator](https://github.com/outrightmental/vibrator) orchestrator: `manual` keeps an issue or PR out of automated work entirely; `review` lets vibrator implement but leaves the final PR to a human.
+- `good first issue` and `help wanted` mark the community on-ramps — scenario packs are the friendliest entry point.
+- Milestones track *when*; the [delivery board](https://github.com/orgs/outrightmental/projects/12) tracks *status*. Labels only say what, where, and how urgent.
+
+Please do not invent new labels ad hoc — propose additions in an issue first.
+
+---
+
 ## Development setup
 
 ```sh

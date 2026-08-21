@@ -1,6 +1,6 @@
 name: Beta feedback / bug report
 description: Report a bug or give feedback during the beta. Use the one-click bundle from Support → Report a problem for fastest turnaround.
-labels: ["beta-feedback"]
+labels: ["bug"]
 body:
   - type: markdown
     attributes:

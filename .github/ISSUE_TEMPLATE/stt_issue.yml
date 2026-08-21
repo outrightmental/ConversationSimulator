@@ -1,7 +1,6 @@
 name: Speech / STT issue
 description: Report a problem with speech input or the speech-to-text pipeline.
-labels:
-  - speech
+labels: ["bug", "area:models"]
 body:
   - type: markdown
     attributes:

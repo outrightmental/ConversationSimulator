@@ -2,9 +2,7 @@ name: Steam — local model install failure
 description: >
   Report a failure to download, verify, or load a local AI model through the
   Steam edition Model Manager.
-labels:
-  - steam
-  - model-install
+labels: ["bug", "area:steam", "area:models"]
 body:
   - type: markdown
     attributes:
