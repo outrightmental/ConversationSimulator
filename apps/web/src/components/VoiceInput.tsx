@@ -8,6 +8,7 @@ import MicButton from './MicButton'
 import VadStatusIndicator from './VadStatusIndicator'
 import VadCalibration from './VadCalibration'
 import TranscriptReviewPanel from './TranscriptReviewPanel'
+import { CopyDiagnosticsButton } from './CopyDiagnosticsButton'
 
 const BACKCHANNEL_TRIGGER_MS = 3_500
 
@@ -334,7 +335,12 @@ export default function VoiceInput({ onSubmit, onRawStt, onSttLatency, onRecordi
         </p>
         {uploadError && (
           <p role="alert" style={{ ...noticeStyle, color: '#f87171' }}>
-            {uploadError}
+            {uploadError}{' '}
+            <CopyDiagnosticsButton
+              header={`ConversationSimulator diagnostics\nkind: voice-upload-error\nmessage: ${uploadError}\ntime: ${new Date().toISOString()}`}
+              context="voice-input:upload"
+              compact
+            />
           </p>
         )}
         <form onSubmit={handleTextSubmit} style={{ display: 'flex', flex: 1, gap: '0.5rem' }}>
@@ -374,12 +380,22 @@ export default function VoiceInput({ onSubmit, onRawStt, onSttLatency, onRecordi
       )}
       {error && !showDeniedNotice && (
         <p role="alert" style={{ ...noticeStyle, color: '#f87171' }}>
-          {error}
+          {error}{' '}
+          <CopyDiagnosticsButton
+            header={`ConversationSimulator diagnostics\nkind: voice-capture-error\nmessage: ${error}\ntime: ${new Date().toISOString()}`}
+            context="voice-input:capture"
+            compact
+          />
         </p>
       )}
       {uploadError && (
         <p role="alert" style={{ ...noticeStyle, color: '#f87171' }}>
-          {uploadError}
+          {uploadError}{' '}
+          <CopyDiagnosticsButton
+            header={`ConversationSimulator diagnostics\nkind: voice-upload-error\nmessage: ${uploadError}\ntime: ${new Date().toISOString()}`}
+            context="voice-input:upload"
+            compact
+          />
         </p>
       )}
 

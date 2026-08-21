@@ -2,6 +2,7 @@
 import { ActionButton, PrimaryButton } from '../primitives'
 import { errorMessage } from '../errorMessage'
 import { ApiErrorView } from '../../components/ApiErrorView'
+import { CopyDiagnosticsButton } from '../../components/CopyDiagnosticsButton'
 import { LocalFilePicker } from '../../components/LocalFilePicker'
 import type { UseSetupFlowReturn } from '../useSetupFlow'
 
@@ -50,7 +51,12 @@ export function GgufPathStep({ flow, mode }: GgufPathStepProps) {
       {flow.actionError && (
         mode === 'manager'
           ? <div style={{ marginTop: '0.75rem' }}><ApiErrorView error={flow.actionError} context="ModelManager" /></div>
-          : <p role="alert" style={{ color: '#f87171', marginTop: '0.75rem', fontSize: '0.875rem' }}>{errMsg}</p>
+          : (
+            <p role="alert" style={{ color: '#f87171', marginTop: '0.75rem', fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <span>{errMsg}</span>
+              <CopyDiagnosticsButton error={flow.actionError} context="setup:gguf-path" compact />
+            </p>
+          )
       )}
 
       <div style={{ display: 'flex', gap: '0.5rem', marginTop: '1.5rem' }}>

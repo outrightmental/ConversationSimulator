@@ -12,6 +12,8 @@
  */
 import { useState } from 'react'
 import type { PreflightCheck, PreflightFixAction } from '@convsim/shared'
+import { buildDiagnosticsReport } from '../api/diag'
+import { copyTextToClipboard } from '../components/CopyDiagnosticsButton'
 import { useTranslation } from '../i18n'
 
 export interface RemediationCardProps {
@@ -132,11 +134,18 @@ export function RemediationCard({ check, onAction, onTextOnly, coreVersion }: Re
   const [copied, setCopied] = useState(false)
 
   function handleCopy() {
-    const block = buildCopyBlock(check, coreVersion)
-    void navigator.clipboard.writeText(block).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    })
+    // The copied report is the visible bug-report block plus the most relevant
+    // local log excerpts (fetched from the core service, redacted there), so a
+    // pasted issue carries the lines a maintainer actually needs.
+    void (async () => {
+      const block = buildCopyBlock(check, coreVersion)
+      const report = await buildDiagnosticsReport(block, `preflight:${check.id}`)
+      const ok = await copyTextToClipboard(report)
+      if (ok) {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      }
+    })()
   }
 
   return (

@@ -5,6 +5,7 @@
 // component because React does not support error boundary hooks.
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { useTranslation, type TranslateFn } from '../i18n'
+import { CopyDiagnosticsButton } from './CopyDiagnosticsButton'
 
 const ISSUES_URL = 'https://github.com/outrightmental/ConversationSimulator/issues/new/choose'
 const DOCS_URL = 'https://docs.conversationsimulator.com/start/troubleshooting/'
@@ -36,6 +37,13 @@ class ErrorBoundaryInner extends Component<InnerProps, State> {
     const { error } = this.state
     const { t } = this.props
     if (error) {
+      const diagnosticsHeader = [
+        'ConversationSimulator diagnostics',
+        'kind: render-error',
+        `message: ${error.message}`,
+        ...(error.stack ? [`stack:\n${error.stack.split('\n').slice(0, 12).join('\n')}`] : []),
+        `time: ${new Date().toISOString()}`,
+      ].join('\n')
       return (
         <div
           role="alert"
@@ -98,6 +106,11 @@ class ErrorBoundaryInner extends Component<InnerProps, State> {
             >
               {t('error.goHome')}
             </button>
+            <CopyDiagnosticsButton
+              header={diagnosticsHeader}
+              context="render-error"
+              label={t('error.copyDiagnostics')}
+            />
           </div>
 
           <div style={{ marginTop: '1.25rem', display: 'flex', flexWrap: 'wrap', gap: '0.75rem', fontSize: '0.825rem' }}>

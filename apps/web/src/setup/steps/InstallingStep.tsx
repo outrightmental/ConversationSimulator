@@ -2,6 +2,7 @@
 import { useEffect } from 'react'
 import { ActionButton, PrimaryButton } from '../primitives'
 import { errorMessage } from '../errorMessage'
+import { CopyDiagnosticsButton } from '../../components/CopyDiagnosticsButton'
 import { computeSetupInstallPct } from '../useSetupInstall'
 import type { UseSetupFlowReturn } from '../useSetupFlow'
 import type { SetupInstallStage } from '@convsim/shared'
@@ -105,6 +106,7 @@ export function InstallingStep({ flow, mode }: InstallingStepProps) {
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <PrimaryButton onClick={() => { flow.resetAction(); flow.setStep('confirm-install') }}>Retry</PrimaryButton>
                 <ActionButton onClick={() => { flow.resetAction(); flow.setStep('choose') }}>Choose a different option</ActionButton>
+                <CopyDiagnosticsButton error={flow.actionError} context="setup-install:network" />
               </div>
             </div>
           )}
@@ -119,6 +121,7 @@ export function InstallingStep({ flow, mode }: InstallingStepProps) {
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <PrimaryButton onClick={() => { flow.resetAction(); flow.setStep('confirm-install') }}>Try again</PrimaryButton>
                 <ActionButton onClick={() => { flow.resetAction(); flow.setStep('choose') }}>Choose a different option</ActionButton>
+                <CopyDiagnosticsButton error={flow.actionError} context="setup-install:disk" />
               </div>
             </div>
           )}
@@ -134,6 +137,7 @@ export function InstallingStep({ flow, mode }: InstallingStepProps) {
               </p>
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <PrimaryButton onClick={() => { flow.resetAction(); flow.setStep('choose') }}>Choose a smaller model</PrimaryButton>
+                <CopyDiagnosticsButton error={flow.actionError} context="setup-install:warmup" />
               </div>
             </div>
           )}
@@ -147,6 +151,7 @@ export function InstallingStep({ flow, mode }: InstallingStepProps) {
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <PrimaryButton onClick={() => { flow.resetAction(); flow.setStep('confirm-install') }}>Try again</PrimaryButton>
                 <ActionButton onClick={() => { flow.resetAction(); flow.setStep('choose') }}>Choose a different option</ActionButton>
+                <CopyDiagnosticsButton error={flow.actionError} context="setup-install" />
               </div>
             </div>
           )}

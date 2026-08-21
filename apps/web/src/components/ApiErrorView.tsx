@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState } from 'react'
 import type { ApiError } from '../api/errors'
-import { ERROR_COPY, buildDiagnosticsText } from '../api/errors'
+import { ERROR_COPY } from '../api/errors'
+import { CopyDiagnosticsButton } from './CopyDiagnosticsButton'
 
 interface ApiErrorViewProps {
   error: ApiError
@@ -11,7 +11,6 @@ interface ApiErrorViewProps {
 }
 
 export function ApiErrorView({ error, onRetry, context, compact = false }: ApiErrorViewProps) {
-  const [copied, setCopied] = useState(false)
   const copy = ERROR_COPY[error.kind]
   // For an http-error the server sent a clean, human-readable business message
   // (e.g. "Unknown scenario_id" or "SHA-256 checksum mismatch"). The content-type
@@ -21,18 +20,6 @@ export function ApiErrorView({ error, onRetry, context, compact = false }: ApiEr
   // text, so we keep the designed plain-language description instead.
   const detail =
     error.kind === 'http-error' && error.message ? error.message : copy.description
-
-  function handleCopyDiagnostics() {
-    void (async () => {
-      try {
-        await navigator.clipboard.writeText(buildDiagnosticsText(error, context))
-        setCopied(true)
-        setTimeout(() => setCopied(false), 2000)
-      } catch {
-        // clipboard unavailable in non-secure contexts
-      }
-    })()
-  }
 
   if (compact) {
     return (
@@ -60,20 +47,7 @@ export function ApiErrorView({ error, onRetry, context, compact = false }: ApiEr
             {copy.action}
           </button>
         )}
-        <button
-          onClick={handleCopyDiagnostics}
-          style={{
-            padding: '0.1rem 0.4rem',
-            borderRadius: '3px',
-            border: '1px solid rgba(255,255,255,0.12)',
-            background: 'transparent',
-            color: '#71717a',
-            fontSize: '0.72rem',
-            cursor: 'pointer',
-          }}
-        >
-          {copied ? 'Copied!' : 'Copy diagnostics'}
-        </button>
+        <CopyDiagnosticsButton error={error} context={context} compact />
       </span>
     )
   }
@@ -111,20 +85,7 @@ export function ApiErrorView({ error, onRetry, context, compact = false }: ApiEr
             {copy.action}
           </button>
         )}
-        <button
-          onClick={handleCopyDiagnostics}
-          style={{
-            padding: '0.3rem 0.75rem',
-            borderRadius: '4px',
-            border: '1px solid rgba(255,255,255,0.12)',
-            background: 'transparent',
-            color: '#71717a',
-            fontSize: '0.8rem',
-            cursor: 'pointer',
-          }}
-        >
-          {copied ? 'Copied!' : 'Copy diagnostics'}
-        </button>
+        <CopyDiagnosticsButton error={error} context={context} />
       </div>
     </div>
   )

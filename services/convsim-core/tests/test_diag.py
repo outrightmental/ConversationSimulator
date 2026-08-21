@@ -349,3 +349,53 @@ def test_latest_crash_bundle_picks_newest(tmp_path):
     latest = latest_crash_bundle(tmp_path)
     assert latest is not None
     assert latest.name == "crash-20260709T120000Z.zip"
+
+
+# ── GET /api/diag/log-excerpt ────────────────────────────────────────────────
+
+
+def test_log_excerpt_returns_200(client):
+    response = client.get("/api/diag/log-excerpt")
+    assert response.status_code == 200
+
+
+def test_log_excerpt_has_required_fields(client):
+    data = client.get("/api/diag/log-excerpt").json()
+    assert isinstance(data["excerpt"], str)
+    assert isinstance(data["sources"], list)
+    assert isinstance(data["notice"], str)
+
+
+def test_log_excerpt_notice_not_transmitted(client):
+    data = client.get("/api/diag/log-excerpt").json()
+    notice = data["notice"].lower()
+    assert "never" in notice or "not" in notice
+
+
+def test_log_excerpt_works_with_empty_log_dir(client):
+    data = client.get("/api/diag/log-excerpt").json()
+    assert "ConversationSimulator log excerpt" in data["excerpt"]
+
+
+def test_log_excerpt_includes_runtime_log_since_last_start(client, tmp_config):
+    log_dir = Path(tmp_config.log_dir)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    (log_dir / "runtime.log").write_text(
+        "--- llama-server start old ---\n"
+        "stale line\n"
+        "--- llama-server start new ---\n"
+        "cmd: llama-server --model m.gguf\n"
+        "llama-server exited early (code 137)\n",
+        encoding="utf-8",
+    )
+    data = client.get("/api/diag/log-excerpt").json()
+    assert "llama-server exited early (code 137)" in data["excerpt"]
+    assert "stale line" not in data["excerpt"]
+    assert "runtime.log" in data["sources"]
+
+
+def test_log_excerpt_embeds_context_tag(client):
+    data = client.get(
+        "/api/diag/log-excerpt", params={"context": "setup-install:warmup"}
+    ).json()
+    assert "context: setup-install:warmup" in data["excerpt"]

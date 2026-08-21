@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { PrimaryButton } from '../primitives'
 import { errorMessage } from '../errorMessage'
+import { CopyDiagnosticsButton } from '../../components/CopyDiagnosticsButton'
 import type { UseSetupFlowReturn } from '../useSetupFlow'
 import { SETUP_DOCS_URL } from '../docsUrls'
 
@@ -74,7 +75,8 @@ export function BenchmarkStep({ flow, mode, onComplete }: BenchmarkStepProps) {
           style={{ marginTop: '1rem', padding: '0.75rem 1rem', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px' }}
         >
           <p style={{ margin: '0 0 0.4rem', color: '#f87171', fontSize: '0.875rem' }}>Benchmark failed: {errMsg}</p>
-          <p style={{ margin: 0, fontSize: '0.8rem', color: '#a1a1aa' }}>Your model is still selected and ready to use. The benchmark is optional.</p>
+          <p style={{ margin: '0 0 0.5rem', fontSize: '0.8rem', color: '#a1a1aa' }}>Your model is still selected and ready to use. The benchmark is optional.</p>
+          <CopyDiagnosticsButton error={flow.actionError} context="setup:benchmark" compact />
         </div>
       )}
 
