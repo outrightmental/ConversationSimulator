@@ -3,6 +3,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useLogbookProfile } from '../api/useLogbookProfile'
 import { api } from '../api/client'
+import { CopyDiagnosticsButton } from '../components/CopyDiagnosticsButton'
 import { useSteamAchievements, SteamAchievement } from '../hooks/useSteamAchievements'
 import { useEffect, useRef } from 'react'
 
@@ -114,8 +115,9 @@ export default function Logbook() {
     return (
       <div>
         <h1>Logbook</h1>
-        <p role="alert" style={{ color: '#f87171' }}>
-          Could not load logbook data. Check that the local runtime is running.
+        <p role="alert" style={{ color: '#f87171', display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <span>Could not load logbook data. Check that the local runtime is running.</span>
+          <CopyDiagnosticsButton context="logbook:load" compact />
         </p>
       </div>
     )
@@ -362,7 +364,12 @@ export default function Logbook() {
         </button>
         {exportError && (
           <p role="alert" style={{ marginTop: '0.5rem', fontSize: '0.8rem', color: '#f87171' }}>
-            {exportError}
+            {exportError}{' '}
+            <CopyDiagnosticsButton
+              header={`ConversationSimulator diagnostics\nkind: logbook-export-error\nmessage: ${exportError}\ntime: ${new Date().toISOString()}`}
+              context="logbook:export"
+              compact
+            />
           </p>
         )}
       </section>

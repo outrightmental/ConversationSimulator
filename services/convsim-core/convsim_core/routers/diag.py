@@ -13,6 +13,7 @@ from convsim_core.beta_report import (
     latest_crash_bundle,
 )
 from convsim_core.crash_report import create_crash_bundle
+from convsim_core.log_excerpt import build_log_excerpt
 from convsim_core.redaction import redact_path
 
 logger = logging.getLogger(__name__)
@@ -28,6 +29,12 @@ _BETA_REPORT_NOTICE = (
     "Beta report bundle created locally. "
     "It is never transmitted automatically. "
     "Review the contents, then attach it to a GitHub issue manually."
+)
+
+_LOG_EXCERPT_NOTICE = (
+    "Log excerpt assembled locally. "
+    "It is never transmitted automatically. "
+    "Review it, then share it at your discretion (e.g. paste into a GitHub issue)."
 )
 
 
@@ -50,6 +57,12 @@ class _BetaReportResponse(BaseModel):
     notice: str
 
 
+class _LogExcerptResponse(BaseModel):
+    excerpt: str
+    sources: list[str]
+    notice: str
+
+
 @router.get("/logs-folder", response_model=_LogsFolderResponse)
 async def get_logs_folder(request: Request) -> _LogsFolderResponse:
     """Return the absolute path of the local logs folder.
@@ -58,6 +71,29 @@ async def get_logs_folder(request: Request) -> _LogsFolderResponse:
     """
     config = request.app.state.service_config
     return _LogsFolderResponse(logs_folder=str(Path(config.log_dir).resolve()))
+
+
+@router.get("/log-excerpt", response_model=_LogExcerptResponse)
+async def get_log_excerpt(
+    request: Request, context: str | None = None
+) -> _LogExcerptResponse:
+    """Return a compact, redacted excerpt of the most relevant local logs.
+
+    Backs the "Copy diagnostics" action on the UI's error surfaces, so a user
+    hitting any error can put the matching log lines on their clipboard in one
+    click.  The excerpt focuses on the most recent failure (error-level app
+    events plus the latest engine launch attempt), redacts home-directory
+    paths, and is returned to the local UI only — never transmitted.
+
+    ``context`` is an optional short tag describing which error surface asked
+    (e.g. ``setup-install:warmup``); it is embedded in the excerpt header so a
+    pasted report says where it came from.
+    """
+    config = request.app.state.service_config
+    result = build_log_excerpt(config.log_dir, context=context)
+    return _LogExcerptResponse(
+        excerpt=result.text, sources=result.sources, notice=_LOG_EXCERPT_NOTICE
+    )
 
 
 @router.post("/crash-bundle", response_model=_CrashBundleResponse)

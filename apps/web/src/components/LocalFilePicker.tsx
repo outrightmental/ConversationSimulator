@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState } from 'react'
+import { CopyDiagnosticsButton } from './CopyDiagnosticsButton'
 
 type TauriInvoke = <T>(cmd: string, args?: unknown) => Promise<T>
 type TauriWindow = { __TAURI__?: { core?: { invoke?: TauriInvoke } } }
@@ -133,7 +134,12 @@ export function LocalFilePicker({
       </div>
       {dialogError && (
         <p role="alert" style={{ fontSize: '0.8rem', color: '#f87171', margin: '0.3rem 0 0' }}>
-          {dialogError}
+          {dialogError}{' '}
+          <CopyDiagnosticsButton
+            header={`ConversationSimulator diagnostics\nkind: file-dialog-error\nmessage: ${dialogError}\ntime: ${new Date().toISOString()}`}
+            context="file-picker"
+            compact
+          />
         </p>
       )}
     </div>

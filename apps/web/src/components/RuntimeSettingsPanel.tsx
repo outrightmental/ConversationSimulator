@@ -4,6 +4,7 @@ import { api } from '../api/client'
 import type { ModelsResponse, RuntimeSettings } from '@convsim/shared'
 import type { ApiError } from '../api/errors'
 import { ApiErrorView } from './ApiErrorView'
+import { CopyDiagnosticsButton } from './CopyDiagnosticsButton'
 import { AI_ENGINE_DOCS_URL as DOCS_URL, UPDATE_DOCS_URL } from '../setup/docsUrls'
 
 const PROVIDER_NAMES: Record<string, string> = {
@@ -177,7 +178,16 @@ function FieldRow({
       <div>
         {children}
         {note && <div style={noteStyle}>{note}</div>}
-        {error && <div style={errorStyle} role="alert">{error}</div>}
+        {error && (
+          <div style={errorStyle} role="alert">
+            {error}{' '}
+            <CopyDiagnosticsButton
+              header={`ConversationSimulator diagnostics\nkind: runtime-settings-error\nmessage: ${error}\ntime: ${new Date().toISOString()}`}
+              context="runtime-settings"
+              compact
+            />
+          </div>
+        )}
       </div>
     </div>
   )

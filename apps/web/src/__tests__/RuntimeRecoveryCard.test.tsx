@@ -157,7 +157,7 @@ describe('RuntimeRecoveryCard — primary action', () => {
       />,
     )
     expect(screen.getByRole('button', { name: /restarting/i })).toBeInTheDocument()
-    expect(screen.getByRole('button')).toBeDisabled()
+    expect(screen.getByRole('button', { name: /restarting/i })).toBeDisabled()
   })
 
   it('renders an external link when href is provided instead of onClick', () => {

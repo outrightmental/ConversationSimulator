@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { CopyDiagnosticsButton } from './CopyDiagnosticsButton'
 
 export interface RecoveryAction {
   label: string
@@ -130,6 +131,13 @@ export default function RuntimeRecoveryCard({
   tertiaryAction,
   reportProblemHref,
 }: RuntimeRecoveryCardProps) {
+  const diagnosticsHeader = [
+    'ConversationSimulator diagnostics',
+    `title: ${title}`,
+    ...(errorDetail ? [`detail: ${errorDetail}`] : []),
+    `time: ${new Date().toISOString()}`,
+  ].join('\n')
+
   return (
     <div role="alert" style={cardStyle}>
       <p style={titleStyle}>{title}</p>
@@ -146,6 +154,7 @@ export default function RuntimeRecoveryCard({
         {primaryAction && <ActionButton action={primaryAction} />}
         {secondaryAction && <ActionButton action={secondaryAction} />}
         {tertiaryAction && <ActionButton action={tertiaryAction} />}
+        <CopyDiagnosticsButton header={diagnosticsHeader} context="runtime-recovery" />
         <a href={troubleshootingHref} target="_blank" rel="noreferrer" style={linkStyle}>
           {troubleshootingLabel}
         </a>

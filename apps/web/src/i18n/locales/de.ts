@@ -28,6 +28,7 @@ export const de: LocaleMessages = {
     tryAgain: 'Erneut versuchen',
     goHome: 'Zur Startseite',
     reportIssue: 'Problem melden',
+    copyDiagnostics: 'Diagnose kopieren',
     documentation: 'Dokumentation',
     logsLabel: 'Protokolle:',
   },

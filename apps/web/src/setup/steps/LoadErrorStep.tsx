@@ -2,6 +2,7 @@
 import { ActionButton } from '../primitives'
 import { errorMessage } from '../errorMessage'
 import { ApiErrorView } from '../../components/ApiErrorView'
+import { CopyDiagnosticsButton } from '../../components/CopyDiagnosticsButton'
 import type { UseSetupFlowReturn } from '../useSetupFlow'
 import { TROUBLESHOOTING_DOCS_URL } from '../docsUrls'
 
@@ -42,7 +43,10 @@ export function LoadErrorStep({ flow, mode }: LoadErrorStepProps) {
               <span style={{ color: '#52525b', fontSize: '0.825rem' }}>·</span>
               <a href={ISSUES_URL} target="_blank" rel="noreferrer" style={{ fontSize: '0.825rem', color: '#a1a1aa' }}>Report an issue</a>
             </div>
-            <ActionButton onClick={() => flow.setStep('welcome')}>Back to welcome</ActionButton>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+              <ActionButton onClick={() => flow.setStep('welcome')}>Back to welcome</ActionButton>
+              <CopyDiagnosticsButton error={flow.loadError} context="setup:load" />
+            </div>
           </div>
         </>
       )}

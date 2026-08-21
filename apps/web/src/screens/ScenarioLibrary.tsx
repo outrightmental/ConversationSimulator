@@ -7,6 +7,7 @@ import type { PackSummary, ImportPackResponse } from '../api/client'
 import type { ApiError } from '../api/errors'
 import { errorHeadline } from '../api/errors'
 import { ApiErrorView } from '../components/ApiErrorView'
+import { CopyDiagnosticsButton } from '../components/CopyDiagnosticsButton'
 import { useSteamStatus } from '../hooks/useSteamStatus'
 import { useSteamWorkshop } from '../hooks/useSteamWorkshop'
 
@@ -291,9 +292,14 @@ export default function ScenarioLibrary() {
                 <span
                   role="alert"
                   data-testid="workshop-sync-error"
-                  style={{ fontSize: '0.85rem', color: '#f87171' }}
+                  style={{ fontSize: '0.85rem', color: '#f87171', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}
                 >
                   {workshopSyncSummary}
+                  <CopyDiagnosticsButton
+                    header={`ConversationSimulator diagnostics\nkind: workshop-sync-error\nmessage: ${workshopSyncSummary}\ntime: ${new Date().toISOString()}`}
+                    context="workshop-sync"
+                    compact
+                  />
                 </span>
               )}
               <button

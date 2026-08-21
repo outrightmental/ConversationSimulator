@@ -2,6 +2,7 @@
 import { ActionButton, PrimaryButton, DetailRow } from '../primitives'
 import { errorMessage } from '../errorMessage'
 import { ApiErrorView } from '../../components/ApiErrorView'
+import { CopyDiagnosticsButton } from '../../components/CopyDiagnosticsButton'
 import type { UseSetupFlowReturn } from '../useSetupFlow'
 import { SETUP_DOCS_URL } from '../docsUrls'
 
@@ -90,6 +91,9 @@ export function ConfirmInstallStep({ flow, mode }: ConfirmInstallStepProps) {
                   : 'If your hardware or runtime cannot install this model, try a smaller model or '}
                 check the <a href={SETUP_DOCS_URL} target="_blank" rel="noreferrer">setup docs</a>.
               </p>
+              <div style={{ marginTop: '0.5rem' }}>
+                <CopyDiagnosticsButton error={flow.actionError} context="setup-install:confirm" />
+              </div>
             </div>
           )
       )}

@@ -52,6 +52,32 @@ import type { ApiError, ApiResult } from './errors';
 
 const BASE = _isTauriProduction ? `${CORE_ORIGIN}/api` : '/api'
 
+/**
+ * Fetch the diagnostics log excerpt as raw JSON, bounded by a timeout.
+ *
+ * Lives here because all HTTP must go through api/client.ts (lint-enforced).
+ * Unlike the ApiResult helpers this must never throw and wants a short
+ * deadline: it runs inside error surfaces, possibly while the core service
+ * is down. Payload validation happens in api/diag.ts.
+ */
+export async function getLogExcerptRaw(
+  context: string | undefined,
+  timeoutMs: number,
+): Promise<unknown | null> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const qs = context != null && context !== '' ? `?context=${encodeURIComponent(context)}` : ''
+    const res = await fetch(`${BASE}/diag/log-excerpt${qs}`, { signal: controller.signal })
+    if (!res.ok) return null
+    return (await res.json()) as unknown
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 export interface CloudSettings {
   /** Last model ID selected by the user. The only field Steam Cloud syncs. */
   last_model_id: string | null

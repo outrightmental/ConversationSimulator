@@ -23,6 +23,7 @@ export const en = {
     tryAgain: 'Try again',
     goHome: 'Go to home',
     reportIssue: 'Report this issue',
+    copyDiagnostics: 'Copy diagnostics',
     documentation: 'Documentation',
     logsLabel: 'Logs:',
   },
