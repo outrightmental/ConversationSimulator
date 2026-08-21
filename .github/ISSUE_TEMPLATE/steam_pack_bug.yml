@@ -3,9 +3,7 @@ description: >
   Report a bug in a scenario pack: validation failure, schema error, broken
   scenario, incorrect scoring, or content that does not match the pack's
   declared rating or safety policy.
-labels:
-  - steam
-  - pack-bug
+labels: ["bug", "area:steam", "area:packs"]
 body:
   - type: markdown
     attributes:

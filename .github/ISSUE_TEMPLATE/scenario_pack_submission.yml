@@ -1,7 +1,6 @@
 name: Scenario pack submission
 description: Submit a completed scenario pack for inclusion in the official repository.
-labels:
-  - scenario-packs
+labels: ["area:packs"]
 body:
   - type: markdown
     attributes:

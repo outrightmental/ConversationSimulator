@@ -1,7 +1,6 @@
 name: Scenario pack idea
 description: Propose a new scenario pack concept before building it.
-labels:
-  - scenario-packs
+labels: ["enhancement", "area:packs"]
 body:
   - type: markdown
     attributes:

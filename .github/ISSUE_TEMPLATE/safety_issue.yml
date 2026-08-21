@@ -1,7 +1,6 @@
 name: Safety issue
 description: Report a safety concern about content, NPC behaviour, or policy enforcement.
-labels:
-  - safety
+labels: ["area:safety"]
 body:
   - type: markdown
     attributes:

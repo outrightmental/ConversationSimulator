@@ -4,9 +4,7 @@ description: >
   marketplace demand spike documented in docs/marketplace-demand-spike.md.
   Responses are anonymised before use; please do not include personally
   identifying information.
-labels:
-  - marketplace
-  - creator-survey
+labels: ["area:packs"]
 body:
   - type: markdown
     attributes:
