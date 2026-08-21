@@ -12,6 +12,15 @@ by design. If you want to work on one, open or claim the linked issue.
 > GitHub issue and a milestone assignment. The purpose of this document is
 > to make the deferred set visible, not to expand it silently.
 
+> **Status (2026-08-21):** every open item below now has a tracking issue on the
+> [delivery board](https://github.com/orgs/outrightmental/projects/12). The near-term
+> items ([#455](https://github.com/outrightmental/ConversationSimulator/issues/455),
+> [#456](https://github.com/outrightmental/ConversationSimulator/issues/456),
+> [#457](https://github.com/outrightmental/ConversationSimulator/issues/457)) sit in the
+> *06 · Release polish* phase and are open to the implementation factory; the rest sit in
+> *07 · Future* with the `manual` label until deliberately released — see
+> [governance.md](governance.md) for how that throttle works.
+
 ---
 
 ## Deferred from alpha: high priority (Milestone 1 polish)
@@ -27,7 +36,7 @@ playthrough, which in turn requires coordinated hardware access. This is a
 polish step, not a functional blocker.
 
 **Milestone:** 1 (polish)  
-**Tracking:** See `docs/screenshots.md` for the replacement checklist.
+**Tracking:** [#455](https://github.com/outrightmental/ConversationSimulator/issues/455) · see `docs/screenshots.md` for the replacement checklist.
 
 ---
 
@@ -43,8 +52,8 @@ keep the initial surface area small. The source install path is fully
 functional.
 
 **Milestone:** 1 (desktop packaging)  
-**Tracking:** `apps/desktop/` contains the Tauri skeleton; sidecar config
-is the remaining work.
+**Tracking:** [#456](https://github.com/outrightmental/ConversationSimulator/issues/456) · `apps/desktop/` contains the Tauri skeleton; sidecar
+config is the remaining work.
 
 ---
 
@@ -57,7 +66,8 @@ Gatekeeper and SmartScreen do not warn users.
 and a Windows EV certificate. Both have a cost and setup process that is
 not worth completing before the alpha has proven its audience.
 
-**Milestone:** 2 (distribution)
+**Milestone:** 2 (distribution)  
+**Status:** ✅ **Shipped** during the Hardening phase — Windows Authenticode ([#404](https://github.com/outrightmental/ConversationSimulator/issues/404)) and Apple Developer ID signing + notarization ([#406](https://github.com/outrightmental/ConversationSimulator/issues/406)); see `publishing/` for the runbooks. Auto-update (item 4) is now unblocked.
 
 ---
 
@@ -70,7 +80,8 @@ when a new release is available.
 a signed update manifest hosted at a stable URL. Blocked on code signing
 (item 3 above) and a hosting decision.
 
-**Milestone:** 2 (distribution)
+**Milestone:** 2 (distribution)  
+**Tracking:** [#461](https://github.com/outrightmental/ConversationSimulator/issues/461) — unblocked now that code signing (item 3) has shipped.
 
 ---
 
@@ -85,7 +96,8 @@ and install packs published by other creators without leaving the app.
 moderation tooling, which are significant infrastructure additions that
 would compromise the MVP's "no server" principle.
 
-**Milestone:** 3 (community)
+**Milestone:** 3 (community)  
+**Tracking:** [#465](https://github.com/outrightmental/ConversationSimulator/issues/465) · design baseline: `docs/marketplace-architecture.md`
 
 ---
 
@@ -99,7 +111,8 @@ latency and output quality signals.
 cache-unfriendly in most CI environments. The fake runtime provides full
 structural coverage; real-model CI is a quality-of-life improvement.
 
-**Milestone:** 2 (CI hardening)
+**Milestone:** 2 (CI hardening)  
+**Tracking:** [#457](https://github.com/outrightmental/ConversationSimulator/issues/457)
 
 ---
 
@@ -114,7 +127,7 @@ accessibility specialist. The automated `accessibility.test.tsx` covers
 obvious violations; manual audit is needed for full compliance.
 
 **Milestone:** 1 (polish) / 2 (hardening)  
-**Tracking:** `apps/web/src/__tests__/accessibility.test.tsx`
+**Tracking:** [#462](https://github.com/outrightmental/ConversationSimulator/issues/462) · `apps/web/src/__tests__/accessibility.test.tsx`
 
 ---
 
@@ -128,7 +141,8 @@ any regressions against those targets.
 infrastructure. The fake runtime cannot measure inference latency. See
 `docs/performance.md` for guidance in the meantime.
 
-**Milestone:** 2 (hardening)
+**Milestone:** 2 (hardening)  
+**Tracking:** [#463](https://github.com/outrightmental/ConversationSimulator/issues/463) — sequenced after #457 provides real-model infrastructure in CI.
 
 ---
 
@@ -143,7 +157,7 @@ first-run download and configuration flow requires UX work. The text-only
 path is the recommended alpha experience.
 
 **Milestone:** 2 (voice polish)  
-**Tracking:** `runtimes/whisper_cpp/`, `runtimes/kokoro/`
+**Tracking:** [#464](https://github.com/outrightmental/ConversationSimulator/issues/464) · `runtimes/whisper_cpp/`, `runtimes/kokoro/`
 
 ---
 
@@ -156,7 +170,8 @@ from unverified community submissions and enforce appropriate trust levels.
 **Why deferred:** Signing infrastructure is only meaningful once the
 community pack distribution path (item 5) exists.
 
-**Milestone:** 3 (community)
+**Milestone:** 3 (community)  
+**Tracking:** [#466](https://github.com/outrightmental/ConversationSimulator/issues/466) — sequenced after the community pack browser (item 5).
 
 ---
 

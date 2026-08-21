@@ -27,6 +27,23 @@ State:  credibility +12  ·  pressure_level +1  ·  composure 65
 
 ---
 
+## Why this exists
+
+Every AI conversation coach on the market — interview prep, sales roleplay, speaking
+coaches, VR soft-skills training — runs in the cloud. But the conversations people most
+need to rehearse (firing someone, the salary ask, the breakup, the visa interview) are
+exactly the ones they least want on somebody else's server. Conversation Simulator is the
+missing intersection: a **structured practice game** (live scenario state, events, scoring,
+debrief) with **100% local inference** (no account, no cloud, no telemetry), in the
+**open** (Apache-2.0) — heir to a sixty-year lineage that runs from ELIZA through Monkey
+Island's insult sword-fighting to Façade, finally buildable because local LLMs dissolved
+the authoring wall those earlier systems hit.
+
+> The full analysis — lineage, competitive field, and the business-model precedents from
+> Dwarf Fortress to Shattered Pixel Dungeon: **[docs/landscape.md](docs/landscape.md)**
+
+---
+
 ## Screenshots
 
 | Screen | What you see |
@@ -279,6 +296,7 @@ Every session runs through a layered safety system before and after the model is
 **[ROADMAP.md](ROADMAP.md)** — MVP acceptance criteria, build order, what is
 deliberately out of scope, and links to the acceptance criteria and docs.
 
+> [Delivery board](https://github.com/orgs/outrightmental/projects/12) — every issue ever shipped, in phases &nbsp;·&nbsp;
 > [GitHub Milestones](https://github.com/outrightmental/ConversationSimulator/milestones) &nbsp;·&nbsp;
 > [Full specification](docs/SPEC.md) &nbsp;·&nbsp;
 > [Post-alpha issues](docs/post-alpha-issues.md)
@@ -300,6 +318,10 @@ Conversation Simulator is **free and open source, and fairly priced**:
   and sold as paid Steam DLC. Their content is never in this public repository.
   See [docs/DLC_MODEL.md](docs/DLC_MODEL.md) for the private-repo → Steam-DLC
   contract. The open core never shrinks: nothing that ships free is relocked as DLC.
+
+This free-on-GitHub, fairly-priced-on-Steam pattern has a strong track record — Dwarf
+Fortress, Shattered Pixel Dungeon, Mindustry, Aseprite — and the reasoning behind it is
+laid out in [docs/landscape.md](docs/landscape.md#business-model-precedents).
 
 The Steam release documents:
 
@@ -328,7 +350,14 @@ in under a minute, nothing uploaded automatically.
 ## Contributing
 
 All contributions are welcome — new scenario packs, bug fixes, documentation
-improvements, or new runtime adapters.
+improvements, or new runtime adapters. Scenario packs are the friendliest entry point —
+you can ship one without touching engine code.
+
+**Start here:**
+[`good first issue`](https://github.com/outrightmental/ConversationSimulator/issues?q=is%3Aissue+state%3Aopen+label%3A%22good+first+issue%22) &nbsp;·&nbsp;
+[`help wanted`](https://github.com/outrightmental/ConversationSimulator/issues?q=is%3Aissue+state%3Aopen+label%3A%22help+wanted%22) &nbsp;·&nbsp;
+[Delivery board](https://github.com/orgs/outrightmental/projects/12) &nbsp;·&nbsp;
+[How the project is run](docs/governance.md)
 
 > [CONTRIBUTING.md](CONTRIBUTING.md) &nbsp;·&nbsp;
 > [CODE\_OF\_CONDUCT.md](CODE_OF_CONDUCT.md) &nbsp;·&nbsp;

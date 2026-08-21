@@ -45,6 +45,10 @@ criteria.
 
 ## Status
 
+> Live status lives on the **[delivery board](https://github.com/orgs/outrightmental/projects/12)** — every issue this project has ever
+> shipped, organized into phases, with the open backlog extending from there. The
+> snapshot below is narrative; the board is the record.
+
 ### Done — shipped in v0.3.0
 
 - [x] Onboarding overhaul — first conversation in 60 seconds, zero error walls (#388)
@@ -85,9 +89,9 @@ criteria.
 
 ### Remaining polish — before Milestone 1 tag
 
-- [ ] Real UI screenshots (replace SVG placeholders in README)
-- [ ] Desktop app with bundled backend (Tauri sidecar for `convsim-core`)
-- [ ] Automated real-model CI smoke test
+- [ ] Real UI screenshots (replace SVG placeholders in README) — [#455](https://github.com/outrightmental/ConversationSimulator/issues/455)
+- [ ] Desktop app with bundled backend (Tauri sidecar for `convsim-core`) — [#456](https://github.com/outrightmental/ConversationSimulator/issues/456)
+- [ ] Automated real-model CI smoke test — [#457](https://github.com/outrightmental/ConversationSimulator/issues/457)
 
 ### Post-alpha — Milestone 2+
 
@@ -119,9 +123,9 @@ work in these areas needs its own proposal, design, and acceptance criteria.
 
 ### UGC ecosystem
 
-- In-app pack browser / discovery feed
+- In-app pack browser / discovery feed — [#465](https://github.com/outrightmental/ConversationSimulator/issues/465)
 - Community ratings and reviews
-- Pack signing and trust tiers
+- Pack signing and trust tiers — [#466](https://github.com/outrightmental/ConversationSimulator/issues/466)
 - Hosted pack registry (CDN or P2P distribution)
 
 See [`docs/marketplace-architecture.md`](docs/marketplace-architecture.md) for the post-launch community marketplace design baseline — entry gate criteria, distribution path comparison, and scope of schema, signing, moderation, payment, and reporting changes required before any community-authored paid content ships. First-party premium scenario-pack DLC does not wait on this marketplace: it ships separately via Steam's DLC storefront (see [`docs/DLC_MODEL.md`](docs/DLC_MODEL.md)), while the open core stays free.
