@@ -16,16 +16,20 @@ resource "github_repository" "this" {
   visibility = "public"
 
   has_issues      = true
-  has_discussions = true
+  has_discussions = false
   has_projects    = true
   # The docs site (docs.conversationsimulator.com) replaced the wiki; all
   # in-app and in-repo references now point there.
   has_wiki = false
 
-  allow_merge_commit     = true
+  allow_merge_commit     = false
   allow_squash_merge     = true
-  allow_rebase_merge     = true
+  allow_rebase_merge     = false
   delete_branch_on_merge = true
+
+  # Default squash commit = PR title + PR description (issue #460)
+  squash_merge_commit_title   = "PR_TITLE"
+  squash_merge_commit_message = "PR_BODY"
 
   topics = [
     "conversation-practice",
