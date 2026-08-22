@@ -172,3 +172,50 @@ jobs:
 
           sys.exit(0)
           PYEOF
+
+  # ── macOS deployment-target gate (issue #469) ──────────────────────────────
+  # The Steam macOS depot once shipped an upstream llama.cpp build whose Metal
+  # backend was compiled for macOS 26; dyld killed llama-server at launch on
+  # every supported macOS, and the setup wizard misreported it as insufficient
+  # RAM.  This job downloads the pinned runtime exactly the way the release
+  # workflow does (release.yml's "Bundle llama-server" step calls
+  # download-runtime.sh, so it is protected transitively) and fails when any
+  # bundled Mach-O binary declares a minimum macOS newer than our floor.
+  llama-minos-gate:
+    name: macOS deployment-target gate
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Checker self-test
+        run: python3 scripts/check-macho-minos.py --self-test
+
+      # download-runtime.sh runs its own minos gate on Darwin before install,
+      # so a too-new pinned runtime fails right here.
+      - name: Download pinned runtime (arm64, self-gating)
+        run: bash runtimes/llama_cpp/download-runtime.sh --dest "$RUNNER_TEMP/llama-arm64"
+
+      - name: Verify installed arm64 binaries against the floor
+        run: |
+          FLOOR="${CONVSIM_MACOS_MINOS_FLOOR:-14.0}"
+          python3 scripts/check-macho-minos.py --max "$FLOOR" "$RUNNER_TEMP/llama-arm64"
+
+      # The x64 depot ships from the same pin; inspect that asset too (the
+      # checker parses Mach-O bytes directly, so the arm64 runner can verify
+      # x64 binaries without executing them).
+      - name: Verify x64 release asset against the floor
+        run: |
+          set -euo pipefail
+          FLOOR="${CONVSIM_MACOS_MINOS_FLOOR:-14.0}"
+          VERSION="$(sed -n 's/^LLAMA_CPP_PINNED_VERSION="\(.*\)"$/\1/p' runtimes/llama_cpp/download-runtime.sh)"
+          if [ -z "$VERSION" ]; then
+            echo "FAIL: could not read LLAMA_CPP_PINNED_VERSION from download-runtime.sh" >&2
+            exit 1
+          fi
+          echo "Pinned llama.cpp version: $VERSION"
+          URL="https://github.com/ggml-org/llama.cpp/releases/download/${VERSION}/llama-${VERSION}-bin-macos-x64.tar.gz"
+          curl -fSL --retry 3 -o "$RUNNER_TEMP/x64.tar.gz" "$URL"
+          mkdir -p "$RUNNER_TEMP/llama-x64"
+          tar -xzf "$RUNNER_TEMP/x64.tar.gz" -C "$RUNNER_TEMP/llama-x64"
+          python3 scripts/check-macho-minos.py --max "$FLOOR" "$RUNNER_TEMP/llama-x64"

@@ -44,7 +44,28 @@ done
 # To upgrade: bump this, re-run the script on each platform, and confirm
 # llama-server starts (`llama-server --version`) — that is what catches a
 # renamed asset or a changed archive layout.
-LLAMA_CPP_PINNED_VERSION="b9996"
+#
+# macOS deployment target (issue #469): upstream's prebuilt macOS binaries are
+# only usable on the macOS versions they declare via LC_BUILD_VERSION. From
+# b9428 onward the artifacts target macOS 26.0, so on any older macOS dyld
+# kills llama-server the instant it launches ("Symbol not found:
+# _OBJC_CLASS_$_MTLResidencySetDescriptor … built for macOS 26.0 which is
+# newer than running OS") — which the setup wizard used to misreport as
+# insufficient RAM. b9415 is the newest release targeting macOS 14.0. When
+# bumping the pin, the Darwin gate below (scripts/check-macho-minos.py) fails
+# the download if the new artifacts raise the declared minimum; verify the
+# candidate tag on every platform before raising the floor here.
+#
+# NOTE: no upstream prebuilt satisfies the documented macOS 13 (Ventura) floor
+# in docs/QA_STEAM_PLATFORM_MATRIX.md — every recent release targets 14.0+.
+# Supporting 13 requires building llama.cpp from source with
+# MACOSX_DEPLOYMENT_TARGET=13 (tracked separately from #469).
+LLAMA_CPP_PINNED_VERSION="b9415"
+
+# Highest macOS minimum the bundled binaries may declare (see above). Override
+# with CONVSIM_MACOS_MINOS_FLOOR, or set CONVSIM_SKIP_MINOS_CHECK=1 to bypass
+# the gate entirely (e.g. when deliberately building a newer-macOS-only depot).
+MACOS_MINOS_FLOOR="${CONVSIM_MACOS_MINOS_FLOOR:-14.0}"
 
 # Pass --version latest (or LLAMA_CPP_VERSION=latest) to resolve the newest
 # release instead of the pin.
@@ -210,6 +231,32 @@ SRC_DIR="$(dirname "$EXTRACTED_BIN")"
 # (@rpath/libllama-common.0.dylib). Copying only regular files drops all 18
 # symlinks and the binary still refuses to start; `cp -a` preserves them as links
 # rather than duplicating ~24 MB of libraries into the depot.
+# ── macOS deployment-target gate (issue #469) ─────────────────────────────────
+# Refuse to install binaries that declare a macOS minimum above the supported
+# floor: they would pass every download/extract step and then crash on launch
+# for every player below that version. Runs BEFORE anything is copied into
+# DEST_DIR so a failing gate can never clobber a working installation. The
+# checker is stdlib-only Python and lives in the repo; when it (or python3) is
+# unavailable — e.g. the script was copied out of the repo — warn instead of
+# failing the install.
+if [[ "$OS" == "Darwin" && "${CONVSIM_SKIP_MINOS_CHECK:-0}" != "1" ]]; then
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  MINOS_CHECKER="${SCRIPT_DIR}/../../scripts/check-macho-minos.py"
+  if [[ -f "$MINOS_CHECKER" ]] && command -v python3 &>/dev/null; then
+    echo "Checking macOS deployment target (floor: ${MACOS_MINOS_FLOOR})..."
+    if ! python3 "$MINOS_CHECKER" --max "$MACOS_MINOS_FLOOR" "$SRC_DIR" > "$TMP_DIR/minos.log" 2>&1; then
+      grep '^FAIL' "$TMP_DIR/minos.log" >&2 || cat "$TMP_DIR/minos.log" >&2
+      echo "" >&2
+      echo "Release ${RELEASE_TAG} targets a macOS newer than ${MACOS_MINOS_FLOOR}," >&2
+      echo "so llama-server would be killed by dyld on supported systems (issue #469)." >&2
+      echo "Pick an older tag (--version), or set CONVSIM_SKIP_MINOS_CHECK=1 to force." >&2
+      exit 1
+    fi
+  else
+    echo "WARN: skipping macOS deployment-target check (checker or python3 unavailable)." >&2
+  fi
+fi
+
 echo "Installing shared libraries..."
 find "$SRC_DIR" -maxdepth 1 \( -type f -o -type l \) \
   \( -name '*.so' -o -name '*.so.*' -o -name '*.dylib' \) \
