@@ -47,7 +47,11 @@ $REPO  = "ggml-org/llama.cpp"
 # leg of the release failed with a 403 doing exactly that).
 #
 # Pass -Version latest to resolve the newest release instead of the pin.
-$LLAMA_CPP_PINNED_VERSION = "b9996"
+# b9415 matches download-runtime.sh: newer upstream releases (b9428+) ship
+# macOS binaries built for macOS 26, which crash on every older macOS (issue
+# #469). Windows artifacts are unaffected, but the pins stay in sync so both
+# platforms ship the same inference engine.
+$LLAMA_CPP_PINNED_VERSION = "b9415"
 if (-not $Version) { $Version = $LLAMA_CPP_PINNED_VERSION }
 
 # ── Platform detection ────────────────────────────────────────────────────────

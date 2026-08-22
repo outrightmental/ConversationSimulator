@@ -152,6 +152,43 @@ resolves `CONVSIM_LLAMA_CPP_EXECUTABLE` → `CONVSIM_BUNDLED_RUNTIME_DIR/llama-s
 
 ---
 
+## Pinned llama.cpp version and the macOS deployment-target gate
+
+The llama.cpp download scripts pin an exact upstream release
+(`LLAMA_CPP_PINNED_VERSION` in `runtimes/llama_cpp/download-runtime.sh` and
+`download-runtime.ps1`; keep the two in sync). Bumping the pin is a deliberate
+act, and on macOS it must clear one extra bar: **no bundled Mach-O binary may
+declare a minimum macOS newer than our supported floor** (14.0 by default,
+override with `CONVSIM_MACOS_MINOS_FLOOR`).
+
+Why: upstream llama.cpp prebuilts started targeting the newest macOS SDK
+(b9428+ declare macOS 26). Such a binary installs fine, but dyld kills it the
+instant it launches on any older macOS — in the Steam depot this surfaced as
+"Model loaded but could not start" with a misleading insufficient-RAM hint
+(issue #469). The breakage is statically visible in the Mach-O
+`LC_BUILD_VERSION` load command, so it is caught before shipping:
+
+- `scripts/check-macho-minos.py` parses the declared minimum-OS version of
+  Mach-O files (thin and universal; no dependencies; runs on any OS). Try
+  `--self-test`, or point it at a directory:
+  `python3 scripts/check-macho-minos.py --max 14.0 ~/.convsim/bin`.
+- `download-runtime.sh` runs the checker on Darwin after extracting and
+  refuses to install binaries that exceed the floor
+  (`CONVSIM_SKIP_MINOS_CHECK=1` bypasses it in an emergency).
+- The `llama-minos-gate` job in `.github/workflows/binary-health-check.yml`
+  verifies both macOS assets (arm64 and x64) of the pinned version on every
+  change under `runtimes/llama_cpp/**`. The release workflow bundles via
+  `download-runtime.sh`, so it inherits the same gate.
+
+Note the floor is currently 14.0 because upstream prebuilts have targeted
+macOS 14 for a long stretch of releases, while the Steam QA matrix
+([QA_STEAM_PLATFORM_MATRIX.md](QA_STEAM_PLATFORM_MATRIX.md)) lists macOS 13
+as the oldest supported release — closing that gap needs a source build with
+`MACOSX_DEPLOYMENT_TARGET=13` (or a matrix amendment) and is tracked
+separately.
+
+---
+
 ## Localhost enforcement in packaged builds
 
 `assert_localhost(host)` in `convsim_core/runtime/supervisor.py` is called at
