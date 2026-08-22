@@ -27,10 +27,11 @@ export function WelcomeStep({ flow }: { flow: UseSetupFlowReturn }) {
         {t('setup.welcome.subheadline')}
       </p>
 
-      {/* The promise — why this is not a chatbot (issue #473) */}
+      {/* The promise — why this is not a chatbot (issue #473). No aria-label:
+          the heading below is the note's visible content, so labelling the
+          note with the same text would double-announce it to screen readers. */}
       <div
         role="note"
-        aria-label={t('setup.welcome.promise.heading')}
         style={{
           marginBottom: '1.5rem', padding: '1rem 1.25rem',
           background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)',
