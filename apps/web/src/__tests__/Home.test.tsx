@@ -161,12 +161,11 @@ describe('Home — no-model state', () => {
     expect(await screen.findByRole('link', { name: /connect ollama/i })).toBeInTheDocument()
   })
 
-  it('offers text-only demo option linking to the library', async () => {
+  it('offers no text-only demo option (issue #473)', async () => {
     stubFetches(makeHealth(), makePacks(0))
     renderHome()
-    const link = await screen.findByRole('link', { name: /text-only demo/i })
-    expect(link).toBeInTheDocument()
-    expect(link).toHaveAttribute('href', '/library')
+    await screen.findByRole('heading', { name: /no model configured/i })
+    expect(screen.queryByRole('link', { name: /text-only demo/i })).not.toBeInTheDocument()
   })
 
   it('hides no-model section when LLM is ready', async () => {
@@ -412,12 +411,6 @@ describe('Home — no-model recovery cards', () => {
     expect(screen.getByText(/use an existing ollama installation/i)).toBeInTheDocument()
   })
 
-  it('shows text-only demo as a styled recovery card', async () => {
-    stubFetches(makeHealth(), makePacks(0))
-    renderHome()
-    await screen.findByRole('heading', { name: /no model configured/i })
-    expect(screen.getByText(/explore the interface now/i)).toBeInTheDocument()
-  })
 })
 
 describe('Home — missing-pack section', () => {

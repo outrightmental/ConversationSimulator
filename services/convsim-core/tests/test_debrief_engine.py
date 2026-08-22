@@ -80,7 +80,28 @@ _VALID_SETUP = {
     "show_state_meters": False,
     "save_transcript": True,
     "seed": None,
+    # Tests pin the deterministic fake runtime explicitly (issue #473): a
+    # session may only run model-free when the request asks for it by name.
+    "runtime_id": "fake",
 }
+
+
+# Sessions in the swap-runtime tests below stay UNPINNED so they follow
+# app.state.runtime, which each test replaces with a purpose-built stub. The
+# issue-#473 backstop requires a real-model selection for unpinned sessions,
+# so these tests first activate one (the stub swap happens after creation, so
+# the llama.cpp runtime itself is never invoked).
+_UNPINNED_SETUP = dict(_VALID_SETUP)
+_UNPINNED_SETUP.pop("runtime_id")
+
+
+def _activate_real_runtime(app) -> None:
+    from convsim_core.services.model_manager_service import set_active_config
+
+    set_active_config(
+        app.state.db.connection(), runtime_id="llama_cpp", model_id="/tmp/model.gguf"
+    )
+
 
 _VALID_NARRATIVE = {
     "summary": "You had a solid practice session with room to grow.",
@@ -739,7 +760,8 @@ class TestDebriefWithRubricObservations:
     def test_rubric_scores_reflect_observations(self, tmp_config):
         app = create_app(tmp_config)
         with TestClient(app) as client:
-            res = client.post("/api/sessions", json=_VALID_SETUP)
+            _activate_real_runtime(app)
+            res = client.post("/api/sessions", json=_UNPINNED_SETUP)
             session_id = res.json()["session_id"]
             client.post(f"/api/sessions/{session_id}/start")
 
@@ -770,7 +792,8 @@ class TestDebriefWithRubricObservations:
         """
         app = create_app(tmp_config)
         with TestClient(app) as client:
-            res = client.post("/api/sessions", json=_VALID_SETUP)
+            _activate_real_runtime(app)
+            res = client.post("/api/sessions", json=_UNPINNED_SETUP)
             session_id = res.json()["session_id"]
             client.post(f"/api/sessions/{session_id}/start")
 
@@ -812,7 +835,8 @@ class TestDebriefWithRubricObservations:
     def test_debrief_with_multi_turn_session(self, tmp_config):
         app = create_app(tmp_config)
         with TestClient(app) as client:
-            res = client.post("/api/sessions", json=_VALID_SETUP)
+            _activate_real_runtime(app)
+            res = client.post("/api/sessions", json=_UNPINNED_SETUP)
             session_id = res.json()["session_id"]
             client.post(f"/api/sessions/{session_id}/start")
 
@@ -873,7 +897,8 @@ class TestDebriefErrorState:
         """
         app = create_app(tmp_config)
         with TestClient(app) as client:
-            res = client.post("/api/sessions", json=_VALID_SETUP)
+            _activate_real_runtime(app)
+            res = client.post("/api/sessions", json=_UNPINNED_SETUP)
             session_id = res.json()["session_id"]
             client.post(f"/api/sessions/{session_id}/start")
             client.post(
@@ -894,7 +919,8 @@ class TestDebriefErrorState:
         """After a debrief failure (Error state), retrying with a working runtime succeeds."""
         app = create_app(tmp_config)
         with TestClient(app) as client:
-            res = client.post("/api/sessions", json=_VALID_SETUP)
+            _activate_real_runtime(app)
+            res = client.post("/api/sessions", json=_UNPINNED_SETUP)
             session_id = res.json()["session_id"]
             client.post(f"/api/sessions/{session_id}/start")
             client.post(
@@ -1043,7 +1069,8 @@ class TestTranscriptSavingDisabledDebrief:
         """Rubric scores are computed from turn_session_turns regardless of save_transcript."""
         app = create_app(tmp_config)
         with TestClient(app) as client:
-            res = client.post("/api/sessions", json=_NO_TRANSCRIPT_SETUP)
+            _activate_real_runtime(app)
+            res = client.post("/api/sessions", json={**_UNPINNED_SETUP, "save_transcript": False})
             session_id = res.json()["session_id"]
             client.post(f"/api/sessions/{session_id}/start")
 

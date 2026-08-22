@@ -188,6 +188,9 @@ class TestZeroModelTutorialInstantPlay:
                 "show_state_meters": True,
                 "save_transcript": False,
                 "seed": 1,
+                # Explicit pin (issue #473): model-free sessions must ask for
+                # their runtime by name.
+                "runtime_id": "scripted",
             },
         )
         assert create.status_code == 201, create.text
@@ -244,6 +247,8 @@ class TestZeroModelTutorialInstantPlay:
                 "show_state_meters": True,
                 "save_transcript": True,
                 "seed": 1,
+                # Explicit pin (issue #473).
+                "runtime_id": "scripted",
             },
         )
         assert create.status_code == 201, create.text

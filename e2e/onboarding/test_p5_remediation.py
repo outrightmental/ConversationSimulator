@@ -242,17 +242,18 @@ class TestP5TextOnlyEscape:
                 "first-run users have no path forward"
             )
 
-    def test_text_only_wizard_step_choice_reachable(self, fresh_profile):
-        """The wizard exposes a text-only (demo) path independently of blocking checks.
-
-        This verifies that the PreflightStep can always offer "text-only mode" as an
-        escape hatch for users who cannot resolve the blocking failure.
-        """
+    def test_legacy_demo_outcome_recorded_but_incomplete(self, fresh_profile):
+        """Legacy 'demo' outcomes (written by old app versions; the no-model demo
+        path itself is gone, issue #473) still count as a recorded outcome — the
+        guard must not bounce such a profile back to Welcome — but they no longer
+        satisfy the model requirement, so the status is 'incomplete' and the app
+        shows the finish-setup banner."""
         client, _ = fresh_profile
-        # Simulate the text-only path: record demo outcome without resolving preflight.
         resp = client.post("/api/setup/outcome", json={"outcome": "demo"})
         assert resp.status_code == 204
         status = client.get("/api/setup/status").json()
         assert status["kind"] != "never-run", (
-            "After choosing text-only / demo mode the status must not remain 'never-run'"
+            "A recorded legacy demo outcome must not leave the status 'never-run'"
         )
+        assert status["kind"] == "incomplete"
+        assert "llm-present" in status["missing"]

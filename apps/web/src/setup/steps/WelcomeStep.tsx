@@ -27,8 +27,26 @@ export function WelcomeStep({ flow }: { flow: UseSetupFlowReturn }) {
         {t('setup.welcome.subheadline')}
       </p>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
-        {/* Set me up card */}
+      {/* The promise — why this is not a chatbot (issue #473) */}
+      <div
+        role="note"
+        aria-label={t('setup.welcome.promise.heading')}
+        style={{
+          marginBottom: '1.5rem', padding: '1rem 1.25rem',
+          background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.1)',
+          borderRadius: '10px',
+        }}
+      >
+        <p style={{ margin: '0 0 0.4rem', fontWeight: 600, fontSize: '0.95rem', color: '#e4e4e7' }}>
+          {t('setup.welcome.promise.heading')}
+        </p>
+        <p style={{ margin: 0, fontSize: '0.875rem', color: '#a1a1aa', lineHeight: 1.6 }}>
+          {t('setup.welcome.promise.body')}
+        </p>
+      </div>
+
+      <div style={{ marginBottom: '1.5rem' }}>
+        {/* Set me up — the single road to a real first conversation */}
         <button
           onClick={() => flow.handleSetMeUp()}
           disabled={flow.actionLoading}
@@ -52,28 +70,6 @@ export function WelcomeStep({ flow }: { flow: UseSetupFlowReturn }) {
             border: '1px solid rgba(110,231,183,0.5)', borderRadius: '4px', padding: '0.15rem 0.4rem',
           }}>
             {t('setup.welcome.setMeUp.badge')}
-          </span>
-        </button>
-
-        {/* Try it right now card */}
-        <button
-          onClick={() => void flow.handleStartTutorial()}
-          disabled={flow.actionLoading}
-          style={{
-            ...cardBase,
-            background: 'rgba(255,255,255,0.04)',
-            border: '1px solid rgba(255,255,255,0.15)',
-          }}
-        >
-          <span aria-hidden="true" style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>⚡</span>
-          <strong style={{ display: 'block', fontSize: '1.05rem', marginBottom: '0.5rem' }}>
-            {t('setup.welcome.tryNow.title')}
-          </strong>
-          <span style={{ display: 'block', fontSize: '0.875rem', color: '#a1a1aa', marginBottom: '0.5rem', lineHeight: 1.5 }}>
-            {t('setup.welcome.tryNow.description')}
-          </span>
-          <span style={{ display: 'block', fontSize: '0.8rem', color: '#71717a' }}>
-            {t('setup.welcome.tryNow.disclaimer')}
           </span>
         </button>
       </div>

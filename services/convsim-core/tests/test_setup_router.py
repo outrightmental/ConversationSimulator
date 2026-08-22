@@ -47,18 +47,17 @@ def test_most_recent_outcome_wins(client):
     assert body["onboarding_outcome"]["outcome"] == "demo"
 
 
-def test_demo_choice_satisfies_the_llm_requirement(client):
-    """A deliberate demo choice counts as a model per issue #380.
-
-    'ready' is engine + (model | demo choice) + packs, so a demo user with no
-    installed model must NOT be told the LLM is missing — otherwise they'd see a
-    permanent, wrong "finish setup" banner. (packs-seeded is still reported
-    missing here because the throwaway DB seeds none.)
-    """
+def test_legacy_demo_choice_no_longer_satisfies_the_llm_requirement(client):
+    """Issue #473 reverses the #380 rule: the no-model demo path is gone, so a
+    historical 'demo' outcome no longer counts as a model. Such a profile is
+    'incomplete' with llm-present missing, which surfaces the non-blocking
+    finish-setup banner steering the user to install a real model."""
     client.post("/api/setup/outcome", json={"outcome": "demo"})
 
     body = client.get("/api/setup/status").json()
-    assert "llm-present" not in body["missing"]
+    assert body["kind"] != "never-run"
+    assert "llm-present" in body["missing"]
+    assert body["kind"] == "incomplete"
 
 
 def test_completed_with_model_still_reports_missing_llm_without_a_model(client):

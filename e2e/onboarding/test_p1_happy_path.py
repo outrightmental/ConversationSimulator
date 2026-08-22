@@ -173,9 +173,22 @@ class TestP1HappyPath:
         )
 
     def test_session_reachable_after_setup(self, fresh_profile, fixture_server):
-        """After setup the tutorial scenario is reachable (proxy for real-runtime access)."""
+        """After setup the tutorial scenario is reachable (proxy for real-runtime access).
+
+        The completed install pipeline persists the real-model selection; an
+        unpinned session then passes the issue-#473 backstop (which refuses
+        unpinned sessions on a model-free selection) and follows the active
+        runtime.
+        """
         client, app = fresh_profile
         _seed_fixture_model(app, fixture_server)
+        from convsim_core.services.model_manager_service import set_active_config
+
+        set_active_config(
+            app.state.db.connection(),
+            runtime_id="llama_cpp",
+            model_id="/tmp/fixture-model.gguf",
+        )
 
         resp = client.post(
             "/api/sessions",

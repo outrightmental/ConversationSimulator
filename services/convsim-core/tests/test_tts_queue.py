@@ -221,6 +221,8 @@ _BASE_SETUP = {
     "tts_enabled": False,
     "tts_voice_id": "af_heart",
     "save_transcript": True,
+    # Explicit fake-runtime pin (issue #473).
+    "runtime_id": "fake",
 }
 
 

@@ -34,10 +34,6 @@ export function PreflightStep({ flow }: { flow: UseSetupFlowReturn }) {
     }
   }
 
-  function handleTextOnly() {
-    flow.setStep('choose')
-  }
-
   return (
     <div style={{ maxWidth: '640px', margin: '2rem auto', padding: '0 1rem' }}>
       <h1 ref={flow.stepHeadingRef} tabIndex={-1} style={{ outline: 'none' }}>
@@ -59,7 +55,6 @@ export function PreflightStep({ flow }: { flow: UseSetupFlowReturn }) {
             <RemediationCard
               check={check}
               onAction={handleAction}
-              onTextOnly={handleTextOnly}
               coreVersion={coreVersionMsg}
             />
           </div>

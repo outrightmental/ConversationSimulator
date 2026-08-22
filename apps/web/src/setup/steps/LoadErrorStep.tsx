@@ -36,7 +36,6 @@ export function LoadErrorStep({ flow, mode }: LoadErrorStepProps) {
             <p style={{ margin: '0 0 0.4rem', fontWeight: 600, color: '#f87171', fontSize: '0.875rem' }}>Could not connect to the local runtime</p>
             <p style={{ margin: '0 0 0.75rem', fontSize: '0.825rem', color: '#a1a1aa' }}>
               The API server may not be running. Make sure you launched the app correctly, then try again.
-              If your hardware cannot run a full model, the text-only demo works without one.
             </p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', marginBottom: '0.75rem' }}>
               <a href={TROUBLESHOOTING_DOCS_URL} target="_blank" rel="noreferrer" style={{ fontSize: '0.825rem', color: '#a1a1aa' }}>Troubleshooting docs</a>

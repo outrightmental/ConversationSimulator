@@ -122,10 +122,6 @@ export default function Settings() {
     }
   }
 
-  function handleHealthTextOnly() {
-    navigate('/library')
-  }
-
   function handleSaveTranscriptsChange(v: boolean) {
     setSaveTranscripts(v)
     writePrivacyPref(PRIVACY_KEYS.saveTranscripts, v)
@@ -1042,7 +1038,6 @@ export default function Settings() {
                   key={check.id}
                   check={check}
                   onAction={handleHealthFixAction}
-                  onTextOnly={handleHealthTextOnly}
                   coreVersion={coreVersion}
                 />
               ))}

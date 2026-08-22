@@ -393,136 +393,10 @@ describe('useSetupFlow step machine', () => {
     await waitFor(() => expect(result.current.step).toBe('preflight'))
   })
 
-  // handleStartTutorial — issue #383 "play while it downloads" paths
+  // Issue #473: the no-model demo/tutorial paths are gone. The only way out
+  // of the wizard is a real model; finishing the install lands in the library.
 
-  const SCRIPTED_RUNTIME_RESPONSE = {
-    ok: true as const,
-    data: { runtime_id: 'scripted', model_id: null, runtime_name: 'Scripted tutorial', status: 'ready' as const, message: null },
-  }
-
-  const FAKE_RUNTIME_RESPONSE = {
-    ok: true as const,
-    data: { runtime_id: 'fake', model_id: null, runtime_name: 'Fake (deterministic)', status: 'ready' as const, message: null },
-  }
-
-  it('handleStartTutorial writes activeRuntimeHint=scripted to localStorage', async () => {
-    mockApi.useModel.mockResolvedValue(SCRIPTED_RUNTIME_RESPONSE)
-    const { result } = renderHook(() => useSetupFlow('welcome'), { wrapper })
-
-    await act(async () => { await result.current.handleStartTutorial() })
-
-    expect(localStorage.getItem('convsim.active_runtime_hint')).toBe('scripted')
-  })
-
-  it('handleStartTutorial without an active install records demo outcome (try-now path)', async () => {
-    mockApi.useModel.mockResolvedValue(SCRIPTED_RUNTIME_RESPONSE)
-    const { result } = renderHook(() => useSetupFlow('welcome'), { wrapper })
-
-    await act(async () => { await result.current.handleStartTutorial() })
-
-    expect(mockApi.recordOnboardingOutcome).toHaveBeenCalledWith('demo')
-    expect(localStorage.getItem('convsim.tutorial.install_id')).toBeNull()
-  })
-
-  it('handleStartTutorial with an active install writes tutorialInstallId and records completed-with-model', async () => {
-    mockApi.useModel.mockResolvedValue(SCRIPTED_RUNTIME_RESPONSE)
-    mockApi.getSetupInstallStatus.mockResolvedValue({
-      ok: true, data: { id: 42, status: 'running' as const, registry_id: 'qwen3-4b-q4', stages: [], error_message: null, created_at: '', updated_at: '' },
-    })
-
-    const { result } = renderHook(() => useSetupFlow('welcome'), { wrapper })
-
-    // Trigger auto-install so installId is set
-    act(() => { result.current.handleSetMeUp() })
-    await waitFor(() => expect(result.current.installId).toBe(42))
-
-    await act(async () => { await result.current.handleStartTutorial() })
-
-    expect(localStorage.getItem('convsim.tutorial.install_id')).toBe('42')
-    expect(mockApi.recordOnboardingOutcome).toHaveBeenCalledWith('completed-with-model')
-  })
-
-  it('handleConfirmDemo writes activeRuntimeHint=fake to localStorage', async () => {
-    mockApi.useModel.mockResolvedValue(FAKE_RUNTIME_RESPONSE)
-    const { result } = renderHook(() => useSetupFlow('welcome'), { wrapper })
-
-    await act(async () => { await result.current.handleConfirmDemo() })
-
-    expect(localStorage.getItem('convsim.active_runtime_hint')).toBe('fake')
-  })
-
-  it('WelcomeStep "Try it right now" is wired to handleStartTutorial not handleConfirmDemo (spot-check via tutorial-complete flag)', async () => {
-    mockApi.useModel.mockResolvedValue(SCRIPTED_RUNTIME_RESPONSE)
-    const { result } = renderHook(() => useSetupFlow('welcome'), { wrapper })
-
-    // handleStartTutorial marks tutorialComplete; handleConfirmDemo does not.
-    await act(async () => { await result.current.handleStartTutorial() })
-
-    expect(localStorage.getItem('convsim.tutorial.complete')).toBe('true')
-  })
-
-  it('handleStartTutorial creates tutorial session directly, bypassing setup form', async () => {
-    mockApi.useModel.mockResolvedValue(SCRIPTED_RUNTIME_RESPONSE)
-    const { result } = renderHook(() => useSetupFlow('welcome'), { wrapper })
-
-    await act(async () => { await result.current.handleStartTutorial() })
-
-    expect(mockApi.createSession).toHaveBeenCalledWith({
-      scenario_id: 'first_words_tutorial',
-      difficulty: 'standard',
-      player_role_name: 'New Player',
-      language: 'en',
-      input_mode: 'text-only',
-      tts_enabled: false,
-      show_state_meters: true,
-      save_transcript: true,
-      seed: null,
-      runtime_id: 'scripted',
-    })
-  })
-
-  it('handleStartTutorial pins the tutorial session to the scripted runtime even if useModel fails', async () => {
-    // useModel only moves the global selection, and it can lose a race with the
-    // background install that flips it back to llama.cpp. The session must carry
-    // its own runtime so the tutorial never lands on the fake NPC.
-    mockApi.useModel.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'runtime unavailable' } })
-    const { result } = renderHook(() => useSetupFlow('welcome'), { wrapper })
-
-    await act(async () => { await result.current.handleStartTutorial() })
-
-    expect(mockApi.createSession).toHaveBeenCalledWith(
-      expect.objectContaining({ runtime_id: 'scripted' }),
-    )
-    expect(mockNavigate).toHaveBeenCalledWith('/conversation/sess-tutorial-1', expect.anything())
-  })
-
-  it('handleStartTutorial navigates to /conversation/:sessionId on successful session creation', async () => {
-    mockApi.useModel.mockResolvedValue(SCRIPTED_RUNTIME_RESPONSE)
-    const { result } = renderHook(() => useSetupFlow('welcome'), { wrapper })
-
-    await act(async () => { await result.current.handleStartTutorial() })
-
-    expect(mockNavigate).toHaveBeenCalledWith(
-      '/conversation/sess-tutorial-1',
-      expect.objectContaining({ state: expect.objectContaining({ scenario_id: 'first_words_tutorial', show_state_meters: true }) }),
-    )
-  })
-
-  it('handleStartTutorial falls back to /setup/first_words_tutorial when createSession fails', async () => {
-    mockApi.useModel.mockResolvedValue(SCRIPTED_RUNTIME_RESPONSE)
-    mockApi.createSession.mockResolvedValue({ ok: false, error: { kind: 'runtime-unreachable', message: 'Core not running' } })
-    const { result } = renderHook(() => useSetupFlow('welcome'), { wrapper })
-
-    await act(async () => { await result.current.handleStartTutorial() })
-
-    expect(mockNavigate).toHaveBeenCalledWith('/setup/first_words_tutorial')
-  })
-
-  it('install-complete effect clears runtime hint keys so real-model sessions are not mislabeled', async () => {
-    // Seed localStorage with stale keys that would have been written by handleStartTutorial
-    localStorage.setItem('convsim.active_runtime_hint', 'scripted')
-    localStorage.setItem('convsim.tutorial.install_id', '42')
-
+  it('install-complete records completed-with-model and navigates to /library', async () => {
     const completeJob = {
       id: 42,
       status: 'complete' as const,
@@ -532,13 +406,22 @@ describe('useSetupFlow step machine', () => {
       created_at: '',
       updated_at: '',
     }
-    mockApi.startSetupInstall.mockResolvedValue({ ok: true, data: { id: 42, status: 'running' as const, registry_id: 'qwen3-4b-q4', stages: [], error_message: null, created_at: '', updated_at: '' } })
     mockApi.getSetupInstallStatus.mockResolvedValue({ ok: true, data: completeJob })
 
     const { result } = renderHook(() => useSetupFlow('installing', 42), { wrapper })
     await waitFor(() => expect(result.current.setupInstallJob?.status).toBe('complete'))
 
-    expect(localStorage.getItem('convsim.active_runtime_hint')).toBeNull()
-    expect(localStorage.getItem('convsim.tutorial.install_id')).toBeNull()
+    await waitFor(() => {
+      expect(mockApi.recordOnboardingOutcome).toHaveBeenCalledWith('completed-with-model')
+      expect(mockNavigate).toHaveBeenCalledWith('/library')
+    })
+  })
+
+  it('exposes no demo or tutorial step in the flow union (demo-warning is gone)', async () => {
+    const { result } = renderHook(() => useSetupFlow('welcome'), { wrapper })
+    // Type-level guarantee spot-checked at runtime: the flow object carries no
+    // handler for a model-free conversation path.
+    expect('handleConfirmDemo' in result.current).toBe(false)
+    expect('handleStartTutorial' in result.current).toBe(false)
   })
 })

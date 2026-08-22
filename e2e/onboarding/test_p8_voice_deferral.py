@@ -30,6 +30,8 @@ _SESSION_SETUP = {
     "tts_enabled": False,
     "show_state_meters": False,
     "save_transcript": False,
+    # Model-free sessions must pin their runtime explicitly (issue #473).
+    "runtime_id": "scripted",
 }
 
 

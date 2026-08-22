@@ -40,7 +40,6 @@ describe('RemediationCard', () => {
       <RemediationCard
         check={DISK_SPACE_CHECK}
         onAction={vi.fn()}
-        onTextOnly={vi.fn()}
       />,
     )
     expect(screen.getByText('Not enough disk space')).toBeTruthy()
@@ -51,7 +50,6 @@ describe('RemediationCard', () => {
       <RemediationCard
         check={DISK_SPACE_CHECK}
         onAction={vi.fn()}
-        onTextOnly={vi.fn()}
       />,
     )
     expect(screen.getByText(/The AI model needs 5\.0 GB/)).toBeTruthy()
@@ -63,7 +61,6 @@ describe('RemediationCard', () => {
       <RemediationCard
         check={DISK_SPACE_CHECK}
         onAction={onAction}
-        onTextOnly={vi.fn()}
       />,
     )
     const btn = screen.getByTestId('remediation-action-disk-space')
@@ -72,19 +69,14 @@ describe('RemediationCard', () => {
     expect(onAction).toHaveBeenCalledWith(DISK_SPACE_CHECK.fix_action)
   })
 
-  it('renders the text-only escape hatch', () => {
-    const onTextOnly = vi.fn()
+  it('renders no model-free escape hatch (issue #473)', () => {
     render(
       <RemediationCard
         check={DISK_SPACE_CHECK}
         onAction={vi.fn()}
-        onTextOnly={onTextOnly}
       />,
     )
-    const btn = screen.getByTestId('remediation-text-only-disk-space')
-    expect(btn.textContent).toBe('Try text-only instead')
-    fireEvent.click(btn)
-    expect(onTextOnly).toHaveBeenCalledOnce()
+    expect(screen.queryByTestId('remediation-text-only-disk-space')).toBeNull()
   })
 
   it('shows Details collapsible when toggled', () => {
@@ -92,7 +84,6 @@ describe('RemediationCard', () => {
       <RemediationCard
         check={DISK_SPACE_CHECK}
         onAction={vi.fn()}
-        onTextOnly={vi.fn()}
         coreVersion="convsim-core 1.2.3 is running."
       />,
     )
@@ -111,7 +102,6 @@ describe('RemediationCard', () => {
       <RemediationCard
         check={DISK_SPACE_CHECK}
         onAction={vi.fn()}
-        onTextOnly={vi.fn()}
       />,
     )
     fireEvent.click(screen.getByTestId('remediation-details-toggle-disk-space'))
@@ -126,7 +116,6 @@ describe('RemediationCard', () => {
       <RemediationCard
         check={DISK_SPACE_CHECK}
         onAction={vi.fn()}
-        onTextOnly={vi.fn()}
       />,
     )
     fireEvent.click(screen.getByTestId('remediation-details-toggle-disk-space'))
@@ -145,13 +134,10 @@ describe('RemediationCard', () => {
       <RemediationCard
         check={noAction}
         onAction={vi.fn()}
-        onTextOnly={vi.fn()}
       />,
     )
     // Primary action button must not render
     expect(screen.queryByTestId('remediation-action-disk-space')).toBeNull()
-    // Text-only escape still renders
-    expect(screen.getByTestId('remediation-text-only-disk-space')).toBeTruthy()
   })
 
   it('does not contain banned vocabulary in the card surface', () => {
@@ -159,7 +145,6 @@ describe('RemediationCard', () => {
       <RemediationCard
         check={DATA_DIR_CHECK}
         onAction={vi.fn()}
-        onTextOnly={vi.fn()}
       />,
     )
     const text = container.textContent ?? ''

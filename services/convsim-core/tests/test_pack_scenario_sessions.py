@@ -46,6 +46,8 @@ def _create(client: TestClient, scenario_id: str, language: str = "en") -> str:
             "language": language,
             "player_role_name": "Test Player",
             "save_transcript": True,
+            # Explicit fake-runtime pin (issue #473).
+            "runtime_id": "fake",
         },
     )
     assert resp.status_code == 201, f"{scenario_id}: {resp.text}"
@@ -89,6 +91,8 @@ def test_every_seeded_scenario_can_create_a_session(seeded_client):
                 "language": language,
                 "player_role_name": "Test Player",
                 "save_transcript": True,
+                # Explicit pin (issue #473).
+                "runtime_id": "fake",
             },
         )
         if resp.status_code != 201:
@@ -106,6 +110,8 @@ def test_pack_scenario_difficulty_presets_come_from_yaml(seeded_client):
             "language": "ja",
             "player_role_name": "Test Player",
             "save_transcript": True,
+            # Explicit pin (issue #473).
+            "runtime_id": "fake",
         },
     )
     assert resp.status_code == 201, resp.text

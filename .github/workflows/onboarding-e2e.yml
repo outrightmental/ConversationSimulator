@@ -17,7 +17,6 @@
 #   pip install -e "packages/prompt-composer[dev]"
 #   pip install -e "services/convsim-core[dev]"
 #   python -m pytest e2e/onboarding/test_p1_happy_path.py \
-#                    e2e/onboarding/test_p2_instant_play.py \
 #                    e2e/onboarding/test_p7_regression_loop.py -v
 
 name: Onboarding e2e (fast trio)
@@ -64,11 +63,11 @@ jobs:
       - name: Install convsim-core
         run: pip install -e "services/convsim-core[dev]"
 
-      - name: Run onboarding fast trio (P1 / P2 / P7)
+      # P2 (instant play) was removed with the no-model demo path (issue #473).
+      - name: Run onboarding fast pair (P1 / P7)
         run: |
-          echo "Local: python -m pytest e2e/onboarding/test_p1_happy_path.py e2e/onboarding/test_p2_instant_play.py e2e/onboarding/test_p7_regression_loop.py -v"
+          echo "Local: python -m pytest e2e/onboarding/test_p1_happy_path.py e2e/onboarding/test_p7_regression_loop.py -v"
           python -m pytest \
             e2e/onboarding/test_p1_happy_path.py \
-            e2e/onboarding/test_p2_instant_play.py \
             e2e/onboarding/test_p7_regression_loop.py \
             -v --tb=short

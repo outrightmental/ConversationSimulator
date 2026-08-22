@@ -10,7 +10,6 @@ import { InstallingStep } from './steps/InstallingStep'
 import { BenchmarkStep } from './steps/BenchmarkStep'
 import { OllamaSelectStep } from './steps/OllamaSelectStep'
 import { GgufPathStep } from './steps/GgufPathStep'
-import { DemoConfirmStep } from './steps/DemoConfirmStep'
 
 interface SetupFlowViewProps {
   flow: UseSetupFlowReturn
@@ -39,8 +38,6 @@ export function SetupFlowView({ flow, mode }: SetupFlowViewProps) {
       return <OllamaSelectStep flow={flow} mode={mode} />
     case 'gguf-path':
       return <GgufPathStep flow={flow} mode={mode} />
-    case 'demo-warning':
-      return <DemoConfirmStep flow={flow} mode={mode} />
     default:
       return null
   }

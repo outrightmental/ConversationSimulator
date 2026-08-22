@@ -102,12 +102,13 @@ class TestP7RegressionLoop:
         """
         client, _ = fresh_profile
 
-        # Simulate the "choose demo / text-only" fix path (the universal escape hatch).
+        # A legacy 'demo' outcome (old app versions; the path is gone, issue #473)
+        # is still a recorded outcome and must not resurrect the Welcome redirect.
         client.post("/api/setup/outcome", json={"outcome": "demo"})
         status = client.get("/api/setup/status").json()
         assert status["kind"] != "never-run", (
-            "After the text-only escape fix_action (outcome=demo) the status must not be "
-            "'never-run' — that would redirect back to the Welcome screen"
+            "After recording an outcome the status must not be 'never-run' — that "
+            "would redirect back to the Welcome screen"
         )
 
     def test_all_fix_action_kinds_have_non_welcome_href(self, fresh_profile):
