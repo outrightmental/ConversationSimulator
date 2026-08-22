@@ -204,9 +204,9 @@ export function InstallingStep({ flow, mode }: InstallingStepProps) {
           conversations different and preview the actual scenarios the player is
           minutes away from, so the first conversation is the real model. */}
       {mode === 'wizard' && (
+        // Plain div, not a named region: the eyebrow and heading below are the
+        // section's own visible text, so a region label would repeat them.
         <div
-          role="region"
-          aria-label={t('setup.installing.whileHeading')}
           style={{
             marginTop: '1.75rem',
             padding: '1.25rem 1.5rem',
@@ -250,8 +250,8 @@ export function InstallingStep({ flow, mode }: InstallingStepProps) {
                 <h3 style={{ margin: '0 0 0.6rem', fontSize: '0.8rem', color: '#a5b4fc', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>
                   {t('setup.installing.missionsHeading')}
                 </h3>
+                {/* The visible h3 above labels this list; no aria-label needed. */}
                 <ul
-                  aria-label={t('setup.installing.missionsHeading')}
                   style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '0.6rem' }}
                 >
                   {previews.map((s) => (
