@@ -36,7 +36,21 @@ _SESSION_SETUP = {
     "show_state_meters": False,
     "save_transcript": True,
     "seed": None,
+    # Explicit fake-runtime pin (issue #473): model-free sessions must ask for
+    # their runtime by name.
+    "runtime_id": "fake",
 }
+
+
+def _activate_real_runtime(app) -> None:
+    """Pretend a real model is selected so an UNPINNED session passes the
+    issue-#473 backstop and follows app.state.runtime (which swap-runtime
+    tests replace with a stub after creation)."""
+    from convsim_core.services.model_manager_service import set_active_config
+
+    set_active_config(
+        app.state.db.connection(), runtime_id="llama_cpp", model_id="/tmp/model.gguf"
+    )
 
 
 def _make_minimal_zip() -> bytes:
@@ -303,7 +317,11 @@ class TestStateEvolution:
     def test_state_delta_applied_to_session(self, tmp_config):
         app = create_app(tmp_config)
         with TestClient(app) as c:
-            res = c.post("/api/sessions", json=_SESSION_SETUP)
+            # Unpinned on purpose: the session must follow app.state.runtime,
+            # which is swapped below. The issue-#473 backstop requires a
+            # real-model selection for unpinned sessions, so activate one.
+            _activate_real_runtime(app)
+            res = c.post("/api/sessions", json={k: v for k, v in _SESSION_SETUP.items() if k != "runtime_id"})
             session_id = res.json()["session_id"]
             c.post(f"/api/sessions/{session_id}/start")
             app.state.runtime = _StateDeltaRuntime()
@@ -319,7 +337,8 @@ class TestStateEvolution:
     def test_state_carries_into_subsequent_turn(self, tmp_config):
         app = create_app(tmp_config)
         with TestClient(app) as c:
-            res = c.post("/api/sessions", json=_SESSION_SETUP)
+            _activate_real_runtime(app)
+            res = c.post("/api/sessions", json={k: v for k, v in _SESSION_SETUP.items() if k != "runtime_id"})
             session_id = res.json()["session_id"]
             c.post(f"/api/sessions/{session_id}/start")
             app.state.runtime = _StateDeltaRuntime()

@@ -35,6 +35,9 @@ _SESSION_SETUP: dict = {
     "show_state_meters": False,
     "save_transcript": False,  # no transcript file written during smoke runs
     "seed": None,
+    # Explicit fake-runtime pin (issue #473): model-free sessions must ask for
+    # their runtime by name.
+    "runtime_id": "fake",
 }
 
 # Three scripted player turns — generic enough for any interview-style scenario.
