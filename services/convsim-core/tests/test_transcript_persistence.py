@@ -52,6 +52,9 @@ _BASE_SETUP = {
     "show_state_meters": False,
     "save_transcript": True,
     "seed": None,
+    # Tests pin the deterministic fake runtime explicitly (issue #473): a
+    # session may only run model-free when the request asks for it by name.
+    "runtime_id": "fake",
 }
 
 

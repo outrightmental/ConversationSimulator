@@ -3,8 +3,9 @@
  * RemediationCard — shown for any preflight check with severity === 'needs-human'.
  *
  * Renders the check's name, plain-language message, a primary fix action (from
- * the check's fix_action), a universal "Try text-only instead" escape hatch, and
- * a collapsible Details section with a copy-ready bug-report block.
+ * the check's fix_action), and a collapsible Details section with a copy-ready
+ * bug-report block. There is deliberately no model-free escape hatch: a blocked
+ * machine gets an honest fix path, never a facsimile conversation (issue #473).
  *
  * Vocabulary contract: this component never renders the words "binary", "llama",
  * "sidecar", or "preflight" — those are filtered at the backend before the check
@@ -20,8 +21,6 @@ export interface RemediationCardProps {
   check: PreflightCheck
   /** Called when the primary fix action is triggered. */
   onAction: (action: PreflightFixAction) => void
-  /** Called when the user chooses "Try text-only instead". */
-  onTextOnly: () => void
   /** Version string shown in the copy block (e.g. from the runtime-handshake check). */
   coreVersion?: string
 }
@@ -63,16 +62,6 @@ const primaryBtnStyle: React.CSSProperties = {
   color: '#fff',
   fontSize: '0.875rem',
   fontWeight: 500,
-  cursor: 'pointer',
-}
-
-const escapeBtnStyle: React.CSSProperties = {
-  padding: '0.4rem 0.9rem',
-  borderRadius: '6px',
-  border: '1px solid rgba(255,255,255,0.15)',
-  background: 'rgba(255,255,255,0.06)',
-  color: '#a1a1aa',
-  fontSize: '0.875rem',
   cursor: 'pointer',
 }
 
@@ -128,7 +117,7 @@ function buildCopyBlock(check: PreflightCheck, coreVersion?: string): string {
   return lines.join('\n')
 }
 
-export function RemediationCard({ check, onAction, onTextOnly, coreVersion }: RemediationCardProps) {
+export function RemediationCard({ check, onAction, coreVersion }: RemediationCardProps) {
   const { t } = useTranslation()
   const [detailsOpen, setDetailsOpen] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -163,13 +152,6 @@ export function RemediationCard({ check, onAction, onTextOnly, coreVersion }: Re
             {check.fix_action.label}
           </button>
         )}
-        <button
-          style={escapeBtnStyle}
-          onClick={onTextOnly}
-          data-testid={`remediation-text-only-${check.id}`}
-        >
-          {t('setup.remediation.textOnly')}
-        </button>
       </div>
 
       <button

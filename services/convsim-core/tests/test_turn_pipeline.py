@@ -66,7 +66,28 @@ _VALID_SETUP = {
     "show_state_meters": False,
     "save_transcript": True,
     "seed": None,
+    # Tests pin the deterministic fake runtime explicitly (issue #473): a
+    # session may only run model-free when the request asks for it by name.
+    "runtime_id": "fake",
 }
+
+
+# Sessions in the tests below deliberately stay UNPINNED so they follow
+# app.state.runtime, which each test swaps for a purpose-built stub. The
+# issue-#473 backstop requires a real-model selection for unpinned sessions,
+# so these tests first activate one (the stub swap happens after creation, so
+# the llama.cpp runtime itself is never invoked).
+_UNPINNED_SETUP = dict(_VALID_SETUP)
+_UNPINNED_SETUP.pop("runtime_id")
+
+
+def _activate_real_runtime(app) -> None:
+    from convsim_core.services.model_manager_service import set_active_config
+
+    set_active_config(
+        app.state.db.connection(), runtime_id="llama_cpp", model_id="/tmp/model.gguf"
+    )
+
 
 
 def _create_and_start(client: TestClient) -> str:
@@ -429,7 +450,8 @@ class TestSafetyHandling:
         app.state  # ensure lifespan runs via TestClient
 
         with TestClient(app) as client:
-            res = client.post("/api/sessions", json=_VALID_SETUP)
+            _activate_real_runtime(app)
+            res = client.post("/api/sessions", json=_UNPINNED_SETUP)
             session_id = res.json()["session_id"]
             client.post(f"/api/sessions/{session_id}/start")
 
@@ -448,7 +470,8 @@ class TestSafetyHandling:
     def test_safety_redirect_keeps_session_alive(self, tmp_config):
         app = create_app(tmp_config)
         with TestClient(app) as client:
-            res = client.post("/api/sessions", json=_VALID_SETUP)
+            _activate_real_runtime(app)
+            res = client.post("/api/sessions", json=_UNPINNED_SETUP)
             session_id = res.json()["session_id"]
             client.post(f"/api/sessions/{session_id}/start")
 
@@ -503,7 +526,8 @@ class TestFallback:
         from convsim_prompt import SAFE_FALLBACK_UTTERANCE
         app = create_app(tmp_config)
         with TestClient(app) as client:
-            res = client.post("/api/sessions", json=_VALID_SETUP)
+            _activate_real_runtime(app)
+            res = client.post("/api/sessions", json=_UNPINNED_SETUP)
             session_id = res.json()["session_id"]
             client.post(f"/api/sessions/{session_id}/start")
 
@@ -556,7 +580,8 @@ class TestStatePersistence:
         """State changes from the runtime are applied and stored for next turn."""
         app = create_app(tmp_config)
         with TestClient(app) as client:
-            res = client.post("/api/sessions", json=_VALID_SETUP)
+            _activate_real_runtime(app)
+            res = client.post("/api/sessions", json=_UNPINNED_SETUP)
             session_id = res.json()["session_id"]
             client.post(f"/api/sessions/{session_id}/start")
 
@@ -576,7 +601,8 @@ class TestStatePersistence:
         """State vars from turn N are available (via DB) for prompt building in turn N+1."""
         app = create_app(tmp_config)
         with TestClient(app) as client:
-            res = client.post("/api/sessions", json=_VALID_SETUP)
+            _activate_real_runtime(app)
+            res = client.post("/api/sessions", json=_UNPINNED_SETUP)
             session_id = res.json()["session_id"]
             client.post(f"/api/sessions/{session_id}/start")
 
@@ -1230,7 +1256,8 @@ class TestDebugEndpoint:
         from convsim_prompt import SAFE_FALLBACK_UTTERANCE
         app = create_app(tmp_config)
         with TestClient(app) as client:
-            res = client.post("/api/sessions", json=_VALID_SETUP)
+            _activate_real_runtime(app)
+            res = client.post("/api/sessions", json=_UNPINNED_SETUP)
             session_id = res.json()["session_id"]
             client.post(f"/api/sessions/{session_id}/start")
 

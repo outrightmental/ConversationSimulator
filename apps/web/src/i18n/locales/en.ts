@@ -129,12 +129,6 @@ export const en = {
         description: 'Use an existing Ollama installation. No additional download required.',
         action: 'Connect Ollama →',
       },
-      demo: {
-        title: 'Try text-only demo',
-        description:
-          'Explore the interface now using scripted NPC responses — no model needed. Response quality is limited compared to a real AI model.',
-        action: 'Try text-only demo →',
-      },
     },
     missingPack: {
       title: 'No scenario packs installed',
@@ -306,31 +300,20 @@ export const en = {
       clearing: 'Clearing…',
     },
   },
-  conversation: {
-    runtimeLabel: {
-      scripted: 'Scripted practice run',
-      fake: 'Demo mode',
-    },
-    modelReady: {
-      toast: 'Your AI model is ready',
-      switchNow: 'Switch now',
-      afterConversation: 'After this conversation',
-    },
-  },
   setup: {
     welcome: {
       headline: 'Practice conversations that matter.',
       subheadline: 'Private. On your machine. Yours.',
+      promise: {
+        heading: 'Not a chatbot. Not a mirror.',
+        body:
+          "Everyone you'll talk to here arrives mid-life: stakes, moods, and goals that have nothing to do with you. Nothing you say is reflected back. You get somewhere by figuring out what they care about — and working within it.",
+      },
       setMeUp: {
         title: 'Set me up',
         description: 'Downloads the AI model ({{size}} GB, {{license}}). Works offline afterwards.',
         descriptionLoading: 'Downloads the recommended AI model. Works offline afterwards.',
         badge: 'Recommended',
-      },
-      tryNow: {
-        title: 'Try it right now',
-        description: 'Play a scripted scenario instantly, no download. Upgrade any time.',
-        disclaimer: 'Responses are scripted, not AI-generated.',
       },
       privacy: {
         summary: '🔒 Everything stays on this machine.',
@@ -354,8 +337,30 @@ export const en = {
       oneIssue: 'One thing needs your attention before setup can continue.',
       manyIssues: '{{count}} things need your attention before setup can continue.',
     },
+    installing: {
+      whileHeading: 'While that downloads…',
+      promiseHeading: "You're about to meet someone with their own agenda.",
+      promiseBody:
+        "The person you'll be talking to isn't a chatbot waiting for input. They show up mid-life — with stakes, moods, and goals that have nothing to do with you — and they will not hand you the win. Here's how you get it:",
+      loopHeading: 'How to play',
+      loop: {
+        investigate: {
+          title: 'Investigate their universe.',
+          body: 'What do they want? What are they afraid of? Ask. Listen. The answers are in there.',
+        },
+        appeal: {
+          title: 'Appeal and compel within it.',
+          body: "Make your case in their terms, not yours. What moves them is what they care about — not what you'd care about.",
+        },
+        succeed: {
+          title: 'Succeed on their terms.',
+          body: 'When it goes your way, it will be because you earned it inside their world. That win is the whole point.',
+        },
+      },
+      missionsHeading: 'Your first missions',
+      missionRole: 'You play: {{role}}',
+    },
     remediation: {
-      textOnly: 'Try text-only instead',
       details: 'Details',
       detailsOpen: 'Details ▾',
       detailsClosed: 'Details ▸',
@@ -431,7 +436,6 @@ export const en = {
       exporting: 'Exporting…',
       exportMarkdown: 'Export transcript (Markdown)',
       tryAnother: 'Try another scenario',
-      tryWithRealAi: 'Try it with the real AI',
       privacyNotice:
         'Exported files are saved to your local download folder and never leave your device.',
     },

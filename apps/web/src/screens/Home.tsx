@@ -473,34 +473,6 @@ export default function Home() {
               </Link>
             </div>
 
-            <div
-              style={{
-                border: '1px solid rgba(251,191,36,0.2)',
-                borderRadius: '8px',
-                padding: '0.85rem 1rem',
-              }}
-            >
-              <p style={{ margin: '0 0 0.25rem', fontWeight: 600, fontSize: '0.875rem' }}>
-                {t('home.noModel.demo.title')}
-              </p>
-              <p style={{ margin: '0 0 0.6rem', fontSize: '0.825rem', color: '#a1a1aa' }}>
-                {t('home.noModel.demo.description')}
-              </p>
-              <Link
-                to="/library"
-                style={{
-                  fontSize: '0.8rem',
-                  padding: '0.3rem 0.7rem',
-                  borderRadius: '4px',
-                  border: '1px solid rgba(251,191,36,0.3)',
-                  color: '#fbbf24',
-                  textDecoration: 'none',
-                  display: 'inline-block',
-                }}
-              >
-                {t('home.noModel.demo.action')}
-              </Link>
-            </div>
           </div>
         </section>
       )}

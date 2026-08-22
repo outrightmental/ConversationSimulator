@@ -90,20 +90,6 @@ export function ChooseStep({ flow, mode }: ChooseStepProps) {
             <ActionButton onClick={() => { flow.setGgufPath(''); flow.setGgufPathError(null); flow.resetAction(); flow.setStep('gguf-path') }}>Use a GGUF file</ActionButton>
           </SectionCard>
         </li>
-
-        <li>
-          <SectionCard>
-            <CardHeading>{mode === 'wizard' ? 'Continue without a model' : 'Text-only demo'}</CardHeading>
-            <CardDescription>
-              {mode === 'wizard'
-                ? 'Try the interface without a model. NPC responses will be scripted — not AI-generated. Response quality is limited compared to a real local model.'
-                : 'Try the interface without a model. NPC responses are scripted — not real AI quality.'}
-            </CardDescription>
-            <ActionButton onClick={() => { flow.resetAction(); flow.setStep('demo-warning') }}>
-              {mode === 'wizard' ? 'Continue in text-only demo' : 'Try text-only demo'}
-            </ActionButton>
-          </SectionCard>
-        </li>
       </ul>
 
       {mode === 'manager' && (

@@ -353,12 +353,15 @@ _SESSION_PINNED_RUNTIME_IDS = ("scripted", "fake")
 def _pinned_runtime_id(requested: str | None, conn: Any) -> str | None:
     """Return the runtime id to pin this session to, or None to follow the global one.
 
-    An explicit ``runtime_id`` on the create request wins: the scripted tutorial
-    asks for its runtime by name, so it cannot land on the fake runtime just
-    because the preceding ``use_model`` call failed, or because a background
-    model install flipped the global selection in the window between the two
-    requests. Otherwise fall back to the active selection, which pins demo-mode
-    and scripted sessions created through the ordinary setup form.
+    An explicit ``runtime_id`` on the create request wins: automated tests and
+    dev tooling ask for the model-free runtimes by name, so they cannot land on
+    a different runtime just because a background model install flipped the
+    global selection in the window between two requests.
+
+    Without an explicit request, a global selection of ``fake``/``scripted``
+    (e.g. the config default on a profile that never installed a model) is NOT
+    silently pinned — ``create_session`` rejects it instead (issue #473): a
+    player must never fall through to a facsimile conversation by accident.
     """
     if requested in _SESSION_PINNED_RUNTIME_IDS:
         return requested
@@ -410,13 +413,34 @@ async def create_session(body: SessionCreateRequest, request: Request) -> Sessio
         )
 
     conn = request.app.state.db.connection()
+
+    # Backstop for issue #473: a session may only run on a model-free runtime
+    # when the request explicitly pinned one (tests / dev tooling). Resolve the
+    # runtime the same way _resolve_runtime will — persisted active selection,
+    # else the shared app runtime (whose config default is "fake" on a profile
+    # that never installed a model) — and refuse to start a facsimile
+    # conversation that would masquerade as the product.
+    if body.runtime_id is None:
+        effective_runtime_id = get_active_config(conn).get("runtime_id")
+        if effective_runtime_id is None:
+            effective_runtime_id = getattr(request.app.state.runtime, "id", None)
+        if effective_runtime_id in _SESSION_PINNED_RUNTIME_IDS:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "No AI model is configured, so a conversation cannot be "
+                    "started. Finish setup (install the recommended model, or "
+                    "connect Ollama or a local GGUF file) and try again."
+                ),
+            )
+
     session_id = _generate_session_id()
     now = _now_iso()
     setup_dict = body.model_dump()
-    # Pin scripted/fake sessions to their runtime for the whole session. Without
-    # this the tutorial would follow the global active runtime, which flips to
-    # llama.cpp the moment a background model install finishes — mid-conversation,
-    # or before the tutorial's authored debrief is generated.
+    # Pin explicitly-requested model-free sessions to their runtime for the
+    # whole session, so an automated test's scripted session keeps answering
+    # from its script even if a model install flips the global selection
+    # mid-conversation.
     pinned_runtime_id = _pinned_runtime_id(body.runtime_id, conn)
     if pinned_runtime_id is None:
         # Leave no key at all rather than a null one, so _resolve_runtime's

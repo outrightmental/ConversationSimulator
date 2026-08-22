@@ -173,6 +173,9 @@ def _create_and_start(
         "show_state_meters": False,
         "save_transcript": True,
         "seed": None,
+        # Explicit fake-runtime pin (issue #473): tests must ask for the
+        # model-free runtime by name.
+        "runtime_id": "fake",
     }
     create_resp = client.post("/api/sessions", json=setup)
     assert create_resp.status_code == 201, (

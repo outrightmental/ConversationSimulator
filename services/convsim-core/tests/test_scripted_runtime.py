@@ -330,39 +330,34 @@ _TUTORIAL_SESSION_SETUP = {
 }
 
 
-def test_tutorial_turn_uses_scripted_runtime_when_active_config_is_scripted(tmp_config):
-    """When active_runtime_id='scripted', submit_turn produces the tutorial script, not a fake response."""
+def test_unpinned_session_on_a_model_free_selection_is_refused(tmp_config):
+    """Issue #473 backstop: a session that would silently resolve to a
+    model-free runtime (active selection 'scripted'/'fake', or the config
+    default 'fake' on a fresh profile) is refused with a clear 409 unless the
+    request pins that runtime explicitly. A player can never fall through to a
+    facsimile conversation by accident."""
     from convsim_core.app import create_app
     from convsim_core.services.model_manager_service import set_active_config
     from fastapi.testclient import TestClient
 
     app = create_app(tmp_config)
     with TestClient(app) as client:
-        # Seed the official packs so first_words_tutorial is resolvable.
-        import convsim_core.scenarios  # noqa: F401
-        set_active_config(app.state.db.connection(), runtime_id="scripted")
-
+        # Fresh profile: no active selection; the shared app runtime is the
+        # config-default fake runtime.
         res = client.post("/api/sessions", json=_TUTORIAL_SESSION_SETUP)
-        assert res.status_code == 201, res.text
-        session_id = res.json()["session_id"]
+        assert res.status_code == 409, res.text
+        assert "finish setup" in res.json()["detail"].lower()
 
-        client.post(f"/api/sessions/{session_id}/start")
-        turn_res = client.post(
-            f"/api/sessions/{session_id}/turn",
-            json={"content": "Hello, let's get started!"},
+        # Persisted model-free selection: same refusal.
+        set_active_config(app.state.db.connection(), runtime_id="scripted")
+        res = client.post("/api/sessions", json=_TUTORIAL_SESSION_SETUP)
+        assert res.status_code == 409, res.text
+
+        # The explicit pin keeps working (tests / dev tooling).
+        res = client.post(
+            "/api/sessions", json={**_TUTORIAL_SESSION_SETUP, "runtime_id": "scripted"}
         )
-        assert turn_res.status_code == 200, turn_res.text
-        body = turn_res.json()
-        npc_events = [e for e in body["events"] if e["event_type"] == "npc_turn"]
-        assert npc_events, "No npc_turn event found in turn response"
-        npc_text = npc_events[0]["payload"]["content"]
-        # Scripted runtime produces the authored tutorial text, not the fake placeholder.
-        assert "meter" in npc_text.lower() or "engagement" in npc_text.lower() or "turn" in npc_text.lower(), (
-            f"Expected scripted tutorial response, got: {npc_text!r}"
-        )
-        assert "simulated npc" not in npc_text.lower(), (
-            f"Got fake runtime response instead of scripted: {npc_text!r}"
-        )
+        assert res.status_code == 201, res.text
 
 
 def test_tutorial_debrief_uses_scripted_debrief_when_active_config_is_scripted(tmp_config):
@@ -376,7 +371,9 @@ def test_tutorial_debrief_uses_scripted_debrief_when_active_config_is_scripted(t
     with TestClient(app) as client:
         set_active_config(app.state.db.connection(), runtime_id="scripted")
 
-        res = client.post("/api/sessions", json=_TUTORIAL_SESSION_SETUP)
+        res = client.post(
+            "/api/sessions", json={**_TUTORIAL_SESSION_SETUP, "runtime_id": "scripted"}
+        )
         assert res.status_code == 201, res.text
         session_id = res.json()["session_id"]
 
@@ -414,7 +411,9 @@ def test_tutorial_stays_scripted_after_a_model_install_flips_the_active_runtime(
         conn = app.state.db.connection()
         set_active_config(conn, runtime_id="scripted")
 
-        res = client.post("/api/sessions", json=_TUTORIAL_SESSION_SETUP)
+        res = client.post(
+            "/api/sessions", json={**_TUTORIAL_SESSION_SETUP, "runtime_id": "scripted"}
+        )
         assert res.status_code == 201, res.text
         session_id = res.json()["session_id"]
         client.post(f"/api/sessions/{session_id}/start")
@@ -494,12 +493,17 @@ def test_session_runtime_id_rejects_a_sidecar_backed_runtime(tmp_config):
 
 
 def test_session_without_runtime_id_stores_no_runtime_key(tmp_config):
-    """A normal session records no pin, so it keeps following the global selection."""
+    """A normal session on a real-model profile records no pin, so it keeps
+    following the global selection."""
     from convsim_core.app import create_app
+    from convsim_core.services.model_manager_service import set_active_config
     from fastapi.testclient import TestClient
 
     app = create_app(tmp_config)
     with TestClient(app) as client:
+        set_active_config(
+            app.state.db.connection(), runtime_id="llama_cpp", model_id="/tmp/model.gguf"
+        )
         res = client.post("/api/sessions", json=_TUTORIAL_SESSION_SETUP)
         assert res.status_code == 201, res.text
         assert "runtime_id" not in res.json()["setup"]

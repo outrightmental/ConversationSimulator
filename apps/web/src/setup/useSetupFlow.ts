@@ -25,7 +25,6 @@ export type SetupFlowStep =
   | 'benchmark'
   | 'ollama-select'
   | 'gguf-path'
-  | 'demo-warning'
   | 'load-error'
 
 /**
@@ -77,8 +76,6 @@ export interface UseSetupFlowReturn {
   handleStartInstall: (registryId: string) => Promise<void>
   handleSelectOllama: (m: DetectedOllamaModel) => Promise<void>
   handleUseGguf: () => Promise<void>
-  handleConfirmDemo: (markComplete?: boolean) => Promise<void>
-  handleStartTutorial: () => Promise<void>
   handleCancelInstall: () => Promise<void>
   handleFinishBenchmark: () => void
   reloadModels: () => Promise<void>
@@ -95,19 +92,6 @@ export interface UseSetupFlowReturn {
 async function markFirstRunComplete(): Promise<void> {
   try { localStorage.setItem(SETUP_KEYS.firstRunComplete, 'true') } catch { /* ignore */ }
   try { await api.recordOnboardingOutcome('completed-with-model') } catch { /* best-effort */ }
-}
-
-async function markDemoComplete(): Promise<void> {
-  try { localStorage.setItem(SETUP_KEYS.firstRunComplete, 'true') } catch { /* ignore */ }
-  try { await api.recordOnboardingOutcome('demo') } catch { /* best-effort */ }
-}
-
-function markTutorialComplete(): void {
-  try { localStorage.setItem(SETUP_KEYS.tutorialComplete, 'true') } catch { /* ignore */ }
-}
-
-function isTutorialComplete(): boolean {
-  try { return localStorage.getItem(SETUP_KEYS.tutorialComplete) === 'true' } catch { return false }
 }
 
 export function useSetupFlow(
@@ -239,12 +223,10 @@ export function useSetupFlow(
     if (step !== 'installing' || setupInstallJob == null) return
     const { status } = setupInstallJob
     if (status === 'complete') {
-      // A real model is now active — clear scripted/fake session labels so future
-      // conversations show no runtime hint banner.
-      try { localStorage.removeItem(SETUP_KEYS.activeRuntimeHint) } catch { /* ignore */ }
-      try { localStorage.removeItem(SETUP_KEYS.tutorialInstallId) } catch { /* ignore */ }
+      // The real model is live. Land the player in the library — one click from
+      // their first real conversation (issue #473: no tutorial gate in between).
       void markFirstRunComplete().then(() => {
-        navigate(isTutorialComplete() ? '/library' : '/')
+        navigate('/library')
       })
     } else if (status === 'failed' || status === 'cancelled') {
       setActionError({
@@ -321,9 +303,6 @@ export function useSetupFlow(
     setActionError(null)
     const r = await api.useModel({ runtime_id: 'ollama', model_id: m.id })
     if (!r.ok) { setActionError(r.error); setActionLoading(false); return }
-    // Real model is now active — clear scripted/fake session hint.
-    try { localStorage.removeItem(SETUP_KEYS.activeRuntimeHint) } catch { /* ignore */ }
-    try { localStorage.removeItem(SETUP_KEYS.tutorialInstallId) } catch { /* ignore */ }
     benchmarkStartedRef.current = false
     setStep('benchmark')
     setActionLoading(false)
@@ -338,9 +317,6 @@ export function useSetupFlow(
     setActionError(null)
     const reg = await api.registerGguf({ path: trimmed })
     if (!reg.ok) { setActionError(reg.error); setActionLoading(false); return }
-    // Real model is now active — clear scripted/fake session hint.
-    try { localStorage.removeItem(SETUP_KEYS.activeRuntimeHint) } catch { /* ignore */ }
-    try { localStorage.removeItem(SETUP_KEYS.tutorialInstallId) } catch { /* ignore */ }
     // AWAIT the engine start (it returns once the model is loaded) so the
     // benchmark step never races a half-started engine. "Already running"
     // (409) is success for our purposes; any other failure is surfaced here
@@ -354,75 +330,6 @@ export function useSetupFlow(
     benchmarkStartedRef.current = false
     setStep('benchmark')
     setActionLoading(false)
-  }
-
-  async function handleConfirmDemo(markComplete = false) {
-    setActionLoading(true)
-    try { await api.useModel({ runtime_id: 'fake', model_id: null }) } catch { /* best-effort */ }
-    finally { setActionLoading(false) }
-    // Write runtime hint so Conversation.tsx can label fake sessions "Demo mode".
-    try { localStorage.setItem(SETUP_KEYS.activeRuntimeHint, 'fake') } catch { /* ignore */ }
-    if (markComplete) await markDemoComplete()
-    navigate('/library')
-  }
-
-  async function handleStartTutorial() {
-    // Snapshot installId before the async useModel call; the value in the closure
-    // is stable for the lifetime of this invocation since setInstallId is not
-    // called here.
-    const activeInstallId = installId
-    setActionLoading(true)
-    try {
-      try { await api.useModel({ runtime_id: 'scripted', model_id: null }) } catch { /* best-effort */ }
-      markTutorialComplete()
-      // Label all scripted sessions so the user knows they are not talking to the AI.
-      try { localStorage.setItem(SETUP_KEYS.activeRuntimeHint, 'scripted') } catch { /* ignore */ }
-      if (activeInstallId != null) {
-        // A background download is running. Tell Conversation.tsx so it can show
-        // the model-ready toast when the pipeline finishes.
-        try { localStorage.setItem(SETUP_KEYS.tutorialInstallId, String(activeInstallId)) } catch { /* ignore */ }
-        // Record a 'completed-with-model' outcome optimistically — the user already
-        // committed to the full install path.
-        await markFirstRunComplete()
-      } else {
-        // "Try it right now" path: no install in progress.
-        await markDemoComplete()
-      }
-      // Create the tutorial session directly so the user goes straight to the
-      // conversation without having to click through the scenario setup form.
-      // The scripted runtime needs no model, so this always succeeds on first open.
-      // runtime_id pins the session to the authored script: the useModel call above
-      // only moves the *global* selection, which the background install flips back
-      // to llama.cpp the moment it finishes.
-      const sessionResult = await api.createSession({
-        scenario_id: 'first_words_tutorial',
-        difficulty: 'standard',
-        player_role_name: 'New Player',
-        language: 'en',
-        input_mode: 'text-only',
-        tts_enabled: false,
-        show_state_meters: true,
-        save_transcript: true,
-        seed: null,
-        runtime_id: 'scripted',
-      })
-      if (sessionResult.ok) {
-        navigate(`/conversation/${sessionResult.data.session_id}`, {
-          state: {
-            language: 'en',
-            show_state_meters: true,
-            scenario_id: 'first_words_tutorial',
-            input_mode: 'text-only',
-            tts_enabled: false,
-          },
-        })
-      } else {
-        // Fall back to the setup form if session creation unexpectedly fails.
-        navigate('/setup/first_words_tutorial')
-      }
-    } finally {
-      setActionLoading(false)
-    }
   }
 
   async function handleCancelInstall() {
@@ -463,8 +370,6 @@ export function useSetupFlow(
     handleStartInstall,
     handleSelectOllama,
     handleUseGguf,
-    handleConfirmDemo,
-    handleStartTutorial,
     handleCancelInstall,
     handleFinishBenchmark,
     reloadModels,

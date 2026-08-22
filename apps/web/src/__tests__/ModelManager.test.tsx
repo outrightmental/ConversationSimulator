@@ -21,6 +21,7 @@ vi.mock('../api/client', () => ({
     startSetupInstall: vi.fn(),
     getSetupInstallStatus: vi.fn(),
     cancelSetupInstall: vi.fn(),
+    listScenarios: vi.fn().mockResolvedValue({ ok: true, data: [] }),
   },
 }))
 
@@ -144,6 +145,7 @@ beforeEach(() => {
   mockApi.benchmarkModel.mockResolvedValue({ ok: true, data: DEFAULT_BENCHMARK })
   mockApi.recordOnboardingOutcome.mockResolvedValue({ ok: true, data: undefined })
   mockApi.getSetupStatus.mockResolvedValue({ ok: true, data: { kind: 'ready' } })
+  mockApi.listScenarios.mockResolvedValue({ ok: true, data: [] })
 })
 
 // ── Loading state ────────────────────────────────────────────────────────────
@@ -185,11 +187,10 @@ describe('ModelManager — choose step', () => {
     ).toBeInTheDocument()
   })
 
-  it('shows the Try text-only demo option', async () => {
+  it('offers no text-only demo option (issue #473)', async () => {
     renderModelManager()
-    expect(
-      await screen.findByRole('button', { name: /try text-only demo/i }),
-    ).toBeInTheDocument()
+    await screen.findByRole('heading', { name: /set up your model/i })
+    expect(screen.queryByRole('button', { name: /try text-only demo/i })).not.toBeInTheDocument()
   })
 
   it('does not start any download on page load', async () => {
@@ -351,7 +352,7 @@ describe('ModelManager — download progress', () => {
     }
   })
 
-  it('navigates home when the download reaches ready', async () => {
+  it('navigates to the library when the download reaches ready', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
       await goToInstalling()
@@ -373,7 +374,7 @@ describe('ModelManager — download progress', () => {
 
       await vi.advanceTimersByTimeAsync(2000)
 
-      await waitFor(() => expect(screen.getByTestId('home-page')).toBeInTheDocument())
+      await waitFor(() => expect(screen.getByTestId('library-page')).toBeInTheDocument())
     } finally {
       vi.useRealTimers()
     }
@@ -658,79 +659,6 @@ describe('ModelManager — GGUF branch', () => {
     await goToGguf()
     fireEvent.click(screen.getByRole('button', { name: /back/i }))
     await screen.findByRole('heading', { name: /set up your model/i })
-  })
-})
-
-// ── Text-only demo branch ─────────────────────────────────────────────────────
-
-describe('ModelManager — text-only demo branch', () => {
-  async function goToDemo() {
-    renderModelManager()
-    await screen.findByRole('button', { name: /try text-only demo/i })
-    fireEvent.click(screen.getByRole('button', { name: /try text-only demo/i }))
-    await screen.findByRole('heading', { name: /text-only demo/i })
-  }
-
-  it('shows the text-only demo heading', async () => {
-    await goToDemo()
-    expect(screen.getByRole('heading', { name: /text-only demo/i })).toBeInTheDocument()
-  })
-
-  it('shows a disclaimer that this is not production quality', async () => {
-    await goToDemo()
-    expect(screen.getByText(/this is a demo, not production quality/i)).toBeInTheDocument()
-  })
-
-  it('mentions scripted responses in the disclaimer', async () => {
-    await goToDemo()
-    expect(screen.getByText(/scripted responses/i)).toBeInTheDocument()
-  })
-
-  it('shows the I understand confirm button', async () => {
-    await goToDemo()
-    expect(screen.getByRole('button', { name: /i understand/i })).toBeInTheDocument()
-  })
-
-  it('shows a cancel button on the demo warning', async () => {
-    await goToDemo()
-    expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument()
-  })
-
-  it('cancel returns to choose step', async () => {
-    await goToDemo()
-    fireEvent.click(screen.getByRole('button', { name: /cancel/i }))
-    await screen.findByRole('heading', { name: /set up your model/i })
-  })
-
-  it('calls useModel with the fake runtime when confirmed', async () => {
-    mockApi.useModel.mockResolvedValue({ ok: true, data: {
-      runtime_id: 'fake',
-      model_id: null,
-      runtime_name: 'Fake (deterministic)',
-      status: 'ready',
-      message: null,
-    } })
-    await goToDemo()
-    fireEvent.click(screen.getByRole('button', { name: /i understand/i }))
-    await waitFor(() =>
-      expect(mockApi.useModel).toHaveBeenCalledWith({
-        runtime_id: 'fake',
-        model_id: null,
-      }),
-    )
-  })
-
-  it('navigates to the library after confirming demo mode', async () => {
-    await goToDemo()
-    fireEvent.click(screen.getByRole('button', { name: /i understand/i }))
-    await waitFor(() => expect(screen.getByTestId('library-page')).toBeInTheDocument())
-  })
-
-  it('still navigates to library even when useModel fails for demo', async () => {
-    mockApi.useModel.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'runtime unavailable' } })
-    await goToDemo()
-    fireEvent.click(screen.getByRole('button', { name: /i understand/i }))
-    await waitFor(() => expect(screen.getByTestId('library-page')).toBeInTheDocument())
   })
 })
 

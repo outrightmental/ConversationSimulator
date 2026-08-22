@@ -213,6 +213,9 @@ _SETUP_TEXT = {
     "show_state_meters": False,
     "save_transcript": True,
     "seed": None,
+    # Explicit fake-runtime pin (issue #473): model-free sessions must ask for
+    # their runtime by name.
+    "runtime_id": "fake",
 }
 _SETUP_VOICE = {
     **_SETUP_TEXT,

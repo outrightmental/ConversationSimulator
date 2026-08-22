@@ -443,35 +443,15 @@ describe('Debrief screen', () => {
     })
   })
 
-  describe('model-ready upgrade CTA (issue #383)', () => {
-    it('does not render "Try it with the real AI" without the modelReadyAfterTutorial route state', async () => {
+  describe('no tutorial upgrade CTA (issue #473)', () => {
+    it('never renders "Try it with the real AI" — every conversation is already the real AI', async () => {
       mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
-      renderDebrief()
+      renderDebrief({ modelReadyAfterTutorial: true, isScripted: true })
       await waitFor(() =>
         expect(screen.getByTestId('replay-btn')).toBeInTheDocument(),
       )
+      // Legacy route state (written by old app versions) is inert.
       expect(screen.queryByTestId('try-real-ai-btn')).not.toBeInTheDocument()
-    })
-
-    it('renders "Try it with the real AI" when the model became ready during the tutorial', async () => {
-      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
-      renderDebrief({ modelReadyAfterTutorial: true })
-      await waitFor(() =>
-        expect(screen.getByTestId('try-real-ai-btn')).toBeInTheDocument(),
-      )
-      expect(screen.getByTestId('try-real-ai-btn')).toHaveTextContent(/try it with the real ai/i)
-    })
-
-    it('navigates to the library when "Try it with the real AI" is clicked', async () => {
-      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
-      renderDebrief({ modelReadyAfterTutorial: true })
-      await waitFor(() =>
-        expect(screen.getByTestId('try-real-ai-btn')).toBeInTheDocument(),
-      )
-      fireEvent.click(screen.getByTestId('try-real-ai-btn'))
-      await waitFor(() =>
-        expect(screen.getByText('Library page')).toBeInTheDocument(),
-      )
     })
   })
 
@@ -479,7 +459,7 @@ describe('Debrief screen', () => {
     it('shows the voice invite card after a real AI conversation when invite is pending', async () => {
       mockReadVoiceInviteState.mockReturnValue('pending')
       mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
-      renderDebrief({ isScripted: false })
+      renderDebrief()
       await waitFor(() =>
         expect(screen.getByTestId('voice-invite-card')).toBeInTheDocument(),
       )
@@ -492,7 +472,7 @@ describe('Debrief screen', () => {
       // conversation does not re-show it.
       mockReadVoiceInviteState.mockReturnValue('pending')
       mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
-      renderDebrief({ isScripted: false })
+      renderDebrief()
       await waitFor(() =>
         expect(screen.getByTestId('voice-invite-card')).toBeInTheDocument(),
       )
@@ -501,20 +481,10 @@ describe('Debrief screen', () => {
       expect(screen.getByTestId('voice-invite-card')).toBeInTheDocument()
     })
 
-    it('does not show voice invite card when the session was scripted', async () => {
-      mockReadVoiceInviteState.mockReturnValue('pending')
-      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
-      renderDebrief({ isScripted: true })
-      await waitFor(() =>
-        expect(screen.getByTestId('summary-section')).toBeInTheDocument(),
-      )
-      expect(screen.queryByTestId('voice-invite-card')).not.toBeInTheDocument()
-    })
-
     it('does not show voice invite card when already dismissed', async () => {
       mockReadVoiceInviteState.mockReturnValue('dismissed')
       mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
-      renderDebrief({ isScripted: false })
+      renderDebrief()
       await waitFor(() =>
         expect(screen.getByTestId('summary-section')).toBeInTheDocument(),
       )
@@ -524,7 +494,7 @@ describe('Debrief screen', () => {
     it('does not show voice invite card when already in setup state', async () => {
       mockReadVoiceInviteState.mockReturnValue('setup')
       mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
-      renderDebrief({ isScripted: false })
+      renderDebrief()
       await waitFor(() =>
         expect(screen.getByTestId('summary-section')).toBeInTheDocument(),
       )
@@ -534,7 +504,7 @@ describe('Debrief screen', () => {
     it('"Maybe later" hides the card and persists dismissed state', async () => {
       mockReadVoiceInviteState.mockReturnValue('pending')
       mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
-      renderDebrief({ isScripted: false })
+      renderDebrief()
       await waitFor(() =>
         expect(screen.getByTestId('voice-invite-card')).toBeInTheDocument(),
       )
@@ -546,7 +516,7 @@ describe('Debrief screen', () => {
     it('"Set up voice" hides the card, persists setup state, and navigates to settings', async () => {
       mockReadVoiceInviteState.mockReturnValue('pending')
       mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
-      renderDebrief({ isScripted: false })
+      renderDebrief()
       await waitFor(() =>
         expect(screen.getByTestId('voice-invite-card')).toBeInTheDocument(),
       )
@@ -557,17 +527,6 @@ describe('Debrief screen', () => {
       )
     })
 
-    it('does not show voice invite card when isScripted is absent from route state', async () => {
-      // No route state at all (e.g. navigated directly) — default is to treat as non-scripted
-      mockReadVoiceInviteState.mockReturnValue('pending')
-      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
-      renderDebrief()
-      await waitFor(() =>
-        expect(screen.getByTestId('summary-section')).toBeInTheDocument(),
-      )
-      // No route state = isScripted defaults false, so invite appears when pending
-      expect(screen.getByTestId('voice-invite-card')).toBeInTheDocument()
-    })
   })
 
   describe('replay same setup button', () => {

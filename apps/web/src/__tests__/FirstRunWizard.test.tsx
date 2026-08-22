@@ -22,6 +22,7 @@ vi.mock('../api/client', () => ({
     startSetupInstall: vi.fn(),
     getSetupInstallStatus: vi.fn(),
     cancelSetupInstall: vi.fn(),
+    listScenarios: vi.fn(),
     createSession: vi.fn().mockResolvedValue({ ok: true, data: { session_id: 'sess-tutorial-1', scenario_id: 'first_words_tutorial', state: 'NotStarted', created_at: '', setup: { scenario_id: 'first_words_tutorial', difficulty: 'standard', player_role_name: 'New Player', language: 'en', input_mode: 'text-only', tts_enabled: false, show_state_meters: true, save_transcript: true, seed: null } } }),
   },
 }))
@@ -159,6 +160,40 @@ beforeEach(() => {
   } })
   mockApi.benchmarkModel.mockResolvedValue({ ok: true, data: DEFAULT_BENCHMARK })
   mockApi.recordOnboardingOutcome.mockResolvedValue({ ok: true, data: undefined })
+  mockApi.listScenarios.mockResolvedValue({ ok: true, data: [
+    {
+      scenario_id: 'salary_negotiation',
+      title: 'The Salary Conversation',
+      summary: 'Ask your manager for the raise you have earned.',
+      content_rating: 'general',
+      pack_id: 'core',
+      pack_name: 'Core',
+      player_role: { label: 'Employee', brief: 'You want a raise.' },
+      difficulty: { default: 'standard', options: { standard: {} } },
+      supported_languages: ['en'],
+      duration: { max_turns: 12, soft_time_limit_minutes: 10 },
+      state_meters_permitted: true,
+      voice_supported: true,
+      safety_summary: '',
+      estimated_length_label: '10 min',
+    },
+    {
+      scenario_id: 'first_words_tutorial',
+      title: 'First Words',
+      summary: 'Scripted tutorial (internal).',
+      content_rating: 'general',
+      pack_id: 'core',
+      pack_name: 'Core',
+      player_role: { label: 'New Player', brief: '' },
+      difficulty: { default: 'standard', options: { standard: {} } },
+      supported_languages: ['en'],
+      duration: { max_turns: 3, soft_time_limit_minutes: 3 },
+      state_meters_permitted: true,
+      voice_supported: false,
+      safety_summary: '',
+      estimated_length_label: '3 min',
+    },
+  ] })
   mockApi.getSetupStatus.mockResolvedValue({ ok: true, data: { kind: 'ready' } })
   mockApi.createSession.mockResolvedValue({ ok: true, data: { session_id: 'sess-tutorial-1', scenario_id: 'first_words_tutorial', state: 'NotStarted' as const, created_at: '', setup: { scenario_id: 'first_words_tutorial', difficulty: 'standard' as const, player_role_name: 'New Player', language: 'en', input_mode: 'text-only' as const, tts_enabled: false, show_state_meters: true, save_transcript: true, seed: null } } })
 })
@@ -176,9 +211,14 @@ describe('FirstRunWizard — welcome step', () => {
     expect(screen.getByRole('button', { name: /set me up/i })).toBeInTheDocument()
   })
 
-  it('shows a Try it right now card button', () => {
+  it('offers no model-free "Try it right now" path (issue #473)', () => {
     renderWizard()
-    expect(screen.getByRole('button', { name: /try it right now/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /try it right now/i })).not.toBeInTheDocument()
+  })
+
+  it('states the not-a-chatbot promise on the welcome screen', () => {
+    renderWizard()
+    expect(screen.getByText(/not a chatbot\. not a mirror\./i)).toBeInTheDocument()
   })
 
   it('pre-fetches the model registry on mount', async () => {
@@ -214,19 +254,6 @@ describe('FirstRunWizard — welcome step', () => {
     fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
     await screen.findByRole('heading', { name: /setting up your ai/i })
     expect(mockApi.startSetupInstall).toHaveBeenCalledWith('qwen3-4b-instruct-q4_k_m')
-  })
-
-  it('Try it right now starts the scripted tutorial (navigates directly to the conversation)', async () => {
-    renderWizard()
-    fireEvent.click(screen.getByRole('button', { name: /try it right now/i }))
-    await waitFor(() => expect(screen.getByTestId('conversation-page')).toBeInTheDocument())
-  })
-
-  it('marks setup complete when Try it right now is clicked', async () => {
-    renderWizard()
-    fireEvent.click(screen.getByRole('button', { name: /try it right now/i }))
-    await waitFor(() => expect(screen.getByTestId('conversation-page')).toBeInTheDocument())
-    expect(localStorage.getItem(SETUP_KEYS.firstRunComplete)).toBe('true')
   })
 
   it('states everything stays on this machine', () => {
@@ -265,19 +292,6 @@ describe('FirstRunWizard — welcome step', () => {
     await screen.findByRole('button', { name: /use a gguf file/i })
     fireEvent.click(screen.getByRole('button', { name: /use a gguf file/i }))
     await screen.findByRole('heading', { name: /use a gguf file/i })
-  })
-
-  it('Try it right now card does not use the words warning, without, or only', () => {
-    renderWizard()
-    const btn = screen.getByRole('button', { name: /try it right now/i })
-    expect(btn.textContent).not.toMatch(/warning/i)
-    expect(btn.textContent).not.toMatch(/\bwithout\b/i)
-    expect(btn.textContent).not.toMatch(/\bonly\b/i)
-  })
-
-  it('states responses are scripted, not AI-generated', () => {
-    renderWizard()
-    expect(screen.getByText(/scripted, not ai-generated/i)).toBeInTheDocument()
   })
 
   it('shows a Read setup docs link', () => {
@@ -339,20 +353,14 @@ describe('FirstRunWizard — preflight step', () => {
     expect(screen.getByTestId('remediation-action-disk-space').textContent).toBe('Choose another location')
   })
 
-  it('shows the text-only escape hatch on every remediation card', async () => {
+  it('offers no model-free escape hatch on remediation cards (issue #473)', async () => {
     await goToPreflight()
-    expect(screen.getByTestId('remediation-text-only-disk-space')).toBeInTheDocument()
+    expect(screen.queryByTestId('remediation-text-only-disk-space')).not.toBeInTheDocument()
   })
 
   it('does not show a "Retry system check" button (retrying is automatic)', async () => {
     await goToPreflight()
     expect(screen.queryByRole('button', { name: /retry system check/i })).not.toBeInTheDocument()
-  })
-
-  it('proceeds to choose step when "Try text-only instead" is clicked', async () => {
-    await goToPreflight()
-    fireEvent.click(screen.getByTestId('remediation-text-only-disk-space'))
-    await screen.findByRole('heading', { name: /choose how to get started/i })
   })
 
   it('auto-fixable checks (engine, model, packs) do not route to preflight', async () => {
@@ -606,7 +614,7 @@ describe('FirstRunWizard — successful install', () => {
       } })
       await vi.advanceTimersByTimeAsync(2000)
 
-      await waitFor(() => expect(screen.getByTestId('home-page')).toBeInTheDocument())
+      await waitFor(() => expect(screen.getByTestId('library-page')).toBeInTheDocument())
     } finally {
       vi.useRealTimers()
     }
@@ -632,7 +640,7 @@ describe('FirstRunWizard — successful install', () => {
         updated_at: '2026-01-01T00:00:00Z',
       } })
       await vi.advanceTimersByTimeAsync(2000)
-      await waitFor(() => expect(screen.getByTestId('home-page')).toBeInTheDocument())
+      await waitFor(() => expect(screen.getByTestId('library-page')).toBeInTheDocument())
 
       expect(localStorage.getItem(SETUP_KEYS.firstRunComplete)).toBe('true')
     } finally {
@@ -1075,191 +1083,60 @@ describe('FirstRunWizard — existing Ollama path', () => {
   })
 })
 
-// ── Demo / text-only path ─────────────────────────────────────────────────────
+// ── While-you-wait enrichment during install (issue #473) ─────────────────────
 
-describe('FirstRunWizard — "Try it right now" tutorial path', () => {
-  it('calls useModel with the scripted runtime when Try it right now is clicked', async () => {
-    renderWizard()
-    fireEvent.click(screen.getByRole('button', { name: /try it right now/i }))
-    await waitFor(() =>
-      expect(mockApi.useModel).toHaveBeenCalledWith({ runtime_id: 'scripted', model_id: null }),
-    )
-  })
-
-  it('navigates directly to the conversation and marks setup complete', async () => {
-    renderWizard()
-    fireEvent.click(screen.getByRole('button', { name: /try it right now/i }))
-    await waitFor(() => expect(screen.getByTestId('conversation-page')).toBeInTheDocument())
-    expect(localStorage.getItem(SETUP_KEYS.firstRunComplete)).toBe('true')
-  })
-
-  it('labels the session as scripted via localStorage', async () => {
-    renderWizard()
-    fireEvent.click(screen.getByRole('button', { name: /try it right now/i }))
-    await waitFor(() => expect(screen.getByTestId('conversation-page')).toBeInTheDocument())
-    expect(localStorage.getItem(SETUP_KEYS.activeRuntimeHint)).toBe('scripted')
-  })
-
-  it('still navigates to the tutorial even when useModel fails', async () => {
-    mockApi.useModel.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'runtime unavailable' } })
-    renderWizard()
-    fireEvent.click(screen.getByRole('button', { name: /try it right now/i }))
-    await waitFor(() => expect(screen.getByTestId('conversation-page')).toBeInTheDocument())
-  })
-})
-
-// ── Tutorial CTA on installing step ──────────────────────────────────────────
-
-describe('FirstRunWizard — tutorial CTA during install', () => {
+describe('FirstRunWizard — while-you-wait content during install', () => {
   async function goToInstalling() {
     renderWizard()
     fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
     await screen.findByRole('heading', { name: /setting up your ai/i })
   }
 
-  it('shows the play tutorial region while downloading', async () => {
+  it('offers no playable tutorial or demo while downloading', async () => {
     await goToInstalling()
-    expect(
-      screen.getByRole('region', { name: /start tutorial while downloading/i }),
-    ).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /start now/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/responses are scripted/i)).not.toBeInTheDocument()
   })
 
-  it('shows the ▶ Start now button as the primary CTA', async () => {
+  it('shows the not-a-chatbot promise while downloading', async () => {
     await goToInstalling()
-    expect(
-      screen.getByRole('button', { name: /start now/i }),
-    ).toBeInTheDocument()
+    expect(await screen.findByText(/someone with their own agenda/i)).toBeInTheDocument()
   })
 
-  it('still shows the download progress bar alongside the tutorial CTA', async () => {
+  it('teaches the three-beat loop (investigate, appeal, succeed)', async () => {
+    await goToInstalling()
+    expect(await screen.findByText(/investigate their universe/i)).toBeInTheDocument()
+    expect(screen.getByText(/appeal and compel within it/i)).toBeInTheDocument()
+    expect(screen.getByText(/succeed on their terms/i)).toBeInTheDocument()
+  })
+
+  it('previews real scenarios from the registry as first missions', async () => {
+    await goToInstalling()
+    expect(await screen.findByText(/your first missions/i)).toBeInTheDocument()
+    expect(screen.getByText('The Salary Conversation')).toBeInTheDocument()
+  })
+
+  it('never previews the internal scripted tutorial scenario', async () => {
+    await goToInstalling()
+    await screen.findByText(/your first missions/i)
+    expect(screen.queryByText('First Words')).not.toBeInTheDocument()
+  })
+
+  it('still shows the download progress bar alongside the enrichment content', async () => {
     await goToInstalling()
     expect(screen.getByRole('progressbar', { name: /overall install progress/i })).toBeInTheDocument()
   })
 
-  it('still shows the Cancel and go home button alongside the tutorial CTA', async () => {
+  it('still shows the Cancel and go home button alongside the enrichment content', async () => {
     await goToInstalling()
     expect(screen.getByRole('button', { name: /cancel and go home/i })).toBeInTheDocument()
   })
 
-  it('starts the scripted tutorial directly (no interstitial) when Start now is clicked', async () => {
-    mockApi.useModel.mockResolvedValue({ ok: true, data: {
-      runtime_id: 'scripted',
-      model_id: null,
-      runtime_name: 'Scripted tutorial',
-      status: 'ready',
-      message: null,
-    } })
+  it('hides the missions section gracefully when the scenario list fails to load', async () => {
+    mockApi.listScenarios.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'unavailable' } })
     await goToInstalling()
-    fireEvent.click(screen.getByRole('button', { name: /start now/i }))
-    await waitFor(() =>
-      expect(mockApi.useModel).toHaveBeenCalledWith({ runtime_id: 'scripted', model_id: null }),
-    )
-    await screen.findByTestId('conversation-page')
-  })
-
-  it('marks tutorial complete in localStorage when starting the tutorial', async () => {
-    await goToInstalling()
-    fireEvent.click(screen.getByRole('button', { name: /start now/i }))
-    await waitFor(() =>
-      expect(localStorage.getItem(SETUP_KEYS.tutorialComplete)).toBe('true'),
-    )
-  })
-
-  it('marks first-run complete in localStorage when starting the tutorial', async () => {
-    await goToInstalling()
-    fireEvent.click(screen.getByRole('button', { name: /start now/i }))
-    await waitFor(() =>
-      expect(localStorage.getItem(SETUP_KEYS.firstRunComplete)).toBe('true'),
-    )
-  })
-
-  it('records the background install id so the model-ready toast can fire mid-tutorial', async () => {
-    await goToInstalling()
-    fireEvent.click(screen.getByRole('button', { name: /start now/i }))
-    await waitFor(() =>
-      expect(localStorage.getItem(SETUP_KEYS.tutorialInstallId)).toBe(String(RUNNING_JOB.id)),
-    )
-    expect(localStorage.getItem(SETUP_KEYS.activeRuntimeHint)).toBe('scripted')
-  })
-
-  it('proceeds even when useModel fails for the scripted runtime', async () => {
-    mockApi.useModel.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'scripted unavailable' } })
-    await goToInstalling()
-    fireEvent.click(screen.getByRole('button', { name: /start now/i }))
-    await waitFor(() =>
-      expect(localStorage.getItem(SETUP_KEYS.tutorialComplete)).toBe('true'),
-    )
-  })
-
-  it('navigates directly to the tutorial conversation (a real, mounted route)', async () => {
-    await goToInstalling()
-    fireEvent.click(screen.getByRole('button', { name: /start now/i }))
-    await screen.findByTestId('conversation-page')
-  })
-})
-
-// ── Tutorial completion affects post-install navigation ───────────────────────
-
-describe('FirstRunWizard — post-install navigation with tutorial completed', () => {
-  async function goToInstalling() {
-    renderWizard()
-    fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
-    await screen.findByRole('heading', { name: /setting up your ai/i })
-  }
-
-  it('navigates to /library (not home) when install completes and tutorial was completed', async () => {
-    localStorage.setItem(SETUP_KEYS.tutorialComplete, 'true')
-    vi.useFakeTimers({ shouldAdvanceTime: true })
-    try {
-      await goToInstalling()
-      mockApi.getSetupInstallStatus.mockResolvedValue({ ok: true, data: {
-        id: 1,
-        status: 'complete' as const,
-        registry_id: 'qwen3-4b-instruct-q4_k_m',
-        stages: [
-          { id: 'engine', label: 'Getting the AI engine', state: 'complete', bytes_downloaded: null, bytes_total: null, error: null },
-          { id: 'model', label: 'Downloading Qwen3 4B Instruct Q4_K_M', state: 'complete', bytes_downloaded: null, bytes_total: null, error: null },
-          { id: 'verify', label: 'Verifying (SHA-256)', state: 'complete', bytes_downloaded: null, bytes_total: null, error: null },
-          { id: 'warmup', label: 'First launch of the model', state: 'complete', bytes_downloaded: null, bytes_total: null, error: null },
-          { id: 'packs', label: 'Preparing scenarios', state: 'complete', bytes_downloaded: null, bytes_total: null, error: null },
-        ],
-        error_message: null,
-        created_at: '2026-01-01T00:00:00Z',
-        updated_at: '2026-01-01T00:00:00Z',
-      } })
-      await vi.advanceTimersByTimeAsync(2000)
-
-      await waitFor(() => expect(screen.getByTestId('library-page')).toBeInTheDocument())
-    } finally {
-      vi.useRealTimers()
-    }
-  })
-
-  it('navigates to / (home) when install completes and tutorial was NOT completed', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true })
-    try {
-      await goToInstalling()
-      mockApi.getSetupInstallStatus.mockResolvedValue({ ok: true, data: {
-        id: 1,
-        status: 'complete' as const,
-        registry_id: 'qwen3-4b-instruct-q4_k_m',
-        stages: [
-          { id: 'engine', label: 'Getting the AI engine', state: 'complete', bytes_downloaded: null, bytes_total: null, error: null },
-          { id: 'model', label: 'Downloading Qwen3 4B Instruct Q4_K_M', state: 'complete', bytes_downloaded: null, bytes_total: null, error: null },
-          { id: 'verify', label: 'Verifying (SHA-256)', state: 'complete', bytes_downloaded: null, bytes_total: null, error: null },
-          { id: 'warmup', label: 'First launch of the model', state: 'complete', bytes_downloaded: null, bytes_total: null, error: null },
-          { id: 'packs', label: 'Preparing scenarios', state: 'complete', bytes_downloaded: null, bytes_total: null, error: null },
-        ],
-        error_message: null,
-        created_at: '2026-01-01T00:00:00Z',
-        updated_at: '2026-01-01T00:00:00Z',
-      } })
-      await vi.advanceTimersByTimeAsync(2000)
-
-      await waitFor(() => expect(screen.getByTestId('home-page')).toBeInTheDocument())
-    } finally {
-      vi.useRealTimers()
-    }
+    await screen.findByText(/someone with their own agenda/i)
+    expect(screen.queryByText(/your first missions/i)).not.toBeInTheDocument()
   })
 })
 
@@ -1273,16 +1150,6 @@ describe('FirstRunWizard — load error state', () => {
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent(/service unavailable/i),
     )
-  })
-
-  it('mentions the text-only demo as a fallback when the runtime is unavailable', async () => {
-    mockApi.getModels.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'runtime unreachable' } })
-    renderWizard()
-    fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
-    await waitFor(() =>
-      expect(screen.getByRole('alert')).toBeInTheDocument(),
-    )
-    expect(screen.getByText(/text-only demo works without one/i)).toBeInTheDocument()
   })
 
   it('back button from load error returns to the welcome step', async () => {

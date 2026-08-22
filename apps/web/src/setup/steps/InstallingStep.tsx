@@ -4,9 +4,16 @@ import { ActionButton, PrimaryButton } from '../primitives'
 import { errorMessage } from '../errorMessage'
 import { CopyDiagnosticsButton } from '../../components/CopyDiagnosticsButton'
 import { computeSetupInstallPct } from '../useSetupInstall'
+import { useScenarios } from '../../api/useScenarios'
+import { useTranslation } from '../../i18n'
 import type { UseSetupFlowReturn } from '../useSetupFlow'
 import type { SetupInstallStage } from '@convsim/shared'
 import { SETUP_DOCS_URL } from '../docsUrls'
+
+// The scripted tutorial scenario is internal test/dev content (issue #473) —
+// never advertise it as an upcoming mission.
+const _HIDDEN_SCENARIO_IDS = new Set(['first_words_tutorial'])
+const _MAX_PREVIEWS = 3
 
 interface InstallingStepProps {
   flow: UseSetupFlowReturn
@@ -65,6 +72,12 @@ function StageList({ stages }: { stages: SetupInstallStage[] }) {
 }
 
 export function InstallingStep({ flow, mode }: InstallingStepProps) {
+  const { t } = useTranslation()
+  // Real scenario previews for the while-you-wait section (wizard mode). The
+  // built-in scenarios are served before any pack install completes, so this
+  // renders early; on error the section simply stays hidden.
+  const scenariosResult = useScenarios()
+
   // Manager mode: return to confirm-install so ApiErrorView can show the error there
   useEffect(() => {
     if (mode === 'manager' && flow.actionError != null) {
@@ -186,11 +199,14 @@ export function InstallingStep({ flow, mode }: InstallingStepProps) {
 
       {stages != null && <StageList stages={stages} />}
 
-      {/* Primary CTA — play the tutorial while the model downloads */}
+      {/* While-you-wait — sell the real thing, never a facsimile (issue #473).
+          The download window is the recruitment window: teach what makes these
+          conversations different and preview the actual scenarios the player is
+          minutes away from, so the first conversation is the real model. */}
       {mode === 'wizard' && (
         <div
           role="region"
-          aria-label="Start tutorial while downloading"
+          aria-label={t('setup.installing.whileHeading')}
           style={{
             marginTop: '1.75rem',
             padding: '1.25rem 1.5rem',
@@ -200,23 +216,61 @@ export function InstallingStep({ flow, mode }: InstallingStepProps) {
           }}
         >
           <p style={{ margin: '0 0 0.25rem', fontSize: '0.8rem', color: '#a5b4fc', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>
-            While that downloads…
+            {t('setup.installing.whileHeading')}
           </p>
           <h2 style={{ margin: '0 0 0.5rem', fontSize: '1.25rem', color: '#f4f4f5' }}>
-            Have your first conversation.
+            {t('setup.installing.promiseHeading')}
           </h2>
-          <p style={{ margin: '0 0 0.25rem', fontSize: '0.95rem', color: '#c7d2fe', fontWeight: 600 }}>
-            First Words
+          <p style={{ margin: '0 0 1rem', fontSize: '0.875rem', color: '#c7d2fe', lineHeight: 1.6 }}>
+            {t('setup.installing.promiseBody')}
           </p>
-          <p style={{ margin: '0 0 1rem', fontSize: '0.85rem', color: '#a1a1aa', lineHeight: 1.5 }}>
-            A 3-minute guided scenario. Responses are scripted so you can play instantly — no model needed.
-          </p>
-          <PrimaryButton
-            onClick={() => void flow.handleStartTutorial()}
-            disabled={flow.actionLoading}
+
+          <ol
+            aria-label={t('setup.installing.loopHeading')}
+            style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '0.6rem' }}
           >
-            {flow.actionLoading ? 'Starting…' : '▶ Start now'}
-          </PrimaryButton>
+            {(['investigate', 'appeal', 'succeed'] as const).map((beat, i) => (
+              <li key={beat} style={{ display: 'flex', gap: '0.6rem', alignItems: 'baseline' }}>
+                <span aria-hidden="true" style={{ color: '#a5b4fc', fontWeight: 700, fontSize: '0.85rem', flexShrink: 0 }}>{i + 1}.</span>
+                <span style={{ fontSize: '0.85rem', lineHeight: 1.5 }}>
+                  <strong style={{ color: '#e4e4e7' }}>{t(`setup.installing.loop.${beat}.title`)}</strong>{' '}
+                  <span style={{ color: '#a1a1aa' }}>{t(`setup.installing.loop.${beat}.body`)}</span>
+                </span>
+              </li>
+            ))}
+          </ol>
+
+          {scenariosResult.state === 'ready' && (() => {
+            const previews = scenariosResult.scenarios
+              .filter((s) => !_HIDDEN_SCENARIO_IDS.has(s.scenario_id))
+              .slice(0, _MAX_PREVIEWS)
+            if (previews.length === 0) return null
+            return (
+              <div style={{ marginTop: '1.25rem' }}>
+                <h3 style={{ margin: '0 0 0.6rem', fontSize: '0.8rem', color: '#a5b4fc', textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600 }}>
+                  {t('setup.installing.missionsHeading')}
+                </h3>
+                <ul
+                  aria-label={t('setup.installing.missionsHeading')}
+                  style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '0.6rem' }}
+                >
+                  {previews.map((s) => (
+                    <li
+                      key={s.scenario_id}
+                      style={{ padding: '0.65rem 0.85rem', background: 'rgba(0,0,0,0.25)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px' }}
+                    >
+                      <p style={{ margin: '0 0 0.15rem', fontSize: '0.875rem', fontWeight: 600, color: '#e4e4e7' }}>
+                        {s.title}
+                      </p>
+                      <p style={{ margin: 0, fontSize: '0.8rem', color: '#a1a1aa', lineHeight: 1.45 }}>
+                        {t('setup.installing.missionRole', { role: s.player_role.label })} · {s.summary}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )
+          })()}
         </div>
       )}
 

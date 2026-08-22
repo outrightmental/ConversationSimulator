@@ -28,7 +28,10 @@ class SetupStatusResponse(BaseModel):
 
 
 class RecordOutcomeRequest(BaseModel):
-    outcome: str  # "completed-with-model" | "demo" | "skipped"
+    # "completed-with-model" | "skipped" ("demo" is legacy: written by app
+    # versions that offered the removed no-model demo path, issue #473; still
+    # accepted so old databases keep replaying their history cleanly).
+    outcome: str
 
 
 @router.post("/api/setup/outcome", status_code=204)
@@ -86,19 +89,18 @@ async def get_setup_status(request: Request) -> SetupStatusResponse:
     active_cfg = get_active_config(conn)
     active_model_id: Optional[str] = active_cfg.get("model_id")
 
-    # Check LLM presence. Per issue #380, "ready" is engine + (model | demo
-    # choice) + packs — so a deliberate demo choice satisfies this requirement
-    # even though no real model is installed. Keying on the recorded outcome
-    # (not the default 'fake' runtime) keeps a failed model install from being
-    # mistaken for an intentional demo.
+    # Check LLM presence. "Ready" is engine + model + packs. A historical
+    # 'demo' outcome (recorded by app versions that offered the removed
+    # no-model demo path, issue #473) deliberately does NOT satisfy this any
+    # more: those profiles resolve to 'incomplete', which surfaces the
+    # non-blocking finish-setup banner steering them to install a real model.
     installed_row = conn.execute(
         "SELECT COUNT(*) AS cnt FROM installed_models "
         "WHERE install_status IN ('ready', 'complete')"
     ).fetchone()
     installed_count = installed_row["cnt"] if installed_row else 0
 
-    chose_demo = outcome_row["outcome"] == "demo"
-    if installed_count == 0 and not active_model_id and not chose_demo:
+    if installed_count == 0 and not active_model_id:
         missing.append("llm-present")
 
     # Check packs

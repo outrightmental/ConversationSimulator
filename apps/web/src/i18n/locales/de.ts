@@ -137,12 +137,6 @@ export const de: LocaleMessages = {
           'Verwenden Sie eine vorhandene Ollama-Installation. Kein zusätzlicher Download erforderlich.',
         action: 'Ollama verbinden →',
       },
-      demo: {
-        title: 'Textnur-Demo ausprobieren',
-        description:
-          'Erkunden Sie die Benutzeroberfläche jetzt mit skriptierten NPC-Antworten – kein Modell erforderlich. Die Antwortqualität ist im Vergleich zu einem echten KI-Modell begrenzt.',
-        action: 'Textnur-Demo ausprobieren →',
-      },
     },
     missingPack: {
       title: 'Keine Szenarienpakete installiert',
@@ -315,31 +309,20 @@ export const de: LocaleMessages = {
       clearing: 'Wird gelöscht…',
     },
   },
-  conversation: {
-    runtimeLabel: {
-      scripted: 'Skriptbasiertes Übungsgespräch',
-      fake: 'Demo-Modus',
-    },
-    modelReady: {
-      toast: 'Ihr KI-Modell ist bereit',
-      switchNow: 'Jetzt wechseln',
-      afterConversation: 'Nach diesem Gespräch',
-    },
-  },
   setup: {
     welcome: {
       headline: 'Üben Sie Gespräche, die zählen.',
       subheadline: 'Privat. Auf Ihrem Gerät. Für Sie.',
+      promise: {
+        heading: 'Kein Chatbot. Kein Spiegel.',
+        body:
+          'Alle, mit denen Sie hier sprechen, stehen mitten im Leben: mit Anliegen, Stimmungen und Zielen, die nichts mit Ihnen zu tun haben. Nichts, was Sie sagen, wird bloß zurückgespiegelt. Sie kommen weiter, indem Sie herausfinden, was Ihrem Gegenüber wichtig ist — und sich darauf einlassen.',
+      },
       setMeUp: {
         title: 'Einrichten',
         description: 'Lädt das KI-Modell herunter ({{size}} GB, {{license}}). Danach offline nutzbar.',
         descriptionLoading: 'Lädt das empfohlene KI-Modell herunter. Danach offline nutzbar.',
         badge: 'Empfohlen',
-      },
-      tryNow: {
-        title: 'Sofort ausprobieren',
-        description: 'Spielen Sie sofort ein Szenario — kein Download nötig. Jederzeit upgraden.',
-        disclaimer: 'Antworten sind geskriptet, nicht KI-generiert.',
       },
       privacy: {
         summary: '🔒 Alles bleibt auf Ihrem Gerät.',
@@ -363,8 +346,30 @@ export const de: LocaleMessages = {
       oneIssue: 'Ein Problem muss gelöst werden, bevor die Einrichtung fortgesetzt werden kann.',
       manyIssues: '{{count}} Probleme müssen gelöst werden, bevor die Einrichtung fortgesetzt werden kann.',
     },
+    installing: {
+      whileHeading: 'Während des Downloads…',
+      promiseHeading: 'Gleich treffen Sie jemanden mit eigener Agenda.',
+      promiseBody:
+        'Die Person, mit der Sie sprechen werden, ist kein Chatbot, der auf Eingaben wartet. Sie steht mitten im Leben — mit Anliegen, Stimmungen und Zielen, die nichts mit Ihnen zu tun haben — und sie wird Ihnen den Erfolg nicht schenken. So gelingt es trotzdem:',
+      loopHeading: 'So spielen Sie',
+      loop: {
+        investigate: {
+          title: 'Erkunden Sie ihre Welt.',
+          body: 'Was will Ihr Gegenüber? Wovor hat es Angst? Fragen Sie. Hören Sie zu. Die Antworten stecken im Gespräch.',
+        },
+        appeal: {
+          title: 'Überzeugen Sie in ihren Begriffen.',
+          body: 'Argumentieren Sie mit dem, was Ihrem Gegenüber wichtig ist — nicht mit dem, was Ihnen wichtig wäre.',
+        },
+        succeed: {
+          title: 'Gewinnen Sie zu ihren Bedingungen.',
+          body: 'Wenn es klappt, dann weil Sie es sich in der Welt Ihres Gegenübers verdient haben. Genau darum geht es.',
+        },
+      },
+      missionsHeading: 'Ihre ersten Missionen',
+      missionRole: 'Ihre Rolle: {{role}}',
+    },
     remediation: {
-      textOnly: 'Stattdessen nur Text verwenden',
       details: 'Details',
       detailsOpen: 'Details ▾',
       detailsClosed: 'Details ▸',
@@ -441,7 +446,6 @@ export const de: LocaleMessages = {
       exporting: 'Exportiere…',
       exportMarkdown: 'Transkript exportieren (Markdown)',
       tryAnother: 'Anderes Szenario versuchen',
-      tryWithRealAi: 'Mit der echten KI ausprobieren',
       privacyNotice:
         'Exportierte Dateien werden in Ihrem lokalen Download-Ordner gespeichert und verlassen Ihr Gerät nicht.',
     },
