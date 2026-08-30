@@ -5,7 +5,7 @@ description: Get Conversation Simulator for Windows, macOS, or Linux — $9.99 o
 ---
 
 <div class="dl-grid">
-  <a class="dl-card" href="https://store.steampowered.com/" target="_blank" rel="noopener noreferrer">
+  <a class="dl-card" href="https://store.steampowered.com/app/4963030/Conversation_Simulator/" target="_blank" rel="noopener noreferrer">
     <strong>Buy on Steam — $9.99</strong>
     <span>Windows · macOS · Linux · Steam Deck · ready to run, auto-updating</span>
   </a>
@@ -14,10 +14,6 @@ description: Get Conversation Simulator for Windows, macOS, or Linux — $9.99 o
     <span>Clone the Apache-2.0 repository and build it yourself</span>
   </a>
 </div>
-
-<!-- Replace the Steam href above with the live store URL once the App ID is
-     registered (see publishing/STEAM_APP_REGISTRATION.md):
-     https://store.steampowered.com/app/<STEAM_APP_ID>/ -->
 
 ## Two ways to get it — both run 100% on your computer
 
