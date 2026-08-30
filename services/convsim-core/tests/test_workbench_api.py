@@ -667,9 +667,8 @@ def _make_test_session_pack(root: Path, slug: str) -> Path:
     return pack_dir
 
 
-@pytest.fixture()
-def ts_client(tmp_path, monkeypatch):
-    """Client fixture with a pack that has a loadable scenario for test-session tests."""
+def _ts_app(tmp_path, monkeypatch):
+    """App with a pack that has a loadable scenario for test-session tests."""
     official = tmp_path / "official"
     local_dev = tmp_path / "local-dev"
     official.mkdir()
@@ -687,8 +686,25 @@ def ts_client(tmp_path, monkeypatch):
         official_packs_dir=str(official),
         local_dev_packs_dir=str(local_dev),
     )
-    app = create_app(config)
+    return create_app(config)
+
+
+@pytest.fixture()
+def ts_client(tmp_path, monkeypatch):
+    """Client with a loadable pack and a real-model selection active.
+
+    The issue-#476 backstop refuses test sessions that would land on a
+    model-free runtime, so activate a real-model selection the way
+    test_turn_pipeline does. The live runtime object stays untouched; these
+    tests never submit a turn.
+    """
+    from convsim_core.services.model_manager_service import set_active_config
+
+    app = _ts_app(tmp_path, monkeypatch)
     with TestClient(app) as c:
+        set_active_config(
+            app.state.db.connection(), runtime_id="llama_cpp", model_id="/tmp/model.gguf"
+        )
         yield c
 
 
@@ -715,6 +731,32 @@ def test_start_test_session_session_deletable(ts_client):
     session_id = resp.json()["session_id"]
     del_resp = ts_client.delete(f"/api/sessions/{session_id}")
     assert del_resp.status_code == 204
+
+
+def test_start_test_session_without_model_returns_409(tmp_path, monkeypatch):
+    """Issue #476: a creator with no model installed must get a clear
+    'install a model' refusal, not a silent preview against the config-default
+    fake runtime (whose every reply is canned)."""
+    app = _ts_app(tmp_path, monkeypatch)
+    with TestClient(app) as c:
+        resp = c.post("/api/workbench/packs/local-dev/ts-pack/test-session")
+        assert resp.status_code == 409, resp.text
+        err = resp.json()["error"]
+        assert err["code"] == "MODEL_REQUIRED"
+        assert "model" in err["message"].lower()
+
+
+def test_start_test_session_model_free_selection_returns_409(tmp_path, monkeypatch):
+    """A persisted scripted/fake selection is refused the same way — the
+    scripted runtime only knows the tutorial script, not authored scenarios."""
+    from convsim_core.services.model_manager_service import set_active_config
+
+    app = _ts_app(tmp_path, monkeypatch)
+    with TestClient(app) as c:
+        set_active_config(app.state.db.connection(), runtime_id="scripted")
+        resp = c.post("/api/workbench/packs/local-dev/ts-pack/test-session")
+        assert resp.status_code == 409, resp.text
+        assert resp.json()["error"]["code"] == "MODEL_REQUIRED"
 
 
 def test_start_test_session_no_scenario_returns_422(client):
