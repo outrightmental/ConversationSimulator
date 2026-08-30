@@ -605,6 +605,18 @@ async def register_gguf(request: Request, body: RegisterGgufRequest) -> Register
 
     set_active_config(conn, runtime_id="llama_cpp", model_id=path)
 
+    # Swap the LIVE runtime too, exactly as /api/models/use does after
+    # persisting (issue #480). Persisting alone leaves app.state.runtime on
+    # the startup default — the fake runtime on a fresh profile — so until a
+    # restart every unpinned session would pass the model-free gates on the
+    # strength of this selection while its turns were still served canned
+    # fake-runtime replies. The setup flow starts the engine itself right
+    # after this call, so no ensure-running here; a turn before the engine is
+    # up reports engine-unavailable honestly instead.
+    from convsim_core.runtime.active import activate_runtime
+
+    await activate_runtime(request.app, "llama_cpp")
+
     return RegisterGgufResponse(
         profile_id=profile["id"],
         file_path=path,

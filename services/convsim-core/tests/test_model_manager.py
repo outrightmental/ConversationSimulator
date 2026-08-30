@@ -910,6 +910,28 @@ def test_register_gguf_active_config_appears_in_models_response(client, tmp_path
     assert body["active"]["model_id"] == str(model_file)
 
 
+def test_register_gguf_activates_live_runtime(client, tmp_path):
+    """Issue #480: persisting the selection alone left app.state.runtime on
+    the startup fake runtime until restart, so unpinned sessions passed the
+    model-free gates on the strength of the selection while their turns were
+    still served canned replies. register-gguf must swap the live runtime the
+    same way /api/models/use does after persisting."""
+    assert getattr(client.app.state.runtime, "id", None) == "fake"
+    model_file = tmp_path / "model.gguf"
+    model_file.write_bytes(b"\x00" * 16)
+    resp = client.post("/api/models/register-gguf", json={"path": str(model_file)})
+    assert resp.status_code == 200
+    assert getattr(client.app.state.runtime, "id", None) == "llama_cpp"
+
+
+def test_register_gguf_failed_validation_leaves_runtime_untouched(client):
+    resp = client.post(
+        "/api/models/register-gguf", json={"path": "/nonexistent/model.gguf"}
+    )
+    assert resp.status_code == 404
+    assert getattr(client.app.state.runtime, "id", None) == "fake"
+
+
 # ── model_manager_service: register_user_gguf ────────────────────────────────
 
 
