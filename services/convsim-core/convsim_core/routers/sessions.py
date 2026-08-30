@@ -1017,9 +1017,46 @@ async def create_branch_session(
     Requires the parent session to have at least *fork_turn_number* completed
     game turns and to have been played with snapshot-enabled pipeline (any
     session created after this feature was shipped).
+
+    Returns 409 when no AI model is configured and the parent was not pinned
+    to a model-free runtime (issue #481) — a branch must not re-simulate its
+    turns against canned replies.
     """
     db = request.app.state.db
     conn = db.connection()
+
+    # Backstop for issue #481, same rule as create_session (#473) and the
+    # workbench test-session route (#476): a branch inherits its parent's
+    # setup verbatim, so a branch of an unpinned parent follows the live
+    # runtime — refuse to create one that would re-simulate every turn on a
+    # model-free runtime. Parents that pinned scripted/fake by name keep
+    # branching; a missing parent falls through to fork_session's 404.
+    parent_row = conn.execute(
+        "SELECT setup_json FROM turn_sessions WHERE session_id = ?", (session_id,)
+    ).fetchone()
+    if parent_row is not None:
+        try:
+            parent_setup: Any = json.loads(parent_row["setup_json"])
+        except ValueError:
+            # A corrupt setup_json keeps its established failure mode:
+            # fork_session parses it again below and its ValueError maps to
+            # the 400 in the handler underneath.
+            parent_setup = None
+        # Membership, not key-presence, mirrors _resolve_runtime exactly: a
+        # row hand-edited to "runtime_id": null still counts as unpinned.
+        unpinned = (
+            isinstance(parent_setup, dict)
+            and parent_setup.get("runtime_id") not in _SESSION_PINNED_RUNTIME_IDS
+        )
+        if unpinned and unpinned_session_runtime_is_model_free(request.app, conn):
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "No AI model is configured, so a conversation cannot be "
+                    "started. Finish setup (install the recommended model, or "
+                    "connect Ollama or a local GGUF file) and try again."
+                ),
+            )
 
     try:
         branch_session_id, created_at = fork_session(
