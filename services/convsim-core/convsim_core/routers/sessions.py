@@ -25,6 +25,10 @@ from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, field_validator
 
 from convsim_core.runtime import build_runtime
+from convsim_core.runtime.active import (
+    MODEL_FREE_RUNTIME_IDS,
+    unpinned_session_runtime_is_model_free,
+)
 from convsim_core.runtime.base import ChatRuntime
 from convsim_core.scenario_state import build_variable_defs, partition_state_by_visibility
 from convsim_core.scenarios import resolve_scenario_info
@@ -347,7 +351,10 @@ def _row_to_response(row: Any) -> SessionResponse:
 #: Runtimes that are stateless, model-free and cheap to instantiate per request.
 #: A session that starts on one of these keeps it for its whole lifetime, so a
 #: scripted tutorial cannot be hijacked by a model install that finishes mid-play.
-_SESSION_PINNED_RUNTIME_IDS = ("scripted", "fake")
+#: Aliased to the shared model-free set: the pin-lifetime rule and the 409
+#: backstops (#473/#476) are about the same runtimes by definition today. Keep
+#: SessionCreateRequest.runtime_id's Literal in sync if this set ever changes.
+_SESSION_PINNED_RUNTIME_IDS = MODEL_FREE_RUNTIME_IDS
 
 
 def _pinned_runtime_id(requested: str | None, conn: Any) -> str | None:
@@ -415,24 +422,17 @@ async def create_session(body: SessionCreateRequest, request: Request) -> Sessio
     conn = request.app.state.db.connection()
 
     # Backstop for issue #473: a session may only run on a model-free runtime
-    # when the request explicitly pinned one (tests / dev tooling). Resolve the
-    # runtime the same way _resolve_runtime will — persisted active selection,
-    # else the shared app runtime (whose config default is "fake" on a profile
-    # that never installed a model) — and refuse to start a facsimile
-    # conversation that would masquerade as the product.
-    if body.runtime_id is None:
-        effective_runtime_id = get_active_config(conn).get("runtime_id")
-        if effective_runtime_id is None:
-            effective_runtime_id = getattr(request.app.state.runtime, "id", None)
-        if effective_runtime_id in _SESSION_PINNED_RUNTIME_IDS:
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    "No AI model is configured, so a conversation cannot be "
-                    "started. Finish setup (install the recommended model, or "
-                    "connect Ollama or a local GGUF file) and try again."
-                ),
-            )
+    # when the request explicitly pinned one (tests / dev tooling). Refuse to
+    # start a facsimile conversation that would masquerade as the product.
+    if body.runtime_id is None and unpinned_session_runtime_is_model_free(request.app, conn):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "No AI model is configured, so a conversation cannot be "
+                "started. Finish setup (install the recommended model, or "
+                "connect Ollama or a local GGUF file) and try again."
+            ),
+        )
 
     session_id = _generate_session_id()
     now = _now_iso()

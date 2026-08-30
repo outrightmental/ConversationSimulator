@@ -27,6 +27,7 @@ from pydantic import BaseModel
 
 from convsim_core.config import ServiceConfig
 from convsim_core.errors import ConvsimError
+from convsim_core.runtime.active import unpinned_session_runtime_is_model_free
 from convsim_core.packs.importer import safe_extract_zip
 from convsim_core.packs.models import ValidationResult
 from convsim_core.packs.validator import validate_pack_cached, validate_pack_dir
@@ -579,6 +580,22 @@ async def start_test_session(request: Request, kind: str, slug: str) -> Workbenc
             status_code=422,
         ) from exc
 
+    # A scenario preview is only meaningful against a real model (issue #476).
+    # The setup dict below carries no runtime_id pin, so turns on this session
+    # resolve to the shared app runtime — the config-default "fake" on a
+    # profile with no model installed, whose every reply is canned. Refuse
+    # loudly instead, the same rule create_session applies to player sessions
+    # (issue #473).
+    conn = request.app.state.db.connection()
+    if unpinned_session_runtime_is_model_free(request.app, conn):
+        raise ConvsimError(
+            "MODEL_REQUIRED",
+            "No AI model is configured, so the scenario cannot be previewed. "
+            "Finish setup (install the recommended model, or connect Ollama "
+            "or a local GGUF file) and try again.",
+            status_code=409,
+        )
+
     # Register under a unique ID so the standard turn endpoint can find it.
     dynamic_id = f"__wbtest__{uuid.uuid4().hex}"
     register_dynamic_scenario(dynamic_id, scenario_info)
@@ -588,8 +605,6 @@ async def start_test_session(request: Request, kind: str, slug: str) -> Workbenc
     initial_state = initialize_state(var_defs)
     opening_text = scenario_info.opening_npc_says or "Hello. Let's begin."
 
-    db = request.app.state.db
-    conn = db.connection()
     session_id = f"wbtest-{secrets.token_hex(8)}"
     now = _now_iso()
 
