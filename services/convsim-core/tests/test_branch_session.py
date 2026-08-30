@@ -622,6 +622,45 @@ class TestBranchModelFreeBackstop:
         )
         assert res.status_code == 201, res.text
 
+    def test_branch_with_corrupt_setup_json_keeps_returning_400(self, client):
+        """The gate's early setup_json parse must not turn a corrupt row's
+        established 400 (fork_session's ValueError) into a 500."""
+        session_id = _play_turns(client, n=1)
+        conn = client.app.state.db.connection()
+        conn.execute(
+            "UPDATE turn_sessions SET setup_json = 'not json' WHERE session_id = ?",
+            (session_id,),
+        )
+        conn.commit()
+
+        res = client.post(
+            f"/api/sessions/{session_id}/branch", json={"fork_turn_number": 1}
+        )
+        assert res.status_code == 400, res.text
+
+    def test_branch_treats_null_runtime_id_as_unpinned(self, client):
+        """Membership semantics, matching _resolve_runtime: a row hand-edited
+        to "runtime_id": null is unpinned and gets the 409 on a no-model
+        profile, not a silent canned-replies branch."""
+        session_id = _play_turns(client, n=1)
+        conn = client.app.state.db.connection()
+        row = conn.execute(
+            "SELECT setup_json FROM turn_sessions WHERE session_id = ?",
+            (session_id,),
+        ).fetchone()
+        setup = json.loads(row["setup_json"])
+        setup["runtime_id"] = None
+        conn.execute(
+            "UPDATE turn_sessions SET setup_json = ? WHERE session_id = ?",
+            (json.dumps(setup), session_id),
+        )
+        conn.commit()
+
+        res = client.post(
+            f"/api/sessions/{session_id}/branch", json={"fork_turn_number": 1}
+        )
+        assert res.status_code == 409, res.text
+
 
 # ---------------------------------------------------------------------------
 # Integration tests — GET /sessions/{id}/compare
