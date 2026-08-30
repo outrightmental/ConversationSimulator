@@ -932,6 +932,29 @@ def test_register_gguf_failed_validation_leaves_runtime_untouched(client):
     assert getattr(client.app.state.runtime, "id", None) == "fake"
 
 
+def test_register_gguf_activation_failure_does_not_fail_registration(
+    client, tmp_path, monkeypatch
+):
+    """The live swap is best-effort: an environment broken enough to make
+    runtime construction fail must not turn a successful registration into a
+    500 — the persisted selection applies on the next startup instead."""
+    import convsim_core.runtime.active as active_module
+
+    def _broken_build(runtime_id):
+        raise RuntimeError("engine config is broken")
+
+    monkeypatch.setattr(active_module, "build_runtime", _broken_build)
+    model_file = tmp_path / "model.gguf"
+    model_file.write_bytes(b"\x00" * 16)
+    resp = client.post("/api/models/register-gguf", json={"path": str(model_file)})
+    assert resp.status_code == 200
+    assert resp.json()["active_runtime_id"] == "llama_cpp"
+    # Live runtime untouched; the persisted selection still committed.
+    assert getattr(client.app.state.runtime, "id", None) == "fake"
+    body = client.get("/api/models").json()
+    assert body["active"]["runtime_id"] == "llama_cpp"
+
+
 # ── model_manager_service: register_user_gguf ────────────────────────────────
 
 
