@@ -551,6 +551,79 @@ class TestBranchEndpoint:
 
 
 # ---------------------------------------------------------------------------
+# Integration tests — issue #481 model-free backstop
+# ---------------------------------------------------------------------------
+
+
+def _play_unpinned_turns(client: TestClient, n: int = 2) -> str:
+    """Like _play_turns, but the session follows the live runtime (no pin).
+
+    The issue-#473 backstop refuses unpinned creation on a model-free
+    selection, so a real-model selection is activated first — the live
+    runtime object stays the config-default fake runtime, which serves the
+    turns (the persist-without-activate test pattern).
+    """
+    from convsim_core.services.model_manager_service import set_active_config
+
+    set_active_config(
+        client.app.state.db.connection(),
+        runtime_id="llama_cpp",
+        model_id="/tmp/model.gguf",
+    )
+    setup = {k: v for k, v in _VALID_SETUP.items() if k != "runtime_id"}
+    res = client.post("/api/sessions", json=setup)
+    assert res.status_code == 201, res.text
+    session_id = res.json()["session_id"]
+
+    client.post(f"/api/sessions/{session_id}/start")
+    for i in range(n):
+        res = client.post(
+            f"/api/sessions/{session_id}/turn",
+            json={"content": f"Player message {i + 1}"},
+        )
+        assert res.status_code == 200
+    return session_id
+
+
+class TestBranchModelFreeBackstop:
+    def test_branch_of_unpinned_parent_refused_when_selection_is_model_free(
+        self, client
+    ):
+        """Issue #481: a branch inherits the parent's unpinned setup, so its
+        re-simulated turns would follow the live runtime — refuse with the
+        same 409 create_session raises rather than serve canned replies."""
+        from convsim_core.services.model_manager_service import set_active_config
+
+        session_id = _play_unpinned_turns(client, n=1)
+        set_active_config(client.app.state.db.connection(), runtime_id="scripted")
+
+        res = client.post(
+            f"/api/sessions/{session_id}/branch", json={"fork_turn_number": 1}
+        )
+        assert res.status_code == 409, res.text
+        assert "finish setup" in res.json()["detail"].lower()
+
+    def test_branch_of_unpinned_parent_allowed_with_real_selection(self, client):
+        session_id = _play_unpinned_turns(client, n=1)
+
+        res = client.post(
+            f"/api/sessions/{session_id}/branch", json={"fork_turn_number": 1}
+        )
+        assert res.status_code == 201, res.text
+
+    def test_branch_of_pinned_parent_allowed_without_any_model(self, client):
+        """An explicitly pinned parent keeps branching on a fresh no-model
+        profile — the pin travels in setup_json, the same contract that lets
+        create_session accept explicit scripted/fake pins."""
+        session_id = _play_turns(client, n=1)
+
+        res = client.post(
+            f"/api/sessions/{session_id}/branch", json={"fork_turn_number": 1}
+        )
+        assert res.status_code == 201, res.text
+
+
+# ---------------------------------------------------------------------------
 # Integration tests — GET /sessions/{id}/compare
 # ---------------------------------------------------------------------------
 
