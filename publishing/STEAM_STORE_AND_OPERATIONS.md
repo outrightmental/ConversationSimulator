@@ -181,7 +181,7 @@ until every item is checked.
 #### Platform and QA
 
 - [ ] Smoke matrix from [`docs/release-checklist.md`](../docs/release-checklist.md)
-      has been run and passed on Windows 10/11, macOS 13+, Linux x86-64, and
+      has been run and passed on Windows 10/11, macOS 14+, Linux x86-64, and
       Steam Deck.
 - [ ] Steam beta verification (Parts E, G, H, I, J of
       [`docs/release-checklist.md`](../docs/release-checklist.md)) is complete and

@@ -105,7 +105,7 @@ gate is opened.
 | Platform | Tier | Notes |
 |----------|------|-------|
 | **Windows 10 / 11 (x86-64)** | Required | Primary target. NSIS installer. SmartScreen code signing required. |
-| **macOS 13+ (Apple Silicon and Intel)** | Required | Universal binary preferred. Gatekeeper notarisation required. `.dmg` installer. |
+| **macOS 14+ (Apple Silicon and Intel)** | Required | Universal binary preferred. Gatekeeper notarisation required. `.dmg` installer. |
 | **Linux (x86-64, glibc)** | Required | AppImage or Flatpak. Tested on Ubuntu 22.04 LTS and Fedora 40. |
 | **Steam Deck / SteamOS (x86-64)** | Required for public release | Verified (not Playable) tier. Controller navigation must work in the main menu and model manager. Keyboard input must work in-game. Battery impact must be documented. |
 

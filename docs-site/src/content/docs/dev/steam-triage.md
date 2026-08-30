@@ -80,7 +80,7 @@ any of the following are open:
 - Any issue labelled `severity:critical`
 - Any `privacy` or `safety` issue not yet resolved or explicitly accepted as
   a known limitation with a documented mitigation
-- Any `platform-bug` on a required platform (Windows 10/11, macOS 13+, Linux
+- Any `platform-bug` on a required platform (Windows 10/11, macOS 14+, Linux
   x86-64, Steam Deck) labelled `severity:high` or above
 
 See [steam-mvp-scope.md](/dev/steam-mvp-scope/) for the full pass/fail release

@@ -189,7 +189,7 @@ each required platform. Do not skip this step — CDN propagation issues and
 package configuration errors sometimes only appear on non-partner accounts.
 
 - [ ] Windows 10 or 11: fresh install, app launches, reaches home screen.
-- [ ] macOS 13+: fresh install, Gatekeeper passes, app launches.
+- [ ] macOS 14+: fresh install, Gatekeeper passes, app launches.
 - [ ] Linux / SteamOS: fresh install, app launches, reaches home screen.
 - [ ] Steam Deck (Gaming Mode): fresh install, app launches via Gaming Mode.
 

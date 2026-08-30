@@ -30,7 +30,7 @@ uses exactly three depots — one per target platform:
 | Depot variable | Platform | Content root |
 |----------------|----------|--------------|
 | `STEAM_DEPOT_WINDOWS_ID` | Windows 10 / 11 x86-64 | `steam-content/windows/` |
-| `STEAM_DEPOT_MACOS_ID` | macOS 13+ (Apple Silicon + Intel) | `steam-content/macos/` |
+| `STEAM_DEPOT_MACOS_ID` | macOS 14+ (Apple Silicon + Intel) | `steam-content/macos/` |
 | `STEAM_DEPOT_LINUX_ID` | Linux x86-64 + SteamOS 3.x | `steam-content/linux/` |
 
 A depot ID is a non-secret number assigned by Valve at registration. It appears

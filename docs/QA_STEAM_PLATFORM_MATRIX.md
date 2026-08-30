@@ -13,8 +13,8 @@
 | Platform | OS versions in scope | Architecture | Installer format | Tier |
 |----------|---------------------|--------------|------------------|------|
 | **Windows** | Windows 10 (build 19041+), Windows 11 | x86-64 | NSIS `.exe`, MSI | Required |
-| **macOS — Apple Silicon** | macOS 13 Ventura, macOS 14 Sonoma, macOS 15+ | arm64 | `.dmg` | Required |
-| **macOS — Intel** | macOS 13 Ventura, macOS 14 Sonoma | x86-64 | `.dmg` | Required |
+| **macOS — Apple Silicon** | macOS 14 Sonoma, macOS 15+ | arm64 | `.dmg` | Required |
+| **macOS — Intel** | macOS 14 Sonoma | x86-64 | `.dmg` | Required |
 | **Linux (glibc)** | Ubuntu 22.04 LTS, Ubuntu 24.04 LTS, Fedora 40+ | x86-64 | AppImage, `.deb` | Required |
 | **Steam Deck / SteamOS** | SteamOS 3.x (based on Arch Linux) | x86-64 | Flatpak / AppImage | Required for public release |
 
@@ -22,6 +22,9 @@
 
 - Windows 8.1 and earlier — no WebView2 support
 - macOS 12 Monterey — dropped from QA matrix; may still work but is untested
+- macOS 13 Ventura — dropped (issue #472): no upstream llama.cpp prebuilt
+  targets macOS 13, so the bundled engine cannot launch there; the shipped
+  floor is 14.0, enforced in CI by the `llama-minos-gate` job
 - 32-bit (x86) on any platform
 - ARM Windows — not targeted in v1
 - ChromeOS / Android / iOS — not targeted in v1

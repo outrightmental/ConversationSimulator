@@ -138,7 +138,7 @@ the binaries and resources for that platform.
 | Depot variable | Platform | Content |
 |----------------|----------|---------|
 | `STEAM_DEPOT_WINDOWS_ID` | Windows 10 / 11 (x86-64) | Portable application tree — `ConversationSimulator.exe` at depot root; no NSIS installer |
-| `STEAM_DEPOT_MACOS_ID` | macOS 13+ (Apple Silicon + Intel) | Tauri `.app` bundle |
+| `STEAM_DEPOT_MACOS_ID` | macOS 14+ (Apple Silicon + Intel) | Tauri `.app` bundle |
 | `STEAM_DEPOT_LINUX_ID` | Linux x86-64 + SteamOS 3.x | Tauri binary and resources |
 
 ### Launch options
