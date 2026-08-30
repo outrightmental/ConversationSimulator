@@ -90,7 +90,7 @@ account) to catch first-run issues that don't appear on development machines.
 
 | Item | Minimum | Recommended |
 |---|---|---|
-| OS | macOS 13, Ubuntu 22.04, Windows 10 build 19041 | Latest stable |
+| OS | macOS 14, Ubuntu 22.04, Windows 10 build 19041 | Latest stable |
 | CPU | 64-bit x86 or Apple Silicon | Apple Silicon M2 or newer |
 | RAM | 8 GB | 16 GB |
 | Disk free | 10 GB | 20 GB |
@@ -678,7 +678,7 @@ Run this checklist on a **clean macOS machine** (fresh Steam library, no prior
 Conversation Simulator data) before declaring the macOS Stage 3 gate open.
 It is the macOS equivalent of Part E.
 
-Minimum hardware: macOS 13 Ventura or newer, Apple Silicon (arm64) or Intel
+Minimum hardware: macOS 14 Sonoma or newer, Apple Silicon (arm64) or Intel
 (x86-64).  See `docs/platform-notes.md` for system requirements.
 
 ### G.1 Gatekeeper and notarization

@@ -77,7 +77,7 @@ That means:
 | Platform | Status |
 |----------|--------|
 | Windows 10 / 11 (x86-64) | Fully supported |
-| macOS 13 Ventura or later (Apple Silicon and Intel) | Fully supported |
+| macOS 14 Sonoma or later (Apple Silicon and Intel) | Fully supported |
 | Linux x86-64 (Ubuntu 22.04+, Fedora 38+, Arch-based) | Fully supported |
 | Steam Deck / SteamOS (Gaming Mode and Desktop Mode) | Verified — text and keyboard; voice requires an external USB or Bluetooth microphone |
 

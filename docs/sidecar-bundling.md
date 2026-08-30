@@ -180,12 +180,12 @@ instant it launches on any older macOS — in the Steam depot this surfaced as
   change under `runtimes/llama_cpp/**`. The release workflow bundles via
   `download-runtime.sh`, so it inherits the same gate.
 
-Note the floor is currently 14.0 because upstream prebuilts have targeted
-macOS 14 for a long stretch of releases, while the Steam QA matrix
-([QA_STEAM_PLATFORM_MATRIX.md](QA_STEAM_PLATFORM_MATRIX.md)) lists macOS 13
-as the oldest supported release — closing that gap needs a source build with
-`MACOSX_DEPLOYMENT_TARGET=13` (or a matrix amendment) and is tracked
-separately.
+The floor is 14.0 because upstream prebuilts have targeted macOS 14 for a
+long stretch of releases (b9428+ jumped straight to 26.0). The Steam QA
+matrix ([QA_STEAM_PLATFORM_MATRIX.md](QA_STEAM_PLATFORM_MATRIX.md)) was
+amended to match (issue #472): macOS 14 Sonoma is the oldest supported
+release. Re-adding macOS 13 would require building llama.cpp from source
+with `MACOSX_DEPLOYMENT_TARGET=13`.
 
 ---
 

@@ -15,9 +15,9 @@ Steam store page and the Stage 3/4 release gates.
 
 | | Minimum | Recommended |
 |---|---|---|
-| **OS** | macOS 13 Ventura | macOS 14 Sonoma or newer |
+| **OS** | macOS 14 Sonoma | macOS 15 Sequoia or newer |
 | **Architecture** | Apple Silicon (arm64) or Intel (x86-64) | Apple Silicon (M2 or newer) |
-| **CPU** | Apple M1 / Intel Core i5 (6th gen or newer) | Apple M2 or newer |
+| **CPU** | Apple M1 / Intel Core i5 (8th gen or newer) | Apple M2 or newer |
 | **RAM** | 8 GB | 16 GB |
 | **Storage** | 2 GB free (app) + 3 GB per downloaded model | 5 GB free |
 | **GPU / ANE** | Integrated GPU | Apple Neural Engine (M1+) for fast inference |
@@ -33,7 +33,7 @@ Notes:
 
 ### Supported versions
 
-macOS 13 Ventura or newer. Apple Silicon (M1+) and Intel are both supported
+macOS 14 Sonoma or newer. Apple Silicon (M1+) and Intel are both supported
 with separate installer builds (`.dmg` files differ by architecture).
 
 ### Build prerequisites

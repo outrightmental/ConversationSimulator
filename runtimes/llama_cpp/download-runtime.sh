@@ -56,10 +56,11 @@ done
 # the download if the new artifacts raise the declared minimum; verify the
 # candidate tag on every platform before raising the floor here.
 #
-# NOTE: no upstream prebuilt satisfies the documented macOS 13 (Ventura) floor
-# in docs/QA_STEAM_PLATFORM_MATRIX.md — every recent release targets 14.0+.
-# Supporting 13 requires building llama.cpp from source with
-# MACOSX_DEPLOYMENT_TARGET=13 (tracked separately from #469).
+# NOTE: no upstream prebuilt targets macOS 13 or older — every recent release
+# targets 14.0+ — so the documented support floor in
+# docs/QA_STEAM_PLATFORM_MATRIX.md is macOS 14 Sonoma (issue #472). Supporting
+# older macOS would require building llama.cpp from source with
+# MACOSX_DEPLOYMENT_TARGET set accordingly.
 LLAMA_CPP_PINNED_VERSION="b9415"
 
 # Highest macOS minimum the bundled binaries may declare (see above). Override
