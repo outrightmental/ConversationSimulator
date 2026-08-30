@@ -759,6 +759,20 @@ def test_start_test_session_model_free_selection_returns_409(tmp_path, monkeypat
         assert resp.json()["error"]["code"] == "MODEL_REQUIRED"
 
 
+def test_start_test_session_stale_selection_returns_409(tmp_path, monkeypatch):
+    """A persisted runtime id the current build doesn't register cannot vouch
+    for a preview: startup ignores it (resolve_startup_runtime_id) and boots
+    the config-default fake runtime, so the gate must refuse the same way."""
+    from convsim_core.services.model_manager_service import set_active_config
+
+    app = _ts_app(tmp_path, monkeypatch)
+    with TestClient(app) as c:
+        set_active_config(app.state.db.connection(), runtime_id="runtime-from-the-future")
+        resp = c.post("/api/workbench/packs/local-dev/ts-pack/test-session")
+        assert resp.status_code == 409, resp.text
+        assert resp.json()["error"]["code"] == "MODEL_REQUIRED"
+
+
 def test_start_test_session_no_scenario_returns_422(client):
     # The minimal fixture pack (my-pack) has a scenario file but it's just a stub
     # without player_role/npc/opening. However there IS a scenarios/basic.yaml file,

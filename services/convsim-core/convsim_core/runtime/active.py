@@ -40,11 +40,17 @@ def unpinned_session_runtime_is_model_free(app: Any, conn: sqlite3.Connection) -
     the persisted active selection wins (tests may activate a selection without
     swapping the live runtime), else the live ``app.state.runtime`` — whose
     config default is ``fake`` on a profile that never installed a model.
+
+    A persisted id the current build does not register cannot vouch for a
+    session: startup ignores it the same way (``resolve_startup_runtime_id``)
+    and boots the config default, so it falls through to the live runtime here
+    too instead of silently approving a conversation the fake runtime would
+    serve.
     """
     from convsim_core.services.model_manager_service import get_active_config
 
     effective = get_active_config(conn).get("runtime_id")
-    if effective is None:
+    if effective not in list_runtime_ids():
         effective = getattr(getattr(app.state, "runtime", None), "id", None)
     return effective in MODEL_FREE_RUNTIME_IDS
 

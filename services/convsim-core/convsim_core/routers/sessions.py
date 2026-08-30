@@ -351,6 +351,9 @@ def _row_to_response(row: Any) -> SessionResponse:
 #: Runtimes that are stateless, model-free and cheap to instantiate per request.
 #: A session that starts on one of these keeps it for its whole lifetime, so a
 #: scripted tutorial cannot be hijacked by a model install that finishes mid-play.
+#: Aliased to the shared model-free set: the pin-lifetime rule and the 409
+#: backstops (#473/#476) are about the same runtimes by definition today. Keep
+#: SessionCreateRequest.runtime_id's Literal in sync if this set ever changes.
 _SESSION_PINNED_RUNTIME_IDS = MODEL_FREE_RUNTIME_IDS
 
 
