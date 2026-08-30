@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 import time
 from datetime import datetime, timezone
@@ -11,6 +12,8 @@ from typing import Any, Optional
 import httpx
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 from convsim_core.errors import ConvsimError
 from convsim_core.runtime import build_runtime, list_runtime_ids
@@ -604,6 +607,30 @@ async def register_gguf(request: Request, body: RegisterGgufRequest) -> Register
     )
 
     set_active_config(conn, runtime_id="llama_cpp", model_id=path)
+
+    # Swap the LIVE runtime too, exactly as /api/models/use does after
+    # persisting (issue #480). Persisting alone leaves app.state.runtime on
+    # the startup default — the fake runtime on a fresh profile — so until a
+    # restart every unpinned session would pass the model-free gates on the
+    # strength of this selection while its turns were still served canned
+    # fake-runtime replies. The setup flow starts the engine itself right
+    # after this call, so no ensure-running here; a turn before the engine is
+    # up degrades to the pipeline's one-line safe fallback rather than a full
+    # canned conversation.
+    from convsim_core.runtime.active import activate_runtime
+
+    # Guarded like the setup pipeline's post-persist activation: the
+    # registration itself succeeded, and an environment broken enough to make
+    # runtime construction fail must not turn that into a 500 — the startup
+    # resolver applies the persisted selection on the next boot instead.
+    try:
+        await activate_runtime(request.app, "llama_cpp")
+    except Exception:  # noqa: BLE001 — best-effort swap; see comment above
+        logger.warning(
+            "register-gguf: persisted llama_cpp selection but live runtime "
+            "activation failed; selection applies on next startup",
+            exc_info=True,
+        )
 
     return RegisterGgufResponse(
         profile_id=profile["id"],
