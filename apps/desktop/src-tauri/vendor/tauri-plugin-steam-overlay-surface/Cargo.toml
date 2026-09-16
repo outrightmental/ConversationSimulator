@@ -1,0 +1,21 @@
+# Vendored from https://github.com/PSG-Team/tauri-steam-overlay-surface
+# (crates/tauri-plugin-steam-overlay-surface, v0.1.3, commit 5207155).
+# MIT — see LICENSE next to this file and VENDORED.md for the local edits.
+[package]
+name = "tauri-plugin-steam-overlay-surface"
+version = "0.1.3"
+edition = "2021"
+rust-version = "1.77.2"
+license = "MIT"
+description = "Steam in-game overlay (Shift+Tab) support for Tauri apps via a transparent decoy swapchain window"
+repository = "https://github.com/PSG-Team/tauri-steam-overlay-surface"
+publish = false
+
+[dependencies]
+log = "0.4"
+# "unstable" — raw (webview-less) windows for the overlay decoy surface.
+tauri = { version = "2", features = ["unstable"] }
+# 0.20 = the version proven against tauri 2 (raw-window-handle 0.6 match).
+wgpu = "0.20"
+# Hooked Steam screenshots hand Steam a PNG file (AddScreenshotToLibrary).
+png = "0.17"

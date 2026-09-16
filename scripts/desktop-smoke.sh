@@ -30,6 +30,14 @@ echo "Running cargo check on apps/desktop/src-tauri..."
 (cd "$DESKTOP_TAURI" && cargo check 2>&1)
 echo "  OK  cargo check passed."
 
+# The Steam depot is built with `--features steam` (Steamworks SDK bridge).
+# steamworks-sys bundles Valve's redistributable library, so this needs no SDK
+# download.  On Linux/macOS this covers everything except the Windows-only
+# overlay compositing surface, which CI checks separately on windows-latest.
+echo "Running cargo check --features steam on apps/desktop/src-tauri..."
+(cd "$DESKTOP_TAURI" && cargo check --features steam 2>&1)
+echo "  OK  cargo check --features steam passed."
+
 echo ""
 echo "Desktop smoke check passed."
 echo ""

@@ -28,11 +28,22 @@ enabled. Enabling the feature links the `steamworks` crate and activates the
 ```toml
 # apps/desktop/src-tauri/Cargo.toml
 [features]
-steam = ["dep:steamworks"]
+steam = ["dep:steamworks", "dep:tauri-plugin-steam-overlay-surface"]
 
 [dependencies]
-steamworks = { version = "0.11", optional = true }
+steamworks = { version = "0.13", optional = true }
+
+[target.'cfg(windows)'.dependencies]
+tauri-plugin-steam-overlay-surface = { path = "vendor/tauri-plugin-steam-overlay-surface", optional = true }
 ```
+
+`steamworks-sys` bundles Valve's redistributable client library
+(`steam_api64.dll`, `libsteam_api.dylib`, `libsteam_api.so`) and links against
+it, so building with the feature needs **no SDK download and no secret**; set
+`STEAM_SDK_LOCATION` only to build against a different SDK. At runtime the
+matching shared library must sit next to the executable — the Windows depot
+packaging step in `release.yml` copies `steam_api64.dll` out of the
+`steamworks-sys` build output for exactly that reason.
 
 ### Build variants
 
@@ -44,6 +55,18 @@ steamworks = { version = "0.11", optional = true }
 The open-source release and the Steam depot release are compiled from the same
 source. Enabling the `steam` feature in the Steam depot build is the only
 structural difference between the two.
+
+> **Which depots actually carry the feature.** As of v0.2.8 the release
+> workflow passes `--features steam` for the **Windows** Steam build only.
+> Every Steam build before v0.2.8 was compiled *without* the feature on every
+> platform — `SteamAPI_Init` never ran, so achievements, stats, rich presence,
+> Workshop, DLC checks and the Shift+Tab forwarder were all inert in the
+> shipped depot (this is why Valve's Sep 12 2026 review reported the overlay as
+> not appearing). macOS and Linux still build without it: their binaries would
+> dynamically link `libsteam_api.dylib` / `libsteam_api.so`, which the `.app`
+> and AppImage packaging does not yet bundle, so the app would fail to launch.
+> Bundling those libraries (and the corresponding overlay work) is the tracked
+> follow-up; see [Platform scope](#platform-scope).
 
 ### Testing with Steam App ID 480
 
@@ -83,7 +106,9 @@ The bridge consists of:
 | `steam_unlock_achievement` | `name: String` | Calls `steamworks::UserStats::achievement(name).set()` then `store_stats()` | Returns `false`, no-op |
 | `steam_increment_stat` | `name: String` | Reads current value, increments by 1, calls `store_stats()` | Returns `false`, no-op |
 | `steam_set_rich_presence` | `value: String` | Calls `steamworks::Friends::set_rich_presence("steam_display", Some(value))` — the key is fixed internally | Returns `false`, no-op |
-| `steam_activate_overlay` | — | Calls `steamworks::Friends::activate_game_overlay("")` to open the overlay (the Shift+Tab chord). See [Steam overlay (Windows WebView2 caveat)](#steam-overlay-windows-webview2-caveat) | Returns `false`, no-op |
+| `steam_activate_overlay` | — | Calls `steamworks::Friends::activate_game_overlay("")` to open the overlay (the Shift+Tab chord); returns `false` if the Steam client has the overlay disabled. See [Steam overlay (Windows WebView2 caveat)](#steam-overlay-windows-webview2-caveat) | Returns `false`, no-op |
+| `steam_overlay_status` | — | Returns `{ overlay_enabled, surface_active, surface_error, screenshots_hooked }` — the G3-03 QA readout (see the overlay section) | All fields `false` / `null` |
+| `steam_trigger_screenshot` | — | Captures the main window and adds it to the player's Steam screenshot library (the F12 hotkey, forwarded from the webview). Windows only | Returns `false`, no-op |
 | `steam_is_dlc_installed` | `dlc_app_id: u32` | Calls `steamworks::Apps::is_dlc_installed(AppId)` — reports whether the player owns and installed that premium DLC | Returns `false`, treated as not-owned |
 
 Commands can be called freely without checking whether Steam is available.
@@ -333,14 +358,19 @@ in its own process: the UI is rendered by **WebView2 in separate
 nothing to draw into, so the overlay has no surface. This is the same class of
 problem that makes Electron games pass `--in-process-gpu`.
 
-There are two independent failures, and both must be fixed:
+There are three independent failures, and all three had to be fixed:
 
+0. **The Steamworks SDK was never in the shipped build.** Until v0.2.8 the
+   release workflow built every Steam depot without `--features steam`, so
+   `SteamAPI_Init` never ran and nothing below could work regardless of the
+   code. The Windows Steam build now passes the feature and ships
+   `steam_api64.dll` (see [Feature flag and build variants](#feature-flag-and-build-variants)).
 1. **The Shift+Tab chord never reaches Steam.** Steam opens the overlay by
    catching Shift+Tab in the game process via an input hook. In a Tauri app the
    keystroke lands in the WebView2 process, which Steam's hook never sees, so the
-   default chord is a silent no-op.
+   default chord is a silent no-op. Same for F12 (screenshots).
 2. **The overlay has nothing to render into** (the swapchain problem above), so
-   even once opened it is not visible on Windows.
+   even once opened it is not visible.
 
 ### Why this is dangerous: every Steamworks signal says success
 
@@ -357,37 +387,54 @@ sees no crash and no session disruption, so the honest report is an ambiguous
 "nothing happened" rather than a clear FAIL. **Do not treat "no crash" as a pass
 on Windows.** See the G3-03 pass criterion in
 [`docs/steam-mvp-scope.md`](steam-mvp-scope.md) and the QA step in
-[`docs/QA_STEAM_PLATFORM_MATRIX.md`](QA_STEAM_PLATFORM_MATRIX.md), which now
+[`docs/QA_STEAM_PLATFORM_MATRIX.md`](QA_STEAM_PLATFORM_MATRIX.md), which
 require the overlay to be *visibly composited over the app* on Windows.
 
-### The fix has two halves
+### What ships (v0.2.8, Windows)
 
-**Half 1 — chord forwarding (implemented, all platforms).** The front-end
-`useSteamOverlay` hook (`apps/web/src/hooks/useSteamOverlay.ts`) listens for
-Shift+Tab in the webview and forwards it to the `steam_activate_overlay` Tauri
-command, which calls `steamworks::Friends::activate_game_overlay("")`. This is
-the portable half and is required on every platform — without it the chord is
-dead even when a compositing surface exists. It only repurposes Shift+Tab when
+**Hotkey forwarding (all platforms).** The front-end `useSteamOverlay` hook
+(`apps/web/src/hooks/useSteamOverlay.ts`) listens for Shift+Tab and F12 in the
+webview and forwards them to the `steam_activate_overlay` /
+`steam_trigger_screenshot` Tauri commands. It only repurposes the keys when
 `get_steam_status().is_steam_enabled` is true, so the standard reverse-tab
-keyboard affordance is untouched in the browser and non-Steam builds.
+affordance (and F12 devtools in the browser) are untouched in non-Steam builds.
 
-**Half 2 — decoy compositing surface (Windows only, not yet vendored).** For the
-overlay to be *visible* on Windows, the app must give Steam's injected layer
-something to composite into: a **transparent, click-through, borderless child
-window** covering the main window, with a **wgpu swapchain presenting empty
-frames at vsync**. Steam composites the overlay, notifications, and toasts into
-those frames at `Present` time; the app stays visible through every untouched
-pixel. This is Win32 + wgpu native code and is intentionally **not** committed
-here yet — it needs verification on real Steam-launched Windows hardware before
-it ships. An MIT-licensed extraction that implements exactly this surface (with
-**no `steamworks` dependency** — the app owns SDK init and the callback pump and
-forwards one callback, so there is no version coupling) is available for
-integration:
+**Compositing surface (Windows).** `vendor/tauri-plugin-steam-overlay-surface`
+(MIT, PSG Studios — vendored with two hardening edits, see its `VENDORED.md`)
+gives Steam's injected layer something to draw into: a **transparent,
+click-through, borderless owned window** exactly covering the main window, with
+a **wgpu swapchain presenting empty frames at vsync**. Steam composites the
+overlay, notifications, and toasts into those frames at `Present` time; the app
+stays visible through every untouched pixel. While the overlay is open the
+surface paints a frozen `PrintWindow` snapshot of the game behind Steam's UI,
+so Steam dims a game frame the way it does for native titles.
 
-- Plugin: <https://github.com/PSG-Team/tauri-steam-overlay-surface>
-- Context and demo: issue #444 (outside-contributor finding; verified on a real
-  Steam build across open/close/alt-tab cycles and 1920×1080 → 2560×1440 →
-  5120×1440 including live resolution switches and fullscreen↔windowed).
+**Wiring (`lib.rs` / `steam.rs`).** The order is load-bearing:
+
+1. `steam::init()` runs **before** `tauri::Builder` — Steam's overlay DLL hooks
+   device/swapchain creation, so `SteamAPI_Init` must be resident before the
+   plugin creates its wgpu device. `init()` also starts the **callback pump
+   thread** (`steam-callbacks`, 50 ms); before v0.2.8 nothing ever called
+   `run_callbacks`, so no Steamworks callback in the app could fire.
+2. The plugin is registered only when `SteamAPI_Init` succeeded (no decoy
+   window presenting frames for nobody when the exe runs outside Steam).
+3. In `setup()`, `SteamRuntime::wire_overlay_callbacks` forwards
+   `GameOverlayActivated` to the plugin (show + focus the sheet and accept
+   input while the overlay is open; hide, drop the backdrop and hand focus
+   back to the webview when it closes) and enables **hooked screenshots**
+   (`HookScreenshots(true)` + `ScreenshotRequested` → live capture →
+   `AddScreenshotToLibrary`). Without hooking, F12 would save the decoy's
+   backbuffer, which never contains the game.
+
+**QA readout.** `steam_overlay_status` returns
+`{ overlay_enabled, surface_active, surface_error, screenshots_hooked }`.
+Read it as:
+
+| `overlay_enabled` | `surface_active` | Meaning |
+|---|---|---|
+| true | true | Shift+Tab should *visibly* open the overlay. If it does not, record GPU + Windows build (see below). |
+| true | false | Steam is willing but the app has no surface; `surface_error` says why the decoy gave up (no transparent alpha mode, no adapter, 120 consecutive failed presents). |
+| false | — | The Steam client has the overlay disabled for this game (Steam → Settings → In Game), or the DLL was not injected (not launched through Steam). |
 
 ### Known limitation and a trap not to fall into
 
@@ -395,22 +442,46 @@ integration:
   forwarder is deaf until the user clicks the page once, because Windows
   reactivates the native window without returning keyboard focus to the webview.
 - **Do NOT "fix" it with `webview.set_focus()`** in the Rust focus handlers.
-  Shipping exactly that was reported to kill Shift+Tab entirely, even on a fresh
-  launch (reverted). `useSteamOverlay` deliberately contains no focus workaround.
+  Shipping exactly that was reported (upstream plugin v0.1.1) to kill Shift+Tab
+  entirely, even on a fresh launch, and was reverted. `useSteamOverlay`
+  deliberately contains no focus workaround.
+- **Screenshot feedback is ours.** With hooked screenshots Steam plays no
+  shutter and its "saved" toast lags by seconds; the hook flashes the page on a
+  successful capture. If the player rebinds Steam's screenshot key, only F12 is
+  forwarded while the overlay is closed (Steamworks has no API to read the
+  binding); the rebound key still works while the overlay is open.
+- **OBS / capture.** Use OBS's WGC capture method ("Windows 10 1903 and up" or
+  Automatic); legacy BitBlt shows black for accelerated WebView2 content. The
+  decoy carries `WS_EX_TOOLWINDOW` so it never appears in OBS's window picker.
+- **Cosmetic.** Steam's semi-transparent dim layer may blend slightly
+  differently than on a native title (unpremultiplied alpha); panels are opaque
+  and unaffected. Steam stores overlay panel positions per game in pixels, so
+  after shrinking the window a panel can sit off-screen — re-summon it from the
+  overlay toolbar.
 
 ### Platform scope
 
-The compositing surface is **Windows only**. It does nothing for the macOS and
-Linux legs, where overlay-over-webview is a separate and largely unsolved
-problem. So Half 1 + the surface closes **one third of G3-03** (the Windows leg),
-not the whole gate.
+The compositing surface is **Windows only**, and so is the `--features steam`
+build for now. On macOS and Linux the Steam depots still ship without the SDK:
+enabling the feature there also requires bundling `libsteam_api.dylib` inside
+the `.app` (next to the executable, or `install_name_tool` to
+`@executable_path/../Frameworks/`, before code signing) and `libsteam_api.so`
+inside the AppImage with `$ORIGIN` in the rpath — otherwise the app fails to
+launch. Overlay-over-webview on WebKitGTK / WKWebView is a separate and largely
+unsolved problem. So v0.2.8 closes **one third of G3-03** (the Windows leg),
+not the whole gate; Valve's build review is performed on Windows.
 
 ### Compatibility data wanted
 
 Overlay behaviour is GPU- and driver-sensitive, and the surface's verification
-sample so far is small (hybrid-GPU laptops are the least-tested case). When
-testing G3-03 on Windows, record GPU, Windows build, and whether the surface
-came up in [`docs/QA_STEAM_PLATFORM_MATRIX.md`](QA_STEAM_PLATFORM_MATRIX.md).
+sample so far is small (upstream: a real Steam-launched build, open/close/alt-tab
+cycles, 1920×1080 / 2560×1440 / 5120×1440 including live switches and
+fullscreen↔windowed; hybrid-GPU laptops are the least-tested case). When
+testing G3-03 on Windows, record GPU, Windows build, the `steam_overlay_status`
+readout, and whether the surface came up in
+[`docs/QA_STEAM_PLATFORM_MATRIX.md`](QA_STEAM_PLATFORM_MATRIX.md).
+`WGPU_BACKEND=dx12|vulkan|gl` forces a backend for experiments without a
+rebuild.
 
 ---
 

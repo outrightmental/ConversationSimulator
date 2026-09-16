@@ -55,6 +55,21 @@ Licensing summary by content type (SPDX identifiers):
 
 ---------------------------------------------------------------------------
 
-Third-party runtime dependencies and their licenses will be listed here as
-they are introduced. This file is a placeholder until the first dependencies
-are added in Milestone 1.
+Third-party code vendored into this repository:
+
+  tauri-plugin-steam-overlay-surface
+    (apps/desktop/src-tauri/vendor/tauri-plugin-steam-overlay-surface/)
+    Copyright (c) 2026 The Private Sector Group, LLC (PSG Studios)
+    https://github.com/PSG-Team/tauri-steam-overlay-surface
+    SPDX-License-Identifier: MIT
+    Local modifications are listed in VENDORED.md next to the sources.
+
+Third-party binaries shipped in release artifacts:
+
+  Steam Client API (steam_api64.dll) — Windows Steam depot only
+    Copyright (c) Valve Corporation. Redistributable under the Steamworks SDK
+    Access Agreement; bundled via the steamworks-sys crate at build time.
+
+Other third-party runtime dependencies are declared in package.json /
+pnpm-lock.yaml (JavaScript), Cargo.toml (Rust) and pyproject.toml (Python)
+under their respective licenses.

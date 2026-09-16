@@ -36,7 +36,7 @@ The browser path (`apps/web`) continues to work independently via
 
 In addition to the base requirements from `./scripts/setup.sh` / `setup.ps1`:
 
-- **Rust** 1.77.2+ (install via [rustup](https://rustup.rs/))
+- **Rust** 1.80+ (install via [rustup](https://rustup.rs/)); CI and release builds use stable
 - **Tauri system dependencies** for your OS:
   - **macOS** — Xcode Command Line Tools (`xcode-select --install`)
   - **Linux** — `libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev`
