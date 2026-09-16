@@ -122,6 +122,16 @@ Recommendation from the engineering side: **C** now (B's restriction is a
 one-time storefront setting and reversible; A's position is worth stating on
 the record either way), revisited if a China release is ever planned.
 
+**Decision (2026-09-16, Outright Mental): Option C.** The reply to Valve
+states the out-of-scope position and the aligned safety features, and the
+Steam package is restricted from purchase in mainland China (Steamworks →
+App Admin → *Store* → *Packages & DLC* → package → *Edit package* → country
+restrictions, "Restrict purchases in the following countries": China). The
+restriction must be in place before the reply is sent, since the reply
+describes it as done. Reopening mainland-China availability is a deliberate
+future compliance project (this assessment, the 2023 Generative AI Measures,
+the 2025 AI-content labeling measures, and PRC counsel).
+
 ## Recommendations regardless of the option chosen
 
 Cheap alignment work that also improves the product for every player
