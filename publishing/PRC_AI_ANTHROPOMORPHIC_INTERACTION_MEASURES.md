@@ -46,7 +46,7 @@ interaction."
 |---|---|---|
 | Simulates personality / communication style | Yes — each scenario's NPC is an AI character with a defined persona, tone and goals (a hostile executive, a landlord, a café regular). | **Yes** |
 | Sustained emotional interaction; emotional care / companionship / support | No. The product is a **rehearsal tool**: the player picks a bounded scenario (job interview, negotiation, giving feedback, apology, language practice), plays it to a `max_turns` limit (≤100 turns, schema-enforced) and receives a **scored debrief**. Characters exist only inside their scenario; there is no companion, no open-ended chat, no persistence of an emotional bond. The published [safety policy](https://docs.conversationsimulator.com/trust/safety-policy/) states: "It is not an AI companion, not a chat platform, and not an adult content tool", and prohibits erotic roleplay, minors in romantic contexts, real-person impersonation and therapy positioning. | **No** |
-| Provided to the public within the PRC | The app is a global Steam title. Steam's international storefront is reachable from mainland China unless the package carries a country restriction (Steamworks → package → *Restrict purchases by country*). Whether this element is met is therefore a **distribution decision**, not a product property. | **Configurable** |
+| Provided to the public within the PRC | The app is a global Steam title. Steam's international storefront is reachable from mainland China unless the package carries a purchase-country restriction (applied by Valve on request through Steamworks Support; not self-service). Whether this element is met is therefore a **distribution decision**, not a product property. | **Configurable** |
 
 **Conclusion.** Conversation Simulator is most naturally characterised as a
 *learning and education* service — the category Article 2 excludes by name —
@@ -123,14 +123,18 @@ one-time storefront setting and reversible; A's position is worth stating on
 the record either way), revisited if a China release is ever planned.
 
 **Decision (2026-09-16, Outright Mental): Option C.** The reply to Valve
-states the out-of-scope position and the aligned safety features, and the
-Steam package is restricted from purchase in mainland China (Steamworks →
-App Admin → *Store* → *Packages & DLC* → package → *Edit package* → country
-restrictions, "Restrict purchases in the following countries": China). The
-restriction must be in place before the reply is sent, since the reply
-describes it as done. Reopening mainland-China availability is a deliberate
-future compliance project (this assessment, the 2023 Generative AI Measures,
-the 2025 AI-content labeling measures, and PRC counsel).
+(ticket HT-V9M8-5C9H-6YGN, sent 2026-09-16) states the out-of-scope position
+and the aligned safety features. Purchase-country restrictions are **not a
+self-service Steamworks setting** for this account — the package landing page
+(package 1722241) only displays territory restrictions, and the Steamworks
+Support wizard has no restriction category — so the mainland-China purchase
+restriction was **requested from Valve** via Steamworks Support → Managing
+Applications → Other, ticket **HT-VN34-VN5B-6VMB** (2026-09-16); the review
+reply says so rather than claiming the restriction is already applied. Until
+Valve confirms, the package's territory restrictions remain the default
+("Trade Restricted" only). Reopening mainland-China availability is a
+deliberate future compliance project (this assessment, the 2023 Generative AI
+Measures, the 2025 AI-content labeling measures, and PRC counsel).
 
 ## Recommendations regardless of the option chosen
 
