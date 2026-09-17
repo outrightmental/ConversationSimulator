@@ -259,6 +259,35 @@ jobs:
           echo "Local: bash scripts/desktop-smoke.sh"
           bash scripts/desktop-smoke.sh
 
+  # ── Desktop Rust check: the configuration that actually ships to Steam ─────
+  # release.yml builds the Windows Steam depot with `--features steam`, which
+  # compiles the Steamworks SDK bridge AND the Windows-only overlay compositing
+  # surface (vendor/tauri-plugin-steam-overlay-surface, cfg(windows)).  The
+  # Linux job above cannot see that code, so without this job the first
+  # compile of the shipped configuration would happen on the release tag.
+  desktop-rust-steam-windows:
+    name: Desktop Rust check (Windows, --features steam)
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Rust stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache Rust build artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri -> target
+          key: steam-feature
+      # `cargo check` only: the unit tests call `steam::init()` from several
+      # threads at once, which is fine against the no-SDK stub but is NOT a
+      # supported way to call the real `SteamAPI_Init`.  Tests run in the Linux
+      # job without the feature.
+      - name: Check desktop crate compiles with --features steam
+        working-directory: apps/desktop/src-tauri
+        env:
+          VITE_STEAM_DLC_APP_IDS: ${{ vars.STEAM_DLC_APP_IDS }}
+        run: cargo check --features steam
+
   pack-validation:
     name: Pack validation
     runs-on: ubuntu-latest

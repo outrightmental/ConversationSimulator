@@ -3,7 +3,9 @@
 name = "convsim-desktop"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.77.2"
+# Tauri 2 itself builds on 1.77.2; the optional `steam` feature pulls in
+# steamworks 0.13, whose MSRV is 1.80. CI and release builds use stable.
+rust-version = "1.80.0"
 
 [lib]
 name = "convsim_desktop_lib"
@@ -13,11 +15,23 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [features]
-# Enable real Steamworks SDK integration. Requires the Steamworks SDK at build
-# time (set STEAM_SDK_LOCATION) and steam_api shared library at runtime.
+# Enable real Steamworks SDK integration.
+#
+# The `steamworks-sys` crate bundles Valve's redistributable client library
+# (steam_api64.dll / libsteam_api.dylib / libsteam_api.so) and links against
+# it, so no separate SDK download is needed to build; set STEAM_SDK_LOCATION
+# only to override the bundled copy. At runtime the matching shared library
+# must sit next to the executable — the Windows Steam depot ships
+# steam_api64.dll for exactly this reason (see release.yml, "Package Windows
+# portable depot layout").
+#
 # Off by default so the app builds and runs without any Steam dependency.
 #   cargo tauri build --features steam
-steam = ["dep:steamworks"]
+#
+# On Windows the feature also enables the overlay compositing surface (see
+# vendor/tauri-plugin-steam-overlay-surface): the Steam overlay draws by
+# hooking an in-process swapchain, and a WebView2 app has none of its own.
+steam = ["dep:steamworks", "dep:tauri-plugin-steam-overlay-surface"]
 
 [dependencies]
 tauri = { version = "2", features = [] }
@@ -27,7 +41,16 @@ tauri-plugin-fs = "2"
 tauri-plugin-updater = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-steamworks = { version = "0.11", optional = true }
+# 0.13: `Client` is Send + Sync with `run_callbacks` on the client itself (the
+# callback pump thread needs that) and the ISteamScreenshots binding exists
+# (hooked F12 screenshots for the overlay surface). 0.11 had neither.
+steamworks = { version = "0.13", optional = true }
+
+# Windows only: the decoy swapchain the Steam overlay composites into. Vendored
+# (MIT, PSG Studios) with two hardening edits for our `panic = "abort"` release
+# profile — see vendor/tauri-plugin-steam-overlay-surface/VENDORED.md.
+[target.'cfg(windows)'.dependencies]
+tauri-plugin-steam-overlay-surface = { path = "vendor/tauri-plugin-steam-overlay-surface", optional = true }
 
 [profile.release]
 panic = "abort"

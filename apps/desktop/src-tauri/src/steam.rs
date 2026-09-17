@@ -125,6 +125,28 @@ pub struct SteamStatus {
     pub persona_name: Option<String>,
 }
 
+/// Diagnostic readout for the Steam overlay — the G3-03 release gate
+/// (docs/STEAM_INTEGRATION.md, "Steam overlay"). Every field is `false`/`null`
+/// outside Steam or when the `steam` Cargo feature is disabled.
+///
+/// Read it as: `overlay_enabled && surface_active` ⇒ Shift+Tab should
+/// *visibly* open the overlay on Windows. `overlay_enabled && !surface_active`
+/// ⇒ Steam is willing but the app has no compositing surface, and
+/// `surface_error` says why (or the platform has no surface implementation).
+#[derive(Clone, Debug, Default, Serialize)]
+pub struct SteamOverlayStatus {
+    /// `ISteamUtils::IsOverlayEnabled` — the Steam client has the overlay
+    /// enabled for this game (user setting + successful DLL injection).
+    pub overlay_enabled: bool,
+    /// The in-process decoy swapchain is up and presenting (Windows only).
+    pub surface_active: bool,
+    /// Why the decoy surface gave up, if it did (Windows only).
+    pub surface_error: Option<String>,
+    /// Steam's own F12 grab is disabled and the app supplies live frames
+    /// instead (`ISteamScreenshots::HookScreenshots`). Windows only.
+    pub screenshots_hooked: bool,
+}
+
 // ── Runtime handle for ongoing Steamworks API calls ───────────────────────────
 
 /// Live handle for achievement unlock, stat increment, and rich presence calls.
@@ -135,7 +157,11 @@ pub struct SteamStatus {
 /// `SteamStatus::is_steam_enabled` before calling.
 pub struct SteamRuntime {
     #[cfg(feature = "steam")]
-    client: Option<steamworks::Client<steamworks::ClientManager>>,
+    client: Option<steamworks::Client>,
+    /// Registered Steamworks callbacks. A `CallbackHandle` unregisters its
+    /// callback when dropped, so they live here for the process lifetime.
+    #[cfg(feature = "steam")]
+    callbacks: Vec<steamworks::CallbackHandle>,
     #[cfg(not(feature = "steam"))]
     _phantom: std::marker::PhantomData<()>,
 }
@@ -233,38 +259,115 @@ impl SteamRuntime {
     }
 
     // ── Steam overlay ─────────────────────────────────────────────────────────
+    //
+    // The overlay needs two things a WebView2 app does not give it by default
+    // (docs/STEAM_INTEGRATION.md, "Steam overlay (Windows WebView2 caveat)"):
+    //
+    //   1. An input path. Steam opens the overlay by catching Shift+Tab in the
+    //      game process; in a Tauri app the chord lands in the WebView2 child
+    //      process instead. The front-end forwards it to `activate_overlay`.
+    //   2. A surface to draw into. Steam renders by hooking the game's graphics
+    //      `Present` call, and this process never presents a swapchain of its
+    //      own. On Windows the vendored overlay-surface plugin supplies a decoy
+    //      swapchain, and Steam's `GameOverlayActivated` callback (forwarded in
+    //      `wire_overlay_callbacks`) tells it when to take and release input.
+    //
+    // Both halves need `SteamAPI_Init` to have succeeded, i.e. a build with
+    // `--features steam` launched through the Steam client.
 
     /// Open the Steam overlay in its default view (equivalent to the player
-    /// pressing Shift+Tab). Returns `false` when Steam is unavailable.
+    /// pressing Shift+Tab). Returns `false` when Steam is unavailable or the
+    /// Steam client reports the overlay as disabled for this game.
     ///
-    /// Why the front-end has to call this at all: Steam's overlay opens on
-    /// Shift+Tab by intercepting the chord in the game process via its input
-    /// hook. In a Tauri app the keystroke is delivered to the WebView2 child
-    /// process (`msedgewebview2.exe`), which Steam's hook never sees, so the
-    /// default chord is a silent no-op. The front-end therefore listens for
-    /// Shift+Tab and forwards it here (see `useSteamOverlay`), and this command
-    /// asks Steam to open the overlay programmatically.
-    ///
-    /// IMPORTANT (Windows / WebView2): opening the overlay is necessary but not
-    /// sufficient for it to be *visible*. Steam draws the overlay by hooking the
-    /// game's graphics `Present` call, but a Tauri app never presents a swapchain
-    /// in its own process — WebView2 renders out-of-process and composites
-    /// through DWM — so there is nothing for the injected layer to draw into.
-    /// Making the overlay actually render on Windows requires a decoy
-    /// compositing surface (a transparent, click-through child window presenting
-    /// empty frames at vsync). See the "Steam overlay (Windows WebView2 caveat)"
-    /// section of docs/STEAM_INTEGRATION.md. On macOS and Linux the overlay
-    /// compositing path is a separate, still-open problem. This command is the
-    /// portable, correct way to request the overlay on every platform; the extra
-    /// Windows surface is what makes the request user-visible there.
+    /// The front-end listens for Shift+Tab and forwards it here (see
+    /// `useSteamOverlay`) because the chord is delivered to the WebView2 child
+    /// process, which Steam's input hook never sees. On Windows the vendored
+    /// overlay-surface plugin gives Steam a swapchain to composite into, so the
+    /// request is user-visible; on macOS and Linux it is not yet (separate,
+    /// still-open problem — see the docs section above).
     pub fn activate_overlay(&self) -> bool {
         #[cfg(feature = "steam")]
         if let Some(ref client) = self.client {
+            if !client.utils().is_overlay_enabled() {
+                return false;
+            }
             // An empty dialog string opens the overlay in its default state,
             // matching the behaviour of the Shift+Tab chord.
             client.friends().activate_game_overlay("");
             return true;
         }
+        false
+    }
+
+    /// Diagnostic snapshot for the overlay gate — see [`SteamOverlayStatus`].
+    pub fn overlay_status(&self) -> SteamOverlayStatus {
+        #[cfg(feature = "steam")]
+        if let Some(ref client) = self.client {
+            return SteamOverlayStatus {
+                overlay_enabled: client.utils().is_overlay_enabled(),
+                surface_active: overlay_surface::surface_active(),
+                surface_error: overlay_surface::surface_error(),
+                screenshots_hooked: client.screenshots().is_screenshots_hooked(),
+            };
+        }
+        SteamOverlayStatus::default()
+    }
+
+    /// Register the Steamworks callbacks the overlay surface depends on. Call
+    /// once from Tauri `setup()`, after the main window exists. No-op outside
+    /// Steam, without the `steam` feature, or on platforms without a surface.
+    ///
+    /// - `GameOverlayActivated` → the surface shows itself and takes input while
+    ///   the overlay is open, then hides and hands focus back to the webview.
+    /// - `ScreenshotRequested` (with `HookScreenshots(true)`) → the app hands
+    ///   Steam a live capture of the main window. Without this, Steam's F12
+    ///   copies the decoy's backbuffer, which never contains the game.
+    ///
+    /// Callbacks run on the callback-pump thread started by [`init`]; every
+    /// Tauri window call the surface makes is thread-safe (proxied to the event
+    /// loop), and `PrintWindow` capture is documented safe off the main thread.
+    pub fn wire_overlay_callbacks(&mut self, app: tauri::AppHandle) {
+        #[cfg(feature = "steam")]
+        if let Some(ref client) = self.client {
+            if !overlay_surface::AVAILABLE {
+                return;
+            }
+            let handle = app.clone();
+            self.callbacks.push(client.register_callback(
+                move |ev: steamworks::GameOverlayActivated| {
+                    overlay_surface::on_overlay_activated(&handle, ev.active);
+                },
+            ));
+
+            client.screenshots().hook_screenshots(true);
+            let handle = app.clone();
+            let shot_client = client.clone();
+            self.callbacks.push(client.register_callback(
+                move |_: steamworks::screenshots::ScreenshotRequested| {
+                    capture_and_add_screenshot(&shot_client, &handle);
+                },
+            ));
+        }
+        #[cfg(not(feature = "steam"))]
+        let _ = app;
+    }
+
+    /// Take a Steam screenshot of the main window now and add it to the
+    /// player's Steam screenshot library. The front-end forwards F12 here for
+    /// the same reason it forwards Shift+Tab: the key lands in the WebView2
+    /// process, so Steam's own hotkey hook only sees it while the overlay is
+    /// open. Returns `false` when Steam is unavailable or capture failed.
+    ///
+    /// Deliberately does NOT go through `ISteamScreenshots::TriggerScreenshot`:
+    /// with hooking enabled that call never delivers a `ScreenshotRequested`
+    /// callback (verified live by the plugin author against Spacewar).
+    pub fn trigger_screenshot(&self, app: &tauri::AppHandle) -> bool {
+        #[cfg(feature = "steam")]
+        if let Some(ref client) = self.client {
+            return capture_and_add_screenshot(client, app);
+        }
+        #[cfg(not(feature = "steam"))]
+        let _ = app;
         false
     }
 
@@ -282,8 +385,11 @@ impl SteamRuntime {
         #[cfg(feature = "steam")]
         if let Some(ref client) = self.client {
             let ugc = client.ugc();
+            // `false`: skip items the player has locally disabled in the
+            // Workshop UI (steamworks 0.13 exposes the SDK's
+            // `bIncludeLocallyDisabled` flag; 0.11 always passed false).
             return ugc
-                .subscribed_items()
+                .subscribed_items(false)
                 .into_iter()
                 .map(|id| {
                     let install_info = ugc.item_install_info(id);
@@ -424,12 +530,69 @@ pub fn dlc_registry_from_env() -> Vec<(String, u32)> {
         .collect()
 }
 
+// ── Overlay compositing surface (platform shim) ──────────────────────────────
+//
+// The vendored `tauri-plugin-steam-overlay-surface` crate is a Windows-only
+// dependency (see Cargo.toml). This shim gives `SteamRuntime` one
+// platform-independent API so the rest of this file — and the Linux
+// `cargo check --features steam` in CI — never has to know the difference.
+
+#[cfg(all(feature = "steam", windows))]
+mod overlay_surface {
+    /// A compositing surface implementation exists for this platform.
+    pub const AVAILABLE: bool = true;
+    pub use tauri_plugin_steam_overlay_surface::{
+        capture_screenshot_png, on_overlay_activated, surface_active, surface_error,
+    };
+}
+
+#[cfg(all(feature = "steam", not(windows)))]
+mod overlay_surface {
+    /// No compositing surface on this platform yet: the overlay opens (Steam
+    /// reports success) but has nothing to draw into. Tracked as risk SP-06.
+    pub const AVAILABLE: bool = false;
+
+    pub struct CapturedScreenshot {
+        pub path: std::path::PathBuf,
+        pub width: u32,
+        pub height: u32,
+    }
+    pub fn on_overlay_activated(_app: &tauri::AppHandle, _active: bool) {}
+    pub fn surface_active() -> bool {
+        false
+    }
+    pub fn surface_error() -> Option<String> {
+        None
+    }
+    pub fn capture_screenshot_png(_app: &tauri::AppHandle) -> Option<CapturedScreenshot> {
+        None
+    }
+}
+
+/// Capture the main window and hand the PNG to Steam's screenshot library.
+/// Shared by the `ScreenshotRequested` callback (Steam saw F12 — overlay open)
+/// and the forwarded F12 command (overlay closed — only the webview saw it).
+#[cfg(feature = "steam")]
+fn capture_and_add_screenshot(client: &steamworks::Client, app: &tauri::AppHandle) -> bool {
+    let Some(shot) = overlay_surface::capture_screenshot_png(app) else {
+        return false;
+    };
+    client
+        .screenshots()
+        .add_screenshot_to_library(&shot.path, None, shot.width as i32, shot.height as i32)
+        .is_ok()
+}
+
 // ── Feature-gated Steamworks SDK bridge ──────────────────────────────────────
 //
 // To build with real Steam API support:
-//   1. Obtain the Steamworks SDK from https://partner.steamgames.com/doc/sdk
-//   2. Set STEAM_SDK_LOCATION to the unpacked SDK root directory.
-//   3. cargo tauri build --features steam
+//   cargo tauri build --features steam
+//
+// `steamworks-sys` bundles Valve's redistributable client library, so nothing
+// needs downloading; set STEAM_SDK_LOCATION only to build against a different
+// SDK. At runtime `SteamAPI_Init` succeeds only when the Steam client is
+// running AND the app id is known — launched through Steam (the client sets
+// `SteamAppId`) or via a `steam_appid.txt` next to the executable in dev.
 //
 // In local dev with the Spacewar test app:
 //   SteamAppId=480 cargo tauri dev --features steam
@@ -438,19 +601,43 @@ pub fn dlc_registry_from_env() -> Vec<(String, u32)> {
 mod sdk {
     use super::*;
 
+    /// How often the callback pump thread services Steamworks callbacks.
+    /// Bounds the latency of `GameOverlayActivated` (overlay input handoff)
+    /// and `ScreenshotRequested`; 50 ms is imperceptible and costs nothing.
+    const CALLBACK_PUMP_INTERVAL: std::time::Duration = std::time::Duration::from_millis(50);
+
     pub fn init() -> (SteamStatus, SteamRuntime) {
         let launched = is_launched_by_steam();
         let env_app_id = app_id_from_env();
 
         match steamworks::Client::init() {
-            Ok((client, _single)) => {
+            Ok(client) => {
+                // Steamworks delivers callbacks only while something calls
+                // `run_callbacks`; before this pump existed no callback in the
+                // app ever fired. Runs for the process lifetime. The overlay
+                // surface, Workshop unsubscribe acks, and stat-store results
+                // all arrive on this thread.
+                let pump = client.clone();
+                let _ = std::thread::Builder::new()
+                    .name("steam-callbacks".into())
+                    .spawn(move || loop {
+                        pump.run_callbacks();
+                        std::thread::sleep(CALLBACK_PUMP_INTERVAL);
+                    });
+
                 let status = SteamStatus {
                     is_steam_enabled: true,
                     launched_by_steam: launched,
                     app_id: Some(client.utils().app_id().0),
                     persona_name: Some(client.friends().name()),
                 };
-                (status, SteamRuntime { client: Some(client) })
+                (
+                    status,
+                    SteamRuntime {
+                        client: Some(client),
+                        callbacks: Vec::new(),
+                    },
+                )
             }
             Err(_) => (
                 SteamStatus {
@@ -459,7 +646,10 @@ mod sdk {
                     app_id: env_app_id,
                     persona_name: None,
                 },
-                SteamRuntime { client: None },
+                SteamRuntime {
+                    client: None,
+                    callbacks: Vec::new(),
+                },
             ),
         }
     }
@@ -689,6 +879,32 @@ mod tests {
             let (_status, runtime) = init();
             assert!(!runtime.activate_overlay());
         });
+    }
+
+    #[test]
+    fn overlay_status_is_all_off_without_steam() {
+        without_steam_env_vars(|| {
+            let (_status, runtime) = init();
+            let s = runtime.overlay_status();
+            assert!(!s.overlay_enabled);
+            assert!(!s.surface_active);
+            assert!(s.surface_error.is_none());
+            assert!(!s.screenshots_hooked);
+        });
+    }
+
+    #[test]
+    fn overlay_status_serialises_snake_case_fields() {
+        // The front-end reads these exact keys (useSteamOverlay / QA readout).
+        let json = serde_json::to_value(SteamOverlayStatus::default()).unwrap();
+        for key in [
+            "overlay_enabled",
+            "surface_active",
+            "surface_error",
+            "screenshots_hooked",
+        ] {
+            assert!(json.get(key).is_some(), "missing key {key}");
+        }
     }
 
     // ── Workshop graceful no-ops when steam feature is absent ─────────────────

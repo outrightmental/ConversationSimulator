@@ -213,6 +213,32 @@ fn steam_activate_overlay(state: tauri::State<'_, SteamRuntimeState>) -> bool {
         .unwrap_or(false)
 }
 
+/// Diagnostic readout for the overlay gate (G3-03): whether the Steam client
+/// has the overlay enabled, whether the in-process compositing surface is
+/// presenting, and why not if it gave up. All-off outside Steam.
+#[tauri::command]
+fn steam_overlay_status(state: tauri::State<'_, SteamRuntimeState>) -> steam::SteamOverlayStatus {
+    state
+        .0
+        .lock()
+        .map(|r| r.overlay_status())
+        .unwrap_or_default()
+}
+
+/// Take a Steam screenshot (the F12 hotkey) of the main window and add it to
+/// the player's Steam screenshot library. The front-end forwards F12 here
+/// because, like Shift+Tab, the key lands in the WebView2 process where
+/// Steam's hotkey hook cannot see it — see `SteamRuntime::trigger_screenshot`.
+/// Returns `false` when not running under Steam or capture is unsupported.
+#[tauri::command]
+fn steam_trigger_screenshot(app: AppHandle, state: tauri::State<'_, SteamRuntimeState>) -> bool {
+    state
+        .0
+        .lock()
+        .map(|r| r.trigger_screenshot(&app))
+        .unwrap_or(false)
+}
+
 /// Return the list of Steam Workshop items the local user is subscribed to.
 ///
 /// Each item includes its install path and update state so the front-end can
@@ -674,9 +700,17 @@ pub fn run() {
     // absent or the `steam` Cargo feature is off. The runtime handle is kept
     // alive for the process lifetime to service achievement/stat/rich-presence
     // commands.
+    //
+    // ORDER MATTERS: this must run before `tauri::Builder` builds anything.
+    // Steam's injected overlay DLL hooks graphics device/swapchain creation, so
+    // `SteamAPI_Init` has to be resident before the overlay-surface plugin
+    // (registered below) creates its wgpu device — or the Present hook misses
+    // the decoy swapchain and the overlay never draws.
     let (steam_status_val, steam_runtime_val) = steam::init();
+    let steam_sdk_up = steam_status_val.is_steam_enabled;
     let steam_status = Arc::new(Mutex::new(steam_status_val));
     let steam_runtime = Arc::new(Mutex::new(steam_runtime_val));
+    let steam_runtime_for_setup = Arc::clone(&steam_runtime);
 
     // Register the updater plugin ONLY when the merged Tauri config actually
     // carries an updater entry.
@@ -707,6 +741,34 @@ pub fn run() {
     if updater_enabled {
         builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
     }
+
+    // Steam overlay compositing surface (Windows, Steam builds only).
+    //
+    // Steam draws its overlay by hooking the game's graphics `Present` call.
+    // This process never presents a swapchain of its own — WebView2 renders
+    // out-of-process and composites through DWM — so without this plugin the
+    // overlay opens (every Steamworks signal reports success) but has nothing
+    // to draw into and Shift+Tab looks dead. The plugin creates a transparent,
+    // click-through window over the main window with a real swapchain
+    // presenting empty frames at vsync for Steam to composite into. See
+    // docs/STEAM_INTEGRATION.md, "Steam overlay (Windows WebView2 caveat)".
+    //
+    // Registered only when `SteamAPI_Init` succeeded: without a Steam client
+    // there is no overlay to host, and a decoy window presenting frames for
+    // nobody would be pure GPU waste (the depot exe also runs outside Steam).
+    #[cfg(all(feature = "steam", windows))]
+    if steam_sdk_up {
+        builder = builder.plugin(
+            tauri_plugin_steam_overlay_surface::Builder::new()
+                .main_window_label("main")
+                .overlay_title("Conversation Simulator (Steam overlay surface)")
+                .snapshot_backdrop(true)
+                .build(),
+        );
+    }
+    #[cfg(not(all(feature = "steam", windows)))]
+    let _ = steam_sdk_up;
+
     let app = builder
         .manage(UpdaterEnabledState(updater_enabled))
         .manage(CoreProcessState(Arc::clone(&process_inner)))
@@ -725,6 +787,8 @@ pub fn run() {
             steam_show_floating_keyboard,
             steam_hide_floating_keyboard,
             steam_activate_overlay,
+            steam_overlay_status,
+            steam_trigger_screenshot,
             steam_is_dlc_installed,
             steam_workshop_get_subscribed_items,
             steam_workshop_publish_pack,
@@ -736,6 +800,12 @@ pub fn run() {
                 Arc::clone(&process_inner),
                 Arc::clone(&status_inner),
             );
+            // Forward the Steamworks callbacks the overlay surface needs
+            // (GameOverlayActivated → input handoff; ScreenshotRequested →
+            // live F12 capture). No-op outside Steam / without the feature.
+            if let Ok(mut runtime) = steam_runtime_for_setup.lock() {
+                runtime.wire_overlay_callbacks(app.handle().clone());
+            }
             Ok(())
         })
         .build(context)

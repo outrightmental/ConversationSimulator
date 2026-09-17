@@ -595,8 +595,30 @@ jobs:
             # option — the overlay would be silently ignored (updater left on)
             # and cargo would choke on the JSON path.  `exec tauri build
             # --config X` places the flag before any `--` so tauri parses it.
+            #
+            # `--features steam` (Windows only, for now) compiles the Steamworks
+            # SDK bridge into the shipped binary: SteamAPI_Init, achievements,
+            # stats, rich presence, Workshop, DLC checks — and the overlay
+            # compositing surface + Shift+Tab/F12 forwarding that make the Steam
+            # overlay work in a WebView2 app.  Every Steam build before v0.2.8
+            # shipped WITHOUT this flag, so none of that code was ever in the
+            # depot (Valve's Sep 12 2026 review: "The Steam Overlay doesn't
+            # appear when pressing Shift+Tab").  `steamworks-sys` bundles Valve's
+            # redistributable steam_api64.dll/.lib, so the flag needs no SDK
+            # download or secret; the depot packaging step below ships the DLL.
+            #
+            # macOS/Linux are deliberately still built without the feature: the
+            # binary would dynamically link libsteam_api.dylib/.so, which the
+            # .app / AppImage packaging does not yet bundle — the app would fail
+            # to launch (dyld / ld.so "library not found").  Tracked as the
+            # follow-up in docs/STEAM_INTEGRATION.md ("Platform scope").
+            STEAM_FEATURES=()
+            if [ "$RUNNER_OS" = "Windows" ]; then
+              STEAM_FEATURES=(--features steam)
+            fi
             pnpm --filter @convsim/desktop exec tauri build \
-              --config "$GITHUB_WORKSPACE/apps/desktop/src-tauri/tauri.steam.conf.json"
+              --config "$GITHUB_WORKSPACE/apps/desktop/src-tauri/tauri.steam.conf.json" \
+              "${STEAM_FEATURES[@]}"
           else
             pnpm --filter @convsim/desktop build
           fi
@@ -1295,6 +1317,37 @@ jobs:
           } else {
             Write-Host "  INFO  No DLLs found at release root (static build — expected for Tauri v2)."
           }
+
+          # ── Steam Client API (steam_api64.dll) ───────────────────────────────
+          # The exe is built with `--features steam` and links Valve's client
+          # library dynamically: without steam_api64.dll next to it the app does
+          # not start at all ("The code execution cannot proceed because
+          # steam_api64.dll was not found").  steamworks-sys copies the DLL it
+          # bundles into its build-script OUT_DIR during the build; ship exactly
+          # that copy so the DLL always matches the import library the exe was
+          # linked against.  Must be Valve-signed — it is the one depot PE the
+          # project does not sign itself (issue #408 signing criterion).
+          $steamDll = Get-ChildItem -Path "$releaseDir\build" -Recurse -Filter "steam_api64.dll" `
+            -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Directory.Name -eq 'out' -and $_.Directory.Parent.Name -like 'steamworks-sys-*' } |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+          if (-not $steamDll) {
+            Write-Error "steam_api64.dll not found under $releaseDir\build — was the desktop build run with --features steam?"
+            exit 1
+          }
+          $steamSig = Get-AuthenticodeSignature $steamDll.FullName
+          if ($steamSig.Status -ne 'Valid') {
+            Write-Error "steam_api64.dll Authenticode signature is not valid (status: $($steamSig.Status)) — refusing to ship an unverified binary in the depot."
+            exit 1
+          }
+          if ($steamSig.SignerCertificate.Subject -notmatch 'Valve') {
+            Write-Error "steam_api64.dll is signed by an unexpected publisher ($($steamSig.SignerCertificate.Subject)); expected Valve. Refusing to ship."
+            exit 1
+          }
+          Copy-Item $steamDll.FullName "$depotStage\"
+          $steamVer = (Get-Item $steamDll.FullName).VersionInfo.FileVersion
+          Write-Host "  Copied: steam_api64.dll (Steam Client API $steamVer, signed by $($steamSig.SignerCertificate.Subject))"
 
           # ── Resources (bin/, runtimes/, packs/) ──────────────────────────────
           # Tauri copies bundle.resources to target/release/resources/ during

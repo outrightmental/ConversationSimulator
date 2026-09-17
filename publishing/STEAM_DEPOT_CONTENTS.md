@@ -57,7 +57,11 @@ tarball into `steam-content/windows/`.
 
 ```
 ConversationSimulator.exe         # Tauri shell — main app entry point (Authenticode-signed)
-*.dll                             # Tauri / WebView2 support DLLs (if any)
+steam_api64.dll                   # Steam Client API (Valve-signed; from steamworks-sys, v0.2.8+) — see below
+vcruntime140.dll                  # App-local VC++ runtime for the bundled inference binaries
+vcruntime140_1.dll                #   (also copied into resources/runtimes/)
+msvcp140.dll
+*.dll                             # Other Tauri / WebView2 support DLLs (if any)
 resources/
   bin/
     convsim-core.exe              # PyInstaller-bundled Python backend (Authenticode-signed)
@@ -76,6 +80,20 @@ LICENSE                           # Apache 2.0 (depot root)
 NOTICE                            # Third-party licence notices (MIT, Apache 2.0)
 version.txt                       # Semver version stamp (read by artifact inspection tests)
 ```
+
+#### `steam_api64.dll` — Steamworks SDK client library
+
+From v0.2.8 the Windows Steam build is compiled with `--features steam`, which
+links Valve's client library dynamically. `steam_api64.dll` **must** sit next
+to `ConversationSimulator.exe` or the app does not start ("The code execution
+cannot proceed because steam_api64.dll was not found"). The packaging step
+copies the DLL that the `steamworks-sys` crate bundled and linked against
+(`target/release/build/steamworks-sys-*/out/steam_api64.dll`), so the DLL
+always matches the import library, and refuses to ship it unless it carries a
+valid Authenticode signature from Valve. It is the one depot PE the project
+does not sign itself. The macOS and Linux depots do not carry the SDK yet
+(their binaries are built without the feature); see
+[`docs/STEAM_INTEGRATION.md` — Platform scope](../docs/STEAM_INTEGRATION.md#platform-scope).
 
 #### WebView2 runtime — InstallScript strategy
 
@@ -360,6 +378,7 @@ Any other executable binary discovered by `scripts/depot-audit.sh` in the
 | `whisper-cli` | Speech-to-text | `.exe` (Windows), none (macOS/Linux) | Whisper.cpp, loopback only |
 | `sherpa-onnx-offline-tts` | Text-to-speech | `.exe` (Windows), none (macOS/Linux) | Kokoro/sherpa-onnx |
 | Support DLLs / `.so` files | Runtime dependencies | `.dll` (Windows), `.so` / `.dylib` (POSIX) | Bundled by Tauri/WebView2 and PyInstaller — audited for large ONNX models only |
+| `steam_api64.dll` | Steamworks SDK client library | `.dll` (Windows) | Valve-signed redistributable from `steamworks-sys`; depot root only; must be Authenticode-valid or the packaging step fails |
 | Small ONNX voice/VAD models | TTS voice files, VAD | `.onnx` | Maximum 50 MB per file; larger files are rejected |
 
 ---
@@ -421,6 +440,8 @@ submission. Required entries:
 | sherpa-onnx / Kokoro TTS | Apache 2.0 | Risk LI-03 |
 | llama.cpp | MIT | Risk LI-03 |
 | WebView2 (Windows) | Microsoft licence | Risk LI-01 |
+| Steam Client API `steam_api64.dll` (Windows) | Steamworks SDK Access Agreement (Valve) | Risk LI-01 |
+| tauri-plugin-steam-overlay-surface (vendored, compiled in) | MIT (PSG Studios) | Risk LI-03 |
 | Bundled Python standard library | PSF Licence | Risk LI-01 |
 
 Community-contributed packs loaded by the player carry their own licences and

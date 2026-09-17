@@ -1,4 +1,55 @@
 <!-- SPDX-License-Identifier: CC-BY-4.0 -->
+# Conversation Simulator v0.2.8 — Release Notes
+
+> **Patch release (2026-09-16)** — Steam overlay on Windows, and the
+> Steamworks SDK finally in the Steam build. Responds to Valve's build review
+> of BuildID 24431329 (v0.2.6): "The Steam Overlay doesn't appear when
+> pressing Shift+Tab."
+
+## What's fixed in v0.2.8
+
+### The Steam overlay works on Windows (Shift+Tab and F12)
+
+Three things had to be true for the overlay to appear, and none of them were:
+
+1. **The Steamworks SDK was never in the shipped build.** Every Steam depot up
+   to v0.2.7 was compiled without `--features steam`, so `SteamAPI_Init` never
+   ran — achievements, stats, rich presence, Workshop, DLC checks and the
+   Shift+Tab forwarder added in v0.2.7 were all inert. The Windows Steam build
+   now enables the feature and ships Valve's signed `steam_api64.dll`.
+2. **Shift+Tab never reached Steam.** The chord lands in the WebView2 process,
+   which Steam's input hook cannot see. The app forwards Shift+Tab (and now
+   F12) to Steam itself.
+3. **Steam had nothing to draw into.** Steam renders the overlay by hooking the
+   game's swapchain, and a WebView2 app has none. The app now hosts a
+   transparent, click-through compositing surface (vendored
+   `tauri-plugin-steam-overlay-surface`, MIT) that Steam composites the overlay,
+   toasts and notifications into.
+
+Also new: a Steamworks callback pump (no Steam callback could fire before),
+hooked F12 screenshots that capture the live app instead of a black frame, and
+a `steam_overlay_status` diagnostic for QA.
+
+**Scope:** Windows only. The macOS and Linux Steam builds still ship without
+the SDK (their packaging does not yet bundle `libsteam_api`), and
+overlay-over-WebKit remains open — see
+[`docs/STEAM_INTEGRATION.md`](docs/STEAM_INTEGRATION.md#platform-scope).
+
+### Compliance
+
+Assessment of the PRC *Interim Measures for the Administration of AI
+Anthropomorphic Interaction Services* (in force 2026-07-15) added at
+[`publishing/PRC_AI_ANTHROPOMORPHIC_INTERACTION_MEASURES.md`](publishing/PRC_AI_ANTHROPOMORPHIC_INTERACTION_MEASURES.md)
+and tracked as risk SP-07.
+
+### Build and CI
+
+- `steamworks` 0.11 → 0.13 (thread-safe client, screenshots API); MSRV 1.80.
+- New CI job compiles the shipped configuration (`cargo check --features steam`
+  on Windows) on every PR; `scripts/desktop-smoke.sh` also checks the feature.
+
+---
+
 # Conversation Simulator v0.3.0 — Release Notes
 
 > **Minor release** — onboarding overhaul. A new user reaches their first

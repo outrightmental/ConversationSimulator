@@ -1,28 +1,36 @@
 // SPDX-License-Identifier: Apache-2.0
 /**
- * Forwards the Steam overlay chord (Shift+Tab) to the Tauri shell so the overlay
- * opens on a Tauri app the way it does on a native Steam title.
+ * Forwards the Steam overlay chord (Shift+Tab) and the Steam screenshot hotkey
+ * (F12) to the Tauri shell so they work on a Tauri app the way they do on a
+ * native Steam title.
  *
- * Why this is necessary: Steam opens its overlay when it sees Shift+Tab in the
- * *game* process via an input hook. A Tauri app renders its UI in a separate
- * WebView2 process (`msedgewebview2.exe`), so the keystroke is delivered there
- * and Steam's hook never sees it — the default chord is a silent no-op. This
- * hook listens for Shift+Tab in the webview and forwards it to the
- * `steam_activate_overlay` command, which asks Steam to open the overlay
- * programmatically (see `SteamRuntime::activate_overlay`).
+ * Why this is necessary: Steam opens its overlay (and takes screenshots) when
+ * it sees the hotkey in the *game* process via an input hook. A Tauri app
+ * renders its UI in a separate WebView2 process (`msedgewebview2.exe`), so the
+ * keystroke is delivered there and Steam's hook never sees it — both hotkeys
+ * are silent no-ops by default. This hook listens for them in the webview and
+ * forwards them:
  *
- * The chord is only repurposed when Steam is actually active in this process
+ *  - Shift+Tab → `steam_activate_overlay` (see `SteamRuntime::activate_overlay`)
+ *  - F12       → `steam_trigger_screenshot` (see `SteamRuntime::trigger_screenshot`)
+ *
+ * The keys are only repurposed when Steam is actually active in this process
  * (`get_steam_status().is_steam_enabled`). Everywhere else — the browser build
- * and any desktop build without the Steamworks SDK running — Shift+Tab keeps its
- * standard "focus previous element" behaviour untouched.
+ * and any desktop build without the Steamworks SDK running — Shift+Tab keeps
+ * its standard "focus previous element" behaviour and F12 keeps whatever the
+ * host gives it (devtools in the browser), both untouched.
  *
- * Windows caveat: opening the overlay is necessary but not sufficient for it to
- * be *visible* on Windows. Steam draws by hooking the game's graphics `Present`
- * call, and a Tauri app never presents a swapchain in its own process, so there
- * is nothing to composite the overlay into. Making it render requires a decoy
- * compositing surface on the Rust side; see the "Steam overlay (Windows WebView2
- * caveat)" section of docs/STEAM_INTEGRATION.md. This hook is the portable half
- * of the fix — without it the chord is dead even once that surface exists.
+ * Rendering: opening the overlay is only visible if Steam has something to
+ * draw into. On Windows the Rust side hosts a decoy compositing surface for
+ * exactly that (vendored `tauri-plugin-steam-overlay-surface`); see the
+ * "Steam overlay (Windows WebView2 caveat)" section of docs/STEAM_INTEGRATION.md.
+ * This hook is the portable half of the fix — without it the chord is dead
+ * even where that surface exists.
+ *
+ * Screenshot feedback: with hooked screenshots Steam plays no shutter sound and
+ * its "screenshot saved" toast only appears once it has processed the file
+ * (a few seconds later), so Valve's guidance is that the game supplies its own
+ * feedback. We flash the page briefly when the capture command reports success.
  *
  * Known limitation (Windows): after alt-tabbing away and back, this listener is
  * deaf until the user clicks the page once, because Windows reactivates the
@@ -41,43 +49,80 @@ function getTauriCore(): TauriCore | null {
   return tauri?.core ?? null
 }
 
+/** How long the screenshot feedback flash stays on screen, in ms. */
+export const SCREENSHOT_FLASH_MS = 120
+
+/**
+ * Brief full-page white flash as capture feedback. Pure DOM (no React state)
+ * so it cannot re-render the app mid-session; `pointer-events: none` so it can
+ * never intercept a click; `aria-hidden` so screen readers ignore it.
+ */
+export function flashScreenshotFeedback(doc: Document = document): void {
+  const flash = doc.createElement('div')
+  flash.setAttribute('data-testid', 'steam-screenshot-flash')
+  flash.setAttribute('aria-hidden', 'true')
+  flash.style.cssText =
+    'position:fixed;inset:0;background:#fff;opacity:0.85;pointer-events:none;z-index:2147483647;'
+  doc.body.appendChild(flash)
+  window.setTimeout(() => {
+    flash.remove()
+  }, SCREENSHOT_FLASH_MS)
+}
+
 export function useSteamOverlay(): void {
   useEffect(() => {
-    // Whether the overlay can actually be opened in this process. Populated once
-    // from `get_steam_status`; until it resolves (and whenever it is false) the
-    // chord is left alone so we never swallow the standard reverse-tab
-    // affordance in browser or non-Steam builds.
-    let overlayAvailable = false
+    // Whether the overlay hotkeys can actually be serviced in this process.
+    // Populated once from `get_steam_status`; until it resolves (and whenever
+    // it is false) the keys are left alone so we never swallow the standard
+    // reverse-tab affordance (or F12) in browser or non-Steam builds.
+    let steamAvailable = false
 
     const core = getTauriCore()
     if (core) {
       core
         .invoke<{ is_steam_enabled?: boolean }>('get_steam_status')
         .then((status) => {
-          overlayAvailable = Boolean(status?.is_steam_enabled)
+          steamAvailable = Boolean(status?.is_steam_enabled)
         })
         .catch(() => {
-          // Steam status unavailable — leave the chord untouched.
+          // Steam status unavailable — leave the keys untouched.
         })
     }
 
     function handleKeydown(e: KeyboardEvent): void {
-      // Match only the bare Shift+Tab chord Steam reserves for the overlay.
-      // Bail when Ctrl/Alt/Meta are also held so compound chords that happen to
-      // include Tab are never swallowed.
-      if (e.key !== 'Tab' || !e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) {
-        return
-      }
-      if (!overlayAvailable) return
+      // Bail when Ctrl/Alt/Meta are held so compound chords that happen to
+      // include Tab or F12 are never swallowed.
+      if (e.ctrlKey || e.altKey || e.metaKey) return
+      if (!steamAvailable) return
       const activeCore = getTauriCore()
       if (!activeCore) return
-      // Repurpose the chord as the overlay toggle exactly like a native Steam
-      // title: prevent the webview from also cycling focus backwards behind the
-      // overlay.
-      e.preventDefault()
-      activeCore.invoke('steam_activate_overlay').catch(() => {
-        // Steam not running or command unavailable — safe to ignore.
-      })
+
+      if (e.key === 'Tab' && e.shiftKey) {
+        // Match only the bare Shift+Tab chord Steam reserves for the overlay.
+        // Repurpose it as the overlay toggle exactly like a native Steam title:
+        // prevent the webview from also cycling focus backwards behind the
+        // overlay.
+        e.preventDefault()
+        activeCore.invoke('steam_activate_overlay').catch(() => {
+          // Steam not running or command unavailable — safe to ignore.
+        })
+        return
+      }
+
+      if (e.key === 'F12' && !e.shiftKey) {
+        // Steam's default screenshot hotkey. Auto-repeat would spam the
+        // library; take one shot per physical press.
+        if (e.repeat) return
+        e.preventDefault()
+        activeCore
+          .invoke<boolean>('steam_trigger_screenshot')
+          .then((captured) => {
+            if (captured) flashScreenshotFeedback()
+          })
+          .catch(() => {
+            // Steam not running or command unavailable — safe to ignore.
+          })
+      }
     }
 
     document.addEventListener('keydown', handleKeydown)
