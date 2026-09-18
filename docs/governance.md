@@ -4,7 +4,7 @@
 
 Conversation Simulator is maintained by [Outright Mental](https://outrightmental.com) with
 an unusual crew: one human maintainer, an autonomous issue-to-PR factory
-([vibrator](https://github.com/outrightmental/vibrator)), and a community of contributors.
+([yoke](https://github.com/outrightmental/yoke)), and a community of contributors.
 This document is the operating manual — where decisions are made, how work flows, and the
 rules that keep the record trustworthy. The tracker and board were consolidated into this
 shape on 2026-08-21.
@@ -73,14 +73,14 @@ Three orthogonal systems, each answering one question:
 
 ## The factory
 
-[vibrator](https://github.com/outrightmental/vibrator) turns the issue queue into a
+[yoke](https://github.com/outrightmental/yoke) turns the issue queue into a
 self-driving implementation pipeline:
 
 1. An issue is filed and triaged (type, labels, priority — see above).
-2. Unless it carries the **`manual`** label, vibrator may pick it up — ordered by
+2. Unless it carries the **`manual`** label, yoke may pick it up — ordered by
    Type = Bug first, then earlier milestone, then age — respecting `blocked by #N` /
    sub-issue dependencies.
-3. It implements on a `vibrator/issue-N-…` branch and opens a PR; CI gates it; a human
+3. It implements on a `yoke/issue-N-…` branch and opens a PR; CI gates it; a human
    squash-merges.
 
 The two contract labels:

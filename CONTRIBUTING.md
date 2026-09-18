@@ -137,7 +137,7 @@ The tracker runs on a deliberately small labeling system — four axes, one ques
 Conventions:
 
 - Every issue gets **one type** label. Add **one or two** `area:*` labels when the surface is clear; epics that span areas carry none.
-- `manual` and `review` are contracts with the [vibrator](https://github.com/outrightmental/vibrator) orchestrator: `manual` keeps an issue or PR out of automated work entirely; `review` lets vibrator implement but leaves the final PR to a human.
+- `manual` and `review` are contracts with the [yoke](https://github.com/outrightmental/yoke) orchestrator: `manual` keeps an issue or PR out of automated work entirely; `review` lets yoke implement but leaves the final PR to a human.
 - `good first issue` and `help wanted` mark the community on-ramps — scenario packs are the friendliest entry point.
 - Milestones track *when*; the [delivery board](https://github.com/orgs/outrightmental/projects/12) tracks *status*. Labels only say what, where, and how urgent.
 
