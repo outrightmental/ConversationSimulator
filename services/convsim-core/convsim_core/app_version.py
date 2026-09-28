@@ -33,7 +33,7 @@ APP_VERSION_ENV = "CONVSIM_APP_VERSION"
 # version string and would bloat a header meant to fit in a clipboard.
 _MAX_VERSION_LENGTH = 64
 
-_SHORT_SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
+_SHORT_SHA_RE = re.compile(r"^[0-9a-f]{4,40}$")
 
 
 def app_version() -> str:
