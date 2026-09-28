@@ -10,9 +10,10 @@
 > partner portal access.
 >
 > **Sensitive data:** No secret credentials appear in this document. App IDs and
-> depot IDs are non-secret identifiers assigned by Valve. Steam partner
-> credentials are stored as **outrightmental org-level GitHub Actions secrets**,
-> scoped to selected repositories — see [CI credentials](#ci-credentials).
+> depot IDs are non-secret identifiers assigned by Valve, managed as repository
+> variables in [`infra/github.tf`](../infra/github.tf). Steam partner
+> credentials are not set yet; when they are, they are GitHub Actions secrets
+> declared in the same file — see [CI credentials](#ci-credentials).
 
 ---
 
@@ -133,8 +134,11 @@ source files.
 | Demo developer-comp package ID | **1846147** (`Conversation Simulator Demo Developer Comp`) | *(not referenced in CI)* | Auto-granted to publisher 342628 — every partner account already owns the demo. |
 | Demo store item ID | **1348530** | *(not referenced in CI)* | The demo's store presence, created with the app. |
 
-**To set a repository variable:** GitHub → repository Settings → Secrets and
-variables → Actions → Variables tab → New repository variable.
+**Repository variables are managed by Terraform:** add or change the value in
+`local.steam_variables` in [`infra/github.tf`](../infra/github.tf) and run
+`terraform apply` from `infra/`. Never set one in the GitHub UI or with
+`gh variable set`; a variable that Terraform does not manage is a bug, and one
+that was created by hand is adopted by the `import` block next to the resource.
 
 ---
 
@@ -444,12 +448,16 @@ to Steam using a **dedicated build account**, not the main Outright Mental
 partner account. A separate account limits the blast radius of a compromised CI
 credential.
 
-### Org-level GitHub Actions secrets
+### GitHub Actions secrets
 
-These secrets are stored at the **outrightmental organisation level**, scoped
-to `ConversationSimulator` and `FeverTilt`. Entering them once at org level
-means all scoped repositories pick them up automatically — no duplicate secrets
-in each repo.
+The two secrets are **not set yet**: the `steam` job in `steam-deploy.yml`
+short-circuits with an INFO message while either is absent, so releases stay
+green and nothing is uploaded to Steam from CI. When the build account is
+provisioned, declare them in [`infra/github.tf`](../infra/github.tf) as
+`github_actions_secret` resources fed from sensitive Terraform variables — the
+same mechanism that creates the website deploy secrets — and `terraform apply`.
+Never create them in the GitHub UI or with `gh secret set`; a secret that
+Terraform does not manage is a bug (see [`infra/README.md`](../infra/README.md)).
 
 | Secret name | Description | How to obtain |
 |------------|-------------|---------------|
@@ -462,28 +470,9 @@ session bypasses the interactive 2FA prompt in headless CI environments. Treat
 this file with the same confidentiality as a password — rotate it if the build
 account is ever compromised.
 
-**To set an org-level secret** (via CLI — values are supplied interactively, never
-committed):
-
-```bash
-gh secret set STEAM_USERNAME \
-  --org outrightmental \
-  --visibility selected \
-  --repos ConversationSimulator,FeverTilt
-
-gh secret set STEAM_CONFIG_VDF \
-  --org outrightmental \
-  --visibility selected \
-  --repos ConversationSimulator,FeverTilt
-```
-
-Or use the org Settings UI: GitHub → outrightmental org **Settings → Secrets
-and variables → Actions → Secrets → New organisation secret**, then set
-**Repository access** to *Selected repositories: ConversationSimulator, FeverTilt*.
-
-**Rotation:** Because the secrets are org-level, rotating a credential once
-updates it for all scoped repositories simultaneously. Run
-`gh secret list --org outrightmental` to confirm the inventory after any change.
+**Rotation:** change the value of the Terraform variable that feeds the secret
+and apply; Terraform updates the secret in place. Confirm the inventory
+afterwards with `gh secret list -R outrightmental/ConversationSimulator`.
 
 ### Refreshing `STEAM_CONFIG_VDF`
 
@@ -494,14 +483,8 @@ error:
 1. Log in as the build account on a local machine with Steam installed.
 2. Complete the SteamGuard prompt.
 3. Copy and re-encode the updated `config.vdf`.
-4. Update the org-level `STEAM_CONFIG_VDF` secret:
-   ```bash
-   gh secret set STEAM_CONFIG_VDF \
-     --org outrightmental \
-     --visibility selected \
-     --repos ConversationSimulator,FeverTilt
-   ```
-   All scoped repositories pick up the refreshed config automatically.
+4. Re-apply `infra/` with the new value of the Terraform variable that feeds
+   `STEAM_CONFIG_VDF`; Terraform updates the secret in place.
 
 ---
 

@@ -64,3 +64,49 @@ resource "github_actions_secret" "deploy" {
   secret_name     = each.key
   plaintext_value = each.value
 }
+
+# --- Actions variables consumed by .github/workflows/steam-deploy.yml ---
+#
+# Non-secret Valve identifiers for the paid Steam app (STEAM_*) and its free
+# Steam Next Fest demo app (STEAM_DEMO_*, issue #495). The same values are
+# recorded in publishing/STEAM_APP_REGISTRATION.md. Change them here and
+# apply — never in the GitHub UI or with `gh variable set`. The import block
+# adopts a variable that already exists on the repository (all eight were
+# first created by hand), so adding one here shows an import on the next plan
+# rather than a failed create.
+
+locals {
+  steam_variables = {
+    # Conversation Simulator — App 4963030 and its three platform depots
+    STEAM_APP_ID           = "4963030"
+    STEAM_DEPOT_WINDOWS_ID = "4963031"
+    STEAM_DEPOT_MACOS_ID   = "4963032"
+    STEAM_DEPOT_LINUX_ID   = "4963033"
+
+    # Conversation Simulator Demo — App 5343430 and its three platform depots
+    STEAM_DEMO_APP_ID           = "5343430"
+    STEAM_DEMO_DEPOT_WINDOWS_ID = "5343431"
+    STEAM_DEMO_DEPOT_MACOS_ID   = "5343432"
+    STEAM_DEMO_DEPOT_LINUX_ID   = "5343433"
+  }
+}
+
+import {
+  for_each = local.steam_variables
+  to       = github_actions_variable.steam[each.key]
+  id       = "${var.github_repository}:${each.key}"
+}
+
+resource "github_actions_variable" "steam" {
+  for_each = local.steam_variables
+
+  repository    = github_repository.this.name
+  variable_name = each.key
+  value         = each.value
+}
+
+# Steam upload credentials (STEAM_USERNAME, STEAM_CONFIG_VDF) are not set: the
+# steam job short-circuits while they are absent. When the CI build account is
+# provisioned, declare them here as github_actions_secret resources fed from
+# sensitive Terraform variables, exactly like local.deploy_secrets above —
+# never create them in the GitHub UI or with `gh secret set`.

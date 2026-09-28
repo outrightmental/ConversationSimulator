@@ -6,7 +6,8 @@
 #
 # ── One-time setup required ──────────────────────────────────────────────────
 #
-# Repository variables (Settings → Secrets and variables → Actions → Variables):
+# Repository variables (declared in infra/github.tf, local.steam_variables, and
+# applied with Terraform — never set by hand):
 #   STEAM_APP_ID              Valve-assigned App ID (non-secret, assigned at registration)
 #   STEAM_DEPOT_WINDOWS_ID    Windows x86-64 depot ID
 #   STEAM_DEPOT_MACOS_ID      macOS depot ID
@@ -24,7 +25,8 @@
 # release.yml run started with edition = demo. See
 # publishing/STEAM_NEXT_FEST_DEMO.md for registration and the submission runbook.
 #
-# Repository secrets (Settings → Secrets and variables → Actions → Secrets):
+# Repository secrets (not set yet; when they are, declared in infra/github.tf —
+# never set by hand):
 #   STEAM_USERNAME            Steam username of the dedicated CI build account
 #   STEAM_CONFIG_VDF          Base64-encoded config.vdf from an authenticated Steam
 #                             session on the build account (bypasses SteamGuard in CI)
@@ -265,8 +267,8 @@ jobs:
               PRODUCT_LABEL="Conversation Simulator Demo"
               if [ -z "$APP_ID" ] || [ -z "$DEPOT_WINDOWS_ID" ] || [ -z "$DEPOT_MACOS_ID" ] || [ -z "$DEPOT_LINUX_ID" ]; then
                 echo "ERROR: edition=demo but the demo app is not registered in this repository." >&2
-                echo "       Set STEAM_DEMO_APP_ID and STEAM_DEMO_DEPOT_{WINDOWS,MACOS,LINUX}_ID as" >&2
-                echo "       repository variables. See publishing/STEAM_NEXT_FEST_DEMO.md." >&2
+                echo "       Declare STEAM_DEMO_APP_ID and STEAM_DEMO_DEPOT_{WINDOWS,MACOS,LINUX}_ID in" >&2
+                echo "       infra/github.tf (local.steam_variables) and apply. See publishing/STEAM_NEXT_FEST_DEMO.md." >&2
                 exit 1
               fi
               ;;

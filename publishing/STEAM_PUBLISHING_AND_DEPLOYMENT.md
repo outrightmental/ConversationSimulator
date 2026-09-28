@@ -107,7 +107,9 @@ These steps are performed once and do not need to be repeated for each release.
 See [`publishing/STEAM_APP_REGISTRATION.md` — CI credentials](STEAM_APP_REGISTRATION.md#ci-credentials)
 for the detailed procedure to obtain each value.
 
-**Repository variables** (Settings → Secrets and variables → Actions → Variables):
+**Repository variables** (declared in `local.steam_variables` in
+[`infra/github.tf`](../infra/github.tf) and applied with Terraform — never set
+by hand):
 
 | Variable | Value |
 |----------|-------|
@@ -124,7 +126,9 @@ The four `STEAM_DEMO_*` variables are only read when the workflow runs with
 `edition: demo`; the workflow refuses to upload a demo while any of them is
 unset, so a demo payload can never land in the paid app's depots.
 
-**Repository secrets** (Settings → Secrets and variables → Actions → Secrets):
+**Repository secrets** (not set yet; when they are, declare them in
+[`infra/github.tf`](../infra/github.tf) like the website deploy secrets — never
+by hand):
 
 | Secret | Value |
 |--------|-------|

@@ -18,8 +18,8 @@ falls back gracefully when Steam is absent.
 DLC App IDs are registered in the Steamworks App Admin portal (one child app per
 premium pack). The full registry is maintained in the private
 `STEAM_DLC_REGISTRY.md` and mirrored to the **`STEAM_DLC_APP_IDS` repository
-variable** in GitHub Actions (Settings → Secrets and variables → Actions →
-Variables).
+variable** in GitHub Actions (declared in `infra/github.tf` like the other
+`STEAM_*` variables — never set by hand).
 
 ### Variable format
 

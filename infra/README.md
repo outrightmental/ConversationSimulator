@@ -11,19 +11,30 @@ Terraform for everything the public website and docs site run on:
 | CloudFront ×2 | CDN for `conversationsimulator.com` (+`www` redirect) and `docs.conversationsimulator.com` |
 | CloudFront Function | `www` → apex 301 + pretty-URL `index.html` rewrites |
 | IAM OIDC role | Lets GitHub Actions (main branch only) deploy — no stored AWS keys |
-| GitHub repository | The repo itself (adopted via import block) + the Actions **secrets** the deploy workflow reads |
+| GitHub repository | The repo itself (adopted via import block), the Actions **secrets** the website deploy workflow reads, and the Actions **variables** the Steam deploy workflow reads |
 
 The deploy workflow is [.github/workflows/deploy-website.yml](../.github/workflows/deploy-website.yml);
 its secrets (`AWS_DEPLOY_ROLE_ARN`, `AWS_REGION`, `SITE_BUCKET`, `DOCS_BUCKET`,
 `SITE_CLOUDFRONT_DISTRIBUTION_ID`, `DOCS_CLOUDFRONT_DISTRIBUTION_ID`) are
 created by this configuration — never set them by hand.
 
+The Steam deploy workflow is [.github/workflows/steam-deploy.yml](../.github/workflows/steam-deploy.yml);
+the Valve App and depot IDs it reads (`STEAM_APP_ID`, `STEAM_DEPOT_*_ID`,
+`STEAM_DEMO_APP_ID`, `STEAM_DEMO_DEPOT_*_ID`) are repository **variables**
+declared in `local.steam_variables` in `github.tf`. Change a value there and
+apply — never in the GitHub UI or with `gh variable set`. A variable that was
+created by hand is adopted by the `import` block next to the resource, so the
+first plan after adding it shows an import, not a create. The Steam upload
+credentials (`STEAM_USERNAME`, `STEAM_CONFIG_VDF`) are not set yet; when they
+are, they belong in `github.tf` too, as `github_actions_secret` resources fed
+from sensitive Terraform variables.
+
 ## Prerequisites
 
 - Terraform ≥ 1.7
 - AWS credentials for the target account (Route 53, ACM, S3, CloudFront, IAM)
-- `GITHUB_TOKEN` env var — a token for `outrightmental` with **administration**
-  and **secrets** read/write on the repository
+- `GITHUB_TOKEN` env var — a token for `outrightmental` with **administration**,
+  **secrets** and **variables** read/write on the repository
 
 ## DNS reality during the domain lease
 

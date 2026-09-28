@@ -133,7 +133,9 @@ On the **demo** app (not the base app):
 
 ### 1.4 GitHub repository variables
 
-Add these under **Settings → Secrets and variables → Actions → Variables**.
+These are declared in `local.steam_variables` in
+[`infra/github.tf`](../infra/github.tf) and applied with Terraform (done
+2026-09-28) — never set them in the GitHub UI or with `gh variable set`.
 They are non-secret (App and depot IDs appear in store URLs) and deliberately
 separate from the paid app's `STEAM_*` variables, so a demo upload can never
 fall through to the paid app's depots — `steam-deploy.yml` refuses to run
