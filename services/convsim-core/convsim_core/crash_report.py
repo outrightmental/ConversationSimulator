@@ -21,7 +21,7 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
-from convsim_core import __version__
+from convsim_core.app_version import app_version
 from convsim_core.models import AppSettings
 from convsim_core.redaction import redact_path, redact_paths_in_text
 
@@ -129,7 +129,7 @@ def create_crash_bundle(
     bundle_path = dest / f"crash-{ts}.zip"
 
     versions = {
-        "app": __version__,
+        "app": app_version(),
         "python": sys.version,
         "platform": platform.platform(),
     }

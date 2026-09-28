@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
-from convsim_core import __version__
+from convsim_core.app_version import app_version
 from convsim_core.redaction import redact_paths_in_text
 
 # Marker written by LlamaCppSidecar.start() before each launch attempt.
@@ -190,7 +190,7 @@ def build_log_excerpt(log_dir: str, *, context: str | None = None) -> LogExcerpt
 
     header = [
         "ConversationSimulator log excerpt",
-        f"app: {__version__}",
+        f"app: {app_version()}",
         f"platform: {platform.platform()}",
         f"time: {datetime.now(timezone.utc).isoformat()}",
     ]
