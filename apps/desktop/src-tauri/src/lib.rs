@@ -700,6 +700,14 @@ fn launch_or_verify_core(
             cmd.env("CONVSIM_EDITION", edition);
         }
 
+        // The release version the player is running (issue #490). release.yml
+        // stamps tauri.conf.json's `version` from the release tag, but the
+        // PyInstaller-built core only knows its own package version, so its
+        // diagnostics reported `app: 0.1.0` for every build. Hand it the real
+        // one; convsim_core.app_version reads it back.
+        let app_version = app.package_info().version.to_string();
+        cmd.env("CONVSIM_APP_VERSION", app_version);
+
         // Tell convsim-core where the bundled sidecar binaries live so it can
         // start llama-server, whisper-cli, and sherpa-onnx-offline-tts without
         // requiring a system PATH entry (Steam build convention).

@@ -27,7 +27,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from convsim_core import __version__
+from convsim_core.app_version import app_version
 from convsim_core.crash_report import _safe_settings, _tail_log, _MAX_LOG_TAIL_LINES
 from convsim_core.models import AppSettings
 
@@ -198,7 +198,7 @@ def create_beta_report_bundle(
     bundle_path = dest / f"beta-report-{ts}.zip"
 
     versions = {
-        "app": __version__,
+        "app": app_version(),
         "python": sys.version,
         "platform": platform.platform(),
     }
