@@ -199,6 +199,12 @@ export default function Conversation() {
 
   // Clean up any pending timers and TTS audio when the component unmounts.
   useEffect(() => {
+    // Set on every setup, not just the first: React re-runs mount effects (in
+    // StrictMode, and on any future remount of this route), and a mountedRef
+    // left false by the previous cleanup would make the reconcile loop below
+    // bail on its first check — reintroducing issue #489 in dev builds, where
+    // the deadline would again discard a reply the core had committed.
+    mountedRef.current = true
     return () => {
       mountedRef.current = false
       if (turnTimeoutRef.current) clearTimeout(turnTimeoutRef.current)

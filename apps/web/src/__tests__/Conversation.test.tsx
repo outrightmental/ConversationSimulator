@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { StrictMode } from 'react'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import Conversation from '../screens/Conversation'
@@ -1561,6 +1562,44 @@ describe('Conversation screen', () => {
         )
         expect(screen.queryByRole('alert')).not.toBeInTheDocument()
         expect(screen.getByRole('textbox', { name: /your response/i })).not.toBeDisabled()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('still reconciles after React re-runs the mount effects', async () => {
+      // The reconcile loop is gated on a mounted flag that the cleanup clears.
+      // StrictMode runs setup → cleanup → setup, so a flag only ever set at
+      // construction stays false for the lifetime of the screen and the loop
+      // bails on its first check — issue #489 all over again, in every dev
+      // build: a reply the core had committed, discarded at the deadline.
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        render(
+          <StrictMode>
+            <MemoryRouter initialEntries={[`/conversation/${SESSION_ID}`]}>
+              <Routes>
+                <Route path="/conversation/:sessionId" element={<Conversation />} />
+              </Routes>
+            </MemoryRouter>
+          </StrictMode>,
+        )
+        await waitFor(() =>
+          expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument(),
+        )
+        fireEvent.change(screen.getByRole('textbox', { name: /your response/i }), {
+          target: { value: 'My answer.' },
+        })
+        fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+        await vi.advanceTimersByTimeAsync(DEADLINE_MS)
+
+        await waitFor(() =>
+          expect(
+            screen.getByText('Committed by the server while the UI waited.'),
+          ).toBeInTheDocument(),
+        )
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument()
       } finally {
         vi.useRealTimers()
       }
