@@ -47,6 +47,12 @@ on a **real local model** end-to-end — registry download → llama.cpp →
 The NPC *opening* line is authored scenario text, not a generation — so the
 scripted player turns, not the opening, are what prove the model is working.
 
+If the NPC closes the conversation before the script runs out
+(`session_control.continue_session`), the run still passes on the turns it did
+play — that is the product working as designed — but it records
+`scripted_turns_played` and warns in the step summary, so a green run on one
+turn is not mistaken for a green run on three.
+
 ---
 
 ## Failure classification

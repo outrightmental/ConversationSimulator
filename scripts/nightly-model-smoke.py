@@ -1205,6 +1205,21 @@ def run_smoke(
                       "stopping the scripted turns.")
                 break
 
+        results["scripted_turns_played"] = len(turn_latencies)
+        if len(turn_latencies) < len(SCRIPTED_PLAYER_TURNS):
+            # Not a failure: the model is allowed to close the conversation
+            # (session_control.continue_session), and the product handled it.
+            # But the job exists to play a *multi-turn* conversation, and a run
+            # that played one turn proves less than one that played three — say
+            # so in the summary rather than let a short green run read like a
+            # full one.
+            results["warnings"].append(
+                f"Only {len(turn_latencies)} of {len(SCRIPTED_PLAYER_TURNS)} scripted "
+                f"player turns ran: the NPC ended the session early (ending_type="
+                f"{results['turns'][-1].get('ending_type')!r}), so this run proves "
+                "less about multi-turn behaviour than a full playthrough"
+            )
+
         # The median is the headline full-response figure: a single unlucky
         # turn (runner steal, a long NPC answer) must not flap the nightly,
         # while a real regression moves every turn and so moves the median.

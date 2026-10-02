@@ -1540,6 +1540,27 @@ class TestRunSmokeOrchestration:
             "must not POST /end to a session the scenario already ended"
         )
         assert results["debrief"] is not None
+        # Green, but on one turn instead of three. The job exists to play a
+        # multi-turn conversation, so a short run must not read like a full one.
+        assert results["scripted_turns_played"] == 1
+        assert any(
+            f"Only 1 of {len(smoke.SCRIPTED_PLAYER_TURNS)} scripted player turns ran" in w
+            for w in results["warnings"]
+        ), results["warnings"]
+
+    def test_a_full_playthrough_does_not_warn_about_a_short_run(
+        self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        models_dir, model_id, digest = staged_model
+        monkeypatch.setattr(smoke, "_request_json", _fake_core(_debrief()))
+        report = tmp_path / "report.json"
+
+        assert smoke.run_smoke(
+            model_id, 20.0, report, model_sha256=digest, models_dir=models_dir
+        ) == 0
+        results = json.loads(report.read_text(encoding="utf-8"))
+        assert results["scripted_turns_played"] == len(smoke.SCRIPTED_PLAYER_TURNS)
+        assert results["warnings"] == []
 
     def test_unavailable_debug_flags_warn_instead_of_silently_passing(
         self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
