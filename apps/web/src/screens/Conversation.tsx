@@ -25,15 +25,27 @@ const VERY_SLOW_RESPONSE_MS = 30_000
 // 270 announcements over a five-minute turn drowns out everything else — so the
 // screen-reader copy only changes once per interval.
 const ELAPSED_ANNOUNCE_INTERVAL_MS = 30_000
-// Hard backstop so a wedged connection can never pin the UI in "submitting"
-// forever. It is NOT a latency budget: a local model on CPU-only hardware
-// spends real minutes on one turn — the Windows machine in issue #489 measured
-// ~24 s of prompt eval plus ~6.5 tokens/s of generation, so a single 250-token
-// reply took 62 s and tripped the old 60 s deadline, cancelling a turn
-// convsim-core had already committed. This sits above the worst case the core
-// itself permits (its 1024-token reply budget at that speed, ~3 min) so the
-// deadline only ever fires on a genuinely stuck request.
+// When to stop trusting the in-flight request and start asking convsim-core what
+// it actually recorded. It is NOT a latency budget: a local model on CPU-only
+// hardware spends real minutes on one turn — the Windows machine in issue #489
+// measured ~24 s of prompt eval plus ~6.5 tokens/s of generation, so a single
+// 250-token reply took 62 s and tripped the old 60 s deadline, cancelling a turn
+// convsim-core had already committed.
 const TURN_TIMEOUT_MS = 300_000
+// Past that point the turn may still be legitimately in flight, so the deadline
+// is a cue to start reconciling rather than a verdict. The core allows the engine
+// CONVSIM_LLAMA_CPP_CHAT_TIMEOUT (180 s) of silence *and then* a full 1024-token
+// reply, so its own worst case runs well past five minutes — and prompt eval
+// grows with the transcript, so the issue #489 machine would reach it late in a
+// long conversation (a ~12 k-token prompt is ~140 s of eval at its measured
+// 87 tok/s, plus ~158 s of generation). Keep asking the server on this grid so a
+// reply that lands late is adopted within a few seconds of existing.
+const TURN_RECONCILE_INTERVAL_MS = 15_000
+// Absolute ceiling, so a wedged connection can never pin the UI in "submitting"
+// forever. Sized above anything the core itself permits (180 s of silence plus a
+// 1024-token reply at ~3 tokens/s is ~8.5 min), so giving up here really does
+// mean the request, not the model, is stuck.
+const TURN_ABANDON_MS = 600_000
 
 const BASELINE_STATE_VARS: Record<string, number> = {
   trust: 50,
@@ -159,6 +171,10 @@ export default function Conversation() {
   // Ticks once a second while a turn is in flight to advance waitElapsedMs.
   const waitClockRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const waitStartedAtRef = useRef(0)
+  // Spaces out the post-deadline transcript re-checks.
+  const reconcileTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // False once the screen unmounts, so the reconcile loop stops touching state.
+  const mountedRef = useRef(true)
 
   // TTS audio queue — plays synthesized sentence chunks in order.
   const ttsQueueRef = useRef<string[]>([])
@@ -181,8 +197,10 @@ export default function Conversation() {
   // Clean up any pending timers and TTS audio when the component unmounts.
   useEffect(() => {
     return () => {
+      mountedRef.current = false
       if (turnTimeoutRef.current) clearTimeout(turnTimeoutRef.current)
       if (waitClockRef.current) clearInterval(waitClockRef.current)
+      if (reconcileTimerRef.current) clearTimeout(reconcileTimerRef.current)
       if (ttsHoldTimerRef.current) clearTimeout(ttsHoldTimerRef.current)
       if (ttsPlayingRef.current) {
         ttsPlayingRef.current.pause()
@@ -566,6 +584,32 @@ export default function Conversation() {
     return true
   }
 
+  /**
+   * Keep reconciling past the deadline until the turn lands or we give up.
+   *
+   * The deadline is not evidence that the turn failed — the core's own budget
+   * runs past it (see TURN_RECONCILE_INTERVAL_MS), and prompt eval grows with
+   * the transcript, so the very machine in issue #489 would cross five minutes
+   * late in a long conversation. Failing there would reintroduce the reported
+   * bug at a longer timescale: a turn the session holds, reported as lost and
+   * rolled back. So the deadline only starts the polling; a verdict waits for
+   * TURN_ABANDON_MS, by which point nothing the core permits can still be
+   * running and the request itself must be wedged.
+   *
+   * Returns true when the server's copy was adopted.
+   */
+  async function _awaitServerTurnAfterDeadline(): Promise<boolean> {
+    while (mountedRef.current) {
+      if (await _adoptServerTurnAfterDeadline()) return true
+      if (!mountedRef.current) return false
+      if (Date.now() - waitStartedAtRef.current >= TURN_ABANDON_MS) return false
+      await new Promise<void>((resolve) => {
+        reconcileTimerRef.current = setTimeout(resolve, TURN_RECONCILE_INTERVAL_MS)
+      })
+    }
+    return false
+  }
+
   async function handleSubmit(text: string) {
     if (!text || phase !== 'active') return
 
@@ -616,7 +660,9 @@ export default function Conversation() {
     // Drives the staged "this is taking a while" notice while the turn is out.
     _startWaitClock()
 
-    // Wrap the API call with a hard timeout so the UI is never stuck indefinitely.
+    // Wrap the API call with a deadline so the UI is never stuck indefinitely on a
+    // request that will never answer. Expiry hands over to the reconcile loop
+    // below rather than failing the turn outright.
     let deadlineExpired = false
     const result = await Promise.race([
       api.submitTurn(sessionId!, text, didBargeIn),
@@ -628,14 +674,17 @@ export default function Conversation() {
       }),
     ])
     if (turnTimeoutRef.current) clearTimeout(turnTimeoutRef.current)
-    _stopWaitClock()
 
     if (!result.ok) {
       // The deadline expiring says nothing about whether the turn failed:
       // convsim-core commits the player turn and the NPC reply in one
       // transaction *before* it answers the request, so ask the server what it
-      // actually has before declaring the turn lost (issue #489).
-      if (deadlineExpired && (await _adoptServerTurnAfterDeadline())) return
+      // actually has before declaring the turn lost (issue #489). The wait clock
+      // keeps running through this, so the player still sees a live "still
+      // waiting" notice rather than a screen that goes quiet.
+      const adopted = deadlineExpired && (await _awaitServerTurnAfterDeadline())
+      _stopWaitClock()
+      if (adopted) return
       setError(result.error)
       // Discard any partial streamed tokens so a failed turn doesn't leave a
       // phantom "Responding…" bubble alongside the error.
@@ -650,6 +699,7 @@ export default function Conversation() {
       setPhase('active')
       return
     }
+    _stopWaitClock()
     const turnData = result.data
 
     if (!firstTokenMarkedRef.current) {
