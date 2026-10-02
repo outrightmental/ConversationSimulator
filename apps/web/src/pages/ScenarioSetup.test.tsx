@@ -773,6 +773,15 @@ describe('ScenarioSetupPage', () => {
       expect(standard.querySelector('.brief-meter')).toBeNull();
     });
 
+    it('selects the level when the meters are clicked, not just the label', async () => {
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      const hard = document.querySelector('[data-level="hard"]') as HTMLElement;
+      fireEvent.click(hard.querySelector('.brief-meters') as HTMLElement);
+      expect(screen.getByRole('radio', { name: /hard/i })).toBeChecked();
+      expect(hard).toHaveClass('is-selected');
+    });
+
     it('marks the chosen level and moves the mark when it changes', async () => {
       renderSetup();
       await waitFor(() => screen.getByText('Behavioral Interview'));

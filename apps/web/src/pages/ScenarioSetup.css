@@ -289,12 +289,21 @@
 }
 
 /* A difficulty level reads as one wide row: the choice on the left, the
-   character's traits as meters on the right, like a preflight readout. */
+   character's traits as meters on the right, like a preflight readout. The
+   whole row selects (the wrapper carries the click), so the whole row gets the
+   pointer — not just the <label> half. */
 .brief-option.is-level {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 14rem;
   align-items: center;
   gap: 0.5rem 1.5rem;
+  cursor: pointer;
+}
+
+/* A pack need not declare traits. When it doesn't there are no meters, so give
+   the column back rather than leaving a 14rem gutter beside every level. */
+.brief-option.is-level:not(:has(.brief-meters)) {
+  grid-template-columns: minmax(0, 1fr);
 }
 
 @media (max-width: 52rem) {

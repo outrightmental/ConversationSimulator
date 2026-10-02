@@ -400,6 +400,13 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
                       key={level}
                       className={`brief-option is-level${selected ? ' is-selected' : ''}`}
                       data-level={level}
+                      // The meters sit outside the <label> (see TraitMeters), so
+                      // the column they occupy would show the row's hover and
+                      // selected styling without being clickable. Select on the
+                      // whole row so the pointer target matches what the row
+                      // looks like; the radio is still the real control, and a
+                      // click that reaches it simply sets the same level twice.
+                      onClick={() => setField('difficulty', level)}
                     >
                       <label className="brief-option-main">
                         <input
