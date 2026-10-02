@@ -743,13 +743,16 @@
    the viewport's bottom edge, leaving it behind the bar. Reserve the bar's
    height (plus the 3px focus ring and its offset) so a newly focused control
    lands above the bar instead of under it.
-   The reserve has to clear the bar's tallest state, which is a failed start.
-   That bar is 27.6px of its own padding and border, a 47.8px Start button, a
-   12px row gap and an error row of 18px chrome around a 19px line: ~124px with
-   the message on one line, ~151px with it on two. It does reach two, because
-   the compact error carries the service's own message and wraps once the window
-   narrows. 11rem clears the two-line bar and its focus ring; a third line would
-   not fit, and takes a window far narrower than the brief lays out for.
+   The reserve has to clear the bar's tallest state, which is a failed start:
+   27.6px of the bar's own padding and border, a 47.8px Start button, a 12px row
+   gap and an error row of 18px chrome around each line of message. The compact
+   error carries the service's own message, so the line count rises as the
+   window narrows — measured at 122px on one line, 146px on two, 169px on three.
+   What makes 11rem (176px) safe is the window floor: `minWidth` in
+   apps/desktop/src-tauri/tauri.conf.json is 900px, and at 900px the bar is the
+   two-line 146px, clearing the reserve with 30px to spare after the focus ring.
+   It still holds for the three-line bar a browser can reach at ~780px, but a
+   fourth line (below ~700px) would not. Re-measure if that floor ever drops.
    The selector matches what the D-pad can focus (useGamepadNavigation's
    FOCUSABLE_SELECTOR) minus the launch bar's own controls: the bar is sticky,
    so they are already on screen and never need scrolling to. */
