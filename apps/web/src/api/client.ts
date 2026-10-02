@@ -43,6 +43,16 @@ import type {
   LogbookExport,
   PreflightResponse,
   SetupInstallJob,
+  FlytingScenarioSetup,
+  FlytingRunCreateRequest,
+  FlytingRunCreateResponse,
+  FlytingRunDetail,
+  FlytingVolleyResponse,
+  FlytingRunSummaryResponse,
+  FlytingHighScoresResponse,
+  FlytingPreviewResponse,
+  PlayFormat,
+  BattingFormat,
 } from '@convsim/shared';
 
 export type { HealthResponse };
@@ -646,6 +656,72 @@ export const api = {
       onEvent(data)
     }
     return { close: () => ws.close() }
+  },
+
+  // The turn-scored game mode (issue #454). Every call is local: the judge runs
+  // on the player's own model and the high-score board is a SQLite table on
+  // their own disk, so there is deliberately no remote-board method here.
+  flyting: {
+    listScenarios(): Promise<ApiResult<FlytingScenarioSetup[]>> {
+      return get<FlytingScenarioSetup[]>('/flyting/scenarios')
+    },
+    getScenario(scenarioId: string): Promise<ApiResult<FlytingScenarioSetup>> {
+      return get<FlytingScenarioSetup>(`/flyting/scenarios/${encodeURIComponent(scenarioId)}`)
+    },
+    highScores(
+      scenarioId: string,
+      playFormat?: PlayFormat,
+      battingFormat?: BattingFormat | null,
+    ): Promise<ApiResult<FlytingHighScoresResponse>> {
+      const params = new URLSearchParams()
+      if (playFormat) params.set('play_format', playFormat)
+      if (battingFormat) params.set('batting_format', battingFormat)
+      const qs = params.toString()
+      return get<FlytingHighScoresResponse>(
+        `/flyting/scenarios/${encodeURIComponent(scenarioId)}/high-scores${qs ? `?${qs}` : ''}`,
+      )
+    },
+    startRun(request: FlytingRunCreateRequest): Promise<ApiResult<FlytingRunCreateResponse>> {
+      return post<FlytingRunCreateResponse>('/flyting/sessions', request)
+    },
+    getRun(sessionId: string): Promise<ApiResult<FlytingRunDetail>> {
+      return get<FlytingRunDetail>(`/flyting/sessions/${encodeURIComponent(sessionId)}`)
+    },
+    /** Submit one volley. The elapsed times are the client's shot clock — the
+     *  server cannot see when the player was prompted, so it trusts these for
+     *  the clock and recomputes everything that affects the score itself. */
+    submitVolley(
+      sessionId: string,
+      content: string,
+      elapsedSincePromptS?: number,
+      elapsedTotalS?: number,
+    ): Promise<ApiResult<FlytingVolleyResponse>> {
+      return post<FlytingVolleyResponse>(
+        `/flyting/sessions/${encodeURIComponent(sessionId)}/volley`,
+        {
+          content,
+          elapsed_since_prompt_s: elapsedSincePromptS,
+          elapsed_total_s: elapsedTotalS,
+        },
+      )
+    },
+    endRun(sessionId: string): Promise<ApiResult<FlytingRunSummaryResponse>> {
+      return post<FlytingRunSummaryResponse>(
+        `/flyting/sessions/${encodeURIComponent(sessionId)}/end`,
+      )
+    },
+    /** Score a draft volley with no run attached — the Workbench test box. */
+    preview(
+      scenarioId: string,
+      content: string,
+      priorVolleys: string[] = [],
+    ): Promise<ApiResult<FlytingPreviewResponse>> {
+      return post<FlytingPreviewResponse>('/flyting/preview', {
+        scenario_id: scenarioId,
+        content,
+        prior_volleys: priorVolleys,
+      })
+    },
   },
 
   workbench: {
