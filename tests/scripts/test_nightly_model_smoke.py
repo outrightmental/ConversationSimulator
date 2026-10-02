@@ -16,6 +16,7 @@ import http.client
 import importlib.util
 import io
 import json
+import statistics
 import urllib.error
 from pathlib import Path
 
@@ -500,6 +501,61 @@ class TestEvaluateBudgets:
     def test_failure_message_shows_the_arithmetic(self) -> None:
         failures, _ = smoke.evaluate_budgets({"full_response_ms": 10 ** 6}, 20.0)
         assert "documented budget 10000 ms × 20.0 × 1.2" in failures[0]
+
+
+class TestTimeoutLatencyEvidence:
+    """A `timeout` verdict must say when the real story is a latency regression.
+
+    Three turns at the 240 s CI ceiling plus a debrief allowed twice that very
+    nearly fill the 20 min wall-clock budget, so a uniform ~2x slowdown — the
+    regression `budget` exists to catch — exhausts the clock before the budget
+    phase ever runs.  TIMEOUT outranks it, so the measurement has to be attached
+    to the verdict or the remedy ("slower, or hung?") leaves triage guessing.
+    """
+
+    @staticmethod
+    def _turns(*latencies_ms: float) -> list[dict]:
+        return [
+            {"label": "npc_opening", "turn_number": 0, "model_generated": False,
+             "latency_ms": 10},
+            *[
+                {"label": f"player_turn_{i}", "turn_number": i,
+                 "model_generated": True, "latency_ms": ms}
+                for i, ms in enumerate(latencies_ms, start=1)
+            ],
+        ]
+
+    def test_turns_past_the_ceiling_are_named_as_a_likely_regression(self) -> None:
+        evidence = smoke.timeout_latency_evidence(
+            self._turns(250_000, 260_000, 270_000), 240_000
+        )
+        assert evidence is not None
+        assert "260000 ms" in evidence  # the median of the completed turns
+        assert "240000 ms CI ceiling" in evidence
+        assert "`budget`" in evidence
+
+    def test_turns_inside_the_ceiling_stay_a_plain_timeout(self) -> None:
+        # Something hung, or a phase other than the conversation ran long:
+        # claiming a latency regression here would be a guess.
+        assert smoke.timeout_latency_evidence(
+            self._turns(10_000, 11_000, 12_000), 240_000
+        ) is None
+
+    def test_a_run_that_timed_out_before_any_turn_says_nothing(self) -> None:
+        assert smoke.timeout_latency_evidence(self._turns(), 240_000) is None
+
+    def test_the_authored_opening_is_not_evidence_of_slow_inference(self) -> None:
+        # The opening is replayed scenario text, so its latency says nothing
+        # about the model -- counting it would invent evidence.
+        slow_opening = [{"label": "npc_opening", "turn_number": 0,
+                         "model_generated": False, "latency_ms": 10 ** 9}]
+        assert smoke.timeout_latency_evidence(slow_opening, 240_000) is None
+
+    def test_one_slow_turn_among_fast_ones_is_not_called_a_regression(self) -> None:
+        # Same reason full_response_ms is a median: one unlucky turn is noise.
+        assert smoke.timeout_latency_evidence(
+            self._turns(10_000, 10 ** 9, 12_000), 240_000
+        ) is None
 
 
 class TestDocumentedBudgetAgreement:
@@ -1270,6 +1326,85 @@ class TestRunSmokeOrchestration:
         results = json.loads(report.read_text(encoding="utf-8"))
         assert results["failure_class"] == smoke.FailureClass.BUDGET
         assert results["failed_phase"] == "budget"
+
+    def test_the_headline_full_response_is_the_median_not_the_worst_turn(
+        self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        # One unlucky turn -- runner steal, an unusually long NPC answer -- must
+        # not move the figure the budget judges, or the nightly flaps.  A real
+        # regression moves every turn and so moves the median.
+        import time
+
+        models_dir, model_id, digest = staged_model
+        base = _fake_core(_debrief())
+        total_turns = len(smoke.SCRIPTED_PLAYER_TURNS)
+        seen = {"turns": 0}
+
+        def _one_slow_turn(url: str, *, payload=None, timeout=None, expect=(200, 201)) -> dict:
+            if url.endswith("/turn"):
+                seen["turns"] += 1
+                if seen["turns"] == total_turns:  # only the last turn is slow
+                    time.sleep(0.25)
+            return base(url, payload=payload, timeout=timeout, expect=expect)
+
+        monkeypatch.setattr(smoke, "_request_json", _one_slow_turn)
+        report = tmp_path / "report.json"
+
+        assert smoke.run_smoke(
+            model_id, 20.0, report, model_sha256=digest, models_dir=models_dir
+        ) == 0
+
+        results = json.loads(report.read_text(encoding="utf-8"))
+        per_turn = sorted(
+            t["latency_ms"] for t in results["turns"] if t["model_generated"]
+        )
+        assert len(per_turn) == total_turns
+        headline = results["measured_ms"]["full_response_ms"]
+        # The median of the turns, not their worst and not their mean.
+        assert abs(headline - statistics.median(per_turn)) <= 1
+        assert results["measured_ms"]["full_response_max_ms"] == per_turn[-1]
+        # The slow turn is still recorded -- it is just not the headline.
+        assert per_turn[-1] - headline > 100
+
+    def test_a_timeout_names_the_latency_regression_it_hides(
+        self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        # Three turns at the CI ceiling plus a debrief allowed twice that very
+        # nearly fill the wall-clock budget, so the regression `budget` exists to
+        # catch exhausts the clock before the budget phase runs.  TIMEOUT is the
+        # honest class, but it has to carry the measurement or its remedy
+        # ("slower, or hung?") leaves triage to guess.
+        import time
+
+        models_dir, model_id, digest = staged_model
+        base = _fake_core(_debrief())
+
+        def _slow(url: str, *, payload=None, timeout=None, expect=(200, 201)) -> dict:
+            if url.endswith("/turn"):
+                time.sleep(0.05)  # measurable, so a 0 ms ceiling is exceeded
+            if url.endswith("/debrief"):
+                time.sleep(0.6)  # outlast the budget below
+                raise smoke.SmokeFailure(
+                    smoke.FailureClass.RUNTIME, f"{url} did not answer with usable JSON"
+                )
+            return base(url, payload=payload, timeout=timeout, expect=expect)
+
+        monkeypatch.setattr(smoke, "_request_json", _slow)
+        report = tmp_path / "report.json"
+
+        # Factor 0 => a 0 ms ceiling, so the measured turns are over it.
+        exit_code = smoke.run_smoke(
+            model_id, 0.0, report, model_sha256=digest, models_dir=models_dir,
+            wall_clock_budget_s=0.5,
+        )
+
+        assert exit_code == smoke.EXIT_CODES[smoke.FailureClass.TIMEOUT]
+        results = json.loads(report.read_text(encoding="utf-8"))
+        assert results["failure_class"] == smoke.FailureClass.TIMEOUT
+        assert any(
+            "latency regression" in f and "CI ceiling" in f
+            for f in results["failures"]
+        )
 
     def test_a_crashed_child_outranks_the_client_side_symptom(
         self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch, tmp_path: Path

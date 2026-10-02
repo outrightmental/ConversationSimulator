@@ -55,6 +55,13 @@ file — so that exit 1 never means anything but a latency regression.  Those
 failures carry their own remedy instead of ``pipeline``'s, because "inspect the
 per-turn used_fallback flags" is the wrong first move for any of them.
 
+``timeout`` outranks ``budget``, and the two thresholds are close together by
+construction (three turns at the CI ceiling plus a debrief very nearly fill the
+wall-clock budget), so a uniform latency regression usually exhausts the clock
+before the budget phase runs.  The class stays ``timeout``, but the verdict then
+names the measured turn latencies that say it was a regression rather than a
+hang — see ``timeout_latency_evidence``.
+
 Transcript content is fully scripted (see ``SCRIPTED_PLAYER_TURNS``) and holds
 no user data, so short NPC excerpts are logged and reported — they are the
 evidence that a real model, not a canned fallback, drove the conversation.
@@ -850,6 +857,44 @@ def evaluate_budgets(
     return (failures, lines)
 
 
+def timeout_latency_evidence(
+    turns: Sequence[Dict[str, Any]], ceiling_ms: float
+) -> Optional[str]:
+    """Name the latency regression hiding inside a ``timeout`` verdict, if there is one.
+
+    The wall-clock budget and the latency ceiling sit close together by
+    construction: three scripted turns at the CI ceiling (240 s each) plus a
+    debrief allowed twice that very nearly fill the 20 min budget.  So a uniform
+    slowdown large enough to fail the budget check usually exhausts the clock
+    *before* the budget phase runs, and TIMEOUT — which outranks everything but
+    a crashed child — is what gets reported.  That class is honest, the clock
+    did run out, but its remedy ("inference got much slower or a phase hung")
+    leaves the reader to work out which.  When the turns that *did* complete are
+    already past the ceiling, we know which, so say so.
+
+    Returns ``None`` when the completed turns were inside the ceiling (a genuine
+    hang, or a phase other than the conversation ran long) or when no
+    model-generated turn finished at all.
+    """
+    latencies = [
+        float(t["latency_ms"])
+        for t in turns
+        if t.get("model_generated") and isinstance(t.get("latency_ms"), (int, float))
+    ]
+    if not latencies:
+        return None
+    median_ms = statistics.median(latencies)
+    if median_ms <= ceiling_ms:
+        return None
+    return (
+        f"The {len(latencies)} NPC turn(s) that did complete have a median latency of "
+        f"{median_ms:.0f} ms, already past the {ceiling_ms:.0f} ms CI ceiling: this is "
+        "most likely the latency regression `budget` exists to catch rather than a "
+        "hung phase. Compare measured_ms in the report artifact against recent "
+        "nightlies before raising --wall-clock-budget-s."
+    )
+
+
 # ── Reporting ─────────────────────────────────────────────────────────────────
 
 
@@ -1351,6 +1396,13 @@ def run_smoke(
                 f"Wall-clock budget of {wall_clock_budget_s:.0f} s exhausted during phase "
                 f"{results['failed_phase']!r} (elapsed {clock.elapsed_s:.0f} s)",
             )
+        if failure_class == FailureClass.TIMEOUT:
+            # TIMEOUT is reached before the budget phase can run for exactly the
+            # regression `budget` is meant to catch, so attach the measurement
+            # that tells the two apart.  See timeout_latency_evidence.
+            evidence = timeout_latency_evidence(results["turns"], full_ceiling_s * 1000)
+            if evidence:
+                results["failures"].append(evidence)
         _dump_stderr_tails((("convsim-core", core_stderr_tail), ("llama-server", llama_stderr_tail)))
         _print_banner(failure_class, results["failures"], remedy=results["remedy"])
 

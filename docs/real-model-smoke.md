@@ -93,6 +93,15 @@ rather than the symptom the client happened to see:
    client-side and *looks* like an unresponsive server. It is reported as
    `timeout`, whose remedy points at `phase_durations_s`.
 
+Because `timeout` outranks `budget`, a *uniform* slowdown normally surfaces as
+exit 6 rather than exit 1: three turns at the 240 s CI ceiling plus a debrief
+allowed twice that very nearly fill the 20 min budget, so a ~2x regression
+exhausts the clock before the budget phase runs. The class stays `timeout` — the
+clock really did run out — but when the turns that *did* complete already have a
+median past the ceiling, the verdict says so and names the measurement, so exit 6
+is not mistaken for a hang. Exit 1 remains the verdict when the conversation
+finishes inside the budget but too slowly.
+
 Each run writes the verdict, failure class, remedy, measured latencies and
 per-phase durations to the GitHub **step summary**, and uploads the full JSON
 report as the `model-smoke-report` artifact (30-day retention).
