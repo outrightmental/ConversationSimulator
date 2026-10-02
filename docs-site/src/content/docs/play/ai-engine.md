@@ -63,7 +63,10 @@ Use the VRAM column as a guide for unified memory (M1/M2/M3/M4 chips share
 CPU and GPU memory).
 
 **No discrete GPU:** any model can run on CPU, but inference is significantly
-slower — expect 15–60 seconds per turn instead of 1–5 seconds. The Qwen3 4B
+slower — expect anywhere from 30 seconds to a few minutes per turn instead of
+1–5 seconds, most of it spent reading the prompt back in. The app waits for a
+slow turn rather than failing it; see
+[Performance and hardware](/play/performance/#timeout-errors). The Qwen3 4B
 starter model is the most practical choice for CPU-only machines.
 
 **Partial VRAM fit:** if you have less VRAM than the minimum, the model can

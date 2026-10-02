@@ -38,6 +38,16 @@ echo "Running cargo check --features steam on apps/desktop/src-tauri..."
 (cd "$DESKTOP_TAURI" && cargo check --features steam 2>&1)
 echo "  OK  cargo check --features steam passed."
 
+# Unit tests for the shell's own logic: Steam status derivation and, crucially,
+# convsim-core process teardown (src/core_process.rs) — the Unix tests there
+# spawn a real child with a real grandchild and assert that neither survives
+# shutdown. Without the `steam` feature: those tests call `steam::init()` from
+# several threads at once, which is fine against the no-SDK stub but is NOT a
+# supported way to call the real `SteamAPI_Init`.
+echo "Running cargo test on apps/desktop/src-tauri..."
+(cd "$DESKTOP_TAURI" && cargo test 2>&1)
+echo "  OK  cargo test passed."
+
 echo ""
 echo "Desktop smoke check passed."
 echo ""

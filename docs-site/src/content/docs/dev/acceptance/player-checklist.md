@@ -85,7 +85,7 @@ Navigate to **Scenarios**.
 Start the selected scenario.
 
 - [ ] NPC opening line delivered within 10 seconds
-- [ ] Typing a player turn and submitting returns NPC response within 30 s (fake) / 60 s (real CPU)
+- [ ] Typing a player turn and submitting returns an NPC response within 30 s (fake); with a real model on CPU it can take several minutes, and must not report a timeout error
 - [ ] Transcript updates after each turn
 
 ### P-M6 — State meters (optional)

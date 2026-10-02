@@ -174,7 +174,7 @@ In the browser, navigate to **Scenarios** or equivalent library view.
 Select **Job Interview Basics → Behavioral Interview** and start a session.
 
 - [ ] Session starts and NPC opening line is delivered within 10 seconds
-- [ ] Type a player turn and submit — NPC responds within 30 seconds (fake runtime) / 60 seconds (real model, CPU)
+- [ ] Type a player turn and submit — NPC responds within 30 seconds (fake runtime); with a real model on CPU it can take several minutes, and must not report a timeout error
 - [ ] Session transcript updates correctly after each turn
 - [ ] Session can be ended cleanly with the Stop / End Session button
 
@@ -397,7 +397,7 @@ Select **Job Interview Basics → Behavioral Interview** and run a session.
   (Job Interview Basics, Everyday Negotiation, Language Café,
   Difficult Conversations, Dating — Confidence & Boundaries)
 - [ ] Session starts without errors; NPC opening line is delivered
-- [ ] Player can submit a text turn; NPC responds within 60 seconds (CPU-only)
+- [ ] Player can submit a text turn; NPC responds with no timeout error (a CPU-only turn can take several minutes — the app waits for it)
 - [ ] Session ends cleanly via the Stop / End Session button
 - [ ] Debrief screen loads with rubric scores and an export option
 - [ ] Exporting the transcript saves a file to `%LOCALAPPDATA%\outrightmental\convsim\exports\`
@@ -629,7 +629,7 @@ downloaded and verified via the in-app Model Manager.
 - [ ] Disclosure fields (name, URL, license, size, SHA-256, destination) visible
 - [ ] Download completed; SHA-256 verified; model status changed to `loaded`
 - [ ] NPC opening line delivered within 60 seconds (CPU inference)
-- [ ] Three scripted player turns complete; each NPC response within 60 seconds
+- [ ] Three scripted player turns complete; each NPC response arrives with no timeout error (a CPU-only turn can take several minutes)
 - [ ] Session ends cleanly; debrief shows real rubric scores
 
 ### F.6 Transcript privacy verification
@@ -696,7 +696,7 @@ Select **Job Interview Basics → Behavioral Interview** and run a session.
 
 - [ ] Scenario library loads and all five official packs are listed
 - [ ] Session starts without errors; NPC opening line is delivered
-- [ ] Player can submit a text turn; NPC responds within 60 seconds (CPU-only)
+- [ ] Player can submit a text turn; NPC responds with no timeout error (a CPU-only turn can take several minutes — the app waits for it)
 - [ ] Session ends cleanly via the Stop / End Session button
 - [ ] Debrief screen loads with rubric scores and an export option
 - [ ] Exporting the transcript saves a file under
@@ -826,7 +826,7 @@ Select **Job Interview Basics → Behavioral Interview** and run a session.
 
 - [ ] All five official packs listed in the scenario library
 - [ ] Session starts; NPC opening line delivered
-- [ ] Player text turn submitted; NPC responds within 60 seconds (CPU-only)
+- [ ] Player text turn submitted; NPC responds with no timeout error (a CPU-only turn can take several minutes)
 - [ ] Session ends cleanly; debrief screen loads with rubric scores and export option
 - [ ] Exported transcript saved under `~/.local/share/convsim/exports/`
 
