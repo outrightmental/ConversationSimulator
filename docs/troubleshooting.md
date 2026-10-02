@@ -247,6 +247,11 @@ happen. If it does:
 ```bash
 # macOS / Linux
 pkill -f convsim-core
+# The engine stops llama-server and the TTS sidecar on its way out, so normally
+# that is all. If it was too wedged to do that, a stray llama-server keeps port
+# 7356 — which stops the next launch from loading a model — so clear it too.
+# (This also matches a llama-server you started yourself; skip it if you did.)
+pkill -f llama-server
 ```
 
 ```powershell
