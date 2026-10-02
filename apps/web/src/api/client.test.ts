@@ -93,7 +93,10 @@ describe('api.createSession — ApiResult return type', () => {
     }
   });
 
-  it('extracts messages from a FastAPI 422 validation detail list', async () => {
+  it('names the failing fields in a FastAPI 422 validation detail list', async () => {
+    // FastAPI's default 422 shape, which this client still has to read: a 422
+    // raised before convsim-core installs its handler, or an engine bundled
+    // before issue #508. The reasons alone name nothing to act on.
     mockFetch(422, {
       detail: [
         { type: 'string_too_short', loc: ['body', 'player_role_name'], msg: 'String should have at least 1 character' },
@@ -104,10 +107,44 @@ describe('api.createSession — ApiResult return type', () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.message).toBe(
-        'String should have at least 1 character; Input should be greater than or equal to 0',
+        'player_role_name: String should have at least 1 character; ' +
+          'seed: Input should be greater than or equal to 0',
       );
       expect(result.error.message).not.toContain('{');
       expect(result.error.message).not.toContain('loc');
+    }
+  });
+
+  it('caps and clips a FastAPI 422 detail list the same way', async () => {
+    // Same card and same copied report, so the same two limits apply as to
+    // convsim-core's own sentence.
+    mockFetch(422, {
+      detail: [
+        { type: 'value_error', loc: ['body', 'scenario_id'], msg: 'Value error, ' + 'x'.repeat(500) },
+        ...Array.from({ length: 7 }, (_, i) => ({
+          type: 'missing',
+          loc: ['body', `field_${i}`],
+          msg: 'Field required',
+        })),
+      ],
+    });
+    const result = await api.createSession(BASE_SESSION);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toContain('scenario_id');
+      expect(result.error.message).toContain('and 3 more');
+      expect(result.error.message).not.toContain('field_4');
+      expect(result.error.message).toContain('\u2026');
+    }
+  });
+
+  it('falls back to the status line when a 422 detail list carries no reasons', async () => {
+    mockFetch(422, { detail: [{ type: 'missing', loc: ['body', 'scenario_id'] }] });
+    const result = await api.createSession(BASE_SESSION);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).not.toContain('loc');
+      expect(result.error.message).not.toContain('{');
     }
   });
 
