@@ -92,8 +92,9 @@ const WORKBENCH_FILE = 'scenarios/stretch_role_interview.yaml'
 
 // Viewport for every capture. Screenshots are taken at deviceScaleFactor 2, so
 // a 1280 x H capture lands at 2560 x 2H — the "2x" the checklist asks for. The
-// height is fitted to each screen's own content (up to MAX_SHOT_HEIGHT) so no
-// screenshot is padded with dead space or cut off mid-panel.
+// height is fitted to each screen's own content (up to MAX_SHOT_HEIGHT) so a
+// screenshot is not padded with dead space. Fitting cannot always reach the
+// bottom of a screen, though: see the overflow check in `shot`.
 const VIEWPORT = { width: 1280, height: 800 }
 const SCALE = 2
 const MAX_SHOT_HEIGHT = 2000
@@ -325,6 +326,27 @@ async function shot(page, name, { until } = {}) {
     // at that offset, which is not "the top of it" the warning above promises.
     await page.evaluate(() => window.scrollTo(0, 0))
     await page.waitForTimeout(600)
+    // Re-measure at the grown viewport, but only where the frame was meant to
+    // hold the whole screen — `until` and the MAX_SHOT_HEIGHT clamp both crop
+    // on purpose, and both already say so. Fitting the viewport to the page
+    // works only while the page's height is independent of it, and the Creator
+    // Workbench's two columns are `calc(100vh - 220px)`: they grow by whatever
+    // the viewport grew by, so the frame still clips the file tree and the
+    // editor mid-item. That lands under the cap, so the warning above never
+    // fires for it — without this one a viewport-bound screen ships cropped
+    // with nothing in the log to say so.
+    if (!until && content <= MAX_SHOT_HEIGHT) {
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollHeight - window.innerHeight,
+      )
+      if (overflow > 4) {
+        log(
+          `WARNING: ${name} still overflows its fitted viewport by ${overflow} px — ` +
+            'this screen sizes panels against the viewport, so the frame shows their ' +
+            'tops. Say so in the alt text, or end the frame deliberately with `until`.',
+        )
+      }
+    }
     await page.screenshot({ path: file })
   } finally {
     // Restore even when the screenshot threw. `step` swallows that throw, so

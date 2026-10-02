@@ -202,7 +202,9 @@ section; key moments, replay suggestions and the transcript continue below.
 **What it shows:** The workbench after using "Create local copy to edit" on an official
 pack: the green validation banner, the pack list with six read-only official packs and
 one editable local-dev copy, that copy's file tree, and the YAML editor open on a
-scenario file with the YAML/Form toggle, Save, and Export .zip.
+scenario file with the YAML/Form toggle, Save, and Export .zip. Both columns are
+viewport-height panels that scroll on their own, so the frame shows the top of
+the file tree and the top of the open file rather than all of either.
 
 **Alt text:**
 > Creator Workbench. A green "Pack is valid" banner sits above a two-column layout. On
