@@ -5,6 +5,7 @@ import { api } from '../api/client'
 import { SETUP_KEYS } from '../privacyPrefs'
 import { useSetupInstall } from './useSetupInstall'
 import { useIsDemo } from '../edition'
+import { useSteamAchievements, SteamAchievement } from '../hooks/useSteamAchievements'
 import type {
   ModelsResponse,
   ModelRegistryEntry,
@@ -121,6 +122,7 @@ export function useSetupFlow(
   // model/preflight pipelines against one `intentRef`.
   const isDemoRef = useRef(isDemo)
   isDemoRef.current = isDemo
+  const { unlock } = useSteamAchievements()
   const [step, setStep] = useState<SetupFlowStep>(initialStep)
   const [modelsData, setModelsData] = useState<ModelsResponse | null>(null)
   const [loadError, setLoadError] = useState<ApiError | null>(null)
@@ -271,6 +273,7 @@ export function useSetupFlow(
       // The real model is live. Land the player in the library — one click from
       // their first real conversation (issue #473: no tutorial gate in between).
       // The demo's five conversations live on Home instead.
+      void unlock(SteamAchievement.SETUP_COMPLETE)
       void markFirstRunComplete().then(() => {
         navigate(isDemo ? '/' : '/library')
       })
@@ -280,7 +283,7 @@ export function useSetupFlow(
         message: setupInstallJob.error_message ?? 'Install failed. Please try again.',
       })
     }
-  }, [step, setupInstallJob, navigate, isDemo])
+  }, [step, setupInstallJob, navigate, isDemo, unlock])
 
   // Auto-run benchmark once on entering the 'benchmark' step
   useEffect(() => {
@@ -290,10 +293,12 @@ export function useSetupFlow(
     setBenchmarkResult(null)
     setBenchmarkError(null)
     void api.benchmarkModel({}).then((r) => {
-      if (r.ok) setBenchmarkResult(r.data)
-      else setBenchmarkError(r.error)
+      if (r.ok) {
+        setBenchmarkResult(r.data)
+        void unlock(SteamAchievement.BENCHMARKED)
+      } else setBenchmarkError(r.error)
     }).finally(() => { setBenchmarkRunning(false) })
-  }, [step])
+  }, [step, unlock])
 
   const recommendedModel = modelsData ? pickRecommendedModel(modelsData, isDemo) : null
 
@@ -349,6 +354,7 @@ export function useSetupFlow(
     setActionError(null)
     const r = await api.useModel({ runtime_id: 'ollama', model_id: m.id })
     if (!r.ok) { setActionError(r.error); setActionLoading(false); return }
+    void unlock(SteamAchievement.BYO_MODEL)
     benchmarkStartedRef.current = false
     setStep('benchmark')
     setActionLoading(false)
@@ -373,6 +379,7 @@ export function useSetupFlow(
       setActionLoading(false)
       return
     }
+    void unlock(SteamAchievement.BYO_MODEL)
     benchmarkStartedRef.current = false
     setStep('benchmark')
     setActionLoading(false)
@@ -391,6 +398,7 @@ export function useSetupFlow(
   // just the localStorage mirror — otherwise clearing the cache resurrects the
   // wizard for a working install (issue #380).
   async function handleFinishBenchmark() {
+    void unlock(SteamAchievement.SETUP_COMPLETE)
     await markFirstRunComplete()
     navigate('/')
   }

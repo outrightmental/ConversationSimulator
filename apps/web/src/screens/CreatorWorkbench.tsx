@@ -8,6 +8,7 @@ import type { ApiError } from '../api/errors'
 import { ERROR_COPY } from '../api/errors'
 import { ApiErrorView } from '../components/ApiErrorView'
 import { useSteamStatus } from '../hooks/useSteamStatus'
+import { useSteamAchievements, SteamAchievement, SteamStat } from '../hooks/useSteamAchievements'
 import { useSteamWorkshop } from '../hooks/useSteamWorkshop'
 
 // A validation response is only usable if it carries the expected error/warning
@@ -875,6 +876,7 @@ interface TestChatPanelProps {
 }
 
 function TestChatPanel({ pack, validation }: TestChatPanelProps) {
+  const { unlock } = useSteamAchievements()
   const [chatStatus, setChatStatus] = useState<'idle' | 'starting' | 'active' | 'sending' | 'ended'>('idle')
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([])
   const [stateVars, setStateVars] = useState<Record<string, number>>({})
@@ -918,6 +920,7 @@ function TestChatPanel({ pack, validation }: TestChatPanelProps) {
     setStateVars(r.data.state_vars)
     setTranscript([{ role: 'npc', content: r.data.npc_opening }])
     setChatStatus('active')
+    void unlock(SteamAchievement.CREATOR_TEST)
   }
 
   async function handleStart() {
@@ -1425,6 +1428,7 @@ export default function CreatorWorkbench() {
   // Workshop publish state — only relevant in Steam builds
   const steamStatus = useSteamStatus()
   const { publishPack } = useSteamWorkshop()
+  const { unlock, incrementStat } = useSteamAchievements()
   const isSteamEnabled = steamStatus?.is_steam_enabled ?? false
   const [publishState, setPublishState] = useState<'idle' | 'publishing' | 'done' | 'error'>('idle')
   const [publishError, setPublishError] = useState<string | null>(null)
@@ -1470,6 +1474,7 @@ export default function CreatorWorkbench() {
     setRestoreFailed(false)
     const r = await apiClient.reseedOfficialPacks()
     if (r.ok) {
+      void unlock(SteamAchievement.PACKS_RESTORED)
       await loadPacks()
     } else {
       setRestoreFailed(true)
@@ -1498,12 +1503,18 @@ export default function CreatorWorkbench() {
       setValidationServiceError(r.error)
     } else if (isValidation(r.data)) {
       setValidation(r.data)
+      // ACH_CREATOR_FIRST_VALIDATE is about the player's OWN pack passing, so an
+      // official read-only pack validating cleanly on selection must not grant
+      // it — only an editable (local-dev) pack counts.
+      if (r.data.valid && pack.editable) {
+        void unlock(SteamAchievement.CREATOR_FIRST_VALIDATE)
+      }
     } else {
       setValidation(null)
       setValidationServiceError({ kind: 'schema-mismatch', message: 'Validator returned an unexpected response.' })
     }
     setValidationLoading(false)
-  }, [])
+  }, [unlock])
 
   async function handleSelectPack(pack: WorkbenchPack) {
     if (isDirty && !window.confirm('You have unsaved changes. Discard them?')) return
@@ -1549,10 +1560,19 @@ export default function CreatorWorkbench() {
     const r = await api.workbench.writeFile(selectedPack.kind, selectedPack.slug, selectedFile, editorContent)
     if (!r.ok) { setSaveError(r.error); setSaving(false); return }
     setSavedContent(editorContent)
+    void unlock(SteamAchievement.CREATOR_SAVE)
+    // Every save runs the validator, which is the explicit, player-initiated
+    // validation run the STAT_PACKS_VALIDATED count is defined against (the
+    // automatic validation on pack selection is not counted — it would inflate
+    // the stat on mere browsing).
+    void incrementStat(SteamStat.PACKS_VALIDATED)
     // The save re-validates the pack. Prefer the validation the write returned;
     // fall back to a dedicated refresh if the backend omitted it.
     if (isValidation(r.data.validation)) {
       setValidation(r.data.validation)
+      if (r.data.validation.valid && selectedPack.editable) {
+        void unlock(SteamAchievement.CREATOR_FIRST_VALIDATE)
+      }
       // The save re-validated successfully, so any earlier service error is
       // stale — clear it so it doesn't mask the fresh result (the service-error
       // branch of ValidationPanel renders ahead of the validation branch).
@@ -1570,6 +1590,7 @@ export default function CreatorWorkbench() {
     const r = await api.workbench.copyToLocal(selectedPack.kind, selectedPack.slug)
     if (!r.ok) { setCopyError(r.error); setCopying(false); return }
     const newPack = r.data
+    void unlock(SteamAchievement.CREATOR_FORK)
     setPacks((prev) => [...prev.filter((p) => !(p.kind === newPack.kind && p.slug === newPack.slug)), newPack])
     // Switch to the new local-dev copy
     setSelectedPack(newPack)
@@ -1596,6 +1617,8 @@ export default function CreatorWorkbench() {
     }
     // Success: add the new pack to the list and select it
     const result = r.data
+    void unlock(SteamAchievement.PACK_IMPORTED)
+    void incrementStat(SteamStat.PACKS_IMPORTED)
     const newPack: WorkbenchPack = {
       kind: result.kind,
       slug: result.slug,
@@ -1622,6 +1645,8 @@ export default function CreatorWorkbench() {
     if (!r.ok) { setExportError(r.error); setExporting(false); return }
     triggerDownload(r.data.blob, r.data.filename)
     setExportFilename(r.data.filename)
+    void unlock(SteamAchievement.CREATOR_EXPORT)
+    void incrementStat(SteamStat.PACKS_EXPORTED)
     setExporting(false)
   }
 
@@ -1641,6 +1666,7 @@ export default function CreatorWorkbench() {
     const ok = await publishPack(packRoot)
     if (ok) {
       setPublishState('done')
+      void unlock(SteamAchievement.WORKSHOP_PUBLISHER)
     } else {
       setPublishState('error')
       setPublishError('Steam overlay could not be opened. Ensure the app was launched via Steam.')

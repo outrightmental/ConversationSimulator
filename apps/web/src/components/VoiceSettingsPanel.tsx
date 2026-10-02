@@ -4,6 +4,7 @@ import type { VoiceInfo } from '@convsim/shared'
 import { api } from '../api/client'
 import type { ApiError } from '../api/errors'
 import { ApiErrorView } from './ApiErrorView'
+import { useSteamAchievements, SteamAchievement } from '../hooks/useSteamAchievements'
 
 export const VOICE_PREF_THINKING_PAUSE = 'convsim.voice.thinkingPauseEnabled'
 export const VOICE_PREF_BACKCHANNEL = 'convsim.voice.backchannelEnabled'
@@ -88,6 +89,7 @@ function formatBytes(bytes: number): string {
 type CacheClearState = 'idle' | 'clearing' | 'done' | 'error'
 
 export default function VoiceSettingsPanel() {
+  const { unlock } = useSteamAchievements()
   const [voices, setVoices] = useState<VoiceInfo[]>([])
   const [voicesError, setVoicesError] = useState<ApiError | null>(null)
 
@@ -169,6 +171,7 @@ export default function VoiceSettingsPanel() {
   function handleVoiceChange(voiceId: string) {
     setPreferredVoiceId(voiceId)
     localStorage.setItem('convsim.voice.preferredVoiceId', voiceId)
+    void unlock(SteamAchievement.VOICE_TUNED)
   }
 
   async function handleClearCache() {
@@ -189,18 +192,21 @@ export default function VoiceSettingsPanel() {
     const next = !thinkingPauseEnabled
     setThinkingPauseEnabled(next)
     localStorage.setItem(VOICE_PREF_THINKING_PAUSE, String(next))
+    void unlock(SteamAchievement.VOICE_TUNED)
   }
 
   function handleBackchannelToggle() {
     const next = !backchannelEnabled
     setBackchannelEnabled(next)
     localStorage.setItem(VOICE_PREF_BACKCHANNEL, String(next))
+    void unlock(SteamAchievement.VOICE_TUNED)
   }
 
   function handleBargeInToggle() {
     const next = !bargeInEnabled
     setBargeInEnabled(next)
     localStorage.setItem(VOICE_PREF_BARGE_IN, String(next))
+    void unlock(SteamAchievement.VOICE_TUNED)
   }
 
   function cacheSizeLabel(): string {

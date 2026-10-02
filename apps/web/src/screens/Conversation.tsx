@@ -8,6 +8,12 @@ import VoiceInput, { type SttReviewMeta } from '../components/VoiceInput'
 import DebugDrawer, { type DebugTurnEntry } from '../components/DebugDrawer'
 import PerformanceWarningBanner from '../components/PerformanceWarning'
 import { useLatencyMetrics } from '../hooks/useLatencyMetrics'
+import {
+  useSteamAchievements,
+  SteamAchievement,
+  SteamStat,
+  DEEP_CONVERSATION_TURNS,
+} from '../hooks/useSteamAchievements'
 import { isDevModeEnabled } from '../privacyPrefs'
 import { getVoiceTimingPrefs } from '../components/VoiceSettingsPanel'
 import type { ApiError } from '../api/errors'
@@ -152,6 +158,14 @@ export default function Conversation() {
   // Voice timing preferences (issue #308) — read once at mount from localStorage.
   const voiceTimingPrefs = getVoiceTimingPrefs()
 
+  const { unlock, incrementStat } = useSteamAchievements()
+  // Player turns in THIS session, for ACH_DEEP_CONVERSATION. turnNumRef below
+  // counts NPC turns too, so it cannot stand in for this.
+  const playerTurnsRef = useRef(0)
+  const deepConversationGrantedRef = useRef(false)
+  const bargeInGrantedRef = useRef(false)
+  const modeStatCountedRef = useRef(false)
+
   const [phase, setPhase] = useState<Phase>('starting')
   const [sessionState, setSessionState] = useState('NotStarted')
   const [endingType, setEndingType] = useState<string | null>(null)
@@ -253,6 +267,9 @@ export default function Conversation() {
     serverTurns: Array<{ role: TurnEntry['role']; content: string; emotion?: string | null }>,
   ) {
     turnNumRef.current = 0
+    // Keep the player-turn tally in step with the rehydrated transcript so a
+    // mid-session reload does not restart progress toward ACH_DEEP_CONVERSATION.
+    playerTurnsRef.current = serverTurns.filter((t) => t.role === 'player').length
     setTurns(
       serverTurns.map((t) => ({
         id: ++turnUidRef.current,
@@ -362,6 +379,12 @@ export default function Conversation() {
     // interruption_count in the debrief.
     bargedInRef.current = isTtsActive
     if (!isTtsActive) return
+    // Talking over the NPC is the real barge-in — reaching this line means TTS
+    // was actually playing, not merely that voice mode is on.
+    if (!bargeInGrantedRef.current) {
+      bargeInGrantedRef.current = true
+      void unlock(SteamAchievement.BARGE_IN)
+    }
     _fadeTtsOut(180, () => {
       ttsQueueRef.current = []
     })
@@ -438,6 +461,17 @@ export default function Conversation() {
           ])
         }
       }
+      // Count the session against its input mode exactly once, at the start
+      // boundary the Steam framework documents. A count only — which scenario,
+      // language, or NPC is involved never leaves the device.
+      if (!modeStatCountedRef.current) {
+        modeStatCountedRef.current = true
+        void incrementStat(
+          inputMode === 'text-only'
+            ? SteamStat.TEXT_MODE_SESSIONS
+            : SteamStat.VOICE_MODE_SESSIONS,
+        )
+      }
       setSessionState(startData.state)
       const openingVisible = opening?.payload['visible_state']
       if (openingVisible && typeof openingVisible === 'object') {
@@ -449,7 +483,7 @@ export default function Conversation() {
     return () => {
       cancelled = true
     }
-  }, [sessionId, devMode, mark, recordInterval])
+  }, [sessionId, devMode, mark, recordInterval, inputMode, incrementStat])
 
   // WebSocket connection — best effort; REST fallback continues to work
   useEffect(() => {
@@ -685,6 +719,14 @@ export default function Conversation() {
     // regardless of whether the NPC turn is committed by WebSocket or REST.
     const playerTurnId = ++turnUidRef.current
     const playerTurnNum = ++turnNumRef.current
+    playerTurnsRef.current += 1
+    if (
+      !deepConversationGrantedRef.current &&
+      playerTurnsRef.current >= DEEP_CONVERSATION_TURNS
+    ) {
+      deepConversationGrantedRef.current = true
+      void unlock(SteamAchievement.DEEP_CONVERSATION)
+    }
     setTurns((prev) => [
       ...prev,
       {

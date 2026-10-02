@@ -9,6 +9,7 @@ import VadStatusIndicator from './VadStatusIndicator'
 import VadCalibration from './VadCalibration'
 import TranscriptReviewPanel from './TranscriptReviewPanel'
 import { CopyDiagnosticsButton } from './CopyDiagnosticsButton'
+import { useSteamAchievements, SteamAchievement, SteamStat } from '../hooks/useSteamAchievements'
 
 const BACKCHANNEL_TRIGGER_MS = 3_500
 
@@ -110,6 +111,8 @@ export default function VoiceInput({ onSubmit, onRawStt, onSttLatency, onRecordi
       backchannelAudioRef.current = null
     }
   }
+
+  const { unlock, incrementStat } = useSteamAchievements()
 
   const vad = useVad()
   const isHandsFree = vad.settings.mode === 'hands-free'
@@ -223,6 +226,15 @@ export default function VoiceInput({ onSubmit, onRawStt, onSttLatency, onRecordi
         language: raw.language,
         confidence: raw.confidence,
       })
+      // A confirmed transcript means the mic captured speech and STT returned
+      // it, so this is the real "spoke a turn" boundary. Counted, never
+      // content: Steam sees a +1, not a word of what was said.
+      void unlock(SteamAchievement.VOICE_TURN)
+      void incrementStat(SteamStat.VOICE_TURNS)
+      if (isHandsFree) void unlock(SteamAchievement.HANDS_FREE)
+      if (finalText !== raw.transcript) {
+        void unlock(SteamAchievement.TRANSCRIPT_EDITED)
+      }
     }
     if (!disabled) {
       onSubmit?.(finalText)
@@ -310,6 +322,7 @@ export default function VoiceInput({ onSubmit, onRawStt, onSttLatency, onRecordi
     e.preventDefault()
     const value = textValue.trim()
     if (!value || disabled) return
+    void unlock(SteamAchievement.TEXT_TURN)
     onSubmit?.(value)
     setTextValue('')
   }

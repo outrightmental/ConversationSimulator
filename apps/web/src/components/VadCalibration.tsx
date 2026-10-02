@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState, useEffect, useRef, useCallback } from 'react'
 import type { UseVadReturn, VadSettings } from '../hooks/useVad'
+import { useSteamAchievements, SteamAchievement } from '../hooks/useSteamAchievements'
 
 interface VadCalibrationProps {
   vad: UseVadReturn
@@ -16,6 +17,11 @@ export default function VadCalibration({ vad, stream, onDone }: VadCalibrationPr
   const [phase, setPhase] = useState<Phase>('ready')
   const [countdown, setCountdown] = useState(CALIBRATION_SECONDS)
   const [settings, setLocalSettings] = useState<VadSettings>(vad.settings)
+  const { unlock } = useSteamAchievements()
+
+  // Read through a ref so beginRecording keeps its current dependency list.
+  const unlockRef = useRef(unlock)
+  unlockRef.current = unlock
 
   const recorderRef = useRef<MediaRecorder | null>(null)
   const chunksRef = useRef<Blob[]>([])
@@ -62,6 +68,7 @@ export default function VadCalibration({ vad, stream, onDone }: VadCalibrationPr
       try {
         await vad.calibrate(blob)
         setPhase('done')
+        void unlockRef.current(SteamAchievement.VAD_CALIBRATED)
       } catch {
         setPhase('error')
       }

@@ -16,13 +16,122 @@ pub const SPACEWAR_APP_ID: u32 = 480;
 // These must match the API names configured in the Steamworks App Admin portal
 // (Achievements tab). See docs/steam-achievements-stats-rich-presence.md for
 // the full configuration guide and all required Steamworks settings.
+//
+// The set walks a player through every feature area of the app (issue #494); the
+// front-end `SteamAchievement` object in
+// apps/web/src/hooks/useSteamAchievements.ts holds the same names and owns the
+// unlock call sites. API names are a shipped contract — Steam keys a player's
+// unlocked achievements by API name, so add names, never rename them.
 
 pub mod achievements {
+    // Onboarding, models, runtime, and support.
+    pub const SETUP_COMPLETE: &str = "ACH_SETUP_COMPLETE";
+    pub const BYO_MODEL: &str = "ACH_BYO_MODEL";
+    pub const BENCHMARKED: &str = "ACH_BENCHMARKED";
+    pub const RUNTIME_TUNED: &str = "ACH_RUNTIME_TUNED";
+    pub const SELF_TEST: &str = "ACH_SELF_TEST";
+    pub const DIAGNOSTICS: &str = "ACH_DIAGNOSTICS";
+
+    // Conversation: text, voice, and the microphone pipeline.
     pub const FIRST_SCENARIO: &str = "ACH_FIRST_SCENARIO";
+    pub const TEXT_TURN: &str = "ACH_TEXT_TURN";
+    pub const VOICE_TURN: &str = "ACH_VOICE_TURN";
+    pub const HANDS_FREE: &str = "ACH_HANDS_FREE";
+    pub const VAD_CALIBRATED: &str = "ACH_VAD_CALIBRATED";
+    pub const BARGE_IN: &str = "ACH_BARGE_IN";
+    pub const TRANSCRIPT_EDITED: &str = "ACH_TRANSCRIPT_EDITED";
+    pub const DEEP_CONVERSATION: &str = "ACH_DEEP_CONVERSATION";
+    pub const VOICE_TUNED: &str = "ACH_VOICE_TUNED";
+
+    // Debrief, transcripts, logbook, and relationship memory.
     pub const FIRST_DEBRIEF: &str = "ACH_FIRST_DEBRIEF";
+    pub const TURNING_POINT: &str = "ACH_TURNING_POINT";
+    pub const TRANSCRIPT_EXPORT: &str = "ACH_TRANSCRIPT_EXPORT";
+    pub const REPLAY_VARIATION: &str = "ACH_REPLAY_VARIATION";
     pub const PRACTICE_STREAK: &str = "ACH_PRACTICE_STREAK";
+    pub const TEN_SCENARIOS: &str = "ACH_TEN_SCENARIOS";
+    pub const PERSONAL_BEST: &str = "ACH_PERSONAL_BEST";
+    pub const LOGBOOK_EXPORT: &str = "ACH_LOGBOOK_EXPORT";
+    pub const RELATIONSHIP_MEMORY: &str = "ACH_RELATIONSHIP_MEMORY";
+
+    // Scenario library and pack management.
     pub const PACK_EXPLORER: &str = "ACH_PACK_EXPLORER";
+    pub const PACK_CONNOISSEUR: &str = "ACH_PACK_CONNOISSEUR";
+    pub const LIBRARY_CURATOR: &str = "ACH_LIBRARY_CURATOR";
+    pub const PACK_IMPORTED: &str = "ACH_PACK_IMPORTED";
+    pub const PACKS_RESTORED: &str = "ACH_PACKS_RESTORED";
+
+    // Privacy controls and personalisation.
+    pub const PRIVACY_TUNED: &str = "ACH_PRIVACY_TUNED";
+    pub const MEMORY_FORGOTTEN: &str = "ACH_MEMORY_FORGOTTEN";
+    pub const POLYGLOT: &str = "ACH_POLYGLOT";
+    pub const DEV_MODE: &str = "ACH_DEV_MODE";
+
+    // Creator workbench.
     pub const CREATOR_FIRST_VALIDATE: &str = "ACH_CREATOR_FIRST_VALIDATE";
+    pub const CREATOR_FORK: &str = "ACH_CREATOR_FORK";
+    pub const CREATOR_SAVE: &str = "ACH_CREATOR_SAVE";
+    pub const CREATOR_TEST: &str = "ACH_CREATOR_TEST";
+    pub const CREATOR_EXPORT: &str = "ACH_CREATOR_EXPORT";
+
+    // Steam platform surfaces (optional content / optional hardware).
+    pub const WORKSHOP_SUBSCRIBER: &str = "ACH_WORKSHOP_SUBSCRIBER";
+    pub const WORKSHOP_PUBLISHER: &str = "ACH_WORKSHOP_PUBLISHER";
+    pub const DLC_LIBRARY: &str = "ACH_DLC_LIBRARY";
+    pub const BIG_PICTURE: &str = "ACH_BIG_PICTURE";
+
+    /// Capstone: unlocked by the front end once every non-optional achievement
+    /// above has been confirmed unlocked on this device.
+    pub const CERTIFIED_EXPERT: &str = "ACH_CERTIFIED_EXPERT";
+
+    /// Every achievement API name, in the same order as the front-end
+    /// `SteamAchievement` object. Kept as a slice so tests can assert the
+    /// shipped-name invariants across the whole set.
+    pub const ALL: &[&str] = &[
+        SETUP_COMPLETE,
+        BYO_MODEL,
+        BENCHMARKED,
+        RUNTIME_TUNED,
+        SELF_TEST,
+        DIAGNOSTICS,
+        FIRST_SCENARIO,
+        TEXT_TURN,
+        VOICE_TURN,
+        HANDS_FREE,
+        VAD_CALIBRATED,
+        BARGE_IN,
+        TRANSCRIPT_EDITED,
+        DEEP_CONVERSATION,
+        VOICE_TUNED,
+        FIRST_DEBRIEF,
+        TURNING_POINT,
+        TRANSCRIPT_EXPORT,
+        REPLAY_VARIATION,
+        PRACTICE_STREAK,
+        TEN_SCENARIOS,
+        PERSONAL_BEST,
+        LOGBOOK_EXPORT,
+        RELATIONSHIP_MEMORY,
+        PACK_EXPLORER,
+        PACK_CONNOISSEUR,
+        LIBRARY_CURATOR,
+        PACK_IMPORTED,
+        PACKS_RESTORED,
+        PRIVACY_TUNED,
+        MEMORY_FORGOTTEN,
+        POLYGLOT,
+        DEV_MODE,
+        CREATOR_FIRST_VALIDATE,
+        CREATOR_FORK,
+        CREATOR_SAVE,
+        CREATOR_TEST,
+        CREATOR_EXPORT,
+        WORKSHOP_SUBSCRIBER,
+        WORKSHOP_PUBLISHER,
+        DLC_LIBRARY,
+        BIG_PICTURE,
+        CERTIFIED_EXPERT,
+    ];
 }
 
 // ── Stat API names ────────────────────────────────────────────────────────────
@@ -37,6 +146,24 @@ pub mod stats {
     pub const PACKS_VALIDATED: &str = "STAT_PACKS_VALIDATED";
     pub const TEXT_MODE_SESSIONS: &str = "STAT_TEXT_MODE_SESSIONS";
     pub const VOICE_MODE_SESSIONS: &str = "STAT_VOICE_MODE_SESSIONS";
+    pub const VOICE_TURNS: &str = "STAT_VOICE_TURNS";
+    pub const PACKS_IMPORTED: &str = "STAT_PACKS_IMPORTED";
+    pub const PACKS_EXPORTED: &str = "STAT_PACKS_EXPORTED";
+    pub const TRANSCRIPTS_EXPORTED: &str = "STAT_TRANSCRIPTS_EXPORTED";
+
+    /// Every stat API name, in the same order as the front-end `SteamStat`
+    /// object.
+    pub const ALL: &[&str] = &[
+        SCENARIOS_COMPLETED,
+        DEBRIEFS_GENERATED,
+        PACKS_VALIDATED,
+        TEXT_MODE_SESSIONS,
+        VOICE_MODE_SESSIONS,
+        VOICE_TURNS,
+        PACKS_IMPORTED,
+        PACKS_EXPORTED,
+        TRANSCRIPTS_EXPORTED,
+    ];
 }
 
 // ── Rich presence ─────────────────────────────────────────────────────────────
@@ -831,20 +958,50 @@ mod tests {
 
     #[test]
     fn achievement_api_names_have_expected_prefix() {
-        assert!(achievements::FIRST_SCENARIO.starts_with("ACH_"));
-        assert!(achievements::FIRST_DEBRIEF.starts_with("ACH_"));
-        assert!(achievements::PRACTICE_STREAK.starts_with("ACH_"));
-        assert!(achievements::PACK_EXPLORER.starts_with("ACH_"));
-        assert!(achievements::CREATOR_FIRST_VALIDATE.starts_with("ACH_"));
+        for name in achievements::ALL {
+            assert!(name.starts_with("ACH_"), "{name} is missing the ACH_ prefix");
+        }
+    }
+
+    #[test]
+    fn achievement_api_names_are_unique() {
+        let mut seen = std::collections::HashSet::new();
+        for name in achievements::ALL {
+            assert!(seen.insert(*name), "{name} is listed twice");
+        }
+    }
+
+    #[test]
+    fn achievement_set_keeps_the_v1_names() {
+        // Renaming a shipped API name discards every player's progress on it,
+        // so the five that shipped in #230 are frozen.
+        for name in [
+            "ACH_FIRST_SCENARIO",
+            "ACH_FIRST_DEBRIEF",
+            "ACH_PRACTICE_STREAK",
+            "ACH_PACK_EXPLORER",
+            "ACH_CREATOR_FIRST_VALIDATE",
+        ] {
+            assert!(
+                achievements::ALL.contains(&name),
+                "{name} shipped in v1 and must not be renamed or removed"
+            );
+        }
     }
 
     #[test]
     fn stat_api_names_have_expected_prefix() {
-        assert!(stats::SCENARIOS_COMPLETED.starts_with("STAT_"));
-        assert!(stats::DEBRIEFS_GENERATED.starts_with("STAT_"));
-        assert!(stats::PACKS_VALIDATED.starts_with("STAT_"));
-        assert!(stats::TEXT_MODE_SESSIONS.starts_with("STAT_"));
-        assert!(stats::VOICE_MODE_SESSIONS.starts_with("STAT_"));
+        for name in stats::ALL {
+            assert!(name.starts_with("STAT_"), "{name} is missing the STAT_ prefix");
+        }
+    }
+
+    #[test]
+    fn stat_api_names_are_unique() {
+        let mut seen = std::collections::HashSet::new();
+        for name in stats::ALL {
+            assert!(seen.insert(*name), "{name} is listed twice");
+        }
     }
 
     #[test]
