@@ -59,7 +59,7 @@ log, and a remedy printed next to it:
 | 2 | `download` | Model could not be fetched — network, HTTP, or an empty cache | `python scripts/validate-registry.py --url-check`, then re-run |
 | 3 | `checksum` | **SHA-256 drift**: on-disk bytes ≠ `model-registry/registry.yaml` | See [Checksum drift](#checksum-drift) — never relax the check |
 | 4 | `runtime` | `llama-server` or `convsim-core` crashed, hung, or returned 5xx | Read the child stderr tail printed above the banner |
-| 5 | `pipeline` | Servers healthy, but an end-to-end assertion failed | Inspect per-turn `used_fallback` flags in the report artifact |
+| 5 | `pipeline` | Servers healthy, but an end-to-end assertion failed | Inspect per-turn `used_fallback` flags in the report artifact — except for an unscored debrief, see [Unscored debrief](#unscored-debrief) |
 | 6 | `timeout` | Wall-clock budget exhausted; the failing phase is named | Check `phase_durations_s` before raising the budget |
 
 The distinction that matters most in practice is **2/3 vs 4 vs 5**: a download or
@@ -88,6 +88,31 @@ rather than the symptom the client happened to see:
 Each run writes the verdict, failure class, remedy, measured latencies and
 per-phase durations to the GitHub **step summary**, and uploads the full JSON
 report as the `model-smoke-report` artifact (30-day retention).
+
+### Unscored debrief
+
+Exit 5 with *"Debrief has no rubric dimension scores"* is the one `pipeline`
+failure whose first cause is probably **not** a regression, so it is worth
+knowing before it happens.
+
+The debrief's dimension scores are accumulated entirely from
+`rubric_observations` that the model volunteers on each NPC turn. Nothing asks
+it for them: the built-in `behavioral_interview` scenario defines no rubric, no
+prompt layer names any rubric dimensions, and the only hint the model gets is
+the bare `rubric_observations` array in the embedded output schema — whose empty
+list the schema accepts. The fake runtime always returns `[]`, which is why the
+per-PR playthrough asserts only that `scores` *is* a dict.
+
+So an unscored debrief means one of two quite different things:
+
+- **The model left an unguided array empty.** Nothing regressed; a 4 B Q4 model
+  does this. If no nightly has ever scored this scenario, that is the cause —
+  fix it in the product (give the turn prompt a rubric layer, or pick a scenario
+  that defines one), not by relaxing the assertion.
+- **A real regression,** if previous nightlies *did* score it. Then the per-turn
+  `used_fallback` flags in the report artifact are the right place to look.
+
+Check the previous nightly's `model-smoke-report` artifact to tell them apart.
 
 ---
 

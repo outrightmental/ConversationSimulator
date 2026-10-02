@@ -396,6 +396,18 @@ class TestEvaluateDebrief:
         assert any("no rubric dimension scores" in f for f in failures)
         assert any("not numeric" in f for f in failures)
 
+    def test_unscored_debrief_says_it_may_not_be_a_regression(self) -> None:
+        # The scores come only from rubric_observations the model volunteers,
+        # and nothing in the prompt asks for them (the built-in scenario defines
+        # no rubric and no prompt layer names one), so an empty array satisfies
+        # the turn schema. `pipeline`'s stock advice — inspect the per-turn
+        # used_fallback flags — would send triage hunting a parse failure that
+        # never happened, so the failure has to carry its own note.
+        failures, _ = smoke.evaluate_debrief(_debrief(scores={}))
+        no_scores = next(f for f in failures if "no rubric dimension scores" in f)
+        assert smoke.UNSCORED_DEBRIEF_NOTE in no_scores
+        assert "real-model-smoke.md" in no_scores
+
     def test_non_numeric_overall_score_fails(self) -> None:
         failures, _ = smoke.evaluate_debrief(_debrief(overall_score="52"))
         assert any("not numeric" in f for f in failures)

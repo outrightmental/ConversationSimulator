@@ -160,6 +160,23 @@ EXCERPT_CHARS = 160
 # A debrief summary shorter than this is not a usable coaching summary.
 MIN_SUMMARY_CHARS = 20
 
+# Appended to the "no scores" failure.  The debrief's dimension scores are
+# accumulated purely from rubric_observations the *model* volunteers: the
+# built-in behavioral_interview scenario defines no rubric, and no prompt layer
+# names one (see packages/prompt-composer/.../layers.py — the model's only hint
+# is the bare rubric_observations array in the embedded output schema, whose
+# empty list the schema accepts).  So an unscored debrief can mean the 4 B model
+# simply left an unguided array empty rather than that anything regressed, and
+# `pipeline`'s stock advice — inspect the per-turn used_fallback flags — would
+# send triage looking for a parse failure that did not happen.
+UNSCORED_DEBRIEF_NOTE = (
+    "Before calling this a regression: no prompt layer names the rubric "
+    "dimensions, so the model is never asked for rubric_observations and an "
+    "empty array satisfies the turn schema. Check whether any recent nightly "
+    "ever scored this scenario (the fake runtime never does) — see the "
+    "'Unscored debrief' section of docs/real-model-smoke.md."
+)
+
 # How much slower the debrief generation is allowed to be than one NPC turn
 # before we stop calling it slow and start calling it hung.  Only used to size
 # request timeouts (see run_smoke) — debrief latency itself is not budget-checked.
@@ -689,7 +706,13 @@ def evaluate_turns(turns: List[Dict[str, Any]]) -> tuple[List[str], List[str]]:
 
 
 def evaluate_debrief(debrief: Optional[Dict[str, Any]]) -> tuple[List[str], List[str]]:
-    """Check that a *scored* debrief was produced.  Returns (failures, warnings)."""
+    """Check that a *scored* debrief was produced.  Returns (failures, warnings).
+
+    "Scored" is the #457 acceptance criterion, so an unscored debrief is a
+    failure — but the scores come from rubric_observations nothing in the prompt
+    asks the model for, so the failure carries ``UNSCORED_DEBRIEF_NOTE`` to keep
+    that from reading as a regression.
+    """
     failures: List[str] = []
     warnings: List[str] = []
     if not debrief:
@@ -698,8 +721,9 @@ def evaluate_debrief(debrief: Optional[Dict[str, Any]]) -> tuple[List[str], List
     scores = debrief.get("scores")
     if not isinstance(scores, dict) or not scores:
         failures.append(
-            "Debrief has no rubric dimension scores; the model emitted no scorable "
-            "rubric_observations across the whole conversation"
+            "Debrief has no rubric dimension scores: no NPC turn carried a "
+            "rubric_observation with a rubric_id, so the debrief engine had nothing "
+            "to accumulate. " + UNSCORED_DEBRIEF_NOTE
         )
 
     overall = debrief.get("overall_score")
