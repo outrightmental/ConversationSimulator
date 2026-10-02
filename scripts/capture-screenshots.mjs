@@ -252,11 +252,17 @@ function haveFfmpeg() {
   })
 }
 
-// Outputs that were asked for but not written. Reported at the end and
+// Outputs this run actually wrote. Reconciled against REQUESTED at the end and
 // reflected in the exit status: a skipped screen leaves the previous capture
 // on disk, which looks exactly like a successful re-capture until someone
 // notices the committed PNG still shows last month's UI.
-const missed = []
+//
+// Successes are tracked rather than failures because an output can go missing
+// without anything throwing: 03 and the hero both fire from inside the
+// playthrough loop, keyed off PLAYER_TURNS — shorten that list to two turns and
+// neither step is ever reached, so an error-keyed list would stay empty and the
+// run would report a full re-capture it did not do.
+const written = new Set()
 
 /**
  * Run one screen's capture. A failure here is logged and skipped rather than
@@ -267,9 +273,9 @@ async function step(id, fn) {
   if (!wanted(id)) return
   try {
     await fn()
+    written.add(id)
   } catch (err) {
     log(`WARNING: screen ${id} failed — ${err.message.split('\n')[0]}`)
-    missed.push(id)
   }
 }
 
@@ -550,6 +556,7 @@ async function main() {
 
   await rm(videoDir, { recursive: true, force: true }).catch(() => {})
 
+  const missed = REQUESTED.filter((id) => !written.has(id))
   if (missed.length) {
     // Exit non-zero so a partial run is not committed as a full re-capture.
     log(`FAILED: ${missed.join(', ')} were not written — the files already on disk are unchanged`)
