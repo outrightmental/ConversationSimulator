@@ -543,6 +543,66 @@ class TestFallback:
 
 
 # ---------------------------------------------------------------------------
+# Engine timeout mid-reply (issue #489)
+# ---------------------------------------------------------------------------
+
+
+class _TimingOutRuntime(FakeChatRuntime):
+    """Runtime whose stream gives up the way an adapter read timeout does."""
+
+    def chat_stream(self, request: ChatRequest):
+        return self._stream_timeout(request)
+
+    async def _stream_timeout(self, request: ChatRequest):
+        raise TimeoutError("llama-server went quiet for more than 180.0s while generating.")
+        yield  # pragma: no cover — makes this an async generator
+
+
+class TestEngineTimeout:
+    """An engine that stalls mid-reply must read as a retryable timeout.
+
+    Before issue #489 the TimeoutError escaped the route and became a bare 500
+    with "An unexpected error occurred" — no hint that the turn can simply be
+    retried, and no code the UI could translate.
+    """
+
+    def _timed_out_turn(self, tmp_config):
+        app = create_app(tmp_config)
+        with TestClient(app, raise_server_exceptions=False) as client:
+            _activate_real_runtime(app)
+            res = client.post("/api/sessions", json=_UNPINNED_SETUP)
+            session_id = res.json()["session_id"]
+            client.post(f"/api/sessions/{session_id}/start")
+
+            app.state.runtime = _TimingOutRuntime()
+            res = client.post(
+                f"/api/sessions/{session_id}/turn",
+                json={"content": "Tell me about the team."},
+            )
+            state = client.get(f"/api/sessions/{session_id}").json()["state"]
+            transcript = client.get(f"/api/sessions/{session_id}/transcript").json()
+        return res, state, transcript
+
+    def test_returns_504_with_turn_timeout_code(self, tmp_config):
+        res, _, _ = self._timed_out_turn(tmp_config)
+        assert res.status_code == 504
+        assert res.json()["error"]["code"] == "TURN_TIMEOUT"
+
+    def test_error_message_avoids_developer_env_vars(self, tmp_config):
+        """The adapter's hint names env vars; players get a plain sentence."""
+        res, _, _ = self._timed_out_turn(tmp_config)
+        message = res.json()["error"]["message"]
+        assert "CONVSIM_" not in message
+        assert "try again" in message.lower()
+
+    def test_session_stays_retryable_and_records_nothing(self, tmp_config):
+        """The pipeline persists only after the model answers, so the turn is free to retry."""
+        _, state, transcript = self._timed_out_turn(tmp_config)
+        assert state == "PlayerTurnListening"
+        assert [t["role"] for t in transcript["turns"]] == ["npc_opening"]
+
+
+# ---------------------------------------------------------------------------
 # State persistence across turns (unit-level, direct pipeline call)
 # ---------------------------------------------------------------------------
 

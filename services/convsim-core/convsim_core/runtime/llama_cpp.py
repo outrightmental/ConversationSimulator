@@ -21,6 +21,9 @@ from convsim_core.runtime.types import (
 )
 
 _HEALTH_TIMEOUT = 5.0
+#: Loopback connects either succeed at once or not at all, so the connect phase
+#: never needs the generous budget the generation stream gets.
+_CONNECT_TIMEOUT = 5.0
 
 
 class LlamaCppConfig(BaseSettings):
@@ -41,7 +44,16 @@ class LlamaCppConfig(BaseSettings):
     repeat_penalty: float = 1.1
     threads: int | None = None
     gpu_layers: int | None = None
+    # Budget for the quick control-plane calls (model listing). Deliberately
+    # short: these must not keep a UI spinner alive when the server is wedged.
     timeout: float = 30.0
+    # Budget for one /v1/chat/completions stream, kept separate from `timeout`.
+    # httpx applies it per read, so it really means "how long may the server go
+    # quiet" — and the first quiet stretch of a turn is prompt eval: the CPU-only
+    # machine in issue #489 spent 24 s there on a 2 k-token prompt, and prompts
+    # grow with the transcript. At 30 s that turned an ordinary slow turn into a
+    # hard error, so generation gets a budget sized for CPU-only hardware.
+    chat_timeout: float = 180.0
     json_schema_enabled: bool = True
 
 
@@ -65,6 +77,7 @@ class LlamaCppRuntime(ChatRuntime):
         self._threads = cfg.threads
         self._gpu_layers = cfg.gpu_layers
         self._timeout = cfg.timeout
+        self._chat_timeout = cfg.chat_timeout
         self._json_schema_enabled = cfg.json_schema_enabled
 
     @property
@@ -160,14 +173,20 @@ class LlamaCppRuntime(ChatRuntime):
         input_tokens = 0
         output_tokens = 0
 
+        # Generation gets its own budget: a slow local model can legitimately go
+        # quiet for a minute or more during prompt eval, which the control-plane
+        # `timeout` is far too tight for (issue #489). Connecting to a loopback
+        # port, by contrast, is instant or never.
+        chat_timeout = httpx.Timeout(self._chat_timeout, connect=_CONNECT_TIMEOUT)
+
         try:
-            async with httpx.AsyncClient(timeout=self._timeout) as client:
+            async with httpx.AsyncClient(timeout=chat_timeout) as client:
                 async with client.stream(
                     "POST",
                     f"{self._base_url}/v1/chat/completions",
                     json=payload,
                     headers={"Accept": "text/event-stream"},
-                    timeout=self._timeout,
+                    timeout=chat_timeout,
                 ) as resp:
                     if resp.status_code != 200:
                         body = await resp.aread()
@@ -212,8 +231,9 @@ class LlamaCppRuntime(ChatRuntime):
             ) from exc
         except httpx.TimeoutException as exc:
             raise TimeoutError(
-                f"llama-server request timed out after {self._timeout}s. "
-                "Increase CONVSIM_LLAMA_CPP_TIMEOUT or check server responsiveness."
+                f"llama-server went quiet for more than {self._chat_timeout}s while "
+                "generating. Increase CONVSIM_LLAMA_CPP_CHAT_TIMEOUT, pick a smaller "
+                "model, or offload more layers to the GPU."
             ) from exc
 
         structured = None

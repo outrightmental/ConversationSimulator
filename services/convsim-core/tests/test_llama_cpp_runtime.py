@@ -453,9 +453,35 @@ async def test_chat_stream_timeout_raises_timeout_error(runtime):
     request = ChatRequest(messages=[ChatMessage(role="user", content="hi")])
 
     with patch("convsim_core.runtime.llama_cpp.httpx.AsyncClient", return_value=client):
-        with pytest.raises(TimeoutError, match="timed out"):
+        with pytest.raises(TimeoutError, match="went quiet"):
             async for _ in runtime.chat_stream(request):
                 pass
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_uses_the_generation_budget_not_the_control_timeout():
+    """Generation must get chat_timeout per read, with a short connect phase.
+
+    httpx applies a read timeout per chunk, and the first quiet stretch of a
+    turn is prompt eval: a CPU-only machine spends tens of seconds there and
+    more as the transcript grows (issue #489). Billing that against the short
+    control-plane timeout turned an ordinary slow turn into a hard error.
+    """
+    runtime = LlamaCppRuntime(LlamaCppConfig(timeout=30.0, chat_timeout=180.0))
+    lines = _sse_lines(_token_chunk("hi"), _final_chunk())
+    client = _mock_client(stream_response=_MockStreamResponse(lines))
+
+    request = ChatRequest(messages=[ChatMessage(role="user", content="hi")])
+    with patch(
+        "convsim_core.runtime.llama_cpp.httpx.AsyncClient", return_value=client
+    ) as client_cls:
+        async for _ in runtime.chat_stream(request):
+            pass
+
+    timeout = client_cls.call_args.kwargs["timeout"]
+    assert timeout.read == 180.0
+    assert timeout.connect == 5.0
+    assert client.stream.call_args.kwargs["timeout"].read == 180.0
 
 
 # ---------------------------------------------------------------------------

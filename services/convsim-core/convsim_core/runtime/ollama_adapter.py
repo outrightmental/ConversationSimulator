@@ -40,6 +40,14 @@ _NO_MODELS_HINT = (
     "Pull a compatible model with e.g. 'ollama pull llama3.2'."
 )
 
+#: Budget for the quick control-plane calls (tag listing, reachability probe).
+_CONTROL_TIMEOUT = 60.0
+#: Budget for one /api/chat stream. httpx applies it per read, so it bounds how
+#: long the server may go quiet — and the first quiet stretch is prompt eval,
+#: which on CPU-only hardware runs to tens of seconds and grows with the
+#: transcript (issue #489). The control-plane budget is far too tight for that.
+_CHAT_TIMEOUT = 180.0
+
 
 def _size_category(size_bytes: int | None) -> str | None:
     """Map a raw byte count to a coarse size bucket."""
@@ -81,7 +89,9 @@ class OllamaChatRuntime(ChatRuntime):
     ) -> None:
         resolved = base_url or os.environ.get("CONVSIM_OLLAMA_BASE_URL", _DEFAULT_BASE_URL)
         self._base_url = resolved.rstrip("/")
-        self._client = client or httpx.AsyncClient(base_url=self._base_url, timeout=60.0)
+        self._client = client or httpx.AsyncClient(
+            base_url=self._base_url, timeout=_CONTROL_TIMEOUT
+        )
 
     # ------------------------------------------------------------------
     # ChatRuntime interface
@@ -152,7 +162,9 @@ class OllamaChatRuntime(ChatRuntime):
         output_tokens = 0
 
         try:
-            async with self._client.stream("POST", "/api/chat", json=payload) as resp:
+            async with self._client.stream(
+                "POST", "/api/chat", json=payload, timeout=_CHAT_TIMEOUT
+            ) as resp:
                 resp.raise_for_status()
                 async for line in resp.aiter_lines():
                     if not line:
