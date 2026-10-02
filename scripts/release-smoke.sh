@@ -671,12 +671,23 @@ smoke_packaged_startup() {
     if [[ "$MODE" == "full" ]]; then
         local built_bin="$REPO_ROOT/apps/desktop/src-tauri/resources/bin/convsim-core"
         local built_bin_win="${built_bin}.exe"
-        if [[ -f "$built_bin" || -f "$built_bin_win" ]]; then
-            info "packaged-startup" "convsim-core binary present — full launch test skipped (run manually)"
-            pass "packaged-startup" "Packaged binary found in resources/bin"
-        else
+        if [[ ! -f "$built_bin" && ! -f "$built_bin_win" ]]; then
             skip "packaged-startup" "No packaged binary found — run: ./scripts/build-core.sh first"
+            return
         fi
+        pass "packaged-startup" "Packaged binary found in resources/bin"
+
+        # Actually launch it. This used to say "run manually", which meant the
+        # one thing a packaged build has to do — start, serve, and stop cleanly
+        # without a developer venv — was never checked by anything.
+        local smoke_out
+        smoke_out="$(bash "$REPO_ROOT/scripts/packaged-core-smoke.sh" 2>&1)" || {
+            fail "packaged-startup" "Packaged core smoke failed (launch/health/offline/shutdown)"
+            echo "$smoke_out" >> "$ARTIFACT_DIR/packaged-core-smoke-error.txt"
+            _ARTIFACTS_WRITTEN=1
+            return
+        }
+        pass "packaged-startup" "Packaged core launches, serves, plays offline, and stops cleanly"
     fi
 }
 

@@ -235,7 +235,10 @@ jobs:
   desktop-check:
     name: Desktop Rust check
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # 45, not 30: desktop-smoke.sh now also runs `cargo test`, which links the
+    # crate (the two `cargo check` passes do not) and costs a full codegen pass
+    # of the Tauri dependency tree on a cold cache.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
       # Plain apt, the same way release.yml installs these. The cache-apt-pkgs
@@ -259,7 +262,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: apps/desktop/src-tauri -> target
-      - name: Check desktop crate compiles
+      - name: Check desktop crate compiles and pass its unit tests
         env:
           # Non-secret repo variable: pack-id ↔ DLC App ID mapping used by the
           # DLC ownership check.  Empty in open-source / contributor builds —
