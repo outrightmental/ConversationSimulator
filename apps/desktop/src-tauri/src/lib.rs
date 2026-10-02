@@ -843,15 +843,6 @@ fn port_busy_hint() -> String {
     )
 }
 
-/// The hint beside `KEEPS_STOPPING_MESSAGE`.
-///
-/// "Restarted {max} times", not "stopped {max} times": the supervisor reaches
-/// this on the stop AFTER the last restart, so the engine has died
-/// `MAX_RESTARTS + 1` times.
-///
-/// Its own function so a test can check it against `classifyError`'s patterns —
-/// which are matched against the message and the hint concatenated, and try
-/// port-conflict first, so a stray "port" here would pick the wrong card.
 /// The hint beside `ALREADY_RUNNING_MESSAGE`. Names no action against the port:
 /// the engine holding it is the one serving the window that did start.
 fn already_running_hint() -> String {
@@ -862,6 +853,15 @@ fn already_running_hint() -> String {
     )
 }
 
+/// The hint beside `KEEPS_STOPPING_MESSAGE`.
+///
+/// "Restarted {max} times", not "stopped {max} times": the supervisor reaches
+/// this on the stop AFTER the last restart, so the engine has died
+/// `MAX_RESTARTS + 1` times.
+///
+/// Its own function so a test can check it against `classifyError`'s patterns —
+/// which are matched against the message and the hint concatenated, and try
+/// port-conflict first, so a stray "port" here would pick the wrong card.
 fn keeps_stopping_hint() -> String {
     format!(
         "It was restarted {max} times and stopped again every time, so it will not be \
