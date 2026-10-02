@@ -732,7 +732,22 @@ fn find_core_executable(resource_dir: Option<&PathBuf>) -> Result<PathBuf, Strin
 const OCCUPIED_GRACE: Duration = Duration::from_secs(15);
 
 /// How long a core the shell started itself gets to answer `/api/health`.
-const STARTUP_TIMEOUT: Duration = Duration::from_secs(60);
+///
+/// Sized for the *first* launch after an install, which is the slowest one by a
+/// wide margin and the only one a new player ever sees: the PyInstaller one-file
+/// binary unpacks its whole payload to a temp directory (every file of which an
+/// on-access virus scanner may read first), then the engine migrates the
+/// database, seeds six official packs, and seeds the model registry before
+/// uvicorn binds. `scripts/packaged-core-smoke.sh` budgets 120 s for exactly
+/// that sequence against exactly that binary; the shell must not be stricter
+/// than the check that certifies the build, or a slow fresh install shows
+/// "did not become ready in time" for an engine that was moments from serving —
+/// and a webview reload cannot recover, because the stored status is terminal.
+///
+/// A longer budget costs nothing in the failure cases it does not cover: an
+/// engine that dies instead of hanging is noticed within `PROBE_INTERVAL` by
+/// the `try_wait` below, not by this timeout.
+const STARTUP_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// How long a dev build waits for the core that `./scripts/dev-desktop.sh` owns.
 const DEV_WAIT: Duration = Duration::from_secs(20);
@@ -1606,6 +1621,36 @@ mod tests {
         let (message, hint) = foreign_edition_error("demo").expect("refused");
         assert!(message.contains("Another edition"));
         assert!(hint.contains("7355"));
+    }
+
+    // ── Startup budget ───────────────────────────────────────────────────────
+
+    #[test]
+    fn the_startup_budget_is_not_stricter_than_the_packaged_smoke_check() {
+        // scripts/packaged-core-smoke.sh gives the same binary READY_TIMEOUT
+        // seconds to answer /api/health, and that is the check CI uses to
+        // certify a build. If the shell were stricter, a first launch slow
+        // enough to matter would be declared a failure by the shipped app and a
+        // success by the pipeline that released it.
+        let script = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../scripts/packaged-core-smoke.sh");
+        let Ok(text) = std::fs::read_to_string(&script) else {
+            // Building from a source tree without scripts/ — nothing to pin.
+            return;
+        };
+        let budget: u64 = text
+            .lines()
+            .find_map(|l| l.trim().strip_prefix("READY_TIMEOUT="))
+            .expect("READY_TIMEOUT is declared in packaged-core-smoke.sh")
+            .trim()
+            .parse()
+            .expect("READY_TIMEOUT is a plain number of seconds");
+        assert!(
+            STARTUP_TIMEOUT.as_secs() >= budget,
+            "STARTUP_TIMEOUT is {}s but the packaged smoke check allows the same \
+             binary {budget}s to become ready",
+            STARTUP_TIMEOUT.as_secs()
+        );
     }
 
     // ── Restart policy ───────────────────────────────────────────────────────
