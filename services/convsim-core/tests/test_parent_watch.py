@@ -174,6 +174,72 @@ def test_a_failing_callback_does_not_raise_out_of_the_thread():
 # ── End to end: a child process really does exit when its parent does ────────
 
 
+def _watcher_program(tail: str) -> str:
+    """Source for a child that installs the watch, then runs *tail*.
+
+    *tail* can use ``done``, an Event the watch sets when the pipe closes.
+    """
+    return (
+        "import sys, threading;"
+        "sys.path.insert(0, %r);"
+        "from convsim_core import parent_watch;"
+        "done = threading.Event();"
+        "t = parent_watch.watch_parent_exit(done.set, env={parent_watch.ENV_VAR: '1'});"
+        "assert t is not None;" + tail
+    ) % os.path.dirname(os.path.dirname(os.path.abspath(parent_watch.__file__)))
+
+
+def test_exiting_while_the_launcher_is_still_there_keeps_its_exit_code():
+    """The engine can exit for reasons other than its launcher going away.
+
+    uvicorn exits non-zero when startup fails — a port conflict with an engine
+    left over from a previous run, which is the very symptom of issue #485.
+    That happens with the launcher's pipe still open, so the watch thread is
+    parked in its read. Read through a buffered reader and the daemon thread
+    holds that object's lock, interpreter shutdown cannot close ``sys.stdin``,
+    and CPython aborts the process after a one-second stall:
+
+        Fatal Python error: _enter_buffered_busy: could not acquire lock for
+        <_io.BufferedReader name='<stdin>'> at interpreter shutdown
+
+    which replaces the exit code the launcher reads with SIGABRT, and the
+    reason the engine could not start with a fatal runtime error at the end of
+    app.log — where docs/troubleshooting.md tells players to look.
+    """
+    # The pause lets the watch thread reach its blocking read before the exit:
+    # that is the state the hazard needs, and the state a real engine is always
+    # in by the time startup fails, having spent far longer than this booting.
+    proc = subprocess.Popen(
+        [sys.executable, "-c", _watcher_program("import time; time.sleep(0.5); sys.exit(3)")],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        # wait(), never communicate(): with no input to send, communicate()
+        # closes stdin — which is the one thing this test must not do. The pipe
+        # stays open, as a live launcher's would.
+        proc.wait(timeout=30)
+        assert proc.stderr is not None
+        stderr = proc.stderr.read().decode("utf-8", "replace")
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
+        if proc.stderr is not None:
+            proc.stderr.close()
+        if proc.stdin is not None:
+            proc.stdin.close()
+
+    assert "Fatal Python error" not in stderr, (
+        f"the watch thread wedged interpreter shutdown:\n{stderr}"
+    )
+    assert proc.returncode == 3, (
+        f"expected the process's own exit code 3, got {proc.returncode} "
+        f"(a negative value is a signal); stderr:\n{stderr}"
+    )
+
+
 def test_child_process_exits_when_its_parent_closes_the_pipe():
     """The whole mechanism, over a real pipe between two real processes.
 
@@ -181,16 +247,7 @@ def test_child_process_exits_when_its_parent_closes_the_pipe():
     let the handle close. No signal is sent and no PID is polled — closing the
     write end is the entire shutdown request.
     """
-    program = (
-        "import sys, threading;"
-        "sys.path.insert(0, %r);"
-        "from convsim_core import parent_watch;"
-        "done = threading.Event();"
-        "t = parent_watch.watch_parent_exit(done.set, env={parent_watch.ENV_VAR: '1'});"
-        "assert t is not None;"
-        "done.wait(30);"
-        "sys.exit(0 if done.is_set() else 1)"
-    ) % os.path.dirname(os.path.dirname(os.path.abspath(parent_watch.__file__)))
+    program = _watcher_program("done.wait(30); sys.exit(0 if done.is_set() else 1)")
 
     proc = subprocess.Popen(
         [sys.executable, "-c", program],

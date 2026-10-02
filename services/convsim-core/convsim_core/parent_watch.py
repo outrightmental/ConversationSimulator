@@ -60,19 +60,65 @@ def is_enabled(env: Optional[Mapping[str, str]] = None) -> bool:
     return source.get(ENV_VAR, "").strip().lower() in _TRUTHY
 
 
-def _wait_for_eof(stream: IO[bytes] | IO[str]) -> None:
-    """Block until *stream* reports end-of-file (or becomes unreadable).
+def _descriptor(stream: IO[bytes] | IO[str]) -> Optional[int]:
+    """The OS descriptor behind *stream*, or ``None`` if it has none.
+
+    A closed stream, or one not backed by a descriptor at all, answers
+    ``None`` — the caller then falls back to reading the object itself.
+    """
+    try:
+        fd = stream.fileno()
+    except Exception:  # noqa: BLE001 — any failure here just means "no descriptor"
+        return None
+    return fd if isinstance(fd, int) and fd >= 0 else None
+
+
+def _wait_for_eof_fd(fd: int) -> None:
+    """Block until *fd* reports end-of-file (or becomes unreadable).
+
+    ``os.read`` on the bare descriptor, NOT ``sys.stdin.buffer.read`` — a
+    buffered reader holds its own lock for the whole of a blocking read, and
+    this thread is a daemon that is still parked in that read whenever the
+    engine exits for a reason other than the launcher going away. Interpreter
+    shutdown then tries to close ``sys.stdin``, cannot take the lock, and
+    aborts the process:
+
+        Fatal Python error: _enter_buffered_busy: could not acquire lock for
+        <_io.BufferedReader name='<stdin>'> at interpreter shutdown, possibly
+        due to daemon threads
+
+    That turned the clean non-zero exit uvicorn gives a failed startup — a
+    port conflict with an engine left over from a previous run, say, which is
+    the very symptom of issue #485 — into a one-second stall and SIGABRT, with
+    a fatal runtime error as the last thing in app.log instead of the reason
+    the engine could not start. A bare descriptor read takes no such lock, so
+    the parked thread is simply abandoned at shutdown.
 
     Nothing is ever written to the pipe, so this parks the thread for the whole
-    session. A one-byte read is used rather than ``read()`` so that a launcher
-    which does send something is not mistaken for one that has exited.
+    session. A one-byte read is used rather than reading to EOF so that a
+    launcher which does send something is not mistaken for one that has exited.
+    """
+    while True:
+        try:
+            chunk = os.read(fd, 1)
+        except (OSError, ValueError):
+            # Closed or unreadable from under us — treat as the launcher going
+            # away rather than hanging on to a pipe we can no longer observe.
+            return
+        if not chunk:
+            return
+
+
+def _wait_for_eof(stream: IO[bytes] | IO[str]) -> None:
+    """As :func:`_wait_for_eof_fd`, for a stream with no descriptor to read.
+
+    Carries the interpreter-shutdown hazard described there, so it is only the
+    fallback; anything backed by a real pipe takes the descriptor path.
     """
     while True:
         try:
             chunk = stream.read(1)
         except (OSError, ValueError):
-            # Closed or unreadable from under us — treat as the launcher going
-            # away rather than hanging on to a pipe we can no longer observe.
             return
         if not chunk:
             return
@@ -91,7 +137,8 @@ def watch_parent_exit(
     ``sys.stdin is None``.
 
     The thread is a daemon: it must never hold up interpreter shutdown, and the
-    pending one-byte read cannot be cancelled.
+    pending one-byte read cannot be cancelled. See :func:`_wait_for_eof_fd` for
+    why that read goes to the bare descriptor.
     """
     if not is_enabled(env):
         return None
@@ -104,13 +151,22 @@ def watch_parent_exit(
                 ENV_VAR,
             )
             return None
-        # Read the raw byte stream where one exists: it is unaffected by the
-        # text layer's decoding and newline translation, neither of which can
-        # do anything useful with a pipe that only ever delivers EOF.
+        # The raw byte stream where one exists. Both layers report the same
+        # descriptor, so this only matters on the fallback path — and there it
+        # keeps the text layer's decoding and newline translation, neither of
+        # which can do anything useful with a pipe that only delivers EOF, out
+        # of the way.
         stream = getattr(stdin, "buffer", stdin)
 
+    # Resolved before the thread starts, so the fallback choice is made while
+    # the stream is still known to be usable.
+    fd = _descriptor(stream)
+
     def _run() -> None:
-        _wait_for_eof(stream)
+        if fd is None:
+            _wait_for_eof(stream)
+        else:
+            _wait_for_eof_fd(fd)
         # ASCII only: this lands on the inherited stdout as well as the
         # UTF-8 app.log, and that stream takes the console codepage on
         # Windows — one that cannot encode an em dash (cp932, cp437) would
