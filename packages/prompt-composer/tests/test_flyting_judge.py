@@ -143,19 +143,43 @@ class TestJudgePromptComposition:
 
     def test_no_opponent_line_forbids_riposte(self):
         bundle = compose_volley_judge_prompt(judge_input())
-        assert "is_riposte must be false" in bundle.system_prompt
+        assert "is_riposte must be false" in bundle.user_prompt
 
     def test_opponent_line_is_quoted_when_present(self):
         bundle = compose_volley_judge_prompt(judge_input(opponent_last_line="Your gown is a decade old."))
-        assert "Your gown is a decade old." in bundle.system_prompt
-        assert "is_riposte must be false" not in bundle.system_prompt
+        assert "Your gown is a decade old." in bundle.user_prompt
+        assert "is_riposte must be false" not in bundle.user_prompt
 
     def test_theme_usage_is_reported_only_for_used_themes(self):
         bundle = compose_volley_judge_prompt(
             judge_input(theme_uses={"hygiene": 3, "vanity": 0})
         )
-        assert "hygiene x3" in bundle.system_prompt
-        assert "vanity" not in bundle.system_prompt.split("SESSION_CONTEXT")[1].split("RUBRIC")[0]
+        assert "hygiene x3" in bundle.user_prompt
+        assert "vanity" not in bundle.layer_map["SESSION_CONTEXT"]
+
+    def test_per_volley_context_stays_out_of_the_cacheable_system_prompt(self):
+        """Session context changes every volley, so it cannot sit in the header."""
+        bundle = compose_volley_judge_prompt(
+            judge_input(opponent_last_line="Your gown is a decade old.",
+                        theme_uses={"hygiene": 3})
+        )
+        assert "SESSION_CONTEXT" not in bundle.system_prompt
+        assert "Your gown is a decade old." not in bundle.system_prompt
+        assert "hygiene x3" not in bundle.system_prompt
+
+    def test_the_system_prompt_is_identical_across_volleys_of_one_run(self):
+        """The whole header — anchors and schema included — stays cache-warm."""
+        first = compose_volley_judge_prompt(
+            judge_input(volley_text="You are a plated man, sir, and the plate is thin.",
+                        theme_uses={"hypocrisy": 1})
+        )
+        second = compose_volley_judge_prompt(
+            judge_input(volley_text="Your crest is younger than your tailor's apprentice.",
+                        opponent_last_line="You talk like a man reading his own obituary.",
+                        theme_uses={"hypocrisy": 2, "vanity": 1})
+        )
+        assert first.system_prompt == second.system_prompt
+        assert first.user_prompt != second.user_prompt
 
     def test_verse_and_register_policies_reach_the_prompt(self):
         bundle = compose_volley_judge_prompt(
