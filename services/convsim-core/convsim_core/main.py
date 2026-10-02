@@ -7,7 +7,10 @@ Launch options:
   uvicorn convsim_core.main:app        (direct ASGI import)
   convsim-core                         (installed script)
 """
+import sys
+
 import uvicorn
+from uvicorn.config import STARTUP_FAILURE
 
 from convsim_core.app import create_app
 from convsim_core.config import ServiceConfig
@@ -55,7 +58,23 @@ def main() -> None:
     # launcher opted in via CONVSIM_SHUTDOWN_ON_STDIN_EOF (issue #485).
     watch_parent_exit(lambda: request_shutdown(server))
 
-    server.run()
+    # The two things `uvicorn.run()` did for us that `Server.run()` does not.
+    #
+    # Ctrl-C: uvicorn's own SIGINT handler shuts the server down gracefully and
+    # then re-raises the signal so the terminal sees the expected exit, which
+    # surfaces here as a KeyboardInterrupt *after* teardown has already
+    # finished. Letting it escape would end every interactive run with a
+    # spurious traceback and exit code 130.
+    try:
+        server.run()
+    except KeyboardInterrupt:
+        pass
+
+    # Startup failure: uvicorn exits non-zero so a launcher can tell "never
+    # came up" from "ran and stopped". `started` stays True once startup
+    # succeeded, so this only fires when the server never got that far.
+    if not server.started:
+        sys.exit(STARTUP_FAILURE)
 
 
 if __name__ == "__main__":
