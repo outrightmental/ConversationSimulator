@@ -408,6 +408,37 @@ class TestEvaluateDebrief:
         assert smoke.UNSCORED_DEBRIEF_NOTE in no_scores
         assert "real-model-smoke.md" in no_scores
 
+    def test_no_observations_anywhere_names_the_product_gap(self) -> None:
+        # The run checked, and the model volunteered nothing to score: the
+        # failure can state that outright instead of listing both possibilities.
+        failures, _ = smoke.evaluate_debrief(
+            _debrief(scores={}), rubric_observations_seen=0
+        )
+        no_scores = next(f for f in failures if "no rubric dimension scores" in f)
+        assert "no NPC turn carried a rubric_observation" in no_scores
+        assert smoke.UNSCORED_DEBRIEF_NOTE in no_scores
+        assert smoke.UNSCORED_WITH_OBSERVATIONS_NOTE not in no_scores
+
+    def test_observations_that_never_reached_the_debrief_are_a_regression(self) -> None:
+        # The opposite case, and the one the harness exists to catch: the turns
+        # returned observations and the debrief scored nothing, so the model did
+        # its part and the debrief engine dropped the result. Printing the
+        # "nothing asked the model for them" note here would excuse a real bug.
+        failures, _ = smoke.evaluate_debrief(
+            _debrief(scores={}), rubric_observations_seen=4
+        )
+        no_scores = next(f for f in failures if "no rubric dimension scores" in f)
+        assert "returned 4 rubric observation(s)" in no_scores
+        assert smoke.UNSCORED_WITH_OBSERVATIONS_NOTE in no_scores
+        assert smoke.UNSCORED_DEBRIEF_NOTE not in no_scores
+        assert "_parse_rubric_observations" in no_scores
+
+    def test_a_scored_debrief_passes_whatever_the_turns_reported(self) -> None:
+        # The count only explains an *unscored* debrief; it must never fail a
+        # scored one (the debrief re-derives scores from stored raw output, so
+        # the two counts are not required to agree).
+        assert smoke.evaluate_debrief(_debrief(), rubric_observations_seen=0) == ([], [])
+
     def test_non_numeric_overall_score_fails(self) -> None:
         failures, _ = smoke.evaluate_debrief(_debrief(overall_score="52"))
         assert any("not numeric" in f for f in failures)
@@ -646,6 +677,32 @@ class TestEventExtraction:
 
     def test_absent_npc_event_yields_empty_string(self) -> None:
         assert smoke._npc_turn_content([{"event_type": "tts_chunk", "payload": {}}]) == ""
+
+    def test_a_non_dict_payload_does_not_raise(self) -> None:
+        # The excerpt is reported, not asserted on, so a surprising payload shape
+        # must not turn an otherwise-green run into a harness bug (exit 5).
+        assert smoke._npc_turn_content([{"event_type": "npc_turn", "payload": None}]) == ""
+        assert smoke._npc_turn_content([{"event_type": "npc_turn"}]) == ""
+
+    def test_rubric_observations_are_counted(self) -> None:
+        events = [{"event_type": "npc_turn", "payload": {
+            "content": "Go on.",
+            "rubric_observations": [
+                {"rubric_id": "structure", "observation": "o", "score_delta": 1},
+                {"rubric_id": "evidence", "observation": "o", "score_delta": -1},
+            ],
+        }}]
+        assert smoke._rubric_observation_count(events) == 2
+
+    @pytest.mark.parametrize("payload", [
+        {"content": "x"},                      # key absent entirely
+        {"content": "x", "rubric_observations": []},
+        {"content": "x", "rubric_observations": None},
+    ])
+    def test_absent_or_empty_rubric_observations_count_zero(self, payload: dict) -> None:
+        assert smoke._rubric_observation_count(
+            [{"event_type": "npc_turn", "payload": payload}]
+        ) == 0
 
     def test_excerpt_is_bounded_and_collapsed(self) -> None:
         excerpt = smoke._excerpt("a\n\n  b" + "x" * 500)
@@ -929,7 +986,18 @@ _NPC_TURN = {"events": [{"event_type": "npc_turn",
              "ending_type": None}
 
 
-def _fake_core(debrief: dict, *, debug_turns: list | None = None):
+def _npc_turn_with_observations(count: int) -> dict:
+    """An NPC turn whose payload carries ``count`` validated rubric observations."""
+    return {"events": [{"event_type": "npc_turn", "payload": {
+        "content": "Walk me through that trade-off.",
+        "rubric_observations": [
+            {"rubric_id": f"dim{i}", "observation": "o", "score_delta": 1}
+            for i in range(count)
+        ],
+    }}], "ending_type": None}
+
+
+def _fake_core(debrief: dict, *, debug_turns: list | None = None, turn: dict | None = None):
     """Build a _request_json stand-in that answers convsim-core's endpoints."""
     calls: list[str] = []
 
@@ -942,7 +1010,7 @@ def _fake_core(debrief: dict, *, debug_turns: list | None = None):
         if url.endswith("/start"):
             return _OPENING
         if url.endswith("/turn"):
-            return _NPC_TURN
+            return turn if turn is not None else _NPC_TURN
         if url.endswith("/debug"):
             return {"turns": debug_turns if debug_turns is not None else [
                 {"turn_number": n, "used_fallback": False,
@@ -1081,6 +1149,43 @@ class TestRunSmokeOrchestration:
         # The artifact carries the advice, not just the class: the failure table
         # in the docs sends triage here for a `pipeline` verdict.
         assert results["remedy"] == smoke.REMEDIES[smoke.FailureClass.PIPELINE]
+        # The turns volunteered nothing to score, so the verdict says so rather
+        # than asking the reader to go and diff the previous nightly's artifact.
+        assert results["rubric_observations_seen"] == 0
+        assert any(smoke.UNSCORED_DEBRIEF_NOTE in f for f in results["failures"])
+
+    def test_unscored_debrief_with_scorable_turns_is_named_a_regression(
+        self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """The same exit 5, the opposite diagnosis.
+
+        When the NPC turns did return rubric observations and the debrief still
+        scored nothing, the model is not the problem and the stock note
+        ("nothing asks the model for them") would excuse a real bug in the
+        debrief engine's score accumulation.
+        """
+        models_dir, model_id, digest = staged_model
+        monkeypatch.setattr(
+            smoke, "_request_json",
+            _fake_core(
+                _debrief(scores={}, overall_score=None),
+                turn=_npc_turn_with_observations(2),
+            ),
+        )
+        report = tmp_path / "report.json"
+
+        exit_code = smoke.run_smoke(
+            model_id, 20.0, report, model_sha256=digest, models_dir=models_dir
+        )
+
+        assert exit_code == smoke.EXIT_CODES[smoke.FailureClass.PIPELINE]
+        results = json.loads(report.read_text(encoding="utf-8"))
+        assert results["rubric_observations_seen"] == 2 * len(smoke.SCRIPTED_PLAYER_TURNS)
+        assert all(
+            t["rubric_observation_count"] == 2 for t in results["turns"][1:]
+        ), "the per-turn count belongs in the artifact, not just the total"
+        assert any(smoke.UNSCORED_WITH_OBSERVATIONS_NOTE in f for f in results["failures"])
+        assert not any(smoke.UNSCORED_DEBRIEF_NOTE in f for f in results["failures"])
 
     def test_latency_regression_is_a_budget_failure_not_a_pipeline_one(
         self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch, tmp_path: Path

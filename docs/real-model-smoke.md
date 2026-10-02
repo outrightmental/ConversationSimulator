@@ -92,8 +92,10 @@ report as the `model-smoke-report` artifact (30-day retention).
 ### Unscored debrief
 
 Exit 5 with *"Debrief has no rubric dimension scores"* is the one `pipeline`
-failure whose first cause is probably **not** a regression, so it is worth
-knowing before it happens.
+failure whose cause is ambiguous from the class alone, so the harness resolves it
+for you: each NPC turn's `rubric_observation_count` is recorded in the report
+artifact, totalled as `rubric_observations_seen`, and the failure message names
+whichever of the two causes below applies.
 
 The debrief's dimension scores are accumulated entirely from
 `rubric_observations` that the model volunteers on each NPC turn. Nothing asks
@@ -105,14 +107,24 @@ per-PR playthrough asserts only that `scores` *is* a dict.
 
 So an unscored debrief means one of two quite different things:
 
-- **The model left an unguided array empty.** Nothing regressed; a 4 B Q4 model
-  does this. If no nightly has ever scored this scenario, that is the cause —
-  fix it in the product (give the turn prompt a rubric layer, or pick a scenario
-  that defines one), not by relaxing the assertion.
-- **A real regression,** if previous nightlies *did* score it. Then the per-turn
-  `used_fallback` flags in the report artifact are the right place to look.
+- **`rubric_observations_seen` is 0 — the model left an unguided array empty.**
+  Nothing regressed; a 4 B Q4 model does this. Fix it in the product (give the
+  turn prompt a rubric layer, or play a scenario that defines one), not by
+  relaxing the assertion.
+- **`rubric_observations_seen` is above 0 — a real regression.** The turns
+  returned observations and the debrief scored none of them, so the model did
+  its part. The debrief engine does not score the validated observations the
+  turn pipeline handed it: `_parse_rubric_observations` in
+  `services/convsim-core/.../debrief_engine.py` re-reads each NPC turn's *stored
+  raw model output* with a plain `json.loads`, so output that needed repair — or
+  that arrived pre-parsed from the runtime adapter — loses its observations on
+  the way to the debrief. Compare `raw_npc_output` from the `/debug` payload
+  against the per-turn `rubric_observation_count` in the artifact.
 
-Check the previous nightly's `model-smoke-report` artifact to tell them apart.
+Either way the run is red: *"scored debrief"* is the acceptance criterion for
+[#457](https://github.com/outrightmental/ConversationSimulator/issues/457), and
+the first cause is a product gap worth a tracking issue rather than a reason to
+weaken the check.
 
 ---
 

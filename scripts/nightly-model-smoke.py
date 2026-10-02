@@ -169,12 +169,37 @@ MIN_SUMMARY_CHARS = 20
 # simply left an unguided array empty rather than that anything regressed, and
 # `pipeline`'s stock advice — inspect the per-turn used_fallback flags — would
 # send triage looking for a parse failure that did not happen.
+#
+# Used only when the run observed no rubric observations at all; when the turns
+# *did* carry some, the cause is not ambiguous and UNSCORED_WITH_OBSERVATIONS_NOTE
+# applies instead.
 UNSCORED_DEBRIEF_NOTE = (
-    "Before calling this a regression: no prompt layer names the rubric "
-    "dimensions, so the model is never asked for rubric_observations and an "
-    "empty array satisfies the turn schema. Check whether any recent nightly "
-    "ever scored this scenario (the fake runtime never does) — see the "
-    "'Unscored debrief' section of docs/real-model-smoke.md."
+    "Before calling this a regression: no NPC turn volunteered a single rubric "
+    "observation, and nothing asks it to — no prompt layer names the rubric "
+    "dimensions, so an empty array satisfies the turn schema. This is the "
+    "product gap, not a regression: fix it by giving the turn prompt a rubric "
+    "layer or by playing a scenario that defines one. See the 'Unscored "
+    "debrief' section of docs/real-model-smoke.md."
+)
+
+# The other cause of an unscored debrief, and the one that *is* a regression.
+# The debrief engine does not score the validated observations the turn pipeline
+# returned: it re-parses each NPC turn's stored raw model output with a plain
+# json.loads (_parse_rubric_observations in debrief_engine.py) and reads
+# rubric_observations out of that.  So observations the turn accepted — because
+# the adapter handed back pre-parsed structured output, or the parser repaired
+# the text — are silently dropped when the stored raw text is not itself valid
+# JSON.  Saying so beats sending triage to diff last night's artifact.
+UNSCORED_WITH_OBSERVATIONS_NOTE = (
+    "This one IS a regression, and not an ambiguous one: the NPC turns returned "
+    "rubric observations, so the model did its part. The debrief engine scores "
+    "by re-parsing each NPC turn's stored raw model output rather than the "
+    "validated observations it was handed, so output that needed repair (or "
+    "arrived pre-parsed from the runtime) loses its observations on the way to "
+    "the debrief. Start at _parse_rubric_observations in "
+    "services/convsim-core/.../debrief_engine.py and compare raw_npc_output in "
+    "the /debug payload against the per-turn rubric_observation_count in the "
+    "report artifact."
 )
 
 # How much slower the debrief generation is allowed to be than one NPC turn
@@ -632,12 +657,34 @@ def _request_json(
         ) from exc
 
 
-def _npc_turn_content(events: Sequence[dict]) -> str:
-    """Return the NPC utterance from a turn/start response's events, or ''."""
+def _npc_turn_payload(events: Sequence[dict]) -> Dict[str, Any]:
+    """Return the NPC event's payload from a turn/start response, or ``{}``."""
     for ev in events:
         if ev.get("event_type") in ("npc_turn", "npc_opening"):
-            return ev.get("payload", {}).get("content", "")
-    return ""
+            payload = ev.get("payload")
+            return payload if isinstance(payload, dict) else {}
+    return {}
+
+
+def _npc_turn_content(events: Sequence[dict]) -> str:
+    """Return the NPC utterance from a turn/start response's events, or ''."""
+    content = _npc_turn_payload(events).get("content", "")
+    return content if isinstance(content, str) else ""
+
+
+def _rubric_observation_count(events: Sequence[dict]) -> int:
+    """Count the rubric observations the model volunteered on this NPC turn.
+
+    The turn response carries the *validated* observations, which is the only
+    way to tell the two causes of an unscored debrief apart: the debrief engine
+    re-derives its dimension scores from each NPC turn's stored raw model output
+    (``_parse_rubric_observations`` in debrief_engine.py), so observations that
+    were accepted on the turn but never scored mean the debrief engine lost
+    them, while no observations anywhere means the model simply never
+    volunteered any.  See ``evaluate_debrief``.
+    """
+    observations = _npc_turn_payload(events).get("rubric_observations")
+    return len(observations) if isinstance(observations, list) else 0
 
 
 def _excerpt(text: str) -> str:
@@ -705,13 +752,27 @@ def evaluate_turns(turns: List[Dict[str, Any]]) -> tuple[List[str], List[str]]:
     return (failures, warnings)
 
 
-def evaluate_debrief(debrief: Optional[Dict[str, Any]]) -> tuple[List[str], List[str]]:
+def evaluate_debrief(
+    debrief: Optional[Dict[str, Any]],
+    *,
+    rubric_observations_seen: Optional[int] = None,
+) -> tuple[List[str], List[str]]:
     """Check that a *scored* debrief was produced.  Returns (failures, warnings).
 
     "Scored" is the #457 acceptance criterion, so an unscored debrief is a
-    failure — but the scores come from rubric_observations nothing in the prompt
-    asks the model for, so the failure carries ``UNSCORED_DEBRIEF_NOTE`` to keep
-    that from reading as a regression.
+    failure — but on its own that failure does not say which of two very
+    different things happened, and the remedy differs completely.
+    ``rubric_observations_seen`` (how many rubric observations the NPC turns
+    actually returned, ``None`` when the run could not tell) resolves it:
+
+    * **0** — the model volunteered nothing to score, which nothing asked it
+      to. The product gap, not a regression: ``UNSCORED_DEBRIEF_NOTE``.
+    * **> 0** — the turns carried observations and the debrief lost them. A real
+      regression with a named starting point: ``UNSCORED_WITH_OBSERVATIONS_NOTE``.
+
+    Without that count the failure can only quote both possibilities and send
+    the reader to the previous nightly's artifact to tell them apart, which is
+    the one piece of triage this harness is meant to have already done.
     """
     failures: List[str] = []
     warnings: List[str] = []
@@ -720,11 +781,23 @@ def evaluate_debrief(debrief: Optional[Dict[str, Any]]) -> tuple[List[str], List
 
     scores = debrief.get("scores")
     if not isinstance(scores, dict) or not scores:
-        failures.append(
-            "Debrief has no rubric dimension scores: no NPC turn carried a "
-            "rubric_observation with a rubric_id, so the debrief engine had nothing "
-            "to accumulate. " + UNSCORED_DEBRIEF_NOTE
-        )
+        if rubric_observations_seen:
+            cause = (
+                f"the NPC turns returned {rubric_observations_seen} rubric "
+                "observation(s), so the debrief engine had something to accumulate "
+                "and did not. "
+            ) + UNSCORED_WITH_OBSERVATIONS_NOTE
+        elif rubric_observations_seen == 0:
+            cause = (
+                "no NPC turn carried a rubric_observation, so the debrief engine "
+                "had nothing to accumulate. "
+            ) + UNSCORED_DEBRIEF_NOTE
+        else:
+            cause = (
+                "the run could not tell whether any NPC turn carried a "
+                "rubric_observation. " + UNSCORED_DEBRIEF_NOTE
+            )
+        failures.append(f"Debrief has no rubric dimension scores: {cause}")
 
     overall = debrief.get("overall_score")
     if not isinstance(overall, (int, float)) or isinstance(overall, bool):
@@ -1107,6 +1180,12 @@ def run_smoke(
                 "latency_ms": round(latency_ms),
                 "npc_excerpt": _excerpt(npc_text),
                 "ending_type": turn.get("ending_type"),
+                # What the model volunteered for the debrief to score.  Recorded
+                # per turn so an unscored debrief can be attributed without
+                # re-running anything — see evaluate_debrief.
+                "rubric_observation_count": _rubric_observation_count(
+                    turn.get("events", [])
+                ),
             })
             if turn.get("ending_type"):
                 # The turn pipeline already moved the session to 'Ended', so
@@ -1164,14 +1243,23 @@ def run_smoke(
             "used_fallback": bool(debrief.get("used_fallback")),
             "latency_ms": round(debrief_ms),
         }
+        # Everything the NPC turns offered the debrief to score.  An unscored
+        # debrief means something different depending on whether this is zero.
+        observations_seen = sum(
+            t.get("rubric_observation_count", 0) for t in results["turns"]
+        )
+        results["rubric_observations_seen"] = observations_seen
         print(f"[smoke] Debrief in {debrief_ms:.0f} ms | "
               f"overall_score={debrief.get('overall_score')} "
-              f"scores={debrief.get('scores')}")
+              f"scores={debrief.get('scores')} "
+              f"rubric_observations_from_turns={observations_seen}")
 
         # ── assertions ────────────────────────────────────────────────────────
         clock.enter("assertions")
         turn_failures, turn_warnings = evaluate_turns(results["turns"])
-        debrief_failures, debrief_warnings = evaluate_debrief(debrief)
+        debrief_failures, debrief_warnings = evaluate_debrief(
+            debrief, rubric_observations_seen=observations_seen
+        )
         results["warnings"] += turn_warnings + debrief_warnings
         pipeline_failures = turn_failures + debrief_failures
         if pipeline_failures:
