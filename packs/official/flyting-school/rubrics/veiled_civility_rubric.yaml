@@ -1,0 +1,97 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+rubric_id: veiled_civility_rubric
+title: The Rubric of Veiled Civility
+dimensions:
+  - id: sting
+    name: Sting
+    description: Whether the compliment, unwrapped, is a wound.
+    scoring:
+      low: A pleasantry with nothing inside it, or an insult with no wrapping.
+      medium: The barb is there, but anyone could feel it coming.
+      high: Perfectly courteous on the surface, and unsurvivable underneath.
+    weight: 0.30
+  - id: wit
+    name: Wit
+    description: The double meaning, and how lightly it is carried.
+    scoring:
+      low: One meaning only.
+      medium: Two meanings, the second too plainly signposted.
+      high: Two meanings, and the room divides over which you intended.
+    weight: 0.20
+  - id: craft
+    name: Craft
+    description: Construction fine enough to survive being repeated at supper.
+    scoring:
+      low: Blunt, hurried, or overlong.
+      medium: Neat, but it would not be quoted.
+      high: Quotable, balanced, and impossible to shorten.
+    weight: 0.15
+  - id: fidelity
+    name: Fidelity
+    description: >-
+      Ballroom register. Overt rudeness is not a low score here; it is a foul.
+      The sting must arrive wearing gloves.
+    scoring:
+      low: Naked rudeness. A scandal, and a foul.
+      medium: Courteous but modern, or courteous but stiff.
+      high: Period-perfect courtesy with a knife inside it.
+    weight: 0.35
+volley_judge:
+  # Fidelity carries more than sting here: in this room, how a thing is said is
+  # most of what is being judged, and overt rudeness is a foul rather than a
+  # low score (see the scenario's register block).
+  weights:
+    sting: 0.30
+    wit: 0.20
+    craft: 0.15
+    fidelity: 0.35
+  hook_bonus: [0.15, 0.12, 0.08, 0.05]
+  theme_decay: 0.7
+  anchors:
+    - dimension: fidelity
+      score: 1
+      example: You are a vain, hollow fool and everyone in this room knows it.
+      why: True, perhaps, and a foul. No gloves.
+    - dimension: fidelity
+      score: 6
+      example: How brave of you to wear that again.
+      why: Courteous in form, but the knife is showing.
+    - dimension: fidelity
+      score: 10
+      example: >-
+        You must tell me the name of your modiste — I should so like to know
+        who to forgive.
+      why: Impeccable courtesy, and the room will be repeating it by supper.
+    - dimension: sting
+      score: 3
+      example: What a charming gown, truly.
+      why: A pleasantry with nothing inside it.
+    - dimension: sting
+      score: 8
+      example: >-
+        Your dancing improves every season. One can almost no longer hear the
+        counting.
+      why: Courteous, specific, and unanswerable.
+    - dimension: wit
+      score: 9
+      example: >-
+        I have never met anyone so generous with their opinions. You must find
+        them so easy to come by.
+      why: Both meanings live in the same sentence.
+    - dimension: craft
+      score: 2
+      example: >-
+        That gown is lovely and your hair is lovely and really everything about
+        you tonight is lovely, truly, it is.
+      why: Courteous, and shapeless. Nothing in it would survive being repeated.
+    - dimension: craft
+      score: 6
+      example: How well you wear the season. It must be exhausting for it.
+      why: A neat two-beat turn, and nothing holding it together beyond that.
+    - dimension: craft
+      score: 9
+      example: >-
+        What a triumph of an evening for you — the music, the company, and
+        four separate people telling me so before you arrived.
+      why: Balanced, quotable, and impossible to shorten without losing the knife.

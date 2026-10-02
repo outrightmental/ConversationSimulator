@@ -86,7 +86,7 @@
             "properties": {
               "id": {
                 "type": "string",
-                "enum": ["riposte", "callback", "device_rotation", "compound", "discovery"]
+                "enum": ["riposte", "callback", "device_rotation", "compound"]
               },
               "points": { "type": "integer" },
               "evidence": { "type": ["string", "null"] }
@@ -180,6 +180,12 @@
           "minimum": 0,
           "maximum": 10,
           "description": "Mechanical craft estimate on the judge's 0-10 scale, used when the judge is unavailable."
+        },
+        "rarest_words": {
+          "type": "array",
+          "description": "The least common content words in this volley, rarest first — the debrief's \"rarest words that landed\" is an aggregate over these.",
+          "items": { "type": "string" },
+          "maxItems": 5
         }
       }
     },

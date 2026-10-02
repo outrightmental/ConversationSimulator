@@ -1,0 +1,69 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+calibration_id: mead_hall_calibration
+scenario_id: mead_hall_flyting
+description: >-
+  Reference volleys for The Mead-Hall Flyting. Verse mode: alliteration and a
+  steady beat are scored as craft, so a well-aimed line with neither sits lower
+  here than it would anywhere else in the pack.
+volleys:
+  - id: too_short
+    text: sit down
+    expect:
+      gate: dud
+      band: dud
+      flags: [too_short]
+
+  - id: prose_aimed
+    text: >-
+      Your whale gets bigger every winter and your voyage gets shorter every
+      time you are asked about it.
+    note: >-
+      Aimed and true, but flat prose in a hall that scores sound — craft is
+      capped and the band stays modest.
+    expect:
+      gate: ok
+      band: solid
+      max_score: 119
+
+  - id: alliterated
+    text: >-
+      Bench-breaker, boast-brewer, bellower of borrowed battles — the only
+      whale you bested was the one in your own belly.
+    note: A sustained alliterative run with a verified hook.
+    expect:
+      gate: ok
+      band: strong
+      min_score: 110
+      hooks: [boasting]
+
+  - id: alliterated_two_hooks
+    text: >-
+      Thin-tongued Thorvald, theft-rhymer, thief of three better poets — your
+      kennings came off another man's bench and your whale came out of a cup.
+    expect:
+      gate: ok
+      band: strong
+      min_score: 120
+      hooks: [thin_verse, boasting]
+
+  - id: discovery_fjord
+    text: >-
+      Fjord-farer, foam-fearer, finest of all the sailors who never left the
+      sight of the jetty — tell the hall where the whale was, and say it slowly.
+    note: Strikes the discoverable landlubber trait.
+    expect:
+      gate: ok
+      band: strong
+      hooks: [landlubber]
+
+  - id: repeat_theme
+    text: >-
+      Belly-bearer, bread-breaker, bane of every bench you sit upon — your
+      appetite has its own saga and it is longer than yours.
+    note: >-
+      A good line on a theme the earlier volleys already used; theme decay
+      should visibly reduce its topicality bonus when played after them.
+    expect:
+      gate: ok
+      band: solid

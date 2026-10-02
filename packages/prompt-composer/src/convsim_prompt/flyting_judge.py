@@ -624,7 +624,10 @@ def compose_volley_judge_prompt(data: VolleyJudgeInput) -> PromptBundle:
     )
 
 
-_JUDGE_REPAIR_PROMPT = (
+# Public: the async volley pipeline makes its own single retry rather than
+# bridging a synchronous call out of a running event loop, so it needs the
+# same repair prompt the synchronous path uses.
+JUDGE_REPAIR_PROMPT = (
     "Your previous response was not a valid judge verdict. Return ONLY a valid JSON "
     "object matching this schema — no markdown fences, no explanation, no text "
     "outside the JSON object itself:\n"
@@ -873,7 +876,7 @@ def parse_volley_judgment(
         return None
 
     try:
-        repaired = runtime.call_llm(_JUDGE_REPAIR_PROMPT)
+        repaired = runtime.call_llm(JUDGE_REPAIR_PROMPT)
     except Exception as exc:  # noqa: BLE001 — a failed repair must never end a session
         logger.warning("Judge repair call raised: %s", exc)
         _emit("judge_repair_failure", reason=f"{type(exc).__name__}: {exc}")

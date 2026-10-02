@@ -1,0 +1,78 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+calibration_id: tower_guard_calibration
+scenario_id: tower_guard
+description: >-
+  Reference volleys for The Tower Guard. Includes the case the scenario exists
+  to police: quoting the film this is an homage to is a Plagiarized Zinger, not
+  a joke.
+volleys:
+  - id: too_short
+    text: go away
+    expect:
+      gate: dud
+      band: dud
+      flags: [too_short]
+
+  - id: quoted_film_rodent
+    text: Your mother was a hamster, sir, and I have the paperwork.
+    note: >-
+      Detected by keyword signature rather than stored text — no film dialogue
+      ships in this pack. Quoted at the character it belongs to, which the
+      umpire names.
+    expect:
+      flags: [plagiarized_zinger]
+      band: weak
+      max_score: 10
+
+  - id: quoted_film_berries
+    text: I believe your father smelt of elderberries, by your own account.
+    expect:
+      flags: [plagiarized_zinger]
+      max_score: 10
+
+  - id: generic
+    text: You are all idiots and you should go home immediately.
+    expect:
+      gate: ok
+      band: weak
+      max_score: 59
+
+  - id: aimed_pomposity
+    text: >-
+      Keeper of the Lesser Seal — I have met the Greater one, and he speaks of
+      you the way one speaks of weather in another county.
+    note: Lands on pomposity with an original image.
+    expect:
+      gate: ok
+      band: solid
+      hooks: [pomposity]
+
+  - id: absurd_craft
+    text: >-
+      You have the bearing of a man who has been rained on by four separate
+      countries and has thanked each of them personally.
+    note: Absurdism scores as craft in this scenario.
+    expect:
+      gate: ok
+      band: solid
+
+  - id: two_hooks_absurd
+    text: >-
+      Eleven years on that road, sir, and the only thing you have conquered is
+      the smell — which now outranks you, and has its own tent.
+    expect:
+      gate: ok
+      band: strong
+      min_score: 100
+      hooks: [futility, dampness]
+
+  - id: discovery_map
+    text: >-
+      Sir Aldric, turn the map. No — turn it. Your quest has been pointing at
+      your own boots since Tuesday, and your boots have been honest about it.
+    note: Strikes a discoverable trait.
+    expect:
+      gate: ok
+      band: strong
+      hooks: [the_map]

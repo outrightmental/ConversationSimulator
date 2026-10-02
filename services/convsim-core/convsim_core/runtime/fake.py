@@ -55,8 +55,29 @@ _DEBRIEF_NARRATIVE_RESPONSE: dict = {
     ],
 }
 
+# A deterministic flyting judge verdict. Mid-range on every dimension and with
+# no hook claims: the fake runtime cannot see which volley it is scoring, and a
+# hook it invented would be dropped by evidence verification anyway. Tests that
+# need specific judge numbers inject a judgment directly instead.
+_FLYTING_JUDGE_RESPONSE: dict = {
+    "sting": 6,
+    "wit": 6,
+    "craft": 6,
+    "fidelity": 6,
+    "hooks": [],
+    "themes": ["other"],
+    "devices": ["metaphor"],
+    "riposte": {"is_riposte": False, "evidence": None},
+    "callback": {"is_callback": False, "evidence": None},
+    "fouls": [],
+    "umpire_line": "A simulated verdict from a simulated umpire.",
+}
+
 # Discriminant key present in the debrief narrative schema but not the NPC turn schema.
 _DEBRIEF_SCHEMA_DISCRIMINANT = "replay_suggestions"
+
+# Discriminant key present only in the flyting judge schema.
+_JUDGE_SCHEMA_DISCRIMINANT = "umpire_line"
 
 
 @register("fake")
@@ -94,8 +115,11 @@ class FakeChatRuntime(ChatRuntime):
     async def _stream(self, request: ChatRequest) -> AsyncGenerator[ChatToken | ChatFinal, None]:
         if request.json_schema is not None:
             # Return the debrief narrative response when the debrief schema is detected.
-            if _DEBRIEF_SCHEMA_DISCRIMINANT in (request.json_schema.get("properties") or {}):
+            properties = request.json_schema.get("properties") or {}
+            if _DEBRIEF_SCHEMA_DISCRIMINANT in properties:
                 chosen = _DEBRIEF_NARRATIVE_RESPONSE
+            elif _JUDGE_SCHEMA_DISCRIMINANT in properties:
+                chosen = _FLYTING_JUDGE_RESPONSE
             else:
                 chosen = _STRUCTURED_RESPONSE
             response_text = json.dumps(chosen)

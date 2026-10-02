@@ -43,7 +43,7 @@ where = ["."]
 include = ["convsim*"]
 
 [tool.setuptools.package-data]
-"convsim_core" = ["schemas/*.json"]
+"convsim_core" = ["schemas/*.json", "flyting/data/*.txt"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

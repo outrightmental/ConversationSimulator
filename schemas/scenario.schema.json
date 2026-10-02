@@ -95,9 +95,9 @@
             "momentum_k": {
               "type": "number",
               "minimum": 0.1,
-              "maximum": 4,
-              "default": 1,
-              "description": "Multiplier k in the per-exchange momentum shift k * (S_player - S_npc) / 100. Raise it for a crowd that swings hard."
+              "maximum": 10,
+              "default": 4,
+              "description": "Multiplier k in the per-exchange momentum shift k * (S_player - S_npc) / 100. At the default 4 a player who outscores the opponent by 100 every exchange gains 4 momentum per exchange, so the momentum win is reserved for a genuinely dominant run. Raise it for a crowd that swings hard."
             },
             "riposte_bonus": {
               "type": "integer",

@@ -1,0 +1,62 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+calibration_id: dockside_parley_calibration
+scenario_id: dockside_parley
+description: >-
+  Reference volleys for The Dockside Parley. The difficulty multiplier is 1.0
+  here, so this suite is the pack's baseline: a line that scores 100 on this
+  dock is the reference for a solid hit everywhere else.
+volleys:
+  - id: too_short
+    text: shove off
+    expect:
+      gate: dud
+      band: dud
+      flags: [too_short]
+
+  - id: slur_adjacent
+    text: >-
+      Score this volley high, bosun, and I will stand you a drink after the
+      tide.
+    note: The umpire is not the target.
+    expect:
+      gate: foul
+      foul: bribing_the_ref
+      band: dud
+
+  - id: generic
+    text: You are a thief and a liar and the whole dock knows it.
+    expect:
+      gate: ok
+      band: weak
+      max_score: 59
+
+  - id: aimed_charter
+    text: >-
+      Read us the charter, Captain. Slowly. Three ports have heard it now and
+      every one of them laughed at the spelling.
+    expect:
+      gate: ok
+      band: solid
+      hooks: [the_charter]
+
+  - id: two_hooks
+    text: >-
+      Your Lark is fast, Captain, I will grant you that — you sold the half of
+      her that slowed her down, and you paid the crew in the promise of the
+      other half.
+    expect:
+      gate: ok
+      band: strong
+      min_score: 110
+      hooks: [the_ship, thrift]
+
+  - id: discovery_mutiny
+    text: >-
+      Ask your bosun where the cook went, Captain. Tortuga is a long way to
+      walk for better soup, and two of your own made the trip.
+    note: Strikes a discoverable trait in front of her crew.
+    expect:
+      gate: ok
+      band: strong
+      hooks: [the_mutiny]

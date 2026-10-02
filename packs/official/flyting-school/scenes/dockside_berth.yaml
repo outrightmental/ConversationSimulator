@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scene_id: dockside_berth
+display_name: "The Long Berth, Two Hours Before the Tide"
+description: >-
+  Tar, fish, and wet rope. Two crews on two decks and a contested cargo on the
+  stones between them. The harbour clerk has gone conveniently missing. Dock
+  hands have stopped working, which on this dock is the formal announcement that
+  something is about to be said.
+ambient: harbour_dock
+audience:
+  label: both crews and the dock hands
+  reactions:
+    - min_score: 0
+      line: Somebody on the far deck goes back to coiling rope.
+      event_id: dock_shrug
+    - min_score: 60
+      line: Her crew looks at her. That is a kind of scoring.
+      event_id: dock_glance
+    - min_score: 120
+      line: Both crews bang the rails, and the rival captain's bosun grins at you.
+      event_id: dock_rails
+    - min_score: 180
+      line: >-
+        The whole berth bellows. Two of her own crew are laughing, and she has
+        noticed which two.
+      event_id: dock_bellow

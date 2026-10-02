@@ -1,0 +1,101 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scenario_id: tower_guard
+title: The Tower Guard
+summary: >-
+  You hold a damp tower; four knights hold a damp field. Nobody is going to
+  fight, so the whole engagement is conducted at volume, downwards. Absurdism
+  scores as craft here — and quoting the famous film this scene is an homage to
+  is detected and punished as a Plagiarized Zinger.
+mode: flyting
+player_role:
+  label: The Guard on the Wall
+  brief: >-
+    A guard of indeterminate nationality and total confidence, forty feet above
+    four earnest knights who want to cross your bridge. You have no orders, no
+    reinforcements, and nothing whatsoever to lose. The garrison has come out to
+    watch, which is the only part of this that matters.
+npc:
+  ref: ../npcs/questing_knights.yaml
+scene:
+  ref: ../scenes/tower_battlements.yaml
+rubric:
+  ref: ../rubrics/flyting_rubric.yaml
+duration:
+  max_turns: 20
+  soft_time_limit_minutes: 10
+opening:
+  npc_says: >-
+    Hail, the tower! I am Sir Aldric of the Marches, Knight of the Third Vigil,
+    Keeper of the Lesser Seal, and we seek passage across this bridge upon a
+    quest of considerable importance. To whom am I speaking?
+goals:
+  player_visible:
+    - "Absurdity is craft here: the stranger the image, the better it scores"
+    - "Aim at something true about them — pomposity, futility, the smell"
+    - "Original material only. Quoting the film this homages is a foul of its own"
+  hidden:
+    - "He cannot detect mockery and will answer it with procedure"
+    - "The armour is borrowed and the map is upside down — neither is in your brief"
+state:
+  variables:
+    momentum:
+      min: 0
+      max: 100
+      default: 50
+      visibility: visible
+      max_delta_per_turn: 15
+difficulty:
+  default: standard
+  options:
+    warm:
+      patience: 80
+      volatility: 30
+      disclosure: 70
+      time_pressure: 15
+      label: Quiet Watch
+      description: One knight, infinite patience, hints on.
+    standard:
+      patience: 55
+      volatility: 50
+      disclosure: 50
+      time_pressure: 40
+      label: Full Party
+      description: Four knights, one bridge, and a garrison that wants a show.
+    hard:
+      patience: 30
+      volatility: 70
+      disclosure: 30
+      time_pressure: 60
+      label: Siege Weather
+      description: Rain, cold stone, and a knight who has started taking notes.
+flyting:
+  formats: [bout, batting_practice]
+  bout:
+    rounds: 8
+    momentum_win: 85
+    momentum_k: 4
+    riposte_bonus: 15
+    npc_tier: milquetoast
+  batting_practice:
+    shot_clock_s: 18
+    formats: [timed_90, set_10, endless]
+  difficulty_multiplier: 1.15
+  lexicon:
+    encouraged:
+      - varlet
+      - knave
+      - churl
+      - bridge-toll
+      - mangel-wurzel
+      - sump
+    anachronism_policy: "off"
+  register:
+    notes: >-
+      Shouted downwards, at volume, with a stone parapet to lean on. Rudeness
+      is expected; the scoring rewards invention over abuse.
+  verse:
+    required: false
+  judge_flavor: >-
+    A chronicler in the garrison who has been recording the siege for eleven
+    weeks and would very much like something worth writing down.

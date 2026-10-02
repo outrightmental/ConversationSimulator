@@ -1,0 +1,66 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: smoke_whitechapel_rose
+scenario_id: whitechapel_rose
+description: >-
+  Smoke fixture for The Scorned Rose of Whitechapel: three volleys that must each be accepted by the
+  Stage 0 gates, move the momentum meter, and leave the run in progress. The
+  scored expectations for this scenario live in calibration/whitechapel_rose.yaml, which
+  the flyting calibration runner executes.
+
+seed: 7
+input_mode: text
+difficulty: standard
+turns:
+  - turn: 1
+    player_input: >-
+      You polish your virtue like your carriage brass, sir, and both are plate, not sterling.
+    expect:
+      state_delta_contains:
+        - momentum
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 2
+    player_input: >-
+      You preach temperance on Tuesdays and draw your rent from a gin palace on Thursday.
+    expect:
+      state_delta_contains:
+        - momentum
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 3
+    player_input: >-
+      You bought your way out of the Crimea and flinch at fireworks on the river.
+    expect:
+      state_delta_contains:
+        - momentum
+      session_control: continue_session
+      safety_status: ok
+
+static_assertions:
+  - description: The scenario declares the flyting turn loop
+    path: mode
+    check: equals flyting
+  - description: The flyting block offers at least one play format
+    path: flyting.formats
+    check: min_length_1
+  - description: The bout runs 8 rounds with the wildean opponent tier
+    path: flyting.bout
+    check: "rounds=8 AND npc_tier=wildean"
+  - description: The scenario difficulty multiplier is 1.2
+    path: flyting.difficulty_multiplier
+    check: equals 1.2
+  - description: Verse scoring is false for this scenario
+    path: flyting.verse.required
+    check: equals false
+  - description: Momentum is an ordinary state variable with a per-turn clamp
+    path: state.variables.momentum
+    check: "max_delta_per_turn=12 AND default=50"
+  - description: The target declares an attack surface for hooks to verify against
+    path: npc.ref
+    check: non_empty_string
+  - description: The umpire has a voice
+    path: flyting.judge_flavor
+    check: non_empty_string

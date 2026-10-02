@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scene_id: mead_hall_benches
+display_name: "The Mead-Hall, Long Benches, Midwinter"
+description: >-
+  Smoke to the rafters and forty people between you and the door. The long fire
+  down the middle, the jarl's seat at the head, and benches on both sides packed
+  with people who have heard every story in this hall twice and are hungry for a
+  new one. The hall keeps time by hitting the tables.
+ambient: crowded_hall
+audience:
+  label: the benches
+  reactions:
+    - min_score: 0
+      line: The benches go back to their cups.
+      event_id: benches_quiet
+    - min_score: 60
+      line: A table or two takes up the beat.
+      event_id: benches_beat
+    - min_score: 120
+      line: Half the hall hammers the boards and somebody spills a horn of mead.
+      event_id: benches_hammer
+    - min_score: 180
+      line: >-
+        The whole hall roars it back at you, stamping, and the jarl's hound
+        bolts for the door.
+      event_id: benches_roar

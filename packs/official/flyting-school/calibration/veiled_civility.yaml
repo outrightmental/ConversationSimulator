@@ -1,0 +1,77 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+calibration_id: veiled_civility_calibration
+scenario_id: veiled_civility
+description: >-
+  Reference volleys for Veiled Civility, the pack's hardest register. Overt
+  rudeness is a foul rather than a low score, and fidelity is weighted above
+  sting — a courteous line that lands beats a sharp line that does not wear
+  gloves.
+volleys:
+  - id: too_short
+    text: how dreadful
+    expect:
+      gate: dud
+      band: dud
+      flags: [too_short]
+
+  - id: naked_rudeness
+    text: >-
+      You are a vain, hollow creature and every person in this room is only
+      being polite to you.
+    note: >-
+      True, perhaps, and a scandal. The judge raises overt_rudeness in this
+      scenario rather than merely docking fidelity.
+    expect:
+      gate: ok
+      band: weak
+      max_score: 59
+
+  - id: empty_pleasantry
+    text: What a perfectly charming gown that is, truly.
+    note: "Courteous with nothing inside it: no sting, no hook."
+    expect:
+      gate: ok
+      band: weak
+      max_score: 59
+
+  - id: gloved_sting
+    text: >-
+      How brave of you to wear that again — one does so admire a woman who
+      refuses to be governed by the dates on things.
+    expect:
+      gate: ok
+      band: solid
+
+  - id: gloved_two_hooks
+    text: >-
+      You must tell me the name of your aunt's solicitor; one hears he writes
+      so faithfully, and a correspondence that devoted is the rarest fortune
+      of all.
+    note: >-
+      Impeccably courteous, two verified hooks, and the knife is entirely in
+      the implication.
+    expect:
+      gate: ok
+      band: strong
+      min_score: 120
+      hooks: [borrowed_fortune]
+
+  - id: gloved_rehearsal
+    text: >-
+      Your laugh is quite the loveliest thing in this room, and so beautifully
+      kept — one can hear how carefully it has been looked after.
+    expect:
+      gate: ok
+      band: strong
+      hooks: [rehearsed_charm]
+
+  - id: discovery_counting
+    text: >-
+      You dance so very correctly, my dear — and one does admire the
+      arithmetic. Mr Fenwick said he could almost hear it.
+    note: Strikes the discoverable counting trait while staying entirely polite.
+    expect:
+      gate: ok
+      band: strong
+      hooks: [the_counting]

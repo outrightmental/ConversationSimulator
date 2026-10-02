@@ -1,0 +1,113 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+rubric_id: flyting_rubric
+title: The Flyting Rubric
+dimensions:
+  - id: sting
+    name: Sting
+    description: >-
+      Does the volley land on this target, rather than on anyone who happens to
+      be standing there? Aim is the difference between an insult and abuse.
+    scoring:
+      low: >-
+        Generic abuse. Nothing in the line could only be said to this character.
+      medium: >-
+        Aimed at something real about the target, but glancing off it.
+      high: >-
+        Lands squarely on a declared trait and carries its own evidence.
+    weight: 0.35
+  - id: wit
+    name: Wit
+    description: >-
+      Surprise, cleverness, economy. The turn you did not see coming, in as few
+      words as it takes.
+    scoring:
+      low: Two labels in a row. No turn, no surprise.
+      medium: One small turn, in a predictable shape.
+      high: The whole indictment compressed into one unexpected image.
+    weight: 0.25
+  - id: craft
+    name: Craft
+    description: >-
+      Imagery, construction, sound. Whether the line was built or merely
+      emitted.
+    scoring:
+      low: No construction, no rhythm, no image.
+      medium: A clean two-beat shape and nothing beyond it.
+      high: A figure that resolves, with sound to carry it.
+    weight: 0.20
+  - id: fidelity
+    name: Fidelity
+    description: >-
+      In-character voice, period diction, register compliance. The scene's own
+      language turned into the weapon.
+    scoring:
+      low: The register is broken outright — modern slang in a period room.
+      medium: In register but colourless.
+      high: The diction of the scene used as the instrument of the insult.
+    weight: 0.20
+volley_judge:
+  weights:
+    sting: 0.35
+    wit: 0.25
+    craft: 0.20
+    fidelity: 0.20
+  hook_bonus: [0.15, 0.12, 0.08, 0.05]
+  theme_decay: 0.75
+  anchors:
+    - dimension: sting
+      score: 2
+      example: You are the worst person here.
+      why: Nothing in it could only be said to this character.
+    - dimension: sting
+      score: 6
+      example: Your advice is as sound as your tailoring, and neither fits.
+      why: Aimed at a real trait, but glancing off it.
+    - dimension: sting
+      score: 9
+      example: >-
+        You preach temperance at chapel and bank the takings of two gin
+        palaces — your sermon is a receipt.
+      why: Lands on a declared trait and carries its own evidence.
+    - dimension: wit
+      score: 2
+      example: You are stupid, and also ugly.
+      why: No turn and no surprise.
+    - dimension: wit
+      score: 6
+      example: You have the bearing of a man who has rehearsed it.
+      why: One small turn, entirely predictable in shape.
+    - dimension: wit
+      score: 9
+      example: >-
+        You arrived at the top of the hill in a sedan chair and have been
+        lecturing us on the climb ever since.
+      why: One image carrying the whole indictment.
+    - dimension: craft
+      score: 2
+      example: you are bad at everything and everyone knows it and you smell
+      why: No construction, no rhythm, no image.
+    - dimension: craft
+      score: 6
+      example: Your coat is fine; your argument is thin.
+      why: A clean antithesis and nothing more.
+    - dimension: craft
+      score: 9
+      example: >-
+        Powder, corset, and a crest bought by the yard — three coats of paint
+        on one rotten post.
+      why: A triple resolving into a single image, with sound to carry it.
+    - dimension: fidelity
+      score: 2
+      example: bro your whole vibe is mid, no cap
+      why: The register is broken outright.
+    - dimension: fidelity
+      score: 6
+      example: You are not the gentleman you pretend to be, sir.
+      why: In register, but colourless.
+    - dimension: fidelity
+      score: 9
+      example: >-
+        I would call you a blackguard, sir, but the word implies a guard, and
+        you have never stood within a mile of danger.
+      why: The scene's own diction turned into the weapon.

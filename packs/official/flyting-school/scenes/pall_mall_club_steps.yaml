@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scene_id: pall_mall_club_steps
+display_name: "Pall Mall — The Club Steps, 1878"
+description: >-
+  Gaslight on wet stone outside a gentlemen's club in Pall Mall, a quarter past
+  eleven on a January night. A doorman who has decided to look at the street.
+  Two hansom drivers on the kerb, delighted. Three members on the top step with
+  cigars and nowhere else to be. The fog carries every word to all of them.
+ambient: quiet_street
+audience:
+  label: the cab drivers and the top step
+  reactions:
+    - min_score: 0
+      line: The doorman studies the middle distance. Nobody laughs.
+      event_id: steps_silence
+    - min_score: 60
+      line: One of the drivers makes a small noise into his collar.
+      event_id: steps_snort
+    - min_score: 120
+      line: Both drivers laugh outright, and a member on the top step looks away.
+      event_id: steps_laugh
+    - min_score: 180
+      line: >-
+        The whole step goes up. Somebody says "oh, I say" in a voice that will
+        be repeated at three breakfasts tomorrow.
+      event_id: steps_uproar

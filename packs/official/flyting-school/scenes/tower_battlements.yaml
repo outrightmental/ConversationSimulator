@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scene_id: tower_battlements
+display_name: "The Battlements of a Damp Tower"
+description: >-
+  Forty feet of cold stone between you and four knights in a wet field. Your own
+  garrison is behind you on the walkway: two guards, a cook, and somebody's
+  nephew, all of whom have nothing to do until spring and have therefore come to
+  watch. Below, the quest waits politely for an answer.
+ambient: windy_battlement
+audience:
+  label: the garrison on the walkway
+  reactions:
+    - min_score: 0
+      line: The cook goes back inside.
+      event_id: garrison_bored
+    - min_score: 60
+      line: Somebody's nephew laughs a beat too late and is elbowed.
+      event_id: garrison_titter
+    - min_score: 120
+      line: The whole walkway hoots, and a helmet goes over the parapet.
+      event_id: garrison_hoot
+    - min_score: 180
+      line: >-
+        The garrison beats the stone with the flats of their hands. One of the
+        knights below has begun, very slowly, to write it down.
+      event_id: garrison_drumming

@@ -1,0 +1,26 @@
+# Pop-culture taunt signatures — Stage 0 Plagiarized Zinger gate.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Famous modern taunts are detected by keyword signature rather than stored
+# verbatim, so no copyrighted dialogue ships in the application or in any pack.
+# A signature fires when every one of its keywords is present in the volley,
+# which is enough to catch a quotation or a light paraphrase of a line everyone
+# in the room already knows, and specific enough not to fire on original work
+# that happens to share one word.
+#
+# Format:  label | keyword, keyword, ...
+# Lines beginning with # are comments; blank lines are ignored.
+
+tower_taunt_rodent        | mother, hamster
+tower_taunt_berries       | father, elderberries
+tower_taunt_direction     | fart, general, direction
+pirate_duel_dairy         | fight, dairy, farmer
+pirate_duel_left_hand     | fighting, left, hand
+pirate_duel_handkerchief  | handkerchief, blood
+stock_yo_mama_fat         | mother, so, fat
+stock_yo_mama_ugly        | mother, so, ugly
+stock_yo_mama_stupid      | mother, so, stupid
+duel_prepare_to_die       | prepare, die, father
+cantina_scum              | wretched, hive, scum
+drill_sergeant_maggot     | maggot, worthless, pukes
+boxer_float               | float, butterfly, sting, bee
