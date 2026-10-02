@@ -10,6 +10,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_updater::UpdaterExt;
 use tauri_plugin_shell::ShellExt;
 
+mod core_process;
 mod steam;
 
 // ── Edition and data root ─────────────────────────────────────────────────────
@@ -378,8 +379,7 @@ impl Drop for CoreProcessState {
     fn drop(&mut self) {
         if let Ok(mut guard) = self.0.lock() {
             if let Some(ref mut child) = *guard {
-                let _ = child.kill();
-                let _ = child.wait();
+                core_process::shutdown(child);
             }
         }
     }
@@ -669,9 +669,14 @@ fn launch_or_verify_core(
         let mut cmd = Command::new(&exe);
         cmd.env("CONVSIM_HOST", "127.0.0.1")
             .env("CONVSIM_PORT", CORE_PORT.to_string())
-            .stdin(Stdio::null())
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit());
+
+        // Spawn settings the teardown path depends on: a pipe on stdin whose
+        // closure asks the engine to shut itself down, and (on Unix) a process
+        // group of its own so the whole tree can be signalled at once. See
+        // core_process for why `Child::kill()` alone leaves processes behind.
+        core_process::configure_lifetime(&mut cmd);
 
         // Pass the OS-native app data directory as CONVSIM_DATA_ROOT so the
         // Python backend uses the same platform-specific location that Tauri
@@ -732,8 +737,7 @@ fn launch_or_verify_core(
         #[cfg(windows)]
         {
             use std::os::windows::process::CommandExt;
-            const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-            cmd.creation_flags(CREATE_NO_WINDOW);
+            cmd.creation_flags(core_process::CREATE_NO_WINDOW);
         }
 
         let child = match cmd.spawn() {
@@ -835,8 +839,14 @@ pub fn run() {
     // `Drop` alone is not enough: on desktop the tao event loop terminates the
     // process via `std::process::exit()` when the app exits, so managed-state
     // destructors are never run and `convsim-core` would be orphaned (leaving
-    // port 7355 held). Killing the child explicitly on `RunEvent::Exit` is the
-    // reliable teardown path; `Drop` remains as a backstop for other exit paths.
+    // port 7355 held). Tearing the child down explicitly on `RunEvent::Exit` is
+    // the reliable path; `Drop` remains as a backstop for other exit paths.
+    //
+    // `RunEvent::Exit` is also the LAST point at which we can wait for the
+    // engine: once this handler returns the event loop exits the process, and
+    // whatever is still running becomes an orphan Steam counts as the game
+    // still being open (issue #485). `core_process::shutdown` therefore blocks
+    // until the whole tree is down.
     let process_on_exit = Arc::clone(&process_inner);
 
     // Initialise the Steam bridge early so the status is available before the
@@ -959,9 +969,11 @@ pub fn run() {
     app.run(move |_app_handle, event| {
         if let tauri::RunEvent::Exit = event {
             if let Ok(mut guard) = process_on_exit.lock() {
-                if let Some(ref mut child) = *guard {
-                    let _ = child.kill();
-                    let _ = child.wait();
+                // `take()`, so the `Drop` backstop does not run the whole
+                // teardown a second time against a process already reaped.
+                if let Some(mut child) = guard.take() {
+                    let outcome = core_process::shutdown(&mut child);
+                    eprintln!("convsim-core shutdown: {}", outcome.as_str());
                 }
             }
         }

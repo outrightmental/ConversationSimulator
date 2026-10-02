@@ -202,8 +202,43 @@ Get-NetTCPConnection -LocalPort 7354 | Select-Object OwningProcess
 Stop-Process -Id <PID>
 ```
 
-Common culprits: a previous instance of the app that was not stopped cleanly,
-or another application using ports in the 7354–7358 range.
+Common culprits: a previous instance of the app that was not stopped cleanly
+(see [The engine keeps running after I quit](#engine-wont-exit)), or another
+application using ports in the 7354–7358 range.
+
+---
+
+## The engine keeps running after I quit {#engine-wont-exit}
+
+**Steam still shows Conversation Simulator as running after the window closes**,
+or `convsim-core` is still listed in Task Manager / Activity Monitor.
+
+Quitting the app shuts the conversation engine down and waits for it, so this
+should not happen. If it does, the leftover process also holds port 7355, which
+stops the next launch. Clear it:
+
+```bash
+# macOS / Linux
+pkill -f convsim-core
+# The engine normally stops the AI engine and the voice process on its way out.
+# If it was too wedged to do that, a stray llama-server holds port 7356 and the
+# next launch cannot load a model — so clear that too. (Skip this line if you
+# started llama-server yourself.)
+pkill -f llama-server
+```
+
+```powershell
+# Windows PowerShell — /T also clears the AI engine and the voice process
+taskkill /IM convsim-core.exe /T /F
+```
+
+Nothing is lost by doing this: conversations are saved as they happen, and an
+interrupted model download resumes from where it stopped.
+
+Then please [open an issue](https://github.com/outrightmental/ConversationSimulator/issues)
+and attach `app.log` and `runtime.log` from `~/.convsim/logs/`. The last lines of
+`app.log` say how far the shutdown got, which is the one thing we cannot work
+out from the outside.
 
 ---
 
