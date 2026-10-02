@@ -7,6 +7,33 @@ from convsim_core.app import create_app
 from convsim_core.config import ServiceConfig
 
 
+@pytest.fixture(scope="session")
+def _absent_official_packs_dir(tmp_path_factory):
+    """A path that does not exist, resolved once for the whole session."""
+    return tmp_path_factory.mktemp("no_official_packs") / "absent"
+
+
+@pytest.fixture(autouse=True)
+def _default_official_packs_dir_away(_absent_official_packs_dir, monkeypatch):
+    """Keep startup pack seeding out of tests that never asked for it.
+
+    ``ServiceConfig.official_packs_dir`` defaults to the repo's bundled
+    ``packs/official``, so any app built from a config that does not override it
+    re-imports every official pack into that test's fresh database on startup —
+    a per-test cost that grows with each pack the project ships. The shared
+    ``tmp_config`` below already points the field at a throwaway path for that
+    reason; this fixture extends the same default to the file-local configs that
+    construct ``ServiceConfig`` themselves.
+
+    ``CONVSIM_OFFICIAL_PACKS_DIR`` is the env override for the field, and
+    pydantic-settings ranks explicit constructor arguments above the
+    environment, so a test that genuinely needs the bundled packs (test_edition,
+    test_pack_seeder, the flyting end-to-end tests) still gets them by passing
+    ``official_packs_dir=`` and is unaffected.
+    """
+    monkeypatch.setenv("CONVSIM_OFFICIAL_PACKS_DIR", str(_absent_official_packs_dir))
+
+
 @pytest.fixture(autouse=True)
 def _isolate_data_migration(tmp_path_factory, monkeypatch):
     """Keep create_app()'s legacy-data migration from touching the real HOME.
