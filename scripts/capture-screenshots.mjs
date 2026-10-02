@@ -81,6 +81,10 @@ const MAX_SHOT_HEIGHT = 2000
 // slightly longer turn next time does not blow through it.
 const GIF_BUDGET_BYTES = 4 * 1024 * 1024
 
+// Seconds dropped from the end of the hero segment. The last thing in frame
+// should be the NPC's finished reply, never the screen the run moves to next.
+const HERO_TAIL_TRIM = 0.6
+
 // Runtimes that answer from canned content. A capture taken on one of these
 // would be a mockup wearing the UI's clothes (issue #455 acceptance).
 const MODEL_FREE_RUNTIMES = new Set(['fake', 'scripted'])
@@ -239,7 +243,11 @@ async function main() {
     args: ['--force-color-profile=srgb', '--hide-scrollbars'],
   })
   const marks = {}
-  const t0 = Date.now()
+  // Marks are offsets into the recording, so the clock has to start where the
+  // recording does: Playwright begins capturing when the page opens, not when
+  // the browser launches. Starting it any earlier shifts the encoded window
+  // later than the marks and lets whatever came next leak into the tail.
+  let t0 = Date.now()
   const mark = (name) => {
     marks[name] = (Date.now() - t0) / 1000
     log(`mark ${name} @ ${marks[name].toFixed(1)}s`)
@@ -253,6 +261,7 @@ async function main() {
     recordVideo: SKIP_HERO ? undefined : { dir: videoDir, size: VIEWPORT },
   })
   const page = await context.newPage()
+  t0 = Date.now()
   page.on('pageerror', (e) => log('page error:', e.message))
 
   try {
@@ -473,7 +482,10 @@ async function openWorkbenchFile(page, relPath) {
  */
 async function encodeHero(webm, marks) {
   const start = Math.max(0, marks.heroStart - 0.4)
-  const duration = Math.max(2, marks.heroEnd - start)
+  // Stop short of the mark. `heroEnd` is taken after the reply has settled and
+  // the run then leaves the conversation screen; the hero loops, so a few
+  // frames of the next screen read as a flash of blank page on every repeat.
+  const duration = Math.max(2, marks.heroEnd - start - HERO_TAIL_TRIM)
   const gif = path.join(ASSET_DIR, 'demo.gif')
   const mp4 = path.join(ASSET_DIR, 'demo.mp4')
   const c = marks.crop
