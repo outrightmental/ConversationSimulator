@@ -268,10 +268,12 @@ function parseErrorText(text: string, res: Response): string {
     msg = detail
   }
   if (!msg && Array.isArray(detail)) {
-    const sentences = detail
-      .map((d) => (d && typeof d === 'object' ? str((d as { msg?: unknown }).msg) : undefined))
-      .filter((m): m is string => m !== undefined)
-    if (sentences.length > 0) msg = sentences.join('; ')
+    // FastAPI's default 422 body carries the same { loc, msg } entries as
+    // convsim-core's reshaped one, so name the fields here too. Joining the
+    // bare reasons produced "String should have at least 1 character" — a
+    // sentence that names nothing a user or maintainer can act on, which is
+    // the dead end issue #508 reported, just reached by the other shape.
+    msg = fieldSummary(fieldFailures(detail))
   }
   if (!msg && detail && typeof detail === 'object') {
     const d = detail as { message?: unknown; msg?: unknown; code?: unknown }
