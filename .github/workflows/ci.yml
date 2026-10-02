@@ -133,8 +133,10 @@ jobs:
           echo "Local: cd services/convsim-core && python -m pytest"
           python -m pytest
       # Flyting scoring drift: the deterministic half of every official pack's
-      # calibration suite (gates, flags, caps). The judged half needs a model and
-      # runs with --judge in the nightly model smoke.
+      # calibration suite (gates, flags, caps). The judged half needs a model, so
+      # it runs on request rather than here: locally with
+      # `--judge llama_cpp`, or by dispatching model-smoke-nightly.yml with
+      # flyting_judged=true for a bounded sample against the starter model.
       - name: Flyting calibration (deterministic tier)
         run: |
           echo "Local: python scripts/flyting-calibration.py"
