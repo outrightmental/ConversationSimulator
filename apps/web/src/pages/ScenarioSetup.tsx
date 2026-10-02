@@ -301,7 +301,13 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
   ].join(' · ');
 
   const blockerCount = validationResult.errors.length;
-  const launchStatus = validationResult.valid
+  // A failed attempt outranks readiness: the setup may still be valid, but the
+  // bar must not read "Ready to start" in green directly above the report that
+  // starting just failed.
+  const launchReady = validationResult.valid && submitError == null;
+  const launchStatus = submitError
+    ? 'Could not start'
+    : validationResult.valid
     ? 'Ready to start'
     : blockerCount === 1
     ? '1 item needs attention'
@@ -692,11 +698,6 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
               </div>
             </section>
 
-            {submitError && (
-              <div className="brief-submit-error">
-                <ApiErrorView error={submitError} compact context="ScenarioSetup-Submit" />
-              </div>
-            )}
           </div>
 
           <aside className="brief-aside" aria-label="Scenario information">
@@ -764,10 +765,19 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
             action is on screen at every scroll position — issue #486 started
             with a player who could not find the start button at all. */}
         <div className="brief-launch" data-testid="brief-launch">
+          {/* A failed start belongs to the button that failed. The bar is
+              pinned, so the player can press Start from any scroll position —
+              an error rendered at the end of the page would be off-screen and
+              the press would look like it did nothing at all. */}
+          {submitError && (
+            <div className="brief-submit-error">
+              <ApiErrorView error={submitError} compact context="ScenarioSetup-Submit" />
+            </div>
+          )}
           <span className="brief-launch-status" role="status">
             <span
               aria-hidden="true"
-              className={`brief-dot ${validationResult.valid ? 'ready' : 'not-ready'}`}
+              className={`brief-dot ${launchReady ? 'ready' : 'not-ready'}`}
             />
             {launchStatus}
           </span>

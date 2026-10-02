@@ -607,11 +607,14 @@
   text-decoration: underline;
 }
 
+/* A failed start is reported inside the launch bar, so it takes a row of its
+   own above the controls rather than sharing one with them. */
 .brief-submit-error {
+  flex: 1 0 100%;
   border: 1px solid rgba(248, 113, 113, 0.35);
-  border-radius: 12px;
+  border-radius: 10px;
   background: rgba(248, 113, 113, 0.06);
-  padding: 0.75rem 0.9rem;
+  padding: 0.5rem 0.7rem;
 }
 
 /* ── Instrument panel ──────────────────────────────────────────────────── */
@@ -718,10 +721,12 @@
    useGamepadNavigation — aligns a control that was below the fold flush with
    the viewport's bottom edge, leaving it behind the bar. Reserve the bar's
    height (plus the 3px focus ring and its offset) so a newly focused control
-   lands above the bar instead of under it. Not the launch bar's own controls:
-   it is sticky, so it is already on screen and never needs scrolling to. */
+   lands above the bar instead of under it. The reserve covers the bar's tallest
+   state — the one carrying a failed start's error row. Not the launch bar's own
+   controls: it is sticky, so it is already on screen and never needs scrolling
+   to. */
 .brief :is(a[href], button, input, select, textarea):not(.brief-launch *) {
-  scroll-margin-bottom: 7rem;
+  scroll-margin-bottom: 8.5rem;
 }
 
 .brief-launch-status {

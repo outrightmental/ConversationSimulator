@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
+import axe from 'axe-core';
 import { ScenarioSetupPage } from './ScenarioSetup';
 import type { ScenarioInfo, HealthResponse, SessionCreateResponse } from '@convsim/shared';
 import type { ApiResult } from '../api/errors';
@@ -806,6 +807,26 @@ describe('ScenarioSetupPage', () => {
       ).toBeInTheDocument();
     });
 
+    // The bar is pinned, so Start can be pressed from any scroll position. An
+    // error rendered at the end of the page would be off-screen and the press
+    // would look like it did nothing — the failure has to be in the bar.
+    it('reports a failed start in the bar, beside the button that failed', async () => {
+      mockApi.createSession.mockResolvedValue({ ok: false as const, error: { kind: 'http-error' as const, message: 'Core service is not reachable', status: 500 } });
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+
+      fireEvent.click(screen.getByRole('button', { name: /start conversation/i }));
+
+      await waitFor(() =>
+        expect(within(screen.getByTestId('brief-launch')).getByRole('alert')).toHaveTextContent(
+          /Request failed/i,
+        ),
+      );
+      // …and the bar must not still read "ready" directly above that report.
+      expect(screen.getByTestId('brief-launch')).toHaveTextContent(/could not start/i);
+      expect(screen.getByTestId('brief-launch')).not.toHaveTextContent(/ready to start/i);
+    });
+
     it('reports readiness when nothing blocks the start', async () => {
       renderSetup();
       await waitFor(() => screen.getByText('Behavioral Interview'));
@@ -883,6 +904,35 @@ describe('ScenarioSetupPage', () => {
       renderSetup();
       await waitFor(() => screen.getByText('Behavioral Interview'));
       expect(screen.queryByTestId('brief-practises')).not.toBeInTheDocument();
+    });
+  });
+
+  // The brief carries a lot of new structure — a radiogroup of rows that select
+  // as a whole, decorative meters and step numbers hidden from the a11y tree,
+  // and a live region in the launch bar. Guard it the way the other screens are
+  // guarded in __tests__/accessibility.test.tsx.
+  describe('accessibility', () => {
+    it('has no axe violations once the brief has loaded', async () => {
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: {
+        ...mockScenario,
+        tested_dimensions: ['clarity'],
+      } });
+      mockApi.health.mockResolvedValue({ ok: true as const, data: healthReady });
+      const { container } = render(
+        <ScenarioSetupPage
+          scenarioId="behavioral_interview"
+          onSessionCreated={vi.fn()}
+          onBack={vi.fn()}
+          onInstallModel={vi.fn()}
+        />,
+      );
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      // Colour contrast is not computable in jsdom — it is checked in the
+      // browser pass, as in the shared accessibility suite.
+      const results = await axe.run(container, { rules: { 'color-contrast': { enabled: false } } });
+      expect(
+        results.violations.map((v) => `${v.id}: ${v.nodes[0]?.html ?? ''}`),
+      ).toEqual([]);
     });
   });
 });
