@@ -111,7 +111,12 @@ def watch_parent_exit(
 
     def _run() -> None:
         _wait_for_eof(stream)
-        logger.info("Launcher closed our stdin pipe — shutting down.")
+        # ASCII only: this lands on the inherited stdout as well as the
+        # UTF-8 app.log, and that stream takes the console codepage on
+        # Windows — one that cannot encode an em dash (cp932, cp437) would
+        # turn the line docs/troubleshooting.md tells players to look for
+        # into a logging-error traceback.
+        logger.info("Launcher closed our stdin pipe; shutting down.")
         try:
             on_parent_exit()
         except Exception:  # noqa: BLE001 — a failed callback must not kill the thread silently

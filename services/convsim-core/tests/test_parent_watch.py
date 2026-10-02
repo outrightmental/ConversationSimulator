@@ -10,6 +10,7 @@ leaving Steam convinced the game is still running.
 from __future__ import annotations
 
 import io
+import logging
 import os
 import subprocess
 import sys
@@ -89,6 +90,35 @@ def test_shuts_down_when_the_launcher_closes_the_pipe():
         assert not fired.wait(0.25), "fired while the launcher was still alive"
         writer.close()
         assert fired.wait(_WAIT), "EOF on stdin did not request a shutdown"
+    finally:
+        reader.close()
+        writer.close()
+
+
+def test_the_shutdown_log_line_is_plain_ascii(caplog):
+    """The line docs/troubleshooting.md tells players to search for.
+
+    It goes to the launcher's inherited stdout as well as the UTF-8 app.log,
+    and on Windows that stream takes the console codepage. A codepage that
+    cannot encode the character (cp932, cp437) turns the record into a
+    logging-error traceback — losing the one line that says the engine heard
+    the shutdown request.
+    """
+    reader, writer = _pipe()
+    fired = threading.Event()
+    try:
+        with caplog.at_level(logging.INFO, logger=parent_watch.__name__):
+            thread = parent_watch.watch_parent_exit(fired.set, stream=reader, env=_ENABLED)
+            writer.close()
+            assert fired.wait(_WAIT)
+            assert thread is not None
+            thread.join(_WAIT)
+        messages = [record.getMessage() for record in caplog.records]
+        assert any("shutting down" in message for message in messages), (
+            f"the shutdown was never logged; got {messages!r}"
+        )
+        for message in messages:
+            message.encode("ascii")  # must not raise
     finally:
         reader.close()
         writer.close()
