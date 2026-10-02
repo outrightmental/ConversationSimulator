@@ -722,8 +722,9 @@ class TestScriptedConversation:
         assert all(t.strip() for t in smoke.SCRIPTED_PLAYER_TURNS)
 
     def test_the_script_matches_the_fake_runtime_playthrough(self) -> None:
-        # Keeping the two harnesses on the same script means the nightly
-        # exercises the conversation shape the per-PR smoke already covers.
+        # Keeping the two harnesses on the same script means the nightly and
+        # the release-time fake-runtime smoke cover the same conversation shape,
+        # so a difference between them is the runtime and nothing else.
         source = (REPO_ROOT / "tests" / "e2e" / "test_scripted_playthrough.py").read_text(
             encoding="utf-8"
         )

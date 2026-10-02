@@ -144,8 +144,9 @@ CORE_PORT = 7399
 DEFAULT_WALL_CLOCK_BUDGET_S = 1200.0  # 20 min
 
 # Scripted player turns — deliberately the same script as the fake-runtime
-# playthrough in tests/e2e/test_scripted_playthrough.py, so the real-model
-# nightly and the per-PR smoke exercise the same conversation shape.
+# playthrough in tests/e2e/test_scripted_playthrough.py (run at release time by
+# scripts/release-smoke.sh), so the two smokes exercise the same conversation
+# shape against different runtimes.
 SCRIPTED_PLAYER_TURNS = (
     "I have five years of experience in software development.",
     "My biggest achievement was building a cross-team API platform.",

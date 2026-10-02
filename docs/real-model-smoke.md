@@ -22,9 +22,11 @@ on a **real local model** end-to-end — registry download → llama.cpp →
 | Runtime budget | **< 30 min** (`timeout-minutes: 30`); the harness self-limits to 20 min |
 
 > Nightly, not per-PR, on purpose: a 2.5 GB download plus ~11 min of CPU-only
-> inference cannot sit in the PR path. The per-PR equivalent is the fake-runtime
-> playthrough in `tests/e2e/test_scripted_playthrough.py`, which uses the *same
-> scripted player turns* so the two cover the same conversation shape.
+> inference cannot sit in the PR path. The fake-runtime counterpart is the
+> playthrough in `tests/e2e/test_scripted_playthrough.py` — run at release time
+> by `scripts/release-smoke.sh`, not on pull requests — which uses the *same
+> scripted player turns*, so the two cover the same conversation shape against
+> different runtimes. What *does* run per-PR is this harness's own unit tests.
 
 ---
 
@@ -103,7 +105,7 @@ it for them: the built-in `behavioral_interview` scenario defines no rubric, no
 prompt layer names any rubric dimensions, and the only hint the model gets is
 the bare `rubric_observations` array in the embedded output schema — whose empty
 list the schema accepts. The fake runtime always returns `[]`, which is why the
-per-PR playthrough asserts only that `scores` *is* a dict.
+release-time playthrough asserts only that `scores` *is* a dict.
 
 So an unscored debrief means one of two quite different things:
 
