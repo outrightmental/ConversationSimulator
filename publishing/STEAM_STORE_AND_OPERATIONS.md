@@ -96,7 +96,7 @@ This table shows the current status at a glance.
 | Library capsule | 600 × 900 px | Not started | Stage 3 |
 | Main capsule (library hero) | 3840 × 1240 px | Not started | Stage 4 (public release) |
 | Page background | 1438 × 810 px (optional) | Not started | Stage 4 |
-| Screenshots (minimum 5) | 1920 × 1080 px | Placeholder SVGs exist | Stage 3 — replace with real screenshots |
+| Screenshots (minimum 5) | 1920 × 1080 px | Real captures exist in `docs/assets/screenshots/` | Stage 3 — re-shoot at 1920 × 1080 |
 | Gameplay trailer | MP4, H.264, 30–120 s | Not started | Stage 4 |
 | Achievement icons | 64 × 64 px and 32 × 32 px per achievement (×5) | Not started | Stage 4 |
 
