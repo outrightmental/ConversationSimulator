@@ -297,6 +297,7 @@
   grid-template-columns: minmax(0, 1fr) 14rem;
   align-items: center;
   gap: 0.5rem 1.5rem;
+  padding: 0.8rem 0.9rem;
   cursor: pointer;
 }
 
@@ -320,7 +321,6 @@
 }
 
 .brief-option {
-  padding: 0.8rem 0.9rem;
   border: 1px solid var(--cs-border);
   border-radius: 10px;
   background: rgba(255, 255, 255, 0.018);
@@ -335,6 +335,16 @@
   align-items: start;
   gap: 0.6rem;
   cursor: pointer;
+}
+
+/* A row shows its hover and selected styling over its whole box, so its whole
+   box has to be clickable — the same reason the level rows select as a whole.
+   A level row's wrapper carries the click, so it carries the padding too
+   (above); everywhere else the <label> is the only click target, so the padding
+   is the label's. Left on the wrapper it would be a band that lights up under
+   the pointer and does nothing. */
+.brief-option:not(.is-level) .brief-option-main {
+  padding: 0.8rem 0.9rem;
 }
 
 .brief-option.is-disabled .brief-option-main {
@@ -711,6 +721,11 @@
   border: 1px solid var(--cs-border);
   border-radius: 12px;
   background: rgba(15, 15, 17, 0.93);
+  /* Prefixed first: the desktop build is a WebView, and WebKit (macOS
+     WKWebView, and the WebKitGTK the Steam Deck build runs on) only took the
+     unprefixed property recently. Without it the bar loses its blur on the
+     platform the brief is designed for. */
+  -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
   box-shadow: 0 -12px 34px -22px #000, 0 0 0 1px rgba(255, 255, 255, 0.02);
 }
