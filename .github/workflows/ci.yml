@@ -287,7 +287,13 @@ jobs:
   desktop-rust-steam-windows:
     name: Desktop Rust check and tests (Windows)
     runs-on: windows-latest
-    timeout-minutes: 45
+    # 60, not the 45 this job used when it only ran `cargo check --features
+    # steam`. The `cargo test` step below is a second compile of the whole
+    # dependency tree, not an increment on the first: `cargo check` emits
+    # metadata only, so none of its artifacts are reusable for a build that
+    # links, and the two steps also differ in feature resolution. The Linux
+    # job went 30 → 45 for adding the same step on the faster platform.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
       - name: Install Rust stable toolchain
