@@ -1408,6 +1408,125 @@ describe('Conversation screen', () => {
     })
   })
 
+  // A local model on CPU-only hardware legitimately spends a minute or more on
+  // one reply. The screen must wait that out, say so while it waits, and never
+  // throw away a reply convsim-core already committed (issue #489).
+  describe('slow NPC replies (issue #489)', () => {
+    const SLOW_TURN_SECONDS = 90
+    const HARD_DEADLINE_MS = 300_000
+
+    /** Transcript rows convsim-core holds once a turn has been committed. */
+    const committedTranscript = {
+      session_id: SESSION_ID,
+      scenario_id: SCENARIO_ID,
+      transcript_saved: true,
+      turns: [
+        { turn_number: 0, role: 'npc_opening' as const, content: 'Thanks for coming in. Tell me about yourself.', flow_state_after: 'PlayerTurnListening' },
+        { turn_number: 1, role: 'player' as const, content: 'My answer.', flow_state_after: 'NpcThinking' },
+        { turn_number: 2, role: 'npc' as const, content: 'Committed by the server while the UI waited.', emotion: 'neutral', flow_state_after: 'PlayerTurnListening' },
+      ],
+    }
+
+    beforeEach(() => {
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
+      mockApi.getSessionTranscript.mockResolvedValue({ ok: true, data: committedTranscript })
+    })
+
+    async function submitAndWait(advanceMs: number) {
+      renderConversation()
+      await waitFor(() =>
+        expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument(),
+      )
+      fireEvent.change(screen.getByRole('textbox', { name: /your response/i }), {
+        target: { value: 'My answer.' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+      await waitFor(() => expect(screen.getByText('My answer.')).toBeInTheDocument())
+      await vi.advanceTimersByTimeAsync(advanceMs)
+    }
+
+    it('commits a reply that arrives well past the old 60s deadline', async () => {
+      let resolveTurn: (r: { ok: true; data: TurnResponse }) => void = () => {}
+      mockApi.submitTurn.mockReturnValue(
+        new Promise((resolve) => { resolveTurn = resolve }) as never,
+      )
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        await submitAndWait(SLOW_TURN_SECONDS * 1000)
+        // Still waiting, not failed: the old deadline would have fired 30s ago.
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+
+        resolveTurn({ ok: true, data: turnResponse })
+        await waitFor(() =>
+          expect(screen.getByText('Hello there. I am a simulated NPC.')).toBeInTheDocument(),
+        )
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+        expect(screen.getByRole('textbox', { name: /your response/i })).not.toBeDisabled()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('reports how long it has been waiting once a turn passes 30s', async () => {
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        await submitAndWait(6_000)
+        // First stage: a hint, no clock yet.
+        expect(screen.getByTestId('slow-response-indicator')).toBeInTheDocument()
+        expect(screen.queryByTestId('slow-response-elapsed')).not.toBeInTheDocument()
+
+        await vi.advanceTimersByTimeAsync(60_000)
+        expect(screen.getByTestId('slow-response-elapsed')).toHaveTextContent('1m 06s')
+        expect(screen.getByTestId('slow-response-elapsed')).toHaveTextContent(/not lost/i)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('adopts the committed reply when the deadline expires after the turn landed', async () => {
+      // The request never resolves (a wedged connection), but the core had
+      // already written the turn — the reply must survive, not be rolled back.
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        await submitAndWait(HARD_DEADLINE_MS)
+        await waitFor(() =>
+          expect(
+            screen.getByText('Committed by the server while the UI waited.'),
+          ).toBeInTheDocument(),
+        )
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+        // Server copy is authoritative, so the player turn stays and keeps its number.
+        expect(screen.getByText('My answer.')).toBeInTheDocument()
+        expect(screen.getByText('Turn 3')).toBeInTheDocument()
+        expect(screen.getByRole('textbox', { name: /your response/i })).not.toBeDisabled()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('reports a timeout when the deadline expires and the server has no reply', async () => {
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      mockApi.getSessionTranscript.mockResolvedValue({
+        ok: true,
+        data: { ...committedTranscript, turns: committedTranscript.turns.slice(0, 1) },
+      })
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        await submitAndWait(HARD_DEADLINE_MS)
+        await waitFor(() =>
+          expect(screen.getByRole('alert')).toHaveTextContent('Request timed out'),
+        )
+        // Nothing landed, so the optimistic player turn is rolled back for a retry.
+        expect(screen.queryByText('My answer.')).not.toBeInTheDocument()
+        expect(screen.getByRole('textbox', { name: /your response/i })).not.toBeDisabled()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+  })
+
   describe('no runtime badges or model-ready toast (issue #473)', () => {
     afterEach(() => {
       localStorage.clear()
