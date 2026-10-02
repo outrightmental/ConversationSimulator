@@ -189,6 +189,26 @@ describe('CopyDiagnosticsButton', () => {
     expect(screen.getByTestId('copy-diagnostics')).not.toBeDisabled()
   })
 
+  it('does not submit the form it is rendered inside', async () => {
+    // ScenarioSetup renders the submit-error card — and this button — inside
+    // the "Start scenario" form. An untyped <button> defaults to type=submit,
+    // so pressing it re-fired the request that had just failed and unmounted
+    // the card mid-copy, which is why it never said "Copied!" (issue #508).
+    mockFetchOk()
+    const writeText = mockClipboard()
+    const onSubmit = vi.fn((e: React.FormEvent) => e.preventDefault())
+    render(
+      <form onSubmit={onSubmit}>
+        <CopyDiagnosticsButton error={SAMPLE_ERROR} />
+      </form>,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copy diagnostics' }))
+    expect(await screen.findByText('Copied!')).toBeInTheDocument()
+    expect(onSubmit).not.toHaveBeenCalled()
+    expect(writeText).toHaveBeenCalled()
+  })
+
   it('supports a custom label', () => {
     mockFetchOk()
     render(<CopyDiagnosticsButton error={SAMPLE_ERROR} label="Copy log excerpt" />)

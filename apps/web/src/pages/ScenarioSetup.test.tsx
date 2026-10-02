@@ -65,6 +65,13 @@ vi.mock('../api/client', () => ({
     createSession: vi.fn(),
     listVoices: vi.fn(),
   },
+  // Read by api/diag when the submit error card's "Copy diagnostics" button
+  // assembles its report.
+  getLogExcerptRaw: vi.fn().mockResolvedValue({
+    excerpt: 'ConversationSimulator log excerpt\n── app.log ──\nRequest validation failed for POST /api/sessions: tts_voice_id=string_type',
+    sources: ['app.log'],
+    notice: 'Log excerpt assembled locally.',
+  }),
 }));
 
 import { api } from '../api/client';
@@ -556,6 +563,67 @@ describe('ScenarioSetupPage', () => {
           setup: {} as SessionCreateResponse['setup'],
         } });
       });
+    });
+  });
+
+  // The screenshot on issue #508: "Start scenario" came back 422, the card
+  // said only "VALIDATION_ERROR: Request validation failed", and its own
+  // "Copy diagnostics" then answered "Copy failed" — so the reporter could
+  // capture neither the cause nor the logs. Both halves are covered here
+  // together, because either one alone still strands the player.
+  describe('a rejected session create (issue #508)', () => {
+    const VALIDATION_422 = {
+      ok: false as const,
+      error: {
+        kind: 'http-error' as const,
+        status: 422,
+        message:
+          'VALIDATION_ERROR: Request validation failed — tts_voice_id: Input should be a valid string',
+      },
+    };
+
+    beforeEach(() => {
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: mockScenario });
+      mockApi.health.mockResolvedValue({ ok: true as const, data: healthReady });
+      mockApi.createSession.mockResolvedValue(VALIDATION_422);
+    });
+
+    it('shows which field the backend rejected', async () => {
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      fireEvent.click(screen.getByRole('button', { name: /start scenario/i }));
+
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent('tts_voice_id: Input should be a valid string');
+    });
+
+    it('copies the diagnostics report through the desktop shell', async () => {
+      // The packaged macOS build has neither web clipboard API: tauri://localhost
+      // is not a secure context, so navigator.clipboard is undefined, and WebKit
+      // refuses execCommand('copy') once the gesture that started the copy has
+      // been outlived by the report's own log-excerpt fetch.
+      expect(navigator.clipboard).toBeUndefined();
+      const invoke = vi.fn().mockResolvedValue(undefined);
+      const win = window as unknown as { __TAURI__?: unknown };
+      win.__TAURI__ = { core: { invoke } };
+      try {
+        renderSetup();
+        await waitFor(() => screen.getByText('Behavioral Interview'));
+        fireEvent.click(screen.getByRole('button', { name: /start scenario/i }));
+
+        const copyBtn = await screen.findByTestId('copy-diagnostics');
+        fireEvent.click(copyBtn);
+        await waitFor(() => expect(copyBtn).toHaveTextContent('Copied!'));
+
+        const copied = String((invoke.mock.calls[0][1] as { text: string }).text);
+        expect(copied).toContain('status: 422');
+        expect(copied).toContain('tts_voice_id: Input should be a valid string');
+        expect(copied).toContain('context: ScenarioSetup-Submit');
+        // …and the server-side log line for the very request that failed.
+        expect(copied).toContain('Request validation failed for POST /api/sessions');
+      } finally {
+        delete win.__TAURI__;
+      }
     });
   });
 
