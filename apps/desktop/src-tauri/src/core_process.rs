@@ -257,8 +257,9 @@ mod tests {
     ///
     /// The programs differ per platform; the behaviours they stand in for do
     /// not, which is why the tests below are shared. Plain executables rather
-    /// than shell one-liners: `Stdio` already gives us the redirection, and
-    /// avoiding `sh -c` / `cmd /C` keeps quoting out of it.
+    /// than shell one-liners wherever one will do: `Stdio` already gives us the
+    /// redirection, so a shell would only add quoting. (A stand-in that has to
+    /// start a *grandchild* does need one — see [`ENGINE_WITH_SIDECAR`].)
     #[cfg(unix)]
     mod fake_engine {
         /// Exits when the launcher's end of the stdin pipe closes — what
@@ -301,69 +302,93 @@ mod tests {
             .unwrap_or_else(|e| panic!("failed to spawn test child {program}: {e}"))
     }
 
-    /// Read the pid a test child printed on its first line of stdout.
+    /// Read the first non-empty line a test child prints on stdout.
     ///
     /// One byte at a time up to the newline: a block read would park until the
     /// pipe filled or closed, and the child deliberately keeps it open.
-    fn read_pid_line(child: &mut Child) -> u32 {
+    fn read_marker_line(out: &mut std::process::ChildStdout) -> String {
         use std::io::Read;
-        let mut out = child.stdout.take().expect("stdout pipe");
-        let mut line = Vec::new();
+        let mut line: Vec<u8> = Vec::new();
         let mut byte = [0u8; 1];
         loop {
             match out.read(&mut byte) {
                 Ok(0) => break,
-                Ok(_) if byte[0] == b'\n' => break,
+                Ok(_) if byte[0] == b'\n' => {
+                    // Skip a leading blank line rather than reporting it as the
+                    // marker, so a shell that prefaces its output with one does
+                    // not look like a child that printed nothing.
+                    if line.iter().any(|b| !b.is_ascii_whitespace()) {
+                        break;
+                    }
+                    line.clear();
+                }
                 Ok(_) => line.push(byte[0]),
-                Err(e) => panic!("reading the sidecar pid failed: {e}"),
+                Err(e) => panic!("reading the test child's marker line failed: {e}"),
             }
         }
         let text = String::from_utf8_lossy(&line);
         // Strip a BOM explicitly rather than filtering to digits: a stream that
         // arrived in an unexpected encoding must fail here, not get salvaged
-        // into some *other* valid-looking pid that the assertions would then
-        // happily check for being gone.
-        let text = text.trim().trim_start_matches('\u{feff}');
-        assert!(
-            !text.is_empty(),
-            "the test child printed no pid before closing stdout, so it never \
-             started the sidecar this test is about"
-        );
-        text.parse()
-            .unwrap_or_else(|e| panic!("sidecar pid {text:?} is not a number: {e}"))
+        // into some *other* valid-looking value that the assertions would then
+        // happily check for.
+        text.trim().trim_start_matches('\u{feff}').to_string()
     }
+
+    /// A stand-in engine that never reads stdin and has already started a
+    /// grandchild of its own, as `(program, args)`.
+    ///
+    /// The script prints a marker line *after* launching the grandchild, so a
+    /// test can be sure it is never tearing down a tree whose sidecar had not
+    /// started yet. On Unix the marker is the sidecar's pid, which lets that
+    /// platform assert on the process directly as well.
+    #[cfg(unix)]
+    const ENGINE_WITH_SIDECAR: (&str, &[&str]) = ("sh", &["-c", "sleep 30 & echo $! ; sleep 30"]);
+
+    /// As above. `cmd`'s own `echo` writes the marker straight to the pipe, so
+    /// nothing depends on how a spawned tool buffers its output; the trailing
+    /// `ping` is a second grandchild that keeps `cmd` alive and holding stdout.
+    /// Separate argv entries throughout — `&` needs no quoting, so Rust passes
+    /// it through bare and `cmd` sees it as a command separator.
+    #[cfg(windows)]
+    const ENGINE_WITH_SIDECAR: (&str, &[&str]) = (
+        "cmd",
+        &[
+            "/C", "start", "/B", "ping", "-n", "31", "127.0.0.1", "&", "echo", "up", "&", "ping",
+            "-n", "31", "127.0.0.1",
+        ],
+    );
 
     /// An engine that ignores the closed pipe, which has already started a
     /// grandchild standing in for a sidecar — the process the old teardown left
-    /// running. Returns the engine and the sidecar's pid.
-    #[cfg(unix)]
-    fn spawn_engine_with_sidecar() -> (Child, u32) {
-        let mut engine = spawn_configured("sh", &["-c", "sleep 30 & echo $! ; sleep 30"]);
-        let sidecar = read_pid_line(&mut engine);
-        (engine, sidecar)
+    /// running. Returns the engine and its stdout pipe.
+    ///
+    /// Both the stand-in engine and its grandchild hold that stdout pipe, so
+    /// EOF on it is proof that *every* process in the tree is gone: the kernel
+    /// cannot report it while any of them still holds the write end. That is
+    /// the portable signal, and on Windows the only one — there is no
+    /// dependency-free way to learn a grandchild's pid there.
+    fn spawn_engine_with_sidecar() -> (Child, std::process::ChildStdout) {
+        let (program, args) = ENGINE_WITH_SIDECAR;
+        let mut engine = spawn_configured(program, args);
+        let out = engine.stdout.take().expect("stdout pipe");
+        (engine, out)
     }
 
-    /// As above. PowerShell rather than `cmd`, because `Start-Process
-    /// -PassThru` is the only readily available way to start a grandchild *and*
-    /// learn its pid, which the assertion needs. The outer `powershell.exe`
-    /// stands in for the engine: it sleeps and never reads stdin.
-    #[cfg(windows)]
-    fn spawn_engine_with_sidecar() -> (Child, u32) {
-        // Single-quoted arguments only: the whole script is passed as one argv
-        // entry, so embedded double quotes would have to survive two levels of
-        // unquoting.
-        const SCRIPT: &str = "$ErrorActionPreference = 'Stop'; \
-             $p = Start-Process -FilePath ping \
-                 -ArgumentList '-n','31','127.0.0.1' -NoNewWindow -PassThru; \
-             [Console]::Out.WriteLine($p.Id); \
-             [Console]::Out.Flush(); \
-             Start-Sleep -Seconds 31";
-        let mut engine = spawn_configured(
-            "powershell",
-            &["-NoProfile", "-NonInteractive", "-Command", SCRIPT],
-        );
-        let sidecar = read_pid_line(&mut engine);
-        (engine, sidecar)
+    /// Drain *out* to end-of-file, reporting whether EOF arrived within
+    /// *timeout*.
+    ///
+    /// A blocking read cannot be cancelled, so it happens on its own thread and
+    /// the answer comes back over a channel. A thread left behind by a timeout
+    /// is harmless: the assertion it feeds has already failed the test.
+    fn wait_for_stdout_eof(mut out: std::process::ChildStdout, timeout: Duration) -> bool {
+        use std::io::Read;
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let mut drained = Vec::new();
+            let _ = out.read_to_end(&mut drained);
+            let _ = tx.send(());
+        });
+        rx.recv_timeout(timeout).is_ok()
     }
 
     #[cfg(unix)]
@@ -375,26 +400,7 @@ mod tests {
         std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
     }
 
-    #[cfg(windows)]
-    fn is_alive(pid: u32) -> bool {
-        use std::os::windows::process::CommandExt;
-        // `tasklist` keeps this dependency-free, and the filter makes the
-        // answer unambiguous: a process that is gone produces no row at all, so
-        // a pid that happens to appear in some unrelated process's row cannot
-        // be mistaken for a match.
-        let listed = Command::new(system32("tasklist.exe"))
-            .args(["/FI", &format!("PID eq {pid}"), "/NH"])
-            .creation_flags(CREATE_NO_WINDOW)
-            .stdin(Stdio::null())
-            .output();
-        match listed {
-            Ok(out) => String::from_utf8_lossy(&out.stdout).contains(&pid.to_string()),
-            // Cannot tell. Report "gone" rather than spinning until the
-            // caller's deadline on a question we can no longer answer.
-            Err(_) => false,
-        }
-    }
-
+    #[cfg(unix)]
     fn wait_until_gone(pid: u32, timeout: Duration) -> bool {
         let deadline = Instant::now() + timeout;
         while Instant::now() < deadline {
@@ -483,23 +489,47 @@ mod tests {
 
     #[test]
     fn an_unresponsive_engine_is_killed_along_with_its_descendants() {
-        let (mut engine, sidecar) = spawn_engine_with_sidecar();
-        assert!(is_alive(sidecar), "test setup: the sidecar never started");
+        let (mut engine, mut out) = spawn_engine_with_sidecar();
+        let marker = read_marker_line(&mut out);
+        assert!(
+            !marker.is_empty(),
+            "the test child printed no marker before closing stdout, so it never \
+             started the sidecar this test is about"
+        );
 
-        let engine_pid = engine.id();
+        // Unix can name the process as well as observe the pipe: the marker is
+        // the sidecar's own pid there.
+        #[cfg(unix)]
+        let sidecar: u32 = {
+            let pid = marker
+                .parse()
+                .unwrap_or_else(|e| panic!("sidecar pid {marker:?} is not a number: {e}"));
+            assert!(is_alive(pid), "test setup: the sidecar never started");
+            pid
+        };
+
+        // `shutdown_within` reaps the child before returning, so reaching this
+        // assertion is itself proof that the engine stand-in is gone.
         assert_eq!(
             shutdown_within(&mut engine, Duration::from_millis(200)),
             Shutdown::Forced
         );
 
-        assert!(
-            wait_until_gone(engine_pid, Duration::from_secs(5)),
-            "the engine survived teardown"
-        );
+        #[cfg(unix)]
         assert!(
             wait_until_gone(sidecar, Duration::from_secs(5)),
             "a descendant survived — this is the orphan that kept Steam \
              reporting the game as running (issue #485)"
+        );
+
+        // The portable half, and the whole of it on Windows: the grandchild
+        // inherited this pipe, so EOF cannot be reported while any process in
+        // the tree is still alive to hold the write end.
+        assert!(
+            wait_for_stdout_eof(out, Duration::from_secs(10)),
+            "something in the engine's process tree still holds its stdout pipe \
+             — that survivor is the orphan that kept Steam reporting the game as \
+             running (issue #485)"
         );
     }
 
