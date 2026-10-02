@@ -477,7 +477,9 @@ describe('CoreStartupGuard — health check fast-path', () => {
   it('passes through immediately when the health endpoint is already up', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) })),
+      vi.fn(() =>
+        Promise.resolve({ ok: true, json: () => Promise.resolve({ status: 'ok' }) }),
+      ),
     )
     stubTauri(() => Promise.resolve(() => {}))
 
@@ -486,6 +488,42 @@ describe('CoreStartupGuard — health check fast-path', () => {
     })
 
     expect(screen.getByText('App content loaded')).toBeInTheDocument()
+  })
+
+  it('does not pass through when a stranger on port 7355 answers 200', async () => {
+    // The shell's probe requires the body to look like a convsim-core health
+    // response precisely because anything can be holding the port; the
+    // fast-path has to apply the same test or it mounts the app over a
+    // stranger's socket for the whole port-conflict grace period.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve({ ok: true, json: () => Promise.resolve({ hello: 'world' }) }),
+      ),
+    )
+    stubTauri(() => Promise.resolve(() => {}))
+
+    await act(async () => {
+      renderGuard()
+    })
+
+    expect(screen.queryByText('App content loaded')).not.toBeInTheDocument()
+  })
+
+  it('does not pass through when the health response is not JSON at all', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve({ ok: true, json: () => Promise.reject(new SyntaxError('not json')) }),
+      ),
+    )
+    stubTauri(() => Promise.resolve(() => {}))
+
+    await act(async () => {
+      renderGuard()
+    })
+
+    expect(screen.queryByText('App content loaded')).not.toBeInTheDocument()
   })
 })
 
@@ -523,6 +561,47 @@ describe('CoreStartupGuard — snapshot recovery of missed events', () => {
 
     await act(async () => {
       renderGuard()
+    })
+
+    expect(screen.getByText('App content loaded')).toBeInTheDocument()
+  })
+
+  it('does not let a stale snapshot unmount an app a live event already readied', async () => {
+    // The snapshot is read on the Rust side and resolved asynchronously, so it
+    // can describe an older phase than an event already delivered to the
+    // listener. Readiness follows the reported phase, so applying it anyway
+    // would unmount a running app back to the progress screen — and no further
+    // event is coming to put it back.
+    let handler: TauriListenHandler | undefined
+    let resolveSnapshot: ((value: unknown) => void) | undefined
+    const invoke = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          resolveSnapshot = resolve
+        }),
+    )
+    stubTauri((_event, h) => {
+      handler = h
+      return Promise.resolve(() => {})
+    }, invoke)
+
+    await act(async () => {
+      renderGuard()
+    })
+
+    await act(async () => {
+      handler?.({
+        payload: { phase: 'ready', message: 'Core service is ready.', error: null },
+      })
+    })
+    expect(screen.getByText('App content loaded')).toBeInTheDocument()
+
+    await act(async () => {
+      resolveSnapshot?.({
+        phase: 'starting',
+        message: 'Waiting for core service to be ready…',
+        error: null,
+      })
     })
 
     expect(screen.getByText('App content loaded')).toBeInTheDocument()

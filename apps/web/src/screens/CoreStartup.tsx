@@ -118,7 +118,16 @@ export default function CoreStartupGuard({ children }: { children: React.ReactNo
       const res = await fetch('http://127.0.0.1:7355/api/health', {
         signal: AbortSignal.timeout(1500),
       })
-      return res.ok
+      if (!res.ok) return false
+      // A 200 is not proof the engine answered. Anything can be holding 7355,
+      // which is why the shell's own probe requires the body to look like a
+      // convsim-core health response (`probe_core` in
+      // apps/desktop/src-tauri/src/lib.rs). Without the same test here this
+      // fast-path mounts the app over a stranger's socket for the whole
+      // port-conflict grace period, before the shell's error event arrives.
+      // `status` is a required field of HealthResponse.
+      const body: unknown = await res.json()
+      return typeof (body as { status?: unknown } | null)?.status === 'string'
     } catch {
       return false
     }
@@ -132,6 +141,9 @@ export default function CoreStartupGuard({ children }: { children: React.ReactNo
 
     let cancelled = false
     let unlisten: (() => void) | undefined
+    // Whether a live `core-status` event has already been handled. Guards the
+    // snapshot reconciliation below, which can otherwise deliver an older phase.
+    let liveEventSeen = false
 
     // Readiness tracks the shell's own state machine rather than latching on
     // first success: the engine can stop under a running window, and an app left
@@ -150,7 +162,10 @@ export default function CoreStartupGuard({ children }: { children: React.ReactNo
     // status via get_core_status to recover any event fired before we attached
     // (e.g. a fast failure like a missing binary).
     tauri.event
-      .listen<CoreStatusPayload>('core-status', (e) => apply(e.payload))
+      .listen<CoreStatusPayload>('core-status', (e) => {
+        liveEventSeen = true
+        apply(e.payload)
+      })
       .then((fn) => {
         if (cancelled) {
           fn()
@@ -160,6 +175,13 @@ export default function CoreStartupGuard({ children }: { children: React.ReactNo
         tauri.core
           ?.invoke<CoreStatusPayload | null>('get_core_status')
           .then((snapshot) => {
+            // Only to recover an event emitted before we subscribed. Once a live
+            // event has arrived the snapshot is redundant — and applying it then
+            // would move the UI BACKWARDS, because readiness now follows the
+            // reported phase: a snapshot read a moment before the shell emitted
+            // `ready` would unmount a running app back to "Starting…", and no
+            // further event is coming to undo it.
+            if (liveEventSeen) return
             if (snapshot) apply(snapshot)
           })
           .catch(() => {})

@@ -199,7 +199,10 @@ The web UI displays a startup screen (rendered by `CoreStartupGuard` in
   leave the UI mounted over a dead port.
 - Passes through immediately in non-Tauri (browser) contexts.
 - On a fast health check success (e.g. core already running in dev), the
-  startup screen is bypassed entirely.
+  startup screen is bypassed entirely. That check applies the same test as the
+  shell's probe — a 200 whose body is not a convsim-core health response does
+  not count, so a stranger on 7355 cannot bypass the startup screen either;
+  and it never overrules a phase the shell has already reported.
 
 ---
 
