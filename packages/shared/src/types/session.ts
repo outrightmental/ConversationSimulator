@@ -115,7 +115,8 @@ export interface SessionDebriefResponse {
   state: SessionState;
   summary: string;
   outcome?: string;
-  turn_count?: number;
+  /** Server field name is `total_turns` (see DebriefResponse in routers/sessions.py). */
+  total_turns?: number;
   scenario_id?: string;
   strengths?: string[];
   improvements?: string[];

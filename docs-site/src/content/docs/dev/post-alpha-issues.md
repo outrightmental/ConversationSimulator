@@ -20,18 +20,23 @@ by design. If you want to work on one, open or claim the linked issue.
 
 ## Deferred from alpha: high priority (Milestone 1 polish)
 
-### 1. Real screenshots and demo assets
+### 1. Real screenshots and demo assets — done
 
-**What:** Replace the SVG placeholder images in the README and
-[`docs/screenshots.md`](/dev/screenshots/) with real screen captures or a short animated GIF
-showing an actual gameplay session.
+**What:** Replace the SVG mockups in the README and
+[`docs/screenshots.md`](/dev/screenshots/) with real screen captures and a short
+recording of an actual gameplay session.
 
-**Why deferred:** Capturing real screenshots requires a stable real-model
-playthrough, which in turn requires coordinated hardware access. This is a
-polish step, not a functional blocker.
+**Why deferred:** Capturing them required a stable real-model playthrough, which
+in turn required coordinated hardware access. It was a polish step, not a
+functional blocker.
+
+**Outcome:** Landed — six PNGs and a GIF/MP4 hero captured from one local-model
+playthrough on an Apple M1 Pro, with
+[`scripts/capture-screenshots.mjs`](https://github.com/outrightmental/ConversationSimulator/blob/main/scripts/capture-screenshots.mjs)
+to remake them. Capture environment and alt text: [the screenshots page](/dev/screenshots/).
 
 **Milestone:** 1 (polish)  
-**Tracking:** See [`docs/screenshots.md`](/dev/screenshots/) for the replacement checklist.
+**Tracking:** See [`docs/screenshots.md`](/dev/screenshots/) for the capture checklist.
 
 ---
 

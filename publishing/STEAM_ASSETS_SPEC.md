@@ -25,7 +25,7 @@
 | Main capsule (library hero) | Yes | 3840 × 1240 px, JPG or PNG | Not started |
 | Library capsule | Yes | 600 × 900 px, JPG or PNG | Not started |
 | Page background | Optional | 1438 × 810 px, JPG or PNG | Not started |
-| Screenshots (min 5, max 20) | Yes | 1920 × 1080 px (or 1280 × 720 px min), JPG or PNG | Placeholders exist (see `docs/assets/screenshots/`) |
+| Screenshots (min 5, max 20) | Yes | 1920 × 1080 px (or 1280 × 720 px min), JPG or PNG | Source captures exist (see `docs/assets/screenshots/`); re-shoot at Steam dimensions |
 | Gameplay trailer | Yes | MP4, H.264, 1920 × 1080 px, 30–120 seconds | Not started |
 
 ---
@@ -88,10 +88,11 @@ assets so that future updates can be made without re-commissioning from scratch.
 Steam requires a minimum of five screenshots. Upload up to 20. At least three
 must show actual in-game content (not capsule art or promotional text).
 
-The placeholder SVGs in `docs/assets/screenshots/` define the six scenes that
-must be covered. See [`docs/screenshots.md`](../docs/screenshots.md) for the
-full inventory, alt text, and replacement checklist. This section restates the
-brief in Steam-submission terms.
+The six captures in `docs/assets/screenshots/` cover the required scenes, but
+at the README's aspect ratio rather than Steam's 16:9 — re-shoot each one at
+1920 × 1080 for the store page. See [`docs/screenshots.md`](../docs/screenshots.md)
+for the capture environment, alt text, and the script that drives a real
+playthrough. This section restates the brief in Steam-submission terms.
 
 ### Required screenshots
 
@@ -102,7 +103,7 @@ explicitly needed for platform coverage.
 
 #### Screenshot 1 — Home screen
 
-**File:** `docs/assets/screenshots/01-home.svg` (replace with PNG)
+**File:** `docs/assets/screenshots/01-home.png` (re-shoot at 1920 × 1080)
 **Steam caption (max 300 chars):**
 ```
 Home screen showing all services ready: local AI runtime, speech recognition,
@@ -119,7 +120,7 @@ and text-to-speech — all running on your computer, no internet required.
 
 #### Screenshot 2 — Scenario Library
 
-**File:** `docs/assets/screenshots/02-scenario-library.svg` (replace with PNG)
+**File:** `docs/assets/screenshots/02-scenario-library.png` (re-shoot at 1920 × 1080)
 **Steam caption:**
 ```
 Choose from four built-in scenario packs covering job interviews, negotiations,
@@ -138,7 +139,7 @@ duration, and content rating before you start.
 
 #### Screenshot 3 — Active conversation (mid-session)
 
-**File:** `docs/assets/screenshots/03-conversation.svg` (replace with PNG)
+**File:** `docs/assets/screenshots/03-conversation.png` (re-shoot at 1920 × 1080)
 **Steam caption:**
 ```
 A mid-session conversation with an AI interviewer. NPC state meters update in
@@ -159,7 +160,7 @@ you say.
 
 #### Screenshot 4 — Session Debrief
 
-**File:** `docs/assets/screenshots/04-debrief.svg` (replace with PNG)
+**File:** `docs/assets/screenshots/04-debrief.png` (re-shoot at 1920 × 1080)
 **Steam caption:**
 ```
 After every session, a scored debrief breaks down your performance by rubric
@@ -178,7 +179,7 @@ dimension and highlights the moments that changed the conversation.
 
 #### Screenshot 5 — Model Manager
 
-**File:** `docs/assets/screenshots/06-model-manager.svg` (replace with PNG)
+**File:** `docs/assets/screenshots/06-model-manager.png` (re-shoot at 1920 × 1080)
 **Steam caption:**
 ```
 Download and switch between open-weight AI models. Every download shows the
@@ -199,7 +200,7 @@ single byte transfers.
 
 #### Screenshot 6 — Creator Workbench (optional, recommended)
 
-**File:** `docs/assets/screenshots/05-creator-workbench.svg` (replace with PNG)
+**File:** `docs/assets/screenshots/05-creator-workbench.png` (re-shoot at 1920 × 1080)
 **Steam caption:**
 ```
 Build your own scenario packs in the Creator Workbench. Define the NPC,
@@ -299,22 +300,23 @@ do I actually do?") within the first 15 seconds.
 
 ---
 
-## Placeholder asset status
+## Store asset status
 
-The following placeholder SVGs exist in `docs/assets/screenshots/` and must
-be replaced with real screenshots before the store page goes live. See
-[`docs/screenshots.md`](../docs/screenshots.md) for the full replacement
-checklist.
+The repository now ships real captures of every required scene (issue #455).
+They are shot at the README's 1280 CSS px width, not Steam's 16:9, so each one
+still needs a store-dimension re-shoot; the content and copy below are already
+settled. See [`docs/screenshots.md`](../docs/screenshots.md) for the capture
+environment and the script that drives the playthrough.
 
-| Placeholder | Replaces with | Status |
-|------------|---------------|--------|
-| `01-home.svg` | Real home-screen PNG | Not started |
-| `02-scenario-library.svg` | Real scenario-library PNG | Not started |
-| `03-conversation.svg` | Real mid-session PNG | Not started |
-| `04-debrief.svg` | Real debrief PNG | Not started |
-| `05-creator-workbench.svg` | Real Creator Workbench PNG | Not started |
-| `06-model-manager.svg` | Real Model Manager PNG | Not started |
-| `docs/assets/demo-placeholder.svg` | Animated GIF or MP4 (README hero) | Not started |
+| Scene | Repository capture | Steam 1920 × 1080 |
+|-------|--------------------|-------------------|
+| Home | `01-home.png` | Not started |
+| Scenario Library | `02-scenario-library.png` | Not started |
+| Conversation (mid-session) | `03-conversation.png` | Not started |
+| Debrief | `04-debrief.png` | Not started |
+| Creator Workbench | `05-creator-workbench.png` | Not started |
+| Model Manager | `06-model-manager.png` | Not started |
+| Trailer / hero loop | `demo.gif` + `demo.mp4` | Not started |
 
 ---
 
@@ -322,5 +324,5 @@ checklist.
 
 - [`publishing/STEAM_STORE_PAGE.md`](STEAM_STORE_PAGE.md) — canonical store copy and review checklist
 - [`publishing/STEAM_APP_REGISTRATION.md`](STEAM_APP_REGISTRATION.md) — app identity and Steamworks partner portal setup
-- [`docs/screenshots.md`](../docs/screenshots.md) — existing placeholder asset inventory and replacement checklist
-- [`docs/assets/screenshots/`](../docs/assets/screenshots/) — placeholder SVG files
+- [`docs/screenshots.md`](../docs/screenshots.md) — captured asset inventory, alt text, and capture checklist
+- [`docs/assets/screenshots/`](../docs/assets/screenshots/) — the captured PNGs

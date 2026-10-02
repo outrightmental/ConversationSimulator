@@ -83,7 +83,10 @@ export function ChooseStep({ flow, mode }: ChooseStepProps) {
                 return (
                   <div
                     aria-label="expected speed class"
-                    style={{ display: 'inline-flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.75rem', fontSize: '0.8rem' }}
+                    // Block-level flex, not inline-flex: as an inline box this
+                    // row shared a line with the install button below it, and
+                    // the button painted over the tail of the speed detail.
+                    style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.4rem', marginBottom: '0.75rem', fontSize: '0.8rem' }}
                   >
                     <span style={{ padding: '0.1rem 0.45rem', borderRadius: 4, border: `1px solid ${sc.color}55`, background: `${sc.color}18`, color: sc.color, fontWeight: 600 }}>{sc.label}</span>
                     <span style={{ color: '#71717a' }}>{sc.detail}</span>
