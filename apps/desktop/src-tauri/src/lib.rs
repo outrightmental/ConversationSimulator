@@ -561,6 +561,11 @@ fn probe_core_within(port: u16, budget: Duration) -> CoreProbe {
         match stream.read(&mut chunk) {
             Ok(0) => break,
             Ok(n) => raw.extend_from_slice(&chunk[..n]),
+            // A signal interrupted the syscall, not the peer: `read_to_end`
+            // retried these, and treating one as the end of the response would
+            // read a healthy engine as a port conflict. The deadline above
+            // still bounds the retrying.
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
             // Timed out, reset, or refused — parse whatever did arrive rather
             // than discarding it.
             Err(_) => break,
