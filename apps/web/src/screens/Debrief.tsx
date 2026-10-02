@@ -554,7 +554,7 @@ export default function Debrief() {
                 <strong style={{ color: '#f4f4f5' }}>{debrief.scenario_id ?? '—'}</strong>
               </span>
               <span style={{ fontSize: '0.875rem', color: '#a1a1aa' }}>
-                {t('debrief.turns')} <strong style={{ color: '#f4f4f5' }}>{debrief.turn_count ?? 0}</strong>
+                {t('debrief.turns')} <strong style={{ color: '#f4f4f5' }}>{debrief.total_turns ?? 0}</strong>
               </span>
             </div>
             <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
