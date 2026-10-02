@@ -176,9 +176,16 @@ def list_high_scores(
     scenario_id: str,
     play_format: Optional[str] = None,
     batting_format: Optional[str] = None,
+    daily_seed: Optional[int] = None,
     limit: int = HIGH_SCORE_BOARD_SIZE,
 ) -> List[Dict[str, Any]]:
-    """Return the top scores for a scenario, optionally narrowed to one format."""
+    """Return the top scores for a scenario, optionally narrowed to one format.
+
+    ``daily_seed`` narrows the board to the runs played under one day's seed,
+    which is what makes a seeded run comparable to another: the seed is derived
+    locally from the date and the ids, so two players who played today's seed can
+    compare the same conditions without a server ever being involved.
+    """
     sql = (
         "SELECT scenario_id, pack_id, play_format, batting_format, session_id, outcome, "
         "total_score, volley_count, best_volley_score, peak_heat, daily_seed, achieved_at "
@@ -191,6 +198,9 @@ def list_high_scores(
     if batting_format is not None:
         sql += " AND batting_format = ?"
         params += (batting_format,)
+    if daily_seed is not None:
+        sql += " AND daily_seed = ?"
+        params += (int(daily_seed),)
     sql += " ORDER BY total_score DESC, achieved_at ASC LIMIT ?"
     params += (max(1, int(limit)),)
 
@@ -220,15 +230,24 @@ def personal_best(
     play_format: str,
     batting_format: Optional[str] = None,
 ) -> Optional[int]:
-    """The best total on one board, or None when it has never been played."""
-    row = conn.execute(
-        """
-        SELECT MAX(total_score) AS best FROM flyting_high_scores
-        WHERE scenario_id = ? AND play_format = ?
-          AND (batting_format IS ? OR batting_format = ?)
-        """,
-        (scenario_id, play_format, batting_format, batting_format),
-    ).fetchone()
+    """The best total on one board, or None when it has never been played.
+
+    ``batting_format`` narrows the answer to a single drill. Omitting it means
+    *every* drill of this play format, the same way it does in
+    ``list_high_scores`` — not "the rows whose drill is NULL", which for batting
+    practice is none of them, since every batting run records the drill it was.
+    (A bout records no drill, so for ``play_format='bout'`` the two readings
+    select the same rows.)
+    """
+    sql = (
+        "SELECT MAX(total_score) AS best FROM flyting_high_scores "
+        "WHERE scenario_id = ? AND play_format = ?"
+    )
+    params: tuple[Any, ...] = (scenario_id, play_format)
+    if batting_format is not None:
+        sql += " AND batting_format = ?"
+        params += (batting_format,)
+    row = conn.execute(sql, params).fetchone()
     if row is None or row["best"] is None:
         return None
     return int(row["best"])

@@ -179,6 +179,51 @@ class TestScenarioDiscovery:
         ids = {s["scenario_id"] for s in client.get("/api/flyting/scenarios").json()}
         assert SCENARIO in ids
 
+    def test_the_setup_payload_reports_the_personal_best_for_each_format(self, client):
+        """The board on the setup screen is the "one more run" hook.
+
+        A batting-practice run always records which drill it was, so the
+        per-format best has to span the drills rather than look for rows with no
+        drill at all — there are none of those.
+        """
+        before = client.get(f"/api/flyting/scenarios/{SCENARIO}").json()
+        assert before["personal_bests"] == {"bout": None, "batting_practice": None}
+
+        session_id = start_run(client, batting_format="set_10")
+        volley(client, session_id, GOOD_VOLLEY)
+        end = client.post(f"/api/flyting/sessions/{session_id}/end").json()
+
+        after = client.get(f"/api/flyting/scenarios/{SCENARIO}").json()
+        assert after["personal_bests"]["batting_practice"] == end["summary"]["total_score"]
+        assert after["personal_bests"]["bout"] is None
+
+    def test_a_seeded_run_can_be_compared_against_todays_seed(self, client):
+        """A daily seed exists so same-day runs are comparable without a server.
+
+        That only works if the board can be asked for one seed's runs, so the
+        seeded run has to come back under ``today`` and the unseeded one must not.
+        """
+        seeded = start_run(client, use_daily_seed=True)
+        volley(client, seeded, GOOD_VOLLEY)
+        client.post(f"/api/flyting/sessions/{seeded}/end")
+
+        unseeded = start_run(client)
+        volley(client, unseeded, SECOND_VOLLEY)
+        client.post(f"/api/flyting/sessions/{unseeded}/end")
+
+        today = client.get(
+            f"/api/flyting/scenarios/{SCENARIO}/high-scores",
+            params={"play_format": "batting_practice", "today": True},
+        ).json()
+        assert today["daily_seed"] is not None
+        assert [e["session_id"] for e in today["entries"]] == [seeded]
+
+        everything = client.get(
+            f"/api/flyting/scenarios/{SCENARIO}/high-scores",
+            params={"play_format": "batting_practice"},
+        ).json()
+        assert {e["session_id"] for e in everything["entries"]} == {seeded, unseeded}
+
 
 # ── Starting a run ───────────────────────────────────────────────────────────
 
@@ -452,6 +497,86 @@ class TestPersistence:
         # the arithmetic for any volley.
         assert stored["scorecard"]["judge"]["umpire_line"]
         assert stored["scorecard"]["composition"]["base"] >= 0
+
+    def test_rehydrating_a_scorecard_keeps_the_refused_hook_claims(self):
+        """The debrief coaches on hooks the engine refused, so they must survive.
+
+        Summaries are recomputed from stored scorecards rather than from anything
+        held in memory, and ``dropped_hooks`` is the only record of a claimed hit
+        whose evidence was not in the player's own words.
+        """
+        from convsim_core.routers.flyting import _rehydrate
+
+        [rebuilt] = _rehydrate([{
+            "text": "You polish your virtue, sir.",
+            "score": 90,
+            "band": "solid",
+            "scorecard": {
+                "volley_number": 1,
+                "speaker": "player",
+                "judge": {
+                    "sting": 7, "wit": 6, "craft": 6, "fidelity": 7,
+                    "hooks": [{"trait": "hypocrisy", "evidence": "polish your virtue"}],
+                    "dropped_hooks": [
+                        {"trait": "cowardice", "evidence": "never invoked",
+                         "reason": "evidence_not_in_volley"},
+                    ],
+                    "umpire_line": "Half of that was yours.",
+                },
+            },
+        }])
+        assert [h.trait for h in rebuilt.judgment.hooks] == ["hypocrisy"]
+        assert [d.reason for d in rebuilt.judgment.dropped_hooks] == [
+            "evidence_not_in_volley"
+        ]
+
+    def test_a_conversation_session_is_not_a_flyting_run(self, client):
+        """Ending a conversation session as a flyting run would corrupt it.
+
+        Both kinds live in ``turn_sessions``, so these routes have to refuse a
+        row with no run state rather than default it — ``/end`` writes ``Ended``
+        and a retired outcome to the row it is handed, and records a score on a
+        flyting board for a scenario that has none.
+        """
+        created = client.post("/api/sessions", json={
+            "scenario_id": SCENARIO,
+            "difficulty": "standard",
+            "player_role_name": "Alice",
+            "language": "en",
+            "input_mode": "text-only",
+            "tts_enabled": False,
+            "show_state_meters": False,
+            "save_transcript": True,
+            "seed": None,
+            "runtime_id": "fake",
+        })
+        assert created.status_code == 201, created.text
+        session_id = created.json()["session_id"]
+
+        assert client.get(f"/api/flyting/sessions/{session_id}").status_code == 404
+        assert client.post(f"/api/flyting/sessions/{session_id}/end").status_code == 404
+        # The conversation session is untouched, and no board row was invented.
+        assert client.get(f"/api/sessions/{session_id}").json()["state"] != "Ended"
+        board = client.get(f"/api/flyting/scenarios/{SCENARIO}/high-scores").json()
+        assert board["entries"] == []
+
+
+# ── Scenario library routing ─────────────────────────────────────────────────
+
+
+class TestLibraryRouting:
+    def test_the_library_card_reports_the_turn_loop(self, client):
+        """A flyting card must be distinguishable before the player clicks Launch.
+
+        The library routes on ``mode``; without it a flyting scenario would be
+        sent to the conversation setup screen, which cannot run it.
+        """
+        cards = client.get("/api/scenarios").json()
+        by_id = {c["scenario_id"]: c for c in cards}
+        assert by_id[SCENARIO]["mode"] == "flyting"
+
+        detail = client.get(f"/api/scenarios/{SCENARIO}").json()
+        assert detail["mode"] == "flyting"
 
 
 # ── Workbench preview ────────────────────────────────────────────────────────

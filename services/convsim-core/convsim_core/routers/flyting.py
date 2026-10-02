@@ -320,20 +320,32 @@ async def get_high_scores(
     request: Request,
     play_format: Optional[str] = Query(default=None),
     batting_format: Optional[str] = Query(default=None),
+    daily_seed: Optional[int] = Query(default=None),
+    today: bool = Query(default=False),
     limit: int = Query(default=flyting_repo.HIGH_SCORE_BOARD_SIZE, ge=1, le=50),
 ) -> Dict[str, Any]:
-    """The local high-score board for one scenario and format."""
+    """The local high-score board for one scenario and format.
+
+    ``today=true`` narrows the board to the runs played under today's seed for
+    this scenario and format, which is the comparison a daily seed exists to
+    make; ``daily_seed`` asks for a specific one. Both are computed locally — the
+    seed is a function of the date and the ids, so nothing leaves the machine.
+    """
     _require_full_app(request)
     conn = request.app.state.db.connection()
+    if today and daily_seed is None and play_format:
+        daily_seed = compute_daily_seed(scenario_id, play_format)
     return {
         "scenario_id": scenario_id,
         "play_format": play_format,
         "batting_format": batting_format,
+        "daily_seed": daily_seed,
         "entries": flyting_repo.list_high_scores(
             conn,
             scenario_id=scenario_id,
             play_format=play_format,
             batting_format=batting_format,
+            daily_seed=daily_seed,
             limit=limit,
         ),
     }
