@@ -78,6 +78,19 @@ class TestRecordingVolleys:
         assert state.player_total == 200
         assert state.banked_total == 100 + 110
 
+    def test_heat_does_not_build_in_a_bout(self):
+        """Heat is a batting-practice mechanic.
+
+        A bout is won on cumulative score against the opponent's, so a heat
+        multiplier there would make the banked total the board records a
+        different number from the one the win condition reads.
+        """
+        state = FlytingRunState(play_format=PlayFormat.BOUT, batting_format=None)
+        for _ in range(4):
+            record_player_volley(state, volley(140))
+        assert state.heat == 1.0
+        assert state.banked_total == state.player_total
+
     def test_best_volley_is_tracked(self):
         state = FlytingRunState()
         for points in (40, 160, 90):

@@ -229,7 +229,12 @@ def record_player_volley(state: FlytingRunState, score: VolleyScore) -> None:
     whiffed = score.is_whiff
     if whiffed:
         state.whiffs += 1
-    state.heat = next_heat(state.heat, score.score, whiffed=whiffed)
+    # Heat is a batting-practice mechanic. A bout is decided on raw cumulative
+    # score against the opponent's, so letting heat build there would put a
+    # multiplier on the board total that the win condition never reads — the
+    # board would record a different number than the game was decided on.
+    if state.play_format is PlayFormat.BATTING_PRACTICE:
+        state.heat = next_heat(state.heat, score.score, whiffed=whiffed)
 
     if score.judgment is not None:
         for theme in score.judgment.themes:

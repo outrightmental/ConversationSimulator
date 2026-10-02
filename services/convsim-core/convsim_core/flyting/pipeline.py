@@ -307,7 +307,8 @@ async def process_volley(
         speaker="player",
         theme_uses=state.theme_uses,
         recent_devices=state.recent_devices,
-        heat=state.heat,
+        # Heat pays in batting practice only; a bout is scored on raw totals.
+        heat=1.0 if is_bout else state.heat,
         riposte_bonus=config.bout.riposte_bonus if is_bout else 0,
         extra_flags=extra_flags,
     )
