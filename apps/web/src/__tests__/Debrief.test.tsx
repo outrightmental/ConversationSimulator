@@ -64,7 +64,7 @@ const fullDebriefResponse: SessionDebriefResponse = {
   state: 'Ended',
   summary: 'You completed 2 turns of "Behavioral Interview". Session outcome: player exit.',
   outcome: 'player_exit',
-  turn_count: 2,
+  total_turns: 2,
   scenario_id: 'behavioral_interview',
   strengths: ['Engaged with the scenario', 'Completed the session flow'],
   improvements: ['Install a local LLM for real NPC responses'],
@@ -206,10 +206,15 @@ describe('Debrief screen', () => {
     expect(screen.getByTestId('outcome-badge')).toHaveTextContent('player exit')
   })
 
-  it('shows turn count', async () => {
+  it('shows the turn count the server reported', async () => {
     mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
     renderDebrief()
-    await waitFor(() => expect(screen.getByText('2')).toBeInTheDocument())
+    // The API field is `total_turns`. The header used to read `turn_count`,
+    // which the API never sends, so every real debrief said "Turns: 0" while
+    // this test passed against a fixture that invented the field (issue #455).
+    await waitFor(() =>
+      expect(screen.getByText(/Turns:/).textContent?.replace(/\s+/g, ' ')).toBe('Turns: 2'),
+    )
   })
 
   it('shows error alert when generateDebrief fails', async () => {
