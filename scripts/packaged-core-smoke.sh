@@ -99,6 +99,10 @@ dump_core_output() {
 cleanup() {
     if [[ -n "$CORE_PID" ]] && kill -0 "$CORE_PID" 2>/dev/null; then
         kill -KILL "$CORE_PID" 2>/dev/null
+        # Reap before removing the data root: an engine still alive would be
+        # writing into a directory pulled out from under it, and on a shared
+        # runner it would keep holding the port for whatever runs next.
+        wait "$CORE_PID" 2>/dev/null
     fi
     if [[ -n "$DATA_ROOT" && -d "$DATA_ROOT" ]]; then
         rm -rf "$DATA_ROOT"
@@ -202,7 +206,12 @@ while [[ "$(date +%s)" -lt "$DEADLINE" ]]; do
         dump_core_output
         exit 1
     fi
-    if curl -fsS -m 5 "$HEALTH_URL" -o "$HEALTH_JSON" 2>/dev/null; then
+    # -m 15, not 5: /api/health fans out to the LLM, STT and TTS probes, so one
+    # answer can legitimately take seconds (the Tauri shell allows the same
+    # request 8 s — see probe_core). A per-attempt cap below that would fail a
+    # request the shell itself would accept, and no later attempt would do any
+    # better, so a healthy-but-slow engine would fail the whole run.
+    if curl -fsS -m 15 "$HEALTH_URL" -o "$HEALTH_JSON" 2>/dev/null; then
         READY=1
         break
     fi
@@ -349,7 +358,11 @@ if [[ "$STOPPED" -eq 1 ]]; then
 else
     fail "Engine still running ${SHUTDOWN_TIMEOUT}s after SIGTERM."
     dump_core_output
-    CORE_PID=""
+    # CORE_PID is deliberately kept so the EXIT trap SIGKILLs it. Clearing it
+    # here would leave the engine — and its own sidecars — running after the
+    # script returns, holding the port for the next release step (or for the
+    # developer, who has to find it in a task manager). The port check below
+    # still reports the truth, because the trap has not run yet.
 fi
 
 if is_listening "$PORT"; then
