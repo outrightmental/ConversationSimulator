@@ -170,6 +170,20 @@ The middle row is why it is not all one message: the port-conflict hint tells th
 player to close whatever holds 7355, and there that is the engine serving the
 window which *did* start.
 
+The losing engine usually takes *longer* to exit than the winner takes to answer
+`/api/health`, so the shell often meets the winner before its own child is gone.
+Two more moments therefore ask the port the same question and report from the
+same table:
+
+- A readiness probe answered by the **other edition** is not readiness. The
+  shell stops its own child and reports the error, because mounting this build
+  over that engine gives the wrong library (issue #495) — the attach path's
+  edition check, applied to the one path that could otherwise bypass it.
+- A child that exits *after* readiness was reported, while a convsim-core is
+  still serving 7355, was never the engine on the port. That is not a crash and
+  no restart can fix it, so the shell says which window to use instead of
+  flapping the UI through three attempts and settling on "keeps stopping".
+
 **Adopting an engine.** An engine the shell did not start has no child handle,
 so it cannot be supervised — but a release build re-checks the port every 3 s
 (a bare TCP connect, so the adopted engine pays nothing for being watched) and

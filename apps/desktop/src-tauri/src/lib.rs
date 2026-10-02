@@ -869,6 +869,19 @@ fn already_running_hint() -> String {
     )
 }
 
+/// What to report when a convsim-core — answering `/api/health` with `edition`
+/// — holds port 7355 and the engine this shell started therefore cannot.
+///
+/// The two answers need opposite advice, which is the whole reason this is not
+/// one message: the *other* edition has to be closed
+/// (`foreign_edition_error`), while an engine of our own edition is the one
+/// serving the window that did start, so the player is sent to that window
+/// rather than told to kill it.
+fn lost_the_port_to_a_convsim_core(edition: &str) -> (String, String) {
+    foreign_edition_error(edition)
+        .unwrap_or_else(|| (ALREADY_RUNNING_MESSAGE.to_string(), already_running_hint()))
+}
+
 /// The hint beside `KEEPS_STOPPING_MESSAGE`.
 ///
 /// "Restarted {max} times", not "stopped {max} times": the supervisor reaches
@@ -1133,9 +1146,7 @@ fn start_and_await_core(
                 // A convsim-core of OUR edition is a second copy of this app
                 // racing us, not a stranger: `PORT_BUSY_MESSAGE` would send the
                 // player to close the engine their other window is using.
-                CoreProbe::Ready { edition } => foreign_edition_error(&edition).unwrap_or_else(
-                    || (ALREADY_RUNNING_MESSAGE.to_string(), already_running_hint()),
-                ),
+                CoreProbe::Ready { edition } => lost_the_port_to_a_convsim_core(&edition),
                 CoreProbe::Occupied => (PORT_BUSY_MESSAGE.to_string(), port_busy_hint()),
                 // The port is free, so the exit was not a failure to bind.
                 CoreProbe::Closed => (
@@ -1152,7 +1163,32 @@ fn start_and_await_core(
             return false;
         }
 
-        if let CoreProbe::Ready { .. } = probe_core(CORE_PORT) {
+        if let CoreProbe::Ready { edition } = probe_core(CORE_PORT) {
+            // Whoever answers here is not necessarily the child we just
+            // spawned. The port was free when the attach loop asked, but
+            // another convsim-core can bind it during the tens of seconds ours
+            // spends unpacking its payload and migrating the database — and
+            // ours then exits for failing to bind, which is *later* than this,
+            // so the probe above gets its answer from the winner. Reporting
+            // the OTHER edition's engine as ready would mount this build over
+            // it: the wrong library, `EDITION_RESTRICTED` on the Workbench
+            // (issue #495) — precisely what the attach path's own edition
+            // check refuses. Release-only path, so the guard is unconditional
+            // for the same reason as the exit branch above.
+            if let Some((message, hint)) = foreign_edition_error(&edition) {
+                // Stop our own child first. It is still starting, so it never
+                // reached its failed bind: left alone it would take port 7355
+                // the moment the other edition released it, serving nothing
+                // and outliving this now-terminal launch.
+                if let Ok(mut guard) = process_arc.lock() {
+                    if let Some(ref mut child) = *guard {
+                        stop_core(child);
+                    }
+                    *guard = None;
+                }
+                emit_core_status(app, status_arc, "error", &message, Some(&hint), log_dir);
+                return false;
+            }
             emit_core_status(app, status_arc, "ready", "Core service is ready.", None, log_dir);
             return true;
         }
@@ -1493,6 +1529,21 @@ fn supervise_core(
             *guard = None;
         }
 
+        // A convsim-core still serving 7355 now means the engine that just
+        // exited was never the one on the port: another copy of the app (or the
+        // other edition) won the bind race while ours was starting, and the
+        // readiness probe answered for the winner. Restarting cannot help —
+        // every replacement fails the same bind — so say which window to use
+        // instead of flapping the UI through MAX_RESTARTS attempts and landing
+        // on "keeps stopping", which blames the engine for a port it never had.
+        // A genuine crash leaves the port closed (uvicorn drops its listening
+        // socket before the process goes), so this costs a refused connect.
+        if let CoreProbe::Ready { edition } = probe_core(CORE_PORT) {
+            let (message, hint) = lost_the_port_to_a_convsim_core(&edition);
+            emit_core_status(&app, &status_arc, "error", &message, Some(&hint), log_dir_ref);
+            return;
+        }
+
         if ready_since.elapsed() >= HEALTHY_RUN_RESET {
             restarts = 0;
         }
@@ -1828,6 +1879,27 @@ mod tests {
         let (message, hint) = foreign_edition_error(theirs).expect("refused");
         assert!(message.contains("Another edition"));
         assert!(hint.contains("7355"));
+    }
+
+    #[test]
+    fn losing_the_port_names_the_edition_that_took_it() {
+        // Every place the shell finds a convsim-core on 7355 that is not the
+        // child it started routes through this, because the two answers need
+        // opposite advice: close the other edition, but switch to the other
+        // window of our own.
+        let mine = build_edition().unwrap_or("full");
+        let theirs = if mine == "demo" { "full" } else { "demo" };
+
+        let (message, hint) = lost_the_port_to_a_convsim_core(mine);
+        assert_eq!(message, ALREADY_RUNNING_MESSAGE);
+        assert_eq!(hint, already_running_hint());
+        assert!(
+            !hint.to_lowercase().contains("close"),
+            "the engine on the port is the one serving the window that started: {hint}"
+        );
+
+        let (message, _) = lost_the_port_to_a_convsim_core(theirs);
+        assert!(message.contains("Another edition"), "{message}");
     }
 
     #[test]
