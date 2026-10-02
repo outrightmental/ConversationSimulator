@@ -72,8 +72,9 @@ as gameplay.
 Useful flags: `--skip-hero` (screenshots only, no recording) and `--only=03,06` (still
 plays the session, but writes only the named outputs — a screen number, or `hero` for the
 recording; anything left off the list keeps the file already committed). A name the
-script does not write is rejected before the playthrough starts, so a typo cannot cost a
-run. The scenario, player turns and seed are constants at the top of the file.
+script does not write — or a pair of flags that cancel out, like `--skip-hero
+--only=hero` — is rejected before the playthrough starts, so neither can cost a run. The
+scenario, player turns and seed are constants at the top of the file.
 
 A run that loses a screen keeps going — the other outputs are worth more than the one
 that failed — but it **exits non-zero** and names what it missed. Those files still hold

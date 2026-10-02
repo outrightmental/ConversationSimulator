@@ -143,6 +143,20 @@ if (only) {
   }
 }
 
+// What this invocation would actually write, after `--only` and `--skip-hero`
+// have both had their say. `--skip-hero --only=hero` cancels out to nothing:
+// without this the run would play a full real-model session, write not one
+// file, and still report success — the same failure the `--only` name check
+// above exists to prevent.
+const REQUESTED = OUTPUT_IDS.filter((id) => (id === 'hero' ? CAPTURE_HERO : wanted(id)))
+if (!REQUESTED.length) {
+  fail(
+    'no output is left to write: --only names only the hero recording, and ' +
+      '--skip-hero turns it off.\n' +
+      '       Drop one of the two flags.',
+  )
+}
+
 function loadPlaywright() {
   for (const spec of ['playwright', 'playwright-core']) {
     try {
