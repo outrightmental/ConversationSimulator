@@ -231,6 +231,15 @@ jobs:
         run: |
           echo "Local: python -m pytest tests/acceptance/test_network_guard.py -v"
           python -m pytest tests/acceptance/test_network_guard.py -v
+      # The real-model nightly (model-smoke-nightly.yml) cannot run per-PR, but
+      # its decision logic can: checksum verification, the end-to-end
+      # assertions, budget arithmetic and failure classification.  Without this
+      # the harness is only ever exercised at 04:00 UTC, so a typo in it shows up
+      # as a mysteriously red nightly.
+      - name: Run nightly real-model smoke harness unit tests (no model needed)
+        run: |
+          echo "Local: python -m pytest tests/scripts/ -v"
+          python -m pytest tests/scripts/ -v
 
   desktop-check:
     name: Desktop Rust check

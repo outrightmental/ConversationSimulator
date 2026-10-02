@@ -1,23 +1,57 @@
 # SPDX-License-Identifier: Apache-2.0
-# Nightly real-model smoke test.
+# Nightly real-model smoke test (issue #457).
 #
-# Downloads the pinned starter model from the registry, starts a local
-# llama-server (llama-cpp-python's OpenAI-compatible server) plus convsim-core
-# wired to it, runs a scripted end-to-end session through convsim-core's REST
-# API, measures full-response latency, and fails if it regresses more than
-# 20 % above the documented budget.
+# Nightly, NOT per-PR: this is the only CI job that plays a conversation on a
+# real local model.  Every other job validates against the fake/scripted
+# runtimes, so a regression that only shows up under real inference — a prompt
+# that the model cannot satisfy, a grammar the adapter mis-serialises, a
+# debrief that never scores — is invisible until this job runs.
 #
-# convsim-core's turn endpoint is synchronous (token streaming lives in the
-# apps/api gateway, which is not stood up here), so the smoke measures full
-# end-to-end turn latency against the FULL_RESPONSE_MS budget (10 s).
+# What it does: download the smallest registry model (role `starter`, Qwen3 4B
+# Q4_K_M, ~2.5 GB) with SHA-256 verification, start llama-cpp-python's
+# OpenAI-compatible server on it, start convsim-core wired to that server
+# (CONVSIM_RUNTIME_ID=llama_cpp), play a scripted multi-turn conversation
+# through convsim-core's REST API, and assert a SCORED debrief comes back.
+# Latency is checked against the documented budgets.  Full detail, including
+# the local repro command: docs/real-model-smoke.md.
 #
-# The model file (~2.5 GB) is cached by its registry SHA-256 so repeated
-# nightly runs skip the download.  The first run after a pinned-URL change
-# re-downloads and re-caches the new file.
+# ── Failure classification ───────────────────────────────────────────────────
+# scripts/nightly-model-smoke.py attributes every failure to one class and
+# exits with a distinct code, so a red nightly is triageable from the job
+# summary without reading logs:
 #
-# Timings are measured on GitHub-hosted ubuntu-latest (2 vCPU, ~8 GB RAM,
-# CPU-only inference).  The CI budget is the documented budget multiplied by
-# a hardware-tier factor that accounts for the slower runner:
+#   1  budget    — pipeline worked, latency regressed
+#   2  download  — model could not be fetched (network/HTTP/empty cache)
+#   3  checksum  — SHA-256 drift against the registry
+#   4  runtime   — llama-server or convsim-core crashed, hung, or 5xx'd
+#   5  pipeline  — servers healthy, end-to-end assertion failed
+#   6  timeout   — wall-clock budget exhausted (failing phase named)
+#
+# The script writes the class, the failures, the remedy, per-phase durations
+# and measured latencies to $GITHUB_STEP_SUMMARY, and the full JSON report is
+# uploaded as an artifact.
+#
+# ── Runtime budget: target < 30 min on standard GitHub runners ───────────────
+# timeout-minutes: 30 is the hard ceiling; the script's own
+# --wall-clock-budget-s 1500 (25 min) trips first so the failure is attributed
+# to a phase instead of surfacing as an unattributable job cancellation.
+# Observed breakdown on ubuntu-latest (CPU-only):
+#
+#   pip install (cached wheels)              ~2 min
+#   model download (cache miss only)         ~2 min   — ~0 on a cache hit
+#   SHA-256 verification (2.5 GB, ×2 cold)   ~1 min   — ~0.5 min on a cache hit
+#   llama-server model load                  ~0.5 min
+#   3 scripted turns + authored opening      ~7 min
+#   debrief generation                       ~4 min
+#   ------------------------------------------------
+#   total                                   ~16 min warm cache, ~18 min cold
+#
+# If this creeps past ~25 min, reduce SCRIPTED_PLAYER_TURNS rather than raising
+# the ceiling: a nightly that routinely runs near its timeout flaps.
+#
+# ── Latency budget on CI hardware ────────────────────────────────────────────
+# Timings are measured on GitHub-hosted ubuntu-latest, CPU-only inference.
+# The CI budget is the documented budget multiplied by a hardware-tier factor:
 #
 #   CI budget = documented budget × CI_HARDWARE_FACTOR (currently 20)
 #
@@ -27,10 +61,11 @@
 # 10 s documented budget.  20× gives a 10 s × 20 = 200 s CI budget and, with
 # the script's 1.20 regression tolerance, a 240 s ceiling — roughly 2× headroom
 # over the observed latency so normal runner-to-runner variance does not flap
-# the nightly, while a genuine >2× regression still fails.  This factor only
-# models CI-hardware slowness; the product's 10 s target-hardware SLO is
-# unchanged.  Re-measure and re-tune if the runner class or starter model
-# changes.
+# the nightly, while a genuine >2× regression still fails.  The headline
+# full_response_ms is the MEDIAN of the scripted turns, so one unlucky turn
+# cannot flap the job.  This factor only models CI-hardware slowness; the
+# product's 10 s target-hardware SLO is unchanged.  Re-measure and re-tune if
+# the runner class or starter model changes.
 
 name: Model smoke nightly
 
@@ -42,11 +77,19 @@ on:
 permissions:
   contents: read
 
+env:
+  # Bump this prefix to abandon a poisoned model cache entry (Actions cache
+  # entries are immutable, so a corrupt GGUF under a given key would otherwise
+  # be restored on every re-run — see the checksum remedy in the script).
+  MODEL_CACHE_PREFIX: model-gguf-v1
+
 jobs:
   model-smoke:
     name: Starter-model end-to-end smoke
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # Hard ceiling for the documented < 30 min runtime budget.  The script's
+    # own 25 min wall-clock budget trips first and names the failing phase.
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v5
@@ -70,37 +113,26 @@ jobs:
           pip install "llama-cpp-python[server]" \
             --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
 
-      - name: Read starter model metadata from registry
+      # Single source of truth: the cache key, the download URL and the
+      # checksum the smoke verifies against all come from this one lookup, so
+      # they cannot drift apart.
+      - name: Resolve starter model from the registry
         id: registry
         run: |
-          python - <<'EOF'
-          import yaml, json, sys
-          from pathlib import Path
-          reg = yaml.safe_load(Path("model-registry/registry.yaml").read_text())
-          starter = next(m for m in reg["models"] if m["role"] == "starter")
-          url = starter["download"]["url"]
-          sha256 = starter["download"]["sha256"]
-          model_id = starter["id"]
-          print(f"model_id={model_id}")
-          print(f"model_url={url}")
-          print(f"model_sha256={sha256}")
-          # Write to GITHUB_OUTPUT
-          import os
-          out = os.environ.get("GITHUB_OUTPUT", "/dev/stdout")
-          with open(out, "a") as f:
-              f.write(f"model_id={model_id}\n")
-              f.write(f"model_url={url}\n")
-              f.write(f"model_sha256={sha256}\n")
-          EOF
+          echo "Local: python scripts/nightly-model-smoke.py --print-registry-model starter"
+          python scripts/nightly-model-smoke.py --print-registry-model starter
 
-      - name: Cache model file
+      # Restore/save are split (rather than actions/cache) so a model that
+      # fails checksum verification is never written to the cache: the save
+      # step is gated on success().
+      - name: Restore cached model file
         id: model-cache
-        uses: actions/cache@v5
+        uses: actions/cache/restore@v5
         with:
           path: ~/.convsim/models/llm
-          key: model-${{ steps.registry.outputs.model_sha256 }}
+          key: ${{ env.MODEL_CACHE_PREFIX }}-${{ steps.registry.outputs.model_sha256 }}
 
-      - name: Download starter model
+      - name: Download starter model (SHA-256 verified)
         if: steps.model-cache.outputs.cache-hit != 'true'
         run: |
           python scripts/nightly-model-smoke.py \
@@ -109,11 +141,24 @@ jobs:
             --model-sha256 "${{ steps.registry.outputs.model_sha256 }}" \
             --model-id "${{ steps.registry.outputs.model_id }}"
 
-      - name: Run end-to-end smoke and check latency budgets
+      - name: Cache the verified model file
+        if: success() && steps.model-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ~/.convsim/models/llm
+          key: ${{ env.MODEL_CACHE_PREFIX }}-${{ steps.registry.outputs.model_sha256 }}
+
+      # --model-sha256 makes the run re-verify the file it is about to load, so
+      # a drifted or truncated CACHE HIT fails loudly (exit 3) instead of
+      # feeding corrupt weights to the smoke.
+      - name: Run real-model smoke (scripted conversation + scored debrief)
         run: |
+          echo "Local: see docs/real-model-smoke.md for the one-line local repro"
           python scripts/nightly-model-smoke.py \
             --model-id "${{ steps.registry.outputs.model_id }}" \
+            --model-sha256 "${{ steps.registry.outputs.model_sha256 }}" \
             --ci-hardware-factor 20 \
+            --wall-clock-budget-s 1500 \
             --report-path /tmp/smoke-report.json
 
       - name: Upload smoke report
