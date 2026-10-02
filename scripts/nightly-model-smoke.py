@@ -76,7 +76,7 @@ Full smoke::
         --model-id qwen3-4b-instruct-q4_k_m \\
         --model-sha256 <hex> \\
         --ci-hardware-factor 20 \\
-        --wall-clock-budget-s 1500 \\
+        --wall-clock-budget-s 1200 \\
         --report-path /tmp/smoke-report.json
 """
 
@@ -125,11 +125,15 @@ MODELS_DIR = Path.home() / ".convsim" / "models" / "llm"
 LLAMA_SERVER_PORT = 7356  # convsim-core's default CONVSIM_LLAMA_CPP_BASE_URL port
 CORE_PORT = 7399
 
-# Wall-clock budget for the whole run, in seconds.  Deliberately below the
-# workflow's timeout-minutes so the script — which knows which phase it is in —
-# fails first with an attributed verdict, instead of GitHub killing the job
-# with an unattributable "The operation was canceled".  See docs/real-model-smoke.md.
-DEFAULT_WALL_CLOCK_BUDGET_S = 1500.0  # 25 min
+# Wall-clock budget for the whole run, in seconds.  The script — which knows
+# which phase it is in — must fail first with an attributed verdict instead of
+# GitHub killing the job with an unattributable "The operation was canceled",
+# so this has to clear the job's timeout-minutes *minus the steps that run
+# before the script does*: checkout, pip install, cache restore and (on a cache
+# miss) the 2.5 GB download, together up to ~8 min of the 30 min job.  20 min
+# therefore leaves the script's own deadline the first one to trip.
+# See docs/real-model-smoke.md.
+DEFAULT_WALL_CLOCK_BUDGET_S = 1200.0  # 20 min
 
 # Scripted player turns — deliberately the same script as the fake-runtime
 # playthrough in tests/e2e/test_scripted_playthrough.py, so the real-model
@@ -147,6 +151,11 @@ EXCERPT_CHARS = 160
 
 # A debrief summary shorter than this is not a usable coaching summary.
 MIN_SUMMARY_CHARS = 20
+
+# How much slower the debrief generation is allowed to be than one NPC turn
+# before we stop calling it slow and start calling it hung.  Only used to size
+# request timeouts (see run_smoke) — debrief latency itself is not budget-checked.
+DEBRIEF_SLOWDOWN_FACTOR = 2.0
 
 
 # ── Failure classification ────────────────────────────────────────────────────
@@ -457,10 +466,10 @@ def _start_core(data_dir: Path, port: int, llama_port: int, llama_timeout_s: flo
         # Point the adapter at the llama-server started above.
         "CONVSIM_LLAMA_CPP_BASE_URL": f"http://127.0.0.1:{llama_port}",
         "CONVSIM_LLAMA_CPP_CONTEXT_LENGTH": "8192",
-        # The adapter's per-request timeout must outlast the CI ceiling we
-        # measure against, or a slow-but-passing turn on the 2-vCPU CPU-only
-        # runner is killed by the adapter's 30 s default before we can time it,
-        # failing the nightly spuriously instead of reporting the real latency.
+        # The adapter's per-request timeout must outlast the slowest call we
+        # intend to measure (the debrief), or the adapter's 30 s default kills a
+        # slow-but-reportable generation first and convsim-core answers 500 — a
+        # latency problem misfiled as a RUNTIME crash.  See run_smoke.
         "CONVSIM_LLAMA_CPP_TIMEOUT": str(int(llama_timeout_s)),
         "CONVSIM_DATA_DIR": str(data_dir),
         "CONVSIM_LOG_DIR": str(data_dir / "logs"),
@@ -807,14 +816,24 @@ def run_smoke(
 ) -> int:
     """Run the full scripted smoke.  Returns the process exit code."""
     clock = Deadline(wall_clock_budget_s)
-    # The turn must be allowed to run past the CI ceiling before we judge it, so
-    # both the adapter timeout and our own POST timeout are derived from the
-    # full-response ceiling with headroom rather than a fixed 30 s / 180 s.
+    # A call must be allowed to run past the latency we are about to judge it
+    # on, or whoever gives up first decides the verdict instead of us: the
+    # adapter's own timeout surfaces as HTTP 500 (class `runtime`, "the server
+    # crashed") and our POST timeout surfaces as a transport error (also
+    # `runtime`), when the truth is a slow model — class `budget`.
+    #
+    # The debrief, not a turn, is the slowest single generation (one long
+    # structured document against one NPC reply), so the adapter ceiling is
+    # sized for it: DEBRIEF_SLOWDOWN_FACTOR × the full-response CI ceiling.
+    # Our own POST timeout then sits above the adapter's, so when something
+    # really does hang it is the adapter that reports it, with a message that
+    # names the knob.  The run's wall-clock deadline — not these timeouts — is
+    # what bounds the job.
     full_ceiling_s = (
         BUDGETS_MS["full_response_ms"] * ci_hardware_factor * REGRESSION_TOLERANCE
     ) / 1000
-    llama_timeout_s = max(180.0, full_ceiling_s + 60.0)
-    turn_timeout_s = llama_timeout_s + 30.0
+    llama_timeout_s = max(300.0, full_ceiling_s * DEBRIEF_SLOWDOWN_FACTOR + 60.0)
+    request_timeout_s = llama_timeout_s + 30.0
 
     results: Dict[str, Any] = {
         "model_id": model_id,
@@ -942,6 +961,7 @@ def run_smoke(
             })
 
             turn_latencies: List[float] = []
+            ended_by_scenario = False
             for i, player_text in enumerate(SCRIPTED_PLAYER_TURNS, start=1):
                 clock.check()
                 print(f"[smoke] Player turn {i}/{len(SCRIPTED_PLAYER_TURNS)}…")
@@ -949,7 +969,7 @@ def run_smoke(
                 turn = _request_json(
                     f"{base}/sessions/{session_id}/turn",
                     payload={"content": player_text},
-                    timeout=clock.cap(turn_timeout_s),
+                    timeout=clock.cap(request_timeout_s),
                 )
                 latency_ms = (time.monotonic() - t0) * 1000
                 turn_latencies.append(latency_ms)
@@ -964,6 +984,10 @@ def run_smoke(
                     "ending_type": turn.get("ending_type"),
                 })
                 if turn.get("ending_type"):
+                    # The turn pipeline already moved the session to 'Ended', so
+                    # POST /end would 409 — see end_session() in the sessions
+                    # router.  Record that and skip the explicit end below.
+                    ended_by_scenario = True
                     print(f"[smoke] Scenario ended early (ending_type={turn['ending_type']}); "
                           "stopping the scripted turns.")
                     break
@@ -987,14 +1011,19 @@ def run_smoke(
 
             # ── debrief ───────────────────────────────────────────────────────
             clock.enter("debrief")
-            print("[smoke] Ending session…")
-            _request_json(f"{base}/sessions/{session_id}/end", payload={}, timeout=clock.cap(30.0))
+            if ended_by_scenario:
+                print("[smoke] Session already Ended by the scenario; skipping /end.")
+            else:
+                print("[smoke] Ending session…")
+                _request_json(
+                    f"{base}/sessions/{session_id}/end", payload={}, timeout=clock.cap(30.0)
+                )
             print("[smoke] Generating debrief (real model call)…")
             t0 = time.monotonic()
             debrief = _request_json(
                 f"{base}/sessions/{session_id}/debrief",
                 payload={},
-                timeout=clock.cap(turn_timeout_s * 2),
+                timeout=clock.cap(request_timeout_s),
             )
             debrief_ms = (time.monotonic() - t0) * 1000
             results["measured_ms"]["debrief_ms"] = round(debrief_ms)
@@ -1044,10 +1073,23 @@ def run_smoke(
             results["exit_code"] = 0
 
     except SmokeFailure as exc:
-        # A crashed child outranks whatever the client saw: "core exited with
-        # code 1" is the real story, not the connection reset it caused.
+        # Precedence, strongest evidence first:
+        #   1. A crashed child outranks whatever the client saw — "core exited
+        #      with code 1" is the real story, not the connection reset it caused.
+        #   2. An exhausted wall clock outranks the transport error it produced:
+        #      cap() shrinks each request timeout to the budget that is left, so
+        #      the last request before the deadline dies client-side and reports
+        #      itself as RUNTIME ("the server never answered"). The honest
+        #      verdict is TIMEOUT, which is the class whose remedy says to look
+        #      at phase_durations_s.
         crashed = _crashed_child((("llama-server", llama_proc), ("convsim-core", core_proc)))
-        failure_class = FailureClass.RUNTIME if crashed else exc.failure_class
+        out_of_time = not crashed and clock.remaining_s <= 0
+        if crashed:
+            failure_class = FailureClass.RUNTIME
+        elif out_of_time:
+            failure_class = FailureClass.TIMEOUT
+        else:
+            failure_class = exc.failure_class
         results["verdict"] = "fail"
         results["failure_class"] = failure_class
         results["exit_code"] = EXIT_CODES[failure_class]
@@ -1056,6 +1098,12 @@ def run_smoke(
             results["failures"] = [str(exc)]
         if crashed:
             results["failures"].insert(0, crashed)
+        elif out_of_time and exc.failure_class != FailureClass.TIMEOUT:
+            results["failures"].insert(
+                0,
+                f"Wall-clock budget of {wall_clock_budget_s:.0f} s exhausted during phase "
+                f"{results['failed_phase']!r} (elapsed {clock.elapsed_s:.0f} s)",
+            )
         _dump_stderr_tails((("convsim-core", core_stderr_tail), ("llama-server", llama_stderr_tail)))
         _print_banner(failure_class, results["failures"])
 

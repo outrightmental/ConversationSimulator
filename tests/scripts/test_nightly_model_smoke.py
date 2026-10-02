@@ -358,6 +358,56 @@ class TestEvaluateBudgets:
 # ---------------------------------------------------------------------------
 
 
+# Steps that burn the job's clock before the harness starts and so are invisible
+# to its own deadline: checkout, three pip installs, the cache restore and, on a
+# cache miss, the 2.5 GB download.  Measured at ~8 min cold; see the breakdown in
+# docs/real-model-smoke.md.
+PRE_SMOKE_JOB_MINUTES = 8
+
+_WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "model-smoke-nightly.yml"
+
+
+def _workflow_text() -> str:
+    return _WORKFLOW_PATH.read_text(encoding="utf-8")
+
+
+def _workflow_budget_s() -> float:
+    import re
+
+    match = re.search(r"--wall-clock-budget-s (\d+)", _workflow_text())
+    assert match, "the smoke step must pass an explicit --wall-clock-budget-s"
+    return float(match.group(1))
+
+
+def _job_timeout_minutes() -> int:
+    import yaml
+
+    return yaml.safe_load(_workflow_text())["jobs"]["model-smoke"]["timeout-minutes"]
+
+
+class TestWorkflowBudgetAgreement:
+    """The harness deadline must beat the job timeout, or exit 6 is unreachable."""
+
+    def test_the_harness_deadline_trips_before_the_job_timeout(self) -> None:
+        # timeout-minutes covers the whole job; the harness clock starts only at
+        # its own step.  If the two are set as if they measured the same thing,
+        # GitHub cancels the job first and the attributed timeout never prints.
+        harness_min = _workflow_budget_s() / 60
+        job_min = _job_timeout_minutes()
+        assert harness_min + PRE_SMOKE_JOB_MINUTES <= job_min, (
+            f"a {harness_min:.0f} min harness budget plus ~{PRE_SMOKE_JOB_MINUTES} min of "
+            f"setup exceeds the {job_min} min job timeout, so GitHub cancels the job "
+            "before the harness can report an attributed timeout"
+        )
+
+    def test_the_documented_target_is_under_thirty_minutes(self) -> None:
+        # The acceptance criterion in #457: "< 30 min on standard GitHub runners".
+        assert _job_timeout_minutes() <= 30
+
+    def test_the_default_matches_what_the_workflow_passes(self) -> None:
+        assert _workflow_budget_s() == smoke.DEFAULT_WALL_CLOCK_BUDGET_S
+
+
 class TestDeadline:
     def test_phase_durations_are_recorded(self) -> None:
         clock = smoke.Deadline(60.0)
@@ -770,6 +820,119 @@ class TestRunSmokeOrchestration:
         results = json.loads(report.read_text(encoding="utf-8"))
         assert results["failure_class"] == smoke.FailureClass.TIMEOUT
 
+    def test_a_normal_run_still_ends_the_session_explicitly(
+        self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        models_dir, model_id, digest = staged_model
+        fake = _fake_core(_debrief())
+        monkeypatch.setattr(smoke, "_request_json", fake)
+
+        assert smoke.run_smoke(
+            model_id, 20.0, None, model_sha256=digest, models_dir=models_dir
+        ) == 0
+        assert any(url.endswith("/end") for url in fake.calls)
+
+    def test_request_timeouts_outlast_the_adapter_so_slowness_is_not_a_crash(
+        self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Whoever gives up first decides the verdict.  The adapter timeout
+        # handed to convsim-core has to clear the debrief (the slowest single
+        # generation), and our own POST timeout has to clear the adapter's, or
+        # a slow model is reported as a crashed server instead of a budget
+        # regression.
+        models_dir, model_id, digest = staged_model
+        adapter_timeout: dict[str, float] = {}
+        post_timeouts: list[float] = []
+
+        def _record_core(data_dir, port, llama_port, llama_timeout_s):
+            adapter_timeout["s"] = llama_timeout_s
+            return fake_servers["core"]
+
+        base = _fake_core(_debrief())
+
+        def _record_timeout(url: str, *, payload=None, timeout=None, expect=(200, 201)) -> dict:
+            if url.endswith(("/turn", "/debrief")):
+                post_timeouts.append(timeout)
+            return base(url, payload=payload, timeout=timeout, expect=expect)
+
+        monkeypatch.setattr(smoke, "_start_core", _record_core)
+        monkeypatch.setattr(smoke, "_request_json", _record_timeout)
+
+        assert smoke.run_smoke(
+            model_id, 20.0, None, model_sha256=digest, models_dir=models_dir,
+            wall_clock_budget_s=24 * 3600,  # large, so cap() does not clamp
+        ) == 0
+
+        ci_ceiling_s = (
+            smoke.BUDGETS_MS["full_response_ms"] * 20.0 * smoke.REGRESSION_TOLERANCE
+        ) / 1000
+        assert adapter_timeout["s"] >= ci_ceiling_s * smoke.DEBRIEF_SLOWDOWN_FACTOR
+        assert post_timeouts and all(t > adapter_timeout["s"] for t in post_timeouts)
+
+    def test_a_deadline_induced_transport_error_is_a_timeout_not_a_crash(
+        self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        # cap() shrinks every request timeout to the budget that is left, so the
+        # last request before the deadline dies client-side and _request_json
+        # reports it as RUNTIME ("the server never answered").  Nothing crashed
+        # — the budget ran out — and only the TIMEOUT remedy points at
+        # phase_durations_s, so the verdict has to be TIMEOUT.
+        import time
+
+        models_dir, model_id, digest = staged_model
+        base = _fake_core(_debrief())
+
+        def _overruns(url: str, *, payload=None, timeout=None, expect=(200, 201)) -> dict:
+            if url.endswith("/api/sessions"):
+                time.sleep(0.3)  # outlast the budget below
+                raise smoke.SmokeFailure(
+                    smoke.FailureClass.RUNTIME,
+                    f"{url} did not answer with usable JSON after {timeout:.0f} s",
+                )
+            return base(url, payload=payload, timeout=timeout, expect=expect)
+
+        monkeypatch.setattr(smoke, "_request_json", _overruns)
+        report = tmp_path / "report.json"
+
+        exit_code = smoke.run_smoke(
+            model_id, 20.0, report, model_sha256=digest, models_dir=models_dir,
+            wall_clock_budget_s=0.2,
+        )
+
+        assert exit_code == smoke.EXIT_CODES[smoke.FailureClass.TIMEOUT]
+        results = json.loads(report.read_text(encoding="utf-8"))
+        assert results["failure_class"] == smoke.FailureClass.TIMEOUT
+        assert any("Wall-clock budget" in f for f in results["failures"])
+
+    def test_a_crash_still_outranks_an_exhausted_budget(
+        self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        # Both are true at once; "convsim-core exited with code 1" is the more
+        # actionable story, so RUNTIME keeps precedence over TIMEOUT.
+        import time
+
+        models_dir, model_id, digest = staged_model
+        fake_servers["core"]._returncode = 1
+        base = _fake_core(_debrief())
+
+        def _overruns(url: str, *, payload=None, timeout=None, expect=(200, 201)) -> dict:
+            if url.endswith("/api/sessions"):
+                time.sleep(0.3)
+                raise smoke.SmokeFailure(smoke.FailureClass.PIPELINE, "connection reset")
+            return base(url, payload=payload, timeout=timeout, expect=expect)
+
+        monkeypatch.setattr(smoke, "_request_json", _overruns)
+        report = tmp_path / "report.json"
+
+        exit_code = smoke.run_smoke(
+            model_id, 20.0, report, model_sha256=digest, models_dir=models_dir,
+            wall_clock_budget_s=0.2,
+        )
+
+        assert exit_code == smoke.EXIT_CODES[smoke.FailureClass.RUNTIME]
+        results = json.loads(report.read_text(encoding="utf-8"))
+        assert "convsim-core exited with code 1" in results["failures"][0]
+
     def test_an_unexpected_harness_bug_is_reported_not_raised(
         self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
@@ -814,3 +977,9 @@ class TestRunSmokeOrchestration:
         assert exit_code == 0
         results = json.loads(report.read_text(encoding="utf-8"))
         assert len(results["turns"]) == 2  # opening + the one turn that ended it
+        # The turn pipeline already moved the session to 'Ended', so POST /end
+        # would answer 409 and the run would die as a bogus `pipeline` failure.
+        assert not any(url.endswith("/end") for url in base.calls), (
+            "must not POST /end to a session the scenario already ended"
+        )
+        assert results["debrief"] is not None

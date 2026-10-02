@@ -33,8 +33,10 @@
 #
 # ── Runtime budget: target < 30 min on standard GitHub runners ───────────────
 # timeout-minutes: 30 is the hard ceiling; the script's own
-# --wall-clock-budget-s 1500 (25 min) trips first so the failure is attributed
-# to a phase instead of surfacing as an unattributable job cancellation.
+# --wall-clock-budget-s 1200 (20 min) trips first so the failure is attributed
+# to a phase instead of surfacing as an unattributable job cancellation.  The
+# 10 min gap is not slack: the steps before the smoke (checkout, pip install,
+# cache restore, a cold 2.5 GB download) run against the same job clock.
 # Observed breakdown on ubuntu-latest (CPU-only):
 #
 #   pip install (cached wheels)              ~2 min
@@ -46,8 +48,9 @@
 #   ------------------------------------------------
 #   total                                   ~16 min warm cache, ~18 min cold
 #
-# If this creeps past ~25 min, reduce SCRIPTED_PLAYER_TURNS rather than raising
-# the ceiling: a nightly that routinely runs near its timeout flaps.
+# If the smoke step creeps past ~15 min — or the job past ~25 min — reduce
+# SCRIPTED_PLAYER_TURNS rather than raising either ceiling: a nightly that
+# routinely runs near its timeout flaps.
 #
 # ── Latency budget on CI hardware ────────────────────────────────────────────
 # Timings are measured on GitHub-hosted ubuntu-latest, CPU-only inference.
@@ -88,7 +91,7 @@ jobs:
     name: Starter-model end-to-end smoke
     runs-on: ubuntu-latest
     # Hard ceiling for the documented < 30 min runtime budget.  The script's
-    # own 25 min wall-clock budget trips first and names the failing phase.
+    # own 20 min wall-clock budget trips first and names the failing phase.
     timeout-minutes: 30
 
     steps:
@@ -158,7 +161,7 @@ jobs:
             --model-id "${{ steps.registry.outputs.model_id }}" \
             --model-sha256 "${{ steps.registry.outputs.model_sha256 }}" \
             --ci-hardware-factor 20 \
-            --wall-clock-budget-s 1500 \
+            --wall-clock-budget-s 1200 \
             --report-path /tmp/smoke-report.json
 
       - name: Upload smoke report

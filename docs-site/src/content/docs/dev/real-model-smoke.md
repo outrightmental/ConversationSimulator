@@ -23,7 +23,7 @@ on a **real local model** end-to-end — registry download → llama.cpp →
 | Schedule | 04:00 UTC daily, plus **Run workflow** (`workflow_dispatch`) |
 | Runner | GitHub-hosted `ubuntu-latest`, CPU-only inference |
 | Model | registry role `starter` — Qwen3 4B Instruct Q4\_K\_M, ~2.5 GB, Apache-2.0 |
-| Runtime budget | **< 30 min** (`timeout-minutes: 30`); the harness self-limits to 25 min |
+| Runtime budget | **< 30 min** (`timeout-minutes: 30`); the harness self-limits to 20 min |
 
 > Nightly, not per-PR, on purpose: a 2.5 GB download plus ~11 min of CPU-only
 > inference cannot sit in the PR path. The per-PR equivalent is the fake-runtime
@@ -70,6 +70,16 @@ The distinction that matters most in practice is **2/3 vs 4 vs 5**: a download o
 checksum failure says nothing about the app, a runtime failure is a crash, and a
 pipeline failure means the model ran and produced output the product rejected.
 
+When more than one class could apply, the harness reports the strongest evidence
+rather than the symptom the client happened to see:
+
+1. **A crashed child wins.** A dead `convsim-core` reads as `runtime`, not as the
+   connection reset it caused downstream.
+2. **An exhausted wall clock beats a transport error.** Each request timeout is
+   capped to the budget that remains, so the last call before the deadline dies
+   client-side and *looks* like an unresponsive server. It is reported as
+   `timeout`, whose remedy points at `phase_durations_s`.
+
 Each run writes the verdict, failure class, remedy, measured latencies and
 per-phase durations to the GitHub **step summary**, and uploads the full JSON
 report as the `model-smoke-report` artifact (30-day retention).
@@ -80,9 +90,16 @@ report as the `model-smoke-report` artifact (30-day retention).
 
 Target: **under 30 minutes on a standard GitHub-hosted runner.** The job sets
 `timeout-minutes: 30` as a hard ceiling, and the harness runs with
-`--wall-clock-budget-s 1500` (25 min) so *it* fails first and names the phase
+`--wall-clock-budget-s 1200` (20 min) so *it* fails first and names the phase
 that ran long — a GitHub-side timeout would only say "the operation was
 canceled".
+
+The 10-minute gap between the two is not slack. `timeout-minutes` covers the
+whole job, and the harness only starts after checkout, three `pip install`
+steps, the cache restore and — on a cache miss — a 2.5 GB download: up to
+~8 min that the harness's own clock never sees. A 25 min harness budget would
+lose the race to the job timeout on exactly the cold-cache nights where an
+attributed verdict matters most.
 
 Measured on `ubuntu-latest` (CPU-only, 4B Q4\_K\_M):
 
@@ -101,8 +118,9 @@ The model is cached between runs under the key
 pin changes. Cache *restore* and *save* are separate steps and the save is gated
 on `success()`, so a file that fails verification is never written to the cache.
 
-If the total creeps past ~25 min, shorten `SCRIPTED_PLAYER_TURNS` rather than
-raising the ceiling: a nightly that routinely runs near its timeout flaps.
+If the smoke step creeps past ~15 min — or the job past ~25 min — shorten
+`SCRIPTED_PLAYER_TURNS` rather than raising either ceiling: a nightly that
+routinely runs near its timeout flaps.
 
 ### Latency budget on CI hardware
 
@@ -190,7 +208,7 @@ Useful extras:
 - `--verify-only` — re-verify an already-downloaded model and exit.
 - `--models-dir <dir>` — look for `<model-id>.gguf` somewhere other than
   `~/.convsim/models/llm/`.
-- `--wall-clock-budget-s` — the self-imposed deadline (default 1500 s).
+- `--wall-clock-budget-s` — the self-imposed deadline (default 1200 s).
 
 The harness binds `llama-server` on port 7356 and `convsim-core` on port 7399;
 stop anything already listening there first.
