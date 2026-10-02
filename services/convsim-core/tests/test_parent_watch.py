@@ -1,0 +1,182 @@
+# SPDX-License-Identifier: Apache-2.0
+"""Tests for the launcher-exit watch (issue #485).
+
+The desktop shell spawns convsim-core with a pipe on stdin and holds the write
+end for its own lifetime. When the shell goes away the kernel closes it, the
+read side reports EOF, and the engine must shut itself down gracefully — that
+teardown is what stops the supervised sidecars instead of orphaning them and
+leaving Steam convinced the game is still running.
+"""
+from __future__ import annotations
+
+import io
+import os
+import subprocess
+import sys
+import threading
+
+import pytest
+
+from convsim_core import parent_watch
+
+#: Generous upper bound for a thread that is only waiting on a closed pipe.
+_WAIT = 5.0
+
+_ENABLED = {parent_watch.ENV_VAR: "1"}
+
+
+def _pipe() -> tuple[io.BufferedReader, io.BufferedWriter]:
+    """A real OS pipe, as the launcher would hand us."""
+    read_fd, write_fd = os.pipe()
+    return os.fdopen(read_fd, "rb", buffering=0), os.fdopen(write_fd, "wb", buffering=0)
+
+
+# ── Enablement ───────────────────────────────────────────────────────────────
+
+
+def test_disabled_without_the_env_var():
+    """Unset is off: a bare `convsim-core` run has a TTY or /dev/null on stdin."""
+    assert parent_watch.is_enabled({}) is False
+
+
+@pytest.mark.parametrize("value", ["1", "true", "TRUE", "yes", "on", " 1 "])
+def test_truthy_values_enable_the_watch(value):
+    assert parent_watch.is_enabled({parent_watch.ENV_VAR: value}) is True
+
+
+@pytest.mark.parametrize("value", ["", "0", "false", "no", "off", "maybe"])
+def test_other_values_leave_it_off(value):
+    assert parent_watch.is_enabled({parent_watch.ENV_VAR: value}) is False
+
+
+def test_watch_is_a_no_op_when_disabled():
+    """No thread, and crucially no callback, when the launcher did not opt in."""
+    reader, writer = _pipe()
+    fired = threading.Event()
+    try:
+        assert parent_watch.watch_parent_exit(fired.set, stream=reader, env={}) is None
+        writer.close()
+        assert not fired.wait(0.5), "the watch fired despite being disabled"
+    finally:
+        reader.close()
+        writer.close()
+
+
+def test_watch_is_a_no_op_without_stdin():
+    """A frozen GUI build can have sys.stdin is None — degrade, do not crash."""
+    fired = threading.Event()
+    real_stdin = sys.stdin
+    sys.stdin = None  # type: ignore[assignment]
+    try:
+        assert parent_watch.watch_parent_exit(fired.set, env=_ENABLED) is None
+    finally:
+        sys.stdin = real_stdin
+    assert not fired.is_set()
+
+
+# ── The signal itself ────────────────────────────────────────────────────────
+
+
+def test_shuts_down_when_the_launcher_closes_the_pipe():
+    reader, writer = _pipe()
+    fired = threading.Event()
+    try:
+        thread = parent_watch.watch_parent_exit(fired.set, stream=reader, env=_ENABLED)
+        assert thread is not None and thread.daemon, (
+            "the watch must be a daemon thread: its pending read cannot be cancelled "
+            "and must never hold up interpreter shutdown"
+        )
+        assert not fired.wait(0.25), "fired while the launcher was still alive"
+        writer.close()
+        assert fired.wait(_WAIT), "EOF on stdin did not request a shutdown"
+    finally:
+        reader.close()
+        writer.close()
+
+
+def test_data_on_stdin_is_not_mistaken_for_the_launcher_exiting():
+    """Only EOF counts. A byte of input must not take the engine down."""
+    reader, writer = _pipe()
+    fired = threading.Event()
+    try:
+        parent_watch.watch_parent_exit(fired.set, stream=reader, env=_ENABLED)
+        writer.write(b"x")
+        writer.flush()
+        assert not fired.wait(0.5), "a stdin byte was treated as the launcher exiting"
+        writer.close()
+        assert fired.wait(_WAIT), "EOF after the byte did not request a shutdown"
+    finally:
+        reader.close()
+        writer.close()
+
+
+def test_closed_stream_is_treated_as_the_launcher_being_gone():
+    """An unreadable stdin must resolve, not park the watch on a dead pipe."""
+    reader, writer = _pipe()
+    writer.close()
+    reader.close()
+    fired = threading.Event()
+    parent_watch.watch_parent_exit(fired.set, stream=reader, env=_ENABLED)
+    assert fired.wait(_WAIT), "a closed stdin left the watch hanging"
+
+
+def test_a_failing_callback_does_not_raise_out_of_the_thread():
+    """A broken shutdown hook is logged, not left to kill the watch silently."""
+    reader, writer = _pipe()
+    done = threading.Event()
+
+    def boom():
+        done.set()
+        raise RuntimeError("shutdown hook exploded")
+
+    try:
+        thread = parent_watch.watch_parent_exit(boom, stream=reader, env=_ENABLED)
+        writer.close()
+        assert done.wait(_WAIT)
+        assert thread is not None
+        thread.join(_WAIT)
+        assert not thread.is_alive()
+    finally:
+        reader.close()
+        writer.close()
+
+
+# ── End to end: a child process really does exit when its parent does ────────
+
+
+def test_child_process_exits_when_its_parent_closes_the_pipe():
+    """The whole mechanism, over a real pipe between two real processes.
+
+    This is the shape of what the Tauri shell does: spawn with stdin=PIPE, then
+    let the handle close. No signal is sent and no PID is polled — closing the
+    write end is the entire shutdown request.
+    """
+    program = (
+        "import sys, threading;"
+        "sys.path.insert(0, %r);"
+        "from convsim_core import parent_watch;"
+        "done = threading.Event();"
+        "t = parent_watch.watch_parent_exit(done.set, env={parent_watch.ENV_VAR: '1'});"
+        "assert t is not None;"
+        "done.wait(30);"
+        "sys.exit(0 if done.is_set() else 1)"
+    ) % os.path.dirname(os.path.dirname(os.path.abspath(parent_watch.__file__)))
+
+    proc = subprocess.Popen(
+        [sys.executable, "-c", program],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        with pytest.raises(subprocess.TimeoutExpired):
+            proc.wait(timeout=1.0)  # still running: the pipe is open
+        assert proc.stdin is not None
+        proc.stdin.close()
+        assert proc.wait(timeout=30) == 0, "child did not shut down after its stdin closed"
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
+        if proc.stderr is not None:
+            proc.stderr.close()
