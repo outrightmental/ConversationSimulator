@@ -267,9 +267,16 @@ class Deadline:
         return self._phase
 
     def enter(self, phase: str) -> None:
-        """Close out the current phase's duration, start a new one, check the budget."""
-        self._close_phase(phase)
+        """Check the budget, then close out this phase's duration and start ``phase``.
+
+        The check comes first, while ``self._phase`` is still the phase that has
+        been running: it is the one that consumed the budget, and so the one a
+        triager needs named.  Switching phases first would attribute the overrun
+        to a phase that has not executed a single instruction — reporting
+        "exhausted during phase 'debrief'" for a conversation that ran long.
+        """
         self.check()
+        self._close_phase(phase)
 
     def finish(self) -> Dict[str, float]:
         """Close the books without checking the budget.
@@ -1130,6 +1137,11 @@ def run_smoke(
         results["failure_class"] = failure_class
         results["exit_code"] = EXIT_CODES[failure_class]
         results["failed_phase"] = exc.phase or clock.phase
+        # Record the remedy in the artifact too: the failure table in
+        # docs/real-model-smoke.md sends triage to the JSON report for several
+        # classes, and a report that names a class without the advice attached
+        # makes the reader go and look the mapping up again.
+        results["remedy"] = REMEDIES[failure_class]
         if not results["failures"]:
             results["failures"] = [str(exc)]
         if crashed:

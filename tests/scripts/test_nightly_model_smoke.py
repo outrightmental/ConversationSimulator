@@ -485,11 +485,24 @@ class TestDeadline:
     def test_exhausted_budget_raises_timeout_naming_the_phase(self) -> None:
         clock = smoke.Deadline(0.0)
         with pytest.raises(smoke.SmokeFailure) as exc_info:
-            clock.enter("debrief")
+            clock.check()
         assert exc_info.value.failure_class == smoke.FailureClass.TIMEOUT
         assert exc_info.value.exit_code == 6
         # The phase recorded is the one that ran out of budget.
-        assert "debrief" in str(exc_info.value)
+        assert exc_info.value.phase == "startup"
+        assert "startup" in str(exc_info.value)
+
+    def test_an_overrun_found_at_a_boundary_blames_the_phase_that_ran_long(self) -> None:
+        # The remedy for a timeout is "look at phase_durations_s", so the phase
+        # it names has to be the one that consumed the budget. Blaming the phase
+        # about to start would point triage at code that never executed.
+        clock = smoke.Deadline(0.0)
+        clock._phase = "conversation"  # the phase that overran
+        with pytest.raises(smoke.SmokeFailure) as exc_info:
+            clock.enter("debrief")
+        assert exc_info.value.phase == "conversation"
+        assert "conversation" in str(exc_info.value)
+        assert "debrief" not in str(exc_info.value)
 
     def test_cap_clamps_a_request_timeout_to_the_remaining_budget(self) -> None:
         clock = smoke.Deadline(30.0)
@@ -796,6 +809,9 @@ class TestRunSmokeOrchestration:
         assert results["failure_class"] == smoke.FailureClass.PIPELINE
         assert results["failed_phase"] == "assertions"
         assert any("rubric dimension scores" in f for f in results["failures"])
+        # The artifact carries the advice, not just the class: the failure table
+        # in the docs sends triage here for a `pipeline` verdict.
+        assert results["remedy"] == smoke.REMEDIES[smoke.FailureClass.PIPELINE]
 
     def test_latency_regression_is_a_budget_failure_not_a_pipeline_one(
         self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
