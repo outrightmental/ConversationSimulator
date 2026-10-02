@@ -224,8 +224,18 @@ function run(cmd, cmdArgs) {
 }
 
 function haveFfmpeg() {
-  const dirs = (process.env.PATH ?? '').split(':')
-  return dirs.some((d) => d && existsSync(path.join(d, 'ffmpeg')))
+  // Windows splits PATH on `;`, may quote entries, and spells the binary
+  // `ffmpeg.exe`. Probing for a bare `ffmpeg` on a `:`-split PATH finds nothing
+  // there, so the preflight would abort a capture on a machine that has ffmpeg.
+  const exts =
+    process.platform === 'win32'
+      ? (process.env.PATHEXT ?? '.EXE;.CMD;.BAT').split(';').filter(Boolean)
+      : ['']
+  const dirs = (process.env.PATH ?? '').split(path.delimiter)
+  return dirs.some((d) => {
+    const dir = d.replace(/^"|"$/g, '')
+    return dir && exts.some((ext) => existsSync(path.join(dir, `ffmpeg${ext}`)))
+  })
 }
 
 // Outputs that were asked for but not written. Reported at the end and
