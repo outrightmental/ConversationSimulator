@@ -1057,6 +1057,11 @@ class TestRunSmokeOrchestration:
         assert exit_code != 0
         results = json.loads(report.read_text(encoding="utf-8"))
         assert "bug in the smoke harness" in results["failures"][0]
+        # It borrows `pipeline`'s exit code but not its cause, so the remedy
+        # must point at the traceback, not at the model's turn output.
+        assert results["remedy"] != smoke.REMEDIES[smoke.FailureClass.PIPELINE]
+        assert "harness bug" in results["remedy"]
+        assert results["remedy"] in smoke.render_step_summary(results)
 
     def test_a_scenario_that_ends_early_stops_the_scripted_turns(
         self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
@@ -1173,3 +1178,13 @@ class TestMainEntryPoint:
         ])
         assert exit_code == smoke.EXIT_CODES[smoke.FailureClass.DOWNLOAD]
         assert "`download`" in summary.read_text(encoding="utf-8")
+
+    def test_a_usage_error_is_not_mistaken_for_a_download_failure(self) -> None:
+        # argparse exits 2 on a bad command line, and 2 is the `download` code,
+        # whose remedy is "nothing about the app changed, re-run the job" —
+        # advice that loops forever on a job that cannot succeed. A malformed
+        # invocation is a harness problem: `pipeline`, like every other surprise.
+        with pytest.raises(SystemExit) as exc_info:
+            smoke.main(["--download-only", "--model-id", "x"])  # no url / sha256
+        assert exc_info.value.code == smoke.EXIT_CODES[smoke.FailureClass.PIPELINE]
+        assert exc_info.value.code != smoke.EXIT_CODES[smoke.FailureClass.DOWNLOAD]

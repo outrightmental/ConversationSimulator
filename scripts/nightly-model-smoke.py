@@ -97,7 +97,7 @@ import urllib.error
 import urllib.request
 from collections import deque
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List, NoReturn, Optional, Sequence
 
 REPO_ROOT = Path(__file__).parent.parent
 REGISTRY_PATH = REPO_ROOT / "model-registry" / "registry.yaml"
@@ -725,7 +725,7 @@ def render_step_summary(results: Dict[str, Any]) -> str:
             *[f"- {f}" for f in results.get("failures", [])],
             "",
             "### What to do",
-            REMEDIES.get(cls, "No remedy recorded."),
+            results.get("remedy") or REMEDIES.get(cls, "No remedy recorded."),
         ]
     measured = results.get("measured_ms") or {}
     if measured:
@@ -757,7 +757,15 @@ def _write_step_summary(results: Dict[str, Any]) -> None:
         print(f"[smoke] Could not write step summary: {exc}", file=sys.stderr)
 
 
-def _print_banner(failure_class: str, failures: Sequence[str]) -> None:
+def _print_banner(
+    failure_class: str, failures: Sequence[str], *, remedy: Optional[str] = None
+) -> None:
+    """Print the failure banner.  ``remedy`` overrides the class default.
+
+    Some failures borrow a class's exit code without matching its usual cause —
+    a harness bug reported as ``pipeline``, say — and printing "inspect the
+    per-turn used_fallback flags" under those sends triage the wrong way.
+    """
     bar = "━" * 72
     print(f"\n{bar}", file=sys.stderr)
     print(f"[smoke] FAILED — class: {failure_class.upper()} "
@@ -765,7 +773,7 @@ def _print_banner(failure_class: str, failures: Sequence[str]) -> None:
     print(bar, file=sys.stderr)
     for f in failures:
         print(f"  ✗ {f}", file=sys.stderr)
-    print(f"\n  → {REMEDIES[failure_class]}", file=sys.stderr)
+    print(f"\n  → {remedy or REMEDIES[failure_class]}", file=sys.stderr)
     print(f"{bar}\n", file=sys.stderr)
 
 
@@ -1147,8 +1155,16 @@ def run_smoke(
             "a bug in the smoke harness itself, not in the product "
             "(tests/scripts/test_nightly_model_smoke.py covers its logic)"
         ]
+        # Borrowing `pipeline`'s exit code, not its cause: the class remedy
+        # ("inspect the per-turn used_fallback flags") would point triage at
+        # model output when the traceback above is the thing to read.
+        results["remedy"] = (
+            "Read the traceback above and the phase it names. This is a harness "
+            "bug, not a product verdict — add a case to "
+            "tests/scripts/test_nightly_model_smoke.py once you have it."
+        )
         _dump_stderr_tails((("convsim-core", core_stderr_tail), ("llama-server", llama_stderr_tail)))
-        _print_banner(FailureClass.PIPELINE, results["failures"])
+        _print_banner(FailureClass.PIPELINE, results["failures"], remedy=results["remedy"])
 
     finally:
         for proc in (core_proc, llama_proc):
@@ -1183,8 +1199,30 @@ def run_smoke(
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
 
+class _ClassifiedArgumentParser(argparse.ArgumentParser):
+    """An ``ArgumentParser`` whose usage errors land in a known failure class.
+
+    argparse exits 2 on a bad command line, and EXIT_CODES reads 2 as
+    ``download`` — whose remedy is "nothing about the app changed, re-run the
+    job". That would send a triager round a loop re-running a job that cannot
+    succeed. A malformed invocation is a harness problem, which is exactly what
+    ``pipeline`` means for everything else the harness did not anticipate.
+    """
+
+    def error(self, message: str) -> NoReturn:
+        self.print_usage(sys.stderr)
+        _print_banner(
+            FailureClass.PIPELINE,
+            [f"Invalid command line: {message}"],
+            remedy="Fix the invocation. See the usage above, the examples in this "
+                   "file's docstring, or the smoke step in "
+                   ".github/workflows/model-smoke-nightly.yml.",
+        )
+        sys.exit(EXIT_CODES[FailureClass.PIPELINE])
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    parser = argparse.ArgumentParser(
+    parser = _ClassifiedArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("--print-registry-model", metavar="ROLE", default=None,
@@ -1265,13 +1303,19 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "likely a bug in the smoke harness or a malformed "
             "model-registry/registry.yaml, not a product failure"
         ]
-        _print_banner(FailureClass.PIPELINE, failures)
+        remedy = (
+            "Nothing was played, so this says nothing about the product. Re-run "
+            "the harness locally with the same arguments (docs/real-model-smoke.md) "
+            "and fix the registry file or the harness bug in the traceback above."
+        )
+        _print_banner(FailureClass.PIPELINE, failures, remedy=remedy)
         _write_step_summary({
             "verdict": "fail",
             "model_id": args.model_id,
             "failure_class": FailureClass.PIPELINE,
             "exit_code": EXIT_CODES[FailureClass.PIPELINE],
             "failures": failures,
+            "remedy": remedy,
         })
         return EXIT_CODES[FailureClass.PIPELINE]
 
