@@ -440,11 +440,18 @@ async function main() {
       const isHero = CAPTURE_HERO && i === PLAYER_TURNS.length - 1
       const before = await page.locator('[data-role="npc"]').count()
       await composer.waitFor({ state: 'visible', timeout: 120_000 })
+      // `waitForFunction(fn, arg, options)` — the `null` is the argument slot.
+      // Drop it and the options object lands there instead, leaving the wait on
+      // Playwright's 30 s default: the composer stays disabled until the NPC
+      // turn finishes streaming, and the release notes put a 14B model on CPU
+      // at 60–120 s per turn. This throw is outside `step`, so the short wait
+      // would abort the whole run and take the hero and debrief with it.
       await page.waitForFunction(
         () => {
           const el = document.querySelector('input[aria-label="Your response"]')
           return !!el && !el.disabled
         },
+        null,
         { timeout: 180_000 },
       )
 
