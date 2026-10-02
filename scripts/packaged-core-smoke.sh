@@ -339,8 +339,10 @@ while [[ "$(date +%s)" -lt "$SHUTDOWN_DEADLINE" ]]; do
 done
 
 if [[ "$STOPPED" -eq 1 ]]; then
-    # 2>/dev/null suppresses bash's own "Terminated: 15" job notice. The exit
-    # status is NOT evidence either way: uvicorn re-raises the captured signal
+    # The 2>/dev/null is only for `wait`'s own diagnostics; bash reports the
+    # killed job itself ("Terminated: 15"), asynchronously and on the script's
+    # stderr, so that notice shows up regardless — hence the heads-up above.
+    # The exit status is NOT evidence either way: uvicorn re-raises the signal
     # after a complete graceful shutdown, so a correctly-drained engine exits
     # 143 (128 + SIGTERM). The log is the evidence — see below.
     wait "$CORE_PID" 2>/dev/null
