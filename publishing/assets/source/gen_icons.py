@@ -317,10 +317,12 @@ def write_ico(frames: dict[int, Path], dest: Path, sizes: tuple[int, ...]) -> No
     offset = len(header) + 16 * len(sizes)
     entries, body = b"", b""
     for size, payload in zip(sizes, payloads):
-        # 256 is encoded as 0 in the single-byte width/height fields.
+        # 256 is encoded as 0 in the single-byte width/height fields; planes
+        # and bit depth are ignored for PNG payloads, and 0/32 is what the
+        # base app's working icon.ico carries.
         dim = 0 if size >= 256 else size
         entries += struct.pack(
-            "<BBBBHHII", dim, dim, 0, 0, 1, 32, len(payload), offset
+            "<BBBBHHII", dim, dim, 0, 0, 0, 32, len(payload), offset
         )
         body += payload
         offset += len(payload)
