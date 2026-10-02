@@ -141,7 +141,10 @@ class SessionCreateRequest(BaseModel):
     @classmethod
     def player_role_name_not_blank(cls, v: str) -> str:
         if not v.strip():
-            raise ValueError("player_role_name cannot be blank")
+            # Just the constraint: the 422 summary already prefixes the field
+            # path, so repeating the name here read "player_role_name:
+            # player_role_name cannot be blank" on the error card (issue #508).
+            raise ValueError("cannot be blank")
         return v
 
     @field_validator("tts_voice_id")
