@@ -86,7 +86,10 @@ const GIF_BUDGET_BYTES = 4 * 1024 * 1024
 const HERO_TAIL_TRIM = 0.6
 
 // Runtimes that answer from canned content. A capture taken on one of these
-// would be a mockup wearing the UI's clothes (issue #455 acceptance).
+// would be a mockup wearing the UI's clothes (issue #455 acceptance). Keep in
+// step with MODEL_FREE_RUNTIME_IDS in
+// services/convsim-core/convsim_core/runtime/active.py — a new model-free
+// runtime that is not listed here walks straight past this guard.
 const MODEL_FREE_RUNTIMES = new Set(['fake', 'scripted'])
 
 // The player's side of the conversation. Written to read like a real
@@ -215,6 +218,15 @@ async function shot(page, name, { until } = {}) {
     return document.documentElement.scrollHeight
   }, until ?? null)
   const height = Math.min(Math.max(content, 600), MAX_SHOT_HEIGHT)
+  // Past the clamp the screenshot is a crop, not the screen. Say so: a screen
+  // that grows past MAX_SHOT_HEIGHT would otherwise ship truncated with
+  // nothing in the log to catch it.
+  if (content > MAX_SHOT_HEIGHT) {
+    log(
+      `WARNING: ${name} is ${content} px tall, past the ${MAX_SHOT_HEIGHT} px cap — ` +
+        'capturing the top of it. Pass `until` to end the frame on a section boundary.',
+    )
+  }
   await page.setViewportSize({ width: VIEWPORT.width, height })
   await page.waitForTimeout(600)
   await page.screenshot({ path: file })
