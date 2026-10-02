@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
+import { existsSync, readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import {
   useSteamAchievements,
   SteamAchievement,
@@ -374,4 +376,80 @@ describe('SteamStat constants', () => {
     expect(SteamStat.TEXT_MODE_SESSIONS).toBe('STAT_TEXT_MODE_SESSIONS')
     expect(SteamStat.VOICE_MODE_SESSIONS).toBe('STAT_VOICE_MODE_SESSIONS')
   })
+})
+
+// ── Cross-source name registry ────────────────────────────────────────────────
+//
+// The same API names are spelled out in three places that Steam ties together:
+// this hook, the Tauri `steam.rs` constants, and the Steamworks configuration
+// table in docs/steam-achievements-stats-rich-presence.md (mirrored into the
+// docs site). Nothing but these tests stops the three from drifting — and a
+// name missing from the docs table is a name nobody creates in App Admin, so
+// the unlock silently no-ops for every player.
+
+/**
+ * Walks up from the working directory to the workspace root, so the paths below
+ * resolve whether vitest is started in `apps/web` or at the repo root.
+ */
+function findRepoRoot(): string {
+  let dir = process.cwd()
+  for (;;) {
+    if (existsSync(join(dir, 'pnpm-workspace.yaml'))) return dir
+    const parent = dirname(dir)
+    if (parent === dir) throw new Error('workspace root not found above ' + process.cwd())
+    dir = parent
+  }
+}
+
+const REPO_ROOT = findRepoRoot()
+
+function namesIn(relativePath: string, prefix: 'ACH_' | 'STAT_'): Set<string> {
+  const text = readFileSync(join(REPO_ROOT, relativePath), 'utf8')
+  return new Set(text.match(new RegExp(`\\b${prefix}[A-Z0-9_]+\\b`, 'g')) ?? [])
+}
+
+const RUST_SOURCE = 'apps/desktop/src-tauri/src/steam.rs'
+const CONFIG_DOC = 'docs/steam-achievements-stats-rich-presence.md'
+const DOCS_SITE_MIRROR = 'docs-site/src/content/docs/dev/steam-achievements.md'
+
+describe('API name registry', () => {
+  it('the Tauri constants cover exactly the front-end achievement names', () => {
+    const rust = namesIn(RUST_SOURCE, 'ACH_')
+    expect([...rust].sort()).toEqual(
+      [...Object.values(SteamAchievement)].sort(),
+    )
+  })
+
+  it('the Tauri constants cover exactly the front-end stat names', () => {
+    const rust = namesIn(RUST_SOURCE, 'STAT_')
+    expect([...rust].sort()).toEqual([...Object.values(SteamStat)].sort())
+  })
+
+  for (const doc of [CONFIG_DOC, DOCS_SITE_MIRROR]) {
+    it(`${doc} documents every achievement and stat`, () => {
+      const documentedAchievements = namesIn(doc, 'ACH_')
+      for (const name of Object.values(SteamAchievement)) {
+        expect(documentedAchievements, `${name} is undocumented`).toContain(name)
+      }
+      const documentedStats = namesIn(doc, 'STAT_')
+      for (const name of Object.values(SteamStat)) {
+        expect(documentedStats, `${name} is undocumented`).toContain(name)
+      }
+    })
+
+    it(`${doc} documents no achievement or stat that does not exist`, () => {
+      const achievements = new Set<string>(Object.values(SteamAchievement))
+      for (const name of namesIn(doc, 'ACH_')) {
+        expect(achievements, `${name} is documented but not defined`).toContain(
+          name,
+        )
+      }
+      const statNames = new Set<string>(Object.values(SteamStat))
+      for (const name of namesIn(doc, 'STAT_')) {
+        expect(statNames, `${name} is documented but not defined`).toContain(
+          name,
+        )
+      }
+    })
+  }
 })

@@ -154,7 +154,7 @@ Specifications for each asset are in
 ### 2.5 Achievement icons
 
 - [ ] Achievement icons (64 × 64 px and 32 × 32 px, one pair per achievement)
-      uploaded for all five achievements defined in
+      uploaded for all 43 achievements defined in
       [`docs/steam-achievements-stats-rich-presence.md`](../docs/steam-achievements-stats-rich-presence.md).
 
 ---
