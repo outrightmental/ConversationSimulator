@@ -181,6 +181,14 @@ than looping. A `shutting_down` flag separates a deliberate teardown from a
 crash, so quitting the app cannot race the supervisor into spawning a
 replacement engine that nothing will ever stop.
 
+The front-end unmounts for the duration because nothing is serving 7355 until
+the replacement binds, not because the session is lost: a session's flow state,
+state variables and transcript live in the engine's SQLite database, so the
+replacement reads them back and the remount resumes the conversation
+(`Conversation`'s start call gets 409 `INVALID_TRANSITION` and rehydrates from
+`/transcript`). The turn that was in flight is lost, and the state meters stay
+blank until the next reply restates `visible_state`.
+
 *Known limitation of the restart path:* a crash is by definition not a
 lifespan shutdown, so the engine that died never ran `supervisor.stop_all()`
 and its own sidecars survive it — llama-server keeps port 7356, the TTS

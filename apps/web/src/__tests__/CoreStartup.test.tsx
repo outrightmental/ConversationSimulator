@@ -159,8 +159,9 @@ describe('CoreStartupGuard — engine restart under a running window', () => {
       })
     })
 
-    // The engine lost its in-memory state, so the app must not stay mounted
-    // over a dead port — and the player needs to be told what is happening.
+    // Nothing is serving the port until the replacement binds, so the app must
+    // not stay mounted over it — and the player needs to be told what is
+    // happening.
     expect(screen.queryByText('App content loaded')).not.toBeInTheDocument()
     expect(screen.getByRole('status')).toHaveTextContent(/restarting/i)
   })

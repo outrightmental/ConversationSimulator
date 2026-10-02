@@ -8,8 +8,14 @@ interface CoreStatusPayload {
   // 'restarting' is emitted when the Rust shell caught the engine exiting under
   // a running window and is bringing a replacement up (bounded attempts, see
   // supervise_core in apps/desktop/src-tauri/src/lib.rs). It is a non-ready
-  // phase: the engine lost its in-memory session state, so the app is unmounted
-  // and remounted once the replacement reports ready.
+  // phase: nothing is serving 127.0.0.1:7355 until the replacement binds, so an
+  // app left mounted would fail every request with nothing on screen to say
+  // why. The app is unmounted and remounted when the replacement reports ready.
+  //
+  // The remount is also what resumes an in-progress conversation. A session's
+  // live state (flow state, state vars, transcript) is in the engine's SQLite
+  // database, not its memory, so the replacement reads it back: Conversation's
+  // start call gets 409 INVALID_TRANSITION and rehydrates from the transcript.
   phase: 'starting' | 'restarting' | 'ready' | 'error'
   message: string
   error: string | null

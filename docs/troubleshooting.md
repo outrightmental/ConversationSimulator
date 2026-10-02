@@ -41,12 +41,18 @@ The recovery card shows the exact path for your machine and includes an **Open l
 The engine started but stopped during a session. This can happen if the AI model crashes the engine or the engine runs out of memory.
 
 The app notices and restarts the engine itself, up to three times, showing
-*The conversation engine stopped unexpectedly. Restarting…* while it does. The
-app reloads when the replacement is ready — the conversation you were in is
-gone, because its live state lived in the engine that stopped. After three
-failed restarts the app stops trying and shows the recovery card instead.
+*The conversation engine stopped unexpectedly. Restarting…* while it does, then
+reloads when the replacement is ready.
 
-1. If a restart succeeded, your packs, models, and past sessions are all intact — start the conversation again.
+A conversation in progress is **not** lost. Every turn, the flow state and the
+state variables are written to the local database as they happen, so the
+replacement engine picks the session up exactly where it stopped and your
+transcript reappears. Two things do not survive: the single turn that was in
+flight when the engine stopped (send it again), and the state meters, which read
+blank until the next reply refills them. After three failed restarts the app
+stops trying and shows the recovery card instead.
+
+1. If a restart succeeded, carry on where you left off — your transcript, packs, models, and past sessions are all intact.
 2. If **Settings** reports that a required port is in use, the engine that crashed left its own AI-model process
    (`llama-server`, port 7356) behind. Replies usually keep working, because the app reaches that process over the
    port it is still serving — but the new engine does not own it, so anything that has to restart it (switching
