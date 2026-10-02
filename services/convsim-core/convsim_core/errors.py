@@ -75,6 +75,23 @@ def _clip(reason: str) -> str:
     return reason[: _MAX_REASON_CHARS - 1].rstrip() + "\u2026"
 
 
+# Pydantic wraps a message raised by one of our own validators: a ValueError
+# becomes "Value error, <message>" and a failed assert becomes
+# "Assertion failed, <message>". That prefix is Pydantic implementation detail,
+# and this sentence is what the error card shows a player and what "Copy
+# diagnostics" pastes into an issue, so it is stripped (issue #508). The field
+# path in front of it already says that a field was rejected.
+_PYDANTIC_MSG_PREFIXES = ("Value error, ", "Assertion failed, ")
+
+
+def _reason(msg: str) -> str:
+    """One field's reason with Pydantic's wrapper prefix removed."""
+    for prefix in _PYDANTIC_MSG_PREFIXES:
+        if msg.startswith(prefix):
+            return msg[len(prefix) :]
+    return msg
+
+
 def _field_path(loc) -> str:
     """Dotted field path for one Pydantic error location.
 
@@ -102,14 +119,14 @@ def _validation_summary(errors: list) -> str:
     This line is surfaced in the UI and copied into bug reports, so — like the
     details list, which drops "input" for the same reason — it must carry no
     caller content. Pydantic's built-in ``msg`` is schema-derived ("Input
-    should be a valid string"). A ``value_error`` ``msg``, though, is "Value
-    error, " plus whatever one of our own ``@field_validator``s raised, so
-    those sentences must not interpolate the value they rejected. Length is
-    clipped here as a backstop, but it only bounds a leak; it does not prevent
-    one.
+    should be a valid string"). A ``value_error`` ``msg``, though, is whatever
+    one of our own ``@field_validator``s raised (behind the prefix ``_reason``
+    strips), so those sentences must not interpolate the value they rejected.
+    Length is clipped here as a backstop, but it only bounds a leak; it does
+    not prevent one.
     """
     named = [
-        f"{_field_path(e.get('loc'))}: {_clip(str(e.get('msg', 'invalid value')))}"
+        f"{_field_path(e.get('loc'))}: {_clip(_reason(str(e.get('msg', 'invalid value'))))}"
         for e in errors
     ]
     if not named:

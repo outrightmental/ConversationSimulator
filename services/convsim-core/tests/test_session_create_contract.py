@@ -131,6 +131,22 @@ def test_blank_player_name_names_the_field(api):
     assert "player_role_name" in _error(res)["message"]
 
 
+def test_a_rejected_field_is_named_once_and_without_pydantic_jargon(api):
+    """What the error card actually shows has to read like a sentence.
+
+    The summary prefixes the field path itself, and Pydantic wraps anything one
+    of our validators raises in "Value error, " — so a validator that also
+    names the field produced "player_role_name: Value error, player_role_name
+    cannot be blank" (issue #508).
+    """
+    res = api.post("/api/sessions", json={**_SETUP, "player_role_name": "   "})
+    assert res.status_code == 422
+    message = _error(res)["message"]
+    assert message == "Request validation failed \u2014 player_role_name: cannot be blank"
+    assert message.count("player_role_name") == 1
+    assert "Value error" not in message
+
+
 def test_validation_error_does_not_echo_the_rejected_value(api):
     """The 422 body is copied to the clipboard and pasted into public reports.
 

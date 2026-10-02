@@ -204,3 +204,45 @@ def test_a_list_item_keeps_its_index():
     )
     message = _body(_invoke(request_validation_error_handler(_make_request("POST", "/api/sessions"), exc)))["error"]["message"]
     assert "turns.0.content" in message
+
+
+def test_validation_message_strips_pydantic_wrapper_prefix():
+    """Our own validators' messages reach the card via Pydantic's "Value error, " wrapper.
+
+    That prefix is Pydantic implementation detail. The sentence it prefixes is
+    what a player reads on the error card and what "Copy diagnostics" pastes
+    into an issue, so it must not carry framework jargon (issue #508).
+    """
+    exc = _validation_exc(
+        [
+            {
+                "type": "value_error",
+                "loc": ("body", "tts_voice_id"),
+                "msg": "Value error, not an approved built-in voice id (see GET /api/tts/voices)",
+                "input": "af_nope",
+            }
+        ]
+    )
+    message = _body(_invoke(request_validation_error_handler(_make_request("POST", "/api/sessions"), exc)))["error"]["message"]
+    assert message == (
+        "Request validation failed — tts_voice_id: not an approved built-in voice id "
+        "(see GET /api/tts/voices)"
+    )
+    assert "Value error" not in message
+
+
+def test_validation_message_strips_assertion_wrapper_prefix():
+    exc = _validation_exc(
+        [{"type": "assertion_error", "loc": ("body", "seed"), "msg": "Assertion failed, seed must be positive", "input": -1}]
+    )
+    message = _body(_invoke(request_validation_error_handler(_make_request("POST", "/api/sessions"), exc)))["error"]["message"]
+    assert message == "Request validation failed — seed: seed must be positive"
+
+
+def test_validation_details_keep_pydantic_msg_verbatim():
+    """Only the human sentence is tidied; `details` stays the machine-readable payload."""
+    exc = _validation_exc(
+        [{"type": "value_error", "loc": ("body", "tts_voice_id"), "msg": "Value error, nope", "input": "x"}]
+    )
+    body = _body(_invoke(request_validation_error_handler(_make_request("POST", "/api/sessions"), exc)))
+    assert body["error"]["details"][0]["msg"] == "Value error, nope"

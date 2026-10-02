@@ -183,6 +183,20 @@ function clip(reason: string): string {
     : reason.slice(0, MAX_REASON_CHARS - 1).trimEnd() + '\u2026'
 }
 
+// Pydantic wraps a message raised by one of the engine's own validators:
+// "Value error, <message>" for a ValueError, "Assertion failed, <message>" for
+// a failed assert. That prefix is Pydantic implementation detail and this
+// sentence is shown on an error card and pasted into an issue, so strip it.
+// Mirrors _reason() in convsim_core/errors.py (issue #508).
+const PYDANTIC_MSG_PREFIXES = ['Value error, ', 'Assertion failed, ']
+
+function reasonOf(msg: string): string {
+  for (const prefix of PYDANTIC_MSG_PREFIXES) {
+    if (msg.startsWith(prefix)) return msg.slice(prefix.length)
+  }
+  return msg
+}
+
 /** One `{ path, reason }` per readable Pydantic error, in body order. */
 function fieldFailures(details: unknown): { path: string; reason: string }[] {
   if (!Array.isArray(details)) return []
@@ -190,8 +204,12 @@ function fieldFailures(details: unknown): { path: string; reason: string }[] {
   for (const d of details) {
     if (d === null || typeof d !== 'object') continue
     const entry = d as { loc?: unknown; msg?: unknown }
-    const reason = str(entry.msg)
-    if (!reason) continue
+    const raw = str(entry.msg)
+    if (!raw) continue
+    // Stripped here rather than at the summary, so the `alreadyNamed` check
+    // below compares against the same wording the summary would produce. The
+    // `|| raw` guards a msg that is nothing but the prefix.
+    const reason = reasonOf(raw) || raw
     const all = (Array.isArray(entry.loc) ? entry.loc : []).map((p) => String(p))
     const parts = all[0] === 'body' ? all.slice(1) : all
     // A body-wide failure (missing body, malformed JSON) locates an offset,

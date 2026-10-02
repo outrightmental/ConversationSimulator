@@ -250,6 +250,54 @@ describe('api.createSession — ApiResult return type', () => {
     }
   });
 
+  it("strips Pydantic's wrapper prefix from a validator's own message", async () => {
+    // An engine bundled before issue #508 sends the generic sentence plus the
+    // details, so the client words the summary itself — and must not put
+    // framework jargon ("Value error, ") on the card or in the copied report.
+    mockFetch(422, {
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Request validation failed',
+        details: [
+          {
+            type: 'value_error',
+            loc: ['body', 'tts_voice_id'],
+            msg: 'Value error, not an approved built-in voice id (see GET /api/tts/voices)',
+          },
+          {
+            type: 'assertion_error',
+            loc: ['body', 'seed'],
+            msg: 'Assertion failed, seed must be positive',
+          },
+        ],
+      },
+    });
+    const result = await api.createSession(BASE_SESSION);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toContain(
+        'tts_voice_id: not an approved built-in voice id (see GET /api/tts/voices)',
+      );
+      expect(result.error.message).toContain('seed: seed must be positive');
+      expect(result.error.message).not.toContain('Value error');
+      expect(result.error.message).not.toContain('Assertion failed');
+    }
+  });
+
+  it('strips the prefix from a FastAPI-shaped 422 detail list too', async () => {
+    mockFetch(422, {
+      detail: [
+        { type: 'value_error', loc: ['body', 'player_role_name'], msg: 'Value error, cannot be blank' },
+      ],
+    });
+    const result = await api.createSession(BASE_SESSION);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toContain('player_role_name: cannot be blank');
+      expect(result.error.message).not.toContain('Value error');
+    }
+  });
+
   it('does not repeat a field the engine named but worded differently', async () => {
     // The engine clips a long reason too, so the two sentences need not match
     // character for character; naming the field once is what matters.
