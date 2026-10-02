@@ -118,11 +118,23 @@ def _npc_from_dict(raw: Dict[str, Any]) -> NpcData:
     )
 
 
-def _resolve_optional(base: Path, ref: Any) -> Optional[Path]:
-    """Resolve a pack-relative ``{ref: ...}`` block, refusing paths outside the pack."""
+def _resolve_optional(base: Path, ref: Any, *, pack_dir: Path) -> Optional[Path]:
+    """Resolve a pack-relative ``{ref: ...}`` block, refusing paths outside the pack.
+
+    The containment check is not theoretical: a pack can be sideloaded or edited
+    in place after import, so the loader never trusts a ref to stay inside the
+    directory it came from.
+    """
     if not isinstance(ref, dict) or not ref.get("ref"):
         return None
     candidate = (base / str(ref["ref"])).resolve()
+    try:
+        candidate.relative_to(pack_dir.resolve())
+    except ValueError:
+        logger.warning(
+            "Refusing pack ref %r: it resolves outside the pack directory", ref["ref"]
+        )
+        return None
     return candidate if candidate.is_file() else None
 
 
@@ -157,7 +169,7 @@ def load_flyting_scenario(
     scenario_dir = scenario_file.parent
 
     npc_raw: Dict[str, Any] = {}
-    npc_path = _resolve_optional(scenario_dir, raw.get("npc"))
+    npc_path = _resolve_optional(scenario_dir, raw.get("npc"), pack_dir=pack_dir)
     if npc_path is not None:
         npc_raw = _read_yaml(npc_path)
     elif isinstance(raw.get("npc"), dict):
@@ -166,13 +178,13 @@ def load_flyting_scenario(
     # The judge rubric may be a dedicated rubric or the scenario's main one.
     rubric = JudgeRubric()
     rubric_ref = {"ref": flyting.judge_rubric_ref} if flyting.judge_rubric_ref else raw.get("rubric")
-    rubric_path = _resolve_optional(scenario_dir, rubric_ref)
+    rubric_path = _resolve_optional(scenario_dir, rubric_ref, pack_dir=pack_dir)
     if rubric_path is not None:
         rubric = parse_judge_rubric(_read_yaml(rubric_path))
 
     audience: Optional[AudienceConfig] = None
     setting_brief = ""
-    scene_path = _resolve_optional(scenario_dir, raw.get("scene"))
+    scene_path = _resolve_optional(scenario_dir, raw.get("scene"), pack_dir=pack_dir)
     if scene_path is not None:
         scene_raw = _read_yaml(scene_path)
         audience = AudienceConfig.from_yaml(scene_raw.get("audience"))
@@ -228,22 +240,32 @@ def load_flyting_scenario(
 # Installed-pack resolution
 # ---------------------------------------------------------------------------
 
-_cache: Dict[str, Optional[FlytingScenario]] = {}
+# scenario_id → (cache key, resolved scenario). The key is the scenario file's
+# identity and modification time, so re-importing a pack or editing a local one
+# in the Workbench invalidates the entry by itself. Caching on the id alone
+# would keep serving last week's YAML until the app restarted.
+_cache: Dict[str, Tuple[Any, Optional[FlytingScenario]]] = {}
 _cache_lock = threading.Lock()
+
+
+def _cache_key(pack_dir: Path, rel_path: str) -> Any:
+    """Identity of the scenario file a cached entry was built from."""
+    try:
+        stat = (pack_dir / rel_path).resolve().stat()
+        return (str(pack_dir), rel_path, stat.st_mtime_ns, stat.st_size)
+    except OSError:
+        return (str(pack_dir), rel_path, None, None)
 
 
 def resolve_flyting_scenario(scenario_id: str, conn: Any) -> Optional[FlytingScenario]:
     """Resolve a flyting scenario by id from the installed pack index.
 
-    Results are cached for the process lifetime — including the negative result
-    for a conversation-mode scenario, so the common case of "this id is not
-    flyting" costs one query per process rather than one per request.
+    Results are cached — including the negative result for a conversation-mode
+    scenario, so the common case of "this id is not flyting" costs one index
+    query rather than a YAML parse per request. The cache entry is keyed by the
+    scenario file's modification time, so an edited or re-imported pack is picked
+    up on the next request instead of after a restart.
     """
-    with _cache_lock:
-        if scenario_id in _cache:
-            return _cache[scenario_id]
-
-    resolved: Optional[FlytingScenario] = None
     try:
         row = conn.execute(
             "SELECT s.rel_path, p.source_path, p.slug AS pack_slug "
@@ -254,22 +276,38 @@ def resolve_flyting_scenario(scenario_id: str, conn: Any) -> Optional[FlytingSce
     except Exception:  # noqa: BLE001 — a missing index must not break the route
         row = None
 
-    if row is not None and row["source_path"] and row["rel_path"]:
-        try:
-            resolved = load_flyting_scenario(
-                Path(row["source_path"]), row["rel_path"], pack_id=row["pack_slug"],
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Failed to load flyting scenario %s: %s", scenario_id, exc)
-            resolved = None
+    if row is None or not row["source_path"] or not row["rel_path"]:
+        with _cache_lock:
+            _cache.pop(scenario_id, None)
+        return None
+
+    pack_dir = Path(row["source_path"])
+    key = _cache_key(pack_dir, row["rel_path"])
+    with _cache_lock:
+        cached = _cache.get(scenario_id)
+        if cached is not None and cached[0] == key:
+            return cached[1]
+
+    resolved: Optional[FlytingScenario] = None
+    try:
+        resolved = load_flyting_scenario(
+            pack_dir, row["rel_path"], pack_id=row["pack_slug"],
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to load flyting scenario %s: %s", scenario_id, exc)
+        resolved = None
 
     with _cache_lock:
-        _cache[scenario_id] = resolved
+        _cache[scenario_id] = (key, resolved)
     return resolved
 
 
 def clear_scenario_cache() -> None:
-    """Forget resolved scenarios — used by tests and after a pack is re-imported."""
+    """Forget resolved scenarios.
+
+    Not normally needed — entries invalidate themselves when the scenario file
+    changes — but tests reuse one process across several pack directories.
+    """
     with _cache_lock:
         _cache.clear()
 
