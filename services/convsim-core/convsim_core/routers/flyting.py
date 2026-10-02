@@ -125,6 +125,14 @@ class VolleyResponse(BaseModel):
     exchange: Optional[Dict[str, Any]] = None
     run: Dict[str, Any]
     run_outcome: Optional[str] = None
+    # The same derived counters the GET route reports. They ride on the volley
+    # response so a client can show "volleys left" and "whiffs left" without
+    # re-deriving the format rules — which would mean a second copy of
+    # SET_FORMAT_VOLLEYS and ENDLESS_MAX_WHIFFS living in the UI, free to drift
+    # from the engine that enforces them.
+    volleys_remaining: Optional[int] = None
+    seconds_remaining: Optional[float] = None
+    whiffs_remaining: Optional[int] = None
 
 
 class RunSummaryResponse(BaseModel):
@@ -465,6 +473,9 @@ async def submit_volley(
         exchange=payload["exchange"],
         run=payload["run"],
         run_outcome=result.run_outcome,
+        volleys_remaining=result.state.volleys_remaining,
+        seconds_remaining=result.state.seconds_remaining,
+        whiffs_remaining=result.state.whiffs_remaining,
     )
 
 

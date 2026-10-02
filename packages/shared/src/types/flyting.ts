@@ -268,6 +268,10 @@ export interface FlytingVolleyResponse {
   exchange: FlytingExchange | null;
   run: FlytingRunState;
   run_outcome: string | null;
+  /** Null where the format is not bounded that way (a bout has no volley cap). */
+  volleys_remaining: number | null;
+  seconds_remaining: number | null;
+  whiffs_remaining: number | null;
 }
 
 export interface FlytingRunDetail {
