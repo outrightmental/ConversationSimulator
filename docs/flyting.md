@@ -157,6 +157,11 @@ scorecard, so a player is never confused about why two runs scored differently.
 been used has its topicality bonus scaled by `theme_decay^(n−1)` (0.75 by
 default). The third hygiene joke is visibly near-worthless — variety is the meta.
 
+Only a volley's *primary* theme counts as a use of that well — the judge tags
+three or four themes for one line, and counting all of them would decay a well
+the player never actually returned to. The debrief's redundancy report counts
+the same way, so the percentage it prints is the factor the engine applied.
+
 ### Stage 3 — The judge
 
 Exactly one model call per volley: temperature 0, output constrained to
@@ -190,6 +195,13 @@ drops any claim whose trait is unknown or whose evidence is not actually present
 in the volley, records why in `dropped_hooks`, and keeps at most four. That
 verification is what makes "the insult was topical" countable rather than a
 matter of the model's mood.
+
+Each hook must also quote *different* words: a claim whose evidence overlaps one
+already accepted for this volley is dropped as `overlapping_evidence`. Local
+judges do reach for the whole volley as evidence for every trait they see in it,
+and without that rule one figure collects the whole topicality bonus two or
+three times over — exactly the padding the hook cap and the decreasing bonuses
+exist to prevent. Two hooks means two parts of the line did two different jobs.
 
 The system prompt holds only what is constant for a whole run — rules, register,
 target, anchors, output schema — so a runtime with prompt caching reuses all of
@@ -307,7 +319,7 @@ receive. `scripts/flyting-calibration.py` runs them:
 
 ```sh
 python scripts/flyting-calibration.py                   # every official pack
-python scripts/flyting-calibration.py --judge llamacpp  # include judged tiers
+python scripts/flyting-calibration.py --judge llama_cpp # include judged tiers
 ```
 
 The **deterministic** expectations — `gate`, `foul`, `flags`, the plagiarism cap

@@ -210,6 +210,22 @@ def next_heat(current: float, score: int, *, whiffed: bool) -> float:
 # ---------------------------------------------------------------------------
 
 
+def _count_primary_theme(state: FlytingRunState, score: VolleyScore) -> None:
+    """Count the volley's primary theme as one use of that well.
+
+    Only the primary theme counts, because that is the only theme decay reads
+    (``novelty.theme_decay_factor``). A judge routinely tags three or four
+    themes for one line, and counting all of them would have the third volley of
+    a run decayed for a well the player never actually returned to — the rule is
+    meant to punish going back to the same well, not acknowledging that the well
+    exists.
+    """
+    if score.judgment is None or not score.judgment.themes:
+        return
+    primary = score.judgment.themes[0]
+    state.theme_uses[primary] = state.theme_uses.get(primary, 0) + 1
+
+
 def record_player_volley(state: FlytingRunState, score: VolleyScore) -> None:
     """Fold a scored player volley into the run state.
 
@@ -237,8 +253,7 @@ def record_player_volley(state: FlytingRunState, score: VolleyScore) -> None:
         state.heat = next_heat(state.heat, score.score, whiffed=whiffed)
 
     if score.judgment is not None:
-        for theme in score.judgment.themes:
-            state.theme_uses[theme] = state.theme_uses.get(theme, 0) + 1
+        _count_primary_theme(state, score)
         state.recent_devices.append(list(score.judgment.devices))
         del state.recent_devices[:-6]
         for hook in score.judgment.hooks:
@@ -256,8 +271,7 @@ def record_npc_volley(state: FlytingRunState, score: VolleyScore) -> None:
     state.npc_volleys += 1
     state.npc_total += score.score
     if score.judgment is not None:
-        for theme in score.judgment.themes:
-            state.theme_uses[theme] = state.theme_uses.get(theme, 0) + 1
+        _count_primary_theme(state, score)
 
 
 # ---------------------------------------------------------------------------
@@ -424,8 +438,11 @@ def summarize_run(
     rarest: List[str] = []
     for volley in player_volleys:
         if volley.judgment is not None:
-            for theme in volley.judgment.themes:
-                theme_counts[theme] = theme_counts.get(theme, 0) + 1
+            # Primary themes only — the count the decay is computed from, so the
+            # "decayed to 42%" the report prints is the factor that was applied.
+            if volley.judgment.themes:
+                primary = volley.judgment.themes[0]
+                theme_counts[primary] = theme_counts.get(primary, 0) + 1
             for device in volley.judgment.devices:
                 devices[device] = devices.get(device, 0) + 1
         rarest.extend(volley.craft.rarest_words)

@@ -101,11 +101,24 @@ class TestRecordingVolleys:
         state = FlytingRunState()
         record_player_volley(state, volley(100, themes=("hygiene",)))
         record_player_volley(state, volley(100, themes=("hygiene", "vanity")))
-        assert state.theme_uses == {"hygiene": 2, "vanity": 1}
+        assert state.theme_uses == {"hygiene": 2}
+
+    def test_only_the_primary_theme_counts_as_a_use(self):
+        """Decay reads the primary theme, so only the primary theme is counted.
+
+        A judge tags three or four themes for one line. Counting all of them
+        would decay a well the player never actually returned to, which is the
+        opposite of what the rule is for.
+        """
+        state = FlytingRunState()
+        record_player_volley(state, volley(100, themes=("lineage", "vanity", "hygiene")))
+        assert state.theme_uses == {"lineage": 1}
+        record_player_volley(state, volley(100, themes=("vanity", "lineage")))
+        assert state.theme_uses == {"lineage": 1, "vanity": 1}
 
     def test_the_opponents_themes_count_too(self):
         state = FlytingRunState()
-        record_npc_volley(state, volley(100, themes=("lineage",)))
+        record_npc_volley(state, volley(100, themes=("lineage", "vanity")))
         assert state.theme_uses == {"lineage": 1}
         assert state.npc_total == 100
 
@@ -343,6 +356,20 @@ class TestRunSummary:
         assert hygiene["uses"] == 4
         assert hygiene["remaining_value"] == pytest.approx(0.75 ** 4, abs=1e-3)
         assert any("hygiene" in note for note in summary.coaching_notes)
+
+    def test_the_report_counts_the_same_themes_the_decay_does(self):
+        """A theme the player only ever brushed is not a well they returned to.
+
+        The report prints the decay factor, so it has to count uses the way
+        ``theme_decay_factor`` reads them: primary theme only.
+        """
+        state = FlytingRunState()
+        volleys = [volley(100, themes=("hygiene", "vanity")) for _ in range(3)]
+        for v in volleys:
+            record_player_volley(state, v)
+        summary = summarize_run(state, volleys)
+        assert [(t["theme"], t["uses"]) for t in summary.theme_report] == [("hygiene", 3)]
+        assert state.theme_uses == {"hygiene": 3}
 
     def test_momentum_is_only_reported_for_a_bout(self):
         bout = FlytingRunState(play_format=PlayFormat.BOUT, momentum=72)
