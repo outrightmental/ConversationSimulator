@@ -32,7 +32,6 @@ export interface UseVoiceSetupReturn {
   startInstall: (assetIds: string[]) => Promise<void>
   cancelInstall: () => Promise<void>
   startEngine: (engineId: string) => Promise<void>
-  dismissEngineMessage: () => void
 }
 
 export function useVoiceSetup(): UseVoiceSetupReturn {
@@ -140,8 +139,6 @@ export function useVoiceSetup(): UseVoiceSetupReturn {
     setBusy(false)
   }, [refresh])
 
-  const dismissEngineMessage = useCallback(() => setEngineMessage(null), [])
-
   return {
     plan,
     planError,
@@ -154,6 +151,5 @@ export function useVoiceSetup(): UseVoiceSetupReturn {
     startInstall,
     cancelInstall,
     startEngine,
-    dismissEngineMessage,
   }
 }

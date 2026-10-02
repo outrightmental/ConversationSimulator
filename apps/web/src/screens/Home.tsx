@@ -371,7 +371,7 @@ export default function Home() {
           {!isDemo && (
           <li>
             {t('home.status.stt')}:{' '}
-            <Link to={sttReady ? '/settings' : '/voice-setup'} style={{ textDecoration: 'none' }}>
+            <Link to={loading || sttReady ? '/settings' : '/voice-setup'} style={{ textDecoration: 'none' }}>
               <StatusBadge status={sttBadgeProps.status}>{sttBadgeProps.label}</StatusBadge>
             </Link>
           </li>
@@ -379,7 +379,7 @@ export default function Home() {
           {!isDemo && (
           <li>
             {t('home.status.tts')}:{' '}
-            <Link to={ttsReady ? '/settings' : '/voice-setup'} style={{ textDecoration: 'none' }}>
+            <Link to={loading || ttsReady ? '/settings' : '/voice-setup'} style={{ textDecoration: 'none' }}>
               <StatusBadge status={ttsBadgeProps.status}>{ttsBadgeProps.label}</StatusBadge>
             </Link>
           </li>

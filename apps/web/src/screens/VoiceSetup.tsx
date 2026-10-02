@@ -312,6 +312,20 @@ export default function VoiceSetup() {
 
   const pendingBytes = pendingAssets.reduce((sum, a) => sum + a.size_bytes, 0)
 
+  // Already on disk but not the file the engine reads: the player installed
+  // several models and is switching between them. Posting the install re-points
+  // the worker without fetching anything, so the same button does both jobs.
+  const switchTo = useMemo(() => {
+    if (sttChoice == null) return null
+    const chosen = sttAssets.find((a) => a.id === sttChoice)
+    return chosen != null && chosen.installed && !chosen.selected ? chosen : null
+  }, [sttAssets, sttChoice])
+
+  const requestedAssetIds = useMemo(() => {
+    const ids = pendingAssets.map((a) => a.id)
+    return switchTo != null && !ids.includes(switchTo.id) ? [switchTo.id, ...ids] : ids
+  }, [pendingAssets, switchTo])
+
   const capabilities = plan?.capabilities ?? []
   const readyCount = capabilities.filter((c) => c.ready).length
   const essentialReady = capabilities
@@ -453,8 +467,8 @@ export default function VoiceSetup() {
             {job.error_message ?? 'The download did not finish.'}
           </p>
           <PrimaryButton
-            onClick={() => void startInstall(pendingAssets.map((a) => a.id))}
-            disabled={busy || pendingAssets.length === 0}
+            onClick={() => void startInstall(requestedAssetIds)}
+            disabled={busy || requestedAssetIds.length === 0}
             testId="voice-install-retry"
           >
             Try again
@@ -498,6 +512,38 @@ export default function VoiceSetup() {
                 {assets.map((asset) => (
                   <AssetRow key={asset.id} asset={asset} />
                 ))}
+                {capability.id === 'stt' && sttAssets.length > 1 && (
+                  <li style={{ padding: '0.6rem 0 0', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                    <label
+                      htmlFor="stt-model-choice"
+                      style={{ display: 'block', fontSize: '0.82rem', fontWeight: 500, marginBottom: '0.3rem' }}
+                    >
+                      Speech-to-text model
+                    </label>
+                    <select
+                      id="stt-model-choice"
+                      value={sttChoice ?? ''}
+                      onChange={(e) => setSttChoice(e.target.value)}
+                      style={{
+                        width: '100%',
+                        padding: '0.4rem 0.6rem',
+                        background: 'rgba(0,0,0,0.3)',
+                        border: '1px solid rgba(255,255,255,0.15)',
+                        borderRadius: '4px',
+                        color: '#d4d4d8',
+                        fontSize: '0.85rem',
+                      }}
+                    >
+                      {sttAssets.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name} — {formatDownloadSize(a.size_bytes)}
+                          {a.language_note ? ` · ${a.language_note}` : ''}
+                          {a.installed ? ' · already installed' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </li>
+                )}
                 {capability.id === 'vad' && !plan.onnxruntime_installed && (
                   <li
                     data-testid="vad-onnxruntime-row"
@@ -544,50 +590,19 @@ export default function VoiceSetup() {
         </Card>
       )}
 
-      {pendingAssets.length > 0 && !installing && (
+      {(pendingAssets.length > 0 || switchTo != null) && !installing && (
         <section aria-label="Download the voice models">
           <Card accent>
             <h2 style={{ margin: '0 0 0.3rem', fontSize: '1rem', fontWeight: 600 }}>
-              Download the voice models
+              {pendingAssets.length > 0 ? 'Download the voice models' : 'Switch speech-to-text model'}
             </h2>
             <p style={{ margin: '0 0 0.75rem', fontSize: '0.85rem', color: '#c7d2fe', lineHeight: 1.55 }}>
-              These are fetched from their original publishers and checked against a known
-              SHA-256 before anything is installed. Nothing downloads until you press the button.
+              {pendingAssets.length > 0
+                ? 'These are fetched from their original publishers and checked against a known SHA-256 before anything is installed. Nothing downloads until you press the button.'
+                : 'This model is already on disk. Switching points the speech engine at it — nothing is downloaded.'}
             </p>
 
-            {sttAssets.length > 1 && (
-              <div style={{ marginBottom: '0.85rem' }}>
-                <label
-                  htmlFor="stt-model-choice"
-                  style={{ display: 'block', fontSize: '0.82rem', fontWeight: 500, marginBottom: '0.3rem' }}
-                >
-                  Speech-to-text model
-                </label>
-                <select
-                  id="stt-model-choice"
-                  value={sttChoice ?? ''}
-                  onChange={(e) => setSttChoice(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '0.4rem 0.6rem',
-                    background: 'rgba(0,0,0,0.3)',
-                    border: '1px solid rgba(255,255,255,0.15)',
-                    borderRadius: '4px',
-                    color: '#d4d4d8',
-                    fontSize: '0.85rem',
-                  }}
-                >
-                  {sttAssets.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name} — {formatDownloadSize(a.size_bytes)}
-                      {a.language_note ? ` · ${a.language_note}` : ''}
-                      {a.installed ? ' · already installed' : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
+            {pendingAssets.length > 0 && (
             <table data-testid="voice-disclosure" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
               <caption style={{ captionSide: 'top', textAlign: 'left', color: '#a1a1aa', paddingBottom: '0.4rem' }}>
                 What will be downloaded
@@ -617,18 +632,25 @@ export default function VoiceSetup() {
                 ))}
               </tbody>
             </table>
+            )}
 
             <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center', marginTop: '0.85rem', flexWrap: 'wrap' }}>
               <PrimaryButton
-                onClick={() => void startInstall(pendingAssets.map((a) => a.id))}
+                onClick={() => void startInstall(requestedAssetIds)}
                 disabled={busy}
                 testId="voice-install-start"
               >
-                {busy ? 'Starting…' : `Download ${formatDownloadSize(pendingBytes)}`}
+                {busy
+                  ? 'Starting…'
+                  : pendingAssets.length > 0
+                  ? `Download ${formatDownloadSize(pendingBytes)}`
+                  : `Use ${switchTo?.name}`}
               </PrimaryButton>
-              <span style={{ fontSize: '0.78rem', color: '#a1a1aa' }}>
-                You can cancel at any time; partial files are removed.
-              </span>
+              {pendingAssets.length > 0 && (
+                <span style={{ fontSize: '0.78rem', color: '#a1a1aa' }}>
+                  You can cancel at any time; partial files are removed.
+                </span>
+              )}
             </div>
           </Card>
         </section>

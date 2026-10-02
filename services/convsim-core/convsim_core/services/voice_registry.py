@@ -288,7 +288,23 @@ def install_path(asset: VoiceAsset) -> Path:
     model, so an alternative filename would simply never be read). STT keeps the
     upstream filename inside the worker's model directory, because the player
     may install more than one and switch between them.
+
+    Raises ValueError for a capability with no file-backed engine, so adding a
+    downloadable TTS asset fails loudly here rather than quietly dropping the
+    file into the speech-to-text directory.
     """
     if asset.capability == "vad":
         return vad_model_path()
-    return stt_model_dir() / asset.filename
+    if asset.capability == "stt":
+        return stt_model_dir() / asset.filename
+    raise ValueError(
+        f"No install path is defined for {asset.capability!r} assets "
+        f"(asset {asset.id!r}); teach install_path() where its engine reads from."
+    )
+
+
+def configured_stt_model_path() -> Path:
+    """The model file the STT worker reads when nothing has been chosen."""
+    from convsim_core.stt.whisper_cpp import WhisperCppConfig
+
+    return Path(WhisperCppConfig().model_path).expanduser()

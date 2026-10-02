@@ -263,9 +263,38 @@ describe('VoiceSetup — download disclosure', () => {
     )
   })
 
-  it('offers nothing to download once every asset is installed', async () => {
+  it('offers to switch to a model that is installed but not in use', async () => {
     const plan = makePlan()
-    plan.assets = plan.assets.map((a) => ({ ...a, installed: true }))
+    plan.assets = plan.assets.map((a) =>
+      a.id === 'whisper-base-en' ? { ...a, installed: true, selected: true } : { ...a, installed: true },
+    )
+    mockApi.getVoiceSetupPlan.mockResolvedValue({ ok: true, data: plan })
+
+    renderScreen()
+    await screen.findByTestId('voice-setup-screen')
+
+    fireEvent.change(screen.getByLabelText('Speech-to-text model'), {
+      target: { value: 'whisper-small-en' },
+    })
+
+    const button = await screen.findByTestId('voice-install-start')
+    expect(button).toHaveTextContent('Use Whisper small.en')
+    // Nothing is fetched, so there is nothing to disclose.
+    expect(screen.queryByTestId('voice-disclosure')).toBeNull()
+
+    fireEvent.click(button)
+    await waitFor(() =>
+      expect(mockApi.startVoiceInstall).toHaveBeenCalledWith(['whisper-small-en']),
+    )
+  })
+
+  it('offers nothing to download once every asset is installed and in use', async () => {
+    const plan = makePlan()
+    plan.assets = plan.assets.map((a) => ({
+      ...a,
+      installed: true,
+      selected: a.id === 'whisper-base-en',
+    }))
     mockApi.getVoiceSetupPlan.mockResolvedValue({ ok: true, data: plan })
 
     renderScreen()

@@ -335,6 +335,48 @@ def test_plan_default_download_size_excludes_installed_assets(client, voice_path
     assert after["default_download_bytes"] == before["default_download_bytes"] - silero.size_bytes
 
 
+def test_plan_marks_the_configured_default_as_selected(client, voice_paths):
+    """With no recorded choice, the file the worker is configured to read wins."""
+    voice_paths["stt_model"].parent.mkdir(parents=True, exist_ok=True)
+    voice_paths["stt_model"].write_bytes(b"ggml")
+
+    assets = {a["id"]: a for a in client.get("/api/voice/setup/plan").json()["assets"]}
+    assert assets["whisper-base-en"]["selected"] is True
+    assert assets["whisper-small-en"]["selected"] is False
+
+
+def test_plan_follows_a_recorded_choice_over_the_default(client, voice_paths):
+    """Installing small.en makes it the selected model, not base.en."""
+    from convsim_core.services.voice_setup_service import set_stt_model_path
+
+    for name in ("ggml-base.en.bin", "ggml-small.en.bin"):
+        path = voice_paths["stt_dir"] / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"ggml")
+    set_stt_model_path(
+        client.app.state.db.connection(), str(voice_paths["stt_dir"] / "ggml-small.en.bin")
+    )
+
+    assets = {a["id"]: a for a in client.get("/api/voice/setup/plan").json()["assets"]}
+    assert assets["whisper-small-en"]["selected"] is True
+    assert assets["whisper-base-en"]["selected"] is False
+
+
+def test_an_uninstalled_asset_is_never_selected(client):
+    for asset in client.get("/api/voice/setup/plan").json()["assets"]:
+        assert asset["selected"] is False
+
+
+def test_install_path_refuses_a_capability_with_no_engine_directory():
+    """A future downloadable TTS asset must fail loudly, not land in the STT dir."""
+    from dataclasses import replace
+
+    base_en = voice_registry.get_asset("whisper-base-en")
+    assert base_en is not None
+    with pytest.raises(ValueError, match="tts"):
+        voice_registry.install_path(replace(base_en, capability="tts"))
+
+
 # ── Install job endpoints ─────────────────────────────────────────────────────
 
 
@@ -407,6 +449,24 @@ def test_install_skips_an_asset_that_is_already_present(client, monkeypatch, voi
 
     assert job["stages"][0]["state"] == "skipped"
     assert written == []
+
+
+def test_installing_an_already_present_stt_model_switches_the_worker(
+    client, monkeypatch, voice_paths
+):
+    """Switching between two installed models needs no download, only a re-point."""
+    small = voice_paths["stt_dir"] / "ggml-small.en.bin"
+    small.parent.mkdir(parents=True, exist_ok=True)
+    small.write_bytes(b"ggml")
+    written = _stub_downloads(monkeypatch)
+
+    started = client.post("/api/voice/setup/install", json={"asset_ids": ["whisper-small-en"]})
+    job = _await_terminal(client, started.json()["id"])
+
+    assert job["status"] == "complete"
+    assert job["stages"][0]["state"] == "skipped"
+    assert written == []
+    assert client.app.state.stt_worker.model_path == str(small)
 
 
 def test_install_surfaces_a_checksum_mismatch_as_a_failed_job(client, monkeypatch):

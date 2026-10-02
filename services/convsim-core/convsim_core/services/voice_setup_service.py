@@ -33,6 +33,7 @@ from convsim_core.services.voice_registry import (
     VoiceAsset,
     VoiceEngine,
     assets_for,
+    configured_stt_model_path,
     engine_command,
     ffmpeg_installed,
     find_whisper_binary,
@@ -144,19 +145,16 @@ def build_plan(
     readiness from file existence alone.
     """
     engines = {e.id: _engine_view(e, found_at=_engine_location(e)) for e in VOICE_ENGINES}
-    selected_stt = get_stt_model_path(conn)
+
+    # Which STT model is actually in use: the player's recorded choice, or the
+    # worker's configured path when they have not made one. Deriving it from
+    # the worker rather than from "the recommended one exists" keeps the answer
+    # right for anyone who set CONVSIM_WHISPER_CPP_MODEL_PATH themselves.
+    active_stt = get_stt_model_path(conn) or str(configured_stt_model_path())
 
     stt_assets = [_asset_view(a) for a in assets_for("stt")]
     for view in stt_assets:
-        view["selected"] = selected_stt is not None and view["install_path"] == selected_stt
-    # Nothing explicitly chosen yet: the worker falls back to its configured
-    # default path, so show that file as the active one when it exists.
-    if not any(v["selected"] for v in stt_assets):
-        default_rec = recommended_asset("stt")
-        for view in stt_assets:
-            view["selected"] = (
-                default_rec is not None and view["id"] == default_rec.id and view["installed"]
-            )
+        view["selected"] = view["installed"] and view["install_path"] == active_stt
 
     vad_assets = [_asset_view(a) for a in assets_for("vad")]
     vad_installed = any(v["installed"] for v in vad_assets)
