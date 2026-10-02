@@ -55,8 +55,16 @@ npm install playwright && npx playwright install chromium
 #     an --only list that leaves `hero` off)
 brew install ffmpeg
 
-# 3. drive a real playthrough and write every asset
+# 3. drive a real playthrough and write every asset under docs/assets/
 NODE_PATH="$PWD/node_modules" node scripts/capture-screenshots.mjs
+
+# 4. remake the 1x web copies the two sites render (the script prints this
+#    command itself whenever it rewrote a screenshot)
+for f in docs/assets/screenshots/*.png; do
+  for d in website/static/images/screenshots docs-site/public/images/screenshots; do
+    magick "$f" -resize 1280x -colors 256 -strip "$d/$(basename "$f")"
+  done
+done
 ```
 
 [`scripts/capture-screenshots.mjs`](../scripts/capture-screenshots.mjs) plays the

@@ -48,6 +48,10 @@
  * Exit status is non-zero if any requested output was not written, so a run
  * that lost a screen cannot be mistaken for one that refreshed the whole set.
  *
+ * Only `docs/assets` is written here. The 1x web copies under `website/` and
+ * `docs-site/` are derived with ImageMagick; a run that rewrote any screenshot
+ * ends by printing the one command that remakes them.
+ *
  * Environment
  *   CONVSIM_UI_URL      default http://127.0.0.1:7354
  *   CONVSIM_API_URL     default http://127.0.0.1:7355
@@ -70,6 +74,17 @@ const API_URL = process.env.CONVSIM_API_URL ?? 'http://127.0.0.1:7355'
 const SHOT_DIR = process.env.CONVSIM_SHOT_DIR ?? path.join(REPO_ROOT, 'docs', 'assets', 'screenshots')
 const ASSET_DIR = path.dirname(SHOT_DIR)
 const SEED = process.env.CONVSIM_CAPTURE_SEED ?? '455'
+
+// The docs site and the marketing site each carry a 1x, 256-colour copy of the
+// screenshots, derived by hand (docs/screenshots.md). This script does not write
+// them — ImageMagick is not a dependency of a capture run — so it names them at
+// the end instead: nothing else reconciles the copies against the originals, and
+// a re-capture that stops at docs/assets leaves two sites rendering last month's
+// UI beside a README showing this month's.
+const SITE_COPY_DIRS = [
+  path.join('website', 'static', 'images', 'screenshots'),
+  path.join('docs-site', 'public', 'images', 'screenshots'),
+]
 
 const SCENARIO_ID = 'stretch_role_interview'
 const WORKBENCH_PACK = 'Job Interview Basics'
@@ -555,6 +570,18 @@ async function main() {
   }
 
   await rm(videoDir, { recursive: true, force: true }).catch(() => {})
+
+  // Printed before the exit-status check, because a partial run that still
+  // rewrote one screen has still desynced the site copies for that screen.
+  const reshot = written.has('hero') ? [...written].filter((id) => id !== 'hero') : [...written]
+  if (reshot.length) {
+    const rel = path.relative(REPO_ROOT, SHOT_DIR)
+    log(`${reshot.length} screenshot(s) rewritten — regenerate the 1x web copies before committing:`)
+    log(
+      `  for f in ${rel}/*.png; do for d in ${SITE_COPY_DIRS.join(' ')}; do ` +
+        'magick "$f" -resize 1280x -colors 256 -strip "$d/$(basename "$f")"; done; done',
+    )
+  }
 
   const missed = REQUESTED.filter((id) => !written.has(id))
   if (missed.length) {
