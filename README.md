@@ -21,10 +21,10 @@ NPCs — running **100% on your computer**, no account, no cloud, no telemetry.
 Scenario: Making the Case  ·  Job Interview Basics pack
 You:   "I read your last three release notes and spoke to two of your logistics customers.
         What surprised me is that the retention story is not the dashboard — it is the CSV
-        export people build their Monday reports on."
+        export people build their Monday reports on. …"
 NPC:   "That's insightful. You've done your homework and understood the nuances of our
         product. Let me ask — how do you see this impacting your approach to planning
-        and execution?"
+        and execution? …"
 Flags:  player_demonstrates_knowledge
 State:  trust 95  ·  openness 80  ·  conviction 35  ·  preparation_score 55
 ```
