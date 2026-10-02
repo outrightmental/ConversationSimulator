@@ -30,6 +30,7 @@ from convsim_core.edition import (
     demo_scenario_id_allowed,
     is_demo,
 )
+from convsim_core.errors import ConvsimError
 from convsim_core.runtime import build_runtime
 from convsim_core.runtime.active import (
     MODEL_FREE_RUNTIME_IDS,
@@ -654,6 +655,37 @@ async def submit_turn(session_id: str, body: TurnSubmitRequest, request: Request
         )
     except TurnInputError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except TimeoutError as exc:
+        # The runtime adapter bounds how long the engine may go quiet mid-reply;
+        # past that the turn is stuck rather than merely slow. Answer with the
+        # code the UI has copy for, instead of the bare 500 an uncaught
+        # TimeoutError produced (issue #489). The adapter's own message names
+        # developer env vars, so it is logged rather than shown.
+        logger.warning("Turn timed out for session %s: %s", session_id, exc)
+        raise ConvsimError(
+            code="TURN_TIMEOUT",
+            message=(
+                "The AI engine stopped responding partway through its reply. "
+                "Your turn was not recorded — try again, and consider a smaller "
+                "model or more GPU layers if this keeps happening."
+            ),
+            status_code=504,
+        ) from exc
+    except ConnectionError as exc:
+        # The adapter could not reach the engine at all — including a connect
+        # timeout, which it reports here rather than as a stall. Without this the
+        # player got the same bare 500 that issue #489 complained about, for a
+        # cause they can actually act on. The adapter's message names a CLI
+        # invocation, so it is logged rather than shown.
+        logger.warning("Runtime unreachable for session %s: %s", session_id, exc)
+        raise ConvsimError(
+            code="RUNTIME_UNAVAILABLE",
+            message=(
+                "The AI engine is not responding. Check the runtime in Settings, "
+                "then try the same turn again — it was not recorded."
+            ),
+            status_code=503,
+        ) from exc
 
     now = _now_iso()
     player_event = SessionEventPayload(

@@ -40,6 +40,22 @@ _NO_MODELS_HINT = (
     "Pull a compatible model with e.g. 'ollama pull llama3.2'."
 )
 
+#: Budget for the quick control-plane calls (tag listing, reachability probe).
+_CONTROL_TIMEOUT = 60.0
+#: Budget for one /api/chat stream. httpx applies it per read, so it bounds how
+#: long the server may go quiet — and the first quiet stretch is prompt eval,
+#: which on CPU-only hardware runs to tens of seconds: ~24 s measured on the
+#: machine in issue #489, and about twice that once the prompt composer's
+#: ~4 k-token window fills. The control-plane budget is far too tight for that.
+_CHAT_TIMEOUT = 180.0
+#: The generation budget must not also be the connect budget. Opening a socket is
+#: quick or hopeless — a default Ollama is on loopback, and a remote endpoint set
+#: via CONVSIM_OLLAMA_BASE_URL should report "not reachable" in seconds rather
+#: than hold the player at "NPC is responding…" for three minutes first. Keeping
+#: them separate is also what makes a ConnectTimeout mean "absent" rather than
+#: "slow" below.
+_CONNECT_TIMEOUT = 5.0
+
 
 def _size_category(size_bytes: int | None) -> str | None:
     """Map a raw byte count to a coarse size bucket."""
@@ -81,7 +97,9 @@ class OllamaChatRuntime(ChatRuntime):
     ) -> None:
         resolved = base_url or os.environ.get("CONVSIM_OLLAMA_BASE_URL", _DEFAULT_BASE_URL)
         self._base_url = resolved.rstrip("/")
-        self._client = client or httpx.AsyncClient(base_url=self._base_url, timeout=60.0)
+        self._client = client or httpx.AsyncClient(
+            base_url=self._base_url, timeout=_CONTROL_TIMEOUT
+        )
 
     # ------------------------------------------------------------------
     # ChatRuntime interface
@@ -129,7 +147,7 @@ class OllamaChatRuntime(ChatRuntime):
                     resp = await self._client.get("/")
                     resp.raise_for_status()
                 except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPStatusError):
-                    raise RuntimeError(_NOT_RUNNING_HINT)
+                    raise ConnectionError(_NOT_RUNNING_HINT)
                 raise RuntimeError(_NO_MODELS_HINT)
             model_id = models[0].id
 
@@ -152,7 +170,12 @@ class OllamaChatRuntime(ChatRuntime):
         output_tokens = 0
 
         try:
-            async with self._client.stream("POST", "/api/chat", json=payload) as resp:
+            async with self._client.stream(
+                "POST",
+                "/api/chat",
+                json=payload,
+                timeout=httpx.Timeout(_CHAT_TIMEOUT, connect=_CONNECT_TIMEOUT),
+            ) as resp:
                 resp.raise_for_status()
                 async for line in resp.aiter_lines():
                     if not line:
@@ -166,8 +189,23 @@ class OllamaChatRuntime(ChatRuntime):
                     if done:
                         input_tokens = chunk.get("prompt_eval_count", 0)
                         output_tokens = chunk.get("eval_count", 0)
-        except (httpx.ConnectError, httpx.TimeoutException) as exc:
-            raise RuntimeError(_NOT_RUNNING_HINT) from exc
+        # A failure to connect at all still means "Ollama is not running",
+        # ConnectTimeout included — so it is matched ahead of the read timeout.
+        # ConnectionError, not RuntimeError: the turn endpoint maps it to a 503
+        # RUNTIME_UNAVAILABLE the player can act on, the same way it does for the
+        # llama.cpp adapter. A RuntimeError here fell through to the generic
+        # handler as the bare 500 of issue #489.
+        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+            raise ConnectionError(_NOT_RUNNING_HINT) from exc
+        except httpx.TimeoutException as exc:
+            # The server is there, it just stopped sending. The turn endpoint
+            # turns TimeoutError into a retryable 504 TURN_TIMEOUT (issue #489),
+            # so this must not be flattened into the "Ollama is not running"
+            # RuntimeError — that read as a 500 with advice that did not apply.
+            raise TimeoutError(
+                f"Ollama went quiet for more than {_CHAT_TIMEOUT}s while generating. "
+                "Pick a smaller model, or check that Ollama is not stuck."
+            ) from exc
         except httpx.HTTPStatusError as exc:
             code = exc.response.status_code
             if code == 404:

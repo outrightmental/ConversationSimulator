@@ -568,10 +568,16 @@ def _start_core(data_dir: Path, port: int, llama_port: int, llama_timeout_s: flo
         # Point the adapter at the llama-server started above.
         "CONVSIM_LLAMA_CPP_BASE_URL": f"http://127.0.0.1:{llama_port}",
         "CONVSIM_LLAMA_CPP_CONTEXT_LENGTH": "8192",
-        # The adapter's per-request timeout must outlast the slowest call we
-        # intend to measure (the debrief), or the adapter's 30 s default kills a
-        # slow-but-reportable generation first and convsim-core answers 500 — a
-        # latency problem misfiled as a RUNTIME crash.  See run_smoke.
+        # The adapter's generation timeout must outlast the slowest call we
+        # intend to measure (the debrief), or a slow-but-reportable generation
+        # on the 2-vCPU CPU-only runner is killed before we can time it and
+        # convsim-core answers 500 — a latency problem misfiled as a RUNTIME
+        # crash, failing the nightly spuriously instead of reporting the real
+        # latency.  See run_smoke.  CHAT_TIMEOUT is the one that bounds
+        # /v1/chat/completions; TIMEOUT only covers model listing, and is
+        # raised alongside it so a cold first listing on a loaded runner is not
+        # cut short either.
+        "CONVSIM_LLAMA_CPP_CHAT_TIMEOUT": str(int(llama_timeout_s)),
         "CONVSIM_LLAMA_CPP_TIMEOUT": str(int(llama_timeout_s)),
         "CONVSIM_DATA_DIR": str(data_dir),
         "CONVSIM_LOG_DIR": str(data_dir / "logs"),

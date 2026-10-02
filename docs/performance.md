@@ -95,7 +95,16 @@ When Kokoro is not running, the app operates in text-only mode. No audio is play
 
 ### Timeout errors
 
-If the LLM does not produce a response within 60 seconds, the turn fails with a timeout error. The session is **not** ended — you can retry the same turn. The error message includes the same suggestions listed above.
+A slow turn is not a failed turn. A local model on CPU-only hardware can spend a minute or more on a single reply — mostly reading the prompt back in — and the app waits for it: after five seconds it says the NPC is taking longer than usual, and after thirty seconds it starts reporting how long it has been waiting so a long turn never looks like a frozen app.
+
+Two separate limits can still end a turn early:
+
+| Limit | Value | What happens |
+|-------|-------|--------------|
+| Engine went quiet | 180 s with nothing sent (`CONVSIM_LLAMA_CPP_CHAT_TIMEOUT`) — this covers reading the prompt back in as well as the gaps between words | The turn fails with a timeout error. Nothing is recorded, so you can retype the same turn. |
+| App gave up waiting | 10 min | From 5 minutes on, the app stops trusting the request and starts asking the session what it actually recorded, every 15 seconds. As soon as the reply has landed it is shown and play continues. If the request itself answers while that is going on — with the reply, or with a failure of its own — that answer is used straight away. Only if nothing has landed by 10 minutes does the turn fail with a timeout error. (A session started with transcript saving off has nothing to ask about, so the app simply keeps waiting on the request until then.) |
+
+The session is **not** ended by either case — you can retry the same turn. The error message includes the same suggestions listed above.
 
 ## Turning off features to improve performance
 
