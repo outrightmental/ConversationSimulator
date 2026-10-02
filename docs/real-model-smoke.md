@@ -66,12 +66,14 @@ The distinction that matters most in practice is **2/3 vs 4 vs 5**: a download o
 checksum failure says nothing about the app, a runtime failure is a crash, and a
 pipeline failure means the model ran and produced output the product rejected.
 
-Anything the harness did not anticipate — a malformed `registry.yaml`, a bad
-command line, a disk that fills up mid-run, a bug in the harness itself — is
-also reported as exit 5, with a message and a remedy that say so, so that
-**exit 1 only ever means a latency regression**. Nothing exits with an
-unclassified traceback, and nothing borrows a class's exit code without
-correcting the advice printed beneath it.
+Anything the harness could not carry out — a `registry.yaml` that is malformed
+or names no usable `starter` model, a bad command line, a disk that fills up
+mid-run, a bug in the harness itself — is also reported as exit 5, with a
+message and a remedy that say so, so that **exit 1 only ever means a latency
+regression**. Nothing exits with an unclassified traceback, and nothing borrows
+a class's exit code without correcting the advice printed beneath it: a broken
+registry entry is *not* exit 2, because `download`'s remedy ends "re-run the
+job" and no re-run will repair a file in the repository.
 
 When more than one class could apply, the harness reports the strongest evidence
 rather than the symptom the client happened to see:
@@ -108,6 +110,7 @@ On `ubuntu-latest` (CPU-only, 4B Q4\_K\_M):
 
 | Phase | Cold cache | Warm cache |
 |---|---|---|
+| Checkout + `setup-python` | ~1 min | ~1 min |
 | `pip install` (prompt-composer, convsim-core, llama-cpp-python wheel) | ~2 min | ~2 min |
 | Model download (2.5 GB from Hugging Face) | ~2 min | — |
 | SHA-256 verification | ~1 min (×2) | ~0.5 min |
@@ -115,7 +118,7 @@ On `ubuntu-latest` (CPU-only, 4B Q4\_K\_M):
 | `llama-server` model load | ~0.5 min | ~0.5 min |
 | Authored opening + 3 scripted turns † | ~7 min | ~7 min |
 | Debrief generation † | ~4 min | ~4 min |
-| **Total** | **~19 min** | **~16 min** |
+| **Total** | **~19 min** | **~15 min** |
 
 † The download, verification, cache and model-load rows are measured. The two
 inference rows are *projected* from the only latency this job has measured so

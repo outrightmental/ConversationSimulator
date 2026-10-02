@@ -40,6 +40,7 @@
 # runs against the same job clock and is invisible to the script's own
 # deadline — up to ~9 min of it on a cold night.
 #
+#   checkout + setup-python                  ~1 min
 #   pip install (cached wheels)              ~2 min
 #   model download (cache miss only)         ~2 min   — ~0 on a cache hit
 #   SHA-256 verification (2.5 GB, ×2 cold)   ~1 min   — ~0.5 min on a cache hit
@@ -48,7 +49,7 @@
 #   3 scripted turns + authored opening      ~7 min   — projected, see below
 #   debrief generation                       ~4 min   — projected, see below
 #   ------------------------------------------------
-#   total                                   ~16 min warm cache, ~19 min cold
+#   total                                   ~15 min warm cache, ~19 min cold
 #
 # The download, verification, cache and model-load figures are measured; the
 # inference figures are projected from the one latency this job has actually

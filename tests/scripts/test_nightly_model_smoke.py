@@ -67,7 +67,16 @@ class TestFailureClassification:
         exc = smoke.SmokeFailure(smoke.FailureClass.RUNTIME, "boom", phase="runtime_start")
         assert exc.exit_code == smoke.EXIT_CODES[smoke.FailureClass.RUNTIME]
         assert exc.phase == "runtime_start"
-        assert exc.remedy
+        assert exc.remedy == smoke.REMEDIES[smoke.FailureClass.RUNTIME]
+
+    def test_a_failure_can_override_its_class_remedy(self) -> None:
+        # Failures that borrow a class's exit code without matching its usual
+        # cause must not print that class's advice.
+        exc = smoke.SmokeFailure(
+            smoke.FailureClass.PIPELINE, "boom", remedy="Do this instead."
+        )
+        assert exc.exit_code == smoke.EXIT_CODES[smoke.FailureClass.PIPELINE]
+        assert exc.remedy == "Do this instead."
 
 
 # ---------------------------------------------------------------------------
@@ -215,12 +224,40 @@ class TestRegistryResolution:
         starter = smoke.resolve_registry_model("starter")
         assert sizes[starter["id"]] == min(sizes.values())
 
-    def test_unknown_role_is_a_download_failure(self, tmp_path: Path) -> None:
+    def test_unknown_role_is_not_a_download_failure(self, tmp_path: Path) -> None:
+        # `download`'s remedy ends "Nothing about the app changed — re-run the
+        # job", which would send a triager round a loop: no number of re-runs
+        # makes a missing `role: starter` entry appear. A registry that does not
+        # describe a usable model is a repository problem, so it takes the
+        # harness's catch-all class and its own remedy.
         registry = tmp_path / "registry.yaml"
         registry.write_text("models: []\n", encoding="utf-8")
         with pytest.raises(smoke.SmokeFailure) as exc_info:
             smoke.resolve_registry_model("starter", registry)
-        assert exc_info.value.failure_class == smoke.FailureClass.DOWNLOAD
+        assert exc_info.value.failure_class == smoke.FailureClass.PIPELINE
+        assert exc_info.value.exit_code == 5
+        assert "registry.yaml" in exc_info.value.remedy
+        assert "re-run the job" not in exc_info.value.remedy.lower()
+
+    def test_two_models_claiming_the_same_role_are_rejected(self, tmp_path: Path) -> None:
+        # The cache key, the download URL and the verified checksum all come
+        # from this one lookup, so an ambiguous role must stop the run rather
+        # than let it pick arbitrarily.
+        registry = tmp_path / "registry.yaml"
+        registry.write_text(
+            "models:\n"
+            "  - id: a\n"
+            "    role: starter\n"
+            "    download: {url: https://example.invalid/a.gguf, sha256: aa}\n"
+            "  - id: b\n"
+            "    role: starter\n"
+            "    download: {url: https://example.invalid/b.gguf, sha256: bb}\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(smoke.SmokeFailure) as exc_info:
+            smoke.resolve_registry_model("starter", registry)
+        assert exc_info.value.failure_class == smoke.FailureClass.PIPELINE
+        assert "expected exactly one" in str(exc_info.value)
 
     def test_model_without_checksum_is_rejected(self, tmp_path: Path) -> None:
         registry = tmp_path / "registry.yaml"
@@ -235,6 +272,7 @@ class TestRegistryResolution:
         with pytest.raises(smoke.SmokeFailure) as exc_info:
             smoke.resolve_registry_model("starter", registry)
         assert "sha256" in str(exc_info.value)
+        assert exc_info.value.failure_class == smoke.FailureClass.PIPELINE
 
     def test_github_output_is_appended(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         out = tmp_path / "gh-output"
@@ -1181,6 +1219,30 @@ class TestMainEntryPoint:
         assert exit_code != smoke.EXIT_CODES[smoke.FailureClass.BUDGET]
         assert exit_code == smoke.EXIT_CODES[smoke.FailureClass.PIPELINE]
         assert "FAIL" in summary.read_text(encoding="utf-8")
+
+    def test_a_registry_missing_the_role_prints_registry_advice(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The step summary is the whole triage surface for a red nightly, so
+        # the advice in it has to match the failure: `pipeline`'s own remedy
+        # ("inspect the per-turn used_fallback flags") describes a run that
+        # never happened here.
+        registry = tmp_path / "registry.yaml"
+        registry.write_text("models: []\n", encoding="utf-8")
+        real_resolve = smoke.resolve_registry_model
+        monkeypatch.setattr(
+            smoke, "resolve_registry_model",
+            lambda role, registry_path=None: real_resolve(role, registry),
+        )
+        summary = tmp_path / "summary.md"
+        monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+
+        exit_code = smoke.main(["--print-registry-model", "starter"])
+
+        assert exit_code == smoke.EXIT_CODES[smoke.FailureClass.PIPELINE]
+        text = summary.read_text(encoding="utf-8")
+        assert "registry.yaml" in text
+        assert "used_fallback" not in text
 
     def test_a_download_failure_keeps_its_own_exit_code_and_summary(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

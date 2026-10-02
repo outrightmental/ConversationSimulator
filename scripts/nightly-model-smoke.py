@@ -49,6 +49,12 @@ class        exit  meaning
 ``timeout``     6  wall-clock budget exhausted (phase named in the message)
 ===========  ====  =======================================================
 
+Exit 5 is also the catch-all for everything the harness could not carry out —
+a bad command line, an unusable ``registry.yaml``, a full disk, a bug in this
+file — so that exit 1 never means anything but a latency regression.  Those
+failures carry their own remedy instead of ``pipeline``'s, because "inspect the
+per-turn used_fallback flags" is the wrong first move for any of them.
+
 Transcript content is fully scripted (see ``SCRIPTED_PLAYER_TURNS``) and holds
 no user data, so short NPC excerpts are logged and reported — they are the
 evidence that a real model, not a canned fallback, drove the conversation.
@@ -226,12 +232,26 @@ REMEDIES = {
 
 
 class SmokeFailure(Exception):
-    """A failure with a known class, so CI can distinguish *why* the smoke failed."""
+    """A failure with a known class, so CI can distinguish *why* the smoke failed.
 
-    def __init__(self, failure_class: str, message: str, *, phase: Optional[str] = None) -> None:
+    ``remedy`` overrides the class default for the failures that borrow a
+    class's exit code without matching its usual cause.  Printing the class
+    remedy under those sends triage the wrong way — the whole point of the
+    classification is that the advice next to the banner is actionable.
+    """
+
+    def __init__(
+        self,
+        failure_class: str,
+        message: str,
+        *,
+        phase: Optional[str] = None,
+        remedy: Optional[str] = None,
+    ) -> None:
         super().__init__(message)
         self.failure_class = failure_class
         self.phase = phase
+        self._remedy = remedy
 
     @property
     def exit_code(self) -> int:
@@ -239,7 +259,7 @@ class SmokeFailure(Exception):
 
     @property
     def remedy(self) -> str:
-        return REMEDIES[self.failure_class]
+        return self._remedy or REMEDIES[self.failure_class]
 
 
 # ── Wall-clock budget ─────────────────────────────────────────────────────────
@@ -315,6 +335,20 @@ class Deadline:
 # ── Registry ──────────────────────────────────────────────────────────────────
 
 
+# A registry that does not describe a usable model is a repository problem, not
+# a network one.  It borrows `pipeline`'s exit code — the class this harness
+# uses for everything it could not carry out — rather than `download`, whose
+# remedy ends "Nothing about the app changed — re-run the job": no number of
+# re-runs makes a missing `role: starter` entry appear, and the checksum the
+# cache key is built from never existed to drift.
+REGISTRY_REMEDY = (
+    "model-registry/registry.yaml does not describe a usable model for the "
+    "requested role, so the job never got as far as fetching anything. "
+    "Re-running cannot fix it: repair the registry entry (validate with "
+    "scripts/validate-registry.py) and merge."
+)
+
+
 def resolve_registry_model(role: str, registry_path: Path = REGISTRY_PATH) -> Dict[str, Any]:
     """Return ``{id, url, sha256, size_gb}`` for the registry model with ``role``.
 
@@ -328,13 +362,15 @@ def resolve_registry_model(role: str, registry_path: Path = REGISTRY_PATH) -> Di
     matches = [m for m in registry.get("models", []) if m.get("role") == role]
     if not matches:
         raise SmokeFailure(
-            FailureClass.DOWNLOAD,
+            FailureClass.PIPELINE,
             f"No model with role {role!r} in {registry_path}",
+            remedy=REGISTRY_REMEDY,
         )
     if len(matches) > 1:
         raise SmokeFailure(
-            FailureClass.DOWNLOAD,
+            FailureClass.PIPELINE,
             f"Registry has {len(matches)} models with role {role!r}; expected exactly one",
+            remedy=REGISTRY_REMEDY,
         )
     model = matches[0]
     download = model.get("download", {})
@@ -342,8 +378,9 @@ def resolve_registry_model(role: str, registry_path: Path = REGISTRY_PATH) -> Di
     url = download.get("url")
     if not sha256 or not url:
         raise SmokeFailure(
-            FailureClass.DOWNLOAD,
+            FailureClass.PIPELINE,
             f"Registry model {model.get('id')!r} is missing download.url or download.sha256",
+            remedy=REGISTRY_REMEDY,
         )
     return {
         "id": model["id"],
@@ -1141,8 +1178,13 @@ def run_smoke(
         # Record the remedy in the artifact too: the failure table in
         # docs/real-model-smoke.md sends triage to the JSON report for several
         # classes, and a report that names a class without the advice attached
-        # makes the reader go and look the mapping up again.
-        results["remedy"] = REMEDIES[failure_class]
+        # makes the reader go and look the mapping up again.  The failure's own
+        # remedy only survives while its class does — once a crashed child or an
+        # exhausted clock has overruled the class, its advice describes a
+        # different failure than the one being reported.
+        results["remedy"] = (
+            exc.remedy if failure_class == exc.failure_class else REMEDIES[failure_class]
+        )
         if not results["failures"]:
             results["failures"] = [str(exc)]
         if crashed:
@@ -1154,7 +1196,7 @@ def run_smoke(
                 f"{results['failed_phase']!r} (elapsed {clock.elapsed_s:.0f} s)",
             )
         _dump_stderr_tails((("convsim-core", core_stderr_tail), ("llama-server", llama_stderr_tail)))
-        _print_banner(failure_class, results["failures"])
+        _print_banner(failure_class, results["failures"], remedy=results["remedy"])
 
     # Exception, not BaseException: a Ctrl-C should still stop the children (the
     # finally block below) but must not be dressed up as a product failure.
@@ -1308,13 +1350,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         )
 
     except SmokeFailure as exc:
-        _print_banner(exc.failure_class, [str(exc)])
+        _print_banner(exc.failure_class, [str(exc)], remedy=exc.remedy)
         _write_step_summary({
             "verdict": "fail",
             "model_id": args.model_id,
             "failure_class": exc.failure_class,
             "exit_code": exc.exit_code,
             "failures": [str(exc)],
+            "remedy": exc.remedy,
         })
         return exc.exit_code
 
