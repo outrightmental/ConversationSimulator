@@ -191,6 +191,51 @@ describe('api.createSession — ApiResult return type', () => {
     }
   });
 
+  it('clips one long reason instead of filling the error card', async () => {
+    // ApiErrorView renders the message on one line, and CopyDiagnosticsButton
+    // copies it into a bug report — a validator free to raise any sentence must
+    // not be able to run away with either (issue #508).
+    mockFetch(422, {
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Request validation failed',
+        details: [
+          { type: 'value_error', loc: ['body', 'scenario_id'], msg: 'Value error, ' + 'x'.repeat(500) },
+        ],
+      },
+    });
+    const result = await api.createSession(BASE_SESSION);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toContain('scenario_id');
+      expect(result.error.message.length).toBeLessThan(200);
+      expect(result.error.message.endsWith('\u2026')).toBe(true);
+    }
+  });
+
+  it('does not repeat a field the engine named but worded differently', async () => {
+    // The engine clips a long reason too, so the two sentences need not match
+    // character for character; naming the field once is what matters.
+    mockFetch(422, {
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Request validation failed \u2014 tts_voice_id: Value error, not an approv\u2026',
+        details: [
+          {
+            type: 'value_error',
+            loc: ['body', 'tts_voice_id'],
+            msg: 'Value error, not an approved built-in voice id (see GET /api/tts/voices)',
+          },
+        ],
+      },
+    });
+    const result = await api.createSession(BASE_SESSION);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message.match(/tts_voice_id/g)).toHaveLength(1);
+    }
+  });
+
   it('ignores an unreadable details payload rather than mangling the message', async () => {
     mockFetch(422, {
       error: { code: 'VALIDATION_ERROR', message: 'Request validation failed', details: 'nope' },

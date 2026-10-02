@@ -152,7 +152,16 @@ class SessionCreateRequest(BaseModel):
         try:
             validate_voice_id(v)
         except TtsVoiceValidationError as exc:
-            raise ValueError(str(exc)) from exc
+            # validate_voice_id quotes the id it rejected and lists every
+            # approved one — fine in a log line, wrong here: this sentence
+            # becomes the 422's `message`, which the compact error card shows
+            # and "Copy diagnostics" copies into a public bug report (issue
+            # #508). Name the constraint, not the value — the same rule that
+            # drops Pydantic's "input" key. The approved ids are already
+            # discoverable at GET /api/tts/voices.
+            raise ValueError(
+                "not an approved built-in voice id (see GET /api/tts/voices)"
+            ) from exc
         return v
 
 

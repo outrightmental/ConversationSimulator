@@ -94,11 +94,35 @@ def test_missing_required_field_is_refused_by_name(api):
 
 def test_unapproved_voice_is_still_refused(api):
     """Null means "default"; a real value is still checked against the approved list."""
-    res = api.post("/api/sessions", json={**_SETUP, "tts_voice_id": "some_real_person"})
+    res = api.post("/api/sessions", json={**_SETUP, "tts_voice_id": "af_heart_but_wrong"})
     assert res.status_code == 422
     message = _error(res)["message"]
     assert "tts_voice_id" in message
-    assert "approved built-in voice list" in message
+    assert "approved built-in voice" in message
+
+
+def test_rejected_voice_id_is_not_echoed_back(api):
+    """The message is shown in the card and copied into public bug reports.
+
+    An id a caller invented can carry anything — a real person's name is the
+    case the approved-voice list exists to refuse in the first place — so the
+    422 names the constraint, not the value. Same rule as dropping Pydantic's
+    "input" key.
+    """
+    res = api.post("/api/sessions", json={**_SETUP, "tts_voice_id": "cloned_jane_doe"})
+    assert res.status_code == 422
+    assert "cloned_jane_doe" not in res.text
+
+
+def test_the_voice_rejection_stays_short_enough_for_a_compact_card(api):
+    """ApiErrorView renders this on one line; the approved list does not fit.
+
+    It used to be inlined, which made a 359-character message out of a
+    one-field failure. The ids are discoverable at GET /api/tts/voices.
+    """
+    res = api.post("/api/sessions", json={**_SETUP, "tts_voice_id": "nope"})
+    assert res.status_code == 422
+    assert len(_error(res)["message"]) < 160, _error(res)["message"]
 
 
 def test_blank_player_name_names_the_field(api):
