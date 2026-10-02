@@ -878,27 +878,45 @@ fn start_and_await_core(
     app: &AppHandle,
     status_arc: &Arc<Mutex<Option<CoreStatusPayload>>>,
     process_arc: &Arc<Mutex<Option<Child>>>,
+    shutting_down: &Arc<AtomicBool>,
     exe: &Path,
     resource_dir: Option<&PathBuf>,
     log_dir: Option<&str>,
 ) -> bool {
-    let child = match spawn_core(app, exe, resource_dir) {
-        Ok(c) => c,
-        Err(e) => {
-            let message = if e.kind() == std::io::ErrorKind::PermissionDenied {
-                "The core service binary is not executable. \
-                 This may indicate a corrupted installation — reinstall the app."
-            } else {
-                "Failed to start the core service process."
-            };
-            emit_core_status(app, status_arc, "error", message, Some(&e.to_string()), log_dir);
+    // Spawn while HOLDING the process lock, after one last look at the teardown
+    // flag. Teardown sets the flag and then takes this lock to stop the child,
+    // so checking the flag anywhere outside the lock leaves a window in which
+    // teardown finds no child, the event loop calls `std::process::exit()`, and
+    // the engine spawned a moment later is orphaned on port 7355 — which the
+    // next launch then reports as a port conflict. Under the lock the two
+    // orders are both safe: either we see the flag and never spawn, or teardown
+    // waits for the handle to land and stops it.
+    let spawned = {
+        let mut guard = match process_arc.lock() {
+            Ok(g) => g,
+            Err(_) => return false,
+        };
+        if shutting_down.load(Ordering::SeqCst) {
             return false;
+        }
+        match spawn_core(app, exe, resource_dir) {
+            Ok(child) => {
+                *guard = Some(child);
+                Ok(())
+            }
+            Err(e) => Err(e),
         }
     };
 
-    match process_arc.lock() {
-        Ok(mut guard) => *guard = Some(child),
-        Err(_) => return false,
+    if let Err(e) = spawned {
+        let message = if e.kind() == std::io::ErrorKind::PermissionDenied {
+            "The core service binary is not executable. \
+             This may indicate a corrupted installation — reinstall the app."
+        } else {
+            "Failed to start the core service process."
+        };
+        emit_core_status(app, status_arc, "error", message, Some(&e.to_string()), log_dir);
+        return false;
     }
 
     emit_core_status(
@@ -1195,6 +1213,7 @@ fn supervise_core(
         &app,
         &status_arc,
         &process_arc,
+        &shutting_down,
         &exe,
         resource_dir.as_ref(),
         log_dir_ref,
@@ -1269,6 +1288,7 @@ fn supervise_core(
             &app,
             &status_arc,
             &process_arc,
+            &shutting_down,
             &exe,
             resource_dir.as_ref(),
             log_dir_ref,
