@@ -69,6 +69,9 @@ type Phase = 'starting' | 'active' | 'submitting' | 'ending' | 'ended' | 'error'
 
 type Banner = { id: number; kind: 'event' | 'safety'; text: string }
 
+/** Result of one post-deadline check of what the session actually recorded. */
+type ReconcileOutcome = 'adopted' | 'pending' | 'unavailable'
+
 function NpcAvatar() {
   return (
     <div
@@ -195,7 +198,11 @@ export default function Conversation() {
   const phaseRef = useRef<Phase>('starting')
   const npcTurnCommittedRef = useRef(false)
   const pendingRawSttRef = useRef<SttReviewMeta | null>(null)
+  // Mirrors of state the async turn handlers read after awaiting, where the
+  // values captured by their closure are already stale.
+  const sessionStateRef = useRef(sessionState)
   phaseRef.current = phase
+  sessionStateRef.current = sessionState
 
   // Clean up any pending timers and TTS audio when the component unmounts.
   useEffect(() => {
@@ -567,20 +574,35 @@ export default function Conversation() {
    * snapshot); the next turn's `visible_state` is authoritative and restores
    * them.
    *
-   * Returns true when the server's copy was adopted, meaning the turn is
-   * complete and the caller must not report an error.
+   * Returns 'adopted' when the turn is complete and the caller must not report
+   * an error, 'pending' when the server has nothing yet and asking again later
+   * could still succeed, and 'unavailable' when it never will.
    */
-  async function _adoptServerTurnAfterDeadline(): Promise<boolean> {
+  async function _adoptServerTurnAfterDeadline(): Promise<ReconcileOutcome> {
+    // A WebSocket npc.final may already have put the reply on screen, in which
+    // case the turn is done. turnNumRef counts that NPC row too, so the
+    // transcript comparison below could never see the server pull ahead: left
+    // to the loop this would poll to the ceiling and then report a timeout over
+    // a reply the player is looking at.
+    if (npcTurnCommittedRef.current) {
+      setPhase(sessionStateRef.current === 'Ended' ? 'ended' : 'active')
+      return 'adopted'
+    }
+
     const tr = await api.getSessionTranscript(sessionId!)
-    // Nothing to compare against when the fetch failed, or when the session was
-    // started with transcript saving off — that makes this endpoint return no
-    // turns, so the deadline has to stand.
-    if (!tr.ok) return false
+    // A failed fetch says nothing either way — core may be briefly busy — so
+    // keep asking rather than turning a transient blip into a lost turn.
+    if (!tr.ok) return 'pending'
+    // A session started with transcript saving off answers this endpoint with no
+    // turns, always. There is nothing to reconcile against now or in five more
+    // minutes, so the deadline stands immediately instead of locking the screen
+    // until the ceiling for a verdict that cannot change.
+    if (!tr.data.transcript_saved) return 'unavailable'
     const serverTurns = tr.data.turns
     const last = serverTurns[serverTurns.length - 1]
     // turnNumRef counts every row this view holds, the optimistic player turn
     // included, so the reply only landed if the server is ahead of that.
-    if (!last || last.role !== 'npc' || serverTurns.length <= turnNumRef.current) return false
+    if (!last || last.role !== 'npc' || serverTurns.length <= turnNumRef.current) return 'pending'
 
     _hydrateTurnsFromServer(serverTurns)
     setNpcEmotion(last.emotion ?? null)
@@ -591,7 +613,7 @@ export default function Conversation() {
     const flowState = last.flow_state_after ?? 'PlayerTurnListening'
     setSessionState(flowState)
     setPhase(flowState === 'Ended' ? 'ended' : 'active')
-    return true
+    return 'adopted'
   }
 
   /**
@@ -610,7 +632,9 @@ export default function Conversation() {
    */
   async function _awaitServerTurnAfterDeadline(): Promise<boolean> {
     while (mountedRef.current) {
-      if (await _adoptServerTurnAfterDeadline()) return true
+      const outcome = await _adoptServerTurnAfterDeadline()
+      if (outcome === 'adopted') return true
+      if (outcome === 'unavailable') return false
       if (!mountedRef.current) return false
       if (Date.now() - waitStartedAtRef.current >= TURN_ABANDON_MS) return false
       await new Promise<void>((resolve) => {

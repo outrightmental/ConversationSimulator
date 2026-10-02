@@ -1605,6 +1605,76 @@ describe('Conversation screen', () => {
       }
     })
 
+    it('does not report a timeout over a reply the stream already delivered', async () => {
+      // A WebSocket npc.final puts the reply on screen and counts it, so the
+      // transcript can never pull ahead of the view — polling for it would run
+      // to the ceiling and then blame a timeout on a turn the player can read.
+      let wsCallback: ((event: WsEvent) => void) | null = null
+      mockApi.connectSession.mockImplementation((_id, cb) => {
+        wsCallback = cb
+        return { close: vi.fn() }
+      })
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        await submitAndWait(1_000)
+        act(() => {
+          wsCallback?.({
+            type: 'npc.final',
+            seq: 1,
+            session_id: SESSION_ID,
+            ts: '2026-07-01T00:01:01Z',
+            payload: {
+              content: 'Delivered over the stream.',
+              emotion: 'neutral',
+              state_delta: {},
+              event_flags: [],
+            },
+          })
+        })
+        await waitFor(() =>
+          expect(screen.getByText('Delivered over the stream.')).toBeInTheDocument(),
+        )
+
+        await vi.advanceTimersByTimeAsync(DEADLINE_MS)
+        // The turn is over at the deadline, not ten minutes later: no verdict,
+        // and the player can speak again.
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+        expect(screen.getByText('Delivered over the stream.')).toBeInTheDocument()
+        expect(screen.getByRole('textbox', { name: /your response/i })).not.toBeDisabled()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('fails at the deadline when the session keeps no transcript to reconcile against', async () => {
+      // With transcript saving off the endpoint answers with no turns, always.
+      // Polling it cannot change that, so the player must get the verdict at the
+      // deadline instead of a screen locked until the ceiling.
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      mockApi.getSessionTranscript.mockResolvedValue({
+        ok: true,
+        data: {
+          session_id: SESSION_ID,
+          scenario_id: SCENARIO_ID,
+          transcript_saved: false,
+          message: 'Transcript saving is disabled for this session.',
+          turns: [],
+        },
+      })
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        await submitAndWait(DEADLINE_MS)
+        await waitFor(() =>
+          expect(screen.getByRole('alert')).toHaveTextContent('Request timed out'),
+        )
+        expect(screen.queryByText('My answer.')).not.toBeInTheDocument()
+        expect(screen.getByRole('textbox', { name: /your response/i })).not.toBeDisabled()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
     it('reports a timeout once the ceiling passes with nothing on the server', async () => {
       mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
       mockApi.getSessionTranscript.mockResolvedValue({
