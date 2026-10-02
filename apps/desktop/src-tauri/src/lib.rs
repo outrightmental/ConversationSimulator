@@ -492,6 +492,16 @@ fn edition_from_health_body(body: &str) -> Option<String> {
     // Tolerate a chunked body: the JSON object is the outermost {...}.
     let start = body.find('{')?;
     let end = body.rfind('}')?;
+    // Only when the braces are in that order. A body like "} {" — or a chunked
+    // framing whose last chunk ends before the first brace — puts `rfind` ahead
+    // of `find`, and `&body[start..=end]` on a reversed range PANICS. Whatever
+    // is on port 7355 is untrusted input and this runs on every probe, so that
+    // panic is reachable from outside the app; with `panic = "abort"` in the
+    // release profile it would take the whole window down rather than merely
+    // reporting a port conflict.
+    if end < start {
+        return None;
+    }
     let json: serde_json::Value = serde_json::from_str(&body[start..=end]).ok()?;
     // `status` is a required field of HealthResponse; its absence means this is
     // somebody else's JSON.
@@ -1608,6 +1618,41 @@ mod tests {
         assert!(edition_from_health_body("<html>not json</html>").is_none());
     }
 
+    #[test]
+    fn a_body_whose_braces_are_reversed_does_not_panic() {
+        // The outermost-{...} scan takes `find('{')` and `rfind('}')`; when the
+        // closing brace comes first that is a reversed range, and slicing one
+        // panics. The body comes from whatever holds port 7355 — untrusted
+        // input on the shell's hottest path — and the release profile is
+        // `panic = "abort"`, so a panic here is an app crash, not a bad probe.
+        assert!(edition_from_health_body("} {").is_none());
+        assert!(edition_from_health_body("}{").is_none());
+        assert!(edition_from_health_body("oops } mid { text").is_none());
+        // And a body carrying only one of the two braces.
+        assert!(edition_from_health_body("}").is_none());
+        assert!(edition_from_health_body("{").is_none());
+    }
+
+    #[test]
+    fn a_probe_response_with_reversed_braces_reads_as_occupied() {
+        // The same input through the whole probe: an occupant answering 200
+        // with that body is a port conflict, and the shell survives to say so.
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = listener.local_addr().expect("local addr").port();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept");
+            let mut buf = [0u8; 1024];
+            let _ = stream.read(&mut buf);
+            let _ = stream.write_all(
+                b"HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\
+                  Content-Length: 3\r\nConnection: close\r\n\r\n} {",
+            );
+        });
+        assert_eq!(probe_core(port), CoreProbe::Occupied);
+        let _ = server.join();
+    }
+
     // ── Edition guard ────────────────────────────────────────────────────────
 
     #[test]
@@ -1699,6 +1744,69 @@ mod tests {
         let hint = keeps_stopping_hint();
         assert!(hint.contains(&format!("restarted {MAX_RESTARTS} times")));
         assert!(!hint.contains(&format!("stopped {MAX_RESTARTS} times")));
+    }
+
+    // ── Teardown ─────────────────────────────────────────────────────────────
+
+    /// Unix-only because it needs a process that handles SIGTERM; Windows has no
+    /// SIGTERM and `stop_core` reaches for `taskkill /T /F` there instead. The
+    /// Linux job is where `cargo test` runs, which is where this claim matters.
+    #[cfg(unix)]
+    #[test]
+    fn stop_core_asks_before_it_insists() {
+        // The point of `stop_core` over `Child::kill()` is that the engine gets
+        // a signal it can handle, so uvicorn runs the lifespan shutdown that
+        // stops convsim-core's OWN sidecars. If the signal never arrives — a
+        // typo'd argument, no `kill` on PATH — the fallback still kills the
+        // child, and the only visible symptom is that teardown silently takes
+        // GRACEFUL_SHUTDOWN_WAIT. Timing is therefore the evidence that the
+        // graceful path, not the fallback, did the work.
+        let mut child = Command::new("sleep")
+            .arg("30")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn a long-lived child");
+
+        let started = Instant::now();
+        stop_core(&mut child);
+        let elapsed = started.elapsed();
+
+        assert!(
+            elapsed < GRACEFUL_SHUTDOWN_WAIT,
+            "stop_core took {elapsed:?} — it waited out the graceful window, so \
+             SIGTERM never reached the child and the hard kill did the work"
+        );
+        // Reaped, not left a zombie: teardown clears the handle right after
+        // this, and an unreaped pid would linger until the shell exits.
+        assert!(
+            matches!(child.try_wait(), Ok(Some(_))),
+            "stop_core left the child unreaped"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn stop_core_leaves_an_already_reaped_child_alone() {
+        // The shell-level `kill` goes around `Child`'s own "cannot kill an
+        // exited process" guard, and the OS is free to have handed that pid to
+        // something else by now — so an already-reaped handle must be a no-op,
+        // not a signal.
+        let mut child = Command::new("true")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn a child that exits at once");
+        let _ = child.wait();
+
+        let started = Instant::now();
+        stop_core(&mut child);
+        assert!(
+            started.elapsed() < Duration::from_secs(1),
+            "stop_core did not short-circuit on an already-reaped child"
+        );
     }
 
     // ── Executable resolution ────────────────────────────────────────────────
