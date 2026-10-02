@@ -182,9 +182,9 @@ export default function Debrief() {
   // Pack breadth (ACH_PACK_EXPLORER / ACH_PACK_CONNOISSEUR). The completed
   // scenario's pack is resolved from the library index and folded into a local
   // tally of distinct pack IDs — pack IDs only, on this device, never a
-  // transcript or a session ID. Reaching a debrief is the "played it" boundary,
-  // and because unlocking is idempotent the tally also grants retroactively for
-  // packs played before this achievement set shipped.
+  // transcript or a session ID. Reaching a debrief is the "played it" boundary;
+  // the tally starts empty on this release, so it counts packs played from here
+  // forward rather than reconstructing history.
   useEffect(() => {
     if (packsGranted.current) return
     const scenarioId = debrief?.scenario_id ?? exportedScenarioId

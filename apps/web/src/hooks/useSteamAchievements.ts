@@ -119,9 +119,12 @@ export const PRACTICE_STREAK_DAYS = 3
 /** Completed scenarios for `ACH_TEN_SCENARIOS`. */
 export const SEASONED_SCENARIOS = 10
 /**
- * Player turns within one session for `ACH_DEEP_CONVERSATION`. Below the
- * `max_turns` of every shipped non-tutorial scenario (14–20), so no scenario
- * can end before the achievement is reachable.
+ * Player turns within one session for `ACH_DEEP_CONVERSATION`. Scenario
+ * `max_turns` counts player turns, and most shipped scenarios allow 14–20, so
+ * this is reachable in nearly every one. Two shipped scenarios are shorter by
+ * design (`first_words_tutorial` at 8, `graceful_exit` at 10) and cannot grant
+ * it — raising the threshold above 12 would start excluding the 14-turn
+ * scenarios too.
  */
 export const DEEP_CONVERSATION_TURNS = 12
 
@@ -220,7 +223,9 @@ export function readPacksPlayed(): string[] {
  * Records that a scenario from `packId` was completed and returns the full set
  * of distinct packs played. Drives `ACH_PACK_EXPLORER` and
  * `ACH_PACK_CONNOISSEUR` without a server round-trip, so it keeps working when
- * transcript saving is disabled and sessions are never persisted.
+ * transcript saving is disabled and sessions are never persisted — at the cost
+ * of starting empty, so packs played before this release do not count toward
+ * either threshold.
  */
 export function recordPackPlayed(packId: string): string[] {
   if (!packId) return readPacksPlayed()
@@ -251,10 +256,14 @@ function invokeSteam(cmd: string, name: string): Promise<boolean> {
  *   or the `steam` Cargo feature is disabled.
  *
  * Unlocking is idempotent, so call sites are free to re-check a condition on
- * every visit to a screen. That is also what makes the set retroactive: a
- * player who already has a streak, packs played, or a validated pack from
- * before this achievement set shipped earns the matching achievements the next
- * time they open the relevant screen. Stats are NOT idempotent and must only be
+ * every visit to a screen. That is what makes the set retroactive wherever the
+ * condition is derived from durable state the app already keeps: a player who
+ * already has a practice streak, ten sessions, a personal record, a relationship
+ * recap, a subscribed Workshop pack, or a completed setup earns those
+ * achievements the next time they open the relevant screen. Conditions that can
+ * only be observed as they happen — a spoken turn, a barge-in, an export, and
+ * the pack tally in `recordPackPlayed` below, whose ledger starts empty — count
+ * from this release forward only. Stats are NOT idempotent and must only be
  * incremented at the moment the counted event happens.
  */
 export function useSteamAchievements() {
