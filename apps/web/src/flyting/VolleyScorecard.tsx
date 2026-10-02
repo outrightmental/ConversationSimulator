@@ -24,6 +24,19 @@ const DIMENSION_COLORS: Record<JudgeDimension, string> = {
   fidelity: '#22c55e',
 }
 
+/**
+ * Why a hook claim was refused, in the player's terms. Shown rather than
+ * hidden: the judge being auditable is the whole reason a verified hook is
+ * worth anything.
+ */
+const DROPPED_HOOK_REASONS: Record<string, string> = {
+  evidence_not_in_volley: 'the quoted words are not in your volley',
+  unknown_trait: 'not on this target',
+  duplicate_trait: 'this trait was already counted for this volley',
+  overlapping_evidence: 'those words already counted for another trait',
+  over_hook_cap: 'past the four-hook cap',
+}
+
 const BONUS_LABELS: Record<string, string> = {
   riposte: 'Riposte',
   callback: 'Callback',
@@ -133,11 +146,7 @@ function Hooks({ card }: { card: Scorecard }) {
           >
             <Tag label={hook.trait.replace(/_/g, ' ')} color="#71717a" />
             <span>
-              refused — {hook.reason === 'evidence_not_in_volley'
-                ? 'the quoted words are not in your volley'
-                : hook.reason === 'unknown_trait'
-                  ? 'not on this target'
-                  : hook.reason.replace(/_/g, ' ')}
+              refused — {DROPPED_HOOK_REASONS[hook.reason] ?? hook.reason.replace(/_/g, ' ')}
             </span>
           </li>
         ))}

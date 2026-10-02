@@ -71,6 +71,12 @@ export default function Flyting() {
   const [volleysRemaining, setVolleysRemaining] = useState<number | null>(null)
   const [outcome, setOutcome] = useState<string | null>(null)
   const [ending, setEnding] = useState(false)
+  // A bout's finish line and round count are the scenario's, not the engine's
+  // defaults: a pack that sets momentum_win: 70 must not be drawn with the
+  // marker at 85. They are not on the run state, so a bout reads them from its
+  // scenario's setup payload — which also survives a reload, unlike route
+  // state. A batting-practice run has no momentum, so it asks for nothing.
+  const [bout, setBout] = useState<{ momentumWin: number; rounds: number } | null>(null)
 
   // The shot clock. `promptedAt` is when the player became free to type; it
   // resets after every scored volley. `startedAt` is the whole run's clock,
@@ -98,6 +104,13 @@ export default function Flyting() {
         return
       }
       setRun(r.data.run)
+      if (r.data.run.play_format === 'bout') {
+        void api.flyting.getScenario(r.data.scenario_id).then((sc) => {
+          if (!cancelled && sc.ok) {
+            setBout({ momentumWin: sc.data.bout.momentum_win, rounds: sc.data.bout.rounds })
+          }
+        })
+      }
       setLog(logFromHistory(r.data.volleys))
       setSecondsRemaining(r.data.seconds_remaining)
       setWhiffsRemaining(r.data.whiffs_remaining)
@@ -263,8 +276,11 @@ export default function Flyting() {
         {isBout ? (
           <>
             <Stat label="Their points" value={run.npc_total} testId="npc-total" />
-            <MomentumMeter momentum={run.momentum} winAt={85} />
-            <Stat label="Round" value={run.round_number} />
+            {bout && <MomentumMeter momentum={run.momentum} winAt={bout.momentumWin} />}
+            <Stat
+              label="Round"
+              value={bout ? `${run.round_number} / ${bout.rounds}` : run.round_number}
+            />
           </>
         ) : (
           <>
