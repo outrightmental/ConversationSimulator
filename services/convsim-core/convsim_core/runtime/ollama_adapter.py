@@ -44,8 +44,9 @@ _NO_MODELS_HINT = (
 _CONTROL_TIMEOUT = 60.0
 #: Budget for one /api/chat stream. httpx applies it per read, so it bounds how
 #: long the server may go quiet — and the first quiet stretch is prompt eval,
-#: which on CPU-only hardware runs to tens of seconds and grows with the
-#: transcript (issue #489). The control-plane budget is far too tight for that.
+#: which on CPU-only hardware runs to tens of seconds: ~24 s measured on the
+#: machine in issue #489, and about twice that once the prompt composer's
+#: ~4 k-token window fills. The control-plane budget is far too tight for that.
 _CHAT_TIMEOUT = 180.0
 #: The generation budget must not also be the connect budget. Opening a socket is
 #: quick or hopeless — a default Ollama is on loopback, and a remote endpoint set

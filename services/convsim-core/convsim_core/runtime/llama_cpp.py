@@ -50,9 +50,11 @@ class LlamaCppConfig(BaseSettings):
     # Budget for one /v1/chat/completions stream, kept separate from `timeout`.
     # httpx applies it per read, so it really means "how long may the server go
     # quiet" — and the first quiet stretch of a turn is prompt eval: the CPU-only
-    # machine in issue #489 spent 24 s there on a 2 k-token prompt, and prompts
-    # grow with the transcript. At 30 s that turned an ordinary slow turn into a
-    # hard error, so generation gets a budget sized for CPU-only hardware.
+    # machine in issue #489 spent 24 s there on a 2 k-token prompt, and the prompt
+    # composer's ~4 k-token budget allows roughly twice that (~47 s at the 87
+    # tok/s it measured) once the transcript window fills. At 30 s that turned an
+    # ordinary slow turn into a hard error, so generation gets a budget sized for
+    # CPU-only hardware, with headroom for a machine colder than the one reported.
     chat_timeout: float = 180.0
     json_schema_enabled: bool = True
 

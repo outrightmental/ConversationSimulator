@@ -33,13 +33,16 @@ const ELAPSED_ANNOUNCE_INTERVAL_MS = 30_000
 // convsim-core had already committed.
 const TURN_TIMEOUT_MS = 300_000
 // Past that point the turn may still be legitimately in flight, so the deadline
-// is a cue to start reconciling rather than a verdict. The core allows the engine
-// CONVSIM_LLAMA_CPP_CHAT_TIMEOUT (180 s) of silence *and then* a full 1024-token
-// reply, so its own worst case runs well past five minutes — and prompt eval
-// grows with the transcript, so the issue #489 machine would reach it late in a
-// long conversation (a ~12 k-token prompt is ~140 s of eval at its measured
-// 87 tok/s, plus ~158 s of generation). Keep asking the server on this grid so a
-// reply that lands late is adopted within a few seconds of existing.
+// is a cue to start reconciling rather than a verdict. The prompt itself is
+// bounded — compose_turn_prompt caps the transcript window at six rows and a
+// ~4 096-token budget — so the issue #489 machine plateaus around 3.5 min per
+// turn (~47 s of prompt eval at its measured 87 tok/s, plus a full 1024-token
+// reply at 6.5 tok/s) and lands inside the deadline. The core's own ceiling does
+// not: it allows the engine CONVSIM_LLAMA_CPP_CHAT_TIMEOUT (180 s) of silence
+// *and then* that whole reply, so hardware slower than the machine reported — or
+// an engine that stalls and recovers — is still working when the deadline fires.
+// Keep asking the server on this grid so a reply that lands late is adopted
+// within a few seconds of existing.
 const TURN_RECONCILE_INTERVAL_MS = 15_000
 // Absolute ceiling, so a wedged connection can never pin the UI in "submitting"
 // forever. Sized above anything the core itself permits (180 s of silence plus a
@@ -620,9 +623,9 @@ export default function Conversation() {
    * Keep reconciling past the deadline until the turn lands or we give up.
    *
    * The deadline is not evidence that the turn failed — the core's own budget
-   * runs past it (see TURN_RECONCILE_INTERVAL_MS), and prompt eval grows with
-   * the transcript, so the very machine in issue #489 would cross five minutes
-   * late in a long conversation. Failing there would reintroduce the reported
+   * runs past it (see TURN_RECONCILE_INTERVAL_MS): it allows 180 s of engine
+   * silence and then a full reply, which hardware slower than the machine in
+   * issue #489 genuinely takes. Failing there would reintroduce the reported
    * bug at a longer timescale: a turn the session holds, reported as lost and
    * rolled back. So the deadline only starts the polling; a verdict waits for
    * TURN_ABANDON_MS, by which point nothing the core permits can still be

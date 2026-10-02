@@ -208,9 +208,10 @@ async def test_chat_stream_overrides_the_control_plane_timeout():
     """Generation must be given the long per-read budget, not the client default.
 
     httpx charges a read timeout per chunk, and the first quiet stretch of a
-    turn is prompt eval — tens of seconds on CPU-only hardware, and longer as
-    the transcript grows (issue #489). The shared client's control-plane budget
-    would turn an ordinary slow turn into a hard error.
+    turn is prompt eval — tens of seconds on CPU-only hardware (~24 s measured in
+    issue #489, about twice that at the prompt composer's full window). The shared
+    client's control-plane budget would turn an ordinary slow turn into a hard
+    error.
 
     The connect phase keeps its own short budget: opening a socket is quick or
     hopeless, so an endpoint that swallows packets must report "not reachable"

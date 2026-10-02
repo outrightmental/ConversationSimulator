@@ -1537,9 +1537,10 @@ describe('Conversation screen', () => {
 
     it('keeps waiting past the deadline and adopts a reply that lands later', async () => {
       // The core's own budget outlasts the deadline — it allows 180s of engine
-      // silence and *then* a full reply, and prompt eval grows with the
-      // transcript. Failing at the deadline would reintroduce issue #489 at a
-      // longer timescale, so the screen polls until the turn actually lands.
+      // silence and *then* a full reply, so hardware slower than the machine in
+      // issue #489 is still working when the deadline fires. Failing there would
+      // reintroduce issue #489 at a longer timescale, so the screen polls until
+      // the turn actually lands.
       mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
       mockApi.getSessionTranscript.mockResolvedValue({
         ok: true,

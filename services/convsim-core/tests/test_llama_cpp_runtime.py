@@ -494,9 +494,10 @@ async def test_chat_stream_uses_the_generation_budget_not_the_control_timeout():
     """Generation must get chat_timeout per read, with a short connect phase.
 
     httpx applies a read timeout per chunk, and the first quiet stretch of a
-    turn is prompt eval: a CPU-only machine spends tens of seconds there and
-    more as the transcript grows (issue #489). Billing that against the short
-    control-plane timeout turned an ordinary slow turn into a hard error.
+    turn is prompt eval: a CPU-only machine spent 24 s there in issue #489, and
+    about twice that once the prompt composer's ~4 k-token window fills. Billing
+    that against the short control-plane timeout turned an ordinary slow turn
+    into a hard error.
     """
     runtime = LlamaCppRuntime(LlamaCppConfig(timeout=30.0, chat_timeout=180.0))
     lines = _sse_lines(_token_chunk("hi"), _final_chunk())
