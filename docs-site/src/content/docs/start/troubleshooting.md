@@ -39,8 +39,10 @@ gone, because its live state lived in the engine that stopped. After three
 failed restarts the app stops trying and shows the recovery card instead.
 
 1. If a restart succeeded, your packs, models, and past sessions are all intact — start the conversation again.
-2. If the problem repeats, try a lighter model — open the model manager (**Settings → Runtime → Open model manager**) and choose a smaller model.
-3. Check `~/.convsim/logs/app.log` for crash details.
+2. If the restarted app says a required port is in use, or the AI never answers: the engine that crashed left its own
+   AI-model process behind, and the replacement cannot take the port back. Quit the app and open it again — that clears it.
+3. If the problem repeats, try a lighter model — open the model manager (**Settings → Runtime → Open model manager**) and choose a smaller model.
+4. Check `~/.convsim/logs/app.log` for crash details.
 
 ---
 

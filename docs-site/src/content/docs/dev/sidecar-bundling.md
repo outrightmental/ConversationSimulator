@@ -185,6 +185,15 @@ Two parts of that lifecycle matter to those sidecars:
   hard kill of the engine orphans all of them — llama-server keeps a model
   resident in RAM and keeps port 7356.
 
+A crash is the same event without the choice: an engine that died never reached
+its lifespan shutdown either, so every sidecar in the table above survives it.
+The desktop shell restarts the engine (see "Crash restart" in
+`apps/desktop/README.md`), and the replacement's `ensure_llama_sidecar_running`
+then fails `_is_port_in_use` against the orphan still holding 7356 — the app
+comes back, but without inference until the player quits and relaunches. The
+shell cannot clean this up: the orphans are its grandchildren, not its children,
+and their parent is already gone.
+
 ---
 
 ## Environment variable reference

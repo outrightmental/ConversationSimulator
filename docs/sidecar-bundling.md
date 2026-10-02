@@ -247,6 +247,16 @@ Two parts of that lifecycle matter to the sidecars in this document:
   keeps a model resident in RAM and keeps port 7356 — so the shell waits for the
   graceful path before insisting.
 
+A crash is the same event without the choice: an engine that died never reached
+its lifespan shutdown either, so every sidecar in the table above survives it.
+The desktop shell restarts the engine (see "Crash restart" in
+[apps/desktop/README.md](../apps/desktop/README.md)), and the replacement's
+`ensure_llama_sidecar_running` then fails `_is_port_in_use` against the orphan
+still holding 7356 — the app
+comes back, but without inference until the player quits and relaunches. The
+shell cannot clean this up: the orphans are its grandchildren, not its children,
+and their parent is already gone.
+
 `scripts/packaged-core-smoke.sh` runs the packaged engine and asserts both:
 health readiness, loopback-only binding, and a SIGTERM that reaches the lifespan
 shutdown. See [apps/desktop/README.md](../apps/desktop/README.md), "Core sidecar

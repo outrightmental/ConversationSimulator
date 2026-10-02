@@ -33,6 +33,23 @@ try {
 }
 Write-Host "  OK  cargo check passed."
 
+# Mirrors desktop-smoke.sh: the crate's unit tests cover the core-sidecar state
+# machine (the /api/health readiness probe, the port-conflict and
+# foreign-edition guards, the binary resolution order, the restart backoff).
+# This links the crate, which cargo check does not, so a cold run is slower.
+Write-Host "Running cargo test on apps/desktop/src-tauri..."
+Push-Location $DesktopDir
+try {
+    cargo test
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "cargo test failed (exit code $LASTEXITCODE)."
+        exit $LASTEXITCODE
+    }
+} finally {
+    Pop-Location
+}
+Write-Host "  OK  cargo test passed."
+
 Write-Host ""
 Write-Host "Desktop smoke check passed."
 Write-Host ""

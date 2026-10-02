@@ -162,6 +162,21 @@ than looping. A `shutting_down` flag separates a deliberate teardown from a
 crash, so quitting the app cannot race the supervisor into spawning a
 replacement engine that nothing will ever stop.
 
+*Known limitation of the restart path:* a crash is by definition not a
+lifespan shutdown, so the engine that died never ran `supervisor.stop_all()`
+and its own sidecars survive it — llama-server keeps port 7356, the TTS
+sidecar 7357-7358. The replacement engine starts and serves, but its
+`llama-server` autostart then fails with `Port 7356 … is already in use`
+(`ensure_llama_sidecar_running`), so the app comes back able to browse packs
+and sessions but not to hold a conversation. The engine reports that through
+`sidecar_diagnostics` in `/api/health`, and the UI surfaces it as "another
+application is using the required port"; the fix is to quit and relaunch, which
+clears the orphans. The shell cannot reap them itself — they are not its
+children, and once their parent is gone there is no portable handle on them.
+Putting the engine in its own process group would give one, at the cost of
+breaking Ctrl-C teardown for a release build run from a terminal; that trade is
+not made here.
+
 **Clean shutdown.** `stop_core` sends SIGTERM (`taskkill /PID … /T /F` on
 Windows, which has no SIGTERM but does walk the process tree), waits up to 6 s,
 then falls back to a hard kill. The wait matters: SIGTERM is what lets uvicorn
