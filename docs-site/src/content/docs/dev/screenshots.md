@@ -181,12 +181,13 @@ one editable local-dev copy, that copy's file tree, and the YAML editor open on 
 scenario file with the YAML/Form toggle, Save, and Export .zip.
 
 **Alt text:**
-> Creator Workbench. A green "Pack is valid" banner sits above a three-column layout: the
-> pack list with six official packs and one editable local-dev copy of Job Interview
-> Basics, that copy's file tree with scenarios/stretch_role_interview.yaml selected, and
-> a YAML editor showing the file — schema_version, scenario_id, title, summary,
-> player_role, and the npc, scene and rubric references — with YAML and Form editor
-> toggles, a Save button and an Export .zip button.
+> Creator Workbench. A green "Pack is valid" banner sits above a two-column layout. On
+> the left, the pack list — six official packs and one editable local-dev copy of Job
+> Interview Basics — sits above that copy's file tree, with
+> scenarios/stretch_role_interview.yaml selected. On the right, a YAML editor shows the
+> file — schema_version, scenario_id, title, summary, player_role, and the npc, scene
+> and rubric references — with YAML and Form editor toggles, a Save button and an
+> Export .zip button.
 
 ---
 
