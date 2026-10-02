@@ -753,11 +753,31 @@
    two-line 146px, clearing the reserve with 30px to spare after the focus ring.
    It still holds for the three-line bar a browser can reach at ~780px, but a
    fourth line (below ~700px) would not. Re-measure if that floor ever drops.
-   The selector matches what the D-pad can focus (useGamepadNavigation's
-   FOCUSABLE_SELECTOR) minus the launch bar's own controls: the bar is sticky,
-   so they are already on screen and never need scrolling to. */
-.brief :is(a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"]), summary):not(.brief-launch *) {
-  scroll-margin-bottom: 11rem;
+   The reserve goes on the scrollport, not on the controls. `scroll-margin-bottom`
+   on each control is not enough: focus scrolls with scrollIntoView's `nearest`
+   alignment, and Chromium decides a control is "already visible" from its own
+   border box before the margin is added — so a control that is on screen but
+   standing in the band the bar covers is never scrolled at all. (`block: 'end'`
+   does honour the margin; `nearest`, which is what focus uses, does not.)
+   Measured on a Tab/D-pad walk at 1280x800, that left three controls behind the
+   bar: the last difficulty radio, the language select and a privacy toggle.
+   `scroll-padding-bottom` shrinks the scrollport itself, which is what `nearest`
+   compares against, so the same 11rem now moves every one of them clear.
+   The scrollport here is the viewport, so the padding belongs on the root; it is
+   held to the brief with :has() so no other screen inherits it.
+   The bar's own controls are the one thing the reserve does not need to cover —
+   they ride the viewport's bottom edge and are always on screen — and they are
+   the one thing it cannot be taken off. Scoping it away is what `scroll-margin`
+   would do, but the bar is sticky, and Chromium scrolls a sticky element from
+   where it would have laid out, not from where it is stuck: a negative margin
+   there saturates at 22px however far it is pushed, so there is nothing to scope
+   with. The cost is bounded and it is not the focus ring: Start is reached last
+   in document order, by which point the page is already at its scroll end and
+   focusing it moves nothing (measured). Only the D-pad's wrap from the first
+   element back to the last reaches it from the top, and that scrolls the page
+   under a Start button that stays on screen and focused throughout. */
+:root:has(.brief) {
+  scroll-padding-bottom: 11rem;
 }
 
 .brief-launch-status {
