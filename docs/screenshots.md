@@ -90,17 +90,19 @@ License: **CC0-1.0** (public domain).
 
 ### 01-home.png — Home screen
 
-**What it shows:** The home screen on a ready text-only install. Navigation links, an
-empty "Your training" card (no sessions in this profile yet), a three-scenario training
-plan, and the Status panel: Local runtime ready, the loaded model named, voice runtimes
-not installed, no network required, six packs installed.
+**What it shows:** The home screen on a ready text-only install. Navigation links, the
+"Your training" card summarising the three sessions played in this capture profile
+(streak, strongest and weakest rubric dimension, last session's delta), a three-scenario
+training plan, and the Status panel: Local runtime ready, the loaded model named, voice
+runtimes not installed, no network required, six packs installed.
 
 **Alt text:**
 > Conversation Simulator home screen. Links run down the page — Start a scenario,
 > Create / edit a scenario, Install model, Import pack, Creator workbench guide, Read
-> docs — above an empty "Your training" card and a three-scenario training plan. The
-> Status panel reports Local runtime: Ready, LLM: Qwen3 4B Instruct Q4_K_M, STT and TTS:
-> Not installed, Network required to play: No, and Packs: 6 installed.
+> docs — above a "Your training" card summarising the three sessions played in this
+> profile, and a three-scenario training plan. The Status panel reports Local runtime:
+> Ready, LLM: Qwen3 4B Instruct Q4_K_M, STT and TTS: Not installed, Network required to
+> play: No, and Packs: 6 installed.
 
 ---
 
@@ -142,8 +144,8 @@ event-flag strip, and the text composer.
 
 **What it shows:** The debrief generated for that session: overall score and outcome
 badge, a model-written summary, the rubric scorecard, the telemetry panel with
-conversation metrics and a sparkline per state variable, then strengths and areas for
-improvement, each citing the turn it came from. The frame ends at the improvements
+conversation metrics and a sparkline per state variable, then strengths — each citing the
+turn it came from — and areas for improvement. The frame ends at the improvements
 section; key moments, replay suggestions and the transcript continue below.
 
 **Alt text:**
@@ -153,8 +155,8 @@ section; key moments, replay suggestions and the transcript continue below.
 > Demonstrated 52, Specific Evidence Transferable Skills 52, Honesty About Experience Gap
 > 51, Transferable Evidence 52 — then a Telemetry panel showing talk ratio, words per
 > turn, question counts, response latency and a sparkline for each state meter. Strengths
-> are listed in green and areas for improvement in amber, each citing the turn it came
-> from.
+> are listed in green, each citing the turn it came from, and areas for improvement in
+> amber.
 
 ---
 
