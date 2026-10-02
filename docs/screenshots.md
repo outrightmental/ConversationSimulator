@@ -25,10 +25,13 @@ Recorded 2 October 2026 from the development build.
 Two things visible in the captures are the app reporting on **this machine**, not on the
 product, and are kept rather than staged away:
 
-- **The amber "NPC response is slow" advisory.** The product budgets 2.5 s to first
-  token on the recommended tier ([`packages/shared/src/types/metrics.ts`](../packages/shared/src/types/metrics.ts));
-  a 2021 laptop running a 4B model at a ~1,500-token prompt lands around 9 s and the app
-  says so. Capturing on faster hardware removes the banner; editing it out would be a
+- **The amber performance advisories.** The app raises two, and both are in frame here:
+  "NPC response is slow" on `03-conversation.png`, where the first token took 9.6 s, and
+  "Full NPC response is very slow" at the end of the hero recording, where the whole
+  reply took 14.0 s. The product budgets 2.5 s to first token and 10 s to a full response
+  on the recommended tier ([`packages/shared/src/types/metrics.ts`](../packages/shared/src/types/metrics.ts)); a 2021
+  laptop running a 4B model at a ~1,500-token prompt lands well past both and the app
+  says so. Capturing on faster hardware removes the banners; editing them out would be a
   lie about the thing the README is selling.
 - **STT and TTS reading "Not installed"** on the home screen. Voice needs whisper.cpp and
   a local Kokoro server, which are optional runtimes a text-only install does not have
@@ -77,9 +80,11 @@ seed are constants at the top of the file.
 **Alt text used in README:**
 
 > One turn of "Making the Case" in Conversation Simulator: the player types a reply into
-> the composer, the local model answers as the NPC, and the NPC state meters below the
-> transcript — trust, patience, rapport, openness, objective_progress, conviction,
-> preparation_score — update as the turn resolves.
+> the composer, the local model answers as the NPC with event flags beneath it, and the
+> NPC state meters below the transcript — trust, patience, rapport, openness,
+> objective_progress, conviction, preparation_score — update as the turn resolves. An
+> amber advisory above the transcript reports that the full response took 14.0 seconds on
+> this machine.
 
 ---
 

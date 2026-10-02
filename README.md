@@ -13,17 +13,19 @@
 Practice interviews, negotiations, language, and difficult social situations with AI
 NPCs — running **100% on your computer**, no account, no cloud, no telemetry.
 
-![One turn of "Making the Case" in Conversation Simulator: the player types a reply into the composer, the local model answers as the NPC, and the NPC state meters below the transcript — trust, patience, rapport, openness, objective_progress, conviction, preparation_score — update as the turn resolves.](docs/assets/demo.gif)
+![One turn of "Making the Case" in Conversation Simulator: the player types a reply into the composer, the local model answers as the NPC with event flags beneath it, and the NPC state meters below the transcript — trust, patience, rapport, openness, objective_progress, conviction, preparation_score — update as the turn resolves. An amber advisory above the transcript reports that the full response took 14.0 seconds on this machine.](docs/assets/demo.gif)
 <!-- Captured from a real session on a local Qwen3 4B model. Capture environment and the
      command that remakes every asset here: docs/screenshots.md -->
 
 ```
 Scenario: Making the Case  ·  Job Interview Basics pack
-You:   "The honest answer is that I have never run a multi-quarter roadmap against a P&L.
-        If you hired me I would want a month watching how you do planning before I owned it."
-NPC:   "That's thoughtful. You're not pretending to be more qualified than you are. Have you
-        ever worked on a project that required strategic planning beyond your control?"
-Flags:  honesty_demonstrated, specific_evidence_provided
+You:   "I read your last three release notes and spoke to two of your logistics customers.
+        What surprised me is that the retention story is not the dashboard — it is the CSV
+        export people build their Monday reports on."
+NPC:   "That's insightful. You've done your homework and understood the nuances of our
+        product. Let me ask — how do you see this impacting your approach to planning
+        and execution?"
+Flags:  player_demonstrates_knowledge
 State:  trust 95  ·  openness 80  ·  conviction 35  ·  preparation_score 55
 ```
 
