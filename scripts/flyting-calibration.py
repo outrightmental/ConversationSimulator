@@ -69,6 +69,13 @@ class VolleyResult:
     failures: List[str] = field(default_factory=list)
     checked: int = 0
     skipped: int = 0
+    # What the volley actually scored on, so a report is enough to retune a
+    # suite or to see which half of the pipeline moved. Empty on a run with no
+    # judge, where the mechanical fallback produced the score.
+    dimensions: Dict[str, int] = field(default_factory=dict)
+    hooks: List[str] = field(default_factory=list)
+    dropped_hooks: List[str] = field(default_factory=list)
+    flags: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -78,6 +85,10 @@ class VolleyResult:
             "checked": self.checked,
             "skipped": self.skipped,
             "failures": list(self.failures),
+            "dimensions": dict(self.dimensions),
+            "hooks": list(self.hooks),
+            "dropped_hooks": list(self.dropped_hooks),
+            "flags": list(self.flags),
         }
 
 
@@ -141,6 +152,13 @@ def _check_volley(
     """Compare one scored volley against its expectations."""
     result = VolleyResult(volley_id=volley_id, score=score.score, band=score.band)
     gate = score.gate
+    result.flags = list(score.flags)
+    if score.judgment is not None:
+        result.dimensions = {k: int(v) for k, v in score.judgment.dimensions().items()}
+        result.hooks = [h.trait for h in score.judgment.hooks]
+        result.dropped_hooks = [
+            f"{d.trait}:{d.reason}" for d in score.judgment.dropped_hooks
+        ]
 
     if "gate" in expect:
         result.checked += 1
