@@ -91,10 +91,11 @@ dump_core_output() {
     fi
 }
 
-# Invoked by the EXIT trap below. ShellCheck loses that link because every
-# path through this script ends in an explicit `exit`, so SC2329 is disabled
-# here rather than left to fail the lint.
-# shellcheck disable=SC2329
+# Invoked by the EXIT trap below. ShellCheck does not follow a bare function name
+# through `trap`, so it calls this dead code — SC2329 on the declaration (0.10+,
+# what Homebrew ships) or SC2317 on every command in the body (0.9.0, what the CI
+# runner's apt gives it). Both disabled: either one fails the lint on its own.
+# shellcheck disable=SC2317,SC2329
 cleanup() {
     if [[ -n "$CORE_PID" ]] && kill -0 "$CORE_PID" 2>/dev/null; then
         kill -KILL "$CORE_PID" 2>/dev/null
