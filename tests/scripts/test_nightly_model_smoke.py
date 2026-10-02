@@ -1,0 +1,816 @@
+# SPDX-License-Identifier: Apache-2.0
+"""Unit tests for the nightly real-model smoke harness (issue #457).
+
+These run on every PR and need no model, no network and no llama-server: they
+cover the harness's decision logic — checksum verification, the end-to-end
+assertions, budget evaluation, failure classification and reporting — so that
+when the nightly goes red, the verdict it prints can be trusted.
+
+The real-model path itself is exercised only by
+.github/workflows/model-smoke-nightly.yml; see docs/real-model-smoke.md.
+"""
+from __future__ import annotations
+
+import hashlib
+import importlib.util
+import json
+from pathlib import Path
+
+import pytest
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+SCRIPT_PATH = REPO_ROOT / "scripts" / "nightly-model-smoke.py"
+
+
+def _load_module():
+    """Import the hyphenated script as a module."""
+    spec = importlib.util.spec_from_file_location("nightly_model_smoke", SCRIPT_PATH)
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+smoke = _load_module()
+
+
+# ---------------------------------------------------------------------------
+# Failure classification contract
+# ---------------------------------------------------------------------------
+
+
+class TestFailureClassification:
+    """Each class maps to its own exit code, so CI can tell failures apart."""
+
+    def test_every_class_has_a_unique_exit_code(self) -> None:
+        codes = list(smoke.EXIT_CODES.values())
+        assert len(codes) == len(set(codes)), "exit codes must be distinguishable"
+        assert 0 not in codes, "a failure must never exit 0"
+
+    def test_every_class_has_an_exit_code_and_a_remedy(self) -> None:
+        classes = {
+            value for name, value in vars(smoke.FailureClass).items()
+            if not name.startswith("_") and isinstance(value, str)
+        }
+        assert classes == set(smoke.EXIT_CODES)
+        assert classes == set(smoke.REMEDIES)
+
+    def test_download_and_checksum_are_separate_classes(self) -> None:
+        # The acceptance criterion for #457: a download failure and a checksum
+        # drift must not look alike in CI output.
+        assert smoke.EXIT_CODES[smoke.FailureClass.DOWNLOAD] != smoke.EXIT_CODES[
+            smoke.FailureClass.CHECKSUM
+        ]
+
+    def test_failure_carries_its_exit_code_and_remedy(self) -> None:
+        exc = smoke.SmokeFailure(smoke.FailureClass.RUNTIME, "boom", phase="runtime_start")
+        assert exc.exit_code == smoke.EXIT_CODES[smoke.FailureClass.RUNTIME]
+        assert exc.phase == "runtime_start"
+        assert exc.remedy
+
+
+# ---------------------------------------------------------------------------
+# Checksum verification
+# ---------------------------------------------------------------------------
+
+
+class TestChecksumVerification:
+    """Checksum drift must fail loudly, and must not poison the next run."""
+
+    @staticmethod
+    def _write(tmp_path: Path, payload: bytes = b"gguf-ish bytes") -> tuple[Path, str]:
+        path = tmp_path / "model.gguf"
+        path.write_bytes(payload)
+        return path, hashlib.sha256(payload).hexdigest()
+
+    def test_matching_checksum_returns_the_digest(self, tmp_path: Path) -> None:
+        path, digest = self._write(tmp_path)
+        assert smoke.verify_model_checksum(path, digest) == digest
+        assert path.exists()
+
+    def test_drift_raises_checksum_class(self, tmp_path: Path) -> None:
+        path, _ = self._write(tmp_path)
+        with pytest.raises(smoke.SmokeFailure) as exc_info:
+            smoke.verify_model_checksum(path, "0" * 64)
+        assert exc_info.value.failure_class == smoke.FailureClass.CHECKSUM
+        assert exc_info.value.exit_code == 3
+
+    def test_drift_deletes_the_bad_file_so_a_rerun_redownloads(self, tmp_path: Path) -> None:
+        path, _ = self._write(tmp_path)
+        with pytest.raises(smoke.SmokeFailure):
+            smoke.verify_model_checksum(path, "0" * 64)
+        assert not path.exists()
+
+    def test_drift_can_keep_the_file_for_inspection(self, tmp_path: Path) -> None:
+        path, _ = self._write(tmp_path)
+        with pytest.raises(smoke.SmokeFailure):
+            smoke.verify_model_checksum(path, "0" * 64, delete_on_mismatch=False)
+        assert path.exists()
+
+    def test_missing_file_is_a_download_failure_not_a_checksum_failure(self, tmp_path: Path) -> None:
+        with pytest.raises(smoke.SmokeFailure) as exc_info:
+            smoke.verify_model_checksum(tmp_path / "absent.gguf", "0" * 64)
+        assert exc_info.value.failure_class == smoke.FailureClass.DOWNLOAD
+
+    def test_download_skips_the_fetch_but_still_verifies_an_existing_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        payload = b"already here"
+        (tmp_path / "m.gguf").write_bytes(payload)
+
+        def _never(*args: object, **kwargs: object) -> None:
+            raise AssertionError("must not re-download an existing file")
+
+        monkeypatch.setattr(smoke, "_download_with_progress", _never)
+        # Correct digest: returns the path.
+        assert smoke.download_model(
+            "http://example.invalid/m.gguf", hashlib.sha256(payload).hexdigest(), "m", tmp_path
+        ) == tmp_path / "m.gguf"
+        # Wrong digest: a cache hit with drifted bytes still fails.
+        (tmp_path / "m.gguf").write_bytes(payload)
+        with pytest.raises(smoke.SmokeFailure) as exc_info:
+            smoke.download_model("http://example.invalid/m.gguf", "0" * 64, "m", tmp_path)
+        assert exc_info.value.failure_class == smoke.FailureClass.CHECKSUM
+
+
+# ---------------------------------------------------------------------------
+# Registry resolution
+# ---------------------------------------------------------------------------
+
+
+class TestRegistryResolution:
+    """The workflow's cache key, URL and checksum come from one lookup."""
+
+    def test_resolves_the_real_starter_model(self) -> None:
+        model = smoke.resolve_registry_model("starter")
+        assert model["id"]
+        assert model["url"].startswith("https://")
+        assert len(model["sha256"]) == 64
+        assert model["sha256"] == model["sha256"].lower()
+
+    def test_starter_is_the_smallest_registry_model(self) -> None:
+        # #457 asks for the smallest registry model; guard against a future
+        # registry edit that makes "starter" no longer the smallest.
+        import yaml
+
+        registry = yaml.safe_load(
+            (REPO_ROOT / "model-registry" / "registry.yaml").read_text(encoding="utf-8")
+        )
+        # The user-supplied placeholder has no size and nothing to download.
+        sizes = {
+            m["id"]: m["size_gb"] for m in registry["models"]
+            if m.get("size_gb") is not None
+        }
+        starter = smoke.resolve_registry_model("starter")
+        assert sizes[starter["id"]] == min(sizes.values())
+
+    def test_unknown_role_is_a_download_failure(self, tmp_path: Path) -> None:
+        registry = tmp_path / "registry.yaml"
+        registry.write_text("models: []\n", encoding="utf-8")
+        with pytest.raises(smoke.SmokeFailure) as exc_info:
+            smoke.resolve_registry_model("starter", registry)
+        assert exc_info.value.failure_class == smoke.FailureClass.DOWNLOAD
+
+    def test_model_without_checksum_is_rejected(self, tmp_path: Path) -> None:
+        registry = tmp_path / "registry.yaml"
+        registry.write_text(
+            "models:\n"
+            "  - id: x\n"
+            "    role: starter\n"
+            "    download:\n"
+            "      url: https://example.invalid/x.gguf\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(smoke.SmokeFailure) as exc_info:
+            smoke.resolve_registry_model("starter", registry)
+        assert "sha256" in str(exc_info.value)
+
+    def test_github_output_is_appended(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        out = tmp_path / "gh-output"
+        monkeypatch.setenv("GITHUB_OUTPUT", str(out))
+        smoke._emit_github_output({"model_id": "abc", "model_sha256": "def"})
+        assert out.read_text(encoding="utf-8").splitlines() == [
+            "model_id=abc",
+            "model_sha256=def",
+        ]
+
+
+# ---------------------------------------------------------------------------
+# Conversation assertions
+# ---------------------------------------------------------------------------
+
+
+def _turn(**overrides: object) -> dict:
+    turn = {
+        "label": "player_turn_1",
+        "turn_number": 1,
+        "model_generated": True,
+        "npc_excerpt": "Tell me more about that platform.",
+        "used_fallback": False,
+    }
+    turn.update(overrides)
+    return turn
+
+
+class TestEvaluateTurns:
+    """Real NPC turns are the whole point of the nightly."""
+
+    def test_healthy_conversation_passes(self) -> None:
+        failures, warnings = smoke.evaluate_turns([_turn(), _turn(turn_number=2)])
+        assert failures == []
+        assert warnings == []
+
+    def test_no_turns_fails(self) -> None:
+        failures, _ = smoke.evaluate_turns([])
+        assert failures
+
+    def test_empty_npc_utterance_fails(self) -> None:
+        failures, _ = smoke.evaluate_turns([_turn(npc_excerpt="")])
+        assert any("no NPC utterance" in f for f in failures)
+
+    def test_all_generated_turns_falling_back_fails(self) -> None:
+        turns = [_turn(used_fallback=True), _turn(turn_number=2, used_fallback=True)]
+        failures, _ = smoke.evaluate_turns(turns)
+        assert any("fell back" in f for f in failures)
+
+    def test_one_fallback_among_several_only_warns(self) -> None:
+        turns = [_turn(used_fallback=True), _turn(turn_number=2), _turn(turn_number=3)]
+        failures, warnings = smoke.evaluate_turns(turns)
+        assert failures == []
+        assert any("fell back" in w for w in warnings)
+
+    def test_authored_opening_does_not_count_as_a_generated_turn(self) -> None:
+        # The NPC opening is scenario text, not inference. A run whose only
+        # non-fallback turn is the opening has produced no real NPC turns.
+        turns = [
+            {"label": "npc_opening", "turn_number": 0, "model_generated": False,
+             "npc_excerpt": "Thanks for coming in."},
+            _turn(used_fallback=True),
+        ]
+        failures, _ = smoke.evaluate_turns(turns)
+        assert any("fell back" in f for f in failures)
+
+    def test_opening_only_run_fails(self) -> None:
+        turns = [{"label": "npc_opening", "turn_number": 0, "model_generated": False,
+                  "npc_excerpt": "Thanks for coming in."}]
+        failures, _ = smoke.evaluate_turns(turns)
+        assert any("No model-generated" in f for f in failures)
+
+
+# ---------------------------------------------------------------------------
+# Debrief assertions
+# ---------------------------------------------------------------------------
+
+
+def _debrief(**overrides: object) -> dict:
+    doc = {
+        "scores": {"structure": 56.0, "evidence": 48.0},
+        "overall_score": 52.0,
+        "summary": "You gave concrete examples but hedged on the trade-off question.",
+        "turning_points": [{"turn_number": 2, "description": "d", "impact": "i"}],
+        "used_fallback": False,
+    }
+    doc.update(overrides)
+    return doc
+
+
+class TestEvaluateDebrief:
+    """"Assert a scored debrief is produced" — the #457 acceptance criterion."""
+
+    def test_scored_debrief_passes(self) -> None:
+        failures, warnings = smoke.evaluate_debrief(_debrief())
+        assert failures == []
+        assert warnings == []
+
+    def test_missing_debrief_fails(self) -> None:
+        assert smoke.evaluate_debrief(None)[0]
+
+    def test_unscored_debrief_fails(self) -> None:
+        failures, _ = smoke.evaluate_debrief(_debrief(scores={}, overall_score=None))
+        assert any("no rubric dimension scores" in f for f in failures)
+        assert any("not numeric" in f for f in failures)
+
+    def test_non_numeric_overall_score_fails(self) -> None:
+        failures, _ = smoke.evaluate_debrief(_debrief(overall_score="52"))
+        assert any("not numeric" in f for f in failures)
+
+    def test_boolean_overall_score_is_not_a_number(self) -> None:
+        failures, _ = smoke.evaluate_debrief(_debrief(overall_score=True))
+        assert any("not numeric" in f for f in failures)
+
+    @pytest.mark.parametrize("score", [-1, 101])
+    def test_out_of_range_overall_score_fails(self, score: float) -> None:
+        failures, _ = smoke.evaluate_debrief(_debrief(overall_score=score))
+        assert any("outside [0, 100]" in f for f in failures)
+
+    def test_empty_summary_fails(self) -> None:
+        failures, _ = smoke.evaluate_debrief(_debrief(summary="   "))
+        assert any("summary is shorter" in f for f in failures)
+
+    def test_fallback_narrative_only_warns_because_scores_are_still_real(self) -> None:
+        failures, warnings = smoke.evaluate_debrief(_debrief(used_fallback=True))
+        assert failures == []
+        assert any("fallback" in w for w in warnings)
+
+    def test_absent_turning_points_only_warn(self) -> None:
+        failures, warnings = smoke.evaluate_debrief(_debrief(turning_points=[]))
+        assert failures == []
+        assert any("turning points" in w for w in warnings)
+
+
+# ---------------------------------------------------------------------------
+# Budget evaluation
+# ---------------------------------------------------------------------------
+
+
+class TestEvaluateBudgets:
+    def test_within_budget_passes(self) -> None:
+        failures, lines = smoke.evaluate_budgets({"full_response_ms": 100_000}, 20.0)
+        assert failures == []
+        assert any("PASS" in line for line in lines)
+
+    def test_tolerance_is_applied_before_failing(self) -> None:
+        # 10 000 ms × 2 × 1.20 = 24 000 ms ceiling.
+        assert smoke.evaluate_budgets({"full_response_ms": 23_999}, 2.0)[0] == []
+        assert smoke.evaluate_budgets({"full_response_ms": 24_001}, 2.0)[0]
+
+    def test_unbudgeted_metrics_are_not_checked(self) -> None:
+        # session_start_ms and debrief_ms are reported but have no budget: the
+        # opening is authored text and debrief latency has no documented SLO.
+        assert "session_start_ms" not in smoke.BUDGETS_MS
+        assert "debrief_ms" not in smoke.BUDGETS_MS
+        failures, lines = smoke.evaluate_budgets(
+            {"session_start_ms": 10 ** 9, "debrief_ms": 10 ** 9}, 1.0
+        )
+        assert failures == []
+        assert lines == []
+
+    def test_missing_measurement_is_skipped_not_failed(self) -> None:
+        assert smoke.evaluate_budgets({}, 20.0) == ([], [])
+
+    def test_failure_message_shows_the_arithmetic(self) -> None:
+        failures, _ = smoke.evaluate_budgets({"full_response_ms": 10 ** 6}, 20.0)
+        assert "documented budget 10000 ms × 20.0 × 1.2" in failures[0]
+
+
+# ---------------------------------------------------------------------------
+# Wall-clock budget
+# ---------------------------------------------------------------------------
+
+
+class TestDeadline:
+    def test_phase_durations_are_recorded(self) -> None:
+        clock = smoke.Deadline(60.0)
+        clock.enter("checksum")
+        clock.enter("runtime_start")
+        durations = clock.finish()
+        assert set(durations) >= {"startup", "checksum", "runtime_start"}
+
+    def test_exhausted_budget_raises_timeout_naming_the_phase(self) -> None:
+        clock = smoke.Deadline(0.0)
+        with pytest.raises(smoke.SmokeFailure) as exc_info:
+            clock.enter("debrief")
+        assert exc_info.value.failure_class == smoke.FailureClass.TIMEOUT
+        assert exc_info.value.exit_code == 6
+        # The phase recorded is the one that ran out of budget.
+        assert "debrief" in str(exc_info.value)
+
+    def test_cap_clamps_a_request_timeout_to_the_remaining_budget(self) -> None:
+        clock = smoke.Deadline(30.0)
+        assert clock.cap(10.0) == 10.0
+        assert clock.cap(10_000.0) <= 30.0
+
+    def test_cap_never_returns_a_useless_zero_timeout(self) -> None:
+        clock = smoke.Deadline(1.0)
+        assert clock.cap(600.0) >= 5.0
+
+    def test_finish_does_not_raise_on_an_exhausted_budget(self) -> None:
+        # finish() runs from run_smoke's finally block, where the timeout has
+        # already been classified; raising there would discard the verdict.
+        clock = smoke.Deadline(0.0)
+        assert "startup" in clock.finish()
+
+
+# ---------------------------------------------------------------------------
+# Reporting
+# ---------------------------------------------------------------------------
+
+
+class TestStepSummary:
+    def test_failure_summary_names_class_and_remedy(self) -> None:
+        text = smoke.render_step_summary({
+            "verdict": "fail",
+            "model_id": "qwen3-4b",
+            "failure_class": smoke.FailureClass.RUNTIME,
+            "exit_code": 4,
+            "failures": ["convsim-core exited with code 1"],
+            "wall_clock_s": 123.0,
+            "wall_clock_budget_s": 1500.0,
+            "phase_durations_s": {"runtime_start": 42.0},
+        })
+        assert "FAIL" in text
+        assert "`runtime`" in text
+        assert "convsim-core exited with code 1" in text
+        assert smoke.REMEDIES[smoke.FailureClass.RUNTIME] in text
+
+    def test_pass_summary_tabulates_measurements_with_ceilings(self) -> None:
+        text = smoke.render_step_summary({
+            "verdict": "pass",
+            "model_id": "qwen3-4b",
+            "ci_hardware_factor": 20.0,
+            "measured_ms": {"full_response_ms": 110_000, "debrief_ms": 200_000},
+            "wall_clock_s": 900.0,
+            "wall_clock_budget_s": 1500.0,
+        })
+        assert "PASS" in text
+        assert "240000 ms" in text  # 10 000 × 20 × 1.2
+        assert "| `debrief_ms` | 200000 ms | — |" in text
+
+    def test_summary_is_not_written_without_the_github_env_var(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
+        smoke._write_step_summary({"verdict": "pass"})  # must not raise
+
+    def test_summary_is_appended_when_github_env_var_is_set(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        path = tmp_path / "summary.md"
+        monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(path))
+        smoke._write_step_summary({"verdict": "pass", "model_id": "m"})
+        assert "PASS" in path.read_text(encoding="utf-8")
+
+    def test_report_is_valid_json(self, tmp_path: Path) -> None:
+        path = tmp_path / "nested" / "report.json"
+        smoke._write_report(path, {"verdict": "pass", "failures": []})
+        assert json.loads(path.read_text(encoding="utf-8"))["verdict"] == "pass"
+
+
+# ---------------------------------------------------------------------------
+# Event-payload extraction
+# ---------------------------------------------------------------------------
+
+
+class TestEventExtraction:
+    def test_npc_turn_content_is_extracted(self) -> None:
+        events = [
+            {"event_type": "player_turn", "payload": {"content": "hi"}},
+            {"event_type": "npc_turn", "payload": {"content": "Go on."}},
+        ]
+        assert smoke._npc_turn_content(events) == "Go on."
+
+    def test_npc_opening_content_is_extracted(self) -> None:
+        events = [{"event_type": "npc_opening", "payload": {"content": "Welcome."}}]
+        assert smoke._npc_turn_content(events) == "Welcome."
+
+    def test_absent_npc_event_yields_empty_string(self) -> None:
+        assert smoke._npc_turn_content([{"event_type": "tts_chunk", "payload": {}}]) == ""
+
+    def test_excerpt_is_bounded_and_collapsed(self) -> None:
+        excerpt = smoke._excerpt("a\n\n  b" + "x" * 500)
+        assert excerpt.startswith("a b")
+        assert len(excerpt) <= smoke.EXCERPT_CHARS + 1  # + the ellipsis
+        assert excerpt.endswith("…")
+
+
+# ---------------------------------------------------------------------------
+# Scripted conversation shape
+# ---------------------------------------------------------------------------
+
+
+class TestScriptedConversation:
+    def test_the_script_is_a_multi_turn_conversation(self) -> None:
+        assert len(smoke.SCRIPTED_PLAYER_TURNS) >= 2
+        assert all(t.strip() for t in smoke.SCRIPTED_PLAYER_TURNS)
+
+    def test_the_script_matches_the_fake_runtime_playthrough(self) -> None:
+        # Keeping the two harnesses on the same script means the nightly
+        # exercises the conversation shape the per-PR smoke already covers.
+        source = (REPO_ROOT / "tests" / "e2e" / "test_scripted_playthrough.py").read_text(
+            encoding="utf-8"
+        )
+        for turn in smoke.SCRIPTED_PLAYER_TURNS:
+            assert turn in source, f"scripted turn drifted from the e2e playthrough: {turn!r}"
+
+
+# ---------------------------------------------------------------------------
+# Full-run orchestration, with llama-server and convsim-core faked out
+# ---------------------------------------------------------------------------
+
+
+class _FakeProc:
+    """Minimum of subprocess.Popen that run_smoke touches."""
+
+    def __init__(self, returncode: int | None = None) -> None:
+        self.stdout = iter(())
+        self.stderr = iter(())
+        self._returncode = returncode
+        self.terminated = False
+
+    @property
+    def returncode(self) -> int | None:
+        return self._returncode
+
+    def poll(self) -> int | None:
+        return self._returncode
+
+    def terminate(self) -> None:
+        self.terminated = True
+
+    def wait(self, timeout: float | None = None) -> int:
+        return self._returncode or 0
+
+    def kill(self) -> None:  # pragma: no cover - only on a hung child
+        self.terminated = True
+
+
+_OPENING = {"events": [{"event_type": "npc_opening",
+                        "payload": {"content": "Thanks for coming in today."}}]}
+_NPC_TURN = {"events": [{"event_type": "npc_turn",
+                         "payload": {"content": "Walk me through that trade-off."}}],
+             "ending_type": None}
+
+
+def _fake_core(debrief: dict, *, debug_turns: list | None = None):
+    """Build a _request_json stand-in that answers convsim-core's endpoints."""
+    calls: list[str] = []
+
+    def _request_json(url: str, *, payload=None, timeout=None, expect=(200, 201)) -> dict:
+        calls.append(url)
+        if url.endswith("/health"):
+            return {"llm_runtime": {"runtime_id": "llama_cpp"}}
+        if url.endswith("/api/sessions"):
+            return {"session_id": "sess-1"}
+        if url.endswith("/start"):
+            return _OPENING
+        if url.endswith("/turn"):
+            return _NPC_TURN
+        if url.endswith("/debug"):
+            return {"turns": debug_turns if debug_turns is not None else [
+                {"turn_number": n, "used_fallback": False,
+                 "used_native_structured_output": True}
+                for n in range(1, len(smoke.SCRIPTED_PLAYER_TURNS) + 1)
+            ]}
+        if url.endswith("/end"):
+            return {"state": "Ended"}
+        if url.endswith("/debrief"):
+            return debrief
+        raise AssertionError(f"unexpected request to {url}")
+
+    _request_json.calls = calls  # type: ignore[attr-defined]
+    return _request_json
+
+
+@pytest.fixture()
+def staged_model(tmp_path: Path) -> tuple[Path, str, str]:
+    """A fake GGUF on disk plus its id and digest."""
+    models_dir = tmp_path / "models"
+    models_dir.mkdir()
+    payload = b"\x00gguf stand-in"
+    (models_dir / "test-model.gguf").write_bytes(payload)
+    return models_dir, "test-model", hashlib.sha256(payload).hexdigest()
+
+
+@pytest.fixture()
+def fake_servers(monkeypatch: pytest.MonkeyPatch) -> dict[str, _FakeProc]:
+    """Replace both child processes and the readiness polling with fakes."""
+    procs = {"llama": _FakeProc(), "core": _FakeProc()}
+    monkeypatch.setattr(smoke, "_start_llama_server", lambda *a, **k: procs["llama"])
+    monkeypatch.setattr(smoke, "_start_core", lambda *a, **k: procs["core"])
+    monkeypatch.setattr(smoke, "_wait_for_http", lambda *a, **k: None)
+    return procs
+
+
+class TestRunSmokeOrchestration:
+    """The phases, the report and the exit code, without a real model."""
+
+    def test_healthy_run_passes_and_reports(
+        self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        models_dir, model_id, digest = staged_model
+        monkeypatch.setattr(smoke, "_request_json", _fake_core(_debrief()))
+        report = tmp_path / "report.json"
+
+        exit_code = smoke.run_smoke(
+            model_id, 20.0, report, model_sha256=digest, models_dir=models_dir
+        )
+
+        assert exit_code == 0
+        results = json.loads(report.read_text(encoding="utf-8"))
+        assert results["verdict"] == "pass"
+        assert results["failure_class"] is None
+        assert results["runtime_id"] == "llama_cpp"
+        # One authored opening + every scripted player turn.
+        assert len(results["turns"]) == len(smoke.SCRIPTED_PLAYER_TURNS) + 1
+        assert results["turns"][0]["model_generated"] is False
+        assert all(t["model_generated"] for t in results["turns"][1:])
+        assert all(t["used_native_structured_output"] for t in results["turns"][1:])
+        assert results["debrief"]["overall_score"] == 52.0
+        assert set(results["measured_ms"]) >= {
+            "session_start_ms", "full_response_ms", "debrief_ms"
+        }
+        assert set(results["phase_durations_s"]) >= {
+            "checksum", "runtime_start", "conversation", "debrief", "assertions", "budget"
+        }
+        assert results["warnings"] == []
+
+    def test_both_children_are_stopped_even_on_a_pass(
+        self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        models_dir, model_id, digest = staged_model
+        monkeypatch.setattr(smoke, "_request_json", _fake_core(_debrief()))
+        smoke.run_smoke(model_id, 20.0, None, model_sha256=digest, models_dir=models_dir)
+        assert fake_servers["llama"].terminated
+        assert fake_servers["core"].terminated
+
+    def test_unscored_debrief_is_a_pipeline_failure(
+        self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        models_dir, model_id, digest = staged_model
+        monkeypatch.setattr(
+            smoke, "_request_json",
+            _fake_core(_debrief(scores={}, overall_score=None)),
+        )
+        report = tmp_path / "report.json"
+
+        exit_code = smoke.run_smoke(
+            model_id, 20.0, report, model_sha256=digest, models_dir=models_dir
+        )
+
+        assert exit_code == smoke.EXIT_CODES[smoke.FailureClass.PIPELINE]
+        results = json.loads(report.read_text(encoding="utf-8"))
+        assert results["failure_class"] == smoke.FailureClass.PIPELINE
+        assert results["failed_phase"] == "assertions"
+        assert any("rubric dimension scores" in f for f in results["failures"])
+
+    def test_latency_regression_is_a_budget_failure_not_a_pipeline_one(
+        self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        import time
+
+        models_dir, model_id, digest = staged_model
+        base = _fake_core(_debrief())
+
+        def _slow_turn(url: str, *, payload=None, timeout=None, expect=(200, 201)) -> dict:
+            if url.endswith("/turn"):
+                time.sleep(0.02)  # measurable, so the 0 ms ceiling is exceeded
+            return base(url, payload=payload, timeout=timeout, expect=expect)
+
+        monkeypatch.setattr(smoke, "_request_json", _slow_turn)
+        report = tmp_path / "report.json"
+
+        # Factor 0 ⇒ a 0 ms ceiling, so any measurable latency regresses.
+        exit_code = smoke.run_smoke(
+            model_id, 0.0, report, model_sha256=digest, models_dir=models_dir
+        )
+
+        assert exit_code == smoke.EXIT_CODES[smoke.FailureClass.BUDGET]
+        results = json.loads(report.read_text(encoding="utf-8"))
+        assert results["failure_class"] == smoke.FailureClass.BUDGET
+        assert results["failed_phase"] == "budget"
+
+    def test_a_crashed_child_outranks_the_client_side_symptom(
+        self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        # convsim-core dies mid-run: the client sees a pipeline-shaped error, but
+        # the real story is the crash, so the verdict must be `runtime`.
+        models_dir, model_id, digest = staged_model
+        fake_servers["core"]._returncode = 1
+
+        def _boom(url: str, *, payload=None, timeout=None, expect=(200, 201)) -> dict:
+            if url.endswith("/health"):
+                return {"llm_runtime": {"runtime_id": "llama_cpp"}}
+            raise smoke.SmokeFailure(smoke.FailureClass.PIPELINE, "connection reset")
+
+        monkeypatch.setattr(smoke, "_request_json", _boom)
+        report = tmp_path / "report.json"
+
+        exit_code = smoke.run_smoke(
+            model_id, 20.0, report, model_sha256=digest, models_dir=models_dir
+        )
+
+        assert exit_code == smoke.EXIT_CODES[smoke.FailureClass.RUNTIME]
+        results = json.loads(report.read_text(encoding="utf-8"))
+        assert results["failure_class"] == smoke.FailureClass.RUNTIME
+        assert "convsim-core exited with code 1" in results["failures"][0]
+
+    def test_a_fake_runtime_is_refused(
+        self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        models_dir, model_id, digest = staged_model
+
+        def _fake_runtime(url: str, *, payload=None, timeout=None, expect=(200, 201)) -> dict:
+            assert url.endswith("/health"), "must not play a turn on the fake runtime"
+            return {"llm_runtime": {"runtime_id": "fake"}}
+
+        monkeypatch.setattr(smoke, "_request_json", _fake_runtime)
+        report = tmp_path / "report.json"
+
+        exit_code = smoke.run_smoke(
+            model_id, 20.0, report, model_sha256=digest, models_dir=models_dir
+        )
+
+        assert exit_code == smoke.EXIT_CODES[smoke.FailureClass.PIPELINE]
+        results = json.loads(report.read_text(encoding="utf-8"))
+        assert "runtime_id" in results["failures"][0]
+
+    def test_checksum_drift_stops_the_run_before_any_server_starts(
+        self, staged_model, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        models_dir, model_id, _ = staged_model
+
+        def _never(*args: object, **kwargs: object):
+            raise AssertionError("must not load a model that failed verification")
+
+        monkeypatch.setattr(smoke, "_start_llama_server", _never)
+        report = tmp_path / "report.json"
+
+        exit_code = smoke.run_smoke(
+            model_id, 20.0, report, model_sha256="0" * 64, models_dir=models_dir
+        )
+
+        assert exit_code == smoke.EXIT_CODES[smoke.FailureClass.CHECKSUM]
+        results = json.loads(report.read_text(encoding="utf-8"))
+        assert results["failed_phase"] == "checksum"
+
+    def test_run_without_a_checksum_warns_that_drift_was_not_checked(
+        self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        models_dir, model_id, _ = staged_model
+        monkeypatch.setattr(smoke, "_request_json", _fake_core(_debrief()))
+        report = tmp_path / "report.json"
+
+        exit_code = smoke.run_smoke(model_id, 20.0, report, models_dir=models_dir)
+
+        assert exit_code == 0
+        results = json.loads(report.read_text(encoding="utf-8"))
+        assert any("checksum drift was not checked" in w for w in results["warnings"])
+
+    def test_an_absent_model_is_a_download_failure(
+        self, fake_servers, tmp_path: Path
+    ) -> None:
+        exit_code = smoke.run_smoke(
+            "absent", 20.0, None, models_dir=tmp_path / "empty"
+        )
+        assert exit_code == smoke.EXIT_CODES[smoke.FailureClass.DOWNLOAD]
+
+    def test_exhausted_wall_clock_budget_is_a_timeout(
+        self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        models_dir, model_id, digest = staged_model
+        monkeypatch.setattr(smoke, "_request_json", _fake_core(_debrief()))
+        report = tmp_path / "report.json"
+
+        exit_code = smoke.run_smoke(
+            model_id, 20.0, report, model_sha256=digest, models_dir=models_dir,
+            wall_clock_budget_s=0.0,
+        )
+
+        assert exit_code == smoke.EXIT_CODES[smoke.FailureClass.TIMEOUT]
+        results = json.loads(report.read_text(encoding="utf-8"))
+        assert results["failure_class"] == smoke.FailureClass.TIMEOUT
+
+    def test_an_unexpected_harness_bug_is_reported_not_raised(
+        self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        models_dir, model_id, digest = staged_model
+
+        def _bug(url: str, *, payload=None, timeout=None, expect=(200, 201)) -> dict:
+            if url.endswith("/health"):
+                return {"llm_runtime": {"runtime_id": "llama_cpp"}}
+            raise TypeError("harness bug")
+
+        monkeypatch.setattr(smoke, "_request_json", _bug)
+        report = tmp_path / "report.json"
+
+        exit_code = smoke.run_smoke(
+            model_id, 20.0, report, model_sha256=digest, models_dir=models_dir
+        )
+
+        assert exit_code != 0
+        results = json.loads(report.read_text(encoding="utf-8"))
+        assert "bug in the smoke harness" in results["failures"][0]
+
+    def test_a_scenario_that_ends_early_stops_the_scripted_turns(
+        self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        models_dir, model_id, digest = staged_model
+        base = _fake_core(_debrief(), debug_turns=[
+            {"turn_number": 1, "used_fallback": False, "used_native_structured_output": True},
+        ])
+
+        def _ends_after_one(url: str, *, payload=None, timeout=None, expect=(200, 201)) -> dict:
+            if url.endswith("/turn"):
+                return {**_NPC_TURN, "ending_type": "success"}
+            return base(url, payload=payload, timeout=timeout, expect=expect)
+
+        monkeypatch.setattr(smoke, "_request_json", _ends_after_one)
+        report = tmp_path / "report.json"
+
+        exit_code = smoke.run_smoke(
+            model_id, 20.0, report, model_sha256=digest, models_dir=models_dir
+        )
+
+        assert exit_code == 0
+        results = json.loads(report.read_text(encoding="utf-8"))
+        assert len(results["turns"]) == 2  # opening + the one turn that ended it
