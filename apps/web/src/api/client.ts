@@ -281,14 +281,20 @@ function parseErrorText(text: string, res: Response): string {
 
   // convsim-core folds the field failures into `message` itself, but an engine
   // bundled before issue #508 sends only the generic "Request validation
-  // failed" with the detail alongside. Append whichever failures the sentence
-  // does not already name, so a 422 never dead-ends at a message that names
-  // nothing — and never says the same thing twice because the two sides word
-  // or clip a reason slightly differently.
-  const unnamed = fieldFailures(details).filter((f) =>
-    msg == null ? true : f.path ? !msg.includes(`${f.path}:`) : !msg.includes(f.reason),
+  // failed" with the detail alongside. Summarise the details ourselves only
+  // when that sentence names no field at all, so a 422 never dead-ends at a
+  // message that names nothing.
+  //
+  // If it names even one, the sentence is already this change's own summary —
+  // capped at MAX_REPORTED_FIELDS and ending in "(and N more)". Appending the
+  // fields it deliberately left out would contradict its own count and blow
+  // past the length the compact card and the copied report are capped for.
+  const failures = fieldFailures(details)
+  const sentence = msg ?? ''
+  const alreadyNamed = failures.some((f) =>
+    f.path ? sentence.includes(`${f.path}:`) : sentence.includes(f.reason),
   )
-  const fields = fieldSummary(unnamed)
+  const fields = alreadyNamed ? undefined : fieldSummary(failures)
   if (msg && fields) msg = `${msg} — ${fields}`
   else if (fields) msg = fields
 
