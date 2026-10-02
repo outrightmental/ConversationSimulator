@@ -566,6 +566,14 @@ fn probe_core_within(port: u16, budget: Duration) -> CoreProbe {
         Ok(s) => s,
         Err(_) => return CoreProbe::Closed,
     };
+    // One deadline for the whole exchange, started before the write. A write
+    // timeout of its own would be a *second* budget: an occupant that accepts
+    // the connection and never reads it stalls `write_all` once its receive
+    // window fills, and the probe would then cost up to two budgets — which
+    // breaks what `OCCUPIED_GRACE` is sized for (see
+    // `the_occupied_grace_allows_a_retry_after_a_full_probe`), because the
+    // grace deadline is only consulted *between* probes.
+    let deadline = Instant::now() + budget;
     if stream.set_write_timeout(Some(budget)).is_err() || stream.write_all(HEALTH_REQUEST).is_err()
     {
         return CoreProbe::Occupied;
@@ -583,7 +591,6 @@ fn probe_core_within(port: u16, budget: Duration) -> CoreProbe {
     // only consulted *between* probes, so no error card would ever appear.
     // `read_to_end` is also unbounded in size: on loopback a flood fills
     // memory faster than any timeout can intervene. Bound both.
-    let deadline = Instant::now() + budget;
     let mut raw = Vec::new();
     let mut chunk = [0u8; 8192];
     while raw.len() < PROBE_RESPONSE_LIMIT {
