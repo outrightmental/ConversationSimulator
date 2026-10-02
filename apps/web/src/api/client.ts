@@ -43,6 +43,9 @@ import type {
   LogbookExport,
   PreflightResponse,
   SetupInstallJob,
+  VoiceSetupPlan,
+  VoiceInstallJob,
+  StartVoiceEngineResponse,
 } from '@convsim/shared';
 
 export type { HealthResponse };
@@ -629,6 +632,21 @@ export const api = {
   },
   cancelSetupInstall(jobId: number): Promise<ApiResult<undefined>> {
     return del(`/setup/install/${jobId}`)
+  },
+  getVoiceSetupPlan(): Promise<ApiResult<VoiceSetupPlan>> {
+    return get<VoiceSetupPlan>('/voice/setup/plan')
+  },
+  startVoiceInstall(assetIds: string[]): Promise<ApiResult<VoiceInstallJob>> {
+    return post<VoiceInstallJob>('/voice/setup/install', { asset_ids: assetIds })
+  },
+  getVoiceInstallStatus(jobId: number): Promise<ApiResult<VoiceInstallJob>> {
+    return get<VoiceInstallJob>(`/voice/setup/install/${jobId}`)
+  },
+  cancelVoiceInstall(jobId: number): Promise<ApiResult<undefined>> {
+    return del(`/voice/setup/install/${jobId}`)
+  },
+  startVoiceEngine(engineId: string): Promise<ApiResult<StartVoiceEngineResponse>> {
+    return post<StartVoiceEngineResponse>(`/voice/setup/engine/${engineId}/start`)
   },
   connectSession(
     sessionId: string,

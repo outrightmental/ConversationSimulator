@@ -1,7 +1,18 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { MemoryRouter } from 'react-router-dom'
 import VoiceSettingsPanel from '../components/VoiceSettingsPanel'
+
+// The panel links to the guided voice setup flow (issue #487), so it needs a
+// router in scope exactly as it has one in the app.
+function renderPanel() {
+  return render(
+    <MemoryRouter>
+      <VoiceSettingsPanel />
+    </MemoryRouter>,
+  )
+}
 
 vi.mock('../api/client', () => ({
   api: {
@@ -103,39 +114,39 @@ afterEach(() => {
 
 describe('voice readiness cards', () => {
   it('shows the voice readiness section', async () => {
-    render(<VoiceSettingsPanel />)
+    renderPanel()
     await waitFor(() => expect(screen.getByTestId('voice-readiness')).toBeInTheDocument())
   })
 
   it('shows STT as ready when health reports stt_ready', async () => {
-    render(<VoiceSettingsPanel />)
+    renderPanel()
     await waitFor(() => expect(screen.getByTestId('readiness-stt')).toHaveTextContent('model loaded'))
   })
 
   it('shows TTS as ready when health reports tts_ready', async () => {
-    render(<VoiceSettingsPanel />)
+    renderPanel()
     await waitFor(() => expect(screen.getByTestId('readiness-tts')).toHaveTextContent('model loaded'))
   })
 
   it('shows VAD as ready when vadHealth returns ready', async () => {
-    render(<VoiceSettingsPanel />)
+    renderPanel()
     await waitFor(() => expect(screen.getByTestId('readiness-vad')).toHaveTextContent('ready'))
   })
 
   it('shows Microphone as ready when permission is granted', async () => {
-    render(<VoiceSettingsPanel />)
+    renderPanel()
     await waitFor(() => expect(screen.getByTestId('readiness-mic')).toHaveTextContent('permission granted'))
   })
 
   it('shows STT as unavailable when health reports stt_ready=false', async () => {
     mockApi.health.mockResolvedValue({ ok: true, data: STUB_HEALTH_NO_VOICE })
-    render(<VoiceSettingsPanel />)
+    renderPanel()
     await waitFor(() => expect(screen.getByTestId('readiness-stt')).toHaveTextContent('no model loaded'))
   })
 
   it('shows TTS as unavailable when health reports tts_ready=false', async () => {
     mockApi.health.mockResolvedValue({ ok: true, data: STUB_HEALTH_NO_VOICE })
-    render(<VoiceSettingsPanel />)
+    renderPanel()
     await waitFor(() => expect(screen.getByTestId('readiness-tts')).toHaveTextContent('no model loaded'))
     // Should show setup/fallback guidance
     expect(screen.getByText(/Install a text-to-speech model/i)).toBeInTheDocument()
@@ -143,7 +154,7 @@ describe('voice readiness cards', () => {
 
   it('shows VAD as unavailable when vadHealth returns unavailable', async () => {
     mockApi.vadHealth.mockResolvedValue({ ok: true, data: STUB_VAD_UNAVAILABLE })
-    render(<VoiceSettingsPanel />)
+    renderPanel()
     await waitFor(() => expect(screen.getByTestId('readiness-vad')).toHaveTextContent('not available'))
   })
 
@@ -155,9 +166,53 @@ describe('voice readiness cards', () => {
       writable: true,
       configurable: true,
     })
-    render(<VoiceSettingsPanel />)
+    renderPanel()
     await waitFor(() => expect(screen.getByTestId('readiness-mic')).toHaveTextContent('permission denied'))
     expect(screen.getByText(/Allow microphone access/i)).toBeInTheDocument()
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Route into the guided setup flow (issue #487)
+// ---------------------------------------------------------------------------
+
+describe('voice setup call to action', () => {
+  it('offers to set voice up when nothing is installed', async () => {
+    mockApi.health.mockResolvedValue({ ok: true, data: STUB_HEALTH_NO_VOICE })
+    mockApi.vadHealth.mockResolvedValue({ ok: true, data: STUB_VAD_UNAVAILABLE })
+    renderPanel()
+
+    const cta = await screen.findByTestId('voice-setup-cta')
+    expect(cta).toHaveTextContent('Set up voice')
+    expect(cta).toHaveAttribute('href', '/voice-setup')
+  })
+
+  it('offers to manage the setup once everything is installed', async () => {
+    renderPanel()
+    await waitFor(() =>
+      expect(screen.getByTestId('voice-setup-cta')).toHaveTextContent('Manage voice setup'),
+    )
+  })
+
+  // The dead end this issue is about: a readiness card that reports a missing
+  // component must also offer the way to install it.
+  it('puts an install link on each component that is not ready', async () => {
+    mockApi.health.mockResolvedValue({ ok: true, data: STUB_HEALTH_NO_VOICE })
+    mockApi.vadHealth.mockResolvedValue({ ok: true, data: STUB_VAD_UNAVAILABLE })
+    renderPanel()
+
+    for (const testId of ['fix-stt', 'fix-tts', 'fix-vad']) {
+      expect(await screen.findByTestId(testId)).toHaveAttribute('href', '/voice-setup')
+    }
+  })
+
+  it('hides the per-component install links once they are ready', async () => {
+    renderPanel()
+    await waitFor(() => expect(screen.getByTestId('readiness-stt')).toHaveTextContent('model loaded'))
+
+    expect(screen.queryByTestId('fix-stt')).toBeNull()
+    expect(screen.queryByTestId('fix-tts')).toBeNull()
+    expect(screen.queryByTestId('fix-vad')).toBeNull()
   })
 })
 
@@ -167,14 +222,14 @@ describe('voice readiness cards', () => {
 
 describe('voice selection', () => {
   it('shows the voice selection dropdown', async () => {
-    render(<VoiceSettingsPanel />)
+    renderPanel()
     await waitFor(() =>
       expect(screen.getByRole('combobox', { name: /default npc voice/i })).toBeInTheDocument(),
     )
   })
 
   it('populates dropdown with voices from the API', async () => {
-    render(<VoiceSettingsPanel />)
+    renderPanel()
     await waitFor(() => screen.getByRole('combobox', { name: /default npc voice/i }))
     expect(screen.getByRole('option', { name: /Heart \(US female\)/i })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: /Adam \(US male\)/i })).toBeInTheDocument()
@@ -182,7 +237,7 @@ describe('voice selection', () => {
   })
 
   it('defaults to the first voice when no preference is stored', async () => {
-    render(<VoiceSettingsPanel />)
+    renderPanel()
     await waitFor(() => screen.getByRole('combobox', { name: /default npc voice/i }))
     const select = screen.getByRole('combobox', { name: /default npc voice/i }) as HTMLSelectElement
     expect(select.value).toBe('af_heart')
@@ -190,14 +245,14 @@ describe('voice selection', () => {
 
   it('restores stored preference when a valid voice_id is in localStorage', async () => {
     localStorage.setItem('convsim.voice.preferredVoiceId', 'am_adam')
-    render(<VoiceSettingsPanel />)
+    renderPanel()
     await waitFor(() => screen.getByRole('combobox', { name: /default npc voice/i }))
     const select = screen.getByRole('combobox', { name: /default npc voice/i }) as HTMLSelectElement
     expect(select.value).toBe('am_adam')
   })
 
   it('updates localStorage when the user changes the voice selection', async () => {
-    render(<VoiceSettingsPanel />)
+    renderPanel()
     await waitFor(() => screen.getByRole('combobox', { name: /default npc voice/i }))
     fireEvent.change(screen.getByRole('combobox', { name: /default npc voice/i }), {
       target: { value: 'bf_emma' },
@@ -207,14 +262,14 @@ describe('voice selection', () => {
 
   it('shows an error when voice list fails to load', async () => {
     mockApi.listVoices.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'network error' } })
-    render(<VoiceSettingsPanel />)
+    renderPanel()
     await waitFor(() =>
       expect(screen.getByText(/Connection failed/i)).toBeInTheDocument(),
     )
   })
 
   it('shows a note that voice selection is limited to approved voices', async () => {
-    render(<VoiceSettingsPanel />)
+    renderPanel()
     await waitFor(() => screen.getByRole('combobox', { name: /default npc voice/i }))
     expect(screen.getByText(/approved built-in voices/i)).toBeInTheDocument()
   })
@@ -226,7 +281,7 @@ describe('voice selection', () => {
 
 describe('TTS cache', () => {
   it('displays the current cache size', async () => {
-    render(<VoiceSettingsPanel />)
+    renderPanel()
     await waitFor(() =>
       expect(screen.getByTestId('cache-size-label')).toHaveTextContent('4 files · 8.0 KB'),
     )
@@ -234,7 +289,7 @@ describe('TTS cache', () => {
 
   it('shows "Empty" when cache has zero files', async () => {
     mockApi.getTtsCacheSize.mockResolvedValue({ ok: true, data: STUB_CACHE_EMPTY })
-    render(<VoiceSettingsPanel />)
+    renderPanel()
     await waitFor(() =>
       expect(screen.getByTestId('cache-size-label')).toHaveTextContent('Empty'),
     )
@@ -242,26 +297,26 @@ describe('TTS cache', () => {
 
   it('disables clear button when cache is empty', async () => {
     mockApi.getTtsCacheSize.mockResolvedValue({ ok: true, data: STUB_CACHE_EMPTY })
-    render(<VoiceSettingsPanel />)
+    renderPanel()
     await waitFor(() => screen.getByRole('button', { name: /clear tts cache/i }))
     expect(screen.getByRole('button', { name: /clear tts cache/i })).toBeDisabled()
   })
 
   it('clear button is enabled when cache has files', async () => {
-    render(<VoiceSettingsPanel />)
+    renderPanel()
     await waitFor(() => screen.getByRole('button', { name: /clear tts cache/i }))
     expect(screen.getByRole('button', { name: /clear tts cache/i })).not.toBeDisabled()
   })
 
   it('calls clearTtsCache API when clear button is clicked', async () => {
-    render(<VoiceSettingsPanel />)
+    renderPanel()
     await waitFor(() => screen.getByRole('button', { name: /clear tts cache/i }))
     fireEvent.click(screen.getByRole('button', { name: /clear tts cache/i }))
     await waitFor(() => expect(mockApi.clearTtsCache).toHaveBeenCalledOnce())
   })
 
   it('updates cache size display to empty after clearing', async () => {
-    render(<VoiceSettingsPanel />)
+    renderPanel()
     await waitFor(() => screen.getByRole('button', { name: /clear tts cache/i }))
     fireEvent.click(screen.getByRole('button', { name: /clear tts cache/i }))
     await waitFor(() =>
@@ -270,7 +325,7 @@ describe('TTS cache', () => {
   })
 
   it('shows success message after clearing', async () => {
-    render(<VoiceSettingsPanel />)
+    renderPanel()
     await waitFor(() => screen.getByRole('button', { name: /clear tts cache/i }))
     fireEvent.click(screen.getByRole('button', { name: /clear tts cache/i }))
     await waitFor(() =>
@@ -280,7 +335,7 @@ describe('TTS cache', () => {
 
   it('shows error message when clear fails', async () => {
     mockApi.clearTtsCache.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'disk full' } })
-    render(<VoiceSettingsPanel />)
+    renderPanel()
     await waitFor(() => screen.getByRole('button', { name: /clear tts cache/i }))
     fireEvent.click(screen.getByRole('button', { name: /clear tts cache/i }))
     await waitFor(() =>

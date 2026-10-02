@@ -15,7 +15,7 @@
  */
 import React from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, fireEvent } from '@testing-library/react'
+import { render, fireEvent, screen } from '@testing-library/react'
 import { Link, MemoryRouter, Route, Routes } from 'react-router-dom'
 import axe from 'axe-core'
 
@@ -68,6 +68,49 @@ vi.mock('../api/client', () => ({
     putCloudSettings: vi.fn(),
     // NPC relationship memory
     listRelationshipMemory: vi.fn().mockResolvedValue({ ok: true, data: { recaps: [], total: 0 } }),
+    // VoiceSetup
+    getVoiceSetupPlan: vi.fn().mockResolvedValue({
+      ok: true,
+      data: {
+        capabilities: [
+          { id: 'stt', label: 'Speak your turns', description: 'Transcribes what you say.', ready: false, required_engine_ids: ['whisper-cli'], asset_ids: ['whisper-base-en'] },
+          { id: 'tts', label: 'Hear the NPC', description: 'Reads replies aloud.', ready: false, required_engine_ids: ['kokoro-server'], asset_ids: [] },
+          { id: 'vad', label: 'Hands-free turn-taking', description: 'Detects when you stop.', ready: false, required_engine_ids: [], asset_ids: [] },
+        ],
+        assets: [
+          {
+            id: 'whisper-base-en', capability: 'stt', name: 'Whisper base.en',
+            description: 'Recommended balance of accuracy and speed.', language_note: 'English only',
+            recommended: true, selected: false, size_bytes: 147964211, license: 'MIT',
+            license_url: 'https://opensource.org/licenses/MIT',
+            source_url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/abc/ggml-base.en.bin',
+            sha256: 'a'.repeat(64), install_path: '/tmp/models/stt/ggml-base.en.bin', installed: false,
+          },
+        ],
+        engines: [
+          {
+            id: 'whisper-cli', capability: 'stt', name: 'whisper.cpp',
+            why_manual: 'No checksummed binary is published for every platform.',
+            docs_url: 'https://github.com/ggml-org/whisper.cpp#quick-start',
+            command: 'brew install whisper-cpp', startable: false, installed: false, found_at: null,
+          },
+          {
+            id: 'kokoro-server', capability: 'tts', name: 'Kokoro TTS server',
+            why_manual: 'The NPC voice runs in a small local server.',
+            docs_url: 'https://github.com/remsky/Kokoro-FastAPI#readme',
+            command: 'docker run --rm -p 7358:8880 ghcr.io/remsky/kokoro-fastapi-cpu:latest',
+            startable: true, installed: false, found_at: null,
+          },
+        ],
+        platform: 'darwin', kokoro_state: 'stopped', onnxruntime_installed: false,
+        ffmpeg_installed: false, active_job_id: null,
+        default_asset_ids: ['whisper-base-en'], default_download_bytes: 147964211,
+      },
+    }),
+    startVoiceInstall: vi.fn(),
+    getVoiceInstallStatus: vi.fn(),
+    cancelVoiceInstall: vi.fn(),
+    startVoiceEngine: vi.fn(),
     workbench: {
       listPacks: vi.fn().mockResolvedValue({ ok: true, data: [] }),
       listFiles: vi.fn().mockResolvedValue({ ok: true, data: { tree: [] } }),
@@ -131,6 +174,7 @@ vi.mock('../hooks/useSteamAchievements', () => ({
 import Home from '../screens/Home'
 import ScenarioLibrary from '../screens/ScenarioLibrary'
 import Settings from '../screens/Settings'
+import VoiceSetup from '../screens/VoiceSetup'
 import Debrief from '../screens/Debrief'
 import CreatorWorkbench from '../screens/CreatorWorkbench'
 import FirstRunWizard from '../screens/FirstRunWizard'
@@ -303,6 +347,15 @@ describe('Accessibility: Settings', () => {
     )
     const btn = container.querySelector('button[aria-expanded]')
     expect(btn?.getAttribute('aria-controls')).toBe('settings-advanced-section')
+  })
+})
+
+describe('Accessibility: VoiceSetup', () => {
+  it('has no axe violations with every voice component missing', async () => {
+    const container = renderInRouter(<VoiceSetup />)
+    await screen.findByTestId('voice-setup-screen')
+    const violations = await runAxe(container)
+    expect(violations, formatViolations(violations)).toHaveLength(0)
   })
 })
 

@@ -785,7 +785,7 @@ export default function Debrief() {
                   onClick={() => {
                     writeVoiceInviteState('setup')
                     setVoiceInviteVisible(false)
-                    navigate('/settings')
+                    navigate('/voice-setup')
                   }}
                   style={{
                     padding: '0.4rem 1rem',

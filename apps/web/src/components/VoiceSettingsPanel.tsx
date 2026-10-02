@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState, useEffect, useCallback } from 'react'
+import { Link } from 'react-router-dom'
 import type { VoiceInfo } from '@convsim/shared'
 import { api } from '../api/client'
 import type { ApiError } from '../api/errors'
@@ -30,9 +31,11 @@ interface ReadinessCardProps {
   status: ReadinessStatus
   detail: string
   guidance?: string
+  /** Rendered under the guidance when the component is not ready — the way out. */
+  fix?: React.ReactNode
 }
 
-function ReadinessCard({ label, testId, status, detail, guidance }: ReadinessCardProps) {
+function ReadinessCard({ label, testId, status, detail, guidance, fix }: ReadinessCardProps) {
   const color =
     status === 'ready' ? '#86efac' :
     status === 'checking' ? '#a1a1aa' :
@@ -73,8 +76,33 @@ function ReadinessCard({ label, testId, status, detail, guidance }: ReadinessCar
             {guidance}
           </p>
         )}
+        {fix && status !== 'ready' && (
+          <div style={{ marginTop: '0.3rem' }}>{fix}</div>
+        )}
       </div>
     </div>
+  )
+}
+
+/** Link to the guided voice setup flow, styled as the card's call to action. */
+function SetupLink({ children, testId }: { children: React.ReactNode; testId: string }) {
+  return (
+    <Link
+      to="/voice-setup"
+      data-testid={testId}
+      style={{
+        display: 'inline-block',
+        padding: '0.25rem 0.7rem',
+        borderRadius: '4px',
+        background: 'rgba(99,102,241,0.85)',
+        color: '#fff',
+        fontSize: '0.8rem',
+        fontWeight: 600,
+        textDecoration: 'none',
+      }}
+    >
+      {children}
+    </Link>
   )
 }
 
@@ -210,6 +238,8 @@ export default function VoiceSettingsPanel() {
     return `${cacheFiles} file${cacheFiles === 1 ? '' : 's'} · ${formatBytes(cacheSizeBytes)}`
   }
 
+  const allVoiceReady = sttReady === true && ttsReady === true && vadReady === true
+
   const micStatus: ReadinessStatus =
     micPerm === 'granted' ? 'ready' :
     micPerm === 'checking' ? 'checking' :
@@ -231,9 +261,14 @@ export default function VoiceSettingsPanel() {
     <div>
       {/* Voice readiness */}
       <div style={{ marginBottom: '1.25rem' }}>
-        <h3 style={{ fontSize: '0.875rem', fontWeight: 600, color: '#a1a1aa', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-          Voice readiness
-        </h3>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', marginBottom: '0.5rem' }}>
+          <h3 style={{ fontSize: '0.875rem', fontWeight: 600, color: '#a1a1aa', margin: 0, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Voice readiness
+          </h3>
+          <SetupLink testId="voice-setup-cta">
+            {allVoiceReady ? 'Manage voice setup' : 'Set up voice'}
+          </SetupLink>
+        </div>
         <div
           data-testid="voice-readiness"
           style={{
@@ -268,6 +303,7 @@ export default function VoiceSettingsPanel() {
             status={sttStatus}
             detail={sttReady === null ? 'checking…' : sttReady ? 'model loaded' : 'no model loaded'}
             guidance={!sttReady && sttReady !== null ? 'Install a speech-to-text model to enable voice input modes.' : undefined}
+            fix={<SetupLink testId="fix-stt">Install speech-to-text</SetupLink>}
           />
           <ReadinessCard
             label="VAD"
@@ -275,6 +311,7 @@ export default function VoiceSettingsPanel() {
             status={vadStatus}
             detail={vadReady === null ? 'checking…' : vadReady ? 'ready' : 'not available'}
             guidance={!vadReady && vadReady !== null ? 'Hands-free mode uses voice activity detection. VAD is not available in this environment.' : undefined}
+            fix={<SetupLink testId="fix-vad">Set up hands-free</SetupLink>}
           />
           <ReadinessCard
             label="TTS"
@@ -282,6 +319,7 @@ export default function VoiceSettingsPanel() {
             status={ttsStatus}
             detail={ttsReady === null ? 'checking…' : ttsReady ? 'model loaded' : 'no model loaded'}
             guidance={!ttsReady && ttsReady !== null ? 'Install a text-to-speech model to enable NPC voice output. Text-only is always available.' : undefined}
+            fix={<SetupLink testId="fix-tts">Set up the NPC voice</SetupLink>}
           />
         </div>
       </div>
