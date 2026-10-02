@@ -97,8 +97,22 @@ describe('copyTextToClipboard', () => {
     expect(await copyTextToClipboard('report')).toBe(false)
   })
 
+  it('leaves no scratch textarea behind when execCommand throws', async () => {
+    // execCommand is deprecated and already gone from some engines, where
+    // calling it throws rather than returning false. The scratch textarea was
+    // selected by then, so leaving it in the DOM parks focus in an invisible
+    // element on the very error surface the user is reporting from.
+    ;(document as unknown as { execCommand: unknown }).execCommand = vi.fn(() => {
+      throw new TypeError('document.execCommand is not a function')
+    })
+
+    expect(await copyTextToClipboard('report')).toBe(false)
+    expect(document.querySelector('textarea')).toBeNull()
+  })
+
   it('reports failure when execCommand declines the copy', async () => {
     ;(document as unknown as { execCommand: unknown }).execCommand = vi.fn().mockReturnValue(false)
     expect(await copyTextToClipboard('report')).toBe(false)
+    expect(document.querySelector('textarea')).toBeNull()
   })
 })
