@@ -59,8 +59,8 @@ static_assertions:
     path: state.variables.momentum
     check: "max_delta_per_turn=10 AND default=50"
   - description: The target declares an attack surface for hooks to verify against
-    path: npc.ref
-    check: non_empty_string
+    path: npc.attack_surface
+    check: min_length_1
   - description: The umpire has a voice
     path: flyting.judge_flavor
     check: non_empty_string
