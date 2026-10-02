@@ -88,7 +88,9 @@ scenario, player turns and seed are constants at the top of the file.
 A run that loses a screen keeps going — the other outputs are worth more than the one
 that failed — but it **exits non-zero** and names what it missed. Those files still hold
 the previous capture, so check the exit status before committing: a partial run is
-otherwise indistinguishable from a full one.
+otherwise indistinguishable from a full one. If it is the hero encode that failed, the
+raw `.webm` is left in its temp directory and the path printed, so the segment can be
+re-encoded by hand instead of replayed.
 
 ---
 

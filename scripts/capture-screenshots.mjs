@@ -576,7 +576,17 @@ async function main() {
     })
   }
 
-  await rm(videoDir, { recursive: true, force: true }).catch(() => {})
+  // Keep the raw recording when the hero was asked for and did not land. The
+  // webm is the only copy of a playthrough that cost a real model four turns,
+  // and `encodeHero` can still fail after the ffmpeg preflight passed — a bad
+  // crop, a filter typo, a full disk. Deleting it here would force a whole new
+  // session for a failure that a hand-run ffmpeg fixes in seconds, which is
+  // the same cascade `step` exists to prevent everywhere else in this script.
+  if (CAPTURE_HERO && !written.has('hero')) {
+    log(`keeping the raw recording for a manual re-encode: ${videoDir}`)
+  } else {
+    await rm(videoDir, { recursive: true, force: true }).catch(() => {})
+  }
 
   // Printed before the exit-status check, because a partial run that still
   // rewrote one screen has still desynced the site copies for that screen.
