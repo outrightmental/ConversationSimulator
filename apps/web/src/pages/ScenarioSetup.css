@@ -712,6 +712,18 @@
   box-shadow: 0 -12px 34px -22px #000, 0 0 0 1px rgba(255, 255, 255, 0.02);
 }
 
+/* The bar is pinned over the bottom of the viewport, which is exactly where the
+   browser parks a control it has just scrolled into view: sequential focus —
+   Tab, and the Steam Deck D-pad, which moves focus with `element.focus()` in
+   useGamepadNavigation — aligns a control that was below the fold flush with
+   the viewport's bottom edge, leaving it behind the bar. Reserve the bar's
+   height (plus the 3px focus ring and its offset) so a newly focused control
+   lands above the bar instead of under it. Not the launch bar's own controls:
+   it is sticky, so it is already on screen and never needs scrolling to. */
+.brief :is(a[href], button, input, select, textarea):not(.brief-launch *) {
+  scroll-margin-bottom: 7rem;
+}
+
 .brief-launch-status {
   display: flex;
   align-items: center;

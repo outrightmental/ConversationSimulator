@@ -1156,7 +1156,7 @@ must carry its own hierarchy:
 | Difficulty traits | Patience, disclosure, volatility and time pressure drawn as meters; the fill always matches the number shown.     |
 | Purpose panel     | The rubric dimensions this scenario practises, when it declares any.                                              |
 | Readiness panel   | Runtime checks and the safety summary, visible while the player scrolls.                                          |
-| Launch bar        | Pinned to the bottom of the viewport: readiness, what is about to start, and the single primary action.           |
+| Launch bar        | Pinned to the bottom of the viewport: readiness, what is about to start, and the single primary action. It must never cover the control the player has just focused — keyboard and D-pad navigation scroll to the bottom edge the bar occupies. |
 
 ## 9.5 Conversation screen
 
