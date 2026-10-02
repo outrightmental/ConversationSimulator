@@ -110,8 +110,9 @@ telling two entries apart at a glance.
 
 `publishing/assets/source/gen_icons.py` is the source of truth. It draws the
 mark as plain polygons and circles — no fonts, no `clip-path`, no group
-transforms — so it reproduces byte-for-byte anywhere ImageMagick is installed,
-and emits both the Steamworks client icon and the Tauri `bundle.icon` set:
+transforms — and pins ImageMagick's own SVG rasteriser, so it reproduces
+byte-for-byte on any machine with the same ImageMagick build, and emits both
+the Steamworks client icon and the Tauri `bundle.icon` set:
 
 ```bash
 python3 publishing/assets/source/gen_icons.py                     # demo, into the repo

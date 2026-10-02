@@ -32,8 +32,10 @@ SVG renderer — what you get when librsvg is not installed, which is the common
 case — silently ignores ``clip-path`` and ``transform`` and cannot resolve a
 font at all; gen_capsules.py's reliance on an installed Carlito is exactly the
 sort of thing that makes a generator irreproducible.  Nothing here needs more
-than ImageMagick's own rasteriser, so the committed PNGs can be rebuilt
-byte-for-byte anywhere.
+than ImageMagick's own rasteriser, which ``render_png`` asks for by name
+(``MSVG:``) so that an installed librsvg cannot quietly re-render the set:
+the committed PNGs rebuild byte-for-byte on any machine with the same
+ImageMagick build, with no font to install.
 
 Usage:
     python3 publishing/assets/source/gen_icons.py            # write into the repo
@@ -282,9 +284,16 @@ def render_png(edition: str, size: int, dest: Path) -> Path:
         # Capped at 1024 — beyond that the render is already smooth and the
         # 4096-square intermediate costs far more than it buys.
         render_at = min(size * SUPERSAMPLE, max(size, SUPERSAMPLE_CAP))
+        # MSVG: pins ImageMagick's own rasteriser.  Plain `foo.svg` hands the
+        # file to librsvg — compiled in, or shelled out to as the `svg:decode`
+        # delegate — whenever it is present, and librsvg anti-aliases
+        # differently, so the committed PNGs would come back changed on a
+        # machine that happens to have it.  This drawing needs nothing librsvg
+        # offers, so asking for the simple renderer by name costs nothing and
+        # makes the output depend on the ImageMagick build alone.
         subprocess.run(
             [_magick(), "-background", "none", "-density", str(render_at),
-             str(src), "-resize", f"{render_at}x{render_at}!",
+             "MSVG:" + str(src), "-resize", f"{render_at}x{render_at}!",
              "-filter", "Lanczos", "-resize", f"{size}x{size}!",
              "-depth", "8", "-strip", "PNG32:" + str(dest)],
             check=True,
