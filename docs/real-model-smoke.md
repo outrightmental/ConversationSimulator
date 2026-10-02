@@ -1,0 +1,221 @@
+<!-- SPDX-License-Identifier: CC-BY-4.0 -->
+# Real-model smoke test (nightly)
+
+Every other CI job validates Conversation Simulator against the **fake** and
+**scripted** runtimes — deterministic stand-ins that need no model download.
+That keeps pull requests fast, but it means a whole class of regression is
+invisible per-PR: a prompt a real model cannot satisfy, a JSON schema the
+adapter mis-serialises, a debrief that generates prose but never a score.
+
+The nightly real-model smoke closes that gap. It plays a scripted conversation
+on a **real local model** end-to-end — registry download → llama.cpp →
+`convsim-core` → scored debrief — and fails with a classified verdict.
+
+| | |
+|---|---|
+| Workflow | [`.github/workflows/model-smoke-nightly.yml`](../.github/workflows/model-smoke-nightly.yml) |
+| Harness | [`scripts/nightly-model-smoke.py`](../scripts/nightly-model-smoke.py) |
+| Unit tests (per-PR) | `tests/scripts/test_nightly_model_smoke.py` |
+| Schedule | 04:00 UTC daily, plus **Run workflow** (`workflow_dispatch`) |
+| Runner | GitHub-hosted `ubuntu-latest`, CPU-only inference |
+| Model | registry role `starter` — Qwen3 4B Instruct Q4\_K\_M, ~2.5 GB, Apache-2.0 |
+| Runtime budget | **< 30 min** (`timeout-minutes: 30`); the harness self-limits to 25 min |
+
+> Nightly, not per-PR, on purpose: a 2.5 GB download plus ~11 min of CPU-only
+> inference cannot sit in the PR path. The per-PR equivalent is the fake-runtime
+> playthrough in `tests/e2e/test_scripted_playthrough.py`, which uses the *same
+> scripted player turns* so the two cover the same conversation shape.
+
+---
+
+## What the nightly proves
+
+1. The pinned starter model downloads and its bytes match the registry SHA-256.
+2. `llama-server` loads the GGUF and `convsim-core` reports
+   `runtime_id == "llama_cpp"` — the smoke refuses to run on a fake runtime.
+3. A real model drives a multi-turn conversation on the built-in
+   `behavioral_interview` scenario, producing NPC turns that satisfy
+   `turn-output.schema.json`.
+4. The session ends and produces a **scored** debrief: at least one rubric
+   dimension scored, a numeric `overall_score` in `[0, 100]`, and a non-empty
+   summary.
+5. End-to-end turn latency stays within the documented budget, scaled for CI
+   hardware.
+
+The NPC *opening* line is authored scenario text, not a generation — so the
+scripted player turns, not the opening, are what prove the model is working.
+
+---
+
+## Failure classification
+
+A red nightly must be triageable from the job summary alone, so every failure is
+attributed to exactly one class, with its own exit code, its own banner in the
+log, and a remedy printed next to it:
+
+| Exit | Class | Means | First thing to do |
+|---|---|---|---|
+| 1 | `budget` | Pipeline worked; latency regressed past the CI ceiling | Compare `measured_ms` in the report artifact against recent nightlies |
+| 2 | `download` | Model could not be fetched — network, HTTP, or an empty cache | `python scripts/validate-registry.py --url-check`, then re-run |
+| 3 | `checksum` | **SHA-256 drift**: on-disk bytes ≠ `model-registry/registry.yaml` | See [Checksum drift](#checksum-drift) — never relax the check |
+| 4 | `runtime` | `llama-server` or `convsim-core` crashed, hung, or returned 5xx | Read the child stderr tail printed above the banner |
+| 5 | `pipeline` | Servers healthy, but an end-to-end assertion failed | Inspect per-turn `used_fallback` flags in the report artifact |
+| 6 | `timeout` | Wall-clock budget exhausted; the failing phase is named | Check `phase_durations_s` before raising the budget |
+
+The distinction that matters most in practice is **2/3 vs 4 vs 5**: a download or
+checksum failure says nothing about the app, a runtime failure is a crash, and a
+pipeline failure means the model ran and produced output the product rejected.
+
+Each run writes the verdict, failure class, remedy, measured latencies and
+per-phase durations to the GitHub **step summary**, and uploads the full JSON
+report as the `model-smoke-report` artifact (30-day retention).
+
+---
+
+## Runtime budget
+
+Target: **under 30 minutes on a standard GitHub-hosted runner.** The job sets
+`timeout-minutes: 30` as a hard ceiling, and the harness runs with
+`--wall-clock-budget-s 1500` (25 min) so *it* fails first and names the phase
+that ran long — a GitHub-side timeout would only say "the operation was
+canceled".
+
+Measured on `ubuntu-latest` (CPU-only, 4B Q4\_K\_M):
+
+| Phase | Cold cache | Warm cache |
+|---|---|---|
+| `pip install` (prompt-composer, convsim-core, llama-cpp-python wheel) | ~2 min | ~2 min |
+| Model download (2.5 GB from Hugging Face) | ~2 min | — |
+| SHA-256 verification | ~1 min (×2) | ~0.5 min |
+| `llama-server` model load | ~0.5 min | ~0.5 min |
+| Authored opening + 3 scripted turns | ~7 min | ~7 min |
+| Debrief generation | ~4 min | ~4 min |
+| **Total** | **~18 min** | **~16 min** |
+
+The model is cached between runs under the key
+`model-gguf-v1-<registry-sha256>`, so the download only recurs when the registry
+pin changes. Cache *restore* and *save* are separate steps and the save is gated
+on `success()`, so a file that fails verification is never written to the cache.
+
+If the total creeps past ~25 min, shorten `SCRIPTED_PLAYER_TURNS` rather than
+raising the ceiling: a nightly that routinely runs near its timeout flaps.
+
+### Latency budget on CI hardware
+
+CPU-only CI hardware is far slower than the mid-spec reference machine the
+product budgets target ([docs/performance.md](performance.md)), so the harness
+scales the documented budget:
+
+```
+CI ceiling = documented budget × CI_HARDWARE_FACTOR × REGRESSION_TOLERANCE
+           = 10 000 ms        × 20                 × 1.20   = 240 000 ms
+```
+
+`CI_HARDWARE_FACTOR` (20) is calibrated empirically: a full behavioral-interview
+turn on this runner measures ~116 s, i.e. ~11.6× the 10 s documented budget. The
+factor leaves roughly 2× headroom so runner-to-runner variance does not flap the
+nightly, while a genuine >2× regression still fails. The headline
+`full_response_ms` is the **median** of the scripted turns, so one unlucky turn
+cannot flap the job either.
+
+This factor models CI slowness only — the product's 10 s target-hardware budget
+is unchanged. Re-measure and re-tune it if the runner class or the starter model
+changes.
+
+`session_start_ms` and `debrief_ms` are measured and reported but **not**
+budget-checked: the NPC opening is authored text rather than inference, and
+debrief generation has no documented SLO.
+
+---
+
+## Checksum drift
+
+The checksum is verified in two places: right after a fresh download, and again
+at the start of every run (including cache hits) before the weights are loaded.
+A cache hit with drifted bytes therefore fails loudly instead of silently
+feeding a corrupt model to the smoke.
+
+Exit 3 means one of two things:
+
+- **The pinned upstream file was replaced.** All registry URLs are pinned to a
+  specific Hugging Face revision, so this should not happen silently — if it
+  did, review the new file and re-pin with `scripts/pin-model.py`.
+- **The cached download is corrupt or truncated.** The harness deletes the bad
+  local file, but Actions cache entries are immutable, so a poisoned entry would
+  be restored again on the next run. Delete it
+  (`gh cache delete model-gguf-v1-<sha>`) or bump `MODEL_CACHE_PREFIX` in the
+  workflow.
+
+Never "fix" a drift by updating the expected hash to whatever is on disk — that
+is exactly the check this job exists to perform.
+
+---
+
+## Running it locally
+
+You need the starter model on disk and `llama-cpp-python[server]` installed.
+Nothing here touches the network except the one-time model download.
+
+```bash
+# 1. Install the harness dependencies
+pip install -e "packages/prompt-composer[dev]"
+pip install -e "services/convsim-core[dev]"
+pip install "llama-cpp-python[server]" \
+  --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+
+# 2. Resolve the starter model's id / url / sha256 from the registry
+python scripts/nightly-model-smoke.py --print-registry-model starter
+
+# 3. Download it (~2.5 GB) into ~/.convsim/models/llm/, verifying the checksum
+python scripts/nightly-model-smoke.py --download-only \
+  --model-id qwen3-4b-instruct-q4_k_m \
+  --model-url "<model_url from step 2>" \
+  --model-sha256 "<model_sha256 from step 2>"
+
+# 4. Run the smoke. --ci-hardware-factor 1 holds your machine to the real
+#    product budget; use 20 to reproduce what CI accepts.
+python scripts/nightly-model-smoke.py \
+  --model-id qwen3-4b-instruct-q4_k_m \
+  --model-sha256 "<model_sha256 from step 2>" \
+  --ci-hardware-factor 1 \
+  --report-path /tmp/smoke-report.json
+```
+
+Useful extras:
+
+- `--verify-only` — re-verify an already-downloaded model and exit.
+- `--models-dir <dir>` — look for `<model-id>.gguf` somewhere other than
+  `~/.convsim/models/llm/`.
+- `--wall-clock-budget-s` — the self-imposed deadline (default 1500 s).
+
+The harness binds `llama-server` on port 7356 and `convsim-core` on port 7399;
+stop anything already listening there first.
+
+To exercise the harness's own logic without a model:
+
+```bash
+python -m pytest tests/scripts/ -v
+```
+
+---
+
+## Privacy
+
+The conversation is 100 % scripted (`SCRIPTED_PLAYER_TURNS` in the harness) and
+contains no user data, so short NPC excerpts are printed to the log and recorded
+in the report artifact — they are the evidence that a real model, rather than a
+canned fallback, drove the conversation. Sessions are created with
+`save_transcript: false`, so no transcript file is written, and `convsim-core`
+runs against a throwaway data directory that is deleted when the run ends.
+
+---
+
+## Related
+
+- [Offline smoke tests](offline-smoke-tests.md) — proves no cloud service is
+  contacted during play (fake runtime, per-PR).
+- [Voice smoke tests](voice-smoke-tests.md) — STT/TTS sidecar checks.
+- [Performance and hardware tiers](performance.md) — where the latency budgets
+  come from.
+- [Release checklist](release-checklist.md) — Part F covers manual real-model
+  verification of a packaged build.

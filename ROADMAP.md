@@ -91,7 +91,7 @@ criteria.
 
 - [ ] Real UI screenshots (replace SVG placeholders in README) — [#455](https://github.com/outrightmental/ConversationSimulator/issues/455)
 - [ ] Desktop app with bundled backend (Tauri sidecar for `convsim-core`) — [#456](https://github.com/outrightmental/ConversationSimulator/issues/456)
-- [ ] Automated real-model CI smoke test — [#457](https://github.com/outrightmental/ConversationSimulator/issues/457)
+- [x] Automated real-model CI smoke test — [#457](https://github.com/outrightmental/ConversationSimulator/issues/457)
 
 ### Post-alpha — Milestone 2+
 

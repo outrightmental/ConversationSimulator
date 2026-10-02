@@ -2,7 +2,7 @@
 title: "Screenshots & demo assets"
 description: "What the placeholder visual assets in docs/assets/ show, how they are licensed, and how to replace them with real screenshots at Milestone 1."
 sidebar:
-  order: 13
+  order: 14
 ---
 
 This document describes the visual assets in [`docs/assets/`](https://github.com/outrightmental/ConversationSimulator/tree/main/docs/assets) — what they show, where they

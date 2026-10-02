@@ -131,6 +131,10 @@ Exit codes: `0` = pass, `1` = network violation or pack error, `3` = unexpected 
 To verify that the installed llama.cpp or Ollama runtime makes no *unexpected*
 outbound calls, run the smoke test while the real runtime is active.
 
+> This page covers the **network** promise only. For the nightly CI job that
+> plays a scripted conversation on a real model end-to-end and asserts a scored
+> debrief, see [Real-model smoke test](/dev/real-model-smoke/).
+
 ### 1. Start the local runtime
 
 ```bash

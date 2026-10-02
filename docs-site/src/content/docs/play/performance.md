@@ -9,7 +9,7 @@ ConversationSimulator runs a local LLM, optionally local STT (Whisper) and TTS (
 
 ## Latency budgets
 
-These are the official latency budgets for the **mid-spec reference machine** (Apple M2 / NVIDIA RTX 3060 equivalent). In-app performance warnings fire when a measurement exceeds the corresponding budget. Nightly CI smoke tests flag any regression greater than 20 % against these values.
+These are the official latency budgets for the **mid-spec reference machine** (Apple M2 / NVIDIA RTX 3060 equivalent). In-app performance warnings fire when a measurement exceeds the corresponding budget. The [nightly real-model smoke test](/dev/real-model-smoke/) flags any regression greater than 20 % against these values, scaled for CPU-only CI hardware.
 
 | Metric | Budget | Condition |
 |--------|--------|-----------|
