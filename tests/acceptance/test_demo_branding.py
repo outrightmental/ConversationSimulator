@@ -13,6 +13,9 @@ tests pin the fix from both ends:
     the demo still reads as the same product;
   * the "DEMO" ribbon is on the large frames and off the small ones, because
     the Steam client icon is 32 px and the word is unreadable there;
+  * the hand-written ICO and ICNS containers carry every representation the
+    base app's do, and the ones that are not PNG decode back to the frame
+    they were built from;
   * the Steamworks client icon is the same image the app itself installs.
 
 Nothing here needs a build, a network, or ImageMagick: the PNGs, the ICO and
@@ -50,7 +53,11 @@ _MIN_PLATE_DISTANCE = 100.0
 # ---------------------------------------------------------------------------
 def _read_png(path: Path) -> tuple[int, int, list[tuple[int, int, int, int]]]:
     """Return (width, height, RGBA pixels) for an 8-bit truecolour-alpha PNG."""
-    raw = path.read_bytes()
+    return _decode_png(path.read_bytes(), path)
+
+
+def _decode_png(raw: bytes, path: object) -> tuple[int, int, list[tuple[int, int, int, int]]]:
+    """As ``_read_png``, for PNG bytes already in hand (an ICO frame)."""
     assert raw[:8] == b"\x89PNG\r\n\x1a\n", f"{path} is not a PNG"
     pos, idat, header = 8, b"", None
     while pos < len(raw):
@@ -140,6 +147,67 @@ def _read_ico(path: Path) -> list[tuple[int, int, bytes]]:
         assert offset + size <= len(raw), f"{path} frame {i} runs past end of file"
         frames.append((width, height, raw[offset:offset + size]))
     return frames
+
+
+# ---------------------------------------------------------------------------
+# Minimal ICNS reader.
+# ---------------------------------------------------------------------------
+# Chunks that hold no plain image: the table of contents, the version and
+# metadata blobs Apple's own tooling appends (the base icon.icns carries an
+# `info`), and the nested-ICNS variant chunks.  Only image types are required
+# of the demo set.
+_ICNS_METADATA = {b"TOC ", b"icnV", b"info", b"name", b"sbtp", b"slct"}
+
+
+def _read_icns(path: Path) -> dict[bytes, bytes]:
+    """Return {chunk type: payload} for an ICNS file."""
+    raw = path.read_bytes()
+    assert raw[:4] == b"icns", f"{path} is not an ICNS"
+    assert struct.unpack(">I", raw[4:8])[0] == len(raw), f"{path}: wrong length field"
+    chunks: dict[bytes, bytes] = {}
+    pos = 8
+    while pos < len(raw):
+        kind = raw[pos:pos + 4]
+        (length,) = struct.unpack(">I", raw[pos + 4:pos + 8])
+        assert 8 < length <= len(raw) - pos, f"{path}: bad chunk length for {kind!r}"
+        chunks[kind] = raw[pos + 8:pos + length]
+        pos += length
+    return chunks
+
+
+def _unpack_icns_rle(data: bytes, expected: int) -> tuple[bytes, int]:
+    """Decode one ARGB channel; returns (samples, bytes consumed).
+
+    A control byte below 128 introduces ``n + 1`` literals, one at or above
+    128 repeats the next byte ``n - 125`` times.
+    """
+    out = bytearray()
+    pos = 0
+    while len(out) < expected:
+        assert pos < len(data), "ARGB channel ends before its pixel count"
+        control = data[pos]
+        pos += 1
+        if control < 128:
+            out += data[pos:pos + control + 1]
+            pos += control + 1
+        else:
+            out += bytes([data[pos]]) * (control - 125)
+            pos += 1
+    assert len(out) == expected, f"ARGB channel overruns: {len(out)} != {expected}"
+    return bytes(out), pos
+
+
+def _decode_icns_argb(payload: bytes, size: int) -> list[tuple[int, int, int, int]]:
+    """Decode an ``ic04``/``ic05`` payload to RGBA pixels."""
+    assert payload[:4] == b"ARGB", f"expected an ARGB payload, got {payload[:4]!r}"
+    body, pos, channels = payload[4:], 0, []
+    for _ in range(4):
+        channel, used = _unpack_icns_rle(body[pos:], size * size)
+        channels.append(channel)
+        pos += used
+    assert pos == len(body), f"ARGB payload has {len(body) - pos} trailing bytes"
+    alpha, red, green, blue = channels
+    return [(red[i], green[i], blue[i], alpha[i]) for i in range(size * size)]
 
 
 # ---------------------------------------------------------------------------
@@ -258,19 +326,38 @@ class TestIconContainers:
         assert {16, 32, 48, 256} <= sizes, f"icon.ico is missing sizes: {sizes}"
 
     def test_icns_is_well_formed(self):
-        raw = (_SRC_TAURI / "icons-demo" / "icon.icns").read_bytes()
-        assert raw[:4] == b"icns"
-        assert struct.unpack(">I", raw[4:8])[0] == len(raw), "ICNS length field is wrong"
-        pos, types = 8, []
-        while pos < len(raw):
-            kind = raw[pos:pos + 4]
-            (length,) = struct.unpack(">I", raw[pos + 4:pos + 8])
-            assert 8 < length <= len(raw) - pos, f"bad chunk length for {kind!r}"
-            types.append(kind)
-            pos += length
+        chunks = _read_icns(_SRC_TAURI / "icons-demo" / "icon.icns")
         # ic07/ic08 are the 128 and 256 px representations macOS actually draws
         # in the Dock and in Finder's icon view.
-        assert {b"ic07", b"ic08"} <= set(types), types
+        assert {b"ic07", b"ic08"} <= set(chunks), list(chunks)
+
+    def test_icns_covers_every_representation_the_base_icon_has(self):
+        """Including the 1x 16 pt and 32 pt reps (``ic04``/``ic05``).
+
+        Without them macOS has to scale the nearest representation down for
+        Finder's list view and a 1x Dock — which costs exactly the small-size
+        sharpness this icon exists to provide.
+        """
+        base = _read_icns(_SRC_TAURI / "icons" / "icon.icns")
+        demo = _read_icns(_SRC_TAURI / "icons-demo" / "icon.icns")
+        wanted = set(base) - _ICNS_METADATA
+        missing = sorted(k.decode("latin-1") for k in wanted - set(demo))
+        assert not missing, f"demo icon.icns is missing representations: {missing}"
+
+    @pytest.mark.parametrize("kind,size", [(b"ic04", 16), (b"ic05", 32)])
+    def test_icns_argb_reps_match_the_ico_frame_of_the_same_size(self, kind, size):
+        """The hand-rolled ARGB encoding decodes back to the frame it came from.
+
+        ``ic04``/``ic05`` are run-length-encoded raw pixels rather than PNG, so
+        a channel-order or RLE slip would ship a corrupt icon that still opens.
+        """
+        chunks = _read_icns(_SRC_TAURI / "icons-demo" / "icon.icns")
+        decoded = _decode_icns_argb(chunks[kind], size)
+        ico = _read_ico(_SRC_TAURI / "icons-demo" / "icon.ico")
+        frames = {w: payload for w, _, payload in ico}
+        width, height, expected = _decode_png(frames[size], f"icon.ico {size}px frame")
+        assert (width, height) == (size, size)
+        assert decoded == expected, f"{kind.decode()} does not match the {size} px frame"
 
     def test_steamworks_client_icon_is_a_32px_ico(self):
         frames = _read_ico(_CLIENT_ICON)

@@ -305,12 +305,23 @@ def render_png(edition: str, size: int, dest: Path) -> Path:
 
 ICO_SIZES = (16, 24, 32, 48, 64, 128, 256)
 
-# ICNS chunk type -> pixel size.  All of these carry a plain PNG payload.
-ICNS_TYPES = (
+# ICNS chunk type -> pixel size, for the types that carry a plain PNG payload.
+ICNS_PNG_TYPES = (
     (b"ic11", 32), (b"ic12", 64), (b"ic07", 128), (b"ic13", 256),
     (b"ic08", 256), (b"ic14", 512), (b"ic09", 512), (b"ic10", 1024),
 )
 
+# The 1x 16 pt and 32 pt representations.  The ICNS format does define
+# PNG-capable types at these two sizes (icp4/icp5), but neither Apple's
+# `iconutil` nor the base app's committed icon.icns uses them: both carry
+# ic04/ic05, which are run-length-encoded ARGB.  Omitting them is not fatal
+# — macOS scales the nearest representation down — but it costs exactly the
+# small-size sharpness this icon exists to provide, on every 1x display.
+ICNS_ARGB_TYPES = ((b"ic04", 16), (b"ic05", 32))
+
+ICNS_SIZES = tuple(sorted(
+    {s for _, s in ICNS_PNG_TYPES} | {s for _, s in ICNS_ARGB_TYPES}
+))
 
 def write_ico(frames: dict[int, Path], dest: Path, sizes: tuple[int, ...]) -> None:
     """Assemble a PNG-compressed ICO from PNG frames.
@@ -338,16 +349,66 @@ def write_ico(frames: dict[int, Path], dest: Path, sizes: tuple[int, ...]) -> No
     dest.write_bytes(header + entries + body)
 
 
+def _rgba_bytes(png: Path) -> bytes:
+    """The frame's raw, straight-alpha RGBA samples, row by row."""
+    return subprocess.run(
+        [_magick(), "PNG:" + str(png), "-depth", "8", "RGBA:-"],
+        check=True, capture_output=True,
+    ).stdout
+
+
+def _packbits(data: bytes) -> bytes:
+    """ICNS run-length encoding of one colour channel.
+
+    The variant ICNS uses, not the QuickTime one: a control byte below 128
+    introduces ``n + 1`` literal bytes, and one at or above 128 repeats the
+    next byte ``n - 125`` times — so a run only pays for itself at three.
+    The decoder stops once it has the channel's pixel count, so there is no
+    terminator; the channels are concatenated in A, R, G, B order.
+    """
+    out = bytearray()
+    i, n = 0, len(data)
+    while i < n:
+        run = 1
+        while run < 130 and i + run < n and data[i + run] == data[i]:
+            run += 1
+        if run >= 3:
+            out += bytes((run + 125, data[i]))
+            i += run
+            continue
+        # Literals, up to 128, ending as soon as a run worth encoding starts.
+        start = i
+        while i < n and i - start < 128:
+            if i + 2 < n and data[i] == data[i + 1] == data[i + 2]:
+                break
+            i += 1
+        out += bytes((i - start - 1,)) + data[start:i]
+    return bytes(out)
+
+
+def _argb_chunk(png: Path, size: int) -> bytes:
+    """An ``ic04``/``ic05`` payload: the "ARGB" magic, then A, R, G and B."""
+    rgba = _rgba_bytes(png)
+    assert len(rgba) == size * size * 4, f"{png}: expected {size}x{size} RGBA"
+    channels = (rgba[3::4], rgba[0::4], rgba[1::4], rgba[2::4])
+    return b"ARGB" + b"".join(_packbits(c) for c in channels)
+
+
 def write_icns(frames: dict[int, Path], dest: Path) -> None:
     """Assemble an ICNS from PNG frames.
 
     The format is a four-byte magic, a big-endian total length, then one
-    ``[type][length][payload]`` chunk per representation; every type used here
-    takes the PNG bytes verbatim, so no platform tooling is needed.
+    ``[type][length][payload]`` chunk per representation.  Most types take the
+    PNG bytes verbatim; ``ic04``/``ic05`` are the two that do not, and are
+    built from the same frames as run-length-encoded ARGB.  No platform
+    tooling is needed either way, so the set builds on Linux and Windows too.
     """
     chunks = b""
-    for kind, size in ICNS_TYPES:
+    for kind, size in ICNS_PNG_TYPES:
         payload = frames[size].read_bytes()
+        chunks += kind + struct.pack(">I", len(payload) + 8) + payload
+    for kind, size in ICNS_ARGB_TYPES:
+        payload = _argb_chunk(frames[size], size)
         chunks += kind + struct.pack(">I", len(payload) + 8) + payload
     dest.write_bytes(b"icns" + struct.pack(">I", len(chunks) + 8) + chunks)
 
@@ -361,7 +422,7 @@ def build(edition: str, bundle_dir: Path, steam_dir: Path) -> list[Path]:
     """Write one edition's bundle icon set and its Steamworks client icon."""
     bundle_dir.mkdir(parents=True, exist_ok=True)
     steam_dir.mkdir(parents=True, exist_ok=True)
-    needed = sorted({*ICO_SIZES, *(s for _, s in ICNS_TYPES), *(s for s, _ in BUNDLE_PNGS)})
+    needed = sorted({*ICO_SIZES, *ICNS_SIZES, *(s for s, _ in BUNDLE_PNGS)})
     written = []
     with tempfile.TemporaryDirectory() as tmp:
         frames = {

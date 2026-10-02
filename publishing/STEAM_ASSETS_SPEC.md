@@ -132,7 +132,9 @@ changing the mark.
 
 `tests/acceptance/test_demo_branding.py` enforces the result: the overlay
 overrides every icon, the plates stay far apart in colour, the silhouettes
-match, and the ribbon is on the large frames only.
+match, the ribbon is on the large frames only, and the `.icns` carries every
+representation the full app's does — including the 1× 16 pt and 32 pt ones
+macOS draws in Finder's list view.
 
 ---
 
