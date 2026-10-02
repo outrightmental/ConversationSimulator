@@ -52,15 +52,26 @@ Three drills:
 | `endless` | three whiffs (a dud, a foul, or a shot-clock expiry) |
 
 A per-volley shot clock (default 20 s, scenario-tunable) keeps it a reflex drill
-rather than an essay contest. Consecutive volleys scoring 60 or above build a
-**heat** multiplier from ×1.0 to ×2.0 in steps of 0.1; a dud or a foul resets it.
-Session score is the sum of `volley score × heat at the moment of scoring` — the
-multiplier in force when the volley arrives is the one that pays, so heat is
-never retroactive.
+rather than an essay contest. The clock and the timed drill's elapsed time are
+reported by the client that owns them (`elapsed_since_prompt_s`,
+`elapsed_total_s`); the engine enforces whatever it is told and does not run its
+own timer, so a client that omits them is playing untimed.
 
-An optional daily seed (`use_daily_seed`) is derived locally from the date and
-the scenario id, so two players can compare runs on the same day without a
-server ever being involved.
+Consecutive volleys scoring 60 or above build a **heat** multiplier from ×1.0 to
+×2.0 in steps of 0.1; a dud or a foul resets it. Session score is the sum of
+`volley score × heat at the moment of scoring` — the multiplier in force when the
+volley arrives is the one that pays, so heat is never retroactive.
+
+An optional daily seed (`use_daily_seed`) is derived locally from the date, the
+scenario id and the format. It labels the run and groups it on the board —
+`GET /scenarios/{id}/high-scores?today=true` returns only the runs played under
+today's seed — so two players can compare the same day's runs without a server
+ever being involved. It does not yet vary the run itself: seeding the opponent's
+sampling needs a seed on the runtime request, which no adapter takes today.
+
+Heat is a batting-practice mechanic only. A bout is decided on raw cumulative
+score, so heat stays at ×1.0 there rather than putting a multiplier on the board
+total that the win condition never reads.
 
 ---
 
@@ -118,7 +129,9 @@ A volley the gates zeroed is never sent to the judge.
 - **Sound play** — alliteration and assonance runs always; rhyme and rough
   scansion additionally in verse scenarios, where they matter a lot.
 - **Aim check** — second-person anchoring. A volley pointed at nobody is flagged
-  `no_aim` and cannot earn sting.
+  `no_aim` on the scorecard, and earns almost no sting in the mechanical
+  fallback; with a judge available the flag is a coaching signal, and the judge
+  scores sting on whether the line lands.
 
 These also provide the mechanical fallback scoring when no judge is available.
 
@@ -312,7 +325,7 @@ catches prompt or model drift before players see it.
 | --- | --- |
 | `GET /api/flyting/scenarios` | installed flyting scenarios, with formats and personal bests |
 | `GET /api/flyting/scenarios/{id}` | setup payload: brief, visible attack surface, limits, boards |
-| `GET /api/flyting/scenarios/{id}/high-scores` | the local board for one scenario and format |
+| `GET /api/flyting/scenarios/{id}/high-scores` | the local board, narrowable by `play_format`, `batting_format`, `daily_seed`, or `today=true` |
 | `POST /api/flyting/sessions` | start a run |
 | `GET /api/flyting/sessions/{id}` | run state and the volley log |
 | `POST /api/flyting/sessions/{id}/volley` | submit one volley, get the scorecard |
