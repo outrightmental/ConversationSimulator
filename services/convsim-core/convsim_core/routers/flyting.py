@@ -180,12 +180,22 @@ def _scenario_or_404(request: Request, scenario_id: str) -> FlytingScenario:
 
 
 def _session_or_404(request: Request, session_id: str):
+    """The session row for a flyting run, or 404.
+
+    A conversation session lives in the same table and carries no run state, so
+    these routes have to refuse it rather than default the state and carry on.
+    ``/end`` writes to the row it is given: ending somebody's half-finished
+    interview as a retired flyting run — and putting it on a flyting board — is
+    worse than a 404.
+    """
     conn = request.app.state.db.connection()
     row = conn.execute(
         "SELECT * FROM turn_sessions WHERE session_id = ?", (session_id,)
     ).fetchone()
-    if row is None:
-        raise HTTPException(status_code=404, detail=f"Session {session_id!r} not found")
+    if row is None or _run_state_of(row) is None:
+        raise HTTPException(
+            status_code=404, detail=f"No flyting run named {session_id!r}"
+        )
     return row
 
 
@@ -601,7 +611,7 @@ def _rehydrate(volleys: List[Dict[str, Any]]) -> List[Any]:
     the stored scorecards rather than from anything held in memory — a debrief
     opened a month later agrees with the one shown at the end of the run.
     """
-    from convsim_prompt import EvidenceClaim, HookClaim, VolleyJudgment
+    from convsim_prompt import DroppedHook, EvidenceClaim, HookClaim, VolleyJudgment
 
     from convsim_core.flyting.craft import CraftMetrics
     from convsim_core.flyting.gates import Foul, GateOutcome, GateResult
@@ -652,6 +662,18 @@ def _rehydrate(volleys: List[Dict[str, Any]]) -> List[Any]:
                 ),
                 fouls=[str(f) for f in judge_raw.get("fouls") or []],
                 umpire_line=str(judge_raw.get("umpire_line") or ""),
+                # Refused hook claims are part of the coaching: the debrief tells
+                # a player when their own words did not carry the hit they were
+                # credited for, and that note is computed from these rows.
+                dropped_hooks=[
+                    DroppedHook(
+                        trait=str(d.get("trait", "")),
+                        evidence=d.get("evidence"),
+                        reason=str(d.get("reason", "")),
+                    )
+                    for d in judge_raw.get("dropped_hooks") or []
+                    if isinstance(d, dict)
+                ],
             )
 
         rebuilt.append(VolleyScore(
