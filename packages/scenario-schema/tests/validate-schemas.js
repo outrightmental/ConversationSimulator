@@ -38,6 +38,7 @@ const validators = {
   safety: ajv.compile(loadSchema("safety.schema.json")),
   scene: ajv.compile(loadSchema("scene.schema.json")),
   packTest: ajv.compile(loadSchema("pack-test.schema.json")),
+  flytingCalibration: ajv.compile(loadSchema("flyting-calibration.schema.json")),
   asset: ajv.compile(loadSchema("asset.schema.json")),
 };
 
@@ -51,6 +52,7 @@ const VALID_PAIRS = [
   ["safety", "safety.example.json"],
   ["scene", "scene.example.json"],
   ["packTest", "pack-test.example.json"],
+  ["flytingCalibration", "flyting-calibration.example.json"],
   ["asset", "asset.example.json"],
 ];
 
@@ -242,3 +244,177 @@ mustReject("packTest", () => {
 mustReject("asset", () => {
   return { ...loadExample("asset.example.json"), runtime_url: "https://example.com/file.png" };
 }, "asset with runtime_url field (executable field forbidden)");
+
+// ─── Flyting: mode, flyting block, attack surface, calibration ───────────────
+
+function mustAccept(schemaKey, getData, label) {
+  test(`valid: accepts ${label}`, () => {
+    const validate = validators[schemaKey];
+    const data = getData();
+    const ok = validate(data);
+    if (!ok) {
+      assert.fail(
+        `Unexpected validation failure for ${label}:\n${JSON.stringify(validate.errors, null, 2)}`
+      );
+    }
+  });
+}
+
+function flytingScenario() {
+  const d = loadExample("scenario.example.json");
+  d.mode = "flyting";
+  d.flyting = {
+    formats: ["bout", "batting_practice"],
+    bout: { rounds: 8, momentum_win: 85, momentum_k: 1, riposte_bonus: 15, npc_tier: "wildean" },
+    batting_practice: { shot_clock_s: 20, formats: ["timed_90", "set_10", "endless"] },
+    difficulty_multiplier: 1.2,
+    lexicon: { encouraged: ["blackguard"], anachronism_policy: "penalize" },
+    register: { require_surface_politeness: false },
+    verse: { required: false },
+    judge_flavor: "A retired music-hall chairman. Cockney. Unimpressable.",
+  };
+  return d;
+}
+
+mustAccept("scenario", flytingScenario, "a flyting scenario with mode and flyting block");
+
+mustAccept("scenario", () => {
+  // Conversation-mode scenarios never mention flyting; the default must hold.
+  const d = loadExample("scenario.example.json");
+  assert.strictEqual(d.mode, undefined, "example scenario should not declare a mode");
+  return d;
+}, "a scenario that omits mode entirely (defaults to conversation)");
+
+mustReject("scenario", () => {
+  const d = loadExample("scenario.example.json");
+  d.mode = "flyting";
+  return d;
+}, "mode: flyting with no flyting block");
+
+mustReject("scenario", () => {
+  const d = flytingScenario();
+  delete d.mode;
+  return d;
+}, "a flyting block with no mode: flyting");
+
+mustReject("scenario", () => {
+  const d = flytingScenario();
+  d.flyting.formats = [];
+  return d;
+}, "flyting with an empty formats array");
+
+mustReject("scenario", () => {
+  const d = flytingScenario();
+  d.flyting.formats = ["freestyle"];
+  return d;
+}, "flyting with an unknown format");
+
+mustReject("scenario", () => {
+  const d = flytingScenario();
+  d.flyting.difficulty_multiplier = 3;
+  return d;
+}, "flyting difficulty_multiplier above the 1.5 cap");
+
+mustReject("scenario", () => {
+  const d = flytingScenario();
+  d.flyting.taunt_script = "not a declared field";
+  return d;
+}, "flyting with an undeclared field (additionalProperties: false)");
+
+mustAccept("npc", () => {
+  const d = loadExample("npc.example.json");
+  d.attack_surface = [
+    { id: "vanity", brief: "Convinced he is Adonis.", visibility: "visible" },
+    { id: "new_money", brief: "The family crest is eleven years old.", visibility: "discoverable", themes: ["lineage"] },
+  ];
+  return d;
+}, "an NPC with an attack surface");
+
+mustReject("npc", () => {
+  const d = loadExample("npc.example.json");
+  d.attack_surface = [{ id: "Vanity", brief: "Uppercase id." }];
+  return d;
+}, "attack_surface trait id with uppercase (pattern violation)");
+
+mustReject("npc", () => {
+  const d = loadExample("npc.example.json");
+  d.attack_surface = [{ id: "vanity" }];
+  return d;
+}, "attack_surface trait with no brief");
+
+mustReject("npc", () => {
+  const d = loadExample("npc.example.json");
+  d.attack_surface = [{ id: "vanity", brief: "No such visibility.", visibility: "secret" }];
+  return d;
+}, "attack_surface trait with an unknown visibility");
+
+mustAccept("rubric", () => {
+  const d = loadExample("rubric.example.json");
+  d.volley_judge = {
+    weights: { sting: 0.35, wit: 0.25, craft: 0.2, fidelity: 0.2 },
+    anchors: [{ dimension: "sting", score: 9, example: "A line that lands on this target alone.", why: "Aimed." }],
+    hook_bonus: [0.15, 0.12, 0.08, 0.05],
+    theme_decay: 0.75,
+  };
+  return d;
+}, "a rubric with a volley_judge block");
+
+mustReject("rubric", () => {
+  const d = loadExample("rubric.example.json");
+  d.volley_judge = { weights: { sting: 0.5, wit: 0.5 } };
+  return d;
+}, "volley_judge weights missing two of the four dimensions");
+
+mustReject("rubric", () => {
+  const d = loadExample("rubric.example.json");
+  d.volley_judge = { anchors: [{ dimension: "charm", score: 5, example: "Not a judged dimension." }] };
+  return d;
+}, "volley_judge anchor naming an unknown dimension");
+
+mustAccept("scene", () => {
+  const d = loadExample("scene.example.json");
+  d.audience = {
+    label: "the fishwives",
+    reactions: [
+      { min_score: 0, line: "A few of them look away." },
+      { min_score: 150, line: "The fishwives shriek with laughter.", event_id: "fishwives_shriek" },
+    ],
+  };
+  return d;
+}, "a scene with an audience block");
+
+mustReject("scene", () => {
+  const d = loadExample("scene.example.json");
+  d.audience = { label: "the benches" };
+  return d;
+}, "a scene audience with no reactions");
+
+mustReject("scene", () => {
+  const d = loadExample("scene.example.json");
+  d.audience = { reactions: [{ line: "No threshold given." }] };
+  return d;
+}, "a scene audience reaction with no min_score");
+
+mustReject("flytingCalibration", () => {
+  const d = loadExample("flyting-calibration.example.json");
+  d.volleys = [];
+  return d;
+}, "a calibration suite with no volleys");
+
+mustReject("flytingCalibration", () => {
+  const d = loadExample("flyting-calibration.example.json");
+  delete d.scenario_id;
+  return d;
+}, "a calibration suite with no scenario_id");
+
+mustReject("flytingCalibration", () => {
+  const d = loadExample("flyting-calibration.example.json");
+  d.volleys[0].expect.band = "incandescent";
+  return d;
+}, "a calibration expectation naming an unknown band");
+
+mustReject("flytingCalibration", () => {
+  const d = loadExample("flyting-calibration.example.json");
+  d.volleys[0].text = "x".repeat(501);
+  return d;
+}, "a calibration volley past the 500-character hard cap");

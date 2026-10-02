@@ -63,6 +63,45 @@
       "type": "string",
       "description": "Relative path to portrait image within the pack."
     },
+    "attack_surface": {
+      "type": "array",
+      "description": "The roastable topology of this character: what about them is fair game. Read by flyting scenarios (scenario mode: flyting) — the per-volley judge may only claim a hook whose id appears here, and the engine drops any claim whose quoted evidence is not actually present in the player's volley. Ignored by conversation-mode scenarios.",
+      "minItems": 1,
+      "maxItems": 8,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "required": ["id", "brief"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Stable trait id, unique within this NPC. Referenced by judge hooks and calibration fixtures.",
+            "pattern": "^[a-z0-9_]+$",
+            "maxLength": 40
+          },
+          "brief": {
+            "type": "string",
+            "description": "One or two sentences a player (or the judge) can aim at.",
+            "minLength": 1,
+            "maxLength": 300
+          },
+          "visibility": {
+            "type": "string",
+            "enum": ["visible", "discoverable"],
+            "default": "visible",
+            "description": "visible = in the player brief from the start. discoverable = revealed when first struck, and worth double on discovery."
+          },
+          "themes": {
+            "type": "array",
+            "description": "Theme slugs this trait belongs to, used by the judge's theme-decay accounting.",
+            "items": { "type": "string", "pattern": "^[a-z0-9_]+$", "maxLength": 40 },
+            "maxItems": 6,
+            "uniqueItems": true
+          }
+        }
+      }
+    },
     "public_persona": {
       "type": "object",
       "required": ["occupation", "speaking_style", "demeanor"],

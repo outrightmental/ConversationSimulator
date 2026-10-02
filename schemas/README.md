@@ -14,9 +14,11 @@ JSON Schema (Draft 2020-12) definitions for all ConvSim scenario pack file types
 | `safety.schema.json` | Safety policy files — prohibited categories, redirects, content rating cap |
 | `scene.schema.json` | Scene descriptor files — visual and ambient context |
 | `pack-test.schema.json` | Pack test fixture files — scripted turn sequences and static assertions |
+| `flyting-calibration.schema.json` | Flyting calibration suites — reference volleys with expected score bands and gate outcomes |
 | `asset.schema.json` | Asset metadata sidecar files — license, provenance, and dimensions |
 | `turn-output.schema.json` | Structured JSON output the LLM produces per turn (runtime, not pack-authored) |
 | `debrief.schema.json` | Debrief report generated after a completed session (runtime output) |
+| `volley-score.schema.json` | Per-volley scorecard produced by a flyting session (runtime output) |
 
 ## Examples
 

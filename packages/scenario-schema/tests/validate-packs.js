@@ -31,6 +31,7 @@ const validators = {
   safety: ajv.compile(loadSchema("safety.schema.json")),
   scene: ajv.compile(loadSchema("scene.schema.json")),
   packTest: ajv.compile(loadSchema("pack-test.schema.json")),
+  flytingCalibration: ajv.compile(loadSchema("flyting-calibration.schema.json")),
   asset: ajv.compile(loadSchema("asset.schema.json")),
 };
 
@@ -44,6 +45,7 @@ function schemaKeyForPath(filePath) {
   if (dir === "safety") return "safety";
   if (dir === "scenes") return "scene";
   if (dir === "tests") return "packTest";
+  if (dir === "calibration") return "flytingCalibration";
   if (file.endsWith(".meta.json")) return "asset";
   return null;
 }

@@ -29,9 +29,11 @@ class TestSchemaNames:
             "safety.schema.json",
             "scene.schema.json",
             "pack-test.schema.json",
+            "flyting-calibration.schema.json",
             "asset.schema.json",
             "turn-output.schema.json",
             "debrief.schema.json",
+            "volley-score.schema.json",
         }
         assert set(SCHEMA_NAMES) == expected
 
@@ -62,10 +64,10 @@ class TestSchemaLoading:
         assert schema.get("type") == "object", f"{name}: root type must be 'object'"
 
     def test_schema_version_enum_present(self, name):
-        # turn-output is a runtime LLM output format, not a pack-authored file,
-        # so it intentionally omits schema_version from its properties.
-        if name == "turn-output.schema.json":
-            pytest.skip("turn-output.schema.json intentionally omits schema_version")
+        # turn-output and volley-score are runtime output formats, not
+        # pack-authored files, so they intentionally omit schema_version.
+        if name in ("turn-output.schema.json", "volley-score.schema.json"):
+            pytest.skip(f"{name} intentionally omits schema_version")
         schema = get_schema(name)
         props = schema.get("properties", {})
         sv = props.get("schema_version", {})

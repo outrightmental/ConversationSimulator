@@ -7,6 +7,56 @@
   "required": ["schema_version", "rubric_id", "title", "dimensions"],
   "additionalProperties": false,
   "properties": {
+    "volley_judge": {
+      "type": "object",
+      "description": "Per-volley judge configuration for flyting scenarios. Lets a pack rebalance the four judged dimensions and anchor them with calibration examples; omitted blocks fall back to the engine defaults (sting 0.35, wit 0.25, craft 0.20, fidelity 0.20).",
+      "additionalProperties": false,
+      "properties": {
+        "weights": {
+          "type": "object",
+          "description": "Relative weights for the four judged dimensions. All four are required together and must sum to 1.0 (checked by the pack validator, which JSON Schema cannot express).",
+          "required": ["sting", "wit", "craft", "fidelity"],
+          "additionalProperties": false,
+          "properties": {
+            "sting":    { "type": "number", "minimum": 0, "maximum": 1 },
+            "wit":      { "type": "number", "minimum": 0, "maximum": 1 },
+            "craft":    { "type": "number", "minimum": 0, "maximum": 1 },
+            "fidelity": { "type": "number", "minimum": 0, "maximum": 1 }
+          }
+        },
+        "anchors": {
+          "type": "array",
+          "description": "Calibration examples embedded in the judge prompt — ideally three per dimension (a low, a middle, and a high).",
+          "maxItems": 24,
+          "items": {
+            "type": "object",
+            "required": ["dimension", "score", "example"],
+            "additionalProperties": false,
+            "properties": {
+              "dimension": {
+                "type": "string",
+                "enum": ["sting", "wit", "craft", "fidelity"]
+              },
+              "score": { "type": "integer", "minimum": 0, "maximum": 10 },
+              "example": { "type": "string", "minLength": 1, "maxLength": 300 },
+              "why": { "type": "string", "maxLength": 200 }
+            }
+          }
+        },
+        "hook_bonus": {
+          "type": "array",
+          "description": "Topicality bonus per verified hook, most valuable first. At most four hooks ever count.",
+          "items": { "type": "number", "minimum": 0, "maximum": 0.5 },
+          "maxItems": 4
+        },
+        "theme_decay": {
+          "type": "number",
+          "description": "Factor applied per prior use of a volley's primary theme. The engine default is 0.75, so the third hygiene joke is visibly near-worthless.",
+          "minimum": 0.1,
+          "maximum": 1
+        }
+      }
+    },
     "schema_version": {
       "type": "string",
       "enum": ["0.1"]

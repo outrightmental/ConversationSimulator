@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.convsim.dev/v0.1/flyting-calibration.schema.json",
+  "title": "ConvSim Flyting Calibration Suite",
+  "description": "Validates a flyting calibration file: reference volleys with the score band and gate outcome each one is expected to receive. Lives in a pack's calibration/ directory and is executed by scripts/flyting-calibration.py, which catches prompt and model drift before players do.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "calibration_id",
+    "scenario_id",
+    "description",
+    "volleys"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "enum": ["0.1"]
+    },
+    "calibration_id": {
+      "type": "string",
+      "description": "Unique identifier for this calibration suite within the pack.",
+      "pattern": "^[a-z0-9_]+$"
+    },
+    "scenario_id": {
+      "type": "string",
+      "description": "The flyting scenario_id these volleys are scored against.",
+      "pattern": "^[a-z0-9_]+$"
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "volleys": {
+      "type": "array",
+      "description": "Reference volleys in ascending order of expected quality, by convention.",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "text", "expect"],
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9_]+$",
+            "maxLength": 60
+          },
+          "text": {
+            "type": "string",
+            "description": "The volley exactly as a player would submit it.",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "note": {
+            "type": "string",
+            "description": "Why this volley sits in its band — read by humans reviewing calibration failures.",
+            "maxLength": 300
+          },
+          "expect": {
+            "type": "object",
+            "description": "Assertions. Deterministic expectations (gate, flags, mechanics) are checked without a model; score bands and hooks additionally require a judge.",
+            "additionalProperties": false,
+            "properties": {
+              "gate": {
+                "type": "string",
+                "enum": ["ok", "dud", "foul"],
+                "description": "Stage 0 outcome. A dud scores 0 without a foul; a foul scores 0 and is recorded."
+              },
+              "foul": {
+                "type": "string",
+                "enum": [
+                  "below_the_belt",
+                  "out_of_fiction",
+                  "bribing_the_ref",
+                  "overt_rudeness",
+                  "anachronism"
+                ],
+                "description": "The specific foul the volley must draw."
+              },
+              "flags": {
+                "type": "array",
+                "description": "Mechanical flags the volley must carry.",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "plagiarized_zinger",
+                    "run_on",
+                    "gibberish",
+                    "no_aim",
+                    "too_short",
+                    "judge_unavailable"
+                  ]
+                },
+                "uniqueItems": true
+              },
+              "band": {
+                "type": "string",
+                "enum": ["dud", "weak", "solid", "strong", "highlight"],
+                "description": "Expected score band: dud = 0, weak = 1-59, solid = 60-119, strong = 120-179, highlight = 180+."
+              },
+              "min_score": { "type": "integer", "minimum": 0, "maximum": 400 },
+              "max_score": { "type": "integer", "minimum": 0, "maximum": 400 },
+              "hooks": {
+                "type": "array",
+                "description": "attack_surface trait ids the volley is expected to land, verified against the target NPC's declared surface.",
+                "items": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+                "uniqueItems": true
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

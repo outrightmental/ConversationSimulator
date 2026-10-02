@@ -24,9 +24,11 @@ SCHEMA_NAMES: tuple[str, ...] = (
     "safety.schema.json",
     "scene.schema.json",
     "pack-test.schema.json",
+    "flyting-calibration.schema.json",
     "asset.schema.json",
     "turn-output.schema.json",
     "debrief.schema.json",
+    "volley-score.schema.json",
 )
 
 
