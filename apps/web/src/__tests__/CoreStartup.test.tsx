@@ -510,6 +510,47 @@ describe('CoreStartupGuard — health check fast-path', () => {
     expect(screen.queryByText('App content loaded')).not.toBeInTheDocument()
   })
 
+  it('does not pass through when the shell has reported a non-ready phase', async () => {
+    // 'starting' covers "Something is already using port 7355 — checking
+    // whether it is the engine…", and that occupant can be the other edition's
+    // engine: it answers with a real convsim-core health body, so the
+    // fast-path's own test passes and mounting on it shows the wrong library
+    // (issue #495). The shell decides readiness; this only beats its first event.
+    let resolveHealth: ((value: unknown) => void) | undefined
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise((resolve) => {
+        resolveHealth = resolve
+      })),
+    )
+
+    let handler: TauriListenHandler | undefined
+    stubTauri((_event, h) => {
+      handler = h
+      return Promise.resolve(() => {})
+    })
+
+    await act(async () => {
+      renderGuard()
+    })
+
+    await act(async () => {
+      handler?.({
+        payload: {
+          phase: 'starting',
+          message: 'Something is already using port 7355 — checking whether it is the engine…',
+          error: null,
+        },
+      })
+    })
+
+    await act(async () => {
+      resolveHealth?.({ ok: true, json: () => Promise.resolve({ status: 'ok' }) })
+    })
+
+    expect(screen.queryByText('App content loaded')).not.toBeInTheDocument()
+  })
+
   it('does not pass through when the health response is not JSON at all', async () => {
     vi.stubGlobal(
       'fetch',

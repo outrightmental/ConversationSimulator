@@ -194,8 +194,16 @@ export default function CoreStartupGuard({ children }: { children: React.ReactNo
     // a port conflict would mount the app over an engine that is not there.
     checkHealth().then((healthy) => {
       if (cancelled || !healthy) return
+      // Any phase the shell has already reported wins, not just the terminal
+      // ones. 'starting' includes "Something is already using port 7355 —
+      // checking whether it is the engine…", and the occupant can be the OTHER
+      // edition's engine: a convsim-core health body, so this check passes, and
+      // mounting on it shows the wrong library (issue #495) until the shell's
+      // own probe reaches the same socket and rejects it. The shell is the
+      // authority on readiness; this is only a shortcut for beating its first
+      // event, so it may act only when there is no event yet.
       const phase = statusRef.current?.phase
-      if (phase === 'error' || phase === 'restarting') return
+      if (phase && phase !== 'ready') return
       setReady(true)
     })
 
