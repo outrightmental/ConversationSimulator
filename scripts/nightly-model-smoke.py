@@ -131,8 +131,9 @@ CORE_PORT = 7399
 # GitHub killing the job with an unattributable "The operation was canceled",
 # so this has to clear the job's timeout-minutes *minus the steps that run
 # before the script does*: checkout, pip install, cache restore and (on a cache
-# miss) the 2.5 GB download, together up to ~8 min of the 30 min job.  20 min
-# therefore leaves the script's own deadline the first one to trip.
+# miss) the 2.5 GB download plus the cache save that follows it, together up to
+# ~9 min of the 30 min job.  20 min therefore leaves the script's own deadline
+# the first one to trip.
 # See docs/real-model-smoke.md.
 DEFAULT_WALL_CLOCK_BUDGET_S = 1200.0  # 20 min
 

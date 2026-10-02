@@ -426,9 +426,9 @@ class TestEvaluateBudgets:
 
 # Steps that burn the job's clock before the harness starts and so are invisible
 # to its own deadline: checkout, three pip installs, the cache restore and, on a
-# cache miss, the 2.5 GB download.  Measured at ~8 min cold; see the breakdown in
-# docs/real-model-smoke.md.
-PRE_SMOKE_JOB_MINUTES = 8
+# cache miss, the 2.5 GB download plus the cache save that follows it.  ~9 min
+# cold; see the breakdown in docs/real-model-smoke.md.
+PRE_SMOKE_JOB_MINUTES = 9
 
 _WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "model-smoke-nightly.yml"
 

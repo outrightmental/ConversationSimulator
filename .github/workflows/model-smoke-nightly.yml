@@ -35,18 +35,26 @@
 # timeout-minutes: 30 is the hard ceiling; the script's own
 # --wall-clock-budget-s 1200 (20 min) trips first so the failure is attributed
 # to a phase instead of surfacing as an unattributable job cancellation.  The
-# 10 min gap is not slack: the steps before the smoke (checkout, pip install,
-# cache restore, a cold 2.5 GB download) run against the same job clock.
-# Observed breakdown on ubuntu-latest (CPU-only):
+# 10 min gap is not slack: every step before the smoke (checkout, pip install,
+# cache restore and, on a cache miss, a 2.5 GB download plus the cache save)
+# runs against the same job clock and is invisible to the script's own
+# deadline — up to ~9 min of it on a cold night.
 #
 #   pip install (cached wheels)              ~2 min
 #   model download (cache miss only)         ~2 min   — ~0 on a cache hit
 #   SHA-256 verification (2.5 GB, ×2 cold)   ~1 min   — ~0.5 min on a cache hit
+#   cache save (cache miss only)             ~1 min   — ~0 on a cache hit
 #   llama-server model load                  ~0.5 min
-#   3 scripted turns + authored opening      ~7 min
-#   debrief generation                       ~4 min
+#   3 scripted turns + authored opening      ~7 min   — projected, see below
+#   debrief generation                       ~4 min   — projected, see below
 #   ------------------------------------------------
-#   total                                   ~16 min warm cache, ~18 min cold
+#   total                                   ~16 min warm cache, ~19 min cold
+#
+# The download, verification, cache and model-load figures are measured; the
+# inference figures are projected from the one latency this job has actually
+# measured (~116 s per behavioral-interview turn, see below) and should be
+# replaced with real per-phase durations from the first green nightly's report
+# artifact.
 #
 # If the smoke step creeps past ~15 min — or the job past ~25 min — reduce
 # SCRIPTED_PLAYER_TURNS rather than raising either ceiling: a nightly that

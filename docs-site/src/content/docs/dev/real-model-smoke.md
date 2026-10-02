@@ -102,22 +102,29 @@ canceled".
 
 The 10-minute gap between the two is not slack. `timeout-minutes` covers the
 whole job, and the harness only starts after checkout, three `pip install`
-steps, the cache restore and — on a cache miss — a 2.5 GB download: up to
-~8 min that the harness's own clock never sees. A 25 min harness budget would
-lose the race to the job timeout on exactly the cold-cache nights where an
-attributed verdict matters most.
+steps, the cache restore and — on a cache miss — a 2.5 GB download *and* the
+cache save that follows it: up to ~9 min that the harness's own clock never
+sees. A 25 min harness budget would lose the race to the job timeout on exactly
+the cold-cache nights where an attributed verdict matters most.
 
-Measured on `ubuntu-latest` (CPU-only, 4B Q4\_K\_M):
+On `ubuntu-latest` (CPU-only, 4B Q4\_K\_M):
 
 | Phase | Cold cache | Warm cache |
 |---|---|---|
 | `pip install` (prompt-composer, convsim-core, llama-cpp-python wheel) | ~2 min | ~2 min |
 | Model download (2.5 GB from Hugging Face) | ~2 min | — |
 | SHA-256 verification | ~1 min (×2) | ~0.5 min |
+| Cache save (2.5 GB) | ~1 min | — |
 | `llama-server` model load | ~0.5 min | ~0.5 min |
-| Authored opening + 3 scripted turns | ~7 min | ~7 min |
-| Debrief generation | ~4 min | ~4 min |
-| **Total** | **~18 min** | **~16 min** |
+| Authored opening + 3 scripted turns † | ~7 min | ~7 min |
+| Debrief generation † | ~4 min | ~4 min |
+| **Total** | **~19 min** | **~16 min** |
+
+† The download, verification, cache and model-load rows are measured. The two
+inference rows are *projected* from the only latency this job has measured so
+far — ~116 s for a single behavioral-interview turn (see below) — because the
+multi-turn conversation and the debrief have never run on a runner. Replace them
+with the real `phase_durations_s` from the first green nightly's report artifact.
 
 The model is cached between runs under the key
 `model-gguf-v1-<registry-sha256>`, so the download only recurs when the registry
