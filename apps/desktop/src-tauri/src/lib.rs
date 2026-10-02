@@ -2139,6 +2139,40 @@ mod tests {
     }
 
     #[test]
+    fn a_silent_occupant_that_holds_the_connection_cannot_hang_the_probe() {
+        // The test above drops its connection as soon as it has accepted it, so
+        // the read ends on EOF and the probe's timeout path is never exercised
+        // at all. The squatter that matters holds the connection OPEN and says
+        // nothing — accepts the socket and then ignores it — which is what a
+        // program bound to 7355 for its own reasons looks like. The probe has
+        // to come back on its own budget rather than parking the supervisor
+        // thread on "checking whether it is the engine…" forever.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = listener.local_addr().expect("local addr").port();
+        let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
+        let server = std::thread::spawn(move || {
+            let held = listener.accept();
+            // Hold both the connection and the listener until the probe is
+            // done, so nothing the probe sees is an EOF we handed it early.
+            let _ = done_rx.recv();
+            drop(held);
+        });
+
+        let budget = Duration::from_millis(400);
+        let started = Instant::now();
+        let probe = probe_core_within(port, budget);
+        let elapsed = started.elapsed();
+        let _ = done_tx.send(());
+
+        assert_eq!(probe, CoreProbe::Occupied);
+        assert!(
+            elapsed < Duration::from_secs(3),
+            "probe took {elapsed:?} against a {budget:?} budget"
+        );
+        let _ = server.join();
+    }
+
+    #[test]
     fn an_engine_answering_the_health_endpoint_probes_as_ready() {
         use std::io::{Read, Write};
         let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
