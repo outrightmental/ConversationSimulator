@@ -39,7 +39,7 @@ Downloaded models are stored in `~/.convsim/models/llm/`.
 
 **Apple Silicon:** Metal acceleration works out of the box through llama.cpp. Use the VRAM column as a guide for unified memory (M1/M2/M3/M4 chips share CPU and GPU memory).
 
-**CPU fallback:** any model can run on CPU without a GPU, but inference is significantly slower — expect 15–60 seconds per turn instead of 1–5 seconds. The Qwen3 4B starter model is the only practical choice for CPU-only machines.
+**CPU fallback:** any model can run on CPU without a GPU, but inference is significantly slower — expect anywhere from 30 seconds to a few minutes per turn instead of 1–5 seconds, most of it spent reading the prompt back in. The app waits for a slow turn rather than failing it; see [performance](performance.md#timeout-errors). The Qwen3 4B starter model is the only practical choice for CPU-only machines.
 
 **Partial VRAM fit:** if you have less VRAM than the minimum, the model can still load with a reduced number of GPU-offloaded layers. Inference will be slower but may be acceptable. See [troubleshooting](troubleshooting.md#low-vram-or-slow-inference).
 
