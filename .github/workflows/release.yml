@@ -374,8 +374,8 @@ jobs:
       # shutdown that drains the FastAPI lifespan and releases the port.
       #
       # The PyInstaller one-file binary unpacks itself on first launch and the
-      # engine then migrates the database and seeds five packs, so this takes
-      # tens of seconds — it is still the cheapest place to find out that the
+      # engine then migrates the database and seeds its bundled packs, so this
+      # takes tens of seconds — it is still the cheapest place to find out that the
       # bundled engine cannot start, instead of hearing it from a player.
       #
       # Non-Windows only: the script is bash, and the claim it proves (the engine

@@ -55,7 +55,8 @@ PORT="${CONVSIM_PORT:-7355}"
 BINARY="${CONVSIM_CORE_EXECUTABLE:-}"
 
 # How long the engine gets to answer /api/health. A first run migrates the
-# database and seeds five packs plus the model registry, and a PyInstaller
+# database and seeds every pack in the binary's bundled packs/official (six
+# today, five of them official.*) plus the model registry, and a PyInstaller
 # one-file binary unpacks itself before any of that happens.
 READY_TIMEOUT=120
 
@@ -280,10 +281,20 @@ fi
 
 CLI_ENTRY="$REPO_ROOT/packages/convsim-cli/dist/index.js"
 if [[ ! -f "$CLI_ENTRY" ]]; then
+    # release.yml reaches here with no dist/, so this build runs on every
+    # release. Keep its output: discarding it turned a tsc error into nothing but
+    # "convsim CLI not built", which names a command to run rather than the
+    # reason the same command just failed.
     info "Building the convsim CLI (dist/ not present)…"
-    ( cd "$REPO_ROOT" \
-        && pnpm --filter @convsim/pack-loader build \
-        && pnpm --filter @convsim/cli build ) >/dev/null 2>&1
+    CLI_BUILD_LOG="$DATA_ROOT/cli-build.log"
+    if ! ( cd "$REPO_ROOT" \
+            && pnpm --filter @convsim/pack-loader build \
+            && pnpm --filter @convsim/cli build ) >"$CLI_BUILD_LOG" 2>&1; then
+        # Not a `fail` of its own: dist/index.js is now missing, so the check
+        # below reports it once. This is just the reason, printed before it.
+        info "The CLI build failed — its output follows."
+        sed 's/^/        /' "$CLI_BUILD_LOG" >&2
+    fi
 fi
 
 PACK_DIR=""
