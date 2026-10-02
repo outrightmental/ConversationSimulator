@@ -5,6 +5,13 @@ import {
   useSteamAchievements,
   SteamAchievement,
   SteamStat,
+  CAPSTONE_ACHIEVEMENTS,
+  OPTIONAL_ACHIEVEMENTS,
+  isCapstoneComplete,
+  readUnlockedAchievements,
+  recordUnlockedAchievement,
+  readPacksPlayed,
+  recordPackPlayed,
 } from '../hooks/useSteamAchievements'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -25,6 +32,11 @@ function clearTauri() {
 
 beforeEach(() => {
   clearTauri()
+  // `unlock` keeps a local ledger of confirmed unlocks in localStorage to drive
+  // the capstone, and setupTests backs localStorage with one in-memory store for
+  // the whole file. Clear it so a ledger left by an earlier test cannot change
+  // whether the capstone fires in a later one.
+  localStorage.clear()
 })
 
 afterEach(() => {
@@ -113,6 +125,10 @@ describe('useSteamAchievements — unlock', () => {
 
     const names = Object.values(SteamAchievement)
     for (const name of names) {
+      // Reset the ledger between names. Unlocking every achievement in one
+      // ledger would complete the capstone partway through the loop and add an
+      // ACH_CERTIFIED_EXPERT call, which is covered by its own tests below.
+      localStorage.clear()
       await act(async () => {
         await result.current.unlock(name)
       })
@@ -122,6 +138,142 @@ describe('useSteamAchievements — unlock', () => {
     for (const name of names) {
       expect(invoke).toHaveBeenCalledWith('steam_unlock_achievement', { name })
     }
+  })
+})
+
+// ── Capstone ──────────────────────────────────────────────────────────────────
+
+describe('useSteamAchievements — capstone', () => {
+  /** Seeds the ledger with every required achievement except `omit`. */
+  function seedAllRequiredExcept(omit: string) {
+    for (const name of CAPSTONE_ACHIEVEMENTS) {
+      if (name !== omit) recordUnlockedAchievement(name)
+    }
+  }
+
+  it('unlocks ACH_CERTIFIED_EXPERT once the last required achievement lands', async () => {
+    const last = CAPSTONE_ACHIEVEMENTS[CAPSTONE_ACHIEVEMENTS.length - 1]
+    seedAllRequiredExcept(last)
+
+    const invoke = vi.fn().mockResolvedValue(true)
+    stubTauriInvoke(invoke)
+    const { result } = renderHook(() => useSteamAchievements())
+
+    await act(async () => {
+      await result.current.unlock(last)
+    })
+
+    expect(invoke).toHaveBeenCalledWith('steam_unlock_achievement', {
+      name: SteamAchievement.CERTIFIED_EXPERT,
+    })
+    expect(readUnlockedAchievements()).toContain(
+      SteamAchievement.CERTIFIED_EXPERT,
+    )
+  })
+
+  it('does not unlock the capstone while a required achievement is missing', async () => {
+    const last = CAPSTONE_ACHIEVEMENTS[CAPSTONE_ACHIEVEMENTS.length - 1]
+    const alsoMissing = CAPSTONE_ACHIEVEMENTS[0]
+    for (const name of CAPSTONE_ACHIEVEMENTS) {
+      if (name !== last && name !== alsoMissing) recordUnlockedAchievement(name)
+    }
+
+    const invoke = vi.fn().mockResolvedValue(true)
+    stubTauriInvoke(invoke)
+    const { result } = renderHook(() => useSteamAchievements())
+
+    await act(async () => {
+      await result.current.unlock(last)
+    })
+
+    expect(invoke).toHaveBeenCalledOnce()
+    expect(readUnlockedAchievements()).not.toContain(
+      SteamAchievement.CERTIFIED_EXPERT,
+    )
+  })
+
+  it('does not re-unlock the capstone once it is recorded', async () => {
+    for (const name of CAPSTONE_ACHIEVEMENTS) recordUnlockedAchievement(name)
+    recordUnlockedAchievement(SteamAchievement.CERTIFIED_EXPERT)
+
+    const invoke = vi.fn().mockResolvedValue(true)
+    stubTauriInvoke(invoke)
+    const { result } = renderHook(() => useSteamAchievements())
+
+    await act(async () => {
+      await result.current.unlock(SteamAchievement.DLC_LIBRARY)
+    })
+
+    expect(invoke).toHaveBeenCalledOnce()
+    expect(invoke).toHaveBeenCalledWith('steam_unlock_achievement', {
+      name: SteamAchievement.DLC_LIBRARY,
+    })
+  })
+
+  it('does not recurse when the capstone itself is unlocked', async () => {
+    for (const name of CAPSTONE_ACHIEVEMENTS) recordUnlockedAchievement(name)
+
+    const invoke = vi.fn().mockResolvedValue(true)
+    stubTauriInvoke(invoke)
+    const { result } = renderHook(() => useSteamAchievements())
+
+    await act(async () => {
+      await result.current.unlock(SteamAchievement.CERTIFIED_EXPERT)
+    })
+
+    expect(invoke).toHaveBeenCalledOnce()
+  })
+
+  it('does not record an unlock Steam did not confirm', async () => {
+    const invoke = vi.fn().mockResolvedValue(false)
+    stubTauriInvoke(invoke)
+    const { result } = renderHook(() => useSteamAchievements())
+
+    await act(async () => {
+      await result.current.unlock(SteamAchievement.FIRST_SCENARIO)
+    })
+
+    expect(readUnlockedAchievements()).toEqual([])
+  })
+
+  it('leaves the optional achievements out of the requirement', () => {
+    for (const name of OPTIONAL_ACHIEVEMENTS) {
+      expect(CAPSTONE_ACHIEVEMENTS).not.toContain(name)
+    }
+    // The capstone must not require itself, or it could never be earned.
+    expect(CAPSTONE_ACHIEVEMENTS).not.toContain(
+      SteamAchievement.CERTIFIED_EXPERT,
+    )
+  })
+
+  it('treats the required set as complete and a short set as incomplete', () => {
+    expect(isCapstoneComplete(CAPSTONE_ACHIEVEMENTS)).toBe(true)
+    expect(isCapstoneComplete(CAPSTONE_ACHIEVEMENTS.slice(1))).toBe(false)
+    expect(isCapstoneComplete([])).toBe(false)
+  })
+})
+
+// ── Pack ledger ───────────────────────────────────────────────────────────────
+
+describe('recordPackPlayed', () => {
+  it('records distinct pack IDs and ignores repeats', () => {
+    recordPackPlayed('official.workplace')
+    recordPackPlayed('official.dating')
+    expect(recordPackPlayed('official.workplace')).toEqual([
+      'official.workplace',
+      'official.dating',
+    ])
+    expect(readPacksPlayed()).toHaveLength(2)
+  })
+
+  it('ignores an empty pack ID without recording it', () => {
+    recordPackPlayed('official.workplace')
+    expect(recordPackPlayed('')).toEqual(['official.workplace'])
+    expect(readPacksPlayed()).toEqual(['official.workplace'])
+  })
+
+  it('starts empty', () => {
+    expect(readPacksPlayed()).toEqual([])
   })
 })
 

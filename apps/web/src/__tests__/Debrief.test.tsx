@@ -32,17 +32,14 @@ const mockIsDevModeEnabled = vi.mocked(isDevModeEnabled)
 
 const mockUnlock = vi.fn(() => Promise.resolve(false))
 const mockIncrementStat = vi.fn(() => Promise.resolve(false))
-vi.mock('../hooks/useSteamAchievements', () => ({
+// Only the hook itself is stubbed. This module also exports the achievement and
+// stat name maps, the unlock thresholds, and the local progress helpers that the
+// screens import directly; a hand-rolled mock of those silently drifts out of
+// date every time an achievement is added (and then the screen throws on an
+// undefined export), so importOriginal keeps them real.
+vi.mock('../hooks/useSteamAchievements', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useSteamAchievements')>()),
   useSteamAchievements: () => ({ unlock: mockUnlock, incrementStat: mockIncrementStat }),
-  SteamAchievement: {
-    FIRST_SCENARIO: 'ACH_FIRST_SCENARIO',
-    FIRST_DEBRIEF: 'ACH_FIRST_DEBRIEF',
-    PRACTICE_STREAK: 'ACH_PRACTICE_STREAK',
-  },
-  SteamStat: {
-    SCENARIOS_COMPLETED: 'STAT_SCENARIOS_COMPLETED',
-    DEBRIEFS_GENERATED: 'STAT_DEBRIEFS_GENERATED',
-  },
 }))
 
 const SESSION_ID = 'sess-debrief01'
@@ -136,6 +133,10 @@ function renderDebrief(routeState?: unknown) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // The screens record played packs in localStorage, which setupTests backs with
+  // a single in-memory store for the whole file. Clear it so one test's pack
+  // ledger cannot push a later test over an unlock threshold.
+  localStorage.clear()
   mockApi.exportSession.mockResolvedValue({ ok: true, data: exportData })
   mockApi.exportTranscriptText.mockResolvedValue({
     ok: true,
