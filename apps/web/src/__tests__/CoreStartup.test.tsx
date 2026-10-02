@@ -311,6 +311,45 @@ describe('CoreStartupGuard — error state', () => {
     expect(alert).toHaveTextContent(/another app is using a required port/i)
   })
 
+  it('names the other edition instead of blaming an unrelated program', async () => {
+    // The demo and the full app share port 7355 and one data directory, so the
+    // shell refuses to attach to the other edition's engine. That is a port
+    // conflict, but the port-conflict card tells the player to close whatever
+    // unrelated program is holding the port — and the engine holding it is
+    // Conversation Simulator. Falling through to 'crash' was worse: an engine
+    // is running perfectly well here, just the wrong one.
+    let handler: TauriListenHandler | undefined
+    stubTauri((_event, h) => {
+      handler = h
+      return Promise.resolve(() => {})
+    })
+
+    await act(async () => {
+      renderGuard()
+    })
+
+    await act(async () => {
+      handler?.({
+        payload: {
+          phase: 'error',
+          // Verbatim from `foreign_edition_error` in
+          // apps/desktop/src-tauri/src/lib.rs, which a Rust test pins.
+          message: 'Another edition of Conversation Simulator is already running.',
+          error:
+            'Conversation Simulator Demo is using the conversation engine on port 7355. ' +
+            'Close it, then start the full version again.',
+        },
+      })
+    })
+
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent(/another edition of conversation simulator is running/i)
+    expect(alert).not.toHaveTextContent(/didn't start/i)
+    expect(alert).not.toHaveTextContent(/another app is using a required port/i)
+    // The hint is still shown verbatim, so the player learns WHICH one to close.
+    expect(alert).toHaveTextContent(/conversation simulator demo is using/i)
+  })
+
   it('shows the error detail in the alert', async () => {
     let handler: TauriListenHandler | undefined
     stubTauri((_event, h) => {

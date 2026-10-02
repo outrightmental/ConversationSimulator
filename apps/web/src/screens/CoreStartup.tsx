@@ -39,7 +39,7 @@ const TROUBLESHOOTING_BASE =
 const ISSUES_URL =
   'https://github.com/outrightmental/ConversationSimulator/issues/new/choose'
 
-type FailureKind = 'port-conflict' | 'not-found' | 'keeps-stopping' | 'crash'
+type FailureKind = 'edition-conflict' | 'port-conflict' | 'not-found' | 'keeps-stopping' | 'crash'
 
 interface ErrorInfo {
   kind: FailureKind
@@ -50,6 +50,25 @@ interface ErrorInfo {
 
 function classifyError(message: string, error: string | null): ErrorInfo {
   const text = `${message} ${error ?? ''}`.toLowerCase()
+
+  // Checked before the port-conflict branch it is a special case of. The demo
+  // and the full app share port 7355 and one data directory, so the shell
+  // refuses to attach to the other edition's engine (`foreign_edition_error` in
+  // apps/desktop/src-tauri/src/lib.rs) — and the port-conflict card's advice,
+  // "close any other applications using port 7355", names the wrong culprit:
+  // the other application IS Conversation Simulator, and the player has to
+  // close the right window. Falling through to 'crash' was worse still: an
+  // engine is running perfectly well, just the wrong one.
+  if (/another edition/.test(text)) {
+    return {
+      kind: 'edition-conflict',
+      title: 'Another edition of Conversation Simulator is running',
+      description:
+        'The demo and the full version share one conversation engine, so they cannot run at the ' +
+        'same time. Close the other one, then start this one again.',
+      anchor: '#engine-startup-failure',
+    }
+  }
 
   if (/eaddrinuse|address already in use|port.*busy|port.*in use|port conflict/.test(text)) {
     return {

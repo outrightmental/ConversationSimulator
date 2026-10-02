@@ -1746,6 +1746,34 @@ mod tests {
         assert!(hint.contains("7355"));
     }
 
+    #[test]
+    fn the_foreign_edition_message_is_what_the_recovery_card_classifies() {
+        // apps/web/src/screens/CoreStartup.tsx matches /another edition/ to pick
+        // a card that names the real fix — close the OTHER Conversation
+        // Simulator. Without it this fell through to 'crash', headed "The
+        // conversation engine didn't start": an engine is running perfectly
+        // well here, just the wrong one, and the message explaining that is not
+        // one of the strings the card displays.
+        //
+        // classifyError matches against `${message} ${error}`, so the hint
+        // counts too. The edition branch is checked first, but the hint says
+        // "port 7355" and the generic port-conflict card tells the player to
+        // close an unrelated program — so keep the two readable apart.
+        let theirs = if build_edition() == Some("demo") {
+            "full"
+        } else {
+            "demo"
+        };
+        let (message, hint) = foreign_edition_error(theirs).expect("refused");
+        let text = format!("{message} {hint}").to_lowercase();
+        assert!(text.contains("another edition"));
+        assert!(!text.contains("in use"));
+        assert!(!text.contains("busy"));
+        assert!(!text.contains("port conflict"));
+        assert!(!text.contains("keeps stopping"));
+        assert!(!text.contains("not found"));
+    }
+
     // ── Startup budget ───────────────────────────────────────────────────────
 
     #[test]
