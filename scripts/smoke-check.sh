@@ -183,6 +183,15 @@ check_file "apps/desktop/src-tauri/icons/128x128.png"
 check_file "apps/desktop/src-tauri/icons/128x128@2x.png"
 check_file "apps/desktop/src-tauri/icons/icon.icns"
 check_file "apps/desktop/src-tauri/icons/icon.ico"
+# Demo-edition icon set (issue #499).  tauri.demo.conf.json overrides
+# bundle.icon with these so the demo is not mistaken for the full game in the
+# Steam client; a missing file silently falls back to the base icon.
+check_file "apps/desktop/src-tauri/icons-demo/32x32.png"
+check_file "apps/desktop/src-tauri/icons-demo/128x128.png"
+check_file "apps/desktop/src-tauri/icons-demo/128x128@2x.png"
+check_file "apps/desktop/src-tauri/icons-demo/icon.icns"
+check_file "apps/desktop/src-tauri/icons-demo/icon.ico"
+check_file "publishing/assets/icons/demo_client_icon.ico"
 
 echo ""
 
