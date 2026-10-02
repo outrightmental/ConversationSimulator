@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { api } from '../api/client'
 import type { InputMode, ScenarioInfo, TurnResponse, WsEvent } from '@convsim/shared'
@@ -14,8 +15,40 @@ import type { ApiResult } from '../api/client'
 import { ApiErrorView } from '../components/ApiErrorView'
 import { useIsDemo } from '../edition'
 
-const TURN_TIMEOUT_MS = 60_000
+// How long a wait is allowed to look normal before the UI says something.
 const SLOW_RESPONSE_MS = 5_000
+// Second stage: past this point a static "taking longer than usual" line reads
+// as a frozen app, so the notice starts reporting the elapsed time instead.
+const VERY_SLOW_RESPONSE_MS = 30_000
+// The elapsed time is read out on this coarser grid. The visible clock ticks
+// every second, but a polite live region re-announces on every text change, and
+// 270 announcements over a five-minute turn drowns out everything else — so the
+// screen-reader copy only changes once per interval.
+const ELAPSED_ANNOUNCE_INTERVAL_MS = 30_000
+// When to stop trusting the in-flight request and start asking convsim-core what
+// it actually recorded. It is NOT a latency budget: a local model on CPU-only
+// hardware spends real minutes on one turn — the Windows machine in issue #489
+// measured ~24 s of prompt eval plus ~6.5 tokens/s of generation, so a single
+// 250-token reply took 62 s and tripped the old 60 s deadline, cancelling a turn
+// convsim-core had already committed.
+const TURN_TIMEOUT_MS = 300_000
+// Past that point the turn may still be legitimately in flight, so the deadline
+// is a cue to start reconciling rather than a verdict. The prompt itself is
+// bounded — compose_turn_prompt caps the transcript window at six rows and a
+// ~4 096-token budget — so the issue #489 machine plateaus around 3.5 min per
+// turn (~47 s of prompt eval at its measured 87 tok/s, plus a full 1024-token
+// reply at 6.5 tok/s) and lands inside the deadline. The core's own ceiling does
+// not: it allows the engine CONVSIM_LLAMA_CPP_CHAT_TIMEOUT (180 s) of silence
+// *and then* that whole reply, so hardware slower than the machine reported — or
+// an engine that stalls and recovers — is still working when the deadline fires.
+// Keep asking the server on this grid so a reply that lands late is adopted
+// within a few seconds of existing.
+const TURN_RECONCILE_INTERVAL_MS = 15_000
+// Absolute ceiling, so a wedged connection can never pin the UI in "submitting"
+// forever. Sized above anything the core itself permits (180 s of silence plus a
+// 1024-token reply at ~3 tokens/s is ~8.5 min), so giving up here really does
+// mean the request, not the model, is stuck.
+const TURN_ABANDON_MS = 600_000
 
 const BASELINE_STATE_VARS: Record<string, number> = {
   trust: 50,
@@ -39,6 +72,9 @@ type Phase = 'starting' | 'active' | 'submitting' | 'ending' | 'ended' | 'error'
 
 type Banner = { id: number; kind: 'event' | 'safety'; text: string }
 
+/** Result of one post-deadline check of what the session actually recorded. */
+type ReconcileOutcome = 'adopted' | 'pending' | 'unavailable'
+
 function NpcAvatar() {
   return (
     <div
@@ -61,6 +97,27 @@ function NpcAvatar() {
       </svg>
     </div>
   )
+}
+
+const srOnly: CSSProperties = {
+  position: 'absolute',
+  width: 1,
+  height: 1,
+  padding: 0,
+  margin: -1,
+  overflow: 'hidden',
+  clip: 'rect(0,0,0,0)',
+  whiteSpace: 'nowrap',
+  border: 0,
+}
+
+/** "45s" / "2m 05s" — a wait long enough to show is long enough to read. */
+function formatElapsed(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000)
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  if (minutes === 0) return `${seconds}s`
+  return `${minutes}m ${String(seconds).padStart(2, '0')}s`
 }
 
 function npcStatusLabel(sessionState: string, phase: Phase): string {
@@ -109,12 +166,24 @@ export default function Conversation() {
   const [npcEmotion, setNpcEmotion] = useState<string | null>(null)
   const [streamingText, setStreamingText] = useState('')
   const [banners, setBanners] = useState<Banner[]>([])
-  const [isSlowResponse, setIsSlowResponse] = useState(false)
+  // Milliseconds the current turn has been waiting on the NPC. Drives both
+  // stages of the slow-response notice, so one clock answers "how long has the
+  // player been staring at 'NPC is responding…'".
+  const [waitElapsedMs, setWaitElapsedMs] = useState(0)
 
   const { snapshot: latencySnapshot, mark, recordInterval, recordValue, warnings: perfWarnings } = useLatencyMetrics()
   const firstTokenMarkedRef = useRef(false)
   const turnTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const slowTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Ticks once a second while a turn is in flight to advance waitElapsedMs.
+  const waitClockRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const waitStartedAtRef = useRef(0)
+  // Spaces out the post-deadline transcript re-checks. The resolver is kept so
+  // unmount can release the loop's pending wait instead of leaving a promise
+  // (and the closure around it) hanging forever.
+  const reconcileTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const reconcileWakeRef = useRef<(() => void) | null>(null)
+  // False once the screen unmounts, so the reconcile loop stops touching state.
+  const mountedRef = useRef(true)
 
   // TTS audio queue — plays synthesized sentence chunks in order.
   const ttsQueueRef = useRef<string[]>([])
@@ -132,13 +201,26 @@ export default function Conversation() {
   const phaseRef = useRef<Phase>('starting')
   const npcTurnCommittedRef = useRef(false)
   const pendingRawSttRef = useRef<SttReviewMeta | null>(null)
+  // Mirrors of state the async turn handlers read after awaiting, where the
+  // values captured by their closure are already stale.
+  const sessionStateRef = useRef(sessionState)
   phaseRef.current = phase
+  sessionStateRef.current = sessionState
 
   // Clean up any pending timers and TTS audio when the component unmounts.
   useEffect(() => {
+    // Set on every setup, not just the first: React re-runs mount effects (in
+    // StrictMode, and on any future remount of this route), and a mountedRef
+    // left false by the previous cleanup would make the reconcile loop below
+    // bail on its first check — reintroducing issue #489 in dev builds, where
+    // the deadline would again discard a reply the core had committed.
+    mountedRef.current = true
     return () => {
+      mountedRef.current = false
       if (turnTimeoutRef.current) clearTimeout(turnTimeoutRef.current)
-      if (slowTimerRef.current) clearTimeout(slowTimerRef.current)
+      if (waitClockRef.current) clearInterval(waitClockRef.current)
+      if (reconcileTimerRef.current) clearTimeout(reconcileTimerRef.current)
+      reconcileWakeRef.current?.()
       if (ttsHoldTimerRef.current) clearTimeout(ttsHoldTimerRef.current)
       if (ttsPlayingRef.current) {
         ttsPlayingRef.current.pause()
@@ -147,6 +229,40 @@ export default function Conversation() {
       ttsQueueRef.current = []
     }
   }, [])
+
+  function _startWaitClock() {
+    if (waitClockRef.current) clearInterval(waitClockRef.current)
+    waitStartedAtRef.current = Date.now()
+    setWaitElapsedMs(0)
+    waitClockRef.current = setInterval(
+      () => setWaitElapsedMs(Date.now() - waitStartedAtRef.current),
+      1_000,
+    )
+  }
+
+  function _stopWaitClock() {
+    if (waitClockRef.current) {
+      clearInterval(waitClockRef.current)
+      waitClockRef.current = null
+    }
+    setWaitElapsedMs(0)
+  }
+
+  /** Replace the transcript with the server's copy, renumbering from the top. */
+  function _hydrateTurnsFromServer(
+    serverTurns: Array<{ role: TurnEntry['role']; content: string; emotion?: string | null }>,
+  ) {
+    turnNumRef.current = 0
+    setTurns(
+      serverTurns.map((t) => ({
+        id: ++turnUidRef.current,
+        role: t.role,
+        content: t.content,
+        emotion: t.emotion ?? undefined,
+        turnNum: ++turnNumRef.current,
+      })),
+    )
+  }
 
   function _playNextTtsChunk() {
     const url = ttsQueueRef.current.shift()
@@ -284,14 +400,7 @@ export default function Conversation() {
           const tr = await api.getSessionTranscript(sessionId)
           if (cancelled) return
           if (tr.ok && tr.data.turns.length > 0) {
-            const hydrated = tr.data.turns.map((t) => ({
-              id: ++turnUidRef.current,
-              role: t.role,
-              content: t.content,
-              emotion: t.emotion ?? undefined,
-              turnNum: ++turnNumRef.current,
-            }))
-            setTurns(hydrated)
+            _hydrateTurnsFromServer(tr.data.turns)
           }
           const lastState = tr.ok
             ? tr.data.turns[tr.data.turns.length - 1]?.flow_state_after
@@ -454,6 +563,117 @@ export default function Conversation() {
     }
   }, [turns, streamingText])
 
+  /**
+   * Reconcile the transcript with convsim-core after a turn deadline expires.
+   *
+   * The core commits the player turn and the NPC reply in one transaction
+   * before it answers the request, so a reply that lands just after the
+   * deadline is a reply the session already holds. Reporting a timeout there
+   * both hid a finished turn and left the view one turn behind the session the
+   * core was actually running — the bug in issue #489, where a 62 s turn missed
+   * a 60 s deadline by two seconds.
+   *
+   * State meters are not refreshed here (the transcript carries no variable
+   * snapshot); the next turn's `visible_state` is authoritative and restores
+   * them.
+   *
+   * Returns 'adopted' when the turn is complete and the caller must not report
+   * an error, 'pending' when the server has nothing yet and asking again later
+   * could still succeed, and 'unavailable' when the transcript will never be
+   * able to answer, so there is no point asking it again.
+   */
+  async function _adoptServerTurnAfterDeadline(): Promise<ReconcileOutcome> {
+    const tr = await api.getSessionTranscript(sessionId!)
+    // A failed fetch says nothing either way — core may be briefly busy — so
+    // keep asking rather than turning a transient blip into a lost turn.
+    if (!tr.ok) return 'pending'
+    // A session started with transcript saving off answers this endpoint with no
+    // turns, always, so asking it again is pure waste. The caller still waits on
+    // the request itself: the core commits the turn either way, and only the
+    // transcript *endpoint* is withheld.
+    if (!tr.data.transcript_saved) return 'unavailable'
+    const serverTurns = tr.data.turns
+    const last = serverTurns[serverTurns.length - 1]
+    // turnNumRef counts every row this view holds, the optimistic player turn
+    // included, so the reply only landed if the server is ahead of that.
+    if (!last || last.role !== 'npc' || serverTurns.length <= turnNumRef.current) return 'pending'
+
+    _hydrateTurnsFromServer(serverTurns)
+    setNpcEmotion(last.emotion ?? null)
+    npcTurnCommittedRef.current = true
+    streamingRef.current = ''
+    setStreamingText('')
+    recordInterval('full_response_ms', 'turn_submit')
+    const flowState = last.flow_state_after ?? 'PlayerTurnListening'
+    setSessionState(flowState)
+    setPhase(flowState === 'Ended' ? 'ended' : 'active')
+    return 'adopted'
+  }
+
+  /**
+   * Keep reconciling past the deadline until the turn lands or we give up.
+   *
+   * The deadline is not evidence that the turn failed — the core's own budget
+   * runs past it (see TURN_RECONCILE_INTERVAL_MS): it allows 180 s of engine
+   * silence and then a full reply, which hardware slower than the machine in
+   * issue #489 genuinely takes. Failing there would reintroduce the reported
+   * bug at a longer timescale: a turn the session holds, reported as lost and
+   * rolled back. So the deadline only starts the polling; a verdict waits for
+   * TURN_ABANDON_MS, by which point nothing the core permits can still be
+   * running and the request itself must be wedged.
+   *
+   * `request` is the submitTurn call the deadline raced, still in flight. Its
+   * own answer outranks anything the transcript can say, so the loop stops the
+   * moment it lands and hands the verdict back to the caller: a late success
+   * carries the state delta, event flags and ending type the transcript does
+   * not, and a real failure (the core's own 504 TURN_TIMEOUT, or a 503 for an
+   * unreachable engine) names its cause instead of being replaced by a vaguer
+   * "took too long" minutes later.
+   *
+   * Returns true when the server's copy was adopted.
+   */
+  async function _awaitServerTurnAfterDeadline(
+    request: Promise<ApiResult<TurnResponse>>,
+    hasAnswered: () => boolean,
+  ): Promise<boolean> {
+    // Cleared when the transcript endpoint turns out to be unable to answer, so
+    // the loop stops asking it. It keeps waiting on the request regardless:
+    // convsim-core commits the turn whether or not the session saves a
+    // transcript, so giving up early there would roll back a turn the session
+    // holds — issue #489 again, at the five-minute mark.
+    let askTheTranscript = true
+    while (mountedRef.current && !hasAnswered()) {
+      // A WebSocket npc.final may already have put the reply on screen, in which
+      // case the turn is done. turnNumRef counts that NPC row too, so the
+      // transcript comparison could never see the server pull ahead: left to the
+      // loop this would poll to the ceiling and then report a timeout over a
+      // reply the player is looking at.
+      if (npcTurnCommittedRef.current) {
+        setPhase(sessionStateRef.current === 'Ended' ? 'ended' : 'active')
+        return true
+      }
+      if (askTheTranscript) {
+        const outcome = await _adoptServerTurnAfterDeadline()
+        if (outcome === 'adopted') return true
+        if (outcome === 'unavailable') askTheTranscript = false
+      }
+      if (!mountedRef.current || hasAnswered()) return false
+      if (Date.now() - waitStartedAtRef.current >= TURN_ABANDON_MS) return false
+      // Wake on whichever comes first: the next scheduled re-check, the request
+      // finally answering, or unmount releasing the wait.
+      await Promise.race([
+        new Promise<void>((resolve) => {
+          reconcileWakeRef.current = resolve
+          reconcileTimerRef.current = setTimeout(resolve, TURN_RECONCILE_INTERVAL_MS)
+        }),
+        request,
+      ])
+      if (reconcileTimerRef.current) clearTimeout(reconcileTimerRef.current)
+      reconcileWakeRef.current = null
+    }
+    return false
+  }
+
   async function handleSubmit(text: string) {
     if (!text || phase !== 'active') return
 
@@ -494,7 +714,6 @@ export default function Conversation() {
     _stopTtsPlayback()
     setPhase('submitting')
     setError(null)
-    setIsSlowResponse(false)
     streamingRef.current = ''
     setStreamingText('')
     npcTurnCommittedRef.current = false
@@ -502,23 +721,50 @@ export default function Conversation() {
 
     mark('turn_submit')
 
-    // Show a "slow response" indicator if the NPC hasn't responded after SLOW_RESPONSE_MS.
-    if (slowTimerRef.current) clearTimeout(slowTimerRef.current)
-    slowTimerRef.current = setTimeout(() => setIsSlowResponse(true), SLOW_RESPONSE_MS)
+    // Drives the staged "this is taking a while" notice while the turn is out.
+    _startWaitClock()
 
-    // Wrap the API call with a hard timeout so the UI is never stuck indefinitely.
-    const result = await Promise.race([
-      api.submitTurn(sessionId!, text, didBargeIn),
+    // Wrap the API call with a deadline so the UI is never stuck indefinitely on a
+    // request that will never answer. Expiry hands over to the reconcile loop
+    // below rather than failing the turn outright, and the request itself is kept
+    // so its real answer is still honoured if it lands after the deadline.
+    const request = api.submitTurn(sessionId!, text, didBargeIn)
+    const late: { result: ApiResult<TurnResponse> | null } = { result: null }
+    void request.then((r) => {
+      late.result = r
+    })
+
+    let deadlineExpired = false
+    let result = await Promise.race([
+      request,
       new Promise<ApiResult<TurnResponse>>((resolve) => {
-        turnTimeoutRef.current = setTimeout(
-          () => resolve({ ok: false, error: { kind: 'timeout', message: 'The AI took too long to respond.' } }),
-          TURN_TIMEOUT_MS,
-        )
+        turnTimeoutRef.current = setTimeout(() => {
+          deadlineExpired = true
+          resolve({ ok: false, error: { kind: 'timeout', message: 'The AI took too long to respond.' } })
+        }, TURN_TIMEOUT_MS)
       }),
     ])
     if (turnTimeoutRef.current) clearTimeout(turnTimeoutRef.current)
-    if (slowTimerRef.current) clearTimeout(slowTimerRef.current)
-    setIsSlowResponse(false)
+
+    if (!result.ok && deadlineExpired) {
+      // The deadline expiring says nothing about whether the turn failed:
+      // convsim-core commits the player turn and the NPC reply in one
+      // transaction *before* it answers the request, so ask the server what it
+      // actually has before declaring the turn lost (issue #489). The wait clock
+      // keeps running through this, so the player still sees a live "still
+      // waiting" notice rather than a screen that goes quiet.
+      const adopted = await _awaitServerTurnAfterDeadline(request, () => late.result !== null)
+      if (adopted) {
+        _stopWaitClock()
+        return
+      }
+      // The request answered while the screen was polling. That answer replaces
+      // the deadline's placeholder: a late reply takes the normal commit path
+      // below with its state delta and ending type intact, and a real failure
+      // reports its own cause now instead of a vague timeout at the ceiling.
+      if (late.result !== null) result = late.result
+    }
+    _stopWaitClock()
 
     if (!result.ok) {
       setError(result.error)
@@ -639,6 +885,10 @@ export default function Conversation() {
   const isIdle = phase === 'active'
   const isBusy = phase === 'submitting' || phase === 'ending'
   const isEnded = phase === 'ended'
+  const isSlowResponse = phase === 'submitting' && waitElapsedMs >= SLOW_RESPONSE_MS
+  const isVerySlowResponse = phase === 'submitting' && waitElapsedMs >= VERY_SLOW_RESPONSE_MS
+  const announcedElapsedMs =
+    Math.floor(waitElapsedMs / ELAPSED_ANNOUNCE_INTERVAL_MS) * ELAPSED_ANNOUNCE_INTERVAL_MS
   const npcStatus = npcStatusLabel(sessionState, phase)
 
   return (
@@ -928,7 +1178,29 @@ export default function Conversation() {
             {isDemo
               ? 'NPC is taking longer than usual. The model may be slow on this hardware; closing other apps usually helps.'
               : 'NPC is taking longer than usual. The model may be slow on this hardware. You can adjust settings or try a smaller model.'}
+            {isVerySlowResponse && (
+              // Past half a minute a static line reads as a hung app. Naming the
+              // elapsed time shows the app is still waiting on the model rather
+              // than stuck, and that the turn has not been thrown away.
+              // Hidden from assistive tech: this ticks every second, and the
+              // enclosing polite live region would re-announce each tick. The
+              // sr-only sibling below carries the same news on a 30 s grid.
+              <div
+                data-testid="slow-response-elapsed"
+                aria-hidden="true"
+                style={{ marginTop: 4, color: '#fbbf24' }}
+              >
+                Still waiting — {formatElapsed(waitElapsedMs)} so far. The reply is
+                not lost; slow hardware can take a few minutes per turn.
+              </div>
+            )}
           </div>
+        )}
+
+        {isVerySlowResponse && (
+          <span data-testid="slow-response-elapsed-announcement" role="status" aria-live="polite" style={srOnly}>
+            Still waiting on the NPC — {formatElapsed(announcedElapsedMs)} so far. The reply is not lost.
+          </span>
         )}
       </div>
 
