@@ -19,7 +19,7 @@ Recorded 2 October 2026 from the development build.
 | | |
 |---|---|
 | Hardware | Apple M1 Pro, 16 GB unified memory, macOS 14.8.2 |
-| Model | Qwen3 4B Instruct Q4_K_M (Apache-2.0), 2.3 GB on disk, loaded as a local GGUF |
+| Model | Qwen3 4B Instruct Q4_K_M (Apache-2.0), 2.5 GB on disk (2.3 GiB), loaded as a local GGUF |
 | Engine | llama.cpp `b9415` `llama-server`, `--ctx-size 8192 --n-gpu-layers 99` |
 | App | `./scripts/dev.sh` — UI on `http://127.0.0.1:7354`, core on `http://127.0.0.1:7355` |
 | Profile | a throwaway `CONVSIM_DATA_ROOT` with the six official packs seeded and no personal data |
