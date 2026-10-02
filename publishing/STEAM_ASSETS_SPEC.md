@@ -24,6 +24,7 @@
 | Small capsule | Yes | 231 × 87 px, JPG or PNG | Not started |
 | Main capsule (library hero) | Yes | 3840 × 1240 px, JPG or PNG | Not started |
 | Library capsule | Yes | 600 × 900 px, JPG or PNG | Not started |
+| Client icon | Yes | 32 × 32 px, `.ico` | Demo done (`publishing/assets/icons/demo_client_icon.ico`); base not started |
 | Page background | Optional | 1438 × 810 px, JPG or PNG | Not started |
 | Screenshots (min 5, max 20) | Yes | 1920 × 1080 px (or 1280 × 720 px min), JPG or PNG | Placeholders exist (see `docs/assets/screenshots/`) |
 | Gameplay trailer | Yes | MP4, H.264, 1920 × 1080 px, 30–120 seconds | Not started |
@@ -80,6 +81,57 @@ capsule is 460 × 215 px and will be viewed at 1× in a search result list.
 
 Provide source files (Figma, Illustrator, or equivalent) alongside exported
 assets so that future updates can be made without re-commissioning from scratch.
+
+---
+
+## Client icon
+
+The client icon is the 32 × 32 `.ico` Steam draws beside the app name in the
+library list and on the desktop shortcut it creates. It is the smallest asset
+on the page and the one a player sees most often, so it carries one job:
+telling two entries apart at a glance.
+
+### Design brief
+
+- The mark is the app's own icon — the white speech bubble with three dots on
+  a rounded square — not a crop of a capsule. Capsule art is composed for
+  460 px and reads as mud at 32.
+- **Editions are separated by plate colour, not by text.** The full game is
+  teal (`#147A84`); the Steam Next Fest demo is deep purple (`#6D28D9`, the
+  app's player-turn accent). Hue is the only cue that survives at this size:
+  a word mark would be about six pixels tall.
+- A **"DEMO"** ribbon across the lower-right corner distinguishes the demo at
+  128 px and above (the dock, Alt-Tab, Finder). It is deliberately absent
+  below that, including on the client icon itself.
+- Same silhouette in both editions. The demo is the same product; only its
+  colour and its ribbon say otherwise.
+
+### Production
+
+`publishing/assets/source/gen_icons.py` is the source of truth. It draws the
+mark as plain polygons and circles — no fonts, no `clip-path`, no group
+transforms — so it reproduces byte-for-byte anywhere ImageMagick is installed,
+and emits both the Steamworks client icon and the Tauri `bundle.icon` set:
+
+```bash
+python3 publishing/assets/source/gen_icons.py                     # demo, into the repo
+python3 publishing/assets/source/gen_icons.py --edition base --out /tmp/base
+```
+
+| Output | Path | Used by |
+|--------|------|---------|
+| Client icon | `publishing/assets/icons/demo_client_icon.ico` | Steamworks → Store Presence → Graphical Assets → Client Icon, on the demo app (5343430) |
+| Vector source | `publishing/assets/icons/demo_icon.svg` | Hand edits and re-renders at other sizes |
+| Bundle icon set | `apps/desktop/src-tauri/icons-demo/` | `bundle.icon` in `tauri.demo.conf.json` |
+
+The base app's set in `apps/desktop/src-tauri/icons/` is the original
+`tauri icon` output; the script never writes there. Rendering `--edition base`
+into a scratch directory is how you check the two editions still line up after
+changing the mark.
+
+`tests/acceptance/test_demo_branding.py` enforces the result: the overlay
+overrides every icon, the plates stay far apart in colour, the silhouettes
+match, and the ribbon is on the large frames only.
 
 ---
 

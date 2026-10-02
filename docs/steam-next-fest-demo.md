@@ -167,12 +167,22 @@ directory, and its copy says so.
 ### Store assets
 
 The demo attaches to the base app's store page as its demo; Valve renders the
-"Download Demo" button there. The demo's own capsule set reuses the base
-capsules with a "DEMO" ribbon, produced by the same
-`publishing/assets/source/gen_capsules.py` pipeline; screenshots are
-demo-edition screenshots of the five conversations (the Home picker, one
-conversation, one debrief) so nothing shown is unreachable in the demo. No
-separate trailer: the base trailer is used. Details in the runbook.
+"Download Demo" button there.
+
+**The demo has its own icon.** The Steam client lists the demo and the full
+game side by side, and while they shared an icon the two entries were
+indistinguishable (issue #499). The demo's mark is the same speech bubble on a
+deep purple plate instead of the full game's teal, with a "DEMO" ribbon on the
+frames large enough to read it; colour, not the word, is what separates them in
+the 32 px the client actually draws. One generator,
+`publishing/assets/source/gen_icons.py`, produces both the Steamworks client
+icon and the icon the demo build installs, so the store entry and the app on
+the player's dock agree.
+
+The demo's capsule set reuses the base capsules with a matching "DEMO" ribbon;
+screenshots are demo-edition screenshots of the five conversations (the Home
+picker, one conversation, one debrief) so nothing shown is unreachable in the
+demo. No separate trailer: the base trailer is used. Details in the runbook.
 
 ### Turn / session / time cap
 
@@ -201,6 +211,7 @@ own promise.
 | D-07 | Depot audit and signing | CI + manual | `steam-deploy.yml` with `edition: demo` passes the depot audit and artifact inspection for all three platforms; macOS notarised and Windows signed (G3-01) — a demo is under Valve review like any build. |
 | D-08 | Offline after install | Manual | With the network disconnected after the download, all five conversations play (G2-01 / F-07 for the demo depot). |
 | D-09 | No full-app claims | Manual, publishing owner | Demo store copy and the in-app upsell describe exactly what the demo has (five conversations, one model, text only) and what the full app adds; no "free" claims about the paid app. |
+| D-10 | Demo is distinguishable in the Steam client | CI + manual | `tests/acceptance/test_demo_branding.py` passes: `tauri.demo.conf.json` overrides every `bundle.icon` entry, the demo plate is far from the base plate in colour, and the "DEMO" ribbon is on the large frames only. Manual half: the demo's client icon is uploaded on App 5343430 and the two library entries read apart at a glance. |
 
 ---
 

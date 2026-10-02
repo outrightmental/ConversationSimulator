@@ -93,6 +93,17 @@ compiles out of the box. Replace them before shipping a distributable:
 pnpm --filter @convsim/desktop tauri icon assets/icon.png
 ```
 
+The demo edition has its **own** icon set in `src-tauri/icons-demo/`, selected
+by `bundle.icon` in `tauri.demo.conf.json`: the same speech-bubble mark on a
+purple plate instead of the full app's teal, with a "DEMO" ribbon on the
+frames large enough to read one. Without it the demo and the full game are
+indistinguishable in the Steam client. Regenerate it — and the matching
+Steamworks client icon — with:
+
+```bash
+python3 publishing/assets/source/gen_icons.py
+```
+
 ---
 
 ## Executable resolution
@@ -158,6 +169,7 @@ apps/desktop/
     ├── capabilities/
     │   └── default.json         # Window permission grants
     ├── icons/                   # Placeholder app icons (replace with `tauri icon`)
+    ├── icons-demo/              # Demo-edition app icons (gen_icons.py)
     └── src/
         ├── main.rs              # OS entry point
         └── lib.rs               # Tauri Builder, core process management

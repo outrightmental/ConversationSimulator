@@ -661,10 +661,13 @@ jobs:
             fi
             # Demo edition (issue #495): a second merge-patch overlay renames the
             # product ("Conversation Simulator Demo"), gives it its own bundle
-            # identifier, and rewrites the window title. The shell still keys
-            # its data directory to the full app's identifier so a model
-            # downloaded in the demo is reused by the full version. Overlays
-            # are applied in order; later ones win.
+            # identifier, rewrites the window title, and points bundle.icon at
+            # icons-demo/ so the demo is not mistaken for the full game in the
+            # Steam client (issue #499). The shell still keys its data directory
+            # to the full app's identifier so a model downloaded in the demo is
+            # reused by the full version. Overlays are applied in order; later
+            # ones win — and merge-patch replaces arrays wholesale, so the demo
+            # icon list must name every file the base list does.
             EDITION_CONFIG=()
             if [ "$CONVSIM_EDITION" = "demo" ]; then
               EDITION_CONFIG=(--config "$GITHUB_WORKSPACE/apps/desktop/src-tauri/tauri.demo.conf.json")
