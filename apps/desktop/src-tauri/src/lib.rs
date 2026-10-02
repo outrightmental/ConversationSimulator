@@ -771,6 +771,23 @@ fn port_busy_hint() -> String {
     )
 }
 
+/// The hint beside `KEEPS_STOPPING_MESSAGE`.
+///
+/// "Restarted {max} times", not "stopped {max} times": the supervisor reaches
+/// this on the stop AFTER the last restart, so the engine has died
+/// `MAX_RESTARTS + 1` times.
+///
+/// Its own function so a test can check it against `classifyError`'s patterns —
+/// which are matched against the message and the hint concatenated, and try
+/// port-conflict first, so a stray "port" here would pick the wrong card.
+fn keeps_stopping_hint() -> String {
+    format!(
+        "It was restarted {max} times and stopped again every time, so it will not be \
+         restarted again. Open the logs folder for details, then restart the app.",
+        max = MAX_RESTARTS
+    )
+}
+
 /// Backoff before restart attempt `attempt` (1-based): 1 s, 2 s, 4 s, then 8 s.
 fn restart_backoff(attempt: u32) -> Duration {
     Duration::from_secs(1u64 << attempt.saturating_sub(1).min(3))
@@ -1309,11 +1326,7 @@ fn supervise_core(
                 &status_arc,
                 "error",
                 KEEPS_STOPPING_MESSAGE,
-                Some(&format!(
-                    "It stopped {max} times in a row and will not be restarted again. \
-                     Open the logs folder for details, then restart the app.",
-                    max = MAX_RESTARTS
-                )),
+                Some(&keeps_stopping_hint()),
                 log_dir_ref,
             );
             return;
@@ -1620,15 +1633,27 @@ mod tests {
     fn the_keeps_stopping_message_is_what_the_recovery_card_classifies() {
         // apps/web/src/screens/CoreStartup.tsx matches /keeps stopping/ to pick
         // a card that says the engine stopped, not that it never started.
-        let text = KEEPS_STOPPING_MESSAGE.to_lowercase();
+        //
+        // classifyError matches against `${message} ${error}` — the hint too —
+        // and tries the port-conflict and not-found patterns first, so neither
+        // half may read as one of those.
+        let text = format!("{} {}", KEEPS_STOPPING_MESSAGE, keeps_stopping_hint()).to_lowercase();
         assert!(text.contains("keeps stopping"));
-        // Belt and braces for a reorder: classifyError tries every pattern
-        // against the same text, so this message must not also read as a port
-        // conflict or a missing binary.
         assert!(!text.contains("port"));
+        assert!(!text.contains("in use"));
         assert!(!text.contains("not found"));
         assert!(!text.contains("executable"));
         assert!(!text.contains("binary"));
+        assert!(!text.contains("cannot locate"));
+    }
+
+    #[test]
+    fn the_keeps_stopping_hint_counts_restarts_not_stops() {
+        // The supervisor reaches the give-up branch on the stop AFTER the last
+        // restart, so it cannot claim the engine stopped MAX_RESTARTS times.
+        let hint = keeps_stopping_hint();
+        assert!(hint.contains(&format!("restarted {MAX_RESTARTS} times")));
+        assert!(!hint.contains(&format!("stopped {MAX_RESTARTS} times")));
     }
 
     // ── Executable resolution ────────────────────────────────────────────────
