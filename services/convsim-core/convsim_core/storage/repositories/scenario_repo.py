@@ -30,6 +30,7 @@ _SCENARIO_COLS = """
     s.soft_time_limit_minutes,
     s.voice_support,
     s.model_recommendation,
+    s.mode,
     s.rel_path,
     p.source_path   AS pack_source_path
 """
@@ -214,6 +215,7 @@ def _canonical_fields(row: sqlite3.Row, yaml_data: dict) -> dict:
     ladder = yaml_data.get("ladder_position")
 
     return {
+        "mode": _mode_of(row, yaml_data),
         "player_role": player_role,
         "difficulty": difficulty,
         "supported_languages": supported_languages,
@@ -227,6 +229,31 @@ def _canonical_fields(row: sqlite3.Row, yaml_data: dict) -> dict:
         "taught_dimensions": taught if isinstance(taught, list) else [],
         "tested_dimensions": tested if isinstance(tested, list) else [],
     }
+
+
+def _mode_of(row: sqlite3.Row, yaml_data: dict) -> str:
+    """The scenario's game mode: the YAML, else the indexed column, else default.
+
+    The YAML wins because that is what the engine reads —
+    ``load_flyting_scenario`` decides a scenario's mode from the file, and a
+    library card that disagreed would route the player to a screen the engine
+    refuses to serve. The index can legitimately disagree: saving a scenario in
+    the Creator Workbench rewrites the file without re-indexing its pack, so an
+    author who adds ``mode: flyting`` would otherwise keep getting a
+    conversation card until they re-imported. Preferring the file costs nothing
+    here — ``yaml_data`` is already parsed for the other canonical fields and
+    cached by mtime.
+
+    The column answers the case the YAML cannot: a scenario file that has gone
+    missing or will not parse, where the last indexed value beats assuming the
+    default.
+    """
+    try:
+        indexed = row["mode"]
+    except (IndexError, KeyError):
+        indexed = None
+    declared = yaml_data.get("mode") or indexed
+    return str(declared) if declared else "conversation"
 
 
 def _row_to_card(row: sqlite3.Row) -> ScenarioCard:

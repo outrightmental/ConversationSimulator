@@ -313,7 +313,16 @@ def clear_scenario_cache() -> None:
 
 
 def list_flyting_scenarios(conn: Any) -> list[FlytingScenario]:
-    """Every installed flyting scenario, for the library and the format picker."""
+    """Every installed flyting scenario, for the library and the format picker.
+
+    Every indexed scenario is a candidate and each file's own mode decides,
+    rather than pre-filtering on the indexed ``scenarios.mode`` column. That
+    column can be stale by design: a Creator Workbench save rewrites a scenario
+    without re-indexing its pack, so filtering on it would hide a scenario an
+    author had just turned into a flyting one. ``load_flyting_scenario``
+    returns None for everything that is not flyting, and scenario files are
+    small, so the cost is a stat and a parse per installed scenario.
+    """
     try:
         rows = conn.execute(
             "SELECT s.slug, s.rel_path, p.source_path, p.slug AS pack_slug "

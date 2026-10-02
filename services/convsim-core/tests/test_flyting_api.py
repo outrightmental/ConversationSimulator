@@ -140,6 +140,45 @@ class TestScenarioDiscovery:
     def test_an_unknown_scenario_is_a_404(self, client):
         assert client.get("/api/flyting/scenarios/not_a_scenario").status_code == 404
 
+    def test_the_library_card_declares_the_mode_so_the_ui_can_route_it(self, client):
+        cards = client.get("/api/scenarios").json()
+        modes = {c["scenario_id"]: c["mode"] for c in cards}
+        assert modes[SCENARIO] == "flyting"
+        assert modes["veiled_civility"] == "flyting"
+
+    def test_the_scenario_detail_declares_the_mode_too(self, client):
+        detail = client.get(f"/api/scenarios/{SCENARIO}").json()
+        assert detail["mode"] == "flyting"
+
+    def test_the_mode_is_indexed_for_querying(self, client):
+        """The import records the mode, so it can be filtered on in SQL."""
+        conn = client.app.state.db.connection()
+        rows = dict(
+            conn.execute("SELECT slug, mode FROM scenarios").fetchall()  # type: ignore[arg-type]
+        )
+        assert rows[SCENARIO] == "flyting"
+
+    def test_an_edited_scenario_reports_the_file_mode_not_the_stale_index(self, client):
+        """The YAML wins over the index, because the engine reads the YAML.
+
+        Saving a scenario in the Creator Workbench rewrites the file without
+        re-indexing its pack. If the card trusted the index, an author who
+        turned a scenario into a flyting one would keep getting a conversation
+        card — and a Launch that took them to a screen the engine will not
+        serve — until they happened to re-import.
+        """
+        conn = client.app.state.db.connection()
+        conn.execute("UPDATE scenarios SET mode = 'conversation' WHERE slug = ?", (SCENARIO,))
+        conn.commit()
+
+        card = next(
+            c for c in client.get("/api/scenarios").json() if c["scenario_id"] == SCENARIO
+        )
+        assert card["mode"] == "flyting"
+        # And the engine still offers it, for the same reason.
+        ids = {s["scenario_id"] for s in client.get("/api/flyting/scenarios").json()}
+        assert SCENARIO in ids
+
 
 # ── Starting a run ───────────────────────────────────────────────────────────
 

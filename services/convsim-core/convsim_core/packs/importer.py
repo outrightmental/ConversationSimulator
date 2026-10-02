@@ -169,6 +169,11 @@ def _scenario_data_from_raw(
     difficulty = raw.get("difficulty") or {}
     difficulty_default: Optional[str] = difficulty.get("default")
 
+    # Recorded verbatim, including an unrecognised value: the schema validator
+    # is what rejects a bad mode, and quietly rewriting one to 'conversation'
+    # here would hide the mistake behind a scenario that merely plays wrong.
+    mode = raw.get("mode")
+
     requirements = raw.get("requirements") or manifest.requirements or {}
     voice_support: bool = bool(requirements.get("voice_support", False))
     model_recommendation: Optional[str] = requirements.get("model_recommendation")
@@ -186,6 +191,7 @@ def _scenario_data_from_raw(
         voice_support=voice_support,
         model_recommendation=model_recommendation,
         rel_path=rel_path,
+        mode=mode if isinstance(mode, str) and mode else None,
         pack_name=manifest.name,
         pack_description=manifest.description,
         pack_tags=manifest.tags,

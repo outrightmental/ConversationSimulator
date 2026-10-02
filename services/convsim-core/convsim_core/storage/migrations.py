@@ -458,6 +458,16 @@ CREATE UNIQUE INDEX flyting_high_scores_session_idx
 ALTER TABLE turn_sessions ADD COLUMN flyting_state_json TEXT;
 """
 
+# The scenario's game mode (issue #454), indexed so the mode is queryable and
+# so a card has an answer even when its YAML cannot be read. NULL means the
+# pre-#454 default, 'conversation': the column is read through a fallback rather
+# than backfilled, so an existing install needs no rewrite.
+_SCENARIO_MODE_SQL = """
+ALTER TABLE scenarios ADD COLUMN mode TEXT;
+
+CREATE INDEX scenarios_mode_idx ON scenarios(mode);
+"""
+
 
 MIGRATIONS: list[tuple[str, str]] = [
     ("0001_initial_schema", _INITIAL_SCHEMA_SQL),
@@ -479,6 +489,7 @@ MIGRATIONS: list[tuple[str, str]] = [
     ("0017_onboarding_outcome", _ONBOARDING_OUTCOME_SQL),
     ("0018_setup_install_jobs", _SETUP_INSTALL_JOBS_SQL),
     ("0019_flyting_volleys", _FLYTING_SQL),
+    ("0020_scenario_mode", _SCENARIO_MODE_SQL),
 ]
 
 
