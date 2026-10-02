@@ -1404,6 +1404,44 @@ class TestRunSmokeOrchestration:
         results = json.loads(report.read_text(encoding="utf-8"))
         assert any("fallback check did not run" in w for w in results["warnings"])
 
+    @pytest.mark.parametrize(
+        "debug_body",
+        [
+            {},                                      # no turns key at all
+            {"turns": None},                         # turns present but not a list
+            {"turns": [{"used_fallback": False}]},   # entry that cannot be keyed
+            {"turns": ["not-a-dict"]},
+        ],
+        ids=["no-turns-key", "turns-not-a-list", "entry-without-turn-number", "entry-not-a-dict"],
+    )
+    def test_a_malformed_debug_payload_does_not_fail_an_otherwise_green_run(
+        self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path, debug_body: dict,
+    ) -> None:
+        # Same contract as a 404 from the debug endpoint: it is a diagnostic,
+        # so a shape we cannot read must degrade to "the check did not run",
+        # not raise out of the helper and land in run_smoke's catch-all as a
+        # harness bug (exit 5) on a run where the product did nothing wrong.
+        models_dir, model_id, digest = staged_model
+        base = _fake_core(_debrief())
+
+        def _bad_debug(url: str, *, payload=None, timeout=None, expect=(200, 201)) -> dict:
+            if url.endswith("/debug"):
+                return debug_body
+            return base(url, payload=payload, timeout=timeout, expect=expect)
+
+        monkeypatch.setattr(smoke, "_request_json", _bad_debug)
+        report = tmp_path / "report.json"
+
+        exit_code = smoke.run_smoke(
+            model_id, 20.0, report, model_sha256=digest, models_dir=models_dir
+        )
+
+        assert exit_code == 0
+        results = json.loads(report.read_text(encoding="utf-8"))
+        assert results["verdict"] == "pass"
+        assert any("fallback check did not run" in w for w in results["warnings"])
+
 
 # ---------------------------------------------------------------------------
 # CLI entry point

@@ -899,14 +899,29 @@ def _debug_flags_by_turn(base: str, session_id: str, timeout: float) -> Dict[int
     """Fetch per-turn parse flags from the dev debug endpoint, keyed by game turn.
 
     Best-effort: the debug drawer is a diagnostic, so a failure here must not
-    turn a healthy smoke red.
+    turn a healthy smoke red.  That holds for the *shape* of the answer as well
+    as for the transport — an entry without a ``turn_number`` would otherwise
+    raise a KeyError out of this helper, escape to ``run_smoke``'s catch-all and
+    report an otherwise-green run as a harness bug (exit 5).  A payload we
+    cannot key by turn is the same situation as no payload at all: the fallback
+    check does not run, and ``evaluate_turns`` warns that it did not.
     """
     try:
         debug = _request_json(f"{base}/sessions/{session_id}/debug", timeout=timeout)
     except SmokeFailure as exc:
         print(f"[smoke] Could not read debug flags ({exc}); continuing.")
         return {}
-    return {t["turn_number"]: t for t in debug.get("turns", [])}
+    turns = debug.get("turns")
+    if not isinstance(turns, list):
+        print(f"[smoke] Debug endpoint returned no turns list ({turns!r}); continuing.")
+        return {}
+    flags: Dict[int, Dict[str, Any]] = {}
+    for entry in turns:
+        if isinstance(entry, dict) and isinstance(entry.get("turn_number"), int):
+            flags[entry["turn_number"]] = entry
+        else:
+            print(f"[smoke] Ignoring unkeyable debug turn entry: {entry!r}")
+    return flags
 
 
 def run_smoke(
