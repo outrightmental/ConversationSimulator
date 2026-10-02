@@ -130,6 +130,131 @@ describe('CoreStartupGuard — core becomes ready via event', () => {
   })
 })
 
+describe('CoreStartupGuard — engine restart under a running window', () => {
+  it('hides the app and reports progress while the engine is restarting', async () => {
+    let handler: TauriListenHandler | undefined
+    stubTauri((_event, h) => {
+      handler = h
+      return Promise.resolve(() => {})
+    })
+
+    await act(async () => {
+      renderGuard()
+    })
+
+    await act(async () => {
+      handler?.({
+        payload: { phase: 'ready', message: 'Core service is ready.', error: null },
+      })
+    })
+    expect(screen.getByText('App content loaded')).toBeInTheDocument()
+
+    await act(async () => {
+      handler?.({
+        payload: {
+          phase: 'restarting',
+          message: 'The conversation engine stopped unexpectedly. Restarting… (attempt 1 of 3)',
+          error: null,
+        },
+      })
+    })
+
+    // The engine lost its in-memory state, so the app must not stay mounted
+    // over a dead port — and the player needs to be told what is happening.
+    expect(screen.queryByText('App content loaded')).not.toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent(/restarting/i)
+  })
+
+  it('remounts the app when the replacement engine reports ready', async () => {
+    let handler: TauriListenHandler | undefined
+    stubTauri((_event, h) => {
+      handler = h
+      return Promise.resolve(() => {})
+    })
+
+    await act(async () => {
+      renderGuard()
+    })
+
+    for (const payload of [
+      { phase: 'ready', message: 'Core service is ready.', error: null },
+      { phase: 'restarting', message: 'Restarting… (attempt 1 of 3)', error: null },
+      { phase: 'ready', message: 'Core service is ready.', error: null },
+    ]) {
+      await act(async () => {
+        handler?.({ payload })
+      })
+    }
+
+    expect(screen.getByText('App content loaded')).toBeInTheDocument()
+  })
+
+  it('shows the recovery card when the engine stops for good after ready', async () => {
+    let handler: TauriListenHandler | undefined
+    stubTauri((_event, h) => {
+      handler = h
+      return Promise.resolve(() => {})
+    })
+
+    await act(async () => {
+      renderGuard()
+    })
+
+    await act(async () => {
+      handler?.({
+        payload: { phase: 'ready', message: 'Core service is ready.', error: null },
+      })
+    })
+
+    await act(async () => {
+      handler?.({
+        payload: {
+          phase: 'error',
+          message: 'The conversation engine keeps stopping.',
+          error: 'It stopped 3 times in a row and will not be restarted again.',
+        },
+      })
+    })
+
+    expect(screen.queryByText('App content loaded')).not.toBeInTheDocument()
+    expect(screen.getByRole('alert')).toHaveTextContent(/didn't start|keeps stopping/i)
+  })
+
+  it('does not let a stale health success overrule a reported restart', async () => {
+    // The health fast-path resolves on its own schedule; a success that lands
+    // after the shell reported a restart must not mount the app anyway.
+    let resolveHealth: ((value: unknown) => void) | undefined
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise((resolve) => {
+        resolveHealth = resolve
+      })),
+    )
+
+    let handler: TauriListenHandler | undefined
+    stubTauri((_event, h) => {
+      handler = h
+      return Promise.resolve(() => {})
+    })
+
+    await act(async () => {
+      renderGuard()
+    })
+
+    await act(async () => {
+      handler?.({
+        payload: { phase: 'restarting', message: 'Restarting… (attempt 2 of 3)', error: null },
+      })
+    })
+
+    await act(async () => {
+      resolveHealth?.({ ok: true, json: () => Promise.resolve({}) })
+    })
+
+    expect(screen.queryByText('App content loaded')).not.toBeInTheDocument()
+  })
+})
+
 describe('CoreStartupGuard — error state', () => {
   it('shows a recovery alert when core reports an error', async () => {
     let handler: TauriListenHandler | undefined

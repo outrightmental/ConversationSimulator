@@ -1,11 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import RuntimeRecoveryCard from '../components/RuntimeRecoveryCard'
 
 // ── Tauri global type (Tauri v2 with withGlobalTauri: true) ──────────────────
 
 interface CoreStatusPayload {
-  phase: 'starting' | 'ready' | 'error'
+  // 'restarting' is emitted when the Rust shell caught the engine exiting under
+  // a running window and is bringing a replacement up (bounded attempts, see
+  // supervise_core in apps/desktop/src-tauri/src/lib.rs). It is a non-ready
+  // phase: the engine lost its in-memory session state, so the app is unmounted
+  // and remounted once the replacement reports ready.
+  phase: 'starting' | 'restarting' | 'ready' | 'error'
   message: string
   error: string | null
   log_dir?: string | null
@@ -88,6 +93,9 @@ export default function CoreStartupGuard({ children }: { children: React.ReactNo
 
   const [ready, setReady] = useState(() => !isTauri)
   const [status, setStatus] = useState<CoreStatusPayload | null>(null)
+  // Mirrors `status` for the health fast-path below, which resolves on its own
+  // schedule and must not promote a phase the shell has already moved past.
+  const statusRef = useRef<CoreStatusPayload | null>(null)
 
   const checkHealth = useCallback(async (): Promise<boolean> => {
     try {
@@ -109,10 +117,15 @@ export default function CoreStartupGuard({ children }: { children: React.ReactNo
     let cancelled = false
     let unlisten: (() => void) | undefined
 
+    // Readiness tracks the shell's own state machine rather than latching on
+    // first success: the engine can stop under a running window, and an app left
+    // mounted over a dead port fails every request with nothing on screen to
+    // explain why.
     const apply = (payload: CoreStatusPayload) => {
       if (cancelled) return
+      statusRef.current = payload
       setStatus(payload)
-      if (payload.phase === 'ready') setReady(true)
+      setReady(payload.phase === 'ready')
     }
 
     // Subscribe to live progress events first. The Rust shell starts emitting
@@ -138,8 +151,14 @@ export default function CoreStartupGuard({ children }: { children: React.ReactNo
 
     // Independent fast-path: if the core is already serving (e.g. started by
     // dev-desktop.sh) pass through immediately without waiting for an event.
+    // It races the events above, so it must not overrule a phase the shell has
+    // already reported as not-ready — a stale success arriving after a crash or
+    // a port conflict would mount the app over an engine that is not there.
     checkHealth().then((healthy) => {
-      if (!cancelled && healthy) setReady(true)
+      if (cancelled || !healthy) return
+      const phase = statusRef.current?.phase
+      if (phase === 'error' || phase === 'restarting') return
+      setReady(true)
     })
 
     return () => {
