@@ -285,7 +285,7 @@ jobs:
   # Linux job above cannot see that code, so without this job the first
   # compile of the shipped configuration would happen on the release tag.
   desktop-rust-steam-windows:
-    name: Desktop Rust check (Windows, --features steam)
+    name: Desktop Rust check and tests (Windows)
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
@@ -297,15 +297,28 @@ jobs:
         with:
           workspaces: apps/desktop/src-tauri -> target
           key: steam-feature
-      # `cargo check` only: the unit tests call `steam::init()` from several
-      # threads at once, which is fine against the no-SDK stub but is NOT a
-      # supported way to call the real `SteamAPI_Init`.  Tests run in the Linux
-      # job without the feature.
+      # `cargo check`, not `cargo test`, WITH the feature: the unit tests call
+      # `steam::init()` from several threads at once, which is fine against the
+      # no-SDK stub but is NOT a supported way to call the real `SteamAPI_Init`.
       - name: Check desktop crate compiles with --features steam
         working-directory: apps/desktop/src-tauri
         env:
           VITE_STEAM_DLC_APP_IDS: ${{ vars.STEAM_DLC_APP_IDS }}
         run: cargo check --features steam
+      # And `cargo test` WITHOUT it, so `steam::init()` is the stub again.
+      #
+      # The Linux job runs these too, but it cannot compile — let alone run —
+      # `stop_core`'s Windows teardown branch: Windows has no SIGTERM, so the
+      # engine is stopped with `taskkill /PID … /T /F`, and that `/T` is the only
+      # thing keeping the engine's own llama-server and TTS children from
+      # outliving a closed window (issue #456, "clean shutdown"). Windows is
+      # also the platform the Steam build ships on, so an untested teardown
+      # there is untested where it matters most.
+      - name: Run desktop unit tests (no Steam feature)
+        working-directory: apps/desktop/src-tauri
+        env:
+          VITE_STEAM_DLC_APP_IDS: ${{ vars.STEAM_DLC_APP_IDS }}
+        run: cargo test
 
   pack-validation:
     name: Pack validation

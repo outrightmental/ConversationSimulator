@@ -271,10 +271,20 @@ In production, `apps/web/src/api/client.ts` detects the `tauri://localhost` (or
 ./scripts/desktop-smoke.sh   # cargo check (±steam) + cargo test
 ```
 
+(`scripts/desktop-smoke.ps1` is the PowerShell twin.)
+
 The crate's unit tests cover the sidecar state machine: HTTP/health parsing, the
 port-conflict and foreign-edition guards, the executable resolution order, and
 the restart backoff. The readiness probe is exercised against real loopback
 sockets — a silent squatter, a 503, and a stub engine.
+
+CI runs them on **both** Linux and Windows, because `stop_core` has two separate
+implementations and the Linux job cannot compile the Windows one. The teardown
+tests pick their long-lived and exit-at-once child per platform and assert on
+timing: if the platform's own signal (`kill -TERM` / `taskkill … /T /F`) never
+reaches the child, the hard-kill fallback still stops it, so the only symptom is
+that teardown silently takes the full six seconds — and the engine's own
+sidecars are orphaned.
 
 ## Known limitations
 

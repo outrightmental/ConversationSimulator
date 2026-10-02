@@ -1826,24 +1826,64 @@ mod tests {
 
     // ── Teardown ─────────────────────────────────────────────────────────────
 
-    /// Unix-only because it needs a process that handles SIGTERM; Windows has no
-    /// SIGTERM and `stop_core` reaches for `taskkill /T /F` there instead. The
-    /// Linux job is where `cargo test` runs, which is where this claim matters.
-    #[cfg(unix)]
+    /// A child that stays alive long enough for teardown to have something to
+    /// stop. `cfg!`, not `#[cfg]`, so both arms stay compiled and a typo in the
+    /// branch this platform does not take still fails the build.
+    ///
+    /// On Windows `ping -n 30` is the long-lived no-op: `timeout /t` reads the
+    /// console, which a test harness child does not have.
+    fn stays_alive_for_30s() -> Command {
+        let mut command = if cfg!(windows) {
+            Command::new("ping")
+        } else {
+            Command::new("sleep")
+        };
+        if cfg!(windows) {
+            command.arg("-n").arg("30").arg("127.0.0.1");
+        } else {
+            command.arg("30");
+        }
+        command
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        command
+    }
+
+    /// A child that has already exited, for the already-reaped guard.
+    fn exits_at_once() -> Command {
+        let mut command = if cfg!(windows) {
+            Command::new("cmd")
+        } else {
+            Command::new("true")
+        };
+        if cfg!(windows) {
+            command.arg("/C").arg("exit");
+        }
+        command
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        command
+    }
+
+    /// Runs on every platform on purpose. `stop_core` has two entirely separate
+    /// implementations — SIGTERM on Unix, `taskkill /PID … /T /F` on Windows —
+    /// and the Windows one is the only thing that stops the engine's own
+    /// llama-server and TTS children from outliving a closed window. It is also
+    /// the platform the Steam build ships on, and the Linux job cannot so much
+    /// as compile that branch. CI runs this on both (see the Windows job in
+    /// .github/workflows/ci.yml).
     #[test]
     fn stop_core_asks_before_it_insists() {
         // The point of `stop_core` over `Child::kill()` is that the engine gets
         // a signal it can handle, so uvicorn runs the lifespan shutdown that
         // stops convsim-core's OWN sidecars. If the signal never arrives — a
-        // typo'd argument, no `kill` on PATH — the fallback still kills the
-        // child, and the only visible symptom is that teardown silently takes
-        // GRACEFUL_SHUTDOWN_WAIT. Timing is therefore the evidence that the
-        // graceful path, not the fallback, did the work.
-        let mut child = Command::new("sleep")
-            .arg("30")
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
+        // typo'd argument, no `kill`/`taskkill` on PATH — the fallback still
+        // kills the child, and the only visible symptom is that teardown
+        // silently takes GRACEFUL_SHUTDOWN_WAIT. Timing is therefore the
+        // evidence that the platform path, not the fallback, did the work.
+        let mut child = stays_alive_for_30s()
             .spawn()
             .expect("spawn a long-lived child");
 
@@ -1854,7 +1894,8 @@ mod tests {
         assert!(
             elapsed < GRACEFUL_SHUTDOWN_WAIT,
             "stop_core took {elapsed:?} — it waited out the graceful window, so \
-             SIGTERM never reached the child and the hard kill did the work"
+             the platform signal never reached the child and the hard kill did \
+             the work"
         );
         // Reaped, not left a zombie: teardown clears the handle right after
         // this, and an unreaped pid would linger until the shell exits.
@@ -1864,17 +1905,15 @@ mod tests {
         );
     }
 
-    #[cfg(unix)]
     #[test]
     fn stop_core_leaves_an_already_reaped_child_alone() {
-        // The shell-level `kill` goes around `Child`'s own "cannot kill an
-        // exited process" guard, and the OS is free to have handed that pid to
-        // something else by now — so an already-reaped handle must be a no-op,
-        // not a signal.
-        let mut child = Command::new("true")
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
+        // The shell-level `kill`/`taskkill` goes around `Child`'s own "cannot
+        // kill an exited process" guard, and the OS is free to have handed that
+        // pid to something else by now — so an already-reaped handle must be a
+        // no-op, not a signal. On Windows that matters more than anywhere:
+        // `taskkill /T /F` would force-kill the recycled pid's whole process
+        // TREE.
+        let mut child = exits_at_once()
             .spawn()
             .expect("spawn a child that exits at once");
         let _ = child.wait();
