@@ -9,6 +9,7 @@ a change that breaks the pack's YAML breaks these tests.
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -20,6 +21,7 @@ from convsim_core.flyting.loader import clear_scenario_cache
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _OFFICIAL_PACKS = _REPO_ROOT / "packs" / "official"
+_FLYTING_PACK = _OFFICIAL_PACKS / "flyting-school"
 
 SCENARIO = "whitechapel_rose"
 BOUT_SCENARIO = "dockside_parley"
@@ -34,10 +36,25 @@ SECOND_VOLLEY = (
 )
 
 
+@pytest.fixture(scope="module")
+def official_packs_dir(tmp_path_factory):
+    """An official-packs directory holding the shipping Flyting School pack alone.
+
+    These tests need that one pack seeded; the other six official packs are
+    never referenced, and re-importing all of them on every test cost several
+    times more than the assertions did. Copied once per module into a throwaway
+    directory, so each test still seeds into its own empty database and the pack
+    under test is still the one that ships.
+    """
+    if not _FLYTING_PACK.is_dir():
+        pytest.skip(f"Flyting School pack not found: {_FLYTING_PACK}")
+    root = tmp_path_factory.mktemp("official_packs_flyting_only")
+    shutil.copytree(_FLYTING_PACK, root / _FLYTING_PACK.name)
+    return root
+
+
 @pytest.fixture()
-def client(tmp_path, monkeypatch):
-    if not _OFFICIAL_PACKS.is_dir():
-        pytest.skip(f"Official packs directory not found: {_OFFICIAL_PACKS}")
+def client(tmp_path, monkeypatch, official_packs_dir):
     monkeypatch.setenv("CONVSIM_WHISPER_CPP_BINARY_PATH", str(tmp_path / "no-whisper"))
     clear_scenario_cache()
     config = ServiceConfig(
@@ -51,7 +68,7 @@ def client(tmp_path, monkeypatch):
         cache_dir=str(tmp_path / "cache"),
         crash_bundles_dir=str(tmp_path / "crashes"),
         models_dir=str(tmp_path / "models"),
-        official_packs_dir=str(_OFFICIAL_PACKS),
+        official_packs_dir=str(official_packs_dir),
         runtime_id="fake",
     )
     app = create_app(config)
@@ -430,9 +447,7 @@ class TestWorkbenchPreview:
 
 
 class TestDemoEdition:
-    def test_the_demo_edition_refuses_flyting(self, tmp_path, monkeypatch):
-        if not _OFFICIAL_PACKS.is_dir():
-            pytest.skip("Official packs directory not found")
+    def test_the_demo_edition_refuses_flyting(self, tmp_path, monkeypatch, official_packs_dir):
         monkeypatch.setenv("CONVSIM_WHISPER_CPP_BINARY_PATH", str(tmp_path / "no-whisper"))
         clear_scenario_cache()
         config = ServiceConfig(
@@ -440,7 +455,8 @@ class TestDemoEdition:
             log_dir=str(tmp_path / "logs"),
             db_dir=str(tmp_path / "db"),
             packs_dir=str(tmp_path / "packs"),
-            official_packs_dir=str(_OFFICIAL_PACKS),
+            # Seeded and present: the refusal is the edition's, not a missing pack's.
+            official_packs_dir=str(official_packs_dir),
             runtime_id="fake",
             edition="demo",
         )
