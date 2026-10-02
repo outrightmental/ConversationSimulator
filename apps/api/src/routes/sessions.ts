@@ -670,7 +670,10 @@ export async function sessionRoutes(app: FastifyInstance) {
         state: 'Ended',
         summary,
         outcome,
-        turn_count: turnCount,
+        // `total_turns` on the wire, `turn_count` in the sessions table: the
+        // debrief contract is convsim-core's (DebriefResponse in
+        // routers/sessions.py), and the web client reads `total_turns`.
+        total_turns: turnCount,
         scenario_id: row.scenario_id,
         strengths,
         improvements,

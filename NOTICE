@@ -22,17 +22,24 @@ Licensing summary by content type (SPDX identifiers):
     SPDX-License-Identifier: CC-BY-4.0
     https://creativecommons.org/licenses/by/4.0/
 
-  Placeholder assets (demo asset, screenshots, portrait placeholders, background placeholders):
+  Captured UI assets (README/docs screenshots and demo recording), plus
+  portrait and background placeholders inside official packs:
     SPDX-License-Identifier: CC0-1.0
     https://creativecommons.org/publicdomain/zero/1.0/
-    Files: docs/assets/demo-placeholder.svg
-           docs/assets/screenshots/01-home.svg
-           docs/assets/screenshots/02-scenario-library.svg
-           docs/assets/screenshots/03-conversation.svg
-           docs/assets/screenshots/04-debrief.svg
-           docs/assets/screenshots/05-creator-workbench.svg
-           docs/assets/screenshots/06-model-manager.svg
-    Content: All fictional NPCs and scenario data. No real people, voices, or private data.
+    Files: docs/assets/demo.gif
+           docs/assets/demo.mp4
+           docs/assets/screenshots/01-home.png
+           docs/assets/screenshots/02-scenario-library.png
+           docs/assets/screenshots/03-conversation.png
+           docs/assets/screenshots/04-debrief.png
+           docs/assets/screenshots/05-creator-workbench.png
+           docs/assets/screenshots/06-model-manager.png
+           (web copies of the screenshots, resized to 1x and quantised to 256
+            colours, under website/static/images/screenshots/ and
+            docs-site/public/images/screenshots/)
+    Content: Captured from a real session against a local model. All NPCs and
+             scenario data are fictional. No real people, voices, faces, or
+             private data. See docs/screenshots.md for the capture environment.
 
   Brand assets (docs/assets/brand/, site favicons and logos in website/,
     docs-site/, apps/web/public/):

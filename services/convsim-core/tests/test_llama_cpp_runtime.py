@@ -453,9 +453,67 @@ async def test_chat_stream_timeout_raises_timeout_error(runtime):
     request = ChatRequest(messages=[ChatMessage(role="user", content="hi")])
 
     with patch("convsim_core.runtime.llama_cpp.httpx.AsyncClient", return_value=client):
-        with pytest.raises(TimeoutError, match="timed out"):
+        with pytest.raises(TimeoutError, match="went quiet"):
             async for _ in runtime.chat_stream(request):
                 pass
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_connect_timeout_reads_as_unreachable_not_slow(runtime):
+    """A connect timeout means the server is absent, not that the reply is slow.
+
+    Generation now gets a long per-read budget and a short connect phase, so a
+    ConnectTimeout is a distinct signal: llama-server is not accepting
+    connections. Reporting it as a TimeoutError would reach the player as
+    "the engine stopped responding partway through its reply" and send them
+    looking for a smaller model instead of starting the engine.
+    """
+
+    class _ConnectTimeoutStream:
+        async def __aenter__(self):
+            raise httpx.ConnectTimeout("connect timed out")
+
+        async def __aexit__(self, *_):
+            pass
+
+    client = MagicMock()
+    client.stream = MagicMock(return_value=_ConnectTimeoutStream())
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+
+    request = ChatRequest(messages=[ChatMessage(role="user", content="hi")])
+
+    with patch("convsim_core.runtime.llama_cpp.httpx.AsyncClient", return_value=client):
+        with pytest.raises(ConnectionError, match="Cannot reach"):
+            async for _ in runtime.chat_stream(request):
+                pass
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_uses_the_generation_budget_not_the_control_timeout():
+    """Generation must get chat_timeout per read, with a short connect phase.
+
+    httpx applies a read timeout per chunk, and the first quiet stretch of a
+    turn is prompt eval: a CPU-only machine spent 24 s there in issue #489, and
+    about twice that once the prompt composer's ~4 k-token window fills. Billing
+    that against the short control-plane timeout turned an ordinary slow turn
+    into a hard error.
+    """
+    runtime = LlamaCppRuntime(LlamaCppConfig(timeout=30.0, chat_timeout=180.0))
+    lines = _sse_lines(_token_chunk("hi"), _final_chunk())
+    client = _mock_client(stream_response=_MockStreamResponse(lines))
+
+    request = ChatRequest(messages=[ChatMessage(role="user", content="hi")])
+    with patch(
+        "convsim_core.runtime.llama_cpp.httpx.AsyncClient", return_value=client
+    ) as client_cls:
+        async for _ in runtime.chat_stream(request):
+            pass
+
+    timeout = client_cls.call_args.kwargs["timeout"]
+    assert timeout.read == 180.0
+    assert timeout.connect == 5.0
+    assert client.stream.call_args.kwargs["timeout"].read == 180.0
 
 
 # ---------------------------------------------------------------------------

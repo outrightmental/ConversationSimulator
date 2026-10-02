@@ -57,7 +57,7 @@ sidebar:
 
 - **Minimum tier:** text-only is the default recommendation; app must surface a visible performance warning when first-token latency exceeds 10 s; STT/TTS disabled by default.
 - **Starter tier:** app recommends a 4 B model and CPU+GPU split; performance warning at > 5 s.
-- **All tiers:** a turn that times out after 60 s must produce an in-app error with a recovery action; the session must remain open for retry.
+- **All tiers:** a slow turn is not a failed turn — the app waits a local model out and reports how long it has been waiting, so no turn may be failed at 60 s. A turn that genuinely stalls (the engine sends nothing for 180 s, or the request is still unanswered after 10 minutes) must produce an in-app error with a recovery action; the session must remain open for retry.
 - **Out-of-memory:** the app must display a readable error message; it must not crash silently or corrupt the session database.
 
 ---

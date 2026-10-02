@@ -9,6 +9,9 @@ import pytest
 import convsim_core.runtime  # noqa: F401 — ensures built-in adapters are registered
 from convsim_core.runtime.ollama_adapter import (
     OllamaChatRuntime,
+    _CHAT_TIMEOUT,
+    _CONNECT_TIMEOUT,
+    _CONTROL_TIMEOUT,
     _map_model_info,
     _size_category,
 )
@@ -201,6 +204,34 @@ async def test_chat_stream_yields_tokens_then_final():
 
 
 @pytest.mark.asyncio
+async def test_chat_stream_overrides_the_control_plane_timeout():
+    """Generation must be given the long per-read budget, not the client default.
+
+    httpx charges a read timeout per chunk, and the first quiet stretch of a
+    turn is prompt eval — tens of seconds on CPU-only hardware (~24 s measured in
+    issue #489, about twice that at the prompt composer's full window). The shared
+    client's control-plane budget would turn an ordinary slow turn into a hard
+    error.
+
+    The connect phase keeps its own short budget: opening a socket is quick or
+    hopeless, so an endpoint that swallows packets must report "not reachable"
+    in seconds instead of three minutes later.
+    """
+    runtime = _make_runtime(stream_lines=_STREAM_LINES)
+    request = ChatRequest(
+        model_id="llama3.2:latest",
+        messages=[ChatMessage(role="user", content="hello")],
+    )
+    async for _ in runtime.chat_stream(request):
+        pass
+
+    timeout = runtime._client.stream.call_args.kwargs["timeout"]
+    assert timeout.read == _CHAT_TIMEOUT
+    assert timeout.connect == _CONNECT_TIMEOUT
+    assert _CHAT_TIMEOUT > _CONTROL_TIMEOUT > _CONNECT_TIMEOUT
+
+
+@pytest.mark.asyncio
 async def test_chat_stream_final_text_matches_joined_tokens():
     runtime = _make_runtime(stream_lines=_STREAM_LINES)
     request = ChatRequest(
@@ -275,6 +306,9 @@ async def test_chat_stream_no_structured_output_without_schema():
 
 @pytest.mark.asyncio
 async def test_chat_stream_raises_on_connection_error():
+    """An absent Ollama must raise ConnectionError, which the turn endpoint maps
+    to a 503 RUNTIME_UNAVAILABLE. A RuntimeError reached the player as the bare
+    500 "An unexpected error occurred" of issue #489."""
     client = MagicMock()
     client.stream = MagicMock(side_effect=httpx.ConnectError("refused"))
     runtime = OllamaChatRuntime(client=client)
@@ -282,14 +316,35 @@ async def test_chat_stream_raises_on_connection_error():
         model_id="llama3.2:latest",
         messages=[ChatMessage(role="user", content="hello")],
     )
-    with pytest.raises(RuntimeError, match="[Oo]llama"):
+    with pytest.raises(ConnectionError, match="[Oo]llama"):
         async for _ in runtime.chat_stream(request):
             pass
 
 
 @pytest.mark.asyncio
-async def test_chat_stream_raises_runtime_error_on_timeout():
-    """A timeout during generation should raise RuntimeError, not TimeoutException."""
+async def test_chat_stream_connect_timeout_reads_as_not_running():
+    """A connect timeout still means "Ollama is not running", not a slow reply."""
+    client = MagicMock()
+    client.stream = MagicMock(side_effect=httpx.ConnectTimeout("connect timed out"))
+    runtime = OllamaChatRuntime(client=client)
+    request = ChatRequest(
+        model_id="llama3.2:latest",
+        messages=[ChatMessage(role="user", content="hello")],
+    )
+    with pytest.raises(ConnectionError, match="[Oo]llama is not reachable"):
+        async for _ in runtime.chat_stream(request):
+            pass
+
+
+@pytest.mark.asyncio
+async def test_chat_stream_raises_timeout_error_on_timeout():
+    """A stalled generation must surface as TimeoutError, not a generic failure.
+
+    The turn endpoint maps TimeoutError to a retryable 504 TURN_TIMEOUT
+    (issue #489). Reporting the "Ollama is not running" RuntimeError instead sent
+    the player a 500 plus advice that did not apply — the server was reachable,
+    it had simply stopped sending.
+    """
     client = MagicMock()
     client.stream = MagicMock(side_effect=httpx.TimeoutException("timed out"))
     runtime = OllamaChatRuntime(client=client)
@@ -297,7 +352,7 @@ async def test_chat_stream_raises_runtime_error_on_timeout():
         model_id="llama3.2:latest",
         messages=[ChatMessage(role="user", content="hello")],
     )
-    with pytest.raises(RuntimeError, match="[Oo]llama"):
+    with pytest.raises(TimeoutError, match="went quiet"):
         async for _ in runtime.chat_stream(request):
             pass
 
@@ -317,7 +372,7 @@ async def test_chat_stream_raises_not_running_when_ollama_down_and_no_model_id()
     say the server is not reachable — not that it has no models installed."""
     runtime = _make_runtime(connect_error=True)
     request = ChatRequest(messages=[ChatMessage(role="user", content="hello")])
-    with pytest.raises(RuntimeError, match="[Oo]llama"):
+    with pytest.raises(ConnectionError, match="[Oo]llama"):
         async for _ in runtime.chat_stream(request):
             pass
 

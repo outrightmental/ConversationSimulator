@@ -59,6 +59,13 @@ serde_json = "1"
 # (hooked F12 screenshots for the overlay surface). 0.11 had neither.
 steamworks = { version = "0.13", optional = true }
 
+# Unix only: `killpg`, to stop convsim-core's whole process group in one call.
+# The engine is a PyInstaller one-file bundle that re-execs itself and spawns
+# sidecars, so `Child::kill()` reaches only the outermost process — see
+# src/core_process.rs and issue #485.
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 # Windows only: the decoy swapchain the Steam overlay composites into. Vendored
 # (MIT, PSG Studios) with two hardening edits for our `panic = "abort"` release
 # profile — see vendor/tauri-plugin-steam-overlay-surface/VENDORED.md.
