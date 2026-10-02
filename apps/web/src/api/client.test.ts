@@ -111,6 +111,80 @@ describe('api.createSession — ApiResult return type', () => {
     }
   });
 
+  it("names the failing fields from convsim-core's 422 error.details", async () => {
+    // The engine folds the fields into `message` itself, so this is belt and
+    // braces — but a UI paired with an engine bundled before issue #508 gets
+    // only the generic sentence, and "VALIDATION_ERROR: Request validation
+    // failed" tells a stranded player nothing at all.
+    mockFetch(422, {
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Request validation failed',
+        details: [
+          { type: 'string_type', loc: ['body', 'tts_voice_id'], msg: 'Input should be a valid string' },
+        ],
+      },
+    });
+    const result = await api.createSession(BASE_SESSION);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toBe(
+        'VALIDATION_ERROR: Request validation failed — tts_voice_id: Input should be a valid string',
+      );
+      expect(result.error.message).not.toContain('{');
+      expect(result.error.message).not.toContain('loc');
+    }
+  });
+
+  it('does not repeat the fields when the engine already named them', async () => {
+    mockFetch(422, {
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Request validation failed — seed: Input should be a valid integer',
+        details: [{ type: 'int_parsing', loc: ['body', 'seed'], msg: 'Input should be a valid integer' }],
+      },
+    });
+    const result = await api.createSession(BASE_SESSION);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toBe(
+        'VALIDATION_ERROR: Request validation failed — seed: Input should be a valid integer',
+      );
+    }
+  });
+
+  it('truncates a long field list instead of filling the card', async () => {
+    mockFetch(422, {
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Request validation failed',
+        details: Array.from({ length: 8 }, (_, i) => ({
+          type: 'missing',
+          loc: ['body', `field_${i}`],
+          msg: 'Field required',
+        })),
+      },
+    });
+    const result = await api.createSession(BASE_SESSION);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toContain('field_0');
+      expect(result.error.message).not.toContain('field_7');
+      expect(result.error.message).toContain('and 3 more');
+    }
+  });
+
+  it('ignores an unreadable details payload rather than mangling the message', async () => {
+    mockFetch(422, {
+      error: { code: 'VALIDATION_ERROR', message: 'Request validation failed', details: 'nope' },
+    });
+    const result = await api.createSession(BASE_SESSION);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toBe('VALIDATION_ERROR: Request validation failed');
+    }
+  });
+
   it('extracts message and code from an object-shaped FastAPI detail', async () => {
     // convsim-core raises HTTPException(detail={ message, code, … }) for state
     // conflicts (sessions.py _conflict) and registers no handler to reshape it,
