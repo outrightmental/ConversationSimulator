@@ -39,8 +39,11 @@
  *   node scripts/capture-screenshots.mjs [--skip-hero] [--only=03,06]
  *
  *   --skip-hero  capture the screenshots, skip the recording
- *   --only=NN,NN write only the named screens (the session is still played,
- *                since 03 and 04 come out of it)
+ *   --only=NN,NN write only the named outputs — screen numbers and/or `hero`
+ *                (the session is still played, since 03, 04 and the hero all
+ *                come out of it). Anything left off the list keeps the file
+ *                already on disk: `--only=06` re-shoots the Model Manager and
+ *                leaves demo.gif alone; `--only=03,hero` redoes both.
  *
  * Environment
  *   CONVSIM_UI_URL      default http://127.0.0.1:7354
@@ -107,6 +110,10 @@ const SKIP_HERO = args.includes('--skip-hero')
 const ONLY = (args.find((a) => a.startsWith('--only=')) ?? '').replace('--only=', '')
 const only = ONLY ? new Set(ONLY.split(',').map((s) => s.trim())) : null
 const wanted = (id) => !only || only.has(id)
+// The hero is an output like any other, so `--only` gates it too: re-shooting
+// one screen must not quietly re-encode the committed 3 MB recording. Name
+// `hero` in the list to get it back.
+const CAPTURE_HERO = !SKIP_HERO && wanted('hero')
 
 function log(...m) {
   console.log('[capture]', ...m)
@@ -270,7 +277,7 @@ async function main() {
     deviceScaleFactor: SCALE,
     colorScheme: 'dark',
     reducedMotion: 'reduce',
-    recordVideo: SKIP_HERO ? undefined : { dir: videoDir, size: VIEWPORT },
+    recordVideo: CAPTURE_HERO ? { dir: videoDir, size: VIEWPORT } : undefined,
   })
   const page = await context.newPage()
   t0 = Date.now()
@@ -331,7 +338,7 @@ async function main() {
     const submit = page.getByRole('button', { name: 'Submit' })
 
     for (let i = 0; i < PLAYER_TURNS.length; i++) {
-      const isHero = !SKIP_HERO && i === PLAYER_TURNS.length - 1
+      const isHero = CAPTURE_HERO && i === PLAYER_TURNS.length - 1
       const before = await page.locator('[data-role="npc"]').count()
       await composer.waitFor({ state: 'visible', timeout: 120_000 })
       await page.waitForFunction(
@@ -447,7 +454,7 @@ async function main() {
   }
 
   // ── Hero recording ──────────────────────────────────────────────────────
-  if (!SKIP_HERO && marks.heroStart != null && marks.heroEnd != null) {
+  if (CAPTURE_HERO && marks.heroStart != null && marks.heroEnd != null) {
     const name = (await readdir(videoDir)).find((f) => f.endsWith('.webm'))
     if (!name) {
       log('WARNING: no video file produced; skipping the hero recording')
@@ -519,6 +526,7 @@ async function encodeHero(webm, marks) {
   // is what keeps a 20-second capture inside the 5 MB budget from
   // docs/screenshots.md. Each rung trades frame rate and width for size; the
   // first one under GIF_BUDGET_BYTES wins.
+  let gifSize = 0
   for (const [fps, width, colors] of [[10, 880, 96], [10, 800, 64], [8, 760, 48]]) {
     const filter =
       `${crop}fps=${fps},scale=${width}:-1:flags=lanczos,split[a][b];` +
@@ -529,8 +537,18 @@ async function encodeHero(webm, marks) {
       '-vf', filter, '-loop', '0', gif,
     ])
     const { size } = await stat(gif)
+    gifSize = size
     log(`demo.gif ${fps}fps/${width}px/${colors}c -> ${(size / 1048576).toFixed(2)} MB`)
     if (size <= GIF_BUDGET_BYTES) break
+  }
+  // Past the last rung the GIF ships over budget. Say so: the sizes above are
+  // easy to read as progress rather than as three failures in a row.
+  if (gifSize > GIF_BUDGET_BYTES) {
+    log(
+      `WARNING: demo.gif is ${(gifSize / 1048576).toFixed(2)} MB, past the ` +
+        `${(GIF_BUDGET_BYTES / 1048576).toFixed(0)} MB budget even at the lowest rung — ` +
+        'shorten the hero turn or add a smaller fps/width/colour step.',
+    )
   }
 
   for (const f of [gif, mp4]) {
