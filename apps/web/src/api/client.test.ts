@@ -174,6 +174,23 @@ describe('api.createSession — ApiResult return type', () => {
     }
   });
 
+  it('does not name an offset as a field for a malformed body', async () => {
+    mockFetch(422, {
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Request validation failed',
+        details: [{ type: 'json_invalid', loc: ['body', 0], msg: 'JSON decode error' }],
+      },
+    });
+    const result = await api.createSession(BASE_SESSION);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toBe(
+        'VALIDATION_ERROR: Request validation failed \u2014 JSON decode error',
+      );
+    }
+  });
+
   it('ignores an unreadable details payload rather than mangling the message', async () => {
     mockFetch(422, {
       error: { code: 'VALIDATION_ERROR', message: 'Request validation failed', details: 'nope' },

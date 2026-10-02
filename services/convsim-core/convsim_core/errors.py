@@ -68,11 +68,15 @@ def _field_path(loc) -> str:
     ``loc`` is a tuple like ("body", "tts_voice_id") or ("query", "context").
     The "body" prefix is dropped because every request model lives there and it
     only adds noise; "query"/"path" are kept because they say where to look.
+    A body-wide failure — a missing body, or malformed JSON, whose loc is just
+    an offset — has no field to name, so it reads as "body".
     """
     parts = [str(p) for p in (loc or ())]
     if parts[:1] == ["body"]:
         parts = parts[1:]
-    return ".".join(parts) if parts else "body"
+    if not parts or all(p.isdigit() for p in parts):
+        return "body"
+    return ".".join(parts)
 
 
 def _validation_summary(errors: list) -> str:
