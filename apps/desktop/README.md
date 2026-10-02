@@ -152,7 +152,7 @@ else's.)
 |---|---|
 | A convsim-core of this edition | Attach to it; no second engine is started. In a release build the shell then re-checks it every 3 s and takes the port over if it goes away — see "Adopting an engine" below. |
 | A convsim-core of the *other* edition | Error: the demo and the full app share the port and one data directory, so attaching would give the wrong library (issue #495). |
-| Anything else, for 15 s | Error: `Port 7355 is already in use by another program.` The grace period exists because `/api/health` fans out to the LLM, STT and TTS probes and one answer can take seconds, and because the occupant may be an engine mid-restart. |
+| Anything else, for 30 s | Error: `Port 7355 is already in use by another program.` The grace period exists because `/api/health` awaits the LLM, STT and TTS probes in sequence — the two that call sidecars over HTTP allow 5 s each, so one answer can take just over 10 s — and because the occupant may be an engine mid-restart. It is twice a single probe's budget on purpose, so one slow answer still leaves room for a second attempt. |
 
 The port can also be taken *after* the shell finds it free, in the window its own
 engine spends unpacking and migrating. The engine then exits because it cannot

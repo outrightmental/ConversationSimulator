@@ -447,9 +447,19 @@ const HEALTH_REQUEST: &[u8] = b"GET /api/health HTTP/1.1\r\nHost: 127.0.0.1\r\n\
                                 Accept: application/json\r\nConnection: close\r\n\r\n";
 
 /// Total wall-clock a single probe spends writing and reading, regardless of
-/// how the occupant paces its answer. `/api/health` fans out to the LLM, STT
-/// and TTS probes, so a healthy engine can legitimately take seconds.
-const PROBE_RESPONSE_BUDGET: Duration = Duration::from_secs(8);
+/// how the occupant paces its answer.
+///
+/// Sized from the engine's own worst case rather than picked round, because a
+/// budget *below* it turns a healthy convsim-core into `CoreProbe::Occupied` —
+/// and the shell then tells the player to close the program holding port 7355,
+/// which is their own engine. `/api/health` awaits its three probes in
+/// sequence, and two of them are HTTP calls to sidecars that can be alive but
+/// wedged: `LlamaCppRuntime.health()` allows 5 s (`_HEALTH_TIMEOUT` in
+/// services/convsim-core/convsim_core/runtime/llama_cpp.py) and
+/// `KokoroTtsWorker.health()` another 5 s (tts/kokoro.py); STT is filesystem
+/// checks only. So a legitimate answer can take just over 10 s, and the budget
+/// has to clear that with room for the handshake and the body.
+const PROBE_RESPONSE_BUDGET: Duration = Duration::from_secs(14);
 
 /// Hard cap on how much of a probe response is buffered. A real health
 /// response is a few kilobytes; this is two orders of magnitude of headroom
@@ -761,7 +771,13 @@ fn find_core_executable(resource_dir: Option<&PathBuf>) -> Result<PathBuf, Strin
 /// STT and TTS probes, so one answer can take seconds, and the occupant may be
 /// an engine in the middle of restarting. Only an occupant that stays silent for
 /// this long is somebody else's program.
-const OCCUPIED_GRACE: Duration = Duration::from_secs(15);
+///
+/// Must leave room for at least two complete probes; a test pins that against
+/// `PROBE_RESPONSE_BUDGET`. The deadline is wall-clock and is only consulted
+/// *between* probes, so a grace shorter than two budgets means the first slow
+/// answer uses the whole period and a one-off stall — a sidecar HTTP probe
+/// timing out once — is reported as a port conflict with no second chance.
+const OCCUPIED_GRACE: Duration = Duration::from_secs(30);
 
 /// How long a core the shell started itself gets to answer `/api/health`.
 ///
@@ -1869,6 +1885,25 @@ mod tests {
             "STARTUP_TIMEOUT is {}s but the packaged smoke check allows the same \
              binary {budget}s to become ready",
             STARTUP_TIMEOUT.as_secs()
+        );
+    }
+
+    #[test]
+    fn the_occupied_grace_allows_a_retry_after_a_full_probe() {
+        // The grace deadline is wall-clock and is only consulted BETWEEN probes,
+        // so a grace narrower than two budgets gives a slow occupant exactly one
+        // attempt: the first probe spends the whole period and the shell reports
+        // `PORT_BUSY_MESSAGE` without ever asking again. The occupant whose
+        // answer is slow is most often our OWN engine with a wedged sidecar
+        // (`/api/health` awaits two 5 s HTTP probes in sequence), and that card
+        // tells the player to close the program holding port 7355 — the engine
+        // they are waiting for.
+        assert!(
+            OCCUPIED_GRACE >= PROBE_RESPONSE_BUDGET * 2,
+            "OCCUPIED_GRACE is {:?} but one probe may spend {:?}, so a slow \
+             occupant gets no second attempt",
+            OCCUPIED_GRACE,
+            PROBE_RESPONSE_BUDGET
         );
     }
 

@@ -207,12 +207,13 @@ while [[ "$(date +%s)" -lt "$DEADLINE" ]]; do
         dump_core_output
         exit 1
     fi
-    # -m 15, not 5: /api/health fans out to the LLM, STT and TTS probes, so one
-    # answer can legitimately take seconds (the Tauri shell allows the same
-    # request 8 s — see probe_core). A per-attempt cap below that would fail a
-    # request the shell itself would accept, and no later attempt would do any
-    # better, so a healthy-but-slow engine would fail the whole run.
-    if curl -fsS -m 15 "$HEALTH_URL" -o "$HEALTH_JSON" 2>/dev/null; then
+    # -m 20, not 5: /api/health awaits the LLM, STT and TTS probes in sequence,
+    # and the two that make HTTP calls to sidecars allow 5 s each, so one answer
+    # can legitimately take just over 10 s. The Tauri shell allows the same
+    # request PROBE_RESPONSE_BUDGET (14 s — see probe_core); this stays above it,
+    # because a per-attempt cap below the shell's would fail a request the
+    # shipped app itself would accept, and no later attempt would do any better.
+    if curl -fsS -m 20 "$HEALTH_URL" -o "$HEALTH_JSON" 2>/dev/null; then
         READY=1
         break
     fi
