@@ -296,15 +296,24 @@ async function shot(page, name, { until } = {}) {
     )
   }
   await page.setViewportSize({ width: VIEWPORT.width, height })
-  // This is a viewport screenshot, not a full-page one. When the viewport grew
-  // to the whole page the browser clamps the scroll to 0 for us, but a page
-  // past MAX_SHOT_HEIGHT is still scrollable — and 03 scrolls the state meters
-  // into view just before firing. Without this the clamped capture would start
-  // at that offset, which is not "the top of it" the warning above promises.
-  await page.evaluate(() => window.scrollTo(0, 0))
-  await page.waitForTimeout(600)
-  await page.screenshot({ path: file })
-  await page.setViewportSize(VIEWPORT)
+  try {
+    // This is a viewport screenshot, not a full-page one. When the viewport grew
+    // to the whole page the browser clamps the scroll to 0 for us, but a page
+    // past MAX_SHOT_HEIGHT is still scrollable — and 03 scrolls the state meters
+    // into view just before firing. Without this the clamped capture would start
+    // at that offset, which is not "the top of it" the warning above promises.
+    await page.evaluate(() => window.scrollTo(0, 0))
+    await page.waitForTimeout(600)
+    await page.screenshot({ path: file })
+  } finally {
+    // Restore even when the screenshot threw. `step` swallows that throw, so
+    // without this the run would carry on at the grown height: 03 fires inside
+    // the playthrough, and the hero crop it is followed by reads
+    // `window.innerHeight` while the recording is fixed at VIEWPORT — a crop
+    // taller than its own input, which loses the hero too. Exactly the cascade
+    // wrapping 03 in `step` exists to prevent.
+    await page.setViewportSize(VIEWPORT).catch(() => {})
+  }
   await page.waitForTimeout(300)
   const { size } = await stat(file)
   log(
