@@ -352,7 +352,8 @@ def write_icns(frames: dict[int, Path], dest: Path) -> None:
     dest.write_bytes(b"icns" + struct.pack(">I", len(chunks) + 8) + chunks)
 
 
-# Names of the five files Tauri's `bundle.icon` list expects, by pixel size.
+# The PNG members of Tauri's five-file `bundle.icon` list, by pixel size;
+# icon.ico and icon.icns are the other two and are assembled below.
 BUNDLE_PNGS = ((32, "32x32.png"), (128, "128x128.png"), (256, "128x128@2x.png"))
 
 

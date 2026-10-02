@@ -185,7 +185,8 @@ check_file "apps/desktop/src-tauri/icons/icon.icns"
 check_file "apps/desktop/src-tauri/icons/icon.ico"
 # Demo-edition icon set (issue #499).  tauri.demo.conf.json overrides
 # bundle.icon with these so the demo is not mistaken for the full game in the
-# Steam client; a missing file silently falls back to the base icon.
+# Steam client.  Like the base set above, they are embedded at compile time:
+# a missing file breaks the demo leg of `tauri build`, not just its branding.
 check_file "apps/desktop/src-tauri/icons-demo/32x32.png"
 check_file "apps/desktop/src-tauri/icons-demo/128x128.png"
 check_file "apps/desktop/src-tauri/icons-demo/128x128@2x.png"

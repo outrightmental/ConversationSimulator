@@ -179,10 +179,12 @@ the 32 px the client actually draws. One generator,
 icon and the icon the demo build installs, so the store entry and the app on
 the player's dock agree.
 
-The demo's capsule set reuses the base capsules with a matching "DEMO" ribbon;
-screenshots are demo-edition screenshots of the five conversations (the Home
-picker, one conversation, one debrief) so nothing shown is unreachable in the
-demo. No separate trailer: the base trailer is used. Details in the runbook.
+The demo's capsule set is **still outstanding**: the intended treatment is the
+base capsules with a ribbon matching the icon's, but `gen_capsules.py` does not
+draw one yet. Screenshots are demo-edition screenshots of the five
+conversations (the Home picker, one conversation, one debrief) so nothing shown
+is unreachable in the demo. No separate trailer: the base trailer is used.
+Details in the runbook.
 
 ### Turn / session / time cap
 

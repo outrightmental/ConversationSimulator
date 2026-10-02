@@ -40,8 +40,8 @@ _DEMO_PLATE = (0x6D, 0x28, 0xD9)
 _RIBBON_BG = (0x0D, 0x0D, 0x15)
 
 # Below this the two icons would start to look alike in a library list.  The
-# teal/purple pair sits at ~190, so there is a lot of headroom; the point of
-# the floor is to fail a future "subtle" recolour, not to be a tight fit.
+# teal/purple pair measures ~148, so there is room to retune either plate; the
+# point of the floor is to fail a future "subtle" recolour, not to be a tight fit.
 _MIN_PLATE_DISTANCE = 100.0
 
 
