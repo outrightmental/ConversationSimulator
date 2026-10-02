@@ -98,6 +98,19 @@ def test_main_passes_correct_host_and_port():
     assert server.config.port == main_mod._config.port
 
 
+def test_main_leaves_our_logging_alone():
+    """log_config=None, so uvicorn must not reconfigure the logging tree.
+
+    Its default LOGGING_CONFIG sets ``propagate: False`` on the ``uvicorn``
+    logger, which would cut uvicorn's own records off from the root handlers
+    that write app.log. Those are exactly the lines docs/troubleshooting.md
+    tells a player to look for when the engine will not exit (issue #485) —
+    `Shutting down`, `Application shutdown complete` — so losing them would
+    silently remove the only evidence of how far teardown got.
+    """
+    assert _run_main().config.log_config is None
+
+
 def test_main_runs_the_server():
     """main() actually starts the server it built."""
     assert _run_main().ran
