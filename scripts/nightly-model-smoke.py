@@ -381,14 +381,20 @@ def _download_with_progress(url: str, dest: Path) -> None:
                         flush=True,
                     )
         print()
-    except OSError as exc:
+    except Exception as exc:  # noqa: BLE001 — see below
         # Network failure, HTTP error, or a full disk — all "could not fetch the
         # model", none of which say anything about the app under test.  Remove the
         # partial file so a re-run does not checksum-fail on a truncated download.
+        #
+        # Deliberately broader than OSError: a cut-off 2.5 GB response raises
+        # http.client.IncompleteRead, which is NOT an OSError, so an OSError-only
+        # handler let a truncated download escape as a bare traceback — exit 1,
+        # which EXIT_CODES reads as `budget` — and left the partial file on disk
+        # for the next run to checksum-fail on.
         dest.unlink(missing_ok=True)
         raise SmokeFailure(
             FailureClass.DOWNLOAD,
-            f"Download failed for {url[:120]}: {exc}",
+            f"Download failed for {url[:120]}: {exc!r}",
         ) from exc
 
 
@@ -586,6 +592,10 @@ def evaluate_turns(turns: List[Dict[str, Any]]) -> tuple[List[str], List[str]]:
     and the product's job is to recover from that — but if *every* generated turn
     fell back to the canned safe utterance then no real NPC turns were produced
     and the smoke proved nothing, so that is a failure.
+
+    Turns carrying no ``used_fallback`` flag at all — the debug endpoint is
+    best-effort — warn that the check did not run, so an absent proof is not
+    mistaken for a passed one.
     """
     failures: List[str] = []
     warnings: List[str] = []
@@ -601,6 +611,17 @@ def evaluate_turns(turns: List[Dict[str, Any]]) -> tuple[List[str], List[str]]:
     if not generated:
         failures.append("No model-generated NPC turns were recorded")
         return (failures, warnings)
+
+    if not any("used_fallback" in t for t in generated):
+        # The flags come from the debug endpoint, which is best-effort. Without
+        # them a canned fallback is indistinguishable from real model output —
+        # it is a non-empty NPC utterance too — so the check below silently
+        # passes. Say so, rather than let the report imply a proof we do not have.
+        warnings.append(
+            "Per-turn parse flags were unavailable, so the fallback check did not "
+            "run: this run cannot prove the NPC turns were model output rather "
+            "than the canned safe utterance"
+        )
 
     fallbacks = [t for t in generated if t.get("used_fallback")]
     if len(fallbacks) == len(generated):
@@ -1219,6 +1240,29 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "failures": [str(exc)],
         })
         return exc.exit_code
+
+    # The pre-run modes (registry lookup, download, verify) have no run_smoke
+    # around them to catch what they did not anticipate — an unparseable
+    # registry.yaml, a missing file, a bad --models-dir.  Letting those escape
+    # exits 1, which EXIT_CODES reads as `budget`: the one class that says "the
+    # product is fine, it is just slow".  Classify them the way run_smoke
+    # classifies its own surprises instead, so a banner and a step summary are
+    # still written and exit 1 keeps meaning only what it claims to mean.
+    except Exception as exc:  # noqa: BLE001 — anything unanticipated, reported not raised
+        failures = [
+            f"Unexpected error before the smoke started: {exc!r} — this is most "
+            "likely a bug in the smoke harness or a malformed "
+            "model-registry/registry.yaml, not a product failure"
+        ]
+        _print_banner(FailureClass.PIPELINE, failures)
+        _write_step_summary({
+            "verdict": "fail",
+            "model_id": args.model_id,
+            "failure_class": FailureClass.PIPELINE,
+            "exit_code": EXIT_CODES[FailureClass.PIPELINE],
+            "failures": failures,
+        })
+        return EXIT_CODES[FailureClass.PIPELINE]
 
     return run_smoke(
         args.model_id,

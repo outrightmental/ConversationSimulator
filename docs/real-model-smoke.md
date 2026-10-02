@@ -66,6 +66,11 @@ The distinction that matters most in practice is **2/3 vs 4 vs 5**: a download o
 checksum failure says nothing about the app, a runtime failure is a crash, and a
 pipeline failure means the model ran and produced output the product rejected.
 
+Anything the harness did not anticipate — a malformed `registry.yaml`, a bug in
+the harness itself — is also reported as exit 5, with a message that says so, so
+that **exit 1 only ever means a latency regression**. Nothing exits with an
+unclassified traceback.
+
 When more than one class could apply, the harness reports the strongest evidence
 rather than the symptom the client happened to see:
 

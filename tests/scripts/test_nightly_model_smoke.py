@@ -12,6 +12,7 @@ The real-model path itself is exercised only by
 from __future__ import annotations
 
 import hashlib
+import http.client
 import importlib.util
 import json
 from pathlib import Path
@@ -133,6 +134,56 @@ class TestChecksumVerification:
         assert exc_info.value.failure_class == smoke.FailureClass.CHECKSUM
 
 
+class TestDownloadFailureClassification:
+    """Every way a fetch can break has to land in the `download` class."""
+
+    @staticmethod
+    def _urlopen_raising(exc: BaseException):
+        class _Resp:
+            headers = {"Content-Length": "1048576"}
+
+            def read(self, _n: int) -> bytes:
+                raise exc
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a: object) -> bool:
+                return False
+
+        return lambda *args, **kwargs: _Resp()
+
+    @pytest.mark.parametrize("exc", [
+        # A cut-off response mid-body. NOT an OSError, so an OSError-only
+        # handler let it escape as a traceback — exit 1, which reads as `budget`.
+        http.client.IncompleteRead(b"partial"),
+        ConnectionResetError("peer hung up"),
+        TimeoutError("read timed out"),
+    ])
+    def test_a_broken_transfer_is_a_download_failure(
+        self, exc: BaseException, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            smoke.urllib.request, "urlopen", self._urlopen_raising(exc)
+        )
+        with pytest.raises(smoke.SmokeFailure) as exc_info:
+            smoke._download_with_progress("https://example.invalid/m.gguf", tmp_path / "m.gguf")
+        assert exc_info.value.failure_class == smoke.FailureClass.DOWNLOAD
+        assert exc_info.value.exit_code == 2
+
+    def test_a_broken_transfer_leaves_no_partial_file_to_checksum_fail_on(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        dest = tmp_path / "m.gguf"
+        monkeypatch.setattr(
+            smoke.urllib.request, "urlopen",
+            self._urlopen_raising(http.client.IncompleteRead(b"partial")),
+        )
+        with pytest.raises(smoke.SmokeFailure):
+            smoke._download_with_progress("https://example.invalid/m.gguf", dest)
+        assert not dest.exists()
+
+
 # ---------------------------------------------------------------------------
 # Registry resolution
 # ---------------------------------------------------------------------------
@@ -249,6 +300,21 @@ class TestEvaluateTurns:
         ]
         failures, _ = smoke.evaluate_turns(turns)
         assert any("fell back" in f for f in failures)
+
+    def test_missing_parse_flags_warn_that_the_fallback_check_did_not_run(self) -> None:
+        # The flags come from the best-effort debug endpoint. Without them a
+        # canned fallback looks exactly like real model output (a non-empty
+        # utterance), so the run must not imply a proof it does not have.
+        turns = [{"label": "player_turn_1", "turn_number": 1,
+                  "model_generated": True, "npc_excerpt": "Go on."}]
+        failures, warnings = smoke.evaluate_turns(turns)
+        assert failures == []
+        assert any("fallback check did not run" in w for w in warnings)
+
+    def test_present_parse_flags_do_not_warn(self) -> None:
+        failures, warnings = smoke.evaluate_turns([_turn()])
+        assert failures == []
+        assert warnings == []
 
     def test_opening_only_run_fails(self) -> None:
         turns = [{"label": "npc_opening", "turn_number": 0, "model_generated": False,
@@ -983,3 +1049,89 @@ class TestRunSmokeOrchestration:
             "must not POST /end to a session the scenario already ended"
         )
         assert results["debrief"] is not None
+
+    def test_unavailable_debug_flags_warn_instead_of_silently_passing(
+        self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        # The debug endpoint is a diagnostic, so losing it must not turn a
+        # healthy run red — but it is also the only thing that tells a real NPC
+        # turn from the canned fallback, so the report has to say the check
+        # did not run.
+        models_dir, model_id, digest = staged_model
+        base = _fake_core(_debrief())
+
+        def _no_debug(url: str, *, payload=None, timeout=None, expect=(200, 201)) -> dict:
+            if url.endswith("/debug"):
+                raise smoke.SmokeFailure(smoke.FailureClass.PIPELINE, "HTTP 404")
+            return base(url, payload=payload, timeout=timeout, expect=expect)
+
+        monkeypatch.setattr(smoke, "_request_json", _no_debug)
+        report = tmp_path / "report.json"
+
+        exit_code = smoke.run_smoke(
+            model_id, 20.0, report, model_sha256=digest, models_dir=models_dir
+        )
+
+        assert exit_code == 0
+        results = json.loads(report.read_text(encoding="utf-8"))
+        assert any("fallback check did not run" in w for w in results["warnings"])
+
+
+# ---------------------------------------------------------------------------
+# CLI entry point
+# ---------------------------------------------------------------------------
+
+
+class TestMainEntryPoint:
+    """exit 1 means `budget` and nothing else, so nothing may escape unclassified."""
+
+    def test_registry_lookup_writes_github_output_and_exits_zero(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        out = tmp_path / "gh-output"
+        monkeypatch.setenv("GITHUB_OUTPUT", str(out))
+        assert smoke.main(["--print-registry-model", "starter"]) == 0
+        written = dict(
+            line.split("=", 1) for line in out.read_text(encoding="utf-8").splitlines()
+        )
+        assert len(written["model_sha256"]) == 64
+        assert written["model_url"].startswith("https://")
+
+    def test_a_malformed_registry_is_classified_not_a_bare_traceback(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # yaml raises ParserError, not SmokeFailure.  Escaping exits 1, which
+        # EXIT_CODES reads as `budget` — "the product is fine, just slow" — and
+        # writes no banner or step summary at all.
+        registry = tmp_path / "registry.yaml"
+        registry.write_text("models: [ unterminated\n", encoding="utf-8")
+        # Point the real resolver at the malformed file (its registry_path
+        # default is bound at def time, so the module constant cannot be
+        # patched), so the failure under test is yaml's, not the patch's.
+        real_resolve = smoke.resolve_registry_model
+        monkeypatch.setattr(
+            smoke, "resolve_registry_model",
+            lambda role, registry_path=None: real_resolve(role, registry),
+        )
+
+        summary = tmp_path / "summary.md"
+        monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+
+        exit_code = smoke.main(["--print-registry-model", "starter"])
+
+        assert exit_code != smoke.EXIT_CODES[smoke.FailureClass.BUDGET]
+        assert exit_code == smoke.EXIT_CODES[smoke.FailureClass.PIPELINE]
+        assert "FAIL" in summary.read_text(encoding="utf-8")
+
+    def test_a_download_failure_keeps_its_own_exit_code_and_summary(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        summary = tmp_path / "summary.md"
+        monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+        # --verify-only against an empty directory: no file to hash.
+        exit_code = smoke.main([
+            "--verify-only", "--model-id", "absent",
+            "--model-sha256", "0" * 64, "--models-dir", str(tmp_path / "empty"),
+        ])
+        assert exit_code == smoke.EXIT_CODES[smoke.FailureClass.DOWNLOAD]
+        assert "`download`" in summary.read_text(encoding="utf-8")
