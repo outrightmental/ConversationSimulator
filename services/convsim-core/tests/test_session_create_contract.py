@@ -10,6 +10,8 @@ default, and whatever still fails says which field and why.
 """
 from __future__ import annotations
 
+import logging
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -121,3 +123,34 @@ def test_unknown_runtime_id_is_refused_by_name(api):
     res = api.post("/api/sessions", json={**_SETUP, "runtime_id": "llama"})
     assert res.status_code == 422
     assert "runtime_id" in _error(res)["message"]
+
+
+# ── The report a stranded player can actually send ───────────────────────────
+
+
+def test_a_rejected_request_shows_up_in_the_diagnostics_log_excerpt(tmp_config):
+    """Closes the loop the issue describes: the failure AND the copyable report.
+
+    "Copy diagnostics" assembles GET /api/diag/log-excerpt, which collects the
+    most recent WARNING+ entries from app.log. A 422 used to be logged nowhere,
+    so a player who copied the report after a failed launch sent a report that
+    said nothing about the launch.
+    """
+    root = logging.getLogger()
+    # configure_logging() is a no-op once the root logger has handlers, and
+    # pytest's capture plugin has already attached its own — so stand them down
+    # for the duration and let create_app() wire up the real file handlers.
+    saved, root.handlers = root.handlers, []
+    try:
+        app = create_app(tmp_config)
+        with TestClient(app) as client:
+            res = client.post("/api/sessions", json={**_SETUP, "seed": 1.5})
+            assert res.status_code == 422
+            excerpt = client.get("/api/diag/log-excerpt").json()["excerpt"]
+    finally:
+        for handler in root.handlers:
+            handler.close()
+        root.handlers = saved
+
+    assert "/api/sessions" in excerpt
+    assert "seed=" in excerpt
