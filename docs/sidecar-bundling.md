@@ -217,6 +217,43 @@ When implementing a new sidecar (e.g. `WhisperCppSidecar`):
 
 ---
 
+## The core itself is a sidecar of the desktop shell
+
+Everything above is about sidecars that `convsim-core` manages. One level up,
+`convsim-core` is itself a managed child of the Tauri desktop shell, built by
+`scripts/build-core.sh` into a single PyInstaller executable at
+`apps/desktop/src-tauri/resources/bin/convsim-core[.exe]` and packaged into the
+installer by `bundle.resources` (`resources/**/*`) — which is what lets a player
+install one artifact and reach the Welcome screen with no terminal involved
+(issue #456).
+
+The shell resolves it in the same four-step order the Python resolver uses:
+`CONVSIM_CORE_EXECUTABLE`, then `CONVSIM_BUNDLED_RUNTIME_DIR`, then the Tauri
+resource directory, then PATH. It hands the engine `CONVSIM_HOST`,
+`CONVSIM_PORT`, `CONVSIM_DATA_ROOT`, `CONVSIM_APP_VERSION`, the edition, and
+`CONVSIM_BUNDLED_RUNTIME_DIR` — the last of which is how the sidecars above are
+found in a packaged build.
+
+Two parts of that lifecycle matter to the sidecars in this document:
+
+- **Readiness** is `GET /api/health`, not an open TCP port. An open port only
+  says *something* is on 7355; the health body is what proves it is a
+  convsim-core — and therefore that the sidecar supervisor this document
+  describes exists at all.
+- **Shutdown** is SIGTERM, not SIGKILL (`taskkill /T` on Windows). Only a signal
+  the engine can handle lets uvicorn run the lifespan shutdown, and the lifespan
+  shutdown is where `ProcessSupervisor.stop_all()` stops every sidecar in the
+  table above. A hard kill of the engine orphans all of them — llama-server
+  keeps a model resident in RAM and keeps port 7356 — so the shell waits for the
+  graceful path before insisting.
+
+`scripts/packaged-core-smoke.sh` runs the packaged engine and asserts both:
+health readiness, loopback-only binding, and a SIGTERM that reaches the lifespan
+shutdown. See [apps/desktop/README.md](../apps/desktop/README.md), "Core sidecar
+lifecycle", for the full state machine.
+
+---
+
 ## Environment variable reference
 
 | Variable | Purpose |
@@ -225,6 +262,7 @@ When implementing a new sidecar (e.g. `WhisperCppSidecar`):
 | `CONVSIM_LLAMA_CPP_EXECUTABLE` | Override path to `llama-server` |
 | `CONVSIM_WHISPER_CPP_BINARY_PATH` | Override path to `whisper-cli` |
 | `CONVSIM_KOKORO_EXECUTABLE` | Override path to `sherpa-onnx-offline-tts` |
+| `CONVSIM_CORE_EXECUTABLE` | Override path to the `convsim-core` binary the desktop shell starts |
 
 ---
 
@@ -234,3 +272,4 @@ When implementing a new sidecar (e.g. `WhisperCppSidecar`):
 - [runtime-adapters.md](runtime-adapters.md) — ChatRuntime interface and built-in adapters
 - [architecture.md](architecture.md) — service topology and port assignments
 - [runtimes/llama_cpp/README.md](../runtimes/llama_cpp/README.md) — llama.cpp setup
+- [apps/desktop/README.md](../apps/desktop/README.md) — the desktop shell's core sidecar lifecycle

@@ -17,7 +17,8 @@ Common problems and solutions. If your issue is not listed here, open a [GitHub 
 
 The app could not start its background conversation engine (`convsim-core`). Common causes:
 
-- **Port conflict:** another application is using port 7355. See [Port conflicts](#port-conflicts) below.
+- **Port conflict:** another program is holding port 7355. See [Port conflicts](#port-conflicts) below. The app asks whatever is on the port whether it is a conversation engine, and gives it 15 seconds to answer before reporting a conflict — so an engine that is busy or restarting is not mistaken for an unrelated program.
+- **Another edition is running:** the demo and the full app share port 7355. Close the one you are not using, then start the other.
 - **Binary not found:** the `convsim-core` executable is missing. Reinstall the app.
 - **Crash on startup:** check the logs at `~/.convsim/logs/app.log` for the specific error.
 
@@ -31,7 +32,13 @@ The app could not start its background conversation engine (`convsim-core`). Com
 
 The engine started but stopped during a session. This can happen if the AI model crashes the engine or the engine runs out of memory.
 
-1. Click **Restart conversation engine** in the status card on the home screen.
+The app notices and restarts the engine itself, up to three times, showing
+*The conversation engine stopped unexpectedly. Restarting…* while it does. The
+app reloads once the replacement is ready — the conversation you were in is
+gone, because its live state lived in the engine that stopped. After three
+failed restarts the app stops trying and shows the recovery card instead.
+
+1. If a restart succeeded, your packs, models, and past sessions are all intact — start the conversation again.
 2. If the problem repeats, try a lighter model — open the model manager (**Settings → Runtime → Open model manager**) and choose a smaller model.
 3. Check `~/.convsim/logs/app.log` for crash details.
 
@@ -204,6 +211,13 @@ Stop-Process -Id <PID>
 
 Common culprits: a previous instance of the app that was not stopped cleanly,
 or another application using ports in the 7354–7358 range.
+
+**The app reports "Port 7355 is already in use by another program"**
+
+The desktop app asks whatever is on port 7355 for `GET /api/health`. If the
+answer comes from a Conversation Simulator engine it attaches to that instead of
+starting a second one; this message means the answer came from something else.
+Close that program and start the app again.
 
 ---
 

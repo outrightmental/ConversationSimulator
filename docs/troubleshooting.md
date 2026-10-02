@@ -11,7 +11,8 @@ Common problems and solutions. If your issue is not listed here, open a [GitHub 
 
 The app could not start its background conversation engine (`convsim-core`). Common causes:
 
-- **Port conflict:** another application is using port 7355. See [Port conflicts](#port-conflicts) below.
+- **Port conflict:** another program is holding port 7355. See [Port conflicts](#port-conflicts) below. The app asks whatever is on the port whether it is a conversation engine, and gives it 15 seconds to answer before reporting a conflict — so an engine that is busy or restarting is not mistaken for an unrelated program.
+- **Another edition is running:** the demo and the full app share port 7355. Close the one you are not using, then start the other.
 - **Binary not found:** the `convsim-core` executable is missing. Reinstall the app or run `./scripts/setup.sh`.
 - **Crash on startup:** open the logs folder (the recovery card shows an **Open logs folder** button) and check `app.log` for the specific error.
 
@@ -39,7 +40,13 @@ The recovery card shows the exact path for your machine and includes an **Open l
 
 The engine started but stopped during a session. This can happen if the AI model crashes the engine or the engine runs out of memory.
 
-1. Click **Restart conversation engine** in the status card on the home screen.
+The app notices and restarts the engine itself, up to three times, showing
+*The conversation engine stopped unexpectedly. Restarting…* while it does. The
+app reloads when the replacement is ready — the conversation you were in is
+gone, because its live state lived in the engine that stopped. After three
+failed restarts the app stops trying and shows the recovery card instead.
+
+1. If a restart succeeded, your packs, models, and past sessions are all intact — start the conversation again.
 2. If the problem repeats, try a lighter model — open the model manager (**Settings → Runtime → Open model manager**) and choose a smaller model.
 3. Check `app.log` in the logs folder (see table above) for crash details.
 
@@ -168,6 +175,14 @@ Common culprits:
 
 - A previous `./scripts/dev.sh` that was not stopped cleanly — run `pkill -f uvicorn` and `pkill -f vite` to clean up.
 - Another application using ports in the 7354–7358 range.
+
+**The packaged app reports "Port 7355 is already in use by another program"**
+
+The desktop app asks whatever is on port 7355 for `GET /api/health`. If the
+answer is a Conversation Simulator engine it attaches to it instead of starting
+a second one; this message means the answer was something else. Close that
+program (`lsof -i :7355` on macOS / Linux, `Get-NetTCPConnection -LocalPort 7355`
+on Windows) and start the app again.
 
 > Note: custom port numbers via environment variable are not yet implemented in the dev scripts. Stopping the conflicting process is the current workaround.
 

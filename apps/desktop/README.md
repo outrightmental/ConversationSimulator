@@ -54,10 +54,15 @@ pnpm install   # installs @tauri-apps/cli into apps/desktop
 ## Production build
 
 ```bash
+./scripts/build-core.sh                  # PyInstaller → resources/bin/convsim-core
 pnpm --filter @convsim/desktop build
 ```
 
-The built installer is placed in `apps/desktop/src-tauri/target/release/bundle/`.
+`build-core.sh` must run first: it writes the standalone `convsim-core` binary
+into `src-tauri/resources/bin/`, which `bundle.resources` (`resources/**/*`)
+packages into the installer. Without it the app builds but cannot start its
+engine. The built installer is placed in
+`apps/desktop/src-tauri/target/release/bundle/`.
 
 In a production build the Tauri shell:
 1. Locates the `convsim-core` executable (see "Executable resolution" below).
@@ -65,10 +70,22 @@ In a production build the Tauri shell:
 3. Sets `CONVSIM_BUNDLED_RUNTIME_DIR` to the `runtimes/` dir adjacent to the
    app bundle so sidecars (llama-server, whisper-cli, sherpa-onnx-offline-tts)
    can be found without a system PATH entry.
-4. Shows a startup progress screen until the core is healthy, then loads the app.
-5. Kills the core process when the app window closes.
+4. Shows a startup progress screen until the core answers `GET /api/health`,
+   then loads the app.
+5. Stops the core when the app window closes (see "Core sidecar lifecycle").
 
 Model weights are **never** included in the bundle.
+
+To verify a built core end-to-end without launching the window:
+
+```bash
+./scripts/packaged-core-smoke.sh
+```
+
+It starts the packaged binary against a throwaway data root and asserts health
+readiness, loopback-only binding, official-pack seeding, an offline
+`convsim offline-smoke-test` run against a pack the binary shipped, and a clean
+SIGTERM shutdown. `release.yml` runs it on every non-Windows release build.
 
 ### Editions
 
@@ -109,6 +126,50 @@ as the Python sidecar resolver — see [docs/sidecar-bundling.md](../../docs/sid
 
 ---
 
+## Core sidecar lifecycle
+
+The shell owns the engine process from launch to teardown. The state machine
+lives in `supervise_core` (`src-tauri/src/lib.rs`) and reports every transition
+to the front-end as a `core-status` event.
+
+**Readiness is `GET /api/health`, not an open port.** A TCP connect only answers
+"something is on 7355", which is not the question the shell has. It used to
+accept that as readiness, so *any* program holding the port made the shell
+declare ready and mount the UI over a stranger's socket. The shell now sends a
+real HTTP request and requires the body to look like a convsim-core health
+response — which also tells it, in the same exchange, which edition is running.
+
+(For an engine the shell started itself an open port does track readiness closely:
+`uvicorn.run()` binds its socket *after* the FastAPI lifespan completes, so the
+two are about 40 ms apart. That is a property of how the engine happens to be
+launched, not a contract — and it never distinguished our engine from anybody
+else's.)
+
+**Port already in use.** If something is on 7355 the shell asks it for
+`/api/health`:
+
+| Answer | What happens |
+|---|---|
+| A convsim-core of this edition | Attach to it; no second engine is started. |
+| A convsim-core of the *other* edition | Error: the demo and the full app share the port and one data directory, so attaching would give the wrong library (issue #495). |
+| Anything else, for 15 s | Error: `Port 7355 is already in use by another program.` The grace period exists because `/api/health` fans out to the LLM, STT and TTS probes and one answer can take seconds, and because the occupant may be an engine mid-restart. |
+
+**Crash restart.** After readiness the shell watches the child. An engine that
+exits on its own is restarted up to three times with 1 s / 2 s / 4 s backoff,
+announced to the UI as a `restarting` phase; the counter resets once an engine
+has served for five minutes, and exhausting it shows the recovery card rather
+than looping. A `shutting_down` flag separates a deliberate teardown from a
+crash, so quitting the app cannot race the supervisor into spawning a
+replacement engine that nothing will ever stop.
+
+**Clean shutdown.** `stop_core` sends SIGTERM (`taskkill /PID … /T /F` on
+Windows, which has no SIGTERM but does walk the process tree), waits up to 6 s,
+then falls back to a hard kill. The wait matters: SIGTERM is what lets uvicorn
+run the lifespan shutdown, and that shutdown is where `supervisor.stop_all()`
+stops the engine's *own* children. A bare `kill()` left llama-server and the TTS
+sidecar running after the window closed, holding ports 7356-7358 and several GB
+of RAM.
+
 ## Startup progress and error handling
 
 The web UI displays a startup screen (rendered by `CoreStartupGuard` in
@@ -117,6 +178,10 @@ The web UI displays a startup screen (rendered by `CoreStartupGuard` in
 - Shows live progress messages as the core service starts.
 - Displays an actionable error card if the core executable is missing, the
   port is already in use, or the process crashes before becoming healthy.
+- Reappears over the app while the engine is restarting, and remounts the app
+  when the replacement reports ready — readiness tracks the shell's current
+  phase rather than latching on the first success, so a crash mid-session cannot
+  leave the UI mounted over a dead port.
 - Passes through immediately in non-Tauri (browser) contexts.
 - On a fast health check success (e.g. core already running in dev), the
   startup screen is bypassed entirely.
@@ -171,6 +236,17 @@ In production, `apps/web/src/api/client.ts` detects the `tauri://localhost` (or
 `http://127.0.0.1:7355/api` and the WebSocket base to `ws://127.0.0.1:7355/ws`.
 
 ---
+
+## Tests
+
+```bash
+./scripts/desktop-smoke.sh   # cargo check (±steam) + cargo test
+```
+
+The crate's unit tests cover the sidecar state machine: HTTP/health parsing, the
+port-conflict and foreign-edition guards, the executable resolution order, and
+the restart backoff. The readiness probe is exercised against real loopback
+sockets — a silent squatter, a 503, and a stub engine.
 
 ## Known limitations
 
