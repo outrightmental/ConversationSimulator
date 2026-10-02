@@ -97,9 +97,11 @@ telling two entries apart at a glance.
   a rounded square — not a crop of a capsule. Capsule art is composed for
   460 px and reads as mud at 32.
 - **Editions are separated by plate colour, not by text.** The full game is
-  teal (`#147A84`); the Steam Next Fest demo is deep purple (`#6D28D9`, the
-  app's player-turn accent). Hue is the only cue that survives at this size:
-  a word mark would be about six pixels tall.
+  teal (`#147A84`); the Steam Next Fest demo is deep purple (`#6D28D9`) — the
+  player-voice purple the capsule set already uses, not the lighter UI token
+  `--cs-you` (`#A78BFA`), which is a tint for text on a dark stage and
+  disappears behind a white speech bubble. Hue is the only cue that survives
+  at this size: a word mark would be about six pixels tall.
 - A **"DEMO"** ribbon across the lower-right corner distinguishes the demo at
   128 px and above (the dock, Alt-Tab, Finder). It is deliberately absent
   below that, including on the client icon itself.
@@ -125,6 +127,13 @@ python3 publishing/assets/source/gen_icons.py --edition base --out /tmp/base
 | Vector source | `publishing/assets/icons/demo_icon.svg` | Hand edits and re-renders at other sizes |
 | Bundle icon set | `apps/desktop/src-tauri/icons-demo/` | `bundle.icon` in `tauri.demo.conf.json` |
 
+The client icon is written as a single uncompressed 32-bit DIB frame rather
+than PNG-in-ICO. The multi-size `icon.ico` in the bundle keeps PNG payloads —
+that is what `tauri icon` produced for the base app, and it is what stops the
+256 px frame costing 256 KB — but at 32 px the whole file is 4 KB either way,
+and a plain DIB is the one encoding every ICO reader understands, including
+whatever Valve's uploader and the Steam client's image loader turn out to be.
+
 The base app's set in `apps/desktop/src-tauri/icons/` is the original
 `tauri icon` output; the script never writes there. Rendering `--edition base`
 into a scratch directory is how you check the two editions still line up after
@@ -132,9 +141,10 @@ changing the mark.
 
 `tests/acceptance/test_demo_branding.py` enforces the result: the overlay
 overrides every icon, the plates stay far apart in colour, the silhouettes
-match, the ribbon is on the large frames only, and the `.icns` carries every
-representation the full app's does — including the 1× 16 pt and 32 pt ones
-macOS draws in Finder's list view.
+match, the ribbon is on the large frames only, the client icon decodes to the
+same image the app installs, and the `.icns` carries every representation the
+full app's does — including the 1× 16 pt and 32 pt ones macOS draws in
+Finder's list view.
 
 ---
 

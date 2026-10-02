@@ -16,9 +16,9 @@ the bundle set is what ``bundle.icon`` in tauri.demo.conf.json points at.
 The demo differs from the base in two ways, in this order of importance:
 
   1. Plate colour.  Teal (#147A84) for the full game, deep purple (#6D28D9,
-     the app's player-turn accent) for the demo.  Hue is the only thing that
-     survives the 16-32 px the Steam client library list actually renders, so
-     it carries the distinction on its own.
+     the player-voice purple the capsule set already uses) for the demo.  Hue
+     is the only thing that survives the 16-32 px the Steam client library
+     list actually renders, so it carries the distinction on its own.
   2. A "DEMO" corner ribbon, drawn only at >= 128 px (``RIBBON_MIN_PX``).
      At 32 px the word is ~6 px tall and turns to mush, so the small frames
      stay clean and let the colour do the work.
@@ -61,7 +61,10 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 # ── Palette ────────────────────────────────────────────────────────────────
 PLATE = {
     "base": "#147A84",  # sampled from the committed icons/128x128@2x.png
-    "demo": "#6D28D9",  # the app's player-turn purple, also used on the capsules
+    # gen_capsules.py's PURP: the player bubble in the capsule mark.  The UI's
+    # own player token (--cs-you, #A78BFA) is a tint meant for text on a dark
+    # stage and is far too light to sit behind a white speech bubble.
+    "demo": "#6D28D9",
 }
 WHITE = "#FFFFFF"
 RIBBON_BG = "#0D0D15"   # the capsule-set base colour
@@ -323,26 +326,69 @@ ICNS_SIZES = tuple(sorted(
     {s for _, s in ICNS_PNG_TYPES} | {s for _, s in ICNS_ARGB_TYPES}
 ))
 
-def write_ico(frames: dict[int, Path], dest: Path, sizes: tuple[int, ...]) -> None:
-    """Assemble a PNG-compressed ICO from PNG frames.
+def _dib_frame(png: Path, size: int) -> bytes:
+    """One ICO frame as an uncompressed 32-bit BGRA DIB.
+
+    A BITMAPINFOHEADER whose height covers both the colour rows and the 1-bit
+    AND mask, then the two of them bottom row first. The mask is derived from
+    the alpha channel, so a reader that honours only the mask still gets the
+    right silhouette rather than a square.
+    """
+    rgba = _rgba_bytes(png)
+    assert len(rgba) == size * size * 4, f"{png}: expected {size}x{size} RGBA"
+    stride = size * 4
+    mask_stride = ((size + 31) // 32) * 4      # mask rows pad to four bytes
+    colour, mask = bytearray(), bytearray()
+    for y in range(size - 1, -1, -1):          # DIB rows run bottom-up
+        row = rgba[y * stride:(y + 1) * stride]
+        bits = bytearray(mask_stride)
+        for x in range(size):
+            r, g, b, a = row[x * 4:x * 4 + 4]
+            colour += bytes((b, g, r, a))
+            if a == 0:
+                bits[x // 8] |= 0x80 >> (x % 8)
+        mask += bits
+    header = struct.pack(
+        "<IiiHHIIiiII",
+        40, size, size * 2, 1, 32, 0, len(colour) + len(mask), 0, 0, 0, 0,
+    )
+    return header + bytes(colour) + bytes(mask)
+
+
+def write_ico(
+    frames: dict[int, Path], dest: Path, sizes: tuple[int, ...], *, dib: bool = False
+) -> None:
+    """Assemble an ICO from PNG frames, PNG-compressed unless ``dib``.
 
     Written here rather than handed to ImageMagick because its ICO coder
     stores every frame as an uncompressed DIB — a 256 px frame alone costs
     256 KB, which is how a five-frame icon turns into a third of a megabyte.
-    PNG payloads are what Windows has read since Vista and what the base app's
-    committed `icon.ico` already uses.
+    So the bundle's multi-size `icon.ico` keeps PNG payloads, which is what
+    Windows has read since Vista and what the base app's committed `icon.ico`
+    already carries.
+
+    The Steamworks client icon passes ``dib=True``. It is a single 32 px
+    frame, so the whole file is a few kilobytes either way, and a plain DIB is
+    the encoding every ICO reader ever shipped understands — including
+    whatever Valve's asset uploader and the Steam client's own image loader
+    turn out to be, neither of which can be tested from here before the asset
+    is live. There is no reader that takes PNG-in-ICO but not this, so the
+    compatible encoding is free on an asset this small.
     """
-    payloads = [frames[s].read_bytes() for s in sizes]
+    payloads = [
+        _dib_frame(frames[s], s) if dib else frames[s].read_bytes() for s in sizes
+    ]
     header = struct.pack("<HHH", 0, 1, len(sizes))
     offset = len(header) + 16 * len(sizes)
     entries, body = b"", b""
     for size, payload in zip(sizes, payloads):
-        # 256 is encoded as 0 in the single-byte width/height fields; planes
-        # and bit depth are ignored for PNG payloads, and 0/32 is what the
-        # base app's working icon.ico carries.
+        # 256 is encoded as 0 in the single-byte width/height fields. Planes
+        # and bit depth are ignored for PNG payloads — 0/32 is what the base
+        # app's working icon.ico carries — but a DIB frame must agree with its
+        # own header, so declare 1 plane at 32 bpp there.
         dim = 0 if size >= 256 else size
         entries += struct.pack(
-            "<BBBBHHII", dim, dim, 0, 0, 0, 32, len(payload), offset
+            "<BBBBHHII", dim, dim, 0, 0, 1 if dib else 0, 32, len(payload), offset
         )
         body += payload
         offset += len(payload)
@@ -444,9 +490,10 @@ def build(edition: str, bundle_dir: Path, steam_dir: Path) -> list[Path]:
         # Steamworks "Client Icon": a 32x32 .ico, the asset the Steam client
         # draws next to the app name in the library list.  This is the one
         # issue #499 is about; the rest of the set is the same mark so the
-        # installed app and its Steam entry agree.
+        # installed app and its Steam entry agree.  Written as an uncompressed
+        # DIB rather than PNG-in-ICO — see write_ico.
         client = steam_dir / f"{edition}_client_icon.ico"
-        write_ico(frames, client, (32,))
+        write_ico(frames, client, (32,), dib=True)
         written.append(client)
 
     # The vector source of record, next to the client icon: the large-frame

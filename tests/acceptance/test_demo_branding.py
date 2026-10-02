@@ -16,7 +16,8 @@ tests pin the fix from both ends:
   * the hand-written ICO and ICNS containers carry every representation the
     base app's do, and the ones that are not PNG decode back to the frame
     they were built from;
-  * the Steamworks client icon is the same image the app itself installs.
+  * the Steamworks client icon is the same image the app itself installs, in
+    the uncompressed encoding every ICO reader understands.
 
 Nothing here needs a build, a network, or ImageMagick: the PNGs, the ICO and
 the ICNS are parsed directly. Owner: platform team.
@@ -147,6 +148,37 @@ def _read_ico(path: Path) -> list[tuple[int, int, bytes]]:
         assert offset + size <= len(raw), f"{path} frame {i} runs past end of file"
         frames.append((width, height, raw[offset:offset + size]))
     return frames
+
+
+def _decode_ico_dib(payload: bytes, size: int) -> list[tuple[int, int, int, int]]:
+    """Decode an uncompressed 32-bit BGRA ICO frame to RGBA pixels, top row first.
+
+    A DIB frame is a BITMAPINFOHEADER declaring twice the real height — the
+    colour rows plus the 1-bit AND mask — followed by both, bottom row first.
+    """
+    header = struct.unpack("<IiiHHI", payload[:20])
+    assert header == (40, size, size * 2, 1, 32, 0), (
+        f"not an uncompressed 32-bit {size}x{size} DIB: {header}"
+    )
+    stride, mask_stride = size * 4, ((size + 31) // 32) * 4
+    assert len(payload) == 40 + stride * size + mask_stride * size, (
+        f"DIB payload is {len(payload)} bytes, wrong for {size}x{size}"
+    )
+    rows: list[list[tuple[int, int, int, int]]] = []
+    for y in range(size):
+        pos = 40 + y * stride
+        row = payload[pos:pos + stride]
+        bits = payload[40 + stride * size + y * mask_stride:][:mask_stride]
+        for x in range(size):
+            transparent = bool(bits[x // 8] & (0x80 >> (x % 8)))
+            assert transparent == (row[x * 4 + 3] == 0), (
+                "the AND mask disagrees with the alpha channel"
+            )
+        rows.append([
+            (row[x * 4 + 2], row[x * 4 + 1], row[x * 4], row[x * 4 + 3])
+            for x in range(size)
+        ])
+    return [pixel for row in reversed(rows) for pixel in row]
 
 
 # ---------------------------------------------------------------------------
@@ -365,7 +397,21 @@ class TestIconContainers:
             "Steamworks wants the client icon as a single 32x32 frame"
         )
 
+    def test_client_icon_is_an_uncompressed_dib(self):
+        """Not PNG-in-ICO — see ``write_ico`` in gen_icons.py.
+
+        The bundle's icon.ico may use PNG payloads; this one goes to Valve's
+        uploader and the Steam client's own image loader, neither of which can
+        be tested from here, so it uses the encoding every ICO reader handles.
+        """
+        (_, _, payload), = _read_ico(_CLIENT_ICON)
+        assert payload[:8] != b"\x89PNG\r\n\x1a\n", (
+            "the client icon is PNG-compressed; a plain DIB is readable by more"
+        )
+        _decode_ico_dib(payload, 32)  # raises if the header or payload is wrong
+
     def test_client_icon_matches_the_installed_app_icon(self):
         """One mark: what Steam lists and what the app installs are the same image."""
         (_, _, payload), = _read_ico(_CLIENT_ICON)
-        assert payload == (_SRC_TAURI / "icons-demo" / "32x32.png").read_bytes()
+        _, _, installed = _read_png(_SRC_TAURI / "icons-demo" / "32x32.png")
+        assert _decode_ico_dib(payload, 32) == installed
