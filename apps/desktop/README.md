@@ -154,6 +154,12 @@ else's.)
 | A convsim-core of the *other* edition | Error: the demo and the full app share the port and one data directory, so attaching would give the wrong library (issue #495). |
 | Anything else, for 15 s | Error: `Port 7355 is already in use by another program.` The grace period exists because `/api/health` fans out to the LLM, STT and TTS probes and one answer can take seconds, and because the occupant may be an engine mid-restart. |
 
+The port can also be taken *after* the shell finds it free, in the window its own
+engine spends unpacking and migrating — the demo and the full app are separate
+Steam apps and may be launched together. The engine then exits because it cannot
+bind, and the shell asks the port the same question again rather than reporting
+an exit status the logs can only explain as "the port was taken".
+
 **Adopting an engine.** An engine the shell did not start has no child handle,
 so it cannot be supervised — but a release build re-checks it every 3 s and
 takes the port over if it stops answering. That matters because teardown drains

@@ -1049,15 +1049,28 @@ fn start_and_await_core(
         };
         if let Some(status) = exited {
             // An engine that dies this early usually could not bind: something
-            // took the port between our probe and its bind. Say so, rather than
+            // took the port between our probe and its bind. Ask the port what
+            // it is, the same way the attach path above does, rather than
             // reporting a crash the logs cannot explain.
-            let (message, hint) = if matches!(probe_core(CORE_PORT), CoreProbe::Occupied) {
-                (PORT_BUSY_MESSAGE.to_string(), port_busy_hint())
-            } else {
-                (
+            let (message, hint) = match probe_core(CORE_PORT) {
+                // A convsim-core won the race, so ours could not bind. Name the
+                // edition when it is the other one: the demo and the full app
+                // are separate Steam apps that may be launched together, and a
+                // cold start takes long enough (STARTUP_TIMEOUT) that each can
+                // still be unpacking while the other probes and finds the port
+                // free. Reporting that as "stopped during startup (exit status:
+                // 1)" sends the player to logs that only say the port was
+                // taken. This path is release-only — the dev branch in
+                // `supervise_core` returns before the launch path — so the
+                // edition guard applies here unconditionally.
+                CoreProbe::Ready { edition } => foreign_edition_error(&edition)
+                    .unwrap_or_else(|| (PORT_BUSY_MESSAGE.to_string(), port_busy_hint())),
+                CoreProbe::Occupied => (PORT_BUSY_MESSAGE.to_string(), port_busy_hint()),
+                // The port is free, so the exit was not a failure to bind.
+                CoreProbe::Closed => (
                     format!("Core service stopped during startup (exit status: {status})."),
                     "Open the logs folder for details, then restart the app.".to_string(),
-                )
+                ),
             };
             // Drop the reaped handle: teardown must not be handed an exited
             // pid, and nothing is left to supervise.
