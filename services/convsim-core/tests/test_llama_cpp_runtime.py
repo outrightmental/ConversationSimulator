@@ -459,6 +459,37 @@ async def test_chat_stream_timeout_raises_timeout_error(runtime):
 
 
 @pytest.mark.asyncio
+async def test_chat_stream_connect_timeout_reads_as_unreachable_not_slow(runtime):
+    """A connect timeout means the server is absent, not that the reply is slow.
+
+    Generation now gets a long per-read budget and a short connect phase, so a
+    ConnectTimeout is a distinct signal: llama-server is not accepting
+    connections. Reporting it as a TimeoutError would reach the player as
+    "the engine stopped responding partway through its reply" and send them
+    looking for a smaller model instead of starting the engine.
+    """
+
+    class _ConnectTimeoutStream:
+        async def __aenter__(self):
+            raise httpx.ConnectTimeout("connect timed out")
+
+        async def __aexit__(self, *_):
+            pass
+
+    client = MagicMock()
+    client.stream = MagicMock(return_value=_ConnectTimeoutStream())
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+
+    request = ChatRequest(messages=[ChatMessage(role="user", content="hi")])
+
+    with patch("convsim_core.runtime.llama_cpp.httpx.AsyncClient", return_value=client):
+        with pytest.raises(ConnectionError, match="Cannot reach"):
+            async for _ in runtime.chat_stream(request):
+                pass
+
+
+@pytest.mark.asyncio
 async def test_chat_stream_uses_the_generation_budget_not_the_control_timeout():
     """Generation must get chat_timeout per read, with a short connect phase.
 

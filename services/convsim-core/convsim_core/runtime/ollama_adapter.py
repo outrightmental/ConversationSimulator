@@ -178,8 +178,19 @@ class OllamaChatRuntime(ChatRuntime):
                     if done:
                         input_tokens = chunk.get("prompt_eval_count", 0)
                         output_tokens = chunk.get("eval_count", 0)
-        except (httpx.ConnectError, httpx.TimeoutException) as exc:
+        # A failure to connect at all still means "Ollama is not running",
+        # ConnectTimeout included — so it is matched ahead of the read timeout.
+        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
             raise RuntimeError(_NOT_RUNNING_HINT) from exc
+        except httpx.TimeoutException as exc:
+            # The server is there, it just stopped sending. The turn endpoint
+            # turns TimeoutError into a retryable 504 TURN_TIMEOUT (issue #489),
+            # so this must not be flattened into the "Ollama is not running"
+            # RuntimeError — that read as a 500 with advice that did not apply.
+            raise TimeoutError(
+                f"Ollama went quiet for more than {_CHAT_TIMEOUT}s while generating. "
+                "Pick a smaller model, or check that Ollama is not stuck."
+            ) from exc
         except httpx.HTTPStatusError as exc:
             code = exc.response.status_code
             if code == 404:

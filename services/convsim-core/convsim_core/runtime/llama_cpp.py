@@ -224,7 +224,12 @@ class LlamaCppRuntime(ChatRuntime):
                             full_text += content
                             yield ChatToken(text=content)
 
-        except httpx.ConnectError as exc:
+        # ConnectTimeout is listed with ConnectError, and ahead of the read
+        # timeout below: now that the connect phase has its own short budget, a
+        # connect timeout means llama-server is not accepting connections, not
+        # that it went quiet mid-reply. Reporting it as a slow turn would send
+        # the player off looking for a smaller model.
+        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
             raise ConnectionError(
                 f"Cannot reach llama-server at {self._base_url}. "
                 "Start it with: llama-server --port 7356 --model /path/to/model.gguf"

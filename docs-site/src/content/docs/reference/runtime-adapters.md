@@ -212,6 +212,13 @@ reachable but has no models, it raises `RuntimeError` with instructions
 to run `ollama pull <model>`. If Ollama is unreachable, it raises with
 instructions to run `ollama serve`.
 
+**Timeouts.** Control-plane calls (tag listing, reachability probe) get 60 s.
+`/api/chat` gets 180 s applied per read, so it bounds how long the server may go
+quiet rather than how long the whole reply may take — generation on CPU-only
+hardware is legitimately slow, and the first quiet stretch is prompt eval. A
+stall past that raises `TimeoutError`, which the turn endpoint reports as a
+retryable 504 `TURN_TIMEOUT`.
+
 **Health check.** Calls `GET /` on the Ollama server. READY if reachable
 and at least one model is installed; DEGRADED if reachable but no models;
 UNAVAILABLE on connection failure.
