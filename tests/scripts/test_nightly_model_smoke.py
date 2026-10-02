@@ -502,6 +502,47 @@ class TestEvaluateBudgets:
         assert "documented budget 10000 ms × 20.0 × 1.2" in failures[0]
 
 
+class TestDocumentedBudgetAgreement:
+    """BUDGETS_MS must agree with the budget the product publishes.
+
+    The harness deliberately does not import the TypeScript constant, so the
+    only thing keeping the number it enforces equal to the number the product
+    promises is a hand-maintained copy. These tests make that copy load-bearing:
+    a nightly that fails against a stale budget is worse than no nightly, and a
+    performance doc that advertises CI coverage of a budget it no longer lists
+    leaves the claim with no referent.
+    """
+
+    def test_the_shared_latency_constant_agrees_with_the_harness(self) -> None:
+        import re
+
+        metrics = (
+            REPO_ROOT / "packages" / "shared" / "src" / "types" / "metrics.ts"
+        ).read_text(encoding="utf-8")
+        match = re.search(r"FULL_RESPONSE_MS:\s*([\d_]+)", metrics)
+        assert match, "LATENCY_BUDGETS.FULL_RESPONSE_MS not found in metrics.ts"
+        assert int(match.group(1).replace("_", "")) == smoke.BUDGETS_MS["full_response_ms"]
+
+    @pytest.mark.parametrize(
+        "doc_path",
+        [
+            ("docs", "performance.md"),
+            ("docs-site", "src", "content", "docs", "play", "performance.md"),
+        ],
+    )
+    def test_the_enforced_budget_is_published_in_the_performance_doc(
+        self, doc_path: tuple
+    ) -> None:
+        doc = REPO_ROOT.joinpath(*doc_path).read_text(encoding="utf-8")
+        seconds = smoke.BUDGETS_MS["full_response_ms"] / 1000
+        assert "Full NPC response" in doc, (
+            "the only budget this job enforces is missing from the latency table, "
+            "so the doc's claim about CI coverage names nothing a reader can check"
+        )
+        assert f"< {seconds:.0f} s" in doc
+        assert "real-model-smoke" in doc
+
+
 # ---------------------------------------------------------------------------
 # Wall-clock budget
 # ---------------------------------------------------------------------------

@@ -9,12 +9,13 @@ ConversationSimulator runs a local LLM, optionally local STT (Whisper) and TTS (
 
 ## Latency budgets
 
-These are the official latency budgets for the **mid-spec reference machine** (Apple M2 / NVIDIA RTX 3060 equivalent). In-app performance warnings fire when a measurement exceeds the corresponding budget. The [nightly real-model smoke test](/dev/real-model-smoke/) flags any regression greater than 20 % against these values, scaled for CPU-only CI hardware.
+These are the official latency budgets for the **mid-spec reference machine** (Apple M2 / NVIDIA RTX 3060 equivalent). In-app performance warnings fire when a measurement exceeds the corresponding budget. Of these, only **full NPC response** is enforced automatically: the [nightly real-model smoke test](/dev/real-model-smoke/) scales that budget for CPU-only CI hardware and fails when a measurement exceeds the scaled budget by more than 20 %. The others are verified by hand — cold start, TTS and STT are not exercised by that job, and TTFT needs the token-streaming gateway it does not start.
 
 | Metric | Budget | Condition |
 |--------|--------|-----------|
 | Cold start → interactive Home | < 10 s | Model already downloaded; startup to playable state |
 | Time-to-first-token (TTFT) | < 2.5 s | Starter model (4 B Q4\_K\_M) on recommended-tier hardware |
+| Full NPC response | < 10 s | Starter model, complete reply returned; the one budget the nightly CI smoke enforces |
 | TTS first-audio chunk | < 1.5 s | Kokoro sidecar, sentence-level streaming |
 | STT round-trip | < 2 s | 10-word utterance, whisper.cpp small model |
 
