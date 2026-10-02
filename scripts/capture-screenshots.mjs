@@ -390,11 +390,16 @@ async function main() {
       if (isHero) mark('heroEnd')
 
       // Mid-session capture: three exchanges in, meters have moved and the
-      // transcript has enough context to read as a conversation.
-      if (wanted('03') && i === 2) {
-        await page.getByTestId('state-vars').scrollIntoViewIfNeeded().catch(() => {})
-        await settle(page, 1200)
-        await shot(page, '03-conversation.png')
+      // transcript has enough context to read as a conversation. Wrapped in
+      // `step` like the screens after it — this one fires mid-playthrough, so
+      // an unwrapped failure here would abort the loop and take the hero turn
+      // and the debrief down with it.
+      if (i === 2) {
+        await step('03', async () => {
+          await page.getByTestId('state-vars').scrollIntoViewIfNeeded().catch(() => {})
+          await settle(page, 1200)
+          await shot(page, '03-conversation.png')
+        })
       }
     }
 
