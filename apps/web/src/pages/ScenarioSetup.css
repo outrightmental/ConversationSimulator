@@ -428,13 +428,19 @@
 
 .brief-meter {
   display: grid;
-  grid-template-columns: 5.75rem minmax(2rem, 1fr) 1.5rem;
+  /* The label column holds the longest trait name ("Time pressure") on one
+     line at the micro-label size below, across every stack in the font list. */
+  grid-template-columns: 6.25rem minmax(2rem, 1fr) 1.5rem;
   align-items: center;
   gap: 0.45rem;
 }
 
+/* The trait names are content, not decoration — they say which bar is which —
+   so they sit at the same 9.6px floor as every other micro-label in the app
+   and on this screen. The release checklist requires all text to be readable
+   at 1280x800 from couch distance; nothing here goes below that floor. */
 .brief-meter-label {
-  font-size: 0.56rem;
+  font-size: 0.6rem;
   letter-spacing: 0.1em;
   white-space: nowrap;
   color: var(--cs-text-muted);
