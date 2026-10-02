@@ -236,6 +236,33 @@ describe('api.createSession — ApiResult return type', () => {
     }
   });
 
+  it('does not list the fields the engine truncated away behind its own "(and N more)"', async () => {
+    // The engine caps its sentence at five fields and says how many it left
+    // out. Spelling those out here would both contradict that count and undo
+    // the cap the compact card and the copied report rely on.
+    const names = Array.from({ length: 9 }, (_, i) => `field_${i}`);
+    mockFetch(422, {
+      error: {
+        code: 'VALIDATION_ERROR',
+        message:
+          'Request validation failed — ' +
+          names
+            .slice(0, 5)
+            .map((n) => `${n}: Field required`)
+            .join('; ') +
+          ' (and 4 more)',
+        details: names.map((n) => ({ type: 'missing', loc: ['body', n], msg: 'Field required' })),
+      },
+    });
+    const result = await api.createSession(BASE_SESSION);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toContain('(and 4 more)');
+      expect(result.error.message).not.toContain('field_5');
+      expect(result.error.message.endsWith('(and 4 more)')).toBe(true);
+    }
+  });
+
   it('ignores an unreadable details payload rather than mangling the message', async () => {
     mockFetch(422, {
       error: { code: 'VALIDATION_ERROR', message: 'Request validation failed', details: 'nope' },
