@@ -760,6 +760,25 @@ describe('ScenarioSetupPage', () => {
       expect(patienceFill.style.width).toBe('80%');
     });
 
+    // The bar is what tells a sighted player that 80 is high. A screen reader
+    // gets no bar, so the meter has to carry the scale — the same way the state
+    // meters on the conversation and debrief screens do.
+    it('announces each trait against its scale, not as a bare number', async () => {
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      const warm = document.querySelector('[data-level="warm"]') as HTMLElement;
+      expect(
+        within(warm).getByRole('meter', { name: 'Patience: 80 out of 100' }),
+      ).toHaveAttribute('aria-valuenow', '80');
+      expect(
+        within(warm).getByRole('meter', { name: 'Time pressure: 20 out of 100' }),
+      ).toBeInTheDocument();
+      // …and the visible label and number are the meter's own rendering, so
+      // they are not read a second time.
+      expect(within(warm).getByText('Patience')).toHaveAttribute('aria-hidden', 'true');
+      expect(within(warm).getByText('80')).toHaveAttribute('aria-hidden', 'true');
+    });
+
     it('omits meters for a level that declares no traits', async () => {
       mockApi.getScenario.mockResolvedValue({ ok: true as const, data: {
         ...mockScenario,

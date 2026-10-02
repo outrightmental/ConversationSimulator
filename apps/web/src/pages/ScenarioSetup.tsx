@@ -80,6 +80,13 @@ function difficultyLabel(level: ScenarioDifficulty, option: DifficultyOption | u
  * Trait meters for one difficulty level. Rendered as a sibling of the option's
  * <label> rather than inside it: a list is not phrasing content, and keeping
  * the numbers out of the radio's accessible name keeps that name short.
+ *
+ * Each bar is a `role="meter"` carrying the 0–100 scale, as the state meters on
+ * the conversation, debrief and workbench screens already are. The bar is what
+ * tells a sighted player that 80 is high; without the scale on the meter, a
+ * screen reader would read a bare "Patience 80" and lose that. The visible
+ * label and number are the meter's own rendering, so they are hidden from the
+ * tree to keep each row from being read twice.
  */
 function TraitMeters({ option }: { option: DifficultyOption | undefined }) {
   const rows = TRAIT_METERS.filter(({ key }) => typeof option?.[key] === 'number');
@@ -90,14 +97,22 @@ function TraitMeters({ option }: { option: DifficultyOption | undefined }) {
         const value = option[key] as number;
         return (
           <li key={key} className={`brief-meter${pressure ? ' is-pressure' : ''}`}>
-            <span className="brief-meter-label">{label}</span>
-            <span className="brief-meter-track" aria-hidden="true">
+            <span className="brief-meter-label" aria-hidden="true">{label}</span>
+            <span
+              className="brief-meter-track"
+              role="meter"
+              aria-label={`${label}: ${value} out of 100`}
+              aria-valuenow={value}
+              aria-valuemin={0}
+              aria-valuemax={100}
+            >
               <span
+                aria-hidden="true"
                 className="brief-meter-fill"
                 style={{ width: `${Math.max(0, Math.min(100, value))}%` }}
               />
             </span>
-            <span className="brief-meter-value">{value}</span>
+            <span className="brief-meter-value" aria-hidden="true">{value}</span>
           </li>
         );
       })}
