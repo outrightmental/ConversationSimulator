@@ -10,6 +10,7 @@ import convsim_core.runtime  # noqa: F401 — ensures built-in adapters are regi
 from convsim_core.runtime.ollama_adapter import (
     OllamaChatRuntime,
     _CHAT_TIMEOUT,
+    _CONNECT_TIMEOUT,
     _CONTROL_TIMEOUT,
     _map_model_info,
     _size_category,
@@ -210,6 +211,10 @@ async def test_chat_stream_overrides_the_control_plane_timeout():
     turn is prompt eval — tens of seconds on CPU-only hardware, and longer as
     the transcript grows (issue #489). The shared client's control-plane budget
     would turn an ordinary slow turn into a hard error.
+
+    The connect phase keeps its own short budget: opening a socket is quick or
+    hopeless, so an endpoint that swallows packets must report "not reachable"
+    in seconds instead of three minutes later.
     """
     runtime = _make_runtime(stream_lines=_STREAM_LINES)
     request = ChatRequest(
@@ -219,8 +224,10 @@ async def test_chat_stream_overrides_the_control_plane_timeout():
     async for _ in runtime.chat_stream(request):
         pass
 
-    assert runtime._client.stream.call_args.kwargs["timeout"] == _CHAT_TIMEOUT
-    assert _CHAT_TIMEOUT > _CONTROL_TIMEOUT
+    timeout = runtime._client.stream.call_args.kwargs["timeout"]
+    assert timeout.read == _CHAT_TIMEOUT
+    assert timeout.connect == _CONNECT_TIMEOUT
+    assert _CHAT_TIMEOUT > _CONTROL_TIMEOUT > _CONNECT_TIMEOUT
 
 
 @pytest.mark.asyncio

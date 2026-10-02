@@ -211,9 +211,11 @@ instructions to run `ollama serve`.
 **Timeouts.** Control-plane calls (tag listing, reachability probe) get 60 s.
 `/api/chat` gets 180 s applied per read, so it bounds how long the server may go
 quiet rather than how long the whole reply may take — generation on CPU-only
-hardware is legitimately slow, and the first quiet stretch is prompt eval. A
-stall past that raises `TimeoutError`, which the turn endpoint reports as a
-retryable 504 `TURN_TIMEOUT`.
+hardware is legitimately slow, and the first quiet stretch is prompt eval. The
+connect phase keeps a separate 5 s budget, so an endpoint that is not accepting
+connections is reported in seconds instead of after the generation budget. A
+stall past the read budget raises `TimeoutError`, which the turn endpoint reports
+as a retryable 504 `TURN_TIMEOUT`.
 
 **Health check.** Calls `GET /` on the Ollama server. READY if reachable
 and at least one model is installed; DEGRADED if reachable but no models;

@@ -47,6 +47,13 @@ _CONTROL_TIMEOUT = 60.0
 #: which on CPU-only hardware runs to tens of seconds and grows with the
 #: transcript (issue #489). The control-plane budget is far too tight for that.
 _CHAT_TIMEOUT = 180.0
+#: The generation budget must not also be the connect budget. Opening a socket is
+#: quick or hopeless — a default Ollama is on loopback, and a remote endpoint set
+#: via CONVSIM_OLLAMA_BASE_URL should report "not reachable" in seconds rather
+#: than hold the player at "NPC is responding…" for three minutes first. Keeping
+#: them separate is also what makes a ConnectTimeout mean "absent" rather than
+#: "slow" below.
+_CONNECT_TIMEOUT = 5.0
 
 
 def _size_category(size_bytes: int | None) -> str | None:
@@ -163,7 +170,10 @@ class OllamaChatRuntime(ChatRuntime):
 
         try:
             async with self._client.stream(
-                "POST", "/api/chat", json=payload, timeout=_CHAT_TIMEOUT
+                "POST",
+                "/api/chat",
+                json=payload,
+                timeout=httpx.Timeout(_CHAT_TIMEOUT, connect=_CONNECT_TIMEOUT),
             ) as resp:
                 resp.raise_for_status()
                 async for line in resp.aiter_lines():
