@@ -638,6 +638,22 @@ class TestStepSummary:
         assert "240000 ms" in text  # 10 000 × 20 × 1.2
         assert "| `debrief_ms` | 200000 ms | — |" in text
 
+    def test_a_pre_run_failure_does_not_claim_a_zero_second_run(self) -> None:
+        # --download-only / --verify-only and the registry lookup write a summary
+        # without ever starting a clock; reporting "Wall clock: 0 s (budget 0 s)"
+        # on a download verdict invents a measurement the run never took.
+        text = smoke.render_step_summary({
+            "verdict": "fail",
+            "model_id": "qwen3-4b",
+            "failure_class": smoke.FailureClass.DOWNLOAD,
+            "exit_code": 2,
+            "failures": ["Download failed for https://…: TimeoutError()"],
+            "remedy": smoke.REMEDIES[smoke.FailureClass.DOWNLOAD],
+        })
+        assert "Wall clock" not in text
+        assert "`download`" in text
+        assert smoke.REMEDIES[smoke.FailureClass.DOWNLOAD] in text
+
     def test_summary_is_not_written_without_the_github_env_var(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:

@@ -861,9 +861,17 @@ def render_step_summary(results: Dict[str, Any]) -> str:
         f"## {icon} Real-model smoke: {verdict.upper()}",
         "",
         f"- **Model:** `{results.get('model_id')}`",
-        f"- **Wall clock:** {results.get('wall_clock_s', 0):.0f} s "
-        f"(budget {results.get('wall_clock_budget_s', 0):.0f} s)",
     ]
+    # Only the smoke run keeps a clock.  The pre-run modes (registry lookup,
+    # download, verify) write a summary too, and defaulting their missing
+    # timings to zero printed "Wall clock: 0 s (budget 0 s)" at the top of a
+    # download or checksum verdict — a measurement the run never took, in the
+    # first thing a triager reads.
+    if results.get("wall_clock_s") is not None:
+        lines.append(
+            f"- **Wall clock:** {results['wall_clock_s']:.0f} s "
+            f"(budget {results.get('wall_clock_budget_s', 0):.0f} s)"
+        )
     if verdict == "fail":
         cls = results.get("failure_class", "unknown")
         lines += [
