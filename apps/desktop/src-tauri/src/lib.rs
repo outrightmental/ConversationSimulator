@@ -446,6 +446,17 @@ const CORE_PORT: u16 = 7355;
 const HEALTH_REQUEST: &[u8] = b"GET /api/health HTTP/1.1\r\nHost: 127.0.0.1\r\n\
                                 Accept: application/json\r\nConnection: close\r\n\r\n";
 
+/// Total wall-clock a single probe spends writing and reading, regardless of
+/// how the occupant paces its answer. `/api/health` fans out to the LLM, STT
+/// and TTS probes, so a healthy engine can legitimately take seconds.
+const PROBE_RESPONSE_BUDGET: Duration = Duration::from_secs(8);
+
+/// Hard cap on how much of a probe response is buffered. A real health
+/// response is a few kilobytes; this is two orders of magnitude of headroom
+/// and still bounds what an unrelated program on the port can make the shell
+/// allocate.
+const PROBE_RESPONSE_LIMIT: usize = 1024 * 1024;
+
 /// What is — or is not — answering on 127.0.0.1:`CORE_PORT`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum CoreProbe {
@@ -508,23 +519,54 @@ fn edition_from_health_body(body: &str) -> Option<String> {
 /// ~40 ms. That is a property of how the engine is launched, not a contract —
 /// and it never distinguished our engine from anybody else's.)
 fn probe_core(port: u16) -> CoreProbe {
+    probe_core_within(port, PROBE_RESPONSE_BUDGET)
+}
+
+/// `probe_core` with the read budget injected, so the "an occupant that never
+/// finishes answering" cases are testable without an eight-second test.
+fn probe_core_within(port: u16, budget: Duration) -> CoreProbe {
     use std::io::{Read, Write};
     let addr: SocketAddr = ([127u8, 0, 0, 1], port).into();
     let mut stream = match std::net::TcpStream::connect_timeout(&addr, Duration::from_millis(300)) {
         Ok(s) => s,
         Err(_) => return CoreProbe::Closed,
     };
-    if stream.set_read_timeout(Some(Duration::from_secs(8))).is_err()
-        || stream.set_write_timeout(Some(Duration::from_secs(8))).is_err()
-        || stream.write_all(HEALTH_REQUEST).is_err()
+    if stream.set_write_timeout(Some(budget)).is_err() || stream.write_all(HEALTH_REQUEST).is_err()
     {
         return CoreProbe::Occupied;
     }
-    // `Connection: close` makes the server hang up after the body, so
-    // read_to_end ends on EOF. A read timeout returns Err with whatever did
-    // arrive still in the buffer — parse that rather than discarding it.
+
+    // `Connection: close` makes a well-behaved server hang up after the body,
+    // so the read ends on EOF. The occupant is not necessarily well behaved:
+    // this probe exists precisely because the thing on the port may be some
+    // other program, and whatever answers is untrusted input.
+    //
+    // A socket read timeout is per-`read` call, not per-exchange, so
+    // `read_to_end` against a peer that dribbles one byte every few seconds
+    // never returns — it would hang this thread forever on the "checking
+    // whether it is the engine…" screen, and the occupied-grace deadline is
+    // only consulted *between* probes, so no error card would ever appear.
+    // `read_to_end` is also unbounded in size: on loopback a flood fills
+    // memory faster than any timeout can intervene. Bound both.
+    let deadline = Instant::now() + budget;
     let mut raw = Vec::new();
-    let _ = stream.read_to_end(&mut raw);
+    let mut chunk = [0u8; 8192];
+    while raw.len() < PROBE_RESPONSE_LIMIT {
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        // `set_read_timeout(Some(ZERO))` is an error ("cannot set a 0 duration
+        // timeout"), and a zero budget means we are out of time anyway.
+        if remaining.is_zero() || stream.set_read_timeout(Some(remaining)).is_err() {
+            break;
+        }
+        match stream.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(n) => raw.extend_from_slice(&chunk[..n]),
+            // Timed out, reset, or refused — parse whatever did arrive rather
+            // than discarding it.
+            Err(_) => break,
+        }
+    }
+
     let text = String::from_utf8_lossy(&raw);
     match parse_http_response(&text) {
         Some((200, body)) => match edition_from_health_body(body) {
@@ -1712,6 +1754,70 @@ mod tests {
             CoreProbe::Ready {
                 edition: "demo".to_string()
             }
+        );
+        let _ = server.join();
+    }
+
+    #[test]
+    fn an_occupant_that_dribbles_forever_cannot_hang_the_probe() {
+        // A socket read timeout is per-read, so each byte resets it and
+        // `read_to_end` never returns. The supervisor would sit on "checking
+        // whether it is the engine…" forever: the occupied-grace deadline is
+        // only consulted between probes, so no error card would ever appear.
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = listener.local_addr().expect("local addr").port();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept");
+            let mut buf = [0u8; 1024];
+            let _ = stream.read(&mut buf);
+            // One byte every 200 ms, for far longer than the probe's budget.
+            for _ in 0..50 {
+                if stream.write_all(b"x").is_err() {
+                    return;
+                }
+                std::thread::sleep(Duration::from_millis(200));
+            }
+        });
+
+        let started = Instant::now();
+        let probe = probe_core_within(port, Duration::from_millis(400));
+        let elapsed = started.elapsed();
+
+        assert_eq!(probe, CoreProbe::Occupied);
+        assert!(
+            elapsed < Duration::from_secs(3),
+            "probe took {elapsed:?} against a 400ms budget"
+        );
+        let _ = server.join();
+    }
+
+    #[test]
+    fn a_flood_on_the_port_is_bounded_rather_than_buffered_whole() {
+        // read_to_end has no size cap, and on loopback a flood arrives faster
+        // than any timeout can intervene. The probe must stop at the limit.
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = listener.local_addr().expect("local addr").port();
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept");
+            let mut buf = [0u8; 1024];
+            let _ = stream.read(&mut buf);
+            // Never EOFs: writes until the client gives up and disconnects.
+            let block = vec![b'x'; 64 * 1024];
+            while stream.write_all(&block).is_ok() {}
+        });
+
+        let started = Instant::now();
+        // A budget far longer than the flood needs: finishing quickly proves
+        // the size cap stopped the read, not the clock.
+        let probe = probe_core_within(port, Duration::from_secs(30));
+        let elapsed = started.elapsed();
+
+        assert_eq!(probe, CoreProbe::Occupied);
+        assert!(
+            elapsed < Duration::from_secs(10),
+            "probe took {elapsed:?} — the size cap did not stop the read"
         );
         let _ = server.join();
     }
