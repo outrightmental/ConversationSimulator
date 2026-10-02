@@ -13,16 +13,18 @@
 Practice interviews, negotiations, language, and difficult social situations with AI
 NPCs — running **100% on your computer**, no account, no cloud, no telemetry.
 
-![Conversation Simulator demo — a mid-session conversation with NPC Victor Hargrove showing the player answering a technical question, the NPC challenging the trade-off, three colour-coded NPC state meters (credibility, composure, pressure_level) below the transcript, and an amber banner announcing "Scenario event: grudging_respect triggered · Turn 4".](docs/assets/demo-placeholder.svg)
-<!-- Placeholder SVG — replace with an animated GIF or short video at Milestone 1 launch.
-     Recording guide and replacement checklist: docs/screenshots.md -->
+![One turn of "Making the Case" in Conversation Simulator: the player types a reply into the composer, the local model answers as the NPC, and the NPC state meters below the transcript — trust, patience, rapport, openness, objective_progress, conviction, preparation_score — update as the turn resolves.](docs/assets/demo.gif)
+<!-- Captured from a real session on a local Qwen3 4B model. Capture environment and the
+     command that remakes every asset here: docs/screenshots.md -->
 
 ```
-Scenario: The Executive Gauntlet  ·  Job Interview Basics pack
-You:   "I led the data platform redesign — cut nightly processing from 4 hours to 40 minutes."
-NPC:   "That's a headline number. Walk me through the specific trade-off you made
-        to get there. What did you give up, and was it the right call in hindsight?"
-State:  credibility +12  ·  pressure_level +1  ·  composure 65
+Scenario: Making the Case  ·  Job Interview Basics pack
+You:   "The honest answer is that I have never run a multi-quarter roadmap against a P&L.
+        If you hired me I would want a month watching how you do planning before I owned it."
+NPC:   "That's thoughtful. You're not pretending to be more qualified than you are. Have you
+        ever worked on a project that required strategic planning beyond your control?"
+Flags:  honesty_demonstrated, specific_evidence_provided
+State:  trust 95  ·  openness 80  ·  conviction 35  ·  preparation_score 55
 ```
 
 ---
@@ -48,16 +50,17 @@ the authoring wall those earlier systems hit.
 
 | Screen | What you see |
 |--------|-------------|
-| [![Home screen showing system-ready status panel with green badges for Local runtime, LLM (Qwen3 8B), STT, TTS, and 4 packs installed.](docs/assets/screenshots/01-home.svg)](docs/assets/screenshots/01-home.svg) | **Home** — all services ready |
-| [![Scenario Library with the Job Interview Basics pack expanded, showing The Executive Gauntlet card with difficulty, rating, and tag chips alongside a Launch button.](docs/assets/screenshots/02-scenario-library.svg)](docs/assets/screenshots/02-scenario-library.svg) | **Scenario Library** — browse and filter packs |
-| [![Conversation screen mid-session with NPC Victor Hargrove. Amber banner announces "grudging_respect triggered". Transcript shows player and NPC turns. Three NPC state meters below show credibility, composure, and pressure_level as colour-coded bars.](docs/assets/screenshots/03-conversation.svg)](docs/assets/screenshots/03-conversation.svg) | **Conversation** — live state meters and events |
-| [![Session Debrief showing score 74/100 with green Success badge. Scorecard has three labelled bars. Strengths listed in green; Key moments shows two turning points.](docs/assets/screenshots/04-debrief.svg)](docs/assets/screenshots/04-debrief.svg) | **Debrief** — score, strengths, turning points |
-| [![Creator Workbench three-panel view: pack list on left, file tree in centre, YAML editor on right with my_scenario.yaml open and a green validation banner.](docs/assets/screenshots/05-creator-workbench.svg)](docs/assets/screenshots/05-creator-workbench.svg) | **Creator Workbench** — YAML scenario editor |
-| [![Model Manager showing an installed Qwen3 8B card with a green Loaded badge, a Qwen3 14B download in progress at 3.2 of 9.0 GB, and a GGUF file-path field at the bottom.](docs/assets/screenshots/06-model-manager.svg)](docs/assets/screenshots/06-model-manager.svg) | **Model Manager** — install and manage local models |
+| [![Conversation Simulator home screen. Links run down the page — Start a scenario, Create / edit a scenario, Install model, Import pack, Creator workbench guide, Read docs — above an empty "Your training" card and a three-scenario training plan. The Status panel reports Local runtime: Ready, LLM: Qwen3 4B Instruct Q4_K_M, STT and TTS: Not installed, Network required to play: No, and Packs: 6 installed.](docs/assets/screenshots/01-home.png)](docs/assets/screenshots/01-home.png) | **Home** — what is running, and that none of it needs the network |
+| [![Scenario Library filtered by the search word "interview": four scenarios in one pack. The Job Interview Basics pack lists Making the Case, The Behavioral Interview, The Executive Gauntlet and The Foreman's Interview. Each card carries a summary, chips for content rating, player role, length, language, difficulty and tags, and a blue Launch button.](docs/assets/screenshots/02-scenario-library.png)](docs/assets/screenshots/02-scenario-library.png) | **Scenario Library** — search and filter installed packs |
+| [![The conversation screen mid-session in "Making the Case". The NPC panel reads Impressed and Listening beside a scene card describing the stretch-hire interview, and an amber advisory notes that the first token took 9.6 seconds on this machine. The transcript alternates the player's turns in violet with the NPC's replies in green, each NPC turn tagged with event flags such as honesty_demonstrated. Below the transcript, NPC state variable meters read trust 95, patience 75, rapport 50, openness 80, objective_progress 0, conviction 35 and preparation_score 55.](docs/assets/screenshots/03-conversation.png)](docs/assets/screenshots/03-conversation.png) | **Conversation** — live transcript, event flags, state meters |
+| [![Session Debrief scoring the session 53 out of 100 with a "Player Exit" outcome badge and four turns. A written summary is followed by a six-dimension scorecard, then a Telemetry panel showing talk ratio, words per turn, question counts, response latency and a sparkline for each state meter. Strengths are listed in green and areas for improvement in amber, each citing the turn it came from.](docs/assets/screenshots/04-debrief.png)](docs/assets/screenshots/04-debrief.png) | **Debrief** — score, rubric scorecard, what to fix |
+| [![Creator Workbench. A green "Pack is valid" banner sits above a three-column layout: the pack list with six official packs and one editable local-dev copy of Job Interview Basics, that copy's file tree with scenarios/stretch_role_interview.yaml selected, and a YAML editor showing the file with YAML and Form editor toggles, a Save button and an Export .zip button.](docs/assets/screenshots/05-creator-workbench.png)](docs/assets/screenshots/05-creator-workbench.png) | **Creator Workbench** — edit packs in YAML, validate as you go |
+| [![Model Manager. "Set up your model" offers three cards: install the recommended Qwen3 4B Instruct Q4_K_M (2.5 GB, Apache-2.0, requires 4 GB VRAM, tagged Fast with an expected 0.8 to 2.4 second time to first token), use a model already installed in local Ollama, or point the app at a GGUF file already on the machine.](docs/assets/screenshots/06-model-manager.png)](docs/assets/screenshots/06-model-manager.png) | **Model Manager** — install one, or bring your own |
 
-> Screenshots are SVG placeholders matching the current UI. They will be replaced with real
-> recordings at Milestone 1 launch. See [docs/screenshots.md](docs/screenshots.md) for the
-> replacement checklist and alt-text for each image.
+> Real captures from one playthrough on a local Qwen3 4B model — including the amber
+> "response is slow" advisory a 2021 laptop earns, and voice runtimes left uninstalled.
+> [docs/screenshots.md](docs/screenshots.md) records the capture environment, the alt
+> text for every image, and the one command that remakes them.
 
 ---
 

@@ -75,7 +75,7 @@ criteria.
 
 ### Remaining polish — before Milestone 1 tag
 
-- [ ] Real UI screenshots (replace SVG placeholders in README)
+- [x] Real UI screenshots and demo recording, captured from a local-model playthrough
 - [ ] Desktop app with bundled backend (Tauri sidecar for `convsim-core`)
 - [ ] Automated real-model CI smoke test
 

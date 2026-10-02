@@ -56,9 +56,9 @@ In the top navigation, click **Workbench**, or navigate directly to
 `http://127.0.0.1:7354/workbench`. The screen's heading reads
 **Creator Workbench**.
 
-[![Creator Workbench — three-panel view showing the pack list on the left,
-file tree below it, and the YAML editor on the right with a green validation
-banner.](assets/screenshots/05-creator-workbench.svg)](assets/screenshots/05-creator-workbench.svg)
+[![Creator Workbench — a green "Pack is valid" banner above the pack list, the
+selected pack's file tree, and the YAML editor open on a scenario file with Save
+and Export .zip buttons.](assets/screenshots/05-creator-workbench.png)](assets/screenshots/05-creator-workbench.png)
 
 The screen has three areas:
 
