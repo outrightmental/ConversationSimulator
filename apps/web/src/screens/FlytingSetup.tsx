@@ -189,7 +189,7 @@ export default function FlytingSetup() {
   if (error || !scenario) {
     return (
       <div style={{ padding: '1.5rem' }}>
-        <ApiErrorView error={error ?? { kind: 'unknown', message: 'Scenario unavailable' }} context="FlytingSetup" />
+        <ApiErrorView error={error ?? { kind: 'schema-mismatch', message: 'Scenario unavailable' }} context="FlytingSetup" />
         <Link to="/library" style={{ color: '#93c5fd', fontSize: '0.85rem' }}>
           ← Back to the library
         </Link>
