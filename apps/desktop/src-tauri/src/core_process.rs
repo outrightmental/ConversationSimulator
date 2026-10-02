@@ -319,8 +319,17 @@ mod tests {
             }
         }
         let text = String::from_utf8_lossy(&line);
-        text.trim()
-            .parse()
+        // Strip a BOM explicitly rather than filtering to digits: a stream that
+        // arrived in an unexpected encoding must fail here, not get salvaged
+        // into some *other* valid-looking pid that the assertions would then
+        // happily check for being gone.
+        let text = text.trim().trim_start_matches('\u{feff}');
+        assert!(
+            !text.is_empty(),
+            "the test child printed no pid before closing stdout, so it never \
+             started the sidecar this test is about"
+        );
+        text.parse()
             .unwrap_or_else(|e| panic!("sidecar pid {text:?} is not a number: {e}"))
     }
 
