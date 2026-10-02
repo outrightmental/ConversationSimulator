@@ -55,6 +55,9 @@ and transcript line is fictional scenario content or model output responding to 
 # 2. Playwright + Chromium (not a repo dependency — only needed to re-capture)
 npm install playwright && npx playwright install chromium
 
+# 2b. ffmpeg, for the hero recording (skip it only with --skip-hero)
+brew install ffmpeg
+
 # 3. drive a real playthrough and write every asset
 NODE_PATH="$PWD/node_modules" node scripts/capture-screenshots.mjs
 ```
@@ -68,8 +71,14 @@ as gameplay.
 
 Useful flags: `--skip-hero` (screenshots only, no recording) and `--only=03,06` (still
 plays the session, but writes only the named outputs — a screen number, or `hero` for the
-recording; anything left off the list keeps the file already committed). The scenario,
-player turns and seed are constants at the top of the file.
+recording; anything left off the list keeps the file already committed). A name the
+script does not write is rejected before the playthrough starts, so a typo cannot cost a
+run. The scenario, player turns and seed are constants at the top of the file.
+
+A run that loses a screen keeps going — the other outputs are worth more than the one
+that failed — but it **exits non-zero** and names what it missed. Those files still hold
+the previous capture, so check the exit status before committing: a partial run is
+otherwise indistinguishable from a full one.
 
 ---
 

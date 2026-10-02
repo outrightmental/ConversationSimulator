@@ -32,8 +32,8 @@
  *      Playwright is deliberately NOT a repo dependency — it is needed only
  *      when re-capturing.  Install it anywhere and point NODE_PATH at it:
  *        NODE_PATH=/path/to/node_modules node scripts/capture-screenshots.mjs
- *   4. ffmpeg on PATH (hero GIF/MP4 encoding).  Without it the screenshots
- *      are still written and the recording step is skipped.
+ *   4. ffmpeg on PATH (hero GIF/MP4 encoding).  Checked before the playthrough
+ *      starts; pass --skip-hero to capture the screenshots without it.
  *
  * Usage
  *   node scripts/capture-screenshots.mjs [--skip-hero] [--only=03,06]
@@ -44,6 +44,9 @@
  *                come out of it). Anything left off the list keeps the file
  *                already on disk: `--only=06` re-shoots the Model Manager and
  *                leaves demo.gif alone; `--only=03,hero` redoes both.
+ *
+ * Exit status is non-zero if any requested output was not written, so a run
+ * that lost a screen cannot be mistaken for one that refreshed the whole set.
  *
  * Environment
  *   CONVSIM_UI_URL      default http://127.0.0.1:7354
@@ -105,6 +108,11 @@ const PLAYER_TURNS = [
   "Because the gap I cannot close with effort is pattern recognition from a dozen launches, and I would rather be the candidate who already knows which mistakes they make. I shipped the wrong onboarding twice before I learned to instrument the first week. That is exactly why I would start with your activation data instead of a roadmap.",
 ]
 
+// Every output this script can write. `--only` is checked against this list:
+// a typo like `--only=3` would otherwise match nothing, play a full real-model
+// session, write not one file, and still report success.
+const OUTPUT_IDS = ['01', '02', '03', '04', '05', '06', 'hero']
+
 const args = process.argv.slice(2)
 const SKIP_HERO = args.includes('--skip-hero')
 const ONLY = (args.find((a) => a.startsWith('--only=')) ?? '').replace('--only=', '')
@@ -122,6 +130,17 @@ function log(...m) {
 function fail(message) {
   console.error('\nERROR: ' + message + '\n')
   process.exit(1)
+}
+
+if (only) {
+  const unknown = [...only].filter((id) => !OUTPUT_IDS.includes(id))
+  if (unknown.length) {
+    fail(
+      `--only names ${unknown.map((id) => `'${id}'`).join(', ')}, which is not an output ` +
+        'this script writes.\n' +
+        `       Valid values: ${OUTPUT_IDS.join(', ')} (screen numbers are zero-padded).`,
+    )
+  }
 }
 
 function loadPlaywright() {
@@ -177,6 +196,16 @@ async function preflight() {
   } catch (err) {
     fail(`the UI is not reachable at ${UI_URL} (${err.message}). Start ./scripts/dev.sh`)
   }
+  // Checked here rather than at encode time: the recording is only usable
+  // while the browser context holds it, so discovering a missing encoder after
+  // the playthrough would throw away the run that produced the hero.
+  if (CAPTURE_HERO && !haveFfmpeg()) {
+    fail(
+      'ffmpeg is not on PATH, so the hero recording could not be encoded.\n' +
+        '       Install it (brew install ffmpeg), or pass --skip-hero to capture\n' +
+        '       the screenshots without it.',
+    )
+  }
   log(`runtime ${runtimeId} ready — model: ${health.runtime.llm_model_name}`)
   return health
 }
@@ -198,6 +227,12 @@ function haveFfmpeg() {
   return dirs.some((d) => d && existsSync(path.join(d, 'ffmpeg')))
 }
 
+// Outputs that were asked for but not written. Reported at the end and
+// reflected in the exit status: a skipped screen leaves the previous capture
+// on disk, which looks exactly like a successful re-capture until someone
+// notices the committed PNG still shows last month's UI.
+const missed = []
+
 /**
  * Run one screen's capture. A failure here is logged and skipped rather than
  * thrown: losing the Model Manager shot must not also throw away a four-turn
@@ -209,6 +244,7 @@ async function step(id, fn) {
     await fn()
   } catch (err) {
     log(`WARNING: screen ${id} failed — ${err.message.split('\n')[0]}`)
+    missed.push(id)
   }
 }
 
@@ -459,19 +495,26 @@ async function main() {
   }
 
   // ── Hero recording ──────────────────────────────────────────────────────
-  if (CAPTURE_HERO && marks.heroStart != null && marks.heroEnd != null) {
-    const name = (await readdir(videoDir)).find((f) => f.endsWith('.webm'))
-    if (!name) {
-      log('WARNING: no video file produced; skipping the hero recording')
-    } else if (!haveFfmpeg()) {
-      log('WARNING: ffmpeg not found on PATH; skipping the hero recording')
-    } else {
+  if (CAPTURE_HERO) {
+    await step('hero', async () => {
+      if (marks.heroStart == null || marks.heroEnd == null) {
+        throw new Error('the hero turn was never marked — the playthrough did not reach it')
+      }
+      const name = (await readdir(videoDir)).find((f) => f.endsWith('.webm'))
+      if (!name) throw new Error('no video file was produced by the browser context')
       await encodeHero(path.join(videoDir, name), marks)
-    }
+    })
   }
 
-  log('done')
   await rm(videoDir, { recursive: true, force: true }).catch(() => {})
+
+  if (missed.length) {
+    // Exit non-zero so a partial run is not committed as a full re-capture.
+    log(`FAILED: ${missed.join(', ')} were not written — the files already on disk are unchanged`)
+    process.exitCode = 1
+    return
+  }
+  log('done')
 }
 
 /**
