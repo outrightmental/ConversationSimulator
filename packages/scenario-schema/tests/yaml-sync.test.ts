@@ -246,6 +246,41 @@ describe('mergeNpcToYaml', () => {
     expect(result.data.boundaries.length).toBeGreaterThan(0);
   });
 
+  it('writes an attack surface the form added', () => {
+    const newYaml = mergeNpcToYaml(
+      {
+        attack_surface: [
+          { id: 'hypocrisy', brief: 'Preaches temperance; owns two gin palaces.', visibility: 'visible' },
+        ],
+      },
+      VALID_NPC_YAML,
+    );
+    const result = parseNpcYaml(newYaml);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.attack_surface?.[0]?.id).toBe('hypocrisy');
+    // The rest of the file is untouched.
+    expect(result.data.boundaries.length).toBeGreaterThan(0);
+  });
+
+  it('drops the key when the last attack-surface trait is removed', () => {
+    const withSurface = mergeNpcToYaml(
+      { attack_surface: [{ id: 'vanity', brief: 'Convinced he is Adonis.' }] },
+      VALID_NPC_YAML,
+    );
+    expect(withSurface).toContain('attack_surface');
+
+    // An empty list is how the form says "no longer a flyting target"; writing
+    // `attack_surface: []` would fail schemas/npc.schema.json (minItems: 1).
+    const emptied = mergeNpcToYaml({ attack_surface: [] }, withSurface);
+    expect(emptied).not.toContain('attack_surface');
+    const result = parseNpcYaml(emptied);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.attack_surface).toBeUndefined();
+    expect(result.data.name).toBe('Jordan Lee');
+  });
+
   it('updates voice.tone', () => {
     const newYaml = mergeNpcToYaml(
       { voice: { tone: 'casual', pace: 'moderate', formality: 'relaxed' } },

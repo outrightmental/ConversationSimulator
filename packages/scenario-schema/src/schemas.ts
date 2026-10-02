@@ -165,6 +165,40 @@ export const NpcVoiceSchema = z
   })
   .passthrough();
 
+/**
+ * One trait on an NPC's attack surface — what about this character is fair
+ * game. Only flyting scenarios read it (schemas/npc.schema.json is the
+ * canonical contract); a conversation scenario ignores it. The per-volley
+ * judge may only claim a hook whose `id` appears here, which is what makes
+ * "the insult was topical" checkable rather than a matter of the model's mood.
+ */
+export const AttackSurfaceTraitSchema = z
+  .object({
+    id: z
+      .string()
+      .regex(/^[a-z0-9_]+$/, 'Trait ID must be lowercase letters, digits and underscores')
+      .max(40, 'Trait ID must be 40 characters or fewer'),
+    brief: z
+      .string()
+      .min(1, 'A brief is required — it is what a player aims at')
+      .max(300, 'Brief must be 300 characters or fewer'),
+    visibility: z
+      .enum(['visible', 'discoverable'], {
+        errorMap: () => ({ message: 'Visibility must be visible or discoverable' }),
+      })
+      .optional(),
+    themes: z
+      .array(
+        z
+          .string()
+          .regex(/^[a-z0-9_]+$/, 'Theme must be lowercase letters, digits and underscores')
+          .max(40, 'Theme must be 40 characters or fewer'),
+      )
+      .max(6, 'At most 6 themes allowed')
+      .optional(),
+  })
+  .passthrough();
+
 export const NpcSchema = z
   .object({
     schema_version: schemaVersion,
@@ -186,6 +220,10 @@ export const NpcSchema = z
     hidden_agenda: z
       .string()
       .max(1000, 'Hidden agenda must be 1000 characters or fewer')
+      .optional(),
+    attack_surface: z
+      .array(AttackSurfaceTraitSchema)
+      .max(8, 'At most 8 attack-surface traits allowed')
       .optional(),
   })
   .passthrough();

@@ -77,6 +77,16 @@ export interface NpcVoice {
   [key: string]: unknown;
 }
 
+/** One roastable trait, read only by flyting scenarios. */
+export interface AttackSurfaceTrait {
+  id: string;
+  brief: string;
+  /** Omitted means `visible`, matching schemas/npc.schema.json's default. */
+  visibility?: 'visible' | 'discoverable';
+  themes?: string[];
+  [key: string]: unknown;
+}
+
 export interface NpcFile {
   schema_version: '1.0';
   id: string;
@@ -86,6 +96,7 @@ export interface NpcFile {
   voice: NpcVoice;
   boundaries: string[];
   hidden_agenda?: string;
+  attack_surface?: AttackSurfaceTrait[];
   [key: string]: unknown;
 }
 

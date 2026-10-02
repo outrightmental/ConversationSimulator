@@ -1,5 +1,5 @@
 import React from 'react';
-import type { FieldError } from '@convsim/scenario-schema';
+import type { AttackSurfaceTrait, FieldError } from '@convsim/scenario-schema';
 import { FieldWrapper, errorFor, str } from './shared.js';
 
 interface NpcFormProps {
@@ -12,7 +12,8 @@ interface NpcFormProps {
  * Form panel for editing an NPC definition YAML file.
  *
  * Covers: name, role, persona (background, speaking style, personality traits),
- * voice (tone, pace, formality), boundaries, and hidden agenda.
+ * voice (tone, pace, formality), boundaries, hidden agenda, and — for targets of
+ * flyting scenarios — the attack surface.
  */
 export function NpcForm({ values, errors, onChange }: NpcFormProps) {
   const uid = React.useId();
@@ -29,6 +30,9 @@ export function NpcForm({ values, errors, onChange }: NpcFormProps) {
     : [];
   const traits = Array.isArray(persona['personality_traits'])
     ? (persona['personality_traits'] as string[])
+    : [];
+  const attackSurface = Array.isArray(values['attack_surface'])
+    ? (values['attack_surface'] as AttackSurfaceTrait[])
     : [];
 
   function handlePersonaChange(field: string, value: unknown) {
@@ -49,6 +53,24 @@ export function NpcForm({ values, errors, onChange }: NpcFormProps) {
   }
   function handleTraitRemove(i: number) {
     handlePersonaChange('personality_traits', traits.filter((_, idx) => idx !== i));
+  }
+
+  function handleSurfaceAdd() {
+    onChange('attack_surface', [
+      ...attackSurface,
+      { id: '', brief: '', visibility: 'visible' },
+    ]);
+  }
+  function handleSurfaceChange(i: number, field: keyof AttackSurfaceTrait, value: unknown) {
+    onChange(
+      'attack_surface',
+      attackSurface.map((t, idx) => (idx === i ? { ...t, [field]: value } : t)),
+    );
+  }
+  function handleSurfaceRemove(i: number) {
+    // Emptying the list removes the key entirely (see mergeNpcToYaml): a
+    // character with no surface is simply not a flyting target.
+    onChange('attack_surface', attackSurface.filter((_, idx) => idx !== i));
   }
 
   function handleBoundaryAdd() {
@@ -297,6 +319,88 @@ export function NpcForm({ values, errors, onChange }: NpcFormProps) {
           placeholder="Is particularly impressed by candidates who ask about team culture..."
         />
       </FieldWrapper>
+
+      <fieldset className="form-fieldset">
+        <legend className="form-fieldset__legend">Attack surface</legend>
+        <p className="form-field__hint">
+          What about this character is fair game. Only flyting scenarios read this;
+          a conversation NPC leaves it empty. Each trait is what a verified hook
+          names, so give it a stable id and a brief specific enough to aim at —
+          generic abuse scores nothing.
+        </p>
+        {errorFor(errors, 'attack_surface') && (
+          <p className="form-field__error" role="alert">
+            {errorFor(errors, 'attack_surface')}
+          </p>
+        )}
+        <ul className="form-list" aria-label="Attack surface list">
+          {attackSurface.map((trait, i) => (
+            <li key={i} className="form-list__item">
+              <FieldWrapper
+                id={`${uid}-surface-id-${i}`}
+                label={`Trait ${i + 1} id`}
+                hint="Lowercase and underscores. Judge hooks and calibration fixtures reference this."
+                error={errorFor(errors, `attack_surface.${i}.id`)}
+              >
+                <input
+                  id={`${uid}-surface-id-${i}`}
+                  type="text"
+                  className="form-field__input"
+                  value={str(trait.id)}
+                  onChange={(e) => handleSurfaceChange(i, 'id', e.target.value)}
+                  maxLength={40}
+                  placeholder="hypocrisy"
+                />
+              </FieldWrapper>
+              <FieldWrapper
+                id={`${uid}-surface-brief-${i}`}
+                label="What is fair game"
+                hint="One or two sentences. Shown to the player when visible, and to the judge always."
+                error={errorFor(errors, `attack_surface.${i}.brief`)}
+              >
+                <textarea
+                  id={`${uid}-surface-brief-${i}`}
+                  className="form-field__textarea"
+                  value={str(trait.brief)}
+                  onChange={(e) => handleSurfaceChange(i, 'brief', e.target.value)}
+                  rows={2}
+                  maxLength={300}
+                  placeholder="Preaches temperance at chapel; owns two gin palaces through a cousin."
+                />
+              </FieldWrapper>
+              <FieldWrapper
+                id={`${uid}-surface-visibility-${i}`}
+                label="Visibility"
+                hint="Discoverable traits are not named in the brief and are worth double when first struck."
+                error={errorFor(errors, `attack_surface.${i}.visibility`)}
+              >
+                <select
+                  id={`${uid}-surface-visibility-${i}`}
+                  className="form-field__select"
+                  value={str(trait.visibility) || 'visible'}
+                  onChange={(e) => handleSurfaceChange(i, 'visibility', e.target.value)}
+                >
+                  <option value="visible">Visible — in the player brief from the start</option>
+                  <option value="discoverable">
+                    Discoverable — revealed when first struck, worth double
+                  </option>
+                </select>
+              </FieldWrapper>
+              <button
+                type="button"
+                className="form-list__remove-btn"
+                onClick={() => handleSurfaceRemove(i)}
+                aria-label={`Remove attack surface trait ${i + 1}`}
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+        <button type="button" className="form-list__add-btn" onClick={handleSurfaceAdd}>
+          Add attack surface trait
+        </button>
+      </fieldset>
     </div>
   );
 }
