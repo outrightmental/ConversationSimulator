@@ -86,6 +86,7 @@ import argparse
 import hashlib
 import json
 import os
+import shutil
 import statistics
 import subprocess
 import sys
@@ -880,6 +881,15 @@ def run_smoke(
     llama_stderr_tail: deque = deque(maxlen=200)
     core_stderr_tail: deque = deque(maxlen=200)
 
+    # convsim-core's throwaway data directory (SQLite db, WAL, logs).  Created
+    # and removed by hand rather than with a `with TemporaryDirectory(...)`
+    # inside the try: that block exits *before* the finally below, so the
+    # directory would be deleted while convsim-core is still writing to it, and
+    # an rmtree that lost that race would surface as an unexpected-error
+    # `pipeline` verdict on an otherwise green run.  The finally stops both
+    # children first, then removes the tree with errors ignored — cleanup must
+    # never overturn a verdict.
+    data_dir = Path(tempfile.mkdtemp(prefix="convsim-smoke-"))
     try:
         # ── checksum ──────────────────────────────────────────────────────────
         clock.enter("checksum")
@@ -897,201 +907,198 @@ def run_smoke(
                 "No --model-sha256 given: checksum drift was not checked before the run"
             )
 
-        with tempfile.TemporaryDirectory(prefix="convsim-smoke-") as tmp:
-            data_dir = Path(tmp)
+        # ── runtime ───────────────────────────────────────────────────────────
+        clock.enter("runtime_start")
+        print(f"\n[smoke] Starting llama-server on port {LLAMA_SERVER_PORT} "
+              f"with model: {model_path.name}")
+        llama_proc = _start_llama_server(model_path, LLAMA_SERVER_PORT)
+        threading.Thread(target=_drain, args=(llama_proc.stderr, llama_stderr_tail), daemon=True).start()
+        threading.Thread(target=_drain, args=(llama_proc.stdout,), daemon=True).start()
 
-            # ── runtime ───────────────────────────────────────────────────────
-            clock.enter("runtime_start")
-            print(f"\n[smoke] Starting llama-server on port {LLAMA_SERVER_PORT} "
-                  f"with model: {model_path.name}")
-            llama_proc = _start_llama_server(model_path, LLAMA_SERVER_PORT)
-            threading.Thread(target=_drain, args=(llama_proc.stderr, llama_stderr_tail), daemon=True).start()
-            threading.Thread(target=_drain, args=(llama_proc.stdout,), daemon=True).start()
+        print("[smoke] Waiting for llama-server (model load)…")
+        _wait_for_http(
+            f"http://127.0.0.1:{LLAMA_SERVER_PORT}/v1/models",
+            timeout_s=clock.cap(300.0),
+            label="llama-server",
+            proc=llama_proc,
+        )
+        print("[smoke] llama-server ready.")
 
-            print("[smoke] Waiting for llama-server (model load)…")
-            _wait_for_http(
-                f"http://127.0.0.1:{LLAMA_SERVER_PORT}/v1/models",
-                timeout_s=clock.cap(300.0),
-                label="llama-server",
-                proc=llama_proc,
+        print(f"[smoke] Starting convsim-core on port {CORE_PORT}…")
+        core_proc = _start_core(data_dir, CORE_PORT, LLAMA_SERVER_PORT, llama_timeout_s)
+        threading.Thread(target=_drain, args=(core_proc.stderr, core_stderr_tail), daemon=True).start()
+        threading.Thread(target=_drain, args=(core_proc.stdout,), daemon=True).start()
+
+        base = f"http://127.0.0.1:{CORE_PORT}/api"
+        _wait_for_http(
+            f"{base}/health",
+            timeout_s=clock.cap(120.0),
+            label="convsim-core",
+            proc=core_proc,
+        )
+
+        # Sanity-check that the real runtime is wired (not the fake default).
+        health = _request_json(f"{base}/health", timeout=clock.cap(30.0))
+        runtime_id = health.get("llm_runtime", {}).get("runtime_id")
+        results["runtime_id"] = runtime_id
+        print(f"[smoke] convsim-core ready (runtime_id={runtime_id}).")
+        if runtime_id != "llama_cpp":
+            raise SmokeFailure(
+                FailureClass.PIPELINE,
+                f"Expected runtime_id 'llama_cpp' but core reports {runtime_id!r}. "
+                "Check CONVSIM_RUNTIME_ID wiring — the smoke must not run on a fake runtime.",
             )
-            print("[smoke] llama-server ready.")
 
-            print(f"[smoke] Starting convsim-core on port {CORE_PORT}…")
-            core_proc = _start_core(data_dir, CORE_PORT, LLAMA_SERVER_PORT, llama_timeout_s)
-            threading.Thread(target=_drain, args=(core_proc.stderr, core_stderr_tail), daemon=True).start()
-            threading.Thread(target=_drain, args=(core_proc.stdout,), daemon=True).start()
+        # ── conversation ──────────────────────────────────────────────────────
+        clock.enter("conversation")
+        session = _request_json(f"{base}/sessions", payload={
+            "scenario_id": SCENARIO_ID,
+            "difficulty": "standard",
+            "player_role_name": "Smoke Tester",
+            "language": "en",
+            "input_mode": "text-only",
+            "tts_enabled": False,
+            "show_state_meters": False,
+            "save_transcript": False,  # no transcript file written during smoke runs
+            "seed": 42,
+        }, timeout=clock.cap(30.0))
+        session_id = session["session_id"]
+        results["session_id"] = session_id
+        print(f"[smoke] Session {session_id} created. Starting session…")
 
-            base = f"http://127.0.0.1:{CORE_PORT}/api"
-            _wait_for_http(
-                f"{base}/health",
-                timeout_s=clock.cap(120.0),
-                label="convsim-core",
-                proc=core_proc,
-            )
+        # /start replays the scenario's authored opening line — no model
+        # call — so it is measured for the documented session-start metric but
+        # needs no inference-sized timeout.
+        t0 = time.monotonic()
+        start = _request_json(
+            f"{base}/sessions/{session_id}/start",
+            payload={},
+            timeout=clock.cap(60.0),
+        )
+        session_start_ms = (time.monotonic() - t0) * 1000
+        opening = _npc_turn_content(start.get("events", []))
+        print(f"[smoke] NPC opening (authored) in {session_start_ms:.0f} ms: "
+              f"{_excerpt(opening)!r}")
+        results["measured_ms"]["session_start_ms"] = round(session_start_ms)
+        results["turns"].append({
+            "label": "npc_opening",
+            "turn_number": 0,
+            "model_generated": False,
+            "latency_ms": round(session_start_ms),
+            "npc_excerpt": _excerpt(opening),
+        })
 
-            # Sanity-check that the real runtime is wired (not the fake default).
-            health = _request_json(f"{base}/health", timeout=clock.cap(30.0))
-            runtime_id = health.get("llm_runtime", {}).get("runtime_id")
-            results["runtime_id"] = runtime_id
-            print(f"[smoke] convsim-core ready (runtime_id={runtime_id}).")
-            if runtime_id != "llama_cpp":
-                raise SmokeFailure(
-                    FailureClass.PIPELINE,
-                    f"Expected runtime_id 'llama_cpp' but core reports {runtime_id!r}. "
-                    "Check CONVSIM_RUNTIME_ID wiring — the smoke must not run on a fake runtime.",
-                )
-
-            # ── conversation ──────────────────────────────────────────────────
-            clock.enter("conversation")
-            session = _request_json(f"{base}/sessions", payload={
-                "scenario_id": SCENARIO_ID,
-                "difficulty": "standard",
-                "player_role_name": "Smoke Tester",
-                "language": "en",
-                "input_mode": "text-only",
-                "tts_enabled": False,
-                "show_state_meters": False,
-                "save_transcript": False,  # no transcript file written during smoke runs
-                "seed": 42,
-            }, timeout=clock.cap(30.0))
-            session_id = session["session_id"]
-            results["session_id"] = session_id
-            print(f"[smoke] Session {session_id} created. Starting session…")
-
-            # /start replays the scenario's authored opening line — no model
-            # call — so it is measured for the documented session-start metric but
-            # needs no inference-sized timeout.
+        turn_latencies: List[float] = []
+        ended_by_scenario = False
+        for i, player_text in enumerate(SCRIPTED_PLAYER_TURNS, start=1):
+            clock.check()
+            print(f"[smoke] Player turn {i}/{len(SCRIPTED_PLAYER_TURNS)}…")
             t0 = time.monotonic()
-            start = _request_json(
-                f"{base}/sessions/{session_id}/start",
-                payload={},
-                timeout=clock.cap(60.0),
-            )
-            session_start_ms = (time.monotonic() - t0) * 1000
-            opening = _npc_turn_content(start.get("events", []))
-            print(f"[smoke] NPC opening (authored) in {session_start_ms:.0f} ms: "
-                  f"{_excerpt(opening)!r}")
-            results["measured_ms"]["session_start_ms"] = round(session_start_ms)
-            results["turns"].append({
-                "label": "npc_opening",
-                "turn_number": 0,
-                "model_generated": False,
-                "latency_ms": round(session_start_ms),
-                "npc_excerpt": _excerpt(opening),
-            })
-
-            turn_latencies: List[float] = []
-            ended_by_scenario = False
-            for i, player_text in enumerate(SCRIPTED_PLAYER_TURNS, start=1):
-                clock.check()
-                print(f"[smoke] Player turn {i}/{len(SCRIPTED_PLAYER_TURNS)}…")
-                t0 = time.monotonic()
-                turn = _request_json(
-                    f"{base}/sessions/{session_id}/turn",
-                    payload={"content": player_text},
-                    timeout=clock.cap(request_timeout_s),
-                )
-                latency_ms = (time.monotonic() - t0) * 1000
-                turn_latencies.append(latency_ms)
-                npc_text = _npc_turn_content(turn.get("events", []))
-                print(f"  {latency_ms:.0f} ms | NPC: {_excerpt(npc_text)!r}")
-                results["turns"].append({
-                    "label": f"player_turn_{i}",
-                    "turn_number": i,
-                    "model_generated": True,
-                    "latency_ms": round(latency_ms),
-                    "npc_excerpt": _excerpt(npc_text),
-                    "ending_type": turn.get("ending_type"),
-                })
-                if turn.get("ending_type"):
-                    # The turn pipeline already moved the session to 'Ended', so
-                    # POST /end would 409 — see end_session() in the sessions
-                    # router.  Record that and skip the explicit end below.
-                    ended_by_scenario = True
-                    print(f"[smoke] Scenario ended early (ending_type={turn['ending_type']}); "
-                          "stopping the scripted turns.")
-                    break
-
-            # The median is the headline full-response figure: a single unlucky
-            # turn (runner steal, a long NPC answer) must not flap the nightly,
-            # while a real regression moves every turn and so moves the median.
-            results["measured_ms"]["full_response_ms"] = round(statistics.median(turn_latencies))
-            results["measured_ms"]["full_response_max_ms"] = round(max(turn_latencies))
-
-            # Per-turn parse flags tell us whether the model's structured output
-            # was accepted or quietly replaced by the safe fallback.
-            flags = _debug_flags_by_turn(base, session_id, clock.cap(30.0))
-            for turn in results["turns"]:
-                flag = flags.get(turn["turn_number"])
-                if flag:
-                    turn["used_fallback"] = bool(flag.get("used_fallback"))
-                    turn["used_native_structured_output"] = bool(
-                        flag.get("used_native_structured_output")
-                    )
-
-            # ── debrief ───────────────────────────────────────────────────────
-            clock.enter("debrief")
-            if ended_by_scenario:
-                print("[smoke] Session already Ended by the scenario; skipping /end.")
-            else:
-                print("[smoke] Ending session…")
-                _request_json(
-                    f"{base}/sessions/{session_id}/end", payload={}, timeout=clock.cap(30.0)
-                )
-            print("[smoke] Generating debrief (real model call)…")
-            t0 = time.monotonic()
-            debrief = _request_json(
-                f"{base}/sessions/{session_id}/debrief",
-                payload={},
+            turn = _request_json(
+                f"{base}/sessions/{session_id}/turn",
+                payload={"content": player_text},
                 timeout=clock.cap(request_timeout_s),
             )
-            debrief_ms = (time.monotonic() - t0) * 1000
-            results["measured_ms"]["debrief_ms"] = round(debrief_ms)
-            results["debrief"] = {
-                "outcome": debrief.get("outcome"),
-                "total_turns": debrief.get("total_turns"),
-                "scores": debrief.get("scores"),
-                "overall_score": debrief.get("overall_score"),
-                "summary_excerpt": _excerpt(debrief.get("summary") or ""),
-                "strength_count": len(debrief.get("strengths") or []),
-                "improvement_count": len(debrief.get("improvements") or []),
-                "turning_point_count": len(debrief.get("turning_points") or []),
-                "used_fallback": bool(debrief.get("used_fallback")),
-                "latency_ms": round(debrief_ms),
-            }
-            print(f"[smoke] Debrief in {debrief_ms:.0f} ms | "
-                  f"overall_score={debrief.get('overall_score')} "
-                  f"scores={debrief.get('scores')}")
+            latency_ms = (time.monotonic() - t0) * 1000
+            turn_latencies.append(latency_ms)
+            npc_text = _npc_turn_content(turn.get("events", []))
+            print(f"  {latency_ms:.0f} ms | NPC: {_excerpt(npc_text)!r}")
+            results["turns"].append({
+                "label": f"player_turn_{i}",
+                "turn_number": i,
+                "model_generated": True,
+                "latency_ms": round(latency_ms),
+                "npc_excerpt": _excerpt(npc_text),
+                "ending_type": turn.get("ending_type"),
+            })
+            if turn.get("ending_type"):
+                # The turn pipeline already moved the session to 'Ended', so
+                # POST /end would 409 — see end_session() in the sessions
+                # router.  Record that and skip the explicit end below.
+                ended_by_scenario = True
+                print(f"[smoke] Scenario ended early (ending_type={turn['ending_type']}); "
+                      "stopping the scripted turns.")
+                break
 
-            # ── assertions ────────────────────────────────────────────────────
-            clock.enter("assertions")
-            turn_failures, turn_warnings = evaluate_turns(results["turns"])
-            debrief_failures, debrief_warnings = evaluate_debrief(debrief)
-            results["warnings"] += turn_warnings + debrief_warnings
-            pipeline_failures = turn_failures + debrief_failures
-            if pipeline_failures:
-                results["failures"] = pipeline_failures
-                raise SmokeFailure(
-                    FailureClass.PIPELINE,
-                    f"{len(pipeline_failures)} end-to-end assertion(s) failed",
+        # The median is the headline full-response figure: a single unlucky
+        # turn (runner steal, a long NPC answer) must not flap the nightly,
+        # while a real regression moves every turn and so moves the median.
+        results["measured_ms"]["full_response_ms"] = round(statistics.median(turn_latencies))
+        results["measured_ms"]["full_response_max_ms"] = round(max(turn_latencies))
+
+        # Per-turn parse flags tell us whether the model's structured output
+        # was accepted or quietly replaced by the safe fallback.
+        flags = _debug_flags_by_turn(base, session_id, clock.cap(30.0))
+        for turn in results["turns"]:
+            flag = flags.get(turn["turn_number"])
+            if flag:
+                turn["used_fallback"] = bool(flag.get("used_fallback"))
+                turn["used_native_structured_output"] = bool(
+                    flag.get("used_native_structured_output")
                 )
 
-            # ── budget ────────────────────────────────────────────────────────
-            clock.enter("budget")
-            budget_failures, budget_lines = evaluate_budgets(
-                results["measured_ms"], ci_hardware_factor
+        # ── debrief ───────────────────────────────────────────────────────────
+        clock.enter("debrief")
+        if ended_by_scenario:
+            print("[smoke] Session already Ended by the scenario; skipping /end.")
+        else:
+            print("[smoke] Ending session…")
+            _request_json(
+                f"{base}/sessions/{session_id}/end", payload={}, timeout=clock.cap(30.0)
             )
-            for line in budget_lines:
-                print(f"  {line}")
-            if budget_failures:
-                results["failures"] = budget_failures
-                raise SmokeFailure(
-                    FailureClass.BUDGET, f"{len(budget_failures)} latency budget(s) exceeded"
-                )
+        print("[smoke] Generating debrief (real model call)…")
+        t0 = time.monotonic()
+        debrief = _request_json(
+            f"{base}/sessions/{session_id}/debrief",
+            payload={},
+            timeout=clock.cap(request_timeout_s),
+        )
+        debrief_ms = (time.monotonic() - t0) * 1000
+        results["measured_ms"]["debrief_ms"] = round(debrief_ms)
+        results["debrief"] = {
+            "outcome": debrief.get("outcome"),
+            "total_turns": debrief.get("total_turns"),
+            "scores": debrief.get("scores"),
+            "overall_score": debrief.get("overall_score"),
+            "summary_excerpt": _excerpt(debrief.get("summary") or ""),
+            "strength_count": len(debrief.get("strengths") or []),
+            "improvement_count": len(debrief.get("improvements") or []),
+            "turning_point_count": len(debrief.get("turning_points") or []),
+            "used_fallback": bool(debrief.get("used_fallback")),
+            "latency_ms": round(debrief_ms),
+        }
+        print(f"[smoke] Debrief in {debrief_ms:.0f} ms | "
+              f"overall_score={debrief.get('overall_score')} "
+              f"scores={debrief.get('scores')}")
 
-            results["verdict"] = "pass"
-            results["exit_code"] = 0
+        # ── assertions ────────────────────────────────────────────────────────
+        clock.enter("assertions")
+        turn_failures, turn_warnings = evaluate_turns(results["turns"])
+        debrief_failures, debrief_warnings = evaluate_debrief(debrief)
+        results["warnings"] += turn_warnings + debrief_warnings
+        pipeline_failures = turn_failures + debrief_failures
+        if pipeline_failures:
+            results["failures"] = pipeline_failures
+            raise SmokeFailure(
+                FailureClass.PIPELINE,
+                f"{len(pipeline_failures)} end-to-end assertion(s) failed",
+            )
+
+        # ── budget ────────────────────────────────────────────────────────────
+        clock.enter("budget")
+        budget_failures, budget_lines = evaluate_budgets(
+            results["measured_ms"], ci_hardware_factor
+        )
+        for line in budget_lines:
+            print(f"  {line}")
+        if budget_failures:
+            results["failures"] = budget_failures
+            raise SmokeFailure(
+                FailureClass.BUDGET, f"{len(budget_failures)} latency budget(s) exceeded"
+            )
+
+        results["verdict"] = "pass"
+        results["exit_code"] = 0
 
     except SmokeFailure as exc:
         # Precedence, strongest evidence first:
@@ -1152,6 +1159,10 @@ def run_smoke(
                 proc.wait(timeout=10)
             except subprocess.TimeoutExpired:
                 proc.kill()
+        # Only now that convsim-core is stopped is its data directory safe to
+        # remove.  errors ignored: a stray file left behind is a tidiness
+        # problem, not a reason to turn a decided verdict into a traceback.
+        shutil.rmtree(data_dir, ignore_errors=True)
         results["phase_durations_s"] = clock.finish()
         results["wall_clock_s"] = round(clock.elapsed_s, 1)
 

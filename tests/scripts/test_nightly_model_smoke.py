@@ -739,6 +739,44 @@ class TestRunSmokeOrchestration:
         assert fake_servers["llama"].terminated
         assert fake_servers["core"].terminated
 
+    def test_the_data_directory_outlives_convsim_core_and_is_then_removed(
+        self, staged_model, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The throwaway data dir must not be deleted while core is still running.
+
+        It holds convsim-core's SQLite database, WAL and logs. Removing it
+        before the child is stopped races the server's own writes, and an
+        rmtree that lost that race would be caught as an unexpected harness
+        error and reported as a `pipeline` failure on an otherwise green run.
+        """
+        models_dir, model_id, digest = staged_model
+        monkeypatch.setattr(smoke, "_request_json", _fake_core(_debrief()))
+        seen: dict = {}
+
+        core = _FakeProc()
+
+        def _terminate() -> None:
+            seen["existed_at_terminate"] = seen["data_dir"].exists()
+            core.terminated = True
+
+        core.terminate = _terminate  # type: ignore[method-assign]
+
+        def _start_core(data_dir, *args, **kwargs) -> _FakeProc:
+            seen["data_dir"] = Path(data_dir)
+            return core
+
+        monkeypatch.setattr(smoke, "_start_llama_server", lambda *a, **k: _FakeProc())
+        monkeypatch.setattr(smoke, "_start_core", _start_core)
+        monkeypatch.setattr(smoke, "_wait_for_http", lambda *a, **k: None)
+
+        exit_code = smoke.run_smoke(
+            model_id, 20.0, None, model_sha256=digest, models_dir=models_dir
+        )
+
+        assert exit_code == 0
+        assert seen["existed_at_terminate"] is True
+        assert not seen["data_dir"].exists(), "the data directory leaked"
+
     def test_unscored_debrief_is_a_pipeline_failure(
         self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
