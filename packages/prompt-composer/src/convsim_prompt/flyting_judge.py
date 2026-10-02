@@ -24,6 +24,12 @@ drops every claim whose trait is not on the target's declared ``attack_surface``
 and every claim whose quoted evidence is not actually present in the volley, and
 records why. That verification is what makes "the insult was topical" countable
 rather than a matter of the model's mood.
+
+Each hook must also quote *different* words: a claim whose evidence overlaps a
+hook already accepted for this volley is dropped as ``overlapping_evidence``.
+Without that rule a model can quote the whole volley once per trait and collect
+the full topicality bonus for a single figure — which is precisely the padding
+the hook cap and the decreasing bonuses exist to prevent.
 """
 from __future__ import annotations
 
@@ -350,7 +356,9 @@ class DroppedHook:
 
     trait: str
     evidence: Optional[str]
-    reason: str  # unknown_trait | evidence_not_in_volley | duplicate_trait | over_hook_cap
+    # unknown_trait | evidence_not_in_volley | duplicate_trait |
+    # overlapping_evidence | over_hook_cap
+    reason: str
 
 
 @dataclass
@@ -463,8 +471,12 @@ _JUDGE_RULES = (
     "Reward clean-but-cutting. Crudeness earns nothing on any dimension: sting requires aim, wit requires surprise, craft requires construction.",
     "A slur or an attack on a protected class is not a volley at all. Raise the below_the_belt foul and score every dimension 0.",
     "Be consistent rather than generous. The calibration anchors are the scale; a volley no better than the 6 anchor is a 6.",
+    "Sting is aim. A true, well-made observation that never addresses the target — no second person, no direct address — "
+    "cannot score above 3 on sting, however good the line is as a line.",
     "Claim a hook only when the volley exploits a listed attack-surface trait, and quote the player's own words verbatim as evidence. "
     "Invented or paraphrased evidence is discarded by the engine, so it earns the player nothing and costs you credibility.",
+    "Quote only the words that do the exploiting, not the whole volley, and quote different words for each hook. "
+    "Two traits claimed on the same span are one hook: the engine keeps the first and discards the rest.",
     "Respond with a single valid JSON object matching the output schema. No markdown fences, no commentary outside the JSON.",
 )
 
@@ -710,6 +722,7 @@ def _verify_hooks(
         return kept, dropped
 
     seen: set[str] = set()
+    spans: List[str] = []
     for entry in raw_hooks:
         if not isinstance(entry, dict):
             continue
@@ -729,10 +742,19 @@ def _verify_hooks(
                 DroppedHook(trait, _as_optional_str(evidence_raw), "evidence_not_in_volley")
             )
             continue
+        # Each hook has to point at different words. A model that quotes the
+        # whole volley once per trait would otherwise collect the full
+        # topicality bonus for a single figure, which is the padding the hook
+        # cap and the decreasing bonuses exist to prevent.
+        span = _flatten(evidence)
+        if any(span == prior or span in prior or prior in span for prior in spans):
+            dropped.append(DroppedHook(trait, evidence, "overlapping_evidence"))
+            continue
         if len(kept) >= MAX_VERIFIED_HOOKS:
             dropped.append(DroppedHook(trait, evidence, "over_hook_cap"))
             continue
         seen.add(trait)
+        spans.append(span)
         # A discoverable trait is worth double the first time it is struck, so
         # the engine needs to know whether this strike is the discovery.
         is_discovery = (

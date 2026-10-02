@@ -317,6 +317,48 @@ class TestVolleyJudgmentParsing:
         assert len(result.hooks) == 1
         assert result.dropped_hooks[0].reason == "duplicate_trait"
 
+    def test_two_traits_on_the_same_span_count_once(self):
+        """One figure is one hook, whatever the judge chooses to call it.
+
+        A model that quotes the whole volley once per trait would otherwise
+        collect the full topicality bonus for a single construction — measured
+        on a real local judge, which claimed hypocrisy and vanity with the same
+        full-volley quotation.
+        """
+        result = parse_volley_judgment(
+            verdict(hooks=[
+                {"trait": "hypocrisy", "evidence": VOLLEY},
+                {"trait": "vanity", "evidence": VOLLEY},
+            ]),
+            volley_text=VOLLEY, attack_surface=SURFACE,
+        )
+        assert [h.trait for h in result.hooks] == ["hypocrisy"]
+        assert [(d.trait, d.reason) for d in result.dropped_hooks] == [
+            ("vanity", "overlapping_evidence")
+        ]
+
+    def test_a_span_inside_an_accepted_span_is_dropped(self):
+        result = parse_volley_judgment(
+            verdict(hooks=[
+                {"trait": "hypocrisy", "evidence": "you polish your virtue like your carriage brass"},
+                {"trait": "vanity", "evidence": "polish your virtue"},
+            ]),
+            volley_text=VOLLEY, attack_surface=SURFACE,
+        )
+        assert [h.trait for h in result.hooks] == ["hypocrisy"]
+        assert result.dropped_hooks[0].reason == "overlapping_evidence"
+
+    def test_distinct_spans_both_count(self):
+        result = parse_volley_judgment(
+            verdict(hooks=[
+                {"trait": "hypocrisy", "evidence": "polish your virtue"},
+                {"trait": "new_money", "evidence": "plate, not sterling"},
+            ]),
+            volley_text=VOLLEY, attack_surface=SURFACE,
+        )
+        assert [h.trait for h in result.hooks] == ["hypocrisy", "new_money"]
+        assert result.dropped_hooks == []
+
     def test_hooks_past_the_cap_are_dropped(self):
         surface = [AttackSurfaceTrait(f"t{i}", f"trait {i}") for i in range(6)]
         words = ["alpha", "bravo", "charlie", "delta", "echo", "foxtrot"]

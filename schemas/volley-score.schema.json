@@ -150,7 +150,8 @@
               "evidence": { "type": ["string", "null"] },
               "reason": {
                 "type": "string",
-                "enum": ["unknown_trait", "evidence_not_in_volley", "duplicate_trait", "over_hook_cap"]
+                "enum": ["unknown_trait", "evidence_not_in_volley", "duplicate_trait",
+                         "overlapping_evidence", "over_hook_cap"]
               }
             }
           }

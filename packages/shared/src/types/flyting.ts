@@ -80,6 +80,8 @@ export type DroppedHookReason =
   | 'unknown_trait'
   | 'evidence_not_in_volley'
   | 'duplicate_trait'
+  /** Quoted the same words as a hook already accepted for this volley. */
+  | 'overlapping_evidence'
   | 'over_hook_cap';
 
 export interface DroppedHook {
