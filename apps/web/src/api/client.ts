@@ -181,9 +181,13 @@ function fieldSummary(details: unknown): string | undefined {
       const entry = d as { loc?: unknown; msg?: unknown }
       const reason = str(entry.msg)
       if (!reason) return undefined
-      const parts = (Array.isArray(entry.loc) ? entry.loc : []).map((p) => String(p))
-      const path = (parts[0] === 'body' ? parts.slice(1) : parts).join('.')
-      return path ? `${path}: ${reason}` : reason
+      const all = (Array.isArray(entry.loc) ? entry.loc : []).map((p) => String(p))
+      const parts = all[0] === 'body' ? all.slice(1) : all
+      // A body-wide failure (missing body, malformed JSON) locates an offset,
+      // not a field — "0: JSON decode error" names nothing. List indexes inside
+      // a path are kept, since there they do say which item.
+      if (parts.length === 0 || parts.every((p) => /^\d+$/.test(p))) return reason
+      return `${parts.join('.')}: ${reason}`
     })
     .filter((s): s is string => s !== undefined)
   if (named.length === 0) return undefined

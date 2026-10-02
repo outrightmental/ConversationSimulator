@@ -169,3 +169,20 @@ def test_validation_query_parameter_keeps_its_section_prefix():
     )
     message = _body(_invoke(request_validation_error_handler(_make_request("GET", "/api/diag/log-excerpt"), exc)))["error"]["message"]
     assert "query.context" in message
+
+
+def test_malformed_json_body_reads_as_body_not_an_offset():
+    """FastAPI's loc for a JSON decode error is an offset, which names no field."""
+    exc = _validation_exc(
+        [{"type": "json_invalid", "loc": ("body", 0), "msg": "JSON decode error", "input": {}}]
+    )
+    message = _body(_invoke(request_validation_error_handler(_make_request("POST", "/api/sessions"), exc)))["error"]["message"]
+    assert message == "Request validation failed — body: JSON decode error"
+
+
+def test_a_list_item_keeps_its_index():
+    exc = _validation_exc(
+        [{"type": "missing", "loc": ("body", "turns", 0, "content"), "msg": "Field required", "input": {}}]
+    )
+    message = _body(_invoke(request_validation_error_handler(_make_request("POST", "/api/sessions"), exc)))["error"]["message"]
+    assert "turns.0.content" in message
