@@ -100,7 +100,7 @@ Two separate limits can still end a turn early:
 
 | Limit | Value | What happens |
 |-------|-------|--------------|
-| Engine went quiet mid-reply | 180 s between tokens (`CONVSIM_LLAMA_CPP_CHAT_TIMEOUT`) | The turn fails with a timeout error. Nothing is recorded, so you can retype the same turn. |
+| Engine went quiet | 180 s with nothing sent (`CONVSIM_LLAMA_CPP_CHAT_TIMEOUT`) — this covers reading the prompt back in as well as the gaps between words | The turn fails with a timeout error. Nothing is recorded, so you can retype the same turn. |
 | App gave up waiting | 5 min | The app checks what the session actually recorded. If the reply had already landed it is shown and play continues; otherwise the turn fails with a timeout error. |
 
 The session is **not** ended by either case — you can retry the same turn. The error message includes the same suggestions listed above.
