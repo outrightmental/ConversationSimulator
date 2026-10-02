@@ -21,7 +21,8 @@ Two tiers of expectation, because only one of them is deterministic:
 Usage:
     python scripts/flyting-calibration.py                      # every official pack
     python scripts/flyting-calibration.py --pack packs/official/flyting-school
-    python scripts/flyting-calibration.py --judge llamacpp     # include judged tiers
+    python scripts/flyting-calibration.py --judge llama_cpp    # include judged tiers
+    python scripts/flyting-calibration.py --judge llama_cpp --limit 4   # a bounded sample
     python scripts/flyting-calibration.py --json report.json
 
 Exit codes:
@@ -218,11 +219,31 @@ async def _score_with_judge(
     return service.compose(prepared, judgment, volley_number=1)
 
 
+def _entries_for(data: Dict[str, Any], limit: Optional[int]) -> List[Dict[str, Any]]:
+    """The volleys to run, trimmed to ``limit`` if one was given.
+
+    A limited run is a *sample*, and the only expensive volleys are the ones a
+    judge has to read, so the budget goes to the volleys carrying judged
+    expectations. Gated volleys never reach the model anyway.
+    """
+    entries = [entry for entry in (data.get("volleys") or []) if isinstance(entry, dict)]
+    if limit is None or limit >= len(entries):
+        return entries
+    judged_first = sorted(
+        entries,
+        key=lambda e: not any(k in JUDGED_KEYS for k in (e.get("expect") or {})),
+    )
+    chosen = {id(e) for e in judged_first[: max(0, limit)]}
+    # Keep file order, so a report reads in the order the suite was authored.
+    return [entry for entry in entries if id(entry) in chosen]
+
+
 def run_suite(
     path: Path,
     scenarios: Dict[str, FlytingScenario],
     *,
     runtime: Any = None,
+    limit: Optional[int] = None,
 ) -> SuiteResult:
     """Run one calibration file and return its result."""
     data = _load_yaml(path)
@@ -240,9 +261,7 @@ def run_suite(
         return result
 
     service = VolleyScoringService(scenario.scoring_context())
-    for entry in data.get("volleys") or []:
-        if not isinstance(entry, dict):
-            continue
+    for entry in _entries_for(data, limit):
         volley_id = str(entry.get("id") or "<unnamed>")
         text = str(entry.get("text") or "")
         expect = entry.get("expect")
@@ -261,14 +280,16 @@ def run_suite(
     return result
 
 
-def run_pack(pack_dir: Path, *, runtime: Any = None) -> List[SuiteResult]:
+def run_pack(
+    pack_dir: Path, *, runtime: Any = None, limit: Optional[int] = None
+) -> List[SuiteResult]:
     """Run every calibration suite in one pack."""
     calibration_dir = pack_dir / "calibration"
     if not calibration_dir.is_dir():
         return []
     scenarios = _flyting_scenarios(pack_dir)
     return [
-        run_suite(path, scenarios, runtime=runtime)
+        run_suite(path, scenarios, runtime=runtime, limit=limit)
         for path in sorted(calibration_dir.glob("*.yaml"))
     ]
 
@@ -329,11 +350,19 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "--judge",
         default=None,
         metavar="RUNTIME_ID",
-        help="Runtime id to judge with (e.g. llamacpp). Without it, only the "
+        help="Runtime id to judge with (e.g. llama_cpp). Without it, only the "
              "deterministic expectations are checked.",
     )
     parser.add_argument("--json", default=None, help="Write the full report to this path.")
     parser.add_argument("--quiet", action="store_true", help="Print failures only.")
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Check at most this many volleys per suite, judged ones first. One "
+             "judge call per volley is the whole cost of a judged run, so this is "
+             "how a judged sample is kept inside a time budget.",
+    )
     args = parser.parse_args(argv)
 
     pack_dirs = [Path(p) for p in args.pack] if args.pack else default_pack_dirs()
@@ -355,7 +384,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
 
     results: List[SuiteResult] = []
     for pack_dir in pack_dirs:
-        results.extend(run_pack(pack_dir, runtime=runtime))
+        results.extend(run_pack(pack_dir, runtime=runtime, limit=args.limit))
 
     exit_code = report(results, judged=runtime is not None, quiet=args.quiet)
 
