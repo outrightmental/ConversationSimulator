@@ -765,6 +765,13 @@ const DEV_WAIT: Duration = Duration::from_secs(20);
 /// Interval between readiness probes, and between checks on a running child.
 const PROBE_INTERVAL: Duration = Duration::from_millis(500);
 
+/// How often an engine the shell *adopted* (rather than started) is re-checked.
+/// Slower than `PROBE_INTERVAL` because `/api/health` is not a free request —
+/// it fans out to the LLM, STT and TTS probes — and nothing here is time
+/// critical: the shell is waiting to find out it has to take over, not racing
+/// anything.
+const ADOPTED_POLL_INTERVAL: Duration = Duration::from_secs(3);
+
 /// How many times a core that exits on its own is restarted before the shell
 /// gives up and shows the recovery card.
 const MAX_RESTARTS: u32 = 3;
@@ -1125,6 +1132,35 @@ fn wait_for_child_exit(
     }
 }
 
+/// Block until nothing is listening on `port` any more, or the app starts
+/// shutting down. Returns true only when the port went quiet.
+///
+/// For an engine the shell adopted rather than started: there is no child handle
+/// to supervise, but the shell can still notice it leave and take the port over.
+///
+/// `Occupied` keeps waiting on purpose. One unparsable answer from a live engine
+/// — a transient 500, a probe that timed out under load — must not be read as
+/// "it is gone", and the case that matters cannot look like that anyway: uvicorn
+/// closes its listening socket at the START of its shutdown, well before the
+/// process exits, so an engine on its way out shows up as `Closed`.
+fn wait_for_adopted_core_to_leave(
+    port: u16,
+    shutting_down: &Arc<AtomicBool>,
+    poll: Duration,
+) -> bool {
+    loop {
+        std::thread::sleep(poll);
+        // Checked before the probe: on the way out the port goes quiet too, and
+        // taking over then would spawn an engine the closing app never stops.
+        if shutting_down.load(Ordering::SeqCst) {
+            return false;
+        }
+        if matches!(probe_core(port), CoreProbe::Closed) {
+            return true;
+        }
+    }
+}
+
 fn launch_or_verify_core(
     app: AppHandle,
     process_arc: Arc<Mutex<Option<Child>>>,
@@ -1201,7 +1237,40 @@ fn supervise_core(
                     None,
                     log_dir_ref,
                 );
-                return;
+
+                // Dev builds stop here: `dev-desktop.sh` owns that engine, the
+                // developer has its terminal, and polling /api/health for the
+                // whole session would only add noise to both logs.
+                if cfg!(debug_assertions) {
+                    return;
+                }
+
+                // Release builds keep watching it. An adopted engine is not our
+                // child, so it cannot be supervised — but it can be noticed
+                // leaving, and it leaves more often than it used to: teardown now
+                // drains the engine with SIGTERM and that takes up to
+                // GRACEFUL_SHUTDOWN_WAIT, so a player who quits and reopens the
+                // app inside that window adopts an engine already on its way out.
+                // Without this the UI mounts over a port that disappears a moment
+                // later and every request fails with nothing on screen to say why
+                // — the exact failure the readiness probe exists to prevent.
+                if !wait_for_adopted_core_to_leave(
+                    CORE_PORT,
+                    &shutting_down,
+                    ADOPTED_POLL_INTERVAL,
+                ) {
+                    return;
+                }
+                emit_core_status(
+                    &app,
+                    &status_arc,
+                    "restarting",
+                    "The conversation engine stopped. Starting a new one…",
+                    None,
+                    log_dir_ref,
+                );
+                // Take over: fall through to the launch path below.
+                break;
             }
             // Nothing is listening: start our own below.
             CoreProbe::Closed => break,
@@ -2024,6 +2093,77 @@ mod tests {
             "probe took {elapsed:?} — the size cap did not stop the read"
         );
         let _ = server.join();
+    }
+
+    // ── Watching an adopted engine ───────────────────────────────────────────
+
+    #[test]
+    fn an_adopted_core_that_is_already_gone_is_noticed_at_once() {
+        let flag = Arc::new(AtomicBool::new(false));
+        let started = Instant::now();
+        assert!(wait_for_adopted_core_to_leave(
+            free_port(),
+            &flag,
+            Duration::from_millis(50)
+        ));
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "took {:?} to notice a port nothing is listening on",
+            started.elapsed()
+        );
+    }
+
+    #[test]
+    fn a_shutting_down_app_stops_watching_instead_of_taking_over() {
+        // Teardown makes the port go quiet too. If that read as "the engine
+        // left", the shell would spawn a replacement on top of a closing window
+        // — an orphan holding 7355 that the next launch reports as a conflict.
+        let flag = Arc::new(AtomicBool::new(true));
+        assert!(!wait_for_adopted_core_to_leave(
+            free_port(),
+            &flag,
+            Duration::from_millis(50)
+        ));
+    }
+
+    #[test]
+    fn a_live_adopted_core_keeps_the_watch_waiting() {
+        // The watch must return on the port going quiet, not on the first probe:
+        // this server answers /api/health once and only then stops listening.
+        use std::io::{Read, Write};
+        use std::sync::atomic::AtomicUsize;
+
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let port = listener.local_addr().expect("local addr").port();
+        let served = Arc::new(AtomicUsize::new(0));
+        let served_in_thread = Arc::clone(&served);
+        std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buf = [0u8; 1024];
+                let _ = stream.read(&mut buf);
+                let body = "{\"status\":\"ok\"}";
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {len}\r\n\
+                     Connection: close\r\n\r\n{body}",
+                    len = body.len()
+                );
+                let _ = stream.write_all(response.as_bytes());
+                served_in_thread.fetch_add(1, Ordering::SeqCst);
+            }
+            // `listener` drops here: the port goes quiet and the watch returns.
+        });
+
+        let flag = Arc::new(AtomicBool::new(false));
+        assert!(wait_for_adopted_core_to_leave(
+            port,
+            &flag,
+            Duration::from_millis(50)
+        ));
+        assert_eq!(
+            served.load(Ordering::SeqCst),
+            1,
+            "the watch returned without ever seeing the engine answer"
+        );
     }
 
     #[test]

@@ -150,9 +150,19 @@ else's.)
 
 | Answer | What happens |
 |---|---|
-| A convsim-core of this edition | Attach to it; no second engine is started. |
+| A convsim-core of this edition | Attach to it; no second engine is started. In a release build the shell then re-checks it every 3 s and takes the port over if it goes away — see "Adopting an engine" below. |
 | A convsim-core of the *other* edition | Error: the demo and the full app share the port and one data directory, so attaching would give the wrong library (issue #495). |
 | Anything else, for 15 s | Error: `Port 7355 is already in use by another program.` The grace period exists because `/api/health` fans out to the LLM, STT and TTS probes and one answer can take seconds, and because the occupant may be an engine mid-restart. |
+
+**Adopting an engine.** An engine the shell did not start has no child handle,
+so it cannot be supervised — but a release build re-checks it every 3 s and
+takes the port over if it stops answering. That matters because teardown drains
+the engine with SIGTERM and the drain takes up to 6 s: a player who quits and
+reopens the app inside that window adopts an engine that is already on its way
+out, and without the re-check the UI would mount over a port that disappears a
+moment later, with every request failing and nothing on screen to say why. Dev
+builds do not re-check — `dev-desktop.sh` owns that engine and the developer has
+its terminal.
 
 **Crash restart.** After readiness the shell watches the child. An engine that
 exits on its own is restarted up to three times with 1 s / 2 s / 4 s backoff,
