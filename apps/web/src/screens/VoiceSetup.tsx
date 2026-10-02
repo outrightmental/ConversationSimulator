@@ -328,9 +328,8 @@ export default function VoiceSetup() {
 
   const capabilities = plan?.capabilities ?? []
   const readyCount = capabilities.filter((c) => c.ready).length
-  const essentialReady = capabilities
-    .filter((c) => c.id !== 'vad')
-    .every((c) => c.ready)
+  const essential = capabilities.filter((c) => c.id !== 'vad')
+  const essentialReady = essential.length > 0 && essential.every((c) => c.ready)
 
   function assetsFor(capability: VoiceCapability): VoiceAsset[] {
     return (plan?.assets ?? []).filter((a) => capability.asset_ids.includes(a.id))
