@@ -1726,13 +1726,22 @@ mod tests {
 
     #[test]
     fn an_engine_of_this_edition_is_adopted() {
-        // Tests compile without CONVSIM_EDITION, so this build is the full app.
-        assert!(foreign_edition_error("full").is_none());
+        // Read from the build rather than hardcoded to "full": `cargo test` now
+        // runs from desktop-smoke.sh, and a developer checking a demo build runs
+        // that with CONVSIM_EDITION=demo — which would turn a working guard into
+        // two red tests that say nothing about the guard.
+        let mine = build_edition().unwrap_or("full");
+        assert!(foreign_edition_error(mine).is_none());
     }
 
     #[test]
-    fn a_demo_engine_is_refused_by_the_full_app() {
-        let (message, hint) = foreign_edition_error("demo").expect("refused");
+    fn the_other_edition_is_refused() {
+        let theirs = if build_edition() == Some("demo") {
+            "full"
+        } else {
+            "demo"
+        };
+        let (message, hint) = foreign_edition_error(theirs).expect("refused");
         assert!(message.contains("Another edition"));
         assert!(hint.contains("7355"));
     }
