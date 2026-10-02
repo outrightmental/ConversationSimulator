@@ -671,6 +671,21 @@ async def submit_turn(session_id: str, body: TurnSubmitRequest, request: Request
             ),
             status_code=504,
         ) from exc
+    except ConnectionError as exc:
+        # The adapter could not reach the engine at all — including a connect
+        # timeout, which it reports here rather than as a stall. Without this the
+        # player got the same bare 500 that issue #489 complained about, for a
+        # cause they can actually act on. The adapter's message names a CLI
+        # invocation, so it is logged rather than shown.
+        logger.warning("Runtime unreachable for session %s: %s", session_id, exc)
+        raise ConvsimError(
+            code="RUNTIME_UNAVAILABLE",
+            message=(
+                "The AI engine is not responding. Check the runtime in Settings, "
+                "then try the same turn again — it was not recorded."
+            ),
+            status_code=503,
+        ) from exc
 
     now = _now_iso()
     player_event = SessionEventPayload(

@@ -558,6 +558,17 @@ class _TimingOutRuntime(FakeChatRuntime):
         yield  # pragma: no cover — makes this an async generator
 
 
+class _UnreachableRuntime(FakeChatRuntime):
+    """Runtime that cannot be reached, the way an adapter connect failure is."""
+
+    def chat_stream(self, request: ChatRequest):
+        return self._stream_unreachable(request)
+
+    async def _stream_unreachable(self, request: ChatRequest):
+        raise ConnectionError("Cannot reach llama-server at http://127.0.0.1:7356.")
+        yield  # pragma: no cover — makes this an async generator
+
+
 class TestEngineTimeout:
     """An engine that stalls mid-reply must read as a retryable timeout.
 
@@ -600,6 +611,30 @@ class TestEngineTimeout:
         _, state, transcript = self._timed_out_turn(tmp_config)
         assert state == "PlayerTurnListening"
         assert [t["role"] for t in transcript["turns"]] == ["npc_opening"]
+
+    def test_unreachable_engine_is_503_not_a_bare_500(self, tmp_config):
+        """An engine that cannot be reached is a separate, actionable failure.
+
+        A connect timeout is reported by the adapters as ConnectionError rather
+        than a stall, so "stopped responding partway through its reply" would be
+        the wrong advice. Both must still avoid the bare 500 of issue #489.
+        """
+        app = create_app(tmp_config)
+        with TestClient(app, raise_server_exceptions=False) as client:
+            _activate_real_runtime(app)
+            session_id = client.post("/api/sessions", json=_UNPINNED_SETUP).json()["session_id"]
+            client.post(f"/api/sessions/{session_id}/start")
+
+            app.state.runtime = _UnreachableRuntime()
+            res = client.post(
+                f"/api/sessions/{session_id}/turn", json={"content": "Tell me about the team."}
+            )
+            state = client.get(f"/api/sessions/{session_id}").json()["state"]
+
+        assert res.status_code == 503
+        assert res.json()["error"]["code"] == "RUNTIME_UNAVAILABLE"
+        assert "llama-server" not in res.json()["error"]["message"]
+        assert state == "PlayerTurnListening"
 
 
 # ---------------------------------------------------------------------------
