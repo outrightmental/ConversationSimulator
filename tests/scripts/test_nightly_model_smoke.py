@@ -397,7 +397,7 @@ class TestEvaluateDebrief:
         assert any("no rubric dimension scores" in f for f in failures)
         assert any("not numeric" in f for f in failures)
 
-    def test_unscored_debrief_says_it_may_not_be_a_regression(self) -> None:
+    def test_unscored_debrief_carries_its_own_note_not_the_class_remedy(self) -> None:
         # The scores come only from rubric_observations the model volunteers,
         # and nothing in the prompt asks for them (the built-in scenario defines
         # no rubric and no prompt layer names one), so an empty array satisfies
@@ -409,9 +409,14 @@ class TestEvaluateDebrief:
         assert smoke.UNSCORED_DEBRIEF_NOTE in no_scores
         assert "real-model-smoke.md" in no_scores
 
-    def test_no_observations_anywhere_names_the_product_gap(self) -> None:
+    def test_no_observations_anywhere_is_named_and_still_worth_chasing(self) -> None:
         # The run checked, and the model volunteered nothing to score: the
         # failure can state that outright instead of listing both possibilities.
+        # It must not go on to excuse itself, though — the thin prompt coverage
+        # makes this reachable, but the real starter model answers the schema's
+        # bare hint on every turn, so a run that hits it changed something. A
+        # note that read "product gap, not a regression" would close the
+        # investigation the nightly exists to open.
         failures, _ = smoke.evaluate_debrief(
             _debrief(scores={}), rubric_observations_seen=0
         )
@@ -419,6 +424,8 @@ class TestEvaluateDebrief:
         assert "no NPC turn carried a rubric_observation" in no_scores
         assert smoke.UNSCORED_DEBRIEF_NOTE in no_scores
         assert smoke.UNSCORED_WITH_OBSERVATIONS_NOTE not in no_scores
+        assert "not the normal outcome" in no_scores
+        assert "before writing this off" in no_scores
 
     def test_observations_that_never_reached_the_debrief_are_a_regression(self) -> None:
         # The opposite case, and the one the harness exists to catch: the turns

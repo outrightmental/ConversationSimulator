@@ -169,25 +169,40 @@ EXCERPT_CHARS = 160
 MIN_SUMMARY_CHARS = 20
 
 # Appended to the "no scores" failure.  The debrief's dimension scores are
-# accumulated purely from rubric_observations the *model* volunteers: the
-# built-in behavioral_interview scenario defines no rubric, and no prompt layer
-# names one (see packages/prompt-composer/.../layers.py — the model's only hint
-# is the bare rubric_observations array in the embedded output schema, whose
-# empty list the schema accepts).  So an unscored debrief can mean the 4 B model
-# simply left an unguided array empty rather than that anything regressed, and
-# `pipeline`'s stock advice — inspect the per-turn used_fallback flags — would
-# send triage looking for a parse failure that did not happen.
+# accumulated purely from rubric_observations the *model* volunteers, and
+# nothing asks it for them: the built-in behavioral_interview scenario defines
+# no rubric, and no prompt layer names one (see
+# packages/prompt-composer/.../layers.py — the model's only hint is the bare
+# rubric_observations array in the embedded output schema, whose empty list the
+# schema accepts).  So `pipeline`'s stock advice — inspect the per-turn
+# used_fallback flags — would send triage looking for a parse failure that did
+# not happen.
+#
+# That unguided array is NOT normally empty, though, which is why this note
+# does not simply write the failure off: in local verification against the real
+# starter model (Qwen3 4B Q4_K_M under the turn-output schema) every one of six
+# scripted turns volunteered at least one observation, and the debrief scored
+# three to four dimensions.  Zero observations across a whole conversation is
+# therefore itself a change worth chasing — the schema layer no longer reaching
+# the model, a sampling or quantisation change, a different starter pin — not
+# the expected resting state.  Say both halves: the thin prompt coverage is the
+# standing weakness that makes this reachable at all, and a run that actually
+# hits it is a signal.
 #
 # Used only when the run observed no rubric observations at all; when the turns
 # *did* carry some, the cause is not ambiguous and UNSCORED_WITH_OBSERVATIONS_NOTE
 # applies instead.
 UNSCORED_DEBRIEF_NOTE = (
-    "Before calling this a regression: no NPC turn volunteered a single rubric "
-    "observation, and nothing asks it to — no prompt layer names the rubric "
-    "dimensions, so an empty array satisfies the turn schema. This is the "
-    "product gap, not a regression: fix it by giving the turn prompt a rubric "
-    "layer or by playing a scenario that defines one. See the 'Unscored "
-    "debrief' section of docs/real-model-smoke.md."
+    "No NPC turn volunteered a single rubric observation. Nothing asks it to — "
+    "no prompt layer names the rubric dimensions, so an empty array satisfies "
+    "the turn schema — which is the standing product weakness that makes this "
+    "failure reachable. But an empty array is not the normal outcome: the real "
+    "starter model volunteered observations on every scripted turn in local "
+    "verification. So check what changed about what reaches the model (the "
+    "OUTPUT_SCHEMA layer, the starter model pin, sampling) before writing this "
+    "off, and fix the weakness itself by giving the turn prompt a rubric layer "
+    "or playing a scenario that defines one. See the 'Unscored debrief' section "
+    "of docs/real-model-smoke.md."
 )
 
 # The other cause of an unscored debrief, and the one that *is* a regression.
@@ -780,7 +795,9 @@ def evaluate_debrief(
     actually returned, ``None`` when the run could not tell) resolves it:
 
     * **0** — the model volunteered nothing to score, which nothing asked it
-      to. The product gap, not a regression: ``UNSCORED_DEBRIEF_NOTE``.
+      to. Reachable because of the thin prompt coverage, but not the normal
+      outcome (the real starter model volunteers observations on every turn),
+      so still worth chasing: ``UNSCORED_DEBRIEF_NOTE``.
     * **> 0** — the turns carried observations and the debrief lost them. A real
       regression with a named starting point: ``UNSCORED_WITH_OBSERVATIONS_NOTE``.
 

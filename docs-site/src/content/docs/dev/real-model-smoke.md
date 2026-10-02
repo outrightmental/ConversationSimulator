@@ -126,12 +126,24 @@ the bare `rubric_observations` array in the embedded output schema — whose emp
 list the schema accepts. The fake runtime always returns `[]`, which is why the
 release-time playthrough asserts only that `scores` *is* a dict.
 
+That thin prompt coverage is the standing weakness that makes an unscored
+debrief reachable at all. It is *not*, however, the expected outcome: in local
+verification against the real starter model — Qwen3 4B Q4\_K\_M, the same pin
+the nightly uses, under the turn-output schema — every one of six scripted turns
+across two runs volunteered at least one observation, and the debrief scored
+three to four dimensions with an `overall_score` near 50. Treat zero
+observations as a signal, not as the resting state.
+
 So an unscored debrief means one of two quite different things:
 
-- **`rubric_observations_seen` is 0 — the model left an unguided array empty.**
-  Nothing regressed; a 4 B Q4 model does this. Fix it in the product (give the
-  turn prompt a rubric layer, or play a scenario that defines one), not by
-  relaxing the assertion.
+- **`rubric_observations_seen` is 0 — the model volunteered nothing.** Only the
+  prompt's bare schema hint was ever asking, so this is reachable by design —
+  but since the starter model does normally answer that hint, first check what
+  changed about what reaches the model: the `OUTPUT_SCHEMA` prompt layer, the
+  registry's `starter` pin, the adapter's JSON-schema constraint, sampling
+  settings. Then fix the weakness itself in the product (give the turn prompt a
+  rubric layer, or play a scenario that defines one), not by relaxing the
+  assertion.
 - **`rubric_observations_seen` is above 0 — a real regression.** The turns
   returned observations and the debrief scored none of them, so the model did
   its part. The debrief engine does not score the validated observations the
@@ -143,9 +155,10 @@ So an unscored debrief means one of two quite different things:
   against the per-turn `rubric_observation_count` in the artifact.
 
 Either way the run is red: *"scored debrief"* is the acceptance criterion for
-[#457](https://github.com/outrightmental/ConversationSimulator/issues/457), and
-the first cause is a product gap worth a tracking issue rather than a reason to
-weaken the check.
+[#457](https://github.com/outrightmental/ConversationSimulator/issues/457).
+Neither cause is a reason to weaken the check — the first is worth a tracking
+issue for the missing rubric prompt layer *and* an investigation of the run that
+hit it.
 
 ---
 
