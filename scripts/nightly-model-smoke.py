@@ -565,7 +565,12 @@ def _wait_for_http(url: str, timeout_s: float, label: str, proc: Optional[subpro
             time.sleep(1)
     raise SmokeFailure(
         FailureClass.RUNTIME,
-        f"{label} did not become ready within {timeout_s:.0f} s ({last_err})",
+        # !r, like every other error this file reports: str() on an exception
+        # raised with no arguments is the empty string, so a readiness failure
+        # whose last error was e.g. a bare ConnectionRefusedError rendered as
+        # "did not become ready within 300 s ()" — no diagnostic at all in the
+        # one message a `runtime` verdict leaves behind.
+        f"{label} did not become ready within {timeout_s:.0f} s ({last_err!r})",
     )
 
 

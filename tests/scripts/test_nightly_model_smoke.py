@@ -14,7 +14,9 @@ from __future__ import annotations
 import hashlib
 import http.client
 import importlib.util
+import io
 import json
+import urllib.error
 from pathlib import Path
 
 import pytest
@@ -658,6 +660,223 @@ class TestScriptedConversation:
         )
         for turn in smoke.SCRIPTED_PLAYER_TURNS:
             assert turn in source, f"scripted turn drifted from the e2e playthrough: {turn!r}"
+
+
+# ---------------------------------------------------------------------------
+# HTTP transport: status code -> failure class
+# ---------------------------------------------------------------------------
+
+
+class _Response:
+    """Minimum of an http.client.HTTPResponse that _request_json touches."""
+
+    def __init__(self, status: int = 200, body: bytes = b"{}") -> None:
+        self.status = status
+        self._body = body
+
+    def read(self) -> bytes:
+        return self._body
+
+    def __enter__(self) -> "_Response":
+        return self
+
+    def __exit__(self, *a: object) -> bool:
+        return False
+
+
+def _http_error(code: int, body: bytes = b"server traceback"):
+    def _raise(req, timeout=None):
+        raise urllib.error.HTTPError(
+            getattr(req, "full_url", "http://x"), code, "err", {}, io.BytesIO(body)
+        )
+
+    return _raise
+
+
+class TestRequestClassification:
+    """`runtime` means the server broke; `pipeline` means it rejected the ask.
+
+    Every orchestration test below replaces _request_json wholesale, so without
+    these the one function that decides "crashed server" vs "end-to-end
+    assertion" — the distinction #457 asks CI output to make — is never run.
+    """
+
+    @pytest.mark.parametrize("code", [500, 502, 503])
+    def test_a_5xx_is_a_runtime_failure(
+        self, code: int, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(smoke.urllib.request, "urlopen", _http_error(code))
+        with pytest.raises(smoke.SmokeFailure) as exc_info:
+            smoke._request_json("http://127.0.0.1:1/api/sessions", payload={}, timeout=1)
+        assert exc_info.value.failure_class == smoke.FailureClass.RUNTIME
+        assert exc_info.value.exit_code == 4
+
+    @pytest.mark.parametrize("code", [400, 404, 409, 422])
+    def test_a_4xx_is_a_pipeline_failure(
+        self, code: int, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The server is up and routing; it refused what the smoke asked for —
+        # a 409 from POST /end on an already-ended session, say. That is an
+        # assertion about the API contract, not a crash.
+        monkeypatch.setattr(smoke.urllib.request, "urlopen", _http_error(code))
+        with pytest.raises(smoke.SmokeFailure) as exc_info:
+            smoke._request_json("http://127.0.0.1:1/api/sessions", payload={}, timeout=1)
+        assert exc_info.value.failure_class == smoke.FailureClass.PIPELINE
+        assert exc_info.value.exit_code == 5
+
+    def test_the_server_side_detail_reaches_the_failure_message(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The 5xx body is the only place convsim-core's own error text appears
+        # on the client side, and it is what the runtime remedy sends a triager
+        # to read.
+        monkeypatch.setattr(
+            smoke.urllib.request, "urlopen",
+            _http_error(500, b"Debrief generation failed"),
+        )
+        with pytest.raises(smoke.SmokeFailure) as exc_info:
+            smoke._request_json("http://127.0.0.1:1/api/x", payload={}, timeout=1)
+        assert "Debrief generation failed" in str(exc_info.value)
+
+    @pytest.mark.parametrize("exc", [
+        ConnectionResetError("peer hung up"),
+        TimeoutError("read timed out"),
+    ])
+    def test_a_transport_error_is_a_runtime_failure(
+        self, exc: BaseException, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def _raise(req, timeout=None):
+            raise exc
+
+        monkeypatch.setattr(smoke.urllib.request, "urlopen", _raise)
+        with pytest.raises(smoke.SmokeFailure) as exc_info:
+            smoke._request_json("http://127.0.0.1:1/api/health", timeout=1)
+        assert exc_info.value.failure_class == smoke.FailureClass.RUNTIME
+
+    def test_an_unparseable_body_is_a_runtime_failure(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            smoke.urllib.request, "urlopen",
+            lambda req, timeout=None: _Response(200, b"<html>502 Bad Gateway</html>"),
+        )
+        with pytest.raises(smoke.SmokeFailure) as exc_info:
+            smoke._request_json("http://127.0.0.1:1/api/health", timeout=1)
+        assert exc_info.value.failure_class == smoke.FailureClass.RUNTIME
+
+    def test_an_unexpected_success_status_is_a_pipeline_failure(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # urllib raises for >= 400, so this branch only ever sees a 2xx/3xx the
+        # contract did not promise.
+        monkeypatch.setattr(
+            smoke.urllib.request, "urlopen", lambda req, timeout=None: _Response(204)
+        )
+        with pytest.raises(smoke.SmokeFailure) as exc_info:
+            smoke._request_json("http://127.0.0.1:1/api/health", timeout=1)
+        assert exc_info.value.failure_class == smoke.FailureClass.PIPELINE
+        assert "HTTP 204" in str(exc_info.value)
+
+    def test_a_healthy_response_is_returned(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            smoke.urllib.request, "urlopen",
+            lambda req, timeout=None: _Response(200, b'{"session_id": "sess-1"}'),
+        )
+        assert smoke._request_json(
+            "http://127.0.0.1:1/api/sessions", payload={"a": 1}, timeout=1
+        ) == {"session_id": "sess-1"}
+
+
+# ---------------------------------------------------------------------------
+# Readiness polling
+# ---------------------------------------------------------------------------
+
+
+class _PolledProc:
+    def __init__(self, returncode: int | None = None) -> None:
+        self.returncode = returncode
+
+    def poll(self) -> int | None:
+        return self.returncode
+
+
+class TestWaitForHttp:
+    """A server that died on startup is nameable immediately, not after a wait."""
+
+    def test_a_child_that_exited_short_circuits_the_wait(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The realistic case is a runner OOM on model load. Polling a port
+        # nobody is listening on for the full timeout would bury the exit code
+        # and burn the wall-clock budget that exit 6 is measured against.
+        def _refused(*a: object, **k: object):
+            raise ConnectionRefusedError()
+
+        monkeypatch.setattr(smoke.urllib.request, "urlopen", _refused)
+        # The timeout is deliberately far below the 300 s the real model-load
+        # wait allows: a regression that drops the short-circuit must turn this
+        # test red quickly rather than stall the per-PR suite for five minutes.
+        with pytest.raises(smoke.SmokeFailure) as exc_info:
+            smoke._wait_for_http(
+                "http://127.0.0.1:1/v1/models", timeout_s=2.0,
+                label="llama-server", proc=_PolledProc(137),
+            )
+        assert exc_info.value.failure_class == smoke.FailureClass.RUNTIME
+        assert "llama-server exited with code 137" in str(exc_info.value)
+
+    def test_a_server_that_never_answers_is_a_runtime_failure(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def _refused(*a: object, **k: object):
+            raise ConnectionRefusedError()
+
+        monkeypatch.setattr(smoke.urllib.request, "urlopen", _refused)
+        with pytest.raises(smoke.SmokeFailure) as exc_info:
+            smoke._wait_for_http(
+                "http://127.0.0.1:1/api/health", timeout_s=0.0, label="convsim-core"
+            )
+        assert exc_info.value.failure_class == smoke.FailureClass.RUNTIME
+        assert "convsim-core" in str(exc_info.value)
+
+    def test_the_not_ready_message_carries_the_last_connection_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # It is the only diagnostic a readiness `runtime` verdict leaves behind,
+        # and str() on an exception raised with no arguments is empty.
+        def _refused(*a: object, **k: object):
+            raise ConnectionRefusedError()
+
+        monkeypatch.setattr(smoke.urllib.request, "urlopen", _refused)
+        # The poll backs off a second between attempts; skip the wait so this
+        # test costs nothing. The timeout still has to leave room for one
+        # attempt, or last_err is never set.
+        monkeypatch.setattr(smoke.time, "sleep", lambda _s: None)
+        with pytest.raises(smoke.SmokeFailure) as exc_info:
+            smoke._wait_for_http(
+                "http://127.0.0.1:1/api/health", timeout_s=0.01, label="convsim-core"
+            )
+        assert "ConnectionRefusedError" in str(exc_info.value)
+
+    def test_a_live_child_is_not_mistaken_for_a_crashed_one(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            smoke.urllib.request, "urlopen", lambda *a, **k: _Response(200)
+        )
+        assert smoke._wait_for_http(
+            "http://127.0.0.1:1/v1/models", timeout_s=30.0,
+            label="llama-server", proc=_PolledProc(None),
+        ) is None
+
+    def test_an_http_error_still_means_the_server_is_up(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A 404 is a routed response: the process is listening, which is all
+        # readiness means.
+        monkeypatch.setattr(smoke.urllib.request, "urlopen", _http_error(404))
+        assert smoke._wait_for_http(
+            "http://127.0.0.1:1/api/health", timeout_s=30.0, label="convsim-core"
+        ) is None
 
 
 # ---------------------------------------------------------------------------
