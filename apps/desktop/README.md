@@ -161,8 +161,11 @@ bind, and the shell asks the port the same question again rather than reporting
 an exit status the logs can only explain as "the port was taken".
 
 **Adopting an engine.** An engine the shell did not start has no child handle,
-so it cannot be supervised — but a release build re-checks it every 3 s and
-takes the port over if it stops answering. That matters because teardown drains
+so it cannot be supervised — but a release build re-checks the port every 3 s
+(a bare TCP connect, so the adopted engine pays nothing for being watched) and
+takes it over once nothing is listening. uvicorn closes its listening socket at
+the *start* of its shutdown, so an engine on its way out stops accepting well
+before it exits. That matters because teardown drains
 the engine with SIGTERM and the drain takes up to 6 s: a player who quits and
 reopens the app inside that window adopts an engine that is already on its way
 out, and without the re-check the UI would mount over a port that disappears a

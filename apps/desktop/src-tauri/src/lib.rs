@@ -457,6 +457,12 @@ const PROBE_RESPONSE_BUDGET: Duration = Duration::from_secs(8);
 /// allocate.
 const PROBE_RESPONSE_LIMIT: usize = 1024 * 1024;
 
+/// How long a probe waits for the TCP handshake. Loopback either answers at
+/// once or has nothing listening, so this only has to outlast a full listen
+/// backlog. Shared by `probe_core` and `port_is_listening` so the two cannot
+/// disagree about what "nothing is there" means.
+const PROBE_CONNECT_TIMEOUT: Duration = Duration::from_millis(300);
+
 /// What is — or is not — answering on 127.0.0.1:`CORE_PORT`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum CoreProbe {
@@ -537,7 +543,7 @@ fn probe_core(port: u16) -> CoreProbe {
 fn probe_core_within(port: u16, budget: Duration) -> CoreProbe {
     use std::io::{Read, Write};
     let addr: SocketAddr = ([127u8, 0, 0, 1], port).into();
-    let mut stream = match std::net::TcpStream::connect_timeout(&addr, Duration::from_millis(300)) {
+    let mut stream = match std::net::TcpStream::connect_timeout(&addr, PROBE_CONNECT_TIMEOUT) {
         Ok(s) => s,
         Err(_) => return CoreProbe::Closed,
     };
@@ -590,6 +596,22 @@ fn probe_core_within(port: u16, budget: Duration) -> CoreProbe {
         },
         _ => CoreProbe::Occupied,
     }
+}
+
+/// Whether *anything* is listening on 127.0.0.1:`port`.
+///
+/// Deliberately not `probe_core`. Readiness needs to know *who* is on the port,
+/// which is why that function exists; this answers only "is the socket still
+/// there", and `CoreProbe::Closed` is returned exactly when `probe_core`'s own
+/// connect fails — so running the `/api/health` exchange to reach the same
+/// answer would discard every byte of it. The caller is
+/// `wait_for_adopted_core_to_leave`, which runs for as long as the app does:
+/// asking for health there would make the shell drive the engine's LLM, STT and
+/// TTS probes every `ADOPTED_POLL_INTERVAL` for the whole session to learn
+/// something the handshake already said.
+fn port_is_listening(port: u16) -> bool {
+    let addr: SocketAddr = ([127u8, 0, 0, 1], port).into();
+    std::net::TcpStream::connect_timeout(&addr, PROBE_CONNECT_TIMEOUT).is_ok()
 }
 
 /// Refuse to attach to the *other* edition's engine (issue #495). The demo
@@ -766,10 +788,10 @@ const DEV_WAIT: Duration = Duration::from_secs(20);
 const PROBE_INTERVAL: Duration = Duration::from_millis(500);
 
 /// How often an engine the shell *adopted* (rather than started) is re-checked.
-/// Slower than `PROBE_INTERVAL` because `/api/health` is not a free request —
-/// it fans out to the LLM, STT and TTS probes — and nothing here is time
-/// critical: the shell is waiting to find out it has to take over, not racing
-/// anything.
+/// Slower than `PROBE_INTERVAL` because this one runs for the whole session and
+/// nothing about it is time critical: the shell is waiting to find out it has to
+/// take over, not racing anything. The check itself is a bare connect (see
+/// `port_is_listening`), so the engine pays nothing for being watched.
 const ADOPTED_POLL_INTERVAL: Duration = Duration::from_secs(3);
 
 /// How many times a core that exits on its own is restarted before the shell
@@ -1151,11 +1173,11 @@ fn wait_for_child_exit(
 /// For an engine the shell adopted rather than started: there is no child handle
 /// to supervise, but the shell can still notice it leave and take the port over.
 ///
-/// `Occupied` keeps waiting on purpose. One unparsable answer from a live engine
-/// — a transient 500, a probe that timed out under load — must not be read as
-/// "it is gone", and the case that matters cannot look like that anyway: uvicorn
-/// closes its listening socket at the START of its shutdown, well before the
-/// process exits, so an engine on its way out shows up as `Closed`.
+/// A socket that still accepts keeps the watch waiting, and that is the right
+/// reading even when the engine behind it is too busy to answer a request: the
+/// case that matters cannot look like silence anyway, because uvicorn closes its
+/// listening socket at the START of its shutdown, well before the process exits.
+/// An engine on its way out therefore stops accepting, which is what this sees.
 fn wait_for_adopted_core_to_leave(
     port: u16,
     shutting_down: &Arc<AtomicBool>,
@@ -1168,7 +1190,7 @@ fn wait_for_adopted_core_to_leave(
         if shutting_down.load(Ordering::SeqCst) {
             return false;
         }
-        if matches!(probe_core(port), CoreProbe::Closed) {
+        if !port_is_listening(port) {
             return true;
         }
     }
@@ -2217,27 +2239,24 @@ mod tests {
 
     #[test]
     fn a_live_adopted_core_keeps_the_watch_waiting() {
-        // The watch must return on the port going quiet, not on the first probe:
-        // this server answers /api/health once and only then stops listening.
-        use std::io::{Read, Write};
+        // The watch must return on the port going quiet, not on the first poll —
+        // and it must keep waiting on a socket that accepts without answering
+        // anything, which is what a busy engine looks like. This server accepts
+        // two connections, says nothing at all to either, and only then stops
+        // listening; `accept` blocks until each one arrives, so reaching the
+        // second proves the watch polled a live socket and carried on.
         use std::sync::atomic::AtomicUsize;
 
         let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
         let port = listener.local_addr().expect("local addr").port();
-        let served = Arc::new(AtomicUsize::new(0));
-        let served_in_thread = Arc::clone(&served);
+        let accepted = Arc::new(AtomicUsize::new(0));
+        let accepted_in_thread = Arc::clone(&accepted);
         std::thread::spawn(move || {
-            if let Ok((mut stream, _)) = listener.accept() {
-                let mut buf = [0u8; 1024];
-                let _ = stream.read(&mut buf);
-                let body = "{\"status\":\"ok\"}";
-                let response = format!(
-                    "HTTP/1.1 200 OK\r\nContent-Length: {len}\r\n\
-                     Connection: close\r\n\r\n{body}",
-                    len = body.len()
-                );
-                let _ = stream.write_all(response.as_bytes());
-                served_in_thread.fetch_add(1, Ordering::SeqCst);
+            for _ in 0..2 {
+                match listener.accept() {
+                    Ok(_) => accepted_in_thread.fetch_add(1, Ordering::SeqCst),
+                    Err(_) => break,
+                };
             }
             // `listener` drops here: the port goes quiet and the watch returns.
         });
@@ -2249,9 +2268,9 @@ mod tests {
             Duration::from_millis(50)
         ));
         assert_eq!(
-            served.load(Ordering::SeqCst),
-            1,
-            "the watch returned without ever seeing the engine answer"
+            accepted.load(Ordering::SeqCst),
+            2,
+            "the watch gave up on a socket that was still accepting"
         );
     }
 
