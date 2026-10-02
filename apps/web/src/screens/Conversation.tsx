@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useRef, useState } from 'react'
+import type { CSSProperties } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { api } from '../api/client'
 import type { InputMode, ScenarioInfo, TurnResponse, WsEvent } from '@convsim/shared'
@@ -19,6 +20,11 @@ const SLOW_RESPONSE_MS = 5_000
 // Second stage: past this point a static "taking longer than usual" line reads
 // as a frozen app, so the notice starts reporting the elapsed time instead.
 const VERY_SLOW_RESPONSE_MS = 30_000
+// The elapsed time is read out on this coarser grid. The visible clock ticks
+// every second, but a polite live region re-announces on every text change, and
+// 270 announcements over a five-minute turn drowns out everything else — so the
+// screen-reader copy only changes once per interval.
+const ELAPSED_ANNOUNCE_INTERVAL_MS = 30_000
 // Hard backstop so a wedged connection can never pin the UI in "submitting"
 // forever. It is NOT a latency budget: a local model on CPU-only hardware
 // spends real minutes on one turn — the Windows machine in issue #489 measured
@@ -73,6 +79,18 @@ function NpcAvatar() {
       </svg>
     </div>
   )
+}
+
+const srOnly: CSSProperties = {
+  position: 'absolute',
+  width: 1,
+  height: 1,
+  padding: 0,
+  margin: -1,
+  overflow: 'hidden',
+  clip: 'rect(0,0,0,0)',
+  whiteSpace: 'nowrap',
+  border: 0,
 }
 
 /** "45s" / "2m 05s" — a wait long enough to show is long enough to read. */
@@ -738,6 +756,8 @@ export default function Conversation() {
   const isEnded = phase === 'ended'
   const isSlowResponse = phase === 'submitting' && waitElapsedMs >= SLOW_RESPONSE_MS
   const isVerySlowResponse = phase === 'submitting' && waitElapsedMs >= VERY_SLOW_RESPONSE_MS
+  const announcedElapsedMs =
+    Math.floor(waitElapsedMs / ELAPSED_ANNOUNCE_INTERVAL_MS) * ELAPSED_ANNOUNCE_INTERVAL_MS
   const npcStatus = npcStatusLabel(sessionState, phase)
 
   return (
@@ -1031,12 +1051,25 @@ export default function Conversation() {
               // Past half a minute a static line reads as a hung app. Naming the
               // elapsed time shows the app is still waiting on the model rather
               // than stuck, and that the turn has not been thrown away.
-              <div data-testid="slow-response-elapsed" style={{ marginTop: 4, color: '#fbbf24' }}>
+              // Hidden from assistive tech: this ticks every second, and the
+              // enclosing polite live region would re-announce each tick. The
+              // sr-only sibling below carries the same news on a 30 s grid.
+              <div
+                data-testid="slow-response-elapsed"
+                aria-hidden="true"
+                style={{ marginTop: 4, color: '#fbbf24' }}
+              >
                 Still waiting — {formatElapsed(waitElapsedMs)} so far. The reply is
                 not lost; slow hardware can take a few minutes per turn.
               </div>
             )}
           </div>
+        )}
+
+        {isVerySlowResponse && (
+          <span data-testid="slow-response-elapsed-announcement" role="status" aria-live="polite" style={srOnly}>
+            Still waiting on the NPC — {formatElapsed(announcedElapsedMs)} so far. The reply is not lost.
+          </span>
         )}
       </div>
 

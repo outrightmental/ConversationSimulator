@@ -1484,6 +1484,31 @@ describe('Conversation screen', () => {
       }
     })
 
+    it('announces the elapsed wait on a coarse grid so the live region is not spammed', async () => {
+      // The visible clock ticks every second inside a polite live region; left
+      // audible that is ~270 announcements over a five-minute turn. The visible
+      // line is aria-hidden and a separate status re-announces every 30s only.
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        await submitAndWait(35_000)
+        expect(screen.getByTestId('slow-response-elapsed')).toHaveAttribute('aria-hidden', 'true')
+        const announcement = screen.getByTestId('slow-response-elapsed-announcement')
+        expect(announcement).toHaveTextContent('30s')
+
+        // Ten more seconds of ticking must not change the announced text.
+        await vi.advanceTimersByTimeAsync(10_000)
+        expect(screen.getByTestId('slow-response-elapsed')).toHaveTextContent('45s')
+        expect(screen.getByTestId('slow-response-elapsed-announcement')).toHaveTextContent('30s')
+
+        // Crossing the next interval does.
+        await vi.advanceTimersByTimeAsync(20_000)
+        expect(screen.getByTestId('slow-response-elapsed-announcement')).toHaveTextContent('1m 00s')
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
     it('adopts the committed reply when the deadline expires after the turn landed', async () => {
       // The request never resolves (a wedged connection), but the core had
       // already written the turn — the reply must survive, not be rolled back.
