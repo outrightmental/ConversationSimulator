@@ -184,17 +184,25 @@ replacement engine that nothing will ever stop.
 *Known limitation of the restart path:* a crash is by definition not a
 lifespan shutdown, so the engine that died never ran `supervisor.stop_all()`
 and its own sidecars survive it — llama-server keeps port 7356, the TTS
-sidecar 7357-7358. The replacement engine starts and serves, but its
+sidecar 7357-7358. The replacement engine starts and serves, and its
 `llama-server` autostart then fails with `Port 7356 … is already in use`
-(`ensure_llama_sidecar_running`), so the app comes back able to browse packs
-and sessions but not to hold a conversation. The engine reports that through
-`sidecar_diagnostics` in `/api/health`, and the UI surfaces it as "another
-application is using the required port"; the fix is to quit and relaunch, which
-clears the orphans. The shell cannot reap them itself — they are not its
-children, and once their parent is gone there is no portable handle on them.
-Putting the engine in its own process group would give one, at the cost of
-breaking Ctrl-C teardown for a release build run from a terminal; that trade is
-not made here.
+(`ensure_llama_sidecar_running`) — reported through `sidecar_diagnostics` in
+`/api/health` and surfaced by the UI as "another application is using the
+required port".
+
+Conversations usually still work: `LlamaCppRuntime` talks to llama-server over
+HTTP at `127.0.0.1:7356` and does not care which process started it, so both
+`runtime.health()` and `/v1/chat/completions` land on the orphan, which is still
+serving the same model. What breaks is *managing* it — switching models goes
+through the same autostart and keeps hitting the conflict.
+
+Nothing clears the orphan on its own, and in particular **relaunching does
+not**: the replacement engine's `stop_all()` only stops sidecars it started a
+process for, and the shell's teardown signals the engine pid (Unix) or walks the
+tree below it (`taskkill /T`, Windows) — the orphan's parent is the engine that
+died, so it is in neither. It has to be ended by hand. Giving the engine its own
+process group (Unix) or job object (Windows) would hand the shell a handle on the
+whole subtree; that is a larger change than this one and is not made here.
 
 **Clean shutdown.** `stop_core` sends SIGTERM (`taskkill /PID … /T /F` on
 Windows, which has no SIGTERM but does walk the process tree), waits up to 6 s,

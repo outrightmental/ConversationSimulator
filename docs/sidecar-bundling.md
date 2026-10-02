@@ -252,10 +252,22 @@ its lifespan shutdown either, so every sidecar in the table above survives it.
 The desktop shell restarts the engine (see "Crash restart" in
 [apps/desktop/README.md](../apps/desktop/README.md)), and the replacement's
 `ensure_llama_sidecar_running` then fails `_is_port_in_use` against the orphan
-still holding 7356 — the app
-comes back, but without inference until the player quits and relaunches. The
-shell cannot clean this up: the orphans are its grandchildren, not its children,
-and their parent is already gone.
+still holding 7356. Inference usually keeps working anyway — `LlamaCppRuntime`
+reaches llama-server over HTTP at its configured `base_url` and does not care
+which process started it, so `runtime.health()` and `/v1/chat/completions` both
+land on the orphan — but the engine no longer *owns* that process:
+`sidecar_diagnostics` reports `port_conflict`, and anything that has to restart
+it (`/api/models/use`, a model switch) fails until the orphan is gone.
+
+Nothing in the product removes it. Relaunching does not: `stop_all()` stops the
+sidecars a *registered* sidecar object holds a `self._process` for, and the
+replacement engine's llama-server sidecar never started one. Neither does the
+shell's teardown: on Unix it signals the engine pid, and on Windows
+`taskkill /T` walks the tree below the pid it is given — the orphan's parent is
+the engine that died, so it is in neither. It has to be ended by hand. Giving
+the engine its own process group (Unix) or job object (Windows) would hand the
+shell a handle on the whole subtree; that is a larger change than the one this
+document describes and is not made today.
 
 `scripts/packaged-core-smoke.sh` runs the packaged engine and asserts both:
 health readiness, loopback-only binding, and a SIGTERM that reaches the lifespan

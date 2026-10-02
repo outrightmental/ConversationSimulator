@@ -47,8 +47,12 @@ gone, because its live state lived in the engine that stopped. After three
 failed restarts the app stops trying and shows the recovery card instead.
 
 1. If a restart succeeded, your packs, models, and past sessions are all intact — start the conversation again.
-2. If the restarted app says a required port is in use, or the AI never answers: the engine that crashed left its own
-   AI-model process behind, and the replacement cannot take the port back. Quit the app and open it again — that clears it.
+2. If **Settings** reports that a required port is in use, the engine that crashed left its own AI-model process
+   (`llama-server`, port 7356) behind. Replies usually keep working, because the app reaches that process over the
+   port it is still serving — but the new engine does not own it, so anything that has to restart it (switching
+   models, for instance) keeps failing. Quitting the app does **not** clear it: it is no longer a child of anything
+   the app owns. End it by hand (see [Port conflicts](#port-conflicts)) or restart your computer, then start the app
+   again.
 3. If the problem repeats, try a lighter model — open the model manager (**Settings → Runtime → Open model manager**) and choose a smaller model.
 4. Check `app.log` in the logs folder (see table above) for crash details.
 
