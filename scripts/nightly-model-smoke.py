@@ -1292,6 +1292,21 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             verify_model_checksum(models_dir / f"{args.model_id}.gguf", args.model_sha256)
             return 0
 
+        # Inside the handler, not after it: run_smoke classifies everything in
+        # its own try/finally, but its prologue (the throwaway data directory)
+        # and its epilogue (the report and step-summary writes that follow the
+        # verdict) sit outside that block.  An OSError there — a full disk is
+        # the realistic one, right after a 2.5 GB download and a 2.5 GB cache
+        # save — would escape as a bare traceback and exit 1.
+        return run_smoke(
+            args.model_id,
+            args.ci_hardware_factor,
+            Path(args.report_path) if args.report_path else None,
+            model_sha256=args.model_sha256,
+            models_dir=models_dir,
+            wall_clock_budget_s=args.wall_clock_budget_s,
+        )
+
     except SmokeFailure as exc:
         _print_banner(exc.failure_class, [str(exc)])
         _write_step_summary({
@@ -1303,23 +1318,26 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         })
         return exc.exit_code
 
-    # The pre-run modes (registry lookup, download, verify) have no run_smoke
-    # around them to catch what they did not anticipate — an unparseable
-    # registry.yaml, a missing file, a bad --models-dir.  Letting those escape
-    # exits 1, which EXIT_CODES reads as `budget`: the one class that says "the
-    # product is fine, it is just slow".  Classify them the way run_smoke
-    # classifies its own surprises instead, so a banner and a step summary are
-    # still written and exit 1 keeps meaning only what it claims to mean.
+    # Nothing may leave main() unclassified.  The pre-run modes (registry
+    # lookup, download, verify) have no run_smoke around them to catch what
+    # they did not anticipate — an unparseable registry.yaml, a missing file, a
+    # bad --models-dir — and run_smoke itself has a prologue and an epilogue
+    # outside its own handlers.  Letting any of that escape exits 1, which
+    # EXIT_CODES reads as `budget`: the one class that says "the product is
+    # fine, it is just slow".  Classify them the way run_smoke classifies its
+    # own surprises instead, so a banner and a step summary are still written
+    # and exit 1 keeps meaning only what it claims to mean.
     except Exception as exc:  # noqa: BLE001 — anything unanticipated, reported not raised
         failures = [
-            f"Unexpected error before the smoke started: {exc!r} — this is most "
-            "likely a bug in the smoke harness or a malformed "
-            "model-registry/registry.yaml, not a product failure"
+            f"Unexpected error outside the smoke's own classification: {exc!r} — "
+            "this is most likely a bug in the smoke harness, a malformed "
+            "model-registry/registry.yaml or an unusable disk, not a product failure"
         ]
         remedy = (
-            "Nothing was played, so this says nothing about the product. Re-run "
-            "the harness locally with the same arguments (docs/real-model-smoke.md) "
-            "and fix the registry file or the harness bug in the traceback above."
+            "This escaped run_smoke's own error handling, so it says nothing about "
+            "the product. Re-run the harness locally with the same arguments "
+            "(docs/real-model-smoke.md) and fix the registry file, the environment, "
+            "or the harness bug in the traceback above."
         )
         _print_banner(FailureClass.PIPELINE, failures, remedy=remedy)
         _write_step_summary({
@@ -1331,15 +1349,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "remedy": remedy,
         })
         return EXIT_CODES[FailureClass.PIPELINE]
-
-    return run_smoke(
-        args.model_id,
-        args.ci_hardware_factor,
-        Path(args.report_path) if args.report_path else None,
-        model_sha256=args.model_sha256,
-        models_dir=models_dir,
-        wall_clock_budget_s=args.wall_clock_budget_s,
-    )
 
 
 if __name__ == "__main__":

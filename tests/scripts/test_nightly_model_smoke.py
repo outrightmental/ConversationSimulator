@@ -1195,6 +1195,53 @@ class TestMainEntryPoint:
         assert exit_code == smoke.EXIT_CODES[smoke.FailureClass.DOWNLOAD]
         assert "`download`" in summary.read_text(encoding="utf-8")
 
+    def test_a_failure_in_run_smokes_prologue_is_classified_not_exit_one(
+        self, staged_model, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        # run_smoke classifies everything inside its own try/finally, but the
+        # throwaway data directory is created before it and the report is
+        # written after it.  A full disk there — realistic right after a 2.5 GB
+        # download and a 2.5 GB cache save — must not escape as a bare
+        # traceback: Python would exit 1, which EXIT_CODES reads as `budget`.
+        models_dir, model_id, digest = staged_model
+
+        def _no_space(*args: object, **kwargs: object) -> str:
+            raise OSError(28, "No space left on device")
+
+        monkeypatch.setattr(smoke.tempfile, "mkdtemp", _no_space)
+        summary = tmp_path / "summary.md"
+        monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+
+        exit_code = smoke.main([
+            "--model-id", model_id, "--model-sha256", digest,
+            "--models-dir", str(models_dir),
+        ])
+
+        assert exit_code != smoke.EXIT_CODES[smoke.FailureClass.BUDGET]
+        assert exit_code == smoke.EXIT_CODES[smoke.FailureClass.PIPELINE]
+        text = summary.read_text(encoding="utf-8")
+        assert "FAIL" in text
+        assert "No space left on device" in text
+
+    def test_a_failure_writing_the_report_does_not_become_a_budget_verdict(
+        self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        # The report write follows the verdict, outside run_smoke's handlers.
+        models_dir, model_id, digest = staged_model
+        monkeypatch.setattr(smoke, "_request_json", _fake_core(_debrief()))
+
+        def _no_space(*args: object, **kwargs: object) -> None:
+            raise OSError(28, "No space left on device")
+
+        monkeypatch.setattr(smoke, "_write_report", _no_space)
+
+        exit_code = smoke.main([
+            "--model-id", model_id, "--model-sha256", digest,
+            "--models-dir", str(models_dir), "--report-path", str(tmp_path / "r.json"),
+        ])
+
+        assert exit_code == smoke.EXIT_CODES[smoke.FailureClass.PIPELINE]
+
     def test_a_usage_error_is_not_mistaken_for_a_download_failure(self) -> None:
         # argparse exits 2 on a bad command line, and 2 is the `download` code,
         # whose remedy is "nothing about the app changed, re-run the job" —
