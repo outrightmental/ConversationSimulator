@@ -18,6 +18,9 @@ import Support from './screens/Support'
 import FirstRunWizard from './screens/FirstRunWizard'
 import CoreStartupGuard from './screens/CoreStartup'
 import Logbook from './screens/Logbook'
+import FlytingSetup from './screens/FlytingSetup'
+import Flyting from './screens/Flyting'
+import FlytingDebrief from './screens/FlytingDebrief'
 import { SETUP_KEYS } from './privacyPrefs'
 import { api } from './api/client'
 import { deriveSetupStatus } from './setup'
@@ -156,11 +159,12 @@ function FirstRunGuard() {
   )
 }
 
-// The demo edition (issue #495) has no Scenario Library, Creator Workbench or
-// Logbook: the five conversations live on Home, and everything else is the
-// full app's. Those routes collapse to Home rather than 404 so a stale link
-// (a debrief's "back to library", a bookmark) always lands somewhere sensible.
-// The engine refuses the underlying data in the demo regardless.
+// The demo edition (issue #495) has no Scenario Library, Creator Workbench,
+// Logbook or flyting: the five conversations live on Home, and everything else
+// is the full app's. Those routes collapse to Home rather than 404 so a stale
+// link (a debrief's "back to library", a bookmark) always lands somewhere
+// sensible. The engine refuses the underlying data in the demo regardless —
+// /api/flyting/* answers 403 EDITION_RESTRICTED there.
 function AppRoutes() {
   const isDemo = useIsDemo()
   const home = <Navigate to="/" replace />
@@ -176,6 +180,13 @@ function AppRoutes() {
           <Route path="/setup/:scenarioId" element={<ScenarioSetup />} />
           <Route path="/conversation/:sessionId" element={<Conversation />} />
           <Route path="/debrief/:sessionId" element={<Debrief />} />
+          {/* Flyting is its own turn loop, so it gets its own three screens:
+              pick a format, play for score, read the scorecard. A conversation
+              scenario never routes here and a flyting scenario never routes to
+              /setup — the mode is decided by the pack, not by the screen. */}
+          <Route path="/flyting/setup/:scenarioId" element={isDemo ? home : <FlytingSetup />} />
+          <Route path="/flyting/run/:sessionId" element={isDemo ? home : <Flyting />} />
+          <Route path="/flyting/debrief/:sessionId" element={isDemo ? home : <FlytingDebrief />} />
           <Route path="/workbench" element={isDemo ? home : <CreatorWorkbench />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/model-manager" element={<ModelManager />} />

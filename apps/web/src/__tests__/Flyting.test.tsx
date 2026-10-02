@@ -1,0 +1,420 @@
+// SPDX-License-Identifier: Apache-2.0
+//
+// The three flyting screens, driven the way a player drives them: pick a
+// format, volley for score, read the scorecard. The engine is mocked, but the
+// payload shapes are the ones /api/flyting/* returns, so a contract change in
+// @convsim/shared fails here rather than at runtime.
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
+import type {
+  FlytingRunDetail,
+  FlytingRunState,
+  FlytingRunSummaryResponse,
+  FlytingScenarioSetup,
+  FlytingVolleyResponse,
+  VolleyScorecard as Scorecard,
+} from '@convsim/shared'
+import FlytingSetup from '../screens/FlytingSetup'
+import Flyting from '../screens/Flyting'
+import FlytingDebrief from '../screens/FlytingDebrief'
+
+vi.mock('../api/client', () => ({
+  api: {
+    flyting: {
+      getScenario: vi.fn(),
+      highScores: vi.fn(),
+      startRun: vi.fn(),
+      getRun: vi.fn(),
+      submitVolley: vi.fn(),
+      endRun: vi.fn(),
+    },
+  },
+}))
+
+import { api } from '../api/client'
+const mockApi = vi.mocked(api, true)
+
+const SCENARIO_ID = 'whitechapel_rose'
+const SESSION_ID = 'sess-flyt01'
+
+const SETUP: FlytingScenarioSetup = {
+  scenario_id: SCENARIO_ID,
+  pack_id: 'official.flyting_school',
+  title: 'The Scorned Rose of Whitechapel',
+  summary: 'Outside his club, in front of his friends.',
+  mode: 'flyting',
+  content_rating: 'PG-13',
+  player_role: { label: 'the Scorned Rose', brief: 'Ruined and discarded.' },
+  target: {
+    npc_id: 'lord_bellingham',
+    display_name: 'Lord Bellingham',
+    attack_surface: [
+      { id: 'vanity', brief: 'Powdered, corseted, and fifty.' },
+      { id: 'hypocrisy', brief: 'Preaches temperance; owns two gin palaces.' },
+    ],
+    discoverable_count: 2,
+  },
+  formats: ['batting_practice', 'bout'],
+  batting_formats: ['set_10', 'timed_90', 'endless'],
+  shot_clock_s: 20,
+  bout: {
+    rounds: 8,
+    momentum_win: 85,
+    riposte_bonus: 15,
+    npc_tier: 'wildean',
+    npc_tier_label: 'Wildean',
+  },
+  difficulty_multiplier: 1.2,
+  verse_required: false,
+  requires_surface_politeness: false,
+  lexicon_hints: ['blackguard'],
+  judge_flavor: 'A retired music-hall chairman.',
+  audience: { label: 'The club steps' },
+  personal_bests: { batting_practice: 420, bout: null },
+  goals: ['Land on what he cannot deny.'],
+  limits: { max_volley_chars: 500, set_volleys: 10, timed_seconds: 90, endless_whiffs: 3 },
+}
+
+const RUN: FlytingRunState = {
+  play_format: 'batting_practice',
+  batting_format: 'set_10',
+  shot_clock_s: 20,
+  momentum: 50,
+  heat: 1.2,
+  whiffs: 0,
+  player_total: 129,
+  npc_total: 0,
+  banked_total: 129,
+  round_number: 1,
+  player_volleys: 1,
+  npc_volleys: 0,
+  best_volley_score: 129,
+  sudden_death: false,
+  theme_uses: { hypocrisy: 1 },
+  recent_devices: [['metaphor']],
+  discovered_traits: [],
+  foul_counts: {},
+  elapsed_s: 12,
+  daily_seed: null,
+  outcome: null,
+}
+
+function scorecard(overrides: Partial<Scorecard> = {}): Scorecard {
+  return {
+    volley_number: 1,
+    speaker: 'player',
+    score: 129,
+    band: 'strong',
+    gate: { outcome: 'ok' },
+    composition: {
+      quality: 0.84,
+      topicality: 1.27,
+      freshness: 0.97,
+      difficulty: 1.2,
+      base: 124,
+      bonuses: [{ id: 'device_rotation', points: 5 }],
+      bonus_total: 5,
+    },
+    judge: {
+      sting: 8,
+      wit: 8,
+      craft: 9,
+      fidelity: 9,
+      hooks: [{ trait: 'hypocrisy', evidence: 'polish your virtue' }],
+      themes: ['hypocrisy'],
+      devices: ['metaphor'],
+      umpire_line: 'That one left a mark, madam.',
+    },
+    craft_metrics: {
+      word_count: 24,
+      type_token_ratio: 0.9,
+      mean_zipf: 3.8,
+      second_person: true,
+      rarest_words: ['sterling'],
+    },
+    freshness: { value: 0.97, s_max: 0.17, method: 'lexical', nearest_source: 'none' },
+    heat: 1.2,
+    banked_score: 155,
+    flags: [],
+    ...overrides,
+  }
+}
+
+const VOLLEY_TEXT = 'You polish your virtue like your carriage brass, and both are plate.'
+
+const VOLLEY_RESPONSE: FlytingVolleyResponse = {
+  session_id: SESSION_ID,
+  state: 'PlayerTurnListening',
+  player_volley: scorecard(),
+  npc_line: 'The Lord sniffs and studies his gloves.',
+  npc_volley: null,
+  exchange: null,
+  run: RUN,
+  run_outcome: null,
+  volleys_remaining: 9,
+  seconds_remaining: null,
+  whiffs_remaining: null,
+}
+
+const RUN_DETAIL: FlytingRunDetail = {
+  session_id: SESSION_ID,
+  scenario_id: SCENARIO_ID,
+  state: 'PlayerTurnListening',
+  run: { ...RUN, player_total: 0, banked_total: 0, best_volley_score: 0, heat: 1, player_volleys: 0 },
+  volleys: [],
+  volleys_remaining: 10,
+  seconds_remaining: null,
+  whiffs_remaining: null,
+}
+
+const SUMMARY: FlytingRunSummaryResponse = {
+  session_id: SESSION_ID,
+  scenario_id: SCENARIO_ID,
+  summary: {
+    play_format: 'batting_practice',
+    batting_format: 'set_10',
+    outcome: 'set_complete',
+    total_score: 806,
+    player_total: 700,
+    npc_total: 0,
+    volley_count: 10,
+    best_volley_score: 129,
+    best_volley_text: VOLLEY_TEXT,
+    peak_heat: 1.6,
+    final_momentum: null,
+    whiffs: 1,
+    fouls: { bribing_the_ref: 1 },
+    theme_report: [
+      { theme: 'hygiene', uses: 4, remaining_value: 0.316 },
+      { theme: 'hypocrisy', uses: 1, remaining_value: 0.75 },
+    ],
+    device_histogram: { metaphor: 5, triple: 2 },
+    rarest_words: ['sterling', 'blackguard'],
+    coaching_notes: [
+      'You went to hygiene 4 times; its value had decayed to 31%. Variety is the meta.',
+    ],
+  },
+  volleys: [
+    {
+      speaker: 'player',
+      text: VOLLEY_TEXT,
+      score: 129,
+      band: 'strong',
+      heat: 1.2,
+      banked_score: 155,
+      momentum: null,
+      scorecard: scorecard(),
+      created_at: '2026-10-02 18:00:00',
+    },
+  ],
+  high_score_rank: 2,
+  personal_best: 900,
+}
+
+function LocationProbe() {
+  const location = useLocation()
+  return <div data-testid="location">{location.pathname}</div>
+}
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  mockApi.flyting.getScenario.mockResolvedValue({ ok: true, data: SETUP })
+  mockApi.flyting.highScores.mockResolvedValue({
+    ok: true,
+    data: { scenario_id: SCENARIO_ID, play_format: 'batting_practice', batting_format: 'set_10', entries: [] },
+  })
+  mockApi.flyting.startRun.mockResolvedValue({
+    ok: true,
+    data: {
+      session_id: SESSION_ID,
+      scenario_id: SCENARIO_ID,
+      state: 'PlayerTurnListening',
+      run: RUN_DETAIL.run,
+      created_at: '2026-10-02T18:00:00Z',
+    },
+  })
+  mockApi.flyting.getRun.mockResolvedValue({ ok: true, data: RUN_DETAIL })
+  mockApi.flyting.submitVolley.mockResolvedValue({ ok: true, data: VOLLEY_RESPONSE })
+  mockApi.flyting.endRun.mockResolvedValue({ ok: true, data: SUMMARY })
+})
+
+// ---------------------------------------------------------------------------
+// Setup screen
+// ---------------------------------------------------------------------------
+
+describe('FlytingSetup', () => {
+  function renderSetup() {
+    return render(
+      <MemoryRouter
+        initialEntries={[`/flyting/setup/${SCENARIO_ID}`]}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
+        <LocationProbe />
+        <Routes>
+          <Route path="/flyting/setup/:scenarioId" element={<FlytingSetup />} />
+          <Route path="/flyting/run/:sessionId" element={<div>playing</div>} />
+        </Routes>
+      </MemoryRouter>,
+    )
+  }
+
+  it('names the visible attack surface and counts the hidden traits', async () => {
+    renderSetup()
+    await waitFor(() => screen.getByTestId('attack-surface'))
+    expect(screen.getByText(/powdered, corseted, and fifty/i)).toBeInTheDocument()
+    // Discoverables are counted, never named: a brief that gives one away
+    // cannot make finding it worth double.
+    expect(screen.getByTestId('discoverable-count')).toHaveTextContent('2 more')
+    expect(screen.queryByText(/gin palaces.*cousin/i)).not.toBeInTheDocument()
+  })
+
+  it('shows the personal best for the chosen format', async () => {
+    renderSetup()
+    await waitFor(() => screen.getByTestId('personal-best'))
+    expect(screen.getByTestId('personal-best')).toHaveTextContent('420')
+  })
+
+  it('starts a run and goes to the play screen', async () => {
+    renderSetup()
+    await waitFor(() => screen.getByTestId('start-flyting-run'))
+    fireEvent.click(screen.getByTestId('start-flyting-run'))
+    await waitFor(() => {
+      expect(screen.getByTestId('location')).toHaveTextContent(`/flyting/run/${SESSION_ID}`)
+    })
+    expect(mockApi.flyting.startRun).toHaveBeenCalledWith(
+      expect.objectContaining({ scenario_id: SCENARIO_ID, play_format: 'batting_practice' }),
+    )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Play screen
+// ---------------------------------------------------------------------------
+
+describe('Flyting play screen', () => {
+  function renderPlay() {
+    return render(
+      <MemoryRouter
+        initialEntries={[`/flyting/run/${SESSION_ID}`]}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
+        <LocationProbe />
+        <Routes>
+          <Route path="/flyting/run/:sessionId" element={<Flyting />} />
+          <Route path="/flyting/debrief/:sessionId" element={<div>debrief</div>} />
+        </Routes>
+      </MemoryRouter>,
+    )
+  }
+
+  it('scores a volley and shows its arithmetic', async () => {
+    renderPlay()
+    await waitFor(() => screen.getByTestId('volley-input'))
+    fireEvent.change(screen.getByTestId('volley-input'), { target: { value: VOLLEY_TEXT } })
+    fireEvent.click(screen.getByTestId('submit-volley'))
+
+    await waitFor(() => screen.getByTestId('scorecard-player-1'))
+    expect(screen.getByTestId('volley-score')).toHaveTextContent('129')
+    // The composition is the point: a score that cannot show its working is a
+    // slot machine.
+    expect(screen.getByTestId('volley-arithmetic')).toHaveTextContent('1.27 T')
+    expect(screen.getByTestId('run-total')).toHaveTextContent('129')
+    expect(screen.getByTestId('volleys-left')).toHaveTextContent('9')
+  })
+
+  it('reports the verified hook with the words that earned it', async () => {
+    renderPlay()
+    await waitFor(() => screen.getByTestId('volley-input'))
+    fireEvent.change(screen.getByTestId('volley-input'), { target: { value: VOLLEY_TEXT } })
+    fireEvent.click(screen.getByTestId('submit-volley'))
+    await waitFor(() => screen.getByTestId('volley-hooks'))
+    expect(screen.getByTestId('volley-hooks')).toHaveTextContent('hypocrisy')
+    expect(screen.getByTestId('volley-hooks')).toHaveTextContent('polish your virtue')
+  })
+
+  it('retiring ends the run and goes to the debrief', async () => {
+    renderPlay()
+    await waitFor(() => screen.getByText('Retire'))
+    fireEvent.click(screen.getByText('Retire'))
+    await waitFor(() => {
+      expect(screen.getByTestId('location')).toHaveTextContent(`/flyting/debrief/${SESSION_ID}`)
+    })
+    expect(mockApi.flyting.endRun).toHaveBeenCalledWith(SESSION_ID)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Debrief
+// ---------------------------------------------------------------------------
+
+describe('FlytingDebrief', () => {
+  function renderDebrief() {
+    return render(
+      <MemoryRouter
+        initialEntries={[`/flyting/debrief/${SESSION_ID}`]}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
+        <Routes>
+          <Route path="/flyting/debrief/:sessionId" element={<FlytingDebrief />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+  }
+
+  it('reports the run, its rank and the personal best', async () => {
+    renderDebrief()
+    await waitFor(() => screen.getByTestId('summary-total'))
+    expect(screen.getByTestId('summary-total')).toHaveTextContent('806')
+    expect(screen.getByTestId('summary-best')).toHaveTextContent('129')
+    expect(screen.getByTestId('summary-personal-best')).toHaveTextContent('900')
+    expect(screen.getByText(/#2 on this board/i)).toBeInTheDocument()
+    expect(screen.getByText(/set complete/i)).toBeInTheDocument()
+  })
+
+  it('shows the best volley and the coaching notes', async () => {
+    renderDebrief()
+    await waitFor(() => screen.getByTestId('best-volley'))
+    expect(screen.getByTestId('best-volley')).toHaveTextContent('carriage brass')
+    expect(screen.getByTestId('coaching-notes')).toHaveTextContent('Variety is the meta')
+  })
+
+  it('reports what the next use of an over-used theme would be worth', async () => {
+    renderDebrief()
+    await waitFor(() => screen.getByTestId('theme-report'))
+    // 4 uses of hygiene → the fifth carries 32 % of its value. Showing the
+    // remaining value rather than the count is what changes behaviour.
+    expect(screen.getByTestId('theme-hygiene')).toHaveAttribute(
+      'aria-label',
+      expect.stringContaining('32%'),
+    )
+    expect(screen.getByTestId('device-histogram')).toHaveTextContent('metaphor')
+    expect(screen.getByTestId('rarest-words')).toHaveTextContent('sterling')
+  })
+
+  it('lists every volley, each opening onto its own scorecard', async () => {
+    renderDebrief()
+    await waitFor(() => screen.getByTestId('volley-log'))
+    expect(screen.getByTestId('volley-row-0')).toHaveTextContent('129')
+    expect(screen.getByTestId('scorecard-player-1')).toBeInTheDocument()
+  })
+
+  it('offers another run on the same scenario', async () => {
+    renderDebrief()
+    await waitFor(() => screen.getByTestId('run-again'))
+    expect(screen.getByTestId('run-again')).toHaveAttribute(
+      'href',
+      `/flyting/setup/${SCENARIO_ID}`,
+    )
+  })
+
+  it('surfaces a failure to end the run, with a retry', async () => {
+    mockApi.flyting.endRun.mockResolvedValue({
+      ok: false,
+      error: { kind: 'runtime-unreachable', message: 'core down' },
+    })
+    renderDebrief()
+    await waitFor(() => screen.getByRole('alert'))
+    expect(screen.getByText(/local runtime is unavailable/i)).toBeInTheDocument()
+  })
+})

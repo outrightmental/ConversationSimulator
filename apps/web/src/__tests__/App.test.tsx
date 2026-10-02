@@ -91,6 +91,24 @@ describe('App shell', () => {
     expect(screen.getByRole('heading', { name: /debrief/i })).toBeInTheDocument()
   })
 
+  it('renders the flyting setup screen at /flyting/setup/:id', () => {
+    renderAt('/flyting/setup/whitechapel_rose')
+    // The flyting screens are a second turn loop, reachable only through these
+    // routes; before they were wired, this path matched nothing and rendered an
+    // empty layout.
+    expect(screen.getByText(/loading the scenario/i)).toBeInTheDocument()
+  })
+
+  it('renders the flyting play screen at /flyting/run/:id', () => {
+    renderAt('/flyting/run/sess-flyt01')
+    expect(screen.getByText(/loading the run/i)).toBeInTheDocument()
+  })
+
+  it('renders the flyting debrief at /flyting/debrief/:id', () => {
+    renderAt('/flyting/debrief/sess-flyt01')
+    expect(screen.getByText(/tallying the run/i)).toBeInTheDocument()
+  })
+
   it('renders Creator Workbench at /workbench', () => {
     renderAt('/workbench')
     expect(screen.getByRole('heading', { name: /creator workbench/i })).toBeInTheDocument()

@@ -232,7 +232,7 @@ export default function Flyting() {
     return (
       <div style={{ padding: '1.5rem' }}>
         <ApiErrorView
-          error={error ?? { kind: 'unknown', message: 'Run unavailable' }}
+          error={error ?? { kind: 'schema-mismatch', message: 'The run could not be read.' }}
           context="Flyting"
         />
       </div>

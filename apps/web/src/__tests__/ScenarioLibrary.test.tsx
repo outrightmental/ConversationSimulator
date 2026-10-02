@@ -109,6 +109,25 @@ const SCENARIO_SPANISH: ScenarioInfo = {
   tags: ['language', 'social'],
 }
 
+const SCENARIO_FLYTING: ScenarioInfo = {
+  scenario_id: 'whitechapel_rose',
+  title: 'The Scorned Rose of Whitechapel',
+  summary: 'Confront the man who ruined you, outside his club, in front of his friends.',
+  content_rating: 'PG-13',
+  mode: 'flyting',
+  pack_id: 'official.flyting_school',
+  pack_name: 'Flyting School',
+  player_role: { label: 'The Scorned Rose', brief: 'Ruined and discarded; done being quiet.' },
+  difficulty: { default: 'standard', options: { standard: { patience: 50, volatility: 50, disclosure: 50, time_pressure: 50 } } },
+  supported_languages: ['en'],
+  duration: { max_turns: 10, soft_time_limit_minutes: 10 },
+  state_meters_permitted: true,
+  voice_supported: false,
+  safety_summary: 'PG-13 cap; slurs are a foul.',
+  estimated_length_label: '5–10 minutes',
+  tags: ['flyting', 'wit'],
+}
+
 const ALL_SCENARIOS = [SCENARIO_BEHAVIORAL, SCENARIO_HOSTILE, SCENARIO_SPANISH]
 
 const VALID_RESULT: PackValidationResult = {
@@ -416,6 +435,25 @@ describe('launch action', () => {
       'href',
       '/setup/behavioral_interview',
     )
+  })
+
+  it('a flyting scenario launches its own setup screen, not the conversation one', async () => {
+    mockApi.listScenarios.mockResolvedValue({ ok: true, data: [...ALL_SCENARIOS, SCENARIO_FLYTING] })
+    renderLibrary()
+    await waitFor(() => screen.getByTestId('launch-whitechapel_rose'))
+    // The mode decides the turn loop, so it has to decide the route: a
+    // conversation session on a flyting scenario scores nothing per volley.
+    expect(screen.getByTestId('launch-whitechapel_rose')).toHaveAttribute(
+      'href',
+      '/flyting/setup/whitechapel_rose',
+    )
+  })
+
+  it('marks a flyting card so the mode is legible before launching', async () => {
+    mockApi.listScenarios.mockResolvedValue({ ok: true, data: [...ALL_SCENARIOS, SCENARIO_FLYTING] })
+    renderLibrary()
+    await waitFor(() => screen.getByTestId('launch-whitechapel_rose'))
+    expect(screen.getByText(/flyting — scored every turn/i)).toBeInTheDocument()
   })
 
   it('launch link has accessible aria-label', async () => {

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ScenarioSetupPage } from '../pages/ScenarioSetup'
 import type { SessionCreateResponse } from '@convsim/shared'
@@ -27,12 +28,21 @@ export default function ScenarioSetup() {
     navigate('/model-manager')
   }
 
+  // A flyting scenario is played on its own screens. Arriving here means a
+  // stale link or a recommendation that did not know the mode, so forward with
+  // `replace` — Back should return wherever the player came from, not to a
+  // setup form this scenario can never use.
+  const handleOtherMode = useCallback(() => {
+    navigate(`/flyting/setup/${scenarioId}`, { replace: true })
+  }, [navigate, scenarioId])
+
   return (
     <ScenarioSetupPage
       scenarioId={scenarioId!}
       onSessionCreated={handleSessionCreated}
       onBack={handleBack}
       onInstallModel={handleInstallModel}
+      onOtherMode={handleOtherMode}
     />
   )
 }

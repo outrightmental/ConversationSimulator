@@ -934,6 +934,9 @@ export default function ScenarioLibrary() {
                           aria-label="Scenario details"
                         >
                           <Chip label={scenario.content_rating} />
+                          {scenario.mode === 'flyting' && (
+                            <Chip label="Flyting — scored every turn" accent="purple" />
+                          )}
                           <Chip label={`Role: ${scenario.player_role?.label ?? '—'}`} />
                           <Chip label={scenario.estimated_length_label} />
                           {scenario.voice_supported && (
@@ -955,7 +958,11 @@ export default function ScenarioLibrary() {
                       </div>
 
                       <Link
-                        to={`/setup/${scenario.scenario_id}`}
+                        to={
+                          scenario.mode === 'flyting'
+                            ? `/flyting/setup/${scenario.scenario_id}`
+                            : `/setup/${scenario.scenario_id}`
+                        }
                         aria-label={`Launch ${scenario.title}`}
                         data-testid={`launch-${scenario.scenario_id}`}
                         style={{

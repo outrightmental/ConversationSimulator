@@ -116,6 +116,33 @@ describe('ScenarioSetupPage', () => {
       expect(screen.getByText('Job Interview Basics')).toBeInTheDocument();
     });
 
+    it('hands a flyting scenario to its own setup screen instead of offering a session', async () => {
+      mockApi.getScenario.mockResolvedValue({
+        ok: true as const,
+        data: { ...mockScenario, scenario_id: 'whitechapel_rose', mode: 'flyting' as const },
+      });
+      mockApi.health.mockResolvedValue({ ok: true as const, data: healthReady });
+      const onOtherMode = vi.fn();
+      renderSetup({ scenarioId: 'whitechapel_rose', onOtherMode });
+      await waitFor(() => expect(onOtherMode).toHaveBeenCalledWith('flyting'));
+      // The conversation form never appears — the page holds its loading state
+      // while the wrapper redirects. A flyting scenario has no difficulty, no
+      // voice and no debrief-only rubric to configure here.
+      expect(screen.getByText(/loading scenario/i)).toBeInTheDocument();
+      expect(screen.queryByRole('radio', { name: /text only/i })).not.toBeInTheDocument();
+      expect(mockApi.createSession).not.toHaveBeenCalled();
+    });
+
+    it('renders the form normally for a scenario with no mode — a pre-#454 backend', async () => {
+      const { mode: _mode, ...noMode } = { ...mockScenario, mode: undefined };
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: noMode as typeof mockScenario });
+      mockApi.health.mockResolvedValue({ ok: true as const, data: healthReady });
+      const onOtherMode = vi.fn();
+      renderSetup({ onOtherMode });
+      await waitFor(() => expect(screen.getByTestId('setup-page')).toBeInTheDocument());
+      expect(onOtherMode).not.toHaveBeenCalled();
+    });
+
     it('shows load error when API fails', async () => {
       mockApi.getScenario.mockResolvedValue({ ok: false as const, error: { kind: 'network' as const, message: 'Network error' } });
       mockApi.health.mockResolvedValue({ ok: true as const, data: healthReady });
