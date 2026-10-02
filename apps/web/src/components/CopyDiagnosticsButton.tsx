@@ -71,14 +71,29 @@ export function CopyDiagnosticsButton({
   function handleCopy() {
     void (async () => {
       setStatus('busy')
-      const head =
-        header != null && header !== ''
-          ? header
-          : error != null
-            ? buildDiagnosticsText(error, context)
-            : defaultHeader(context)
-      const report = await buildDiagnosticsReport(head, context)
-      const ok = await copyTextToClipboard(report)
+      // Every path out of here has to reach a verdict. The button is the
+      // escape hatch a user reaches for once something has already gone
+      // wrong, so a throw while assembling the report must not leave it
+      // sitting disabled on "busy" with nothing copied (issue #508) — the
+      // client-side header on its own is still worth more to a bug report
+      // than an unresponsive button.
+      let head = defaultHeader(context)
+      let ok = false
+      try {
+        head =
+          header != null && header !== ''
+            ? header
+            : error != null
+              ? buildDiagnosticsText(error, context)
+              : head
+        ok = await copyTextToClipboard(await buildDiagnosticsReport(head, context))
+      } catch {
+        try {
+          ok = await copyTextToClipboard(head)
+        } catch {
+          ok = false
+        }
+      }
       if (!mounted.current) return
       setStatus(ok ? 'copied' : 'failed')
       scheduleReset()
