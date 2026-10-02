@@ -51,7 +51,8 @@ and transcript line is fictional scenario content or model output responding to 
 # 2. Playwright + Chromium (not a repo dependency — only needed to re-capture)
 npm install playwright && npx playwright install chromium
 
-# 2b. ffmpeg, for the hero recording (skip it only with --skip-hero)
+# 2b. ffmpeg, for the hero recording (not needed with --skip-hero, or with
+#     an --only list that leaves `hero` off)
 brew install ffmpeg
 
 # 3. drive a real playthrough and write every asset
@@ -83,7 +84,7 @@ otherwise indistinguishable from a full one.
 
 | File | `docs/assets/demo.gif` (3.1 MB) · `docs/assets/demo.mp4` (0.6 MB fallback) |
 |------|-----------------------------------------------------------------------------|
-| Used in | `README.md` |
+| Used in | `README.md` — the GIF. The MP4 is the same segment kept as a video source for the Steam trailer and store page (`publishing/STEAM_ASSETS_SPEC.md`); nothing embeds it today. |
 | License | CC0-1.0 |
 | Shows | 25 s of one real turn: the player types a reply, the local model answers as the NPC, and the state meters under the transcript move as the turn resolves |
 | Fictional content | NPC "Elena Vasquez" (Head of Product, stretch-hire interview) — no real person |

@@ -296,6 +296,12 @@ async function shot(page, name, { until } = {}) {
     )
   }
   await page.setViewportSize({ width: VIEWPORT.width, height })
+  // This is a viewport screenshot, not a full-page one. When the viewport grew
+  // to the whole page the browser clamps the scroll to 0 for us, but a page
+  // past MAX_SHOT_HEIGHT is still scrollable — and 03 scrolls the state meters
+  // into view just before firing. Without this the clamped capture would start
+  // at that offset, which is not "the top of it" the warning above promises.
+  await page.evaluate(() => window.scrollTo(0, 0))
   await page.waitForTimeout(600)
   await page.screenshot({ path: file })
   await page.setViewportSize(VIEWPORT)
@@ -349,7 +355,9 @@ async function main() {
     await page.goto(UI_URL, { waitUntil: 'domcontentloaded' })
     await page.getByRole('heading', { level: 1 }).first().waitFor({ timeout: 30_000 })
     await settle(page, 1500)
-    if (wanted('01')) await shot(page, '01-home.png')
+    // Wrapped like every screen after it: a failed capture here is one lost
+    // output, not a reason to throw away the playthrough that follows.
+    await step('01', () => shot(page, '01-home.png'))
 
     // ── 02 Scenario Library ───────────────────────────────────────────────
     await page.goto(`${UI_URL}/library`, { waitUntil: 'domcontentloaded' })
@@ -360,7 +368,7 @@ async function main() {
     await page.getByLabel('Search scenarios').fill('interview')
     await page.getByTestId(`launch-${SCENARIO_ID}`).waitFor({ timeout: 30_000 })
     await settle(page)
-    if (wanted('02')) await shot(page, '02-scenario-library.png')
+    await step('02', () => shot(page, '02-scenario-library.png'))
 
     // ── Play a real session ───────────────────────────────────────────────
     await page.getByTestId(`launch-${SCENARIO_ID}`).click()
