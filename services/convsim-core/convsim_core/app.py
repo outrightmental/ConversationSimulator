@@ -18,13 +18,18 @@ from convsim_core.errors import (
 from convsim_core.logging_setup import configure_logging
 from convsim_core.packs.seeder import seed_official_packs
 from convsim_core.paths import legacy_convsim_dir, platform_data_root
-from convsim_core.routers import cloud_settings as cloud_settings_router, diag as diag_router, health, logbook as logbook_router, models as models_router, packs as packs_router, preflight as preflight_router, privacy as privacy_router, relationship_memory as relationship_memory_router, runtime_settings as runtime_settings_router, scenarios as scenarios_router, sessions as sessions_router, settings as settings_router, setup as setup_router, setup_install as setup_install_router, sidecar as sidecar_router, stt as stt_router, tts as tts_router, vad as vad_router, workbench as workbench_router, workshop as workshop_router
+from convsim_core.routers import cloud_settings as cloud_settings_router, diag as diag_router, health, logbook as logbook_router, models as models_router, packs as packs_router, preflight as preflight_router, privacy as privacy_router, relationship_memory as relationship_memory_router, runtime_settings as runtime_settings_router, scenarios as scenarios_router, sessions as sessions_router, settings as settings_router, setup as setup_router, setup_install as setup_install_router, sidecar as sidecar_router, stt as stt_router, tts as tts_router, vad as vad_router, voice_setup as voice_setup_router, workbench as workbench_router, workshop as workshop_router
 from convsim_core.runtime import build_runtime
 from convsim_core.runtime.sidecar import LlamaCppSidecar
 from convsim_core.runtime.kokoro_sidecar import KokoroSidecar
 from convsim_core.runtime.supervisor import ProcessSupervisor
 from convsim_core.storage.database import Database
 from convsim_core.storage.repositories.settings_repo import load_settings
+from convsim_core.services.voice_setup_service import (
+    apply_stt_model_path,
+    get_stt_model_path,
+    retire_orphaned_jobs as retire_orphaned_voice_jobs,
+)
 from convsim_core.stt import build_stt_worker
 from convsim_core.tts import build_tts_worker
 from convsim_core.vad import build_vad_worker
@@ -93,6 +98,7 @@ def create_app(config: ServiceConfig | None = None) -> FastAPI:
         app.state.models_dir = config.models_dir
         app.state.cancel_events = {}                 # install_id → asyncio.Event (model downloads)
         app.state.setup_install_cancel_events = {}   # job_id → asyncio.Event (pipeline jobs)
+        app.state.voice_install_cancel_events = {}   # job_id → asyncio.Event (voice assets)
         app.state.app_settings = load_settings(db.connection(), config.data_dir, config.log_dir)
         # Boot with the user's persisted runtime selection (written by
         # /api/models/use and the setup pipeline) rather than the static config
@@ -107,6 +113,14 @@ def create_app(config: ServiceConfig | None = None) -> FastAPI:
             resolve_startup_runtime_id(db.connection(), config.runtime_id)
         )
         app.state.stt_worker = build_stt_worker(config.stt_worker_id)
+        # Voice setup (issue #487) lets the player install any of several
+        # whisper models, so the file in use is not always the worker's
+        # configured default. Re-apply their choice before anything can
+        # transcribe, or the first utterance after a restart would silently
+        # fall back to a model they may not have installed.
+        _voice_stt_path = get_stt_model_path(db.connection())
+        if _voice_stt_path:
+            apply_stt_model_path(app.state.stt_worker, _voice_stt_path)
         app.state.tts_worker = build_tts_worker(config.tts_worker_id)
         app.state.vad_worker = build_vad_worker(config.vad_worker_id)
         sidecar = LlamaCppSidecar(log_dir=config.log_dir)
@@ -143,6 +157,9 @@ def create_app(config: ServiceConfig | None = None) -> FastAPI:
         # Re-drive any one-click install pipeline that a crash/kill left mid-flight
         # so the download resumes from its .part offset instead of freezing.
         setup_install_router.resume_orphaned_jobs(app)
+        # Voice asset jobs are not re-driven — see retire_orphaned_jobs — but a
+        # row left 'running' by a kill must not be polled forever by the client.
+        retire_orphaned_voice_jobs(db.connection())
         # If the persisted runtime is llama_cpp, bring its engine up in the
         # background so the first conversation after a restart works without
         # a manual step. Failures are logged; health endpoints stay truthful.
@@ -180,6 +197,11 @@ def create_app(config: ServiceConfig | None = None) -> FastAPI:
     app.include_router(stt_router.router)
     app.include_router(tts_router.router)
     app.include_router(vad_router.router)
+    # Voice is full-app depth; the demo hides it in the UI and refuses it here
+    # so a hand-crafted request cannot start a download the demo never offers.
+    app.include_router(
+        voice_setup_router.router, dependencies=[Depends(require_full_edition)]
+    )
     app.include_router(packs_router.router)
     app.include_router(scenarios_router.router)
     app.include_router(sessions_router.router)

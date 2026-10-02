@@ -96,6 +96,22 @@ class WhisperCppWorker(SttWorker):
     def display_name(self) -> str:
         return "whisper.cpp (local)"
 
+    @property
+    def model_path(self) -> str:
+        """Path of the GGML model this worker transcribes with."""
+        return self._model_path
+
+    def set_model_path(self, path: str) -> None:
+        """Switch to the model at *path* without restarting the process.
+
+        Voice onboarding lets the player pick among several whisper models
+        (tiny.en, base.en, small.en, multilingual base), so the file that lands
+        on disk is not always the configured default. Pointing the live worker
+        at the new file makes the choice take effect on the next utterance; the
+        path is persisted separately so it also survives a restart.
+        """
+        self._model_path = path
+
     def _build_command(self, audio_path: str, language: str | None) -> list[str]:
         """Return the whisper-cli command for the given audio file.
 
