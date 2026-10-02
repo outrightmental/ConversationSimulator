@@ -259,8 +259,11 @@ happen, and an interrupted model download resumes from where it stopped.
 
 Then please [open an issue](https://github.com/outrightmental/ConversationSimulator/issues)
 and attach `app.log` and `runtime.log` from the logs folder (Settings →
-**Open logs folder**). A shutdown that times out logs why, and the tail of
-those two files is what identifies which process refused to exit.
+**Open logs folder**). A clean shutdown ends `app.log` with
+`Launcher closed our stdin pipe — shutting down.` followed by uvicorn's
+`Application shutdown complete.` — which of those two lines is missing says
+whether the engine never heard the request or heard it and got stuck, and
+`runtime.log` says the same for `llama-server`.
 
 ---
 
