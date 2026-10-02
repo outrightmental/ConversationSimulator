@@ -1559,8 +1559,14 @@ pub fn run() {
     // `Drop` alone is not enough: on desktop the tao event loop terminates the
     // process via `std::process::exit()` when the app exits, so managed-state
     // destructors are never run and `convsim-core` would be orphaned (leaving
-    // port 7355 held). Stopping the child explicitly on `RunEvent::Exit` is the
-    // reliable teardown path; `Drop` remains as a backstop for other exit paths.
+    // port 7355 held). Tearing the child down explicitly on `RunEvent::Exit` is
+    // the reliable path; `Drop` remains as a backstop for other exit paths.
+    //
+    // `RunEvent::Exit` is also the LAST point at which we can wait for the
+    // engine: once this handler returns the event loop exits the process, and
+    // whatever is still running becomes an orphan Steam counts as the game
+    // still being open (issue #485). `core_process::shutdown` therefore blocks
+    // until the whole tree is down.
     let process_on_exit = Arc::clone(&process_inner);
 
     // Initialise the Steam bridge early so the status is available before the

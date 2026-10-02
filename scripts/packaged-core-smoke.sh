@@ -484,6 +484,11 @@ else
             dump_core_output
             # CORE_PID kept for the EXIT trap, as above.
         fi
+        if is_listening "$PORT"; then
+            fail "Port $PORT is still held after the SIGTERM shutdown."
+        else
+            pass "Port $PORT released again"
+        fi
     fi
 fi
 
