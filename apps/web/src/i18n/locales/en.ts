@@ -503,7 +503,7 @@ export const en = {
     voiceInvite: {
       heading: 'Next time, say it out loud',
       description:
-        'Practicing aloud is where the real gains are. Add voice — speech-to-text, replies read aloud, all processed on this machine (~350 MB download).',
+        'Practicing aloud is where the real gains are. Add voice — speech-to-text, replies read aloud, all processed on this machine (~145 MB download).',
       setupButton: 'Set up voice',
       laterButton: 'Maybe later',
     },

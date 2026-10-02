@@ -244,22 +244,35 @@ out from the outside.
 
 ## Voice unavailable {#voice-ready}
 
+Voice is optional. Without it the conversation screen falls back to text input
+and on-screen NPC dialogue automatically — nothing breaks.
+
+**To turn it on, open Settings → Voice readiness → Set up voice.** That screen
+lists every piece voice needs, downloads the model files for you (each one
+checksum-verified before it is installed), and shows the exact one-line command
+for the two engines it will not download on your behalf.
+
 **"Speech input unavailable"**
 
-Speech-to-text (STT) requires the whisper.cpp runtime. In the current release
-the conversation screen falls back to text input automatically — no action
-needed.
-
-When STT is available, a microphone icon will appear in the conversation input.
-If it is greyed out:
+Speech-to-text needs both the whisper.cpp program and a speech model. The setup
+screen says which is missing. If both are present and the microphone button is
+still greyed out:
 
 1. Check that your device has microphone permission for the app.
-2. Check `~/.convsim/logs/` for errors from the STT service.
+2. Install `ffmpeg` — some recordings cannot be decoded without it. The setup
+   screen flags this as its own row.
+3. Check the logs folder for errors from the speech worker.
 
 **"Voice output unavailable"**
 
-Text-to-speech (TTS) requires the Kokoro TTS runtime. In the current release
-the conversation screen shows NPC dialogue as text automatically.
+The NPC voice runs in a small local server. If it is installed but not running,
+the setup screen offers a **Start the voice server** button.
+
+**Hands-free mode unavailable**
+
+Hands-free turn-taking also needs the voice-activity model and `onnxruntime`;
+both appear as their own rows on the setup screen. Push-to-talk works without
+them.
 
 ---
 

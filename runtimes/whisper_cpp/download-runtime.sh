@@ -19,7 +19,7 @@ set -euo pipefail
 MODEL_NAME="${1:-base.en}"
 MODEL_DIR="${HOME}/.convsim/models/stt"
 MODEL_FILE="${MODEL_DIR}/ggml-${MODEL_NAME}.bin"
-MODEL_URL="https://huggingface.co/ggml-org/whisper.cpp/resolve/main/ggml-${MODEL_NAME}.bin"
+MODEL_URL="https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-${MODEL_NAME}.bin"
 
 BINARY_NAME="whisper-cli"
 
@@ -125,7 +125,7 @@ fi
 echo "SHA256  : ${FILE_SHA256}"
 echo ""
 echo "To verify independently, compare the above against the value listed on:"
-echo "  https://huggingface.co/ggml-org/whisper.cpp/blob/main/ggml-${MODEL_NAME}.bin"
+echo "  https://huggingface.co/ggerganov/whisper.cpp/blob/main/ggml-${MODEL_NAME}.bin"
 echo ""
 
 # ---------------------------------------------------------------------------

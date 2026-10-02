@@ -7,6 +7,14 @@ Audio recorded via push-to-talk is transcribed on-device. No audio is sent to re
 
 ## Quick start
 
+**In the app:** open **Settings → Voice readiness → Set up voice** (or go to
+`/voice-setup`). It downloads a checksummed GGML model for you and shows the
+one-line `whisper-cli` install command for your platform. See
+[`docs/voice-setup.md`](../../docs/voice-setup.md).
+
+The rest of this page is the manual route, for development and for anyone who
+would rather drive it from a shell.
+
 ```sh
 bash runtimes/whisper_cpp/download-runtime.sh
 ```
@@ -35,7 +43,7 @@ build-from-source instructions — no pre-built binary download is attempted.
    mkdir -p ~/.convsim/models/stt
    # Example: base English model (~142 MB)
    curl -L -o ~/.convsim/models/stt/ggml-base.en.bin \
-     https://huggingface.co/ggml-org/whisper.cpp/resolve/main/ggml-base.en.bin
+     https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin
    ```
 
    Available models (smallest to largest): `tiny.en`, `base.en`, `small.en`, `medium.en`, `large-v3`  
@@ -97,5 +105,5 @@ recoverable `SttError` and the app falls back to text input.
 ## References
 
 - whisper.cpp source: <https://github.com/ggml-org/whisper.cpp>
-- GGML model hub: <https://huggingface.co/ggml-org/whisper.cpp>
+- GGML model hub: <https://huggingface.co/ggerganov/whisper.cpp>
 - OpenAI Whisper paper: <https://arxiv.org/abs/2212.04356>
