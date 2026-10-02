@@ -742,12 +742,19 @@
    useGamepadNavigation — aligns a control that was below the fold flush with
    the viewport's bottom edge, leaving it behind the bar. Reserve the bar's
    height (plus the 3px focus ring and its offset) so a newly focused control
-   lands above the bar instead of under it. The reserve covers the bar's tallest
-   state — the one carrying a failed start's error row. Not the launch bar's own
-   controls: it is sticky, so it is already on screen and never needs scrolling
-   to. */
-.brief :is(a[href], button, input, select, textarea):not(.brief-launch *) {
-  scroll-margin-bottom: 8.5rem;
+   lands above the bar instead of under it.
+   The reserve has to clear the bar's tallest state, which is a failed start.
+   That bar is 27.6px of its own padding and border, a 47.8px Start button, a
+   12px row gap and an error row of 18px chrome around a 19px line: ~124px with
+   the message on one line, ~151px with it on two. It does reach two, because
+   the compact error carries the service's own message and wraps once the window
+   narrows. 11rem clears the two-line bar and its focus ring; a third line would
+   not fit, and takes a window far narrower than the brief lays out for.
+   The selector matches what the D-pad can focus (useGamepadNavigation's
+   FOCUSABLE_SELECTOR) minus the launch bar's own controls: the bar is sticky,
+   so they are already on screen and never need scrolling to. */
+.brief :is(a[href], button, input, select, textarea, [tabindex]:not([tabindex="-1"]), summary):not(.brief-launch *) {
+  scroll-margin-bottom: 11rem;
 }
 
 .brief-launch-status {
