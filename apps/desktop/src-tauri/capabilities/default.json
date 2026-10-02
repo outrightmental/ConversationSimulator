@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default capabilities for the main desktop window. Grants microphone access via the browser Web API (no extra Tauri permission needed), file-open/save dialogs, and read/write access to text files plus directory listing in the user data folder.",
+  "description": "Default capabilities for the main desktop window. Grants microphone access via the browser Web API (no extra Tauri permission needed), file-open/save dialogs, read/write access to text files plus directory listing in the user data folder, and write-only clipboard access for the 'Copy diagnostics' button.",
   "windows": ["main"],
   "permissions": [
     "core:default",
@@ -10,6 +10,7 @@
     "dialog:allow-save",
     "fs:allow-read-text-file",
     "fs:allow-write-text-file",
-    "fs:allow-read-dir"
+    "fs:allow-read-dir",
+    "clipboard-manager:allow-write-text"
   ]
 }
