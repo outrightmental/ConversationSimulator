@@ -84,8 +84,10 @@ To verify a built core end-to-end without launching the window:
 
 It starts the packaged binary against a throwaway data root and asserts health
 readiness, loopback-only binding, official-pack seeding, an offline
-`convsim offline-smoke-test` run against a pack the binary shipped, and a clean
-SIGTERM shutdown. `release.yml` runs it on every non-Windows release build.
+`convsim offline-smoke-test` run against a pack the binary shipped, and both
+teardown paths — closing the stdin pipe, and the SIGTERM the shell falls back
+to — draining the FastAPI lifespan and releasing the port.
+`release.yml` runs it on every non-Windows release build.
 
 ### Editions
 
@@ -189,10 +191,10 @@ so it cannot be supervised — but a release build re-checks the port every 3 s
 (a bare TCP connect, so the adopted engine pays nothing for being watched) and
 takes it over once nothing is listening. uvicorn closes its listening socket at
 the *start* of its shutdown, so an engine on its way out stops accepting well
-before it exits. That matters because teardown drains
-the engine with SIGTERM and the drain takes up to 6 s: a player who quits and
-reopens the app inside that window adopts an engine that is already on its way
-out, and without the re-check the UI would mount over a port that disappears a
+before it exits. That matters because teardown
+drains the engine rather than killing it, and the drain can take as long as
+`core_process::GRACE`: a player who quits and reopens the app inside that
+window adopts an engine that is already on its way out, and without the re-check the UI would mount over a port that disappears a
 moment later, with every request failing and nothing on screen to say why. Dev
 builds do not re-check — `dev-desktop.sh` owns that engine and the developer has
 its terminal.
@@ -230,19 +232,22 @@ through the same autostart and keeps hitting the conflict.
 
 Nothing clears the orphan on its own, and in particular **relaunching does
 not**: the replacement engine's `stop_all()` only stops sidecars it started a
-process for, and the shell's teardown signals the engine pid (Unix) or walks the
-tree below it (`taskkill /T`, Windows) — the orphan's parent is the engine that
-died, so it is in neither. It has to be ended by hand. Giving the engine its own
-process group (Unix) or job object (Windows) would hand the shell a handle on the
-whole subtree; that is a larger change than this one and is not made here.
+process for, and the shell's teardown reaches the *replacement's* process group
+(Unix) or process tree (Windows) — the orphan belongs to the group of the engine
+that died, and its parent is that same dead engine, so it is in neither. It has
+to be ended by hand.
 
-**Clean shutdown.** `stop_core` sends SIGTERM (`taskkill /PID … /T /F` on
-Windows, which has no SIGTERM but does walk the process tree), waits up to 6 s,
-then falls back to a hard kill. The wait matters: SIGTERM is what lets uvicorn
-run the lifespan shutdown, and that shutdown is where `supervisor.stop_all()`
-stops the engine's *own* children. A bare `kill()` left llama-server and the TTS
-sidecar running after the window closed, holding ports 7356-7358 and several GB
-of RAM.
+**Clean shutdown.** Handled by `src-tauri/src/core_process.rs`, which both the
+`RunEvent::Exit` handler and the managed state's `Drop` go through: the shell
+closes the write end of the engine's stdin pipe, which `parent_watch` reads as
+EOF and turns into a graceful uvicorn stop, and only kills the whole process
+group (Unix) or tree (`taskkill /T`, Windows) if the engine is still up after
+`GRACE`. The ask matters: a graceful stop is what lets uvicorn run the lifespan
+shutdown, and that shutdown is where `supervisor.stop_all()` stops the engine's
+*own* children. A bare `kill()` left llama-server and the TTS sidecar running
+after the window closed, holding ports 7356-7358 and several GB of RAM. See
+[docs/sidecar-bundling.md](../../docs/sidecar-bundling.md#shutdown) for the full
+process tree and why the handle the shell holds is only the bootloader.
 
 ## Startup progress and error handling
 
@@ -327,13 +332,13 @@ port-conflict and foreign-edition guards, the executable resolution order, and
 the restart backoff. The readiness probe is exercised against real loopback
 sockets — a silent squatter, a 503, and a stub engine.
 
-CI runs them on **both** Linux and Windows, because `stop_core` has two separate
-implementations and the Linux job cannot compile the Windows one. The teardown
-tests pick their long-lived and exit-at-once child per platform and assert on
-timing: if the platform's own signal (`kill -TERM` / `taskkill … /T /F`) never
-reaches the child, the hard-kill fallback still stops it, so the only symptom is
-that teardown silently takes the full six seconds — and the engine's own
-sidecars are orphaned.
+CI runs them on **both** Linux and Windows, because `core_process`'s teardown
+has two separate implementations (`killpg` and `taskkill /T`) and the Linux job
+cannot compile the Windows one. Those tests spawn a stand-in engine with a
+stand-in sidecar grandchild and assert that neither survives teardown — the
+failure they guard against is silent, because the hard-kill fallback still stops
+the process the shell holds a handle on while the engine's own sidecars are
+orphaned.
 
 ## Known limitations
 

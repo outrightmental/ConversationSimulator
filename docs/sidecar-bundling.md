@@ -289,12 +289,13 @@ Two parts of that lifecycle matter to the sidecars in this document:
   says *something* is on 7355; the health body is what proves it is a
   convsim-core — and therefore that the sidecar supervisor this document
   describes exists at all.
-- **Shutdown** is SIGTERM, not SIGKILL (`taskkill /T` on Windows). Only a signal
-  the engine can handle lets uvicorn run the lifespan shutdown, and the lifespan
-  shutdown is where `ProcessSupervisor.stop_all()` stops every sidecar in the
-  table above. A hard kill of the engine orphans all of them — llama-server
-  keeps a model resident in RAM and keeps port 7356 — so the shell waits for the
-  graceful path before insisting.
+- **Shutdown** is a request the engine can honour, not a hard kill — see
+  [Shutting the whole tree down](#shutdown) above. Only a graceful stop lets
+  uvicorn run the lifespan shutdown, and the lifespan shutdown is where
+  `ProcessSupervisor.stop_all()` stops every sidecar in the table above. A hard
+  kill of the engine orphans all of them — llama-server keeps a model resident
+  in RAM and keeps port 7356 — so the shell waits out `GRACE` before
+  insisting.
 
 A crash is the same event without the choice: an engine that died never reached
 its lifespan shutdown either, so every sidecar in the table above survives it.
@@ -311,16 +312,15 @@ it (`/api/models/use`, a model switch) fails until the orphan is gone.
 Nothing in the product removes it. Relaunching does not: `stop_all()` stops the
 sidecars a *registered* sidecar object holds a `self._process` for, and the
 replacement engine's llama-server sidecar never started one. Neither does the
-shell's teardown: on Unix it signals the engine pid, and on Windows
-`taskkill /T` walks the tree below the pid it is given — the orphan's parent is
-the engine that died, so it is in neither. It has to be ended by hand. Giving
-the engine its own process group (Unix) or job object (Windows) would hand the
-shell a handle on the whole subtree; that is a larger change than the one this
-document describes and is not made today.
+shell's teardown: it reaches the *replacement* engine's process group (Unix) or
+process tree (Windows), and the orphan is in neither — it belongs to the group
+of the engine that died, whose pid is also its parent. It has to be ended by
+hand.
 
-`scripts/packaged-core-smoke.sh` runs the packaged engine and asserts both:
-health readiness, loopback-only binding, and a SIGTERM that reaches the lifespan
-shutdown. See [apps/desktop/README.md](../apps/desktop/README.md), "Core sidecar
+`scripts/packaged-core-smoke.sh` runs the packaged engine and asserts all of
+it against the real PyInstaller binary: health readiness, loopback-only binding,
+and both teardown paths — stdin EOF and the SIGTERM fallback — reaching the
+lifespan shutdown. See [apps/desktop/README.md](../apps/desktop/README.md), "Core sidecar
 lifecycle", for the full state machine.
 
 ---

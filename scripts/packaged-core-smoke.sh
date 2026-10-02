@@ -15,11 +15,17 @@
 #   4. It seeded the official packs embedded in its own payload.
 #   5. `convsim offline-smoke-test` plays one of those seeded packs with no
 #      outbound network access.
-#   6. SIGTERM shuts it down inside the graceful window and releases the port.
-#      That is the signal the Tauri shell sends (`stop_core` in
-#      apps/desktop/src-tauri/src/lib.rs), and it is what gives the engine the
-#      chance to stop its OWN sidecars — so a clean teardown is proven here
-#      rather than assumed.
+#   6. Closing the launcher's end of the engine's stdin pipe drains the FastAPI
+#      lifespan and releases the port. That is how the Tauri shell asks for a
+#      shutdown (`core_process::shutdown` in
+#      apps/desktop/src-tauri/src/core_process.rs): the engine's
+#      `parent_watch` reads the EOF and asks uvicorn to stop gracefully, which
+#      is what gives it the chance to stop its OWN sidecars.
+#   7. The same, for the SIGTERM the shell falls back to when the ask goes
+#      unanswered. Both are checked against the real binary because both cross
+#      the PyInstaller one-file bootloader, which is the process the launcher
+#      holds — the signal and the inherited stdin fd each have to reach the
+#      Python server *behind* it, and nothing but this script tests that.
 #
 # Usage:
 #   ./scripts/packaged-core-smoke.sh [--binary <path>] [--port <n>] [--help]
@@ -60,8 +66,12 @@ BINARY="${CONVSIM_CORE_EXECUTABLE:-}"
 # one-file binary unpacks itself before any of that happens.
 READY_TIMEOUT=120
 
-# How long SIGTERM gets to unwind the FastAPI lifespan. convsim-core allows its
-# own sidecars 5 s to terminate; this has to be longer than that.
+# How long either teardown request gets to unwind the FastAPI lifespan.
+# convsim-core allows in-flight requests 3 s to drain and its own sidecars 5 s
+# to terminate, so this has to clear both; it is also above the shell's own
+# `core_process::GRACE` (10 s), after which the shell stops asking and kills the
+# process group — a budget below that would fail a drain the shipped app itself
+# would have waited for.
 SHUTDOWN_TIMEOUT=15
 
 # Minimum official packs a packaged build must seed — the same floor as
@@ -180,6 +190,7 @@ fi
 
 DATA_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/convsim-packaged-smoke.XXXXXX")"
 CORE_LOG="$DATA_ROOT/core-output.log"
+LAUNCHER_PIPE="$DATA_ROOT/launcher-stdin"
 info "Throwaway data root: $DATA_ROOT"
 
 # Written before launch so the data root is non-empty: the legacy-directory
@@ -188,40 +199,59 @@ info "Throwaway data root: $DATA_ROOT"
 # developer's real ~/.convsim.
 : > "$CORE_LOG"
 
+# Launched the way the desktop shell launches it: stdin on a pipe whose write
+# end the launcher holds for its own lifetime, and CONVSIM_SHUTDOWN_ON_STDIN_EOF
+# to opt the engine into watching it (`configure_lifetime` in
+# apps/desktop/src-tauri/src/core_process.rs). Closing that write end is the
+# shutdown request check 6 makes.
+#
+# A FIFO with fd 9 held read-write is how a POSIX shell keeps a write end open
+# with nothing to write. `9>&-` closes it in the child on purpose: fds opened by
+# `exec` are inherited across a fork, so without it the engine would hold a
+# writer to its own stdin and EOF could never arrive.
+mkfifo "$LAUNCHER_PIPE"
+exec 9<>"$LAUNCHER_PIPE"
+
 HOME="$DATA_ROOT" \
 CONVSIM_HOST=127.0.0.1 \
 CONVSIM_PORT="$PORT" \
 CONVSIM_DATA_ROOT="$DATA_ROOT" \
 CONVSIM_RUNTIME_ID=fake \
-    "$BINARY" >>"$CORE_LOG" 2>&1 &
+CONVSIM_SHUTDOWN_ON_STDIN_EOF=1 \
+    "$BINARY" <"$LAUNCHER_PIPE" 9>&- >>"$CORE_LOG" 2>&1 &
 CORE_PID=$!
 
 HEALTH_URL="http://127.0.0.1:$PORT/api/health"
 HEALTH_JSON="$DATA_ROOT/health.json"
-DEADLINE=$(( $(date +%s) + READY_TIMEOUT ))
-READY=0
 
-while [[ "$(date +%s)" -lt "$DEADLINE" ]]; do
-    if ! kill -0 "$CORE_PID" 2>/dev/null; then
-        fail "The packaged core exited before becoming ready."
-        dump_core_output
-        exit 1
-    fi
-    # -m 20, not 5: /api/health awaits the LLM, STT and TTS probes in sequence,
-    # and the two that make HTTP calls to sidecars allow 5 s each, so one answer
-    # can legitimately take just over 10 s. The Tauri shell allows the same
-    # request PROBE_RESPONSE_BUDGET (14 s — see probe_core); this stays above it,
-    # because a per-attempt cap below the shell's would fail a request the
-    # shipped app itself would accept, and no later attempt would do any better.
-    if curl -fsS -m 20 "$HEALTH_URL" -o "$HEALTH_JSON" 2>/dev/null; then
-        READY=1
-        break
-    fi
-    sleep 1
-done
-
-if [[ "$READY" -ne 1 ]]; then
+# Poll /api/health until $CORE_PID serves it. 0 on a 200 whose body is in
+# $HEALTH_JSON; 1 if the engine died or never answered. A function because
+# check 7 starts a second engine and has the same question.
+await_ready() {
+    local deadline
+    deadline=$(( $(date +%s) + READY_TIMEOUT ))
+    while [[ "$(date +%s)" -lt "$deadline" ]]; do
+        if ! kill -0 "$CORE_PID" 2>/dev/null; then
+            fail "The packaged core exited before becoming ready."
+            return 1
+        fi
+        # -m 20, not 5: /api/health awaits the LLM, STT and TTS probes in
+        # sequence, and the two that make HTTP calls to sidecars allow 5 s each,
+        # so one answer can legitimately take just over 10 s. The Tauri shell
+        # allows the same request PROBE_RESPONSE_BUDGET (14 s — see probe_core);
+        # this stays above it, because a per-attempt cap below the shell's would
+        # fail a request the shipped app itself would accept, and no later
+        # attempt would do any better.
+        if curl -fsS -m 20 "$HEALTH_URL" -o "$HEALTH_JSON" 2>/dev/null; then
+            return 0
+        fi
+        sleep 1
+    done
     fail "No 200 from $HEALTH_URL within ${READY_TIMEOUT}s."
+    return 1
+}
+
+if ! await_ready; then
     dump_core_output
     exit 1
 fi
@@ -325,52 +355,66 @@ else
     fi
 fi
 
-# ── 6. Clean shutdown ─────────────────────────────────────────────────────────
+# ── Teardown assertions, shared by checks 6 and 7 ─────────────────────────────
 
-info "Sending SIGTERM (bash may print its own \"Terminated\" notice for the job — expected)"
-kill -TERM "$CORE_PID" 2>/dev/null
-SHUTDOWN_DEADLINE=$(( $(date +%s) + SHUTDOWN_TIMEOUT ))
-STOPPED=0
-while [[ "$(date +%s)" -lt "$SHUTDOWN_DEADLINE" ]]; do
-    if ! kill -0 "$CORE_PID" 2>/dev/null; then
-        STOPPED=1
-        break
-    fi
-    sleep 1
-done
+# Wait up to SHUTDOWN_TIMEOUT for $CORE_PID to leave. 0 if it did.
+core_stopped_within_grace() {
+    local deadline
+    deadline=$(( $(date +%s) + SHUTDOWN_TIMEOUT ))
+    while [[ "$(date +%s)" -lt "$deadline" ]]; do
+        if ! kill -0 "$CORE_PID" 2>/dev/null; then
+            return 0
+        fi
+        sleep 1
+    done
+    return 1
+}
 
-if [[ "$STOPPED" -eq 1 ]]; then
-    # The 2>/dev/null is only for `wait`'s own diagnostics; bash reports the
-    # killed job itself ("Terminated: 15"), asynchronously and on the script's
-    # stderr, so that notice shows up regardless — hence the heads-up above.
-    # The exit status is NOT evidence either way: uvicorn re-raises the signal
-    # after a complete graceful shutdown, so a correctly-drained engine exits
-    # 143 (128 + SIGTERM). The log is the evidence — see below.
+# Did the FastAPI lifespan shutdown actually run? "Closed database at …" is the
+# statement AFTER `await supervisor.stop_all()` in create_app's lifespan, so
+# seeing it means the engine got far enough to stop its own sidecars — which is
+# the whole point of asking rather than killing. Both sinks are checked because
+# configure_logging may route to a file instead of the inherited stdio.
+lifespan_drained() {
+    grep -q "Closed database at" "$CORE_LOG" 2>/dev/null && return 0
+    [[ -d "$DATA_ROOT/logs" ]] \
+        && grep -rq "Closed database at" "$DATA_ROOT/logs" 2>/dev/null \
+        && return 0
+    return 1
+}
+
+# ── 6. Clean shutdown: EOF on the launcher's stdin pipe ───────────────────────
+#
+# The shell's first move, and the only one that stops the engine's own sidecars
+# in the normal case. It has to cross the PyInstaller bootloader: the pipe is
+# inherited by the Python server the bootloader re-execs, and `parent_watch`
+# reads the EOF there.
+
+info "Closing the launcher's end of the engine's stdin pipe"
+exec 9>&-
+
+if core_stopped_within_grace; then
+    # The 2>/dev/null is only for `wait`'s own diagnostics.
     wait "$CORE_PID" 2>/dev/null
     CORE_RC=$?
     CORE_PID=""
-    pass "SIGTERM stopped the engine within ${SHUTDOWN_TIMEOUT}s"
-    info "Engine exit status $CORE_RC (143 is expected: uvicorn re-raises SIGTERM)"
-
-    # Did the FastAPI lifespan shutdown actually run? "Closed database at …" is
-    # the statement AFTER `await supervisor.stop_all()` in create_app's lifespan,
-    # so seeing it means the engine got far enough to stop its own sidecars —
-    # which is the whole point of sending SIGTERM instead of SIGKILL.
-    SHUTDOWN_EVIDENCE=0
-    if grep -q "Closed database at" "$CORE_LOG" 2>/dev/null; then
-        SHUTDOWN_EVIDENCE=1
-    elif [[ -d "$DATA_ROOT/logs" ]] \
-        && grep -rq "Closed database at" "$DATA_ROOT/logs" 2>/dev/null; then
-        SHUTDOWN_EVIDENCE=1
+    pass "Closing stdin stopped the engine within ${SHUTDOWN_TIMEOUT}s"
+    # Unlike the signal path below, nothing is re-raised here: uvicorn was asked
+    # to stop through its own `should_exit` flag, so `main()` returns normally.
+    if [[ "$CORE_RC" -eq 0 ]]; then
+        pass "Engine exited 0 — it stopped because it was asked, not killed"
+    else
+        fail "Engine exited $CORE_RC after its stdin closed; a graceful stop through parent_watch exits 0."
+        dump_core_output
     fi
-    if [[ "$SHUTDOWN_EVIDENCE" -eq 1 ]]; then
+    if lifespan_drained; then
         pass "Lifespan shutdown ran — sidecars stopped and the database closed"
     else
-        fail "No sign the lifespan shutdown ran: the engine was killed rather than drained, so its own sidecars would be left orphaned."
+        fail "No sign the lifespan shutdown ran: the engine did not act on the EOF, so its own sidecars would be left orphaned."
         dump_core_output
     fi
 else
-    fail "Engine still running ${SHUTDOWN_TIMEOUT}s after SIGTERM."
+    fail "Engine still running ${SHUTDOWN_TIMEOUT}s after its stdin pipe closed."
     dump_core_output
     # CORE_PID is deliberately kept so the EXIT trap SIGKILLs it. Clearing it
     # here would leave the engine — and its own sidecars — running after the
@@ -380,9 +424,67 @@ else
 fi
 
 if is_listening "$PORT"; then
-    fail "Port $PORT is still held after shutdown."
+    fail "Port $PORT is still held after the stdin shutdown."
 else
     pass "Port $PORT released"
+fi
+
+# ── 7. The SIGTERM fallback ───────────────────────────────────────────────────
+#
+# What `core_process::shutdown` sends to the engine's process group once the ask
+# above has gone unanswered for its grace period. Checked against the packaged
+# binary for the same reason as check 6: the signal goes to the bootloader, and
+# uvicorn's handler lives in the Python server behind it.
+#
+# Only attempted when check 6 left the port free — otherwise this would be a
+# second engine racing the first one's socket, and the script is already failing.
+
+if [[ -n "$CORE_PID" ]] || is_listening "$PORT"; then
+    fail "Skipped the SIGTERM fallback check: the previous engine is still holding port $PORT."
+else
+    # A warm start: the database is migrated and the packs are seeded, so this
+    # run reaches readiness in seconds. The log sinks are cleared first, so the
+    # drain evidence found below is this run's and not the previous one's.
+    : > "$CORE_LOG"
+    rm -rf "$DATA_ROOT/logs"
+
+    HOME="$DATA_ROOT" \
+    CONVSIM_HOST=127.0.0.1 \
+    CONVSIM_PORT="$PORT" \
+    CONVSIM_DATA_ROOT="$DATA_ROOT" \
+    CONVSIM_RUNTIME_ID=fake \
+        "$BINARY" >>"$CORE_LOG" 2>&1 &
+    CORE_PID=$!
+
+    if ! await_ready; then
+        dump_core_output
+    else
+        info "Sending SIGTERM (bash may print its own \"Terminated\" notice for the job — expected)"
+        kill -TERM "$CORE_PID" 2>/dev/null
+        if core_stopped_within_grace; then
+            # bash reports the killed job itself ("Terminated: 15"),
+            # asynchronously and on the script's stderr, so that notice shows up
+            # regardless — hence the heads-up above. The exit status is NOT
+            # evidence either way here: uvicorn re-raises the signal after a
+            # complete graceful shutdown, so a correctly-drained engine exits
+            # 143 (128 + SIGTERM). The log is the evidence.
+            wait "$CORE_PID" 2>/dev/null
+            CORE_RC=$?
+            CORE_PID=""
+            pass "SIGTERM stopped the engine within ${SHUTDOWN_TIMEOUT}s"
+            info "Engine exit status $CORE_RC (143 is expected: uvicorn re-raises SIGTERM)"
+            if lifespan_drained; then
+                pass "SIGTERM reached the lifespan shutdown too"
+            else
+                fail "No sign the lifespan shutdown ran on SIGTERM: the engine was killed rather than drained, so its own sidecars would be left orphaned."
+                dump_core_output
+            fi
+        else
+            fail "Engine still running ${SHUTDOWN_TIMEOUT}s after SIGTERM."
+            dump_core_output
+            # CORE_PID kept for the EXIT trap, as above.
+        fi
+    fi
 fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────

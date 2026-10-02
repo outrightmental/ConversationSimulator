@@ -55,7 +55,8 @@ functional.
 **Status:** ✅ **Shipped.** `convsim-core` is built into a single PyInstaller
 executable and packaged into the installer as a Tauri bundle resource; the shell
 starts it, waits for `GET /api/health` on 127.0.0.1:7355 before showing the app,
-restarts it if it crashes, and drains it with SIGTERM on exit. Prebuilt binaries
+restarts it if it crashes, and drains it rather than killing it on exit.
+Prebuilt binaries
 ship through Steam only — a GitHub release remains a changelog and a tag.
 
 ---

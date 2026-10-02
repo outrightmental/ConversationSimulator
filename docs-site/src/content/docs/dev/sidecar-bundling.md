@@ -179,11 +179,13 @@ Two parts of that lifecycle matter to those sidecars:
   says *something* is on 7355; the health body is what proves it is a
   convsim-core — and therefore that the sidecar supervisor this document
   describes exists at all.
-- **Shutdown** is SIGTERM, not SIGKILL (`taskkill /T` on Windows). Only a signal
-  the engine can handle lets uvicorn run the lifespan shutdown, and that shutdown
-  is where `ProcessSupervisor.stop_all()` stops every sidecar in the table. A
-  hard kill of the engine orphans all of them — llama-server keeps a model
-  resident in RAM and keeps port 7356.
+- **Shutdown** is a request the engine can honour, not a hard kill: the shell
+  closes the stdin pipe it holds, `parent_watch` turns the EOF into a graceful
+  uvicorn stop, and only a tree kill follows if the engine outstays its grace.
+  Only a graceful stop runs the lifespan shutdown, and that shutdown is where
+  `ProcessSupervisor.stop_all()` stops every sidecar in the table. A hard kill
+  of the engine orphans all of them — llama-server keeps a model resident in RAM
+  and keeps port 7356.
 
 A crash is the same event without the choice: an engine that died never reached
 its lifespan shutdown either, so every sidecar in the table above survives it.
@@ -200,12 +202,10 @@ switch) fails until the orphan is gone.
 Nothing in the product removes it. Relaunching does not: `stop_all()` stops the
 sidecars a *registered* sidecar object holds a `self._process` for, and the
 replacement engine's llama-server sidecar never started one. Neither does the
-shell's teardown: on Unix it signals the engine pid, and on Windows
-`taskkill /T` walks the tree below the pid it is given — the orphan's parent is
-the engine that died, so it is in neither. It has to be ended by hand. Giving
-the engine its own process group (Unix) or job object (Windows) would hand the
-shell a handle on the whole subtree; that is a larger change than the one this
-document describes and is not made today.
+shell's teardown: it reaches the *replacement* engine's process group (Unix) or
+process tree (Windows), and the orphan is in neither — it belongs to the group
+of the engine that died, whose pid is also its parent. It has to be ended by
+hand.
 
 ---
 

@@ -392,10 +392,9 @@ impl Drop for CoreProcessState {
     fn drop(&mut self) {
         self.shutting_down.store(true, Ordering::SeqCst);
         if let Ok(mut guard) = self.child.lock() {
-            if let Some(ref mut child) = *guard {
-                core_process::shutdown(child);
+            if let Some(mut child) = guard.take() {
+                core_process::shutdown(&mut child);
             }
-            *guard = None;
         }
     }
 }
@@ -819,10 +818,6 @@ const MAX_RESTARTS: u32 = 3;
 /// problem, not a restart loop, so earlier crashes stop counting against it.
 const HEALTHY_RUN_RESET: Duration = Duration::from_secs(300);
 
-/// How long `stop_core` waits for the graceful path before insisting.
-/// Covers convsim-core's own 5 s sidecar-termination budget plus a margin.
-const GRACEFUL_SHUTDOWN_WAIT: Duration = Duration::from_secs(6);
-
 /// Matched by `classifyError` in apps/web/src/screens/CoreStartup.tsx, which
 /// turns it into the port-conflict recovery card.
 const PORT_BUSY_MESSAGE: &str = "Port 7355 is already in use by another program.";
@@ -905,71 +900,6 @@ fn restart_backoff(attempt: u32) -> Duration {
     Duration::from_secs(1u64 << attempt.saturating_sub(1).min(3))
 }
 
-/// Stop convsim-core as gracefully as the platform allows.
-///
-/// `Child::kill()` alone is SIGKILL on Unix and TerminateProcess on Windows:
-/// uvicorn never runs its shutdown handler, so the FastAPI lifespan's
-/// `supervisor.stop_all()` never stops the engine's *own* children — llama-server
-/// and the TTS sidecar — and they outlive the window that closed, holding ports
-/// 7356-7358 and several GB of RAM until the user finds them in a task manager.
-/// Ask first, then insist.
-fn stop_core(child: &mut Child) {
-    // Never signal a pid we have already reaped: the OS is free to hand that
-    // number to an unrelated process, and the `kill`/`taskkill` calls below go
-    // around `Child`'s own "can't kill an exited process" guard.
-    if matches!(child.try_wait(), Ok(Some(_))) {
-        return;
-    }
-
-    let pid = child.id();
-
-    // SIGTERM: uvicorn's signal handler sets `should_exit`, which runs the
-    // lifespan shutdown (supervisor.stop_all(), db.close()) before exiting.
-    // Spawned via `kill` rather than libc so the shell takes no new dependency
-    // for one signal.
-    #[cfg(unix)]
-    {
-        let _ = Command::new("kill")
-            .arg("-TERM")
-            .arg(pid.to_string())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-    }
-
-    // Windows has no SIGTERM. `taskkill /T` walks the process tree, so the
-    // engine's sidecar children go with it instead of being orphaned — the
-    // outcome SIGTERM buys on Unix, by a blunter route.
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        let _ = Command::new("taskkill")
-            .arg("/PID")
-            .arg(pid.to_string())
-            .arg("/T")
-            .arg("/F")
-            .creation_flags(CREATE_NO_WINDOW)
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
-    }
-
-    let deadline = Instant::now() + GRACEFUL_SHUTDOWN_WAIT;
-    while Instant::now() < deadline {
-        match child.try_wait() {
-            // Exited on its own: the lifespan shutdown ran.
-            Ok(Some(_)) => return,
-            Ok(None) => std::thread::sleep(Duration::from_millis(100)),
-            // Cannot observe it any more — fall through to the hard kill.
-            Err(_) => break,
-        }
-    }
-
-    let _ = child.kill();
-    let _ = child.wait();
-}
-
 /// Spawn convsim-core with the environment the packaged engine needs.
 fn spawn_core(
     app: &AppHandle,
@@ -982,9 +912,16 @@ fn spawn_core(
     let mut cmd = Command::new(exe);
     cmd.env("CONVSIM_HOST", "127.0.0.1")
         .env("CONVSIM_PORT", CORE_PORT.to_string())
-        .stdin(Stdio::null())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit());
+
+    // Spawn settings the teardown path depends on: a pipe on stdin whose
+    // closure asks the engine to shut itself down, and (on Unix) a process
+    // group of its own so the whole tree can be signalled at once. Every
+    // launch must go through this — `core_process::shutdown` has nothing to
+    // ask and nothing to insist to without it. Note it sets stdin itself, so
+    // it must come after the `Stdio` calls above rather than before.
+    core_process::configure_lifetime(&mut cmd);
 
     // Pass the OS-native app data directory as CONVSIM_DATA_ROOT so the
     // Python backend uses the same platform-specific location that Tauri
@@ -1044,8 +981,7 @@ fn spawn_core(
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        cmd.creation_flags(CREATE_NO_WINDOW);
+        cmd.creation_flags(core_process::CREATE_NO_WINDOW);
     }
 
     cmd.spawn()
@@ -1182,10 +1118,9 @@ fn start_and_await_core(
                 // the moment the other edition released it, serving nothing
                 // and outliving this now-terminal launch.
                 if let Ok(mut guard) = process_arc.lock() {
-                    if let Some(ref mut child) = *guard {
-                        stop_core(child);
+                    if let Some(mut child) = guard.take() {
+                        core_process::shutdown(&mut child);
                     }
-                    *guard = None;
                 }
                 emit_core_status(app, status_arc, "error", &message, Some(&hint), log_dir);
                 return false;
@@ -1320,191 +1255,25 @@ fn supervise_core(
         });
     let log_dir_ref = log_dir.as_deref();
 
-        // If core is already responding (e.g. started by dev-desktop.sh), signal
-        // ready immediately.
-        //
-        // In release builds, only if it is OUR edition's engine: the demo and
-        // the full app share the port (issue #495). Dev builds skip the check
-        // on purpose — `CONVSIM_EDITION=demo ./scripts/dev.sh` runs a demo
-        // engine under a shell compiled without the flag, and the web UI adopts
-        // the engine's edition from /api/health.
-        if is_port_open(CORE_PORT) {
-            if !cfg!(debug_assertions) {
-                if let Some((message, hint)) = foreign_edition_error(CORE_PORT) {
-                    emit_core_status(&app, &status_arc, "error", &message, Some(&hint), log_dir_ref);
-                    return;
-                }
-            }
-            emit_core_status(&app, &status_arc, "ready", "Core service is ready.", None, log_dir_ref);
-            return;
-        }
-
-        // In debug (dev) builds the dev-desktop.sh script is responsible for
-        // starting convsim-core before Tauri. Wait briefly in case of a race.
-        if cfg!(debug_assertions) {
-            for _ in 0..20u32 {
-                std::thread::sleep(Duration::from_millis(500));
-                if is_port_open(CORE_PORT) {
-                    emit_core_status(&app, &status_arc, "ready", "Core service is ready.", None, log_dir_ref);
-                    return;
-                }
-            }
-            emit_core_status(
-                &app,
-                &status_arc,
-                "error",
-                "Core service is not running.",
-                Some(
-                    "In dev mode, start convsim-core before launching the desktop app:\n\
-                     ./scripts/dev-desktop.sh",
-                ),
-                log_dir_ref,
-            );
-            return;
-        }
-
-        // ── Release mode: find, launch, and supervise convsim-core ───────────
-
-        emit_core_status(&app, &status_arc, "starting", "Locating core service…", None, log_dir_ref);
-
-        let resource_dir = app.path().resource_dir().ok();
-
-        let exe = match find_core_executable(resource_dir.as_ref()) {
-            Ok(p) => p,
-            Err(e) => {
-                emit_core_status(
-                    &app,
-                    &status_arc,
-                    "error",
-                    "Could not locate core service.",
-                    Some(&e),
-                    log_dir_ref,
-                );
-                return;
-            }
-        };
-
-        emit_core_status(&app, &status_arc, "starting", "Starting core service…", None, log_dir_ref);
-
-        // convsim-core reads its bind address from CONVSIM_HOST / CONVSIM_PORT
-        // (see services/convsim-core/convsim_core/config.py); it does not parse
-        // CLI flags. Set them explicitly so the shell controls the port it polls.
-        let mut cmd = Command::new(&exe);
-        cmd.env("CONVSIM_HOST", "127.0.0.1")
-            .env("CONVSIM_PORT", CORE_PORT.to_string())
-            .stdout(Stdio::inherit())
-            .stderr(Stdio::inherit());
-
-        // Spawn settings the teardown path depends on: a pipe on stdin whose
-        // closure asks the engine to shut itself down, and (on Unix) a process
-        // group of its own so the whole tree can be signalled at once. See
-        // core_process for why `Child::kill()` alone leaves processes behind.
-        core_process::configure_lifetime(&mut cmd);
-
-        // Pass the OS-native app data directory as CONVSIM_DATA_ROOT so the
-        // Python backend uses the same platform-specific location that Tauri
-        // considers the app's home for user data (rather than the legacy
-        // ~/.convsim dev location). convsim_core.paths.platform_data_root()
-        // reads this env var and falls back to OS conventions when it is absent
-        // (e.g. in dev mode without Tauri).
-        //
-        // The directory is keyed by DATA_ROOT_IDENTIFIER, not the bundle's own
-        // identifier: the Steam Next Fest demo (issue #495) is a separate Steam
-        // app with its own bundle identifier, and it must share this directory
-        // with the full app so the model a player downloaded in the demo (and
-        // their sessions and logbook) are picked up by the full version instead
-        // of being downloaded again. For the full app the two are the same path.
-        // See `shared_data_root` for why it is the *local* data dir.
-        if let Some(root) = shared_data_root(&app) {
-            cmd.env("CONVSIM_DATA_ROOT", root);
-        }
-
-        // Product edition (issue #495). A demo build is compiled with
-        // CONVSIM_EDITION=demo in its environment (see build.rs); it hands the
-        // same value to convsim-core so the engine narrows itself to the demo's
-        // one model and five conversations. Unset = the full app, and nothing
-        // is passed so the engine's own default applies.
-        if let Some(edition) = build_edition() {
-            cmd.env("CONVSIM_EDITION", edition);
-        }
-
-        // The release version the player is running (issue #490). release.yml
-        // stamps tauri.conf.json's `version` from the release tag, but the
-        // PyInstaller-built core only knows its own package version, so its
-        // diagnostics reported `app: 0.1.0` for every build. Hand it the real
-        // one; convsim_core.app_version reads it back.
-        let app_version = app.package_info().version.to_string();
-        cmd.env("CONVSIM_APP_VERSION", app_version);
-
-        // Tell convsim-core where the bundled sidecar binaries live so it can
-        // start llama-server, whisper-cli, and sherpa-onnx-offline-tts without
-        // requiring a system PATH entry (Steam build convention).
-        //
-        // Check both runtimes/ (legacy direct resource) and resources/runtimes/
-        // (produced by the "resources/**/*" glob in tauri.conf.json).
-        if let Some(ref res) = resource_dir {
-            for runtimes_rel in &["runtimes", "resources/runtimes"] {
-                let runtimes = res.join(runtimes_rel);
-                if runtimes.exists() {
-                    cmd.env("CONVSIM_BUNDLED_RUNTIME_DIR", &runtimes);
-                    break;
-                }
-            }
-        }
-
-        // convsim-core.exe is a console-subsystem binary; spawned from this GUI
-        // app without CREATE_NO_WINDOW it allocates a visible console window
-        // that pops over the UI for the whole session. Suppress it — core's
-        // output still lands in its own log files (and our inherited stdio when
-        // launched from a terminal on other platforms).
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            cmd.creation_flags(core_process::CREATE_NO_WINDOW);
-        }
-
-        let child = match cmd.spawn() {
-            Ok(c) => c,
-            Err(e) => {
-                let hint = if e.kind() == std::io::ErrorKind::PermissionDenied {
-                    "The core service binary is not executable. \
-                     This may indicate a corrupted installation — reinstall the app."
-                } else {
-                    "Failed to start the core service process."
-                };
-                emit_core_status(&app, &status_arc, "error", hint, Some(&e.to_string()), log_dir_ref);
-                return;
-            }
-        };
-
-        {
-            let mut lock = process_arc.lock().unwrap();
-            *lock = Some(child);
-        }
-
-        // ── Poll until healthy ────────────────────────────────────────────────
-
-        emit_core_status(
-            &app,
-            &status_arc,
-            "starting",
-            "Waiting for core service to be ready…",
-            None,
-            log_dir_ref,
-        );
-
-        for attempt in 0..30u32 {
-            std::thread::sleep(Duration::from_millis(500));
-
-            // Detect premature exit.
-            {
-                let mut lock = process_arc.lock().unwrap();
-                if let Some(ref mut child) = *lock {
-                    if let Ok(Some(status)) = child.try_wait() {
-                        let msg = format!(
-                            "Core service stopped during startup (exit status: {}).",
-                            status
-                        );
+    // ── Attach to an engine that is already serving ───────────────────────────
+    //
+    // One may be: `dev-desktop.sh` started it, or a previous run of the app left
+    // it behind, or — on Steam, where the demo and the full app share the port —
+    // the other edition is running. An occupant that never answers /api/health
+    // is somebody else's program and is reported as a port conflict rather than
+    // silently adopted.
+    let occupied_deadline = Instant::now() + OCCUPIED_GRACE;
+    let mut announced_wait = false;
+    loop {
+        match probe_core(CORE_PORT) {
+            CoreProbe::Ready { edition } => {
+                // Release builds must not attach to the other edition's engine.
+                // Dev builds skip the check on purpose — `CONVSIM_EDITION=demo
+                // ./scripts/dev.sh` runs a demo engine under a shell compiled
+                // without the flag, and the web UI adopts the engine's edition
+                // from /api/health.
+                if !cfg!(debug_assertions) {
+                    if let Some((message, hint)) = foreign_edition_error(&edition) {
                         emit_core_status(
                             &app,
                             &status_arc,
@@ -1535,9 +1304,10 @@ fn supervise_core(
                 // Release builds keep watching it. An adopted engine is not our
                 // child, so it cannot be supervised — but it can be noticed
                 // leaving, and it leaves more often than it used to: teardown now
-                // drains the engine with SIGTERM and that takes up to
-                // GRACEFUL_SHUTDOWN_WAIT, so a player who quits and reopens the
-                // app inside that window adopts an engine already on its way out.
+                // drains the engine rather than killing it, and that takes as
+                // long as the engine needs, so a player who quits and reopens
+                // the app inside that window adopts an engine already on its
+                // way out.
                 // Without this the UI mounts over a port that disappears a moment
                 // later and every request fails with nothing on screen to say why
                 // — the exact failure the readiness probe exists to prevent.
@@ -1691,7 +1461,7 @@ fn supervise_core(
         }
 
         // Drop the reaped handle before respawning so teardown never waits on a
-        // zombie and `stop_core` is never handed an exited pid.
+        // zombie and teardown is never handed an exited pid.
         if let Ok(mut guard) = process_arc.lock() {
             *guard = None;
         }
@@ -1780,14 +1550,8 @@ pub fn run() {
     // `Drop` alone is not enough: on desktop the tao event loop terminates the
     // process via `std::process::exit()` when the app exits, so managed-state
     // destructors are never run and `convsim-core` would be orphaned (leaving
-    // port 7355 held). Tearing the child down explicitly on `RunEvent::Exit` is
-    // the reliable path; `Drop` remains as a backstop for other exit paths.
-    //
-    // `RunEvent::Exit` is also the LAST point at which we can wait for the
-    // engine: once this handler returns the event loop exits the process, and
-    // whatever is still running becomes an orphan Steam counts as the game
-    // still being open (issue #485). `core_process::shutdown` therefore blocks
-    // until the whole tree is down.
+    // port 7355 held). Stopping the child explicitly on `RunEvent::Exit` is the
+    // reliable teardown path; `Drop` remains as a backstop for other exit paths.
     let process_on_exit = Arc::clone(&process_inner);
 
     // Initialise the Steam bridge early so the status is available before the
@@ -1919,14 +1683,13 @@ pub fn run() {
             shutting_down_on_exit.store(true, Ordering::SeqCst);
             if let Ok(mut guard) = process_on_exit.lock() {
                 // `take()`, so the `Drop` backstop does not run the whole
-                // teardown a second time against a process already reaped.
+                // teardown a second time against a process already reaped, and
+                // so `CoreProcessState::drop` has nothing left to stop if it
+                // does get a chance to run.
                 if let Some(mut child) = guard.take() {
                     let outcome = core_process::shutdown(&mut child);
                     eprintln!("convsim-core shutdown: {}", outcome.as_str());
                 }
-                // Clear the handle so `CoreProcessState::drop` has nothing left
-                // to stop if it does get a chance to run.
-                *guard = None;
             }
         }
     });
@@ -2225,108 +1988,6 @@ mod tests {
         let hint = keeps_stopping_hint();
         assert!(hint.contains(&format!("restarted {MAX_RESTARTS} times")));
         assert!(!hint.contains(&format!("stopped {MAX_RESTARTS} times")));
-    }
-
-    // ── Teardown ─────────────────────────────────────────────────────────────
-
-    /// A child that stays alive long enough for teardown to have something to
-    /// stop. `cfg!`, not `#[cfg]`, so both arms stay compiled and a typo in the
-    /// branch this platform does not take still fails the build.
-    ///
-    /// On Windows `ping -n 30` is the long-lived no-op: `timeout /t` reads the
-    /// console, which a test harness child does not have.
-    fn stays_alive_for_30s() -> Command {
-        let mut command = if cfg!(windows) {
-            Command::new("ping")
-        } else {
-            Command::new("sleep")
-        };
-        if cfg!(windows) {
-            command.arg("-n").arg("30").arg("127.0.0.1");
-        } else {
-            command.arg("30");
-        }
-        command
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
-        command
-    }
-
-    /// A child that has already exited, for the already-reaped guard.
-    fn exits_at_once() -> Command {
-        let mut command = if cfg!(windows) {
-            Command::new("cmd")
-        } else {
-            Command::new("true")
-        };
-        if cfg!(windows) {
-            command.arg("/C").arg("exit");
-        }
-        command
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null());
-        command
-    }
-
-    /// Runs on every platform on purpose. `stop_core` has two entirely separate
-    /// implementations — SIGTERM on Unix, `taskkill /PID … /T /F` on Windows —
-    /// and the Windows one is the only thing that stops the engine's own
-    /// llama-server and TTS children from outliving a closed window. It is also
-    /// the platform the Steam build ships on, and the Linux job cannot so much
-    /// as compile that branch. CI runs this on both (see the Windows job in
-    /// .github/workflows/ci.yml).
-    #[test]
-    fn stop_core_asks_before_it_insists() {
-        // The point of `stop_core` over `Child::kill()` is that the engine gets
-        // a signal it can handle, so uvicorn runs the lifespan shutdown that
-        // stops convsim-core's OWN sidecars. If the signal never arrives — a
-        // typo'd argument, no `kill`/`taskkill` on PATH — the fallback still
-        // kills the child, and the only visible symptom is that teardown
-        // silently takes GRACEFUL_SHUTDOWN_WAIT. Timing is therefore the
-        // evidence that the platform path, not the fallback, did the work.
-        let mut child = stays_alive_for_30s()
-            .spawn()
-            .expect("spawn a long-lived child");
-
-        let started = Instant::now();
-        stop_core(&mut child);
-        let elapsed = started.elapsed();
-
-        assert!(
-            elapsed < GRACEFUL_SHUTDOWN_WAIT,
-            "stop_core took {elapsed:?} — it waited out the graceful window, so \
-             the platform signal never reached the child and the hard kill did \
-             the work"
-        );
-        // Reaped, not left a zombie: teardown clears the handle right after
-        // this, and an unreaped pid would linger until the shell exits.
-        assert!(
-            matches!(child.try_wait(), Ok(Some(_))),
-            "stop_core left the child unreaped"
-        );
-    }
-
-    #[test]
-    fn stop_core_leaves_an_already_reaped_child_alone() {
-        // The shell-level `kill`/`taskkill` goes around `Child`'s own "cannot
-        // kill an exited process" guard, and the OS is free to have handed that
-        // pid to something else by now — so an already-reaped handle must be a
-        // no-op, not a signal. On Windows that matters more than anywhere:
-        // `taskkill /T /F` would force-kill the recycled pid's whole process
-        // TREE.
-        let mut child = exits_at_once()
-            .spawn()
-            .expect("spawn a child that exits at once");
-        let _ = child.wait();
-
-        let started = Instant::now();
-        stop_core(&mut child);
-        assert!(
-            started.elapsed() < Duration::from_secs(1),
-            "stop_core did not short-circuit on an already-reaped child"
-        );
     }
 
     // ── Executable resolution ────────────────────────────────────────────────

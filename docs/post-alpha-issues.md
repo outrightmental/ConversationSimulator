@@ -60,7 +60,7 @@ functional.
 `scripts/build-core.sh` into a single PyInstaller executable and packaged into
 the installer as a Tauri bundle resource; the shell starts it, waits for
 `GET /api/health` on 127.0.0.1:7355 before showing the app, restarts it if it
-crashes, and drains it with SIGTERM on exit — see
+crashes, and drains it rather than killing it on exit — see
 [apps/desktop/README.md](../apps/desktop/README.md), "Core sidecar lifecycle".
 `scripts/packaged-core-smoke.sh` runs the packaged engine in CI and asserts
 health readiness, loopback-only binding, official-pack seeding, an offline
