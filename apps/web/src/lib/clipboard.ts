@@ -56,18 +56,22 @@ export async function copyTextToClipboard(text: string): Promise<boolean> {
   } catch {
     // fall through to the legacy path
   }
+  const textarea = document.createElement('textarea')
   try {
-    const textarea = document.createElement('textarea')
     textarea.value = text
     textarea.setAttribute('readonly', '')
     textarea.style.position = 'fixed'
     textarea.style.opacity = '0'
     document.body.appendChild(textarea)
     textarea.select()
-    const ok = document.execCommand('copy')
-    document.body.removeChild(textarea)
-    return ok
+    return document.execCommand('copy')
   } catch {
     return false
+  } finally {
+    // In a `finally` because execCommand is deprecated and already absent in
+    // some engines, where calling it throws — and the scratch textarea was
+    // selected, so leaving it behind parks focus in an invisible element on
+    // the very error surface the user is trying to report from.
+    textarea.remove()
   }
 }
