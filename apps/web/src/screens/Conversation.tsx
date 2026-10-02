@@ -171,8 +171,11 @@ export default function Conversation() {
   // Ticks once a second while a turn is in flight to advance waitElapsedMs.
   const waitClockRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const waitStartedAtRef = useRef(0)
-  // Spaces out the post-deadline transcript re-checks.
+  // Spaces out the post-deadline transcript re-checks. The resolver is kept so
+  // unmount can release the loop's pending wait instead of leaving a promise
+  // (and the closure around it) hanging forever.
   const reconcileTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const reconcileWakeRef = useRef<(() => void) | null>(null)
   // False once the screen unmounts, so the reconcile loop stops touching state.
   const mountedRef = useRef(true)
 
@@ -201,6 +204,7 @@ export default function Conversation() {
       if (turnTimeoutRef.current) clearTimeout(turnTimeoutRef.current)
       if (waitClockRef.current) clearInterval(waitClockRef.current)
       if (reconcileTimerRef.current) clearTimeout(reconcileTimerRef.current)
+      reconcileWakeRef.current?.()
       if (ttsHoldTimerRef.current) clearTimeout(ttsHoldTimerRef.current)
       if (ttsPlayingRef.current) {
         ttsPlayingRef.current.pause()
@@ -604,8 +608,10 @@ export default function Conversation() {
       if (!mountedRef.current) return false
       if (Date.now() - waitStartedAtRef.current >= TURN_ABANDON_MS) return false
       await new Promise<void>((resolve) => {
+        reconcileWakeRef.current = resolve
         reconcileTimerRef.current = setTimeout(resolve, TURN_RECONCILE_INTERVAL_MS)
       })
+      reconcileWakeRef.current = null
     }
     return false
   }
