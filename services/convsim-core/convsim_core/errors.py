@@ -61,6 +61,19 @@ def _safe_validation_errors(errors: list) -> list:
 # How many field failures the single-line message names before it is truncated.
 _MAX_REPORTED_FIELDS = 5
 
+# How long one field's reason may be before it is clipped. Pydantic's own
+# messages are a short sentence, but a @field_validator is free to raise
+# something long — the approved-voice list, for one — and the whole summary is
+# rendered in a compact error card and copied into a bug report.
+_MAX_REASON_CHARS = 120
+
+
+def _clip(reason: str) -> str:
+    """Trim one reason to _MAX_REASON_CHARS, marking the cut."""
+    if len(reason) <= _MAX_REASON_CHARS:
+        return reason
+    return reason[: _MAX_REASON_CHARS - 1].rstrip() + "\u2026"
+
 
 def _field_path(loc) -> str:
     """Dotted field path for one Pydantic error location.
@@ -84,12 +97,21 @@ def _validation_summary(errors: list) -> str:
 
     Without this the client can only show "Request validation failed", which
     tells a user nothing and tells a maintainer reading a pasted report nothing
-    either — exactly the dead end seen in issue #508. Pydantic's ``msg`` is
-    schema-derived ("Input should be a valid string", "Value error, <our own
-    validator's sentence>") and never echoes the rejected value, so it is safe
-    to surface.
+    either — exactly the dead end seen in issue #508.
+
+    This line is surfaced in the UI and copied into bug reports, so — like the
+    details list, which drops "input" for the same reason — it must carry no
+    caller content. Pydantic's built-in ``msg`` is schema-derived ("Input
+    should be a valid string"). A ``value_error`` ``msg``, though, is "Value
+    error, " plus whatever one of our own ``@field_validator``s raised, so
+    those sentences must not interpolate the value they rejected. Length is
+    clipped here as a backstop, but it only bounds a leak; it does not prevent
+    one.
     """
-    named = [f"{_field_path(e.get('loc'))}: {e.get('msg', 'invalid value')}" for e in errors]
+    named = [
+        f"{_field_path(e.get('loc'))}: {_clip(str(e.get('msg', 'invalid value')))}"
+        for e in errors
+    ]
     if not named:
         return "Request validation failed"
     shown = named[:_MAX_REPORTED_FIELDS]

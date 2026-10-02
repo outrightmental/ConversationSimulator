@@ -172,25 +172,40 @@ function str(v: unknown): string | undefined {
 // Without this a 422 reads "VALIDATION_ERROR: Request validation failed" and
 // names nothing a user or maintainer can act on (issue #508).
 const MAX_REPORTED_FIELDS = 5
+// Mirrors _MAX_REASON_CHARS in convsim_core/errors.py: one field's reason can
+// be as long as whatever a @field_validator raised, and this lands in a compact
+// error card and in a copied bug report.
+const MAX_REASON_CHARS = 120
 
-function fieldSummary(details: unknown): string | undefined {
-  if (!Array.isArray(details)) return undefined
-  const named = details
-    .map((d) => {
-      if (d === null || typeof d !== 'object') return undefined
-      const entry = d as { loc?: unknown; msg?: unknown }
-      const reason = str(entry.msg)
-      if (!reason) return undefined
-      const all = (Array.isArray(entry.loc) ? entry.loc : []).map((p) => String(p))
-      const parts = all[0] === 'body' ? all.slice(1) : all
-      // A body-wide failure (missing body, malformed JSON) locates an offset,
-      // not a field — "0: JSON decode error" names nothing. List indexes inside
-      // a path are kept, since there they do say which item.
-      if (parts.length === 0 || parts.every((p) => /^\d+$/.test(p))) return reason
-      return `${parts.join('.')}: ${reason}`
-    })
-    .filter((s): s is string => s !== undefined)
-  if (named.length === 0) return undefined
+function clip(reason: string): string {
+  return reason.length <= MAX_REASON_CHARS
+    ? reason
+    : reason.slice(0, MAX_REASON_CHARS - 1).trimEnd() + '\u2026'
+}
+
+/** One `{ path, reason }` per readable Pydantic error, in body order. */
+function fieldFailures(details: unknown): { path: string; reason: string }[] {
+  if (!Array.isArray(details)) return []
+  const out: { path: string; reason: string }[] = []
+  for (const d of details) {
+    if (d === null || typeof d !== 'object') continue
+    const entry = d as { loc?: unknown; msg?: unknown }
+    const reason = str(entry.msg)
+    if (!reason) continue
+    const all = (Array.isArray(entry.loc) ? entry.loc : []).map((p) => String(p))
+    const parts = all[0] === 'body' ? all.slice(1) : all
+    // A body-wide failure (missing body, malformed JSON) locates an offset,
+    // not a field — "0: JSON decode error" names nothing. List indexes inside
+    // a path are kept, since there they do say which item.
+    const bodyWide = parts.length === 0 || parts.every((p) => /^\d+$/.test(p))
+    out.push({ path: bodyWide ? '' : parts.join('.'), reason })
+  }
+  return out
+}
+
+function fieldSummary(failures: { path: string; reason: string }[]): string | undefined {
+  if (failures.length === 0) return undefined
+  const named = failures.map((f) => (f.path ? `${f.path}: ${clip(f.reason)}` : clip(f.reason)))
   const extra = named.length - MAX_REPORTED_FIELDS
   return (
     named.slice(0, MAX_REPORTED_FIELDS).join('; ') + (extra > 0 ? ` (and ${extra} more)` : '')
@@ -266,12 +281,16 @@ function parseErrorText(text: string, res: Response): string {
 
   // convsim-core folds the field failures into `message` itself, but an engine
   // bundled before issue #508 sends only the generic "Request validation
-  // failed" with the detail alongside. Append the fields whenever the sentence
-  // does not already carry them, so a 422 never dead-ends at a message that
-  // names nothing.
-  const fields = fieldSummary(details)
-  if (msg && fields && !msg.includes(fields)) msg = `${msg} — ${fields}`
-  if (!msg && fields) msg = fields
+  // failed" with the detail alongside. Append whichever failures the sentence
+  // does not already name, so a 422 never dead-ends at a message that names
+  // nothing — and never says the same thing twice because the two sides word
+  // or clip a reason slightly differently.
+  const unnamed = fieldFailures(details).filter((f) =>
+    msg == null ? true : f.path ? !msg.includes(`${f.path}:`) : !msg.includes(f.reason),
+  )
+  const fields = fieldSummary(unnamed)
+  if (msg && fields) msg = `${msg} — ${fields}`
+  else if (fields) msg = fields
 
   if (msg) return code ? `${code}: ${msg}` : msg
   // The body was structured but carried no human sentence. Showing it verbatim is

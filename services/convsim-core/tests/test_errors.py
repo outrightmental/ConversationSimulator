@@ -98,6 +98,24 @@ def test_validation_message_truncates_a_long_field_list():
     assert "and 4 more" in message
 
 
+def test_validation_message_clips_one_long_reason():
+    """A @field_validator may raise anything; the card renders this on one line."""
+    exc = _validation_exc(
+        [
+            {
+                "type": "value_error",
+                "loc": ("body", "scenario_id"),
+                "msg": "Value error, " + "x" * 500,
+                "input": "whatever",
+            }
+        ]
+    )
+    message = _body(_invoke(request_validation_error_handler(_make_request("POST", "/api/sessions"), exc)))["error"]["message"]
+    assert "scenario_id" in message
+    assert len(message) < 200
+    assert message.endswith("\u2026")
+
+
 def test_validation_details_drop_the_rejected_input():
     """The rejected value is caller content; a 422 body is pasted into issue reports."""
     exc = _validation_exc(
