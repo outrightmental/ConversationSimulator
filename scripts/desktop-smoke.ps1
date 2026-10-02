@@ -33,10 +33,11 @@ try {
 }
 Write-Host "  OK  cargo check passed."
 
-# Mirrors desktop-smoke.sh: the crate's unit tests cover the core-sidecar state
-# machine (the /api/health readiness probe, the port-conflict and
-# foreign-edition guards, the binary resolution order, the restart backoff).
-# This links the crate, which cargo check does not, so a cold run is slower.
+# Unit tests for the shell's own logic: Steam status derivation and convsim-core
+# process teardown (src/core_process.rs). Run without the `steam` feature — the
+# Steam tests call `steam::init()` from several threads at once, which is fine
+# against the no-SDK stub but is NOT a supported way to call the real
+# `SteamAPI_Init`.
 Write-Host "Running cargo test on apps/desktop/src-tauri..."
 Push-Location $DesktopDir
 try {

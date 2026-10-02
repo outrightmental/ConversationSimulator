@@ -38,13 +38,12 @@ echo "Running cargo check --features steam on apps/desktop/src-tauri..."
 (cd "$DESKTOP_TAURI" && cargo check --features steam 2>&1)
 echo "  OK  cargo check --features steam passed."
 
-# The crate's unit tests cover the core-sidecar state machine: the /api/health
-# readiness probe, the port-conflict and foreign-edition guards, the binary
-# resolution order, and the restart backoff.  Without the feature — the Steam
-# bridge's tests call steam::init() from several threads at once, which is fine
-# against the no-SDK stub but is not a supported way to call the real
-# SteamAPI_Init.  This links the crate (cargo check does not), so a cold run
-# takes noticeably longer than the checks above.
+# Unit tests for the shell's own logic: Steam status derivation and, crucially,
+# convsim-core process teardown (src/core_process.rs) — the Unix tests there
+# spawn a real child with a real grandchild and assert that neither survives
+# shutdown. Without the `steam` feature: those tests call `steam::init()` from
+# several threads at once, which is fine against the no-SDK stub but is NOT a
+# supported way to call the real `SteamAPI_Init`.
 echo "Running cargo test on apps/desktop/src-tauri..."
 (cd "$DESKTOP_TAURI" && cargo test 2>&1)
 echo "  OK  cargo test passed."

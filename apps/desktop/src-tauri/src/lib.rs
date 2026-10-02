@@ -13,6 +13,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_updater::UpdaterExt;
 use tauri_plugin_shell::ShellExt;
 
+mod core_process;
 mod steam;
 
 // ── Edition and data root ─────────────────────────────────────────────────────
@@ -392,7 +393,7 @@ impl Drop for CoreProcessState {
         self.shutting_down.store(true, Ordering::SeqCst);
         if let Ok(mut guard) = self.child.lock() {
             if let Some(ref mut child) = *guard {
-                stop_core(child);
+                core_process::shutdown(child);
             }
             *guard = None;
         }
@@ -1319,25 +1320,191 @@ fn supervise_core(
         });
     let log_dir_ref = log_dir.as_deref();
 
-    // ── Attach to an engine that is already serving ───────────────────────────
-    //
-    // One may be: `dev-desktop.sh` started it, or a previous run of the app left
-    // it behind, or — on Steam, where the demo and the full app share the port —
-    // the other edition is running. An occupant that never answers /api/health
-    // is somebody else's program and is reported as a port conflict rather than
-    // silently adopted.
-    let occupied_deadline = Instant::now() + OCCUPIED_GRACE;
-    let mut announced_wait = false;
-    loop {
-        match probe_core(CORE_PORT) {
-            CoreProbe::Ready { edition } => {
-                // Release builds must not attach to the other edition's engine.
-                // Dev builds skip the check on purpose — `CONVSIM_EDITION=demo
-                // ./scripts/dev.sh` runs a demo engine under a shell compiled
-                // without the flag, and the web UI adopts the engine's edition
-                // from /api/health.
-                if !cfg!(debug_assertions) {
-                    if let Some((message, hint)) = foreign_edition_error(&edition) {
+        // If core is already responding (e.g. started by dev-desktop.sh), signal
+        // ready immediately.
+        //
+        // In release builds, only if it is OUR edition's engine: the demo and
+        // the full app share the port (issue #495). Dev builds skip the check
+        // on purpose — `CONVSIM_EDITION=demo ./scripts/dev.sh` runs a demo
+        // engine under a shell compiled without the flag, and the web UI adopts
+        // the engine's edition from /api/health.
+        if is_port_open(CORE_PORT) {
+            if !cfg!(debug_assertions) {
+                if let Some((message, hint)) = foreign_edition_error(CORE_PORT) {
+                    emit_core_status(&app, &status_arc, "error", &message, Some(&hint), log_dir_ref);
+                    return;
+                }
+            }
+            emit_core_status(&app, &status_arc, "ready", "Core service is ready.", None, log_dir_ref);
+            return;
+        }
+
+        // In debug (dev) builds the dev-desktop.sh script is responsible for
+        // starting convsim-core before Tauri. Wait briefly in case of a race.
+        if cfg!(debug_assertions) {
+            for _ in 0..20u32 {
+                std::thread::sleep(Duration::from_millis(500));
+                if is_port_open(CORE_PORT) {
+                    emit_core_status(&app, &status_arc, "ready", "Core service is ready.", None, log_dir_ref);
+                    return;
+                }
+            }
+            emit_core_status(
+                &app,
+                &status_arc,
+                "error",
+                "Core service is not running.",
+                Some(
+                    "In dev mode, start convsim-core before launching the desktop app:\n\
+                     ./scripts/dev-desktop.sh",
+                ),
+                log_dir_ref,
+            );
+            return;
+        }
+
+        // ── Release mode: find, launch, and supervise convsim-core ───────────
+
+        emit_core_status(&app, &status_arc, "starting", "Locating core service…", None, log_dir_ref);
+
+        let resource_dir = app.path().resource_dir().ok();
+
+        let exe = match find_core_executable(resource_dir.as_ref()) {
+            Ok(p) => p,
+            Err(e) => {
+                emit_core_status(
+                    &app,
+                    &status_arc,
+                    "error",
+                    "Could not locate core service.",
+                    Some(&e),
+                    log_dir_ref,
+                );
+                return;
+            }
+        };
+
+        emit_core_status(&app, &status_arc, "starting", "Starting core service…", None, log_dir_ref);
+
+        // convsim-core reads its bind address from CONVSIM_HOST / CONVSIM_PORT
+        // (see services/convsim-core/convsim_core/config.py); it does not parse
+        // CLI flags. Set them explicitly so the shell controls the port it polls.
+        let mut cmd = Command::new(&exe);
+        cmd.env("CONVSIM_HOST", "127.0.0.1")
+            .env("CONVSIM_PORT", CORE_PORT.to_string())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit());
+
+        // Spawn settings the teardown path depends on: a pipe on stdin whose
+        // closure asks the engine to shut itself down, and (on Unix) a process
+        // group of its own so the whole tree can be signalled at once. See
+        // core_process for why `Child::kill()` alone leaves processes behind.
+        core_process::configure_lifetime(&mut cmd);
+
+        // Pass the OS-native app data directory as CONVSIM_DATA_ROOT so the
+        // Python backend uses the same platform-specific location that Tauri
+        // considers the app's home for user data (rather than the legacy
+        // ~/.convsim dev location). convsim_core.paths.platform_data_root()
+        // reads this env var and falls back to OS conventions when it is absent
+        // (e.g. in dev mode without Tauri).
+        //
+        // The directory is keyed by DATA_ROOT_IDENTIFIER, not the bundle's own
+        // identifier: the Steam Next Fest demo (issue #495) is a separate Steam
+        // app with its own bundle identifier, and it must share this directory
+        // with the full app so the model a player downloaded in the demo (and
+        // their sessions and logbook) are picked up by the full version instead
+        // of being downloaded again. For the full app the two are the same path.
+        // See `shared_data_root` for why it is the *local* data dir.
+        if let Some(root) = shared_data_root(&app) {
+            cmd.env("CONVSIM_DATA_ROOT", root);
+        }
+
+        // Product edition (issue #495). A demo build is compiled with
+        // CONVSIM_EDITION=demo in its environment (see build.rs); it hands the
+        // same value to convsim-core so the engine narrows itself to the demo's
+        // one model and five conversations. Unset = the full app, and nothing
+        // is passed so the engine's own default applies.
+        if let Some(edition) = build_edition() {
+            cmd.env("CONVSIM_EDITION", edition);
+        }
+
+        // The release version the player is running (issue #490). release.yml
+        // stamps tauri.conf.json's `version` from the release tag, but the
+        // PyInstaller-built core only knows its own package version, so its
+        // diagnostics reported `app: 0.1.0` for every build. Hand it the real
+        // one; convsim_core.app_version reads it back.
+        let app_version = app.package_info().version.to_string();
+        cmd.env("CONVSIM_APP_VERSION", app_version);
+
+        // Tell convsim-core where the bundled sidecar binaries live so it can
+        // start llama-server, whisper-cli, and sherpa-onnx-offline-tts without
+        // requiring a system PATH entry (Steam build convention).
+        //
+        // Check both runtimes/ (legacy direct resource) and resources/runtimes/
+        // (produced by the "resources/**/*" glob in tauri.conf.json).
+        if let Some(ref res) = resource_dir {
+            for runtimes_rel in &["runtimes", "resources/runtimes"] {
+                let runtimes = res.join(runtimes_rel);
+                if runtimes.exists() {
+                    cmd.env("CONVSIM_BUNDLED_RUNTIME_DIR", &runtimes);
+                    break;
+                }
+            }
+        }
+
+        // convsim-core.exe is a console-subsystem binary; spawned from this GUI
+        // app without CREATE_NO_WINDOW it allocates a visible console window
+        // that pops over the UI for the whole session. Suppress it — core's
+        // output still lands in its own log files (and our inherited stdio when
+        // launched from a terminal on other platforms).
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(core_process::CREATE_NO_WINDOW);
+        }
+
+        let child = match cmd.spawn() {
+            Ok(c) => c,
+            Err(e) => {
+                let hint = if e.kind() == std::io::ErrorKind::PermissionDenied {
+                    "The core service binary is not executable. \
+                     This may indicate a corrupted installation — reinstall the app."
+                } else {
+                    "Failed to start the core service process."
+                };
+                emit_core_status(&app, &status_arc, "error", hint, Some(&e.to_string()), log_dir_ref);
+                return;
+            }
+        };
+
+        {
+            let mut lock = process_arc.lock().unwrap();
+            *lock = Some(child);
+        }
+
+        // ── Poll until healthy ────────────────────────────────────────────────
+
+        emit_core_status(
+            &app,
+            &status_arc,
+            "starting",
+            "Waiting for core service to be ready…",
+            None,
+            log_dir_ref,
+        );
+
+        for attempt in 0..30u32 {
+            std::thread::sleep(Duration::from_millis(500));
+
+            // Detect premature exit.
+            {
+                let mut lock = process_arc.lock().unwrap();
+                if let Some(ref mut child) = *lock {
+                    if let Ok(Some(status)) = child.try_wait() {
+                        let msg = format!(
+                            "Core service stopped during startup (exit status: {}).",
+                            status
+                        );
                         emit_core_status(
                             &app,
                             &status_arc,
@@ -1613,8 +1780,14 @@ pub fn run() {
     // `Drop` alone is not enough: on desktop the tao event loop terminates the
     // process via `std::process::exit()` when the app exits, so managed-state
     // destructors are never run and `convsim-core` would be orphaned (leaving
-    // port 7355 held). Stopping the child explicitly on `RunEvent::Exit` is the
-    // reliable teardown path; `Drop` remains as a backstop for other exit paths.
+    // port 7355 held). Tearing the child down explicitly on `RunEvent::Exit` is
+    // the reliable path; `Drop` remains as a backstop for other exit paths.
+    //
+    // `RunEvent::Exit` is also the LAST point at which we can wait for the
+    // engine: once this handler returns the event loop exits the process, and
+    // whatever is still running becomes an orphan Steam counts as the game
+    // still being open (issue #485). `core_process::shutdown` therefore blocks
+    // until the whole tree is down.
     let process_on_exit = Arc::clone(&process_inner);
 
     // Initialise the Steam bridge early so the status is available before the
@@ -1745,8 +1918,11 @@ pub fn run() {
             // starts a replacement engine the closing app will never stop.
             shutting_down_on_exit.store(true, Ordering::SeqCst);
             if let Ok(mut guard) = process_on_exit.lock() {
-                if let Some(ref mut child) = *guard {
-                    stop_core(child);
+                // `take()`, so the `Drop` backstop does not run the whole
+                // teardown a second time against a process already reaped.
+                if let Some(mut child) = guard.take() {
+                    let outcome = core_process::shutdown(&mut child);
+                    eprintln!("convsim-core shutdown: {}", outcome.as_str());
                 }
                 // Clear the handle so `CoreProcessState::drop` has nothing left
                 // to stop if it does get a chance to run.

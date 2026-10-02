@@ -264,6 +264,42 @@ The conversation screen includes a collapsible debug drawer for diagnosing model
 
 ---
 
+## The engine keeps running after I quit {#engine-wont-exit}
+
+**Steam still shows Conversation Simulator as running after the window closes**,
+or `convsim-core` / `convsim-core.exe` is still in the task list.
+
+Quitting the app shuts the engine down and waits for it, so this should not
+happen. If it does:
+
+```bash
+# macOS / Linux
+pkill -f convsim-core
+# The engine stops llama-server and the TTS sidecar on its way out, so normally
+# that is all. If it was too wedged to do that, a stray llama-server keeps port
+# 7356 — which stops the next launch from loading a model — so clear it too.
+# (This also matches a llama-server you started yourself; skip it if you did.)
+pkill -f llama-server
+```
+
+```powershell
+# Windows PowerShell — /T also takes out llama-server and the TTS sidecar
+taskkill /IM convsim-core.exe /T /F
+```
+
+Nothing is lost by doing this: conversations are written to SQLite as they
+happen, and an interrupted model download resumes from where it stopped.
+
+Then please [open an issue](https://github.com/outrightmental/ConversationSimulator/issues)
+and attach `app.log` and `runtime.log` from the logs folder (Settings →
+**Open logs folder**). A clean shutdown ends `app.log` with
+`Launcher closed our stdin pipe; shutting down.` followed by uvicorn's
+`Application shutdown complete.` — which of those two lines is missing says
+whether the engine never heard the request or heard it and got stuck, and
+`runtime.log` says the same for `llama-server`.
+
+---
+
 ## Where to get help
 
 - Open a [GitHub issue](https://github.com/outrightmental/ConversationSimulator/issues) for bugs or missing documentation.

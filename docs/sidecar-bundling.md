@@ -199,6 +199,53 @@ flag to bypass it. Network binding is always localhost-only.
 
 ---
 
+## Shutting the whole tree down {#shutdown}
+
+Quitting the app has to take every one of these processes with it. Nothing in
+the tree is a direct child of the desktop shell:
+
+```
+convsim-desktop (Tauri shell)
+└── convsim-core(.exe)            ← PyInstaller one-file BOOTLOADER; the only
+    │                               process the shell holds a handle on
+    └── convsim-core(.exe)        ← the real Python server; owns port 7355
+        ├── llama-server
+        └── sherpa-onnx-offline-tts (Kokoro)
+```
+
+Terminating the handle the shell holds kills the bootloader only. `SIGKILL` and
+`TerminateProcess` cannot be forwarded, so the server survives — still holding
+port 7355 — and its sidecars with it. On Windows that left `convsim-core.exe`
+in the task list after the window closed and kept Steam reporting the game as
+running (issue #485).
+
+Teardown is therefore two steps, in `apps/desktop/src-tauri/src/core_process.rs`:
+
+1. **Ask.** The shell spawns the engine with a pipe on stdin and holds the write
+   end for its own lifetime. Closing it is the shutdown request:
+   `convsim_core/parent_watch.py` reads EOF and asks uvicorn for a *graceful*
+   stop, so the FastAPI lifespan teardown runs and `ProcessSupervisor.stop_all()`
+   stops every registered sidecar. A pipe rather than a signal or a PID poll,
+   because the kernel closes it when the shell exits for **any** reason —
+   including a crash or being killed by Steam — and because PIDs get recycled.
+2. **Insist.** If the tree is still up 10 seconds later, kill all of it: one
+   `killpg` on Unix (the engine is spawned as its own process-group leader),
+   `taskkill /T /F` on Windows.
+
+A sidecar that honours the `SidecarProcess` contract needs nothing extra: step 1
+reaches it through `stop_all()`, and step 2 reaches it because it is inside the
+engine's process group / process tree. A sidecar that daemonises itself out of
+both would not be stopped by either — don't.
+
+Both steps are covered by `cargo test` in `apps/desktop/src-tauri`, which spawns
+a stand-in engine with a stand-in sidecar grandchild and asserts that neither
+process survives teardown. Step 2 is platform-specific, so the tests are too:
+CI runs them on Linux (`killpg`) in the desktop job and on Windows (`taskkill
+/T`) in the Windows job. The Python half — EOF on stdin reaching uvicorn — is
+covered by `services/convsim-core/tests/test_parent_watch.py`.
+
+---
+
 ## Adding a new sidecar
 
 When implementing a new sidecar (e.g. `WhisperCppSidecar`):
@@ -214,6 +261,8 @@ When implementing a new sidecar (e.g. `WhisperCppSidecar`):
 6. Add tests covering: missing binary, port conflict, crash, restart, and
    graceful shutdown. See `tests/test_sidecar.py` for the llama.cpp reference
    implementation.
+7. Keep the child inside the engine's process tree — see
+   [Shutting the whole tree down](#shutdown).
 
 ---
 
@@ -284,7 +333,7 @@ lifecycle", for the full state machine.
 | `CONVSIM_LLAMA_CPP_EXECUTABLE` | Override path to `llama-server` |
 | `CONVSIM_WHISPER_CPP_BINARY_PATH` | Override path to `whisper-cli` |
 | `CONVSIM_KOKORO_EXECUTABLE` | Override path to `sherpa-onnx-offline-tts` |
-| `CONVSIM_CORE_EXECUTABLE` | Override path to the `convsim-core` binary the desktop shell starts |
+| `CONVSIM_SHUTDOWN_ON_STDIN_EOF` | Set to `1` by a launcher that holds a pipe on the engine's stdin; EOF on it means "shut down" (see [Shutting the whole tree down](#shutdown)) |
 
 ---
 
