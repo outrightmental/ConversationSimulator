@@ -11,6 +11,7 @@ import type {
   ScenarioInfo,
   WsEvent,
 } from '@convsim/shared'
+import type { ApiError } from '../api/errors'
 
 vi.mock('../api/client', () => ({
   api: {
@@ -1690,6 +1691,72 @@ describe('Conversation screen', () => {
         )
         // Nothing landed, so the optimistic player turn is rolled back for a retry.
         expect(screen.queryByText('My answer.')).not.toBeInTheDocument()
+        expect(screen.getByRole('textbox', { name: /your response/i })).not.toBeDisabled()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('reports the core’s own failure as soon as it arrives after the deadline', async () => {
+      // The deadline only suspends judgement; it does not discard the request.
+      // When the core itself answers 504 TURN_TIMEOUT at, say, seven minutes —
+      // it allows 180 s of engine silence *after* generation has started — that
+      // is the verdict, with the cause named. Polling on to the ten-minute
+      // ceiling would make the player wait three more minutes for a vaguer one.
+      let rejectTurn: (r: { ok: false; error: ApiError }) => void = () => {}
+      mockApi.submitTurn.mockReturnValue(
+        new Promise((resolve) => { rejectTurn = resolve }) as never,
+      )
+      mockApi.getSessionTranscript.mockResolvedValue({
+        ok: true,
+        data: { ...committedTranscript, turns: committedTranscript.turns.slice(0, 1) },
+      })
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        await submitAndWait(DEADLINE_MS)
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+
+        rejectTurn({
+          ok: false,
+          error: {
+            kind: 'http-error',
+            status: 504,
+            message: 'TURN_TIMEOUT: The AI engine stopped responding partway through its reply.',
+          },
+        })
+        // Resolved mid-interval: the loop must wake on it, not on the next tick.
+        await vi.advanceTimersByTimeAsync(100)
+        await waitFor(() =>
+          expect(screen.getByRole('alert')).toHaveTextContent(/stopped responding partway/i),
+        )
+        expect(screen.queryByText('My answer.')).not.toBeInTheDocument()
+        expect(screen.getByRole('textbox', { name: /your response/i })).not.toBeDisabled()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('commits a reply that answers after the deadline with its state delta intact', async () => {
+      // The transcript carries no variable snapshot, so adopting from it leaves
+      // the meters stale. When the request does answer, its payload is the
+      // authoritative one and must still drive the normal commit path.
+      let resolveTurn: (r: { ok: true; data: TurnResponse }) => void = () => {}
+      mockApi.submitTurn.mockReturnValue(
+        new Promise((resolve) => { resolveTurn = resolve }) as never,
+      )
+      mockApi.getSessionTranscript.mockResolvedValue({
+        ok: true,
+        data: { ...committedTranscript, turns: committedTranscript.turns.slice(0, 1) },
+      })
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        await submitAndWait(DEADLINE_MS)
+        resolveTurn({ ok: true, data: turnResponse })
+        await vi.advanceTimersByTimeAsync(100)
+        await waitFor(() =>
+          expect(screen.getByText('Hello there. I am a simulated NPC.')).toBeInTheDocument(),
+        )
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument()
         expect(screen.getByRole('textbox', { name: /your response/i })).not.toBeDisabled()
       } finally {
         vi.useRealTimers()

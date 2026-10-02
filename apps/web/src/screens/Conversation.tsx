@@ -631,19 +631,36 @@ export default function Conversation() {
    * TURN_ABANDON_MS, by which point nothing the core permits can still be
    * running and the request itself must be wedged.
    *
+   * `request` is the submitTurn call the deadline raced, still in flight. Its
+   * own answer outranks anything the transcript can say, so the loop stops the
+   * moment it lands and hands the verdict back to the caller: a late success
+   * carries the state delta, event flags and ending type the transcript does
+   * not, and a real failure (the core's own 504 TURN_TIMEOUT, or a 503 for an
+   * unreachable engine) names its cause instead of being replaced by a vaguer
+   * "took too long" minutes later.
+   *
    * Returns true when the server's copy was adopted.
    */
-  async function _awaitServerTurnAfterDeadline(): Promise<boolean> {
-    while (mountedRef.current) {
+  async function _awaitServerTurnAfterDeadline(
+    request: Promise<ApiResult<TurnResponse>>,
+    hasAnswered: () => boolean,
+  ): Promise<boolean> {
+    while (mountedRef.current && !hasAnswered()) {
       const outcome = await _adoptServerTurnAfterDeadline()
       if (outcome === 'adopted') return true
       if (outcome === 'unavailable') return false
-      if (!mountedRef.current) return false
+      if (!mountedRef.current || hasAnswered()) return false
       if (Date.now() - waitStartedAtRef.current >= TURN_ABANDON_MS) return false
-      await new Promise<void>((resolve) => {
-        reconcileWakeRef.current = resolve
-        reconcileTimerRef.current = setTimeout(resolve, TURN_RECONCILE_INTERVAL_MS)
-      })
+      // Wake on whichever comes first: the next scheduled re-check, the request
+      // finally answering, or unmount releasing the wait.
+      await Promise.race([
+        new Promise<void>((resolve) => {
+          reconcileWakeRef.current = resolve
+          reconcileTimerRef.current = setTimeout(resolve, TURN_RECONCILE_INTERVAL_MS)
+        }),
+        request,
+      ])
+      if (reconcileTimerRef.current) clearTimeout(reconcileTimerRef.current)
       reconcileWakeRef.current = null
     }
     return false
@@ -701,10 +718,17 @@ export default function Conversation() {
 
     // Wrap the API call with a deadline so the UI is never stuck indefinitely on a
     // request that will never answer. Expiry hands over to the reconcile loop
-    // below rather than failing the turn outright.
+    // below rather than failing the turn outright, and the request itself is kept
+    // so its real answer is still honoured if it lands after the deadline.
+    const request = api.submitTurn(sessionId!, text, didBargeIn)
+    const late: { result: ApiResult<TurnResponse> | null } = { result: null }
+    void request.then((r) => {
+      late.result = r
+    })
+
     let deadlineExpired = false
-    const result = await Promise.race([
-      api.submitTurn(sessionId!, text, didBargeIn),
+    let result = await Promise.race([
+      request,
       new Promise<ApiResult<TurnResponse>>((resolve) => {
         turnTimeoutRef.current = setTimeout(() => {
           deadlineExpired = true
@@ -714,16 +738,27 @@ export default function Conversation() {
     ])
     if (turnTimeoutRef.current) clearTimeout(turnTimeoutRef.current)
 
-    if (!result.ok) {
+    if (!result.ok && deadlineExpired) {
       // The deadline expiring says nothing about whether the turn failed:
       // convsim-core commits the player turn and the NPC reply in one
       // transaction *before* it answers the request, so ask the server what it
       // actually has before declaring the turn lost (issue #489). The wait clock
       // keeps running through this, so the player still sees a live "still
       // waiting" notice rather than a screen that goes quiet.
-      const adopted = deadlineExpired && (await _awaitServerTurnAfterDeadline())
-      _stopWaitClock()
-      if (adopted) return
+      const adopted = await _awaitServerTurnAfterDeadline(request, () => late.result !== null)
+      if (adopted) {
+        _stopWaitClock()
+        return
+      }
+      // The request answered while the screen was polling. That answer replaces
+      // the deadline's placeholder: a late reply takes the normal commit path
+      // below with its state delta and ending type intact, and a real failure
+      // reports its own cause now instead of a vague timeout at the ceiling.
+      if (late.result !== null) result = late.result
+    }
+    _stopWaitClock()
+
+    if (!result.ok) {
       setError(result.error)
       // Discard any partial streamed tokens so a failed turn doesn't leave a
       // phantom "Responding…" bubble alongside the error.
@@ -738,7 +773,6 @@ export default function Conversation() {
       setPhase('active')
       return
     }
-    _stopWaitClock()
     const turnData = result.data
 
     if (!firstTokenMarkedRef.current) {
