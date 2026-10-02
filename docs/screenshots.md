@@ -59,8 +59,9 @@ the hero recording from the last exchange with `ffmpeg`. It **refuses to run** w
 active runtime is `fake` or `scripted`, so a capture can never quietly ship canned text
 as gameplay.
 
-Useful flags: `--skip-hero` (screenshots only, no recording), `--only=03,06` (re-capture
-named screens). The scenario, player turns and seed are constants at the top of the file.
+Useful flags: `--skip-hero` (screenshots only, no recording) and `--only=03,06` (still
+plays the session, but writes only the named screens). The scenario, player turns and
+seed are constants at the top of the file.
 
 ---
 

@@ -38,6 +38,10 @@
  * Usage
  *   node scripts/capture-screenshots.mjs [--skip-hero] [--only=03,06]
  *
+ *   --skip-hero  capture the screenshots, skip the recording
+ *   --only=NN,NN write only the named screens (the session is still played,
+ *                since 03 and 04 come out of it)
+ *
  * Environment
  *   CONVSIM_UI_URL      default http://127.0.0.1:7354
  *   CONVSIM_API_URL     default http://127.0.0.1:7355
