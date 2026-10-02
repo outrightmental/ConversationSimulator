@@ -121,6 +121,33 @@ describe('CopyDiagnosticsButton', () => {
     expect(await screen.findByText('Copy failed')).toBeInTheDocument()
   })
 
+  it('copies through the desktop shell when the web clipboard APIs are absent', async () => {
+    // The packaged macOS build (issue #508): the webview is served from
+    // tauri://localhost, which WKWebView does not treat as a secure context,
+    // so navigator.clipboard is undefined — and execCommand('copy') is refused
+    // because the user gesture did not survive the log-excerpt fetch above.
+    // Only the shell's own clipboard is left, and it has to be enough.
+    mockFetchOk()
+    const invoke = vi.fn().mockResolvedValue(undefined)
+    const win = window as unknown as { __TAURI__?: unknown }
+    win.__TAURI__ = { core: { invoke } }
+    try {
+      expect(navigator.clipboard).toBeUndefined()
+      render(<CopyDiagnosticsButton error={SAMPLE_ERROR} context="ScenarioSetup-Submit" />)
+
+      fireEvent.click(screen.getByRole('button', { name: 'Copy diagnostics' }))
+      expect(await screen.findByText('Copied!')).toBeInTheDocument()
+
+      const [command, args] = invoke.mock.calls[0]
+      expect(command).toBe('plugin:clipboard-manager|write_text')
+      const copied = String((args as { text: string }).text)
+      expect(copied).toContain('context: ScenarioSetup-Submit')
+      expect(copied).toContain('llama-server exited early (code 137)')
+    } finally {
+      delete win.__TAURI__
+    }
+  })
+
   it('supports a custom label', () => {
     mockFetchOk()
     render(<CopyDiagnosticsButton error={SAMPLE_ERROR} label="Copy log excerpt" />)

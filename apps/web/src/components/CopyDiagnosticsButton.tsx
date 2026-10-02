@@ -14,36 +14,13 @@ import { useEffect, useRef, useState } from 'react'
 import type { ApiError } from '../api/errors'
 import { buildDiagnosticsText } from '../api/errors'
 import { buildDiagnosticsReport } from '../api/diag'
+import { copyTextToClipboard } from '../lib/clipboard'
 
-/**
- * Write text to the clipboard, preferring the async Clipboard API and
- * falling back to a hidden textarea + execCommand for webviews where
- * navigator.clipboard is unavailable. Resolves false when neither works.
- */
-export async function copyTextToClipboard(text: string): Promise<boolean> {
-  try {
-    if (typeof navigator !== 'undefined' && navigator.clipboard != null) {
-      await navigator.clipboard.writeText(text)
-      return true
-    }
-  } catch {
-    // fall through to the legacy path
-  }
-  try {
-    const textarea = document.createElement('textarea')
-    textarea.value = text
-    textarea.setAttribute('readonly', '')
-    textarea.style.position = 'fixed'
-    textarea.style.opacity = '0'
-    document.body.appendChild(textarea)
-    textarea.select()
-    const ok = document.execCommand('copy')
-    document.body.removeChild(textarea)
-    return ok
-  } catch {
-    return false
-  }
-}
+// Re-exported because this module is the documented home of the copy
+// affordance; the mechanism itself lives in lib/clipboard.ts, which also has
+// to work in the packaged macOS build where neither web clipboard API does
+// (issue #508).
+export { copyTextToClipboard }
 
 export interface CopyDiagnosticsButtonProps {
   /** Error whose details lead the report (header built via buildDiagnosticsText). */
