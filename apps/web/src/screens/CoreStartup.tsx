@@ -45,7 +45,13 @@ const TROUBLESHOOTING_BASE =
 const ISSUES_URL =
   'https://github.com/outrightmental/ConversationSimulator/issues/new/choose'
 
-type FailureKind = 'edition-conflict' | 'port-conflict' | 'not-found' | 'keeps-stopping' | 'crash'
+type FailureKind =
+  | 'edition-conflict'
+  | 'already-running'
+  | 'port-conflict'
+  | 'not-found'
+  | 'keeps-stopping'
+  | 'crash'
 
 interface ErrorInfo {
   kind: FailureKind
@@ -72,6 +78,25 @@ function classifyError(message: string, error: string | null): ErrorInfo {
       description:
         'The demo and the full version share one conversation engine, so they cannot run at the ' +
         'same time. Close the other one, then start this one again.',
+      anchor: '#engine-startup-failure',
+    }
+  }
+
+  // After the edition branch, whose message also says "already running", and
+  // before the port-conflict branch. The shell sends this when the engine it
+  // spawned could not bind because a convsim-core of the SAME edition already
+  // held the port — a second copy of the app launched while this one was still
+  // starting (`ALREADY_RUNNING_MESSAGE` in apps/desktop/src-tauri/src/lib.rs).
+  // The port-conflict card would tell the player to close whatever program is
+  // using port 7355; that program is the engine serving the window they already
+  // have, so following the advice would break the launch that worked.
+  if (/already running/.test(text)) {
+    return {
+      kind: 'already-running',
+      title: 'Conversation Simulator is already running',
+      description:
+        'Another window is already using the conversation engine, so this one could not ' +
+        'start a second. Switch to that window — you do not need this one.',
       anchor: '#engine-startup-failure',
     }
   }

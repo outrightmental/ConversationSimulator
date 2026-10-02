@@ -816,6 +816,24 @@ const PORT_BUSY_MESSAGE: &str = "Port 7355 is already in use by another program.
 /// headed "didn't start" would describe the wrong thing entirely.
 const KEEPS_STOPPING_MESSAGE: &str = "The conversation engine keeps stopping.";
 
+/// Matched by `classifyError` in apps/web/src/screens/CoreStartup.tsx, which
+/// turns it into the "already running" recovery card.
+///
+/// Reached when the engine this shell spawned could not bind because a
+/// convsim-core of *this* edition took the port first — a second copy of the
+/// app launched while this one was still starting. Nothing stops that: there is
+/// no single-instance plugin, and the window is as wide as a cold first launch
+/// (the installer .exe and the AppImage can both be run twice; Steam and macOS
+/// LaunchServices refuse a second launch of their own accord).
+///
+/// It must not report `PORT_BUSY_MESSAGE`, whose hint tells the player to close
+/// "whatever is using that port" — here that is the engine the window they
+/// already have is talking to, and following the advice breaks the launch that
+/// worked. It also must not be confused with `foreign_edition_error`, which is
+/// the same race between the demo and the full app and needs the opposite
+/// advice: there, closing the other one is exactly right.
+const ALREADY_RUNNING_MESSAGE: &str = "Conversation Simulator is already running.";
+
 fn port_busy_hint() -> String {
     format!(
         "Conversation Simulator needs port {port} on 127.0.0.1, but another program is \
@@ -834,6 +852,16 @@ fn port_busy_hint() -> String {
 /// Its own function so a test can check it against `classifyError`'s patterns —
 /// which are matched against the message and the hint concatenated, and try
 /// port-conflict first, so a stray "port" here would pick the wrong card.
+/// The hint beside `ALREADY_RUNNING_MESSAGE`. Names no action against the port:
+/// the engine holding it is the one serving the window that did start.
+fn already_running_hint() -> String {
+    format!(
+        "Another window of Conversation Simulator is already using the conversation \
+         engine on port {port}. Switch to that window — this one is not needed.",
+        port = CORE_PORT
+    )
+}
+
 fn keeps_stopping_hint() -> String {
     format!(
         "It was restarted {max} times and stopped again every time, so it will not be \
@@ -1085,8 +1113,13 @@ fn start_and_await_core(
                 // taken. This path is release-only — the dev branch in
                 // `supervise_core` returns before the launch path — so the
                 // edition guard applies here unconditionally.
-                CoreProbe::Ready { edition } => foreign_edition_error(&edition)
-                    .unwrap_or_else(|| (PORT_BUSY_MESSAGE.to_string(), port_busy_hint())),
+                //
+                // A convsim-core of OUR edition is a second copy of this app
+                // racing us, not a stranger: `PORT_BUSY_MESSAGE` would send the
+                // player to close the engine their other window is using.
+                CoreProbe::Ready { edition } => foreign_edition_error(&edition).unwrap_or_else(
+                    || (ALREADY_RUNNING_MESSAGE.to_string(), already_running_hint()),
+                ),
                 CoreProbe::Occupied => (PORT_BUSY_MESSAGE.to_string(), port_busy_hint()),
                 // The port is free, so the exit was not a failure to bind.
                 CoreProbe::Closed => (
@@ -1858,6 +1891,30 @@ mod tests {
         assert!(PORT_BUSY_MESSAGE.contains(&CORE_PORT.to_string()));
         assert!(text.contains("port"));
         assert!(text.contains("in use"));
+    }
+
+    #[test]
+    fn the_already_running_message_is_what_the_recovery_card_classifies() {
+        // classifyError matches against `${message} ${error}` and tries its
+        // branches in order, so this pair must miss every branch above its own:
+        // 'another edition' (the demo/full race, which needs the OPPOSITE
+        // advice — there, closing the other one is right) and 'port in use'
+        // (whose card tells the player to close whatever holds 7355, which here
+        // is the engine serving the window that did start).
+        let text = format!("{} {}", ALREADY_RUNNING_MESSAGE, already_running_hint()).to_lowercase();
+        assert!(text.contains("already running"));
+        assert!(!text.contains("another edition"));
+        assert!(!text.contains("in use"));
+        assert!(!text.contains("busy"));
+        assert!(!text.contains("port conflict"));
+        assert!(!text.contains("keeps stopping"));
+        assert!(!text.contains("not found"));
+        assert!(!text.contains("executable"));
+        assert!(!text.contains("binary"));
+        assert!(!text.contains("cannot locate"));
+        // And it is not the message an unidentified occupant gets, which is the
+        // whole point of telling the two apart.
+        assert_ne!(ALREADY_RUNNING_MESSAGE, PORT_BUSY_MESSAGE);
     }
 
     #[test]

@@ -351,6 +351,42 @@ describe('CoreStartupGuard — error state', () => {
     expect(alert).toHaveTextContent(/conversation simulator demo is using/i)
   })
 
+  it('tells the player another window has the engine, not that a program stole the port', async () => {
+    // A second copy of the app launched while the first was still starting: the
+    // engine this shell spawned lost the race to bind. The port-conflict card
+    // would send the player to close whatever is holding port 7355 — which is
+    // the engine the window that DID start is talking to.
+    let handler: TauriListenHandler | undefined
+    stubTauri((_event, h) => {
+      handler = h
+      return Promise.resolve(() => {})
+    })
+
+    await act(async () => {
+      renderGuard()
+    })
+
+    await act(async () => {
+      handler?.({
+        payload: {
+          phase: 'error',
+          // Verbatim from `ALREADY_RUNNING_MESSAGE` / `already_running_hint`
+          // in apps/desktop/src-tauri/src/lib.rs, which a Rust test pins.
+          message: 'Conversation Simulator is already running.',
+          error:
+            'Another window of Conversation Simulator is already using the conversation ' +
+            'engine on port 7355. Switch to that window — this one is not needed.',
+        },
+      })
+    })
+
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent(/conversation simulator is already running/i)
+    expect(alert).not.toHaveTextContent(/another app is using a required port/i)
+    expect(alert).not.toHaveTextContent(/another edition/i)
+    expect(alert).not.toHaveTextContent(/didn't start/i)
+  })
+
   it('shows the error detail in the alert', async () => {
     let handler: TauriListenHandler | undefined
     stubTauri((_event, h) => {

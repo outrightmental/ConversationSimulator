@@ -155,10 +155,20 @@ else's.)
 | Anything else, for 15 s | Error: `Port 7355 is already in use by another program.` The grace period exists because `/api/health` fans out to the LLM, STT and TTS probes and one answer can take seconds, and because the occupant may be an engine mid-restart. |
 
 The port can also be taken *after* the shell finds it free, in the window its own
-engine spends unpacking and migrating — the demo and the full app are separate
-Steam apps and may be launched together. The engine then exits because it cannot
+engine spends unpacking and migrating. The engine then exits because it cannot
 bind, and the shell asks the port the same question again rather than reporting
-an exit status the logs can only explain as "the port was taken".
+an exit status the logs can only explain as "the port was taken". The answer
+decides what the player is told, and the three cases need different advice:
+
+| What won the race | What the player is told |
+|---|---|
+| The *other* edition's engine | Close the other one (same message as the attach path above). The demo and the full app are separate Steam apps and may be launched together. |
+| A convsim-core of *this* edition | `Conversation Simulator is already running.` — a second copy of the app was launched while this one was starting. There is no single-instance plugin; Steam and macOS LaunchServices refuse a second launch themselves, but the installer `.exe` and the AppImage can both be run twice. |
+| Anything else | `Port 7355 is already in use by another program.` |
+
+The middle row is why it is not all one message: the port-conflict hint tells the
+player to close whatever holds 7355, and there that is the engine serving the
+window which *did* start.
 
 **Adopting an engine.** An engine the shell did not start has no child handle,
 so it cannot be supervised — but a release build re-checks the port every 3 s

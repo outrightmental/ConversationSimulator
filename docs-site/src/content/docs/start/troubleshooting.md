@@ -19,6 +19,7 @@ The app could not start its background conversation engine (`convsim-core`). Com
 
 - **Port conflict:** another program is holding port 7355. See [Port conflicts](#port-conflicts) below. The app asks whatever is on the port whether it is a conversation engine, and gives it 15 seconds to answer before reporting a conflict — so an engine that is busy or restarting is not mistaken for an unrelated program.
 - **Another edition is running:** the demo and the full app share port 7355. Close the one you are not using, then start the other.
+- **The app is already running:** you launched a second copy while the first was still starting. Switch to the window that opened — do **not** close the program holding port 7355, because that is the conversation engine the working window is using.
 - **Binary not found:** the `convsim-core` executable is missing. Reinstall the app.
 - **Crash on startup:** check the logs at `~/.convsim/logs/app.log` for the specific error.
 
