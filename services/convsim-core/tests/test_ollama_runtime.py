@@ -305,6 +305,9 @@ async def test_chat_stream_no_structured_output_without_schema():
 
 @pytest.mark.asyncio
 async def test_chat_stream_raises_on_connection_error():
+    """An absent Ollama must raise ConnectionError, which the turn endpoint maps
+    to a 503 RUNTIME_UNAVAILABLE. A RuntimeError reached the player as the bare
+    500 "An unexpected error occurred" of issue #489."""
     client = MagicMock()
     client.stream = MagicMock(side_effect=httpx.ConnectError("refused"))
     runtime = OllamaChatRuntime(client=client)
@@ -312,7 +315,7 @@ async def test_chat_stream_raises_on_connection_error():
         model_id="llama3.2:latest",
         messages=[ChatMessage(role="user", content="hello")],
     )
-    with pytest.raises(RuntimeError, match="[Oo]llama"):
+    with pytest.raises(ConnectionError, match="[Oo]llama"):
         async for _ in runtime.chat_stream(request):
             pass
 
@@ -327,7 +330,7 @@ async def test_chat_stream_connect_timeout_reads_as_not_running():
         model_id="llama3.2:latest",
         messages=[ChatMessage(role="user", content="hello")],
     )
-    with pytest.raises(RuntimeError, match="[Oo]llama is not reachable"):
+    with pytest.raises(ConnectionError, match="[Oo]llama is not reachable"):
         async for _ in runtime.chat_stream(request):
             pass
 
@@ -368,7 +371,7 @@ async def test_chat_stream_raises_not_running_when_ollama_down_and_no_model_id()
     say the server is not reachable — not that it has no models installed."""
     runtime = _make_runtime(connect_error=True)
     request = ChatRequest(messages=[ChatMessage(role="user", content="hello")])
-    with pytest.raises(RuntimeError, match="[Oo]llama"):
+    with pytest.raises(ConnectionError, match="[Oo]llama"):
         async for _ in runtime.chat_stream(request):
             pass
 

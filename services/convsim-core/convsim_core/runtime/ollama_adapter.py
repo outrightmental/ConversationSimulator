@@ -146,7 +146,7 @@ class OllamaChatRuntime(ChatRuntime):
                     resp = await self._client.get("/")
                     resp.raise_for_status()
                 except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPStatusError):
-                    raise RuntimeError(_NOT_RUNNING_HINT)
+                    raise ConnectionError(_NOT_RUNNING_HINT)
                 raise RuntimeError(_NO_MODELS_HINT)
             model_id = models[0].id
 
@@ -190,8 +190,12 @@ class OllamaChatRuntime(ChatRuntime):
                         output_tokens = chunk.get("eval_count", 0)
         # A failure to connect at all still means "Ollama is not running",
         # ConnectTimeout included — so it is matched ahead of the read timeout.
+        # ConnectionError, not RuntimeError: the turn endpoint maps it to a 503
+        # RUNTIME_UNAVAILABLE the player can act on, the same way it does for the
+        # llama.cpp adapter. A RuntimeError here fell through to the generic
+        # handler as the bare 500 of issue #489.
         except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
-            raise RuntimeError(_NOT_RUNNING_HINT) from exc
+            raise ConnectionError(_NOT_RUNNING_HINT) from exc
         except httpx.TimeoutException as exc:
             # The server is there, it just stopped sending. The turn endpoint
             # turns TimeoutError into a retryable 504 TURN_TIMEOUT (issue #489),

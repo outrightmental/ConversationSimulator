@@ -209,8 +209,10 @@ Conversation Simulator port range.
 **Model selection.** If `ChatRequest.model_id` is `None`, the adapter
 calls `list_models()` and picks the first available model. If Ollama is
 reachable but has no models, it raises `RuntimeError` with instructions
-to run `ollama pull <model>`. If Ollama is unreachable, it raises with
-instructions to run `ollama serve`.
+to run `ollama pull <model>`. If Ollama is unreachable, it raises
+`ConnectionError` with instructions to run `ollama serve` — the same type the
+llama.cpp adapter uses, so the turn endpoint reports it as a 503
+`RUNTIME_UNAVAILABLE` rather than a generic 500.
 
 **Timeouts.** Control-plane calls (tag listing, reachability probe) get 60 s.
 `/api/chat` gets 180 s applied per read, so it bounds how long the server may go
