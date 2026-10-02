@@ -165,6 +165,34 @@ function str(v: unknown): string | undefined {
   return typeof v === 'string' && v !== '' ? v : undefined
 }
 
+// Pydantic's per-field failures, as a single readable clause:
+// "tts_voice_id: Input should be a valid string; seed: Input should be a valid
+// integer". `loc` is a path like ["body", "tts_voice_id"]; the "body" head is
+// dropped because every request model lives there and it only adds noise.
+// Without this a 422 reads "VALIDATION_ERROR: Request validation failed" and
+// names nothing a user or maintainer can act on (issue #508).
+const MAX_REPORTED_FIELDS = 5
+
+function fieldSummary(details: unknown): string | undefined {
+  if (!Array.isArray(details)) return undefined
+  const named = details
+    .map((d) => {
+      if (d === null || typeof d !== 'object') return undefined
+      const entry = d as { loc?: unknown; msg?: unknown }
+      const reason = str(entry.msg)
+      if (!reason) return undefined
+      const parts = (Array.isArray(entry.loc) ? entry.loc : []).map((p) => String(p))
+      const path = (parts[0] === 'body' ? parts.slice(1) : parts).join('.')
+      return path ? `${path}: ${reason}` : reason
+    })
+    .filter((s): s is string => s !== undefined)
+  if (named.length === 0) return undefined
+  const extra = named.length - MAX_REPORTED_FIELDS
+  return (
+    named.slice(0, MAX_REPORTED_FIELDS).join('; ') + (extra > 0 ? ` (and ${extra} more)` : '')
+  )
+}
+
 // Turn an already-read error body into a clean message. Never returns HTML,
 // parser internals, or a raw JSON body — an HTML body is handled upstream in
 // errorFromResponse and never reaches here.
@@ -186,13 +214,21 @@ function parseErrorText(text: string, res: Response): string {
   // convsim-core (Python) returns { error: { code, message } }; the interim
   // convsim-api (TypeScript) returns { code?, message } at the top level.
   // Accept either shape so error text is clean regardless of active backend.
-  const body = json as { message?: unknown; code?: unknown; detail?: unknown; error?: unknown }
+  const body = json as {
+    message?: unknown
+    code?: unknown
+    detail?: unknown
+    details?: unknown
+    error?: unknown
+  }
   let msg = str(body.message)
   let code = str(body.code)
+  let details = body.details
   if (!msg && body.error && typeof body.error === 'object') {
-    const err = body.error as { message?: unknown; code?: unknown }
+    const err = body.error as { message?: unknown; code?: unknown; details?: unknown }
     msg = str(err.message)
     code = str(err.code)
+    details = err.details
   }
   // A bare sentence on `error`, e.g. { error: "disk is full" }. Nothing in-tree
   // emits this today, but falling through to the status line would drop the only
@@ -223,6 +259,15 @@ function parseErrorText(text: string, res: Response): string {
     msg = str(d.message) ?? str(d.msg)
     code = code ?? str(d.code)
   }
+
+  // convsim-core folds the field failures into `message` itself, but an engine
+  // bundled before issue #508 sends only the generic "Request validation
+  // failed" with the detail alongside. Append the fields whenever the sentence
+  // does not already carry them, so a 422 never dead-ends at a message that
+  // names nothing.
+  const fields = fieldSummary(details)
+  if (msg && fields && !msg.includes(fields)) msg = `${msg} — ${fields}`
+  if (!msg && fields) msg = fields
 
   if (msg) return code ? `${code}: ${msg}` : msg
   // The body was structured but carried no human sentence. Showing it verbatim is

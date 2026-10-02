@@ -22,7 +22,7 @@ from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 
 from convsim_core.edition import (
     EDITION_RESTRICTED,
@@ -115,6 +115,27 @@ class SessionCreateRequest(BaseModel):
     # Restricted to the runtimes that need no model and reach nothing off-box, so a
     # client can never point a session at a sidecar-backed runtime this way.
     runtime_id: Optional[Literal["scripted", "fake"]] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def null_means_default(cls, data: Any) -> Any:
+        """Treat an explicit ``null`` as "field not provided" wherever a default exists.
+
+        A client that renders an unset option as ``null`` instead of omitting
+        the key gets a 422 no amount of retrying can clear, and the setup
+        screen has no way to recover — exactly the dead end in issue #508.
+        ``tts_voice_id`` is the live example: the web UI documents it as
+        "omitted when no voice is selected, in which case the backend applies
+        its default", so a null plainly means the default.
+
+        Only defaulted fields are forgiven. ``scenario_id`` and
+        ``player_role_name`` are required, so a missing or null value there
+        still fails loudly — and now says which field it was.
+        """
+        if not isinstance(data, dict):
+            return data
+        optional = {name for name, f in cls.model_fields.items() if not f.is_required()}
+        return {k: v for k, v in data.items() if not (v is None and k in optional)}
 
     @field_validator("player_role_name")
     @classmethod
