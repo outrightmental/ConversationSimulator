@@ -416,7 +416,7 @@ scripts/           Developer setup and launch scripts
 | Application code | Apache-2.0 |
 | Official scenario packs | CC BY 4.0 |
 | Documentation | CC BY 4.0 |
-| Placeholder assets | CC0-1.0 |
+| Captured screenshots and demo recording, placeholder pack art | CC0-1.0 |
 | Model weights | Not bundled — user-installed with full license disclosure |
 | Premium scenario-pack DLC | Proprietary — not in this repository; sold on Steam |
 
