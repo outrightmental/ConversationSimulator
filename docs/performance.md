@@ -101,7 +101,7 @@ Two separate limits can still end a turn early:
 | Limit | Value | What happens |
 |-------|-------|--------------|
 | Engine went quiet | 180 s with nothing sent (`CONVSIM_LLAMA_CPP_CHAT_TIMEOUT`) — this covers reading the prompt back in as well as the gaps between words | The turn fails with a timeout error. Nothing is recorded, so you can retype the same turn. |
-| App gave up waiting | 10 min | From 5 minutes on, the app stops trusting the request and starts asking the session what it actually recorded, every 15 seconds. As soon as the reply has landed it is shown and play continues. If the request itself answers while that is going on — with the reply, or with a failure of its own — that answer is used straight away. Only if nothing has landed by 10 minutes does the turn fail with a timeout error. (A session started with transcript saving off has nothing to ask about, so the turn fails at 5 minutes.) |
+| App gave up waiting | 10 min | From 5 minutes on, the app stops trusting the request and starts asking the session what it actually recorded, every 15 seconds. As soon as the reply has landed it is shown and play continues. If the request itself answers while that is going on — with the reply, or with a failure of its own — that answer is used straight away. Only if nothing has landed by 10 minutes does the turn fail with a timeout error. (A session started with transcript saving off has nothing to ask about, so the app simply keeps waiting on the request until then.) |
 
 The session is **not** ended by either case — you can retry the same turn. The error message includes the same suggestions listed above.
 

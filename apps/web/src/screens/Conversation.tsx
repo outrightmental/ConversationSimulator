@@ -579,27 +579,18 @@ export default function Conversation() {
    *
    * Returns 'adopted' when the turn is complete and the caller must not report
    * an error, 'pending' when the server has nothing yet and asking again later
-   * could still succeed, and 'unavailable' when it never will.
+   * could still succeed, and 'unavailable' when the transcript will never be
+   * able to answer, so there is no point asking it again.
    */
   async function _adoptServerTurnAfterDeadline(): Promise<ReconcileOutcome> {
-    // A WebSocket npc.final may already have put the reply on screen, in which
-    // case the turn is done. turnNumRef counts that NPC row too, so the
-    // transcript comparison below could never see the server pull ahead: left
-    // to the loop this would poll to the ceiling and then report a timeout over
-    // a reply the player is looking at.
-    if (npcTurnCommittedRef.current) {
-      setPhase(sessionStateRef.current === 'Ended' ? 'ended' : 'active')
-      return 'adopted'
-    }
-
     const tr = await api.getSessionTranscript(sessionId!)
     // A failed fetch says nothing either way — core may be briefly busy — so
     // keep asking rather than turning a transient blip into a lost turn.
     if (!tr.ok) return 'pending'
     // A session started with transcript saving off answers this endpoint with no
-    // turns, always. There is nothing to reconcile against now or in five more
-    // minutes, so the deadline stands immediately instead of locking the screen
-    // until the ceiling for a verdict that cannot change.
+    // turns, always, so asking it again is pure waste. The caller still waits on
+    // the request itself: the core commits the turn either way, and only the
+    // transcript *endpoint* is withheld.
     if (!tr.data.transcript_saved) return 'unavailable'
     const serverTurns = tr.data.turns
     const last = serverTurns[serverTurns.length - 1]
@@ -645,10 +636,27 @@ export default function Conversation() {
     request: Promise<ApiResult<TurnResponse>>,
     hasAnswered: () => boolean,
   ): Promise<boolean> {
+    // Cleared when the transcript endpoint turns out to be unable to answer, so
+    // the loop stops asking it. It keeps waiting on the request regardless:
+    // convsim-core commits the turn whether or not the session saves a
+    // transcript, so giving up early there would roll back a turn the session
+    // holds — issue #489 again, at the five-minute mark.
+    let askTheTranscript = true
     while (mountedRef.current && !hasAnswered()) {
-      const outcome = await _adoptServerTurnAfterDeadline()
-      if (outcome === 'adopted') return true
-      if (outcome === 'unavailable') return false
+      // A WebSocket npc.final may already have put the reply on screen, in which
+      // case the turn is done. turnNumRef counts that NPC row too, so the
+      // transcript comparison could never see the server pull ahead: left to the
+      // loop this would poll to the ceiling and then report a timeout over a
+      // reply the player is looking at.
+      if (npcTurnCommittedRef.current) {
+        setPhase(sessionStateRef.current === 'Ended' ? 'ended' : 'active')
+        return true
+      }
+      if (askTheTranscript) {
+        const outcome = await _adoptServerTurnAfterDeadline()
+        if (outcome === 'adopted') return true
+        if (outcome === 'unavailable') askTheTranscript = false
+      }
       if (!mountedRef.current || hasAnswered()) return false
       if (Date.now() - waitStartedAtRef.current >= TURN_ABANDON_MS) return false
       // Wake on whichever comes first: the next scheduled re-check, the request

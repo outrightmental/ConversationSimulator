@@ -1649,24 +1649,55 @@ describe('Conversation screen', () => {
       }
     })
 
-    it('fails at the deadline when the session keeps no transcript to reconcile against', async () => {
-      // With transcript saving off the endpoint answers with no turns, always.
-      // Polling it cannot change that, so the player must get the verdict at the
-      // deadline instead of a screen locked until the ceiling.
-      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
-      mockApi.getSessionTranscript.mockResolvedValue({
-        ok: true,
-        data: {
-          session_id: SESSION_ID,
-          scenario_id: SCENARIO_ID,
-          transcript_saved: false,
-          message: 'Transcript saving is disabled for this session.',
-          turns: [],
-        },
-      })
+    /** What the transcript endpoint answers when the session saves no transcript. */
+    const unsavedTranscript = {
+      session_id: SESSION_ID,
+      scenario_id: SCENARIO_ID,
+      transcript_saved: false,
+      message: 'Transcript saving is disabled for this session.',
+      turns: [],
+    }
+
+    it('still waits out a slow turn when the session keeps no transcript', async () => {
+      // With transcript saving off the endpoint answers with no turns, always —
+      // but convsim-core still commits the turn, only withholding the endpoint.
+      // Giving the verdict at the deadline would roll back a turn the session
+      // holds and leave the view a turn behind: issue #489 at five minutes.
+      let resolveTurn: (r: { ok: true; data: TurnResponse }) => void = () => {}
+      mockApi.submitTurn.mockReturnValue(
+        new Promise((resolve) => { resolveTurn = resolve }) as never,
+      )
+      mockApi.getSessionTranscript.mockResolvedValue({ ok: true, data: unsavedTranscript })
       vi.useFakeTimers({ shouldAdvanceTime: true })
       try {
         await submitAndWait(DEADLINE_MS)
+        // No verdict, and no pointless re-polling of an endpoint that cannot answer.
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+        const callsAtDeadline = mockApi.getSessionTranscript.mock.calls.length
+        await vi.advanceTimersByTimeAsync(60_000)
+        expect(mockApi.getSessionTranscript.mock.calls.length).toBe(callsAtDeadline)
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+
+        // The request answers late; its reply is committed as normal.
+        resolveTurn({ ok: true, data: turnResponse })
+        await vi.advanceTimersByTimeAsync(100)
+        await waitFor(() =>
+          expect(screen.getByText('Hello there. I am a simulated NPC.')).toBeInTheDocument(),
+        )
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('reports a timeout at the ceiling when the session keeps no transcript', async () => {
+      // The request never answers and the transcript cannot speak for it, so the
+      // verdict comes at the ceiling — not five minutes early.
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      mockApi.getSessionTranscript.mockResolvedValue({ ok: true, data: unsavedTranscript })
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        await submitAndWait(ABANDON_MS)
         await waitFor(() =>
           expect(screen.getByRole('alert')).toHaveTextContent('Request timed out'),
         )
