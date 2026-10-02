@@ -494,8 +494,17 @@ enum CoreProbe {
 /// of its client.
 fn parse_http_response(raw: &str) -> Option<(u16, &str)> {
     let (head, body) = raw.split_once("\r\n\r\n")?;
-    let code = head.lines().next()?.split_whitespace().nth(1)?;
-    Some((code.parse::<u16>().ok()?, body))
+    let mut status = head.lines().next()?.split_whitespace();
+    // The version token is checked, not skipped: without this a status line
+    // like "GARBAGE 200 OK" reads as a 200 from something that never spoke
+    // HTTP. `edition_from_health_body` would still reject such an occupant, so
+    // this is not the only thing standing between us and adopting a stranger's
+    // socket — but a probe that accepts foreign framing as a well-formed
+    // response has already lost the thread, and the port is untrusted input.
+    if !status.next()?.starts_with("HTTP/") {
+        return None;
+    }
+    Some((status.next()?.parse::<u16>().ok()?, body))
 }
 
 /// The `edition` a `/api/health` body reports: `"demo"`, or `"full"` (also for
@@ -1725,7 +1734,14 @@ mod tests {
 
     #[test]
     fn rejects_a_status_line_that_is_not_http() {
+        // One token, so there is no status code to find at all.
         assert!(parse_http_response("GARBAGE\r\n\r\nbody").is_none());
+        // And the case this test used to miss: a status line shaped exactly
+        // like HTTP's, carrying a parseable code, whose version token is not
+        // HTTP. Only the version check rejects this one.
+        assert!(parse_http_response("GARBAGE 200 OK\r\n\r\n{\"status\":\"ok\"}").is_none());
+        // A lowercase or truncated version is not HTTP/1.x either.
+        assert!(parse_http_response("http/1.1 200 OK\r\n\r\n{}").is_none());
     }
 
     // ── Health body ──────────────────────────────────────────────────────────
