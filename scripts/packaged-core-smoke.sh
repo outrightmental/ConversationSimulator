@@ -109,6 +109,28 @@ dump_core_output() {
 # shellcheck disable=SC2317,SC2329
 cleanup() {
     if [[ -n "$CORE_PID" ]] && kill -0 "$CORE_PID" 2>/dev/null; then
+        # SIGTERM first, and SIGKILL only as the last word.
+        #
+        # $CORE_PID is the PyInstaller one-file BOOTLOADER, not the Python
+        # server: the bootloader unpacks the payload, forks the real engine and
+        # waits on it, forwarding the signals it is able to catch. SIGKILL is
+        # not one of them, so killing $CORE_PID outright reparents a live engine
+        # to init — still holding $PORT, still writing into the data root this
+        # function removes two lines later. That orphan is the exact failure the
+        # whole script exists to catch, so leaving one behind on the way out is
+        # the one thing cleanup must not do.
+        #
+        # Measured against PyInstaller 6.22.3: SIGKILL on the bootloader leaves
+        # the server alive with the port still LISTENING; SIGTERM is forwarded
+        # and takes the whole tree down. Check 7 proves the same thing against
+        # the real convsim-core binary.
+        local deadline
+        kill -TERM "$CORE_PID" 2>/dev/null
+        deadline=$(( $(date +%s) + SHUTDOWN_TIMEOUT ))
+        while kill -0 "$CORE_PID" 2>/dev/null && [[ "$(date +%s)" -lt "$deadline" ]]; do
+            sleep 1
+        done
+        # For an engine that ignored it — the case check 7 would have failed on.
         kill -KILL "$CORE_PID" 2>/dev/null
         # Reap before removing the data root: an engine still alive would be
         # writing into a directory pulled out from under it, and on a shared
