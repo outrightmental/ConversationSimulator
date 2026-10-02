@@ -138,9 +138,11 @@ expanded to its four scenario cards with metadata chips and Launch buttons.
 
 **What it shows:** Turn 10 of the session. NPC panel (emotion "Impressed", status
 "Listening"), the scene card, the performance advisory this machine earned, four turns of
-transcript with per-turn event flags, the NPC state variable meters — the five baseline
-variables plus the scenario's own `conviction` and `preparation_score` — the accumulated
-event-flag strip, and the text composer.
+transcript with per-turn event flags, the NPC state variable meters — the five visible
+baseline variables plus the two the scenario adds, `conviction` and `preparation_score` —
+the accumulated event-flag strip, and the text composer. The hidden variables (baseline
+`pressure`, the scenario's `stretch_potential` and `gap_acknowledged`) have no meter here;
+they surface only in the debrief telemetry on `04-debrief.png`.
 
 **Alt text:**
 > The conversation screen mid-session in "Making the Case". The NPC panel reads Impressed
@@ -217,7 +219,7 @@ Completed for the current set; re-run it whenever the assets are replaced.
       fallback alongside it.
 - [x] Files placed in `docs/assets/screenshots/`, and derived web copies placed in
       `website/static/images/screenshots/` and `docs-site/public/images/screenshots/`:
-      `magick <png> -resize 1280x -colors 256 -strip <dest>` (about a fifth the bytes,
+      `magick <png> -resize 1280x -colors 256 -strip <dest>` (about a quarter the bytes,
       still sharp at the sizes those pages render).
 - [x] The old hero SVG and the six mockup SVGs are gone from the tree; `demo.gif`
       and the six PNGs take their place.
