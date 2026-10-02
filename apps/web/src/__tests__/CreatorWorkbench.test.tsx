@@ -29,6 +29,8 @@ vi.mock('../api/client', () => ({
       validate: vi.fn(),
       copyToLocal: vi.fn(),
       startTestSession: vi.fn(),
+      listFlytingScenarios: vi.fn(),
+      previewVolley: vi.fn(),
       importPack: vi.fn(),
       exportPack: vi.fn(),
     },
@@ -105,6 +107,53 @@ const TURN_RESPONSE = {
   ],
 }
 
+const FLYTING_SCENARIO = {
+  scenario_id: 'whitechapel_rose',
+  path: 'scenarios/whitechapel_rose.yaml',
+  title: 'The Scorned Rose of Whitechapel',
+  target_name: 'Lord Bellingham',
+  attack_surface: [
+    { id: 'vanity', brief: 'Powdered, corseted, and fifty.', visibility: 'visible' as const, themes: [] },
+    { id: 'new_money', brief: 'The crest is eleven years old.', visibility: 'discoverable' as const, themes: ['lineage'] },
+  ],
+  difficulty_multiplier: 1.2,
+  verse_required: false,
+  requires_surface_politeness: false,
+  anachronism_policy: 'penalize',
+  judge_flavor: 'A retired music-hall chairman.',
+  lexicon_encouraged: ['blackguard'],
+}
+
+const VOLLEY_PREVIEW = {
+  scenario_id: 'whitechapel_rose',
+  volley: {
+    volley_number: 1,
+    speaker: 'player' as const,
+    score: 42,
+    band: 'weak' as const,
+    gate: { outcome: 'ok' as const },
+    composition: {
+      quality: 0.3,
+      topicality: 1,
+      freshness: 0.95,
+      difficulty: 1.2,
+      base: 42,
+      bonus_total: 0,
+    },
+    judge: null,
+    craft_metrics: {
+      word_count: 12,
+      type_token_ratio: 1,
+      mean_zipf: 3.5,
+      second_person: true,
+      rarest_words: ['sterling'],
+    },
+    freshness: { value: 0.95, s_max: 0.22, method: 'lexical' as const, nearest_source: 'none' as const },
+    flags: ['judge_unavailable' as const],
+  },
+  judge_system_prompt: 'You are the umpire. Score sting, wit, craft, fidelity.',
+}
+
 function renderWorkbench() {
   return render(
     <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
@@ -126,6 +175,8 @@ beforeEach(() => {
   vi.mocked(api.workbench.validate).mockResolvedValue({ ok: true, data: { valid: true, errors: [], warnings: [] } })
   vi.mocked(api.workbench.copyToLocal).mockResolvedValue({ ok: true, data: LOCAL_PACK })
   vi.mocked(api.workbench.startTestSession).mockResolvedValue({ ok: true, data: TEST_SESSION_RESPONSE })
+  vi.mocked(api.workbench.listFlytingScenarios).mockResolvedValue({ ok: true, data: { scenarios: [FLYTING_SCENARIO] } })
+  vi.mocked(api.workbench.previewVolley).mockResolvedValue({ ok: true, data: VOLLEY_PREVIEW })
   vi.mocked(api.workbench.importPack).mockResolvedValue({ ok: true, data: LOCAL_PACK })
   vi.mocked(api.workbench.exportPack).mockResolvedValue({ ok: true, data: { blob: new Blob([]), filename: 'pack.zip' } })
   vi.mocked(api.submitTurn).mockResolvedValue({ ok: true, data: TURN_RESPONSE })
@@ -1019,5 +1070,105 @@ describe('CreatorWorkbench — Test Chat', () => {
       expect(screen.getByTestId('file-editor')).toBeInTheDocument()
       expect(screen.queryByTestId('form-editor')).not.toBeInTheDocument()
     })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Test Volley panel — the flyting authoring surface
+// ---------------------------------------------------------------------------
+
+describe('CreatorWorkbench — Test Volley', () => {
+  async function openVolleyTab() {
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+    await waitFor(() => expect(screen.getByTestId('tab-volley')).toBeInTheDocument())
+    fireEvent.click(screen.getByTestId('tab-volley'))
+  }
+
+  it('lists the pack\'s flyting scenarios and its target\'s whole attack surface', async () => {
+    await openVolleyTab()
+    await waitFor(() => expect(screen.getByTestId('volley-scenario-select')).toBeInTheDocument())
+    expect(screen.getByTestId('volley-attack-surface')).toHaveTextContent('vanity')
+    // The author sees discoverables too — unlike the player's brief, which
+    // withholds them so finding one can be worth double.
+    expect(screen.getByTestId('volley-attack-surface')).toHaveTextContent('new money')
+    expect(screen.getByText(/difficulty ×1\.20/i)).toBeInTheDocument()
+  })
+
+  it('scores a draft volley against the draft scenario', async () => {
+    await openVolleyTab()
+    await waitFor(() => expect(screen.getByTestId('test-volley-input')).toBeInTheDocument())
+    fireEvent.change(screen.getByTestId('test-volley-input'), {
+      target: { value: 'Your crest is newer than your gloves.' },
+    })
+    fireEvent.click(screen.getByTestId('score-test-volley'))
+
+    await waitFor(() => expect(screen.getByTestId('scorecard-player-1')).toBeInTheDocument())
+    expect(screen.getByTestId('volley-score')).toHaveTextContent('42')
+    expect(api.workbench.previewVolley).toHaveBeenCalledWith(
+      'local-dev',
+      'my-pack',
+      'scenarios/whitechapel_rose.yaml',
+      'Your crest is newer than your gloves.',
+      [],
+    )
+  })
+
+  it('passes earlier volleys so freshness and theme decay can be exercised', async () => {
+    await openVolleyTab()
+    await waitFor(() => expect(screen.getByTestId('test-volley-input')).toBeInTheDocument())
+    fireEvent.change(screen.getByTestId('test-volley-priors'), {
+      target: { value: 'first line\n\n  second line  ' },
+    })
+    fireEvent.change(screen.getByTestId('test-volley-input'), { target: { value: 'third line entirely' } })
+    fireEvent.click(screen.getByTestId('score-test-volley'))
+
+    await waitFor(() => expect(api.workbench.previewVolley).toHaveBeenCalled())
+    expect(api.workbench.previewVolley).toHaveBeenCalledWith(
+      'local-dev',
+      'my-pack',
+      'scenarios/whitechapel_rose.yaml',
+      'third line entirely',
+      ['first line', 'second line'],
+    )
+  })
+
+  it('shows the judge prompt the scenario produces, on request', async () => {
+    await openVolleyTab()
+    await waitFor(() => expect(screen.getByTestId('test-volley-input')).toBeInTheDocument())
+    fireEvent.change(screen.getByTestId('test-volley-input'), { target: { value: 'A line.' } })
+    fireEvent.click(screen.getByTestId('score-test-volley'))
+    await waitFor(() => expect(screen.getByTestId('scorecard-player-1')).toBeInTheDocument())
+
+    expect(screen.queryByTestId('judge-prompt-preview')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: /show the judge prompt/i }))
+    expect(screen.getByTestId('judge-prompt-preview')).toHaveTextContent('You are the umpire')
+  })
+
+  it('explains itself when the pack has no flyting scenario', async () => {
+    vi.mocked(api.workbench.listFlytingScenarios).mockResolvedValue({ ok: true, data: { scenarios: [] } })
+    await openVolleyTab()
+    await waitFor(() => expect(screen.getByTestId('no-flyting-scenarios')).toBeInTheDocument())
+    expect(screen.getByTestId('no-flyting-scenarios')).toHaveTextContent('mode: flyting')
+    expect(screen.queryByTestId('score-test-volley')).not.toBeInTheDocument()
+  })
+
+  it('surfaces a refused preview', async () => {
+    vi.mocked(api.workbench.previewVolley).mockResolvedValue({
+      ok: false,
+      error: { kind: 'http-error', message: 'A volley cannot exceed 500 characters', status: 400 },
+    })
+    await openVolleyTab()
+    await waitFor(() => expect(screen.getByTestId('test-volley-input')).toBeInTheDocument())
+    fireEvent.change(screen.getByTestId('test-volley-input'), { target: { value: 'Too long, apparently.' } })
+    fireEvent.click(screen.getByTestId('score-test-volley'))
+    await waitFor(() => expect(screen.getByTestId('test-volley-error')).toBeInTheDocument())
+    expect(screen.getByText(/cannot exceed 500 characters/i)).toBeInTheDocument()
+  })
+
+  it('does not score an empty volley', async () => {
+    await openVolleyTab()
+    await waitFor(() => expect(screen.getByTestId('score-test-volley')).toBeInTheDocument())
+    expect(screen.getByTestId('score-test-volley')).toBeDisabled()
   })
 })

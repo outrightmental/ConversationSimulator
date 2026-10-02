@@ -3,7 +3,9 @@ import { useState, useEffect, useCallback, useRef, type CSSProperties } from 're
 import { useBlocker } from 'react-router-dom'
 import { FormEditor } from '@convsim/ui'
 import type { PackFileType } from '@convsim/scenario-schema'
-import { api, apiClient, type WorkbenchPack, type FileNode, type WorkbenchValidation, type WorkbenchValidationIssue, type WorkbenchImportValidationError } from '../api/client'
+import { api, apiClient, type WorkbenchPack, type FileNode, type WorkbenchValidation, type WorkbenchValidationIssue, type WorkbenchImportValidationError, type WorkbenchFlytingScenario, type WorkbenchVolleyPreview } from '../api/client'
+import VolleyScorecard from '../flyting/VolleyScorecard'
+import { Tag } from '../flyting/primitives'
 import type { ApiError } from '../api/errors'
 import { ERROR_COPY } from '../api/errors'
 import { ApiErrorView } from '../components/ApiErrorView'
@@ -1389,6 +1391,218 @@ function TestChatPanel({ pack, validation }: TestChatPanelProps) {
 // CreatorWorkbench (main screen)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// TestVolleyPanel — score a draft volley against a draft flyting scenario
+// ---------------------------------------------------------------------------
+
+/**
+ * The authoring half of the flyting mode: write an attack surface, then find
+ * out what the pipeline makes of a line aimed at it, without exporting the pack
+ * or installing it. The engine reads the pack from disk for this, so the
+ * scenario being scored is the one in the editor — including unsaved-then-saved
+ * edits — rather than whatever is in the installed pack index.
+ *
+ * Deterministic stages only, by design: no model is called, the answer is
+ * instant, and what it reports (gates, freshness, the difficulty multiplier,
+ * which traits a hook could name) is the part the pack itself controls. The
+ * judge's own rubric header is one disclosure away so an author can read the
+ * prompt their scenario produces.
+ */
+function TestVolleyPanel({ pack }: { pack: WorkbenchPack }) {
+  const [scenarios, setScenarios] = useState<WorkbenchFlytingScenario[] | null>(null)
+  const [selected, setSelected] = useState<string>('')
+  const [text, setText] = useState('')
+  const [priorText, setPriorText] = useState('')
+  const [result, setResult] = useState<WorkbenchVolleyPreview | null>(null)
+  const [scoring, setScoring] = useState(false)
+  const [loadError, setLoadError] = useState<ApiError | null>(null)
+  const [scoreError, setScoreError] = useState<ApiError | null>(null)
+  const [showPrompt, setShowPrompt] = useState(false)
+
+  const reload = useCallback(() => {
+    setLoadError(null)
+    void api.workbench.listFlytingScenarios(pack.kind, pack.slug).then((r) => {
+      if (!r.ok) { setScenarios([]); setLoadError(r.error); return }
+      setScenarios(r.data.scenarios)
+      setSelected((prev) =>
+        r.data.scenarios.some((sc) => sc.path === prev)
+          ? prev
+          : r.data.scenarios[0]?.path ?? '',
+      )
+    })
+  }, [pack.kind, pack.slug])
+
+  useEffect(() => { reload() }, [reload])
+
+  const scenario = scenarios?.find((sc) => sc.path === selected) ?? null
+
+  async function handleScore() {
+    if (!selected || !text.trim() || scoring) return
+    setScoring(true)
+    setScoreError(null)
+    const priors = priorText.split('\n').map((l) => l.trim()).filter(Boolean)
+    const r = await api.workbench.previewVolley(pack.kind, pack.slug, selected, text, priors)
+    setScoring(false)
+    if (!r.ok) { setScoreError(r.error); setResult(null); return }
+    setResult(r.data)
+  }
+
+  if (scenarios == null) {
+    return (
+      <div style={{ flex: 1, padding: '1.5rem', color: '#71717a', fontSize: '0.875rem' }}>
+        Looking for flyting scenarios…
+      </div>
+    )
+  }
+
+  if (scenarios.length === 0) {
+    return (
+      <div style={{ flex: 1, padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+        {loadError && <ApiErrorView error={loadError} compact context="CreatorWorkbench-flyting" />}
+        <p data-testid="no-flyting-scenarios" style={{ margin: 0, fontSize: '0.85rem', color: '#a1a1aa', maxWidth: 520, lineHeight: 1.6 }}>
+          No scenario in this pack declares <code>mode: flyting</code>, so there is
+          nothing here to score a volley against. A flyting scenario adds a
+          <code> flyting:</code> block of its own, and its target NPC declares an
+          <code> attack_surface</code> — the traits a verified hook is allowed to name.
+        </p>
+        <p style={{ margin: 0, fontSize: '0.8rem', color: '#71717a' }}>
+          <a href={AUTHORING_DOCS_URL} target="_blank" rel="noreferrer" style={{ color: '#93c5fd' }}>
+            Authoring guide ↗
+          </a>
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ flex: 1, overflow: 'auto', padding: '0.85rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.7rem' }}>
+      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+        <label htmlFor="volley-scenario" style={{ fontSize: '0.78rem', color: '#a1a1aa' }}>
+          Scenario
+        </label>
+        <select
+          id="volley-scenario"
+          data-testid="volley-scenario-select"
+          value={selected}
+          onChange={(e) => { setSelected(e.target.value); setResult(null) }}
+          style={{ padding: '0.25rem 0.4rem', background: '#09090b', color: '#e8e8ea', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 4, fontSize: '0.8rem' }}
+        >
+          {scenarios.map((sc) => (
+            <option key={sc.path} value={sc.path}>{sc.title}</option>
+          ))}
+        </select>
+        {scenario && (
+          <>
+            <Tag label={`Difficulty ×${scenario.difficulty_multiplier.toFixed(2)}`} color="#f59e0b" />
+            {scenario.verse_required && <Tag label="Verse scored" color="#38bdf8" />}
+            {scenario.requires_surface_politeness && <Tag label="Overt rudeness is a foul" color="#ef4444" />}
+            {scenario.anachronism_policy !== 'off' && (
+              <Tag label={`Anachronism: ${scenario.anachronism_policy}`} color="#a1a1aa" />
+            )}
+          </>
+        )}
+      </div>
+
+      {scenario && (
+        <div data-testid="volley-attack-surface" style={{ display: 'grid', gap: '0.3rem' }}>
+          <span style={{ fontSize: '0.78rem', color: '#a1a1aa' }}>
+            {scenario.target_name}&apos;s attack surface — the only trait ids a hook may name
+          </span>
+          <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gap: '0.25rem' }}>
+            {scenario.attack_surface.map((trait) => (
+              <li key={trait.id} style={{ display: 'flex', gap: '0.45rem', alignItems: 'baseline', fontSize: '0.78rem' }}>
+                <Tag
+                  label={trait.id.replace(/_/g, ' ')}
+                  color={trait.visibility === 'discoverable' ? '#a855f7' : '#22c55e'}
+                  title={trait.visibility === 'discoverable' ? 'Hidden from the brief; worth double on discovery' : 'Named in the player brief'}
+                />
+                <span style={{ color: '#d4d4d8' }}>{trait.brief}</span>
+              </li>
+            ))}
+            {scenario.attack_surface.length === 0 && (
+              <li style={{ fontSize: '0.78rem', color: '#f87171' }}>
+                This target declares no attack surface, so no hook can ever verify.
+              </li>
+            )}
+          </ul>
+        </div>
+      )}
+
+      <label htmlFor="test-volley-input" style={{ fontSize: '0.78rem', color: '#a1a1aa' }}>
+        Test volley
+      </label>
+      <textarea
+        id="test-volley-input"
+        data-testid="test-volley-input"
+        value={text}
+        maxLength={500}
+        rows={3}
+        onChange={(e) => setText(e.target.value)}
+        placeholder="Aim a line at one of the traits above…"
+        style={{ width: '100%', padding: '0.5rem 0.6rem', background: '#09090b', color: '#f4f4f5', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 4, fontSize: '0.85rem', fontFamily: 'inherit', resize: 'vertical' }}
+      />
+
+      <details>
+        <summary style={{ fontSize: '0.75rem', color: '#71717a', cursor: 'pointer' }}>
+          Earlier volleys (one per line) — exercises freshness and theme decay
+        </summary>
+        <textarea
+          data-testid="test-volley-priors"
+          value={priorText}
+          rows={3}
+          onChange={(e) => setPriorText(e.target.value)}
+          aria-label="Earlier volleys, one per line"
+          style={{ width: '100%', marginTop: '0.35rem', padding: '0.4rem 0.5rem', background: '#09090b', color: '#a1a1aa', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 4, fontSize: '0.78rem', fontFamily: 'inherit', resize: 'vertical' }}
+        />
+      </details>
+
+      <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'center' }}>
+        <button
+          onClick={() => { void handleScore() }}
+          disabled={scoring || !text.trim()}
+          data-testid="score-test-volley"
+          style={{ ...BTN_PRIMARY, ...(scoring || !text.trim() ? BTN_DISABLED : {}) }}
+        >
+          {scoring ? 'Scoring…' : 'Score this volley'}
+        </button>
+        <span style={{ fontSize: '0.72rem', color: '#71717a' }}>
+          Deterministic stages only — no model is called, so the dimension bars stay blank.
+        </span>
+      </div>
+
+      {scoreError && (
+        <div data-testid="test-volley-error">
+          <ApiErrorView error={scoreError} context="CreatorWorkbench-volley-preview" />
+        </div>
+      )}
+
+      {result && (
+        <div style={{ display: 'grid', gap: '0.5rem' }}>
+          <VolleyScorecard card={result.volley} text={text.trim()} umpireLabel="The umpire" />
+          <div>
+            <button
+              type="button"
+              onClick={() => setShowPrompt((v) => !v)}
+              aria-expanded={showPrompt}
+              style={{ background: 'none', border: 'none', padding: 0, color: '#71717a', fontSize: '0.72rem', cursor: 'pointer', textDecoration: 'underline' }}
+            >
+              {showPrompt ? 'Hide' : 'Show'} the judge prompt this scenario produces
+            </button>
+            {showPrompt && (
+              <pre
+                data-testid="judge-prompt-preview"
+                style={{ margin: '0.4rem 0 0', padding: '0.5rem', borderRadius: 6, background: '#09090b', border: '1px solid #27272a', color: '#a1a1aa', fontSize: '0.68rem', whiteSpace: 'pre-wrap', maxHeight: 280, overflow: 'auto' }}
+              >
+                {result.judge_system_prompt}
+              </pre>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function CreatorWorkbench() {
   const [packs, setPacks] = useState<WorkbenchPack[]>([])
   const [packsError, setPacksError] = useState<ApiError | null>(null)
@@ -1411,7 +1625,7 @@ export default function CreatorWorkbench() {
   const [validation, setValidation] = useState<WorkbenchValidation | null>(null)
   const [validationLoading, setValidationLoading] = useState(false)
   const [validationServiceError, setValidationServiceError] = useState<ApiError | null>(null)
-  const [activeTab, setActiveTab] = useState<'edit' | 'test'>('edit')
+  const [activeTab, setActiveTab] = useState<'edit' | 'test' | 'volley'>('edit')
   // Import state
   const [importing, setImporting] = useState(false)
   const [importError, setImportError] = useState<ApiError | null>(null)
@@ -1750,7 +1964,7 @@ export default function CreatorWorkbench() {
               }}
             >
               <div role="tablist" aria-label="Workbench panels" style={{ display: 'flex' }}>
-              {(['edit', 'test'] as const).map((tab) => (
+              {(['edit', 'test', 'volley'] as const).map((tab) => (
                 <button
                   key={tab}
                   role="tab"
@@ -1770,7 +1984,7 @@ export default function CreatorWorkbench() {
                     fontFamily: 'inherit',
                   }}
                 >
-                  {tab === 'edit' ? 'Edit' : 'Test Chat'}
+                  {tab === 'edit' ? 'Edit' : tab === 'test' ? 'Test Chat' : 'Test Volley'}
                 </button>
               ))}
               </div>
@@ -1943,6 +2157,22 @@ export default function CreatorWorkbench() {
               }}
             >
               <TestChatPanel pack={selectedPack} validation={validation} />
+            </div>
+          )}
+
+          {/* Test volley panel — the flyting authoring surface. Mounted only
+              while selected: unlike the test chat it holds no session, so there
+              is nothing to keep alive, and it re-reads the pack on each visit,
+              which is what an author editing the YAML next door wants. */}
+          {selectedPack && activeTab === 'volley' && (
+            <div
+              id="workbench-panel-volley"
+              role="tabpanel"
+              aria-labelledby="workbench-tab-volley"
+              key={`volley/${selectedPack.kind}/${selectedPack.slug}`}
+              style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+            >
+              <TestVolleyPanel pack={selectedPack} />
             </div>
           )}
         </div>

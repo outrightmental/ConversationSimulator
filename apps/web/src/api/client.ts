@@ -51,6 +51,7 @@ import type {
   FlytingRunSummaryResponse,
   FlytingHighScoresResponse,
   FlytingPreviewResponse,
+  VolleyScorecard,
   PlayFormat,
   BattingFormat,
 } from '@convsim/shared';
@@ -391,6 +392,35 @@ export interface WorkbenchPack {
   pack_id: string | null
   name: string | null
   editable: boolean
+}
+
+/** One `mode: flyting` scenario in a workbench pack, read from its own files. */
+export interface WorkbenchFlytingScenario {
+  scenario_id: string
+  /** Pack-relative path, which is also the handle the preview takes. */
+  path: string
+  title: string
+  target_name: string
+  /** The whole surface — unlike the play payload, which hides discoverables. */
+  attack_surface: {
+    id: string
+    brief: string
+    visibility: 'visible' | 'discoverable'
+    themes: string[]
+  }[]
+  difficulty_multiplier: number
+  verse_required: boolean
+  requires_surface_politeness: boolean
+  anachronism_policy: string
+  judge_flavor: string
+  lexicon_encouraged: string[]
+}
+
+export interface WorkbenchVolleyPreview {
+  scenario_id: string
+  volley: VolleyScorecard
+  /** The judge's rubric header this scenario produces, readable with no model. */
+  judge_system_prompt: string
 }
 
 export interface FileNode {
@@ -750,6 +780,29 @@ export const api = {
     },
     startTestSession(kind: PackKind, slug: string): Promise<ApiResult<WorkbenchTestSession>> {
       return post<WorkbenchTestSession>(`/workbench/packs/${kind}/${slug}/test-session`)
+    },
+    /** The pack's flyting scenarios, read from its files rather than the index —
+     *  a local-dev pack is never installed, so the index does not know it. */
+    listFlytingScenarios(
+      kind: PackKind,
+      slug: string,
+    ): Promise<ApiResult<{ scenarios: WorkbenchFlytingScenario[] }>> {
+      return get<{ scenarios: WorkbenchFlytingScenario[] }>(
+        `/workbench/packs/${kind}/${slug}/flyting`,
+      )
+    },
+    /** Score a draft volley against a draft scenario, before export. */
+    previewVolley(
+      kind: PackKind,
+      slug: string,
+      scenarioPath: string,
+      content: string,
+      priorVolleys: string[] = [],
+    ): Promise<ApiResult<WorkbenchVolleyPreview>> {
+      return post<WorkbenchVolleyPreview>(
+        `/workbench/packs/${kind}/${slug}/volley-preview`,
+        { scenario_path: scenarioPath, content, prior_volleys: priorVolleys },
+      )
     },
     async importPack(
       file: File,

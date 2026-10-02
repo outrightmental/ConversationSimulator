@@ -19,7 +19,7 @@ import uuid
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import Response
@@ -640,4 +640,200 @@ async def start_test_session(request: Request, kind: str, slug: str) -> Workbenc
         state="PlayerTurnListening",
         npc_opening=opening_text,
         state_vars=initial_state,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Flyting authoring: draft scenarios, and a test volley against them
+# ---------------------------------------------------------------------------
+
+
+class WorkbenchAttackSurfaceTrait(BaseModel):
+    id: str
+    brief: str
+    visibility: Literal["visible", "discoverable"]
+    themes: List[str] = []
+
+
+class WorkbenchFlytingScenario(BaseModel):
+    """A flyting scenario as the author's own files currently define it."""
+
+    scenario_id: str
+    path: str
+    title: str
+    target_name: str
+    # The whole surface, discoverable traits included — unlike the play payload,
+    # which hides them so that finding one can be worth double. The author is
+    # the one person who must see everything they wrote.
+    attack_surface: List[WorkbenchAttackSurfaceTrait]
+    difficulty_multiplier: float
+    verse_required: bool
+    requires_surface_politeness: bool
+    anachronism_policy: str
+    judge_flavor: str
+    lexicon_encouraged: List[str]
+
+
+class WorkbenchFlytingResponse(BaseModel):
+    scenarios: List[WorkbenchFlytingScenario]
+
+
+class WorkbenchVolleyPreviewBody(BaseModel):
+    """A draft volley, and the scenario file in this pack to score it against."""
+
+    scenario_path: str
+    content: str
+    # Earlier volleys, so freshness and theme decay can be exercised from the
+    # authoring screen the same way a run exercises them.
+    prior_volleys: List[str] = []
+
+
+class WorkbenchVolleyPreviewResponse(BaseModel):
+    scenario_id: str
+    volley: Dict[str, Any]
+    judge_system_prompt: str
+
+
+def _pack_flyting_scenario(pack_root: Path, rel_path: str) -> Any:
+    """Load one flyting scenario straight from a workbench pack's files.
+
+    Deliberately not ``resolve_flyting_scenario``: that reads the installed pack
+    index, and the pack an author is editing is a local-dev copy that was never
+    imported, so nothing in the index points at it. The Test Chat panel reads
+    the pack from disk for the same reason. ``_resolve_file_path`` keeps the
+    traversal guard that makes reading an author-supplied path safe.
+
+    Returns None when the file parses but declares no ``mode: flyting``.
+    """
+    from convsim_core.flyting.loader import load_flyting_scenario
+
+    abs_path = _resolve_file_path(pack_root, rel_path)
+    if not abs_path.is_file():
+        raise ConvsimError(
+            "FILE_NOT_FOUND", f"File not found: {rel_path}", status_code=404
+        )
+    pack_id, _ = _read_manifest_basics(pack_root)
+    try:
+        return load_flyting_scenario(
+            pack_root, abs_path.relative_to(pack_root).as_posix(), pack_id=pack_id
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise ConvsimError(
+            "SCENARIO_LOAD_ERROR",
+            f"Could not load scenario '{rel_path}': {exc}",
+            status_code=422,
+        ) from exc
+
+
+@router.get("/packs/{kind}/{slug}/flyting", response_model=WorkbenchFlytingResponse)
+async def list_pack_flyting_scenarios(
+    request: Request, kind: str, slug: str
+) -> WorkbenchFlytingResponse:
+    """Every ``mode: flyting`` scenario in a workbench pack, read from its files."""
+    from convsim_core.flyting.loader import load_flyting_scenario
+
+    config = _config(request)
+    valid_kind = _assert_valid_kind(kind)
+    pack_root = _pack_root(config, valid_kind, slug)
+    if not pack_root.exists():
+        raise ConvsimError("PACK_NOT_FOUND", f'Pack "{slug}" not found', status_code=404)
+
+    pack_id, _ = _read_manifest_basics(pack_root)
+    scenarios_dir = pack_root / "scenarios"
+    out: List[WorkbenchFlytingScenario] = []
+    if scenarios_dir.is_dir():
+        for path in sorted(scenarios_dir.iterdir()):
+            if not path.is_file() or path.suffix.lower() not in (".yaml", ".yml"):
+                continue
+            rel = f"scenarios/{path.name}"
+            try:
+                scenario = load_flyting_scenario(pack_root, rel, pack_id=pack_id)
+            except Exception:  # noqa: BLE001 — a broken draft is the validator's
+                continue                # business to report, not this listing's
+            if scenario is None:  # a conversation scenario
+                continue
+            flyting = scenario.flyting
+            out.append(
+                WorkbenchFlytingScenario(
+                    scenario_id=scenario.scenario_id,
+                    path=rel,
+                    title=scenario.title,
+                    target_name=scenario.npc.display_name,
+                    attack_surface=[
+                        WorkbenchAttackSurfaceTrait(
+                            id=trait.id,
+                            brief=trait.brief,
+                            visibility=(
+                                "discoverable" if trait.discoverable else "visible"
+                            ),
+                            themes=list(trait.themes),
+                        )
+                        for trait in scenario.attack_surface
+                    ],
+                    difficulty_multiplier=flyting.difficulty_multiplier,
+                    verse_required=flyting.verse.required,
+                    requires_surface_politeness=(
+                        flyting.register.require_surface_politeness
+                    ),
+                    anachronism_policy=flyting.lexicon.anachronism_policy,
+                    judge_flavor=flyting.judge_flavor,
+                    lexicon_encouraged=list(flyting.lexicon.encouraged),
+                )
+            )
+    return WorkbenchFlytingResponse(scenarios=out)
+
+
+@router.post(
+    "/packs/{kind}/{slug}/volley-preview",
+    response_model=WorkbenchVolleyPreviewResponse,
+)
+async def preview_pack_volley(
+    request: Request, kind: str, slug: str, body: WorkbenchVolleyPreviewBody
+) -> WorkbenchVolleyPreviewResponse:
+    """Score a draft volley against a draft scenario, before the pack is exported.
+
+    Deterministic stages only — gates, craft, novelty, composition — so no model
+    is called and the answer is instant and repeatable. That is also exactly the
+    part of a score an author controls by writing the pack: the gates their
+    safety policy fires, the difficulty multiplier, the lexicon, the verse
+    requirement, and which traits a hook could name. The judge's own rubric
+    header is returned alongside so the prompt their scenario produces can be
+    read rather than guessed at.
+    """
+    from convsim_prompt import compose_volley_judge_prompt
+
+    from convsim_core.flyting.service import VolleyScoringService
+    from convsim_core.flyting.volley import VolleyInputError
+
+    config = _config(request)
+    valid_kind = _assert_valid_kind(kind)
+    pack_root = _pack_root(config, valid_kind, slug)
+    if not pack_root.exists():
+        raise ConvsimError("PACK_NOT_FOUND", f'Pack "{slug}" not found', status_code=404)
+    if not body.content.strip():
+        raise ConvsimError("EMPTY_VOLLEY", "A volley cannot be blank", status_code=400)
+
+    scenario = _pack_flyting_scenario(pack_root, body.scenario_path)
+    if scenario is None:
+        raise ConvsimError(
+            "NOT_A_FLYTING_SCENARIO",
+            f"'{body.scenario_path}' declares no 'mode: flyting', so there is no "
+            "volley pipeline to score it with.",
+            status_code=422,
+        )
+
+    service = VolleyScoringService(scenario.scoring_context())
+    try:
+        result = service.score_mechanically(
+            body.content, prior_volleys=body.prior_volleys
+        )
+        prepared = service.prepare(body.content)
+    except VolleyInputError as exc:
+        raise ConvsimError("INVALID_VOLLEY", str(exc), status_code=400) from exc
+
+    bundle = compose_volley_judge_prompt(service.judge_input(prepared))
+    return WorkbenchVolleyPreviewResponse(
+        scenario_id=scenario.scenario_id,
+        volley=result.to_dict(),
+        judge_system_prompt=bundle.system_prompt,
     )
