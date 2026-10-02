@@ -751,6 +751,12 @@ const GRACEFUL_SHUTDOWN_WAIT: Duration = Duration::from_secs(6);
 /// turns it into the port-conflict recovery card.
 const PORT_BUSY_MESSAGE: &str = "Port 7355 is already in use by another program.";
 
+/// Matched by `classifyError` in apps/web/src/screens/CoreStartup.tsx, which
+/// turns it into the "keeps stopping" recovery card. It must stay distinct
+/// from the startup failures: this engine *did* start and serve, so a card
+/// headed "didn't start" would describe the wrong thing entirely.
+const KEEPS_STOPPING_MESSAGE: &str = "The conversation engine keeps stopping.";
+
 fn port_busy_hint() -> String {
     format!(
         "Conversation Simulator needs port {port} on 127.0.0.1, but another program is \
@@ -1297,7 +1303,7 @@ fn supervise_core(
                 &app,
                 &status_arc,
                 "error",
-                "The conversation engine keeps stopping.",
+                KEEPS_STOPPING_MESSAGE,
                 Some(&format!(
                     "It stopped {max} times in a row and will not be restarted again. \
                      Open the logs folder for details, then restart the app.",
@@ -1603,6 +1609,21 @@ mod tests {
         assert!(PORT_BUSY_MESSAGE.contains(&CORE_PORT.to_string()));
         assert!(text.contains("port"));
         assert!(text.contains("in use"));
+    }
+
+    #[test]
+    fn the_keeps_stopping_message_is_what_the_recovery_card_classifies() {
+        // apps/web/src/screens/CoreStartup.tsx matches /keeps stopping/ to pick
+        // a card that says the engine stopped, not that it never started.
+        let text = KEEPS_STOPPING_MESSAGE.to_lowercase();
+        assert!(text.contains("keeps stopping"));
+        // Belt and braces for a reorder: classifyError tries every pattern
+        // against the same text, so this message must not also read as a port
+        // conflict or a missing binary.
+        assert!(!text.contains("port"));
+        assert!(!text.contains("not found"));
+        assert!(!text.contains("executable"));
+        assert!(!text.contains("binary"));
     }
 
     // ── Executable resolution ────────────────────────────────────────────────

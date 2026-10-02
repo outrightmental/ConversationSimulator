@@ -217,7 +217,12 @@ describe('CoreStartupGuard — engine restart under a running window', () => {
     })
 
     expect(screen.queryByText('App content loaded')).not.toBeInTheDocument()
-    expect(screen.getByRole('alert')).toHaveTextContent(/didn't start|keeps stopping/i)
+    // Not "didn't start": this engine started and served before it died, and a
+    // card headed with the one thing that did not happen sends the player off
+    // looking for a bad install.
+    const card = screen.getByRole('alert')
+    expect(card).toHaveTextContent(/keeps stopping/i)
+    expect(card).not.toHaveTextContent(/didn't start/i)
   })
 
   it('does not let a stale health success overrule a reported restart', async () => {

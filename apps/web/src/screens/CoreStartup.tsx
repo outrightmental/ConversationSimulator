@@ -39,7 +39,7 @@ const TROUBLESHOOTING_BASE =
 const ISSUES_URL =
   'https://github.com/outrightmental/ConversationSimulator/issues/new/choose'
 
-type FailureKind = 'port-conflict' | 'not-found' | 'crash'
+type FailureKind = 'port-conflict' | 'not-found' | 'keeps-stopping' | 'crash'
 
 interface ErrorInfo {
   kind: FailureKind
@@ -58,6 +58,22 @@ function classifyError(message: string, error: string | null): ErrorInfo {
       description:
         'Close any other applications using port 7355, then restart Conversation Simulator.',
       anchor: '#port-conflicts',
+    }
+  }
+
+  // Checked before the not-found/crash branches: the shell only sends this
+  // after the engine started, served, and then died MAX_RESTARTS times in a
+  // row (KEEPS_STOPPING_MESSAGE in apps/desktop/src-tauri/src/lib.rs). It used
+  // to fall through to 'crash', which heads the card "The conversation engine
+  // didn't start" — the one thing that demonstrably did happen.
+  if (/keeps stopping/.test(text)) {
+    return {
+      kind: 'keeps-stopping',
+      title: 'The conversation engine keeps stopping',
+      description:
+        'It started but shut down repeatedly, so the app stopped restarting it. ' +
+        'A lighter model often fixes this — your packs, models, and past sessions are safe.',
+      anchor: '#engine-startup-failure',
     }
   }
 
