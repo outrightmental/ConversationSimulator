@@ -188,6 +188,33 @@ fn kill_tree(child: &mut Child) {
     unsafe { libc::killpg(pgid, libc::SIGKILL) };
 }
 
+/// Resolve one of Windows' own tools under `%SystemRoot%` instead of trusting
+/// PATH, so a shadowed or missing PATH entry cannot quietly turn teardown into
+/// a no-op. Falls back to the bare name when the variable is somehow unset.
+#[cfg(windows)]
+fn system32(tool: &str) -> String {
+    std::env::var("SystemRoot")
+        .map(|root| format!("{root}\\System32\\{tool}"))
+        .unwrap_or_else(|_| tool.to_string())
+}
+
+/// The `taskkill` arguments that take down *pid* **and every descendant**.
+///
+/// Split out from [`kill_tree`] so its shape can be asserted on Windows
+/// without killing anything. `/T` is the whole point: without it this is the
+/// single-process kill that left `convsim-core.exe` in the task list holding
+/// port 7355 (issue #485). `/F` because the engine has already had [`GRACE`]
+/// to leave politely.
+#[cfg(windows)]
+fn taskkill_args(pid: u32) -> [String; 4] {
+    [
+        "/PID".to_string(),
+        pid.to_string(),
+        "/T".to_string(),
+        "/F".to_string(),
+    ]
+}
+
 /// Kill the child and every descendant, having already given it [`GRACE`] to
 /// leave on its own.
 #[cfg(windows)]
@@ -206,13 +233,8 @@ fn kill_tree(child: &mut Child) {
     //
     // Resolved under %SystemRoot% rather than trusting PATH, so a shadowed or
     // missing PATH entry cannot quietly turn teardown into a no-op.
-    let exe = std::env::var("SystemRoot")
-        .map(|root| format!("{root}\\System32\\taskkill.exe"))
-        .unwrap_or_else(|_| "taskkill.exe".to_string());
-    let pid = child.id().to_string();
-
-    let _ = Command::new(exe)
-        .args(["/PID", pid.as_str(), "/T", "/F"])
+    let _ = Command::new(system32("taskkill.exe"))
+        .args(taskkill_args(child.id()))
         .creation_flags(CREATE_NO_WINDOW)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -231,6 +253,161 @@ mod tests {
     use super::*;
     use std::ffi::OsStr;
 
+    /// Stand-ins for the engine, as `(program, args)`.
+    ///
+    /// The programs differ per platform; the behaviours they stand in for do
+    /// not, which is why the tests below are shared. Plain executables rather
+    /// than shell one-liners: `Stdio` already gives us the redirection, and
+    /// avoiding `sh -c` / `cmd /C` keeps quoting out of it.
+    #[cfg(unix)]
+    mod fake_engine {
+        /// Exits when the launcher's end of the stdin pipe closes — what
+        /// `parent_watch` makes the real engine do.
+        pub const READS_STDIN: (&str, &[&str]) = ("cat", &[]);
+        /// Never looks at stdin: a wedged engine, or a bootloader still
+        /// unpacking itself when the app quit.
+        pub const IGNORES_STDIN: (&str, &[&str]) = ("sleep", &["30"]);
+        /// Gone before anybody asks it to stop.
+        pub const EXITS_AT_ONCE: (&str, &[&str]) = ("true", &[]);
+    }
+
+    #[cfg(windows)]
+    mod fake_engine {
+        /// `sort` with no file argument is a stdin filter: it reads to EOF and
+        /// then exits, which is the engine behaviour under test.
+        pub const READS_STDIN: (&str, &[&str]) = ("sort", &[]);
+        /// `ping` never reads stdin — and unlike `timeout.exe` it does not
+        /// abort when stdin is a pipe rather than a console, which is exactly
+        /// how the real engine is spawned.
+        pub const IGNORES_STDIN: (&str, &[&str]) = ("ping", &["-n", "31", "127.0.0.1"]);
+        /// One echo request and done.
+        pub const EXITS_AT_ONCE: (&str, &[&str]) = ("ping", &["-n", "1", "127.0.0.1"]);
+    }
+
+    /// Spawn a test child configured exactly as a real core launch is, with its
+    /// stdout piped so a test can read what it reports.
+    fn spawn_configured(program: &str, args: &[&str]) -> Child {
+        let mut cmd = Command::new(program);
+        cmd.args(args).stdout(Stdio::piped()).stderr(Stdio::null());
+        configure_lifetime(&mut cmd);
+        // As in production: these stand-ins are console binaries too, and a
+        // test run should not flash console windows.
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(CREATE_NO_WINDOW);
+        }
+        cmd.spawn()
+            .unwrap_or_else(|e| panic!("failed to spawn test child {program}: {e}"))
+    }
+
+    /// Read the pid a test child printed on its first line of stdout.
+    ///
+    /// One byte at a time up to the newline: a block read would park until the
+    /// pipe filled or closed, and the child deliberately keeps it open.
+    fn read_pid_line(child: &mut Child) -> u32 {
+        use std::io::Read;
+        let mut out = child.stdout.take().expect("stdout pipe");
+        let mut line = Vec::new();
+        let mut byte = [0u8; 1];
+        loop {
+            match out.read(&mut byte) {
+                Ok(0) => break,
+                Ok(_) if byte[0] == b'\n' => break,
+                Ok(_) => line.push(byte[0]),
+                Err(e) => panic!("reading the sidecar pid failed: {e}"),
+            }
+        }
+        let text = String::from_utf8_lossy(&line);
+        // Strip a BOM explicitly rather than filtering to digits: a stream that
+        // arrived in an unexpected encoding must fail here, not get salvaged
+        // into some *other* valid-looking pid that the assertions would then
+        // happily check for being gone.
+        let text = text.trim().trim_start_matches('\u{feff}');
+        assert!(
+            !text.is_empty(),
+            "the test child printed no pid before closing stdout, so it never \
+             started the sidecar this test is about"
+        );
+        text.parse()
+            .unwrap_or_else(|e| panic!("sidecar pid {text:?} is not a number: {e}"))
+    }
+
+    /// An engine that ignores the closed pipe, which has already started a
+    /// grandchild standing in for a sidecar — the process the old teardown left
+    /// running. Returns the engine and the sidecar's pid.
+    #[cfg(unix)]
+    fn spawn_engine_with_sidecar() -> (Child, u32) {
+        let mut engine = spawn_configured("sh", &["-c", "sleep 30 & echo $! ; sleep 30"]);
+        let sidecar = read_pid_line(&mut engine);
+        (engine, sidecar)
+    }
+
+    /// As above. PowerShell rather than `cmd`, because `Start-Process
+    /// -PassThru` is the only readily available way to start a grandchild *and*
+    /// learn its pid, which the assertion needs. The outer `powershell.exe`
+    /// stands in for the engine: it sleeps and never reads stdin.
+    #[cfg(windows)]
+    fn spawn_engine_with_sidecar() -> (Child, u32) {
+        // Single-quoted arguments only: the whole script is passed as one argv
+        // entry, so embedded double quotes would have to survive two levels of
+        // unquoting.
+        const SCRIPT: &str = "$ErrorActionPreference = 'Stop'; \
+             $p = Start-Process -FilePath ping \
+                 -ArgumentList '-n','31','127.0.0.1' -NoNewWindow -PassThru; \
+             [Console]::Out.WriteLine($p.Id); \
+             [Console]::Out.Flush(); \
+             Start-Sleep -Seconds 31";
+        let mut engine = spawn_configured(
+            "powershell",
+            &["-NoProfile", "-NonInteractive", "-Command", SCRIPT],
+        );
+        let sidecar = read_pid_line(&mut engine);
+        (engine, sidecar)
+    }
+
+    #[cfg(unix)]
+    fn is_alive(pid: u32) -> bool {
+        // ESRCH is the only "gone" answer; EPERM means alive but not ours.
+        if unsafe { libc::kill(pid as libc::pid_t, 0) } == 0 {
+            return true;
+        }
+        std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
+    }
+
+    #[cfg(windows)]
+    fn is_alive(pid: u32) -> bool {
+        use std::os::windows::process::CommandExt;
+        // `tasklist` keeps this dependency-free, and the filter makes the
+        // answer unambiguous: a process that is gone produces no row at all, so
+        // a pid that happens to appear in some unrelated process's row cannot
+        // be mistaken for a match.
+        let listed = Command::new(system32("tasklist.exe"))
+            .args(["/FI", &format!("PID eq {pid}"), "/NH"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .stdin(Stdio::null())
+            .output();
+        match listed {
+            Ok(out) => String::from_utf8_lossy(&out.stdout).contains(&pid.to_string()),
+            // Cannot tell. Report "gone" rather than spinning until the
+            // caller's deadline on a question we can no longer answer.
+            Err(_) => false,
+        }
+    }
+
+    fn wait_until_gone(pid: u32, timeout: Duration) -> bool {
+        let deadline = Instant::now() + timeout;
+        while Instant::now() < deadline {
+            if !is_alive(pid) {
+                return true;
+            }
+            std::thread::sleep(POLL);
+        }
+        !is_alive(pid)
+    }
+
+    // ── Spawn settings ───────────────────────────────────────────────────────
+
     #[test]
     fn configure_lifetime_opts_the_engine_into_the_stdin_watch() {
         let mut cmd = Command::new("does-not-need-to-exist");
@@ -245,43 +422,10 @@ mod tests {
         );
     }
 
-    /// Spawn `sh -c <script>` configured exactly as a real core launch is.
-    #[cfg(unix)]
-    fn spawn_configured(script: &str) -> Child {
-        let mut cmd = Command::new("sh");
-        cmd.arg("-c")
-            .arg(script)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::null());
-        configure_lifetime(&mut cmd);
-        cmd.spawn().expect("failed to spawn test child")
-    }
-
-    #[cfg(unix)]
-    fn is_alive(pid: libc::pid_t) -> bool {
-        // ESRCH is the only "gone" answer; EPERM means alive but not ours.
-        if unsafe { libc::kill(pid, 0) } == 0 {
-            return true;
-        }
-        std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
-    }
-
-    #[cfg(unix)]
-    fn wait_until_gone(pid: libc::pid_t, timeout: Duration) -> bool {
-        let deadline = Instant::now() + timeout;
-        while Instant::now() < deadline {
-            if !is_alive(pid) {
-                return true;
-            }
-            std::thread::sleep(POLL);
-        }
-        !is_alive(pid)
-    }
-
-    #[cfg(unix)]
     #[test]
     fn the_child_gets_a_stdin_pipe_to_watch() {
-        let mut child = spawn_configured("sleep 30");
+        let (program, args) = fake_engine::IGNORES_STDIN;
+        let mut child = spawn_configured(program, args);
         assert!(
             child.stdin.is_some(),
             "no pipe on stdin, so there is no way to ask for a clean shutdown"
@@ -293,7 +437,8 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn the_child_leads_its_own_process_group() {
-        let mut child = spawn_configured("sleep 30");
+        let (program, args) = fake_engine::IGNORES_STDIN;
+        let mut child = spawn_configured(program, args);
         let pid = child.id() as libc::pid_t;
         let pgid = unsafe { libc::getpgid(pid) };
         assert_eq!(
@@ -305,59 +450,63 @@ mod tests {
         let _ = child.wait();
     }
 
-    #[cfg(unix)]
+    /// Windows has no process group to assert on — `taskkill /T` walking the
+    /// parent-pid chain is what stands in for it, so pin the invocation.
+    #[cfg(windows)]
+    #[test]
+    fn the_windows_tree_kill_targets_descendants() {
+        assert_eq!(
+            taskkill_args(4321),
+            ["/PID", "4321", "/T", "/F"].map(String::from),
+            "/T is what makes this a tree kill; without it only the bootloader \
+             dies and the real server keeps port 7355 (issue #485)"
+        );
+        let exe = system32("taskkill.exe");
+        assert!(
+            std::path::Path::new(&exe).exists(),
+            "teardown resolves taskkill to {exe}, which does not exist — \
+             forced shutdown would be a silent no-op"
+        );
+    }
+
+    // ── Teardown ─────────────────────────────────────────────────────────────
+
     #[test]
     fn closing_stdin_is_enough_for_a_well_behaved_engine() {
-        // `cat` stands in for the engine: it exits when stdin reports EOF,
-        // which is exactly what parent_watch makes the real engine do.
-        let mut child = spawn_configured("cat >/dev/null");
+        let (program, args) = fake_engine::READS_STDIN;
+        let mut child = spawn_configured(program, args);
         assert_eq!(
             shutdown_within(&mut child, Duration::from_secs(10)),
             Shutdown::Graceful
         );
     }
 
-    #[cfg(unix)]
     #[test]
     fn an_unresponsive_engine_is_killed_along_with_its_descendants() {
-        // A child that ignores the closed pipe, plus a grandchild standing in
-        // for a sidecar — the process the old teardown left running.
-        let mut child = spawn_configured("sleep 30 & echo $! ; sleep 30");
+        let (mut engine, sidecar) = spawn_engine_with_sidecar();
+        assert!(is_alive(sidecar), "test setup: the sidecar never started");
 
-        let grandchild: libc::pid_t = {
-            use std::io::Read;
-            let mut out = child.stdout.take().expect("stdout pipe");
-            let mut buf = [0u8; 32];
-            let n = out.read(&mut buf).expect("read grandchild pid");
-            std::str::from_utf8(&buf[..n])
-                .expect("grandchild pid is not utf-8")
-                .trim()
-                .parse()
-                .expect("grandchild pid is not a number")
-        };
-        assert!(is_alive(grandchild), "test setup: grandchild never started");
-
-        let child_pid = child.id() as libc::pid_t;
+        let engine_pid = engine.id();
         assert_eq!(
-            shutdown_within(&mut child, Duration::from_millis(200)),
+            shutdown_within(&mut engine, Duration::from_millis(200)),
             Shutdown::Forced
         );
 
         assert!(
-            wait_until_gone(child_pid, Duration::from_secs(5)),
+            wait_until_gone(engine_pid, Duration::from_secs(5)),
             "the engine survived teardown"
         );
         assert!(
-            wait_until_gone(grandchild, Duration::from_secs(5)),
+            wait_until_gone(sidecar, Duration::from_secs(5)),
             "a descendant survived — this is the orphan that kept Steam \
              reporting the game as running (issue #485)"
         );
     }
 
-    #[cfg(unix)]
     #[test]
     fn an_already_dead_engine_is_reported_not_signalled() {
-        let mut child = spawn_configured("exit 0");
+        let (program, args) = fake_engine::EXITS_AT_ONCE;
+        let mut child = spawn_configured(program, args);
         child.wait().expect("wait");
         assert_eq!(
             shutdown_within(&mut child, Duration::from_millis(200)),

@@ -237,6 +237,13 @@ reaches it through `stop_all()`, and step 2 reaches it because it is inside the
 engine's process group / process tree. A sidecar that daemonises itself out of
 both would not be stopped by either — don't.
 
+Both steps are covered by `cargo test` in `apps/desktop/src-tauri`, which spawns
+a stand-in engine with a stand-in sidecar grandchild and asserts that neither
+process survives teardown. Step 2 is platform-specific, so the tests are too:
+CI runs them on Linux (`killpg`) in the desktop job and on Windows (`taskkill
+/T`) in the Windows job. The Python half — EOF on stdin reaching uvicorn — is
+covered by `services/convsim-core/tests/test_parent_watch.py`.
+
 ---
 
 ## Adding a new sidecar
