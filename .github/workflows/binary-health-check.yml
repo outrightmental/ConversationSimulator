@@ -145,6 +145,106 @@ jobs:
               exit 1
           }
 
+      # ── Launcher-exit teardown (issue #485, all platforms) ───────────────────
+      # The desktop shell stops the engine by closing a pipe it holds on the
+      # engine's stdin; `convsim_core.parent_watch` reads EOF and asks uvicorn
+      # for a graceful shutdown. Everything about that rests on a property only
+      # the PACKAGED binary has: this is a PyInstaller one-file bundle, so the
+      # process we spawn is a bootloader that runs the real Python server as a
+      # child of its own, and the pipe has to reach THAT child. Nothing in the
+      # unit tests can see it — tests/test_parent_watch.py drives an unfrozen
+      # interpreter, and the Rust tests in core_process.rs stand a shell script
+      # in for the engine. Without this step the bug reported on Windows
+      # (convsim-core.exe left holding port 7355, Steam still reporting the game
+      # as running) could come back on any platform and CI would stay green.
+      #
+      # Asserting the port is released is the point: the bootloader exiting only
+      # proves the outer process went; the port is owned by the inner server, so
+      # a freed port is the only proof that the whole tree is down.
+      #
+      # The opposite regression — an engine that exits the moment it boots —
+      # is covered by the health-check steps above, which start the binary with
+      # neither the pipe nor the opt-in (a backgrounded job in a non-interactive
+      # shell gets /dev/null on stdin, i.e. immediate EOF) and require it to
+      # answer /api/health.
+      - name: Verify the binary shuts down when its launcher closes stdin
+        shell: bash
+        working-directory: services/convsim-core
+        run: |
+          python3 - <<'PYEOF'
+          import os
+          import socket
+          import subprocess
+          import sys
+          import tempfile
+          import time
+
+          PORT = 7399  # not 7355 (used above) and not 7356 (llama-server default)
+          binary = os.path.join("dist", "convsim-core.exe" if os.name == "nt" else "convsim-core")
+
+          env = dict(os.environ)
+          env.update({
+              "CONVSIM_HOST": "127.0.0.1",
+              "CONVSIM_PORT": str(PORT),
+              # The launcher opt-in the Tauri shell sets (SHUTDOWN_ON_STDIN_EOF_ENV
+              # in apps/desktop/src-tauri/src/core_process.rs).
+              "CONVSIM_SHUTDOWN_ON_STDIN_EOF": "1",
+              "CONVSIM_DATA_ROOT": tempfile.mkdtemp(prefix="convsim-485-"),
+          })
+
+          def port_open():
+              with socket.socket() as s:
+                  s.settimeout(0.5)
+                  try:
+                      s.connect(("127.0.0.1", PORT))
+                      return True
+                  except OSError:
+                      return False
+
+          # Spawned exactly as the shell spawns it: a pipe on stdin that the
+          # launcher holds open for its own lifetime.
+          proc = subprocess.Popen([binary], stdin=subprocess.PIPE, env=env)
+
+          deadline = time.time() + 90  # first run of a one-file bundle unpacks itself
+          while time.time() < deadline:
+              if port_open():
+                  break
+              if proc.poll() is not None:
+                  print(f"FAIL: engine exited during startup (rc={proc.returncode})", file=sys.stderr)
+                  sys.exit(1)
+              time.sleep(0.5)
+          else:
+              print("FAIL: engine never bound its port", file=sys.stderr)
+              proc.kill()
+              sys.exit(1)
+          print(f"OK: engine healthy on :{PORT} (launcher sees pid {proc.pid})")
+
+          # Closing the pipe is the entire shutdown request — no signal, no pid.
+          started = time.time()
+          proc.stdin.close()
+          try:
+              # The engine's own worst case is ~8 s (3 s draining requests + 5 s
+              # stopping sidecars); the shell allows 10 s before killing the tree.
+              rc = proc.wait(timeout=30)
+          except subprocess.TimeoutExpired:
+              print("FAIL: engine still running 30 s after its launcher closed stdin", file=sys.stderr)
+              proc.kill()
+              sys.exit(1)
+          print(f"OK: engine exited {time.time() - started:.2f}s after stdin closed (rc={rc})")
+
+          # The inner Python server owns the port, so this is what proves the
+          # bootloader did not just take itself down and orphan the server.
+          deadline = time.time() + 10
+          while time.time() < deadline:
+              if not port_open():
+                  print(f"OK: port {PORT} released — nothing left holding it")
+                  sys.exit(0)
+              time.sleep(0.5)
+
+          print(f"FAIL: port {PORT} still held — the engine behind the bootloader survived", file=sys.stderr)
+          sys.exit(1)
+          PYEOF
+
       # ── Engine platform detection smoke test (all platforms) ─────────────────
       # Verifies that detect_platform_string() now returns a valid string on
       # every shipping platform, and that the download-runtime endpoint reports
