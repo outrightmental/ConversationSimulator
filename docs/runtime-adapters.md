@@ -151,7 +151,8 @@ HTTP API. `llama-server` is the inference binary from the llama.cpp project.
 | `CONVSIM_LLAMA_CPP_REPEAT_PENALTY`| `1.1`                       | Repetition penalty                 |
 | `CONVSIM_LLAMA_CPP_THREADS`       | `None`                      | CPU thread count                   |
 | `CONVSIM_LLAMA_CPP_GPU_LAYERS`    | `None`                      | Layers to offload to GPU           |
-| `CONVSIM_LLAMA_CPP_TIMEOUT`       | `30.0`                      | HTTP request timeout (seconds)     |
+| `CONVSIM_LLAMA_CPP_TIMEOUT`       | `30.0`                      | Timeout for model listing (seconds) |
+| `CONVSIM_LLAMA_CPP_CHAT_TIMEOUT`  | `180.0`                     | How long generation may go quiet (seconds); covers CPU-only prompt eval |
 | `CONVSIM_LLAMA_CPP_JSON_SCHEMA_ENABLED` | `True`              | Enable structured output           |
 
 **Health check.** Calls `GET /health` on the llama-server. HTTP 200 → READY;
