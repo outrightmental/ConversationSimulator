@@ -25,11 +25,14 @@ and every claim whose quoted evidence is not actually present in the volley, and
 records why. That verification is what makes "the insult was topical" countable
 rather than a matter of the model's mood.
 
-Each hook must also quote *different* words: a claim whose evidence overlaps a
-hook already accepted for this volley is dropped as ``overlapping_evidence``.
-Without that rule a model can quote the whole volley once per trait and collect
-the full topicality bonus for a single figure — which is precisely the padding
-the hook cap and the decreasing bonuses exist to prevent.
+Each hook must also quote *different* words: a claim quoting substantially the
+same span as a hook already accepted for this volley is dropped as
+``overlapping_evidence``. Without that rule a model can quote the whole volley
+once per trait, or slide the same clause along by three words, and collect the
+full topicality bonus for a single figure — which is precisely the padding the
+hook cap and the decreasing bonuses exist to prevent. A whole-volley quotation
+is allowed once, and only as the first hook, so a sustained figure can still be
+the hook without blocking the narrower claim that follows it.
 """
 from __future__ import annotations
 
@@ -709,6 +712,34 @@ def _verify_evidence(evidence: Any, flat_volley: str) -> Optional[str]:
     return cleaned
 
 
+# A quotation this close to the whole volley is not pointing at a part of it.
+_WHOLE_VOLLEY_COVERAGE = 0.9
+
+
+def _covers_whole_volley(flat_span: str, flat_volley: str) -> bool:
+    """Whether this evidence is effectively the entire volley rather than a span."""
+    if not flat_volley:
+        return True
+    return len(flat_span) >= _WHOLE_VOLLEY_COVERAGE * len(flat_volley)
+
+
+def _spans_overlap(flat_a: str, flat_b: str) -> bool:
+    """Whether two evidence spans quote substantially the same words.
+
+    Containment is the obvious case. The other is a span slid along by a few
+    words, which is how one figure gets quoted twice: judges observed in
+    practice claim two traits on two heavily overlapping halves of the same
+    clause. More than half the shorter span's words in common is one figure.
+    """
+    if flat_a == flat_b or flat_a in flat_b or flat_b in flat_a:
+        return True
+    words_a, words_b = set(flat_a.split()), set(flat_b.split())
+    if not words_a or not words_b:
+        return False
+    shared = len(words_a & words_b)
+    return shared * 2 > min(len(words_a), len(words_b))
+
+
 def _verify_hooks(
     raw_hooks: Any,
     *,
@@ -746,15 +777,28 @@ def _verify_hooks(
         # whole volley once per trait would otherwise collect the full
         # topicality bonus for a single figure, which is the padding the hook
         # cap and the decreasing bonuses exist to prevent.
+        #
+        # A whole-volley quotation is allowed once, and only as the first hook:
+        # a sustained figure really can be the hook, and a judge that opens with
+        # a broad quotation should not block the narrower second claim that
+        # follows it. What is refused is a second claim on the same span —
+        # whether that is the same words again or the whole line a second time.
         span = _flatten(evidence)
-        if any(span == prior or span in prior or prior in span for prior in spans):
+        whole = _covers_whole_volley(span, flat_volley)
+        overlaps = (whole and bool(kept)) or any(
+            _spans_overlap(span, prior) for prior in spans
+        )
+        if overlaps:
             dropped.append(DroppedHook(trait, evidence, "overlapping_evidence"))
             continue
         if len(kept) >= MAX_VERIFIED_HOOKS:
             dropped.append(DroppedHook(trait, evidence, "over_hook_cap"))
             continue
         seen.add(trait)
-        spans.append(span)
+        if not whole:
+            # Narrow spans are what later claims are compared against; a
+            # whole-volley span would otherwise contain every one of them.
+            spans.append(span)
         # A discoverable trait is worth double the first time it is struck, so
         # the engine needs to know whether this strike is the discovery.
         is_discovery = (

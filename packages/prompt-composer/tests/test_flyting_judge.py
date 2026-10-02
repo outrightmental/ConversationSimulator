@@ -337,6 +337,34 @@ class TestVolleyJudgmentParsing:
             ("vanity", "overlapping_evidence")
         ]
 
+    def test_a_narrow_second_hook_survives_a_broad_first_one(self):
+        """A judge that opens with the whole line must not block the real span.
+
+        The whole volley is allowed as evidence once, and only as the first
+        hook: a sustained figure can be the hook. A narrower claim after it
+        still points at words of its own, so it counts.
+        """
+        result = parse_volley_judgment(
+            verdict(hooks=[
+                {"trait": "hypocrisy", "evidence": VOLLEY},
+                {"trait": "new_money", "evidence": "plate, not sterling"},
+            ]),
+            volley_text=VOLLEY, attack_surface=SURFACE,
+        )
+        assert [h.trait for h in result.hooks] == ["hypocrisy", "new_money"]
+        assert result.dropped_hooks == []
+
+    def test_the_whole_volley_cannot_be_quoted_after_another_hook(self):
+        result = parse_volley_judgment(
+            verdict(hooks=[
+                {"trait": "new_money", "evidence": "plate, not sterling"},
+                {"trait": "hypocrisy", "evidence": VOLLEY},
+            ]),
+            volley_text=VOLLEY, attack_surface=SURFACE,
+        )
+        assert [h.trait for h in result.hooks] == ["new_money"]
+        assert result.dropped_hooks[0].reason == "overlapping_evidence"
+
     def test_a_span_inside_an_accepted_span_is_dropped(self):
         result = parse_volley_judgment(
             verdict(hooks=[
@@ -346,6 +374,29 @@ class TestVolleyJudgmentParsing:
             volley_text=VOLLEY, attack_surface=SURFACE,
         )
         assert [h.trait for h in result.hooks] == ["hypocrisy"]
+        assert result.dropped_hooks[0].reason == "overlapping_evidence"
+
+    def test_two_halves_of_one_clause_count_once(self):
+        """Sliding the quotation along by a few words is still one figure."""
+        text = (
+            "Eleven years on that road, sir, and the only thing you have conquered "
+            "is the smell — which now outranks you, and has its own tent."
+        )
+        surface = [
+            AttackSurfaceTrait("futility", "Eleven years and no city taken."),
+            AttackSurfaceTrait("dampness", "Wet wool, wet boots, wet everything."),
+        ]
+        result = parse_volley_judgment(
+            verdict(hooks=[
+                {"trait": "futility",
+                 "evidence": "the only thing you have conquered is the smell"},
+                {"trait": "dampness",
+                 "evidence": "the only thing you have conquered is the smell — "
+                             "which now outranks you"},
+            ]),
+            volley_text=text, attack_surface=surface,
+        )
+        assert [h.trait for h in result.hooks] == ["futility"]
         assert result.dropped_hooks[0].reason == "overlapping_evidence"
 
     def test_distinct_spans_both_count(self):

@@ -196,12 +196,18 @@ in the volley, records why in `dropped_hooks`, and keeps at most four. That
 verification is what makes "the insult was topical" countable rather than a
 matter of the model's mood.
 
-Each hook must also quote *different* words: a claim whose evidence overlaps one
-already accepted for this volley is dropped as `overlapping_evidence`. Local
-judges do reach for the whole volley as evidence for every trait they see in it,
-and without that rule one figure collects the whole topicality bonus two or
-three times over — exactly the padding the hook cap and the decreasing bonuses
-exist to prevent. Two hooks means two parts of the line did two different jobs.
+Each hook must also quote *different* words: a claim quoting substantially the
+same span as one already accepted for this volley is dropped as
+`overlapping_evidence`. Local judges really do reach for the whole volley as
+evidence for every trait they can see in it, and they slide one clause along by
+three words to claim it twice; without the rule, one figure collects the whole
+topicality bonus two or three times over — exactly the padding the hook cap and
+the decreasing bonuses exist to prevent. Two hooks means two parts of the line
+did two different jobs.
+
+A whole-volley quotation is allowed once, and only as the first hook: a
+sustained figure can be the hook, and a judge that opens broad should not block
+the narrower second claim that follows it.
 
 The system prompt holds only what is constant for a whole run — rules, register,
 target, anchors, output schema — so a runtime with prompt caching reuses all of
