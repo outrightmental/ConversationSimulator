@@ -93,6 +93,10 @@ seed are constants at the top of the file.
 Six PNGs, 2560 px wide (1280 CSS px at 2×), heights fitted to each screen.
 License: **CC0-1.0** (public domain).
 
+The alt text recorded below is what `README.md` carries verbatim. The 1× web copies and
+the authoring guide carry condensed variants of the same description — shorter, but a
+subset of what is recorded here, never a different claim.
+
 ### 01-home.png — Home screen
 
 **What it shows:** The home screen on a ready text-only install. Navigation links, the
