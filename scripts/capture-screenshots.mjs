@@ -202,6 +202,7 @@ async function preflight() {
   if (CAPTURE_HERO && !haveFfmpeg()) {
     fail(
       'ffmpeg is not on PATH, so the hero recording could not be encoded.\n' +
+        '       Stopping before the playthrough rather than after it.\n' +
         '       Install it (brew install ffmpeg), or pass --skip-hero to capture\n' +
         '       the screenshots without it.',
     )
