@@ -444,6 +444,13 @@ CREATE TABLE flyting_high_scores (
 CREATE INDEX flyting_high_scores_board_idx
     ON flyting_high_scores(scenario_id, play_format, batting_format, total_score DESC);
 
+-- One run, one board row. Ending a run is idempotent from the client's side (a
+-- retried request, a reopened debrief), and a board that listed the same run
+-- twice would both lie about how often it was played and inflate every later
+-- run's rank.
+CREATE UNIQUE INDEX flyting_high_scores_session_idx
+    ON flyting_high_scores(session_id) WHERE session_id IS NOT NULL;
+
 -- Run state for a flyting session: format, momentum, heat, whiffs, theme usage,
 -- discovered traits. It does not fit state_vars_json, which holds integers for
 -- the meter UI, and it must not go in setup_json, which records the immutable

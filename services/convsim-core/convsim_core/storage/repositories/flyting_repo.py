@@ -124,20 +124,39 @@ def record_high_score(
     Every finished run is recorded, not only record-breaking ones: the board is
     a practice log first and a leaderboard second, and a run you cannot see is a
     run you cannot learn from.
+
+    One run occupies one row. Ending a run is idempotent from the client's side —
+    a retried request, a double-clicked button, a debrief reopened — and a second
+    row for the same session would both double the run on the board and inflate
+    every later run's rank.
     """
-    conn.execute(
-        """
-        INSERT INTO flyting_high_scores
-            (scenario_id, pack_id, play_format, batting_format, session_id, outcome,
-             total_score, volley_count, best_volley_score, peak_heat, daily_seed)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            scenario_id, pack_id, play_format, batting_format, session_id, outcome,
-            int(total_score), int(volley_count), int(best_volley_score),
-            float(peak_heat), daily_seed,
-        ),
+    columns = (
+        "scenario_id = ?, pack_id = ?, play_format = ?, batting_format = ?, "
+        "outcome = ?, total_score = ?, volley_count = ?, best_volley_score = ?, "
+        "peak_heat = ?, daily_seed = ?"
     )
+    values = (
+        scenario_id, pack_id, play_format, batting_format, outcome,
+        int(total_score), int(volley_count), int(best_volley_score),
+        float(peak_heat), daily_seed,
+    )
+    updated = 0
+    if session_id is not None:
+        updated = conn.execute(
+            f"UPDATE flyting_high_scores SET {columns} WHERE session_id = ?",
+            (*values, session_id),
+        ).rowcount
+    if not updated:
+        conn.execute(
+            """
+            INSERT INTO flyting_high_scores
+                (scenario_id, pack_id, play_format, batting_format, outcome,
+                 total_score, volley_count, best_volley_score, peak_heat, daily_seed,
+                 session_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (*values, session_id),
+        )
     conn.commit()
     row = conn.execute(
         """

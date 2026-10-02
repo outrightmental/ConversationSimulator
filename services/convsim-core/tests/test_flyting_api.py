@@ -321,6 +321,17 @@ class TestEndingARun:
         ).json()
         assert board["entries"][0]["session_id"] == session_id
 
+    def test_ending_a_run_twice_records_it_once(self, client):
+        """A retried request or a reopened debrief must not double the run."""
+        session_id = start_run(client)
+        volley(client, session_id, GOOD_VOLLEY)
+        first = client.post(f"/api/flyting/sessions/{session_id}/end").json()
+        second = client.post(f"/api/flyting/sessions/{session_id}/end").json()
+        assert second["summary"]["total_score"] == first["summary"]["total_score"]
+
+        board = client.get(f"/api/flyting/scenarios/{SCENARIO}/high-scores").json()
+        assert [e["session_id"] for e in board["entries"]] == [session_id]
+
     def test_a_second_better_run_takes_the_top_of_the_board(self, client):
         weak = start_run(client)
         volley(client, weak, "you stink")
