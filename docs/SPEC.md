@@ -1133,7 +1133,7 @@ Model recommendation
 Content rating
 ```
 
-## 9.4 Scenario setup screen
+## 9.4 Scenario setup screen — the Conversation Brief
 
 Must allow:
 
@@ -1145,6 +1145,18 @@ Must allow:
 * Visible state meters on/off if scenario permits.
 * Transcript saving on/off.
 * Random seed / variation seed.
+
+The screen is a briefing the player reads, not a settings form they fill in. It
+must carry its own hierarchy:
+
+| Element           | Requirement                                                                                                       |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Brief hero        | Pack, title, summary, and the facts of the engagement: role, estimated length, turn limit, content rating, voice.  |
+| Numbered sections | The settings read as a short labelled sequence, not an undifferentiated stack of fields.                          |
+| Difficulty traits | Patience, disclosure, volatility and time pressure drawn as meters; the fill always matches the number shown.     |
+| Purpose panel     | The rubric dimensions this scenario practises, when it declares any.                                              |
+| Readiness panel   | Runtime checks and the safety summary, visible while the player scrolls.                                          |
+| Launch bar        | Pinned to the bottom of the viewport: readiness, what is about to start, and the single primary action. A failed start is reported in the bar itself, not elsewhere on the page — the action can be pressed from any scroll position, so its outcome must be visible from there too. It must never cover the control the player has just focused — keyboard and D-pad navigation scroll to the bottom edge the bar occupies. |
 
 ## 9.5 Conversation screen
 

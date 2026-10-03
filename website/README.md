@@ -20,7 +20,7 @@ hugo --minify -s website        # production build into website/public/
 | `content/` | Page content: home (`_index.md`), `manifesto.md`, `download.md` |
 | `layouts/` | Bespoke templates — homepage sections live in `layouts/index.html` |
 | `assets/css/main.css` | The whole design system (Hugo Pipes: minified + fingerprinted) |
-| `static/images/screenshots/` | Copies of `docs/assets/screenshots/*.svg` — refresh when those change |
+| `static/images/screenshots/` | Web copies of `docs/assets/screenshots/*.png` at 1×, 256 colours — refresh when those change (see `docs/screenshots.md`) |
 
 The palette mirrors the app UI (see `docs/brand.md` and `apps/web/src`):
 violet `#a78bfa` is the player's voice, emerald `#6ee7b7` is the character's,

@@ -680,7 +680,7 @@ describe('POST /api/sessions/:id/debrief', () => {
     expect(typeof body.summary).toBe('string');
     expect(body.summary.length).toBeGreaterThan(0);
     expect(body.outcome).toBe('player_exit');
-    expect(body.turn_count).toBe(1);
+    expect(body.total_turns).toBe(1);
     expect(body.scenario_id).toBe('behavioral_interview');
     expect(Array.isArray(body.strengths)).toBe(true);
     expect(Array.isArray(body.improvements)).toBe(true);
@@ -958,7 +958,9 @@ describe('full text-only demo flow', () => {
     expect(typeof debriefBody.summary).toBe('string');
     expect(debriefBody.summary.length).toBeGreaterThan(0);
     expect(debriefBody.outcome).toBe('player_exit');
-    expect(debriefBody.turn_count).toBe(2);
+    // Field name matches convsim-core's debrief contract, which is what the
+    // web client reads for the "Turns:" header.
+    expect(debriefBody.total_turns).toBe(2);
     expect(debriefBody.scenario_id).toBe('behavioral_interview');
     expect(Array.isArray(debriefBody.strengths)).toBe(true);
     expect(debriefBody.strengths.length).toBeGreaterThan(0);
