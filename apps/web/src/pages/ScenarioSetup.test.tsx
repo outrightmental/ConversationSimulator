@@ -566,7 +566,7 @@ describe('ScenarioSetupPage', () => {
     });
   });
 
-  // The screenshot on issue #508: "Start scenario" came back 422, the card
+  // The screenshot on issue #508: the launch bar's Start came back 422, the card
   // said only "VALIDATION_ERROR: Request validation failed", and its own
   // "Copy diagnostics" then answered "Copy failed" — so the reporter could
   // capture neither the cause nor the logs. Both halves are covered here
@@ -591,7 +591,7 @@ describe('ScenarioSetupPage', () => {
     it('shows which field the backend rejected', async () => {
       renderSetup();
       await waitFor(() => screen.getByText('Behavioral Interview'));
-      fireEvent.click(screen.getByRole('button', { name: /start scenario/i }));
+      fireEvent.click(screen.getByRole('button', { name: /start conversation/i }));
 
       const alert = await screen.findByRole('alert');
       expect(alert).toHaveTextContent('tts_voice_id: Input should be a valid string');
@@ -609,7 +609,7 @@ describe('ScenarioSetupPage', () => {
       try {
         renderSetup();
         await waitFor(() => screen.getByText('Behavioral Interview'));
-        fireEvent.click(screen.getByRole('button', { name: /start scenario/i }));
+        fireEvent.click(screen.getByRole('button', { name: /start conversation/i }));
 
         const copyBtn = await screen.findByTestId('copy-diagnostics');
         fireEvent.click(copyBtn);
