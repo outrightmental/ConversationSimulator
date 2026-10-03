@@ -5,6 +5,7 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import Conversation from '../screens/Conversation'
 import type {
+  HealthResponse,
   SessionStartResponse,
   TurnResponse,
   SessionEndResponse,
@@ -33,6 +34,7 @@ vi.mock('../api/client', () => ({
 }))
 
 import { api, apiClient } from '../api/client'
+import { clearTurnSamples, recordTurnSample } from '../lib/turnEstimate'
 const mockApi = vi.mocked(api)
 const mockApiClient = vi.mocked(apiClient)
 
@@ -107,6 +109,21 @@ const mockScenario: ScenarioInfo = {
   estimated_length_label: '10–15 min',
 }
 
+const MODEL_NAME = 'test-model-7b'
+
+const healthResponse: HealthResponse = {
+  status: 'ok',
+  version: '0.1.0',
+  runtime: {
+    llm_ready: true,
+    llm_model_name: MODEL_NAME,
+    stt_ready: false,
+    tts_ready: false,
+    tts_voice_name: null,
+    network_required: false,
+  },
+}
+
 function renderConversation(routeState?: Record<string, unknown>) {
   return render(
     <MemoryRouter
@@ -131,6 +148,11 @@ beforeEach(() => {
   mockApi.connectSession.mockReturnValue({ close: vi.fn() })
   mockApi.getScenario.mockResolvedValue({ ok: true, data: null } as never)
   mockApiClient.uploadAudio.mockResolvedValue({ ok: true, data: { transcript: null, status: 'unavailable' } })
+  // The screen reads health to learn which model the turn estimate belongs to.
+  mockApiClient.health.mockResolvedValue({ ok: true, data: healthResponse })
+  // Turn timings persist in localStorage by design, and the test store is shared
+  // across the file — clear it so one test's turns cannot seed another's estimate.
+  clearTurnSamples()
 })
 
 describe('Conversation screen', () => {
@@ -1472,43 +1494,45 @@ describe('Conversation screen', () => {
       }
     })
 
-    it('reports how long it has been waiting once a turn passes 30s', async () => {
+    it('reports how long it has been waiting, and says so again past 30s', async () => {
       mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
       vi.useFakeTimers({ shouldAdvanceTime: true })
       try {
         await submitAndWait(6_000)
-        // First stage: a hint, no clock yet.
+        // The clock runs from the first second of the turn (issue #488) …
+        expect(screen.getByTestId('npc-turn-progress-clock')).toHaveTextContent('6s')
+        // … and the hardware hint arrives at five seconds, without a second clock.
         expect(screen.getByTestId('slow-response-indicator')).toBeInTheDocument()
-        expect(screen.queryByTestId('slow-response-elapsed')).not.toBeInTheDocument()
+        expect(screen.queryByTestId('slow-response-reassurance')).not.toBeInTheDocument()
 
         await vi.advanceTimersByTimeAsync(60_000)
-        expect(screen.getByTestId('slow-response-elapsed')).toHaveTextContent('1m 06s')
-        expect(screen.getByTestId('slow-response-elapsed')).toHaveTextContent(/not lost/i)
+        expect(screen.getByTestId('npc-turn-progress-clock')).toHaveTextContent('1m 06s')
+        expect(screen.getByTestId('slow-response-reassurance')).toHaveTextContent(/not lost/i)
       } finally {
         vi.useRealTimers()
       }
     })
 
     it('announces the elapsed wait on a coarse grid so the live region is not spammed', async () => {
-      // The visible clock ticks every second inside a polite live region; left
-      // audible that is ~270 announcements over a five-minute turn. The visible
-      // line is aria-hidden and a separate status re-announces every 30s only.
+      // The visible clock ticks every second; left audible that is ~270
+      // announcements over a five-minute turn. It is aria-hidden, and a separate
+      // status re-announces every 30s only.
       mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
       vi.useFakeTimers({ shouldAdvanceTime: true })
       try {
         await submitAndWait(35_000)
-        expect(screen.getByTestId('slow-response-elapsed')).toHaveAttribute('aria-hidden', 'true')
-        const announcement = screen.getByTestId('slow-response-elapsed-announcement')
+        expect(screen.getByTestId('npc-turn-progress-detail')).toHaveAttribute('aria-hidden', 'true')
+        const announcement = screen.getByTestId('npc-turn-progress-announcement')
         expect(announcement).toHaveTextContent('30s')
 
         // Ten more seconds of ticking must not change the announced text.
         await vi.advanceTimersByTimeAsync(10_000)
-        expect(screen.getByTestId('slow-response-elapsed')).toHaveTextContent('45s')
-        expect(screen.getByTestId('slow-response-elapsed-announcement')).toHaveTextContent('30s')
+        expect(screen.getByTestId('npc-turn-progress-clock')).toHaveTextContent('45s')
+        expect(screen.getByTestId('npc-turn-progress-announcement')).toHaveTextContent('30s')
 
         // Crossing the next interval does.
         await vi.advanceTimersByTimeAsync(20_000)
-        expect(screen.getByTestId('slow-response-elapsed-announcement')).toHaveTextContent('1m 00s')
+        expect(screen.getByTestId('npc-turn-progress-announcement')).toHaveTextContent('1m 00s')
       } finally {
         vi.useRealTimers()
       }
@@ -1552,7 +1576,7 @@ describe('Conversation screen', () => {
         await submitAndWait(DEADLINE_MS)
         // Nothing on the server yet, but no verdict either: still waiting.
         expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-        expect(screen.getByTestId('slow-response-elapsed')).toBeInTheDocument()
+        expect(screen.getByTestId('npc-turn-progress')).toBeInTheDocument()
 
         // The turn lands while the screen is polling.
         mockApi.getSessionTranscript.mockResolvedValue({ ok: true, data: committedTranscript })
@@ -1789,6 +1813,152 @@ describe('Conversation screen', () => {
         )
         expect(screen.queryByRole('alert')).not.toBeInTheDocument()
         expect(screen.getByRole('textbox', { name: /your response/i })).not.toBeDisabled()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+  })
+
+  // A local model gives no progress signal to report, so the only honest estimate
+  // is how long turns on this machine have cost before (issue #488).
+  describe('NPC turn-time estimate (issue #488)', () => {
+    beforeEach(() => {
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
+    })
+
+    /** Type a turn and submit it, without waiting for the reply. */
+    async function submit(text = 'My answer.') {
+      await waitFor(() =>
+        expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument(),
+      )
+      fireEvent.change(screen.getByRole('textbox', { name: /your response/i }), {
+        target: { value: text },
+      })
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+      await waitFor(() => expect(screen.getByText(text)).toBeInTheDocument())
+    }
+
+    it('shows the clock and no estimate on the first turn this machine has run', async () => {
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        renderConversation()
+        await submit()
+        await vi.advanceTimersByTimeAsync(12_000)
+
+        // Nothing to compare against yet, so the clock stands alone …
+        expect(screen.getByTestId('npc-turn-progress-clock')).toHaveTextContent('12s')
+        expect(screen.getByTestId('npc-turn-progress-clock')).not.toHaveTextContent('~')
+        expect(screen.getByTestId('npc-turn-progress-detail')).toHaveTextContent(/timing this turn/i)
+        // … and the bar reports no value rather than guessing one.
+        expect(screen.getByRole('progressbar')).not.toHaveAttribute('aria-valuenow')
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('estimates the next turn from the one that just finished', async () => {
+      let resolveTurn: (r: { ok: true; data: TurnResponse }) => void = () => {}
+      mockApi.submitTurn.mockReturnValue(
+        new Promise((resolve) => { resolveTurn = resolve }) as never,
+      )
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        renderConversation()
+        await submit('First answer.')
+        await vi.advanceTimersByTimeAsync(40_000)
+        resolveTurn({ ok: true, data: turnResponse })
+        await waitFor(() =>
+          expect(screen.getByText('Hello there. I am a simulated NPC.')).toBeInTheDocument(),
+        )
+
+        // Second turn: the 40s it just measured is what the player is told to expect.
+        mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+        await submit('Second answer.')
+        await vi.advanceTimersByTimeAsync(10_000)
+        expect(screen.getByTestId('npc-turn-progress-clock')).toHaveTextContent('10s / ~40s')
+        expect(screen.getByTestId('npc-turn-progress-detail')).toHaveTextContent(
+          /about 30s to go/i,
+        )
+        expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '25')
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('estimates the very first turn from a previous session on the same model', async () => {
+      // The whole complaint in issue #488 is not knowing before the wait starts,
+      // so samples outlive the session that measured them.
+      recordTurnSample(MODEL_NAME, 90_000)
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        renderConversation()
+        await submit()
+        await vi.advanceTimersByTimeAsync(45_000)
+
+        expect(screen.getByTestId('npc-turn-progress-clock')).toHaveTextContent('45s / ~1m 30s')
+        expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '50')
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('ignores timings measured on a different model', async () => {
+      // Switching to a smaller model is the app's own advice when turns are slow;
+      // the old model's minutes must not keep being quoted afterwards.
+      recordTurnSample('some-other-model-70b', 240_000)
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        renderConversation()
+        await submit()
+        await vi.advanceTimersByTimeAsync(5_000)
+
+        expect(screen.getByTestId('npc-turn-progress-clock')).not.toHaveTextContent('~')
+        expect(screen.getByTestId('npc-turn-progress-detail')).toHaveTextContent(/timing this turn/i)
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('says the turn is running long rather than letting the bar fill', async () => {
+      recordTurnSample(MODEL_NAME, 30_000)
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        renderConversation()
+        await submit()
+        await vi.advanceTimersByTimeAsync(75_000)
+
+        expect(screen.getByTestId('npc-turn-progress-detail')).toHaveTextContent(
+          /longer than the usual 30s/i,
+        )
+        // 250% of the estimate, but a full bar would read as a finished turn.
+        expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '95')
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('does not learn a duration from a turn that failed', async () => {
+      // A turn that errored out at 30s says nothing about how long a reply takes.
+      let failTurn: (r: { ok: false; error: ApiError }) => void = () => {}
+      mockApi.submitTurn.mockReturnValue(
+        new Promise((resolve) => { failTurn = resolve }) as never,
+      )
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        renderConversation()
+        await submit()
+        await vi.advanceTimersByTimeAsync(30_000)
+        failTurn({ ok: false, error: { kind: 'network', message: 'Connection refused' } })
+        await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+
+        mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+        await submit('Retrying.')
+        await vi.advanceTimersByTimeAsync(3_000)
+        expect(screen.getByTestId('npc-turn-progress-clock')).not.toHaveTextContent('~')
       } finally {
         vi.useRealTimers()
       }
