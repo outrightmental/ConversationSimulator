@@ -362,6 +362,58 @@ describe('Flyting play screen', () => {
     expect(screen.getByTestId('volleys-left')).toHaveTextContent('9')
   })
 
+  it('restores a bout log in the same order it was played in', async () => {
+    // The engine writes an exchange player-then-opponent, and the live path puts
+    // the player's card at the top of each exchange — only index 0 renders
+    // uncompacted, and the player's own arithmetic is what they came to read. A
+    // flat reverse of the stored log handed that slot to the opponent, so the
+    // log silently reordered itself on reload.
+    const stored = (
+      speaker: 'player' | 'npc',
+      volleyNumber: number,
+      score: number,
+      text: string,
+    ) => ({
+      speaker,
+      text,
+      score,
+      band: 'strong' as const,
+      heat: 1,
+      banked_score: score,
+      momentum: 54,
+      scorecard: scorecard({ speaker, volley_number: volleyNumber, score }),
+      created_at: '2026-10-02 18:00:00',
+    })
+    mockApi.flyting.getRun.mockResolvedValue({
+      ok: true,
+      data: {
+        ...RUN_DETAIL,
+        run: { ...RUN_DETAIL.run, play_format: 'bout', batting_format: null },
+        volleys_remaining: null,
+        volleys: [
+          stored('player', 1, 110, 'first of mine'),
+          stored('npc', 1, 90, 'first of theirs'),
+          stored('player', 2, 140, 'second of mine'),
+          stored('npc', 2, 70, 'second of theirs'),
+        ],
+      },
+    })
+    renderPlay()
+    await waitFor(() => screen.getByTestId('volley-input'))
+
+    const log = screen.getByLabelText('Volley log')
+    const cards = Array.from(
+      log.querySelectorAll('[data-testid^="scorecard-"]'),
+    ).map((el) => el.getAttribute('data-testid'))
+    // Newest exchange first, player above opponent inside each one.
+    expect(cards).toEqual([
+      'scorecard-player-2',
+      'scorecard-npc-2',
+      'scorecard-player-1',
+      'scorecard-npc-1',
+    ])
+  })
+
   it('labels the umpire line without printing the whole flavour note inline', async () => {
     // judge_flavor is a character note of up to 300 characters ("A retired
     // music-hall chairman who has heard every joke in London twice. Cockney.

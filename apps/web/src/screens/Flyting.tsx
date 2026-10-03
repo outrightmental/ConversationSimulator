@@ -42,16 +42,33 @@ interface LogEntry {
 }
 
 function logFromHistory(volleys: FlytingVolleyLogEntry[]): LogEntry[] {
-  // Newest first, matching the live ordering, so a reload does not silently
-  // reverse the log a player was reading.
-  return volleys
-    .map((v, i) => ({
-      key: `${v.speaker}-${v.scorecard?.volley_number ?? i}-${i}`,
+  // Newest exchange first, matching the live ordering exactly — a reload must
+  // not reorder the log a player was reading.
+  //
+  // "Newest first" is not a plain reverse. The engine writes an exchange as
+  // player-then-opponent, and the live path puts the *player's* card at the top
+  // of each exchange with the counter beneath it, because only index 0 renders
+  // uncompacted and the player's own arithmetic is what they came to read. A
+  // flat reverse would hand that slot to the opponent after a reload. So group
+  // each player volley with the opponent volleys that answered it, reverse the
+  // groups, and keep the order inside each one.
+  const groups: LogEntry[][] = []
+  for (const [i, v] of volleys.entries()) {
+    if (v.scorecard == null) continue
+    const entry: LogEntry = {
+      key: `${v.speaker}-${v.scorecard.volley_number ?? i}-${i}`,
       card: v.scorecard,
       text: v.text,
-    }))
-    .filter((entry) => entry.card != null)
-    .reverse()
+    }
+    // An opponent volley belongs to the exchange above it; anything arriving
+    // before the first player volley opens its own group rather than being lost.
+    if (v.speaker === 'npc' && groups.length > 0) {
+      groups[groups.length - 1].push(entry)
+    } else {
+      groups.push([entry])
+    }
+  }
+  return groups.reverse().flat()
 }
 
 export default function Flyting() {
