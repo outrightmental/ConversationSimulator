@@ -77,7 +77,7 @@ The shell is compiled as one of two editions (issue #495):
 | Edition | How it is built | What differs |
 |---------|-----------------|--------------|
 | `full` (default) | `tauri build` as above | The complete app. |
-| `demo` | `VITE_CONVSIM_EDITION=demo` for the web build (Vite only exposes `VITE_`-prefixed variables), `CONVSIM_EDITION=demo` for `tauri build` (exactly that value — `build.rs` rejects anything else), plus `--config src-tauri/tauri.demo.conf.json` | The Steam Next Fest demo: product name "Conversation Simulator Demo", its own bundle identifier, and `CONVSIM_EDITION=demo` handed to `convsim-core` at launch so the engine narrows itself to one model and five conversations. |
+| `demo` | `VITE_CONVSIM_EDITION=demo` for the web build (Vite only exposes `VITE_`-prefixed variables), `CONVSIM_EDITION=demo` for `tauri build` (exactly that value — `build.rs` rejects anything else), plus `--config src-tauri/tauri.demo.conf.json` | The Steam Next Fest demo: product name "Conversation Simulator Demo", its own bundle identifier, its own icon set (below), and `CONVSIM_EDITION=demo` handed to `convsim-core` at launch so the engine narrows itself to one model and five conversations. |
 
 `build.rs` rejects any other value. Whatever the edition, the shell keys the
 per-user data directory (`CONVSIM_DATA_ROOT`) to the **full** app's bundle
