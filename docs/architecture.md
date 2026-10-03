@@ -248,6 +248,24 @@ choices it was launched with after the UI has lost them to a navigation or a
 relaunch. `status=in_progress` deliberately excludes `NotStarted`: nothing has
 been said yet, so there is no conversation to pick back up.
 
+`status=ended` covers every state a finished session can sit in, not just
+`Ended`: generating the debrief moves the row to `DebriefGenerating` and then
+`DebriefReady`, and a debrief that fails leaves `Error`. Together with
+`in_progress` and `NotStarted` that accounts for every state, so the two
+filters partition the sessions that were ever started.
+
+Creator Workbench preview sessions are excluded from every `status`, including
+`all`. They are written straight into `turn_sessions` under a dynamic
+`__wbtest__<hex>` scenario id and nothing ever ends them, so one preview would
+otherwise sit at the top of the resumable set permanently, pointing at a
+scenario that was only ever registered in memory.
+
+**Reading one session back.** `GET /api/sessions/{id}` returns the same shape
+plus `visible_state`: the session's current meter values, filtered through the
+scenario's own variable visibility so a hidden variable stays hidden. Meter
+values otherwise only ever arrive with a turn, so this is what lets a resumed
+conversation draw its meters before the player sends another message.
+
 ### Other routes
 
 | Prefix          | Description                           |

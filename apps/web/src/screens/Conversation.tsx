@@ -522,6 +522,15 @@ export default function Conversation() {
             : null
           setSessionState(lastState ?? 'PlayerTurnListening')
           setPhase('active')
+          // Meter values only ever arrived with a turn, so a resumed session
+          // came back with the meters missing entirely until the player sent
+          // another message — on the very screen whose opening line says
+          // "above this conversation you'll see two meters" (issue #501 §1).
+          // After setPhase so a slow or failing read never holds up the input.
+          const sr = await api.getSession(sessionId)
+          if (!cancelled && sr.ok && sr.data.visible_state) {
+            setStateVars({ ...sr.data.visible_state })
+          }
         } else {
           setError(e)
           setPhase('error')
