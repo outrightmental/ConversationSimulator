@@ -119,13 +119,22 @@ _OUT_OF_FICTION_PATTERN = _compile(
     r"\bout\s+of\s+character\b",
     r"\bthe\s+(?:person|human|man|woman|developer|dev|programmer)\s+(?:typing|behind|who\s+wrote|who\s+made)\b",
     r"\bwho(?:ever)?\s+(?:wrote|coded|made|programmed|designed)\s+(?:this|you)\b",
-    r"\bthis\s+is\s+(?:just\s+)?(?:a\s+)?(?:game|simulation|simulator|prompt|script|roleplay)\b",
+    # "This is just a game to you" is an accusation against a cad, not a remark
+    # about the simulator, so the meta reading is the one without a target.
+    r"\bthis\s+is\s+(?:just\s+)?(?:a\s+)?(?:game|simulation|simulator|prompt|script|roleplay)\b"
+    r"(?!\s+to\s+(?:you|him|her|them|us)\b)",
     r"\byour\s+(?:developers?|programmers?|creators?|training\s+data)\b",
     r"\b(?:real|actual)\s+person\s+(?:behind|playing)\b",
 )
 
 _BRIBE_PATTERN = _compile(
-    r"\b(?:score|rate|grade|mark)\s+(?:this|that|it|me|my\s+\w+)\b",
+    r"\b(?:score|rate|grade)\s+(?:this|that|it|me|my\s+\w+)\b",
+    # "mark" only when a mark is actually being demanded. "Mark my words" and
+    # "mark me well" are stock period taunt openings — exactly the register the
+    # launch pack encourages — and a false foul costs the player the volley, the
+    # heat multiplier, and a whiff in Endless.
+    r"\bmark\s+(?:this|that|it|me|my\s+\w+)\b"
+    r"(?=[^.!?]{0,24}(?:\b(?:\d{1,3}|hundred)\b|\b(?:full|top|maximum|perfect)\s+(?:marks?|score|points?)\b))",
     r"\b(?:give|award)\s+(?:me|this|it|him|her)\s+(?:a\s+)?(?:\d{1,3}|full|maximum|perfect|top)\b",
     r"\b(?:full|top|maximum|perfect)\s+(?:marks|score|points)\b",
     r"\b(?:100|ten)\s*(?:out\s*of\s*|/)\s*(?:100|ten)\b",
