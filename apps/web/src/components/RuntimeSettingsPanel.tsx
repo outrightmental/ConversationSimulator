@@ -38,7 +38,16 @@ function parseInt2(s: string): number | null {
   return isNaN(n) ? null : n
 }
 
-function settingsToForm(s: RuntimeSettings): Record<keyof RuntimeSettings, string> {
+/** The numeric knobs this panel edits.
+ *
+ *  `reply_speed` is part of the same persisted settings object but is not one
+ *  of these: it is a named plain-language choice with its own control above
+ *  this panel (issue #501 §1), not a number behind an "advanced" toggle. */
+type AdvancedSettingKey = Exclude<keyof RuntimeSettings, 'reply_speed'>
+
+type AdvancedForm = Record<AdvancedSettingKey, string>
+
+function settingsToForm(s: RuntimeSettings): AdvancedForm {
   return {
     context_length: s.context_length !== null ? String(s.context_length) : '',
     gpu_layers: s.gpu_layers !== null ? String(s.gpu_layers) : '',
@@ -49,7 +58,7 @@ function settingsToForm(s: RuntimeSettings): Record<keyof RuntimeSettings, strin
   }
 }
 
-function validateForm(form: Record<keyof RuntimeSettings, string>): FieldError[] {
+function validateForm(form: AdvancedForm): FieldError[] {
   const errs: FieldError[] = []
 
   const cl = parseInt2(form.context_length)
@@ -85,7 +94,7 @@ function validateForm(form: Record<keyof RuntimeSettings, string>): FieldError[]
   return errs
 }
 
-function formToRequest(form: Record<keyof RuntimeSettings, string>): Partial<RuntimeSettings> {
+function formToRequest(form: AdvancedForm): Partial<RuntimeSettings> {
   return {
     context_length: parseInt2(form.context_length),
     gpu_layers: parseInt2(form.gpu_layers),
@@ -206,7 +215,7 @@ export default function RuntimeSettingsPanel() {
   const [basicApplySuccess, setBasicApplySuccess] = useState(false)
 
   const [showAdvanced, setShowAdvanced] = useState(false)
-  const [form, setForm] = useState<Record<keyof RuntimeSettings, string>>({
+  const [form, setForm] = useState<AdvancedForm>({
     context_length: '',
     gpu_layers: '',
     threads: '',
@@ -271,7 +280,7 @@ export default function RuntimeSettingsPanel() {
     loadData()
   }
 
-  function handleFieldChange(field: keyof RuntimeSettings, value: string) {
+  function handleFieldChange(field: AdvancedSettingKey, value: string) {
     setForm((prev) => ({ ...prev, [field]: value }))
     setFieldErrors((prev) => {
       const next = { ...prev }

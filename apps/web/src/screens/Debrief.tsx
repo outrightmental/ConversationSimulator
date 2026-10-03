@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import type { DebriefTurningPoint, DebriefMetrics, SessionDebriefResponse, SessionCreateRequest, LogbookProfile } from '@convsim/shared'
 import { recommendNext } from '@convsim/shared'
@@ -12,6 +12,8 @@ import { useSteamAchievements, SteamAchievement, SteamStat } from '../hooks/useS
 import { useScenarios } from '../api/useScenarios'
 import { useIsDemo } from '../edition'
 import DemoUpsellCard from '../components/DemoUpsellCard'
+import FamiliarityReaskCard from '../components/FamiliarityReaskCard'
+import { wholeTurnNumbersFor } from '../lib/wholeTurns'
 
 type TranscriptEvent = {
   event_id: number
@@ -169,6 +171,13 @@ export default function Debrief() {
       writeVoiceInviteState('dismissed')
     }
   }, [phase, voiceInviteVisible, isDemo])
+
+  // One whole turn is the player's message plus the NPC's reply, and the
+  // opening belongs to neither (issue #501 §4). The debrief's own key-moment
+  // turn numbers are already whole turns, so labelling the transcript by
+  // position made "#3" in the key moments point at a different moment than
+  // "Turn 3" in the transcript right below it.
+  const wholeTurnNumbers = useMemo(() => wholeTurnNumbersFor(transcript), [transcript])
 
   const scrollToTurn = useCallback((turnNumber: number) => {
     const el = turnRefs.current.get(turnNumber)
@@ -402,17 +411,29 @@ export default function Debrief() {
                   gap: '0.75rem',
                 }}
               >
-                {transcript.map((event, idx) => (
-                  <TranscriptTurn
-                    key={event.event_id > 0 ? event.event_id : idx}
-                    event={event}
-                    turnNumber={idx + 1}
-                    registerRef={(el) => {
-                      if (el) turnRefs.current.set(idx + 1, el)
-                      else turnRefs.current.delete(idx + 1)
-                    }}
-                  />
-                ))}
+                {transcript.map((event, idx) => {
+                  const turnNumber = wholeTurnNumbers[idx] ?? 0
+                  return (
+                    <TranscriptTurn
+                      key={event.event_id > 0 ? event.event_id : idx}
+                      event={event}
+                      turnNumber={turnNumber}
+                      registerRef={(el) => {
+                        // Keyed by whole turn, and only the first row of each —
+                        // the player's message — so "go to turn 3" lands on the
+                        // start of turn 3 rather than on whichever half-turn
+                        // happened to be third in the list (issue #501 §4).
+                        if (turnNumber === 0) return
+                        const existing = turnRefs.current.get(turnNumber)
+                        if (el) {
+                          if (existing === undefined) turnRefs.current.set(turnNumber, el)
+                        } else if (existing !== undefined) {
+                          turnRefs.current.delete(turnNumber)
+                        }
+                      }}
+                    />
+                  )
+                })}
               </div>
             </section>
           ) : (
@@ -717,17 +738,29 @@ export default function Debrief() {
                   gap: '0.75rem',
                 }}
               >
-                {transcript.map((event, idx) => (
-                  <TranscriptTurn
-                    key={event.event_id > 0 ? event.event_id : idx}
-                    event={event}
-                    turnNumber={idx + 1}
-                    registerRef={(el) => {
-                      if (el) turnRefs.current.set(idx + 1, el)
-                      else turnRefs.current.delete(idx + 1)
-                    }}
-                  />
-                ))}
+                {transcript.map((event, idx) => {
+                  const turnNumber = wholeTurnNumbers[idx] ?? 0
+                  return (
+                    <TranscriptTurn
+                      key={event.event_id > 0 ? event.event_id : idx}
+                      event={event}
+                      turnNumber={turnNumber}
+                      registerRef={(el) => {
+                        // Keyed by whole turn, and only the first row of each —
+                        // the player's message — so "go to turn 3" lands on the
+                        // start of turn 3 rather than on whichever half-turn
+                        // happened to be third in the list (issue #501 §4).
+                        if (turnNumber === 0) return
+                        const existing = turnRefs.current.get(turnNumber)
+                        if (el) {
+                          if (existing === undefined) turnRefs.current.set(turnNumber, el)
+                        } else if (existing !== undefined) {
+                          turnRefs.current.delete(turnNumber)
+                        }
+                      }}
+                    />
+                  )
+                })}
               </div>
             </section>
           )}
@@ -759,6 +792,13 @@ export default function Debrief() {
           </details>
 
           {isDemo && <DemoUpsellCard compact />}
+
+          {/* The post-tutorial re-ask of the familiarity question
+              (issue #501 §2). Renders nothing outside the tutorial debrief, or
+              once it has been shown. */}
+          {!isDemo && (
+            <FamiliarityReaskCard scenarioId={debrief?.scenario_id ?? exportedScenarioId} />
+          )}
 
           {/* Voice invite card — shown once after the first real AI conversation */}
           {voiceInviteVisible && !isDemo && (
@@ -1139,12 +1179,13 @@ function TranscriptTurn({
           letterSpacing: '0.05em',
         }}
       >
-        <span>{t('debrief.transcript.turn', { number: turnNumber })}</span>
+        <span>
+          {turnNumber === 0
+            ? t('debrief.transcript.opening')
+            : t('debrief.transcript.turn', { number: turnNumber })}
+        </span>
         {' · '}
         <span>{isPlayer ? t('debrief.transcript.you') : t('debrief.transcript.npc')}</span>
-        {emotion && emotion !== 'neutral' && (
-          <span style={{ marginLeft: 6, opacity: 0.7 }}>({emotion})</span>
-        )}
       </div>
       <div
         style={{
@@ -1158,6 +1199,13 @@ function TranscriptTurn({
       >
         {content}
       </div>
+      {/* Labelled rather than a bare parenthetical: next to a turn number it
+          read as one of the meters (issue #501 §3). */}
+      {emotion && emotion !== 'neutral' && (
+        <div style={{ fontSize: '0.7rem', color: '#71717a', marginTop: 2 }}>
+          Mood: <span style={{ color: '#6ee7b7' }}>{emotion}</span>
+        </div>
+      )}
     </div>
   )
 }

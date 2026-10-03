@@ -43,6 +43,8 @@ export interface ScenarioInfo {
   scenario_id: string;
   title: string;
   summary: string;
+  /** The NPC's name, resolved from the pack. Absent when the pack has none. */
+  npc_name?: string | null;
   content_rating: string;
   pack_id: string;
   pack_name: string;

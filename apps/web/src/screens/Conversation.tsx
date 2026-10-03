@@ -1,9 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
-import { useParams, useNavigate, useLocation } from 'react-router-dom'
+import { useParams, useNavigate, useLocation, Link } from 'react-router-dom'
 import { api } from '../api/client'
-import type { InputMode, ScenarioInfo, TurnResponse, WsEvent } from '@convsim/shared'
+import type {
+  InputMode,
+  ScenarioInfo,
+  SessionCreateRequest,
+  TurnResponse,
+  WsEvent,
+} from '@convsim/shared'
 import VoiceInput, { type SttReviewMeta } from '../components/VoiceInput'
 import DebugDrawer, { type DebugTurnEntry } from '../components/DebugDrawer'
 import PerformanceWarningBanner from '../components/PerformanceWarning'
@@ -14,6 +20,9 @@ import type { ApiError } from '../api/errors'
 import type { ApiResult } from '../api/client'
 import { ApiErrorView } from '../components/ApiErrorView'
 import { useIsDemo } from '../edition'
+import { useUiLanguageLevel } from '../hooks/useUiLanguageLevel'
+import { humanizeEndingType, humanizeFlags, plainFlowState } from '../lib/plainLanguage'
+import StateMeters from '../components/StateMeters'
 
 // How long a wait is allowed to look normal before the UI says something.
 const SLOW_RESPONSE_MS = 5_000
@@ -65,12 +74,37 @@ type TurnEntry = {
   content: string
   emotion?: string
   eventFlags?: string[]
+  /**
+   * Whole-turn number (issue #501 §4): one turn is the player's message plus
+   * the NPC's reply, so both rows of an exchange carry the same number. The
+   * opening line is turn 0 — it belongs to no exchange and is labelled
+   * "Opening" rather than "Turn 1".
+   *
+   * This is the same number convsim-core counts in `turn_count`, that
+   * `duration.max_turns` is measured in, and that debrief key moments point
+   * at. The transcript used to number half-turns, so "Turn 3" in a debrief and
+   * "Turn 3" in the transcript were different moments.
+   */
   turnNum: number
+}
+
+/** Whole-turn number for a persisted transcript row.
+ *
+ *  convsim-core stores the opening at turn_number 0 and then alternates:
+ *  player at 2n-1, NPC at 2n for whole turn n. */
+function wholeTurnFromRow(rowTurnNumber: number): number {
+  return Math.ceil(rowTurnNumber / 2)
 }
 
 type Phase = 'starting' | 'active' | 'submitting' | 'ending' | 'ended' | 'error'
 
-type Banner = { id: number; kind: 'event' | 'safety'; text: string }
+type Banner = {
+  id: number
+  kind: 'event' | 'safety'
+  /** Pre-formatted text (safety reasons), or raw flags to humanize at render. */
+  text?: string
+  flags?: string[]
+}
 
 /** Result of one post-deadline check of what the session actually recorded. */
 type ReconcileOutcome = 'adopted' | 'pending' | 'unavailable'
@@ -120,11 +154,15 @@ function formatElapsed(ms: number): string {
   return `${minutes}m ${String(seconds).padStart(2, '0')}s`
 }
 
-function npcStatusLabel(sessionState: string, phase: Phase): string {
+function npcStatusLabel(sessionState: string, phase: Phase, isPlain: boolean): string {
   if (phase === 'submitting') return 'Thinking…'
   if (sessionState === 'NpcThinking') return 'Thinking…'
   if (sessionState === 'NpcSpeaking') return 'Speaking…'
-  if (sessionState === 'ScenarioEvent') return 'Event in progress…'
+  // "Event" is one of the four words the playtest named as unexplained jargon
+  // (issue #501 §2), so the plain level says what is happening instead.
+  if (sessionState === 'ScenarioEvent') {
+    return isPlain ? 'Something is changing…' : 'Event in progress…'
+  }
   if (sessionState === 'PlayerTurnListening') return 'Listening'
   return ''
 }
@@ -143,11 +181,23 @@ export default function Conversation() {
     tts_enabled?: boolean
   } | null
 
-  const language = routeState?.language
-  const showStateMeters = routeState?.show_state_meters ?? true
-  const scenarioIdFromRoute = routeState?.scenario_id
-  const inputMode = routeState?.input_mode ?? 'text-only'
-  const ttsEnabled = routeState?.tts_enabled ?? false
+  // Wording level (issue #501 §2): `plain` keeps session ids, flow-state
+  // identifiers and event flags off this screen entirely.
+  const { isPlain } = useUiLanguageLevel()
+
+  // The setup convsim-core recorded when the session was created. Only fetched
+  // when the route state is missing — which is exactly the resume case
+  // (issue #501 §1): navigating to Settings and back, a reload, or a relaunch
+  // all arrive here with no router state, and before this the screen fell back
+  // to defaults and dropped the scene card, the chosen language and the voice
+  // settings the player had picked.
+  const [serverSetup, setServerSetup] = useState<SessionCreateRequest | null>(null)
+
+  const language = routeState?.language ?? serverSetup?.language
+  const showStateMeters = routeState?.show_state_meters ?? serverSetup?.show_state_meters ?? true
+  const scenarioId = routeState?.scenario_id ?? serverSetup?.scenario_id
+  const inputMode = routeState?.input_mode ?? serverSetup?.input_mode ?? 'text-only'
+  const ttsEnabled = routeState?.tts_enabled ?? serverSetup?.tts_enabled ?? false
 
   // Voice timing preferences (issue #308) — read once at mount from localStorage.
   const voiceTimingPrefs = getVoiceTimingPrefs()
@@ -158,6 +208,14 @@ export default function Conversation() {
   const [turns, setTurns] = useState<TurnEntry[]>([])
   // Populated from the server's visible_state snapshots (scenario-specific).
   const [stateVars, setStateVars] = useState<Record<string, number>>({})
+  // Change the most recent turn applied, per variable — the "tick" the tutorial
+  // talks about and that nothing on screen used to show (issue #501 §3).
+  // Derived by diffing successive snapshots rather than read from the model's
+  // requested state_delta: a delta the reducer clamped at 0 or 100, or asked for
+  // a variable this scenario does not track, did not move the meter, and an
+  // arrow claiming it did is exactly the kind of thing the playtest called
+  // hallucinated.
+  const [stateDeltas, setStateDeltas] = useState<Record<string, number>>({})
   const [allEventFlags, setAllEventFlags] = useState<string[]>([])
   const [error, setError] = useState<ApiError | null>(null)
   const [devMode] = useState(() => isDevModeEnabled())
@@ -184,6 +242,8 @@ export default function Conversation() {
   const reconcileWakeRef = useRef<(() => void) | null>(null)
   // False once the screen unmounts, so the reconcile loop stops touching state.
   const mountedRef = useRef(true)
+  // Last meter snapshot, for computing what the latest turn moved.
+  const prevStateVarsRef = useRef<Record<string, number> | null>(null)
 
   // TTS audio queue — plays synthesized sentence chunks in order.
   const ttsQueueRef = useRef<string[]>([])
@@ -192,10 +252,20 @@ export default function Conversation() {
   const ttsHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // True when the player started recording while TTS was playing (barge-in).
   const bargedInRef = useRef(false)
+  // The WebSocket handler is installed once per session, so it captures the
+  // first render's _enqueueTtsChunk. A resumed session learns it had voice
+  // enabled only when the setup fetch lands, after that render — hence a ref
+  // rather than the render-scope value (issue #501 §1).
+  const ttsEnabledRef = useRef(false)
 
   const transcriptRef = useRef<HTMLDivElement>(null)
   const turnUidRef = useRef(0)
-  const turnNumRef = useRef(0)
+  // Transcript ROWS this view holds (opening + every player and NPC message).
+  // The reconcile loop compares this against the server's row count, so it must
+  // stay a row count even though the labels now number whole turns.
+  const rowCountRef = useRef(0)
+  // Whole turns played — the number shown in the labels (issue #501 §4).
+  const gameTurnRef = useRef(0)
   const bannerUidRef = useRef(0)
   const streamingRef = useRef('')
   const phaseRef = useRef<Phase>('starting')
@@ -206,6 +276,7 @@ export default function Conversation() {
   const sessionStateRef = useRef(sessionState)
   phaseRef.current = phase
   sessionStateRef.current = sessionState
+  ttsEnabledRef.current = ttsEnabled
 
   // Clean up any pending timers and TTS audio when the component unmounts.
   useEffect(() => {
@@ -248,20 +319,39 @@ export default function Conversation() {
     setWaitElapsedMs(0)
   }
 
-  /** Replace the transcript with the server's copy, renumbering from the top. */
+  /** Replace the transcript with the server's copy, renumbering from the top.
+   *
+   *  The server's own `turn_number` is authoritative for the whole-turn labels:
+   *  it stores the opening at 0 and then alternates player (2n-1) / NPC (2n)
+   *  for whole turn n. Deriving the label from it keeps a resumed or reconciled
+   *  transcript numbered identically to one built turn by turn, and identically
+   *  to the debrief's key moments. */
   function _hydrateTurnsFromServer(
-    serverTurns: Array<{ role: TurnEntry['role']; content: string; emotion?: string | null }>,
+    serverTurns: Array<{
+      turn_number?: number
+      role: TurnEntry['role']
+      content: string
+      emotion?: string | null
+    }>,
   ) {
-    turnNumRef.current = 0
-    setTurns(
-      serverTurns.map((t) => ({
+    rowCountRef.current = serverTurns.length
+    let highestTurn = 0
+    const rows = serverTurns.map((t, idx) => {
+      // Fall back to position when a row arrives without its number: the
+      // opening is first, and every pair after it is one whole turn.
+      const rowNumber = t.turn_number ?? idx
+      const turnNum = t.role === 'npc_opening' ? 0 : wholeTurnFromRow(rowNumber)
+      if (turnNum > highestTurn) highestTurn = turnNum
+      return {
         id: ++turnUidRef.current,
         role: t.role,
         content: t.content,
         emotion: t.emotion ?? undefined,
-        turnNum: ++turnNumRef.current,
-      })),
-    )
+        turnNum,
+      }
+    })
+    gameTurnRef.current = highestTurn
+    setTurns(rows)
   }
 
   function _playNextTtsChunk() {
@@ -292,7 +382,7 @@ export default function Conversation() {
   function _enqueueTtsChunk(cachePath: string, thinkingPauseMs?: number) {
     // Only play TTS audio when the session was started with TTS enabled.
     // The text transcript remains authoritative regardless of this flag.
-    if (!ttsEnabled) return
+    if (!ttsEnabledRef.current) return
     const filename = cachePath.replace(/\\/g, '/').split('/').pop()
     if (!filename) return
     const url = `/api/tts/audio/${filename}`
@@ -353,7 +443,7 @@ export default function Conversation() {
   }
 
   function handleBargeIn() {
-    if (!ttsEnabled || !voiceTimingPrefs.bargeInEnabled) return
+    if (!ttsEnabledRef.current || !voiceTimingPrefs.bargeInEnabled) return
     const isTtsActive = ttsPlayingRef.current !== null || ttsHoldTimerRef.current !== null
     // Reset the flag on every recording start so it always reflects whether THIS
     // recording began during NPC playback. Otherwise a barge-in the player then
@@ -367,15 +457,29 @@ export default function Conversation() {
     })
   }
 
+  // Resume (issue #501 §1): with no router state — after a trip to Settings, a
+  // reload, or a relaunch — read the setup back from the session convsim-core
+  // already holds. Best effort: the conversation itself still works from the
+  // defaults if this fails.
+  const hasRouteState = routeState != null
+  useEffect(() => {
+    if (!sessionId || hasRouteState) return
+    let cancelled = false
+    void api.getSession(sessionId).then((r) => {
+      if (!cancelled && r.ok) setServerSetup(r.data.setup)
+    })
+    return () => { cancelled = true }
+  }, [sessionId, hasRouteState])
+
   // Fetch scenario for NPC panel and scene card — best effort
   useEffect(() => {
-    if (!scenarioIdFromRoute) return
+    if (!scenarioId) return
     let cancelled = false
-    api.getScenario(scenarioIdFromRoute).then(
+    api.getScenario(scenarioId).then(
       (r) => { if (!cancelled && r.ok) setScenario(r.data) },
     )
     return () => { cancelled = true }
-  }, [scenarioIdFromRoute])
+  }, [scenarioId])
 
   // Start session
   useEffect(() => {
@@ -418,13 +522,17 @@ export default function Conversation() {
       const opening = startData.events.find((e) => e.event_type === 'npc_opening')
       if (opening) {
         const uid = ++turnUidRef.current
+        rowCountRef.current = 1
+        gameTurnRef.current = 0
         setTurns([
           {
             id: uid,
             role: 'npc_opening',
             content: opening.payload['content'] as string,
             emotion: opening.payload['emotion'] as string | undefined,
-            turnNum: ++turnNumRef.current,
+            // Turn 0: the opening precedes the first exchange, so it is labelled
+            // "Opening" rather than consuming a turn number (issue #501 §4).
+            turnNum: 0,
           },
         ])
         if (devMode) {
@@ -484,6 +592,7 @@ export default function Conversation() {
               npcTurnCommittedRef.current = true
               const { content, emotion: npcEmotion, state_delta, event_flags } = event.payload
               const flags = event_flags ?? []
+              rowCountRef.current += 1
               setTurns((prev) => [
                 ...prev,
                 {
@@ -492,7 +601,9 @@ export default function Conversation() {
                   content,
                   emotion: npcEmotion !== 'neutral' ? npcEmotion : undefined,
                   eventFlags: flags.length > 0 ? flags : undefined,
-                  turnNum: ++turnNumRef.current,
+                  // The reply closes the turn the player's message opened, so
+                  // it shares that number rather than taking a new one.
+                  turnNum: gameTurnRef.current,
                 },
               ])
               if (Object.keys(state_delta ?? {}).length > 0) {
@@ -516,7 +627,7 @@ export default function Conversation() {
                 {
                   id: ++bannerUidRef.current,
                   kind: 'event',
-                  text: event.payload.flags.join(' · '),
+                  flags: event.payload.flags,
                 },
               ])
             }
@@ -554,6 +665,20 @@ export default function Conversation() {
     // excluded from the dependency array.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, recordInterval])
+
+  // Recompute the per-turn meter movement whenever the meters change.
+  useEffect(() => {
+    const previous = prevStateVarsRef.current
+    prevStateVarsRef.current = stateVars
+    // The first snapshot is where the meters start, not a change from anything.
+    if (previous === null) return
+    const moved: Record<string, number> = {}
+    for (const [key, value] of Object.entries(stateVars)) {
+      const was = previous[key]
+      if (was !== undefined && was !== value) moved[key] = value - was
+    }
+    setStateDeltas(moved)
+  }, [stateVars])
 
   // Auto-scroll transcript
   useEffect(() => {
@@ -594,9 +719,9 @@ export default function Conversation() {
     if (!tr.data.transcript_saved) return 'unavailable'
     const serverTurns = tr.data.turns
     const last = serverTurns[serverTurns.length - 1]
-    // turnNumRef counts every row this view holds, the optimistic player turn
+    // rowCountRef counts every row this view holds, the optimistic player turn
     // included, so the reply only landed if the server is ahead of that.
-    if (!last || last.role !== 'npc' || serverTurns.length <= turnNumRef.current) return 'pending'
+    if (!last || last.role !== 'npc' || serverTurns.length <= rowCountRef.current) return 'pending'
 
     _hydrateTurnsFromServer(serverTurns)
     setNpcEmotion(last.emotion ?? null)
@@ -644,7 +769,7 @@ export default function Conversation() {
     let askTheTranscript = true
     while (mountedRef.current && !hasAnswered()) {
       // A WebSocket npc.final may already have put the reply on screen, in which
-      // case the turn is done. turnNumRef counts that NPC row too, so the
+      // case the turn is done. rowCountRef counts that NPC row too, so the
       // transcript comparison could never see the server pull ahead: left to the
       // loop this would poll to the ceiling and then report a timeout over a
       // reply the player is looking at.
@@ -684,7 +809,10 @@ export default function Conversation() {
     // Add the player turn immediately so it appears before the NPC response
     // regardless of whether the NPC turn is committed by WebSocket or REST.
     const playerTurnId = ++turnUidRef.current
-    const playerTurnNum = ++turnNumRef.current
+    // The player's message opens a new whole turn; the NPC's reply will close
+    // it under the same number (issue #501 §4).
+    const playerTurnNum = ++gameTurnRef.current
+    rowCountRef.current += 1
     setTurns((prev) => [
       ...prev,
       {
@@ -776,7 +904,8 @@ export default function Conversation() {
       // retry doesn't leave an orphaned failed message or skip a turn number.
       if (!npcTurnCommittedRef.current) {
         setTurns((prev) => prev.filter((t) => t.id !== playerTurnId))
-        turnNumRef.current -= 1
+        rowCountRef.current -= 1
+        gameTurnRef.current -= 1
       }
       setPhase('active')
       return
@@ -802,6 +931,7 @@ export default function Conversation() {
       setNpcEmotion(emotion ?? null)
 
       const uid = ++turnUidRef.current
+      rowCountRef.current += 1
       setTurns((prev) => [
         ...prev,
         {
@@ -810,7 +940,8 @@ export default function Conversation() {
           content: payload['content'] as string,
           emotion: emotion !== 'neutral' ? emotion : undefined,
           eventFlags: flags.length > 0 ? flags : undefined,
-          turnNum: ++turnNumRef.current,
+          // Closes the turn the player's message opened.
+          turnNum: gameTurnRef.current,
         },
       ])
 
@@ -889,7 +1020,11 @@ export default function Conversation() {
   const isVerySlowResponse = phase === 'submitting' && waitElapsedMs >= VERY_SLOW_RESPONSE_MS
   const announcedElapsedMs =
     Math.floor(waitElapsedMs / ELAPSED_ANNOUNCE_INTERVAL_MS) * ELAPSED_ANNOUNCE_INTERVAL_MS
-  const npcStatus = npcStatusLabel(sessionState, phase)
+  const npcStatus = npcStatusLabel(sessionState, phase, isPlain)
+  // The character's name when the pack provides one. "NPC" is the most
+  // technical word on this screen and the only reason it was here is that the
+  // name was never exposed over the API (issue #501 §2).
+  const npcLabel = scenario?.npc_name ?? 'NPC'
 
   return (
     <div
@@ -908,14 +1043,25 @@ export default function Conversation() {
       >
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-            <h1 style={{ margin: 0 }}>Conversation</h1>
+            <h1 style={{ margin: 0 }}>{scenario?.title ?? 'Conversation'}</h1>
           </div>
-          <p style={{ margin: 0, fontSize: '0.8rem', color: '#71717a' }}>
-            Session: <code>{sessionId}</code> &nbsp;|&nbsp; State:{' '}
-            <code>{sessionState}</code>
+          {/* Plain wording keeps the session id and the raw flow-state
+              identifier off the screen entirely: "Session: sess-a1b2c3d4 |
+              State: PlayerTurnListening" was the first thing a new player read
+              (issue #501 §2). Technical wording puts both back, because the
+              id is what a bug report needs. */}
+          <p data-testid="conversation-subhead" style={{ margin: 0, fontSize: '0.8rem', color: '#71717a' }}>
+            {isPlain ? (
+              <span>{plainFlowState(sessionState)}</span>
+            ) : (
+              <>
+                Session: <code>{sessionId}</code> &nbsp;|&nbsp; State:{' '}
+                <code>{sessionState}</code>
+              </>
+            )}
             {endingType && (
               <span style={{ marginLeft: '0.5rem', color: '#a1a1aa' }}>
-                ({endingType.replace(/_/g, ' ')})
+                ({humanizeEndingType(endingType)})
               </span>
             )}
           </p>
@@ -956,18 +1102,20 @@ export default function Conversation() {
         >
           <NpcAvatar />
           <div>
-            <div style={{ fontWeight: 600, color: '#e4e4e7', fontSize: '0.95rem' }}>NPC</div>
+            <div style={{ fontWeight: 600, color: '#e4e4e7', fontSize: '0.95rem' }}>
+              {scenario?.npc_name ?? 'NPC'}
+            </div>
+            {/* "Mood:" is the whole point: the emotion used to be rendered as a
+                bare parenthetical next to the meters, so it read as one of them
+                — "unclear which meter (if any) the emotions in parentheses
+                are" (issue #501 §3). */}
             {npcEmotion && npcEmotion !== 'neutral' && (
               <div
                 data-testid="npc-emotion"
-                style={{
-                  fontSize: '0.8rem',
-                  color: '#6ee7b7',
-                  textTransform: 'capitalize',
-                  marginTop: 2,
-                }}
+                style={{ fontSize: '0.8rem', color: '#6ee7b7', marginTop: 2 }}
               >
-                {npcEmotion}
+                <span style={{ color: '#71717a' }}>Mood: </span>
+                <span style={{ textTransform: 'capitalize' }}>{npcEmotion}</span>
               </div>
             )}
             {/* Always mounted so screen readers announce status transitions;
@@ -1034,8 +1182,16 @@ export default function Conversation() {
           }}
         >
           <span>
-            {banner.kind === 'safety' ? 'Safety redirect: ' : 'Scenario event: '}
-            {banner.text}
+            {banner.kind === 'safety'
+              ? 'Safety redirect: '
+              : isPlain
+              ? 'Something changed: '
+              : 'Scenario event: '}
+            {banner.flags
+              ? isPlain
+                ? humanizeFlags(banner.flags)
+                : banner.flags.join(' · ')
+              : banner.text}
           </span>
           <button
             onClick={() => dismissBanner(banner.id)}
@@ -1060,6 +1216,13 @@ export default function Conversation() {
         <p aria-live="polite" aria-busy="true" style={{ color: '#71717a' }}>
           Starting session…
         </p>
+      )}
+
+      {/* The meters, above the transcript — where the tutorial's opening line
+          has always said they are ("Notice the two meters at the top") and
+          where they were not (issue #501 §3). */}
+      {showStateMeters && (
+        <StateMeters stateVars={stateVars} deltas={stateDeltas} isPlain={isPlain} />
       )}
 
       {/* Transcript */}
@@ -1094,12 +1257,12 @@ export default function Conversation() {
                 letterSpacing: '0.05em',
               }}
             >
-              <span>Turn {turn.turnNum}</span>
+              {/* One turn is the player's message plus the reply to it, so
+                  both rows share a number, and the opening — which answers
+                  nothing — is labelled rather than numbered (issue #501 §4). */}
+              <span>{turn.turnNum === 0 ? 'Opening' : `Turn ${turn.turnNum}`}</span>
               {' · '}
-              <span>{turn.role === 'player' ? 'You' : 'NPC'}</span>
-              {turn.emotion && turn.emotion !== 'neutral' && (
-                <span style={{ marginLeft: 6, opacity: 0.7 }}>({turn.emotion})</span>
-              )}
+              <span>{turn.role === 'player' ? 'You' : npcLabel}</span>
             </div>
             <div
               style={{
@@ -1113,7 +1276,22 @@ export default function Conversation() {
             >
               {turn.content}
             </div>
-            {turn.eventFlags && turn.eventFlags.length > 0 && (
+            {/* Labelled, and below the bubble rather than beside the turn
+                number: as a bare parenthetical next to the meters it read as
+                one of them (issue #501 §3). */}
+            {turn.emotion && turn.emotion !== 'neutral' && (
+              <div
+                data-testid="turn-mood"
+                style={{ fontSize: '0.7rem', color: '#71717a', marginTop: 2 }}
+              >
+                Mood: <span style={{ color: '#6ee7b7' }}>{turn.emotion}</span>
+              </div>
+            )}
+            {/* "Flag" is one of the four words the playtest named as
+                unexplained jargon, and the raw identifiers mean nothing to a
+                player, so plain wording leaves them out entirely
+                (issue #501 §2). */}
+            {!isPlain && turn.eventFlags && turn.eventFlags.length > 0 && (
               <div style={{ fontSize: '0.7rem', color: '#fbbf24', marginTop: 2 }}>
                 Flags: {turn.eventFlags.join(', ')}
               </div>
@@ -1133,7 +1311,7 @@ export default function Conversation() {
                 letterSpacing: '0.05em',
               }}
             >
-              NPC · Responding…
+              {npcLabel} · Responding…
             </div>
             <div
               style={{
@@ -1157,7 +1335,7 @@ export default function Conversation() {
             aria-busy="true"
             style={{ color: '#71717a', fontSize: '0.875rem', fontStyle: 'italic' }}
           >
-            {phase === 'submitting' ? 'NPC is responding…' : 'Ending session…'}
+            {phase === 'submitting' ? `${npcLabel} is responding…` : 'Ending session…'}
           </div>
         )}
 
@@ -1175,9 +1353,26 @@ export default function Conversation() {
               fontSize: '0.8rem',
             }}
           >
-            {isDemo
-              ? 'NPC is taking longer than usual. The model may be slow on this hardware; closing other apps usually helps.'
-              : 'NPC is taking longer than usual. The model may be slow on this hardware. You can adjust settings or try a smaller model.'}
+            {isDemo ? (
+              `${npcLabel} is taking longer than usual. The model may be slow on this hardware; closing other apps usually helps.`
+            ) : (
+              <>
+                {npcLabel} is taking longer than usual. The model may be slow on
+                this hardware.{' '}
+                {/* The moment the player actually wants the speed setting is
+                    this one. Before #501 this sentence said "you can adjust
+                    settings" and left them to find out which — the detour that
+                    lost them their session in the first place. Resuming is one
+                    click back, via the banner in the app chrome. */}
+                <Link
+                  to="/settings#reply-speed"
+                  data-testid="slow-response-speed-link"
+                  style={{ color: '#fcd34d', textDecoration: 'underline' }}
+                >
+                  Make replies faster →
+                </Link>
+              </>
+            )}
             {isVerySlowResponse && (
               // Past half a minute a static line reads as a hung app. Naming the
               // elapsed time shows the app is still waiting on the model rather
@@ -1204,73 +1399,12 @@ export default function Conversation() {
         )}
       </div>
 
-      {/* State meters — shown only when enabled in setup and hydrated */}
-      {showStateMeters && Object.keys(stateVars).length > 0 && (
-        <details open>
-          <summary
-            style={{ cursor: 'pointer', fontSize: '0.8rem', color: '#71717a', userSelect: 'none' }}
-          >
-            NPC state variables
-          </summary>
-          <div
-            data-testid="state-vars"
-            style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '0.5rem',
-              marginTop: '0.5rem',
-              padding: '0.5rem',
-              borderRadius: 6,
-              border: '1px solid #27272a',
-            }}
-          >
-            {Object.entries(stateVars).map(([key, value]) => (
-              <div
-                key={key}
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  minWidth: 80,
-                  padding: '0.4rem 0.5rem',
-                  borderRadius: 4,
-                  background: '#18181b',
-                  fontSize: '0.8rem',
-                }}
-              >
-                <span style={{ color: '#a1a1aa', marginBottom: 2 }}>{key}</span>
-                <span style={{ color: '#f4f4f5', fontWeight: 600 }}>{value}</span>
-                <div
-                  role="meter"
-                  aria-label={`${key.replace(/_/g, ' ')}: ${value} out of 100`}
-                  aria-valuenow={value}
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  style={{
-                    width: '100%',
-                    height: 4,
-                    borderRadius: 2,
-                    background: '#27272a',
-                    marginTop: 4,
-                  }}
-                >
-                  <div
-                    aria-hidden="true"
-                    style={{
-                      width: `${value}%`,
-                      height: '100%',
-                      borderRadius: 2,
-                      background: value >= 50 ? '#22c55e' : '#f97316',
-                    }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </details>
-      )}
-
-      {allEventFlags.length > 0 && (
+      {/* The running list of raw flag identifiers is a developer's view of the
+          session, not a player's — "Event flags: honesty_demonstrated,
+          player_demonstrates_knowledge" told the playtester nothing. The
+          per-turn "Something changed" banner already reports the ones that
+          matter in words (issue #501 §2). */}
+      {!isPlain && allEventFlags.length > 0 && (
         <div
           role="status"
           aria-live="polite"
@@ -1301,7 +1435,7 @@ export default function Conversation() {
         >
           <p style={{ margin: '0 0 0.75rem', color: '#a1a1aa' }}>
             Session ended.
-            {endingType ? ` Outcome: ${endingType.replace(/_/g, ' ')}.` : ''}
+            {endingType ? ` Outcome: ${humanizeEndingType(endingType)}.` : ''}
           </p>
           <button
             onClick={() => navigate(`/debrief/${sessionId}`)}

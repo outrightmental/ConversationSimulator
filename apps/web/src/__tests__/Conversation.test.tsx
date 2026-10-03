@@ -23,6 +23,9 @@ vi.mock('../api/client', () => ({
     getScenario: vi.fn(),
     getSetupInstallStatus: vi.fn(),
     getSessionTranscript: vi.fn(),
+    // Resume reads the recorded setup back when there is no route state
+    // (issue #501 §1), which is how most of these tests render the screen.
+    getSession: vi.fn(),
   },
   apiClient: {
     health: vi.fn(),
@@ -127,9 +130,20 @@ function renderConversation(routeState?: Record<string, unknown>) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // Tests that opt into technical wording (or dev mode) write to localStorage,
+  // and jsdom keeps it between tests in the same file — so a later test would
+  // inherit the previous one's wording level.
+  localStorage.clear()
   // Default: connectSession returns a no-op connection; getScenario returns null
   mockApi.connectSession.mockReturnValue({ close: vi.fn() })
   mockApi.getScenario.mockResolvedValue({ ok: true, data: null } as never)
+  // Rendering without route state is the resume path, so the screen asks the
+  // core for the setup it recorded. Default to "unavailable": these tests are
+  // about the conversation, not about what the setup fetch adds.
+  mockApi.getSession.mockResolvedValue({
+    ok: false,
+    error: { kind: 'network', message: 'not mocked' },
+  } as never)
   mockApiClient.uploadAudio.mockResolvedValue({ ok: true, data: { transcript: null, status: 'unavailable' } })
 })
 
@@ -157,10 +171,25 @@ describe('Conversation screen', () => {
       await waitFor(() => expect(screen.getByRole('log')).toBeInTheDocument())
     })
 
-    it('shows the session id in the header', async () => {
+    it('keeps the session id and raw flow state out of the header by default', async () => {
+      // Issue #501 §2: "Session: sess-… | State: PlayerTurnListening" was the
+      // first thing a new player read on this screen.
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
+      renderConversation()
+      await waitFor(() =>
+        expect(screen.getByTestId('conversation-subhead')).toBeInTheDocument(),
+      )
+      expect(screen.queryByText(SESSION_ID)).not.toBeInTheDocument()
+      expect(screen.queryByText('PlayerTurnListening')).not.toBeInTheDocument()
+      expect(screen.getByTestId('conversation-subhead')).toHaveTextContent('Your turn')
+    })
+
+    it('shows the session id and raw flow state at the technical wording level', async () => {
+      localStorage.setItem('convsim.ui.languageLevel', 'technical')
       mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
       renderConversation()
       await waitFor(() => expect(screen.getByText(SESSION_ID)).toBeInTheDocument())
+      expect(screen.getByText('PlayerTurnListening')).toBeInTheDocument()
     })
 
     it('shows an error alert when startSession fails', async () => {
@@ -396,8 +425,8 @@ describe('Conversation screen', () => {
       // The failed message must not linger in the transcript.
       expect(screen.queryByText('This will fail.')).not.toBeInTheDocument()
 
-      // A successful retry should be labelled Turn 2 (opening was Turn 1),
-      // with no gap or duplicate from the rolled-back attempt.
+      // A successful retry is the first whole turn, with no gap or duplicate
+      // from the rolled-back attempt.
       mockApi.submitTurn.mockResolvedValue({ ok: true, data: turnResponse })
       fireEvent.change(screen.getByRole('textbox', { name: /your response/i }), {
         target: { value: 'Retry message.' },
@@ -407,19 +436,45 @@ describe('Conversation screen', () => {
       await waitFor(() =>
         expect(screen.getByText('Retry message.')).toBeInTheDocument(),
       )
-      // Opening=Turn 1, retry player=Turn 2, NPC=Turn 3. The absence of a
-      // Turn 4 confirms the failed attempt did not consume a turn number.
-      expect(screen.getByText('Turn 2')).toBeInTheDocument()
-      expect(screen.queryByText('Turn 4')).not.toBeInTheDocument()
+      // Opening is labelled, the retry's message and the reply to it are both
+      // "Turn 1" (issue #501 §4). The absence of a Turn 2 confirms the failed
+      // attempt did not consume a turn number.
+      expect(screen.getByText('Opening')).toBeInTheDocument()
+      expect(screen.getAllByText('Turn 1')).toHaveLength(2)
+      expect(screen.queryByText('Turn 2')).not.toBeInTheDocument()
     })
 
-    it('shows turn number markers in the transcript', async () => {
+    it('labels the opening rather than numbering it as a turn', async () => {
+      // Issue #501 §4: the opening answers nothing, so it is not half a turn.
       mockApi.submitTurn.mockResolvedValue({ ok: true, data: turnResponse })
       renderConversation()
       await waitFor(() =>
         expect(screen.getByText('Thanks for coming in. Tell me about yourself.')).toBeInTheDocument(),
       )
-      expect(screen.getByText(/Turn 1/)).toBeInTheDocument()
+      expect(screen.getByText('Opening')).toBeInTheDocument()
+      expect(screen.queryByText(/Turn 1/)).not.toBeInTheDocument()
+    })
+
+    it('numbers one player message and the reply to it as a single turn', async () => {
+      mockApi.submitTurn.mockResolvedValue({ ok: true, data: turnResponse })
+      renderConversation()
+      await waitFor(() =>
+        expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument(),
+      )
+      fireEvent.change(screen.getByRole('textbox', { name: /your response/i }), {
+        target: { value: 'I have five years of experience.' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+
+      await waitFor(() =>
+        expect(screen.getByText('Hello there. I am a simulated NPC.')).toBeInTheDocument(),
+      )
+      // Both halves of the exchange carry Turn 1 — which is also what
+      // convsim-core counts in turn_count and what max_turns is measured in.
+      const labels = screen.getAllByText('Turn 1')
+      expect(labels).toHaveLength(2)
+      expect(screen.queryByText('Turn 2')).not.toBeInTheDocument()
+      expect(screen.queryByText('Turn 3')).not.toBeInTheDocument()
     })
 
     it('shows the player message immediately after submit without waiting for REST', async () => {
@@ -561,15 +616,81 @@ describe('Conversation screen', () => {
     })
   })
 
-  describe('state variables panel', () => {
-    it('shows NPC state variables section when show_state_meters is true (default)', async () => {
+  describe('conversation meters', () => {
+    it('shows the meters when show_state_meters is true (default)', async () => {
       mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
       renderConversation()
       await waitFor(() =>
         expect(screen.getByTestId('state-vars')).toBeInTheDocument(),
       )
-      expect(screen.getByTestId('state-vars')).toHaveTextContent('trust')
-      expect(screen.getByTestId('state-vars')).toHaveTextContent('patience')
+      expect(screen.getByTestId('state-vars')).toHaveTextContent('Trust')
+      expect(screen.getByTestId('state-vars')).toHaveTextContent('Patience')
+    })
+
+    it('humanizes snake_case variable names in plain wording', async () => {
+      // Issue #501 §3: "objective_progress" is a YAML key, not a label.
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
+      renderConversation()
+      await waitFor(() => expect(screen.getByTestId('state-vars')).toBeInTheDocument())
+      expect(screen.getByTestId('state-meter-objective_progress')).toHaveTextContent(
+        'Objective progress',
+      )
+    })
+
+    it('keeps the raw variable keys at the technical wording level', async () => {
+      localStorage.setItem('convsim.ui.languageLevel', 'technical')
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
+      renderConversation()
+      await waitFor(() => expect(screen.getByTestId('state-vars')).toBeInTheDocument())
+      expect(screen.getByTestId('state-meter-objective_progress')).toHaveTextContent(
+        'objective_progress',
+      )
+    })
+
+    it('sits above the transcript, where the tutorial says the meters are', async () => {
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
+      renderConversation()
+      await waitFor(() => expect(screen.getByTestId('state-vars')).toBeInTheDocument())
+      const meters = screen.getByTestId('state-vars')
+      const transcript = screen.getByRole('log')
+      // Node.DOCUMENT_POSITION_FOLLOWING === 4: the transcript comes after.
+      expect(meters.compareDocumentPosition(transcript) & 4).toBeTruthy()
+    })
+
+    it('shows how far each meter moved on the latest turn', async () => {
+      // The tutorial says "Engagement just ticked up"; nothing on screen used
+      // to tick (issue #501 §3).
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
+      mockApi.submitTurn.mockResolvedValue({
+        ok: true,
+        data: {
+          ...turnResponse,
+          events: [
+            turnResponse.events[0],
+            {
+              ...turnResponse.events[1],
+              payload: {
+                ...turnResponse.events[1].payload,
+                visible_state: { trust: 60, patience: 75, rapport: 50, openness: 50, objective_progress: 0 },
+              },
+            },
+          ],
+        },
+      })
+      renderConversation()
+      await waitFor(() =>
+        expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument(),
+      )
+      fireEvent.change(screen.getByRole('textbox', { name: /your response/i }), {
+        target: { value: 'Something encouraging.' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+
+      await waitFor(() =>
+        expect(screen.getByTestId('state-meter-delta-trust')).toHaveTextContent('+10'),
+      )
+      // A meter that did not move says nothing.
+      expect(screen.getByTestId('state-meter-delta-patience')).not.toHaveTextContent('+')
     })
 
     it('hides state variables when show_state_meters is false', async () => {
@@ -606,7 +727,39 @@ describe('Conversation screen', () => {
       await waitFor(() =>
         expect(screen.getByTestId('banner-event')).toBeInTheDocument(),
       )
-      expect(screen.getByTestId('banner-event')).toHaveTextContent('rapport_milestone')
+      // Issue #501 §2: "Scenario event: rapport_milestone" is two pieces of
+      // jargon and an identifier. Plain wording says what happened.
+      expect(screen.getByTestId('banner-event')).toHaveTextContent(
+        'Something changed: Rapport milestone',
+      )
+    })
+
+    it('keeps the raw event flags in the banner at the technical level', async () => {
+      localStorage.setItem('convsim.ui.languageLevel', 'technical')
+      let wsCallback: ((event: WsEvent) => void) | null = null
+      mockApi.connectSession.mockImplementation((_id, cb) => {
+        wsCallback = cb
+        return { close: vi.fn() }
+      })
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
+      renderConversation()
+      await waitFor(() => expect(screen.getByTestId('npc-panel')).toBeInTheDocument())
+
+      act(() => {
+        wsCallback?.({
+          type: 'scenario.event',
+          seq: 1,
+          session_id: SESSION_ID,
+          ts: '2026-07-01T00:01:00Z',
+          payload: { flags: ['rapport_milestone'] },
+        })
+      })
+
+      await waitFor(() =>
+        expect(screen.getByTestId('banner-event')).toHaveTextContent(
+          'Scenario event: rapport_milestone',
+        ),
+      )
     })
 
     it('shows a safety redirect banner when websocket delivers safety.redirect', async () => {
@@ -1527,9 +1680,13 @@ describe('Conversation screen', () => {
           ).toBeInTheDocument(),
         )
         expect(screen.queryByRole('alert')).not.toBeInTheDocument()
-        // Server copy is authoritative, so the player turn stays and keeps its number.
+        // Server copy is authoritative, so the player turn stays and keeps its
+        // number — and the server's turn_number is what the whole-turn labels
+        // are derived from, so a reconciled transcript numbers identically to
+        // one built turn by turn (issue #501 §4).
         expect(screen.getByText('My answer.')).toBeInTheDocument()
-        expect(screen.getByText('Turn 3')).toBeInTheDocument()
+        expect(screen.getByText('Opening')).toBeInTheDocument()
+        expect(screen.getAllByText('Turn 1')).toHaveLength(2)
         expect(screen.getByRole('textbox', { name: /your response/i })).not.toBeDisabled()
       } finally {
         vi.useRealTimers()

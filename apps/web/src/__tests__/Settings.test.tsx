@@ -16,6 +16,8 @@ vi.mock('../api/client', () => ({
     getFolders: vi.fn(),
     clearLocalData: vi.fn(),
     listSessions: vi.fn(),
+    // Session rows are labelled by scenario title now, not slug (issue #501 §2).
+    listScenarios: vi.fn(),
     deleteSession: vi.fn(),
     exportSession: vi.fn(),
     getModels: vi.fn(),
@@ -75,6 +77,7 @@ const STUB_RUNTIME_SETTINGS = {
     temperature: null,
     top_p: null,
     repeat_penalty: null,
+    reply_speed: null,
   },
   recommended: {
     context_length: null,
@@ -83,6 +86,7 @@ const STUB_RUNTIME_SETTINGS = {
     temperature: null,
     top_p: null,
     repeat_penalty: null,
+    reply_speed: 'balanced' as const,
   },
   requires_restart: false,
 }
@@ -161,6 +165,7 @@ beforeEach(() => {
   mockApi.getDataFolder.mockResolvedValue({ ok: true, data: { path: '/home/user/.convsim/db' } })
   mockApi.getFolders.mockResolvedValue({ ok: true, data: STUB_FOLDERS })
   mockApi.listSessions.mockResolvedValue({ ok: true, data: { sessions: [] } })
+  mockApi.listScenarios.mockResolvedValue({ ok: true, data: [] })
   mockApi.listPacks.mockResolvedValue({ ok: true, data: { packs: [], total: 0 } })
   mockApi.importPack.mockResolvedValue({ ok: true, data: { pack_id: 'pack-alpha', name: 'Alpha Scenarios', version: '1.0.0', dest: '/tmp/pack-alpha' } })
   mockApi.validatePack.mockResolvedValue({ ok: true, data: { pack_id: 'pack-alpha', valid: true, errors: [] } })

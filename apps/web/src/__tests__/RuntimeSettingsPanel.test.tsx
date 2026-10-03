@@ -48,6 +48,7 @@ function makeSettings(overrides: Partial<RuntimeSettingsResponse> = {}): Runtime
       temperature: null,
       top_p: null,
       repeat_penalty: null,
+      reply_speed: null,
     },
     recommended: {
       context_length: null,
@@ -56,6 +57,7 @@ function makeSettings(overrides: Partial<RuntimeSettingsResponse> = {}): Runtime
       temperature: null,
       top_p: null,
       repeat_penalty: null,
+      reply_speed: null,
     },
     requires_restart: false,
     ...overrides,
@@ -410,6 +412,7 @@ describe('RuntimeSettingsPanel — advanced settings inputs', () => {
         temperature: 0.7,
         top_p: 0.9,
         repeat_penalty: 1.1,
+        reply_speed: null,
       },
     }) })
     await openAdvanced()
@@ -602,7 +605,7 @@ describe('RuntimeSettingsPanel — apply advanced and reset', () => {
 
   it('clears form fields after reset', async () => {
     mockApi.getRuntimeSettings.mockResolvedValue({ ok: true, data: makeSettings({
-      settings: { context_length: 4096, gpu_layers: null, threads: null, temperature: null, top_p: null, repeat_penalty: null },
+      settings: { context_length: 4096, gpu_layers: null, threads: null, temperature: null, top_p: null, repeat_penalty: null, reply_speed: null },
     }) })
     await openAdvanced()
     await waitFor(() => expect(screen.getByRole('spinbutton', { name: /context length/i })).toHaveValue(4096))

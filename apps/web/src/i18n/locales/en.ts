@@ -41,7 +41,15 @@ export const en = {
   },
   // Demo edition (Steam Next Fest demo, issue #495).
   demo: {
-    home: {
+    // "You have a conversation in progress" (issue #501 §1).
+  resume: {
+    label: 'Conversation in progress.',
+    withTurns: '{{title}} — {{count}} turns so far.',
+    withoutTurns: '{{title}} — not started yet.',
+    action: 'Resume',
+    dismiss: 'End it',
+  },
+  home: {
       title: 'Conversation Simulator — Demo',
       tagline: 'Five real conversations. One AI model, running entirely on your computer.',
       noModel: {
@@ -82,7 +90,30 @@ export const en = {
     debrief: {
       backHome: '← Back to conversations',
     },
-    setup: {
+    // The initial LLM-familiarity question and its post-tutorial re-ask
+  // (issue #501 §2). Three answers, two wording levels.
+  familiarity: {
+    question: 'How familiar are you with AI language models?',
+    reaskQuestion: 'Now that you have played a conversation — how should we word things?',
+    reaskHint: 'You can change this any time in Settings.',
+    skip: 'Skip',
+    keep: 'Keep it as it is',
+    new: {
+      label: 'New to this',
+      detail: 'Plain wording',
+    },
+    some: {
+      label: 'I have used AI chat apps',
+      detail: 'Plain wording',
+    },
+    expert: {
+      label: 'I work with them',
+      detail: 'Show technical detail',
+    },
+    appliedPlain: 'Plain wording it is.',
+    appliedTechnical: 'Technical detail is on.',
+  },
+  setup: {
       setMeUpDescription:
         'Downloads the demo\'s AI model ({{size}} GB, {{license}}). Works offline afterwards.',
       badge: 'Demo',
@@ -100,6 +131,7 @@ export const en = {
     title: 'Conversation Simulator',
     tagline: 'Practice interviews, negotiations, language, and difficult conversations.',
     primaryActions: 'Primary actions',
+    resumeScenario: 'Resume your conversation',
     yourTraining: 'Your training',
     training: {
       loading: 'Loading…',
@@ -227,10 +259,50 @@ export const en = {
         "Transcripts will not be saved. This session's conversation cannot be exported or searched after it ends.",
       notSavedWarning: 'Not saved — transcript will be lost when this session ends.',
     },
-    runtime: {
-      heading: 'Runtime',
+    // Plain-language reply pacing (issue #501 §1): "make the model respond
+    // faster" was not an exposed concept anywhere in Settings.
+    replySpeed: {
+      heading: 'Reply speed',
       description:
-        'Select the active AI provider and model. Advanced knobs are hidden by default.',
+        'How much the other person writes each turn. Shorter replies arrive sooner, because your computer writes them one word at a time.',
+      label: 'Reply speed',
+      saving: 'Saving…',
+      saved: 'Saved. Your next message uses the new speed.',
+      noRestart: 'Takes effect on your next message — nothing to restart.',
+      biggerWin:
+        'Still slow? A smaller model is the biggest change you can make.',
+      biggerWinLink: 'Choose a model →',
+      fast: {
+        label: 'Quick replies',
+        detail: 'Shortest answers, least waiting',
+      },
+      balanced: {
+        label: 'Balanced',
+        detail: 'The scenario’s own pacing',
+      },
+      detailed: {
+        label: 'Fuller replies',
+        detail: 'Longer answers, more waiting',
+      },
+    },
+    // The buffer between player-facing and technical language (issue #501 §2).
+    wording: {
+      heading: 'Wording',
+      description:
+        'How much of the machinery the app shows you. Plain wording hides session ids, internal state names and event flags; technical wording puts them back.',
+      plain: {
+        label: 'Plain wording',
+        detail: 'Everyday language only',
+      },
+      technical: {
+        label: 'Technical wording',
+        detail: 'Show ids, states and flags',
+      },
+    },
+    runtime: {
+      heading: 'AI engine',
+      description:
+        'Which AI model answers as the other person. Technical knobs are hidden by default.',
       openModelManagerLink: 'Open model manager →',
       openModelManagerLabel: 'Open model manager',
     },
@@ -308,12 +380,15 @@ export const en = {
     },
     sessions: {
       heading: 'Your sessions',
-      description: 'Export a session as JSON or delete it permanently.',
+      description:
+        'Pick up an unfinished conversation, export a session as JSON, or delete one permanently.',
       loadError: 'Could not load sessions.',
       deleteError: 'Failed to delete session.',
       exportError: 'Failed to export session.',
       loading: 'Loading…',
       noSessions: 'No sessions yet.',
+      resume: 'Resume',
+      resumeLabel: 'Resume session {{id}}',
       export: 'Export',
       exportLabel: 'Export session {{id}}',
       delete: 'Delete',
@@ -463,6 +538,7 @@ export const en = {
       ariaLabel: 'Conversation transcript',
       transcriptOnlyNotice: 'Debrief generation failed. Showing transcript only.',
       turn: 'Turn {{number}}',
+      opening: 'Opening',
       you: 'You',
       npc: 'NPC',
       goToTurn: 'Go to turn {{number}}',

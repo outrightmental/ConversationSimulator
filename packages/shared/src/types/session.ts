@@ -49,10 +49,18 @@ export interface SessionCreateResponse {
   state: SessionState;
   created_at: string;
   setup: SessionCreateRequest;
-  // Included in list responses (GET /api/sessions) but absent from creation responses
   ending_type?: EndingType | null;
+  /** Whole turns completed — one player message plus the NPC's reply. */
   turn_count?: number;
   ended_at?: string | null;
+}
+
+/** Filter for GET /api/sessions. 'in_progress' is the resumable set: started
+ *  and not ended, which is what the resume entry points offer (issue #501). */
+export type SessionListStatus = 'all' | 'in_progress' | 'ended';
+
+export interface SessionListResponse {
+  sessions: SessionCreateResponse[];
 }
 
 export interface SessionEvent {

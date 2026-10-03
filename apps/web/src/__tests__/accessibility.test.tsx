@@ -15,7 +15,7 @@
  */
 import React from 'react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, fireEvent } from '@testing-library/react'
+import { render, fireEvent, screen } from '@testing-library/react'
 import { Link, MemoryRouter, Route, Routes } from 'react-router-dom'
 import axe from 'axe-core'
 
@@ -480,9 +480,11 @@ describe('Accessibility: FirstRunWizard', () => {
         </Routes>
       </MemoryRouter>,
     )
-    // Clicking "Get started" transitions from welcome → loading; getModels is a pending
-    // promise in this test suite so the wizard stays on the loading step.
-    fireEvent.click(container.querySelector('button')!)
+    // Clicking the primary CTA transitions from welcome → loading; getModels is a
+    // pending promise in this test suite so the wizard stays on the loading step.
+    // Targeted by name, not position: the welcome step opens with the
+    // LLM-familiarity question (issue #501 §2).
+    fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
     const newH1 = container.querySelector('h1')
     expect(document.activeElement).toBe(newH1)
   })
@@ -496,7 +498,7 @@ describe('Accessibility: FirstRunWizard', () => {
         </Routes>
       </MemoryRouter>,
     )
-    fireEvent.click(container.querySelector('button')!)
+    fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
     const busyEl = container.querySelector('[aria-busy="true"]')
     expect(busyEl).not.toBeNull()
   })
@@ -563,7 +565,7 @@ describe('Accessibility: FirstRunWizard', () => {
 
     // Click "Set me up" — with an empty registry there is no starter model,
     // so the loading step falls back to the choose step.
-    fireEvent.click(container.querySelector('button')!)
+    fireEvent.click(screen.getByRole('button', { name: /set me up/i }))
 
     // Wait for the choose step to appear.
     await vi.waitFor(() => {

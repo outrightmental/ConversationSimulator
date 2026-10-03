@@ -18,6 +18,8 @@ import type {
   PackValidationResult,
   SessionCreateRequest,
   SessionCreateResponse,
+  SessionListResponse,
+  SessionListStatus,
   SessionStartResponse,
   TurnResponse,
   SessionEndResponse,
@@ -468,8 +470,24 @@ export const api = {
   validatePack(packId: string): Promise<ApiResult<PackValidationResult>> {
     return post<PackValidationResult>(`/packs/${packId}/validate`)
   },
-  listSessions(): Promise<ApiResult<{ sessions: SessionCreateResponse[] }>> {
-    return get<{ sessions: SessionCreateResponse[] }>('/sessions')
+  /** Sessions in this profile, newest first.
+   *  `status: 'in_progress'` is the resumable set — started and not ended —
+   *  which is what the resume entry points offer (issue #501). */
+  listSessions(
+    status: SessionListStatus = 'all',
+    limit?: number,
+  ): Promise<ApiResult<SessionListResponse>> {
+    const params = new URLSearchParams()
+    if (status !== 'all') params.set('status', status)
+    if (limit != null) params.set('limit', String(limit))
+    const query = params.toString()
+    return get<SessionListResponse>(`/sessions${query ? `?${query}` : ''}`)
+  },
+  /** One session's row, including the setup it was created with. Resuming reads
+   *  the setup back from here when the launch-time route state is gone — after
+   *  navigating away, a reload, or a relaunch (issue #501). */
+  getSession(sessionId: string): Promise<ApiResult<SessionCreateResponse>> {
+    return get<SessionCreateResponse>(`/sessions/${sessionId}`)
   },
   getLogbookProfile(): Promise<ApiResult<LogbookProfile>> {
     return get<LogbookProfile>('/logbook/profile')
