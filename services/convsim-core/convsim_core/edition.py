@@ -214,9 +214,12 @@ def require_demo_model_path(conn: sqlite3.Connection, config: Any, model_path: O
         return
     raise ConvsimError(
         EDITION_RESTRICTED,
+        # "the larger model tiers": the registry's `lightweight` tier sits below
+        # the starter, so a demo pinned to it would make a named list of what the
+        # full version adds wrong by omitting the starter.
         "Only the demo's own AI model can be used in the demo edition. The full "
-        "version of Conversation Simulator adds the standard and high-quality "
-        "tiers, Ollama, and your own GGUF files.",
+        "version of Conversation Simulator adds the larger model tiers, Ollama, "
+        "and your own GGUF files.",
         status_code=403,
     )
 

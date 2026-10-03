@@ -38,7 +38,7 @@ both of those resolve "the starter tier", so a second one would make the pick
 depend on file order (`test_exactly_one_starter_tier` enforces it).
 
 **Lightweight** is the tier below it: the shortest download, and the only entry
-that fits in VRAM on a sub-4 GB-VRAM or integrated-graphics machine (nothing
+that fits in VRAM on a 3 GB-VRAM or integrated-graphics machine (nothing
 refuses such a machine the starter — llama.cpp offloads what fits and runs the
 rest on the CPU — but that is minute-long turns) — at a cost in NPC coherence,
 because a 1.7B model is less consistent than the 4B at the structured output an

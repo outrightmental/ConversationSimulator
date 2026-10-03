@@ -223,8 +223,12 @@ def _require_demo_model(request: Request, registry_id: str) -> None:
             code=EDITION_RESTRICTED,
             message=(
                 f"Model '{registry_id}' is not available in the demo edition. "
+                # "the larger model tiers", not "the standard and high-quality
+                # tiers": the registry now has a `lightweight` tier below the
+                # starter, and a demo pinned to it (CONVSIM_DEMO_MODEL_ID) would
+                # make the named list wrong by omitting the starter.
                 "The demo installs one curated model; the full version of "
-                "Conversation Simulator adds the standard and high-quality tiers, "
+                "Conversation Simulator adds the larger model tiers, "
                 "Ollama, and your own GGUF files."
             ),
             status_code=403,

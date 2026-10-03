@@ -88,7 +88,7 @@ better end of the trade anyway: Q8_0 is near-lossless, so the risk is purely
 1.8 GB it is still a 28 % shorter first download than the starter, and its 3 GB
 VRAM floor (1.83 GB of weights plus 0.94 GB of KV cache at the entry's 8192-token
 context) makes it the only entry in the registry that fits in VRAM on an
-integrated-graphics or sub-4 GB-GPU machine. Nothing refuses such a player the
+integrated-graphics or 3 GB-GPU machine. Nothing refuses such a player the
 starter today — the install card warns about the VRAM floor but does not block,
 and llama.cpp offloads the layers that fit and runs the rest on the CPU — but a
 partially offloaded 4B is minute-long turns, which loses the demo as surely as
