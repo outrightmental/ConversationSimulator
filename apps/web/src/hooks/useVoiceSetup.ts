@@ -14,7 +14,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api/client'
 import type { ApiError } from '../api/errors'
-import type { VoiceInstallJob, VoiceSetupPlan } from '@convsim/shared'
+import type { StartVoiceEngineResponse, VoiceInstallJob, VoiceSetupPlan } from '@convsim/shared'
 
 const POLL_INTERVAL_MS = 1000
 const TERMINAL = new Set(['complete', 'failed', 'cancelled'])
@@ -25,8 +25,14 @@ export interface UseVoiceSetupReturn {
   loading: boolean
   job: VoiceInstallJob | null
   actionError: ApiError | null
-  /** Message from the last engine-start attempt, success or failure. */
-  engineMessage: string | null
+  /**
+   * The last engine-start attempt, verbatim. The endpoint answers 200 with
+   * `started: false` when a binary is missing, a port is taken or the server is
+   * slow to come up — actionable reasons the router deliberately returns rather
+   * than 500ing — so the caller needs the whole response, not just `message`,
+   * to tell a launch from a refusal.
+   */
+  engineResult: StartVoiceEngineResponse | null
   busy: boolean
   refresh: () => void
   startInstall: (assetIds: string[]) => Promise<void>
@@ -41,7 +47,7 @@ export function useVoiceSetup(): UseVoiceSetupReturn {
   const [jobId, setJobId] = useState<number | null>(null)
   const [job, setJob] = useState<VoiceInstallJob | null>(null)
   const [actionError, setActionError] = useState<ApiError | null>(null)
-  const [engineMessage, setEngineMessage] = useState<string | null>(null)
+  const [engineResult, setEngineResult] = useState<StartVoiceEngineResponse | null>(null)
   const [busy, setBusy] = useState(false)
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -128,10 +134,10 @@ export function useVoiceSetup(): UseVoiceSetupReturn {
   const startEngine = useCallback(async (engineId: string) => {
     setBusy(true)
     setActionError(null)
-    setEngineMessage(null)
+    setEngineResult(null)
     const r = await api.startVoiceEngine(engineId)
     if (r.ok) {
-      setEngineMessage(r.data.message)
+      setEngineResult(r.data)
       refresh()
     } else {
       setActionError(r.error)
@@ -145,7 +151,7 @@ export function useVoiceSetup(): UseVoiceSetupReturn {
     loading,
     job,
     actionError,
-    engineMessage,
+    engineResult,
     busy,
     refresh,
     startInstall,

@@ -452,7 +452,7 @@ export default function VoiceSetup() {
     loading,
     job,
     actionError,
-    engineMessage,
+    engineResult,
     busy,
     refresh,
     startInstall,
@@ -516,6 +516,14 @@ export default function VoiceSetup() {
     const ids = pendingAssets.map((a) => a.id)
     return switchTo != null && !ids.includes(switchTo.id) ? [switchTo.id, ...ids] : ids
   }, [pendingAssets, switchTo])
+
+  // `started: false` is how the endpoint reports a missing binary, a taken port
+  // or a start that timed out — a 200 carrying a reason, not a 500. Showing that
+  // in success green would have the banner contradict the amber row right below
+  // it. "The voice server is already running." is also `started: false` and is
+  // not a failure, so the state has to be consulted too.
+  const engineStartFailed =
+    engineResult != null && !engineResult.started && engineResult.state !== 'running'
 
   const capabilities = plan?.capabilities ?? []
   const readyCount = capabilities.filter((c) => c.ready).length
@@ -600,13 +608,17 @@ export default function VoiceSetup() {
         {readyCount} of {capabilities.length} voice features ready
       </p>
 
-      {engineMessage != null && (
+      {engineResult != null && (
         <p
-          role="status"
+          role={engineStartFailed ? 'alert' : 'status'}
           data-testid="engine-message"
-          style={{ margin: 0, fontSize: '0.85rem', color: '#86efac' }}
+          style={{
+            margin: 0,
+            fontSize: '0.85rem',
+            color: engineStartFailed ? '#fbbf24' : '#86efac',
+          }}
         >
-          {engineMessage}
+          {engineResult.message}
         </p>
       )}
 

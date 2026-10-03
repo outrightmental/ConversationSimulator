@@ -266,6 +266,60 @@ describe('VoiceSetup — what is missing', () => {
     expect(await screen.findByTestId('engine-message')).toHaveTextContent('voice server is running')
   })
 
+  it('reports a start that did not work as a problem, not a success', async () => {
+    // The endpoint answers 200 with started:false and the reason — a missing
+    // binary, a taken port, a start that timed out — rather than 500ing, so
+    // `ok` alone says nothing about whether the server came up. Announcing it
+    // in success green would leave the banner contradicting the amber row
+    // directly beneath it, on the screen built to stop exactly that.
+    mockApi.startVoiceEngine.mockResolvedValue({
+      ok: true,
+      data: {
+        engine_id: 'kokoro-server',
+        state: 'stopped',
+        started: false,
+        message: 'Port 7358 is already in use.',
+      },
+    })
+    const plan = makePlan()
+    plan.engines[1] = { ...plan.engines[1], installed: true, found_at: '/usr/local/bin/kokoro-server' }
+    mockApi.getVoiceSetupPlan.mockResolvedValue({ ok: true, data: plan })
+
+    renderScreen()
+    await screen.findByTestId('voice-setup-screen')
+    fireEvent.click(await screen.findByTestId('engine-start-kokoro-server'))
+
+    const message = await screen.findByTestId('engine-message')
+    expect(message).toHaveTextContent('Port 7358 is already in use.')
+    expect(message).toHaveAttribute('role', 'alert')
+  })
+
+  it('leaves "already running" as information rather than a failure', async () => {
+    // started:false with the server up is the one benign case: nothing was
+    // launched because nothing needed to be.
+    mockApi.startVoiceEngine.mockResolvedValue({
+      ok: true,
+      data: {
+        engine_id: 'kokoro-server',
+        state: 'running',
+        started: false,
+        message: 'The voice server is already running.',
+      },
+    })
+    const plan = makePlan()
+    plan.engines[1] = { ...plan.engines[1], installed: true, found_at: '/usr/local/bin/kokoro-server' }
+    plan.kokoro_state = 'stopped'
+    mockApi.getVoiceSetupPlan.mockResolvedValue({ ok: true, data: plan })
+
+    renderScreen()
+    await screen.findByTestId('voice-setup-screen')
+    fireEvent.click(await screen.findByTestId('engine-start-kokoro-server'))
+
+    const message = await screen.findByTestId('engine-message')
+    expect(message).toHaveTextContent('already running')
+    expect(message).toHaveAttribute('role', 'status')
+  })
+
   it('does not offer to start an engine that is not installed', async () => {
     renderScreen()
     await screen.findByTestId('voice-setup-screen')
