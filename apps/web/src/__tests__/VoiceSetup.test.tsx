@@ -429,6 +429,30 @@ describe('VoiceSetup — download disclosure', () => {
     )
   })
 
+  it('re-points at a model already on disk instead of re-downloading the recommendation', async () => {
+    // The state a cancelled job leaves behind: the speech model the player
+    // chose finished downloading, the stage after it was cancelled, so nothing
+    // was persisted and no asset comes back selected. Quoting a fresh download
+    // for the recommendation here would charge the player twice for a model
+    // they already have.
+    const plan = makePlan()
+    plan.assets = plan.assets.map((a) =>
+      a.id === 'whisper-base-en' ? a : { ...a, installed: true },
+    )
+    mockApi.getVoiceSetupPlan.mockResolvedValue({ ok: true, data: plan })
+
+    renderScreen()
+    const button = await screen.findByTestId('voice-install-start')
+
+    expect(button).toHaveTextContent('Use Whisper small.en')
+    expect(screen.queryByTestId('voice-disclosure')).toBeNull()
+
+    fireEvent.click(button)
+    await waitFor(() =>
+      expect(mockApi.startVoiceInstall).toHaveBeenCalledWith(['whisper-small-en']),
+    )
+  })
+
   it('offers nothing to download once every asset is installed and in use', async () => {
     const plan = makePlan()
     plan.assets = plan.assets.map((a) => ({

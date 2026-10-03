@@ -467,12 +467,24 @@ export default function VoiceSetup() {
     [plan],
   )
 
-  // Default the picker to what is already in use, else the recommendation.
+  // Default the picker to what is already in use, then to anything already on
+  // disk, then to the recommendation.
+  //
+  // The middle step is what stops the screen offering a download it does not
+  // need. A model can be present without being the file the engine reads:
+  // cancel the VAD stage of a job whose speech model had already landed and the
+  // weights are on disk, but a cancelled job persists no choice, so no asset
+  // comes back selected. Defaulting straight to the recommendation there would
+  // quote a fresh ~141 MB for base.en beside a perfectly good small.en the
+  // player has already waited for. Preferring the installed one turns the
+  // primary button into "Use Whisper small.en", which fetches nothing and only
+  // re-points the worker.
   useEffect(() => {
     if (sttChoice != null || sttAssets.length === 0) return
     const inUse = sttAssets.find((a) => a.selected)
+    const onDisk = sttAssets.find((a) => a.installed)
     const recommended = sttAssets.find((a) => a.recommended)
-    setSttChoice((inUse ?? recommended ?? sttAssets[0]).id)
+    setSttChoice((inUse ?? onDisk ?? recommended ?? sttAssets[0]).id)
   }, [sttAssets, sttChoice])
 
   const installing = job != null && RUNNING_STATES.has(job.status)
