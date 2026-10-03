@@ -515,8 +515,22 @@ reconcile the two, because `craft.second_person` reads pronouns and so cannot
 tell "aimed at nobody" from "addressed by name" — `whitechapel_rose/vocative_no_pronoun`
 is the counter-example that makes capping sting on it the wrong fix.
 
-Two limitations the measurement exposed are worth knowing before reading a
-scorecard, because neither is a bug:
+**A reference volley is measured in isolation**, which is what makes a recorded
+band reproducible: a suite is a set of independent measurements, not a replay of
+a session. So no run-dependent input is present — no prior volleys (freshness is
+measured against the cliché corpus alone), no session theme record (theme decay
+never applies), no device-rotation window, and no discovery ledger. The last of
+those has a visible consequence: eight reference volleys across four suites exist
+to strike a *discoverable* trait, and their bands are the **undoubled** numbers,
+because `HookClaim.discovered` is false with no ledger to consult. The judged
+tier therefore cannot catch a regression in the ×2 discovery bonus —
+`test_flyting_scoring.py` covers that directly instead — and each of the eight
+notes says so where the band is recorded. Supplying an empty ledger would
+exercise it and would raise all eight bands by roughly the first hook's bonus
+again, which is a re-measurement against a real model rather than an edit.
+
+Two further limitations the measurement exposed are worth knowing before reading
+a scorecard, because neither is a bug:
 
 - A small judge rewards a **well-made line aimed at nobody**. The engine flags
   `no_aim`, the debrief says "*n* volleys never pointed at anyone", and the
