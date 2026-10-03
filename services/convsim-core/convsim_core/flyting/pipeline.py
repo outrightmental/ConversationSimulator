@@ -58,7 +58,7 @@ from convsim_core.flyting.session import (
     resolve_exchange,
     shot_clock_expired,
 )
-from convsim_core.flyting.volley import VolleyInputError
+from convsim_core.flyting.volley import VolleyInputError, normalize_volley_text
 from convsim_core.runtime.base import ChatRuntime
 from convsim_core.runtime.types import ChatFinal, ChatMessage, ChatRequest, ChatToken
 from convsim_core.scenario_state import ScenarioVariableDef
@@ -346,8 +346,21 @@ async def process_volley(
     # back to, and the one the judge was then told the callback had to be among.
     # The same slip fires inside a bout whenever the opponent's last volley
     # scored nothing, since ``volley_texts`` keeps only what scored.
+    # Compared after normalisation, because the two stores hold the same line in
+    # two forms: the turn row keeps what ``clean_opponent_line`` produced, and
+    # the volley row keeps ``analyze_volley``'s normalisation of it — repeated
+    # punctuation collapsed, runs of whitespace squeezed. A model taunt with
+    # "Ha!!" or a double space in it therefore failed a raw identity test, and
+    # the opponent's own last line went up twice: once as ``opponent_last_line``
+    # and again inside the callback window, which is the one thing this is here
+    # to prevent. A judge handed the same text under both headings can pay the
+    # riposte bonus and the callback bonus for the same reference.
     window = list(prior_texts[-_CALLBACK_WINDOW:])
-    if npc_last_line is not None and window and window[-1] == npc_last_line:
+    if (
+        npc_last_line is not None
+        and window
+        and window[-1] == normalize_volley_text(npc_last_line)
+    ):
         window.pop()
     earlier = window
 

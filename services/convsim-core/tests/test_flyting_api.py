@@ -796,6 +796,56 @@ class TestTheBout:
         assert "callback" in npc_bonuses, second["npc_volley"]["composition"]
         assert "callback" not in player_bonuses, second["player_volley"]["composition"]
 
+    def test_the_opponents_last_line_is_not_quoted_to_the_judge_twice(
+        self, client, monkeypatch
+    ):
+        """The callback window must drop the line that goes up as the riposte target.
+
+        The two stores keep the same opponent line in two forms: the turn row
+        holds what ``clean_opponent_line`` produced, the volley row holds
+        ``analyze_volley``'s normalisation of it. So a taunt containing "Ha!!"
+        or a double space failed a raw identity comparison, and the opponent's
+        own last line reached the judge twice — once as ``opponent_last_line``
+        and again inside ``earlier_exchanges``. That asks the judge to tell a
+        riposte from a callback against one text, and it can pay both bonuses
+        for the same reference.
+        """
+        from convsim_core.flyting import pipeline as pipeline_module
+        from convsim_core.flyting.volley import normalize_volley_text
+
+        noisy = "Ha!!  You speak of charters??  I have  outlived better tongues!!"
+
+        async def _fake_opponent_line(runtime, **kwargs):
+            return noisy
+
+        monkeypatch.setattr(pipeline_module, "_opponent_line", _fake_opponent_line)
+
+        seen: list[list[str]] = []
+        real_judge = pipeline_module.judge_volley
+
+        async def _spy(prepared, service, runtime, **kwargs):
+            if kwargs.get("speaker") == "player":
+                seen.append(list(kwargs.get("earlier_exchanges") or ()))
+            return await real_judge(prepared, service, runtime, **kwargs)
+
+        monkeypatch.setattr(pipeline_module, "judge_volley", _spy)
+
+        session_id = start_run(
+            client, scenario_id=BOUT_SCENARIO, play_format="bout", batting_format=None
+        )
+        volley(client, session_id, "Read us the charter, Captain. Slowly, and twice.")
+        volley(client, session_id, "Your charter is a rag, and your crew reads it to the gulls.")
+
+        assert len(seen) == 2, seen
+        window = seen[1]
+        # The opponent's line is the riposte target, so it must not also be in
+        # the callback window — in either of the forms the two stores hold.
+        assert noisy not in window
+        assert normalize_volley_text(noisy) not in window
+        # The player's own first volley is still there, which is what the window
+        # is for.
+        assert any("charter" in line and "Slowly" in line for line in window), window
+
     def test_momentum_is_mirrored_into_the_ordinary_state_meters(self, client):
         session_id = start_run(client, scenario_id=BOUT_SCENARIO, play_format="bout",
                                batting_format=None)
