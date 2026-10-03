@@ -1494,7 +1494,15 @@ export default function CreatorWorkbench() {
   // Refresh the pack's validation state. Surfaces service errors (network
   // failures, unexpected backend responses) separately from pack findings so
   // creators can distinguish "my pack has issues" from "the validator is down".
-  const refreshValidation = useCallback(async (pack: WorkbenchPack) => {
+  //
+  // `counted` marks the runs STAT_PACKS_VALIDATED is defined against: the ones
+  // the player asked for by pressing Revalidate. The automatic run on pack
+  // selection shares this function and must stay uncounted, or merely browsing
+  // the pack list would inflate the stat.
+  const refreshValidation = useCallback(async (
+    pack: WorkbenchPack,
+    { counted = false }: { counted?: boolean } = {},
+  ) => {
     setValidationLoading(true)
     setValidationServiceError(null)
     const r = await api.workbench.validate(pack.kind, pack.slug)
@@ -1503,6 +1511,7 @@ export default function CreatorWorkbench() {
       setValidationServiceError(r.error)
     } else if (isValidation(r.data)) {
       setValidation(r.data)
+      if (counted) void incrementStat(SteamStat.PACKS_VALIDATED)
       // ACH_CREATOR_FIRST_VALIDATE is about the player's OWN pack passing, so an
       // official read-only pack validating cleanly on selection must not grant
       // it — only an editable (local-dev) pack counts.
@@ -1514,7 +1523,7 @@ export default function CreatorWorkbench() {
       setValidationServiceError({ kind: 'schema-mismatch', message: 'Validator returned an unexpected response.' })
     }
     setValidationLoading(false)
-  }, [unlock])
+  }, [unlock, incrementStat])
 
   async function handleSelectPack(pack: WorkbenchPack) {
     if (isDirty && !window.confirm('You have unsaved changes. Discard them?')) return
@@ -1693,7 +1702,7 @@ export default function CreatorWorkbench() {
           loading={validationLoading}
           serviceError={validationServiceError}
           onSelectFile={handleSelectFile}
-          onRefresh={() => { void refreshValidation(selectedPack) }}
+          onRefresh={() => { void refreshValidation(selectedPack, { counted: true }) }}
         />
       )}
 

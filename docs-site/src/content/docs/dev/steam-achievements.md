@@ -227,7 +227,7 @@ Configure these in the **Steamworks App Admin → Stats** tab. All stats are
 |---|---|---|
 | Scenarios Completed | `STAT_SCENARIOS_COMPLETED` | Session ends (player ends a scenario or it completes naturally). |
 | Debriefs Generated | `STAT_DEBRIEFS_GENERATED` | Debrief screen is displayed with generated content. |
-| Packs Validated | `STAT_PACKS_VALIDATED` | A player-initiated `validate-pack` run reports a result — a workbench save, or the library's per-pack validate button. The automatic validation on pack selection is not counted, so merely browsing does not inflate it. |
+| Packs Validated | `STAT_PACKS_VALIDATED` | A player-initiated `validate-pack` run reports a result — a workbench save, the workbench's **Revalidate** button, or the library's per-pack validate button. The automatic validation on pack selection is not counted, so merely browsing does not inflate it. |
 | Text Mode Sessions | `STAT_TEXT_MODE_SESSIONS` | Session starts in text input mode. |
 | Voice Mode Sessions | `STAT_VOICE_MODE_SESSIONS` | Session starts in voice input mode. |
 | Voice Turns | `STAT_VOICE_TURNS` | Player confirms a spoken turn. |

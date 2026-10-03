@@ -1106,6 +1106,20 @@ describe('CreatorWorkbench — Steam achievement call sites', () => {
     expect(mockIncrementStat).toHaveBeenCalledWith('STAT_PACKS_VALIDATED')
   })
 
+  it('counts the validation run behind the Revalidate button, but not the one on select', async () => {
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+    // Selecting a pack validates it automatically — that run is not the
+    // player asking for one, so it must not reach the stat.
+    await waitFor(() => expect(vi.mocked(api.workbench.validate)).toHaveBeenCalled())
+    expect(mockIncrementStat).not.toHaveBeenCalledWith('STAT_PACKS_VALIDATED')
+
+    fireEvent.click(await screen.findByRole('button', { name: /revalidate pack/i }))
+    await waitFor(() =>
+      expect(mockIncrementStat).toHaveBeenCalledWith('STAT_PACKS_VALIDATED'),
+    )
+  })
+
   it('grants the fork achievement when an official pack is copied to local-dev', async () => {
     vi.mocked(api.workbench.readFile).mockResolvedValue({
       ok: true,
