@@ -158,6 +158,17 @@ slur, and "you lot are all talk" is British for "all of you". Every one of
 those belongs to a register the launch pack is written in; a missed slur is
 still caught by the judge, and a false one takes somebody's session away.
 
+The profanity gate draws the same line, because it enforces a *pack's* "no
+profanity" setting and the launch pack's own policy says what that is for:
+"swearing is the admission that you could not find the word". A prick is also a
+puncture ("your conscience pricks you", "a prick of the needle"), and a bastard
+is also an illegitimate child — which is the literal subject of The Scorned
+Rose of Whitechapel, where "you left her with a bastard and a bill" is the
+volley the scenario is written for. Both are fouled as the epithet and passed as
+the noun: the epithet has nothing but adjectives between the second person and
+the word, while the noun belongs to somebody else's clause and such a clause
+always says whose.
+
 Plagiarism detection is two-part and ships no copyrighted text: keyword
 *signatures* for modern taunts, plus lexical near-identity against a bundled
 corpus of stock forms and public-domain greatest hits. Quoting a famous taunt at

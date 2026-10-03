@@ -289,8 +289,30 @@ _PROFANITY_PATTERN = _compile(
     r"\bbollocks\b",
     r"\bdickhead?s?\b",
     r"\btwats?\b",
-    r"\bpr[i1]cks?\b",
-    r"\bbastards?\b",
+    # This gate enforces a pack's "no profanity" setting, and the launch pack's
+    # own policy says what that is for: "swearing is the admission that you
+    # could not find the word". Two of these words have everyday senses that
+    # are not swearing at all, and both belong to the register of The Scorned
+    # Rose of Whitechapel.
+    #
+    # A prick is a puncture, and "pricks" is a verb that takes an object: "your
+    # conscience pricks you, I hope", "a prick of the needle would do your
+    # conscience good". The epithet takes neither.
+    r"\bpr[i1]cks?\b(?!\s+(?:of|at|up|you|your|his|her|its|their|my|our|the|a|an)\b)",
+    # And a bastard is an illegitimate child, which is the literal subject of
+    # that scenario: "you left her with a bastard and a bill, and called it
+    # charity" is the volley the pack is written for, not a swear word.
+    #
+    # The epithet is aimed at the person spoken to, and nothing stands between
+    # the second person and the word but adjectives — "you absolute bastard",
+    # "you are a damned thieving bastard". The noun belongs to somebody else's
+    # clause, and such a clause always says whose: "her bastard has your chin",
+    # "you paid for his bastard", "the parish keeps a bastard cheaper than you
+    # keep a carriage". So a preposition or a third-person pronoun in between is
+    # the giveaway, and that is what this refuses to cross.
+    r"\b(?:you|ye|thou|yer)\b"
+    r"(?:\s+(?!(?:with|for|to|of|by|from|on|in|at|her|his|their|him|them|its)\b)\w+)*?"
+    r"\s+b[a@]stards?\b",
     r"\bpiss(?:ing|ed)?\b",
 )
 

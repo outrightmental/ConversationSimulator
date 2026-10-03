@@ -567,6 +567,34 @@ class TestPackPolicyGates:
         result = gate("You absolute bastard of a man.", policy=PROFANITY_OK_POLICY)
         assert result.outcome is GateOutcome.OK
 
+    # The pack's own policy says what this gate is for: "swearing is the
+    # admission that you could not find the word". Two of the listed words have
+    # everyday senses that are not swearing, and both belong to the register of
+    # The Scorned Rose of Whitechapel.
+    @pytest.mark.parametrize("text", [
+        "Your conscience pricks you, I hope, though I doubt it reaches.",
+        "A prick of the needle would do your conscience good.",
+        "You left her with a bastard and a bill, and called it charity.",
+        "Her bastard has your chin and none of your luck.",
+        "The parish keeps a bastard cheaper than you keep a carriage.",
+        "You paid for his bastard and called it a charity.",
+        "You sent money to her bastard once, in eleven years.",
+    ])
+    def test_an_everyday_sense_is_not_swearing(self, text):
+        assert gate(text).outcome is GateOutcome.OK, "an ordinary line was fouled"
+
+    @pytest.mark.parametrize("text", [
+        "You are a prick and a coward.",
+        "You prick.",
+        "You absolute bastard.",
+        "You are a bastard, sir.",
+        "You bastards on these steps are all the same breed.",
+        "You are a damned thieving bastard, Captain, and the dock knows it.",
+        "You are nothing but a bastard.",
+    ])
+    def test_the_epithet_is_still_a_foul(self, text):
+        assert gate(text).foul is Foul.OVERT_RUDENESS, f"not caught: {text}"
+
     def test_forbidden_anachronism_is_a_foul(self):
         lexicon = LexiconConfig(discouraged=("podcast",), anachronism_policy="forbid")
         result = gate("Your opinions belong on a podcast, sir, not in this club.", lexicon=lexicon)
