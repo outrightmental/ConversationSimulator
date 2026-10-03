@@ -200,6 +200,59 @@ describe('VoiceSetup — what is missing', () => {
     }
   })
 
+  it('counts one speech model as one step, not four', async () => {
+    // Exactly one whisper model is needed. Giving every option a checklist row
+    // would put three amber "not installed" lines above a button offering to
+    // download 143 MB, and leave three of them under a green "Ready" heading
+    // once one model was installed — the screen restating a problem that is
+    // not there, which is the dead end issue #487 was filed about.
+    renderScreen()
+    await screen.findByTestId('voice-setup-screen')
+
+    expect(screen.getByTestId('asset-row-whisper-base-en')).toBeInTheDocument()
+    expect(screen.queryByTestId('asset-row-whisper-small-en')).not.toBeInTheDocument()
+
+    // Nothing is hidden: the picker still names every option with its size.
+    const picker = screen.getByLabelText('Speech-to-text model')
+    expect(picker).toHaveTextContent('Whisper base.en')
+    expect(picker).toHaveTextContent('Whisper small.en')
+  })
+
+  it('keeps a row for a model on disk that is not the one in use', async () => {
+    // Two models installed is a real state — the player downloaded one, then
+    // switched — and both are honestly "installed", so both stay visible.
+    const plan = makePlan()
+    plan.assets = plan.assets.map((a) =>
+      a.id === 'whisper-base-en' ? { ...a, installed: true, selected: true } : { ...a, installed: true },
+    )
+    mockApi.getVoiceSetupPlan.mockResolvedValue({ ok: true, data: plan })
+
+    renderScreen()
+    await screen.findByTestId('voice-setup-screen')
+
+    expect(screen.getByTestId('asset-row-whisper-base-en')).toHaveTextContent('installed, in use')
+    expect(screen.getByTestId('asset-row-whisper-small-en')).toHaveTextContent('installed')
+  })
+
+  it('renders a multi-line install command as separate lines', async () => {
+    // Windows PowerShell 5.1 has no `&&`, so the source build arrives
+    // newline-separated. Collapsing it on screen would show one line nobody
+    // can run.
+    const plan = makePlan({ platform: 'win32' })
+    plan.engines[0] = {
+      ...plan.engines[0],
+      command: 'git clone https://github.com/ggml-org/whisper.cpp\ncmake --build build',
+    }
+    mockApi.getVoiceSetupPlan.mockResolvedValue({ ok: true, data: plan })
+
+    renderScreen()
+    const row = await screen.findByTestId('engine-row-whisper-cli')
+    const code = row.querySelector('code')
+    expect(code).not.toBeNull()
+    expect(code!.textContent).toContain('\n')
+    expect(getComputedStyle(code!).whiteSpace).toBe('pre-wrap')
+  })
+
   it('shows the per-platform command for an engine it will not download', async () => {
     renderScreen()
     await screen.findByTestId('voice-setup-screen')
@@ -707,9 +760,11 @@ describe('VoiceSetup — the microphone', () => {
     expect(await screen.findByTestId('mic-test-result')).toHaveTextContent('No speech was detected')
   })
 
-  it('points at the right culprit when the worker refuses the audio', async () => {
+  it('points at ffmpeg when the worker refuses the audio and ffmpeg is missing', async () => {
     vi.mocked(useMicCapture).mockReturnValue(makeMicState({ permission: 'granted' }))
-    mockApi.getVoiceSetupPlan.mockResolvedValue({ ok: true, data: readyPlan() })
+    const plan = readyPlan()
+    plan.ffmpeg_installed = false
+    mockApi.getVoiceSetupPlan.mockResolvedValue({ ok: true, data: plan })
     mockApiClient.uploadAudio.mockResolvedValue({
       ok: true,
       data: { transcript: null, status: 'error' },
@@ -719,6 +774,32 @@ describe('VoiceSetup — the microphone', () => {
     fireEvent.click(await screen.findByTestId('mic-test-start'))
     await finishRecording()
 
-    expect(await screen.findByTestId('mic-test-result')).toHaveTextContent('ffmpeg')
+    const result = await screen.findByTestId('mic-test-result')
+    expect(result).toHaveTextContent('ffmpeg is the usual culprit')
+    // The row it sends the player to has to actually be on the screen.
+    expect(screen.getByText(/browser records WebM/)).toBeInTheDocument()
+  })
+
+  it('does not send the player to an ffmpeg row that is not rendered', async () => {
+    // The ffmpeg card only exists while ffmpeg is missing, so blaming it
+    // unconditionally would have the screen name a row it is not showing —
+    // on the screen whose whole job is telling the player the truth about
+    // what is installed.
+    vi.mocked(useMicCapture).mockReturnValue(makeMicState({ permission: 'granted' }))
+    const plan = readyPlan()
+    plan.ffmpeg_installed = true
+    mockApi.getVoiceSetupPlan.mockResolvedValue({ ok: true, data: plan })
+    mockApiClient.uploadAudio.mockResolvedValue({
+      ok: true,
+      data: { transcript: null, status: 'error' },
+    })
+
+    renderScreen()
+    fireEvent.click(await screen.findByTestId('mic-test-start'))
+    await finishRecording()
+
+    const result = await screen.findByTestId('mic-test-result')
+    expect(result).not.toHaveTextContent('check its row below')
+    expect(result).toHaveTextContent('speech model is the likely culprit')
   })
 })

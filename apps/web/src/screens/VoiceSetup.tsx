@@ -122,6 +122,12 @@ function SecondaryButton({
   )
 }
 
+/**
+ * A copyable install command. Some are more than one line — Windows PowerShell
+ * 5.1 has no `&&`, so the source build is handed over newline-separated — and
+ * `pre-wrap` is what keeps those lines apart on screen instead of running them
+ * together into one unrunnable string.
+ */
 function CommandBlock({ command, label }: { command: string; label: string }) {
   const [copied, setCopied] = useState(false)
 
@@ -147,6 +153,7 @@ function CommandBlock({ command, label }: { command: string; label: string }) {
           borderRadius: '4px',
           fontSize: '0.8rem',
           wordBreak: 'break-all',
+          whiteSpace: 'pre-wrap',
           color: '#d4d4d8',
         }}
       >
@@ -316,7 +323,13 @@ const MIC_STATE_LABEL: Record<MicPermission, string> = {
  * models proves neither, so this row asks for permission and then runs one real
  * transcription — the player leaves the screen knowing rather than hoping.
  */
-function MicCheckRow({ sttReady }: { sttReady: boolean }) {
+function MicCheckRow({
+  sttReady,
+  ffmpegInstalled,
+}: {
+  sttReady: boolean
+  ffmpegInstalled: boolean
+}) {
   const [result, setResult] = useState<MicTestResult>(null)
   const [transcribing, setTranscribing] = useState(false)
 
@@ -334,8 +347,12 @@ function MicCheckRow({ sttReady }: { sttReady: boolean }) {
       } else if (r.data.status === 'error') {
         setResult({
           kind: 'problem',
-          message:
-            'The recording could not be transcribed. ffmpeg is the usual culprit — check its row below.',
+          // The ffmpeg row only exists while ffmpeg is missing, so pointing at
+          // it unconditionally would send the player looking for something
+          // that is not on the screen.
+          message: ffmpegInstalled
+            ? 'The recording could not be transcribed. ffmpeg accepted it, so the speech model is the likely culprit — the log folder has the detail.'
+            : 'The recording could not be transcribed. ffmpeg is the usual culprit — check its row below.',
         })
       } else if (r.data.transcript) {
         setResult({ kind: 'heard', transcript: r.data.transcript })
@@ -348,7 +365,7 @@ function MicCheckRow({ sttReady }: { sttReady: boolean }) {
     } finally {
       setTranscribing(false)
     }
-  }, [])
+  }, [ffmpegInstalled])
 
   const {
     permission,
@@ -530,8 +547,17 @@ export default function VoiceSetup() {
   const essential = capabilities.filter((c) => c.id !== 'vad')
   const essentialReady = essential.length > 0 && essential.every((c) => c.ready)
 
+  // One whisper model is enough for speech-to-text, so only the chosen one —
+  // plus anything already on disk — earns a checklist row. Listing all four
+  // would put three amber "not installed" lines, 821 MB of them, directly
+  // above a button offering to download 143 MB, and would leave three of them
+  // sitting under a green "Ready" heading once one model was installed. The
+  // picker below still names every option with its size and marks what is
+  // present, so nothing is hidden.
   function assetsFor(capability: VoiceCapability): VoiceAsset[] {
-    return (plan?.assets ?? []).filter((a) => capability.asset_ids.includes(a.id))
+    const all = (plan?.assets ?? []).filter((a) => capability.asset_ids.includes(a.id))
+    if (capability.id !== 'stt') return all
+    return all.filter((a) => a.installed || a.id === sttChoice)
   }
 
   function enginesFor(capability: VoiceCapability): VoiceEngine[] {
@@ -756,7 +782,12 @@ export default function VoiceSetup() {
                     </select>
                   </li>
                 )}
-                {capability.id === 'stt' && <MicCheckRow sttReady={capability.ready} />}
+                {capability.id === 'stt' && (
+                  <MicCheckRow
+                    sttReady={capability.ready}
+                    ffmpegInstalled={plan.ffmpeg_installed}
+                  />
+                )}
                 {capability.id === 'vad' && !plan.onnxruntime_installed && (
                   <li
                     data-testid="vad-onnxruntime-row"
