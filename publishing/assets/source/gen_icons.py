@@ -74,6 +74,10 @@ RIBBON_FG = "#F4F4F5"
 # muddies the silhouette.  The Steam client icon (32 px) is deliberately below it.
 RIBBON_MIN_PX = 128
 
+# Supersampling, expressed as the square the render is forced to before the
+# final Lanczos step down.  Note that this is *not* the size MSVG rasterises
+# at — see render_png, where it is also handed to -density and ImageMagick
+# scales the 256-unit viewBox by density/96 on top.
 SUPERSAMPLE = 4
 SUPERSAMPLE_CAP = 1024
 
@@ -284,9 +288,16 @@ def render_png(edition: str, size: int, dest: Path) -> Path:
     try:
         # Supersample and filter down: ImageMagick's built-in SVG renderer
         # anti-aliases poorly, and at 32 px the dots are three pixels across.
-        # Capped at 1024 — beyond that the render is already smooth and the
-        # 4096-square intermediate costs far more than it buys.
         render_at = min(size * SUPERSAMPLE, max(size, SUPERSAMPLE_CAP))
+        # -density is dots per inch, not a pixel count: this SVG declares no
+        # width or height, so MSVG scales the 256-unit viewBox by density/96
+        # and actually rasterises at 8/3 x render_at before the forced resize
+        # brings it back.  That is where most of the supersampling happens, and
+        # it is why SUPERSAMPLE_CAP earns its keep: the uncapped 4096 that the
+        # 1024 px frame would otherwise ask for is a 10922-square canvas —
+        # gigabytes under a Q16-HDRI build — not the 4096-square one the
+        # arithmetic above reads like.  Raise the cap only with that in mind.
+        #
         # MSVG: pins ImageMagick's own rasteriser.  Plain `foo.svg` hands the
         # file to librsvg — compiled in, or shelled out to as the `svg:decode`
         # delegate — whenever it is present, and librsvg anti-aliases

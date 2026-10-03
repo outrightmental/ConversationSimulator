@@ -14,8 +14,9 @@ tests pin the fix from both ends:
   * the "DEMO" ribbon is on the large frames and off the small ones, because
     the Steam client icon is 32 px and the word is unreadable there;
   * the hand-written ICO and ICNS containers carry every representation the
-    base app's do, and the ones that are not PNG decode back to the frame
-    they were built from;
+    base app's do, each one holds the size its directory entry or chunk type
+    promises, and the ones that are not PNG decode back to the frame they were
+    built from;
   * the Steamworks client icon is the same image the app itself installs, in
     the uncompressed encoding every ICO reader understands.
 
@@ -111,6 +112,18 @@ def _decode_png(raw: bytes, path: object) -> tuple[int, int, list[tuple[int, int
     return width, height, out
 
 
+def _png_dimensions(raw: bytes) -> tuple[int, int]:
+    """(width, height) straight out of the IHDR, without decoding the pixels.
+
+    Used to check the containers' own bookkeeping — an ICO directory entry or
+    an ICNS chunk type against the frame it actually holds — where inflating a
+    1024 px frame in pure Python would cost seconds for no extra assurance.
+    """
+    assert raw[:8] == b"\x89PNG\r\n\x1a\n", "not a PNG payload"
+    assert raw[12:16] == b"IHDR", "first chunk is not IHDR"
+    return struct.unpack(">II", raw[16:24])
+
+
 def _plate_colour(path: Path) -> tuple[int, int, int]:
     """The icon's dominant opaque colour — in practice the rounded-square plate."""
     _, _, pixels = _read_png(path)
@@ -189,6 +202,16 @@ def _decode_ico_dib(payload: bytes, size: int) -> list[tuple[int, int, int, int]
 # `info`), and the nested-ICNS variant chunks.  Only image types are required
 # of the demo set.
 _ICNS_METADATA = {b"TOC ", b"icnV", b"info", b"name", b"sbtp", b"slct"}
+
+# The pixel size each PNG-payload chunk type promises, per the ICNS format.
+# ``write_icns`` in gen_icons.py picks the frame for each type off its own copy
+# of this table; stating it independently here is what makes a transposed pair
+# (ic07 handed the 256 px frame, say) a test failure rather than a shipped icon
+# that macOS quietly rescales.
+_ICNS_PNG_SIZES = {
+    b"ic11": 32, b"ic12": 64, b"ic07": 128, b"ic13": 256,
+    b"ic08": 256, b"ic14": 512, b"ic09": 512, b"ic10": 1024,
+}
 
 
 def _read_icns(path: Path) -> dict[bytes, bytes]:
@@ -356,6 +379,45 @@ class TestIconContainers:
         frames = _read_ico(_SRC_TAURI / "icons-demo" / "icon.ico")
         sizes = {w for w, _, _ in frames}
         assert {16, 32, 48, 256} <= sizes, f"icon.ico is missing sizes: {sizes}"
+
+    def test_ico_entries_match_the_frames_they_point_at(self):
+        """A directory entry that disagrees with its own payload is a dead frame.
+
+        The entry is all Windows reads when it picks a size, so a 48 px slot
+        holding the 64 px frame is drawn rescaled — or skipped. ``write_ico``
+        derives both numbers from the same list, which is exactly the kind of
+        pairing that stays right until someone reorders one side of it.
+        """
+        for width, height, payload in _read_ico(_SRC_TAURI / "icons-demo" / "icon.ico"):
+            assert _png_dimensions(payload) == (width, height), (
+                f"icon.ico declares a {width}x{height} frame but holds "
+                f"{_png_dimensions(payload)}"
+            )
+
+    def test_icns_png_chunks_hold_the_size_their_type_promises(self):
+        """Same bookkeeping on the macOS side: the type *is* the size."""
+        chunks = _read_icns(_SRC_TAURI / "icons-demo" / "icon.icns")
+        for kind, payload in chunks.items():
+            if kind not in _ICNS_PNG_SIZES:
+                continue
+            size = _ICNS_PNG_SIZES[kind]
+            assert _png_dimensions(payload) == (size, size), (
+                f"{kind.decode()} should be {size}x{size}, holds "
+                f"{_png_dimensions(payload)}"
+            )
+
+    def test_ico_32px_frame_is_the_bundle_png(self):
+        """Closes the ring between the three 32 px artefacts.
+
+        ``ic05`` is pinned to this frame below and the Steamworks client icon
+        is pinned to ``32x32.png``; without this link the two chains never
+        meet, and the taskbar, the Finder list and the Steam library row could
+        drift apart one re-render at a time.
+        """
+        ico = {w: payload for w, _, payload in _read_ico(_SRC_TAURI / "icons-demo" / "icon.ico")}
+        _, _, from_ico = _decode_png(ico[32], "icon.ico 32px frame")
+        _, _, from_png = _read_png(_SRC_TAURI / "icons-demo" / "32x32.png")
+        assert from_ico == from_png, "icon.ico's 32 px frame is not 32x32.png"
 
     def test_icns_is_well_formed(self):
         chunks = _read_icns(_SRC_TAURI / "icons-demo" / "icon.icns")
