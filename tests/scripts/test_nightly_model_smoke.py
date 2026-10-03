@@ -3021,6 +3021,67 @@ class TestRunSmokeOrchestration:
         assert "1 of 3" in warning
         assert "player_turn_1" in warning
 
+    def test_a_debug_entry_without_the_flags_is_not_read_as_a_passed_check(
+        self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        # The other way a /debug payload can leave the fallback check unrun: an
+        # entry that *is* keyed by turn number but carries no used_fallback.
+        # Reading that as False would credit every turn as a real reply on no
+        # evidence — and because evaluate_turns decides whether the check ran
+        # from the key's presence, writing it would also suppress the warning
+        # that says so, which is strictly worse than the unkeyable-entry case
+        # above. The turn must come back unflagged, and the run must say it is
+        # unproven.
+        models_dir, model_id, digest = staged_model
+        monkeypatch.setattr(smoke, "_request_json", _fake_core(
+            _debrief(),
+            debug_turns=[{"turn_number": n} for n in range(
+                1, len(smoke.SCRIPTED_PLAYER_TURNS) + 1
+            )],
+        ))
+        report = tmp_path / "report.json"
+
+        exit_code = smoke.run_smoke(
+            model_id, 20.0, report, model_sha256=digest, models_dir=models_dir
+        )
+
+        assert exit_code == 0
+        results = json.loads(report.read_text(encoding="utf-8"))
+        generated = [t for t in results["turns"] if t["model_generated"]]
+        assert generated
+        for turn in generated:
+            assert "used_fallback" not in turn, turn
+            assert "used_native_structured_output" not in turn, turn
+        assert any("fallback check did not run" in w for w in results["warnings"])
+
+    def test_a_debug_entry_with_only_some_flags_keeps_the_one_it_carries(
+        self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        # Per flag, not per entry: used_fallback is the one the verdict turns
+        # on, so an entry carrying it must still prove the turn even when the
+        # structured-output flag beside it is gone.
+        models_dir, model_id, digest = staged_model
+        monkeypatch.setattr(smoke, "_request_json", _fake_core(
+            _debrief(),
+            debug_turns=[
+                {"turn_number": n, "used_fallback": False}
+                for n in range(1, len(smoke.SCRIPTED_PLAYER_TURNS) + 1)
+            ],
+        ))
+        report = tmp_path / "report.json"
+
+        exit_code = smoke.run_smoke(
+            model_id, 20.0, report, model_sha256=digest, models_dir=models_dir
+        )
+
+        assert exit_code == 0
+        results = json.loads(report.read_text(encoding="utf-8"))
+        generated = [t for t in results["turns"] if t["model_generated"]]
+        for turn in generated:
+            assert turn["used_fallback"] is False
+            assert "used_native_structured_output" not in turn, turn
+        assert not any("fallback check did not run" in w for w in results["warnings"])
+
 
 # ---------------------------------------------------------------------------
 # CLI entry point

@@ -1939,11 +1939,20 @@ def run_smoke(
         flags = _debug_flags_by_turn(base, session_id, clock.cap(30.0))
         for turn in results["turns"]:
             flag = flags.get(turn["turn_number"])
-            if flag:
-                turn["used_fallback"] = bool(flag.get("used_fallback"))
-                turn["used_native_structured_output"] = bool(
-                    flag.get("used_native_structured_output")
-                )
+            if not flag:
+                continue
+            # Only the flags the payload actually carries.  `.get()` would read
+            # an absent flag as False, which is not "the model did not fall
+            # back" — it is "we were not told" — and writing the key at all is
+            # worse than recording the wrong value: evaluate_turns decides
+            # whether the fallback check ran by whether the key is *present*,
+            # so a payload that keys a turn but omits the flag would both
+            # credit the turn as a real reply and suppress the warning that
+            # says nothing checked.  Same hole _debug_flags_by_turn closes for
+            # an entry it cannot key, one level down.
+            for name in ("used_fallback", "used_native_structured_output"):
+                if name in flag:
+                    turn[name] = bool(flag[name])
 
         # ── debrief ───────────────────────────────────────────────────────────
         clock.enter("debrief")
