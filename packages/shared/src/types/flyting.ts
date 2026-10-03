@@ -33,8 +33,7 @@ export type VolleyFlag =
   | 'too_short'
   | 'judge_unavailable'
   | 'judge_foul'
-  | 'shot_clock_expired'
-  | 'whiff';
+  | 'shot_clock_expired';
 
 /** The four judged dimensions, in the order the scorecard shows them. */
 export const JUDGE_DIMENSIONS = ['sting', 'wit', 'craft', 'fidelity'] as const;

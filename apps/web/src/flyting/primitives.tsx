@@ -46,7 +46,6 @@ export const FLAG_LABELS: Record<VolleyFlag, string> = {
     'Scored from mechanics only — the judge did not answer, so this volley is held below a hit',
   judge_foul: 'The umpire called a foul on the register, not on the words',
   shot_clock_expired: 'Shot clock expired',
-  whiff: 'Whiff',
 }
 
 /**

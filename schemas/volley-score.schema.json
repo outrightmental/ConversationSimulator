@@ -239,8 +239,7 @@
           "too_short",
           "judge_unavailable",
           "judge_foul",
-          "shot_clock_expired",
-          "whiff"
+          "shot_clock_expired"
         ]
       },
       "uniqueItems": true

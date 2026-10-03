@@ -527,6 +527,38 @@ class TestScorecardSchema:
     def test_the_payload_is_json_serialisable(self):
         assert json.loads(json.dumps(score().to_dict()))["score"] == 129
 
+    def test_every_flag_the_schema_declares_is_one_the_engine_emits(self):
+        """Drift guard on the flags enum, in the direction nothing else covers.
+
+        A scorecard validates when it carries *fewer* flags than the enum
+        allows, so an enum member the engine never produces is invisible: it
+        passes validation, it passes typecheck, and the UI quietly carries a
+        label for a state that cannot happen. ``whiff`` was exactly that — a
+        derived property of a scorecard (``VolleyScore.is_whiff``), never a
+        flag — and it reached the schema, the shared ``VolleyFlag`` union and
+        the player-facing label table before anybody asked which line of the
+        engine wrote it.
+
+        So produce one of each, from the stage that actually raises it, and
+        require the set to be the enum exactly.
+        """
+        long_text = "You are " + " ".join(["tedious"] * 30 + ["and"] * 31)
+        emitted = set()
+        for card in (
+            score("you fool", verdict=None),                      # too_short (dud)
+            score("qqq zzz xkcdq jjjjj", verdict=None),           # gibberish (dud)
+            score(long_text, verdict=None),                       # run_on, no_aim is not
+            score("The man is a gilded post and nothing more."),  # no_aim
+            score(verdict=None),                                  # judge_unavailable
+            score("Your mother was a hamster and your father smelt of elderberries."),
+            score(verdict=judgment(fouls=["out_of_fiction"])),    # judge_foul
+            score(extra_flags=["shot_clock_expired"]),
+        ):
+            emitted.update(card.to_dict()["flags"])
+
+        declared = set(self._schema["properties"]["flags"]["items"]["enum"])
+        assert emitted == declared
+
     def test_judge_schema_and_scorecard_judge_object_agree(self):
         """Drift guard between the model contract and the stored scorecard."""
         from convsim_prompt import FLYTING_JUDGE_OUTPUT_SCHEMA
