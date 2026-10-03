@@ -377,6 +377,14 @@ def plan_issues(manifest: dict[str, Any], issues: list[dict[str, Any]]) -> list[
         number = issue["number"]
         labels = set(issue.get("labels") or [])
 
+        # The board row comes first.  Priority and Phase are project fields
+        # addressed by the issue's item id, so writing either one to an issue
+        # that is not on the board yet aborts the whole run.
+        if rules.get("require_project_membership") and not issue.get("in_project"):
+            actions.append(
+                Action("project.add", f"#{number}", {"number": number, "url": issue.get("url")})
+            )
+
         if not issue.get("type"):
             migrated = next(
                 (e["type"] for e in retired if e.get("type") and e["name"] in labels), None
@@ -431,17 +439,13 @@ def plan_issues(manifest: dict[str, Any], issues: list[dict[str, Any]]) -> list[
                 Action("issue.phase", f"#{number} -> {want_phase[number]}",
                        {"number": number, "phase": want_phase[number]})
             )
-
-        if rules.get("require_project_membership") and not issue.get("in_project"):
-            actions.append(
-                Action("project.add", f"#{number}", {"number": number, "url": issue.get("url")})
-            )
     return actions
 
 
 def plan(manifest, labels, milestones, issues) -> list[Action]:
     """Order matters: a milestone has to exist before an issue can point at it,
-    and a retired label has to reach its field before it is deleted."""
+    an issue has to be on the board before a project field can be written to
+    it, and a retired label has to reach its field before it is deleted."""
     return [
         *plan_milestones(manifest, milestones),
         *plan_labels(manifest, labels),
@@ -746,11 +750,19 @@ class GitHub:
                  "--add-label", ",".join(payload["add"])]
             )
         elif action.kind == "project.add":
-            self._run(
+            # Record the id `item-add` hands back rather than re-reading the
+            # board: the GraphQL item list is eventually consistent, so a
+            # refetch can still miss a row that was just created, and the
+            # Priority write queued behind this action would then abort.
+            out = self._run(
                 ["gh", "project", "item-add", str(self.project["number"]),
-                 "--owner", self.project["owner"], "--url", payload["url"]]
+                 "--owner", self.project["owner"], "--url", payload["url"],
+                 "--format", "json"]
             )
-            self._item_ids = {}  # the new item id is not known yet
+            try:
+                self._item_ids[payload["number"]] = json.loads(out)["id"]
+            except (ValueError, KeyError, TypeError):
+                pass  # `_item_id` falls back to re-reading the board
         elif action.kind == "issue.priority":
             self._set_field(payload["number"], self.project["priority_field"], payload["priority"])
         elif action.kind == "issue.phase":
@@ -778,6 +790,14 @@ class GitHub:
             }
         return self._fields
 
+    def _item_id(self, number: int) -> str | None:
+        """The issue's board item id, re-reading the board once on a miss."""
+        if number not in self._item_ids:
+            self._item_ids.update(
+                {n: data["item_id"] for n, data in self.project_items().items()}
+            )
+        return self._item_ids.get(number)
+
     def _set_field(self, number: int, field_name: str, value: str) -> None:
         """Set a single-select field on an issue's board item.
 
@@ -786,9 +806,7 @@ class GitHub:
         mis-spelled option — an en dash where the board has an em dash — into a
         legible error instead of a silent no-op.
         """
-        if not self._item_ids:
-            self._item_ids = {n: d["item_id"] for n, d in self.project_items().items()}
-        item_id = self._item_ids.get(number)
+        item_id = self._item_id(number)
         if item_id is None:
             raise SystemExit(f"issue #{number} is not on the project board; cannot set {field_name}")
         meta = self.fields().get(field_name)
@@ -1045,6 +1063,10 @@ def self_test() -> int:
         ("backfill adds the area label", by_number[3]["labels"], ["area:engine"]),
         ("an issue off the board is added to it",
          ("project.add", "#3") in _kinds(actions), True),
+        # Priority and Phase are written to a board item id, so the row has to
+        # exist first or `apply` aborts partway through.
+        ("an issue joins the board before any field is written to it",
+         next(a.kind for a in actions if a.payload.get("number") == 3), "project.add"),
         ("a meta issue is given no milestone", by_number[4]["milestone"], None),
 
         # -- simulate: label renames and deletes are repo-wide
