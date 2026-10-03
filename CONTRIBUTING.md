@@ -143,8 +143,9 @@ fields.
 | Workflow | `manual` · `review` · `good first issue` · `help wanted` | Who picks it up, and how |
 | Housekeeping | `meta` | Tracker or repo chore that ships no product change |
 
-- Add **one or two** area labels when the surface is clear. Epics span areas by
-  design and carry none.
+- Every open issue carries **one or two** area labels — the pie chart has no
+  *unknown* slice, so an area is required, not optional. The two exceptions are
+  epics, which span areas by design and carry none, and `meta`.
 - `manual` and `review` are contracts with the
   [yoke](https://github.com/outrightmental/yoke) orchestrator: `manual` keeps an
   issue or PR out of automated work entirely; `review` lets yoke implement but

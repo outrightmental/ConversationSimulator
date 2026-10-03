@@ -46,8 +46,9 @@ project:
 # ── Labels ───────────────────────────────────────────────────────────────────
 # The complete set. A label not listed here does not belong on the tracker.
 labels:
-  # Area — the pie chart. One or two per issue when the surface is clear;
-  # epics that span areas carry none.
+  # Area — the pie chart. One or two on every open issue, required rather than
+  # optional (rules.require_area_when_open); epics span areas by design and
+  # carry none, and `meta` is exempt.
   - name: area:engine
     color: "1d76db"
     description: Scenario engine, core API, persistence — convsim-core
