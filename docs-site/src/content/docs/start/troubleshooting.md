@@ -201,8 +201,10 @@ by available memory:
 | 10–12 GB VRAM | Qwen3 14B (high-quality) |
 | 16+ GB VRAM | Mistral Small 3.1 24B or Qwen3 14B |
 
-Only the starter tier is installed for you. Every other row is a GGUF file you
-download yourself and point the app at with **Use a GGUF file** — see
+Only the starter tier — Qwen3 4B — is installed for you, and it is what the
+first and third rows name. Every *other* model here, the Qwen3 1.7B included, is
+a GGUF file you download yourself and point the app at with **Use a GGUF
+file** — see
 [Choosing how to run the AI](/play/ai-engine/#hardware-recommendations) for
 where each tier's file is pinned.
 

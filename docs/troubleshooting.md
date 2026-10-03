@@ -162,7 +162,7 @@ Not enough VRAM, or insufficient system RAM for CPU mode. Recommended model by a
 | 10–12 GB VRAM | Qwen3 14B (high-quality) |
 | 16+ GB VRAM | Mistral Small 3.1 24B or Qwen3 14B |
 
-Only the starter tier is installed for you. Every other row is a GGUF file you download yourself and point the app at with **Use a GGUF file** — see [local models](local-models.md#hardware-tiers) for where each tier's file is pinned.
+Only the starter tier — Qwen3 4B — is installed for you, and it is what the first and third rows name. Every *other* model here, the Qwen3 1.7B included, is a GGUF file you download yourself and point the app at with **Use a GGUF file** — see [local models](local-models.md#hardware-tiers) for where each tier's file is pinned.
 
 For Apple Silicon, unified memory acts as VRAM — treat the total RAM figure as available VRAM.
 
