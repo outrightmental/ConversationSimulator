@@ -14,9 +14,11 @@ Usage:
     python scripts/project-structure.py apply --dry-run # print the plan only
 
 `validate` reads files only: the manifest is coherent, every issue form sets a
-`type:` and uses no label the manifest does not define, and CONTRIBUTING's
-tables list exactly the labels and the open milestones that exist — due dates
-included.  It needs no network and no credentials.
+`type:` and uses no label the manifest does not define, CONTRIBUTING's tables
+list exactly the labels and the open milestones that exist — due dates
+included — and no hand-written `issues/new` link anywhere in the tree
+pre-applies a label the manifest does not declare.  It needs no network and no
+credentials.
 
 `self-test` drives the planner and the rule checker against fixtures instead of
 the live tracker, so the behaviour this script's comments promise is checked on
@@ -37,11 +39,14 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import os
+import re
 import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
+from urllib.parse import unquote_plus
 
 import yaml
 
@@ -422,6 +427,81 @@ def load_templates(directory: Path = TEMPLATE_DIR) -> dict[str, dict[str, Any]]:
         with open(path, encoding="utf-8") as handle:
             templates[path.name] = yaml.safe_load(handle) or {}
     return templates
+
+
+# A new-issue link, and the `labels=` it may carry.  Both stop at the first
+# character that ends a URL in prose or in source: whitespace, a quote, a
+# closing paren or bracket, an angle bracket.
+_ISSUE_LINK_RE = re.compile(r"issues/new[^\s'\"`)\]<>]*")
+_LABELS_PARAM_RE = re.compile(r"[?&]labels=([^&\s'\"`)\]<>]*)")
+
+# Where a hand-written new-issue link can live: docs, app code, workflows.
+SCAN_SUFFIXES = (
+    ".md", ".mdx", ".ts", ".tsx", ".js", ".jsx", ".py", ".yml", ".yaml",
+    ".html", ".astro", ".rs", ".sh", ".ps1", ".json",
+)
+SCAN_SKIP_DIRS = {
+    ".git", ".venv", ".astro", ".pytest_cache", "__pycache__",
+    "node_modules", "target", "dist", "build", "coverage", "venv",
+}
+
+
+def load_scannable(root: Path = REPO_ROOT) -> dict[str, str]:
+    """Every text file a new-issue link could hide in, by repo-relative path.
+
+    Walked rather than read out of git, so `validate` needs nothing but the
+    working tree.  This script is skipped: its self-test fixtures below quote
+    deliberately broken links, and scanning them would fail `validate` on its
+    own test data.
+    """
+    skip_files = {Path(__file__).resolve()}
+    sources: dict[str, str] = {}
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = sorted(name for name in dirnames if name not in SCAN_SKIP_DIRS)
+        for filename in sorted(filenames):
+            path = Path(dirpath) / filename
+            if path.suffix not in SCAN_SUFFIXES or path.resolve() in skip_files:
+                continue
+            try:
+                sources[str(path.relative_to(root))] = path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError):  # pragma: no cover - binary or unreadable
+                continue
+    return sources
+
+
+def issue_link_errors(manifest: dict[str, Any], sources: dict[str, str]) -> list[str]:
+    """A `?labels=` on a new-issue link may only name declared labels.
+
+    The issue forms are gated above, but a hand-written link does the same job
+    from outside `.github/`: the app's "Report a problem" button and the beta
+    docs each open a pre-filled issue.  A label named there that the manifest
+    does not declare does not exist on the repo, so the classification the link
+    promises is one the tracker never records — and no other check here can see
+    it, because the link is not an issue form.
+    """
+    live = set(label_names(manifest))
+    retired = set(retired_names(manifest))
+    errors: list[str] = []
+    seen: set[tuple[str, str]] = set()
+    for name, text in sorted(sources.items()):
+        # `&amp;` because a markdown or HTML link may escape the separator.
+        for link in _ISSUE_LINK_RE.findall(text.replace("&amp;", "&")):
+            for param in _LABELS_PARAM_RE.findall(link):
+                for raw in unquote_plus(param).split(","):
+                    label = raw.strip()
+                    if not label or label in live or (name, label) in seen:
+                        continue
+                    seen.add((name, label))
+                    why = (
+                        "which the manifest retires"
+                        if label in retired
+                        else "which the manifest does not declare"
+                    )
+                    errors.append(
+                        f"{name}: issues/new link pre-applies label {label!r}, {why} "
+                        f"— drop it from the link or declare the label"
+                    )
+    return errors
 
 
 # ── Plan ─────────────────────────────────────────────────────────────────────
@@ -1167,6 +1247,12 @@ def _contributing(*rows: str, milestones: str = "| v1 | Jan 31, 2026 | The first
     )
 
 
+# A new-issue link the way the docs and the app write one.  It lives in this
+# script, which `load_scannable` skips, so the deliberately broken variants
+# built from it below cannot fail `validate`.
+_LINK = "https://github.com/outrightmental/ConversationSimulator/issues/new?template=x.yml"
+
+
 def _loaded_template_names() -> list[str]:
     """Which files in a scratch ISSUE_TEMPLATE directory `load_templates` reads."""
     import tempfile
@@ -1188,6 +1274,7 @@ def self_test() -> int:
     actions = plan(manifest, labels, [], issues)
     after = simulate(issues, actions)
     by_number = {issue["number"]: issue for issue in after}
+    scanned = load_scannable()
 
     broken = yaml.safe_load(_FIXTURE)
     broken["labels"].append({"name": "area:engine", "color": "nothex"})
@@ -1290,6 +1377,36 @@ def self_test() -> int:
          sorted(_loaded_template_names()), ["a.yml", "b.yaml"]),
         ("the chooser is skipped under either suffix",
          [name for name in _loaded_template_names() if name.startswith("config")], []),
+
+        # -- new-issue links
+        ("a new-issue link pre-applying a declared label passes",
+         issue_link_errors(manifest, {"a.md": f"{_LINK}&labels=area:docs"}), []),
+        ("a new-issue link with no labels= passes",
+         issue_link_errors(manifest, {"a.md": _LINK}), []),
+        ("a new-issue link pre-applying an undeclared label is reported",
+         issue_link_errors(manifest, {"a.md": f"{_LINK}&labels=beta-feedback"}),
+         ["a.md: issues/new link pre-applies label 'beta-feedback', which the "
+          "manifest does not declare — drop it from the link or declare the label"]),
+        ("a new-issue link pre-applying a retired label is reported",
+         issue_link_errors(manifest, {"a.md": f"{_LINK}&labels=bug"}),
+         ["a.md: issues/new link pre-applies label 'bug', which the manifest "
+          "retires — drop it from the link or declare the label"]),
+        # A markdown link may escape the separator, and a label name with a
+        # colon or a space arrives percent-encoded.
+        ("an escaped separator and a percent-encoded label name are both read",
+         issue_link_errors(manifest, {"a.md": f"{_LINK}&amp;labels=area%3Adocs,meta"}), []),
+        ("each label in a comma-separated labels= is checked",
+         issue_link_errors(manifest, {"a.md": f"{_LINK}&labels=meta,wildcat"}),
+         ["a.md: issues/new link pre-applies label 'wildcat', which the manifest "
+          "does not declare — drop it from the link or declare the label"]),
+        ("the same bad label twice in one file is reported once",
+         len(issue_link_errors(
+             manifest, {"a.md": f"{_LINK}&labels=wildcat\n{_LINK}&labels=wildcat"})), 1),
+        # Else `validate` would fail on the deliberately broken links above.
+        ("the scanner skips this script, whose fixtures quote broken links",
+         [name for name in scanned if name.endswith("project-structure.py")], []),
+        ("the scanner reads the tree it is pointed at",
+         any(name.endswith("beta-testing.md") for name in scanned), True),
 
         # -- CONTRIBUTING
         ("CONTRIBUTING table matching the manifest passes",
@@ -1512,6 +1629,7 @@ def cmd_validate(_args: argparse.Namespace) -> int:
     errors = manifest_errors(manifest)
     errors += template_errors(manifest, load_templates())
     errors += contributing_errors(manifest, CONTRIBUTING_PATH.read_text(encoding="utf-8"))
+    errors += issue_link_errors(manifest, load_scannable())
     print("")
     print("Project structure — manifest validation")
     print("=======================================")
@@ -1528,6 +1646,7 @@ def cmd_validate(_args: argparse.Namespace) -> int:
     print(f"  OK  {len(manifest.get('milestones', []))} milestones declared")
     print("  OK  issue forms all set a type: and use declared labels only")
     print("  OK  CONTRIBUTING.md documents exactly the declared labels and milestones")
+    print("  OK  new-issue links pre-apply declared labels only")
     print("")
     return 0
 

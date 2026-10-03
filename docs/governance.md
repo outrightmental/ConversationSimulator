@@ -80,7 +80,8 @@ The whole shape is declared in one file —
 `scripts/project-structure.py` holds the tracker to it: `validate` gates every pull
 request offline, `audit` reports live drift, `apply` converges it. So no *commit* can
 quietly reintroduce an overlapping system — CI fails if the manifest, the issue forms,
-and the documented tables stop agreeing. Drift made straight on GitHub instead (a label
+the documented tables, or the new-issue links the app and the docs hand out stop
+agreeing. Drift made straight on GitHub instead (a label
 added by hand, an issue left untriaged) is outside what CI can see and is what `audit`
 is for; it needs a maintainer's `project` scope. Full tables and conventions:
 [CONTRIBUTING.md → Labels, fields, and
