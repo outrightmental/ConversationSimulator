@@ -680,6 +680,20 @@ describe('VoiceSetup — finished', () => {
     expect(await screen.findByText('Library page')).toBeInTheDocument()
   })
 
+  it('does not celebrate a plan that lists no capabilities at all', async () => {
+    // `[].every(...)` is true, so a plan that arrives without capabilities —
+    // a trimmed-down edition, a contract drift — would otherwise announce
+    // voice ready on a screen with nothing on it.
+    mockApi.getVoiceSetupPlan.mockResolvedValue({
+      ok: true,
+      data: makePlan({ capabilities: [] }),
+    })
+
+    renderScreen()
+    await screen.findByTestId('voice-setup-screen')
+    expect(screen.queryByTestId('voice-ready-panel')).toBeNull()
+  })
+
   it('does not celebrate while the NPC voice is still missing', async () => {
     const plan = makePlan()
     plan.capabilities = plan.capabilities.map((c) =>
