@@ -79,8 +79,14 @@ export default function NpcTurnProgress({
   // is the figure every verdict here is made against.
   const quotedEstimateMs = hasEstimate ? roundApproxDuration(estimateMs) : 0
   const overrun = hasEstimate && elapsedMs > quotedEstimateMs
+  // Clamped at both ends. The ceiling is the deliberate one; the floor is for an
+  // elapsed time that reads negative because the device clock stepped backwards
+  // mid-turn (the same case formatDuration floors at "0s"). A negative width is
+  // not a CSS length, so the browser would drop the declaration and let the fill
+  // default to the full width of its track — exactly the finished-looking bar the
+  // ceiling exists to prevent — and aria-valuenow would fall outside its range.
   const fillPercent = hasEstimate
-    ? Math.min(MAX_FILL_PERCENT, Math.round((elapsedMs / quotedEstimateMs) * 100))
+    ? Math.max(0, Math.min(MAX_FILL_PERCENT, Math.round((elapsedMs / quotedEstimateMs) * 100)))
     : 0
   const remainingMs = hasEstimate ? Math.max(0, quotedEstimateMs - elapsedMs) : 0
 

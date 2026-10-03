@@ -65,6 +65,17 @@ describe('NpcTurnProgress', () => {
       expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '95')
     })
 
+    it('does not fill the bar when the device clock steps backwards', () => {
+      // formatDuration already floors a negative elapsed time at "0s"; the bar
+      // has to floor too. "-2%" is not a CSS length, so the browser drops the
+      // declaration and the fill falls back to the full width of its track —
+      // the finished-looking bar the 95% ceiling exists to prevent.
+      renderProgress(-500, 30_000)
+      const bar = screen.getByRole('progressbar')
+      expect(bar).toHaveAttribute('aria-valuenow', '0')
+      expect(screen.getByTestId('npc-turn-progress-fill')).toHaveStyle({ width: '0%' })
+    })
+
     it('does not call a turn long until it passes the estimate it quoted', () => {
       // A 43s median is quoted as "45s", so "longer than the usual 45s" under a
       // clock reading 44s is the panel contradicting itself. The rounded figure
