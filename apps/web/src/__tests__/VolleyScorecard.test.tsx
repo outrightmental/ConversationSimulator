@@ -165,6 +165,57 @@ describe('VolleyScorecard on a volley that scored nothing', () => {
     expect(screen.getByRole('status')).toHaveTextContent('courtesy it had to arrive in')
     expect(screen.getByLabelText('Volley flags')).toHaveTextContent('foul on the register')
   })
+
+  it('says why in words when the shared safety router is what stopped the volley', () => {
+    // That router reports its own policy category — `harassment_extreme`,
+    // `nsfw_sexual_content` — and those slugs were the one set the label table
+    // never covered, so they reached the screen de-slugged and in red. "You
+    // deserve to die" is an ordinary thing to type into an insult drill, so
+    // this is not an exotic path.
+    render(
+      <VolleyScorecard
+        card={scorecard({
+          score: 0,
+          band: 'dud',
+          judge: null,
+          gate: {
+            outcome: 'foul',
+            reason: 'harassment_extreme',
+            umpire_mock: 'That is outside the rules of this contest.',
+            ends_session: false,
+          },
+          flags: [],
+        })}
+      />,
+    )
+    expect(screen.getByRole('status')).toHaveTextContent('a real threat rather than a taunt')
+    expect(screen.getByRole('status')).not.toHaveTextContent('harassment')
+  })
+
+  it('shows no reason line at all for the crisis route, which answers for itself', () => {
+    // `self_harm_crisis` reaches the gate through the same branch, and the
+    // policy's reply to it is the crisis resource message. A red editorial line
+    // above that — least of all one reading "self harm crisis" — is noise at
+    // the one moment that calls for none.
+    render(
+      <VolleyScorecard
+        card={scorecard({
+          score: 0,
+          band: 'dud',
+          judge: null,
+          gate: {
+            outcome: 'foul',
+            reason: 'self_harm_crisis',
+            umpire_mock: 'Real help is available: call or text 988.',
+            ends_session: true,
+          },
+          flags: [],
+        })}
+      />,
+    )
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(screen.getByTestId('umpire-line')).toHaveTextContent('Real help is available')
+  })
 })
 
 describe('VolleyScorecard hook audit', () => {

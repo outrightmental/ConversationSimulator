@@ -79,8 +79,40 @@ export const JUDGE_FOUL_REASON_LABELS: Record<string, string> = {
   anachronism: 'That diction belongs to another century.',
 }
 
-export function gateReasonLabel(reason: string): string {
-  const known = GATE_REASON_LABELS[reason]
+/**
+ * The shared input safety router's own categories. A volley it stops or refuses
+ * reaches the scorecard with `gate.reason` set to the raw policy category —
+ * `harassment_extreme`, `nsfw_sexual_content`, `self_harm_crisis` — because that
+ * is what the safety event records, and those slugs are the one set the table
+ * above never covered. The conversation loop never shows them to anybody; the
+ * scorecard did, as a de-slugged enum in red.
+ *
+ * `self_harm_crisis` is deliberately absent: that route answers with the crisis
+ * resource message itself, and an editorial line in red above it is noise at
+ * the one moment that calls for none.
+ */
+export const SAFETY_CATEGORY_LABELS: Record<string, string> = {
+  nsfw_sexual_content: 'That is not what this contest is for.',
+  minors_romantic_or_sexual: 'That is not what this contest is for.',
+  criminal_instruction: 'That asked for something real and harmful, not for a taunt.',
+  harassment_extreme: 'That was a real threat rather than a taunt.',
+  real_person_impersonation: 'Aim at the character in the scene, not at a real person.',
+  voice_cloning_request: 'Aim at the character in the scene, not at a real person.',
+  medical_or_therapy_claim: 'This is an insult drill, not a source of advice.',
+  legal_claim: 'This is an insult drill, not a source of advice.',
+}
+
+/**
+ * The sentence to show for a gate's reason, or `null` when there is nothing to
+ * say that the umpire's own line does not already say better.
+ *
+ * Returning `null` rather than a de-slugged enum is the point: every reason the
+ * engine emits either has a sentence here or arrives with an `umpire_mock` that
+ * is already written for the player, so a slug reaching the screen is a bug and
+ * not a fallback worth keeping.
+ */
+export function gateReasonLabel(reason: string): string | null {
+  const known = GATE_REASON_LABELS[reason] ?? SAFETY_CATEGORY_LABELS[reason]
   if (known) return known
   const colon = reason.indexOf(':')
   const head = colon === -1 ? reason : reason.slice(0, colon)
@@ -100,7 +132,7 @@ export function gateReasonLabel(reason: string): string {
       'The umpire called that one outside the rules of this contest.'
     )
   }
-  return reason.replace(/[_:]/g, ' ')
+  return null
 }
 
 export function foulLabel(foul: string): string {
@@ -147,6 +179,11 @@ export const OUTCOME_LABELS: Record<string, string> = {
   time_up: 'Time up',
   three_whiffs: 'Three whiffs — you are out',
   fouled_out: 'Fouled out',
+  // The shared safety router stopped the run. Deliberately not a verdict on the
+  // player: that route answers with the policy's own message (a crisis
+  // disclosure reaches it as readily as a rule-breaking one), and the engine
+  // records no foul for it, so neither does the word here.
+  safety_stop: 'Run stopped',
   retired: 'Retired',
   in_progress: 'In progress',
 }

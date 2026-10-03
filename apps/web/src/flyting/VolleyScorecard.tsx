@@ -244,6 +244,10 @@ export function VolleyScorecard({
   const color = bandColor(card.band)
   const foul = card.gate.foul
   const umpireLine = card.gate.umpire_mock || judge?.umpire_line || null
+  // Null when the reason has nothing to say the umpire's line does not already
+  // say — a safety route answers with the policy's own message, and a red
+  // de-slugged enum above it was never an explanation.
+  const gateReason = card.gate.reason ? gateReasonLabel(card.gate.reason) : null
 
   return (
     <article
@@ -291,9 +295,9 @@ export function VolleyScorecard({
         </blockquote>
       )}
 
-      {card.gate.reason && (
+      {gateReason && (
         <p role="status" style={{ margin: 0, fontSize: '0.8rem', color: '#fca5a5' }}>
-          {gateReasonLabel(card.gate.reason)}
+          {gateReason}
         </p>
       )}
 
