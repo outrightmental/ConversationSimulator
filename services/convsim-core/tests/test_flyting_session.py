@@ -379,6 +379,27 @@ class TestRunSummary:
         assert summary.total_score == state.banked_total
         assert summary.device_histogram == {"metaphor": 3}
 
+    def test_rarest_words_are_ranked_by_rarity_not_alphabetically(self):
+        """The debrief's "rarest words that landed" must actually lead with them.
+
+        Pooling the per-volley lists and re-sorting them alphabetically threw
+        away the ranking the craft stage had already done, so a run whose best
+        find was "sterling" reported "carriage, grips, plate".
+        """
+        from convsim_core.flyting.craft import CraftMetrics
+
+        state = FlytingRunState()
+        first = volley(120)
+        first.craft = CraftMetrics(rarest_words=["grips", "sterling"])
+        second = volley(120)
+        second.craft = CraftMetrics(rarest_words=["plate", "carriage"])
+        for v in (first, second):
+            record_player_volley(state, v)
+        summary = summarize_run(state, [first, second])
+        # Longest first inside the tie every out-of-table word shares, then
+        # the alphabet for stability: "grips" and "plate" are both five.
+        assert summary.rarest_words == ["carriage", "sterling", "grips", "plate"]
+
     def test_the_redundancy_report_shows_decayed_value(self):
         state = FlytingRunState()
         volleys = [volley(100, themes=("hygiene",)) for _ in range(4)]

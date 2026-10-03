@@ -35,6 +35,7 @@ from convsim_core.flyting.config import (
     SET_FORMAT_VOLLEYS,
     TIMED_FORMAT_SECONDS,
 )
+from convsim_core.flyting.craft import word_rarity_key
 from convsim_core.flyting.scoring import VolleyScore
 from convsim_core.scenario_state import (
     ScenarioVariableDef,
@@ -491,7 +492,11 @@ def summarize_run(
         fouls=dict(state.foul_counts),
         theme_report=theme_report,
         device_histogram=devices,
-        rarest_words=sorted(set(rarest))[:8],
+        # Rarest first. Sorting the pool alphabetically, as this used to, threw
+        # away the per-volley ranking and made the debrief's "rarest words that
+        # landed" an alphabetical sample of the words that landed — so a run
+        # whose best find was "sterling" reported "carriage, grips, plate".
+        rarest_words=sorted(set(rarest), key=word_rarity_key)[:8],
         coaching_notes=coaching_notes(player_volleys, theme_report),
     )
 

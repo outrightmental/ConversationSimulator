@@ -181,6 +181,18 @@ class TestCraftMetrics:
         metrics = compute_craft_metrics(analyze_volley(GOOD_VOLLEY))
         assert 0 <= metrics.craft_floor <= 10
 
+    def test_rarest_words_lead_with_the_rarest_the_table_can_find(self):
+        """Not the alphabet.
+
+        The bundled frequency list is ~740 words, so most content words share
+        one Zipf value. Breaking that tie alphabetically made "rarest words" a
+        list of the alphabetically-first uncommon words: the worked example
+        reported *public* and silently dropped *sterling*.
+        """
+        metrics = compute_craft_metrics(analyze_volley(GOOD_VOLLEY))
+        assert "sterling" in metrics.rarest_words
+        assert metrics.rarest_words[0] == "carriage"  # longest of the tied bucket
+
     def test_metrics_serialise_to_the_scorecard_shape(self):
         payload = compute_craft_metrics(analyze_volley(GOOD_VOLLEY)).to_dict()
         assert {"word_count", "type_token_ratio", "mean_zipf", "second_person"} <= set(payload)

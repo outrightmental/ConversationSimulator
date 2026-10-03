@@ -142,6 +142,17 @@ A volley the gates zeroed is never sent to the judge.
 
 These also provide the mechanical fallback scoring when no judge is available.
 
+**What the frequency table can and cannot say.** `flyting/data/word_frequency_ranks.txt`
+is a bundled list of roughly 740 words rather than the `wordfreq` package, so
+that the engine carries no extra tens of megabytes into the PyInstaller bundle
+(`craft._zipf_for_word` is the seam to swap in a real provider). That list is
+ample for the rarity *band* the reward is computed from — it separates a volley
+of function words from one with content in it — but it cannot rank two words
+that are both outside it. The scorecard's and the debrief's "rarest words that
+landed" therefore order that tie longest-first, which is a proxy and says so:
+it will surface *sterling* ahead of *worn*, and it has no way to know that
+*public* is commoner than either.
+
 ### Stage 2 — Novelty
 
 `s_max` is the highest similarity between this volley and (a) every prior volley

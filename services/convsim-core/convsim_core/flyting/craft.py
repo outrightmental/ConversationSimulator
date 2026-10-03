@@ -174,6 +174,26 @@ def _zipf_for_word(word: str) -> float:
     return zipf_for_rank(rank)
 
 
+def word_rarity_key(word: str) -> Tuple[float, int, str]:
+    """Sort key putting the rarest word first: ``(zipf, -length, word)``.
+
+    The bundled frequency list is ~740 words, so every word outside it — which
+    is most content words — shares ``UNKNOWN_WORD_ZIPF``. Ranking that bucket
+    alphabetically, as this used to, meant "the rarest words that landed" was
+    really "the first few uncommon words in alphabetical order": the worked
+    example reported *public* and dropped *sterling*.
+
+    Length is the honest tie-break available without frequency data — Zipf's
+    law of abbreviation says the words a language uses most are the ones it
+    wears shortest — and the alphabet still breaks ties after it, so the result
+    is stable. It is a proxy, not a measurement: separating *public* from
+    *sterling* needs real frequency data, which is what ``_zipf_for_word``'s
+    seam is for.
+    """
+    letters = _letters(word)
+    return (_zipf_for_word(word), -len(letters), word)
+
+
 def _rarity_reward(mean_zipf: float) -> float:
     """Band reward for lexical rarity.
 
@@ -335,10 +355,7 @@ def compute_craft_metrics(
     # craft dimension when the judge is unavailable.
     craft_floor = round(10 * (0.4 * rarity + 0.3 * variety + 0.3 * sound), 2)
 
-    rarest = sorted(
-        {w for w in rarity_pool},
-        key=lambda w: (_zipf_for_word(w), w),
-    )[:5]
+    rarest = sorted({w for w in rarity_pool}, key=word_rarity_key)[:5]
 
     return CraftMetrics(
         word_count=len(volley.words),
