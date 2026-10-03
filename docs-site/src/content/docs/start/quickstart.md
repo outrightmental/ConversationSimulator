@@ -90,6 +90,8 @@ You can export the transcript to a text file from the debrief screen. Transcript
 
 - **Remix the scenario** — adjust NPC difficulty or starting state from the scenario setup screen before starting.
 - **Create a custom scenario** — see the [scenario authoring guide](/create/scenario-authoring/).
+- **Play for score** — a scenario chipped **Flyting** scores every turn you take
+  rather than only the debrief; see [Flyting — scored insult practice](/play/flyting/).
 - **Upgrade your model** — if responses feel slow or generic, try a larger model; see [Choosing how to run the AI](/play/ai-engine/).
 
 ---

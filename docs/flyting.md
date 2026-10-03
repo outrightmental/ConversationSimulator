@@ -16,6 +16,8 @@ each turn is a scored rep.
 Everything here runs locally. There is no outbound call anywhere in the mode,
 and the high-score table is a SQLite table on the player's own machine.
 
+- Player-facing page on the docs site: [`play/flyting`](../docs-site/src/content/docs/play/flyting.md)
+  — the same mode without the internals; change both when behaviour moves
 - Engine: `services/convsim-core/convsim_core/flyting/`
 - Judge prompt and verdict verification: `packages/prompt-composer/src/convsim_prompt/flyting_judge.py`
 - HTTP surface: `services/convsim-core/convsim_core/routers/flyting.py`

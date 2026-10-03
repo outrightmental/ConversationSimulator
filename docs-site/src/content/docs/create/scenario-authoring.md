@@ -633,10 +633,11 @@ disabled and the error count is shown. Fix the errors first.
 ## Step 10b: Authoring a flyting scenario (optional)
 
 A scenario that declares `mode: flyting` runs the turn-scored loop instead of
-the conversation loop: every player turn is a *volley* with its own score. The
-mode, its YAML and its scoring pipeline are documented in
-[`docs/flyting.md`](https://github.com/outrightmental/ConversationSimulator/blob/main/docs/flyting.md); this section is only about the two places the
-workbench helps you author one.
+the conversation loop: every player turn is a *volley* with its own score. How
+the mode plays is [Flyting — scored insult practice](/play/flyting/), and its
+pipeline, YAML and calibration suites are documented in
+[`docs/flyting.md`](https://github.com/outrightmental/ConversationSimulator/blob/main/docs/flyting.md).
+This section is only about the two places the workbench helps you author one.
 
 **The attack surface.** The target NPC declares `attack_surface` — the traits
 that are fair game. It is the one thing the judge is allowed to claim a hit on:
