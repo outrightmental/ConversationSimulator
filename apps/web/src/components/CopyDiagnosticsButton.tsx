@@ -16,12 +16,6 @@ import { buildDiagnosticsText } from '../api/errors'
 import { buildDiagnosticsReport } from '../api/diag'
 import { copyTextToClipboard } from '../lib/clipboard'
 
-// Re-exported because this module is the documented home of the copy
-// affordance; the mechanism itself lives in lib/clipboard.ts, which also has
-// to work in the packaged macOS build where neither web clipboard API does
-// (issue #508).
-export { copyTextToClipboard }
-
 export interface CopyDiagnosticsButtonProps {
   /** Error whose details lead the report (header built via buildDiagnosticsText). */
   error?: ApiError | null
