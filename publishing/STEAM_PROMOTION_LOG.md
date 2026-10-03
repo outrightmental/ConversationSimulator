@@ -98,7 +98,7 @@ To roll back this promotion if a critical defect is found:
 3. Click Set Live → select branch default.
 4. Confirm in Steamworks; wait 10–15 minutes for CDN propagation.
 5. Verify previous build is live from a fresh account install.
-6. Open a GitHub issue at Type Bug, Priority P0 - blocker:
+6. Open a GitHub issue at Type Bug, Priority P0 — blocker:
      Title:  [Rollback] vX.Y.Z reverted — <brief reason>
      Labels: area:steam
 7. Notify all triage owners listed in publishing/LAUNCH_DAY_RUNBOOK.md.
