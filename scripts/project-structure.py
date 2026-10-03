@@ -238,7 +238,16 @@ def _contributing_section(text: str, heading: str = CONTRIBUTING_SECTION) -> lis
     rows: list[str] = []
     depth = heading.split(" ")[0]
     inside = False
+    fenced = False
     for line in text.splitlines():
+        # A fenced block is opaque: this section ends with a shell snippet whose
+        # comments start with `#`, and reading one of those as a heading would
+        # cut the section short and report the tables as missing.
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+            continue
+        if fenced:
+            continue
         if line.strip() == heading:
             inside = True
             continue
@@ -335,9 +344,17 @@ def _backticked(line: str) -> list[str]:
 
 
 def load_templates(directory: Path = TEMPLATE_DIR) -> dict[str, dict[str, Any]]:
+    """Every issue form in the directory.
+
+    Both suffixes, because GitHub honours both: a form added as `.yaml` renders
+    exactly like its `.yml` neighbours, so globbing only `.yml` would let one
+    carry a retired label — or omit `type:` — straight past this gate.
+    """
     templates = {}
-    for path in sorted(directory.glob("*.yml")):
-        if path.name == "config.yml":  # not an issue form
+    for path in sorted(directory.glob("*.y*ml")):
+        if path.suffix not in (".yml", ".yaml"):
+            continue
+        if path.stem == "config":  # the chooser, not an issue form
             continue
         with open(path, encoding="utf-8") as handle:
             templates[path.name] = yaml.safe_load(handle) or {}
@@ -765,13 +782,23 @@ class GitHub:
                 return items
             cursor = page["pageInfo"]["endCursor"]
 
+    _ISSUE_LIMIT = 2000
+
     def issues(self) -> list[dict[str, Any]]:
         raw = self._json(
             [
-                "gh", "issue", "list", "--state", "all", "--limit", "1000",
+                "gh", "issue", "list", "--state", "all", "--limit", str(self._ISSUE_LIMIT),
                 "--json", "number,state,url,labels,milestone,issueType",
             ]
         )
+        # `gh issue list` truncates at the limit without saying so, and a
+        # truncated read makes the audit silently stop checking the oldest
+        # issues — the opposite of "every issue burns down somewhere".
+        if len(raw) >= self._ISSUE_LIMIT:
+            raise SystemExit(
+                f"read {len(raw)} issues, which is the --limit: the list is probably "
+                f"truncated, so raise GitHub._ISSUE_LIMIT before trusting this audit"
+            )
         items = self.project_items()
         self._item_ids = {number: data["item_id"] for number, data in items.items()}
         issues = []
@@ -1038,6 +1065,11 @@ def _contributing(*rows: str, milestones: str = "| v1 | Jan 31, 2026 | The first
         f"{CONTRIBUTING_SECTION}\n\n"
         f"| Axis | Labels | Question |\n| ---- | ------ | -------- |\n{body}\n\n"
         f"Prose below the table may name the retired `enhancement` label freely.\n\n"
+        # A shell snippet between the two tables, the way the real section ends:
+        # its `#` comment must not be mistaken for the heading that ends the
+        # section, and its `| …` line must not be mistaken for a table row.
+        f"```sh\n# a comment, not a heading\npython x.py  # and `bug` in a comment\n"
+        f"grep foo | sort\n```\n\n"
         f"{CONTRIBUTING_MILESTONES}\n\n"
         f"| Milestone | Due | What it delivers |\n| --- | --- | --- |\n{milestones}\n\n"
         f"## Development setup\n\n"
@@ -1045,6 +1077,17 @@ def _contributing(*rows: str, milestones: str = "| v1 | Jan 31, 2026 | The first
         f"| v9 | Jan 1, 1999 | A table in a later section, which is not ours |\n\n"
         f"`bug` again, out of section.\n"
     )
+
+
+def _loaded_template_names() -> list[str]:
+    """Which files in a scratch ISSUE_TEMPLATE directory `load_templates` reads."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as raw:
+        directory = Path(raw)
+        for name in ("a.yml", "b.yaml", "config.yml", "config.yaml", "README.md"):
+            (directory / name).write_text("name: X\ntype: Bug\n", encoding="utf-8")
+        return list(load_templates(directory))
 
 
 def _kinds(actions: list[Action]) -> list[tuple[str, str]]:
@@ -1120,6 +1163,11 @@ def self_test() -> int:
           "no Type, which rules.require_type_when_open forbids"]),
         ("a form needs no `type:` when the rule is off",
          template_errors({**manifest, "rules": {}}, {"a.yml": {"labels": ["area:docs"]}}), []),
+        # GitHub renders `.yaml` forms too, so the gate has to read them.
+        ("a `.yaml` issue form is checked like a `.yml` one",
+         sorted(_loaded_template_names()), ["a.yml", "b.yaml"]),
+        ("the chooser is skipped under either suffix",
+         [name for name in _loaded_template_names() if name.startswith("config")], []),
 
         # -- CONTRIBUTING
         ("CONTRIBUTING table matching the manifest passes",
@@ -1141,6 +1189,14 @@ def self_test() -> int:
         ("a missing CONTRIBUTING section is reported",
          contributing_errors(manifest, "# Nothing here\n"),
          ["CONTRIBUTING.md has no table under '## Labels, fields, and milestones'"]),
+        # The real section ends in a shell snippet; its `#` comments are not
+        # headings and its pipes are not table rows.
+        ("a fenced code block does not cut the section short",
+         _contributing_section(_contributing("`area:engine`")),
+         ["| Axis | Labels | Question |", "| ---- | ------ | -------- |",
+          "| Axis | `area:engine` | Question |",
+          "| Milestone | Due | What it delivers |", "| --- | --- | --- |",
+          "| v1 | Jan 31, 2026 | The first train |"]),
 
         # -- CONTRIBUTING: the milestone table
         ("a milestone table matching the manifest passes",
