@@ -17,7 +17,8 @@
 #   python scripts/project-structure.py audit      # live tracker vs. this file
 #   python scripts/project-structure.py apply      # converge the live tracker
 #
-# Prose for humans: CONTRIBUTING.md § Labels, docs/governance.md.
+# Prose for humans: CONTRIBUTING.md § Labels, fields, and milestones;
+# docs/governance.md § Labels, fields, and milestones.
 
 project:
   owner: outrightmental
@@ -81,9 +82,9 @@ labels:
     description: Maintainer welcomes a PR here
   - name: meta
     color: "cfd3d7"
-    # The milestone rule's only escape hatch: housekeeping that ships no
-    # product change has nothing to burn down.
-    description: Tracker and repository housekeeping — exempt from the milestone requirement
+    # See rules.meta_label: housekeeping that ships no product change has
+    # nothing to burn down and no product area to land in.
+    description: Tracker and repository housekeeping — exempt from the milestone and area rules
 
 # ── Retired labels ───────────────────────────────────────────────────────────
 # Each one duplicated a field. Listed in precedence order: the first match on an
@@ -145,9 +146,12 @@ milestones:
 rules:
   # Every issue, open or closed, is a row on the board.
   require_project_membership: true
-  # Every open issue burns down somewhere, except the housekeeping escape hatch.
+  # The one escape hatch. Tracker housekeeping ships no product change, so it
+  # burns down nowhere and lands in no slice of the pie chart — it is exempt
+  # from the milestone and area rules both, and from nothing else.
+  meta_label: meta
+  # Every open issue burns down somewhere.
   require_milestone_when_open: true
-  milestone_exempt_label: meta
   # Type and Priority replaced labels, so they have to be filled in for
   # anything still in flight.
   require_type_when_open: true

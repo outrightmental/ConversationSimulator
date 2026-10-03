@@ -13,7 +13,7 @@ Usage:
     python scripts/project-structure.py apply --dry-run # print the plan only
 
 `validate` reads files only: the manifest is coherent, the issue forms use no
-label the manifest does not define, and CONTRIBUTING's label table lists exactly
+label the manifest does not define, and CONTRIBUTING's label tables list exactly
 the labels that exist.  It needs no network and no credentials.
 
 `audit` and `apply` talk to GitHub through the gh CLI, which must be
@@ -44,10 +44,13 @@ MANIFEST_PATH = REPO_ROOT / ".github" / "project-structure.yml"
 TEMPLATE_DIR = REPO_ROOT / ".github" / "ISSUE_TEMPLATE"
 CONTRIBUTING_PATH = REPO_ROOT / "CONTRIBUTING.md"
 
-# The heading whose table has to agree with the manifest, and the heading that
-# ends that section.  Prose anywhere else may name a retired label freely —
-# explaining why `bug` is gone is the whole point of the section.
-CONTRIBUTING_SECTION = "## Labels"
+# The heading whose tables have to agree with the manifest.  The section runs to
+# the next heading of the same depth, so its `###` subsections are included, and
+# only table rows are inspected: prose may name a retired label freely, since
+# explaining why `bug` is gone is half the point of the section.  A consequence
+# worth knowing: anything backticked inside a table row is read as a label name,
+# so field values in those tables are deliberately left unquoted.
+CONTRIBUTING_SECTION = "## Labels, fields, and milestones"
 
 
 # ── Manifest ─────────────────────────────────────────────────────────────────
@@ -140,9 +143,9 @@ def manifest_errors(manifest: dict[str, Any]) -> list[str]:
             errors.append(f"milestone {entry['title']!r} has no due date — velocity needs one")
 
     rules = manifest.get("rules") or {}
-    exempt = rules.get("milestone_exempt_label")
-    if exempt and exempt not in live:
-        errors.append(f"rules.milestone_exempt_label {exempt!r} is not a declared label")
+    meta = rules.get("meta_label")
+    if meta and meta not in live:
+        errors.append(f"rules.meta_label {meta!r} is not a declared label")
     for name in rules.get("area_exempt_types") or []:
         if name not in types:
             errors.append(f"rules.area_exempt_types names unknown issue type {name!r}")
@@ -398,11 +401,11 @@ def plan_issues(manifest: dict[str, Any], issues: list[dict[str, Any]]) -> list[
             )
             labels.update(missing)
 
-        exempt = rules.get("milestone_exempt_label")
+        meta = rules.get("meta_label")
         if (
             issue.get("state") == "OPEN"
             and not issue.get("milestone")
-            and not (exempt and exempt in labels)
+            and not (meta and meta in labels)
             and number in want_milestone
         ):
             actions.append(
@@ -489,7 +492,7 @@ def check_rules(
     rules = manifest.get("rules") or {}
     retired = set(retired_names(manifest))
     declared = set(label_names(manifest))
-    exempt_label = rules.get("milestone_exempt_label")
+    meta_label = rules.get("meta_label")
     area_exempt = set(rules.get("area_exempt_types") or [])
     findings: list[str] = []
 
@@ -512,11 +515,12 @@ def check_rules(
             findings.append(f"{ref} carries undeclared label(s) {', '.join(unknown)}")
         if rules.get("require_project_membership") and not issue.get("in_project"):
             findings.append(f"{ref} is not on the project board")
+        is_meta = bool(meta_label) and meta_label in labels
         if issue.get("state") == "OPEN":
             if (
                 rules.get("require_milestone_when_open")
                 and not issue.get("milestone")
-                and not (exempt_label and exempt_label in labels)
+                and not is_meta
             ):
                 findings.append(f"{ref} is open with no milestone")
             if rules.get("require_type_when_open") and not issue.get("type"):
@@ -525,6 +529,7 @@ def check_rules(
                 findings.append(f"{ref} is open with no Priority")
             if (
                 rules.get("require_area_when_open")
+                and not is_meta
                 and issue.get("type") not in area_exempt
                 and not any(name.startswith("area:") for name in labels)
             ):
