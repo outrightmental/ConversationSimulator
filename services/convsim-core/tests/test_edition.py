@@ -398,12 +398,12 @@ def test_demo_can_be_pinned_to_the_lightweight_tier(tmp_path, monkeypatch):
         assert refused.json()["error"]["code"] == edition.EDITION_RESTRICTED
 
 
-def test_full_edition_offers_the_lightweight_tier_alongside_the_rest(full_client):
+def test_full_edition_serves_the_lightweight_tier_alongside_the_rest(full_client):
     """The new tier is a registry entry, not a demo-only one.
 
-    The full app lists it (a 2 GB-VRAM machine has nothing else), ordered ahead
-    of the starter, and still recommends the starter — ``pickRecommendedModel``
-    looks for ``role: starter``, so there must be exactly one.
+    ``GET /api/models`` carries it for the full app too, ordered ahead of the
+    starter (smallest tier first), and the starter is still the single
+    ``role: starter`` entry that ``pickRecommendedModel`` recommends.
     """
     client, app = full_client
     load_and_persist_registry(app.state.db.connection(), _REGISTRY_PATH)

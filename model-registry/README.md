@@ -40,10 +40,12 @@ depend on file order (`test_exactly_one_starter_tier` enforces it).
 **Lightweight** is the tier below it: the shortest download, and the only entry
 a 2 GB-VRAM or integrated-graphics machine can run — at a cost in NPC coherence,
 because a 1.7B model is less consistent than the 4B at the structured output an
-NPC turn and a scored debrief need. It is an option a player can choose, never
-a recommendation. Qwen publishes the 1.7B as Q8_0 only, which is also the
-quantisation to want for a model this small: Q8_0 is near-lossless, so the
-trade is purely 1.7B-versus-4B.
+NPC turn and a scored debrief need. Never a recommendation: the setup flow
+offers the starter, and the other tiers are reached deliberately (a demo
+build's `CONVSIM_DEMO_MODEL_ID`, `POST /api/setup/install`, or downloading the
+pinned file and registering it with **Use custom GGUF**). Qwen publishes the
+1.7B as Q8_0 only, which is also the quantisation to want for a model this
+small: Q8_0 is near-lossless, so the trade is purely 1.7B-versus-4B.
 
 ### Demo edition
 

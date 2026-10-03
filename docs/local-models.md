@@ -31,15 +31,18 @@ Downloaded models are stored in `~/.convsim/models/llm/`.
 
 | Tier | Model | Size | Download at 50 Mbps | Min VRAM | CPU fallback |
 |---|---|---|---|---|---|
+| Lightweight | Qwen3 1.7B Instruct Q8_0 | 1.8 GB | ~5 min | 2 GB | Yes (quickest on CPU) |
 | Starter | Qwen3 4B Instruct Q4_K_M | 2.5 GB | ~7 min | 4 GB | Yes (slow) |
 | Standard | Qwen3 8B Instruct Q4_K_M | 5.0 GB | ~14 min | 6 GB | Yes (very slow) |
 | High-quality | Qwen3 14B Instruct Q4_K_M | 9.0 GB | ~25 min | 10 GB | Not practical |
 | High-quality | Mistral Small 3.1 24B Q4_K_M | 14.3 GB | ~39 min | 16 GB | Not practical |
 | User-supplied | Any GGUF | varies | varies | varies | Depends on model |
 
+**Which one you are offered:** first-run setup and the model manager install the **starter** tier — that is the one recommended model — alongside the Ollama and custom-GGUF options. To run a different tier from this table, download its file from the pinned URL in `model-registry/registry.yaml` and register it with **Use custom GGUF**, or serve it from Ollama.
+
 **Apple Silicon:** Metal acceleration works out of the box through llama.cpp. Use the VRAM column as a guide for unified memory (M1/M2/M3/M4 chips share CPU and GPU memory).
 
-**CPU fallback:** any model can run on CPU without a GPU, but inference is significantly slower — expect anywhere from 30 seconds to a few minutes per turn instead of 1–5 seconds, most of it spent reading the prompt back in. The app waits for a slow turn rather than failing it; see [performance](performance.md#timeout-errors). The Qwen3 4B starter model is the only practical choice for CPU-only machines.
+**CPU fallback:** any model can run on CPU without a GPU, but inference is significantly slower — expect anywhere from 30 seconds to a few minutes per turn instead of 1–5 seconds, most of it spent reading the prompt back in. The app waits for a slow turn rather than failing it; see [performance](performance.md#timeout-errors). The Qwen3 4B starter model is the smallest model with the NPC consistency the app is tuned for, and the practical default for CPU-only machines; the Qwen3 1.7B lightweight tier is quicker still and the only option under 4 GB VRAM, at a cost in how coherently NPCs hold a conversation.
 
 **Partial VRAM fit:** if you have less VRAM than the minimum, the model can still load with a reduced number of GPU-offloaded layers. Inference will be slower but may be acceptable. See [troubleshooting](troubleshooting.md#low-vram-or-slow-inference).
 
@@ -47,13 +50,28 @@ Downloaded models are stored in `~/.convsim/models/llm/`.
 
 ## Recommended models
 
+### Qwen3 1.7B Instruct Q8_0 — lightweight
+
+- **License:** Apache-2.0
+- **Size:** 1.8 GB — about 5 minutes on a 50 Mbps connection
+- **Best for:** machines with 2–4 GB VRAM, integrated graphics, or the shortest
+  possible first download
+- **Context length:** 8 192 tokens
+- **Notes:** The smallest and quickest model in the registry, and the only one a
+  2 GB-VRAM machine can run. Q8_0 rather than a 4-bit quantisation on purpose:
+  the quantisation is near-lossless, so what you give up is the smaller model
+  itself. Expect NPCs to track the conversation less consistently and debrief
+  scoring to be rougher than on the starter tier. Start here if the starter
+  model will not load or the download is too long; move up if an NPC loses the
+  thread.
+
 ### Qwen3 4B Instruct Q4_K_M — starter
 
 - **License:** Apache-2.0
 - **Size:** 2.5 GB — about 7 minutes on a 50 Mbps connection
 - **Best for:** machines with 4–6 GB VRAM, or CPU-only installs
 - **Context length:** 8 192 tokens
-- **Notes:** Fastest model in the registry. Suitable for all text-only scenarios. NPC responses may be shorter and less contextually rich than larger models.
+- **Notes:** The recommended model: the smallest tier the app's latency budgets and NPC quality bar are measured against, and what first-run setup installs. Suitable for all text-only scenarios. NPC responses may be shorter and less contextually rich than larger models.
 
 ### Qwen3 8B Instruct Q4_K_M — standard (recommended for most users)
 

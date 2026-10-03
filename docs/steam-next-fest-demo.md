@@ -116,10 +116,13 @@ Everything but the play-testing is done. The remaining gate is:
    which names it honestly. No code changes.
 
 If it does not clear step 2, the demo ships on the starter and the lightweight
-tier stays what it is now: an option in the full app's Model Manager for
-machines that cannot run the starter. `scripts/pin-model.py` prints a
-policy-compliant entry (commit-pinned URL, SHA-256 from the Hub's LFS metadata)
-for any other candidate worth trying.
+tier stays what it is now: a registry entry, installable through
+`POST /api/setup/install` and documented for machines that cannot run the
+starter, but not what either edition's setup flow offers (that flow shows the
+one recommended model — the `role: starter` entry — plus Ollama and
+bring-your-own-GGUF). `scripts/pin-model.py` prints a policy-compliant entry
+(commit-pinned URL, SHA-256 from the Hub's LFS metadata) for any other
+candidate worth trying.
 
 ### Which five conversations?
 

@@ -125,7 +125,7 @@ The model is loaded but producing unexpected output. Try:
 
 The model is likely running entirely on CPU. This is expected on machines without a discrete GPU or with insufficient VRAM. Options:
 
-- **Switch to the starter model:** Qwen3 4B (~2.6 GB, 4 GB VRAM minimum) is the most practical choice for CPU-only or low-VRAM machines.
+- **Switch to the starter model:** Qwen3 4B (~2.6 GB, 4 GB VRAM minimum) is the most practical choice for CPU-only or low-VRAM machines. Below 4 GB VRAM, the Qwen3 1.7B lightweight tier (~1.8 GB, 2 GB VRAM minimum) is quicker again — NPCs track the conversation less consistently on it, which is the trade.
 - **Reduce GPU layers:** if you have some VRAM but not enough for the full model, lower `n_gpu_layers` in **Settings → Advanced**. Partial GPU offload is faster than full CPU.
 - **Reduce context length:** a shorter context (`n_ctx=4096`) uses less memory and allows more model layers to fit on the GPU.
 
@@ -135,7 +135,8 @@ Not enough VRAM, or insufficient system RAM for CPU mode. Recommended model by a
 
 | Available VRAM / RAM | Recommendation |
 |---|---|
-| < 4 GB VRAM, ≥ 8 GB RAM | Qwen3 4B on CPU (GPU layers = 0) |
+| < 2 GB VRAM, ≥ 8 GB RAM | Qwen3 1.7B on CPU (GPU layers = 0) |
+| 2–4 GB VRAM | Qwen3 1.7B (lightweight) |
 | 4–6 GB VRAM | Qwen3 4B (starter) |
 | 6–8 GB VRAM | Qwen3 8B (standard) |
 | 10–12 GB VRAM | Qwen3 14B (high-quality) |
