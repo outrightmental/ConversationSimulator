@@ -362,7 +362,7 @@ class TestDemoRibbon:
             assert ribbon_px > width * 4, f"{name}: no DEMO ribbon found"
 
     def test_small_frame_has_no_ribbon(self):
-        """At 32 px the word is ~6 px tall; it reads as dirt, not as a word."""
+        """At 32 px the word is ~3 px tall; it reads as dirt, not as a word."""
         path = _SRC_TAURI / "icons-demo" / "32x32.png"
         assert _count_near(path, _RIBBON_BG) == 0
 

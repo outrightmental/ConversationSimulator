@@ -101,7 +101,8 @@ telling two entries apart at a glance.
   player-voice purple the capsule set already uses, not the lighter UI token
   `--cs-you` (`#A78BFA`), which is a tint for text on a dark stage and
   disappears behind a white speech bubble. Hue is the only cue that survives
-  at this size: a word mark would be about six pixels tall.
+  at this size: the ribbon's lettering is a tenth of the frame tall, which
+  is three pixels at 32.
 - A **"DEMO"** ribbon across the lower-right corner distinguishes the demo at
   128 px and above (the dock, Alt-Tab, Finder). It is deliberately absent
   below that, including on the client icon itself.
@@ -124,15 +125,16 @@ python3 publishing/assets/source/gen_icons.py --edition base --out /tmp/base
 | Output | Path | Used by |
 |--------|------|---------|
 | Client icon | `publishing/assets/icons/demo_client_icon.ico` | Steamworks → Store Presence → Graphical Assets → Client Icon, on the demo app (5343430) |
-| Vector source | `publishing/assets/icons/demo_icon.svg` | Hand edits and re-renders at other sizes |
+| Vector render | `publishing/assets/icons/demo_icon.svg` | Reading the mark and re-rendering it at other sizes. Generated output, rewritten on every run: change `gen_icons.py`, not this file |
 | Bundle icon set | `apps/desktop/src-tauri/icons-demo/` | `bundle.icon` in `tauri.demo.conf.json` |
 
 The client icon is written as a single uncompressed 32-bit DIB frame rather
 than PNG-in-ICO. The multi-size `icon.ico` in the bundle keeps PNG payloads —
 that is what `tauri icon` produced for the base app, and it is what stops the
-256 px frame costing 256 KB — but at 32 px the whole file is 4 KB either way,
-and a plain DIB is the one encoding every ICO reader understands, including
-whatever Valve's uploader and the Steam client's image loader turn out to be.
+256 px frame costing 256 KB — but at 32 px the choice is between a 1.1 KB
+file and a 4.2 KB one, and a plain DIB is the one encoding every ICO reader
+understands, including whatever Valve's uploader and the Steam client's
+image loader turn out to be.
 
 The base app's set in `apps/desktop/src-tauri/icons/` is the original
 `tauri icon` output; the script never writes there. Rendering `--edition base`

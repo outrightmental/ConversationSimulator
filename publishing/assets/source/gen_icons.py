@@ -20,8 +20,10 @@ The demo differs from the base in two ways, in this order of importance:
      is the only thing that survives the 16-32 px the Steam client library
      list actually renders, so it carries the distinction on its own.
   2. A "DEMO" corner ribbon, drawn only at >= 128 px (``RIBBON_MIN_PX``).
-     At 32 px the word is ~6 px tall and turns to mush, so the small frames
-     stay clean and let the colour do the work.
+     WORD_HEIGHT is 26 of the viewBox's 256 units, so the cap height is a
+     tenth of the frame: 13 px at 128, 6 px at 64, 3 px at 32.  Below 128
+     the word turns to mush, so the small frames stay clean and let the
+     colour do the work.
 
 The mark itself — white speech bubble, three dots — is identical in both
 editions: the demo must read as the same product, not a different one.
@@ -379,12 +381,13 @@ def write_ico(
     already carries.
 
     The Steamworks client icon passes ``dib=True``. It is a single 32 px
-    frame, so the whole file is a few kilobytes either way, and a plain DIB is
-    the encoding every ICO reader ever shipped understands — including
-    whatever Valve's asset uploader and the Steam client's own image loader
-    turn out to be, neither of which can be tested from here before the asset
-    is live. There is no reader that takes PNG-in-ICO but not this, so the
-    compatible encoding is free on an asset this small.
+    frame, so the whole file is 4.2 KB as a DIB against 1.1 KB as PNG — three
+    kilobytes, on an asset uploaded once. A plain DIB is the encoding every
+    ICO reader ever shipped understands, including whatever Valve's asset
+    uploader and the Steam client's own image loader turn out to be, neither
+    of which can be tested from here before the asset is live. There is no
+    reader that takes PNG-in-ICO but not this, so the compatible encoding is
+    free on an asset this small.
     """
     payloads = [
         _dib_frame(frames[s], s) if dib else frames[s].read_bytes() for s in sizes
@@ -522,8 +525,10 @@ def build(edition: str, bundle_dir: Path, steam_dir: Path) -> list[Path]:
         write_ico(frames, client, (32,), dib=True)
         written.append(client)
 
-    # The vector source of record, next to the client icon: the large-frame
-    # artwork, readable and editable without re-running this script.
+    # The large-frame artwork as vector, next to the client icon: for reading
+    # the mark and re-rendering it at sizes this script does not emit.  It is
+    # generated output, overwritten on every run — the mark's source of truth
+    # is the geometry above, so edits belong there and not in the .svg.
     svg = steam_dir / f"{edition}_icon.svg"
     svg.write_text(icon_svg(edition, ribbon=edition == "demo"))
     written.append(svg)
