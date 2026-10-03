@@ -364,6 +364,101 @@ class TestEvaluateTurns:
         failures, _ = smoke.evaluate_turns(turns)
         assert any("No model-generated" in f for f in failures)
 
+    def test_every_turn_reciting_the_opening_fails(self) -> None:
+        # Real model output, every parse flag healthy, and not one reply: the
+        # exact run the fallback check cannot see.
+        turns = [
+            _turn(replayed_opening=True),
+            _turn(turn_number=2, replayed_opening=True),
+        ]
+        failures, _ = smoke.evaluate_turns(turns)
+        assert any("reciting the authored opening" in f for f in failures)
+
+    def test_one_turn_reciting_the_opening_only_warns(self) -> None:
+        # Observed behaviour on CI: the starter model recites the opening back
+        # on the first player turn. One such turn degrades the run without
+        # making it worthless, so it warns — the same policy as one fallback.
+        turns = [
+            _turn(replayed_opening=True),
+            _turn(turn_number=2),
+            _turn(turn_number=3),
+        ]
+        failures, warnings = smoke.evaluate_turns(turns)
+        assert failures == []
+        assert any("reciting the authored opening" in w for w in warnings)
+
+    def test_a_recited_opening_is_not_mistaken_for_a_fallback(self) -> None:
+        # The two have different causes and different fixes, so the verdict
+        # must not describe one as the other.
+        failures, warnings = smoke.evaluate_turns([_turn(replayed_opening=True)])
+        assert not any("fell back" in m for m in failures + warnings)
+
+    def test_the_authored_opening_is_not_judged_for_reciting_itself(self) -> None:
+        turns = [
+            {"label": "npc_opening", "turn_number": 0, "model_generated": False,
+             "npc_excerpt": "Thanks for coming in.", "replayed_opening": True},
+            _turn(),
+        ]
+        failures, warnings = smoke.evaluate_turns(turns)
+        assert failures == []
+        assert warnings == []
+
+
+class TestReplaysOpening:
+    """Reciting the authored opening is real model output that is not a reply.
+
+    Every nightly run of the previous single-turn harness logged an NPC reply
+    whose leading characters were byte-identical to the scenario's
+    ``opening_npc_says``. ``used_fallback`` stays false for those turns — the
+    utterance is neither empty nor the canned safe one — so without this check
+    "the model produced real NPC turns" rests on the reply being non-empty.
+    """
+
+    OPENING = (
+        "Thanks for coming in today. I'm Alex Chen from HR. Tell me a little "
+        "about yourself and why you're interested in this role."
+    )
+
+    def test_a_verbatim_copy_is_caught(self) -> None:
+        assert smoke._replays_opening(self.OPENING, self.OPENING)
+
+    def test_a_copy_that_carries_on_into_fresh_prose_is_caught(self) -> None:
+        # What the nightly logs actually showed: the recital, then more text.
+        # Equality would have missed it.
+        assert smoke._replays_opening(
+            self.OPENING + " So, tell me about a time you shipped something.",
+            self.OPENING,
+        )
+
+    def test_reformatted_whitespace_does_not_hide_a_copy(self) -> None:
+        assert smoke._replays_opening(
+            "Thanks for coming in today.\n  I'm Alex Chen from HR.\tTell me a "
+            "little\nabout yourself and why you're interested in this role.",
+            self.OPENING,
+        )
+
+    def test_a_real_reply_passes(self) -> None:
+        assert not smoke._replays_opening(
+            "Five years is a solid run. Walk me through the hardest trade-off "
+            "you made on that API platform.",
+            self.OPENING,
+        )
+
+    def test_a_reply_merely_echoing_a_few_words_passes(self) -> None:
+        # Only a leading recital of the whole opening counts; sharing an
+        # opening phrase does not.
+        assert not smoke._replays_opening(
+            "Thanks for coming in today was my line, not yours — but go on.",
+            self.OPENING,
+        )
+
+    def test_an_unreadable_opening_cannot_convict_a_turn(self) -> None:
+        # _npc_turn_content returns '' when the opening event is missing or
+        # malformed. Every reply startswith('') is True, so an absent opening
+        # would otherwise fail the whole conversation.
+        assert not smoke._replays_opening("A perfectly good reply.", "")
+        assert not smoke._replays_opening("A perfectly good reply.", "   \n ")
+
 
 # ---------------------------------------------------------------------------
 # Debrief assertions
@@ -1495,6 +1590,52 @@ class TestRunSmokeOrchestration:
         assert exit_code == 0
         assert seen["existed_at_terminate"] is True
         assert not seen["data_dir"].exists(), "the data directory leaked"
+
+    def test_a_conversation_of_recited_openings_does_not_pass(
+        self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Every flag healthy, every "reply" the authored opening read back.
+
+        This is the run the parse flags cannot fail: the utterances are real
+        model output, non-empty and not the canned fallback. It must not report
+        that the model produced real NPC turns.
+        """
+        models_dir, model_id, digest = staged_model
+        opening = _OPENING["events"][0]["payload"]["content"]
+        recital = {"events": [{"event_type": "npc_turn", "payload": {
+            "content": f"{opening} Now, tell me about a time you disagreed.",
+            "rubric_observations": [],
+        }}], "ending_type": None}
+        monkeypatch.setattr(
+            smoke, "_request_json", _fake_core(_debrief(), turn=recital)
+        )
+        report = tmp_path / "report.json"
+
+        exit_code = smoke.run_smoke(
+            model_id, 20.0, report, model_sha256=digest, models_dir=models_dir
+        )
+
+        assert exit_code == smoke.EXIT_CODES[smoke.FailureClass.PIPELINE]
+        results = json.loads(report.read_text(encoding="utf-8"))
+        assert results["failed_phase"] == "assertions"
+        assert any("reciting the authored opening" in f for f in results["failures"])
+        # Recorded per turn, so triage can see which turns did it without
+        # re-reading the excerpts.
+        assert all(t["replayed_opening"] for t in results["turns"][1:])
+
+    def test_a_healthy_run_records_that_no_turn_recited_the_opening(
+        self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        models_dir, model_id, digest = staged_model
+        monkeypatch.setattr(smoke, "_request_json", _fake_core(_debrief()))
+        report = tmp_path / "report.json"
+
+        assert smoke.run_smoke(
+            model_id, 20.0, report, model_sha256=digest, models_dir=models_dir
+        ) == 0
+        results = json.loads(report.read_text(encoding="utf-8"))
+        assert all(t["replayed_opening"] is False for t in results["turns"][1:])
+        assert results["warnings"] == []
 
     def test_unscored_debrief_is_a_pipeline_failure(
         self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch, tmp_path: Path

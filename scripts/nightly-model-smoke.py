@@ -290,8 +290,9 @@ REMEDIES = {
     ),
     FailureClass.PIPELINE: (
         "Both servers were healthy but an end-to-end assertion failed: the model "
-        "ran and produced output the product rejects. Inspect per-turn "
-        "used_fallback / native-structured-output flags in the report artifact."
+        "ran and produced output the product rejects. Inspect the per-turn "
+        "used_fallback, native-structured-output and replayed_opening flags in "
+        "the report artifact."
     ),
     FailureClass.TIMEOUT: (
         "The run exhausted its wall-clock budget in the phase named above. "
@@ -784,9 +785,34 @@ def _total_rubric_observations(turns: Sequence[Dict[str, Any]]) -> Optional[int]
     return None if nothing_readable else 0
 
 
+def _collapse(text: str) -> str:
+    """Normalise whitespace so two utterances can be compared as written."""
+    return " ".join(text.split())
+
+
 def _excerpt(text: str) -> str:
-    collapsed = " ".join(text.split())
+    collapsed = _collapse(text)
     return collapsed[:EXCERPT_CHARS] + ("…" if len(collapsed) > EXCERPT_CHARS else "")
+
+
+def _replays_opening(npc_text: str, opening_text: str) -> bool:
+    """True when an NPC reply opens by reciting the authored opening verbatim.
+
+    The scenario's opening line sits in the transcript the turn prompt renders,
+    and the starter model answers the first player turn by copying it back:
+    every nightly run of the previous single-turn harness logged an NPC reply
+    whose leading characters matched ``opening_npc_says`` exactly.  That is not
+    a reply, but nothing downstream notices — the utterance is non-empty and it
+    is not ``SAFE_FALLBACK_UTTERANCE``, so ``used_fallback`` stays false and the
+    per-turn parse flags report a healthy turn.  Proving the turns are real
+    therefore needs this check as well as those flags.
+
+    ``startswith`` rather than equality: a copy that then carries on into fresh
+    prose is the same regurgitation, and the leading recital is what identifies
+    it.  No legitimate reply begins by reading the opening question back out.
+    """
+    opening = _collapse(opening_text)
+    return bool(opening) and _collapse(npc_text).startswith(opening)
 
 
 # ── Assertions (pure, unit-tested) ────────────────────────────────────────────
@@ -808,6 +834,12 @@ def evaluate_turns(turns: List[Dict[str, Any]]) -> tuple[List[str], List[str]]:
     Turns carrying no ``used_fallback`` flag at all — the debug endpoint is
     best-effort — warn that the check did not run, so an absent proof is not
     mistaken for a passed one.
+
+    ``replayed_opening`` gets the identical policy for the other way a turn can
+    pass every flag without being a reply: reciting the authored opening back at
+    the player (see ``_replays_opening``).  Unlike the parse flags this is
+    computed from the response the harness already holds, so it is never
+    missing.
     """
     failures: List[str] = []
     warnings: List[str] = []
@@ -845,6 +877,26 @@ def evaluate_turns(turns: List[Dict[str, Any]]) -> tuple[List[str], List[str]]:
         warnings.append(
             f"{len(fallbacks)} of {len(generated)} model-generated NPC turns fell back "
             "to the safe utterance"
+        )
+
+    # Same policy as the fallback check above, for the other way a turn can look
+    # real without being one: reciting the authored opening back instead of
+    # answering.  See _replays_opening — the parse flags cannot see this, so
+    # without it "the model produced real NPC turns" rests on the utterance
+    # merely being non-empty.
+    echoes = [t for t in generated if t.get("replayed_opening")]
+    if echoes and len(echoes) == len(generated):
+        failures.append(
+            f"All {len(generated)} model-generated NPC turns began by reciting the "
+            "authored opening line verbatim; the model answered no player turn, so "
+            "this run proves nothing about real NPC replies"
+        )
+    elif echoes:
+        warnings.append(
+            f"{len(echoes)} of {len(generated)} model-generated NPC turns began by "
+            "reciting the authored opening line verbatim instead of answering the "
+            "player: real output, but not a reply. Recurring in the same turn "
+            "position every night is a turn-prompt problem, not an unlucky sample"
         )
     return (failures, warnings)
 
@@ -1347,13 +1399,18 @@ def run_smoke(
             latency_ms = (time.monotonic() - t0) * 1000
             turn_latencies.append(latency_ms)
             npc_text = _npc_turn_content(turn.get("events", []))
-            print(f"  {latency_ms:.0f} ms | NPC: {_excerpt(npc_text)!r}")
+            replayed_opening = _replays_opening(npc_text, opening)
+            print(f"  {latency_ms:.0f} ms | NPC: {_excerpt(npc_text)!r}"
+                  + (" [replays the authored opening]" if replayed_opening else ""))
             results["turns"].append({
                 "label": f"player_turn_{i}",
                 "turn_number": i,
                 "model_generated": True,
                 "latency_ms": round(latency_ms),
                 "npc_excerpt": _excerpt(npc_text),
+                # Real model output that is not a reply — see _replays_opening.
+                # The parse flags below cannot tell this from a healthy turn.
+                "replayed_opening": replayed_opening,
                 "ending_type": turn.get("ending_type"),
                 # What the model volunteered for the debrief to score.  Recorded
                 # per turn so an unscored debrief can be attributed without

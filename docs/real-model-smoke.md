@@ -52,6 +52,17 @@ on a **real local model** end-to-end — registry download → llama.cpp →
 The NPC *opening* line is authored scenario text, not a generation — so the
 scripted player turns, not the opening, are what prove the model is working.
 
+A turn that is real model output is not automatically a *reply*, and the
+per-turn parse flags cannot tell the difference. Every nightly run of the
+previous single-turn harness logged an NPC answer whose leading characters were
+byte-identical to the scenario's `opening_npc_says` — the model reciting the
+opening question back instead of answering it. `used_fallback` stays false for
+those turns (the utterance is neither empty nor the canned safe one), so the run
+went green on a conversation that never happened. The harness therefore records
+`replayed_opening` per turn and applies the same policy it applies to
+fallbacks: one such turn warns, *every* generated turn doing it fails, because
+then the model answered nothing and the run proves nothing.
+
 If the NPC closes the conversation before the script runs out
 (`session_control.continue_session`), the run still passes on the turns it did
 play — that is the product working as designed — but it records
@@ -72,7 +83,7 @@ log, and a remedy printed next to it:
 | 2 | `download` | Model could not be fetched — network, HTTP, or an empty cache | `python scripts/validate-registry.py --url-check`, then re-run |
 | 3 | `checksum` | **SHA-256 drift**: on-disk bytes ≠ `model-registry/registry.yaml` | See [Checksum drift](#checksum-drift) — never relax the check |
 | 4 | `runtime` | `llama-server` or `convsim-core` crashed, hung, or returned 5xx — or one of the two ports was already taken, so neither could be started | Read the child stderr tail printed above the banner. A port conflict started no child and so has no tail: the banner carries its own remedy instead, naming the port to free — see [Running it locally](#running-it-locally) |
-| 5 | `pipeline` | Servers healthy, but an end-to-end assertion failed | Inspect per-turn `used_fallback` flags in the report artifact — except for an unscored debrief, see [Unscored debrief](#unscored-debrief) |
+| 5 | `pipeline` | Servers healthy, but an end-to-end assertion failed | Inspect the per-turn `used_fallback` and `replayed_opening` flags in the report artifact — except for an unscored debrief, see [Unscored debrief](#unscored-debrief) |
 | 6 | `timeout` | Wall-clock budget exhausted; the failing phase is named | Check `phase_durations_s` before raising the budget |
 
 The distinction that matters most in practice is **2/3 vs 4 vs 5**: a download or
