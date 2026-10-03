@@ -50,10 +50,11 @@ export interface NpcTurnProgressProps {
  * thinking: the estimate still covers the whole round trip, but a panel claiming
  * the NPC is thinking under a reply being typed out is simply wrong.
  *
- * Accessibility: the visible clock ticks every second, so it is hidden from
- * assistive tech and a single polite live region carries the same news on a 30 s
- * grid. The bar keeps its progressbar role and value for anyone who navigates to
- * it deliberately.
+ * Accessibility: the status phrase is announced — this panel is the only thing
+ * on screen saying the NPC is working — but the clock beside it ticks every
+ * second, so that is hidden and a single polite live region carries the same news
+ * on a 30 s grid. The bar keeps its progressbar role and value for anyone who
+ * navigates to it deliberately.
  */
 export default function NpcTurnProgress({ elapsedMs, estimateMs, streaming = false }: NpcTurnProgressProps) {
   const hasEstimate = estimateMs !== null && estimateMs > 0
@@ -90,7 +91,6 @@ export default function NpcTurnProgress({ elapsedMs, estimateMs, streaming = fal
       }}
     >
       <div
-        aria-hidden="true"
         style={{
           display: 'flex',
           justifyContent: 'space-between',
@@ -100,9 +100,15 @@ export default function NpcTurnProgress({ elapsedMs, estimateMs, streaming = fal
           color: 'var(--cs-text-muted, #a1a1aa)',
         }}
       >
-        <span>{streaming ? 'NPC is replying…' : 'NPC is thinking…'}</span>
+        {/* This panel is the whole screen's "the NPC is working" status while a
+            turn is out, so the phrase is announced rather than hidden. It changes
+            at most once per turn (thinking → replying), unlike the clock. */}
+        <span data-testid="npc-turn-progress-status" role="status">
+          {streaming ? 'NPC is replying…' : 'NPC is thinking…'}
+        </span>
         <span
           data-testid="npc-turn-progress-clock"
+          aria-hidden="true"
           style={{
             fontVariantNumeric: 'tabular-nums',
             color: overrun ? 'var(--cs-event, #fbbf24)' : 'var(--cs-text, #e8e8ea)',

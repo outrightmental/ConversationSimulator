@@ -2012,6 +2012,31 @@ describe('Conversation screen', () => {
         expect(screen.getByText('Here is my answer.')).toBeInTheDocument()
         expect(screen.queryByTestId('npc-turn-progress')).not.toBeInTheDocument()
         expect(screen.queryByTestId('slow-response-indicator')).not.toBeInTheDocument()
+        // The composer stays disabled until the request carrying the state delta
+        // answers, so the screen says what it is still doing — without claiming
+        // the NPC is working on a reply that is already there.
+        expect(screen.getByTestId('turn-finishing-indicator')).toHaveTextContent(
+          'Finishing the turn…',
+        )
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('does not say the NPC is responding twice over', async () => {
+      // The panel below the transcript is the status while the NPC is out; the
+      // transcript's own busy line would only repeat it in different words.
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        renderConversation()
+        await submit()
+        await vi.advanceTimersByTimeAsync(4_000)
+
+        expect(screen.getByTestId('npc-turn-progress-status')).toHaveTextContent(
+          'NPC is thinking…',
+        )
+        expect(screen.queryByTestId('turn-finishing-indicator')).not.toBeInTheDocument()
       } finally {
         vi.useRealTimers()
       }

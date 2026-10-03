@@ -66,8 +66,17 @@ describe('NpcTurnProgress', () => {
       // The clock changes every second; inside a live region that is ~300
       // announcements over a five-minute turn.
       renderProgress(45_000, 30_000)
-      expect(screen.getByTestId('npc-turn-progress-clock').closest('[aria-hidden="true"]')).not.toBeNull()
+      expect(screen.getByTestId('npc-turn-progress-clock')).toHaveAttribute('aria-hidden', 'true')
       expect(screen.getByTestId('npc-turn-progress-detail')).toHaveAttribute('aria-hidden', 'true')
+    })
+
+    it('announces the status phrase, which is the one thing that is not a clock', () => {
+      // Nothing else on screen says the NPC is working once this panel is up.
+      renderProgress(2_000, null)
+      const status = screen.getByTestId('npc-turn-progress-status')
+      expect(status).toHaveAttribute('role', 'status')
+      expect(status).not.toHaveAttribute('aria-hidden')
+      expect(status).toHaveTextContent('NPC is thinking…')
     })
 
     it('says nothing about a wait that is still ordinary', () => {
@@ -111,9 +120,9 @@ describe('NpcTurnProgress', () => {
   describe('once the reply starts streaming', () => {
     it('stops claiming the NPC is thinking', () => {
       renderProgress(20_000, 30_000, true)
-      const header = screen.getByTestId('npc-turn-progress-clock').parentElement!
-      expect(header).toHaveTextContent('NPC is replying…')
-      expect(header).not.toHaveTextContent('NPC is thinking…')
+      const status = screen.getByTestId('npc-turn-progress-status')
+      expect(status).toHaveTextContent('NPC is replying…')
+      expect(status).not.toHaveTextContent('NPC is thinking…')
     })
 
     it('keeps timing the whole round trip, which is what was estimated', () => {

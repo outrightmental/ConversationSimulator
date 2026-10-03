@@ -1168,13 +1168,20 @@ export default function Conversation() {
           </div>
         )}
 
-        {isBusy && !streamingText && (
+        {/* The two waits the turn panel below does not cover. While the NPC is
+            actually out, that panel is the status — a second "NPC is responding…"
+            here would only repeat it in different words. What is left is the gap
+            after the stream has delivered the reply but before the request
+            carrying the state delta answers, and ending the session. Both leave
+            the composer disabled, so both need saying. */}
+        {isBusy && !streamingText && !isAwaitingNpc && (
           <div
+            data-testid="turn-finishing-indicator"
             aria-live="polite"
             aria-busy="true"
             style={{ color: '#71717a', fontSize: '0.875rem', fontStyle: 'italic' }}
           >
-            {phase === 'submitting' ? 'NPC is responding…' : 'Ending session…'}
+            {phase === 'submitting' ? 'Finishing the turn…' : 'Ending session…'}
           </div>
         )}
       </div>
