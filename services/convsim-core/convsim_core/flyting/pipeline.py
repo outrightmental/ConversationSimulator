@@ -351,7 +351,13 @@ async def process_volley(
         # gesture it is, which is exactly what the pipeline will conclude.
         npc_prepared = service.prepare(
             npc_line,
-            prior_volleys=prior_texts + [prepared.volley.text],
+            # The player's line joins the corpus only if it was worth something,
+            # the same rule ``volley_texts`` applies to the rest of the session.
+            prior_volleys=(
+                prior_texts + [prepared.volley.text]
+                if player_score.score > 0
+                else prior_texts
+            ),
         )
         npc_judgment = await judge_volley(
             npc_prepared,

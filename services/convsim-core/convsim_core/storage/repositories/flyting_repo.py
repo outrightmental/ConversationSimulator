@@ -92,13 +92,21 @@ def list_volleys(
 
 
 def volley_texts(conn: sqlite3.Connection, session_id: str) -> List[str]:
-    """Every volley's text this session, for the novelty comparison.
+    """Every volley that scored this session, for the novelty comparison.
 
     Both speakers, deliberately: parroting the opponent is redundancy, so the
     opponent's lines have to be in the corpus the player is compared against.
+
+    Volleys worth nothing are left out, because a volley the engine refused is
+    not material the player has already spent. A line that arrived after the
+    shot clock, or that tripped a gate the umpire then explained, scores zero and
+    is meant to be tried again — and if its text stayed in this corpus the retry
+    would come back at a tenth of its value for repeating a volley that never
+    counted. Nothing is lost: a repeat of something that did score is still
+    caught, which is the redundancy the stage exists to punish.
     """
     rows = conn.execute(
-        "SELECT text FROM flyting_volleys WHERE session_id = ? ORDER BY id",
+        "SELECT text FROM flyting_volleys WHERE session_id = ? AND score > 0 ORDER BY id",
         (session_id,),
     ).fetchall()
     return [row["text"] for row in rows]
