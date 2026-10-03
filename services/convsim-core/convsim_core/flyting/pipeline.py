@@ -354,6 +354,7 @@ async def process_volley(
     # back to, and the one the judge was then told the callback had to be among.
     # The same slip fires inside a bout whenever the opponent's last volley
     # scored nothing, since ``volley_texts`` keeps only what scored.
+    #
     # Compared after normalisation, because the two stores hold the same line in
     # two forms: the turn row keeps what ``clean_opponent_line`` produced, and
     # the volley row keeps ``analyze_volley``'s normalisation of it — repeated
