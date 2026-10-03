@@ -122,10 +122,12 @@ confirmed unlock, `unlock()` asks Steam — via the `steam_unlocked_achievements
 command — which of the required names plus `ACH_CERTIFIED_EXPERT` the signed-in
 account already holds, and fires the capstone when every required name comes
 back. `OPTIONAL_ACHIEVEMENTS` in `useSteamAchievements.ts` is the list left out
-of the requirement, so that 100% of the base game stays reachable for a player
-with no Workshop subscription, no DLC, no controller, no Ollama or `.gguf`
-model of their own, and a pack library that has never needed repairing. A
-microphone **is** required — voice practice is the product, and the store page
+of the requirement, so that the capstone stays reachable for a player with no
+Workshop subscription, no DLC, no controller, no Ollama or `.gguf` model of
+their own, and a pack library that has never needed repairing. Those seven are
+still part of the set, so a 100% Steam profile does depend on that optional
+content and hardware — `ACH_CERTIFIED_EXPERT`, not 100%, is the badge that says
+a player has exercised the whole base game. A microphone **is** required — voice practice is the product, and the store page
 already lists one as the requirement for voice mode.
 
 **Steam is the only authority here, deliberately.** "Has this player earned

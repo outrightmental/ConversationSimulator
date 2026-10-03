@@ -262,9 +262,12 @@ every confirmed unlock, `unlock()` asks Steam — via the
 `steam_unlocked_achievements` command — which of the required API names plus
 `ACH_CERTIFIED_EXPERT` the signed-in account already holds, and fires the
 capstone when every required name comes back. `OPTIONAL_ACHIEVEMENTS` in
-`useSteamAchievements.ts` lists what the capstone does not require, so 100%
-stays reachable without Workshop, DLC, a controller, a player-supplied model, or
-a pack library that ever needed restoring.
+`useSteamAchievements.ts` lists what the capstone does not require, so the
+*capstone* stays reachable without Workshop, DLC, a controller, a
+player-supplied model, or a pack library that ever needed restoring. Those seven
+remain in the set as ordinary achievements, so a full 100% on the Steam profile
+still depends on that optional content and hardware — the capstone, not 100%, is
+what marks a player as having exercised the whole base game.
 
 Steam is the only authority here, deliberately: "has this player earned every
 required achievement?" is a fact about a Steam *account*, and a device-local
