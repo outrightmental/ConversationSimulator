@@ -95,8 +95,10 @@ Homebrew is the only package manager that ships whisper.cpp, so Linux and
 Windows build it. On Windows the build leaves `whisper-cli.exe` inside
 `build\bin\Release` rather than anywhere on your `PATH`, and the setup screen
 says so under the command: add that folder to your `PATH`, or set
-`CONVSIM_WHISPER_CPP_BINARY_PATH` to the full path of the `.exe`. Then press
-**Check again**.
+`CONVSIM_WHISPER_CPP_BINARY_PATH` to the full path of the `.exe`. Then **restart
+the app** — a `PATH` or environment change does not reach a program that is
+already running, so **Check again** on its own cannot see it. (After `brew
+install` it can, which is why macOS needs no restart.)
 
 If you would rather not build it, the
 [whisper.cpp releases page](https://github.com/ggml-org/whisper.cpp/releases)
@@ -116,6 +118,11 @@ screen gives you ready to copy:
 ```sh
 docker run --rm -p 7358:8880 ghcr.io/remsky/kokoro-fastapi-cpu:latest
 ```
+
+A container puts no `kokoro-server` program on your machine for the app to find,
+so once it answers the row reads **already running** rather than claiming the
+server is missing. The app did not start it and will not stop it — closing the
+container is up to you.
 
 ### Two smaller pieces
 

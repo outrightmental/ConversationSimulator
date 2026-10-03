@@ -166,6 +166,11 @@ def test_a_command_that_does_not_finish_the_job_carries_a_follow_up_note():
     # The two ways out of the build tree the worker actually honours.
     assert "PATH" in note
     assert "CONVSIM_WHISPER_CPP_BINARY_PATH" in note
+    # Both of those are environment changes, which a running process cannot
+    # observe — so the note must ask for a restart rather than sending Windows
+    # back to a "Check again" button that could never turn green.
+    assert "restart" in note.lower(), note
+    assert "check again" not in note.lower(), note
 
     # macOS needs none: brew puts whisper-cli on PATH itself.
     assert voice_registry.engine_command_note(whisper, "darwin") is None
@@ -354,6 +359,44 @@ def test_plan_names_the_engines_it_will_not_download(client):
     # Only the Kokoro server is something the app can launch itself.
     assert engines["kokoro-server"]["startable"] is True
     assert engines["whisper-cli"]["startable"] is False
+
+
+def test_an_externally_run_engine_is_not_reported_as_missing(voice_paths):
+    """A Kokoro server run from Docker leaves no binary for the app to find.
+
+    The Docker command is the one this very plan hands out, so resolving the row
+    from ``find_kokoro_executable`` alone would re-offer a command the player has
+    already run — behind a "Check again" that can never turn green — right next
+    to a capability the worker reports as ready.
+    """
+    from convsim_core.services.voice_setup_service import build_plan
+    from convsim_core.storage.database import Database
+
+    database = Database.open(str(voice_paths["stt_dir"].parent / "serving-db"))
+    try:
+        plan = build_plan(database.connection(), stt_ready=False, tts_ready=True)
+    finally:
+        database.close()
+
+    kokoro = next(e for e in plan["engines"] if e["id"] == "kokoro-server")
+    assert kokoro["serving"] is True
+    assert kokoro["installed"] is True
+    # Nothing was located, so no path may be claimed.
+    assert kokoro["found_at"] is None
+
+    # Speech-to-text is not ready here, so its engine row stays honest.
+    whisper = next(e for e in plan["engines"] if e["id"] == "whisper-cli")
+    assert whisper["serving"] is False
+    assert whisper["installed"] is False
+
+
+def test_an_engine_the_app_cannot_see_is_not_offered_as_startable(client):
+    """``serving`` must survive the response model — the UI hides Start on it."""
+    body = client.get("/api/voice/setup/plan").json()
+    kokoro = next(e for e in body["engines"] if e["id"] == "kokoro-server")
+    # Nothing is running in this fixture, so the row is a genuine gap.
+    assert kokoro["serving"] is False
+    assert kokoro["installed"] is False
 
 
 def test_plan_discloses_source_licence_checksum_and_destination(client):

@@ -46,6 +46,12 @@ export interface VoiceEngine {
   startable: boolean;
   installed: boolean;
   found_at: string | null;
+  /**
+   * The capability is answering but the app did not locate the program itself —
+   * a Kokoro server started from Docker, say. There is nothing to install and
+   * nothing for the app to start, so the row must offer neither.
+   */
+  serving: boolean;
 }
 
 export interface VoiceCapability {

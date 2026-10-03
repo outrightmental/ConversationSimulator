@@ -107,7 +107,9 @@ def _asset_view(asset: VoiceAsset) -> dict[str, Any]:
     }
 
 
-def _engine_view(engine: VoiceEngine, *, found_at: str | None) -> dict[str, Any]:
+def _engine_view(
+    engine: VoiceEngine, *, found_at: str | None, serving: bool = False
+) -> dict[str, Any]:
     return {
         "id": engine.id,
         "capability": engine.capability,
@@ -117,8 +119,12 @@ def _engine_view(engine: VoiceEngine, *, found_at: str | None) -> dict[str, Any]
         "command": engine_command(engine, sys.platform),
         "command_note": engine_command_note(engine, sys.platform),
         "startable": engine.startable,
-        "installed": found_at is not None,
+        # Nothing left to install either way, but the two reasons differ: the
+        # app located the program, or the capability is answering from
+        # somewhere the app cannot see (so there is also nothing to start).
+        "installed": found_at is not None or serving,
         "found_at": found_at,
+        "serving": serving,
     }
 
 
@@ -146,7 +152,21 @@ def build_plan(
     plan agrees with what Home and Settings report rather than re-deriving
     readiness from file existence alone.
     """
-    engines = {e.id: _engine_view(e, found_at=_engine_location(e)) for e in VOICE_ENGINES}
+    # A capability can be satisfied without the app locating the program. The
+    # Kokoro command this very plan hands out runs the server in Docker, which
+    # puts no `kokoro-server` binary on PATH — so resolving the row from the
+    # binary alone would re-offer the command the player has just run, behind a
+    # "Check again" that could never turn green, beside a capability the worker
+    # already reports as ready.
+    capability_ready: dict[str, bool] = {"stt": stt_ready, "tts": tts_ready}
+    engines: dict[str, dict[str, Any]] = {}
+    for engine in VOICE_ENGINES:
+        found_at = _engine_location(engine)
+        engines[engine.id] = _engine_view(
+            engine,
+            found_at=found_at,
+            serving=found_at is None and capability_ready.get(engine.capability, False),
+        )
 
     # Which STT model is actually in use: the player's recorded choice, or the
     # worker's configured path when they have not made one. Deriving it from

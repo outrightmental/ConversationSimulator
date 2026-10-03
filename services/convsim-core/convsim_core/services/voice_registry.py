@@ -199,10 +199,17 @@ VOICE_ENGINES: tuple[VoiceEngine, ...] = (
             # The Linux command ends with a copy into /usr/local/bin, so PATH is
             # already handled there; on Windows the build leaves the binary in
             # the build tree and there is no conventional bin dir to copy into.
+            # "Check again" is enough for brew (it installs onto a PATH entry the
+            # running process already has), but not here: PATH and environment
+            # changes are a snapshot taken when a process starts, so neither
+            # route reaches the service that is already running. Saying "press
+            # Check again" would leave Windows pressing a button that can never
+            # turn green — the dead end this flow exists to remove.
             "win32": (
                 "The build leaves whisper-cli.exe in build\\bin\\Release. Add that "
                 "folder to your PATH, or set CONVSIM_WHISPER_CPP_BINARY_PATH to the "
-                "full path of the .exe, then press Check again."
+                "full path of the .exe — then restart the app, because neither "
+                "change reaches a program that is already running."
             ),
         },
     ),

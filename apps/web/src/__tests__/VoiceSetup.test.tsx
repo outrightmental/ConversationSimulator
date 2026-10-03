@@ -116,6 +116,7 @@ function makePlan(overrides: Partial<VoiceSetupPlan> = {}): VoiceSetupPlan {
         startable: false,
         installed: false,
         found_at: null,
+        serving: false,
       },
       {
         id: 'kokoro-server',
@@ -128,6 +129,7 @@ function makePlan(overrides: Partial<VoiceSetupPlan> = {}): VoiceSetupPlan {
         startable: true,
         installed: false,
         found_at: null,
+        serving: false,
       },
     ],
     platform: 'darwin',
@@ -266,6 +268,34 @@ describe('VoiceSetup — what is missing', () => {
   it('does not offer to start an engine that is not installed', async () => {
     renderScreen()
     await screen.findByTestId('voice-setup-screen')
+    expect(screen.queryByTestId('engine-start-kokoro-server')).toBeNull()
+  })
+
+  it('stops nagging about an engine that is already answering from outside the app', async () => {
+    // The Kokoro command this screen hands out runs the server in Docker, which
+    // puts no binary on PATH. Re-offering that command — behind a re-check that
+    // can never turn green — beside a capability reported Ready is the dead end
+    // issue #487 was filed about, just one screen later.
+    const plan = makePlan()
+    mockApi.getVoiceSetupPlan.mockResolvedValue({
+      ok: true,
+      data: makePlan({
+        capabilities: plan.capabilities.map((c) => (c.id === 'tts' ? { ...c, ready: true } : c)),
+        engines: plan.engines.map((e) =>
+          e.id === 'kokoro-server' ? { ...e, installed: true, serving: true } : e,
+        ),
+      }),
+    })
+
+    renderScreen()
+    await screen.findByTestId('voice-setup-screen')
+
+    const row = screen.getByTestId('engine-row-kokoro-server')
+    expect(row).toHaveTextContent('already running')
+    expect(screen.getByTestId('engine-serving-kokoro-server')).toBeInTheDocument()
+    // Neither a command to run nor a server to start: both would be wrong.
+    expect(row).not.toHaveTextContent('docker run')
+    expect(screen.queryByTestId('engine-recheck-kokoro-server')).toBeNull()
     expect(screen.queryByTestId('engine-start-kokoro-server')).toBeNull()
   })
 

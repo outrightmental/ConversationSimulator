@@ -88,6 +88,9 @@ class VoiceEngineView(BaseModel):
     startable: bool
     installed: bool
     found_at: Optional[str] = None
+    # The capability is answering but the app did not locate the program — an
+    # externally run Kokoro server. Nothing to install, nothing to start.
+    serving: bool = False
 
 
 class VoiceCapabilityView(BaseModel):

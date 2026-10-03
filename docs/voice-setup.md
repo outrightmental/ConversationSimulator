@@ -42,6 +42,14 @@ Each row carries its own next action: a download, a platform-specific install
 command with a **Check again** button, or — for a Kokoro binary that exists but
 is not running — a **Start the voice server** button.
 
+An engine can also be satisfied without the app locating it: the Kokoro command
+the plan hands out runs the server in Docker, which puts no `kokoro-server`
+binary on `PATH`. When the worker reports the capability ready and
+`_engine_location` finds nothing, the plan marks the row `serving` — reported
+`installed`, with no `found_at` — and the screen says "already running" instead
+of re-offering a command the player has just run or a **Start** button that
+would only collide on the port.
+
 The plan is re-read on window focus. The two native engines are installed
 *outside* the app, so a player who runs `brew install whisper.cpp` in a
 terminal and switches back sees the row tick over without a reload.
@@ -122,7 +130,7 @@ upstream `cmake` build instead of a package-manager one-liner.
 |----------|---------|-----------|
 | macOS | `brew install whisper.cpp` | None — brew puts `whisper-cli` on `PATH`. (`whisper-cpp` is a deprecated oldname that still resolves but warns.) |
 | Linux | `git clone` + `cmake --build`, then `sudo cp build/bin/whisper-cli /usr/local/bin/` | None — the command ends by copying onto `PATH`. |
-| Windows | `git clone` + `cmake --build` | Required: the binary stays in `build\bin\Release`. |
+| Windows | `git clone` + `cmake --build` | Required: the binary stays in `build\bin\Release`, and the app must be restarted. |
 
 A command that cannot finish the job carries a `command_notes` entry for that
 platform, which the plan returns as `command_note` and the screen renders in
@@ -132,6 +140,13 @@ honours — put that folder on `PATH`, or set
 `CONVSIM_WHISPER_CPP_BINARY_PATH` to the `.exe`. Without it the player runs a
 command, nothing changes, and they are back at the dead end this flow exists to
 remove.
+
+Both of those routes need an app restart, and the note says so. `PATH` and the
+environment are a snapshot taken when a process starts, so **Check again** —
+which re-runs the same `shutil.which` lookup inside the already-running service
+— cannot see either change. `brew install` needs no restart because it installs
+onto a `PATH` entry the running process already has; building from source does
+not.
 
 Windows players who would rather not build can take `whisper-bin-x64.zip` from
 a `bNNNN` tag on the [whisper.cpp releases

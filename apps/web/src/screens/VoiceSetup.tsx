@@ -187,7 +187,11 @@ function EngineRow({
 }) {
   // "Installed but not running" is the common Steam-depot case and the only
   // one the app can resolve itself, so it gets a button rather than a command.
-  const canStart = engine.installed && engine.startable && kokoroState !== 'running'
+  // A server already answering from outside the app (the Docker route this
+  // screen itself recommends) is neither: starting a second one would only
+  // collide on the port.
+  const canStart =
+    engine.installed && engine.startable && !engine.serving && kokoroState !== 'running'
 
   return (
     <li
@@ -199,12 +203,28 @@ function EngineRow({
         <p style={{ margin: 0, fontSize: '0.875rem', fontWeight: 500 }}>
           {engine.name}{' '}
           <span style={{ fontWeight: 400, color: engine.installed ? '#86efac' : '#fbbf24' }}>
-            — {engine.installed ? (canStart ? 'installed, not running' : 'installed') : 'not found'}
+            —{' '}
+            {engine.serving
+              ? 'already running'
+              : engine.installed
+              ? canStart
+                ? 'installed, not running'
+                : 'installed'
+              : 'not found'}
           </span>
         </p>
         {engine.installed && engine.found_at && (
           <p style={{ margin: '0.15rem 0 0', fontSize: '0.78rem', color: '#71717a', wordBreak: 'break-all' }}>
             {engine.found_at}
+          </p>
+        )}
+        {engine.serving && (
+          <p
+            data-testid={`engine-serving-${engine.id}`}
+            style={{ margin: '0.15rem 0 0', fontSize: '0.78rem', color: '#71717a', lineHeight: 1.5 }}
+          >
+            Answering already, from outside the app — so there is nothing to install
+            here. The app did not start it and will not stop it.
           </p>
         )}
         {!engine.installed && (
