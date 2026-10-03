@@ -49,7 +49,7 @@ Work is organized into **phases** — append-only eras of the project's life:
 | 03 · Beta & signature | Jul 10 – 11 | 23 | Public-beta readiness ([#315](https://github.com/outrightmental/ConversationSimulator/issues/315)) and signature-experience ([#316](https://github.com/outrightmental/ConversationSimulator/issues/316)) programs |
 | 04 · Pivot & onboarding | Jul 11 – 13 | 24 | FOSS/$9.99 business-model pivot ([#366](https://github.com/outrightmental/ConversationSimulator/issues/366)) and the v0.3 onboarding overhaul ([#388](https://github.com/outrightmental/ConversationSimulator/issues/388)) |
 | 05 · Hardening | Jul 13 – Aug 5 | 13 | Signing chains, release dress rehearsals, post-v0.3 fixes |
-| 06 · Release polish | now | — | What remains before the Milestone-1 tag |
+| 06 · Release polish | now | — | Post-v0.3 polish and fixes; what remains before the v0.4 release train |
 | 07 · Future | — | — | Groomed post-launch backlog (see [post-alpha-issues.md](post-alpha-issues.md)) |
 
 Board automations: new issues add themselves; closing an issue moves it to **Done**;
