@@ -196,7 +196,6 @@ class VolleyScoringService:
         momentum: Optional[int] = None,
         riposte_bonus: int = 0,
         extra_flags: Sequence[str] = (),
-        prior_below_the_belt: int = 0,
     ) -> VolleyScore:
         """Compose the final scorecard for a prepared, judged volley."""
         uses = dict(theme_uses or {})
@@ -224,7 +223,6 @@ class VolleyScoringService:
             momentum=momentum,
             extra_flags=extra_flags,
             honored_judge_fouls=self.honored_judge_fouls,
-            prior_below_the_belt=prior_below_the_belt,
         )
 
         audience = self.context.audience

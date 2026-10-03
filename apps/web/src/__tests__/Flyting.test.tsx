@@ -309,6 +309,60 @@ describe('FlytingSetup', () => {
     expect(screen.getByTestId('personal-best')).not.toHaveTextContent('420')
   })
 
+  it('narrows the board to today\'s seed on request', async () => {
+    renderSetup()
+    await waitFor(() =>
+      expect(mockApi.flyting.highScores).toHaveBeenLastCalledWith(
+        SCENARIO_ID, 'batting_practice', 'set_10', false,
+      ),
+    )
+
+    fireEvent.click(screen.getByTestId('board-today-only'))
+    await waitFor(() =>
+      expect(mockApi.flyting.highScores).toHaveBeenLastCalledWith(
+        SCENARIO_ID, 'batting_practice', 'set_10', true,
+      ),
+    )
+  })
+
+  it('does not report the best of today\'s seeded runs as a personal best', async () => {
+    // One all-time row of 310; today's seed has nothing on it yet.
+    const row = {
+      scenario_id: SCENARIO_ID,
+      pack_id: 'official.flyting_school',
+      play_format: 'batting_practice' as const,
+      batting_format: 'set_10' as const,
+      session_id: 'sess-older',
+      outcome: 'set_complete',
+      total_score: 310,
+      volley_count: 10,
+      best_volley_score: 98,
+      peak_heat: 1.4,
+      daily_seed: null,
+      achieved_at: '2026-09-30 19:00:00',
+    }
+    mockApi.flyting.highScores.mockImplementation((_id, playFormat, battingFormat, today) =>
+      Promise.resolve({
+        ok: true,
+        data: {
+          scenario_id: SCENARIO_ID,
+          play_format: playFormat ?? null,
+          batting_format: battingFormat ?? null,
+          entries: today ? [] : [row],
+        },
+      }),
+    )
+
+    renderSetup()
+    await waitFor(() => expect(screen.getByTestId('personal-best')).toHaveTextContent('310'))
+
+    // Filtered, the number falls back to the payload's per-format best rather
+    // than calling the best of one day's runs a record.
+    fireEvent.click(screen.getByTestId('board-today-only'))
+    await waitFor(() => expect(screen.getByTestId('personal-best')).toHaveTextContent('420'))
+    expect(screen.getByTestId('high-scores-empty')).toBeInTheDocument()
+  })
+
   it('prints the umpire flavour where there is room for it', async () => {
     renderSetup()
     await waitFor(() => screen.getByTestId('judge-flavor'))

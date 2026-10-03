@@ -480,13 +480,46 @@ class TestJudgeFouls:
         assert result.score == 0
         assert result.bonuses == []
 
-    def test_a_repeat_below_the_belt_ends_the_run(self):
+    def test_a_judged_below_the_belt_never_ends_the_run(self):
+        """Only the deterministic gate can close somebody's session.
+
+        A judge-raised below_the_belt zeroes the volley, is recorded, resets
+        the heat and counts as a whiff — everything the Stage 0 gate does
+        except the irreversible part. Measured against the registry's starter
+        model, "You are all fools and idiots and I despise every one of you"
+        draws a below_the_belt verdict; two of those would have ended a run for
+        ordinary abuse, in scenarios whose register is ordinary abuse.
+        """
         first = score(verdict=judgment(fouls=["below_the_belt"]))
+        assert first.score == 0
+        assert first.gate.foul.value == "below_the_belt"
         assert not first.gate.ends_session
-        repeat = score(
-            verdict=judgment(fouls=["below_the_belt"]), prior_below_the_belt=1
+
+        # Still not terminal with one already on the record.
+        repeat = score(verdict=judgment(fouls=["below_the_belt"]))
+        assert repeat.score == 0
+        assert not repeat.gate.ends_session
+
+    def test_the_deterministic_gate_still_ends_a_run_on_a_repeat(self):
+        """The Stage 0 pattern is evidence, not an opinion, so it still does."""
+        from convsim_core.flyting.gates import Foul, GateOutcome, evaluate_gates
+        from convsim_core.flyting.volley import analyze_volley
+        from convsim_core.flyting.craft import compute_craft_metrics
+        from convsim_core.input_router import RouteAction, SafetyPolicyConfig
+
+        policy = SafetyPolicyConfig(
+            policy_id="p", content_rating="PG-13",
+            categories={"harassment_extreme": RouteAction.REFUSE},
+            allow_profanity=True,
         )
-        assert repeat.gate.ends_session
+        text = "You are a retarded little man, sir."
+        volley = analyze_volley(text)
+        craft = compute_craft_metrics(volley)
+        first = evaluate_gates(volley, craft, safety_policy=policy, prior_below_the_belt=0)
+        second = evaluate_gates(volley, craft, safety_policy=policy, prior_below_the_belt=1)
+        assert first.foul is Foul.BELOW_THE_BELT and not first.ends_session
+        assert second.ends_session
+        assert first.outcome is GateOutcome.FOUL
 
     def test_below_the_belt_outranks_a_register_foul(self):
         result = score(

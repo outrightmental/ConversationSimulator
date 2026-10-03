@@ -242,7 +242,6 @@ def compose_volley_score(
     audience_reaction: Optional[str] = None,
     extra_flags: Sequence[str] = (),
     honored_judge_fouls: Sequence[str] = ALWAYS_HONORED_JUDGE_FOULS,
-    prior_below_the_belt: int = 0,
 ) -> VolleyScore:
     """Compose one volley's final score from the four stages' outputs."""
     # Flags come from three places: the volley's own bounds (too_short, run_on),
@@ -257,12 +256,11 @@ def compose_volley_score(
     # it also reported are beside the point. Promote it to a gate result so the
     # volley is zeroed, the foul is recorded, the heat resets, and the player
     # sees a foul tag — the same treatment a Stage 0 foul gets. Only the fouls
-    # this scenario asked for count; see gates.judge_foul_result.
+    # this scenario asked for count, and none of them can end the run — see
+    # gates.judge_foul_result.
     if not gate.scores_zero and judgment is not None and judgment.fouls:
         judged_gate = judge_foul_result(
-            judgment.fouls,
-            honored=honored_judge_fouls,
-            prior_below_the_belt=prior_below_the_belt,
+            judgment.fouls, honored=honored_judge_fouls
         )
         if judged_gate is not None:
             gate = judged_gate

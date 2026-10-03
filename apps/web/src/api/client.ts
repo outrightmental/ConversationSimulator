@@ -698,14 +698,22 @@ export const api = {
     getScenario(scenarioId: string): Promise<ApiResult<FlytingScenarioSetup>> {
       return get<FlytingScenarioSetup>(`/flyting/scenarios/${encodeURIComponent(scenarioId)}`)
     },
+    /** The local board. `today` narrows it to the runs played under today's
+     *  seed for this scenario and format — the comparison the seed exists to
+     *  make. The seed is derived from the date and the ids on the server's own
+     *  machine, so narrowing to it still involves no network. */
     highScores(
       scenarioId: string,
       playFormat?: PlayFormat,
       battingFormat?: BattingFormat | null,
+      today = false,
     ): Promise<ApiResult<FlytingHighScoresResponse>> {
       const params = new URLSearchParams()
       if (playFormat) params.set('play_format', playFormat)
       if (battingFormat) params.set('batting_format', battingFormat)
+      // The engine derives the seed itself; asking for it without a play format
+      // would have nothing to derive it from, so it is only sent with one.
+      if (today && playFormat) params.set('today', 'true')
       const qs = params.toString()
       return get<FlytingHighScoresResponse>(
         `/flyting/scenarios/${encodeURIComponent(scenarioId)}/high-scores${qs ? `?${qs}` : ''}`,

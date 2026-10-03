@@ -116,6 +116,11 @@ export default function FlytingSetup() {
   const [starting, setStarting] = useState(false)
   const [startError, setStartError] = useState<ApiError | null>(null)
   const [board, setBoard] = useState<FlytingHighScore[]>([])
+  // Whether the board is narrowed to the runs played under today's seed. That
+  // is the comparison the seed exists to make, and it is the only way to make
+  // it: the seed labels and groups runs, so without the filter a player can see
+  // which rows were seeded but not read them as one day's board.
+  const [todayOnly, setTodayOnly] = useState(false)
 
   useEffect(() => {
     if (!scenarioId) return
@@ -149,11 +154,12 @@ export default function FlytingSetup() {
         scenarioId,
         playFormat,
         playFormat === 'batting_practice' ? battingFormat : null,
+        todayOnly,
       )
       .then((r) => {
         if (r.ok) setBoard(r.data.entries)
       })
-  }, [scenarioId, playFormat, battingFormat])
+  }, [scenarioId, playFormat, battingFormat, todayOnly])
 
   useEffect(() => loadBoard(), [loadBoard])
 
@@ -202,8 +208,14 @@ export default function FlytingSetup() {
   // ninety-second run and an endless run are not comparable totals. The board is
   // ordered by total_score DESC, so its first row *is* this board's best; the
   // payload is the fallback for a format with no rows yet.
+  //
+  // Not while the board is filtered to today, though: the best of today's seeded
+  // runs is not a personal best, and labelling it one would make a good day look
+  // like a record and a quiet day look like a lost one.
   const personalBest =
-    board.length > 0 ? board[0].total_score : (scenario.personal_bests[playFormat] ?? null)
+    board.length > 0 && !todayOnly
+      ? board[0].total_score
+      : (scenario.personal_bests[playFormat] ?? null)
 
   return (
     <div style={{ padding: '1.25rem', display: 'grid', gap: '0.85rem', maxWidth: 860 }}>
@@ -363,6 +375,23 @@ export default function FlytingSetup() {
           )}
           <Stat label="Volley cap" value={`${scenario.limits.max_volley_chars} chars`} />
         </div>
+        <label
+          style={{
+            display: 'flex',
+            gap: '0.5rem',
+            fontSize: '0.8rem',
+            color: '#d4d4d8',
+            marginBottom: '0.6rem',
+          }}
+        >
+          <input
+            type="checkbox"
+            data-testid="board-today-only"
+            checked={todayOnly}
+            onChange={(e) => setTodayOnly(e.target.checked)}
+          />
+          Today's seed only — the same conditions, for anyone who played it today
+        </label>
         <HighScoreTable entries={board} />
       </Section>
 

@@ -470,13 +470,24 @@ def judge_foul_result(
     fouls: Sequence[str],
     *,
     honored: Sequence[str] = ALWAYS_HONORED_JUDGE_FOULS,
-    prior_below_the_belt: int = 0,
 ) -> Optional[GateResult]:
     """A GateResult for the highest-precedence foul the judge raised, or None.
 
     ``honored`` is the set of fouls this scenario actually asked the judge to
     raise; anything outside it stays on the stored verdict as a note and does
     not void the volley.
+
+    A judge-raised foul never ends the run, including ``below_the_belt``. It
+    zeroes the volley, is recorded against the player, resets the heat and
+    counts as a whiff — everything the deterministic gate does except the one
+    irreversible part. Ending somebody's session is the costliest thing this
+    engine can do to them, and it should rest on evidence rather than on a 4B
+    model's reading: measured against the registry's starter model, "You are
+    all fools and idiots and I despise every one of you" draws a
+    ``below_the_belt`` verdict, and two of those would have closed the run for
+    ordinary abuse in a scenario whose whole register is ordinary abuse. The
+    Stage 0 pattern — an actual slur, matched deterministically — still ends a
+    run on its second occurrence.
     """
     raised = {f for f in fouls if f in set(honored)}
     if not raised:
@@ -489,7 +500,6 @@ def judge_foul_result(
         except ValueError:  # pragma: no cover — JUDGE_FOULS and Foul agree
             continue
         if foul is Foul.BELOW_THE_BELT:
-            ends = prior_below_the_belt >= 1
             return GateResult(
                 outcome=GateOutcome.FOUL,
                 foul=foul,
@@ -497,9 +507,7 @@ def judge_foul_result(
                 umpire_mock=(
                     "That is not flyting, it is just cruelty wearing its own face. "
                     "Nought points."
-                    + (" We are done here." if ends else " One more and we are done.")
                 ),
-                ends_session=ends,
                 flags=["judge_foul"],
             )
         return GateResult(

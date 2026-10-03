@@ -337,9 +337,6 @@ async def process_volley(
         heat=1.0 if is_bout else state.heat,
         riposte_bonus=config.bout.riposte_bonus if is_bout else 0,
         extra_flags=extra_flags,
-        # The judge can raise below_the_belt on what no pattern catches, and the
-        # second one ends the run exactly as the Stage 0 gate's does.
-        prior_below_the_belt=state.foul_counts.get("below_the_belt", 0),
     )
 
     # The scene's own id for the reaction that fired. scene.schema.json offers

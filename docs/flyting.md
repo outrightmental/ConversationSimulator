@@ -111,7 +111,7 @@ flyting pack may only tighten them, never loosen them. On top of that:
 
 | Gate | Outcome |
 | --- | --- |
-| **Below the Belt** — slurs, protected-class attacks | foul, 0 points; a repeat ends the session |
+| **Below the Belt** — slurs, protected-class attacks | foul, 0 points; a repeat ends the session (this deterministic gate only — see Stage 4) |
 | **Out of Fiction** — aimed at the machine or the author | foul, 0 points |
 | **Bribing the Ref** — addressed to the judge, or a prompt-injection pattern | foul, 0 points, and the umpire mocks the attempt |
 | **Gibberish** — no recognisable words | dud, 0 points, no foul |
@@ -276,8 +276,16 @@ A foul is resolved here too, not only in Stage 0. The register fouls only a
 reader of the scene can raise arrive with the judge's verdict, and composition
 promotes them to the same outcome a Stage 0 foul produces: 0 points, no bonuses,
 the foul recorded, the heat reset, the whiff counted, and a foul tag on the
-scorecard. A second judge-raised `below_the_belt` ends the run, exactly as the
-deterministic gate's does.
+scorecard.
+
+With one exception: a judge-raised foul never *ends* the run, `below_the_belt`
+included. Closing somebody's session is the costliest thing this engine does to
+a player, and it rests on evidence rather than on a 4B model's reading —
+measured against the registry's starter model, "You are all fools and idiots
+and I despise every one of you" draws a `below_the_belt` verdict, and two of
+those would have ended a run for ordinary abuse in a scenario whose whole
+register is ordinary abuse. The Stage 0 pattern, which matches an actual slur
+deterministically, still ends a run on its second occurrence.
 
 Which judge fouls count is the scenario's business, because that is what the
 judge was asked for. `below_the_belt` and `out_of_fiction` are never a pack's
