@@ -1586,7 +1586,9 @@ function TestVolleyPanel({ pack }: { pack: WorkbenchPack }) {
           {scoring ? 'Scoring…' : 'Score this volley'}
         </button>
         <span style={{ fontSize: '0.72rem', color: '#71717a' }}>
-          Deterministic stages only — no model is called, so the dimension bars stay blank.
+          Deterministic stages only — no model is called, so the dimension bars stay
+          blank and the score is held inside <code>weak</code>. Compare two drafts
+          against each other rather than reading the band.
         </span>
       </div>
 

@@ -691,10 +691,16 @@ this scenario produces** reveals the rubric header your `flyting:` block,
 rubric weights and `judge_flavor` assemble, so you can read it rather than
 guess at it.
 
-Use it to check the things only a real scoring pass reveals: that a line aimed
-at a trait is worth meaningfully more than generic abuse, that your
-`anachronism_policy` and register rules fire when you expect, and that your
-`difficulty_multiplier` puts a good volley in the band you intended.
+**Read the score as a comparison, not as a band.** Every volley with no judge
+behind it is held inside `weak`, here as in a run (see
+[the engine documentation](https://github.com/outrightmental/ConversationSimulator/blob/main/docs/flyting.md)
+§ Stage 3) — the engine will not certify a hit no model read. The number still
+moves with your pack, so use it for the things it can answer: that a line aimed
+at a declared trait outscores generic abuse, that your `anachronism_policy` and
+register rules fire where you expect, that a gate you meant to catch something
+catches it, and that freshness falls away when a volley repeats an earlier one.
+Which band a good volley lands in is a judged question, and
+`scripts/flyting-calibration.py --judge` is what answers it.
 
 ---
 
