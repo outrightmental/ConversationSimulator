@@ -37,6 +37,11 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 MODE="ci"        # ci | full
 CORE_URL="${CONVSIM_CORE_URL:-http://127.0.0.1:7355}"
 
+# Port the [packaged-startup] launch check binds its throwaway engine to.
+# Outside the 7354-7358 block the running stack occupies (docs/architecture.md)
+# so it can run alongside the live services --full requires.
+PACKAGED_SMOKE_PORT="${CONVSIM_PACKAGED_SMOKE_PORT:-7455}"
+
 # Artifact directory — logs and snapshots captured here on failure.
 ARTIFACT_DIR="${CONVSIM_SMOKE_ARTIFACT_DIR:-${TMPDIR:-/tmp}/convsim-release-smoke-$$}"
 
@@ -671,12 +676,32 @@ smoke_packaged_startup() {
     if [[ "$MODE" == "full" ]]; then
         local built_bin="$REPO_ROOT/apps/desktop/src-tauri/resources/bin/convsim-core"
         local built_bin_win="${built_bin}.exe"
-        if [[ -f "$built_bin" || -f "$built_bin_win" ]]; then
-            info "packaged-startup" "convsim-core binary present — full launch test skipped (run manually)"
-            pass "packaged-startup" "Packaged binary found in resources/bin"
-        else
+        if [[ ! -f "$built_bin" && ! -f "$built_bin_win" ]]; then
             skip "packaged-startup" "No packaged binary found — run: ./scripts/build-core.sh first"
+            return
         fi
+        pass "packaged-startup" "Packaged binary found in resources/bin"
+
+        # Actually launch it. This used to say "run manually", which meant the
+        # one thing a packaged build has to do — start, serve, and stop cleanly
+        # without a developer venv — was never checked by anything.
+        #
+        # On a port of its own, NOT the default 7355: --full is documented as
+        # "services must be running", and the [health], [model-mgr],
+        # [scenario-lib] and [text-session] checks above all talk to a live
+        # convsim-core at $CORE_URL. packaged-core-smoke.sh refuses to start when
+        # its port is already occupied — correctly, since it would otherwise
+        # certify somebody else's engine — so sharing 7355 would make this check
+        # fail every single --full run for the very reason the run is valid.
+        local smoke_out
+        smoke_out="$(bash "$REPO_ROOT/scripts/packaged-core-smoke.sh" \
+                     --port "$PACKAGED_SMOKE_PORT" 2>&1)" || {
+            fail "packaged-startup" "Packaged core smoke failed (launch/health/offline/shutdown)"
+            echo "$smoke_out" >> "$ARTIFACT_DIR/packaged-core-smoke-error.txt"
+            _ARTIFACTS_WRITTEN=1
+            return
+        }
+        pass "packaged-startup" "Packaged core launches, serves, plays offline, and stops cleanly"
     fi
 }
 
