@@ -335,7 +335,21 @@ async def process_volley(
 
     judge_events: List[JudgeEvent] = []
     npc_last_line = _last_npc_line(conn, session_id) if is_bout else None
-    earlier = prior_texts[-_CALLBACK_WINDOW:-1] if len(prior_texts) > 1 else []
+
+    # The lines a callback may refer back to. The opponent's last line is
+    # excluded because it goes up separately as ``opponent_last_line``, and
+    # quoting it in both places asks the judge to tell a riposte from a callback
+    # against the same text. But it is excluded by *identity*, not by position:
+    # a blind ``[:-1]`` dropped the newest entry whatever it was, and outside a
+    # bout the opponent never volleys, so the entry it threw away was the
+    # player's own most recent line — the most natural thing in a drill to call
+    # back to, and the one the judge was then told the callback had to be among.
+    # The same slip fires inside a bout whenever the opponent's last volley
+    # scored nothing, since ``volley_texts`` keeps only what scored.
+    window = list(prior_texts[-_CALLBACK_WINDOW:])
+    if npc_last_line is not None and window and window[-1] == npc_last_line:
+        window.pop()
+    earlier = window
 
     judgment = await judge_volley(
         prepared,
@@ -486,6 +500,7 @@ async def process_volley(
         run_outcome=run_outcome,
         save_transcript=save_transcript,
         audience_event_id=audience_event_id,
+        momentum_delta=exchange.momentum_delta if exchange is not None else None,
     )
 
     return VolleyTurnResult(
@@ -551,6 +566,7 @@ def _persist(
     run_outcome: Optional[str],
     save_transcript: bool,
     audience_event_id: Optional[str] = None,
+    momentum_delta: Optional[int] = None,
 ) -> tuple[Optional[int], Optional[int]]:
     """Write both turns, both scorecards, the events, and the run state atomically."""
     now = datetime.now(timezone.utc).isoformat()
@@ -565,6 +581,18 @@ def _persist(
     # where it can be shown honestly.
     state_vars = {"momentum": state.momentum}
     snapshot = json.dumps({"state_vars": state_vars, "fired_events": []})
+
+    # ``state_delta_json`` is the *actual, clamped change* this turn made to each
+    # meter — never the meter's value. The conversation loop writes
+    # ``delta_result.actual_changes`` there, and the debrief's state arc
+    # reconstructs every turn's reading by anchoring on
+    # ``final_state - sum(deltas)``. Writing the absolute momentum, as this used
+    # to, made every flyting turn read as a +50 swing and sent that anchor far
+    # negative — in batting practice, where momentum never moves at all, it
+    # invented a fifty-point swing per turn out of nothing. A bout writes the
+    # delta the state engine actually allowed; a drill moves no meter and so
+    # writes no delta.
+    turn_deltas = {"momentum": momentum_delta} if momentum_delta is not None else {}
 
     with conn:
         player_cursor = conn.execute(
@@ -584,7 +612,7 @@ def _persist(
                     session_id,
                     npc_turn_number,
                     npc_line,
-                    json.dumps({"momentum": state.momentum}),
+                    json.dumps(turn_deltas),
                     json.dumps({"status": "ok", "reason": None}),
                     flow_state,
                     snapshot,
@@ -609,9 +637,17 @@ def _persist(
                 "heat": player_score.heat,
                 "banked_score": player_score.banked_score,
                 "flags": player_score.flags,
+                # The gate's own line first, then the judge's — the same order
+                # the scorecard reads them in. Preferring the judge whenever a
+                # verdict exists, as this used to, disagreed with the screen on
+                # exactly the volleys where a gate had something to say *and*
+                # the judge still ran: a plagiarized zinger (capped, mocked, and
+                # judged) and every judge-raised foul. The player saw "Borrowed,
+                # and the lender wants it back"; the transcript recorded the
+                # judge's own line about a volley that scored ten.
                 "umpire_line": (
-                    player_score.judgment.umpire_line if player_score.judgment
-                    else player_score.gate.umpire_mock
+                    player_score.gate.umpire_mock
+                    or (player_score.judgment.umpire_line if player_score.judgment else None)
                 ),
             }), now,
         )]

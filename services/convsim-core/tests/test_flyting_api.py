@@ -135,6 +135,22 @@ def volley(client, session_id, text, **extra):
     return response.json()
 
 
+def _npc_turn_deltas(client, session_id):
+    """``state_delta_json`` of each opponent turn, in play order.
+
+    Read from the table rather than from a route, because no route serves it:
+    the column is the conversation debrief's input, and the contract this
+    asserts is the one that reader depends on.
+    """
+    conn = client.app.state.db.connection()
+    rows = conn.execute(
+        "SELECT state_delta_json FROM turn_session_turns "
+        "WHERE session_id = ? AND role = 'npc' ORDER BY turn_number",
+        (session_id,),
+    ).fetchall()
+    return [json.loads(row["state_delta_json"] or "{}") for row in rows]
+
+
 # ── Scenario discovery ───────────────────────────────────────────────────────
 
 
@@ -459,6 +475,32 @@ class TestSubmittingVolleys:
         again = volley(client, session_id, GOOD_VOLLEY)
         assert again["player_volley"]["freshness"]["value"] < first["player_volley"]["freshness"]["value"]
         assert again["player_volley"]["score"] < first["player_volley"]["score"]
+
+    def test_a_drill_callback_can_reach_the_line_it_refers_to(
+        self, client, judge_returns
+    ):
+        """A callback to the player's own last volley has to be earnable in a drill.
+
+        ``_verify_claim`` only honours a callback when the judge was handed a
+        window of earlier lines, and the prompt tells it the reference must be
+        among them. Batting practice has no opponent volleys, so the window is
+        the player's own scored lines — and trimming its newest entry (the trim
+        that keeps a bout from quoting the opponent twice) left the one line a
+        drill callback would naturally point at outside the window, making the
+        +10 unearnable there.
+        """
+        judge_returns(callback={"is_callback": True, "evidence": "your carriage brass"})
+        session_id = start_run(client)
+        first = volley(client, session_id, SECOND_VOLLEY)
+        # Nothing to recall yet, so the claim is refused however it is quoted.
+        assert "callback" not in {
+            b["id"] for b in first["player_volley"]["composition"]["bonuses"]
+        }
+
+        second = volley(client, session_id, GOOD_VOLLEY)
+        bonuses = {b["id"]: b for b in second["player_volley"]["composition"]["bonuses"]}
+        assert "callback" in bonuses, bonuses
+        assert bonuses["callback"]["evidence"] == "your carriage brass"
 
     def test_the_audience_reacts_at_the_band_reached(self, client):
         session_id = start_run(client)
@@ -809,6 +851,69 @@ class TestPersistence:
         # Turn zero is the scenario's own opening, under the same role the
         # conversation loop uses, then the exchange the volley produced.
         assert roles[:3] == ["npc_opening", "player", "npc"]
+
+    def test_a_drill_turn_records_no_meter_delta(self, client):
+        """``state_delta_json`` is a *change*, not a reading.
+
+        The conversation loop writes ``delta_result.actual_changes`` there, and
+        the debrief's state arc reconstructs each turn's meter value by
+        anchoring on ``final_state - sum(deltas)``. Batting practice moves no
+        meter at all, so writing the momentum *value* made every drill turn read
+        as a +50 swing and sent that anchor far negative.
+        """
+        session_id = start_run(client)
+        volley(client, session_id, GOOD_VOLLEY)
+        volley(client, session_id, SECOND_VOLLEY)
+        deltas = _npc_turn_deltas(client, session_id)
+        assert deltas == [{}, {}], deltas
+
+    def test_a_bout_turn_records_the_momentum_swing_the_engine_allowed(self, client):
+        """A bout does move the meter, so it writes the delta — clamped, as applied.
+
+        The value has to be the swing and not the reading: summing these is how
+        the state arc is rebuilt, and the sum must land back on the momentum the
+        run finished with.
+        """
+        session_id = start_run(
+            client, scenario_id=BOUT_SCENARIO, play_format="bout", batting_format=None
+        )
+        volley(client, session_id, GOOD_VOLLEY)
+        volley(client, session_id, SECOND_VOLLEY)
+        deltas = _npc_turn_deltas(client, session_id)
+        assert len(deltas) == 2
+        assert all(set(d) == {"momentum"} for d in deltas), deltas
+
+        from convsim_core.flyting.session import MOMENTUM_START
+
+        final = client.get(f"/api/flyting/sessions/{session_id}").json()["run"]["momentum"]
+        assert MOMENTUM_START + sum(d["momentum"] for d in deltas) == final
+
+    def test_the_stored_umpire_line_is_the_one_the_player_was_shown(self, client):
+        """A gate's own line wins over the judge's, exactly as the scorecard reads it.
+
+        A plagiarized zinger is the case where both exist: the gate caps the
+        score and mocks the borrowing, and the volley still reaches the judge.
+        The scorecard shows the mockery, so the transcript must record the same
+        line rather than the judge's verdict about a volley worth ten.
+        """
+        session_id = start_run(client)
+        body = volley(
+            client,
+            session_id,
+            "Thy mother was a hamster, and thy father smelt of elderberries.",
+        )
+        card = body["player_volley"]
+        assert "plagiarized_zinger" in card["flags"]
+        assert card["judge"] is not None
+        shown = card["gate"]["umpire_mock"]
+        assert shown
+
+        export = client.get(f"/api/sessions/{session_id}/export").json()
+        scored = [
+            e for e in export["events"]
+            if e["event_type"] == "flyting_volley" and e["payload"]["speaker"] == "player"
+        ]
+        assert scored[-1]["payload"]["umpire_line"] == shown
 
     def test_the_run_survives_a_reload_of_the_session(self, client):
         session_id = start_run(client)
