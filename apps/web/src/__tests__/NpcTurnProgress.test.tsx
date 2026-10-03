@@ -79,6 +79,25 @@ describe('NpcTurnProgress', () => {
       expect(status).toHaveTextContent('NPC is thinking…')
     })
 
+    it('carries the estimate in the announced phrase, not only in the hidden clock', () => {
+      // The clock and caption are both aria-hidden and the elapsed-time status
+      // does not fire until 30 s, so this is the only thing telling a
+      // screen-reader user how long the turn will take — which is the whole of
+      // issue #488. It is safe to announce because the estimate does not change
+      // during a turn.
+      renderProgress(2_000, 40_000)
+      expect(screen.getByTestId('npc-turn-progress-status')).toHaveTextContent(
+        'NPC is thinking… Usually about 40s on this machine.',
+      )
+    })
+
+    it('says outright that there is no estimate rather than going quiet', () => {
+      renderProgress(2_000, null)
+      expect(screen.getByTestId('npc-turn-progress-status')).toHaveTextContent(
+        'NPC is thinking… No turn has been timed on this machine yet.',
+      )
+    })
+
     it('says nothing about a wait that is still ordinary', () => {
       renderProgress(20_000, 30_000)
       expect(screen.queryByTestId('npc-turn-progress-announcement')).not.toBeInTheDocument()

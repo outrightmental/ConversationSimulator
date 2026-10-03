@@ -51,10 +51,11 @@ export interface NpcTurnProgressProps {
  * the NPC is thinking under a reply being typed out is simply wrong.
  *
  * Accessibility: the status phrase is announced — this panel is the only thing
- * on screen saying the NPC is working — but the clock beside it ticks every
- * second, so that is hidden and a single polite live region carries the same news
- * on a 30 s grid. The bar keeps its progressbar role and value for anyone who
- * navigates to it deliberately.
+ * on screen saying the NPC is working — and it carries the estimate with it,
+ * because the clock and caption that show the estimate visually both tick every
+ * second and are therefore hidden. Elapsed time is announced separately by a
+ * polite live region on a 30 s grid. The bar keeps its progressbar role and
+ * value for anyone who navigates to it deliberately.
  */
 export default function NpcTurnProgress({ elapsedMs, estimateMs, streaming = false }: NpcTurnProgressProps) {
   const hasEstimate = estimateMs !== null && estimateMs > 0
@@ -105,6 +106,19 @@ export default function NpcTurnProgress({ elapsedMs, estimateMs, streaming = fal
             at most once per turn (thinking → replying), unlike the clock. */}
         <span data-testid="npc-turn-progress-status" role="status">
           {streaming ? 'NPC is replying…' : 'NPC is thinking…'}
+          {/* How long the turn will take, for assistive tech. The clock and the
+              caption below both carry it visually but are hidden because they
+              change every second, and the sr-only status at the foot of the
+              panel does not fire until 30 s — so without this a screen-reader
+              user hears no estimate at all during the wait that issue #488 is
+              about. Safe to put here: the estimate is fixed for the duration of
+              a turn, so this suffix changes only when the phrase before it
+              does, and it costs no extra announcements. */}
+          <span data-testid="npc-turn-progress-status-estimate" style={srOnly}>
+            {hasEstimate
+              ? ` Usually about ${estimateText} on this machine.`
+              : ' No turn has been timed on this machine yet.'}
+          </span>
         </span>
         <span
           data-testid="npc-turn-progress-clock"
