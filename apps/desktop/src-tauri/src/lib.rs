@@ -2384,6 +2384,89 @@ mod tests {
         let _ = server.join();
     }
 
+    // ── Watching the child the shell started ─────────────────────────────────
+
+    /// A stand-in engine, as `(program, args)`. The same split
+    /// `core_process`'s tests use, and for the same reason: the programs differ
+    /// per platform, the behaviours they stand in for do not.
+    #[cfg(unix)]
+    mod fake_engine {
+        /// Dies on its own almost at once — a crash, from the watcher's side.
+        pub const EXITS_AT_ONCE: (&str, &[&str]) = ("true", &[]);
+        /// Blocks on the launcher's stdin pipe, so it is still running when the
+        /// app quits and then leaves as soon as `core_process::shutdown` asks —
+        /// which keeps the test's own cleanup off the `GRACE` timeout.
+        pub const WAITS_FOR_THE_LAUNCHER: (&str, &[&str]) = ("cat", &[]);
+    }
+
+    #[cfg(windows)]
+    mod fake_engine {
+        pub const EXITS_AT_ONCE: (&str, &[&str]) = ("ping", &["-n", "1", "127.0.0.1"]);
+        /// `sort` with no file argument reads stdin to EOF: alive while the pipe
+        /// is open, gone when it closes.
+        pub const WAITS_FOR_THE_LAUNCHER: (&str, &[&str]) = ("sort", &[]);
+    }
+
+    fn spawn_fake_engine((program, args): (&str, &[&str])) -> Child {
+        let mut cmd = Command::new(program);
+        cmd.args(args).stdout(Stdio::null()).stderr(Stdio::null());
+        core_process::configure_lifetime(&mut cmd);
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(core_process::CREATE_NO_WINDOW);
+        }
+        cmd.spawn()
+            .unwrap_or_else(|e| panic!("failed to spawn the stand-in engine {program}: {e}"))
+    }
+
+    #[test]
+    fn a_child_that_exits_on_its_own_is_reported_for_restart() {
+        // The entry point of the whole crash-restart path: `supervise_core`
+        // restarts the engine on, and only on, a true from here.
+        let child = spawn_fake_engine(fake_engine::EXITS_AT_ONCE);
+        let process_arc = Arc::new(Mutex::new(Some(child)));
+        let flag = Arc::new(AtomicBool::new(false));
+        assert!(wait_for_child_exit(&process_arc, &flag));
+    }
+
+    #[test]
+    fn a_shutting_down_app_is_not_a_crash() {
+        // Teardown stops the engine itself, and its exit must not be read as a
+        // crash: a restart then spawns a replacement on top of a closing window
+        // that nothing will ever stop — an orphan on port 7355 the next launch
+        // reports as a conflict. The flag is checked before the poll, so a
+        // teardown already under way is noticed without waiting out an interval.
+        let child = spawn_fake_engine(fake_engine::WAITS_FOR_THE_LAUNCHER);
+        let process_arc = Arc::new(Mutex::new(Some(child)));
+        let flag = Arc::new(AtomicBool::new(true));
+
+        let started = Instant::now();
+        assert!(!wait_for_child_exit(&process_arc, &flag));
+        assert!(
+            started.elapsed() < Duration::from_secs(1),
+            "took {:?} to notice a teardown already in progress",
+            started.elapsed()
+        );
+
+        // Leave nothing behind for the rest of the suite.
+        let leftover = process_arc.lock().ok().and_then(|mut g| g.take());
+        if let Some(mut child) = leftover {
+            core_process::shutdown(&mut child);
+        }
+    }
+
+    #[test]
+    fn a_handle_taken_by_teardown_ends_the_watch() {
+        // `RunEvent::Exit` `take()`s the child before stopping it, so the
+        // watcher can find the slot empty rather than exited. Nothing is left to
+        // supervise either way, and guessing "crashed" here would respawn into a
+        // closing app.
+        let process_arc: Arc<Mutex<Option<Child>>> = Arc::new(Mutex::new(None));
+        let flag = Arc::new(AtomicBool::new(false));
+        assert!(!wait_for_child_exit(&process_arc, &flag));
+    }
+
     // ── Watching an adopted engine ───────────────────────────────────────────
 
     #[test]
