@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
+import { useEffect } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import CoreStartupGuard from '../screens/CoreStartup'
 
@@ -41,6 +42,18 @@ function stubTauri(
     event: { listen: onListen },
     ...(invoke ? { core: { invoke } } : {}),
   }
+}
+
+// A child that reports every mount. The guard's own final state cannot tell a
+// transient pass-through apart from one that never happened: an app mounted for
+// a few microtasks and then unmounted leaves the screen looking identical. These
+// tests care about the difference, because mounting the app fires its API calls
+// at whatever is on port 7355.
+function MountSpy({ onMount }: { onMount: () => void }) {
+  useEffect(() => {
+    onMount()
+  }, [onMount])
+  return <div>App content loaded</div>
 }
 
 // CoreStartupGuard uses Link (for the "Get support bundle" action) so it needs
@@ -664,6 +677,69 @@ describe('CoreStartupGuard — health check fast-path', () => {
     })
 
     expect(screen.queryByText('App content loaded')).not.toBeInTheDocument()
+  })
+
+  it('waits for the shell\u2019s stored status before passing through', async () => {
+    // The shell emits its fast failures from setup(), BEFORE this webview has
+    // loaded, so they arrive through `get_core_status` rather than as events.
+    // Reaching that snapshot costs two IPC round-trips; one local fetch does
+    // not, so a fast-path that only read the last-reported phase would find
+    // nothing reported and mount the app anyway \u2014 over the other edition's
+    // engine, which answers /api/health with a real convsim-core body (issue
+    // #495). The snapshot would then unmount it again, leaving a final state
+    // indistinguishable from never having mounted, which is why this asserts on
+    // the mount itself.
+    const mounted = vi.fn()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve(HEALTH_BODY) })),
+    )
+    let resolveSnapshot: ((value: unknown) => void) | undefined
+    const invoke = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          resolveSnapshot = resolve
+        }),
+    )
+    stubTauri(() => Promise.resolve(() => {}), invoke)
+
+    await act(async () => {
+      renderGuard(<MountSpy onMount={mounted} />)
+    })
+
+    // Health has already answered 200 with a convsim-core body by now.
+    expect(mounted).not.toHaveBeenCalled()
+
+    await act(async () => {
+      resolveSnapshot?.({
+        phase: 'error',
+        message: 'Another edition of Conversation Simulator is already running.',
+        error:
+          'Conversation Simulator Demo is using the conversation engine on port 7355. ' +
+          'Close it, then start the full version again.',
+      })
+    })
+
+    expect(mounted).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert')).toHaveTextContent(/another edition/i)
+  })
+
+  it('still passes through once the shell confirms it has nothing to report', async () => {
+    // The other half of the wait: a snapshot of `null` (the shell has not
+    // emitted anything yet) must not block the shortcut, or a dev build with
+    // dev-desktop.sh's engine already serving would sit on the progress screen
+    // until the shell's own probe came back.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve(HEALTH_BODY) })),
+    )
+    stubTauri(() => Promise.resolve(() => {}), () => Promise.resolve(null))
+
+    await act(async () => {
+      renderGuard()
+    })
+
+    expect(screen.getByText('App content loaded')).toBeInTheDocument()
   })
 
   it('does not pass through when the health response is not JSON at all', async () => {

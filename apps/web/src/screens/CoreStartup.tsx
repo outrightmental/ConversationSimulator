@@ -225,7 +225,13 @@ export default function CoreStartupGuard({ children }: { children: React.ReactNo
     // not replay events — so after subscribing we reconcile with the last-known
     // status via get_core_status to recover any event fired before we attached
     // (e.g. a fast failure like a missing binary).
-    tauri.event
+    //
+    // Resolves once the shell has had its say — i.e. once the snapshot has been
+    // applied, or there is no snapshot to apply. It resolves rather than
+    // rejecting on every failure path (no `core` bridge, a rejected listen, a
+    // rejected invoke) because the health fast-path below waits on it, and a
+    // promise that never settles would park the UI on the progress screen.
+    const shellStatusSettled: Promise<void> = tauri.event
       .listen<CoreStatusPayload>('core-status', (e) => {
         liveEventSeen = true
         apply(e.payload)
@@ -236,7 +242,7 @@ export default function CoreStartupGuard({ children }: { children: React.ReactNo
           return
         }
         unlisten = fn
-        tauri.core
+        return tauri.core
           ?.invoke<CoreStatusPayload | null>('get_core_status')
           .then((snapshot) => {
             // Only to recover an event emitted before we subscribed. Once a live
@@ -248,24 +254,31 @@ export default function CoreStartupGuard({ children }: { children: React.ReactNo
             if (liveEventSeen) return
             if (snapshot) apply(snapshot)
           })
-          .catch(() => {})
       })
+      .catch(() => {})
 
     // Independent fast-path: if the core is already serving (e.g. started by
-    // dev-desktop.sh) pass through immediately without waiting for an event.
-    // It races the events above, so it must not overrule a phase the shell has
-    // already reported as not-ready — a stale success arriving after a crash or
-    // a port conflict would mount the app over an engine that is not there.
-    checkHealth().then((healthy) => {
+    // dev-desktop.sh) pass through without waiting for the shell's next event.
+    //
+    // The request is issued now, because it is the slow part, but acted on only
+    // once `shellStatusSettled` has resolved. Reading the phase any earlier
+    // tests a value that is still two IPC round-trips from arriving, so the
+    // guard below would not hold in the case it exists for: `get_core_status`
+    // is there precisely to recover a status emitted BEFORE this webview
+    // subscribed, which is when every fast failure is reported — a missing
+    // binary, a port conflict, or the other edition's engine on 7355. That last
+    // one answers with a real convsim-core health body, so this check passes,
+    // and a health success that did not wait would mount the full app over the
+    // demo's engine (issue #495) for as long as the snapshot takes to arrive.
+    const health = checkHealth()
+    void Promise.all([health, shellStatusSettled]).then(([healthy]) => {
       if (cancelled || !healthy) return
       // Any phase the shell has already reported wins, not just the terminal
       // ones. 'starting' includes "Something is already using port 7355 —
-      // checking whether it is the engine…", and the occupant can be the OTHER
-      // edition's engine: a convsim-core health body, so this check passes, and
-      // mounting on it shows the wrong library (issue #495) until the shell's
-      // own probe reaches the same socket and rejects it. The shell is the
-      // authority on readiness; this is only a shortcut for beating its first
-      // event, so it may act only when there is no event yet.
+      // checking whether it is the engine…", which is the same occupant seen a
+      // moment earlier. The shell is the authority on readiness; this is only a
+      // shortcut for beating its NEXT event, so it may act only when the shell
+      // has said nothing yet.
       const phase = statusRef.current?.phase
       if (phase && phase !== 'ready') return
       setReady(true)
