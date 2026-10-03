@@ -123,6 +123,15 @@ Steamworks App Icon and Shortcut Icon under `publishing/assets/icons/` — with:
 python3 publishing/assets/source/gen_icons.py
 ```
 
+The demo set is **not** derived from `src-tauri/icons/` at build time: it is
+redrawn from the geometry and the `PLATE` colours in `gen_icons.py`, which
+were measured off the icons above. Replacing the base set therefore means
+updating that geometry and `PLATE["base"]` to match and re-running the script
+— otherwise the two editions stop being the same mark, and
+`tests/acceptance/test_demo_branding.py` fails on the silhouette and
+plate-colour comparisons. `--edition base --out <dir>` renders the base mark
+from the same geometry for a side-by-side check.
+
 ---
 
 ## Executable resolution
