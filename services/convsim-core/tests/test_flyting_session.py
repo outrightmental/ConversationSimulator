@@ -132,6 +132,27 @@ class TestRecordingVolleys:
         assert state.npc_total == 100
         assert state.npc_volleys == 1
 
+    def test_the_opponent_keeps_its_own_theme_record(self):
+        """The opponent is held to the variety rule by its own returns, not the player's.
+
+        Theme decay has to read the wells its own speaker went back to. One
+        shared counter discounted each side for the other's repeats, and in a
+        bout that discount lands directly on momentum, which is
+        ``k * (S_player - S_npc) / 100``.
+        """
+        state = FlytingRunState(play_format=PlayFormat.BOUT, batting_format=None)
+        record_player_volley(state, volley(100, themes=("hygiene",)))
+        record_player_volley(state, volley(100, themes=("hygiene",)))
+        record_npc_volley(state, volley(100, themes=("lineage",)))
+
+        # Neither counter has been contaminated by the other speaker.
+        assert state.theme_uses == {"hygiene": 2}
+        assert state.npc_theme_uses == {"lineage": 1}
+
+        record_npc_volley(state, volley(100, themes=("lineage",)))
+        assert state.npc_theme_uses == {"lineage": 2}
+        assert state.theme_uses == {"hygiene": 2}
+
     def test_device_history_is_bounded(self):
         state = FlytingRunState()
         for i in range(10):
@@ -323,7 +344,8 @@ class TestRunStateSerialisation:
     def test_round_trips_through_a_dict(self):
         state = FlytingRunState(
             play_format=PlayFormat.BOUT, batting_format=None, momentum=63, heat=1.4,
-            theme_uses={"vanity": 2}, discovered_traits=["cowardice"],
+            theme_uses={"vanity": 2}, npc_theme_uses={"lineage": 1},
+            discovered_traits=["cowardice"],
         )
         restored = FlytingRunState.from_dict(state.to_dict())
         assert restored.play_format is PlayFormat.BOUT
@@ -331,6 +353,7 @@ class TestRunStateSerialisation:
         assert restored.momentum == 63
         assert restored.heat == pytest.approx(1.4)
         assert restored.theme_uses == {"vanity": 2}
+        assert restored.npc_theme_uses == {"lineage": 1}
         assert restored.discovered_traits == ["cowardice"]
 
     def test_missing_or_corrupt_state_degrades_to_defaults(self):

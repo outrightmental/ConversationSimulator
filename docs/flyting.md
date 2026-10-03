@@ -171,11 +171,16 @@ default). The third hygiene joke is visibly near-worthless — variety is the me
 
 Only a volley's *primary* theme counts as a use of that well — the judge tags
 three or four themes for one line, and counting all of them would decay a well
-the player never actually returned to. Only the player's own volleys count, too:
-parroting the opponent is already redundancy by the freshness rule above, and a
-well the opponent reached for first is not one the player returned to. The
-debrief's redundancy report counts the same way, so the percentage it prints is
-the factor the engine applied.
+the player never actually returned to.
+
+Each speaker is also decayed by its *own* record. The player's counter holds the
+player's volleys and the opponent's holds the opponent's: parroting the opponent
+is already redundancy by the freshness rule above, and a well the opponent
+reached for first is not one the player returned to — nor the other way round. A
+single shared counter discounted each side for the other's repeats, and in a bout
+that discount lands directly on `k · (S_you − S_npc) / 100`. The debrief's
+redundancy report is computed from the player's counter, so the percentage it
+prints is the factor the engine applied.
 
 ### Stage 3 — The judge
 
