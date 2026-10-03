@@ -181,11 +181,14 @@ Check-File "apps\desktop\src-tauri\icons-demo\128x128.png"
 Check-File "apps\desktop\src-tauri\icons-demo\128x128@2x.png"
 Check-File "apps\desktop\src-tauri\icons-demo\icon.icns"
 Check-File "apps\desktop\src-tauri\icons-demo\icon.ico"
-# The Steamworks client icon is not compiled into anything — it is uploaded by
-# hand to the demo app's Graphical Assets (demo gate D-10).  It is checked here
-# because it is generated from the same mark by the same script, so a tree that
-# has the bundle set but not this one is a half-applied regeneration.
-Check-File "publishing\assets\icons\demo_client_icon.ico"
+# The two Steamworks icons are not compiled into anything — they are uploaded
+# by hand to the demo app's Graphical Assets (demo gate D-10).  They are
+# checked here because they come off the same mark and the same script, so a
+# tree that has the bundle set but not these is a half-applied regeneration.
+# demo_app_icon.jpg is the library-list row from issue #499; the Mac Icon field
+# takes icons-demo/icon.icns above, so it needs no separate file.
+Check-File "publishing\assets\icons\demo_app_icon.jpg"
+Check-File "publishing\assets\icons\demo_shortcut_icon.png"
 
 Write-Host ""
 

@@ -8,10 +8,24 @@ script is the single source of truth for the app mark and emits, per edition:
 
   32x32.png 128x128.png 128x128@2x.png icon.ico icon.icns  -> apps/desktop/
                                                               src-tauri/icons-demo/
-  <edition>_client_icon.ico (32x32), <edition>_icon.svg    -> publishing/assets/icons/
+  <edition>_app_icon.jpg (184), <edition>_shortcut_icon.png (256),
+  <edition>_icon.svg                                       -> publishing/assets/icons/
 
-The .ico goes to Steamworks (Store Presence -> Graphical Assets -> Client Icon);
-the bundle set is what ``bundle.icon`` in tauri.demo.conf.json points at.
+The bundle set is what ``bundle.icon`` in tauri.demo.conf.json points at.  The
+other two go to Steamworks, under Store Presence -> Graphical Assets ->
+Community and Client Icons, and they are two different fields:
+
+  * **App Icon** — 184x184 JPG.  Valve: "used in the library list view,
+    'favorites' in chat, and notifications across the Steam client, mobile
+    client, and Deck."  This is the one in the issue's screenshot: the sidebar
+    row where the demo and the full game read as the same product.  JPG has no
+    alpha, so the plate is flattened onto the capsule set's near-black.
+  * **Shortcut Icon** — 256x256 .ico or .png, for the desktop shortcut Steam
+    creates.  Valve generates the .ico from a PNG, so a PNG is what this emits:
+    it is byte-identical to the 256 px frame the app itself installs.
+
+macOS shortcuts additionally need an ICNS in Steamworks' **Mac Icon** field;
+that is ``icons-demo/icon.icns`` from the bundle set, uploaded as-is.
 
 The demo differs from the base in two ways, in this order of importance:
 
@@ -37,7 +51,16 @@ sort of thing that makes a generator irreproducible.  Nothing here needs more
 than ImageMagick's own rasteriser, which ``render_png`` asks for by name
 (``MSVG:``) so that an installed librsvg cannot quietly re-render the set:
 the committed PNGs rebuild byte-for-byte on any machine with the same
-ImageMagick build, with no font to install.
+ImageMagick build, with no font to install.  The ICO and ICNS are assembled
+from those same bytes here, so they inherit it.
+
+The one output that does **not** carry that promise is the App Icon, because
+Steamworks wants it as a JPG.  Its encoder settings are pinned below, but
+quantisation and Huffman tables still differ between libjpeg and
+libjpeg-turbo and across their versions, so a machine that reproduces every
+PNG exactly can still emit a byte-different .jpg.  That is why the suite
+checks it by content — size, opacity, plate colour, ribbon — and not by
+comparing it to a regenerated copy.
 
 Usage:
     python3 publishing/assets/source/gen_icons.py            # write into the repo
@@ -73,7 +96,8 @@ RIBBON_BG = "#0D0D15"   # the capsule-set base colour
 RIBBON_FG = "#F4F4F5"
 
 # Below this pixel size the ribbon is dropped: the word is illegible and only
-# muddies the silhouette.  The Steam client icon (32 px) is deliberately below it.
+# muddies the silhouette.  The Steam App Icon (184) and Shortcut Icon (256) are
+# both above it; the bundle's 16-64 px frames are deliberately below.
 RIBBON_MIN_PX = 128
 
 # Supersampling, expressed as the square the render is forced to before the
@@ -339,70 +363,30 @@ ICNS_SIZES = tuple(sorted(
     {s for _, s in ICNS_PNG_TYPES} | {s for _, s in ICNS_ARGB_TYPES}
 ))
 
-def _dib_frame(png: Path, size: int) -> bytes:
-    """One ICO frame as an uncompressed 32-bit BGRA DIB.
-
-    A BITMAPINFOHEADER whose height covers both the colour rows and the 1-bit
-    AND mask, then the two of them bottom row first. The mask is derived from
-    the alpha channel, so a reader that honours only the mask still gets the
-    right silhouette rather than a square.
-    """
-    rgba = _rgba_bytes(png)
-    assert len(rgba) == size * size * 4, f"{png}: expected {size}x{size} RGBA"
-    stride = size * 4
-    mask_stride = ((size + 31) // 32) * 4      # mask rows pad to four bytes
-    colour, mask = bytearray(), bytearray()
-    for y in range(size - 1, -1, -1):          # DIB rows run bottom-up
-        row = rgba[y * stride:(y + 1) * stride]
-        bits = bytearray(mask_stride)
-        for x in range(size):
-            r, g, b, a = row[x * 4:x * 4 + 4]
-            colour += bytes((b, g, r, a))
-            if a == 0:
-                bits[x // 8] |= 0x80 >> (x % 8)
-        mask += bits
-    header = struct.pack(
-        "<IiiHHIIiiII",
-        40, size, size * 2, 1, 32, 0, len(colour) + len(mask), 0, 0, 0, 0,
-    )
-    return header + bytes(colour) + bytes(mask)
-
-
-def write_ico(
-    frames: dict[int, Path], dest: Path, sizes: tuple[int, ...], *, dib: bool = False
-) -> None:
-    """Assemble an ICO from PNG frames, PNG-compressed unless ``dib``.
+def write_ico(frames: dict[int, Path], dest: Path, sizes: tuple[int, ...]) -> None:
+    """Assemble an ICO holding each frame as its PNG bytes.
 
     Written here rather than handed to ImageMagick because its ICO coder
     stores every frame as an uncompressed DIB — a 256 px frame alone costs
-    256 KB, which is how a five-frame icon turns into a third of a megabyte.
-    So the bundle's multi-size `icon.ico` keeps PNG payloads, which is what
-    Windows has read since Vista and what the base app's committed `icon.ico`
-    already carries.
+    256 KB, which is how a seven-frame icon turns into a third of a megabyte.
+    PNG payloads are what Windows has read since Vista and what the base app's
+    committed `icon.ico` already carries, so the demo's matches it.
 
-    The Steamworks client icon passes ``dib=True``. It is a single 32 px
-    frame, so the whole file is 4.2 KB as a DIB against 1.1 KB as PNG — three
-    kilobytes, on an asset uploaded once. A plain DIB is the encoding every
-    ICO reader ever shipped understands, including whatever Valve's asset
-    uploader and the Steam client's own image loader turn out to be, neither
-    of which can be tested from here before the asset is live. There is no
-    reader that takes PNG-in-ICO but not this, so the compatible encoding is
-    free on an asset this small.
+    Nothing Steamworks takes is built here: its Shortcut Icon field accepts a
+    plain PNG and generates the .ico itself, so this writer only ever produces
+    the bundle's `icon.ico`.
     """
-    payloads = [
-        _dib_frame(frames[s], s) if dib else frames[s].read_bytes() for s in sizes
-    ]
+    payloads = [frames[s].read_bytes() for s in sizes]
     header = struct.pack("<HHH", 0, 1, len(sizes))
     offset = len(header) + 16 * len(sizes)
     entries, body = b"", b""
     for size, payload in zip(sizes, payloads):
         # 256 is encoded as 0 in the single-byte width/height fields. Planes
-        # and bit depth are ignored for PNG payloads — 0/32 is what the base
-        # app's working icon.ico carries — but a DIB frame must agree with its
-        # own header, so declare 1 plane at 32 bpp there.
+        # and bit depth are ignored for PNG payloads; 0/32 is what the base
+        # app's working icon.ico carries.
         dim = 0 if size >= 256 else size
         entries += struct.pack(
-            "<BBBBHHII", dim, dim, 0, 0, 1 if dib else 0, 32, len(payload), offset
+            "<BBBBHHII", dim, dim, 0, 0, 0, 32, len(payload), offset
         )
         body += payload
         offset += len(payload)
@@ -492,12 +476,48 @@ def write_icns(frames: dict[int, Path], dest: Path) -> None:
 # icon.ico and icon.icns are the other two and are assembled below.
 BUNDLE_PNGS = ((32, "32x32.png"), (128, "128x128.png"), (256, "128x128@2x.png"))
 
+# Steamworks "Community and Client Icons".  Both are required fields, and they
+# are the pair that issue #499 is actually about: the App Icon is what the
+# Steam client draws in the library list, where the demo and the full game
+# looked the same, and the Shortcut Icon is what lands on the desktop.
+APP_ICON_PX = 184       # App Icon: 184x184 JPG
+SHORTCUT_ICON_PX = 256  # Shortcut Icon: 256x256 .ico or .png
+
+
+def write_app_icon(png: Path, dest: Path) -> None:
+    """Flatten a frame onto the capsule base colour and write it as JPEG.
+
+    Steamworks wants this one as a JPG, which has no alpha channel, so the
+    plate's rounded corners have to be composited against something. They go
+    onto RIBBON_BG — the near-black the whole capsule set sits on — rather
+    than onto the plate colour, so the corners stay visible and the icon reads
+    as part of the same family as the store art.
+
+    4:4:4 sampling, because chroma subsampling on a 184 px icon smears the
+    plate edge and the ribbon's lettering, and both of those are what the
+    asset exists to show. ``-strip`` drops the profile and any timestamp, and
+    the Huffman tables are optimised rather than left at libjpeg's defaults so
+    the file does not depend on which default a build happens to carry.
+
+    Even so this is the one output whose bytes are not promised across
+    machines — see the module docstring. Judge a regenerated .jpg by looking
+    at it, not by ``git diff``.
+    """
+    subprocess.run(
+        [_magick(), "PNG:" + str(png), "-background", RIBBON_BG,
+         "-alpha", "remove", "-alpha", "off", "-strip",
+         "-sampling-factor", "1x1", "-quality", "95",
+         "-define", "jpeg:optimize-coding=true", "JPEG:" + str(dest)],
+        check=True,
+    )
+
 
 def build(edition: str, bundle_dir: Path, steam_dir: Path) -> list[Path]:
-    """Write one edition's bundle icon set and its Steamworks client icon."""
+    """Write one edition's bundle icon set and its Steamworks icons."""
     bundle_dir.mkdir(parents=True, exist_ok=True)
     steam_dir.mkdir(parents=True, exist_ok=True)
-    needed = sorted({*ICO_SIZES, *ICNS_SIZES, *(s for s, _ in BUNDLE_PNGS)})
+    needed = sorted({*ICO_SIZES, *ICNS_SIZES, *(s for s, _ in BUNDLE_PNGS),
+                     APP_ICON_PX, SHORTCUT_ICON_PX})
     written = []
     with tempfile.TemporaryDirectory() as tmp:
         frames = {
@@ -516,16 +536,23 @@ def build(edition: str, bundle_dir: Path, steam_dir: Path) -> list[Path]:
         write_icns(frames, icns)
         written.append(icns)
 
-        # Steamworks "Client Icon": a 32x32 .ico, the asset the Steam client
-        # draws next to the app name in the library list.  This is the one
-        # issue #499 is about; the rest of the set is the same mark so the
-        # installed app and its Steam entry agree.  Written as an uncompressed
-        # DIB rather than PNG-in-ICO — see write_ico.
-        client = steam_dir / f"{edition}_client_icon.ico"
-        write_ico(frames, client, (32,), dib=True)
-        written.append(client)
+        # Steamworks App Icon: the 184 px JPG the Steam client draws beside
+        # the app name in the library list, in chat favourites and in
+        # notifications.  This is the asset in issue #499's screenshot — the
+        # one that made the demo and the full game indistinguishable there.
+        app_icon = steam_dir / f"{edition}_app_icon.jpg"
+        write_app_icon(frames[APP_ICON_PX], app_icon)
+        written.append(app_icon)
 
-    # The large-frame artwork as vector, next to the client icon: for reading
+        # Steamworks Shortcut Icon: 256 px, for the desktop shortcut Steam
+        # creates.  Valve accepts a PNG here and generates the .ico itself, so
+        # this is simply the same 256 px frame the app installs — no hand-built
+        # container between the mark and the shortcut.
+        shortcut = steam_dir / f"{edition}_shortcut_icon.png"
+        shortcut.write_bytes(frames[SHORTCUT_ICON_PX].read_bytes())
+        written.append(shortcut)
+
+    # The large-frame artwork as vector, next to the uploads: for reading
     # the mark and re-rendering it at sizes this script does not emit.  It is
     # the >= RIBBON_MIN_PX drawing — the demo render always carries the ribbon,
     # so re-render from here only at 128 px and up; below that the word is the
