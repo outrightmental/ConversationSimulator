@@ -141,6 +141,16 @@ declare ready and mount the UI over a stranger's socket. The shell now sends a
 real HTTP request and requires the body to look like a convsim-core health
 response — which also tells it, in the same exchange, which edition is running.
 
+Specifically: a 200 whose body carries a string `status`, a string `version` and
+an object `database`. Not `status` alone — `{"status":"ok"}` is the most common
+health-response shape there is and `/api/health` a common path, so that key by
+itself identifies nothing and an occupant answering it would be adopted as our
+engine. All three have been required fields of `HealthResponse` since the
+service's first commit, so the test rejects nothing that has ever been a
+convsim-core (`edition` has not, hence its `"full"` default). The front-end's
+own health fast-path applies the same test, so it cannot bypass the startup
+screen on an answer the shell would reject.
+
 (For an engine the shell started itself an open port does track readiness closely:
 `uvicorn.run()` binds its socket *after* the FastAPI lifespan completes, so the
 two are about 40 ms apart. That is a property of how the engine happens to be

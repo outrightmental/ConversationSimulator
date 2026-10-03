@@ -528,9 +528,27 @@ fn edition_from_health_body(body: &str) -> Option<String> {
         return None;
     }
     let json: serde_json::Value = serde_json::from_str(&body[start..=end]).ok()?;
-    // `status` is a required field of HealthResponse; its absence means this is
-    // somebody else's JSON.
-    json.get("status")?;
+    // Three required fields of HealthResponse, not one.
+    //
+    // `{"status":"ok"}` is the single most common health-response shape there
+    // is, and `/api/health` is a common path — so a lone `status` key is not
+    // evidence of convsim-core. Adopting such an occupant is exactly the bug
+    // this probe exists to prevent, one step deeper: the shell would report
+    // ready and mount the UI over a stranger's socket, where every API call
+    // fails with nothing on screen to explain it.
+    //
+    // `status`, `version` and `database` have all been required fields of
+    // HealthResponse since the service's first commit, so this rejects nothing
+    // that has ever been a convsim-core. (`edition` has not — hence the
+    // `"full"` default below.) `database` is checked for its type too: an
+    // object there is what makes the trio distinctive rather than three
+    // plausible scalars.
+    if !json.get("status").is_some_and(serde_json::Value::is_string)
+        || !json.get("version").is_some_and(serde_json::Value::is_string)
+        || !json.get("database").is_some_and(serde_json::Value::is_object)
+    {
+        return None;
+    }
     Some(
         json.get("edition")
             .and_then(|v| v.as_str())
@@ -1759,27 +1777,35 @@ mod tests {
 
     // ── Health body ──────────────────────────────────────────────────────────
 
+    /// The smallest body that is genuinely a convsim-core health response: the
+    /// three required fields `edition_from_health_body` takes as proof of
+    /// identity, plus whatever *extra* the caller wants appended.
+    fn health_body(extra: &str) -> String {
+        format!(
+            "{{\"status\":\"ok\",\"version\":\"0.1.0\",\
+             \"database\":{{\"status\":\"ok\",\"path\":\"/tmp/convsim.db\"}}{extra}}}"
+        )
+    }
+
     #[test]
     fn a_health_body_without_an_edition_field_reads_as_full() {
         // An engine older than the edition field (issue #495) is the full app.
-        assert_eq!(
-            edition_from_health_body("{\"status\":\"ok\"}").as_deref(),
-            Some("full")
-        );
+        assert_eq!(edition_from_health_body(&health_body("")).as_deref(), Some("full"));
     }
 
     #[test]
     fn a_health_body_reports_the_demo_edition() {
         assert_eq!(
-            edition_from_health_body("{\"status\":\"ok\",\"edition\":\"demo\"}").as_deref(),
+            edition_from_health_body(&health_body(",\"edition\":\"demo\"")).as_deref(),
             Some("demo")
         );
     }
 
     #[test]
     fn a_chunked_health_body_still_parses() {
-        let body = "21\r\n{\"status\":\"ok\",\"edition\":\"full\"}\r\n0\r\n\r\n";
-        assert_eq!(edition_from_health_body(body).as_deref(), Some("full"));
+        let json = health_body(",\"edition\":\"full\"");
+        let framed = format!("{:x}\r\n{json}\r\n0\r\n\r\n", json.len());
+        assert_eq!(edition_from_health_body(&framed).as_deref(), Some("full"));
     }
 
     #[test]
@@ -1788,6 +1814,28 @@ mod tests {
         // service answering 200 must read as a port conflict, not as ready.
         assert!(edition_from_health_body("{\"hello\":\"world\"}").is_none());
         assert!(edition_from_health_body("<html>not json</html>").is_none());
+    }
+
+    #[test]
+    fn a_generic_health_response_is_not_evidence_of_convsim_core() {
+        // `{"status":"ok"}` is the most common health-response shape there is,
+        // and `/api/health` is a common path — so a lone `status` key cannot be
+        // what identifies our engine. An occupant answering it would otherwise
+        // be adopted as convsim-core and the UI mounted over its socket, which
+        // is the failure this whole probe exists to prevent.
+        assert!(edition_from_health_body("{\"status\":\"ok\"}").is_none());
+        assert!(edition_from_health_body("{\"status\":\"UP\",\"version\":\"2.1\"}").is_none());
+        // A `status` key that is present but not a string is not it either.
+        assert!(edition_from_health_body(
+            "{\"status\":null,\"version\":\"0.1.0\",\"database\":{}}"
+        )
+        .is_none());
+        // Nor is a `database` that is a plausible scalar rather than the object
+        // HealthResponse declares.
+        assert!(edition_from_health_body(
+            "{\"status\":\"ok\",\"version\":\"0.1.0\",\"database\":\"ok\"}"
+        )
+        .is_none());
     }
 
     #[test]
@@ -1966,6 +2014,14 @@ mod tests {
         assert!(PORT_BUSY_MESSAGE.contains(&CORE_PORT.to_string()));
         assert!(text.contains("port"));
         assert!(text.contains("in use"));
+        // And it must miss the two branches now checked BEFORE port-conflict.
+        // Both are about a Conversation Simulator holding the port, and their
+        // cards say to switch windows or close the other edition — the opposite
+        // of this one's "close whatever is using that port", which is only safe
+        // advice when the occupant is not ours. "Already in use" is one word
+        // away from matching the already-running branch, so pin it.
+        assert!(!text.contains("already running"));
+        assert!(!text.contains("another edition"));
     }
 
     #[test]
@@ -2002,6 +2058,8 @@ mod tests {
         // half may read as one of those.
         let text = format!("{} {}", KEEPS_STOPPING_MESSAGE, keeps_stopping_hint()).to_lowercase();
         assert!(text.contains("keeps stopping"));
+        assert!(!text.contains("another edition"));
+        assert!(!text.contains("already running"));
         assert!(!text.contains("port"));
         assert!(!text.contains("in use"));
         assert!(!text.contains("not found"));
@@ -2188,7 +2246,7 @@ mod tests {
             let (mut stream, _) = listener.accept().expect("accept");
             let mut buf = [0u8; 1024];
             let _ = stream.read(&mut buf);
-            let body = "{\"status\":\"ok\",\"version\":\"0.1.0\",\"edition\":\"demo\"}";
+            let body = health_body(",\"edition\":\"demo\"");
             let response = format!(
                 "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
                  Content-Length: {}\r\nConnection: close\r\n\r\n{}",

@@ -175,9 +175,23 @@ export default function CoreStartupGuard({ children }: { children: React.ReactNo
       // apps/desktop/src-tauri/src/lib.rs). Without the same test here this
       // fast-path mounts the app over a stranger's socket for the whole
       // port-conflict grace period, before the shell's error event arrives.
-      // `status` is a required field of HealthResponse.
-      const body: unknown = await res.json()
-      return typeof (body as { status?: unknown } | null)?.status === 'string'
+      //
+      // Three fields, matching `edition_from_health_body`: `{"status":"ok"}` is
+      // the most common health-response shape there is and `/api/health` is a
+      // common path, so a lone `status` key identifies nothing. `status`,
+      // `version` and `database` have all been required fields of
+      // HealthResponse since the service's first commit.
+      const body = (await res.json()) as {
+        status?: unknown
+        version?: unknown
+        database?: unknown
+      } | null
+      return (
+        typeof body?.status === 'string' &&
+        typeof body.version === 'string' &&
+        typeof body.database === 'object' &&
+        body.database !== null
+      )
     } catch {
       return false
     }

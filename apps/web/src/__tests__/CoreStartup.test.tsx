@@ -20,6 +20,16 @@ afterEach(() => {
 
 // ── Helper ────────────────────────────────────────────────────────────────────
 
+// The smallest body `checkHealth` accepts as proof that convsim-core — rather
+// than some other program holding 7355 — answered: the three fields it tests,
+// which are the same three `edition_from_health_body` requires in
+// apps/desktop/src-tauri/src/lib.rs.
+const HEALTH_BODY = {
+  status: 'ok',
+  version: '0.1.0',
+  database: { status: 'ok', path: '/tmp/convsim.db' },
+}
+
 type TauriListenHandler = (e: { payload: unknown }) => void
 
 function stubTauri(
@@ -263,7 +273,7 @@ describe('CoreStartupGuard — engine restart under a running window', () => {
     })
 
     await act(async () => {
-      resolveHealth?.({ ok: true, json: () => Promise.resolve({ status: 'ok' }) })
+      resolveHealth?.({ ok: true, json: () => Promise.resolve(HEALTH_BODY) })
     })
 
     expect(screen.queryByText('App content loaded')).not.toBeInTheDocument()
@@ -563,7 +573,7 @@ describe('CoreStartupGuard — health check fast-path', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(() =>
-        Promise.resolve({ ok: true, json: () => Promise.resolve({ status: 'ok' }) }),
+        Promise.resolve({ ok: true, json: () => Promise.resolve(HEALTH_BODY) }),
       ),
     )
     stubTauri(() => Promise.resolve(() => {}))
@@ -584,6 +594,26 @@ describe('CoreStartupGuard — health check fast-path', () => {
       'fetch',
       vi.fn(() =>
         Promise.resolve({ ok: true, json: () => Promise.resolve({ hello: 'world' }) }),
+      ),
+    )
+    stubTauri(() => Promise.resolve(() => {}))
+
+    await act(async () => {
+      renderGuard()
+    })
+
+    expect(screen.queryByText('App content loaded')).not.toBeInTheDocument()
+  })
+
+  it('does not pass through on a generic health body that only has a status', async () => {
+    // `{"status":"ok"}` is the most common health-response shape there is, and
+    // `/api/health` is a common path, so that key on its own identifies
+    // nothing. The three fields checkHealth requires are the three
+    // `edition_from_health_body` requires on the Rust side.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve({ ok: true, json: () => Promise.resolve({ status: 'ok' }) }),
       ),
     )
     stubTauri(() => Promise.resolve(() => {}))
@@ -630,7 +660,7 @@ describe('CoreStartupGuard — health check fast-path', () => {
     })
 
     await act(async () => {
-      resolveHealth?.({ ok: true, json: () => Promise.resolve({ status: 'ok' }) })
+      resolveHealth?.({ ok: true, json: () => Promise.resolve(HEALTH_BODY) })
     })
 
     expect(screen.queryByText('App content loaded')).not.toBeInTheDocument()
