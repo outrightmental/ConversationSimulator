@@ -13,8 +13,10 @@ the same guarantees against a plain destination path instead:
 
 A ``.part`` file only survives the app being *killed* mid-transfer; the next
 attempt resumes it with an HTTP Range request (falling back to a clean restart
-when the server answers 200 instead of 206). Every in-process failure — cancel,
-transport error, checksum mismatch — removes it, matching the GGUF downloader.
+when the server answers 200 instead of 206), or promotes it outright when it
+already hashes to the expected value — the kill may have landed after the last
+byte but before the rename. Every in-process failure — cancel, transport error,
+checksum mismatch — removes it, matching the GGUF downloader.
 
 Network access goes through the same ``NetworkMode.EXPLICIT_DOWNLOAD`` gate as
 model weights, so nothing here can be reached from play-mode code.
@@ -69,6 +71,21 @@ async def download_voice_asset(
     part_path = dest_path.with_name(dest_path.name + ".part")
 
     resume_from = part_path.stat().st_size if part_path.exists() else 0
+    if resume_from > 0 and await asyncio.to_thread(verify_sha256, part_path, expected_sha256):
+        # The .part was already the whole, correct file. A kill can land in the
+        # window between the last chunk and the promotion below — which includes
+        # the seconds spent hashing a 150 MB model — and asking for
+        # `bytes=<size>-` after that gets a 416 from Hugging Face, which
+        # raise_for_status turns into a failed job for a download that had in
+        # fact finished. Promote it instead, and touch the network for nothing.
+        part_path.replace(dest_path)
+        if progress_cb is not None:
+            progress_cb(resume_from, resume_from)
+        logger.info(
+            "voice-download: %s was already complete on disk (%d bytes)", dest_path, resume_from
+        )
+        return resume_from
+
     headers = {"Range": f"bytes={resume_from}-"} if resume_from > 0 else {}
 
     bytes_written = 0

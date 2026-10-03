@@ -672,6 +672,66 @@ async def test_download_resumes_from_a_partial_file(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_a_part_file_that_is_already_complete_is_promoted(tmp_path):
+    """A kill between the last byte and the rename must not fail the next attempt.
+
+    The .part survives a kill, and the window it survives into includes the
+    seconds spent hashing a 150 MB model — so it can already be the whole,
+    correct file. Asking for `bytes=<size>-` then gets a 416, which
+    raise_for_status would turn into a failed job for a download that finished.
+    """
+    content = b"0123456789abcdef"
+    dest = tmp_path / "stt" / "ggml-base.en.bin"
+    dest.parent.mkdir(parents=True)
+    part = dest.with_name(dest.name + ".part")
+    part.write_bytes(content)
+
+    client = _mock_client(b"", status_code=416)
+    seen: list[tuple[int, int | None]] = []
+
+    written = await download_voice_asset(
+        url="https://example.test/m.bin",
+        dest_path=dest,
+        expected_sha256=_sha256_of(content),
+        progress_cb=lambda done, total: seen.append((done, total)),
+        _client=client,
+    )
+
+    assert written == len(content)
+    assert dest.read_bytes() == content
+    assert not part.exists()
+    # Nothing was requested: the bytes were already there and verified.
+    assert client.stream.call_count == 0
+    assert seen == [(len(content), len(content))]
+
+
+@pytest.mark.asyncio
+async def test_a_part_file_with_the_wrong_bytes_still_resumes(tmp_path):
+    """Only a *verified* .part short-circuits; a genuine partial still resumes."""
+    content = b"0123456789abcdef"
+    dest = tmp_path / "stt" / "ggml-base.en.bin"
+    dest.parent.mkdir(parents=True)
+    part = dest.with_name(dest.name + ".part")
+    part.write_bytes(content[:6])
+
+    client = _mock_client(
+        content[6:],
+        status_code=206,
+        headers={"content-range": f"bytes 6-{len(content) - 1}/{len(content)}"},
+    )
+
+    written = await download_voice_asset(
+        url="https://example.test/m.bin",
+        dest_path=dest,
+        expected_sha256=_sha256_of(content),
+        _client=client,
+    )
+
+    assert written == len(content)
+    assert client.stream.call_args.kwargs["headers"] == {"Range": "bytes=6-"}
+
+
+@pytest.mark.asyncio
 async def test_download_requires_the_explicit_download_network_mode(tmp_path, monkeypatch):
     """Nothing here may be reachable from play-mode code."""
     seen: list = []
