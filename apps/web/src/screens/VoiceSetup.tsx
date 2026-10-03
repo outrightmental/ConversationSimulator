@@ -538,6 +538,7 @@ export default function VoiceSetup() {
     busy,
     cancelling,
     refresh,
+    recheck,
     startInstall,
     cancelInstall,
     startEngine,
@@ -818,7 +819,7 @@ export default function VoiceSetup() {
                     busy={busy}
                     kokoroState={plan.kokoro_state}
                     onStart={(id) => void startEngine(id)}
-                    onRecheck={refresh}
+                    onRecheck={recheck}
                   />
                 ))}
                 {assets.map((asset) => (

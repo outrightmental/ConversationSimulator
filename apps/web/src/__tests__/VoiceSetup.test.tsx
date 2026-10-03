@@ -373,6 +373,42 @@ describe('VoiceSetup — what is missing', () => {
     expect(message).toHaveAttribute('role', 'status')
   })
 
+  it('drops the last start attempt when the player asks where things stand now', async () => {
+    // "it can take a minute to load its voices — press Check again shortly" is
+    // the answer a Steam player gets most often, and the whole point of it is
+    // that the next Check again may well find the server up. Leaving the amber
+    // line in place would then sit it directly above a green row and a "Voice is
+    // ready" panel it contradicts.
+    mockApi.startVoiceEngine.mockResolvedValue({
+      ok: true,
+      data: {
+        engine_id: 'kokoro-server',
+        state: 'starting',
+        started: false,
+        message: 'The voice server is already starting — press Check again shortly.',
+      },
+    })
+    const stopped = makePlan()
+    stopped.engines[1] = { ...stopped.engines[1], installed: true, found_at: '/usr/local/bin/kokoro-server' }
+    mockApi.getVoiceSetupPlan.mockResolvedValue({ ok: true, data: stopped })
+
+    renderScreen()
+    await screen.findByTestId('voice-setup-screen')
+    fireEvent.click(await screen.findByTestId('engine-start-kokoro-server'))
+    await screen.findByTestId('engine-message')
+
+    // The server finished coming up; "Check again" is how the player finds out.
+    const running = makePlan()
+    running.engines[1] = { ...running.engines[1], installed: true, found_at: '/usr/local/bin/kokoro-server' }
+    running.kokoro_state = 'running'
+    running.capabilities[1] = { ...running.capabilities[1], ready: true }
+    mockApi.getVoiceSetupPlan.mockResolvedValue({ ok: true, data: running })
+
+    fireEvent.click(screen.getByTestId('engine-recheck-whisper-cli'))
+
+    await waitFor(() => expect(screen.queryByTestId('engine-message')).toBeNull())
+  })
+
   it('does not offer to start an engine that is not installed', async () => {
     renderScreen()
     await screen.findByTestId('voice-setup-screen')

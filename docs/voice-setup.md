@@ -54,6 +54,12 @@ The plan is re-read on window focus. The two native engines are installed
 *outside* the app, so a player who runs `brew install whisper.cpp` in a
 terminal and switches back sees the row tick over without a reload.
 
+A re-read — **Check again**, or that return to the window — also clears the last
+engine-start message (`useVoiceSetup.recheck`). Asking where things stand now
+must not leave *where they stood then* above the answer: the commonest reply from
+the start endpoint is "already starting, press Check again shortly", and the
+Check again it asks for may well find the server up.
+
 `ffmpeg` is its own row for the same reason, with the same caveat on Windows:
 `winget` writes the install folder into the user `PATH`, which the already
 running service never re-reads, so that row asks for a restart too.
@@ -93,8 +99,9 @@ either way.
 
 The last row of the speech section is the one piece no download can satisfy.
 The browser has to be granted microphone access, so the row asks for it
-(`useMicCapture.requestPermission`) and names the way back from a denial —
-`navigator.permissions` reporting `denied` is otherwise a silent dead end
+(`useMicCapture.requestPermission`, which reads the answer off the
+`getUserMedia` rejection rather than querying `navigator.permissions`) and names
+the way back from a denial — a blocked microphone is otherwise a silent dead end
 discovered mid-conversation.
 
 Once the plan reports `stt.ready`, the same row offers **Record a test
@@ -245,8 +252,11 @@ this order:
    the player to a terminal to meet `git: command not found`, which is the dead
    end this screen exists to remove.
 2. **A missing prerequisite the command runs** (`requires_tool` +
-   `requires_tool_note`), reported only when `shutil.which` cannot find it, so
-   the row is silent for anyone who already has it. Two commands qualify:
+   `requires_tool_note`), reported only when `find_tool` cannot find it — the
+   same `PATH`-then-package-manager-prefixes lookup as above, and for the same
+   reason: `shutil.which` alone would tell a Finder-launched macOS build that
+   the `brew` which installed everything on the machine "was not found". So the
+   row is silent for anyone who already has the program. Two commands qualify:
    Kokoro's container command, which without Docker answers `docker: command
    not found`, and whisper.cpp's macOS one-liner, which without Homebrew
    answers `brew: command not found`. Homebrew is not part of macOS, so a stock

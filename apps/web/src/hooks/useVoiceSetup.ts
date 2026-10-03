@@ -43,6 +43,21 @@ export interface UseVoiceSetupReturn {
    */
   cancelling: boolean
   refresh: () => void
+  /**
+   * Re-read the machine *and* drop the last attempt's message.
+   *
+   * What "Check again" and a return to the window mean is "tell me where things
+   * stand now", and `engineResult` is where things stood then. Leaving it up
+   * puts a stale line above the rows it describes — the amber "the voice server
+   * is already starting, press Check again shortly" still sitting over a green
+   * row and a "Voice is ready" panel once the start finished, which is the
+   * contradiction the start endpoint goes out of its way not to print.
+   *
+   * `refresh` is kept separate for the callers whose message must outlive the
+   * re-read: `startEngine` refreshes precisely so the row agrees with the
+   * answer it is showing.
+   */
+  recheck: () => void
   startInstall: (assetIds: string[]) => Promise<void>
   cancelInstall: () => Promise<void>
   startEngine: (engineId: string) => Promise<void>
@@ -79,13 +94,19 @@ export function useVoiceSetup(): UseVoiceSetupReturn {
     })
   }, [])
 
+  const recheck = useCallback(() => {
+    setEngineResult(null)
+    setActionError(null)
+    refresh()
+  }, [refresh])
+
   useEffect(() => { refresh() }, [refresh])
 
   useEffect(() => {
-    function onFocus() { refresh() }
+    function onFocus() { recheck() }
     window.addEventListener('focus', onFocus)
     return () => { window.removeEventListener('focus', onFocus) }
-  }, [refresh])
+  }, [recheck])
 
   useEffect(() => {
     if (jobId == null) {
@@ -123,6 +144,8 @@ export function useVoiceSetup(): UseVoiceSetupReturn {
   const startInstall = useCallback(async (assetIds: string[]) => {
     setBusy(true)
     setActionError(null)
+    // A download starting makes the last engine-start message history too.
+    setEngineResult(null)
     const r = await api.startVoiceInstall(assetIds)
     if (r.ok) {
       settledJobRef.current = null
@@ -175,6 +198,7 @@ export function useVoiceSetup(): UseVoiceSetupReturn {
     busy,
     cancelling,
     refresh,
+    recheck,
     startInstall,
     cancelInstall,
     startEngine,
