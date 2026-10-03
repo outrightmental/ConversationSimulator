@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
+import { useState } from 'react'
 import { useTranslation } from '../i18n'
 import {
   readLlmFamiliarity,
@@ -33,7 +34,12 @@ export default function FamiliarityQuestion({
   compact?: boolean
 }) {
   const { t } = useTranslation()
-  const current = readLlmFamiliarity()
+  // Held in state, not read fresh from storage each render: on the first-run
+  // Welcome step nothing else re-renders when an answer is written, so a
+  // storage-only read left every option unselected after the click — the
+  // player tells the app how familiar they are and the app appears to ignore
+  // them.
+  const [current, setCurrent] = useState<LlmFamiliarity | null>(readLlmFamiliarity)
 
   return (
     <div data-testid="familiarity-question">
@@ -62,6 +68,7 @@ export default function FamiliarityQuestion({
               data-testid={`familiarity-${answer}`}
               onClick={() => {
                 writeLlmFamiliarity(answer)
+                setCurrent(answer)
                 onAnswered?.(answer)
               }}
               style={{

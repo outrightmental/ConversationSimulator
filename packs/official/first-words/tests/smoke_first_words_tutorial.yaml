@@ -66,7 +66,7 @@ static_assertions:
     check: "equals false"
   - description: Timeout ending condition caps the tutorial at max_turns
     path: ending_conditions.timeout
-    check: "type=max_turns AND value=12"
+    check: "type=max_turns AND value=8"
   - description: Safety policy stops nsfw_sexual_content
     path: safety.content_categories.nsfw_sexual_content
     check: "equals stop"

@@ -524,6 +524,12 @@ def _script_utterance(turn: int) -> str:
     return _FIRST_WORDS_SCRIPT[turn - 1]["npc_utterance"]
 
 
+def _script_delta(turn: int) -> dict:
+    from convsim_core.runtime.scripted import _FIRST_WORDS_SCRIPT
+
+    return _FIRST_WORDS_SCRIPT[turn - 1]["state_delta"]
+
+
 def _structured_for(runtime: ScriptedChatRuntime, text: str, turn: int) -> dict:
     import asyncio
 
@@ -605,6 +611,35 @@ def test_an_unrelated_question_follows_the_tour(runtime):
     assert text == _script_utterance(3)
 
 
+def test_an_answer_carries_the_tour_line_along(runtime):
+    """Asking must not cost the player the beat that turn was going to deliver.
+
+    Substituting the answer for the tour line drops a beat AND drops that
+    turn's state_delta, so Engagement stops crossing 60 on schedule and turn
+    4's "Engagement crossed the mark" announces an event that never fired —
+    the issue's own complaint, reintroduced by the fix for it.
+    """
+    structured = _structured_for(runtime, "what are the meters?", turn=3)
+    assert structured["npc_utterance"].endswith(_script_utterance(3))
+    assert structured["state_delta"] == _script_delta(3)
+
+
+def test_the_tour_reaches_the_turning_point_even_if_every_turn_is_a_question(runtime):
+    """Engagement must still cross 60 by the turn that announces it has.
+
+    The scenario starts Engagement at 30 and the event threshold is "above 60";
+    the script's deltas are what get it there, so they have to land whether or
+    not the player asked something.
+    """
+    engagement = 30
+    for turn in (1, 2, 3):
+        structured = _structured_for(runtime, "what are the meters?", turn=turn)
+        engagement += structured["state_delta"]["engagement"]
+    assert engagement > 60, (
+        f"Engagement reached only {engagement}; turn 4 claims it crossed 60"
+    )
+
+
 def test_question_keywords_are_matched_on_word_boundaries(runtime):
     """'explain' contains 'ai' and 'show' contains 'how'.
 
@@ -631,10 +666,35 @@ def test_a_question_on_the_final_turn_still_ends_the_session(runtime):
 def test_interjections_pass_npc_output_validation():
     """The answers go through the same validators as the scripted turns."""
     from convsim_prompt.turn_output import _validate as validate_turn_output
-    from convsim_core.runtime.scripted import _INTERJECTIONS
+    from convsim_core.runtime.scripted import (
+        _FIRST_WORDS_SCRIPT,
+        _INTERJECTIONS,
+        _with_answer,
+    )
 
-    for keywords, response in _INTERJECTIONS:
-        validate_turn_output(response), f"interjection for {sorted(keywords)} failed validation"
+    for keywords, answer in _INTERJECTIONS:
+        composed = _with_answer(_FIRST_WORDS_SCRIPT[0], answer)
+        validate_turn_output(composed), f"interjection for {sorted(keywords)} failed validation"
+
+
+def test_the_prompt_scaffolding_is_not_matched_as_player_words(runtime):
+    """The runtime is handed the composed PLAYER_UTTERANCE layer, not bare words.
+
+    That layer ends with "=== END PLAYER INPUT ===", which contains "end" — so
+    matching the message as received answered any question at all with the
+    endings answer, and made the debrief answer (a later cluster) unreachable.
+    These go through the runtime, not _pick_interjection, precisely because the
+    unwrapping is the thing under test.
+    """
+    from convsim_prompt.layers import build_player_utterance_layer
+
+    def utterance(player_text: str, turn: int) -> str:
+        return _utterance_for(runtime, build_player_utterance_layer(player_text), turn)
+
+    assert utterance("Tell me about yourself", 3) == _script_utterance(3)
+    assert utterance("What is the weather like?", 3) == _script_utterance(3)
+    assert "debrief comes after" in utterance("How am I scored?", 3)
+    assert "engagement is how interested" in utterance("What are the meters?", 3).lower()
 
 
 # ── Plain language in the tutorial copy (issue #501 §2) ──────────────────────
@@ -721,9 +781,7 @@ def _all_tutorial_utterances() -> list[tuple[str, str]]:
     )
 
     out = [(f"script turn {i}", t["npc_utterance"]) for i, t in enumerate(_FIRST_WORDS_SCRIPT, 1)]
-    out += [
-        (f"interjection {sorted(k)[0]}", r["npc_utterance"]) for k, r in _INTERJECTIONS
-    ]
+    out += [(f"interjection {sorted(k)[0]}", answer) for k, answer in _INTERJECTIONS]
     out += [
         (f"ending branch {text!r}", _pick_ending_turn(text)["npc_utterance"])
         for text in ("I'm so excited!", "how does this work?", "ok")

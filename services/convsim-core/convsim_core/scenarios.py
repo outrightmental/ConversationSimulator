@@ -366,10 +366,11 @@ SCENARIOS: Dict[str, ScenarioInfo] = {
                 "Finish the tutorial and open the scenario library",
             ],
         ),
-        # Whole turns — one player message plus Alex's reply.  Six are the tour;
-        # the rest are headroom for the questions the scripted runtime answers,
-        # each of which costs a turn (issue #501 §3).
-        max_turns=12,
+        # Whole turns — one player message plus Alex's reply (issue #501 §4).
+        # The scripted runtime closes the session on its sixth turn either way:
+        # an answer to a player's question rides along with that turn's tour
+        # line rather than replacing it.  This cap is only the safety net.
+        max_turns=8,
         supported_languages=["en"],
         difficulty_options={
             "standard": DifficultySettings(patience=100, volatility=0, disclosure=100, time_pressure=0),
@@ -416,7 +417,7 @@ SCENARIOS: Dict[str, ScenarioInfo] = {
         # success threshold would trip before the warm_moment event (engagement>60)
         # could fire.  Timeout is the only scenario-level safety net.
         ending_conditions={
-            "timeout": {"type": "max_turns", "value": 12},
+            "timeout": {"type": "max_turns", "value": 8},
         },
     ),
 }

@@ -45,8 +45,10 @@ from convsim_core.runtime.types import (
 #     so a player who asked "what are the meters?" got the next canned line as
 #     if they had agreed with something — the behaviour the report attached a
 #     screenshot of and read as hallucination. Questions are answered by
-#     _pick_interjection below, and these lines no longer claim the player said
-#     anything in particular.
+#     _pick_interjection below — whose answer is prepended to the line for that
+#     turn, so a question costs the player no tour beat — and these lines no
+#     longer claim the player said anything in particular, because any of them
+#     may now follow a question rather than an answer.
 
 _FIRST_WORDS_SCRIPT: list[dict] = [
     # turn 1 — respond to the player's first message (the scenario's opening line
@@ -88,7 +90,7 @@ _FIRST_WORDS_SCRIPT: list[dict] = [
     # turn 3 — introduce the turning point, push engagement past the threshold (>60)
     {
         "npc_utterance": (
-            "Good to know. Now watch the Engagement meter on this next turn. "
+            "Keep an eye on the Engagement meter over this next turn. "
             "When a meter crosses a certain mark, the conversation can change "
             "course: I get new private instructions, and I behave differently "
             "from then on. Engagement is about to cross that mark for the "
@@ -164,90 +166,64 @@ _FIRST_WORDS_SCRIPT: list[dict] = [
 #
 # It was not a model at all — the tutorial runs on this script, and the script
 # had no branch for a question, so "what are the meters?" got the next canned
-# line. These interjections give it one. A matched question is answered on the
-# spot and the player is handed back to wherever the tour was, which costs one
-# of the tutorial's turns; the scenario's turn budget was widened to cover a
-# few of them.
+# line. These answers give it one.
+#
+# An answer is PREPENDED to the tour line the turn was going to deliver, not
+# substituted for it. Replacing it looks tidier and is wrong twice over: the
+# player silently loses that beat of the tour, and — because the tour's
+# state_delta goes with the beat — Engagement stops crossing 60 on schedule,
+# so turn 4's "That was it. Engagement crossed the mark" announces an event
+# that never fired. That is the same false-confidence failure the issue
+# reported, reintroduced by the fix for it. Carrying the tour line along keeps
+# every beat and every delta exactly where the script put them, and costs the
+# player nothing for asking.
 #
 # Checked in order, so the most specific cluster comes first.
 
-_HANDOFF = "Ask me anything else, or just say the word and we'll carry on."
-
-
-def _interjection(utterance: str, *, emotion: str = "warm") -> dict:
-    """An answer to a question, in the shape of a scripted turn."""
-    return {
-        "npc_utterance": utterance,
-        "npc_emotion": emotion,
-        # Small and positive: asking is engaging, but a question is not the
-        # turn that was supposed to carry a threshold crossing.
-        "state_delta": {"engagement": 5, "confidence": 5},
-        "event_flags": [],
-        "rubric_observations": [],
-        "safety": {"status": "ok"},
-        "session_control": {"continue_session": True},
-    }
-
-
-#: (keywords, response). A turn matches a cluster when the player's message
-#: reads as a question — or asks to be told — AND mentions one of the keywords,
-#: so "the meters moved, nice" is not treated as a question about them.
-_INTERJECTIONS: list[tuple[frozenset[str], dict]] = [
+#: (keywords, answer). A turn matches a cluster when the player's message reads
+#: as a question — or asks to be told — AND mentions one of the keywords, so
+#: "the meters moved, nice" is not treated as a question about them.
+_INTERJECTIONS: list[tuple[frozenset[str], str]] = [
     (
         frozenset(["meter", "meters", "engagement", "confidence", "bar", "bars",
                    "number", "numbers", "gauge", "gauges"]),
-        _interjection(
-            "Good question — those two meters are the heart of it. Engagement "
-            "is how interested I am in this conversation. Confidence is how "
-            "sure of yourself you are coming across. They are mine: you do not "
-            "set them, you move them by what you write. Each one shows its "
-            "value out of 100 and how far it just moved, so you can see what a "
-            "single message did. " + _HANDOFF,
-            emotion="warm",
-        ),
+        "Good question — those two meters are the heart of it. Engagement "
+        "is how interested I am in this conversation. Confidence is how "
+        "sure of yourself you are coming across. They are mine: you do not "
+        "set them, you move them by what you write. Each one shows its "
+        "value out of 100 and how far it just moved, so you can see what a "
+        "single message did.",
     ),
     (
         frozenset(["mood", "feeling", "feelings", "emotion", "emotions",
                    "parentheses", "parenthesis", "brackets"]),
-        _interjection(
-            "That is my mood, not a meter — it is the one word under my name "
-            "for how I am taking this, and it changes turn to turn. The meters "
-            "are the two labelled bars above the conversation. " + _HANDOFF,
-            emotion="warm",
-        ),
+        "That is my mood, not a meter — it is the one word under my name "
+        "for how I am taking this, and it changes turn to turn. The meters "
+        "are the two labelled bars above the conversation.",
     ),
     (
         frozenset(["ai", "real", "bot", "robot", "model", "scripted", "script",
                    "pretend", "pretending"]),
-        _interjection(
-            "Straight answer: I am scripted. Every line I say in this tutorial "
-            "was written ahead of time, which is why it works before you have "
-            "downloaded anything. Every other conversation here runs on an AI "
-            "model on your own computer — and either way, nothing you type "
-            "leaves this machine. " + _HANDOFF,
-            emotion="neutral",
-        ),
+        "Straight answer: I am scripted. Every line I say in this tutorial "
+        "was written ahead of time, which is why it works before you have "
+        "downloaded anything. Every other conversation here runs on an AI "
+        "model on your own computer — and either way, nothing you type "
+        "leaves this machine.",
     ),
     (
         frozenset(["end", "ends", "ending", "endings", "finish", "finishes",
                    "over", "long", "quit", "stop", "turns"]),
-        _interjection(
-            "A conversation finishes in one of three ways: it goes well, it "
-            "goes badly, or it runs out of turns. You can also stop whenever "
-            "you like with End session — you still get the debrief. " + _HANDOFF,
-            emotion="warm",
-        ),
+        "A conversation finishes in one of three ways: it goes well, it "
+        "goes badly, or it runs out of turns. You can also stop whenever "
+        "you like with End session — you still get the debrief.",
     ),
     (
         frozenset(["debrief", "score", "scored", "scores", "scoring", "grade",
                    "graded", "rubric", "feedback"]),
-        _interjection(
-            "The debrief comes after a conversation ends. It scores you on the "
-            "few things that conversation was about, says what it saw you do "
-            "well and what to try differently, and points at the turns it is "
-            "talking about. " + _HANDOFF,
-            emotion="warm",
-        ),
+        "The debrief comes after a conversation ends. It scores you on the "
+        "few things that conversation was about, says what it saw you do "
+        "well and what to try differently, and points at the turns it is "
+        "talking about.",
     ),
 ]
 
@@ -268,12 +244,12 @@ _QUESTION_RE = re.compile(
     r"\?|\b(?:" + "|".join(re.escape(w) for w in _QUESTION_WORDS) + r")\b"
 )
 
-_INTERJECTION_RES: list[tuple[re.Pattern[str], dict]] = [
+_INTERJECTION_RES: list[tuple[re.Pattern[str], str]] = [
     (
         re.compile(r"\b(?:" + "|".join(re.escape(k) for k in sorted(keywords)) + r")\b"),
-        response,
+        answer,
     )
-    for keywords, response in _INTERJECTIONS
+    for keywords, answer in _INTERJECTIONS
 ]
 
 
@@ -281,15 +257,24 @@ def _looks_like_a_question(lower_text: str) -> bool:
     return _QUESTION_RE.search(lower_text) is not None
 
 
-def _pick_interjection(player_text: str) -> dict | None:
-    """Return an answer to the player's question, or None to follow the script."""
+def _pick_interjection(player_text: str) -> str | None:
+    """Return an answer to the player's question, or None if we have none."""
     lower = player_text.lower()
     if not _looks_like_a_question(lower):
         return None
-    for pattern, response in _INTERJECTION_RES:
+    for pattern, answer in _INTERJECTION_RES:
         if pattern.search(lower):
-            return response
+            return answer
     return None
+
+
+def _with_answer(tour_turn: dict, answer: str) -> dict:
+    """The tour turn with the player's answer in front of it.
+
+    Everything else — the state_delta that keeps Engagement on schedule, the
+    emotion, the session_control — is the tour turn's, untouched.
+    """
+    return {**tour_turn, "npc_utterance": f"{answer} {tour_turn['npc_utterance']}"}
 
 
 # Keyword clusters for the three ending branches on turn 6.
@@ -401,11 +386,34 @@ _MODELS = [
 
 
 def _extract_player_text(request: ChatRequest) -> str:
-    """Best-effort extraction of the player's latest input from the request messages."""
+    """Best-effort extraction of the player's latest input from the request messages.
+
+    The turn pipeline does not hand us the player's bare words: the user message
+    is the composed PLAYER_UTTERANCE layer, which wraps them in a layer tag and
+    two sentinel lines ("=== UNTRUSTED PLAYER INPUT … ===", "=== END PLAYER
+    INPUT ==="). Those lines have to come off before any keyword matching, or
+    the scaffolding matches instead of the player: "=== END PLAYER INPUT ==="
+    contains the word "end", which made the endings interjection fire on every
+    message that read as a question at all — and shadowed the debrief answer
+    entirely, since its cluster is checked later.
+    """
     for msg in reversed(request.messages):
         if msg.role == "user":
-            return msg.content
+            return _strip_prompt_scaffolding(msg.content)
     return ""
+
+
+def _strip_prompt_scaffolding(content: str) -> str:
+    """Drop composer layer tags and sentinel lines, keeping the player's words."""
+    kept = [
+        line
+        for line in content.splitlines()
+        if not line.startswith("--- LAYER:") and not line.startswith("=== ")
+    ]
+    stripped = "\n".join(kept).strip()
+    # A caller that already passed bare text (the runtime's own unit tests, any
+    # adapter that skips the composer) must keep working.
+    return stripped if stripped else content
 
 
 @register("scripted")
@@ -484,19 +492,22 @@ class ScriptedChatRuntime(ChatRuntime):
         if turn_idx >= last_idx:
             return _pick_ending_turn(player_text)
 
-        # A question outranks the tour (issue #501 §3). Without this the script
-        # answered "what are the meters?" with the next canned line, which read
-        # as a reply to something the player never said.
-        interjection = _pick_interjection(player_text)
-        if interjection is not None:
-            return interjection
-
         # A turn index at or past last_idx already returned above, so here
         # turn_idx < last_idx; only guard against a non-positive index.
         if turn_idx < 0:
             turn_idx = 0
 
-        return script[turn_idx]
+        # Answer the question first, then carry on with the tour in the same
+        # breath (issue #501 §3). Without the answer the script replied to
+        # "what are the meters?" with the next canned line, as if the player
+        # had said something else; without the tour line the player would pay
+        # for asking, both in content and in the state_delta that has to land
+        # for turn 4's "Engagement crossed the mark" to be true.
+        tour_turn = script[turn_idx]
+        answer = _pick_interjection(player_text)
+        if answer is not None:
+            return _with_answer(tour_turn, answer)
+        return tour_turn
 
     async def health(self) -> RuntimeHealth:
         return RuntimeHealth(

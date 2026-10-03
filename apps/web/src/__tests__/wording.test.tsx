@@ -72,6 +72,16 @@ describe('FamiliarityQuestion', () => {
     expect(readUiLanguageLevel()).toBe('plain')
   })
 
+  it('shows the answer as selected the moment it is clicked', () => {
+    // On the first-run Welcome step nothing else re-renders when an answer is
+    // written, so a storage-only read left every option unselected and the
+    // player's answer looked ignored.
+    renderIn(<FamiliarityQuestion heading="q" />)
+    fireEvent.click(screen.getByTestId('familiarity-new'))
+    expect(screen.getByTestId('familiarity-new')).toHaveAttribute('aria-checked', 'true')
+    expect(screen.getByTestId('familiarity-expert')).toHaveAttribute('aria-checked', 'false')
+  })
+
   it('preselects a previous answer', () => {
     renderIn(<FamiliarityQuestion heading="q" />)
     fireEvent.click(screen.getByTestId('familiarity-some'))

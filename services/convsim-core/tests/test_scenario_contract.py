@@ -122,10 +122,10 @@ def test_tutorial_scenario_canonical_fields(seeded_client):
     s = resp.json()
     _assert_canonical(s)
     assert s["difficulty"]["default"]
-    # Whole turns — one player message plus Alex's reply (issue #501 §4). Six
-    # are the tour; the rest are headroom for the questions the scripted
-    # runtime now answers, each of which costs a turn.
-    assert s["duration"]["max_turns"] == 12
+    # Whole turns — one player message plus Alex's reply (issue #501 §4). The
+    # scripted runtime ends the session on its sixth turn; this is the safety
+    # net behind that.
+    assert s["duration"]["max_turns"] == 8
     assert s["taught_dimensions"], "tutorial declares taught_dimensions"
     assert s["opening_npc_says"], "tutorial must carry its scripted opening"
     assert s["npc_name"] == "Alex Chen", "the tutorial guide is named, not 'NPC'"
@@ -136,15 +136,15 @@ def test_tutorial_turn_budget_is_the_one_that_actually_plays():
 
     The card comes from the installed pack; play comes from the hardcoded
     catalog entry, which resolve_scenario_info consults first outside the demo
-    edition. They were 12 and 8 for a while, so the card promised headroom the
-    session did not give (issue #501).
+    edition. They drifted apart during issue #501, so the card promised a
+    budget the session did not give.
     """
     from convsim_core.scenarios import resolve_scenario_info
 
     info = resolve_scenario_info("first_words_tutorial")
     assert info is not None
-    assert info.max_turns == 12
-    assert info.ending_conditions["timeout"]["value"] == 12
+    assert info.max_turns == 8
+    assert info.ending_conditions["timeout"]["value"] == 8
 
 
 def test_language_cafe_languages_come_from_pack_manifest(seeded_client):

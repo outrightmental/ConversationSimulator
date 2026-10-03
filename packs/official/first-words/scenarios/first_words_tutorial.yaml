@@ -24,10 +24,12 @@ rubric:
 duration:
   # One whole turn is the player's message plus Alex's reply — the unit
   # turn_count increments in, and now the unit the transcript labels
-  # (issue #501 §4). Six of these are the tour; the rest are headroom for the
-  # questions the scripted runtime now answers, each of which costs a turn.
-  max_turns: 12
-  soft_time_limit_minutes: 6
+  # (issue #501 §4). The scripted runtime closes the session on its sixth
+  # turn whether or not the player asked anything along the way, because an
+  # answer rides along with that turn's tour line rather than replacing it.
+  # This cap is only the safety net behind that.
+  max_turns: 8
+  soft_time_limit_minutes: 5
 opening:
   npc_says: >-
     Welcome! I'm Alex Chen, your tutorial guide. This is Conversation Simulator
@@ -91,7 +93,7 @@ ending_conditions:
   # is the only scenario-level safety net.
   timeout:
     type: max_turns
-    value: 12
+    value: 8
 taught_dimensions:
   - engagement
   - comprehension

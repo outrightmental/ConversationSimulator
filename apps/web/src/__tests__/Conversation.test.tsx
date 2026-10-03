@@ -715,6 +715,59 @@ describe('Conversation screen', () => {
       expect(screen.getByTestId('state-meter-delta-patience')).not.toHaveTextContent('+')
     })
 
+    it('keeps the movement when the authoritative snapshot repeats it', async () => {
+      // One turn produces two snapshots: npc.final applies the delta
+      // optimistically, then session.state delivers the same numbers as fact.
+      // Measured against the previous snapshot the second one is a move of
+      // zero, which wiped the arrow the first one had just earned — so the
+      // tick the tutorial talks about flashed and vanished (issue #501 §3).
+      let wsCallback: ((event: WsEvent) => void) | null = null
+      mockApi.connectSession.mockImplementation((_id, cb) => {
+        wsCallback = cb
+        return { close: vi.fn() }
+      })
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
+      mockApi.submitTurn.mockResolvedValue({ ok: true, data: turnResponse })
+      renderConversation()
+      await waitFor(() =>
+        expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument(),
+      )
+      fireEvent.change(screen.getByRole('textbox', { name: /your response/i }), {
+        target: { value: 'Something encouraging.' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+
+      const moved = { trust: 60, patience: 75, rapport: 50, openness: 50, objective_progress: 0 }
+      act(() => {
+        wsCallback?.({
+          type: 'npc.final',
+          seq: 1,
+          session_id: SESSION_ID,
+          ts: '2026-07-01T00:01:00Z',
+          payload: {
+            content: 'Good to hear.',
+            emotion: 'warm',
+            state_delta: { trust: 10 },
+            event_flags: [],
+          },
+        })
+      })
+      await waitFor(() =>
+        expect(screen.getByTestId('state-meter-delta-trust')).toHaveTextContent('+10'),
+      )
+
+      act(() => {
+        wsCallback?.({
+          type: 'session.state',
+          seq: 2,
+          session_id: SESSION_ID,
+          ts: '2026-07-01T00:01:01Z',
+          payload: { state: 'PlayerTurnListening', state_vars: moved, ending_type: null },
+        })
+      })
+      expect(screen.getByTestId('state-meter-delta-trust')).toHaveTextContent('+10')
+    })
+
     it('hides state variables when show_state_meters is false', async () => {
       mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
       renderConversation({ show_state_meters: false })
