@@ -650,14 +650,24 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
                         checked={form.show_state_meters}
                         onChange={(e) => setField('show_state_meters', e.target.checked)}
                       />
+                      {/* Named to match the panel it switches on — the
+                          conversation screen's "Conversation meters", above the
+                          transcript. It used to read "Show NPC state meters",
+                          so a player ticking it met a differently-named panel
+                          one screen later: the same label/naming mismatch
+                          issue #501 §3 reported, handed over in the other
+                          direction, and the first of the two they read. */}
                       <span className="brief-toggle-text">
-                        Show NPC state meters during conversation
+                        Show the conversation meters
+                        <span className="brief-toggle-note">
+                          {' '}— how engaged and open the other person is, updated every turn
+                        </span>
                       </span>
                     </label>
                   )}
                   {!scenario.state_meters_permitted && (
                     <p className="brief-note">
-                      State meters are hidden in this scenario to preserve realism.
+                      The conversation meters are hidden in this scenario, to keep it realistic.
                     </p>
                   )}
                 </div>
