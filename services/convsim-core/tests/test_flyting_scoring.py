@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Stage 4 composition, the scoring service, and the scorecard contract."""
 import json
+from pathlib import Path
 
 import jsonschema
 import pytest
@@ -91,8 +92,24 @@ def score(text=WORKED_EXAMPLE_TEXT, *, verdict=_DEFAULT_VERDICT, freshness=0.97,
 # ── The worked example ───────────────────────────────────────────────────────
 
 
+# The launch pack, for the end-to-end half of the worked example. The composition
+# tests below hand Stage 4 a freshness value directly, which is the right way to
+# test arithmetic in isolation — but it also means they would still pass if the
+# novelty stage started answering something else entirely, and docs/flyting.md
+# quotes an end-to-end figure for this exact line in this exact scenario.
+_OFFICIAL_PACKS = Path(__file__).resolve().parents[3] / "packs" / "official"
+_FLYTING_PACK = _OFFICIAL_PACKS / "flyting-school"
+
+
 class TestWorkedExample:
-    """Q=0.84, T=1.27, F=0.97, P=1.2, +5 device rotation → 129."""
+    """Q=0.84, T=1.27, F=0.97, P=1.2, +5 device rotation → 129.
+
+    The freshness here is the proposal's figure, supplied to Stage 4 rather than
+    measured: these are composition tests, and 0.97 is a round number to do
+    arithmetic with. ``test_the_documented_end_to_end_score`` is the one that
+    runs the same line through the real scenario and the real novelty stage,
+    where F is 0.94 and the score is 125 — which is what docs/flyting.md quotes.
+    """
 
     def test_quality_is_the_weighted_dimensions(self):
         q = compute_quality(judgment(), compute_craft_metrics(analyze_volley(WORKED_EXAMPLE_TEXT)), JudgeRubric())
@@ -117,6 +134,41 @@ class TestWorkedExample:
         assert payload["difficulty"] == pytest.approx(1.2)
         assert payload["base"] == 124
         assert payload["bonus_total"] == 5
+
+    def test_the_documented_end_to_end_score(self):
+        """The worked example through the real pack, with nothing hand-fed.
+
+        docs/flyting.md §3 prints this volley's whole arithmetic and says the
+        scorecard shows it. The only figure a reader cannot derive from the
+        volley and the verdict is F, because it is measured against the shipped
+        cliché corpus — so it is the one that can quietly drift away from the
+        documentation. This pins it, and the score it produces, against the
+        scenario the example is set in.
+        """
+        from convsim_core.flyting.loader import load_flyting_scenario
+
+        if not _FLYTING_PACK.is_dir():
+            pytest.skip(f"Launch pack not found: {_FLYTING_PACK}")
+        scenario = load_flyting_scenario(_FLYTING_PACK, "scenarios/whitechapel_rose.yaml")
+        assert scenario is not None
+        assert scenario.flyting.difficulty_multiplier == pytest.approx(1.2)
+
+        service = VolleyScoringService(scenario.scoring_context())
+        prepared = service.prepare(WORKED_EXAMPLE_TEXT)
+        assert prepared.gate.scores_zero is False
+        # Measured, not asserted into place: the lexical tier is every run's
+        # tier today, and its nearest match for this line is a cliché.
+        assert prepared.freshness.method == "lexical"
+        assert prepared.freshness.s_max == pytest.approx(0.25, abs=0.01)
+        assert prepared.freshness.value == pytest.approx(0.94, abs=0.005)
+
+        result = service.compose(prepared, judgment(), volley_number=1)
+        assert result.quality == pytest.approx(0.84)
+        assert result.topicality == pytest.approx(1.27)
+        assert [b.id for b in result.bonuses] == ["device_rotation"]
+        assert result.base == 120
+        assert result.score == 125
+        assert result.band == "strong"
 
 
 # ── Bands ────────────────────────────────────────────────────────────────────

@@ -348,12 +348,22 @@ Victorian scenario; target's surface includes `vanity`, `hypocrisy`,
 
 Judge: sting 8, wit 8, craft 9, fidelity 9 → **Q = 0.84**. Verified hooks:
 `hypocrisy` ("polish your virtue") and `new_money` ("plate, not sterling") →
-**T = 1.27**. First use of the theme → **F = 0.97**. Period-diction scenario →
-**P = 1.2**. Device rotation +5.
+**T = 1.27**. Nothing in the session resembles it and its nearest match in the
+shipped cliché corpus sits at `s_max = 0.25` → **F = 0.94**. Period-diction
+scenario → **P = 1.2**. Device rotation +5.
 
 ```
-S = round(100 × 0.84 × 1.27 × 0.97 × 1.2) + 5 = 129
+S = round(100 × 0.84 × 1.27 × 0.94 × 1.2) + 5 = 125
 ```
+
+`F` is the only figure here a reader cannot derive from the volley and the
+verdict alone, because it is measured against the corpus and the session. This
+one is the lexical tier's answer, which is every run's answer today (§2); the
+embedding tier would put the same line's novelty somewhere else. The proposal
+this example comes from quoted `F = 0.97` and therefore 129 — the numbers above
+are what the engine actually produces, and
+`test_flyting_scoring.TestWorkedExample` pins them end to end so this paragraph
+cannot drift away from the scorecard.
 
 The scorecard shows this arithmetic. That is what makes it a practice tool rather
 than a slot machine, and the full judge verdict is kept in SQLite so any volley
@@ -464,10 +474,14 @@ to the judge prompt moves them and is expected to come with a re-measurement.
 
 **Coverage, honestly.** Four of the five suites carry around forty reference
 volleys. Veiled Civility carries twelve, and the five most recent of those are
-Stage 0 outcomes only. Its judged half is written but unmeasured, and an
-unmeasured band is worse than a missing one — it would make the file claim
-something about the model that nobody has checked. Deepening it is a matter of
-running `--judge` against the starter model and pasting what comes back.
+Stage 0 outcomes only. What it ships is measured like the rest: the six entries
+that reach the judge were run against the starter model, and the suite's own
+`description` records the model and the date — nothing in the file claims
+something nobody has checked. What is missing is depth. The rest of the batch it
+was being deepened with is written but has no measured band, and pinning a band
+by inspection would be worse than leaving it out, so it is not here. Finishing
+it is a matter of running `--judge` against the starter model and pasting what
+comes back.
 
 Some entries deliberately pin behaviour that is wrong rather than behaviour
 that is wanted, because that is what a drift guard is for. The clearest are the
