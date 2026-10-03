@@ -328,6 +328,29 @@ describe('GET /api/sessions/:session_id', () => {
     });
     expect(res.statusCode).toBe(404);
   });
+
+  it('reports the meter values a resuming screen has to redraw', async () => {
+    // Issue #501 §1: meter values otherwise only ever arrive with a turn, so a
+    // player who stepped out of a conversation and came back saw no meters at
+    // all until they sent another message.
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/sessions',
+      payload: validRequest,
+    });
+    const { session_id } = createRes.json<SessionCreateResponse>();
+    await app.inject({ method: 'POST', url: `/api/sessions/${session_id}/start` });
+    await app.inject({
+      method: 'POST',
+      url: `/api/sessions/${session_id}/turn`,
+      payload: { content: 'Hello there.' },
+    });
+
+    const getRes = await app.inject({ method: 'GET', url: `/api/sessions/${session_id}` });
+    const body = getRes.json<SessionCreateResponse>();
+    expect(body.visible_state).toBeTruthy();
+    expect(Object.keys(body.visible_state ?? {}).length).toBeGreaterThan(0);
+  });
 });
 
 // ---------------------------------------------------------------------------

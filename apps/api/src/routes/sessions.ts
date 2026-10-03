@@ -350,6 +350,13 @@ export async function sessionRoutes(app: FastifyInstance) {
         state: row.state as SessionState,
         created_at: row.created_at,
         setup: JSON.parse(row.setup_json) as SessionCreateRequest,
+        // A resuming conversation screen draws its meters from here
+        // (issue #501 §1): meter values otherwise only ever arrive with a turn,
+        // so without them a player who stepped out and came back saw no meters
+        // until they sent another message. Mirrors convsim-core's single-session
+        // response; this layer does not model per-variable visibility, so every
+        // tracked variable is reported.
+        visible_state: JSON.parse(row.state_vars_json || '{}') as Record<string, number>,
       };
     },
   );
