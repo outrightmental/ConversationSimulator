@@ -24,7 +24,11 @@ from convsim_prompt import (
 from convsim_core.flyting.config import AudienceConfig, FlytingConfig
 from convsim_core.flyting.corpus import cliche_insults
 from convsim_core.flyting.craft import CraftMetrics, compute_craft_metrics
-from convsim_core.flyting.gates import GateResult, evaluate_gates
+from convsim_core.flyting.gates import (
+    ALWAYS_HONORED_JUDGE_FOULS,
+    GateResult,
+    evaluate_gates,
+)
 from convsim_core.flyting.novelty import (
     EmbeddingProvider,
     FreshnessResult,
@@ -82,6 +86,25 @@ class VolleyScoringService:
         self.context = context
         self._embedding_provider = embedding_provider
         self._cliches = tuple(cliches) if cliches is not None else cliche_insults()
+
+    @property
+    def honored_judge_fouls(self) -> Tuple[str, ...]:
+        """The judge fouls this scenario asked for, and so will act on.
+
+        Safety and out-of-fiction are never a pack's choice. The other two are
+        exactly the ones the judge prompt only requests under a policy: overt
+        rudeness where the register makes it a foul rather than a fidelity cost,
+        and anachronism where the lexicon policy is ``forbid`` rather than
+        ``penalize``. Acting on a foul the judge was never asked to raise would
+        void volleys in scenarios whose authors chose a penalty instead.
+        """
+        flyting = self.context.flyting
+        honored = list(ALWAYS_HONORED_JUDGE_FOULS)
+        if flyting.register.overt_rudeness_is_foul:
+            honored.append("overt_rudeness")
+        if flyting.lexicon.anachronism_policy == "forbid":
+            honored.append("anachronism")
+        return tuple(honored)
 
     # ── Stages 0-2 ───────────────────────────────────────────────────────────
 
@@ -173,6 +196,7 @@ class VolleyScoringService:
         momentum: Optional[int] = None,
         riposte_bonus: int = 0,
         extra_flags: Sequence[str] = (),
+        prior_below_the_belt: int = 0,
     ) -> VolleyScore:
         """Compose the final scorecard for a prepared, judged volley."""
         uses = dict(theme_uses or {})
@@ -199,10 +223,14 @@ class VolleyScoringService:
             heat=heat,
             momentum=momentum,
             extra_flags=extra_flags,
+            honored_judge_fouls=self.honored_judge_fouls,
+            prior_below_the_belt=prior_below_the_belt,
         )
 
         audience = self.context.audience
-        if audience is not None and not prepared.gate.scores_zero:
+        # ``score.gate``, not ``prepared.gate``: a foul the judge raised is
+        # resolved during composition, and a fouled volley draws no cheer.
+        if audience is not None and not score.gate.scores_zero:
             reaction = audience.reaction_for(score.score)
             if reaction is not None:
                 score.audience_reaction = reaction.line

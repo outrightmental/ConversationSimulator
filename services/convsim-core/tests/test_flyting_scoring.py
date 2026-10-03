@@ -433,3 +433,119 @@ class TestVolleyScoringService:
             verse.prepare(text).craft.sound_reward
             > plain.prepare(text).craft.sound_reward
         )
+
+
+# ── Judge-raised fouls ───────────────────────────────────────────────────────
+
+
+class TestJudgeFouls:
+    """A foul the judge raised is a verdict, not a scoring opinion.
+
+    These are the register judgements no deterministic pattern can make, so
+    they arrive with the Stage 3 verdict rather than from Stage 0 — and the
+    judge reports dimensions alongside them. Without this, Veiled Civility's
+    whole premise ("the sting must arrive wrapped in a compliment") was
+    unenforced: a volley the judge fouled for overt rudeness still scored, and
+    one it fouled as below_the_belt still collected its bonuses.
+    """
+
+    def test_an_always_honored_foul_zeroes_the_volley(self):
+        result = score(
+            verdict=judgment(fouls=["out_of_fiction"]),
+            riposte_bonus=15,
+        )
+        assert result.score == 0
+        assert result.band == "dud"
+        assert result.bonuses == []
+        assert result.gate.foul is not None
+        assert result.gate.foul.value == "out_of_fiction"
+        assert result.is_whiff
+        assert "judge_foul" in result.flags
+
+    def test_below_the_belt_cannot_collect_bonuses(self):
+        # The judge zeroes its own dimensions on a below_the_belt verdict, so
+        # without the foul the bonuses were the whole score.
+        verdict = judgment(
+            fouls=["below_the_belt"],
+            riposte=EvidenceClaim(True, "polish your virtue"),
+        )
+        result = score(verdict=verdict, riposte_bonus=15)
+        assert result.score == 0
+        assert result.bonuses == []
+
+    def test_a_repeat_below_the_belt_ends_the_run(self):
+        first = score(verdict=judgment(fouls=["below_the_belt"]))
+        assert not first.gate.ends_session
+        repeat = score(
+            verdict=judgment(fouls=["below_the_belt"]), prior_below_the_belt=1
+        )
+        assert repeat.gate.ends_session
+
+    def test_below_the_belt_outranks_a_register_foul(self):
+        result = score(
+            verdict=judgment(fouls=["overt_rudeness", "below_the_belt"]),
+            honored_judge_fouls=("below_the_belt", "overt_rudeness"),
+        )
+        assert result.gate.foul.value == "below_the_belt"
+
+    def test_an_unasked_foul_does_not_void_the_volley(self):
+        """A scenario that penalises rudeness did not ask for it to be a foul.
+
+        ``penalize`` tells the judge anachronisms cost fidelity points; acting
+        on an anachronism foul a drifting model raised anyway would void
+        volleys in scenarios whose author chose a penalty over a foul.
+        """
+        result = score(verdict=judgment(fouls=["anachronism", "overt_rudeness"]))
+        assert result.score > 0
+        assert result.gate.foul is None
+
+
+class TestServiceJudgeFoulPolicy:
+    def test_safety_and_fiction_are_never_a_packs_choice(self):
+        assert make_service().honored_judge_fouls == (
+            "below_the_belt", "out_of_fiction",
+        )
+
+    def test_a_register_that_fouls_rudeness_honors_it(self):
+        from convsim_core.flyting.config import RegisterConfig
+
+        service = make_service(register=RegisterConfig(overt_rudeness_is_foul=True))
+        assert "overt_rudeness" in service.honored_judge_fouls
+
+    def test_forbidding_anachronism_honors_it_and_penalizing_does_not(self):
+        forbidding = make_service(lexicon=LexiconConfig(anachronism_policy="forbid"))
+        penalizing = make_service(lexicon=LexiconConfig(anachronism_policy="penalize"))
+        assert "anachronism" in forbidding.honored_judge_fouls
+        assert "anachronism" not in penalizing.honored_judge_fouls
+
+    def test_a_fouled_volley_draws_no_cheer(self):
+        from convsim_core.flyting.config import (
+            AudienceConfig,
+            AudienceReaction,
+            RegisterConfig,
+        )
+
+        config = FlytingConfig(
+            difficulty_multiplier=1.2,
+            register=RegisterConfig(overt_rudeness_is_foul=True),
+        )
+        context = ScoringContext(
+            scenario_id="veiled_civility",
+            scenario_title="Veiled Civility",
+            flyting=config,
+            safety_policy=PG13_POLICY,
+            attack_surface=SURFACE,
+            audience=AudienceConfig(
+                label="the ballroom",
+                reactions=(AudienceReaction(min_score=0, line="A fan snaps shut."),),
+            ),
+        )
+        service = VolleyScoringService(context, cliches=())
+        prepared = service.prepare(WORKED_EXAMPLE_TEXT)
+        fouled = service.compose(
+            prepared, judgment(fouls=["overt_rudeness"]), volley_number=1
+        )
+        assert fouled.score == 0
+        assert fouled.audience_reaction is None
+        clean = service.compose(prepared, judgment(), volley_number=2)
+        assert clean.audience_reaction == "A fan snaps shut."

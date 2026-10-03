@@ -254,6 +254,21 @@ line.
 Bands: `dud` 0 · `weak` 1–59 · `solid` 60–119 · `strong` 120–179 ·
 `highlight` 180+.
 
+A foul is resolved here too, not only in Stage 0. The register fouls only a
+reader of the scene can raise arrive with the judge's verdict, and composition
+promotes them to the same outcome a Stage 0 foul produces: 0 points, no bonuses,
+the foul recorded, the heat reset, the whiff counted, and a foul tag on the
+scorecard. A second judge-raised `below_the_belt` ends the run, exactly as the
+deterministic gate's does.
+
+Which judge fouls count is the scenario's business, because that is what the
+judge was asked for. `below_the_belt` and `out_of_fiction` are never a pack's
+choice. `overt_rudeness` counts only where `register.overt_rudeness_is_foul` is
+true — otherwise the judge was told it costs fidelity points, not the volley —
+and `anachronism` only where `anachronism_policy` is `forbid` rather than
+`penalize`. A foul outside that set stays on the stored verdict as a note and
+does not void the line.
+
 #### Worked example
 
 Victorian scenario; target's surface includes `vanity`, `hypocrisy`,
