@@ -102,7 +102,16 @@ usage() {
     # explains each check and each constant at column 0 throughout, and an
     # unbounded grep printed all of it — 150 lines of implementation notes, the
     # lint directives among them — in place of the usage text.
-    awk 'NR == 1 { next } /^#/ { sub(/^# ?/, ""); print; next } { exit }' "$0"
+    #
+    # The shebang and the SPDX tag are skipped by name. Both are machine
+    # metadata that every file in the repo carries, and `--help` is read by a
+    # person: leading the usage text with "SPDX-License-Identifier: Apache-2.0"
+    # tells them nothing about how to run the script.
+    awk '
+        NR == 1 || /^# SPDX-License-Identifier:/ { next }
+        /^#/ { sub(/^# ?/, ""); print; next }
+        { exit }
+    ' "$0"
     exit 0
 }
 
