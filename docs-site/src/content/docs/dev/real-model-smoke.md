@@ -67,6 +67,19 @@ went green on a conversation that never happened. The harness therefore records
 fallbacks: one such turn warns, *every* generated turn doing it fails, because
 then the model answered nothing and the run proves nothing.
 
+What counts as a recital is a *leading prefix* match, `REPLAY_PREFIX_CHARS`
+(40 collapsed characters) of the authored opening reproduced at the head of the
+reply — not the whole opening. Those nightly logs printed only `npc_text[:80]`
+against a 122-character opening, so what they establish is that the reply
+*began* as the opening; whether the copy ran to the end or veered into the
+model's own words after a sentence or two was never recorded, and a check that
+demanded the entire line would have gone unreachable on the second case. Forty
+characters of the scenario's own text at the head of an answer is not something
+a reply arrives at by chance — the transcript the turn prompt renders is the
+only place it can come from — and the threshold is capped at the opening's own
+length, so a scenario with a terser opening still has to have it recited in
+full.
+
 If the NPC closes the conversation before the script runs out
 (`session_control.continue_session`), the run still passes on the turns it did
 play — that is the product working as designed — but it records

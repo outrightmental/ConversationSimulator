@@ -169,6 +169,26 @@ EXCERPT_CHARS = 160
 # A debrief summary shorter than this is not a usable coaching summary.
 MIN_SUMMARY_CHARS = 20
 
+# How much of the authored opening an NPC reply has to recite, leading, before
+# we stop calling it a reply.  See _replays_opening.
+#
+# Not "the whole opening": the evidence this check was built from is the old
+# harness's log line, which printed `npc_text[:80]` against a 122-character
+# opening, so what the nightlies actually establish is that the reply's first
+# 80 characters were the opening's first 80.  Whether the recital ran all the
+# way to "…interested in this role." or veered off into the model's own words
+# after the first sentence or two was never logged, and a check that demanded
+# the entire opening would have quietly failed to fire on the latter — a dead
+# guard on the exact behaviour it exists to catch.
+#
+# 40 collapsed characters is ~7 words of the scenario's own text reproduced
+# verbatim at the head of a reply ("Thanks for coming in today. I'm Alex Che"),
+# which no answer to a player turn arrives at by chance; the transcript the
+# turn prompt renders is the only place it can come from.  The threshold is
+# capped at the opening's own length below, so a scenario whose opening is
+# shorter than this keeps the strict whole-opening semantics.
+REPLAY_PREFIX_CHARS = 40
+
 # Appended to the "no scores" failure.  The debrief's dimension scores are
 # accumulated purely from rubric_observations the *model* volunteers, and
 # nothing asks it for them: the built-in behavioral_interview scenario defines
@@ -807,12 +827,18 @@ def _replays_opening(npc_text: str, opening_text: str) -> bool:
     per-turn parse flags report a healthy turn.  Proving the turns are real
     therefore needs this check as well as those flags.
 
-    ``startswith`` rather than equality: a copy that then carries on into fresh
-    prose is the same regurgitation, and the leading recital is what identifies
-    it.  No legitimate reply begins by reading the opening question back out.
+    A *leading prefix* match, not equality and not the whole opening: a recital
+    that then carries on into fresh prose is the same regurgitation, and a
+    recital that veers off partway through the opening is too — see
+    ``REPLAY_PREFIX_CHARS`` for why the latter matters and where the length
+    comes from.  No legitimate reply begins by reading the opening question
+    back out.
     """
     opening = _collapse(opening_text)
-    return bool(opening) and _collapse(npc_text).startswith(opening)
+    if not opening:
+        return False
+    threshold = min(len(opening), REPLAY_PREFIX_CHARS)
+    return _collapse(npc_text)[:threshold] == opening[:threshold]
 
 
 # ── Assertions (pure, unit-tested) ────────────────────────────────────────────
@@ -888,14 +914,14 @@ def evaluate_turns(turns: List[Dict[str, Any]]) -> tuple[List[str], List[str]]:
     if echoes and len(echoes) == len(generated):
         failures.append(
             f"All {len(generated)} model-generated NPC turns began by reciting the "
-            "authored opening line verbatim; the model answered no player turn, so "
-            "this run proves nothing about real NPC replies"
+            "authored opening line back at the player; the model answered no player "
+            "turn, so this run proves nothing about real NPC replies"
         )
     elif echoes:
         warnings.append(
             f"{len(echoes)} of {len(generated)} model-generated NPC turns began by "
-            "reciting the authored opening line verbatim instead of answering the "
-            "player: real output, but not a reply. Recurring in the same turn "
+            "reciting the authored opening line back at the player instead of "
+            "answering them: real output, but not a reply. Recurring in the same turn "
             "position every night is a turn-prompt problem, not an unlucky sample"
         )
     return (failures, warnings)

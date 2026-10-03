@@ -430,6 +430,19 @@ class TestReplaysOpening:
             self.OPENING,
         )
 
+    def test_a_recital_that_veers_off_partway_is_caught(self) -> None:
+        # The evidence this check was built from is the old harness's log line,
+        # which printed npc_text[:80] against a 122-character opening: the
+        # nightlies establish the first 80 characters matched and say nothing
+        # about the rest.  Demanding the entire opening would have made the
+        # guard silently unreachable for a recital that breaks off early, which
+        # is just as much "not a reply".
+        assert smoke._replays_opening(
+            "Thanks for coming in today. I'm Alex Chen from HR. Tell me a little "
+            "about your background in software development.",
+            self.OPENING,
+        )
+
     def test_reformatted_whitespace_does_not_hide_a_copy(self) -> None:
         assert smoke._replays_opening(
             "Thanks for coming in today.\n  I'm Alex Chen from HR.\tTell me a "
@@ -445,12 +458,27 @@ class TestReplaysOpening:
         )
 
     def test_a_reply_merely_echoing_a_few_words_passes(self) -> None:
-        # Only a leading recital of the whole opening counts; sharing an
-        # opening phrase does not.
+        # Only a leading recital long enough to be the scenario's own text
+        # counts (REPLAY_PREFIX_CHARS); sharing an opening phrase does not.
         assert not smoke._replays_opening(
             "Thanks for coming in today was my line, not yours — but go on.",
             self.OPENING,
         )
+
+    def test_a_short_opening_still_has_to_be_recited_in_full(self) -> None:
+        # The prefix threshold is capped at the opening's own length, so it
+        # only ever loosens the check for openings longer than it — a scenario
+        # with a terse opening keeps the strict whole-opening semantics and
+        # gains no new way to false-positive.
+        short = "Hello. Begin when ready."
+        assert len(short) < smoke.REPLAY_PREFIX_CHARS
+        assert smoke._replays_opening(short + " So, your background?", short)
+        assert not smoke._replays_opening("Hello. Five years in software.", short)
+
+    def test_an_empty_reply_is_not_convicted_of_reciting(self) -> None:
+        # An empty utterance is already a failure in its own right
+        # (evaluate_turns); it must not also be reported as a recital.
+        assert not smoke._replays_opening("", self.OPENING)
 
     def test_an_unreadable_opening_cannot_convict_a_turn(self) -> None:
         # _npc_turn_content returns '' when the opening event is missing or
