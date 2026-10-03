@@ -90,15 +90,39 @@ volley_judge:
     - dimension: sting
       score: 2
       example: You are the worst.
+    - dimension: sting
+      score: 6
+      example: Your advice fits you about as well as your coat.
+    - dimension: sting
+      score: 9
+      example: You preach thrift and bank the takings of two gin palaces.
     - dimension: wit
       score: 2
       example: You are bad and also bad.
+    - dimension: wit
+      score: 6
+      example: You have the bearing of a man who has rehearsed it.
+    - dimension: wit
+      score: 9
+      example: You came up the hill in a chair and have lectured us on the climb since.
     - dimension: craft
       score: 2
       example: you are bad at everything and everyone knows it
+    - dimension: craft
+      score: 6
+      example: Your coat is fine; your argument is thin.
+    - dimension: craft
+      score: 9
+      example: Powder, corset, and a crest by the yard — three coats on one rotten post.
     - dimension: fidelity
       score: 2
       example: your whole vibe is off
+    - dimension: fidelity
+      score: 6
+      example: You are not the gentleman you pretend to be, sir.
+    - dimension: fidelity
+      score: 9
+      example: I would call you a blackguard, but the word implies a guard.
 """
 
 _CALIBRATION = """\
@@ -217,15 +241,50 @@ def test_judge_weights_that_do_not_sum_to_one_warn(tmp_path):
     assert "1.15" in issue.message
 
 
+_FIDELITY_ANCHORS = (
+    "    - dimension: fidelity\n      score: 2\n"
+    "      example: your whole vibe is off\n",
+    "    - dimension: fidelity\n      score: 6\n"
+    "      example: You are not the gentleman you pretend to be, sir.\n",
+    "    - dimension: fidelity\n      score: 9\n"
+    "      example: I would call you a blackguard, but the word implies a guard.\n",
+)
+
+
+def _rubric_without(*anchors: str) -> str:
+    rubric = _FLYTING_RUBRIC
+    for anchor in anchors:
+        assert anchor in rubric
+        rubric = rubric.replace(anchor, "")
+    return rubric
+
+
 def test_dimension_with_no_anchor_warns(tmp_path):
-    rubric = _FLYTING_RUBRIC.replace(
-        "    - dimension: fidelity\n      score: 2\n      example: your whole vibe is off\n",
-        "",
-    )
+    rubric = _rubric_without(*_FIDELITY_ANCHORS)
     result = validate_pack_dir(_flyting_pack(tmp_path, rubric=rubric))
     issue = _issue(result, "FLYTING_ANCHOR_COVERAGE")
     assert issue is not None
     assert "fidelity" in issue.message
+    # Absent, not thin: the two checks must not both fire for one dimension.
+    assert _issue(result, "FLYTING_ANCHOR_DEPTH") is None
+
+
+def test_dimension_with_too_few_anchors_warns(tmp_path):
+    """One anchor is a single end of a scale, not a scale.
+
+    A pack that supplies `anchors` replaces the engine's defaults wholesale, so
+    a dimension given one anchor keeps one — and the judge is told the anchors
+    are the scale. The launch pack's own Veiled Civility rubric had exactly this
+    shape (one wit anchor, no sting ceiling), which the zero-anchor check could
+    not see.
+    """
+    rubric = _rubric_without(*_FIDELITY_ANCHORS[1:])
+    result = validate_pack_dir(_flyting_pack(tmp_path, rubric=rubric))
+    issue = _issue(result, "FLYTING_ANCHOR_DEPTH")
+    assert issue is not None
+    assert "fidelity (1)" in issue.message
+    assert _issue(result, "FLYTING_ANCHOR_COVERAGE") is None
+    assert result.errors == []
 
 
 # ---------------------------------------------------------------------------

@@ -648,6 +648,10 @@ class _PackValidator:
 
     _JUDGE_DIMENSIONS = ("sting", "wit", "craft", "fidelity")
 
+    # A low, a middle and a high: what the judge prompt needs to read a
+    # dimension as a scale rather than as a single example of one end of it.
+    _ANCHORS_PER_DIMENSION = 3
+
     # The language Stages 0-2 are written for. The bundled frequency table, the
     # second-person aim check, the orthographic alliteration and rhyme
     # approximations, and the recognisable-word test behind the gibberish gate
@@ -837,6 +841,35 @@ class _PackValidator:
                     + ", ".join(sorted(bare))
                     + ". A dimension with no anchor is scored on the model's taste.",
                     "Give every dimension three anchors — a low, a middle, and a high.",
+                )
+            # Fewer than three is the gap this check could not see, and the one
+            # the launch pack itself fell into: a pack that supplies `anchors`
+            # replaces the engine defaults wholesale rather than merging with
+            # them, so a dimension given one anchor is left with one — and the
+            # judge is told "the calibration anchors are the scale; a volley no
+            # better than the 6 anchor is a 6" with no 6 to read. On a 4B local
+            # model that is the instability the decomposed rubric exists to
+            # remove, so the shortfall is named rather than only the absence.
+            thin = sorted(
+                dim
+                for dim, count in per_dimension.items()
+                if 0 < count < self._ANCHORS_PER_DIMENSION
+            )
+            if thin:
+                self._warning(
+                    "FLYTING_ANCHOR_DEPTH",
+                    rel,
+                    "/volley_judge/anchors",
+                    "These judged dimensions carry fewer than "
+                    f"{self._ANCHORS_PER_DIMENSION} calibration anchors: "
+                    + ", ".join(
+                        f"{dim} ({per_dimension[dim]})" for dim in thin
+                    )
+                    + ". Supplying 'anchors' replaces the engine's defaults "
+                    "rather than adding to them, so the missing ends of the "
+                    "scale are simply absent from the judge prompt.",
+                    "Give every dimension a low, a middle and a high anchor, or "
+                    "omit the anchors block entirely to keep the engine's.",
                 )
 
     def _validate_flyting(self, raw: dict, manifest_file: str) -> None:

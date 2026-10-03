@@ -924,6 +924,21 @@ class TestEndingARun:
         )
         assert end.json()["summary"]["outcome"] == "retired"
 
+    def test_the_run_clock_never_runs_backwards(self, client):
+        """A lower clock reading cannot give the player time back.
+
+        ``/end`` already takes the greater of the two readings; the volley route
+        has to as well, because ``elapsed_s`` is the timed drill's whole
+        stopping condition. A stale or reordered request reporting less elapsed
+        time than the engine has already seen would un-expire a drill and extend
+        a ninety-second run indefinitely.
+        """
+        session_id = start_run(client, batting_format="timed_90")
+        volley(client, session_id, GOOD_VOLLEY, elapsed_total_s=50.0)
+        body = volley(client, session_id, SECOND_VOLLEY, elapsed_total_s=10.0)
+        assert body["run"]["elapsed_s"] == pytest.approx(50.0)
+        assert body["seconds_remaining"] == pytest.approx(40.0)
+
     def test_a_reopened_debrief_reports_no_clock_and_keeps_the_outcome(self, client):
         """A debrief opened later has no clock, and must not rewrite the outcome."""
         session_id = start_run(client, batting_format="timed_90")

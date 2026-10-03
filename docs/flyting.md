@@ -438,14 +438,20 @@ brief gives away cannot be worth double when the player finds it.
 
 `rubrics/*.yaml` may carry a `volley_judge` block (weights, anchors,
 `hook_bonus`, `theme_decay`) so a pack can rebalance the judge — a Regency pack
-weights `fidelity` up and requires surface politeness. `scenes/*.yaml` may carry
+weights `fidelity` up and requires surface politeness. Supplying `anchors`
+**replaces** the engine's defaults rather than merging with them, which is
+deliberate (a pack's register is its own, and half-and-half anchors would teach
+the judge two voices) but means a pack that anchors one dimension has to anchor
+all four, three deep. Omit the block entirely to keep the engine's twelve. `scenes/*.yaml` may carry
 an `audience` block whose reactions fire at score bands. `safety/*.yaml` is
 mechanically unchanged; flyting packs pin PG-13 or below and may forbid profanity
 outright.
 
 The pack validator reports the mistakes JSON Schema cannot express: a target with
 no attack surface (`FLYTING_NO_ATTACK_SURFACE`), a thin or fully visible surface,
-judge weights that do not sum to 1.0, a dimension with no anchor, a calibration
+judge weights that do not sum to 1.0, a dimension with no anchor
+(`FLYTING_ANCHOR_COVERAGE`) or with fewer than three (`FLYTING_ANCHOR_DEPTH`),
+a calibration
 suite that names a scenario or trait that does not exist, and a scenario
 declaring no English support (`FLYTING_NON_ENGLISH_SCENARIO` — see Stage 1 for
 what the deterministic stages can and cannot read).

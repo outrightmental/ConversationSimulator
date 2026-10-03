@@ -527,8 +527,15 @@ async def process_volley(
     if npc_score is not None:
         record_npc_volley(state, npc_score)
 
+    # Monotonic, for the same reason ``/end`` reads the closing clock that way:
+    # the run clock only ever advances, so a stale or reordered reading must not
+    # shorten a run that already recorded a longer one. It is the timed drill's
+    # whole stopping condition — ``resolve_batting_practice`` ends the run when
+    # ``elapsed_s`` reaches ninety seconds — so a plain assignment let a lower
+    # reading un-expire a drill that should have finished, and hand the player
+    # back time the engine had already seen pass.
     if elapsed_total_s is not None:
-        state.elapsed_s = elapsed_total_s
+        state.elapsed_s = max(state.elapsed_s, elapsed_total_s)
 
     if is_bout:
         exchange = resolve_exchange(

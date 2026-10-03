@@ -14,6 +14,14 @@ description: >-
   guards rather than verdicts on the writing, so a deliberate change to the
   judge prompt is expected to move them and to be re-measured with --judge.
 
+  One such change postdates that measurement and is not yet reflected here.
+  This scenario's rubric had one wit anchor and no sting ceiling, so the judge
+  was reading two of the four dimensions off a single end of the scale; the
+  three missing anchors have been authored, which widens the prompt these bands
+  were measured against. The windows below are therefore the pre-anchor
+  measurement, kept rather than guessed at — re-run --judge against the starter
+  model and paste what it says.
+
   This suite is the one that has not yet been deepened toward the forty
   reference volleys the other four carry. The five entries below the original
   seven are Stage 0 outcomes only, which need no model and so could be
