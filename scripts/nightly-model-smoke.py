@@ -788,12 +788,22 @@ def _rubric_observation_count(events: Sequence[dict]) -> Optional[int]:
 def _total_rubric_observations(turns: Sequence[Dict[str, Any]]) -> Optional[int]:
     """Total the per-turn rubric observation counts, or ``None`` if unknowable.
 
-    ``None`` only when *nothing* readable was found — an unreadable payload, or
-    no generated turn to read at all.  A total above zero already settles which
-    cause of an unscored debrief applies (the turns did carry observations), so
-    an unreadable turn alongside readable ones does not make the verdict
-    ambiguous.  Only the authored opening is skipped: it is not a generation and
-    so has no count to miss.
+    ``None`` means *the sum cannot be trusted as a total*, which is not the same
+    as "nothing was readable":
+
+    * a total above zero is conclusive even with an unreadable turn among the
+      readable ones — observations *were* seen, so the debrief losing them is
+      the cause whatever the missing turn carried;
+    * a sum of zero is only conclusive when every generated turn was readable.
+      With counts of ``[0, None, 0]`` two turns really did carry nothing, but
+      reporting 0 would have the verdict assert the model volunteered nothing
+      across the conversation when the turn it could not read may have carried
+      plenty — so that case is ``None`` too, and the report's per-turn
+      ``rubric_observation_count`` shows which turn was the unreadable one;
+    * no generated turn at all is ``None``: there was nothing to read.
+
+    Only the authored opening is skipped: it is not a generation and so has no
+    count to miss.
     """
     counts = [
         t.get("rubric_observation_count") for t in turns if t.get("model_generated")
@@ -801,8 +811,8 @@ def _total_rubric_observations(turns: Sequence[Dict[str, Any]]) -> Optional[int]
     total = sum(c for c in counts if isinstance(c, int))
     if total > 0:
         return total
-    nothing_readable = not counts or any(not isinstance(c, int) for c in counts)
-    return None if nothing_readable else 0
+    zero_is_unreliable = not counts or any(not isinstance(c, int) for c in counts)
+    return None if zero_is_unreliable else 0
 
 
 def _collapse(text: str) -> str:
@@ -976,12 +986,13 @@ def evaluate_debrief(
             # that just said it could not tell, is the triage this harness is
             # supposed to have done, done wrongly.
             cause = (
-                "the run could not read how many rubric observations the NPC "
-                "turns carried, so the two causes below cannot be told apart "
-                "from this message — read rubric_observation_count per turn in "
-                "the report artifact (null means the turn payload carried no "
-                "readable rubric_observations list, which is itself worth a "
-                "look at the turn response contract). " + UNSCORED_DEBRIEF_NOTE
+                "at least one NPC turn's rubric_observations list was "
+                "unreadable and the turns that were readable carried none, so "
+                "the run cannot claim the model volunteered nothing and the two "
+                "causes below cannot be told apart from this message — read "
+                "rubric_observation_count per turn in the report artifact (null "
+                "marks the unreadable turns, which is itself worth a look at the "
+                "turn response contract). " + UNSCORED_DEBRIEF_NOTE
                 + " If the turns did carry observations, it is the other cause "
                 "instead: " + UNSCORED_WITH_OBSERVATIONS_NOTE
             )

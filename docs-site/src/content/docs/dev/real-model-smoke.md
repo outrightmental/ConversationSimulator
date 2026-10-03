@@ -182,13 +182,17 @@ So an unscored debrief means one of three quite different things:
   that arrived pre-parsed from the runtime adapter — loses its observations on
   the way to the debrief. Compare `raw_npc_output` from the `/debug` payload
   against the per-turn `rubric_observation_count` in the artifact.
-- **`rubric_observations_seen` is `null` — the harness could not tell.** The NPC
-  turn payloads carried no readable `rubric_observations` list, so the per-turn
-  `rubric_observation_count` is `null` too and the message quotes both causes
-  above rather than picking one. `convsim-core` always sends that list today, so
-  this is itself worth chasing: the turn response contract changed. The harness
-  deliberately does not score an unreadable payload as zero — that would have
-  the verdict name the one cause it has no evidence for.
+- **`rubric_observations_seen` is `null` — the harness could not tell.** At
+  least one generated turn carried no readable `rubric_observations` list, and
+  the turns it *could* read carried nothing between them, so the total cannot be
+  trusted as a total and the message quotes both causes above rather than
+  picking one. Check `rubric_observation_count` per turn in the report to see
+  which turns were unreadable (`null`) and which really were zero; `null` is not
+  "every turn was unreadable". `convsim-core` always sends that list today, so
+  any `null` is itself worth chasing: the turn response contract changed. The
+  harness deliberately does not round an unreadable payload down to zero — that
+  would have the verdict assert the model volunteered nothing when the turn it
+  could not read may have carried plenty.
 
 In every case the run is red: *"scored debrief"* is the acceptance criterion for
 [#457](https://github.com/outrightmental/ConversationSimulator/issues/457).

@@ -1074,11 +1074,16 @@ class TestEventExtraction:
         ([1, 0, 2], 3),
         ([None, None, None], None),      # nothing readable anywhere
         ([None, 0, 0], None),            # a gap with no positive evidence
+        ([0, None, 0], None),            # ...wherever in the run the gap falls
         ([None, 2, 0], 2),               # observations were seen regardless
     ])
-    def test_the_total_is_unknown_only_when_nothing_was_readable(
+    def test_a_zero_total_is_reported_only_when_every_turn_was_readable(
         self, counts: list, expected: int | None
     ) -> None:
+        # None does not mean "nothing was readable": two readable zeroes
+        # alongside one unreadable turn is still None, because reporting 0 would
+        # have the verdict assert the model volunteered nothing across the
+        # conversation when the unread turn may have carried plenty.
         turns = [{"model_generated": False, "label": "npc_opening"}] + [
             {"model_generated": True, "rubric_observation_count": c} for c in counts
         ]
@@ -1762,7 +1767,10 @@ class TestRunSmokeOrchestration:
             t["rubric_observation_count"] is None for t in results["turns"][1:]
         ), "a null per-turn count is what tells the reader the list was unreadable"
         no_scores = next(f for f in results["failures"] if "rubric dimension" in f)
-        assert "could not read" in no_scores
+        # Names what it actually observed (an unreadable list) and keeps both
+        # causes open, rather than asserting the one it has no evidence for.
+        assert "unreadable" in no_scores
+        assert "cannot be told apart" in no_scores
         assert smoke.UNSCORED_DEBRIEF_NOTE in no_scores
         assert smoke.UNSCORED_WITH_OBSERVATIONS_NOTE in no_scores
 
