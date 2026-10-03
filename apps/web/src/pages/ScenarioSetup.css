@@ -121,6 +121,124 @@
   color: var(--cs-text-muted);
 }
 
+/* "Preflight" rides the right end of the hero's top row, quieter than the
+   violet "Conversation brief" eyebrow beside the Back button: it names the
+   genre of the screen, it is not a second title. Quieter stops at
+   --cs-text-muted, not --cs-text-faint: the span is aria-hidden, but
+   aria-hidden only takes text out of the accessibility tree — WCAG 1.4.3
+   still covers anything a sighted player can read, and faint lands at ~3.2:1
+   on the hero wash. */
+.brief-preflight {
+  margin-left: auto;
+  color: var(--cs-text-muted);
+}
+
+/* The mission, two columns on a wide screen: the situation on the left, the
+   objective on the right. The objective keeps a fixed-ish column so it stays a
+   panel rather than stretching into another paragraph of prose. */
+.brief-hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 22rem);
+  gap: 1.25rem 1.75rem;
+  align-items: start;
+}
+
+.brief-lede {
+  min-width: 0;
+}
+
+/* One column below ~64rem: side by side, the objective would be narrower than
+   its own goal lines. */
+@media (max-width: 64rem) {
+  .brief-hero-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ── Objective ─────────────────────────────────────────────────────────────
+   The brightest, highest-contrast thing on the screen, and deliberately so:
+   issue #500 asks that a player who reads nothing else still knows what they
+   are trying to achieve. Violet because the objective is the player's own
+   (docs/brand.md), and it sits on top of the hero's own violet wash, so it
+   carries a solid base colour rather than a translucent tint — otherwise the
+   hero's gradient shows through and the panel stops reading as a panel. */
+.brief-objective {
+  min-width: 0;
+  padding: 0.9rem 1.1rem 1rem;
+  border: 1px solid var(--cs-you);
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(167, 139, 250, 0.18), rgba(167, 139, 250, 0.06)),
+    var(--cs-stage-deep);
+  box-shadow:
+    0 18px 40px -26px rgba(167, 139, 250, 0.85),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.brief-objective-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin-bottom: 0.7rem;
+  padding-bottom: 0.55rem;
+  border-bottom: 1px solid rgba(167, 139, 250, 0.3);
+}
+
+.brief-objective-title {
+  margin: 0;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--cs-you);
+}
+
+.brief-objective-count {
+  margin-left: auto;
+  flex: none;
+  font-size: 0.6rem;
+  color: var(--cs-text-muted);
+}
+
+/* The numbering is drawn by .brief-goal-mark in the preflight voice, so the
+   list's own marker is turned off — left on, every goal would be numbered
+   twice ("1. 01 Order a drink in Spanish"). */
+.brief-goals {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.brief-goal {
+  display: grid;
+  grid-template-columns: 1.4rem minmax(0, 1fr);
+  gap: 0.55rem;
+  align-items: baseline;
+}
+
+.brief-goal-mark {
+  font-size: 0.62rem;
+  color: var(--cs-you);
+}
+
+/* The goal lines are the payload of the screen: full-strength text, heavier
+   than the summary beside them. */
+.brief-goal-text {
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--cs-text-strong);
+}
+
+/* Stand-in for a scenario that declares no goals — the role brief, which is
+   prose, so it is set as prose rather than as a goal line. */
+.brief-goal-standin {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  color: var(--cs-text-strong);
+}
+
 .brief-facts {
   list-style: none;
   margin: 1.25rem 0 0;
@@ -171,6 +289,26 @@
   .brief-facts {
     margin-top: 0.9rem;
     padding-top: 0.8rem;
+  }
+
+  /* The objective keeps its weight — it is the one thing on this screen that
+     must survive a short viewport — but gives up the padding and leading it
+     can spare. */
+  .brief-objective {
+    padding: 0.75rem 0.9rem 0.85rem;
+  }
+
+  .brief-objective-head {
+    margin-bottom: 0.55rem;
+    padding-bottom: 0.45rem;
+  }
+
+  .brief-goals {
+    gap: 0.45rem;
+  }
+
+  .brief-goal-text {
+    font-size: 0.9rem;
   }
 }
 
@@ -280,18 +418,83 @@
   color: var(--cs-text);
 }
 
-/* Short cards pair up on a wide screen so the page stays scannable. */
-.brief-row {
+/* ── Tier 2: the decisions ─────────────────────────────────────────────────
+   Difficulty and role are the two choices that change the conversation, so
+   they sit above the mechanical settings in weight as well as in order: a
+   violet edge on the step side, and a lift off the page that the quiet setup
+   card below does not get. */
+.brief-card.is-decision {
+  border-color: #32323a;
+  box-shadow: 0 12px 30px -26px #000;
+}
+
+.brief-card.is-decision .brief-card-head {
+  border-bottom-color: rgba(167, 139, 250, 0.26);
+}
+
+.brief-card.is-decision .brief-card-title {
+  font-size: 1.02rem;
+}
+
+/* ── Tier 3: session setup ─────────────────────────────────────────────────
+   The five mechanical settings in one card. It is quieter than a decision
+   card — flatter background, no lift — and its sub-headings are mono
+   micro-labels rather than UI titles, so the group reads as instrumentation.
+   Quiet, not hidden: there is no disclosure to open and every control is on
+   screen. */
+.brief-setup {
+  border: 1px solid var(--cs-border);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.012);
+  padding: 1rem 1.15rem 1.15rem;
+}
+
+.brief-setup .brief-step {
+  border-color: var(--cs-border);
+  color: var(--cs-text-muted);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.brief-setup-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 1rem 1.5rem;
   align-items: start;
 }
 
-@media (max-width: 52rem) {
-  .brief-row {
-    grid-template-columns: minmax(0, 1fr);
-  }
+.brief-set {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* The seed takes the full row: its label, field and two buttons do not fit a
+   15rem column without wrapping into a column of their own. */
+.brief-set.is-wide {
+  grid-column: 1 / -1;
+}
+
+.brief-set-title {
+  margin: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  /* A micro-label, not a heading-sized one: tier 3 must not out-shout the
+     decision titles above it. <h3> defaults to 1.17em, which uppercased and
+     letter-spaced would be the loudest type on the page. */
+  font-size: 0.6rem;
+  font-weight: 600;
+  color: var(--cs-text-muted);
+}
+
+/* "Optional" is content — it tells the player they can skip the seed — so it
+   stays at the 9.6px micro-label floor and at --cs-text-muted, like every
+   other readable micro-label here. Only decoration gets --cs-text-faint. */
+.brief-set-note {
+  font-size: 0.6rem;
+  font-weight: 400;
+  color: var(--cs-text-muted);
 }
 
 /* ── Choice cards (difficulty, input mode) ─────────────────────────────── */

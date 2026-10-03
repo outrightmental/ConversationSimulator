@@ -30,6 +30,14 @@ const mockScenario: ScenarioInfo = {
   voice_supported: true,
   safety_summary: 'PG content only. No NSFW, no real-person impersonation.',
   estimated_length_label: '15–20 minutes',
+  // Every official pack declares goals.player_visible, so the fixture carries
+  // them: the objective panel is the default state of this screen, not an
+  // extra. The goal-less fallback is covered in its own cases below.
+  player_visible_goals: [
+    'Demonstrate relevant experience with clear STAR-format examples',
+    'Show self-awareness about strengths and areas for growth',
+    'Ask thoughtful questions about the role',
+  ],
 };
 
 const healthReady: HealthResponse = {
@@ -739,6 +747,123 @@ describe('ScenarioSetupPage', () => {
       renderSetup();
       await waitFor(() => screen.getByText('Behavioral Interview'));
       expect(screen.getByText(/conversation brief/i)).toBeInTheDocument();
+    });
+  });
+
+  // Issue #500: the one thing this screen must convey without being read is
+  // what the player is trying to achieve.
+  describe('mission objective', () => {
+    beforeEach(() => {
+      mockApi.health.mockResolvedValue({ ok: true as const, data: healthReady });
+    });
+
+    it("leads the hero with the scenario's player-visible goals, in order", async () => {
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: mockScenario });
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+
+      const objective = screen.getByTestId('brief-objective');
+      expect(within(objective).getByRole('heading', { name: /your objective/i })).toBeInTheDocument();
+      const goals = within(objective).getAllByRole('listitem');
+      expect(goals.map((li) => li.textContent)).toEqual([
+        '01Demonstrate relevant experience with clear STAR-format examples',
+        '02Show self-awareness about strengths and areas for growth',
+        '03Ask thoughtful questions about the role',
+      ]);
+      expect(within(objective).getByText('3 goals')).toBeInTheDocument();
+    });
+
+    it('sits inside the hero, above the configuration', async () => {
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: mockScenario });
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      const objective = screen.getByTestId('brief-objective');
+      expect(objective.closest('.brief-hero')).not.toBeNull();
+      // The objective precedes every setting in document order, which is the
+      // order a screen reader and the D-pad both walk.
+      const facts = screen.getByTestId('brief-facts');
+      expect(objective.compareDocumentPosition(facts) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it('counts a single goal in the singular', async () => {
+      mockApi.getScenario.mockResolvedValue({
+        ok: true as const,
+        data: { ...mockScenario, player_visible_goals: ['Get the car for under $11,000'] },
+      });
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      expect(within(screen.getByTestId('brief-objective')).getByText('1 goal')).toBeInTheDocument();
+    });
+
+    it('keeps the role brief on its own card when there are goals', async () => {
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: mockScenario });
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      const roleBrief = screen.getByText('You are interviewing for a product manager role.');
+      expect(roleBrief).toHaveClass('brief-role-brief');
+      expect(screen.getByTestId('brief-objective')).not.toContainElement(roleBrief);
+    });
+
+    it('falls back to the role brief, shown once, when a pack declares no goals', async () => {
+      mockApi.getScenario.mockResolvedValue({
+        ok: true as const,
+        data: { ...mockScenario, player_visible_goals: undefined },
+      });
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+
+      const objective = screen.getByTestId('brief-objective');
+      expect(within(objective).getByText('You are interviewing for a product manager role.'))
+        .toBeInTheDocument();
+      // Once, not twice: the role card drops it when it is standing in here.
+      expect(screen.getAllByText('You are interviewing for a product manager role.')).toHaveLength(1);
+      expect(within(objective).queryByText(/goals?$/)).not.toBeInTheDocument();
+    });
+
+    it('omits the panel entirely when there is neither a goal nor a role brief', async () => {
+      mockApi.getScenario.mockResolvedValue({
+        ok: true as const,
+        data: {
+          ...mockScenario,
+          player_visible_goals: [],
+          player_role: { label: 'Candidate', brief: '   ' },
+        },
+      });
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      expect(screen.queryByTestId('brief-objective')).not.toBeInTheDocument();
+    });
+  });
+
+  // The five mechanical settings were seven interchangeable cards before #500.
+  // Grouping them must not take any of them off the screen.
+  describe('session setup group', () => {
+    beforeEach(() => {
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: mockScenario });
+      mockApi.health.mockResolvedValue({ ok: true as const, data: healthReady });
+    });
+
+    it('keeps every setting reachable inside one group, with no disclosure to open', async () => {
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+
+      const setup = screen.getByRole('region', { name: /session setup/i });
+      for (const label of ['Input mode', 'Audio output', 'Language', 'Privacy', /Variation seed/]) {
+        expect(within(setup).getByRole('heading', { name: label })).toBeInTheDocument();
+      }
+      expect(within(setup).getByRole('radiogroup', { name: 'Input mode' })).toBeInTheDocument();
+      expect(within(setup).getByLabelText('Variation seed value')).toBeInTheDocument();
+      expect(within(setup).getByLabelText(/conversation language/i)).toBeInTheDocument();
+      expect(setup.querySelector('details')).toBeNull();
+    });
+
+    it('ranks the two decisions above the setup group', async () => {
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      const decisions = document.querySelectorAll('.brief-card.is-decision');
+      expect(
+        Array.from(decisions).map((el) => el.querySelector('.brief-card-title')?.textContent),
+      ).toEqual(['Difficulty', 'Your role']);
     });
   });
 
