@@ -270,6 +270,7 @@ from a real error.
 |------|------|
 | Settings → Voice readiness | Always (header CTA), plus an install link on each component that is not ready |
 | Home → STT / TTS status badge | While that component is not installed |
+| The conversation brief's voice rows | While STT or TTS is unavailable — the moment the player is choosing an input mode and finds the spoken ones greyed out |
 | Debrief → "Next time, say it out loud" | After the first real conversation |
 | The `voice-ready` preflight warning's fix action | Whenever a voice component is unavailable (full edition; the demo refuses the flow, so its remedy stays on Settings) |
 

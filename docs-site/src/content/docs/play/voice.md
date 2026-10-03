@@ -22,9 +22,9 @@ voice component is missing.
 
 **Settings → Voice readiness → Set up voice.**
 
-You can also reach it from the **STT** or **TTS** badge on the Home screen, or
-from the "Next time, say it out loud" card the app shows after your first
-conversation.
+You can also reach it from the **STT** or **TTS** badge on the Home screen,
+from the conversation brief when a spoken input mode is greyed out, or from the
+"Next time, say it out loud" card the app shows after your first conversation.
 
 The screen lists every piece voice needs, says which you already have, and
 gives each gap its own next action. It re-checks itself whenever you switch

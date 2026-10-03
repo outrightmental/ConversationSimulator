@@ -156,10 +156,10 @@ that names every piece voice needs and gives each gap its own next action:
   place, **Record a test phrase** runs one real transcription and repeats back
   what it heard.
 
-The three places that previously dead-ended now lead here: the Settings
-readiness cards, the Home STT/TTS badges, and the post-session "Next time, say
-it out loud" invite — as does the `voice-ready` system-health warning's fix
-button. Published walkthrough:
+The places that previously dead-ended now lead here: the Settings readiness
+cards, the Home STT/TTS badges, the conversation brief where a spoken input
+mode is greyed out, and the post-session "Next time, say it out loud" invite —
+as does the `voice-ready` system-health warning's fix button. Published walkthrough:
 [Speaking and listening](https://docs.conversationsimulator.com/play/voice/).
 
 #### Setup docs rewrite (#386)
