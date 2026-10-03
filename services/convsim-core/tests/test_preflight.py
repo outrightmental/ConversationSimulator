@@ -251,6 +251,53 @@ def test_disk_space_warns_when_tight(tmp_path):
     assert result.severity == "needs-human"
 
 
+def test_required_gb_sizes_the_demos_pinned_model(tmp_path):
+    """The disk check sizes the model the install will actually download.
+
+    The demo edition (issue #495) offers exactly one model, and
+    ``CONVSIM_DEMO_MODEL_ID`` may pin it to the smaller ``lightweight`` tier.
+    Sizing that build against the starter would fail a needs-human check — and
+    so dead-end first-run setup — on a machine that has room for the 1.8 GB file
+    it would actually download.
+    """
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    import yaml
+
+    from convsim_core.routers.preflight import _required_model_gb
+    from convsim_core.services.model_registry_service import load_and_persist_registry
+    from convsim_core.storage.database import Database
+
+    registry_path = Path(__file__).parent.parent.parent.parent / "model-registry" / "registry.yaml"
+    models = yaml.safe_load(registry_path.read_text())["models"]
+    sizes = {m["role"]: m["size_gb"] for m in models}
+    lightweight_id = next(m["id"] for m in models if m["role"] == "lightweight")
+
+    db = Database.open(str(tmp_path / "db"))
+    try:
+        conn = db.connection()
+        load_and_persist_registry(conn, registry_path)
+
+        # Full app, nothing installed yet: the starter it will offer.
+        full = SimpleNamespace(edition="full", demo_model_id=None)
+        assert _required_model_gb(conn, None, full) == sizes["starter"]
+
+        # Demo on its default model: also the starter.
+        demo_default = SimpleNamespace(edition="demo", demo_model_id=None)
+        assert _required_model_gb(conn, None, demo_default) == sizes["starter"]
+
+        # Demo pinned to the lightweight tier: its own, smaller size.
+        demo_pinned = SimpleNamespace(edition="demo", demo_model_id=lightweight_id)
+        assert _required_model_gb(conn, None, demo_pinned) == sizes["lightweight"]
+        assert sizes["lightweight"] < sizes["starter"]
+
+        # An already-installed model still wins over the edition default.
+        assert _required_model_gb(conn, "qwen3-8b-instruct-q4_k_m", demo_pinned) == sizes["standard"]
+    finally:
+        db.close()
+
+
 # ── Check 4: llama.cpp binary ─────────────────────────────────────────────────
 
 

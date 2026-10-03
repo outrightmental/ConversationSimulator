@@ -22,12 +22,12 @@ import logging
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
-from convsim_core import __version__
+from convsim_core import __version__, edition
 from convsim_core.runtime.sidecar import find_executable
 from convsim_core.services.model_manager_service import get_active_config
 
@@ -126,7 +126,7 @@ def _check_data_dir(data_dir: str) -> CheckResult:
 
 
 def _check_disk_space(models_dir: str, required_gb: float) -> CheckResult:
-    """Check 3: Sufficient free disk space for the active or starter model."""
+    """Check 3: Sufficient free disk space for the model this install will download."""
     severity, autofix = CHECK_TRIAGE["disk-space"]
     try:
         usage = shutil.disk_usage(models_dir)
@@ -341,14 +341,32 @@ async def _check_voice_ready(stt_worker, tts_worker, vad_worker) -> CheckResult:
     )
 
 
-def _required_model_gb(conn, active_model_id: Optional[str]) -> float:
-    """Return the size_gb needed for the active model, or the starter model default."""
+def _required_model_gb(conn, active_model_id: Optional[str], config: Any = None) -> float:
+    """Return the size_gb needed for the model this install is going to download.
+
+    The active model once there is one; otherwise the model the setup flow will
+    offer: the demo edition's one curated model (issue #495), which
+    ``CONVSIM_DEMO_MODEL_ID`` may pin to a tier other than the starter, or the
+    registry's ``role: starter`` entry for the full app. Sizing a demo pinned to
+    the smaller ``lightweight`` tier against the starter would fail this
+    needs-human check — and so dead-end first-run setup — on a machine that has
+    room for the model it would actually download.
+    """
     if active_model_id:
         row = conn.execute(
             "SELECT size_gb FROM model_registry WHERE id = ?", (active_model_id,)
         ).fetchone()
         if row and row["size_gb"]:
             return float(row["size_gb"])
+
+    if config is not None and edition.is_demo(config):
+        demo_model_id = edition.resolve_demo_model_id(conn, config)
+        if demo_model_id:
+            row = conn.execute(
+                "SELECT size_gb FROM model_registry WHERE id = ?", (demo_model_id,)
+            ).fetchone()
+            if row and row["size_gb"]:
+                return float(row["size_gb"])
 
     row = conn.execute(
         "SELECT size_gb FROM model_registry WHERE role = 'starter' LIMIT 1"
@@ -375,7 +393,7 @@ async def run_preflight(request: Request) -> PreflightResponse:
 
     active_cfg = get_active_config(conn)
     active_model_id: Optional[str] = active_cfg.get("model_id")
-    required_gb = _required_model_gb(conn, active_model_id)
+    required_gb = _required_model_gb(conn, active_model_id, config)
 
     # Synchronous checks (fast I/O or DB) + async voice check in parallel
     voice_check, *_ = await asyncio.gather(
