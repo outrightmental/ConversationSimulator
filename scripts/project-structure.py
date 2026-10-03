@@ -136,6 +136,13 @@ def manifest_errors(manifest: dict[str, Any]) -> list[str]:
     live = set(names)
     for name in sorted({n for n in names if names.count(n) > 1}):
         errors.append(f"label {name!r} is declared twice")
+    # A rename is written down twice — the surviving label names its source, the
+    # retired entry names its target — and the two halves drive different
+    # planners, so they have to agree.
+    rename_to = {
+        entry["name"]: entry.get("rename_to") for entry in manifest.get("retired_labels", [])
+    }
+    renamed_from = {entry["name"]: entry.get("renamed_from") for entry in manifest["labels"]}
     for entry in manifest["labels"]:
         color = str(entry.get("color", ""))
         if len(color) != 6 or any(c not in "0123456789abcdef" for c in color.lower()):
@@ -154,6 +161,21 @@ def manifest_errors(manifest: dict[str, Any]) -> list[str]:
                 f"still declares — the rename would consume it and discard its "
                 f"assignments"
             )
+        # `plan_label_deletions` skips a retired label only when that label
+        # names this one back. Without the matching `rename_to`, `apply` renames
+        # the source away and then fails trying to `gh label delete` a name that
+        # no longer exists — halfway through, with the rest of the plan unrun.
+        elif source and rename_to.get(source) != entry["name"]:
+            if source not in rename_to:
+                why = "which the manifest does not retire"
+            elif rename_to[source] is None:
+                why = "which is retired with no rename_to"
+            else:
+                why = f"which is retired with rename_to {rename_to[source]!r}"
+            errors.append(
+                f"label {entry['name']!r} renames from {source!r}, {why} — the "
+                f"rename and the deletion would both run and `apply` would abort"
+            )
     for entry in manifest.get("retired_labels", []):
         name = entry["name"]
         if name in live:
@@ -167,6 +189,16 @@ def manifest_errors(manifest: dict[str, Any]) -> list[str]:
         target = entry.get("rename_to")
         if target and target not in live:
             errors.append(f"retired label {name!r} renames to undeclared label {target!r}")
+        # The other half of the same pairing. Without the matching
+        # `renamed_from`, `plan_labels` never plans the rename and
+        # `plan_label_deletions` still skips the delete, so `apply` reports a
+        # converged plan and leaves the retired label sitting on the repo.
+        elif target and renamed_from.get(target) != name:
+            errors.append(
+                f"retired label {name!r} renames to {target!r}, which does not declare "
+                f"renamed_from: {name} — nothing would rename it and nothing would "
+                f"delete it"
+            )
 
     titles = [entry["title"] for entry in manifest.get("milestones", [])]
     for title in sorted({t for t in titles if titles.count(t) > 1}):
@@ -1149,6 +1181,12 @@ def self_test() -> int:
     )
     broken["backfill"]["milestones"]["v0"] = [8]
 
+    # The two halves of a rename, each written without the other.
+    half_rename = yaml.safe_load(_FIXTURE)
+    half_rename["labels"][2]["renamed_from"] = "documentation"  # never retired
+    orphan_rename = yaml.safe_load(_FIXTURE)
+    del orphan_rename["labels"][1]["renamed_from"]  # but `docs` still says rename_to
+
     cases: list[tuple[str, Any, Any]] = [
         # -- the manifest checks
         ("fixture manifest is coherent", manifest_errors(manifest), []),
@@ -1181,6 +1219,15 @@ def self_test() -> int:
          any("project.phase_field is missing" in e for e in manifest_errors(broken)), True),
         ("a rename that would consume a declared label is reported",
          any("still declares" in e for e in manifest_errors(broken)), True),
+        # A rename is declared twice over; each half alone breaks `apply`.
+        ("a renamed_from whose source is not retired is reported",
+         [e for e in manifest_errors(half_rename) if "renames from" in e],
+         ["label 'meta' renames from 'documentation', which the manifest does not "
+          "retire — the rename and the deletion would both run and `apply` would abort"]),
+        ("a rename_to whose target does not name it back is reported",
+         [e for e in manifest_errors(orphan_rename) if "renames to" in e],
+         ["retired label 'docs' renames to 'area:docs', which does not declare "
+          "renamed_from: docs — nothing would rename it and nothing would delete it"]),
         ("backfill parking issues on a closed milestone is reported",
          any("parks issues on 'v0'" in e for e in manifest_errors(broken)), True),
         ("due_on normalises to YYYY-MM-DD",
