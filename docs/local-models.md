@@ -38,7 +38,7 @@ Downloaded models are stored in `~/.convsim/models/llm/`.
 | High-quality | Mistral Small 3.1 24B Q4_K_M | 14.3 GB | ~39 min | 16 GB | Not practical |
 | User-supplied | Any GGUF | varies | varies | varies | Depends on model |
 
-**Which one you are offered:** first-run setup and the model manager install the **starter** tier — that is the one recommended model — alongside the Ollama and custom-GGUF options. To run a different tier from this table, download its file from the pinned URL in `model-registry/registry.yaml` and register it with **Use custom GGUF**, or serve it from Ollama.
+**Which one you are offered:** first-run setup and the model manager install the **starter** tier — that is the one recommended model — alongside the Ollama and GGUF options. To run a different tier from this table, download its file from the pinned URL in `model-registry/registry.yaml` and point the app at it with **Use a GGUF file** ([Using a custom GGUF model](#using-a-custom-gguf-model)), or serve it from Ollama.
 
 **Apple Silicon:** Metal acceleration works out of the box through llama.cpp. Use the VRAM column as a guide for unified memory (M1/M2/M3/M4 chips share CPU and GPU memory).
 

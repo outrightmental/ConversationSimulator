@@ -59,6 +59,14 @@ and model from the dropdowns.
 | High-quality | Qwen3 14B Instruct Q4_K_M | 9.0 GB | ~25 min | 10 GB | Not practical |
 | High-quality | Mistral Small 3.1 24B Q4_K_M | 14.3 GB | ~39 min | 16 GB | Not practical |
 
+**Which tier you are offered:** setup and the model manager
+(**Settings → Runtime → Open model manager**) install the **starter** tier —
+that is the one recommended model. The other tiers are not a list to pick from:
+to run one, download its GGUF file yourself and point the app at it with
+**Use a GGUF file**, or serve it from Ollama. The exact file each tier names is
+pinned in
+[`model-registry/registry.yaml`](https://github.com/outrightmental/ConversationSimulator/blob/main/model-registry/registry.yaml).
+
 **Apple Silicon:** Metal acceleration works out of the box through llama.cpp.
 Use the VRAM column as a guide for unified memory (M1/M2/M3/M4 chips share
 CPU and GPU memory).
