@@ -197,10 +197,14 @@ class TurnSubmitRequest(BaseModel):
     @field_validator("content")
     @classmethod
     def content_not_empty(cls, v: str) -> str:
+        # Just the constraint, for the same reason player_role_name's validator
+        # shed its field name: the 422 summary prefixes the field path itself,
+        # so "Turn content cannot be blank" rendered as "content: Turn content
+        # cannot be blank" on the error card and in a copied report (issue #508).
         if not v.strip():
-            raise ValueError("Turn content cannot be blank")
+            raise ValueError("cannot be blank")
         if len(v.strip()) > MAX_TURN_CONTENT_CHARS:
-            raise ValueError(f"Turn content exceeds {MAX_TURN_CONTENT_CHARS} characters")
+            raise ValueError(f"cannot exceed {MAX_TURN_CONTENT_CHARS} characters")
         return v
 
 
