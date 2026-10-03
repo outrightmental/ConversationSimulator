@@ -141,7 +141,7 @@ Common performance patterns observed:
 
 ### Privacy / safety
 
-> Handle all `privacy` and `safety` issues through the fast-path described in
+> Handle all `area:safety` issues through the fast-path described in
 > [`publishing/LAUNCH_DAY_RUNBOOK.md`](LAUNCH_DAY_RUNBOOK.md#privacy-fast-path-mandatory).
 > Do not include the content of privacy reports in this document — record only
 > counts, outcomes, and whether the local-first guarantee was maintained.

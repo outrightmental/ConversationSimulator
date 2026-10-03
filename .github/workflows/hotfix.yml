@@ -13,8 +13,10 @@
 #
 # ── When to use ──────────────────────────────────────────────────────────────
 #
-# Trigger `create` when a severity:critical or severity:high regression is
-# confirmed live on the default Steam branch.  The workflow:
+# Trigger `create` when a regression at Priority P0 — blocker or P1 — next is
+# confirmed live on the default Steam branch.  Priority is a field on the
+# delivery board; there are no severity labels (see CONTRIBUTING.md § Labels,
+# fields, and milestones).  The workflow:
 #   1. Creates `hotfix/<tag>-<slug>` from the given release tag.
 #   2. Runs the smoke check on the new branch.
 #   3. Prints the rollback record template (copy into ROLLBACK_AND_SUPPORT_MESSAGING.md).
@@ -167,7 +169,7 @@ jobs:
           echo "     build live on 'default' in Steamworks App Admin."
           echo "  6. Post the appropriate player-facing message from"
           echo "     publishing/ROLLBACK_AND_SUPPORT_MESSAGING.md."
-          echo "  7. Close the severity:critical GitHub issue opened during rollback."
+          echo "  7. Close the P0 — blocker GitHub issue opened during rollback."
           echo "========================================================"
 
   # ── Validate hotfix branches on push / PR ─────────────────────────────────
