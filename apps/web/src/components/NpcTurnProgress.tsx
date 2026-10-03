@@ -218,8 +218,15 @@ export default function NpcTurnProgress({
                       // hatched rather than filled. An empty bar would read as "no
                       // progress" and a full one as "done"; neither is true, and the
                       // app animates nothing (nothing else here does either).
+                      // Striped in --cs-text-faint, which is 3.1:1 against the
+                      // --cs-border track and clears the 3:1 floor a non-text
+                      // graphic needs. Hatching the track against --cs-raise
+                      // instead puts two greys 1.2:1 apart next to each other:
+                      // invisible, so the bar rendered as the empty one this
+                      // exists not to be. Grey, not emerald: a visible hatch in
+                      // the fill colour would read as progress.
                       background:
-                        'repeating-linear-gradient(135deg, var(--cs-border, #27272a) 0 6px, var(--cs-raise, #18181b) 6px 12px)',
+                        'repeating-linear-gradient(135deg, var(--cs-text-faint, #71717a) 0 4px, var(--cs-border, #27272a) 4px 10px)',
                     }),
               }}
             />

@@ -24,6 +24,17 @@ describe('NpcTurnProgress', () => {
       )
     })
 
+    it('hatches the bar in a colour that can actually be seen', () => {
+      // jsdom computes no contrast, so the token is what gets pinned. The hatch
+      // used to alternate --cs-border with --cs-raise: two greys 1.2:1 apart,
+      // which rendered as the empty bar the hatch exists not to be. --cs-text-faint
+      // is 3.1:1 against the track, past the 3:1 floor for a non-text graphic.
+      renderProgress(7_000, null)
+      const fill = screen.getByTestId('npc-turn-progress-fill')
+      expect(fill.getAttribute('style')).toContain('--cs-text-faint')
+      expect(fill.getAttribute('style')).not.toContain('--cs-raise')
+    })
+
     it('reports no value rather than guessing one', () => {
       // 0% of an unknown total is a guess dressed as a fact.
       renderProgress(7_000, null)
