@@ -121,41 +121,50 @@ required for the capstone (see below).
 |---|---|---|---|
 | Certified Expert | `ACH_CERTIFIED_EXPERT` | Every achievement above unlocks, except the four Steam platform surfaces and the two advanced-model ones (`ACH_BYO_MODEL`, `ACH_BENCHMARKED`). | No |
 
-The capstone is unlocked by the front end, not by Steamworks: `unlock()` keeps a
-local ledger of the API names Steam has confirmed (`convsim.steam.unlocked` in
-`localStorage`) and fires `ACH_CERTIFIED_EXPERT` when the required set is
-complete. `OPTIONAL_ACHIEVEMENTS` in `useSteamAchievements.ts` is the list left
-out of the requirement, so that 100% of the base game stays reachable for a
-player with no Workshop subscription, no DLC, no controller, and no Ollama or
-`.gguf` model of their own. A microphone **is** required — voice practice is the
+The capstone is unlocked by the front end, not by Steamworks. After every
+confirmed unlock, `unlock()` asks Steam — via the `steam_unlocked_achievements`
+command — which of the required names plus `ACH_CERTIFIED_EXPERT` the signed-in
+account already holds, and fires the capstone when every required name comes
+back. `OPTIONAL_ACHIEVEMENTS` in `useSteamAchievements.ts` is the list left out
+of the requirement, so that 100% of the base game stays reachable for a player
+with no Workshop subscription, no DLC, no controller, and no Ollama or `.gguf`
+model of their own. A microphone **is** required — voice practice is the
 product, and the store page already lists one as the requirement for voice mode.
 
-The ledger is a cache, not the authority. It lives in one device's
-`localStorage`, so it starts empty on a second machine, after a reinstall, and
-after the player clears app data, while the Steam account still holds every
-unlock. So whenever the ledger alone does not satisfy the requirement, `unlock()`
-asks Steam about exactly the names the ledger is missing, via the
-`steam_unlocked_achievements` command, and folds the confirmed ones back in.
-Without that read-back a player who earned the set across a desktop and a Steam
-Deck would sit at 42/43 forever, unable to finish without redoing the one-shot
-events (a barge-in, an export, a creator save) they had already done elsewhere.
+**Steam is the only authority here, deliberately.** "Has this player earned
+every required achievement?" is a fact about a Steam *account*, so a device-local
+record cannot answer it, and an earlier revision that cached confirmed unlocks in
+`localStorage` was wrong in both directions. That cache is shared by every Steam
+account that plays on one machine and OS login: it handed a second account the
+capstone the first account had earned there, and — once it held
+`ACH_CERTIFIED_EXPERT` — denied the capstone to any other account on that machine
+that genuinely finished the set. It also started empty after a reinstall or an
+app-data wipe, stranding a finished player at 42/43 with only one-shot events (a
+barge-in, an export, a creator save) left to redo. Do not reintroduce it; asking
+Steam costs one IPC hop and a few dozen in-memory lookups per unlock.
 
 The read-back is best-effort in one direction only: Steamworks refuses the read
-until the user's stats arrive shortly after launch, so a name it does not
-confirm is treated as *unknown*, never as "not earned". The capstone simply does
-not fire on that pass and is re-evaluated on the next unlock.
+until the user's stats arrive shortly after launch, and answers nothing at all
+outside Steam or with the `steam` feature off. So a name it does not confirm is
+treated as *unknown*, never as "not earned" — the capstone simply does not fire
+on that pass and is re-evaluated on the next unlock. In a browser or non-Steam
+build it therefore never fires, which is the correct no-op.
+
+Including `ACH_CERTIFIED_EXPERT` in the same read-back is also how the re-grant
+is skipped once the account already holds it.
 
 Adding an achievement adds it to the capstone requirement by default; a
 genuinely optional one must be declared in `OPTIONAL_ACHIEVEMENTS`.
 
-#### Privacy note on the ledger
+#### Privacy note on the local tally
 
-The ledger holds achievement API names and played pack IDs, on this device only.
-Nothing in it is sent anywhere — Steam receives only the unlock calls it would
-have received anyway, plus a read-back query naming the achievements the ledger
-is missing. Those names are this repository's own constants; the pack IDs never
-leave the device, and neither does a transcript, a session ID, or any
-conversation content.
+The only thing kept on disk is `convsim.steam.packsPlayed` — the IDs of the packs
+the player has practised with, which drive `ACH_PACK_EXPLORER` and
+`ACH_PACK_CONNOISSEUR`. Pack IDs only, on this device only. Nothing in it is sent
+anywhere: Steam receives the unlock calls it would have received anyway, plus a
+read-back query naming the capstone achievements, which are this repository's own
+constants. The pack IDs never leave the device, and neither does a transcript, a
+session ID, or any conversation content.
 
 ### Retroactive unlocks
 
