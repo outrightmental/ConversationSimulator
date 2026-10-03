@@ -82,6 +82,10 @@ class VoiceEngine:
     commands: dict[str, str]
     # True when the app can start it once the binary exists (Kokoro's server).
     startable: bool = False
+    # Per-platform step the command cannot do for itself, keyed the same way.
+    # A package manager puts the binary on PATH; building from source does not,
+    # so that platform has to be told where the binary landed.
+    command_notes: dict[str, str] | None = None
 
 
 VOICE_ASSETS: tuple[VoiceAsset, ...] = (
@@ -173,14 +177,33 @@ VOICE_ENGINES: tuple[VoiceEngine, ...] = (
             "app will not download one for you. One command installs it."
         ),
         docs_url=_WHISPER_DOCS,
+        # Homebrew is the only package manager of the three that ships it. The
+        # formula is `whisper.cpp`; `whisper-cpp` is a deprecated oldname that
+        # still resolves but warns, so the current name is used. Neither winget
+        # nor the common apt repos have a whisper.cpp package at all (winget
+        # ships ggml.llamacpp and nothing else from that publisher), so those
+        # platforms get the upstream build, which is three commands.
         commands={
-            "darwin": "brew install whisper-cpp",
+            "darwin": "brew install whisper.cpp",
             "linux": (
                 "git clone https://github.com/ggml-org/whisper.cpp && "
                 "cmake -B build -S whisper.cpp && cmake --build build --config Release && "
                 "sudo cp build/bin/whisper-cli /usr/local/bin/"
             ),
-            "win32": "winget install --id ggml.whisper-cpp",
+            "win32": (
+                "git clone https://github.com/ggml-org/whisper.cpp && "
+                "cmake -B build -S whisper.cpp && cmake --build build --config Release"
+            ),
+        },
+        command_notes={
+            # The Linux command ends with a copy into /usr/local/bin, so PATH is
+            # already handled there; on Windows the build leaves the binary in
+            # the build tree and there is no conventional bin dir to copy into.
+            "win32": (
+                "The build leaves whisper-cli.exe in build\\bin\\Release. Add that "
+                "folder to your PATH, or set CONVSIM_WHISPER_CPP_BINARY_PATH to the "
+                "full path of the .exe, then press Check again."
+            ),
         },
     ),
     VoiceEngine(
@@ -231,11 +254,21 @@ def get_engine(engine_id: str) -> VoiceEngine | None:
     return None
 
 
+def _normalise_platform(platform: str) -> str:
+    """Fold the ``linux2``-style legacy values onto the key the registry uses."""
+    return "linux" if platform.startswith("linux") else platform
+
+
 def engine_command(engine: VoiceEngine, platform: str) -> str | None:
     """Return the install command for *platform*, or None when none is listed."""
-    if platform.startswith("linux"):
-        platform = "linux"
-    return engine.commands.get(platform)
+    return engine.commands.get(_normalise_platform(platform))
+
+
+def engine_command_note(engine: VoiceEngine, platform: str) -> str | None:
+    """Return the follow-up step after *platform*'s command, or None when it needs none."""
+    if engine.command_notes is None:
+        return None
+    return engine.command_notes.get(_normalise_platform(platform))
 
 
 def find_whisper_binary() -> str | None:

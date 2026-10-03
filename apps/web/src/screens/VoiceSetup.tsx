@@ -215,6 +215,14 @@ function EngineRow({
             {engine.command && (
               <CommandBlock command={engine.command} label={`Copy the ${engine.name} install command`} />
             )}
+            {engine.command_note && (
+              <p
+                data-testid={`engine-note-${engine.id}`}
+                style={{ margin: '0.4rem 0 0', fontSize: '0.8rem', color: '#fbbf24', lineHeight: 1.5 }}
+              >
+                {engine.command_note}
+              </p>
+            )}
             <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', alignItems: 'center' }}>
               <SecondaryButton onClick={onRecheck} testId={`engine-recheck-${engine.id}`}>
                 Check again

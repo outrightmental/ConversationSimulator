@@ -111,7 +111,8 @@ function makePlan(overrides: Partial<VoiceSetupPlan> = {}): VoiceSetupPlan {
         name: 'whisper.cpp',
         why_manual: 'whisper.cpp publishes no checksummed binary for every platform.',
         docs_url: 'https://github.com/ggml-org/whisper.cpp#quick-start',
-        command: 'brew install whisper-cpp',
+        command: 'brew install whisper.cpp',
+        command_note: null,
         startable: false,
         installed: false,
         found_at: null,
@@ -123,6 +124,7 @@ function makePlan(overrides: Partial<VoiceSetupPlan> = {}): VoiceSetupPlan {
         why_manual: 'The NPC voice runs in a small local server.',
         docs_url: 'https://github.com/remsky/Kokoro-FastAPI#readme',
         command: 'docker run --rm -p 7358:8880 ghcr.io/remsky/kokoro-fastapi-cpu:latest',
+        command_note: null,
         startable: true,
         installed: false,
         found_at: null,
@@ -200,10 +202,39 @@ describe('VoiceSetup — what is missing', () => {
     await screen.findByTestId('voice-setup-screen')
 
     const row = screen.getByTestId('engine-row-whisper-cli')
-    expect(row).toHaveTextContent('brew install whisper-cpp')
+    expect(row).toHaveTextContent('brew install whisper.cpp')
     expect(row).toHaveTextContent('publishes no checksummed binary')
     // Installing it happens outside the app, so the row must offer a re-check.
     expect(screen.getByTestId('engine-recheck-whisper-cli')).toBeInTheDocument()
+    // No follow-up step on this platform, so no note should be invented.
+    expect(screen.queryByTestId('engine-note-whisper-cli')).not.toBeInTheDocument()
+  })
+
+  it('shows the follow-up step when the command alone does not finish the job', async () => {
+    // The Windows route builds from source, which leaves the binary in the
+    // build tree — without the note the player runs a command and nothing
+    // changes, which is the dead end this whole screen exists to remove.
+    const plan = makePlan()
+    mockApi.getVoiceSetupPlan.mockResolvedValue({
+      ok: true,
+      data: makePlan({
+        platform: 'win32',
+        engines: plan.engines.map((e) =>
+          e.id === 'whisper-cli'
+            ? {
+                ...e,
+                command: 'git clone https://github.com/ggml-org/whisper.cpp && cmake -B build -S whisper.cpp',
+                command_note:
+                  'The build leaves whisper-cli.exe in build\\bin\\Release. Add that folder to your PATH.',
+              }
+            : e,
+        ),
+      }),
+    })
+    renderScreen()
+    await screen.findByTestId('voice-setup-screen')
+
+    expect(screen.getByTestId('engine-note-whisper-cli')).toHaveTextContent('Add that folder to your PATH')
   })
 
   it('re-reads the plan when the player comes back from a terminal', async () => {

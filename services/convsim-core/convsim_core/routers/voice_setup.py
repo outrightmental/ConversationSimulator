@@ -84,6 +84,7 @@ class VoiceEngineView(BaseModel):
     why_manual: str
     docs_url: str
     command: Optional[str] = None
+    command_note: Optional[str] = None
     startable: bool
     installed: bool
     found_at: Optional[str] = None

@@ -43,7 +43,7 @@ command with a **Check again** button, or — for a Kokoro binary that exists bu
 is not running — a **Start the voice server** button.
 
 The plan is re-read on window focus. The two native engines are installed
-*outside* the app, so a player who runs `brew install whisper-cpp` in a
+*outside* the app, so a player who runs `brew install whisper.cpp` in a
 terminal and switches back sees the row tick over without a reload.
 
 ### The microphone row
@@ -112,6 +112,32 @@ restart.
 |--------|-----------|
 | `whisper-cli` | whisper.cpp publishes no checksummed binary for every platform. llama.cpp's release carries a `sha256sum.txt`; whisper.cpp's does not, and shipping an unverified binary is worse than one command. |
 | Kokoro TTS server | Steam depot builds bundle it (`CONVSIM_BUNDLED_RUNTIME_DIR`). Elsewhere the official container image is the shortest path. |
+
+Only Homebrew packages whisper.cpp. There is no winget package for it —
+winget-pkgs carries `ggml.llamacpp` and nothing else from that publisher — and
+the common apt repositories do not ship it either, so Linux and Windows get the
+upstream `cmake` build instead of a package-manager one-liner.
+
+| Platform | Command | Follow-up |
+|----------|---------|-----------|
+| macOS | `brew install whisper.cpp` | None — brew puts `whisper-cli` on `PATH`. (`whisper-cpp` is a deprecated oldname that still resolves but warns.) |
+| Linux | `git clone` + `cmake --build`, then `sudo cp build/bin/whisper-cli /usr/local/bin/` | None — the command ends by copying onto `PATH`. |
+| Windows | `git clone` + `cmake --build` | Required: the binary stays in `build\bin\Release`. |
+
+A command that cannot finish the job carries a `command_notes` entry for that
+platform, which the plan returns as `command_note` and the screen renders in
+amber under the command block. Windows is the only case today: the build leaves
+`whisper-cli.exe` in the build tree, so the note names the two routes the worker
+honours — put that folder on `PATH`, or set
+`CONVSIM_WHISPER_CPP_BINARY_PATH` to the `.exe`. Without it the player runs a
+command, nothing changes, and they are back at the dead end this flow exists to
+remove.
+
+Windows players who would rather not build can take `whisper-bin-x64.zip` from
+a `bNNNN` tag on the [whisper.cpp releases
+page](https://github.com/ggml-org/whisper.cpp/releases) and put `whisper-cli.exe`
+on `PATH`; those zips carry no published checksum, which is exactly why the app
+will not fetch them for you.
 
 The plan returns the command for the caller's platform (`sys.platform`,
 normalised so `linux2`-style values still resolve). Kokoro is the only

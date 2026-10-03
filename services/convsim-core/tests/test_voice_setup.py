@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import re
+import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -131,6 +132,60 @@ def test_engine_commands_cover_every_desktop_platform():
     whisper = voice_registry.get_engine("whisper-cli")
     assert whisper is not None
     assert voice_registry.engine_command(whisper, "linux2") == whisper.commands["linux"]
+
+
+def test_whisper_commands_name_packages_that_exist():
+    """A command that 404s on the package index is worse than no command.
+
+    The first cut shipped ``winget install --id ggml.whisper-cpp``, which fails
+    with "No package found matching input criteria" — winget-pkgs carries only
+    ``ggml.llamacpp`` under that publisher. Homebrew is the one package manager
+    of the three that ships whisper.cpp, and the formula was renamed, so pin
+    both facts rather than re-discovering them from a bug report.
+    """
+    whisper = voice_registry.get_engine("whisper-cli")
+    assert whisper is not None
+
+    assert whisper.commands["darwin"] == "brew install whisper.cpp"
+
+    # No winget/apt package exists, so these two must build from source.
+    for platform in ("linux", "win32"):
+        command = whisper.commands[platform]
+        assert "winget" not in command, platform
+        assert "cmake --build" in command, platform
+
+
+def test_a_command_that_does_not_finish_the_job_carries_a_follow_up_note():
+    """Building from source leaves the binary where nothing on PATH will find it."""
+    whisper = voice_registry.get_engine("whisper-cli")
+    assert whisper is not None
+
+    note = voice_registry.engine_command_note(whisper, "win32")
+    assert note is not None
+    # The two ways out of the build tree the worker actually honours.
+    assert "PATH" in note
+    assert "CONVSIM_WHISPER_CPP_BINARY_PATH" in note
+
+    # macOS needs none: brew puts whisper-cli on PATH itself.
+    assert voice_registry.engine_command_note(whisper, "darwin") is None
+    # Engines that declare no notes at all must not blow up on the lookup.
+    kokoro = voice_registry.get_engine("kokoro-server")
+    assert kokoro is not None
+    assert voice_registry.engine_command_note(kokoro, "win32") is None
+
+
+def test_plan_exposes_the_follow_up_note_for_this_platform(client):
+    """The note has to survive the response model, or the UI cannot render it."""
+    body = client.get("/api/voice/setup/plan").json()
+
+    engines = {e["id"]: e for e in body["engines"]}
+    whisper = voice_registry.get_engine("whisper-cli")
+    assert whisper is not None
+    assert engines["whisper-cli"]["command_note"] == voice_registry.engine_command_note(
+        whisper, sys.platform
+    )
+    # Kokoro's command is self-contained on every platform.
+    assert engines["kokoro-server"]["command_note"] is None
 
 
 def test_install_paths_follow_the_engines(voice_paths):

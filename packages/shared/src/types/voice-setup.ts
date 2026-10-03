@@ -40,6 +40,8 @@ export interface VoiceEngine {
   docs_url: string;
   /** Install command for the player's platform; null when none is listed. */
   command: string | null;
+  /** Step the command cannot do itself (putting a built binary on PATH); null when none. */
+  command_note: string | null;
   /** The app can start it once the binary exists (the Kokoro server). */
   startable: boolean;
   installed: boolean;

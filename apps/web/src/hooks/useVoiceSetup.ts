@@ -8,7 +8,7 @@
  *
  * The plan is re-fetched after every action and whenever the window regains
  * focus, because the two native engines are installed *outside* the app — a
- * player who runs `brew install whisper-cpp` in a terminal and switches back
+ * player who runs `brew install whisper.cpp` in a terminal and switches back
  * should see the step tick over without hunting for a refresh button.
  */
 import { useCallback, useEffect, useRef, useState } from 'react'

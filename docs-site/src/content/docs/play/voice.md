@@ -84,12 +84,25 @@ The setup screen shows the command for your platform and a **Copy** button:
 
 | Platform | Command |
 |----------|---------|
-| macOS | `brew install whisper-cpp` |
-| Windows | `winget install --id ggml.whisper-cpp` |
+| macOS | `brew install whisper.cpp` |
 | Linux | Build from source — the screen shows the full `cmake` line |
+| Windows | Build from source — the screen shows the full `cmake` line |
 
 Run it in a terminal, switch back to the app, and the row turns green. If it
 does not, press **Check again**.
+
+Homebrew is the only package manager that ships whisper.cpp, so Linux and
+Windows build it. On Windows the build leaves `whisper-cli.exe` inside
+`build\bin\Release` rather than anywhere on your `PATH`, and the setup screen
+says so under the command: add that folder to your `PATH`, or set
+`CONVSIM_WHISPER_CPP_BINARY_PATH` to the full path of the `.exe`. Then press
+**Check again**.
+
+If you would rather not build it, the
+[whisper.cpp releases page](https://github.com/ggml-org/whisper.cpp/releases)
+has prebuilt `whisper-bin-x64.zip` archives on the `bNNNN` tags — unzip one and
+put `whisper-cli.exe` on your `PATH`. The app does not download these for you
+because they ship without a published checksum.
 
 ### The Kokoro voice server — reads the NPC's replies
 
