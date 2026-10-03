@@ -161,18 +161,68 @@ function rejectTransition(reply: { status: (code: number) => void }, state: Sess
   throw err;
 }
 
+/** States a session can be picked back up from — the resumable set
+ *  (issue #501 §1). Mirrors RESUMABLE_FLOW_STATES in convsim-core's sessions
+ *  router. `NotStarted` is excluded on purpose: nothing has been said yet, so
+ *  there is no conversation to resume. */
+const RESUMABLE_STATES: SessionState[] = [
+  'PlayerTurnListening',
+  'PlayerTurnReview',
+  'NpcThinking',
+  'NpcSpeaking',
+  'ScenarioEvent',
+];
+
+/** States a session has finished in. `Ended` is only the first: generating the
+ *  debrief moves the row to `DebriefGenerating` and then `DebriefReady`, and a
+ *  failed debrief leaves `Error`. Mirrors ENDED_FLOW_STATES in convsim-core. */
+const ENDED_STATES: SessionState[] = [
+  'Ended',
+  'DebriefGenerating',
+  'DebriefReady',
+  'Error',
+];
+
 export async function sessionRoutes(app: FastifyInstance) {
   // GET /api/sessions
-  app.get('/api/sessions', async (): Promise<{ sessions: SessionCreateResponse[] }> => {
+  app.get<{ Querystring: { status?: string; limit?: string } }>(
+    '/api/sessions',
+    async (request, reply): Promise<{ sessions: SessionCreateResponse[] }> => {
     const db = getDb();
+    // `status` and `limit` are the same contract convsim-core serves
+    // (issue #501 §1). Honouring them here is not cosmetic: the resume
+    // affordances ask for `status=in_progress&limit=1` and offer whatever comes
+    // back as "Conversation in progress", so a listing that silently ignored
+    // the filter would offer to resume a conversation that has already ended.
+    const status = request.query.status ?? 'all';
+    if (status !== 'all' && status !== 'in_progress' && status !== 'ended') {
+      reply.status(400);
+      throw new Error("status must be one of: all, ended, in_progress");
+    }
+    const limit = request.query.limit === undefined ? 50 : Number(request.query.limit);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
+      reply.status(400);
+      throw new Error('limit must be between 1 and 500');
+    }
+
     // Exclude temporary workbench test sessions so they never pollute the
     // player's session history (they are cleaned up on discard/reset/unmount,
     // but a lingering row must not surface here either).
+    const states =
+      status === 'in_progress' ? RESUMABLE_STATES : status === 'ended' ? ENDED_STATES : null;
+    const clauses = ['scenario_id != ?'];
+    const params: (string | number)[] = [WORKBENCH_TEST_SCENARIO_ID];
+    if (states !== null) {
+      clauses.push(`state IN (${states.map(() => '?').join(', ')})`);
+      params.push(...states);
+    }
+    params.push(limit);
     const rows = db
-      .prepare<[string], SessionRow>(
-        'SELECT * FROM sessions WHERE scenario_id != ? ORDER BY created_at DESC, rowid DESC',
+      .prepare<(string | number)[], SessionRow>(
+        `SELECT * FROM sessions WHERE ${clauses.join(' AND ')} ` +
+          'ORDER BY created_at DESC, rowid DESC LIMIT ?',
       )
-      .all(WORKBENCH_TEST_SCENARIO_ID);
+      .all(...params);
     return {
       sessions: rows.map((row) => ({
         session_id: row.session_id,
@@ -185,7 +235,8 @@ export async function sessionRoutes(app: FastifyInstance) {
         setup: JSON.parse(row.setup_json) as SessionCreateRequest,
       })),
     };
-  });
+  },
+  );
 
   // POST /api/sessions
   app.post<{ Body: SessionCreateRequest }>(
