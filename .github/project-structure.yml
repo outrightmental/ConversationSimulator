@@ -204,5 +204,12 @@ backfill:
     meta: [491]
   # Closed work that predates the Phase backfill: post-v0.3 polish and fixes,
   # all closed between 2026-08-22 and 2026-10-03.
+  #
+  # #491 is the one forward-dated entry. `meta` exempts it from the milestone
+  # and area rules, but not from `require_phase_or_milestone_when_closed` — and
+  # merging the pull request that declares this file closes it, leaving a closed
+  # issue attributed to nothing. `apply` only writes a Phase to an issue that is
+  # already closed, so recording it here is a no-op until that moment and then
+  # files the work under the era that did it.
   phases:
-    06 · Release polish: [472, 473, 476, 477, 480, 481, 485, 486, 489, 490]
+    06 · Release polish: [472, 473, 476, 477, 480, 481, 485, 486, 489, 490, 491]
