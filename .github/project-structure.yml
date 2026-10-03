@@ -126,8 +126,9 @@ retired_labels:
     priority: P2 — later
 
 # ── Milestones ───────────────────────────────────────────────────────────────
-# Release trains. Deliberately comparable in size (7–9 issues) and cadence
-# (4–7 weeks) so the velocity chart compares like with like.
+# Release trains, on a deliberately even 4–7 week cadence so the velocity chart
+# compares like with like. Their size is whatever triage puts on them — this
+# file sets the dates, not the headcount.
 #
 # History is not retrofitted here: the board's Phase field already records the
 # eras that shipped, and a milestone invented today for work closed in July has
