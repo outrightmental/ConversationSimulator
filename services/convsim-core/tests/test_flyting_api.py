@@ -848,3 +848,91 @@ class TestDemoEdition:
             assert response.status_code == 403
             assert response.json()["detail"]["code"] == "EDITION_RESTRICTED"
         clear_scenario_cache()
+
+
+class TestTheJudgeRepairAttempt:
+    """The retry must still have the volley in front of it.
+
+    ``judge_volley`` rebuilds the request from scratch on each attempt. Sending
+    the repair instruction alone gave the model the cacheable rubric header and
+    "that was not a valid verdict" with no volley at all — and the dimensions
+    it then invented for a line it never saw were accepted, because hooks are
+    verified against the player's words but sting, wit, craft and fidelity are
+    not, and they carry the whole of Q.
+    """
+
+    VOLLEY = (
+        "You polish your virtue like your carriage brass, sir, and both are plate."
+    )
+
+    def _scenario(self):
+        from convsim_core.flyting.loader import load_flyting_scenario
+        from convsim_core.flyting.service import VolleyScoringService
+
+        scenario = load_flyting_scenario(_FLYTING_PACK, "scenarios/whitechapel_rose.yaml")
+        return scenario, VolleyScoringService(scenario.scoring_context())
+
+    class _Runtime:
+        """Returns garbage first, then a valid verdict. Records every request."""
+
+        def __init__(self, replies):
+            self.replies = list(replies)
+            self.requests = []
+
+        async def chat_stream(self, request):
+            from convsim_core.runtime.types import ChatFinal
+
+            self.requests.append(request)
+            yield ChatFinal(
+                text=self.replies.pop(0), structured=None,
+                model_id="test", input_tokens=0, output_tokens=0,
+            )
+
+    def _run(self, runtime):
+        import asyncio
+
+        from convsim_core.flyting.pipeline import judge_volley
+
+        scenario, service = self._scenario()
+        prepared = service.prepare(self.VOLLEY)
+        return asyncio.run(judge_volley(prepared, service, runtime, speaker="player"))
+
+    def _valid_verdict(self):
+        return json.dumps({
+            "sting": 7, "wit": 6, "craft": 6, "fidelity": 8,
+            "hooks": [], "themes": ["hypocrisy"], "devices": ["simile"],
+            "riposte": {"is_riposte": False, "evidence": None},
+            "callback": {"is_callback": False, "evidence": None},
+            "fouls": [], "umpire_line": "Half of that was yours.",
+        })
+
+    def test_the_retry_resends_the_volley(self):
+        runtime = self._Runtime(["sorry, I cannot do that", self._valid_verdict()])
+        judgment = self._run(runtime)
+
+        assert judgment is not None and judgment.sting == 7
+        assert len(runtime.requests) == 2
+        retry = runtime.requests[1].messages
+        assert self.VOLLEY in "\n".join(m.content for m in retry), (
+            "the repair attempt scored a volley the model was never shown"
+        )
+
+    def test_the_retry_carries_the_rejected_output_and_the_instruction(self):
+        runtime = self._Runtime(["not json at all", self._valid_verdict()])
+        self._run(runtime)
+
+        roles = [m.role for m in runtime.requests[1].messages]
+        assert roles == ["system", "user", "assistant", "user"]
+        assert runtime.requests[1].messages[2].content == "not json at all"
+        assert "valid JSON" in runtime.requests[1].messages[3].content
+
+    def test_the_first_attempt_is_unchanged(self):
+        runtime = self._Runtime([self._valid_verdict()])
+        self._run(runtime)
+
+        assert len(runtime.requests) == 1
+        assert [m.role for m in runtime.requests[0].messages] == ["system", "user"]
+
+    def test_two_failures_score_mechanically_rather_than_inventing_numbers(self):
+        runtime = self._Runtime(["garbage", "still garbage"])
+        assert self._run(runtime) is None

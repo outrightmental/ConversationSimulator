@@ -164,11 +164,11 @@ async def judge_volley(
     )
     prompt = compose_volley_judge_prompt(judge_input)
 
-    def _request(user_prompt: str) -> ChatRequest:
+    def _request(history: Sequence[ChatMessage]) -> ChatRequest:
         return ChatRequest(
             messages=[
                 ChatMessage(role="system", content=prompt.system_prompt),
-                ChatMessage(role="user", content=user_prompt),
+                *history,
             ],
             json_schema=FLYTING_JUDGE_OUTPUT_SCHEMA,
             temperature=JUDGE_TEMPERATURE,
@@ -186,9 +186,18 @@ async def judge_volley(
             events=events,
         )
 
-    for attempt, user_prompt in enumerate((prompt.user_prompt, JUDGE_REPAIR_PROMPT)):
+    # The repair attempt keeps the whole first exchange: the volley, then what
+    # the model said about it, then the instruction to say it again properly.
+    # Sending the repair instruction alone would hand the model the cacheable
+    # rubric header and "that was not valid JSON" with no volley in front of
+    # it, and the dimensions it invented for a line it never saw would be
+    # accepted — hooks are verified against the player's words, but sting, wit,
+    # craft and fidelity are not, and they carry all of Q. "The engine never
+    # invents numbers no model produced" has to survive the retry too.
+    history: List[ChatMessage] = [ChatMessage(role="user", content=prompt.user_prompt)]
+    for attempt in range(2):
         try:
-            raw, structured = await _collect_output(runtime, _request(user_prompt))
+            raw, structured = await _collect_output(runtime, _request(history))
         except Exception as exc:  # noqa: BLE001 — a judge outage must not end a run
             logger.warning("Judge call failed (attempt %d): %s", attempt + 1, exc)
             if events is not None:
@@ -203,6 +212,13 @@ async def judge_volley(
                 events.append(JudgeEvent("judge_repair_success"))
             return judgment
         logger.warning("Judge output unusable on attempt %d", attempt + 1)
+        history = [
+            *history,
+            # Empty output is still a turn that happened; a placeholder keeps the
+            # exchange well-formed for adapters that reject an empty message.
+            ChatMessage(role="assistant", content=payload or "(no output)"),
+            ChatMessage(role="user", content=JUDGE_REPAIR_PROMPT),
+        ]
 
     return None
 
