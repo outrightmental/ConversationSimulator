@@ -507,7 +507,7 @@ def summarize_run(
     for volley in (v for v in player_volleys if not v.gate.scores_zero):
         if volley.judgment is not None:
             # Primary themes only — the count the decay is computed from, so the
-            # "decayed to 42%" the report prints is the factor that was applied.
+            # factor the report prints is the one the engine applied.
             if volley.judgment.themes:
                 primary = volley.judgment.themes[0]
                 theme_counts[primary] = theme_counts.get(primary, 0) + 1
@@ -546,15 +546,25 @@ def summarize_run(
         # landed" an alphabetical sample of the words that landed — so a run
         # whose best find was "sterling" reported "carriage, grips, plate".
         rarest_words=sorted(set(rarest), key=word_rarity_key)[:8],
-        coaching_notes=coaching_notes(player_volleys, theme_report),
+        coaching_notes=coaching_notes(
+            player_volleys, theme_report, theme_decay=theme_decay
+        ),
     )
 
 
 def coaching_notes(
     player_volleys: Sequence[VolleyScore],
     theme_report: Sequence[Dict[str, Any]],
+    *,
+    theme_decay: float = 0.75,
 ) -> List[str]:
-    """Observations a player can act on, derived from the volley log alone."""
+    """Observations a player can act on, derived from the volley log alone.
+
+    ``theme_decay`` is the scenario's own factor, needed because the overuse
+    note is retrospective: it tells a player what their *last* trip to a well
+    was worth, which is ``decay^(uses-1)``, not the ``remaining_value`` the
+    report carries for the next one.
+    """
     notes: List[str] = []
     scored = [v for v in player_volleys if not v.gate.scores_zero]
     if not scored:
@@ -579,9 +589,15 @@ def coaching_notes(
     over_used = [t for t in theme_report if t["uses"] >= 3]
     if over_used:
         worst = over_used[0]
+        # The factor that was applied to the *last* of those trips, which is
+        # what "had decayed to" claims. ``remaining_value`` is the next one's,
+        # one power further down, so printing it beside this sentence understated
+        # the player's own run by a decay step and described a volley they never
+        # played.
+        applied = theme_decay ** max(0, int(worst["uses"]) - 1)
         notes.append(
             f"You went to {worst['theme']} {worst['uses']} times; its value had decayed "
-            f"to {int(worst['remaining_value'] * 100)}%. Variety is the meta."
+            f"to {int(applied * 100)}%. Variety is the meta."
         )
 
     unaimed = sum(1 for v in scored if "no_aim" in v.flags)

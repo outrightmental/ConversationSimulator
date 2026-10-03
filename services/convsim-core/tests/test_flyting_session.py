@@ -503,6 +503,32 @@ class TestRunSummary:
         assert hygiene["remaining_value"] == pytest.approx(0.75 ** 4, abs=1e-3)
         assert any("hygiene" in note for note in summary.coaching_notes)
 
+    def test_the_overuse_note_quotes_the_factor_that_was_actually_applied(self):
+        """"Had decayed to" is retrospective, so it is the last trip's factor.
+
+        ``remaining_value`` is the *next* use's, one power further down. Printing
+        that beside this sentence understated the player's own run by a decay
+        step and described a volley they never played: four hygiene jokes paid
+        0.75³ = 42% on the fourth, and the note said 32%.
+        """
+        state = FlytingRunState()
+        volleys = [volley(100, themes=("hygiene",)) for _ in range(4)]
+        for v in volleys:
+            record_player_volley(state, v)
+        summary = summarize_run(state, volleys)
+        note = next(n for n in summary.coaching_notes if "hygiene" in n)
+        assert "42%" in note
+        assert "32%" not in note
+
+    def test_the_overuse_note_uses_the_scenario_own_decay(self):
+        state = FlytingRunState()
+        volleys = [volley(100, themes=("vanity",)) for _ in range(3)]
+        for v in volleys:
+            record_player_volley(state, v)
+        summary = summarize_run(state, volleys, theme_decay=0.5)
+        note = next(n for n in summary.coaching_notes if "vanity" in n)
+        assert "25%" in note  # 0.5 squared, the third trip's factor
+
     def test_the_report_counts_the_same_themes_the_decay_does(self):
         """A theme the player only ever brushed is not a well they returned to.
 
