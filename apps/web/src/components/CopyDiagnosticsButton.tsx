@@ -126,7 +126,7 @@ export function CopyDiagnosticsButton({
   return (
     <button
       // Error surfaces render inside forms — ScenarioSetup puts this very
-      // button in the middle of the "Start scenario" form — and a <button>
+      // button in the middle of the brief's launch form — and a <button>
       // with no type submits. Pressing "Copy diagnostics" there re-fired the
       // failed request, which tore the card (and this button) out of the DOM
       // mid-copy, so it never reported "Copied!" (issue #508).

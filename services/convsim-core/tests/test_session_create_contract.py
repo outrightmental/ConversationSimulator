@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """POST /api/sessions request contract (issue #508).
 
-A player who presses "Start scenario" and is told only
+A player who presses "Start conversation" and is told only
 ``VALIDATION_ERROR: Request validation failed`` has no way forward: the message
 names no field, the 422 left no trace in the logs, and the "Copy diagnostics"
 report it offers therefore says nothing either. Two things keep that from
