@@ -33,6 +33,7 @@ from .flyting_judge import (
     VolleyJudgeInput,
     VolleyJudgment,
     compose_volley_judge_prompt,
+    judge_repair_prompt,
     parse_volley_judgment,
 )
 from .inspection import PromptInspector
@@ -110,6 +111,7 @@ __all__ = [
     "JUDGE_FOULS",
     "JUDGE_LAYER_ORDER",
     "JUDGE_REPAIR_PROMPT",
+    "judge_repair_prompt",
     "MAX_VERIFIED_HOOKS",
     "DEFAULT_JUDGE_WEIGHTS",
     "DEFAULT_JUDGE_ANCHORS",
