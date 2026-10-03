@@ -1026,6 +1026,16 @@ fn spawn_core(
     // is passed so the engine's own default applies.
     if let Some(edition) = build_edition() {
         cmd.env("CONVSIM_EDITION", edition);
+
+        // The one model a demo build installs (issue #495). Only the demo
+        // edition reads it, and `build.rs` already refuses to bake it into a
+        // full build — but keep it inside this branch so the pairing is local:
+        // a value without an edition can never reach the engine on its own.
+        if edition == "demo" {
+            if let Some(model_id) = build_demo_model_id() {
+                cmd.env("CONVSIM_DEMO_MODEL_ID", model_id);
+            }
+        }
     }
 
     // The release version the player is running (issue #490). release.yml
