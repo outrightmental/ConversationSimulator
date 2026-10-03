@@ -484,7 +484,32 @@ describe('Flyting play screen', () => {
 
     await waitFor(() => screen.getByTestId('surface-cowardice'))
     expect(screen.getByTestId('surface-cowardice')).toHaveTextContent(/out of the Crimea/i)
-    expect(screen.getByTestId('target-surface')).toHaveTextContent(/one discovered/i)
+    expect(screen.getByTestId('target-surface')).toHaveTextContent(/1 discovered/i)
+  })
+
+  it('counts the discoveries rather than calling every number of them one', async () => {
+    // Every launch target declares two discoverable traits, so "one discovered"
+    // was wrong as soon as the second one landed — and the counter that is
+    // supposed to mark the traits worth double stopped moving after the first.
+    mockApi.flyting.submitVolley.mockResolvedValue({
+      ok: true,
+      data: {
+        ...VOLLEY_RESPONSE,
+        target_surface: [
+          ...VOLLEY_RESPONSE.target_surface,
+          { id: 'cowardice', brief: 'Bought his way out of the Crimea.', discovered: true },
+          { id: 'new_money', brief: 'His grandfather sold tripe.', discovered: true },
+        ],
+      },
+    })
+    renderPlay()
+    await waitFor(() => screen.getByTestId('volley-input'))
+
+    fireEvent.change(screen.getByTestId('volley-input'), { target: { value: VOLLEY_TEXT } })
+    fireEvent.click(screen.getByTestId('submit-volley'))
+
+    await waitFor(() => screen.getByTestId('surface-new_money'))
+    expect(screen.getByTestId('target-surface')).toHaveTextContent(/2 discovered/i)
   })
 
   it('restores a bout log in the same order it was played in', async () => {

@@ -291,6 +291,7 @@ export default function Flyting() {
     navigate(`/flyting/debrief/${sessionId}`, { state: { umpireFlavor } })
   }
 
+  const discoveredCount = surface.filter((t) => t.discovered).length
   const remainingChars = MAX_VOLLEY_CHARS - text.length
   const wordCount = useMemo(
     () => text.trim().split(/\s+/).filter(Boolean).length,
@@ -377,8 +378,15 @@ export default function Flyting() {
         <details data-testid="target-surface" style={{ fontSize: '0.8rem' }}>
           <summary style={{ cursor: 'pointer', color: '#a1a1aa' }}>
             What is fair game ({surface.length})
-            {surface.some((t) => t.discovered) && (
-              <span style={{ color: '#a855f7' }}> · one discovered</span>
+            {/* The count, not the word "one": every launch target declares two
+                discoverable traits, so a player who had found both was told
+                they had found one — and the signal that marks the traits
+                actually worth double stopped moving after the first. */}
+            {discoveredCount > 0 && (
+              <span style={{ color: '#a855f7' }}>
+                {' '}
+                · {discoveredCount} discovered
+              </span>
             )}
           </summary>
           <ul
