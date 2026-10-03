@@ -517,7 +517,8 @@ export default function Conversation() {
         if (alreadyStarted) {
           const tr = await api.getSessionTranscript(sessionId)
           if (cancelled) return
-          if (tr.ok && tr.data.turns.length > 0) {
+          const hydrated = tr.ok && tr.data.turns.length > 0
+          if (hydrated) {
             _hydrateTurnsFromServer(tr.data.turns)
           }
           const lastState = tr.ok
@@ -531,8 +532,23 @@ export default function Conversation() {
           // "above this conversation you'll see two meters" (issue #501 §1).
           // After setPhase so a slow or failing read never holds up the input.
           const sr = await api.getSession(sessionId)
-          if (!cancelled && sr.ok && sr.data.visible_state) {
-            setStateVars({ ...sr.data.visible_state })
+          if (!cancelled && sr.ok) {
+            if (sr.data.visible_state) {
+              setStateVars({ ...sr.data.visible_state })
+            }
+            // A session started with transcript saving off answers the
+            // transcript endpoint with no rows, always, so there is nothing to
+            // count the resumed turns from and the labels would restart at
+            // "Turn 1" over a session the server is several turns into — the
+            // debrief-says-3-transcript-says-1 mismatch of issue #501 §4, back
+            // again on the screen resume was added for. `turn_count` is the
+            // same whole-turn number the labels, `max_turns` and the debrief
+            // all use. Skipped once the player has sent a message, which owns
+            // the counter from then on, so a slow read cannot renumber a turn
+            // already in flight.
+            if (!hydrated && gameTurnRef.current === 0 && rowCountRef.current === 0) {
+              gameTurnRef.current = sr.data.turn_count ?? 0
+            }
           }
         } else {
           setError(e)

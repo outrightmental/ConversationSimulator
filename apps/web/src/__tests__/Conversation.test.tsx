@@ -300,6 +300,58 @@ describe('Conversation screen', () => {
       // baseline, not a change from anything.
       expect(screen.getByTestId('state-meter-delta-trust')).not.toHaveTextContent('+')
     })
+
+    it('keeps counting whole turns when resuming a session that saves no transcript', async () => {
+      // Issue #501 §4: the transcript endpoint answers a session started with
+      // transcript saving off with no rows, always, so there is nothing to count
+      // the resumed turns from and the labels restarted at "Turn 1" over a
+      // session the server was three turns into — the debrief-says-4 /
+      // transcript-says-1 mismatch again, on the screen resume was added for.
+      mockApi.startSession.mockResolvedValue({
+        ok: false,
+        error: { kind: 'network', message: 'INVALID_TRANSITION' },
+      })
+      mockApi.getSessionTranscript.mockResolvedValue({
+        ok: true,
+        data: {
+          session_id: SESSION_ID,
+          scenario_id: 'behavioral_interview',
+          transcript_saved: false,
+          message: 'Transcript saving is disabled for this session.',
+          turns: [],
+        },
+      })
+      mockApi.getSession.mockResolvedValue({
+        ok: true,
+        data: {
+          session_id: SESSION_ID,
+          scenario_id: 'behavioral_interview',
+          state: 'PlayerTurnListening',
+          created_at: '2026-07-01T00:00:00Z',
+          setup: { save_transcript: false },
+          turn_count: 3,
+          visible_state: { trust: 55 },
+        },
+      } as never)
+      mockApi.submitTurn.mockResolvedValue({ ok: true, data: turnResponse })
+      renderConversation()
+
+      // Wait for the session read to land before sending, so the counter is
+      // seeded rather than racing the player's message.
+      await waitFor(() => expect(screen.getByTestId('state-meter-trust')).toHaveTextContent('55'))
+      fireEvent.change(screen.getByRole('textbox', { name: /your response/i }), {
+        target: { value: 'Picking up where we left off.' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+
+      await waitFor(() =>
+        expect(screen.getByText('Hello there. I am a simulated NPC.')).toBeInTheDocument(),
+      )
+      // Three whole turns already played, so this exchange is the fourth — both
+      // halves of it, and nothing numbered 1.
+      expect(screen.getAllByText('Turn 4')).toHaveLength(2)
+      expect(screen.queryByText('Turn 1')).not.toBeInTheDocument()
+    })
   })
 
   describe('NPC panel', () => {
