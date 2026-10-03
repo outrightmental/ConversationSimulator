@@ -874,7 +874,7 @@ describe('advanced: raw audio saving', () => {
 
   it('advanced section appears after clicking show advanced', async () => {
     await renderSettings()
-    fireEvent.click(screen.getByRole('button', { name: /show advanced/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Show advanced' }))
     await waitFor(() =>
       expect(
         screen.getByRole('checkbox', { name: /save raw audio recordings/i }),
@@ -884,14 +884,14 @@ describe('advanced: raw audio saving', () => {
 
   it('raw audio saving is off by default', async () => {
     await renderSettings()
-    fireEvent.click(screen.getByRole('button', { name: /show advanced/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Show advanced' }))
     await waitFor(() => screen.getByRole('checkbox', { name: /save raw audio recordings/i }))
     expect(screen.getByRole('checkbox', { name: /save raw audio recordings/i })).not.toBeChecked()
   })
 
   it('shows a warning when raw audio saving is enabled', async () => {
     await renderSettings()
-    fireEvent.click(screen.getByRole('button', { name: /show advanced/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Show advanced' }))
     await waitFor(() => screen.getByRole('checkbox', { name: /save raw audio recordings/i }))
     fireEvent.click(screen.getByRole('checkbox', { name: /save raw audio recordings/i }))
     await waitFor(() =>
@@ -901,9 +901,9 @@ describe('advanced: raw audio saving', () => {
 
   it('advanced section collapses when hide advanced is clicked', async () => {
     await renderSettings()
-    fireEvent.click(screen.getByRole('button', { name: /show advanced/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Show advanced' }))
     await waitFor(() => screen.getByRole('checkbox', { name: /save raw audio recordings/i }))
-    fireEvent.click(screen.getByRole('button', { name: /hide advanced/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Hide advanced' }))
     expect(
       screen.queryByRole('checkbox', { name: /save raw audio recordings/i }),
     ).not.toBeInTheDocument()
@@ -928,7 +928,7 @@ describe('advanced: developer debug mode', () => {
 
   it('developer debug toggle appears after clicking Show advanced', async () => {
     await renderSettings()
-    fireEvent.click(screen.getByRole('button', { name: /show advanced/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Show advanced' }))
     await waitFor(() =>
       expect(
         screen.getByRole('checkbox', { name: /developer debug mode/i }),
@@ -938,14 +938,14 @@ describe('advanced: developer debug mode', () => {
 
   it('developer debug mode is off by default', async () => {
     await renderSettings()
-    fireEvent.click(screen.getByRole('button', { name: /show advanced/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Show advanced' }))
     await waitFor(() => screen.getByRole('checkbox', { name: /developer debug mode/i }))
     expect(screen.getByRole('checkbox', { name: /developer debug mode/i })).not.toBeChecked()
   })
 
   it('shows a warning when developer debug mode is enabled', async () => {
     await renderSettings()
-    fireEvent.click(screen.getByRole('button', { name: /show advanced/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Show advanced' }))
     await waitFor(() => screen.getByRole('checkbox', { name: /developer debug mode/i }))
     fireEvent.click(screen.getByRole('checkbox', { name: /developer debug mode/i }))
     await waitFor(() =>
@@ -955,7 +955,7 @@ describe('advanced: developer debug mode', () => {
 
   it('writes devMode to localStorage when toggled on', async () => {
     await renderSettings()
-    fireEvent.click(screen.getByRole('button', { name: /show advanced/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Show advanced' }))
     await waitFor(() => screen.getByRole('checkbox', { name: /developer debug mode/i }))
     fireEvent.click(screen.getByRole('checkbox', { name: /developer debug mode/i }))
     expect(localStorage.getItem('convsim.devMode')).toBe('true')
@@ -964,7 +964,7 @@ describe('advanced: developer debug mode', () => {
   it('initialises as checked when convsim.devMode is set in localStorage', async () => {
     localStorage.setItem('convsim.devMode', 'true')
     await renderSettings()
-    fireEvent.click(screen.getByRole('button', { name: /show advanced/i }))
+    fireEvent.click(screen.getByRole('button', { name: 'Show advanced' }))
     await waitFor(() => screen.getByRole('checkbox', { name: /developer debug mode/i }))
     expect(screen.getByRole('checkbox', { name: /developer debug mode/i })).toBeChecked()
   })
@@ -1100,7 +1100,7 @@ describe('demo edition', () => {
     expect(screen.queryByRole('heading', { name: /pack management/i })).not.toBeInTheDocument()
     expect(screen.queryByTestId('relationship-memory-section')).not.toBeInTheDocument()
     expect(screen.queryByTestId('settings-system-health')).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /show advanced/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Show advanced' })).not.toBeInTheDocument()
   })
 
   it('does not call the full-app-only endpoints', async () => {

@@ -489,7 +489,7 @@ export default function RuntimeSettingsPanel() {
       {settingsUnavailable && (
         <div
           role="status"
-          aria-label="runtime advanced settings unavailable"
+          aria-label="advanced engine settings unavailable"
           style={{
             padding: '0.6rem 0.75rem',
             borderRadius: '6px',
@@ -500,7 +500,7 @@ export default function RuntimeSettingsPanel() {
             marginBottom: '1rem',
           }}
         >
-          Advanced runtime settings are not available in this version of ConversationSimulator.
+          Advanced engine settings are not available in this version of ConversationSimulator.
           Update to the latest version to change context length, GPU layers, CPU threads and
           sampling. The provider and model settings above still work.{' '}
           <a
@@ -515,12 +515,17 @@ export default function RuntimeSettingsPanel() {
         </div>
       )}
 
-      {/* Advanced toggle */}
+      {/* Advanced toggle. Named after the section above it ("AI engine") rather
+          than after the runtime: "runtime" is one of the four words the
+          issue #501 playtest named as unexplained jargon, and this label is
+          visible on Settings without expanding anything. The notes inside the
+          disclosure stay in engine terms — that is the "deliberately peek into
+          the settings" the issue asks for. */}
       {!settingsUnavailable && (
         <button
           onClick={() => setShowAdvanced((v) => !v)}
           aria-expanded={showAdvanced}
-          aria-label={showAdvanced ? 'hide runtime advanced settings' : 'show runtime advanced settings'}
+          aria-label={showAdvanced ? 'hide advanced engine settings' : 'show advanced engine settings'}
           style={{
             background: 'none',
             border: 'none',
@@ -531,7 +536,7 @@ export default function RuntimeSettingsPanel() {
             marginBottom: '0.75rem',
           }}
         >
-          {showAdvanced ? '▾ Hide runtime advanced settings' : '▸ Show runtime advanced settings'}
+          {showAdvanced ? '▾ Hide advanced engine settings' : '▸ Show advanced engine settings'}
         </button>
       )}
 

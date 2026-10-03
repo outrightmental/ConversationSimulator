@@ -131,7 +131,7 @@ describe('RuntimeSettingsPanel — loading', () => {
     it('explains that an update is needed and links to the instructions', async () => {
       await renderPanel()
       const notice = await screen.findByRole('status', {
-        name: /runtime advanced settings unavailable/i,
+        name: /advanced engine settings unavailable/i,
       })
       expect(notice).toHaveTextContent(/not available in this version of ConversationSimulator/i)
       expect(notice).toHaveTextContent(/update to the latest version/i)
@@ -146,9 +146,9 @@ describe('RuntimeSettingsPanel — loading', () => {
 
     it('hides the advanced settings toggle, which the missing endpoint backs', async () => {
       await renderPanel()
-      await screen.findByRole('status', { name: /runtime advanced settings unavailable/i })
+      await screen.findByRole('status', { name: /advanced engine settings unavailable/i })
       expect(
-        screen.queryByRole('button', { name: /show runtime advanced settings/i }),
+        screen.queryByRole('button', { name: /show advanced engine settings/i }),
       ).not.toBeInTheDocument()
     })
   })
@@ -180,7 +180,7 @@ describe('RuntimeSettingsPanel — loading', () => {
     await renderPanel()
     await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
     expect(
-      screen.queryByRole('status', { name: /runtime advanced settings unavailable/i }),
+      screen.queryByRole('status', { name: /advanced engine settings unavailable/i }),
     ).not.toBeInTheDocument()
   })
 })
@@ -361,13 +361,13 @@ describe('RuntimeSettingsPanel — advanced settings (hidden by default)', () =>
   it('shows a "Show advanced runtime settings" button', async () => {
     await renderPanel()
     expect(
-      screen.getByRole('button', { name: /show runtime advanced settings/i }),
+      screen.getByRole('button', { name: /show advanced engine settings/i }),
     ).toBeInTheDocument()
   })
 
   it('reveals advanced inputs after clicking show advanced', async () => {
     await renderPanel()
-    fireEvent.click(screen.getByRole('button', { name: /show runtime advanced settings/i }))
+    fireEvent.click(screen.getByRole('button', { name: /show advanced engine settings/i }))
     await waitFor(() =>
       expect(screen.getByRole('spinbutton', { name: /context length/i })).toBeInTheDocument(),
     )
@@ -375,9 +375,9 @@ describe('RuntimeSettingsPanel — advanced settings (hidden by default)', () =>
 
   it('collapses advanced section when hide advanced is clicked', async () => {
     await renderPanel()
-    fireEvent.click(screen.getByRole('button', { name: /show runtime advanced settings/i }))
+    fireEvent.click(screen.getByRole('button', { name: /show advanced engine settings/i }))
     await waitFor(() => screen.getByRole('spinbutton', { name: /context length/i }))
-    fireEvent.click(screen.getByRole('button', { name: /hide runtime advanced settings/i }))
+    fireEvent.click(screen.getByRole('button', { name: /hide advanced engine settings/i }))
     expect(
       screen.queryByRole('spinbutton', { name: /context length/i }),
     ).not.toBeInTheDocument()
@@ -389,7 +389,7 @@ describe('RuntimeSettingsPanel — advanced settings (hidden by default)', () =>
 describe('RuntimeSettingsPanel — advanced settings inputs', () => {
   async function openAdvanced() {
     await renderPanel()
-    fireEvent.click(screen.getByRole('button', { name: /show runtime advanced settings/i }))
+    fireEvent.click(screen.getByRole('button', { name: /show advanced engine settings/i }))
     await waitFor(() => screen.getByRole('spinbutton', { name: /context length/i }))
   }
 
@@ -438,7 +438,7 @@ describe('RuntimeSettingsPanel — advanced settings inputs', () => {
 describe('RuntimeSettingsPanel — client-side validation', () => {
   async function openAdvanced() {
     await renderPanel()
-    fireEvent.click(screen.getByRole('button', { name: /show runtime advanced settings/i }))
+    fireEvent.click(screen.getByRole('button', { name: /show advanced engine settings/i }))
     await waitFor(() => screen.getByRole('spinbutton', { name: /context length/i }))
   }
 
@@ -542,7 +542,7 @@ describe('RuntimeSettingsPanel — client-side validation', () => {
 describe('RuntimeSettingsPanel — restart required warning', () => {
   async function openAdvanced() {
     await renderPanel()
-    fireEvent.click(screen.getByRole('button', { name: /show runtime advanced settings/i }))
+    fireEvent.click(screen.getByRole('button', { name: /show advanced engine settings/i }))
     await waitFor(() => screen.getByRole('spinbutton', { name: /context length/i }))
   }
 
@@ -584,7 +584,7 @@ describe('RuntimeSettingsPanel — restart required warning', () => {
 describe('RuntimeSettingsPanel — apply advanced and reset', () => {
   async function openAdvanced() {
     await renderPanel()
-    fireEvent.click(screen.getByRole('button', { name: /show runtime advanced settings/i }))
+    fireEvent.click(screen.getByRole('button', { name: /show advanced engine settings/i }))
     await waitFor(() => screen.getByRole('spinbutton', { name: /context length/i }))
   }
 

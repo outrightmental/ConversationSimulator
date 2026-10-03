@@ -47,9 +47,13 @@ export default function PerformanceWarningBanner({ warnings }: PerformanceWarnin
             <strong>{w.title}:</strong> {w.detail}
           </span>
           {!isDemo && (
+          // "Runtime" is one of the four words the issue #501 playtest named as
+          // unexplained jargon, and this button renders on the conversation
+          // screen — right above the slow-reply notice that now offers "Make
+          // replies faster →". Plain wording, and the same destination.
           <button
             onClick={() => navigate('/settings')}
-            aria-label="Open Runtime Settings"
+            aria-label="Open settings"
             style={{
               padding: '0.25rem 0.75rem',
               borderRadius: 4,
@@ -61,7 +65,7 @@ export default function PerformanceWarningBanner({ warnings }: PerformanceWarnin
               flexShrink: 0,
             }}
           >
-            Runtime Settings
+            Open settings
           </button>
           )}
         </div>
