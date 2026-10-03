@@ -610,10 +610,44 @@ class TestEvaluateTurns:
         assert failures == []
         assert any("fallback check did not run" in w for w in warnings)
 
+    def test_parse_flags_covering_only_some_turns_warn_about_the_rest(self) -> None:
+        # _debug_flags_by_turn drops any /debug entry it cannot key by turn
+        # number, so the payload can cover some turns and not others. An absent
+        # used_fallback is falsy, which means the uncovered turns are credited
+        # as real replies with no evidence at all — here they are the only
+        # reason the run is not failed for a conversation of fallbacks. The
+        # report has to say which turns the check skipped.
+        turns = [
+            {"label": "player_turn_1", "turn_number": 1,
+             "model_generated": True, "npc_excerpt": "Go on."},
+            _turn(label="player_turn_2", turn_number=2, used_fallback=True),
+            _turn(label="player_turn_3", turn_number=3, used_fallback=True),
+        ]
+        failures, warnings = smoke.evaluate_turns(turns)
+        assert failures == []
+        warning = next(w for w in warnings if "fallback check did not run" in w)
+        assert "1 of 3" in warning
+        assert "player_turn_1" in warning
+
+    def test_an_unlabelled_turn_without_flags_is_named_by_its_number(self) -> None:
+        turns = [
+            {"turn_number": 1, "model_generated": True, "npc_excerpt": "Go on."},
+            _turn(turn_number=2),
+        ]
+        _, warnings = smoke.evaluate_turns(turns)
+        assert any("turn 1" in w for w in warnings)
+
     def test_present_parse_flags_do_not_warn(self) -> None:
         failures, warnings = smoke.evaluate_turns([_turn()])
         assert failures == []
         assert warnings == []
+
+    def test_fully_covered_parse_flags_do_not_warn_about_partial_coverage(self) -> None:
+        failures, warnings = smoke.evaluate_turns(
+            [_turn(), _turn(label="player_turn_2", turn_number=2)]
+        )
+        assert failures == []
+        assert not any("missing for" in w for w in warnings)
 
     def test_opening_only_run_fails(self) -> None:
         turns = [{"label": "npc_opening", "turn_number": 0, "model_generated": False,
@@ -2826,6 +2860,38 @@ class TestRunSmokeOrchestration:
         results = json.loads(report.read_text(encoding="utf-8"))
         assert results["verdict"] == "pass"
         assert any("fallback check did not run" in w for w in results["warnings"])
+
+    def test_a_debug_payload_that_keys_only_some_turns_says_which_it_skipped(
+        self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        # A partial payload is the same hole as a missing one, on the turns it
+        # missed — and here it is load-bearing: turn 1 having no flag is the
+        # only reason "every generated turn fell back" does not fire, so the
+        # run stays green on a conversation that may have had no real reply in
+        # it. The warning has to name the turn the check skipped rather than
+        # leave the reader with "2 of 3 fell back" and no hint about the third.
+        models_dir, model_id, digest = staged_model
+        monkeypatch.setattr(smoke, "_request_json", _fake_core(
+            _debrief(),
+            debug_turns=[
+                {"turn_number": 2, "used_fallback": True},
+                {"turn_number": 3, "used_fallback": True},
+                {"used_fallback": False},  # turn 1: unkeyable, so dropped
+            ],
+        ))
+        report = tmp_path / "report.json"
+
+        exit_code = smoke.run_smoke(
+            model_id, 20.0, report, model_sha256=digest, models_dir=models_dir
+        )
+
+        assert exit_code == 0
+        results = json.loads(report.read_text(encoding="utf-8"))
+        warning = next(
+            w for w in results["warnings"] if "fallback check did not run" in w
+        )
+        assert "1 of 3" in warning
+        assert "player_turn_1" in warning
 
 
 # ---------------------------------------------------------------------------

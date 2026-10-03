@@ -1152,9 +1152,12 @@ def evaluate_turns(turns: List[Dict[str, Any]]) -> tuple[List[str], List[str]]:
     fell back to the canned safe utterance then no real NPC turns were produced
     and the smoke proved nothing, so that is a failure.
 
-    Turns carrying no ``used_fallback`` flag at all — the debug endpoint is
+    Turns carrying no ``used_fallback`` flag — the debug endpoint is
     best-effort — warn that the check did not run, so an absent proof is not
-    mistaken for a passed one.
+    mistaken for a passed one.  Counted per turn rather than all-or-nothing: a
+    payload that keys only some of the turns leaves the same hole on the ones it
+    missed, and an absent flag is falsy, so those turns would otherwise be
+    credited as real replies by the checks below without any evidence.
 
     ``replayed_opening`` gets the identical policy for the other way a turn can
     pass every flag without being a reply: reciting the authored opening back at
@@ -1182,15 +1185,36 @@ def evaluate_turns(turns: List[Dict[str, Any]]) -> tuple[List[str], List[str]]:
         failures.append("No model-generated NPC turns were recorded")
         return (failures, warnings)
 
-    if not any("used_fallback" in t for t in generated):
-        # The flags come from the debug endpoint, which is best-effort. Without
-        # them a canned fallback is indistinguishable from real model output —
-        # it is a non-empty NPC utterance too — so the check below silently
-        # passes. Say so, rather than let the report imply a proof we do not have.
+    # The flags come from the debug endpoint, which is best-effort. Without
+    # them a canned fallback is indistinguishable from real model output — it is
+    # a non-empty NPC utterance too — so the checks below silently pass. Say so,
+    # rather than let the report imply a proof we do not have.
+    #
+    # Counted per turn, not all-or-nothing: _debug_flags_by_turn drops any entry
+    # it cannot key by turn number, so a changed /debug contract can cover some
+    # turns and not others. On the turns it missed the hole is exactly the same,
+    # and worse than harmless — an absent used_fallback is falsy, so those turns
+    # count towards "at least one generated turn was a real reply" in the checks
+    # below and can keep a conversation of fallbacks from failing at all. The
+    # rubric path already refuses to round an unreadable turn down to zero (see
+    # _total_rubric_observations); this is the same refusal.
+    unflagged = [t for t in generated if "used_fallback" not in t]
+    if len(unflagged) == len(generated):
         warnings.append(
             "Per-turn parse flags were unavailable, so the fallback check did not "
             "run: this run cannot prove the NPC turns were model output rather "
             "than the canned safe utterance"
+        )
+    elif unflagged:
+        missing = ", ".join(
+            str(t.get("label") or f"turn {t.get('turn_number')}") for t in unflagged
+        )
+        warnings.append(
+            f"Per-turn parse flags were missing for {len(unflagged)} of "
+            f"{len(generated)} model-generated NPC turns ({missing}), so the "
+            "fallback check did not run for those: they count as real replies "
+            "below on no evidence at all. The /debug payload keyed only some of "
+            "the turns, which is itself worth a look at the turn response contract"
         )
 
     fallbacks = [t for t in generated if t.get("used_fallback")]
