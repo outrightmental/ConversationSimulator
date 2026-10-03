@@ -146,10 +146,13 @@ CORE_PORT = 7399
 # GitHub killing the job with an unattributable "The operation was canceled",
 # so this has to clear the job's timeout-minutes *minus the steps that run
 # before the script does*: checkout, pip install, cache restore and (on a cache
-# miss) the 2.5 GB download plus the cache save that follows it, together up to
-# ~9 min of the 30 min job.  20 min therefore leaves the script's own deadline
-# the first one to trip.
-# See docs/real-model-smoke.md.
+# miss) the download plus the cache save that follows it.  Those measure ~1 min
+# in total on the nightlies run so far — not the several minutes a 2.5 GB
+# transfer sounds like — so 20 min inside a 30 min job leaves ~9 min of real
+# margin for the network-bound part of them, and leaves this deadline the first
+# one to trip.  Against the ~11 min the run itself is projected to take, 20 min
+# is also roughly 2× headroom.
+# See docs/real-model-smoke.md for the measured breakdown.
 DEFAULT_WALL_CLOCK_BUDGET_S = 1200.0  # 20 min
 
 # Scripted player turns — deliberately the same script as the fake-runtime
@@ -958,13 +961,23 @@ def _replays_opening(npc_text: str, opening_text: str) -> bool:
     """True when an NPC reply opens by reciting the authored opening verbatim.
 
     The scenario's opening line sits in the transcript the turn prompt renders,
-    and the starter model answers the first player turn by copying it back:
-    every nightly run of the previous single-turn harness logged an NPC reply
-    whose leading characters matched ``opening_npc_says`` exactly.  That is not
-    a reply, but nothing downstream notices — the utterance is non-empty and it
-    is not ``SAFE_FALLBACK_UTTERANCE``, so ``used_fallback`` stays false and the
+    and the starter model can answer a player turn by copying it back: all ten
+    nightly runs of the previous single-turn harness still in GitHub's log
+    retention logged an NPC reply whose leading characters matched
+    ``opening_npc_says`` exactly.  That is not a reply, but nothing downstream
+    notices — the utterance is non-empty and it is not
+    ``SAFE_FALLBACK_UTTERANCE``, so ``used_fallback`` stays false and the
     per-turn parse flags report a healthy turn.  Proving the turns are real
     therefore needs this check as well as those flags.
+
+    Those ten runs are evidence that the failure mode exists, not that it is the
+    norm: the player turn they submitted was "Reply with exactly one sentence:
+    Hello, I am ready." — an instruction to the model, not something an
+    interview candidate says — and this harness replaces it with the
+    in-character ``SCRIPTED_PLAYER_TURNS``, which the real starter model
+    answered properly in local verification.  So the expected rate here is zero
+    and the warning is worth reading when it fires, rather than a known
+    condition to scroll past.
 
     A *leading prefix* match, not equality and not the whole opening: a recital
     that then carries on into fresh prose is the same regurgitation, and a

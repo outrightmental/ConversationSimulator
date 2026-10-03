@@ -35,27 +35,41 @@
 # timeout-minutes: 30 is the hard ceiling; the script's own
 # --wall-clock-budget-s 1200 (20 min) trips first so the failure is attributed
 # to a phase instead of surfacing as an unattributable job cancellation.  The
-# 10 min gap is not slack: every step before the smoke (checkout, pip install,
-# cache restore and, on a cache miss, a 2.5 GB download plus the cache save)
-# runs against the same job clock and is invisible to the script's own
-# deadline — up to ~9 min of it on a cold night.
+# 10 min gap is deliberate margin, not an accounting of known work: the steps
+# before the smoke (checkout, pip install, cache restore and, on a cache miss,
+# the download plus the cache save) run against the same job clock and are
+# invisible to the script's own deadline, but they measure ~1 min in total.
+# The margin is sized for the network-bound part of that, which a slow
+# Hugging Face or Actions-cache night can stretch by minutes.
 #
-#   checkout + setup-python                  ~1 min
-#   pip install (cached wheels)              ~2 min
-#   model download (cache miss only)         ~2 min   — ~0 on a cache hit
-#   SHA-256 verification (2.5 GB, ×2 cold)   ~1 min   — ~0.5 min on a cache hit
-#   cache save (cache miss only)             ~1 min   — ~0 on a cache hit
-#   llama-server model load                  ~0.5 min
-#   3 scripted turns + authored opening      ~7 min   — projected, see below
+#   set up job + checkout + setup-python     ~10 s
+#   pip install ×3 (cached wheels)           ~16 s cold, ~13 s warm
+#   model cache restore (2.3 GiB)            ~25 s on a hit, <1 s on a miss
+#   download + SHA-256 verify (cache miss)   ~9 s
+#   cache save (cache miss only)             ~10 s
+#   SHA-256 re-verify before load            <10 s    — bounded, see below
+#   model load + core start + session        ~8 s
+#   3 scripted turns                         ~6 min   — projected, see below
 #   debrief generation                       ~4 min   — projected, see below
 #   ------------------------------------------------
-#   total                                   ~15 min warm cache, ~19 min cold
+#   total                                   ~11 min, warm cache or cold
 #
-# The download, verification, cache and model-load figures are measured; the
-# inference figures are projected from the one latency this job has actually
-# measured (~116 s per behavioral-interview turn, see below) and should be
-# replaced with real per-phase durations from the first green nightly's report
-# artifact.
+# The non-inference figures are measured, from this job's own logs for the ten
+# nightlies to 2026-10-03.  Two of them are counter-intuitive and worth knowing
+# before tuning anything: a cache MISS (~9 s to fetch and hash the GGUF) is
+# cheaper than a cache HIT (~25 s to restore the same bytes), so the cache
+# saves the network and not the clock; and everything before the conversation
+# is ~1 min of a 30 min job, so the budget is inference and nothing else.
+# The re-verify row is the one with no direct measurement — the previous
+# single-turn harness did not re-verify — and is bounded by the cold row above,
+# where downloading 2.3 GiB *and* hashing it together took 9 s.
+#
+# The inference figures are projected from the one latency this job has
+# actually measured — a single behavioral-interview turn, ten nightlies:
+# 66/93/98/103/104/111/112/114/115/115 s — rounded up to ~120 s per turn
+# because turns 2 and 3 render a longer transcript than turn 1, with the
+# debrief allowed twice a turn.  Replace both with real per-phase durations
+# from the first green nightly's report artifact.
 #
 # If the smoke step creeps past ~15 min — or the job past ~25 min — reduce
 # SCRIPTED_PLAYER_TURNS rather than raising either ceiling: a nightly that
@@ -68,9 +82,10 @@
 #   CI budget = documented budget × CI_HARDWARE_FACTOR (currently 20)
 #
 # The factor is calibrated empirically: a full behavioral-interview turn on
-# this runner measures ~116 s (two consecutive runs at 117.0 s and 115.3 s —
-# large grammar-constrained prompt, 4B-Q4 model, CPU-only), i.e. ~11.6× the
-# 10 s documented budget.  20× gives a 10 s × 20 = 200 s CI budget and, with
+# this runner has measured 66–115 s across the ten nightlies to 2026-10-03
+# (median ~108 s — large grammar-constrained prompt, 4B-Q4 model, CPU-only),
+# i.e. ~11.6× the 10 s documented budget at the slow end, which is the end the
+# factor is set from.  20× gives a 10 s × 20 = 200 s CI budget and, with
 # the script's 1.20 regression tolerance, a 240 s ceiling — roughly 2× headroom
 # over the observed latency so normal runner-to-runner variance does not flap
 # the nightly, while a genuine >2× regression still fails.  The headline
@@ -125,8 +140,9 @@ jobs:
       # extra index — and --extra-index-url does not prefer them: pip resolves
       # the newest version across both indexes, so a release the wheel index has
       # not caught up with yet is installed by compiling llama.cpp on the
-      # runner.  That build is the ~2 min row in the runtime budget turning into
-      # 15+, which the 30 min job timeout now has no room for: the job would die
+      # runner.  That build turns the ~16 s install row in the runtime budget
+      # into 15+ min, which the 30 min job timeout has no room for next to ~11
+      # min of inference: the job would die
       # with the unattributable cancellation this whole design exists to avoid,
       # on a night when nothing about the product changed.  Refusing the sdist
       # makes pip fall back to the newest version that does have a wheel, and if

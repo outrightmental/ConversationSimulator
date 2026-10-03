@@ -1017,10 +1017,15 @@ class TestDocumentedBudgetAgreement:
 # ---------------------------------------------------------------------------
 
 
-# Steps that burn the job's clock before the harness starts and so are invisible
-# to its own deadline: checkout, three pip installs, the cache restore and, on a
-# cache miss, the 2.5 GB download plus the cache save that follows it.  ~9 min
-# cold; see the breakdown in docs/real-model-smoke.md.
+# Allowance for the steps that burn the job's clock before the harness starts and
+# so are invisible to its own deadline: checkout, three pip installs, the cache
+# restore and, on a cache miss, the download plus the cache save that follows it.
+#
+# Deliberately far above the measurement.  Those steps total ~1 min on the
+# nightlies run so far (see the measured breakdown in docs/real-model-smoke.md),
+# but they are the network-bound part of the job, so this asserts the two
+# ceilings stay compatible with a night on which they run several times slower.
+# Lowering it to the measured ~1 min would make the assertion vacuous.
 PRE_SMOKE_JOB_MINUTES = 9
 
 _WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "model-smoke-nightly.yml"
@@ -1166,11 +1171,12 @@ class TestWheelInstallInvariants:
     PyPI ships llama-cpp-python as an sdist only — the CPU wheels live on the
     extra index — and ``--extra-index-url`` does not *prefer* them: pip resolves
     the newest version across both indexes, so on any night the wheel index lags
-    PyPI, pip compiles llama.cpp on the runner.  That is the ~2 min install row
-    of the runtime budget turning into 15+, which the 30 min job timeout has no
-    room for: the job dies with exactly the unattributable "operation was
-    canceled" that the harness's phase-attributed deadline exists to replace, on
-    a night when nothing about the product changed.
+    PyPI, pip compiles llama.cpp on the runner.  That turns the ~16 s install
+    row of the runtime budget into 15+ min, which the 30 min job timeout has no
+    room for next to ~11 min of inference: the job dies with exactly the
+    unattributable "operation was canceled" that the harness's phase-attributed
+    deadline exists to replace, on a night when nothing about the product
+    changed.
 
     Like the checksum promises above, this lives in the YAML and nowhere else,
     and it reads as a redundant flag next to the extra index that is "obviously"
