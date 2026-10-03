@@ -430,7 +430,10 @@ async function main() {
     // resolves. Waiting for the submit button is what makes the toggles
     // findable — querying earlier silently matched nothing and produced a
     // session with meters off.
-    const startButton = page.getByRole('button', { name: 'Start scenario' })
+    // The label is the Conversation Brief's launch button (issue #486); this
+    // wait is outside `step`, so a stale name aborts the whole playthrough
+    // rather than losing one capture.
+    const startButton = page.getByRole('button', { name: 'Start conversation' })
     await startButton.waitFor({ timeout: 60_000 })
 
     // The meters are opt-in per session and off by default; the conversation

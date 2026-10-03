@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
+import axe from 'axe-core';
 import { ScenarioSetupPage } from './ScenarioSetup';
 import type { ScenarioInfo, HealthResponse, SessionCreateResponse } from '@convsim/shared';
 import type { ApiResult } from '../api/errors';
@@ -290,7 +291,7 @@ describe('ScenarioSetupPage', () => {
         name: /name to use in this session/i,
       });
       fireEvent.change(nameInput, { target: { value: '' } });
-      const submitBtn = screen.getByRole('button', { name: /start scenario/i });
+      const submitBtn = screen.getByRole('button', { name: /start conversation/i });
       expect(submitBtn).toBeDisabled();
     });
   });
@@ -401,7 +402,7 @@ describe('ScenarioSetupPage', () => {
       await waitFor(() =>
         expect(screen.getByText(/seed must be a whole number between/i)).toBeInTheDocument(),
       );
-      expect(screen.getByRole('button', { name: /start scenario/i })).toBeDisabled();
+      expect(screen.getByRole('button', { name: /start conversation/i })).toBeDisabled();
     });
 
     it('shows an error and disables submit when seed is a decimal', async () => {
@@ -414,7 +415,7 @@ describe('ScenarioSetupPage', () => {
       await waitFor(() =>
         expect(screen.getByText(/seed must be a whole number between/i)).toBeInTheDocument(),
       );
-      expect(screen.getByRole('button', { name: /start scenario/i })).toBeDisabled();
+      expect(screen.getByRole('button', { name: /start conversation/i })).toBeDisabled();
     });
   });
 
@@ -448,7 +449,7 @@ describe('ScenarioSetupPage', () => {
       const { onSessionCreated } = renderSetup();
       await waitFor(() => screen.getByText('Behavioral Interview'));
 
-      const submitBtn = screen.getByRole('button', { name: /start scenario/i });
+      const submitBtn = screen.getByRole('button', { name: /start conversation/i });
       fireEvent.click(submitBtn);
 
       await waitFor(() => {
@@ -488,7 +489,7 @@ describe('ScenarioSetupPage', () => {
       });
       fireEvent.change(seedInput, { target: { value: '9999' } });
 
-      const submitBtn = screen.getByRole('button', { name: /start scenario/i });
+      const submitBtn = screen.getByRole('button', { name: /start conversation/i });
       fireEvent.click(submitBtn);
 
       await waitFor(() => {
@@ -504,7 +505,7 @@ describe('ScenarioSetupPage', () => {
       renderSetup();
       await waitFor(() => screen.getByText('Behavioral Interview'));
 
-      const submitBtn = screen.getByRole('button', { name: /start scenario/i });
+      const submitBtn = screen.getByRole('button', { name: /start conversation/i });
       fireEvent.click(submitBtn);
 
       await waitFor(() =>
@@ -518,7 +519,7 @@ describe('ScenarioSetupPage', () => {
       renderSetup();
       await waitFor(() => screen.getByText('Behavioral Interview'));
 
-      const submitBtn = screen.getByRole('button', { name: /start scenario/i });
+      const submitBtn = screen.getByRole('button', { name: /start conversation/i });
       fireEvent.click(submitBtn);
 
       await waitFor(() => {
@@ -539,7 +540,7 @@ describe('ScenarioSetupPage', () => {
       renderSetup();
       await waitFor(() => screen.getByText('Behavioral Interview'));
 
-      const submitBtn = screen.getByRole('button', { name: /start scenario/i });
+      const submitBtn = screen.getByRole('button', { name: /start conversation/i });
       fireEvent.click(submitBtn);
 
       await waitFor(() =>
@@ -671,7 +672,7 @@ describe('ScenarioSetupPage', () => {
       mockApi.health.mockResolvedValue({ ok: true as const, data: healthNoLlm });
       renderSetup();
       await waitFor(() => screen.getByText('Behavioral Interview'));
-      expect(screen.getByRole('button', { name: /start scenario/i })).toBeDisabled();
+      expect(screen.getByRole('button', { name: /start conversation/i })).toBeDisabled();
     });
 
     it('shows a model manager hint in the missing-runtime block', async () => {
@@ -711,6 +712,246 @@ describe('ScenarioSetupPage', () => {
       await waitFor(() => screen.getByText('Behavioral Interview'));
       fireEvent.click(screen.getByRole('button', { name: /back to library/i }));
       expect(onBack).toHaveBeenCalled();
+    });
+  });
+  // ── Conversation Brief design (issue #486) ─────────────────────────────────
+  // The page is a briefing, not a form: it has to say what the conversation is,
+  // make the difficulty choice readable, and keep the start control findable.
+
+  describe('brief hero', () => {
+    beforeEach(() => {
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: mockScenario });
+      mockApi.health.mockResolvedValue({ ok: true as const, data: healthReady });
+    });
+
+    it('states the facts of the engagement', async () => {
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      const facts = screen.getByTestId('brief-facts');
+      expect(facts).toHaveTextContent('You play');
+      expect(facts).toHaveTextContent('Candidate');
+      expect(facts).toHaveTextContent('15–20 minutes');
+      expect(facts).toHaveTextContent('18 turns');
+      expect(facts).toHaveTextContent('PG');
+    });
+
+    it('names the screen so the player knows what it is', async () => {
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      expect(screen.getByText(/conversation brief/i)).toBeInTheDocument();
+    });
+  });
+
+  describe('difficulty trait meters', () => {
+    beforeEach(() => {
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: mockScenario });
+      mockApi.health.mockResolvedValue({ ok: true as const, data: healthReady });
+    });
+
+    it('draws the character traits of each level, fill matching the number', async () => {
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      const warm = document.querySelector('[data-level="warm"]') as HTMLElement;
+      expect(within(warm).getByText('Patience')).toBeInTheDocument();
+      expect(within(warm).getByText('80')).toBeInTheDocument();
+      expect(within(warm).getByText('Disclosure')).toBeInTheDocument();
+      expect(within(warm).getByText('70')).toBeInTheDocument();
+      const patienceFill = warm.querySelector('.brief-meter-fill') as HTMLElement;
+      expect(patienceFill.style.width).toBe('80%');
+    });
+
+    // The bar is what tells a sighted player that 80 is high. A screen reader
+    // gets no bar, so the meter has to carry the scale — the same way the state
+    // meters on the conversation and debrief screens do.
+    it('announces each trait against its scale, not as a bare number', async () => {
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      const warm = document.querySelector('[data-level="warm"]') as HTMLElement;
+      expect(
+        within(warm).getByRole('meter', { name: 'Patience: 80 out of 100' }),
+      ).toHaveAttribute('aria-valuenow', '80');
+      expect(
+        within(warm).getByRole('meter', { name: 'Time pressure: 20 out of 100' }),
+      ).toBeInTheDocument();
+      // …and the visible label and number are the meter's own rendering, so
+      // they are not read a second time.
+      expect(within(warm).getByText('Patience')).toHaveAttribute('aria-hidden', 'true');
+      expect(within(warm).getByText('80')).toHaveAttribute('aria-hidden', 'true');
+    });
+
+    it('omits meters for a level that declares no traits', async () => {
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: {
+        ...mockScenario,
+        difficulty: {
+          default: 'standard' as const,
+          options: { standard: { label: 'Standard' } },
+        },
+      } });
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      const standard = document.querySelector('[data-level="standard"]') as HTMLElement;
+      expect(standard.querySelector('.brief-meter')).toBeNull();
+    });
+
+    it('selects the level when the meters are clicked, not just the label', async () => {
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      const hard = document.querySelector('[data-level="hard"]') as HTMLElement;
+      fireEvent.click(hard.querySelector('.brief-meters') as HTMLElement);
+      expect(screen.getByRole('radio', { name: /hard/i })).toBeChecked();
+      expect(hard).toHaveClass('is-selected');
+    });
+
+    it('marks the chosen level and moves the mark when it changes', async () => {
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      expect(document.querySelector('[data-level="standard"]')).toHaveClass('is-selected');
+      fireEvent.click(screen.getByRole('radio', { name: /hard/i }));
+      expect(document.querySelector('[data-level="hard"]')).toHaveClass('is-selected');
+      expect(document.querySelector('[data-level="standard"]')).not.toHaveClass('is-selected');
+    });
+  });
+
+  describe('launch bar', () => {
+    beforeEach(() => {
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: mockScenario });
+      mockApi.health.mockResolvedValue({ ok: true as const, data: healthReady });
+    });
+
+    it('carries the start control', async () => {
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      expect(
+        within(screen.getByTestId('brief-launch')).getByRole('button', { name: /start conversation/i }),
+      ).toBeInTheDocument();
+    });
+
+    // The bar is pinned, so Start can be pressed from any scroll position. An
+    // error rendered at the end of the page would be off-screen and the press
+    // would look like it did nothing — the failure has to be in the bar.
+    it('reports a failed start in the bar, beside the button that failed', async () => {
+      mockApi.createSession.mockResolvedValue({ ok: false as const, error: { kind: 'http-error' as const, message: 'Core service is not reachable', status: 500 } });
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+
+      fireEvent.click(screen.getByRole('button', { name: /start conversation/i }));
+
+      await waitFor(() =>
+        expect(within(screen.getByTestId('brief-launch')).getByRole('alert')).toHaveTextContent(
+          /Request failed/i,
+        ),
+      );
+      // …and the bar must not still read "ready" directly above that report.
+      expect(screen.getByTestId('brief-launch')).toHaveTextContent(/could not start/i);
+      expect(screen.getByTestId('brief-launch')).not.toHaveTextContent(/ready to start/i);
+    });
+
+    it('reports readiness when nothing blocks the start', async () => {
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      expect(screen.getByTestId('brief-launch')).toHaveTextContent(/ready to start/i);
+    });
+
+    it('summarises what is about to start, and follows the form', async () => {
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      expect(screen.getByTestId('brief-launch-summary')).toHaveTextContent(
+        'Standard · English · Push-to-talk · Voice on',
+      );
+
+      fireEvent.click(screen.getByRole('radio', { name: /warm-up/i }));
+      fireEvent.change(screen.getByRole('combobox', { name: /conversation language/i }), {
+        target: { value: 'es' },
+      });
+      fireEvent.click(screen.getByRole('radio', { name: /text only/i }));
+      fireEvent.click(screen.getByRole('checkbox', { name: /npc voice/i }));
+
+      expect(screen.getByTestId('brief-launch-summary')).toHaveTextContent(
+        'Warm-up · Spanish · Text · Voice off',
+      );
+    });
+
+    it('counts what still needs attention instead of starting', async () => {
+      mockApi.health.mockResolvedValue({ ok: true as const, data: {
+        ...healthReady,
+        runtime: { ...healthReady.runtime, llm_ready: false, llm_model_name: null },
+      } });
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      expect(screen.getByTestId('brief-launch')).toHaveTextContent('1 item needs attention');
+
+      fireEvent.change(screen.getByRole('textbox', { name: /name to use in this session/i }), {
+        target: { value: '' },
+      });
+      expect(screen.getByTestId('brief-launch')).toHaveTextContent('2 items need attention');
+      expect(screen.getByRole('button', { name: /start conversation/i })).toBeDisabled();
+    });
+  });
+
+  describe('what this practises', () => {
+    beforeEach(() => {
+      mockApi.health.mockResolvedValue({ ok: true as const, data: healthReady });
+    });
+
+    it('lists the dimensions the scenario is scored on', async () => {
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: {
+        ...mockScenario,
+        taught_dimensions: ['rapport'],
+        tested_dimensions: ['clarity', 'self_awareness'],
+      } });
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      const panel = screen.getByTestId('brief-practises');
+      expect(within(panel).getByText('clarity')).toBeInTheDocument();
+      expect(within(panel).getByText('self awareness')).toBeInTheDocument();
+      expect(within(panel).queryByText('rapport')).not.toBeInTheDocument();
+    });
+
+    it('falls back to the taught dimensions when nothing is scored', async () => {
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: {
+        ...mockScenario,
+        taught_dimensions: ['rapport'],
+        tested_dimensions: [],
+      } });
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      expect(within(screen.getByTestId('brief-practises')).getByText('rapport')).toBeInTheDocument();
+    });
+
+    it('is absent when the scenario declares neither', async () => {
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: mockScenario });
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      expect(screen.queryByTestId('brief-practises')).not.toBeInTheDocument();
+    });
+  });
+
+  // The brief carries a lot of new structure — a radiogroup of rows that select
+  // as a whole, decorative meters and step numbers hidden from the a11y tree,
+  // and a live region in the launch bar. Guard it the way the other screens are
+  // guarded in __tests__/accessibility.test.tsx.
+  describe('accessibility', () => {
+    it('has no axe violations once the brief has loaded', async () => {
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: {
+        ...mockScenario,
+        tested_dimensions: ['clarity'],
+      } });
+      mockApi.health.mockResolvedValue({ ok: true as const, data: healthReady });
+      const { container } = render(
+        <ScenarioSetupPage
+          scenarioId="behavioral_interview"
+          onSessionCreated={vi.fn()}
+          onBack={vi.fn()}
+          onInstallModel={vi.fn()}
+        />,
+      );
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      // Colour contrast is not computable in jsdom — it is checked in the
+      // browser pass, as in the shared accessibility suite.
+      const results = await axe.run(container, { rules: { 'color-contrast': { enabled: false } } });
+      expect(
+        results.violations.map((v) => `${v.id}: ${v.nodes[0]?.html ?? ''}`),
+      ).toEqual([]);
     });
   });
 });
