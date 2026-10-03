@@ -203,8 +203,8 @@ The following mitigations are applied:
 ### Reporting pack safety issues
 
 If you find a pack in the official registry that violates this policy or
-appears to exploit prompt injection, open a GitHub issue with the `safety`
-label. Include the pack ID, the specific field, and the concern.
+appears to exploit prompt injection, open a GitHub issue with the
+`area:safety` label. Include the pack ID, the specific field, and the concern.
 
 ---
 
