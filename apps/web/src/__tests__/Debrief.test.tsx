@@ -128,6 +128,7 @@ function renderDebrief(routeState?: unknown) {
         <Route path="/library" element={<div>Library page</div>} />
         <Route path="/setup/:scenarioId" element={<div>Setup page</div>} />
         <Route path="/settings" element={<div>Settings page</div>} />
+        <Route path="/voice-setup" element={<div>Voice setup page</div>} />
         <Route path="/conversation/:sessionId" element={<ConversationRouteStub />} />
       </Routes>
     </MemoryRouter>,
@@ -518,7 +519,7 @@ describe('Debrief screen', () => {
       expect(mockWriteVoiceInviteState).toHaveBeenCalledWith('dismissed')
     })
 
-    it('"Set up voice" hides the card, persists setup state, and navigates to settings', async () => {
+    it('"Set up voice" hides the card, persists setup state, and navigates to voice setup', async () => {
       mockReadVoiceInviteState.mockReturnValue('pending')
       mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
       renderDebrief()
@@ -527,8 +528,10 @@ describe('Debrief screen', () => {
       )
       fireEvent.click(screen.getByTestId('voice-invite-setup-btn'))
       expect(mockWriteVoiceInviteState).toHaveBeenCalledWith('setup')
+      // Issue #487: the invite lands on the flow that installs voice, not on
+      // the Settings page that only reported it missing.
       await waitFor(() =>
-        expect(screen.getByText('Settings page')).toBeInTheDocument(),
+        expect(screen.getByText('Voice setup page')).toBeInTheDocument(),
       )
     })
 

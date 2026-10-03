@@ -28,6 +28,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from convsim_core import __version__
+from convsim_core.edition import is_demo
 from convsim_core.runtime.sidecar import find_executable
 from convsim_core.services.model_manager_service import get_active_config
 
@@ -290,7 +291,9 @@ def _check_packs_seeded(conn) -> CheckResult:
     )
 
 
-async def _check_voice_ready(stt_worker, tts_worker, vad_worker) -> CheckResult:
+async def _check_voice_ready(
+    stt_worker, tts_worker, vad_worker, *, demo: bool = False
+) -> CheckResult:
     """Check 7: Optional voice feature readiness — informational, never blocks onboarding."""
     severity, autofix = CHECK_TRIAGE["voice-ready"]
 
@@ -337,7 +340,22 @@ async def _check_voice_ready(stt_worker, tts_worker, vad_worker) -> CheckResult:
         ),
         severity=severity,
         autofix=autofix,
-        fix_action=FixAction(kind="navigate", href="/settings", label="Voice Settings"),
+        # The guided flow (issue #487) is the only route that actually installs
+        # the missing pieces, so that is where "fix it" goes.
+        #
+        # The demo offers no remedy at all, because it has none. Voice is out of
+        # scope for the demo (issue #495): /voice-setup collapses to Home, the
+        # API refuses it, and Settings renders no voice section either — the
+        # whole block is behind `!isDemo` in apps/web/src/screens/Settings.tsx.
+        # A "Voice Settings" button on Support would therefore land the player
+        # on a page with nothing about voice on it, which is the dead end this
+        # issue was filed about. Saying that voice is unavailable and offering
+        # nothing is the honest answer here.
+        fix_action=(
+            None
+            if demo
+            else FixAction(kind="navigate", href="/voice-setup", label="Set up voice")
+        ),
     )
 
 
@@ -383,6 +401,7 @@ async def run_preflight(request: Request) -> PreflightResponse:
             request.app.state.stt_worker,
             request.app.state.tts_worker,
             request.app.state.vad_worker,
+            demo=is_demo(config),
         ),
     )
 

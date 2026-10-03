@@ -46,7 +46,7 @@ _CHUNK_SIZE = 65_536  # 64 KB
 _PROGRESS_INTERVAL = 1_048_576  # report progress every 1 MB
 
 
-def _parse_content_range_total(value: str | None) -> int | None:
+def parse_content_range_total(value: str | None) -> int | None:
     """Extract the total size from a ``Content-Range: bytes <s>-<e>/<total>`` header.
 
     Returns None when the header is absent, malformed, or the total is ``*``.
@@ -131,7 +131,7 @@ async def execute_download(
                 # a plain 200 means the Range was ignored, so start over cleanly.
                 resuming = resume_from > 0 and response.status_code == 206
                 if resuming:
-                    size_bytes: int | None = _parse_content_range_total(
+                    size_bytes: int | None = parse_content_range_total(
                         response.headers.get("content-range")
                     )
                     if size_bytes is None:

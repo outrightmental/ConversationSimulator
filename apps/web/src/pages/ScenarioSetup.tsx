@@ -130,9 +130,23 @@ interface Props {
    * this page router-agnostic (it is rendered and tested without one).
    */
   onInstallModel?: () => void;
+  /**
+   * Opens the guided voice setup flow (issue #487). Wired by the screen wrapper
+   * and omitted in the demo edition, which has no voice at all — when absent
+   * the voice rows state the gap without offering a route, exactly as
+   * `onInstallModel` does. This is the moment the player actually wants to
+   * speak, so "Push-to-talk voice — STT not loaded" must not be the end of it.
+   */
+  onSetUpVoice?: () => void;
 }
 
-export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInstallModel }: Props) {
+export function ScenarioSetupPage({
+  scenarioId,
+  onSessionCreated,
+  onBack,
+  onInstallModel,
+  onSetUpVoice,
+}: Props) {
   const [scenario, setScenario] = useState<ScenarioInfo | null>(null);
   const [runtime, setRuntime] = useState<RuntimeReadiness>({
     llm_ready: false,
@@ -536,6 +550,29 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
                     {validationErrorMap['input_mode']}
                   </span>
                 )}
+                {/* Two greyed-out options and a "STT not loaded" badge are the
+                    same dead end issue #487 was filed about, met at the worst
+                    moment: the player is one click from a conversation they
+                    wanted to speak. Offer the flow that installs it. */}
+                {!runtime.stt_ready && (
+                  <p className="brief-note" data-testid="brief-stt-missing-note">
+                    Speaking your turns needs speech-to-text, which is not installed.
+                    {onSetUpVoice ? (
+                      <>
+                        {' '}
+                        <button
+                          type="button"
+                          className="brief-alert-link"
+                          onClick={onSetUpVoice}
+                          data-testid="brief-set-up-voice-stt"
+                        >
+                          Set up voice
+                        </button>{' '}
+                        walks through it, then come back here.
+                      </>
+                    ) : null}
+                  </p>
+                )}
               </section>
 
               <section className="brief-card" aria-labelledby="audio-heading">
@@ -569,7 +606,22 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
                   )}
                   {!runtime.tts_ready && (
                     <p className="brief-note" id="tts-status">
-                      Text-only is always available. Install a TTS model to enable voice output.
+                      Text-only is always available.{' '}
+                      {onSetUpVoice ? (
+                        <>
+                          <button
+                            type="button"
+                            className="brief-alert-link"
+                            onClick={onSetUpVoice}
+                            data-testid="brief-set-up-voice-tts"
+                          >
+                            Set up voice
+                          </button>{' '}
+                          to add the NPC voice.
+                        </>
+                      ) : (
+                        'Install a TTS model to enable voice output.'
+                      )}
                     </p>
                   )}
                   {runtime.tts_ready && !scenario.voice_supported && (

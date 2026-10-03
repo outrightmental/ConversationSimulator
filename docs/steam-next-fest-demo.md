@@ -206,8 +206,8 @@ own promise.
 
 ## Explicitly out of scope for the demo
 
-- Voice input/output (an extra ~350 MB download and a second setup path — the
-  demo has one download by definition).
+- Voice input/output (an extra ~143 MB download and a second setup path — the
+  demo has one download by definition; see [`docs/voice-setup.md`](voice-setup.md)).
 - Premium DLC, Steam Workshop, Steam Cloud, achievements, rich presence.
 - Any demo-only scenario content. Every card is a shipped conversation.
 - A separate demo repository or a fork of the release pipeline: the demo is a

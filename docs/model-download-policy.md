@@ -323,6 +323,50 @@ any user-installed or PATH binary.
 
 ---
 
+## 9. Voice asset download policy
+
+Speech-to-text and voice-activity weights follow the same rules as LLM weights,
+with the differences noted below. The catalogue is
+`convsim_core/services/voice_registry.py` (`VOICE_ASSETS`) rather than
+`registry.yaml`, because each entry is bound to the engine adapter that reads
+it — the destination path is resolved from that worker's own configuration, so
+a model can never land somewhere the engine does not look.
+
+### What carries over unchanged
+
+- **No silent downloads.** Nothing transfers until the player presses the
+  download button on `/voice-setup`, which sits below the full disclosure of
+  every asset in the batch.
+- **All six disclosure fields** (name, source URL, licence + link, size,
+  SHA-256, destination path) are shown together before the button.
+- **SHA-256 is mandatory and cannot be skipped.** A mismatch deletes the file
+  and fails the job.
+- **`NetworkMode.EXPLICIT_DOWNLOAD`** gates every request.
+- **Partial files** are written as `<dest>.part` and removed on cancel, error
+  or checksum failure; only a killed process leaves one to resume from.
+
+### What differs
+
+| | LLM weights | Voice assets |
+|---|---|---|
+| Catalogue | `model-registry/registry.yaml` | `voice_registry.py` |
+| Host | Hugging Face | Hugging Face (`ggerganov/whisper.cpp`) and GitHub (`snakers4/silero-vad`) |
+| Destination | `models_dir` | The STT/VAD worker's configured model path |
+| Job table | `setup_install_jobs` | `voice_install_jobs` |
+| Resume after a kill | Job is re-driven at startup | Job is retired; the plan shows what landed and one button fetches the rest |
+
+### Engine binaries are not downloaded
+
+Unlike `llama-server`, neither `whisper-cli` nor the Kokoro TTS server
+publishes a checksummed release asset for every platform, so the app does not
+fetch them. `/voice-setup` shows the install command for the player's platform
+and re-checks on demand. The one exception is a Kokoro binary that is already
+present but not running — Steam depots bundle it — which the app starts itself.
+
+Full description: [`docs/voice-setup.md`](voice-setup.md).
+
+---
+
 ## Links
 
 - [`model-registry/registry.yaml`](../model-registry/registry.yaml) — model metadata
@@ -333,3 +377,4 @@ any user-installed or PATH binary.
 - [`docs/local-models.md`](local-models.md) — player-facing model installation guide
 - [`docs/STEAM_ROADMAP.md`](STEAM_ROADMAP.md) — model download transparency specification
 - [`docs/sidecar-bundling.md`](sidecar-bundling.md) — sidecar bundling and executable resolution
+- [`docs/voice-setup.md`](voice-setup.md) — the guided STT/TTS install flow

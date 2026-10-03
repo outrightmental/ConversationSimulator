@@ -14,6 +14,7 @@ import Debrief from './screens/Debrief'
 import CreatorWorkbench from './screens/CreatorWorkbench'
 import Settings from './screens/Settings'
 import ModelManager from './screens/ModelManager'
+import VoiceSetup from './screens/VoiceSetup'
 import Support from './screens/Support'
 import FirstRunWizard from './screens/FirstRunWizard'
 import CoreStartupGuard from './screens/CoreStartup'
@@ -179,6 +180,9 @@ function AppRoutes() {
           <Route path="/workbench" element={isDemo ? home : <CreatorWorkbench />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/model-manager" element={<ModelManager />} />
+          {/* Voice is not part of the demo (issue #495), so its setup flow
+              collapses to Home there rather than 404ing on a stale link. */}
+          <Route path="/voice-setup" element={isDemo ? home : <VoiceSetup />} />
           <Route path="/support" element={<Support />} />
           <Route path="/logbook" element={isDemo ? home : <Logbook />} />
         </Route>

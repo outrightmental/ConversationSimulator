@@ -349,6 +349,31 @@ def test_demo_refuses_workbench(demo_client):
     assert resp.json()["error"]["code"] == edition.EDITION_RESTRICTED
 
 
+def test_demo_refuses_voice_setup(demo_client):
+    """The demo ships no voice, so the guided flow (issue #487) is refused here.
+
+    The UI collapses /voice-setup to Home in the demo, but the gate that matters
+    is this one: without it a hand-crafted POST could start a ~150 MB download
+    the demo never offers.
+    """
+    client, _ = demo_client
+    for method, path in (
+        ("get", "/api/voice/setup/plan"),
+        ("post", "/api/voice/setup/install"),
+        ("get", "/api/voice/setup/install/1"),
+        ("delete", "/api/voice/setup/install/1"),
+        ("post", "/api/voice/setup/engine/kokoro-server/start"),
+    ):
+        resp = getattr(client, method)(path)
+        assert resp.status_code == 403, (method, path)
+        assert resp.json()["error"]["code"] == edition.EDITION_RESTRICTED, (method, path)
+
+
+def test_full_edition_voice_setup_reachable(full_client):
+    client, _ = full_client
+    assert client.get("/api/voice/setup/plan").status_code == 200
+
+
 def test_demo_privacy_controls_still_available(demo_client):
     """Privacy controls (gate F-06) are never trimmed, whatever the edition."""
     client, _ = demo_client

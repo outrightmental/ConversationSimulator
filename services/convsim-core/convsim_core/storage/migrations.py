@@ -395,6 +395,23 @@ CREATE TABLE setup_install_jobs (
 );
 """
 
+# Voice onboarding job tracking (issue #487): one row per guided voice install,
+# so the client can poll per-asset download progress and a job orphaned by an
+# app kill can be retired instead of being polled forever. Separate from
+# setup_install_jobs because the LLM pipeline's restart-resume logic re-drives
+# the newest row of that table, and a voice job must never be mistaken for one.
+_VOICE_INSTALL_JOBS_SQL = """
+CREATE TABLE voice_install_jobs (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    status          TEXT    NOT NULL DEFAULT 'pending',
+    asset_ids       TEXT    NOT NULL DEFAULT '[]',
+    stages_json     TEXT    NOT NULL DEFAULT '[]',
+    error_message   TEXT,
+    created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+    updated_at      TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+"""
+
 MIGRATIONS: list[tuple[str, str]] = [
     ("0001_initial_schema", _INITIAL_SCHEMA_SQL),
     ("0002_model_registry_v2", _MODEL_REGISTRY_V2_SQL),
@@ -414,6 +431,7 @@ MIGRATIONS: list[tuple[str, str]] = [
     ("0016_relationship_memory", _RELATIONSHIP_MEMORY_SQL),
     ("0017_onboarding_outcome", _ONBOARDING_OUTCOME_SQL),
     ("0018_setup_install_jobs", _SETUP_INSTALL_JOBS_SQL),
+    ("0019_voice_install_jobs", _VOICE_INSTALL_JOBS_SQL),
 ]
 
 

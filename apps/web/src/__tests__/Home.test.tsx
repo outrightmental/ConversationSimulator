@@ -229,15 +229,36 @@ describe('Home — offline readiness', () => {
 })
 
 describe('Home — status card links', () => {
-  it('has at least five links to /settings covering LLM, STT, TTS, install, and import', async () => {
+  it('has at least three links to /settings covering LLM, install, and import', async () => {
     stubFetches(makeHealth(), makePacks(0))
     renderHome()
     await screen.findByText(liText('Local runtime: Ready'))
     const settingsLinks = screen
       .getAllByRole('link')
       .filter((el) => el.getAttribute('href') === '/settings')
-    // Install model, Import pack, LLM badge, STT badge, TTS badge = 5
-    expect(settingsLinks.length).toBeGreaterThanOrEqual(5)
+    // Install model, Import pack, LLM badge = 3
+    expect(settingsLinks.length).toBeGreaterThanOrEqual(3)
+  })
+
+  // Issue #487: a "Not installed" badge must lead to the flow that installs the
+  // thing, not to a Settings page that only restates the problem.
+  it('points the STT and TTS badges at voice setup while they are not installed', async () => {
+    stubFetches(makeHealth({ stt_ready: false, tts_ready: false }), makePacks(0))
+    renderHome()
+    await screen.findByText(liText('Local runtime: Ready'))
+    const voiceLinks = screen
+      .getAllByRole('link')
+      .filter((el) => el.getAttribute('href') === '/voice-setup')
+    expect(voiceLinks).toHaveLength(2)
+  })
+
+  it('points the STT and TTS badges back at Settings once voice is installed', async () => {
+    stubFetches(makeHealth({ stt_ready: true, tts_ready: true }), makePacks(0))
+    renderHome()
+    await screen.findByText(liText('Local runtime: Ready'))
+    expect(
+      screen.getAllByRole('link').filter((el) => el.getAttribute('href') === '/voice-setup'),
+    ).toHaveLength(0)
   })
 
   it('Local runtime badge links to the recovery section when offline', async () => {

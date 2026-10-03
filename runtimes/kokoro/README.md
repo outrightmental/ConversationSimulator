@@ -19,13 +19,19 @@ cloning, voice import, or real-person voice path — see
 
 ## Setup
 
+**In the app:** open **Settings → Voice readiness → Set up voice** (or go to
+`/voice-setup`). When a `kokoro-server` binary is already present — Steam
+depot builds bundle one — the screen starts it for you with a single button.
+Otherwise it shows the container command below and re-checks on demand. See
+[`docs/voice-setup.md`](../../docs/voice-setup.md).
+
 **1. Run a local Kokoro server** exposing the OpenAI-compatible speech API
 (for example [Kokoro-FastAPI](https://github.com/remsky/Kokoro-FastAPI)) and
 bind it to port `7358`:
 
 ```bash
 # Example: containerized Kokoro-FastAPI on the port ConversationSimulator expects
-docker run --rm -p 7358:8880 ghcr.io/remsky/kokoro-fastapi-cpu:latest
+docker run --rm -p 127.0.0.1:7358:8880 ghcr.io/remsky/kokoro-fastapi-cpu:latest
 ```
 
 The worker expects the server to answer:

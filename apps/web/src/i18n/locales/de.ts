@@ -513,7 +513,7 @@ export const de: LocaleMessages = {
     voiceInvite: {
       heading: 'Sagen Sie es beim nächsten Mal laut',
       description:
-        'Laut üben bringt den größten Fortschritt. Fügen Sie Sprache hinzu — Spracherkennung, Antworten werden vorgelesen, alles verarbeitet auf diesem Gerät (~350 MB Download).',
+        'Laut üben bringt den größten Fortschritt. Fügen Sie Sprache hinzu — Spracherkennung, Antworten werden vorgelesen, alles verarbeitet auf diesem Gerät (~143 MB Download).',
       setupButton: 'Sprache einrichten',
       laterButton: 'Vielleicht später',
     },
