@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom'
 import type { SessionCreateRequest } from '@convsim/shared'
 import type { ImportPackResponse } from '../api/client'
 import Settings from '../screens/Settings'
+import { readTurnSamples, recordTurnSample } from '../lib/turnEstimate'
 
 vi.mock('../hooks/useSteamStatus', () => ({
   useSteamStatus: vi.fn().mockReturnValue(null),
@@ -545,6 +546,36 @@ describe('clear local data', () => {
     await waitFor(() => screen.getByRole('button', { name: /confirm.*delete everything/i }))
     fireEvent.click(screen.getByRole('button', { name: /confirm.*delete everything/i }))
     await waitFor(() => expect(mockApi.clearLocalData).toHaveBeenCalledOnce())
+  })
+
+  it('forgets the turn timings this browser has measured (issue #488)', async () => {
+    // The button promises to delete cached data from the device; how slow this
+    // machine's turns are is cached on the device, in localStorage rather than
+    // in the data folder the API clears.
+    recordTurnSample('some-model-7b', 45_000)
+    expect(readTurnSamples('some-model-7b')).toHaveLength(1)
+
+    mockApi.clearLocalData.mockResolvedValue({ ok: true, data: { deleted_sessions: 1 } })
+    await renderSettings()
+    fireEvent.click(screen.getByRole('button', { name: /clear all local data/i }))
+    await waitFor(() => screen.getByRole('button', { name: /confirm.*delete everything/i }))
+    fireEvent.click(screen.getByRole('button', { name: /confirm.*delete everything/i }))
+    await waitFor(() => screen.getByText(/1 session deleted/i))
+
+    expect(readTurnSamples('some-model-7b')).toEqual([])
+  })
+
+  it('keeps the turn timings when clearing fails', async () => {
+    // Nothing was deleted, so nothing should have been forgotten either.
+    recordTurnSample('some-model-7b', 45_000)
+    mockApi.clearLocalData.mockResolvedValue({ ok: false, error: { kind: 'http-error', message: 'disk full' } })
+    await renderSettings()
+    fireEvent.click(screen.getByRole('button', { name: /clear all local data/i }))
+    await waitFor(() => screen.getByRole('button', { name: /confirm.*delete everything/i }))
+    fireEvent.click(screen.getByRole('button', { name: /confirm.*delete everything/i }))
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+
+    expect(readTurnSamples('some-model-7b')).toEqual([45_000])
   })
 
   it('shows success message with deleted count after clear', async () => {
