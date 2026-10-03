@@ -312,15 +312,17 @@ export default function Debrief() {
   }
 
   function handleReplayVariation() {
+    const scenarioId = debrief?.scenario_id ?? exportedScenarioId
+    if (!scenarioId) {
+      // No scenario to replay, so this lands the player back in the library
+      // instead — not the replay ACH_REPLAY_VARIATION is defined against.
+      navigate(isDemo ? '/' : '/library')
+      return
+    }
     // Re-running the same scenario from the setup screen is how a player
     // branches a conversation: same situation, different difficulty, language,
     // or input mode (ACH_REPLAY_VARIATION).
     void unlock(SteamAchievement.REPLAY_VARIATION)
-    const scenarioId = debrief?.scenario_id ?? exportedScenarioId
-    if (!scenarioId) {
-      navigate(isDemo ? '/' : '/library')
-      return
-    }
     navigate(`/setup/${scenarioId}`)
   }
 
