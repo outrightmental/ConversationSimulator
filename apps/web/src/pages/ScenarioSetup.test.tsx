@@ -439,7 +439,7 @@ describe('ScenarioSetupPage', () => {
           input_mode: 'push-to-talk',
           tts_enabled: true,
           tts_voice_id: 'af_heart',
-          show_state_meters: false,
+          show_state_meters: true,
           save_transcript: true,
           seed: null,
         },
@@ -461,7 +461,8 @@ describe('ScenarioSetupPage', () => {
           input_mode: 'push-to-talk',
           tts_enabled: true,
           tts_voice_id: 'af_heart',
-          show_state_meters: false,
+          // On by default wherever the scenario permits them (issue #501 §3).
+          show_state_meters: true,
           save_transcript: true,
           seed: null,
         });
@@ -632,6 +633,18 @@ describe('ScenarioSetupPage', () => {
       expect(
         screen.queryByRole('checkbox', { name: /state meters/i }),
       ).not.toBeInTheDocument();
+    });
+
+    it('starts the meters toggle on when the scenario permits them', async () => {
+      // Issue #501 §3. The First Words tutorial opens with "Above this
+      // conversation you'll see two meters" and spends three of its six turns
+      // on them; with the toggle defaulting off, a player on default settings
+      // played that whole tour against a screen with no meters on it.
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      expect(
+        screen.getByRole('checkbox', { name: /show the conversation meters/i }),
+      ).toBeChecked();
     });
 
     it('hides the meters toggle and says so when the scenario does not permit them', async () => {

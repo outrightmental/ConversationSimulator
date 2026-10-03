@@ -207,7 +207,17 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
             ? prev.voice_id
             : defaultVoiceId,
           input_mode: rt.stt_ready ? 'push-to-talk' : 'text-only',
-          show_state_meters: scenarioData.state_meters_permitted ? prev.show_state_meters : false,
+          // On by default wherever the scenario permits them (issue #501 §3).
+          // Every other field here is derived from the scenario; this one sat
+          // at a hardcoded `false`, so a player on default settings started the
+          // First Words tutorial — whose opening line is "Above this
+          // conversation you'll see two meters" and three of whose six turns
+          // are about them — with no meters on screen at all. "Generally
+          // confused about meters and where they appear" is the report; a
+          // tutorial narrating a panel that was switched off is the sharpest
+          // version of it. A scenario that withholds them for realism still
+          // forces false, and the toggle is one click away either way.
+          show_state_meters: Boolean(scenarioData.state_meters_permitted),
         }
       })
     })();

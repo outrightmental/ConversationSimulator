@@ -89,11 +89,15 @@ Start the selected scenario.
 
 ### P-M6 — Conversation meters (optional)
 
-On the Conversation Brief, before starting, enable **Show the conversation
+On the Conversation Brief, before starting, check **Show the conversation
 meters**. It is only offered for scenarios that permit them; a scenario that
 does not says so instead ("The conversation meters are hidden in this scenario,
 to keep it realistic"), so pick one that does.
 
+- [ ] The toggle is already **on** without touching it — scenarios that permit
+      meters show them by default, because the scenarios that talk about them
+      (the First Words tutorial opens with "Above this conversation you'll see
+      two meters") have to be telling the truth
 - [ ] A panel headed **Conversation meters** is visible *above* the transcript —
       the toggle and the panel use the same name
 - [ ] One bar per visible variable, each labelled in everyday words rather than
