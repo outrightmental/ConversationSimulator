@@ -353,6 +353,47 @@ describe('Flyting play screen', () => {
     expect(mockApi.flyting.submitVolley).toHaveBeenCalledTimes(1)
   })
 
+  it('runs no shot clock in a bout', async () => {
+    // The shot clock is a batting-practice mechanic: a bout is bounded by its
+    // rounds and decided on momentum. Force-submitting a dud there would hand
+    // the opponent the exchange for the crime of thinking about the reply.
+    mockApi.flyting.getRun.mockResolvedValue({
+      ok: true,
+      data: {
+        ...RUN_DETAIL,
+        run: { ...RUN_DETAIL.run, play_format: 'bout', batting_format: null, shot_clock_s: 0 },
+        volleys_remaining: null,
+      },
+    })
+    renderPlay()
+    await waitFor(() => screen.getByTestId('volley-input'))
+    expect(screen.queryByTestId('shot-clock')).not.toBeInTheDocument()
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    expect(mockApi.flyting.submitVolley).not.toHaveBeenCalled()
+  })
+
+  it('reports no shot-clock reading for a bout volley', async () => {
+    mockApi.flyting.getRun.mockResolvedValue({
+      ok: true,
+      data: {
+        ...RUN_DETAIL,
+        run: { ...RUN_DETAIL.run, play_format: 'bout', batting_format: null },
+        volleys_remaining: null,
+      },
+    })
+    renderPlay()
+    await waitFor(() => screen.getByTestId('volley-input'))
+    fireEvent.change(screen.getByTestId('volley-input'), { target: { value: VOLLEY_TEXT } })
+    fireEvent.click(screen.getByTestId('submit-volley'))
+    await waitFor(() => expect(mockApi.flyting.submitVolley).toHaveBeenCalled())
+    expect(mockApi.flyting.submitVolley).toHaveBeenCalledWith(
+      SESSION_ID,
+      VOLLEY_TEXT,
+      undefined,
+      expect.any(Number),
+    )
+  })
+
   it('retiring ends the run and goes to the debrief', async () => {
     renderPlay()
     await waitFor(() => screen.getByText('Retire'))

@@ -8,7 +8,15 @@
 import { useState } from 'react'
 import type { VolleyScorecard as Scorecard, JudgeDimension } from '@convsim/shared'
 import { JUDGE_DIMENSIONS } from '@convsim/shared'
-import { bandColor, bandLabel, flagLabel, foulLabel, ScoreBar, Tag } from './primitives'
+import {
+  bandColor,
+  bandLabel,
+  flagLabel,
+  foulLabel,
+  gateReasonLabel,
+  ScoreBar,
+  Tag,
+} from './primitives'
 
 const DIMENSION_HINTS: Record<JudgeDimension, string> = {
   sting: 'Does it land on THIS target?',
@@ -270,7 +278,7 @@ export function VolleyScorecard({
 
       {card.gate.reason && (
         <p role="status" style={{ margin: 0, fontSize: '0.8rem', color: '#fca5a5' }}>
-          {card.gate.reason}
+          {gateReasonLabel(card.gate.reason)}
         </p>
       )}
 

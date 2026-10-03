@@ -134,8 +134,13 @@ export default function Flyting() {
   }, [sessionId])
 
   // ── The ticking clocks ─────────────────────────────────────────────────────
+  // The shot clock is a batting-practice mechanic — the drill is a reflex
+  // exercise, which is what the clock is for. A bout is bounded by its rounds
+  // and decided on momentum, so there is nothing for a clock to bound, and
+  // force-submitting a dud would hand the opponent the exchange for the crime
+  // of thinking about the reply.
   useEffect(() => {
-    if (phase !== 'ready') {
+    if (phase !== 'ready' || isBout) {
       setClockLeft(null)
       return
     }
@@ -150,7 +155,7 @@ export default function Flyting() {
     tick()
     const timer = window.setInterval(tick, 200)
     return () => window.clearInterval(timer)
-  }, [phase, shotClockS, isTimed])
+  }, [phase, shotClockS, isTimed, isBout])
 
   useEffect(() => {
     if (phase === 'ready') inputRef.current?.focus()
@@ -166,7 +171,9 @@ export default function Flyting() {
       const r = await api.flyting.submitVolley(
         sessionId,
         content,
-        elapsedSincePrompt,
+        // No shot clock in a bout, so no reading to report: sending one would
+        // ask the engine to rule on a clock this format does not run.
+        isBout ? undefined : elapsedSincePrompt,
         elapsedTotal,
       )
       if (!r.ok) {
@@ -207,7 +214,7 @@ export default function Flyting() {
         setPhase('ready')
       }
     },
-    [sessionId, isTimed],
+    [sessionId, isTimed, isBout],
   )
 
   // The shot clock expiring is itself a submission: in Endless it is a whiff,

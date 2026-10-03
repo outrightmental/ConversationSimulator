@@ -342,7 +342,12 @@ export default function FlytingSetup() {
             accent="#a855f7"
             testId="personal-best"
           />
-          <Stat label="Shot clock" value={`${scenario.shot_clock_s}s`} />
+          {/* The shot clock bounds a drill's volleys, not a bout's: a bout is
+              bounded by its rounds. Advertising one against a bout would
+              promise a rule the engine does not apply. */}
+          {playFormat === 'batting_practice' && (
+            <Stat label="Shot clock" value={`${scenario.shot_clock_s}s`} testId="setup-shot-clock" />
+          )}
           <Stat label="Volley cap" value={`${scenario.limits.max_volley_chars} chars`} />
         </div>
         <HighScoreTable entries={board} />

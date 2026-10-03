@@ -47,6 +47,42 @@ export const FLAG_LABELS: Record<VolleyFlag, string> = {
   whiff: 'Whiff',
 }
 
+/**
+ * Why a gate fired, in words. The engine's `reason` is a slug built for the
+ * volley log and the calibration suites — `slur_or_protected_class`,
+ * `injection:PI001`, `plagiarized:cliche:your mother was a hamster` — and none
+ * of that is a sentence to show a player mid-run. The qualified reasons carry
+ * their detail after a colon; only the anachronism's detail is the player's
+ * business (the word that broke the scene), so it is the only one quoted back.
+ */
+export const GATE_REASON_LABELS: Record<string, string> = {
+  slur_or_protected_class: 'That was an attack on who someone is, not on what they do.',
+  addressed_the_judge: 'That was addressed to the scorer, not to the target.',
+  meta_or_out_of_fiction: 'That was aimed past the character at the machine.',
+  profanity_forbidden_by_pack: 'This pack forbids profanity outright.',
+  under_three_words: 'Three words is the floor.',
+  gibberish: 'Those were not recognisable words.',
+  shot_clock_expired: 'The shot clock ran out.',
+}
+
+export function gateReasonLabel(reason: string): string {
+  const known = GATE_REASON_LABELS[reason]
+  if (known) return known
+  const colon = reason.indexOf(':')
+  const head = colon === -1 ? reason : reason.slice(0, colon)
+  const detail = colon === -1 ? '' : reason.slice(colon + 1)
+  if (head === 'anachronism') {
+    return `“${detail}”, in this room, in this year?`
+  }
+  if (head === 'injection') {
+    return 'That tried to give the engine instructions rather than insult anyone.'
+  }
+  if (head === 'plagiarized') {
+    return 'That line is famous enough that the room has already heard it.'
+  }
+  return reason.replace(/[_:]/g, ' ')
+}
+
 export function foulLabel(foul: string): string {
   return FOUL_LABELS[foul as VolleyFoul] ?? foul.replace(/_/g, ' ')
 }
