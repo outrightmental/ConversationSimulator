@@ -36,6 +36,46 @@ fn build_edition() -> Option<&'static str> {
     }
 }
 
+/// Registry id of the model a demo build installs, baked in from the
+/// CONVSIM_DEMO_MODEL_ID build-time variable (`build.rs` validates it). `None`
+/// means "whatever the registry's `role: starter` entry is", which is the
+/// engine's own default. Only read for a demo build: Steam launches a packaged
+/// app with none of our environment, so a run-time variable would never arrive.
+fn build_demo_model_id() -> Option<&'static str> {
+    option_env!("CONVSIM_DEMO_MODEL_ID")
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+}
+
+/// The edition environment a spawned `convsim-core` is handed: `CONVSIM_EDITION`
+/// when this build has one, plus `CONVSIM_DEMO_MODEL_ID` when a demo build was
+/// compiled with a pinned model.
+///
+/// Returned as pairs rather than set on the `Command` inline so a test can prove
+/// the pin actually reaches the child. It did not on this feature's first pass:
+/// `build.rs` baked the value in, `build_demo_model_id` read it back, and
+/// nothing passed it on — a demo built with `demo_model_id:
+/// qwen3-1.7b-instruct-q8_0` compiled clean, passed Validate, and installed the
+/// registry starter anyway.
+fn core_edition_env(
+    edition: Option<&'static str>,
+    demo_model_id: Option<&'static str>,
+) -> Vec<(&'static str, &'static str)> {
+    let mut env: Vec<(&'static str, &'static str)> = Vec::new();
+    if let Some(edition) = edition {
+        env.push(("CONVSIM_EDITION", edition));
+        // Only the demo reads the pin, and `build.rs` already refuses to bake it
+        // into a full build — but keep the pairing here so a model id without a
+        // demo edition can never reach the engine on its own.
+        if edition == "demo" {
+            if let Some(model_id) = demo_model_id {
+                env.push(("CONVSIM_DEMO_MODEL_ID", model_id));
+            }
+        }
+    }
+    env
+}
+
 /// The per-user data root every edition shares: `<local data>/<DATA_ROOT_IDENTIFIER>`.
 ///
 /// Handed to convsim-core as `CONVSIM_DATA_ROOT` and used for the log directory
@@ -1008,13 +1048,15 @@ fn spawn_core(
         cmd.env("CONVSIM_DATA_ROOT", root);
     }
 
-    // Product edition (issue #495). A demo build is compiled with
-    // CONVSIM_EDITION=demo in its environment (see build.rs); it hands the
-    // same value to convsim-core so the engine narrows itself to the demo's
-    // one model and five conversations. Unset = the full app, and nothing
-    // is passed so the engine's own default applies.
-    if let Some(edition) = build_edition() {
-        cmd.env("CONVSIM_EDITION", edition);
+    // Product edition, and the one model a demo installs (issue #495). A demo
+    // build is compiled with CONVSIM_EDITION=demo in its environment, and
+    // optionally CONVSIM_DEMO_MODEL_ID beside it (see build.rs); both are handed
+    // to convsim-core so the engine narrows itself to the demo's five
+    // conversations and downloads the pinned tier rather than the registry's
+    // starter. Unset = the full app, and nothing is passed so the engine's own
+    // defaults apply. See `core_edition_env` for the pairing and its tests.
+    for (key, value) in core_edition_env(build_edition(), build_demo_model_id()) {
+        cmd.env(key, value);
     }
 
     // The release version the player is running (issue #490). release.yml
@@ -2000,6 +2042,52 @@ mod tests {
         assert!(!text.contains("port conflict"));
         assert!(!text.contains("keeps stopping"));
         assert!(!text.contains("not found"));
+    }
+
+    // ── Demo model pin ───────────────────────────────────────────────────────
+
+    #[test]
+    fn a_demo_build_hands_its_pinned_model_to_the_engine() {
+        // The pin is only worth anything if it arrives. build.rs bakes
+        // CONVSIM_DEMO_MODEL_ID into the binary and the engine reads it from its
+        // own environment, so a demo that spawns convsim-core without it installs
+        // the registry's starter instead — silently, with every build-time check
+        // green and the store copy still quoting the pinned tier's size. That is
+        // exactly what happened on this feature's first pass.
+        let env = core_edition_env(Some("demo"), Some("qwen3-1.7b-instruct-q8_0"));
+        assert_eq!(
+            env,
+            vec![
+                ("CONVSIM_EDITION", "demo"),
+                ("CONVSIM_DEMO_MODEL_ID", "qwen3-1.7b-instruct-q8_0"),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_demo_without_a_pin_leaves_the_model_to_the_engine() {
+        // No CONVSIM_DEMO_MODEL_ID is how the demo ships today: the engine
+        // resolves the registry's `role: starter` entry itself. Passing the key
+        // with an empty value instead would be a pin at nothing, which the engine
+        // would log as a missing registry id.
+        assert_eq!(
+            core_edition_env(Some("demo"), None),
+            vec![("CONVSIM_EDITION", "demo")]
+        );
+    }
+
+    #[test]
+    fn only_a_demo_build_carries_a_model_pin() {
+        // build_edition() only ever answers Some("demo") or None, and build.rs
+        // refuses CONVSIM_DEMO_MODEL_ID on a full build — so a pin reaching the
+        // engine on anything but a demo would mean two guards had failed. Keep it
+        // impossible here too: the engine ignores the variable outside the demo
+        // edition, so a leak would be an invisible no-op rather than an error.
+        assert_eq!(
+            core_edition_env(Some("full"), Some("qwen3-1.7b-instruct-q8_0")),
+            vec![("CONVSIM_EDITION", "full")]
+        );
+        assert!(core_edition_env(None, Some("qwen3-1.7b-instruct-q8_0")).is_empty());
     }
 
     // ── Startup budget ───────────────────────────────────────────────────────

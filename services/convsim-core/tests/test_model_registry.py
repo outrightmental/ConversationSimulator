@@ -21,6 +21,16 @@ from convsim_core.storage.database import Database
 # tests/ → convsim-core/ → services/ → repo root → model-registry/registry.yaml
 _REGISTRY_PATH = Path(__file__).parent.parent.parent.parent / "model-registry" / "registry.yaml"
 
+# Tier display order the service sorts by: smallest/fastest first, the
+# user-supplied placeholder last.
+_TIER_ORDER = {
+    "lightweight": 0,
+    "starter": 1,
+    "standard": 2,
+    "high-quality": 3,
+    "user-supplied": 4,
+}
+
 
 @pytest.fixture(scope="module")
 def registry_schema() -> dict:
@@ -309,10 +319,38 @@ def test_actual_registry_has_all_required_tiers(registry_schema):
     """The registry must include at least one model per required tier."""
     data = load_registry_yaml(_REGISTRY_PATH)
     roles = {m["role"] for m in data["models"]}
+    assert "lightweight" in roles
     assert "starter" in roles
     assert "standard" in roles
     assert "high-quality" in roles
     assert "user-supplied" in roles
+
+
+def test_exactly_one_starter_tier():
+    """``role: starter`` must name exactly one model.
+
+    Both the first-run wizard (``pickRecommendedModel``) and the demo edition's
+    default model (``edition.resolve_demo_model_id``) resolve "the starter
+    tier". A second starter entry would make both picks depend on registry
+    order, so a new small tier gets its own role (``lightweight``) instead.
+    """
+    data = load_registry_yaml(_REGISTRY_PATH)
+    starters = [m["id"] for m in data["models"] if m["role"] == "starter"]
+    assert len(starters) == 1, f"expected one starter tier, got {starters}"
+
+
+def test_lightweight_tier_is_smaller_than_the_starter():
+    """The point of the lightweight tier is a shorter download and a lower floor.
+
+    An entry that is not actually smaller than the starter has no reason to
+    exist, and would mislead both the Model Manager's tier order and the demo's
+    "~N GB" store copy.
+    """
+    data = load_registry_yaml(_REGISTRY_PATH)
+    by_role = {m["role"]: m for m in data["models"]}
+    light, starter = by_role["lightweight"], by_role["starter"]
+    assert light["size_gb"] < starter["size_gb"]
+    assert light["hardware"]["min_vram_gb"] <= starter["hardware"]["min_vram_gb"]
 
 
 def test_actual_registry_no_pending_values():
@@ -428,8 +466,7 @@ def test_list_registry_models_returns_sorted_results(tmp_path):
         models = list_registry_models(db.connection())
         roles = [m["role"] for m in models]
         # starter(s) should appear before standard, which should appear before high-quality
-        tier_order = {"starter": 0, "standard": 1, "high-quality": 2, "user-supplied": 3}
-        sorted_roles = sorted(roles, key=lambda r: tier_order.get(r, 99))
+        sorted_roles = sorted(roles, key=lambda r: _TIER_ORDER.get(r, 99))
         assert roles == sorted_roles
     finally:
         db.close()
@@ -513,8 +550,7 @@ def test_get_models_after_registry_load_returns_sorted_entries(client):
     assert body["total"] == len(models)
     assert body["total"] > 0
     roles = [m["role"] for m in models]
-    tier_order = {"starter": 0, "standard": 1, "high-quality": 2, "user-supplied": 3}
-    assert roles == sorted(roles, key=lambda r: tier_order.get(r, 99))
+    assert roles == sorted(roles, key=lambda r: _TIER_ORDER.get(r, 99))
 
 
 def test_get_models_entry_shape(client):

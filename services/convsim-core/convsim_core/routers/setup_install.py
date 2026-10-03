@@ -610,8 +610,11 @@ async def start_setup_install(
             code=EDITION_RESTRICTED,
             message=(
                 f"Model '{body.registry_id}' is not available in the demo edition. "
+                # "the larger model tiers" rather than naming them: a demo
+                # pinned to the registry's `lightweight` tier would make a named
+                # list wrong by leaving out the starter.
                 "The demo installs one curated model; the full version adds the "
-                "standard and high-quality tiers, Ollama, and your own GGUF files."
+                "larger model tiers, Ollama, and your own GGUF files."
             ),
             status_code=403,
         )

@@ -260,6 +260,7 @@ Current registry-managed models (v1):
 
 | Model ID | Tier | Size | Licence |
 |----------|------|------|---------|
+| `qwen3-1.7b-instruct-q8_0` | Lightweight | 1.8 GB | Apache 2.0 |
 | `qwen3-4b-instruct-q4_k_m` | Starter | 2.5 GB | Apache 2.0 |
 | `qwen3-8b-instruct-q4_k_m` | Standard | 5.0 GB | Apache 2.0 |
 | `qwen3-14b-instruct-q4_k_m` | High-quality | 9.0 GB | Apache 2.0 |

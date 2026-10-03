@@ -7,6 +7,43 @@
 schema_version: "0.1"
 
 models:
+  # ── Lightweight tier ─────────────────────────────────────────────────────────
+  # The smallest and fastest tier: the shortest first download and the lowest
+  # VRAM floor, so a 3 GB-VRAM or integrated-graphics machine has a model that
+  # fits in VRAM. Nothing refuses it the starter today — llama.cpp offloads the
+  # layers that fit and runs the rest on the CPU — but that is minute-long
+  # turns. A 1.7B model is less consistent than the 4B at
+  # the structured output an NPC turn and a scored debrief need, so this is an
+  # option, not the recommendation — `role: starter` is still what the first-run
+  # wizard installs. Qwen publishes this model as Q8_0 only (no Q4_K_M), which
+  # is the quantisation to want here anyway: near-lossless, so the trade is
+  # purely 1.7B-versus-4B and not compounded by aggressive quantisation.
+  - id: qwen3-1.7b-instruct-q8_0
+    name: "Qwen3 1.7B Instruct Q8_0"
+    family: qwen3
+    role: lightweight
+    format: gguf
+    license: Apache-2.0
+    license_url: "https://www.apache.org/licenses/LICENSE-2.0"
+    size_gb: 1.8
+    hardware:
+      # Weights (1.83 GB) plus the KV cache this entry's own 8192-token context
+      # needs (28 layers x 8 KV heads x 128 = 0.94 GB at f16) is ~2.8 GB, so the
+      # floor is 3, not the 2 the file size alone suggests. Every other tier is
+      # sized the same way: 4B is 2.5 + 1.21 -> 4, 8B is 5.0 + 1.21 -> 6.
+      min_vram_gb: 3
+      recommended_vram_gb: 4
+    download:
+      provider: huggingface
+      # Pinned to commit 90862c4 of Qwen/Qwen3-1.7B-GGUF
+      url: "https://huggingface.co/Qwen/Qwen3-1.7B-GGUF/resolve/90862c4b9d2787eaed51d12237eafdfe7c5f6077/Qwen3-1.7B-Q8_0.gguf"
+      sha256: "061b54daade076b5d3362dac252678d17da8c68f07560be70818cace6590cb1a"
+    runtime:
+      llama_cpp:
+        context_length: 8192
+        temperature_default: 0.75
+        top_p_default: 0.9
+
   # ── Starter tier ─────────────────────────────────────────────────────────────
   # Smallest recommended model; suitable for first-run demo on lower VRAM systems.
   - id: qwen3-4b-instruct-q4_k_m

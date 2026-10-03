@@ -163,11 +163,12 @@ def list_registry_models(conn: sqlite3.Connection) -> list[dict[str, Any]]:
         FROM model_registry
         ORDER BY
             CASE role
-                WHEN 'starter'      THEN 0
-                WHEN 'standard'     THEN 1
-                WHEN 'high-quality' THEN 2
-                WHEN 'user-supplied' THEN 3
-                ELSE 4
+                WHEN 'lightweight'  THEN 0
+                WHEN 'starter'      THEN 1
+                WHEN 'standard'     THEN 2
+                WHEN 'high-quality' THEN 3
+                WHEN 'user-supplied' THEN 4
+                ELSE 5
             END,
             id
         """

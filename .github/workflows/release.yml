@@ -25,6 +25,17 @@ on:
         options:
           - full
           - demo
+      demo_model_id:
+        description: >
+          Registry id of the one model a demo build installs (issue #495).
+          Leave empty for the registry's `role: starter` entry (Qwen3 4B
+          Instruct Q4_K_M). Set it to ship the demo on another tier — e.g.
+          qwen3-1.7b-instruct-q8_0, the smaller/faster `lightweight` tier —
+          after that candidate has cleared the demo gate in
+          docs/steam-next-fest-demo.md. Only valid with edition=demo.
+        required: false
+        default: ''
+        type: string
 
 # Write permission needed to create GitHub releases and upload assets.
 permissions:
@@ -72,6 +83,48 @@ jobs:
             exit 1
           fi
           echo "OK: building the demo from $TAG ($TAG_SHA)."
+
+      # A pinned demo model that is not in the registry would advertise a
+      # download the wizard can never complete: the engine logs an error and
+      # falls back to the starter, so the demo would quietly ship on a model
+      # nobody chose. Catch it here, before three platform builds run.
+      - name: Demo model id is a real registry entry
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.demo_model_id != '' }}
+        env:
+          EDITION: ${{ github.event.inputs.edition }}
+          DEMO_MODEL_ID: ${{ github.event.inputs.demo_model_id }}
+        run: |
+          set -euo pipefail
+          if [ "$EDITION" != "demo" ]; then
+            echo "::error::demo_model_id=$DEMO_MODEL_ID only applies to edition=demo (got '$EDITION')." \
+                 "Only the demo installs a single pinned model — see docs/steam-next-fest-demo.md."
+            exit 1
+          fi
+          # Matched against the registry source rather than a parsed document so
+          # this step needs nothing installed: every entry is a `  - id: <id>`
+          # line in model-registry/registry.yaml.
+          if ! grep -qxF "  - id: $DEMO_MODEL_ID" model-registry/registry.yaml; then
+            echo "::error::demo_model_id '$DEMO_MODEL_ID' is not in model-registry/registry.yaml." \
+                 "Known ids: $(grep -oE '^  - id: .+' model-registry/registry.yaml | sed 's/^  - id: //' | paste -sd, -)"
+            exit 1
+          fi
+          # `user-supplied-gguf` is a registry entry but not a downloadable one:
+          # it stands for a file the player brings, so it carries no URL and no
+          # checksum. Pinning the demo to it passes the membership check above
+          # and then fails every install with "No download URL configured for
+          # this model" — a first-run dead end with no way out, since the demo
+          # offers no other model.
+          ROLE="$(awk -v want="  - id: $DEMO_MODEL_ID" '
+            $0 == want { inside = 1; next }
+            inside && /^  - / { exit }
+            inside && /^    role:/ { print $2; exit }
+          ' model-registry/registry.yaml)"
+          if [ "$ROLE" = "user-supplied" ]; then
+            echo "::error::demo_model_id '$DEMO_MODEL_ID' is the user-supplied placeholder (role: user-supplied)," \
+                 "which has no download URL or checksum. Pick a downloadable tier — see model-registry/README.md."
+            exit 1
+          fi
+          echo "OK: demo model '$DEMO_MODEL_ID' is in the registry (role: $ROLE)."
 
   # ── Cross-platform desktop builds ─────────────────────────────────────────────
   build-desktop:
@@ -141,6 +194,12 @@ jobs:
       # (CONVSIM_EDITION, validated by build.rs and passed on to convsim-core at
       # launch), and the artifact name prefix that steam-deploy.yml selects on.
       CONVSIM_EDITION: ${{ github.event.inputs.edition || 'full' }}
+      # The one model a demo build installs (issue #495). Empty = the registry's
+      # `role: starter` entry, which is the engine's own default. build.rs
+      # validates the value and bakes it into the shell; lib.rs hands it to
+      # convsim-core at launch, because Steam starts a packaged app with none of
+      # our environment. Never set on a full build — build.rs refuses that.
+      CONVSIM_DEMO_MODEL_ID: ${{ github.event.inputs.demo_model_id || '' }}
     strategy:
       fail-fast: false
       matrix:

@@ -5,8 +5,22 @@ import { useIsDemo } from '../../edition'
 
 interface SpeedClass { label: string; color: string; detail: string }
 
-function modelSpeedClass(role: string | null): SpeedClass {
+function modelSpeedClass(role: string | null, isDemo: boolean): SpeedClass {
   switch (role) {
+    // The sub-starter tier. No measured TTFT range is quoted because it has not
+    // been through the latency smoke the other tiers' numbers come from, and the
+    // VRAM floor is not repeated here — the card already renders it from the
+    // registry entry. The coherence trade is stated for someone choosing between
+    // tiers, but not in the demo: the demo offers exactly one model (a build
+    // pinned with CONVSIM_DEMO_MODEL_ID is the only way this case is reached
+    // today), so there the caveat is a doubt the player has no way to act on.
+    case 'lightweight': return {
+      label: 'Fastest',
+      color: '#6ee7b7',
+      detail: isDemo
+        ? 'Smallest download; runs on modest hardware'
+        : 'Smallest download; NPC replies are less consistent',
+    }
     case 'starter': return { label: 'Fast', color: '#6ee7b7', detail: '~0.8–2.4 s TTFT on recommended tier' }
     case 'standard': return { label: 'Standard', color: '#93c5fd', detail: '~1.5–5 s TTFT on recommended tier' }
     case 'high-quality': return { label: 'Slower', color: '#fbbf24', detail: '~3–10 s TTFT; high-end GPU recommended' }
@@ -79,7 +93,7 @@ export function ChooseStep({ flow, mode }: ChooseStepProps) {
                 {flow.recommendedModel.license_spdx} · Requires {flow.recommendedModel.min_vram_gb} GB VRAM
               </CardDescription>
               {mode === 'manager' && (() => {
-                const sc = modelSpeedClass(flow.recommendedModel!.role ?? null)
+                const sc = modelSpeedClass(flow.recommendedModel!.role ?? null, isDemo)
                 return (
                   <div
                     aria-label="expected speed class"

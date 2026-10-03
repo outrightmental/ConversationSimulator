@@ -53,10 +53,19 @@ and model from the dropdowns.
 
 | Tier | Model | Size | Download at 50 Mbps | Min VRAM | CPU fallback |
 |---|---|---|---|---|---|
+| Lightweight | Qwen3 1.7B Instruct Q8_0 | 1.8 GB | ~5 min | 3 GB | Yes (quickest on CPU) |
 | Starter | Qwen3 4B Instruct Q4_K_M | 2.5 GB | ~7 min | 4 GB | Yes (slow) |
 | Standard | Qwen3 8B Instruct Q4_K_M | 5.0 GB | ~14 min | 6 GB | Yes (very slow) |
 | High-quality | Qwen3 14B Instruct Q4_K_M | 9.0 GB | ~25 min | 10 GB | Not practical |
 | High-quality | Mistral Small 3.1 24B Q4_K_M | 14.3 GB | ~39 min | 16 GB | Not practical |
+
+**Which tier you are offered:** setup and the model manager
+(**Settings → Runtime → Open model manager**) install the **starter** tier —
+that is the one recommended model. The other tiers are not a list to pick from:
+to run one, download its GGUF file yourself and point the app at it with
+**Use a GGUF file**, or serve it from Ollama. The exact file each tier names is
+pinned in
+[`model-registry/registry.yaml`](https://github.com/outrightmental/ConversationSimulator/blob/main/model-registry/registry.yaml).
 
 **Apple Silicon:** Metal acceleration works out of the box through llama.cpp.
 Use the VRAM column as a guide for unified memory (M1/M2/M3/M4 chips share
@@ -67,7 +76,11 @@ slower — expect anywhere from 30 seconds to a few minutes per turn instead of
 1–5 seconds, most of it spent reading the prompt back in. The app waits for a
 slow turn rather than failing it; see
 [Performance and hardware](/play/performance/#timeout-errors). The Qwen3 4B
-starter model is the most practical choice for CPU-only machines.
+starter model is the most practical choice for CPU-only machines; the Qwen3 1.7B
+lightweight tier is quicker still, and the only tier that fits under 4 GB of
+VRAM — nothing stops you running the starter there, it just spills onto the CPU
+(see **Partial VRAM fit** below) — but NPCs hold a conversation less
+consistently on it.
 
 **Partial VRAM fit:** if you have less VRAM than the minimum, the model can
 still load with fewer GPU-offloaded layers. Inference will be slower but may

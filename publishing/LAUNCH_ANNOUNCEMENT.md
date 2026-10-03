@@ -90,11 +90,17 @@ files are large and each carries its own licence terms that you should see
 before the bytes land on your machine. Here is how to get one:
 
 1. Launch the app. The **Model Manager** opens on first run.
-2. Choose a model from the built-in registry. We recommend starting with
-   **Qwen3 4B Instruct Q4\_K\_M** (~2.5 GB) — it is the lightest model in the
-   registry and the only practical choice for CPU-only machines. Larger models
-   (Qwen3 8B and up) are available if your hardware has the RAM/VRAM headroom
-   for them.
+2. It offers one model from the built-in registry: **Qwen3 4B Instruct
+   Q4\_K\_M** (~2.5 GB) — the starter tier, and the practical default for
+   CPU-only machines. Install that one. The registry also pins a smaller
+   **Qwen3 1.7B Instruct Q8\_0** (~1.8 GB, 3 GB VRAM minimum) for machines that
+   cannot fit the starter in VRAM — quicker, but NPCs hold a conversation less
+   consistently on it — and larger models (Qwen3 8B and up) for hardware with
+   the RAM/VRAM headroom. Those are not a list to pick from in the app: download
+   the file from the URL pinned in the registry and point the app at it with
+   **Use a GGUF file**, or serve it from Ollama. See
+   [**docs/local-models.md**](../docs/local-models.md#hardware-tiers) for which
+   tier suits your machine.
 3. Review the model name, licence, download size, SHA-256 checksum, and
    destination path shown in the Model Manager.
 4. Confirm the download. The app verifies the checksum automatically and

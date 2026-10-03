@@ -256,7 +256,8 @@ No model is bundled. The app shows license information and size before each down
 
 | Model | Size | VRAM | License | Role |
 | ----- | ---- | ---- | ------- | ---- |
-| Qwen3 4B Instruct Q4\_K\_M | 2.5 GB | 4 GB+ | Apache-2.0 | Starter (lower-spec machines) |
+| Qwen3 1.7B Instruct Q8\_0 | 1.8 GB | 3 GB+ | Apache-2.0 | Lightweight (shortest download; less consistent NPCs) |
+| Qwen3 4B Instruct Q4\_K\_M | 2.5 GB | 4 GB+ | Apache-2.0 | Starter (what first-run setup installs) |
 | Qwen3 8B Instruct Q4\_K\_M | 5.0 GB | 6 GB+ | Apache-2.0 | Standard (recommended for most) |
 | Qwen3 14B Instruct Q4\_K\_M | 9.0 GB | 10 GB+ | Apache-2.0 | High quality |
 | Mistral Small 3.1 24B Q4\_K\_M | 14.3 GB | 16 GB+ | Apache-2.0 | High quality, long context |

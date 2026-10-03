@@ -9,7 +9,9 @@ API surface the demo hides in the UI is also refused server-side.
 """
 from __future__ import annotations
 
+import logging
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -27,6 +29,10 @@ _OFFICIAL_PACKS = _REPO_ROOT / "packs" / "official"
 _REGISTRY_PATH = _REPO_ROOT / "model-registry" / "registry.yaml"
 
 _STARTER_MODEL_ID = "qwen3-4b-instruct-q4_k_m"
+# The registry's smaller/faster tier — the answer to issue #495's "can we use a
+# smaller/faster Qwen model?". It is installable today but is NOT the demo's
+# default; see docs/steam-next-fest-demo.md for the gate it has to clear first.
+_LIGHTWEIGHT_MODEL_ID = "qwen3-1.7b-instruct-q8_0"
 
 
 def _config(tmp_path: Path, **overrides) -> ServiceConfig:
@@ -357,11 +363,76 @@ def test_demo_privacy_controls_still_available(demo_client):
 
 
 def test_registry_starter_role_backs_the_demo_model(demo_client):
-    """The demo model is the registry's starter tier unless pinned."""
+    """The demo model is the registry's starter tier unless pinned.
+
+    The registry also carries a smaller ``role: lightweight`` tier. It must not
+    become the demo's model by merely existing: the demo ships the starter until
+    a candidate has been played through all five conversations (demo gate D-05),
+    because an incoherent NPC loses the demo and a 0.7 GB-longer download does
+    not.
+    """
     _, app = demo_client
     conn = app.state.db.connection()
     load_and_persist_registry(conn, _REGISTRY_PATH)
     assert edition.resolve_demo_model_id(conn, app.state.service_config) == _STARTER_MODEL_ID
+
+
+def test_a_pin_with_no_download_url_falls_back_to_the_starter(demo_client, caplog):
+    """A pin the demo could never download must not become the demo's model.
+
+    ``user-supplied-gguf`` is a real registry id, so the membership check alone
+    lets it through — but it stands for a file the player brings and carries no
+    URL and no checksum. The demo offers no second model, so every install
+    would fail at the download stage with nothing to fall back to: first-run
+    setup dead-ends with no way out. ``build.rs`` and release.yml's Validate
+    refuse it too, but they only cover a packaged build and a CI dispatch;
+    this is the one place every way of setting the variable passes through.
+    """
+    _, app = demo_client
+    conn = app.state.db.connection()
+    load_and_persist_registry(conn, _REGISTRY_PATH)
+    config = SimpleNamespace(edition="demo", demo_model_id="user-supplied-gguf")
+    with caplog.at_level(logging.ERROR, logger="convsim_core.edition"):
+        assert edition.resolve_demo_model_id(conn, config) == _STARTER_MODEL_ID
+    assert "no download URL" in caplog.text
+
+
+def test_demo_can_be_pinned_to_the_lightweight_tier(tmp_path, monkeypatch):
+    """The smaller/faster tier is one build input away (release.yml demo_model_id).
+
+    Pinning it is the whole switch: the demo then offers exactly that model, and
+    installing it is the only install the demo allows.
+    """
+    monkeypatch.setenv("CONVSIM_WHISPER_CPP_BINARY_PATH", str(tmp_path / "no-whisper-cli"))
+    app = create_app(_config(tmp_path, edition="demo", demo_model_id=_LIGHTWEIGHT_MODEL_ID))
+    with TestClient(app) as client:
+        assert client.get("/api/health").json()["demo"]["model_id"] == _LIGHTWEIGHT_MODEL_ID
+        registry = client.get("/api/models").json()["registry"]
+        assert [m["id"] for m in registry] == [_LIGHTWEIGHT_MODEL_ID]
+        # The pinned tier is smaller than the starter it replaces — that is the
+        # only reason to pin it — and the wizard shows size before downloading.
+        assert registry[0]["size_gb"] < 2.5
+        with patch("convsim_core.routers.setup_install._run_pipeline", new_callable=AsyncMock):
+            ok = client.post("/api/setup/install", json={"registry_id": _LIGHTWEIGHT_MODEL_ID})
+        assert ok.status_code == 200, ok.text
+        refused = client.post("/api/setup/install", json={"registry_id": _STARTER_MODEL_ID})
+        assert refused.status_code == 403
+        assert refused.json()["error"]["code"] == edition.EDITION_RESTRICTED
+
+
+def test_full_edition_serves_the_lightweight_tier_alongside_the_rest(full_client):
+    """The new tier is a registry entry, not a demo-only one.
+
+    ``GET /api/models`` carries it for the full app too, ordered ahead of the
+    starter (smallest tier first), and the starter is still the single
+    ``role: starter`` entry that ``pickRecommendedModel`` recommends.
+    """
+    client, app = full_client
+    load_and_persist_registry(app.state.db.connection(), _REGISTRY_PATH)
+    registry = client.get("/api/models").json()["registry"]
+    ids = [m["id"] for m in registry]
+    assert ids[:2] == [_LIGHTWEIGHT_MODEL_ID, _STARTER_MODEL_ID]
+    assert [m["id"] for m in registry if m["role"] == "starter"] == [_STARTER_MODEL_ID]
 
 
 # ── Demo edition: the curated pack YAML is what plays, not the built-in catalogue ──

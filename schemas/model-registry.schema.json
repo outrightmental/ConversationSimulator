@@ -41,8 +41,8 @@
         },
         "role": {
           "type": "string",
-          "enum": ["starter", "standard", "high-quality", "user-supplied"],
-          "description": "Recommended use tier."
+          "enum": ["lightweight", "starter", "standard", "high-quality", "user-supplied"],
+          "description": "Recommended use tier, smallest first. 'lightweight' is the sub-starter tier: the shortest download and the lowest VRAM floor, at a cost in NPC coherence."
         },
         "format": {
           "type": "string",

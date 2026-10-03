@@ -28,8 +28,8 @@ so the full app is unaffected apart from a new `edition` field in
 |-------|--------|--------------|
 | `convsim-core` | `CONVSIM_EDITION=demo` (`ServiceConfig.edition`) | Serves exactly the five curated scenarios (and only the packs they come from), exposes exactly one registry model, refuses session creation for any other scenario, refuses model install for any other model, and refuses pack import and the Creator Workbench API with `EDITION_RESTRICTED` (HTTP 403). Reports `edition: "demo"` plus the curated `scenario_ids` and `model_id` on `/api/health`. |
 | Web UI | `VITE_CONVSIM_EDITION=demo` at build time, or the engine's `/api/health` answer at run time | Home becomes the five-conversation picker plus one upsell card. Library, Logbook and Workbench are not in the navigation and their routes collapse to Home. The first-run wizard offers only "Set me up" (no Ollama, no GGUF). Settings keeps only the privacy controls. The debrief ends with the upsell instead of the voice invite. |
-| Tauri shell | `CONVSIM_EDITION=demo` at compile time (`build.rs` validates it; `lib.rs` passes it to the sidecar) and the `tauri.demo.conf.json` overlay | Product name "Conversation Simulator Demo", its own bundle identifier, and the same per-user data directory as the full app (see [Save data](#does-demo-save-data-carry-over)). |
-| CI | `release.yml` → `edition: demo` (workflow_dispatch) | Builds all three platforms as the demo edition, uploads `demo-desktop-*` artifacts, publishes **no** GitHub release, and hands off to `steam-deploy.yml` with `edition: demo`, which targets `STEAM_DEMO_APP_ID` and the demo depots. |
+| Tauri shell | `CONVSIM_EDITION=demo` at compile time (`build.rs` validates it; `lib.rs` passes it to the sidecar), optionally `CONVSIM_DEMO_MODEL_ID` alongside it, and the `tauri.demo.conf.json` overlay | Product name "Conversation Simulator Demo", its own bundle identifier, the same per-user data directory as the full app (see [Save data](#does-demo-save-data-carry-over)), and the registry id of the one model the demo installs. |
+| CI | `release.yml` → `edition: demo` (workflow_dispatch), with the optional `demo_model_id` input | Builds all three platforms as the demo edition, uploads `demo-desktop-*` artifacts, publishes **no** GitHub release, and hands off to `steam-deploy.yml` with `edition: demo`, which targets `STEAM_DEMO_APP_ID` and the demo depots. Validate refuses a `demo_model_id` that is not a registry id, or one given for a full build. |
 
 The curated list lives in **one place**: `services/convsim-core/convsim_core/edition.py`.
 The UI renders whatever the engine reports, so the five cannot drift between
@@ -40,6 +40,8 @@ UI adopts the engine's answer; the build-time flag is optional in dev):
 
 ```sh
 CONVSIM_EDITION=demo ./scripts/dev.sh
+# …or on the smaller lightweight tier (see Which model? below):
+CONVSIM_EDITION=demo CONVSIM_DEMO_MODEL_ID=qwen3-1.7b-instruct-q8_0 ./scripts/dev.sh
 ```
 
 ---
@@ -48,38 +50,100 @@ CONVSIM_EDITION=demo ./scripts/dev.sh
 
 ### Which model?
 
-**The demo ships the registry's existing starter tier, Qwen3 4B Instruct
-Q4_K_M (2.5 GB, Apache-2.0).** The demo edition installs whatever the registry's
-`role: starter` entry is, or the model named by `CONVSIM_DEMO_MODEL_ID`, so
-this is a configuration decision, not a code one.
+**The demo ships the registry's starter tier, Qwen3 4B Instruct Q4_K_M
+(2.5 GB, Apache-2.0).** A smaller/faster tier is now in the registry and is one
+build input away, but it does not ship until it has been played (below).
 
-The note asked "can we use a smaller/faster Qwen model?" — evaluated, and not
-for the first Next Fest build:
+The demo edition installs whatever the registry's `role: starter` entry is, or
+the model named by `CONVSIM_DEMO_MODEL_ID` — so which model the demo ships is a
+configuration decision, not a code one. For a *packaged* build that variable is
+baked in at compile time (`build.rs` validates it, `lib.rs` hands it to
+`convsim-core` at launch): Steam starts the app with none of our environment, so
+nothing set at run time would ever arrive. The demo build leg of `release.yml`
+takes it as the `demo_model_id` workflow input and refuses, in Validate, an id
+that is not in `model-registry/registry.yaml` — before three platform builds
+spin up. `build.rs` runs the same check itself, so a demo compiled outside the
+workflow cannot silently fall back to the starter either.
 
-- The 4B is the only tier the nightly real-model smoke
-  (`scripts/nightly-model-smoke.py`) and the release-checklist reference
-  hardware have been run against. The demo's quality bar is defined by
-  *incoherent NPC turns* and *missing debriefs* being blockers; the turn
-  pipeline asks the model for structured output (state deltas, event
-  evaluation) and the debrief asks for a rubric-scored analysis. 1.7B-class
-  models are markedly less reliable at both, and a 0.6B model is out of the
-  question for this product. A stalled 2.5 GB download is recoverable (the
-  pipeline resumes it); an incoherent character is the demo lost.
-- On the reference tier the 4B already hits the documented latency budget, so
-  "faster" buys little that a player would notice at Next Fest.
+#### The smaller/faster Qwen question
 
-**How to revisit it, cheaply.** `scripts/pin-model.py` prints a policy-compliant
-registry entry (commit-pinned URL, SHA-256 from the Hub's LFS metadata) for
-any Hugging Face GGUF. The gate for a smaller tier is:
+The note asked "can we use a smaller/faster Qwen model?" The answer has two
+parts: there *is* one in the registry now, and it is not yet what the demo
+installs.
 
-1. Add the entry with `pin-model.py` (candidate: `Qwen/Qwen3-1.7B-GGUF`,
-   `Qwen3-1.7B-Q4_K_M.gguf`, ~1.1 GB; or the Q8_0 quant at ~1.8 GB if quality
-   needs the headroom) and validate with `scripts/validate-registry.py --url-check`.
-2. Run the nightly smoke against it (`--model-id`) on the reference hardware.
-3. Play all five demo conversations to the debrief at `standard` difficulty,
-   twice each; zero incoherent turns, zero template-fallback debriefs.
-4. Set `CONVSIM_DEMO_MODEL_ID` in the demo build and re-run the
-   [demo gate](#demo-gate). No code changes.
+| | Lightweight tier | Starter tier (what the demo ships) |
+|---|---|---|
+| Model | Qwen3 1.7B Instruct Q8_0 | Qwen3 4B Instruct Q4_K_M |
+| Registry id | `qwen3-1.7b-instruct-q8_0` | `qwen3-4b-instruct-q4_k_m` |
+| Download | 1.8 GB | 2.5 GB |
+| VRAM floor | 3 GB | 4 GB |
+| Exercised by the real-model smoke and the release checklist | **No** | Yes |
+
+Why Q8_0 and not Q4_K_M: Qwen's own GGUF repo for the 1.7B publishes a single
+quant, Q8_0 — the `Qwen3-1.7B-Q4_K_M.gguf` file this document previously named
+as the candidate does not exist upstream (`curl -s
+https://huggingface.co/api/models/Qwen/Qwen3-1.7B-GGUF/tree/main`). That is the
+better end of the trade anyway: Q8_0 is near-lossless, so the risk is purely
+1.7B-versus-4B rather than a small model *and* an aggressive quantisation. At
+1.8 GB it is still a 28 % shorter first download than the starter, and its 3 GB
+VRAM floor (1.83 GB of weights plus 0.94 GB of KV cache at the entry's 8192-token
+context) makes it the only entry in the registry that fits in VRAM on an
+integrated-graphics or 3 GB-GPU machine. Nothing refuses such a player the
+starter today — the install card prints the VRAM floor as a detail row and
+nothing compares it to the machine, and llama.cpp offloads the layers that fit
+and runs the rest on the CPU — but a partially offloaded 4B is minute-long
+turns, which loses the demo as surely as an incoherent one does.
+
+Why it is not the default yet. The demo's quality bar is defined by *incoherent
+NPC turns* and *missing debriefs* being blockers: the turn pipeline asks the
+model for structured output (state deltas, event evaluation) and the debrief
+asks for a rubric-scored analysis. 1.7B-class models are markedly less reliable
+at both, and the 4B is the only tier the nightly real-model smoke
+(`scripts/nightly-model-smoke.py`) and the release-checklist reference hardware
+have been run against. A stalled 2.5 GB download is recoverable (the pipeline
+resumes it); an incoherent character is the demo lost. `test_edition.py` pins
+this: a smaller tier existing in the registry must not become the demo's model
+by itself.
+
+A 0.6B model (Qwen also publishes `Qwen/Qwen3-0.6B-GGUF`, Q8_0, 0.6 GB) stays
+out of the question for this product.
+
+#### Qualifying the lightweight tier for the demo
+
+Everything but the play-testing is done. The remaining gate is:
+
+1. Measure it on the reference hardware — the nightly smoke checks latency
+   budgets, nothing about coherence, so this step only rules out a model that
+   is somehow *slower*:
+
+   ```sh
+   # --model-url and --model-sha256 are the entry's own `download` fields
+   python scripts/nightly-model-smoke.py --download-only \
+       --model-id qwen3-1.7b-instruct-q8_0 \
+       --model-url '<download.url from model-registry/registry.yaml>' \
+       --model-sha256 '<download.sha256 from the same entry>'
+   python scripts/nightly-model-smoke.py --model-id qwen3-1.7b-instruct-q8_0
+   ```
+
+2. The actual gate: play all five demo conversations to the debrief at
+   `standard` difficulty, twice each; zero incoherent turns, zero
+   template-fallback debriefs. Run the engine as the demo on the candidate so
+   you are playing what a player would get:
+   `CONVSIM_EDITION=demo CONVSIM_DEMO_MODEL_ID=qwen3-1.7b-instruct-q8_0 ./scripts/dev.sh`.
+3. Build the demo with `demo_model_id: qwen3-1.7b-instruct-q8_0` (Actions →
+   Release → Run workflow) and re-run the [demo gate](#demo-gate). Update the
+   download size in the demo store copy
+   ([`STEAM_STORE_PAGE.md`](../publishing/STEAM_STORE_PAGE.md#demo-copy-rules)),
+   which names it honestly. No code changes.
+
+If it does not clear step 2, the demo ships on the starter and the lightweight
+tier stays what it is now: a registry entry, installable through
+`POST /api/setup/install` and documented for machines that cannot run the
+starter, but not what either edition's setup flow offers (that flow shows the
+one recommended model — the `role: starter` entry — plus Ollama and
+bring-your-own-GGUF). `scripts/pin-model.py` prints a policy-compliant entry
+(commit-pinned URL, SHA-256 from the Hub's LFS metadata) for any other
+candidate worth trying.
 
 ### Which five conversations?
 

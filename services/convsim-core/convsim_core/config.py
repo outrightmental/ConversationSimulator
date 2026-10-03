@@ -110,8 +110,11 @@ class ServiceConfig(BaseSettings):
     edition: Literal["full", "demo"] = "full"
     # Registry id of the model the demo edition installs. Unset = the registry's
     # `role: starter` entry (Qwen3 4B today). Set CONVSIM_DEMO_MODEL_ID to point
-    # the demo at a smaller tier once one clears the demo quality bar — no code
-    # change required. Ignored outside the demo edition.
+    # the demo at the smaller `role: lightweight` tier (qwen3-1.7b-instruct-q8_0)
+    # once it clears the demo quality bar — no code change required. A packaged
+    # demo build carries the value from release.yml's `demo_model_id` input,
+    # baked into the Tauri shell and handed over at launch. Ignored outside the
+    # demo edition.
     demo_model_id: Optional[str] = None
 
     @model_validator(mode="after")
