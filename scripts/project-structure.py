@@ -16,9 +16,9 @@ Usage:
 `validate` reads files only: the manifest is coherent, every issue form sets a
 `type:` and uses no label the manifest does not define, CONTRIBUTING's tables
 list exactly the labels and the open milestones that exist — due dates
-included — and no hand-written `issues/new` link anywhere in the tree
-pre-applies a label the manifest does not declare.  It needs no network and no
-credentials.
+included — and nothing in the tree names an undeclared label, neither a
+hand-written `issues/new` link that pre-applies one nor a `label:` search
+qualifier that counts one.  It needs no network and no credentials.
 
 `self-test` drives the planner and the rule checker against fixtures instead of
 the live tracker, so the behaviour this script's comments promise is checked on
@@ -435,6 +435,12 @@ def load_templates(directory: Path = TEMPLATE_DIR) -> dict[str, dict[str, Any]]:
 _ISSUE_LINK_RE = re.compile(r"issues/new[^\s'\"`)\]<>]*")
 _LABELS_PARAM_RE = re.compile(r"[?&]labels=([^&\s'\"`)\]<>]*)")
 
+# A GitHub issue-search label qualifier, the way a runbook or a reporting script
+# writes one: `label:area:steam`, or quoted when the name has a space.  The
+# unquoted form stops at the first character that is not part of a label name,
+# so `label: Something` (a YAML key, a TSX property) does not match at all.
+_LABEL_QUALIFIER_RE = re.compile(r'label:(?:"([^"\n]+)"|([A-Za-z0-9][\w:.-]*))')
+
 # Where a hand-written new-issue link can live: docs, app code, workflows.
 SCAN_SUFFIXES = (
     ".md", ".mdx", ".ts", ".tsx", ".js", ".jsx", ".py", ".yml", ".yaml",
@@ -501,6 +507,39 @@ def issue_link_errors(manifest: dict[str, Any], sources: dict[str, str]) -> list
                         f"{name}: issues/new link pre-applies label {label!r}, {why} "
                         f"— drop it from the link or declare the label"
                     )
+    return errors
+
+
+def label_search_errors(manifest: dict[str, Any], sources: dict[str, str]) -> list[str]:
+    """A `label:<name>` search qualifier may only name a declared label.
+
+    The runbooks and the reporting scripts tell a maintainer to read a number
+    off a GitHub search.  A qualifier naming a label that does not exist returns
+    zero rows, which reads exactly like a signal that is not there — a launch-day
+    blocker queue that looks empty, or a demand metric that looks absent.  It is
+    the same rot the checks above catch on issue forms and new-issue links, from
+    the one direction neither of them can see: a *search* costs nothing to write
+    and fails silently.
+    """
+    live = set(label_names(manifest))
+    retired = set(retired_names(manifest))
+    errors: list[str] = []
+    seen: set[tuple[str, str]] = set()
+    for name, text in sorted(sources.items()):
+        for quoted, bare in _LABEL_QUALIFIER_RE.findall(text):
+            label = (quoted or bare).strip()
+            if not label or label in live or (name, label) in seen:
+                continue
+            seen.add((name, label))
+            why = (
+                "which the manifest retires"
+                if label in retired
+                else "which the manifest does not declare"
+            )
+            errors.append(
+                f"{name}: searches for label:{label!r}, {why} — the search returns "
+                f"nothing, which reads as a signal that is not there"
+            )
     return errors
 
 
@@ -1408,6 +1447,34 @@ def self_test() -> int:
         ("the scanner reads the tree it is pointed at",
          any(name.endswith("beta-testing.md") for name in scanned), True),
 
+        # -- `label:` search qualifiers
+        ("a search for a declared label passes",
+         label_search_errors(manifest, {"a.md": "filter `label:area:docs` to find them"}), []),
+        ("a quoted label name is read",
+         label_search_errors(manifest, {"a.md": 'filter `label:"area:docs"`'}), []),
+        ("a search for a retired label is reported",
+         label_search_errors(manifest, {"a.md": "count `label:bug` issues"}),
+         ["a.md: searches for label:'bug', which the manifest retires — the search "
+          "returns nothing, which reads as a signal that is not there"]),
+        ("a search for a label nobody declared is reported",
+         label_search_errors(manifest, {"a.py": 'print(f"| `label:pack-bug` count | {n} |")'}),
+         ["a.py: searches for label:'pack-bug', which the manifest does not declare "
+          "— the search returns nothing, which reads as a signal that is not there"]),
+        ("a quoted undeclared name with a space is reported",
+         label_search_errors(manifest, {"a.md": 'search `label:"severity critical"`'}),
+         ["a.md: searches for label:'severity critical', which the manifest does not "
+          "declare — the search returns nothing, which reads as a signal that is "
+          "not there"]),
+        # `label:` as a YAML key or a TSX property is not a search qualifier, and
+        # the issue forms and the app are full of both.
+        ("a `label:` key with a value after the space is not a qualifier",
+         label_search_errors(
+             manifest, {"a.yml": "- label: I checked the docs\n", "b.tsx": "{ label: 'Retry' }"}),
+         []),
+        ("the same undeclared label twice in one file is reported once",
+         len(label_search_errors(
+             manifest, {"a.md": "`label:wildcat` and again `label:wildcat`"})), 1),
+
         # -- CONTRIBUTING
         ("CONTRIBUTING table matching the manifest passes",
          contributing_errors(manifest, _contributing("`area:engine` · `area:docs`", "`meta`")),
@@ -1629,7 +1696,9 @@ def cmd_validate(_args: argparse.Namespace) -> int:
     errors = manifest_errors(manifest)
     errors += template_errors(manifest, load_templates())
     errors += contributing_errors(manifest, CONTRIBUTING_PATH.read_text(encoding="utf-8"))
-    errors += issue_link_errors(manifest, load_scannable())
+    scannable = load_scannable()
+    errors += issue_link_errors(manifest, scannable)
+    errors += label_search_errors(manifest, scannable)
     print("")
     print("Project structure — manifest validation")
     print("=======================================")
@@ -1647,6 +1716,7 @@ def cmd_validate(_args: argparse.Namespace) -> int:
     print("  OK  issue forms all set a type: and use declared labels only")
     print("  OK  CONTRIBUTING.md documents exactly the declared labels and milestones")
     print("  OK  new-issue links pre-apply declared labels only")
+    print("  OK  every label: search qualifier names a declared label")
     print("")
     return 0
 

@@ -129,7 +129,8 @@ Three systems run the tracker. Each answers exactly one question, and none of th
 duplicates another — that non-overlap is the point, and it is enforced:
 [.github/project-structure.yml](.github/project-structure.yml) declares the whole
 shape of the tracker, and `scripts/project-structure.py validate` fails CI if this
-section, the issue forms, or the manifest fall out of step.
+section, the issue forms, the manifest, or anything in the tree that names a label —
+a pre-filled new-issue link, a `label:` search — fall out of step.
 
 ### Labels — *where* the work lands
 
