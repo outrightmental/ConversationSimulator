@@ -131,3 +131,49 @@ class TestJudgedSampling:
                 assert len(judged) == min(
                     3, sum(1 for e in data["volleys"] if runner._reaches_the_judge(e))
                 ), f"{path.name} spends its judged sample on gated volleys"
+
+
+class TestDeterministicBands:
+    """A zeroed volley's band needs no model, so CI checks it on every commit.
+
+    ``band`` is normally a judged expectation, but a volley the gates dud or
+    foul scores 0 whatever a judge would have said and never reaches a model.
+    Skipping its band only because of the key's usual tier would leave a real
+    assertion — "this gate fired" — unchecked until somebody dispatched a
+    nightly.
+    """
+
+    def _result(self, runner, expect, *, text="go away", judged=False):
+        pack_dir = _OFFICIAL_PACKS / "flyting-school"
+        scenarios = runner._flyting_scenarios(pack_dir)
+        scenario = scenarios["whitechapel_rose"]
+        from convsim_core.flyting.service import VolleyScoringService
+
+        service = VolleyScoringService(scenario.scoring_context())
+        score = service.score_mechanically(text, volley_number=1)
+        return runner._check_volley("probe", expect, score, judged=judged)
+
+    def test_a_gated_bands_expectation_is_checked_without_a_judge(self, runner):
+        result = self._result(runner, {"gate": "dud", "band": "dud"})
+        assert result.failures == []
+        assert result.checked == 2   # gate and band
+        assert result.skipped == 0
+
+    def test_a_wrong_gated_band_fails_without_a_judge(self, runner):
+        result = self._result(runner, {"band": "solid"})
+        assert result.skipped == 0
+        assert any("band" in failure for failure in result.failures)
+
+    def test_an_ungated_band_is_still_judged_only(self, runner):
+        result = self._result(
+            runner,
+            {"band": "solid"},
+            text="You polish your virtue like your carriage brass, and both are plate.",
+        )
+        assert result.skipped == 1
+        assert result.failures == []
+
+    def test_a_gated_band_is_not_double_counted_on_a_judged_run(self, runner):
+        result = self._result(runner, {"gate": "dud", "band": "dud"}, judged=True)
+        assert result.failures == []
+        assert result.checked == 2

@@ -371,7 +371,10 @@ The **deterministic** expectations — `gate`, `foul`, `flags`, the plagiarism c
 commit (`services/convsim-core/tests/test_flyting_calibration.py`). The
 **judged** expectations — `band`, `min_score`, `max_score`, `hooks` — need a
 model and are skipped unless `--judge` names a runtime; that is the run that
-catches prompt or model drift before players see it.
+catches prompt or model drift before players see it. One exception: a `band` on
+a volley the gates zeroed is deterministic too — that volley scores 0 whatever
+a judge would have said, and never reaches a model — so `band: dud` beside a
+`gate: foul` is checked on every commit along with the gate it asserts.
 
 A judged run costs one model call per volley that clears the gates: 39
 reference volleys in the launch pack, 29 of which reach the judge, and roughly

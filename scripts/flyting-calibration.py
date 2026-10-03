@@ -16,7 +16,10 @@ Two tiers of expectation, because only one of them is deterministic:
     ``services/convsim-core/tests/test_flyting_calibration.py``).
 *   **Judged** — ``band``, ``min_score``, ``max_score``, ``hooks``. These need a
     judge, so they are skipped unless ``--judge RUNTIME_ID`` names a runtime to
-    score with; that is the nightly, recommended-model run.
+    score with; that is the nightly, recommended-model run. The exception is a
+    ``band`` on a volley the gates zeroed: that volley scores 0 whatever a judge
+    would have said and never reaches a model, so its band runs in the
+    deterministic tier with the gate it asserts.
 
 Usage:
     python scripts/flyting-calibration.py                      # every official pack
@@ -197,12 +200,30 @@ def _check_volley(
                 f"score {score.score} exceeds the capped maximum {min(cap, expected_max)}"
             )
 
-    judged_keys = [key for key in expect if key in JUDGED_KEYS]
+    # A volley the gates zeroed has a deterministic band: the gate is a pure
+    # function of the volley and the pack, the score is 0 whatever a judge would
+    # have said, and the volley never reaches a model. Checking it here is free
+    # CI coverage on every commit — "band: dud" on a foul is a real assertion
+    # that the gate fired, and skipping it only because `band` is usually a
+    # judged key would leave it unchecked until somebody dispatched a nightly.
+    band_is_deterministic = gate.scores_zero
+    if "band" in expect and band_is_deterministic:
+        result.checked += 1
+        if score.band != expect["band"]:
+            result.failures.append(
+                f"band: expected {expect['band']}, got {score.band} (score {score.score})"
+            )
+
+    judged_keys = [
+        key
+        for key in expect
+        if key in JUDGED_KEYS and not (key == "band" and band_is_deterministic)
+    ]
     if not judged:
         result.skipped += len(judged_keys)
         return result
 
-    if "band" in expect:
+    if "band" in expect and not band_is_deterministic:
         result.checked += 1
         if score.band != expect["band"]:
             result.failures.append(
