@@ -108,7 +108,23 @@ jobs:
                  "Known ids: $(grep -oE '^  - id: .+' model-registry/registry.yaml | sed 's/^  - id: //' | paste -sd, -)"
             exit 1
           fi
-          echo "OK: demo model '$DEMO_MODEL_ID' is in the registry."
+          # `user-supplied-gguf` is a registry entry but not a downloadable one:
+          # it stands for a file the player brings, so it carries no URL and no
+          # checksum. Pinning the demo to it passes the membership check above
+          # and then fails every install with "No download URL configured for
+          # this model" — a first-run dead end with no way out, since the demo
+          # offers no other model.
+          ROLE="$(awk -v want="  - id: $DEMO_MODEL_ID" '
+            $0 == want { inside = 1; next }
+            inside && /^  - / { exit }
+            inside && /^    role:/ { print $2; exit }
+          ' model-registry/registry.yaml)"
+          if [ "$ROLE" = "user-supplied" ]; then
+            echo "::error::demo_model_id '$DEMO_MODEL_ID' is the user-supplied placeholder (role: user-supplied)," \
+                 "which has no download URL or checksum. Pick a downloadable tier — see model-registry/README.md."
+            exit 1
+          fi
+          echo "OK: demo model '$DEMO_MODEL_ID' is in the registry (role: $ROLE)."
 
   # ── Cross-platform desktop builds ─────────────────────────────────────────────
   build-desktop:
