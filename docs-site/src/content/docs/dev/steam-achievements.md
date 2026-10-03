@@ -188,6 +188,18 @@ difficulty, language, or input mode — not a true mid-conversation fork. If a
 branching UI ships, it earns its own achievement and joins the capstone
 requirement by default.
 
+### Presentation: the Steam overlay only
+
+There is no in-app achievements or progress screen, and this release does not
+add one. The Steam overlay and the player's Steam profile are the whole
+presentation layer, which keeps the app free of a second source of truth: the
+account is authoritative (see the capstone section above), and an in-app list
+would have to be reconciled with it on every launch. The only state the app
+keeps on disk for achievements is the played-pack tally.
+
+A player not running under Steam sees nothing, which is correct — every unlock
+path is a no-op there.
+
 ### Steamworks settings for each achievement
 
 - **Hidden:** set per the **Hidden** column in the tables above. Hidden
