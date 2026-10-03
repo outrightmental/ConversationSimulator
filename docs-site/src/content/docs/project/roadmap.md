@@ -77,7 +77,7 @@ criteria.
 
 - [x] Real UI screenshots and demo recording, captured from a local-model playthrough
 - [ ] Desktop app with bundled backend (Tauri sidecar for `convsim-core`)
-- [ ] Automated real-model CI smoke test
+- [x] Automated real-model CI smoke test
 
 ### Post-alpha — Milestone 2+
 
