@@ -58,7 +58,7 @@ export default function Flyting() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const navigate = useNavigate()
   const location = useLocation()
-  const routeState = location.state as { umpireLabel?: string } | null
+  const routeState = location.state as { umpireFlavor?: string } | null
 
   const [run, setRun] = useState<FlytingRunState | null>(null)
   const [log, setLog] = useState<LogEntry[]>([])
@@ -77,6 +77,11 @@ export default function Flyting() {
   // scenario's setup payload — which also survives a reload, unlike route
   // state. A batting-practice run has no momentum, so it asks for nothing.
   const [bout, setBout] = useState<{ momentumWin: number; rounds: number } | null>(null)
+  // The timed drill's length, from the same payload. The engine owns the number
+  // (`limits.timed_seconds`) and is the thing that ends the run on it, so
+  // hardcoding 90 here would put a second copy of a format rule in the UI, free
+  // to drift from the one being enforced.
+  const [timedSeconds, setTimedSeconds] = useState<number | null>(null)
 
   // The shot clock. `promptedAt` is when the player became free to type; it
   // resets after every scored volley. `startedAt` is the whole run's clock,
@@ -95,7 +100,10 @@ export default function Flyting() {
   const isBout = run?.play_format === 'bout'
   const isTimed = run?.batting_format === 'timed_90'
   const isEndless = run?.batting_format === 'endless'
-  const umpireLabel = routeState?.umpireLabel || 'The umpire'
+  // The scenario's judge_flavor, carried through so the umpire's voice is
+  // readable on each line. A character note, not a label — the scorecard shows
+  // it as a tooltip rather than printing it inline.
+  const umpireFlavor = routeState?.umpireFlavor
 
   // ── Load (or rehydrate) the run ────────────────────────────────────────────
   useEffect(() => {
@@ -109,10 +117,13 @@ export default function Flyting() {
         return
       }
       setRun(r.data.run)
-      if (r.data.run.play_format === 'bout') {
+      const needsScenario =
+        r.data.run.play_format === 'bout' || r.data.run.batting_format === 'timed_90'
+      if (needsScenario) {
         void api.flyting.getScenario(r.data.scenario_id).then((sc) => {
           if (!cancelled && sc.ok) {
             setBout({ momentumWin: sc.data.bout.momentum_win, rounds: sc.data.bout.rounds })
+            setTimedSeconds(sc.data.limits.timed_seconds)
           }
         })
       }
@@ -147,15 +158,18 @@ export default function Flyting() {
     function tick() {
       const sincePrompt = (Date.now() - promptedAt.current) / 1000
       setClockLeft(Math.max(0, shotClockS - sincePrompt))
-      if (isTimed) {
+      // Until the payload arrives there is no authoritative length to count
+      // down from, so the server's own `seconds_remaining` stands rather than a
+      // guess that might end the drill early.
+      if (isTimed && timedSeconds != null) {
         const sinceStart = (Date.now() - startedAt.current) / 1000
-        setSecondsRemaining(Math.max(0, 90 - sinceStart))
+        setSecondsRemaining(Math.max(0, timedSeconds - sinceStart))
       }
     }
     tick()
     const timer = window.setInterval(tick, 200)
     return () => window.clearInterval(timer)
-  }, [phase, shotClockS, isTimed, isBout])
+  }, [phase, shotClockS, isTimed, isBout, timedSeconds])
 
   useEffect(() => {
     if (phase === 'ready') inputRef.current?.focus()
@@ -188,7 +202,7 @@ export default function Flyting() {
       setRun(data.run)
       setVolleysRemaining(data.volleys_remaining)
       setWhiffsRemaining(data.whiffs_remaining)
-      if (!isTimed) setSecondsRemaining(data.seconds_remaining)
+      if (!isTimed || timedSeconds == null) setSecondsRemaining(data.seconds_remaining)
       setLog((prev) => {
         const next: LogEntry[] = []
         if (data.npc_volley) {
@@ -214,7 +228,7 @@ export default function Flyting() {
         setPhase('ready')
       }
     },
-    [sessionId, isTimed, isBout],
+    [sessionId, isTimed, isBout, timedSeconds],
   )
 
   // The shot clock expiring is itself a submission: in Endless it is a whiff,
@@ -247,7 +261,7 @@ export default function Flyting() {
       setEnding(false)
       return
     }
-    navigate(`/flyting/debrief/${sessionId}`, { state: { umpireLabel } })
+    navigate(`/flyting/debrief/${sessionId}`, { state: { umpireFlavor } })
   }
 
   const remainingChars = MAX_VOLLEY_CHARS - text.length
@@ -474,7 +488,7 @@ export default function Flyting() {
             <VolleyScorecard
               card={entry.card}
               text={entry.text}
-              umpireLabel={umpireLabel}
+              umpireFlavor={umpireFlavor}
               defaultOpen={index === 0}
               compact={index > 0}
             />

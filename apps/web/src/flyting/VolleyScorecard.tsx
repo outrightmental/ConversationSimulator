@@ -45,6 +45,15 @@ const DROPPED_HOOK_REASONS: Record<string, string> = {
   over_hook_cap: 'past the four-hook cap',
 }
 
+/**
+ * Who is speaking the umpire's line. A constant, not the scenario's
+ * `judge_flavor`: that field is one to four sentences of character note and
+ * reads as gibberish inline ("A retired music-hall chairman who has heard every
+ * joke in London twice. Cockney. Unimpressable.: Nought points."). The flavour
+ * is the tooltip instead, and the setup screen prints it in full.
+ */
+const UMPIRE_PREFIX = 'The umpire'
+
 const BONUS_LABELS: Record<string, string> = {
   riposte: 'Riposte',
   callback: 'Callback',
@@ -210,8 +219,14 @@ export interface VolleyScorecardProps {
   card: Scorecard
   /** The volley's own text. Shown above the numbers so the two read together. */
   text?: string
-  /** The scenario's judge_flavor, used to label the umpire's line. */
-  umpireLabel?: string
+  /**
+   * The scenario's `judge_flavor` — one to four sentences establishing the
+   * umpire's voice ("A retired music-hall chairman who has heard every joke in
+   * London twice. Cockney. Unimpressable."). It is a character note, not a
+   * name, so it rides on the line as a tooltip; the visible prefix stays the
+   * constant below. The setup screen is where the whole note is shown.
+   */
+  umpireFlavor?: string
   /** Collapsed by default in a log; expanded for the volley just played. */
   defaultOpen?: boolean
   compact?: boolean
@@ -220,7 +235,7 @@ export interface VolleyScorecardProps {
 export function VolleyScorecard({
   card,
   text,
-  umpireLabel = 'The umpire',
+  umpireFlavor,
   defaultOpen = true,
   compact = false,
 }: VolleyScorecardProps) {
@@ -355,7 +370,16 @@ export function VolleyScorecard({
             paddingTop: '0.5rem',
           }}
         >
-          <span style={{ color: '#71717a', fontStyle: 'normal' }}>{umpireLabel}: </span>
+          <span
+            title={umpireFlavor || undefined}
+            style={{
+              color: '#71717a',
+              fontStyle: 'normal',
+              cursor: umpireFlavor ? 'help' : undefined,
+            }}
+          >
+            {UMPIRE_PREFIX}:{' '}
+          </span>
           {umpireLine}
         </p>
       )}

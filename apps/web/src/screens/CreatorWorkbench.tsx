@@ -1578,7 +1578,7 @@ function TestVolleyPanel({ pack }: { pack: WorkbenchPack }) {
 
       {result && (
         <div style={{ display: 'grid', gap: '0.5rem' }}>
-          <VolleyScorecard card={result.volley} text={text.trim()} umpireLabel="The umpire" />
+          <VolleyScorecard card={result.volley} text={text.trim()} />
           <div>
             <button
               type="button"

@@ -275,6 +275,45 @@ describe('FlytingSetup', () => {
     expect(screen.getByTestId('personal-best')).toHaveTextContent('420')
   })
 
+  it('reads the personal best off the drill board, not the whole play format', async () => {
+    // `personal_bests` is keyed by play format alone, so a 3000-point Endless
+    // run would otherwise be shown as the mark to beat on a ten-volley Set.
+    // The board beside it is narrowed to the drill, and so is this number.
+    mockApi.flyting.highScores.mockResolvedValue({
+      ok: true,
+      data: {
+        scenario_id: SCENARIO_ID,
+        play_format: 'batting_practice',
+        batting_format: 'set_10',
+        entries: [
+          {
+            scenario_id: SCENARIO_ID,
+            pack_id: 'official.flyting_school',
+            play_format: 'batting_practice',
+            batting_format: 'set_10',
+            session_id: 'sess-older',
+            outcome: 'set_complete',
+            total_score: 612,
+            volley_count: 10,
+            best_volley_score: 141,
+            peak_heat: 1.6,
+            daily_seed: null,
+            achieved_at: '2026-09-30 19:02:00',
+          },
+        ],
+      },
+    })
+    renderSetup()
+    await waitFor(() => expect(screen.getByTestId('personal-best')).toHaveTextContent('612'))
+    expect(screen.getByTestId('personal-best')).not.toHaveTextContent('420')
+  })
+
+  it('prints the umpire flavour where there is room for it', async () => {
+    renderSetup()
+    await waitFor(() => screen.getByTestId('judge-flavor'))
+    expect(screen.getByTestId('judge-flavor')).toHaveTextContent('A retired music-hall chairman.')
+  })
+
   it('starts a run and goes to the play screen', async () => {
     renderSetup()
     await waitFor(() => screen.getByTestId('start-flyting-run'))
@@ -321,6 +360,39 @@ describe('Flyting play screen', () => {
     expect(screen.getByTestId('volley-arithmetic')).toHaveTextContent('1.27 T')
     expect(screen.getByTestId('run-total')).toHaveTextContent('129')
     expect(screen.getByTestId('volleys-left')).toHaveTextContent('9')
+  })
+
+  it('labels the umpire line without printing the whole flavour note inline', async () => {
+    // judge_flavor is a character note of up to 300 characters ("A retired
+    // music-hall chairman who has heard every joke in London twice. Cockney.
+    // Unimpressable."), not a name. Printed inline before the colon it reads as
+    // nonsense, so the visible prefix is a constant and the note is the tooltip.
+    const FLAVOUR =
+      'A retired music-hall chairman who has heard every joke in London twice. ' +
+      'Cockney. Unimpressable. Keeps the gavel in his coat pocket.'
+    mockApi.flyting.getScenario.mockResolvedValue({
+      ok: true,
+      data: { ...SETUP, judge_flavor: FLAVOUR },
+    })
+    render(
+      <MemoryRouter
+        initialEntries={[{ pathname: `/flyting/run/${SESSION_ID}`, state: { umpireFlavor: FLAVOUR } }]}
+        future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
+      >
+        <Routes>
+          <Route path="/flyting/run/:sessionId" element={<Flyting />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    await waitFor(() => screen.getByTestId('volley-input'))
+    fireEvent.change(screen.getByTestId('volley-input'), { target: { value: VOLLEY_TEXT } })
+    fireEvent.click(screen.getByTestId('submit-volley'))
+
+    const line = await waitFor(() => screen.getByTestId('umpire-line'))
+    expect(line).toHaveTextContent('The umpire: That one left a mark, madam.')
+    expect(line).not.toHaveTextContent('Keeps the gavel in his coat pocket')
+    // The voice is still reachable, just not shouted over the verdict.
+    expect(line.querySelector(`[title="${FLAVOUR}"]`)).not.toBeNull()
   })
 
   it('reports the verified hook with the words that earned it', async () => {

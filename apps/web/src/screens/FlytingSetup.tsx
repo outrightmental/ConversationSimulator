@@ -174,7 +174,7 @@ export default function FlytingSetup() {
       return
     }
     navigate(`/flyting/run/${r.data.session_id}`, {
-      state: { scenarioId, umpireLabel: scenario?.judge_flavor },
+      state: { scenarioId, umpireFlavor: scenario?.judge_flavor },
     })
   }
 
@@ -197,7 +197,13 @@ export default function FlytingSetup() {
     )
   }
 
-  const personalBest = scenario.personal_bests[playFormat] ?? null
+  // The board below is narrowed to the selected drill, so the number beside it
+  // has to be too: `personal_bests` is keyed by play format only, and a
+  // ninety-second run and an endless run are not comparable totals. The board is
+  // ordered by total_score DESC, so its first row *is* this board's best; the
+  // payload is the fallback for a format with no rows yet.
+  const personalBest =
+    board.length > 0 ? board[0].total_score : (scenario.personal_bests[playFormat] ?? null)
 
   return (
     <div style={{ padding: '1.25rem', display: 'grid', gap: '0.85rem', maxWidth: 860 }}>
@@ -218,8 +224,15 @@ export default function FlytingSetup() {
           {scenario.verse_required && (
             <Tag label="Verse — alliteration and scansion scored" color="#38bdf8" />
           )}
+          {/* `requires_surface_politeness` caps fidelity; whether dropping the
+              gloves is also a *foul* is a separate pack setting the payload does
+              not carry, so the tag says what this flag actually means. */}
           {scenario.requires_surface_politeness && (
-            <Tag label="Overt rudeness is a foul" color="#ef4444" />
+            <Tag
+              label="Courtesy required — the sting must be wrapped"
+              color="#ef4444"
+              title="Overt rudeness costs fidelity here; a scenario may also make it a foul."
+            />
           )}
           {scenario.audience && <Tag label={scenario.audience.label} color="#a3e635" />}
         </div>
@@ -352,6 +365,20 @@ export default function FlytingSetup() {
         </div>
         <HighScoreTable entries={board} />
       </Section>
+
+      {scenario.judge_flavor && (
+        <Section
+          title="Your umpire"
+          hint="Who is scoring you, and in whose voice the per-volley commentary arrives. Flavour only — it never changes the numbers."
+        >
+          <p
+            data-testid="judge-flavor"
+            style={{ margin: 0, fontSize: '0.85rem', color: '#e4e4e7', lineHeight: 1.55 }}
+          >
+            {scenario.judge_flavor}
+          </p>
+        </Section>
+      )}
 
       {scenario.lexicon_hints.length > 0 && (
         <Section

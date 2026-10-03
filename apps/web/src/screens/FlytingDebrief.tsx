@@ -141,11 +141,11 @@ function DeviceHistogram({ summary }: { summary: FlytingRunSummary }) {
 function VolleyRow({
   entry,
   index,
-  umpireLabel,
+  umpireFlavor,
 }: {
   entry: FlytingVolleyLogEntry
   index: number
-  umpireLabel: string
+  umpireFlavor?: string
 }) {
   const card = entry.scorecard
   const color = bandColor(entry.band)
@@ -195,7 +195,7 @@ function VolleyRow({
       </summary>
       <div style={{ padding: '0 0.5rem 0.5rem' }}>
         {card ? (
-          <VolleyScorecard card={card} text={entry.text} umpireLabel={umpireLabel} />
+          <VolleyScorecard card={card} text={entry.text} umpireFlavor={umpireFlavor} />
         ) : (
           <p style={{ fontSize: '0.78rem', color: '#71717a', margin: '0.4rem 0 0' }}>
             This volley has no stored scorecard.
@@ -209,8 +209,8 @@ function VolleyRow({
 export default function FlytingDebrief() {
   const { sessionId } = useParams<{ sessionId: string }>()
   const location = useLocation()
-  const routeState = location.state as { umpireLabel?: string } | null
-  const umpireLabel = routeState?.umpireLabel || 'The umpire'
+  const routeState = location.state as { umpireFlavor?: string } | null
+  const umpireFlavor = routeState?.umpireFlavor
 
   const [summary, setSummary] = useState<FlytingRunSummary | null>(null)
   const [volleys, setVolleys] = useState<FlytingVolleyLogEntry[]>([])
@@ -419,7 +419,7 @@ export default function FlytingDebrief() {
               key={`${entry.speaker}-${index}`}
               entry={entry}
               index={index}
-              umpireLabel={umpireLabel}
+              umpireFlavor={umpireFlavor}
             />
           ))}
           {volleys.length === 0 && (
