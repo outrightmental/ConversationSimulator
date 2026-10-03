@@ -192,13 +192,18 @@ REPLAY_PREFIX_CHARS = 40
 
 # Appended to the "no scores" failure.  The debrief's dimension scores are
 # accumulated purely from rubric_observations the *model* volunteers, and
-# nothing asks it for them: the built-in behavioral_interview scenario defines
-# no rubric, and no prompt layer names one (see
+# nothing asks it for them: no prompt layer names a rubric dimension (see
 # packages/prompt-composer/.../layers.py — the model's only hint is the bare
 # rubric_observations array in the embedded output schema, whose empty list the
-# schema accepts).  So `pipeline`'s stock advice — inspect the per-turn
-# used_fallback flags — would send triage looking for a parse failure that did
-# not happen.
+# schema accepts).  Nor is there any route by which a scenario could supply
+# one: convsim_prompt.types.ScenarioData carries no rubric field at all, so the
+# official job-interview-basic pack's behavioral_interview — which *does*
+# define a rubric — would compose the identical turn prompt, and the full
+# edition resolves the catalogue first anyway, so this job always plays the
+# rubric-less built-in.  Switching scenarios is therefore not a fix, and the
+# remedy must not offer it as one.  So `pipeline`'s stock advice — inspect the
+# per-turn used_fallback flags — would send triage looking for a parse failure
+# that did not happen.
 #
 # That unguided array is NOT normally empty, though, which is why this note
 # does not simply write the failure off: in local verification against the real
@@ -226,9 +231,11 @@ UNSCORED_DEBRIEF_NOTE = (
     "starter model volunteered observations on every scripted turn in local "
     "verification. So check what changed about what reaches the model (the "
     "OUTPUT_SCHEMA layer, the starter model pin, sampling) before writing this "
-    "off, and fix the weakness itself by giving the turn prompt a rubric layer "
-    "or playing a scenario that defines one. See the 'Unscored debrief' section "
-    "of docs/real-model-smoke.md."
+    "off, and fix the weakness itself in the product: the turn prompt needs a "
+    "rubric layer AND a rubric to put in it (ScenarioData carries no rubric "
+    "field, so pointing the smoke at a scenario that defines one composes the "
+    "same prompt). See the 'Unscored debrief' section of "
+    "docs/real-model-smoke.md."
 )
 
 # The other cause of an unscored debrief, and the one that *is* a regression.

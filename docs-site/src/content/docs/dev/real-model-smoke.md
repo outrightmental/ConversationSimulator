@@ -157,11 +157,16 @@ which of the causes below applies.
 
 The debrief's dimension scores are accumulated entirely from
 `rubric_observations` that the model volunteers on each NPC turn. Nothing asks
-it for them: the built-in `behavioral_interview` scenario defines no rubric, no
-prompt layer names any rubric dimensions, and the only hint the model gets is
-the bare `rubric_observations` array in the embedded output schema — whose empty
-list the schema accepts. The fake runtime always returns `[]`, which is why the
-release-time playthrough asserts only that `scores` *is* a dict.
+it for them: no prompt layer names any rubric dimensions, and the only hint the
+model gets is the bare `rubric_observations` array in the embedded output
+schema — whose empty list the schema accepts. Nor could a scenario supply one.
+`ScenarioData` (in `convsim_prompt.types`) has no rubric field at all, so the
+official `job-interview-basic` pack's `behavioral_interview` — which *does*
+define a rubric — would compose the identical turn prompt; and the full edition
+resolves the built-in catalogue before installed packs, so this job always plays
+the rubric-less built-in scenario regardless. The fake runtime always returns
+`[]`, which is why the release-time playthrough asserts only that `scores` *is*
+a dict.
 
 That thin prompt coverage is the standing weakness that makes an unscored
 debrief reachable at all. It is *not*, however, the expected outcome: in local
@@ -189,9 +194,10 @@ So an unscored debrief means one of four quite different things:
   but since the starter model does normally answer that hint, first check what
   changed about what reaches the model: the `OUTPUT_SCHEMA` prompt layer, the
   registry's `starter` pin, the adapter's JSON-schema constraint, sampling
-  settings. Then fix the weakness itself in the product (give the turn prompt a
-  rubric layer, or play a scenario that defines one), not by relaxing the
-  assertion.
+  settings. Then fix the weakness itself in the product — the turn prompt needs
+  a rubric layer *and* a rubric to put in it, since `ScenarioData` carries none
+  — not by relaxing the assertion, and not by pointing the smoke at a
+  rubric-defining scenario, which would compose the same prompt.
 - **`rubric_observations_seen` is above 0 — a real regression.** The turns
   returned observations and the debrief scored none of them, so the model did
   its part. The debrief engine does not score the validated observations the

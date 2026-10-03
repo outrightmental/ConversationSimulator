@@ -847,6 +847,40 @@ class TestEvaluateDebrief:
         assert any("turning points" in w for w in warnings)
 
 
+class TestUnscoredDebriefRemedyIsStillTrue:
+    """The unscored-debrief note explains *why* nothing asks for observations.
+
+    That explanation is the whole value of the note -- it is what keeps triage
+    off the two wrong tracks (a parse failure, or a different scenario) -- and it
+    is a claim about product source this harness does not import. If the product
+    grows a rubric route into the turn prompt, the note starts handing out advice
+    for a weakness that no longer exists, and nothing else in this file notices.
+    """
+
+    _PROMPT_SRC = REPO_ROOT / "packages" / "prompt-composer" / "src" / "convsim_prompt"
+
+    def test_no_prompt_layer_names_a_rubric_dimension(self) -> None:
+        layers = (self._PROMPT_SRC / "layers.py").read_text(encoding="utf-8")
+        assert "rubric" not in layers.lower(), (
+            "a prompt layer now mentions a rubric, so UNSCORED_DEBRIEF_NOTE's "
+            "'no prompt layer names the rubric dimensions' may no longer hold"
+        )
+
+    def test_a_scenario_cannot_carry_a_rubric_into_the_turn_prompt(self) -> None:
+        # Why the note must NOT say "or play a scenario that defines one": the
+        # official job-interview-basic pack's behavioral_interview does define a
+        # rubric, and composing a turn prompt from it would change nothing,
+        # because the dataclass the composer is handed has nowhere to put it.
+        types_src = (self._PROMPT_SRC / "types.py").read_text(encoding="utf-8")
+        start = types_src.index("class ScenarioData:")
+        body = types_src[start:types_src.index("\n@", start)]
+        assert "rubric" not in body.lower(), (
+            "ScenarioData now carries a rubric, so a rubric-defining scenario may "
+            "reach the turn prompt after all -- revisit UNSCORED_DEBRIEF_NOTE and "
+            "the 'Unscored debrief' section of docs/real-model-smoke.md"
+        )
+
+
 # ---------------------------------------------------------------------------
 # Budget evaluation
 # ---------------------------------------------------------------------------
