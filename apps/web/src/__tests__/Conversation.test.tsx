@@ -34,7 +34,7 @@ vi.mock('../api/client', () => ({
 }))
 
 import { api, apiClient } from '../api/client'
-import { clearTurnSamples, recordTurnSample } from '../lib/turnEstimate'
+import { clearTurnSamples, readTurnSamples, recordTurnSample } from '../lib/turnEstimate'
 const mockApi = vi.mocked(api)
 const mockApiClient = vi.mocked(apiClient)
 
@@ -2060,6 +2060,45 @@ describe('Conversation screen', () => {
         await submit('Retrying.')
         await vi.advanceTimersByTimeAsync(3_000)
         expect(screen.getByTestId('npc-turn-progress-clock')).not.toHaveTextContent('~')
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
+    it('does not learn a duration from a turn recovered by polling', async () => {
+      // Past the deadline the screen finds the reply by asking the session what
+      // it recorded (issue #489), and the reconcile loop only looks every 15s —
+      // so the wait measures when the screen *noticed* the turn, not what the
+      // model spent on it. If the request was wedged it measures nothing about
+      // the model at all. Either way, quoting it back would promise minutes for
+      // turns that take seconds.
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      mockApi.getSessionTranscript.mockResolvedValue({
+        ok: true,
+        data: {
+          session_id: SESSION_ID,
+          scenario_id: SCENARIO_ID,
+          transcript_saved: true,
+          turns: [
+            { turn_number: 0, role: 'npc_opening' as const, content: 'Thanks for coming in. Tell me about yourself.', flow_state_after: 'PlayerTurnListening' },
+            { turn_number: 1, role: 'player' as const, content: 'My answer.', flow_state_after: 'NpcThinking' },
+            { turn_number: 2, role: 'npc' as const, content: 'Committed by the server while the UI waited.', emotion: 'neutral', flow_state_after: 'PlayerTurnListening' },
+          ],
+        },
+      })
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        renderConversation()
+        await submit()
+        // Past the 300s deadline, then far enough for one reconcile poll.
+        await vi.advanceTimersByTimeAsync(320_000)
+        await waitFor(() =>
+          expect(
+            screen.getByText('Committed by the server while the UI waited.'),
+          ).toBeInTheDocument(),
+        )
+
+        expect(readTurnSamples(MODEL_NAME)).toEqual([])
       } finally {
         vi.useRealTimers()
       }
