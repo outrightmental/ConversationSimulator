@@ -1408,6 +1408,9 @@ function TestChatPanel({ pack, validation }: TestChatPanelProps) {
  * judge's own rubric header is one disclosure away so an author can read the
  * prompt their scenario produces.
  */
+// The cap `/workbench/packs/{kind}/{slug}/volley-preview` puts on prior_volleys.
+const MAX_PREVIEW_PRIOR_VOLLEYS = 20
+
 function TestVolleyPanel({ pack }: { pack: WorkbenchPack }) {
   const [scenarios, setScenarios] = useState<WorkbenchFlytingScenario[] | null>(null)
   const [selected, setSelected] = useState<string>('')
@@ -1440,7 +1443,15 @@ function TestVolleyPanel({ pack }: { pack: WorkbenchPack }) {
     if (!selected || !text.trim() || scoring) return
     setScoring(true)
     setScoreError(null)
-    const priors = priorText.split('\n').map((l) => l.trim()).filter(Boolean)
+    // Trimmed to the cap the route enforces (`prior_volleys` is `max_length=20`
+    // on both volley-preview routes, because the novelty stage compares the draft
+    // against every entry). Sending more returns a 422 whose body says nothing an
+    // author can act on, so the list is cut here and the count is shown below.
+    const priors = priorText
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .slice(0, MAX_PREVIEW_PRIOR_VOLLEYS)
     const r = await api.workbench.previewVolley(pack.kind, pack.slug, selected, text, priors)
     setScoring(false)
     if (!r.ok) { setScoreError(r.error); setResult(null); return }
@@ -1546,6 +1557,9 @@ function TestVolleyPanel({ pack }: { pack: WorkbenchPack }) {
         <summary style={{ fontSize: '0.75rem', color: '#71717a', cursor: 'pointer' }}>
           Earlier volleys (one per line) — exercises freshness and theme decay
         </summary>
+        <p style={{ margin: '0.25rem 0 0', fontSize: '0.72rem', color: '#71717a' }}>
+          The first {MAX_PREVIEW_PRIOR_VOLLEYS} are used; the draft is compared against every one of them.
+        </p>
         <textarea
           data-testid="test-volley-priors"
           value={priorText}
