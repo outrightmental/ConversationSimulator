@@ -37,7 +37,9 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import contextlib
 import datetime as dt
+import io
 import json
 import os
 import re
@@ -1438,6 +1440,13 @@ def _kinds(actions: list[Action]) -> list[tuple[str, str]]:
     return [(action.kind, action.summary) for action in actions]
 
 
+def _quiet(call: Any) -> Any:
+    """`call()`, with the report it prints swallowed — the return value is what
+    is under test, and the self-test's own output stays readable."""
+    with contextlib.redirect_stdout(io.StringIO()):
+        return call()
+
+
 _FIELDS_REF = f"CONTRIBUTING.md \u00a7 {CONTRIBUTING_FIELDS.lstrip('# ')}"
 
 
@@ -1522,6 +1531,15 @@ def self_test() -> int:
           "renamed_from: docs — nothing would rename it and nothing would delete it"]),
         ("backfill parking issues on a closed milestone is reported",
          any("parks issues on 'v0'" in e for e in manifest_errors(broken)), True),
+        # The checks above are only worth having if they run before the network
+        # does. `validate` gates what is committed; `audit` and `apply` are what
+        # a maintainer runs on a manifest they have just edited, and a rename
+        # written down by halves would otherwise `gh label edit` the live repo
+        # and then abort on the delete.
+        ("an incoherent manifest stops a run before the tracker is read",
+         _quiet(lambda: _manifest_gate(broken)), 1),
+        ("a coherent manifest does not stop a run",
+         _quiet(lambda: _manifest_gate(load_manifest())), 0),
         ("due_on normalises to YYYY-MM-DD",
          [due_date(dt.date(2026, 1, 31)), due_date("2026-01-31T12:00:00Z"), due_date(None)],
          ["2026-01-31", "2026-01-31", None]),
@@ -1969,6 +1987,35 @@ def _report(actions: list[Action], findings: list[str]) -> None:
         print("")
 
 
+def _manifest_gate(manifest: dict[str, Any]) -> int:
+    """0 if the manifest is coherent enough to run against the tracker, else 1.
+
+    Every check in `manifest_errors` was written to fail *offline*, before a run
+    reaches GitHub — read the comments there and each one says so: a missing
+    `project.phase_field` is otherwise a KeyError traceback partway through the
+    issue read, a mis-spelled `backfill` phase dies halfway through `apply`, and
+    half a declared rename executes `gh label edit` against the repo and then
+    aborts on the delete, which lands the tracker in the one state `apply`
+    cannot converge afterwards.
+
+    Only `validate` ran them, though, and `validate` reads the manifest on
+    disk: CI gates what is already committed, while the maintainer path these
+    comments describe is editing the manifest and running `apply`.  So the
+    guard they promise has to be here too, ahead of the first network call.
+    """
+    errors = manifest_errors(manifest)
+    if not errors:
+        return 0
+    for message in errors:
+        print(f"  FAIL  {message}")
+    print("")
+    print(f"FAIL: {len(errors)} problem(s) in {MANIFEST_PATH.name} — the live tracker was")
+    print("      not read, and nothing was changed. Fix the manifest first; `validate`")
+    print("      prints this same list with no network and no credentials.")
+    print("")
+    return 1
+
+
 def labels_after(labels: list[dict[str, Any]], actions: list[Action]) -> list[dict[str, Any]]:
     """The repo's label list as the plan would leave it."""
     names = {entry["name"] for entry in labels}
@@ -1997,6 +2044,8 @@ def cmd_audit(_args: argparse.Namespace) -> int:
     print("Project structure — audit")
     print("=========================")
     print("")
+    if _manifest_gate(manifest):
+        return 1
     _, actions, findings = _collect(manifest, dry_run=True)
     _report(actions, findings)
     if actions:
@@ -2023,6 +2072,8 @@ def cmd_apply(args: argparse.Namespace) -> int:
     print("Project structure — apply" + (" (dry run)" if args.dry_run else ""))
     print("=========================")
     print("")
+    if _manifest_gate(manifest):
+        return 1
     github, actions, findings = _collect(manifest, dry_run=args.dry_run)
     _report(actions, findings)
     if not args.dry_run:
