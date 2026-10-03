@@ -452,10 +452,18 @@
    instruments rather than a column as long as everything above it. auto-fit
    rather than a fixed pair plus a breakpoint: the column count then follows
    the space the card actually has, which is what a Steam Deck window and a
-   maximised desktop one disagree about. */
+   maximised desktop one disagree about.
+
+   Two is also the ceiling, which is what the half-container floor on the track
+   buys. A bare `minmax(15rem, 1fr)` fits three columns in this card from 48rem
+   of inner width up — which is every window from the 1280px release floor to a
+   maximised one — and three columns leave the fourth set (privacy) alone on a
+   row with two empty cells beside it. A hole that size in the middle of the
+   quietest card is the ragged, unresolved look this redesign exists to remove.
+   Below 30rem the 15rem floor wins again and the grid drops to one column. */
 .brief-setup-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(max(15rem, (100% - 1.5rem) / 2), 1fr));
   gap: 1rem 1.5rem;
   align-items: start;
 }
