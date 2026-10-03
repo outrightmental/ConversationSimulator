@@ -34,6 +34,14 @@ export interface UseVoiceSetupReturn {
    */
   engineResult: StartVoiceEngineResponse | null
   busy: boolean
+  /**
+   * A cancel has been asked for and the job has not reached a terminal state
+   * yet. The DELETE only *signals* the downloader, which notices between
+   * chunks, and the job row flips on the next poll — so without this the
+   * progress card sits there unchanged for up to a second after the click,
+   * looking like the button did nothing.
+   */
+  cancelling: boolean
   refresh: () => void
   startInstall: (assetIds: string[]) => Promise<void>
   cancelInstall: () => Promise<void>
@@ -49,6 +57,7 @@ export function useVoiceSetup(): UseVoiceSetupReturn {
   const [actionError, setActionError] = useState<ApiError | null>(null)
   const [engineResult, setEngineResult] = useState<StartVoiceEngineResponse | null>(null)
   const [busy, setBusy] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   // Guards the post-completion refresh: the plan must be re-read once a job
@@ -81,6 +90,7 @@ export function useVoiceSetup(): UseVoiceSetupReturn {
   useEffect(() => {
     if (jobId == null) {
       setJob(null)
+      setCancelling(false)
       return
     }
 
@@ -97,6 +107,7 @@ export function useVoiceSetup(): UseVoiceSetupReturn {
       setJob(r.data)
       if (TERMINAL.has(r.data.status)) {
         stopPoll()
+        setCancelling(false)
         if (settledJobRef.current !== r.data.id) {
           settledJobRef.current = r.data.id
           refresh()
@@ -115,6 +126,7 @@ export function useVoiceSetup(): UseVoiceSetupReturn {
     const r = await api.startVoiceInstall(assetIds)
     if (r.ok) {
       settledJobRef.current = null
+      setCancelling(false)
       setJob(r.data)
       setJobId(r.data.id)
     } else {
@@ -126,8 +138,16 @@ export function useVoiceSetup(): UseVoiceSetupReturn {
   const cancelInstall = useCallback(async () => {
     if (jobId == null) return
     setBusy(true)
+    setCancelling(true)
     const r = await api.cancelVoiceInstall(jobId)
-    if (!r.ok) setActionError(r.error)
+    // A 409 means the job reached a terminal state in the window between the
+    // click and the request landing — the download has already stopped, which
+    // is what was asked for. Reporting it would put a red "Request failed"
+    // card under a cancel that worked.
+    if (!r.ok && r.error.status !== 409) {
+      setActionError(r.error)
+      setCancelling(false)
+    }
     setBusy(false)
   }, [jobId])
 
@@ -153,6 +173,7 @@ export function useVoiceSetup(): UseVoiceSetupReturn {
     actionError,
     engineResult,
     busy,
+    cancelling,
     refresh,
     startInstall,
     cancelInstall,

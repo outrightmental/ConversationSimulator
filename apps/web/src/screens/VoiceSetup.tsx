@@ -471,6 +471,7 @@ export default function VoiceSetup() {
     actionError,
     engineResult,
     busy,
+    cancelling,
     refresh,
     startInstall,
     cancelInstall,
@@ -691,8 +692,16 @@ export default function VoiceSetup() {
               ))}
             </ol>
             <div style={{ marginTop: '0.75rem' }}>
-              <SecondaryButton onClick={() => void cancelInstall()} disabled={busy} testId="voice-install-cancel">
-                Cancel download
+              {/* The DELETE only signals the downloader, which notices between
+                  chunks; the job row flips on the next poll. Saying so — and
+                  refusing a second click — is what stops the card looking
+                  frozen for the second in between. */}
+              <SecondaryButton
+                onClick={() => void cancelInstall()}
+                disabled={busy || cancelling}
+                testId="voice-install-cancel"
+              >
+                {cancelling ? 'Cancelling…' : 'Cancel download'}
               </SecondaryButton>
             </div>
           </Card>

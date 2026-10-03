@@ -594,6 +594,40 @@ describe('VoiceSetup — download progress', () => {
     await waitFor(() => expect(mockApi.cancelVoiceInstall).toHaveBeenCalledWith(7))
   })
 
+  it('says a cancel is under way instead of leaving the card looking frozen', async () => {
+    renderScreen()
+    fireEvent.click(await screen.findByTestId('voice-install-start'))
+    fireEvent.click(await screen.findByTestId('voice-install-cancel'))
+
+    // The DELETE only signals the downloader; the job row still reads
+    // 'running' until the next poll, so the button has to speak for itself.
+    const button = await screen.findByTestId('voice-install-cancel')
+    await waitFor(() => expect(button).toHaveTextContent('Cancelling'))
+    expect(button).toBeDisabled()
+  })
+
+  it('does not report a cancel that arrived a moment too late as a failure', async () => {
+    // The player clicks while the job is still 'running' on screen, but it has
+    // already settled server-side, so the endpoint answers 409. The download
+    // has stopped either way — the one thing they asked for.
+    mockApi.cancelVoiceInstall.mockResolvedValue({
+      ok: false,
+      error: {
+        kind: 'http-error',
+        status: 409,
+        message: "Voice install job 7 is already in terminal state 'cancelled'.",
+      },
+    })
+
+    renderScreen()
+    fireEvent.click(await screen.findByTestId('voice-install-start'))
+    fireEvent.click(await screen.findByTestId('voice-install-cancel'))
+
+    await waitFor(() => expect(mockApi.cancelVoiceInstall).toHaveBeenCalledWith(7))
+    expect(screen.queryByText(/Request failed/i)).toBeNull()
+    expect(screen.queryByText(/terminal state/i)).toBeNull()
+  })
+
   it('reattaches to a job that was already running when the screen opened', async () => {
     mockApi.getVoiceSetupPlan.mockResolvedValue({
       ok: true,
