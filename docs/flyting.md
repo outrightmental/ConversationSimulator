@@ -148,10 +148,17 @@ F = clamp(1 − s_max², 0.1, 1.0)
 Squaring forgives family resemblance and hammers near-duplicates: sharing a
 subject (0.4) keeps 84 % of value, a rephrasing (0.9) keeps 19 %.
 
-Similarity is cosine over embeddings when a small local embedding model is
-available, and otherwise lemma Jaccard plus character-trigram cosine:
-deterministic, offline, no download. The method used is reported on the
-scorecard, so a player is never confused about why two runs scored differently.
+Similarity is lemma Jaccard plus character-trigram cosine — deterministic,
+offline, no download — and the method is reported on the scorecard, so a player
+is never confused about why two runs scored differently.
+
+Embeddings are a seam, not yet a feature: `novelty.EmbeddingProvider` is the
+interface the scoring service accepts, and when one is supplied `s_max` becomes
+cosine similarity over embeddings and the scorecard reads `embedding` instead of
+`lexical`. Nothing implements it today — no runtime adapter reports embedding
+support and the registry ships no embedding model — so every run uses the
+lexical comparison. Adding the provider is a change in one place, which is why
+the seam exists.
 
 **Theme decay** lives here too: the *n*th volley whose primary theme has already
 been used has its topicality bonus scaled by `theme_decay^(n−1)` (0.75 by

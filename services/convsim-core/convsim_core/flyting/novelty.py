@@ -13,13 +13,15 @@ resemblance and hammers near-duplicates: two volleys that merely share a subject
 
 Local-first, in two tiers:
 
-* With an embedding model available (a small GGUF served by the existing
-  llama.cpp runtime), similarity is cosine similarity over embeddings.
-* Without one — the default on a fresh install — the fallback is lemma Jaccard
-  plus character-trigram cosine. Deterministic, offline, no download, and good
-  enough to catch the repetition the stage exists to punish. The chosen method
-  is reported on the scorecard so a player is never confused about why two runs
-  scored differently.
+* Lemma Jaccard plus character-trigram cosine. Deterministic, offline, no
+  download, and good enough to catch the repetition the stage exists to punish.
+  This is what every run uses today.
+* ``EmbeddingProvider`` is the seam for cosine similarity over embeddings from
+  a small GGUF served by the llama.cpp runtime. Nothing implements it yet — no
+  runtime adapter reports embedding support — so supplying one is the single
+  change that switches the tier. The method actually used is reported on the
+  scorecard, so a player is never confused about why two runs scored
+  differently.
 
 Theme decay is also here: the nth volley leaning primarily on an already-used
 theme has its topicality bonus scaled by ``decay^(n-1)``, which is what makes
