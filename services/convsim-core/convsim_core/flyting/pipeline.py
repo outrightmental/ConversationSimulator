@@ -285,7 +285,10 @@ async def process_volley(
     prepared = service.prepare(
         player_text,
         prior_volleys=prior_texts,
-        prior_below_the_belt=state.foul_counts.get("below_the_belt", 0),
+        # The gate's own tally, not every foul recorded: a judge-raised
+        # below_the_belt never ends a run, and must not shorten the fuse on the
+        # gate that does (see FlytingRunState.gate_foul_counts).
+        prior_below_the_belt=state.gate_foul_counts.get("below_the_belt", 0),
     )
 
     # The shot clock is a reflex constraint, so a late volley is a whiff whatever

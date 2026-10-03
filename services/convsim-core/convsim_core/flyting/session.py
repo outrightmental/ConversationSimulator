@@ -106,6 +106,15 @@ class FlytingRunState:
     recent_devices: List[List[str]] = field(default_factory=list)
     discovered_traits: List[str] = field(default_factory=list)
     foul_counts: Dict[str, int] = field(default_factory=dict)
+    # Stage 0 fouls only — the ones a deterministic pattern matched. This is the
+    # tally the gate reads, and it is kept apart from ``foul_counts`` because
+    # only one of the two can end a run: a second below-the-belt *gate* does,
+    # and ``gates.judge_foul_result`` is explicit that a judge-raised one never
+    # will. Counting a judge's reading into the gate's tally put the
+    # irreversible decision back in the model's hands by the side door — one
+    # verdict on ordinary abuse, and the next real slur closed the run with no
+    # "one more and we are done" warning first.
+    gate_foul_counts: Dict[str, int] = field(default_factory=dict)
     elapsed_s: float = 0.0
     daily_seed: Optional[int] = None
     outcome: str = RunOutcome.IN_PROGRESS.value
@@ -133,6 +142,7 @@ class FlytingRunState:
             "recent_devices": [list(d) for d in self.recent_devices],
             "discovered_traits": list(self.discovered_traits),
             "foul_counts": dict(self.foul_counts),
+            "gate_foul_counts": dict(self.gate_foul_counts),
             "elapsed_s": round(self.elapsed_s, 2),
             "daily_seed": self.daily_seed,
             "outcome": self.outcome,
@@ -173,6 +183,9 @@ class FlytingRunState:
             recent_devices=[list(d) for d in (raw.get("recent_devices") or []) if isinstance(d, list)],
             discovered_traits=[str(t) for t in (raw.get("discovered_traits") or [])],
             foul_counts={str(k): int(v) for k, v in (raw.get("foul_counts") or {}).items()},
+            gate_foul_counts={
+                str(k): int(v) for k, v in (raw.get("gate_foul_counts") or {}).items()
+            },
             elapsed_s=float(raw.get("elapsed_s", 0.0)),
             daily_seed=raw.get("daily_seed"),
             outcome=str(raw.get("outcome") or RunOutcome.IN_PROGRESS.value),
@@ -252,6 +265,13 @@ def record_player_volley(state: FlytingRunState, score: VolleyScore) -> None:
     if score.gate.foul is not None:
         key = score.gate.foul.value
         state.foul_counts[key] = state.foul_counts.get(key, 0) + 1
+        # The gate's own tally, which is the one that can end a run, counts only
+        # the fouls the gate itself raised. A judge-raised foul is recorded
+        # above and costs the volley, the heat and a whiff — but it must not
+        # bring the run a step closer to closing, because that decision rests
+        # on a deterministic match and never on a model's reading.
+        if "judge_foul" not in score.gate.flags:
+            state.gate_foul_counts[key] = state.gate_foul_counts.get(key, 0) + 1
 
     whiffed = score.is_whiff
     if whiffed:
@@ -263,7 +283,14 @@ def record_player_volley(state: FlytingRunState, score: VolleyScore) -> None:
     if state.play_format is PlayFormat.BATTING_PRACTICE:
         state.heat = next_heat(state.heat, score.score, whiffed=whiffed)
 
-    if score.judgment is not None:
+    # A volley the engine refused is not material the player has already spent.
+    # A judge-raised foul arrives with a full verdict attached — themes, devices
+    # and verified hooks — and folding those in charged the player twice for one
+    # refused line: the theme well was counted as visited, a device slot was
+    # spent, and a discoverable trait was marked found, so the double bonus it
+    # was worth on discovery was gone before anything had scored. The same rule
+    # ``volley_texts`` applies to the novelty corpus applies here.
+    if score.judgment is not None and not score.gate.scores_zero:
         _count_primary_theme(state.theme_uses, score)
         state.recent_devices.append(list(score.judgment.devices))
         del state.recent_devices[:-6]
@@ -290,7 +317,8 @@ def record_npc_volley(state: FlytingRunState, score: VolleyScore) -> None:
     """
     state.npc_volleys += 1
     state.npc_total += score.score
-    _count_primary_theme(state.npc_theme_uses, score)
+    if not score.gate.scores_zero:
+        _count_primary_theme(state.npc_theme_uses, score)
 
 
 # ---------------------------------------------------------------------------
@@ -459,7 +487,12 @@ def summarize_run(
     theme_counts: Dict[str, int] = {}
     devices: Dict[str, int] = {}
     rarest: List[str] = []
-    for volley in player_volleys:
+    # Volleys that scored, only. These aggregates are the report of what the
+    # player actually spent: the engine does not count a refused volley's theme
+    # or device against them (see ``record_player_volley``), so a report that
+    # did would print a decay factor the engine never applied and credit a
+    # rare word to a line that never landed.
+    for volley in (v for v in player_volleys if not v.gate.scores_zero):
         if volley.judgment is not None:
             # Primary themes only — the count the decay is computed from, so the
             # "decayed to 42%" the report prints is the factor that was applied.

@@ -172,6 +172,59 @@ class TestRecordingVolleys:
         record_player_volley(state, score("You are just a chatbot with a wig."))
         assert state.foul_counts == {"bribing_the_ref": 1, "out_of_fiction": 1}
 
+    def test_only_the_gates_own_fouls_shorten_the_gates_fuse(self):
+        """A judge-raised foul is recorded, but not on the tally that ends runs.
+
+        ``judge_foul_result`` is explicit that a judge-raised below_the_belt
+        never closes a session, because that decision has to rest on a
+        deterministic match rather than on a 4B model's reading of ordinary
+        abuse. Counting it into the tally the Stage 0 gate reads put the model
+        back in charge of it by the side door: one verdict on plain abuse, and
+        the next real slur ended the run on its first occurrence, with the
+        umpire's "one more and we are done" warning never shown.
+        """
+        state = FlytingRunState()
+        record_player_volley(state, score(verdict=judgment(fouls=["below_the_belt"])))
+        # Recorded against the player for the debrief...
+        assert state.foul_counts == {"below_the_belt": 1}
+        # ...and not on the tally the gate reads.
+        assert state.gate_foul_counts == {}
+
+        state.theme_uses.clear()
+        record_player_volley(state, score("You are a retarded little man, sir."))
+        assert state.foul_counts["below_the_belt"] == 2
+        assert state.gate_foul_counts == {"below_the_belt": 1}
+
+    def test_a_refused_volley_spends_nothing(self):
+        """A fouled volley costs the player the score, and nothing else.
+
+        It arrives with a full verdict attached — themes, devices, verified
+        hooks — and folding those in charged twice for one refused line: the
+        well counted as visited, a device slot spent, and a discoverable trait
+        marked found, so the double bonus it was worth on discovery was gone
+        before anything had scored.
+        """
+        state = FlytingRunState()
+        verdict = judgment(
+            fouls=["overt_rudeness"],
+            themes=["vanity"],
+            devices=["pun"],
+            hooks=[HookClaim("cowardice", "never stood anywhere near danger", True)],
+        )
+        fouled = score(
+            verdict=verdict,
+            honored_judge_fouls=("below_the_belt", "out_of_fiction", "overt_rudeness"),
+        )
+        assert fouled.score == 0
+        record_player_volley(state, fouled)
+
+        assert state.theme_uses == {}
+        assert state.recent_devices == []
+        assert state.discovered_traits == []
+        # The foul itself is still recorded, and still costs the heat and a whiff.
+        assert state.foul_counts == {"overt_rudeness": 1}
+        assert state.whiffs == 1
+
     def test_a_whiff_increments_the_whiff_count(self):
         state = FlytingRunState()
         record_player_volley(state, score("you stink"))
