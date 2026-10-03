@@ -56,6 +56,10 @@ function num(value: number, places = 2): string {
 function Arithmetic({ card }: { card: Scorecard }) {
   const c = card.composition
   const decay = c.run_on_decay ?? 1
+  // A plagiarized zinger is capped before bonuses, so the product of the
+  // multipliers is not what the base came out at. Writing `=` there would print
+  // a false equation on the one card whose whole point is showing its working.
+  const capped = card.flags.includes('plagiarized_zinger')
   const parts = [
     `100`,
     `× ${num(c.quality)} Q`,
@@ -79,7 +83,18 @@ function Arithmetic({ card }: { card: Scorecard }) {
       }}
     >
       <div>
-        {parts.join(' ')} = <strong style={{ color: '#e4e4e7' }}>{c.base}</strong>
+        {parts.join(' ')}
+        {capped ? (
+          <>
+            {' '}
+            → capped at <strong style={{ color: '#e4e4e7' }}>{c.base}</strong>
+            <span style={{ color: '#71717a' }}> — borrowed material</span>
+          </>
+        ) : (
+          <>
+            {' '}= <strong style={{ color: '#e4e4e7' }}>{c.base}</strong>
+          </>
+        )}
       </div>
       {(c.bonuses ?? []).map((bonus) => (
         <div key={bonus.id}>
