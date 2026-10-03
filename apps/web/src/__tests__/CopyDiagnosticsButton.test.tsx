@@ -191,7 +191,7 @@ describe('CopyDiagnosticsButton', () => {
 
   it('does not submit the form it is rendered inside', async () => {
     // ScenarioSetup renders the submit-error card — and this button — inside
-    // the "Start scenario" form. An untyped <button> defaults to type=submit,
+    // the brief's launch form. An untyped <button> defaults to type=submit,
     // so pressing it re-fired the request that had just failed and unmounted
     // the card mid-copy, which is why it never said "Copied!" (issue #508).
     mockFetchOk()
