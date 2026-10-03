@@ -750,6 +750,43 @@ describe('ScenarioSetupPage', () => {
     });
   });
 
+  // Issue #500 demoted the five mechanical settings into one quiet group, which
+  // put each set's heading directly above its field label. "Language" over
+  // "Conversation language" was the one pair that restated itself, in two
+  // near-identical stacked mono micro-labels.
+  describe('session setup group', () => {
+    beforeEach(() => {
+      mockApi.health.mockResolvedValue({ ok: true as const, data: healthReady });
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: mockScenario });
+    });
+
+    it('labels the language select without repeating its own group heading', async () => {
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+
+      const select = screen.getByRole('combobox', { name: /conversation language/i });
+      const set = select.closest('.brief-set') as HTMLElement;
+      expect(within(set).getByRole('heading', { name: 'Language' })).toBeInTheDocument();
+      // One micro-label in the set, not two: the heading. The select's name now
+      // comes from the control itself.
+      expect(set.querySelectorAll('.brief-label')).toHaveLength(0);
+      expect(select).toHaveAttribute('aria-label', 'Conversation language');
+    });
+
+    it('keeps every setting on screen, with no disclosure to open', async () => {
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+
+      // #500 allowed these to be demoted, not hidden. No <details> anywhere,
+      // and all five sets present and reachable.
+      expect(document.querySelector('details')).toBeNull();
+      const setup = screen.getByRole('heading', { name: 'Session setup' }).closest('.brief-setup')!;
+      expect(
+        Array.from(setup.querySelectorAll('.brief-set-title')).map((h) => h.textContent),
+      ).toEqual(['Input mode', 'Audio output', 'Language', 'Privacy', 'Variation seedOptional']);
+    });
+  });
+
   // Issue #500: the one thing this screen must convey without being read is
   // what the player is trying to achieve.
   describe('mission objective', () => {
@@ -771,6 +808,24 @@ describe('ScenarioSetupPage', () => {
         '03Ask thoughtful questions about the role',
       ]);
       expect(within(objective).getByText('3 goals')).toBeInTheDocument();
+    });
+
+    // The same assertion edition.test.tsx makes about the demo's card list, for
+    // the same reason: `.brief-goals` is `list-style: none` (it draws its own
+    // 01/02/03 marks), and WebKit — WKWebView on macOS, the WebKitGTK the Steam
+    // Deck build runs on — drops list semantics from such a list. jsdom does
+    // not, so only the attribute itself can hold the line here.
+    it('carries an explicit list role, which WebKit needs to keep the goals a list', async () => {
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: mockScenario });
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+
+      const goals = within(screen.getByTestId('brief-objective')).getByRole('list');
+      expect(goals.tagName).toBe('OL');
+      expect(goals).toHaveAttribute('role', 'list');
+      // The visible marks are aria-hidden on the premise that the list numbers
+      // the items, so every item has to stay a listitem in its own right.
+      expect(within(goals).getAllByRole('listitem')).toHaveLength(3);
     });
 
     it('sits inside the hero, above the configuration', async () => {

@@ -397,9 +397,20 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
                 )}
               </div>
               {objectives.length > 0 ? (
-                <ol className="brief-goals">
+                <ol
+                  className="brief-goals"
+                  // Explicit list role, as on the demo's own card list: WebKit
+                  // — WKWebView on macOS, the WebKitGTK the Steam Deck build
+                  // runs on — drops list semantics from a `list-style: none`
+                  // list, and this one is styled that way because it draws its
+                  // own numbering. Without the role the goals are read as three
+                  // loose phrases, with no count, no position, and no numbers
+                  // at all: the marks below are aria-hidden precisely because
+                  // the list is supposed to be supplying them.
+                  role="list"
+                >
                   {objectives.map((goal, i) => (
-                    <li key={goal} className="brief-goal">
+                    <li key={goal} className="brief-goal" role="listitem">
                       {/* The marker is the list's own numbering drawn in the
                           preflight voice, so it is decoration to a screen
                           reader — the <ol> already numbers the items. */}
@@ -686,10 +697,19 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
 
                 <div className="brief-set">
                   <h3 className="brief-set-title">Language</h3>
-                  <label className="brief-field">
-                    <span className="brief-label">Conversation language</span>
+                  {/* No visible field label: the group heading above already
+                      says "Language", and a "Conversation language" micro-label
+                      directly under it rendered as two near-identical stacked
+                      mono labels — the kind of undifferentiated repetition
+                      issue #500 is about. The name moves onto the control, so
+                      the select is still labelled for a screen reader and the
+                      accessible name does not change. Every other set here
+                      keeps its visible label, because none of them restate
+                      their own heading. */}
+                  <div className="brief-field">
                     <select
                       className="brief-select"
+                      aria-label="Conversation language"
                       value={form.language}
                       onChange={(e) => setField('language', e.target.value)}
                     >
@@ -699,7 +719,7 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
                         </option>
                       ))}
                     </select>
-                  </label>
+                  </div>
                 </div>
 
                 <div className="brief-set">
