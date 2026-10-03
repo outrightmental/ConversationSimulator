@@ -170,6 +170,16 @@ SCENARIO_ID = "behavioral_interview"
 # Longest NPC excerpt copied into the log / report (scripted content only).
 EXCERPT_CHARS = 160
 
+# How much of the download has to complete before another progress line is
+# printed.  A terminal collapses the "\r" updates in place, so per-megabyte
+# progress costs nothing there — but CI captures this script through a pipe with
+# no terminal, where every flush becomes its own log line.  The one nightly in
+# retention that missed the model cache logged 2381 of them for a 2.3 GiB GGUF,
+# which is the wall of output a reader has to scroll past to reach the
+# `download` or `checksum` verdict printed directly underneath it.  Eleven lines
+# still show a stalled transfer; 2381 hide the verdict they precede.
+PROGRESS_LOG_STEP_PCT = 10
+
 # A debrief summary shorter than this is not a usable coaching summary.
 MIN_SUMMARY_CHARS = 20
 
@@ -607,6 +617,7 @@ def _download_with_progress(url: str, dest: Path) -> None:
             total = int(resp.headers.get("Content-Length", 0)) or None
             downloaded = 0
             chunk = 1 << 20  # 1 MB
+            last_logged_pct = -PROGRESS_LOG_STEP_PCT
             while True:
                 buf = resp.read(chunk)
                 if not buf:
@@ -615,11 +626,13 @@ def _download_with_progress(url: str, dest: Path) -> None:
                 downloaded += len(buf)
                 if total:
                     pct = int(downloaded / total * 100)
-                    print(
-                        f"\r  {pct}% ({downloaded // 1_048_576} / {total // 1_048_576} MB)",
-                        end="",
-                        flush=True,
-                    )
+                    if pct - last_logged_pct >= PROGRESS_LOG_STEP_PCT:
+                        last_logged_pct = pct
+                        print(
+                            f"\r  {pct}% ({downloaded // 1_048_576} / {total // 1_048_576} MB)",
+                            end="",
+                            flush=True,
+                        )
         print()
     except Exception as exc:  # noqa: BLE001 — see below
         # Network failure, HTTP error, or a full disk — all "could not fetch the

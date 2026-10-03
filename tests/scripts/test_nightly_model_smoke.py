@@ -249,6 +249,40 @@ class TestDownloadFailureClassification:
         assert "--model-url" in exc_info.value.remedy
         assert "registry" in exc_info.value.remedy
 
+    def test_progress_is_logged_sparsely_not_once_per_megabyte(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+    ) -> None:
+        # The "\r" updates collapse in a terminal but not in a CI log, where
+        # each flush is its own line: the one nightly that missed the model
+        # cache logged 2381 of them for a 2.3 GiB GGUF, directly above the
+        # verdict a triager is looking for.
+        megabytes = 200
+        chunks = [b"\0" * (1 << 20)] * megabytes
+
+        class _Resp:
+            headers = {"Content-Length": str(megabytes << 20)}
+
+            def read(self, _n: int) -> bytes:
+                return chunks.pop(0) if chunks else b""
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a: object) -> bool:
+                return False
+
+        monkeypatch.setattr(smoke.urllib.request, "urlopen", lambda *a, **k: _Resp())
+        smoke._download_with_progress("https://example.invalid/m.gguf", tmp_path / "m.gguf")
+
+        progress_lines = [
+            line for line in capsys.readouterr().out.split("\r") if line.strip().endswith("MB)")
+        ]
+        # One per PROGRESS_LOG_STEP_PCT, plus the 0 % line: nowhere near one per MB.
+        assert len(progress_lines) <= 100 // smoke.PROGRESS_LOG_STEP_PCT + 1
+        # Still enough to show where a stalled transfer stopped.
+        assert len(progress_lines) >= 2
+        assert "100%" in progress_lines[-1]
+
 
 # ---------------------------------------------------------------------------
 # Registry resolution
