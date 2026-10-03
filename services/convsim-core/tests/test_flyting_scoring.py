@@ -26,8 +26,19 @@ from convsim_core.flyting import (
     compute_topicality,
     evaluate_gates,
 )
-from convsim_core.flyting.config import FlytingConfig, LexiconConfig, VerseConfig
-from convsim_core.flyting.scoring import CALLBACK_BONUS, COMPOUND_BONUS, DEVICE_ROTATION_BONUS
+from convsim_core.flyting.config import (
+    HEAT_THRESHOLD,
+    MAX_DIFFICULTY_MULTIPLIER,
+    FlytingConfig,
+    LexiconConfig,
+    VerseConfig,
+)
+from convsim_core.flyting.scoring import (
+    CALLBACK_BONUS,
+    COMPOUND_BONUS,
+    DEVICE_ROTATION_BONUS,
+    MECHANICAL_QUALITY_CEILING,
+)
 from convsim_core.schema_paths import get_schema
 from tests.test_flyting_stages import PG13_POLICY
 
@@ -288,6 +299,63 @@ class TestQuality:
         aimed = compute_craft_metrics(analyze_volley("You gilded blackguard of a tripe merchant."))
         unaimed = compute_craft_metrics(analyze_volley("Some gilded blackguard of a tripe merchant."))
         assert compute_quality(None, aimed, JudgeRubric()) > compute_quality(None, unaimed, JudgeRubric())
+
+
+# ── The mechanical ceiling ───────────────────────────────────────────────────
+
+
+class TestTheMechanicalCeiling:
+    """A volley no model read is scored, flagged, and never counted as a hit.
+
+    Before the ceiling the fallback was not modest at all: a generic insult drew
+    a mechanical wit of 10, because ``craft._rarity_reward`` returns its band
+    peak for every word the bundled frequency list cannot rank. Ten
+    interchangeable "You are a <adjective> <noun>" lines each scored 60-74, so
+    every one of them cleared ``HEAT_THRESHOLD``, the heat multiplier climbed to
+    x1.9, and a judge-free run banked 969 and took the board — more than the
+    same ten lines scored under a mid-range judge verdict.
+    """
+
+    # Interchangeable abuse: the shape the rubric's own 2/10 anchors are written
+    # for, and the cheapest thing a player could type ten times.
+    GENERIC = (
+        "You are the worst.",
+        "You are a coward and a fraud.",
+        "You are a dreadful little man.",
+        "You are a thoroughly tedious person.",
+    )
+
+    def test_the_ceiling_sits_below_the_heat_threshold(self):
+        assert (
+            MECHANICAL_QUALITY_CEILING * 100 * MAX_DIFFICULTY_MULTIPLIER
+            < HEAT_THRESHOLD
+        )
+
+    @pytest.mark.parametrize(
+        "text", [*GENERIC, WORKED_EXAMPLE_TEXT, "Your boasting is loud; your courage is cowed."]
+    )
+    def test_no_unjudged_volley_reaches_a_hit_at_the_hardest_difficulty(self, text):
+        """The bound has to hold at the extremes of every knob, not on average.
+
+        ``P`` at the schema's ceiling and ``F`` at 1.0 is the best a volley can
+        do; with no verdict there is no hook, so ``T`` is 1 and no bonus can
+        apply.
+        """
+        result = score(
+            text, verdict=None, freshness=1.0, difficulty=MAX_DIFFICULTY_MULTIPLIER
+        )
+        assert result.score < HEAT_THRESHOLD
+        assert result.band == "weak"
+        assert "judge_unavailable" in result.flags
+
+    def test_a_judged_volley_is_untouched_by_the_ceiling(self):
+        assert score().score == 129
+
+    def test_the_mechanical_scale_still_ranks_one_volley_above_another(self):
+        """Scaled, not clamped — the Workbench's test box compares two drafts."""
+        plain = score("You are the worst.", verdict=None)
+        made = score(WORKED_EXAMPLE_TEXT, verdict=None)
+        assert made.score > plain.score
 
 
 # ── Topicality ───────────────────────────────────────────────────────────────

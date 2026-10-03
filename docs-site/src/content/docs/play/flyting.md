@@ -232,8 +232,10 @@ there is no judge, and the app says so rather than opening a run it cannot
 score. If the judge then fails to answer, or answers with something unusable,
 the volley is repaired once and otherwise scored from its deterministic
 measurements alone, with every such scorecard reading **Scored from mechanics
-only — the judge did not answer**. The engine never invents numbers no model
-produced.
+only — the judge did not answer, so this volley is held below a hit**. The
+engine never invents numbers no model produced, and a volley nothing judged
+stays under 60: it will not build your heat multiplier and will not put the run
+on the board above one that was scored properly.
 
 ---
 

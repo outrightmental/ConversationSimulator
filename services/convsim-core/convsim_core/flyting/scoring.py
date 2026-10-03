@@ -19,6 +19,11 @@ soft cap the run-on decay applies *and* the topicality bonus stops accruing
 plagiarized zinger is capped before bonuses, so a borrowed line plus a riposte
 is still a borrowed line.
 
+When no judge answered, Q comes from the Stage 1 stand-ins instead and is held
+inside ``MECHANICAL_QUALITY_CEILING``, so a volley no model read is scored and
+flagged but never counts as a hit: it cannot build the heat multiplier and
+cannot top a board against runs a judge actually scored.
+
 A foul is also resolved here, not only in Stage 0: the register fouls only a
 reader of the scene can raise — overt rudeness in a ballroom, an anachronism
 where the scenario forbids one — arrive with the judge's verdict. They are
@@ -37,7 +42,11 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from convsim_prompt import JUDGE_DIMENSIONS, JudgeRubric, VolleyJudgment
 
-from convsim_core.flyting.config import band_for_score
+from convsim_core.flyting.config import (
+    HEAT_THRESHOLD,
+    MAX_DIFFICULTY_MULTIPLIER,
+    band_for_score,
+)
 from convsim_core.flyting.craft import CraftMetrics
 from convsim_core.flyting.gates import (
     ALWAYS_HONORED_JUDGE_FOULS,
@@ -60,6 +69,36 @@ DEVICE_ROTATION_WINDOW = 3
 _MECHANICAL_AIMED_STING = 6
 _MECHANICAL_UNAIMED_STING = 2
 _MECHANICAL_FIDELITY = 5
+# Wit is the dimension mechanics can least observe, so its stand-in tops out at
+# the same neutral midpoint fidelity sits at rather than at the scale's ceiling.
+# Reading it off the rarity and variety rewards alone put it *at* 10 for
+# ordinary text: ``craft._rarity_reward`` returns its band peak for every word
+# the bundled ~740-word frequency list has never heard of — which is most
+# content words — and a line that does not repeat itself has a type-token ratio
+# of 1. So "vocabulary the list cannot rank" was being read as "surprise", and
+# "You are the worst" — the rubric's own 2/10 sting anchor — drew a wit of 10.
+_MECHANICAL_WIT_CEILING = 5
+
+# The ceiling on Q for a volley no model read. A mechanically-scored volley is
+# held inside the ``weak`` band: the engine can measure vocabulary, variety,
+# sound and aim, and it cannot certify a hit. Without this the fallback was not
+# modest at all — ten interchangeable "You are a <adjective> <noun>" lines each
+# scored 60-74, which is ``solid``, so every one of them cleared
+# ``HEAT_THRESHOLD``, the heat multiplier climbed uninterrupted to x1.9, and the
+# run banked 969 and took first place on the local board, outscoring the same
+# ten lines under a mid-range judge verdict (699). An outage has to cost
+# precision, not buy a high score.
+#
+# Derived from the threshold and the highest multiplier any pack may declare, so
+# the rule holds in every scenario rather than only in the ones measured: with
+# no judgment there is no hook, so T is 1 and no bonus can apply, which leaves
+# ``100 * Q * F * P`` with F at most 1.
+#
+# Applied by scaling rather than clamping, so the ordering mechanics *can* see
+# survives — two draft volleys in the Creator Workbench's test box still rank
+# against each other — and applied to Q rather than to S so the arithmetic the
+# scorecard prints stays exact.
+MECHANICAL_QUALITY_CEILING = (HEAT_THRESHOLD - 1) / (100 * MAX_DIFFICULTY_MULTIPLIER)
 
 
 @dataclass
@@ -141,13 +180,17 @@ def _mechanical_dimensions(craft: CraftMetrics) -> Dict[str, float]:
     """Judge-scale estimates from Stage 1 alone, for when the judge is unavailable.
 
     Aim is the one dimension mechanics can speak to honestly (second-person
-    anchoring), wit is approximated from rarity and variety, craft uses the
-    craft floor directly, and fidelity — which no deterministic metric can read
-    — sits at the neutral midpoint rather than guessing.
+    anchoring), wit is approximated from rarity and variety up to a neutral
+    midpoint, craft uses the craft floor directly, and fidelity — which no
+    deterministic metric can read — sits at the same midpoint rather than
+    guessing. ``compute_quality`` then scales the weighted result into
+    ``MECHANICAL_QUALITY_CEILING``.
     """
     return {
         "sting": _MECHANICAL_AIMED_STING if craft.second_person else _MECHANICAL_UNAIMED_STING,
-        "wit": 10 * (0.6 * craft.rarity_reward + 0.4 * craft.variety_reward),
+        "wit": _MECHANICAL_WIT_CEILING * (
+            0.6 * craft.rarity_reward + 0.4 * craft.variety_reward
+        ),
         "craft": craft.craft_floor,
         "fidelity": _MECHANICAL_FIDELITY,
     }
@@ -158,13 +201,21 @@ def compute_quality(
     craft: CraftMetrics,
     rubric: JudgeRubric,
 ) -> float:
-    """Q — the weighted judge dimensions, normalised to 0..1."""
+    """Q — the weighted judge dimensions, normalised to 0..1.
+
+    With no judgment the dimensions are the Stage 1 stand-ins, and the result is
+    scaled into ``MECHANICAL_QUALITY_CEILING``: a volley no model read cannot be
+    certified as a hit, however much the mechanics liked it.
+    """
     weights = rubric.normalized_weights()
-    dims = (
-        {k: float(v) for k, v in judgment.dimensions().items()}
-        if judgment is not None
-        else _mechanical_dimensions(craft)
-    )
+    if judgment is None:
+        mechanical = sum(
+            weights.get(dim, 0.0) * _mechanical_dimensions(craft).get(dim, 0.0)
+            for dim in JUDGE_DIMENSIONS
+        )
+        raw = max(0.0, min(1.0, mechanical / 10.0))
+        return raw * MECHANICAL_QUALITY_CEILING
+    dims = {k: float(v) for k, v in judgment.dimensions().items()}
     total = sum(weights.get(dim, 0.0) * dims.get(dim, 0.0) for dim in JUDGE_DIMENSIONS)
     return max(0.0, min(1.0, total / 10.0))
 

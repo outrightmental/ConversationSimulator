@@ -112,6 +112,14 @@ BAND_THRESHOLDS: Tuple[Tuple[int, str], ...] = (
 # The score at or above which a batting-practice volley keeps the heat alive.
 HEAT_THRESHOLD = 60
 
+# The bounds scenario.schema.json puts on P. Named rather than inlined in the
+# parser because the ceiling on a mechanically-scored volley is derived from the
+# highest multiplier any pack may declare, so that bound holds in every scenario
+# rather than only in the ones somebody measured — see
+# ``scoring.MECHANICAL_QUALITY_CEILING``.
+MIN_DIFFICULTY_MULTIPLIER = 0.8
+MAX_DIFFICULTY_MULTIPLIER = 1.5
+
 
 def band_for_score(score: int) -> str:
     """Return the band label for a composed volley score."""
@@ -306,7 +314,8 @@ class FlytingConfig:
             bout=BoutConfig.from_yaml(raw.get("bout")),
             batting_practice=BattingPracticeConfig.from_yaml(raw.get("batting_practice")),
             difficulty_multiplier=_as_float(
-                raw.get("difficulty_multiplier"), 1.0, low=0.8, high=1.5
+                raw.get("difficulty_multiplier"), 1.0,
+                low=MIN_DIFFICULTY_MULTIPLIER, high=MAX_DIFFICULTY_MULTIPLIER,
             ),
             lexicon=LexiconConfig.from_yaml(raw.get("lexicon")),
             register=RegisterConfig.from_yaml(raw.get("register")),

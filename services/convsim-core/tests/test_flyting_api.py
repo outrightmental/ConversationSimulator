@@ -1367,3 +1367,63 @@ class TestTheJudgeRepairAttempt:
     def test_two_failures_score_mechanically_rather_than_inventing_numbers(self):
         runtime = self._Runtime(["garbage", "still garbage"])
         assert self._run(runtime) is None
+
+
+# ── A run no judge answered ──────────────────────────────────────────────────
+
+
+class TestAJudgeFreeRun:
+    """A whole run scored from mechanics must not look like a good one.
+
+    The ``scripted`` runtime answers a judge request with the tutorial's NPC
+    turn, which carries none of the four dimensions, so every volley of this run
+    takes the ``judge_unavailable`` path end to end — the same path a real judge
+    outage takes. Before the mechanical ceiling this was the cheapest high score
+    in the mode: ten interchangeable lines each scored ``solid``, the heat
+    multiplier climbed uninterrupted to x1.9, and the run banked 969 and took
+    first place on the board.
+    """
+
+    GENERIC = [
+        "You are the worst.",
+        "You are a coward and a fraud.",
+        "You are a dreadful little man.",
+        "You are a pompous fool, sir.",
+        "You are a tiresome bore today.",
+    ]
+
+    def test_an_unjudged_run_scores_but_never_builds_heat(self, client):
+        session_id = start_run(client, runtime_id="scripted")
+        for text in self.GENERIC:
+            body = volley(client, session_id, text)
+            card = body["player_volley"]
+            assert "judge_unavailable" in card["flags"]
+            assert card["judge"] is None
+            assert 0 < card["score"] < 60, card["score"]
+            assert card["band"] == "weak"
+            assert card["heat"] == 1.0
+            assert card["banked_score"] == card["score"]
+
+        summary = client.post(
+            f"/api/flyting/sessions/{session_id}/end"
+        ).json()["summary"]
+        assert summary["peak_heat"] == 1.0
+        assert summary["best_volley_score"] < 60
+
+    def test_a_judged_run_of_the_same_lines_scores_higher(self, client):
+        """The point of the ceiling: an outage costs precision, it does not pay.
+
+        The fake runtime's umpire returns a flat 6 on every dimension — a
+        mid-range verdict, and a generous one for lines like these — so if the
+        mechanical path ever outscores it again, the fallback is farming a high
+        score from an outage.
+        """
+        def total(runtime_id):
+            session_id = start_run(client, runtime_id=runtime_id)
+            for text in self.GENERIC:
+                volley(client, session_id, text)
+            return client.post(
+                f"/api/flyting/sessions/{session_id}/end"
+            ).json()["summary"]["total_score"]
+
+        assert total("scripted") < total("fake")

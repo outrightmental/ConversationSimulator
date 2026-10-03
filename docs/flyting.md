@@ -255,6 +255,16 @@ per dimension. Unusable output gets one repair attempt, then the volley is score
 from its mechanics and flagged `judge_unavailable` — the engine never invents
 numbers no model produced.
 
+A mechanically-scored volley is also **held inside the `weak` band**. The
+deterministic stages can measure vocabulary, variety, sound and aim; they cannot
+certify a hit, so `Q` is scaled into a ceiling derived from `HEAT_THRESHOLD` and
+the highest difficulty multiplier a pack may declare. One unjudged volley
+therefore cannot clear 60, cannot build the heat multiplier, and cannot put a
+run above one a judge actually scored — an outage costs precision rather than
+buying a high score. The scaling is monotone, so the ordering the mechanics *can*
+see survives: two draft volleys in the Workbench's Test Volley box still rank
+against each other.
+
 ```json
 {
   "sting": 8, "wit": 7, "craft": 9, "fidelity": 9,
