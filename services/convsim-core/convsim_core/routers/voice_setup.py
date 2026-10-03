@@ -472,9 +472,35 @@ async def start_voice_engine(request: Request, engine_id: str) -> StartEngineRes
             message=str(exc),
         )
 
+    # `start()` returning is not the same as the server running. It is a no-op
+    # when a start is already in flight — the state is STARTING and the first
+    # call is still waiting on /health, up to two minutes — and the state
+    # property re-reads the child process, so a server that exited the moment
+    # after it answered reads CRASHED here. Claiming "running" on the strength
+    # of no exception would put a green success line above the amber row it
+    # contradicts, which is the one thing this screen must never do.
+    state = sidecar.state
+    if state != SidecarState.RUNNING:
+        if state == SidecarState.STARTING:
+            message = (
+                "The voice server is already starting — it can take a minute to "
+                "load its voices. Press Check again shortly."
+            )
+        else:
+            message = (
+                sidecar.get_status().get("error")
+                or f"The voice server is not running (state: {state.value})."
+            )
+        return StartEngineResponse(
+            engine_id=engine_id,
+            state=state.value,
+            started=False,
+            message=message,
+        )
+
     return StartEngineResponse(
         engine_id=engine_id,
-        state=sidecar.state.value,
+        state=state.value,
         started=True,
         message="The voice server is running. NPC replies can now be spoken.",
     )

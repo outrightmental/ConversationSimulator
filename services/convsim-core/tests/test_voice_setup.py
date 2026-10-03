@@ -1097,3 +1097,58 @@ def test_a_model_that_landed_is_still_used_when_a_later_asset_fails(
     # the player has already waited for.
     assets = {a["id"]: a for a in client.get("/api/voice/setup/plan").json()["assets"]}
     assert assets["whisper-small-en"]["selected"] is True
+
+
+def test_a_start_that_only_joined_one_in_flight_is_not_called_a_success(client, monkeypatch):
+    """``start()`` is a no-op while a start is already in flight, and returns None.
+
+    The sidecar waits on /health for up to two minutes, so a second press —
+    another tab, or a player who came back to the screen — reaches a sidecar in
+    state STARTING, where ``start()`` returns immediately without raising.
+    Reading that as success announced "The voice server is running" in success
+    green above the amber row saying it was not.
+    """
+    from convsim_core.runtime.sidecar import SidecarState
+
+    sidecar = client.app.state.kokoro_sidecar
+    monkeypatch.setattr(
+        type(sidecar), "state", property(lambda self: SidecarState.STARTING)
+    )
+
+    async def _already_starting(**_kwargs):
+        return None
+
+    monkeypatch.setattr(sidecar, "start", _already_starting)
+
+    body = client.post("/api/voice/setup/engine/kokoro-server/start").json()
+    assert body["started"] is False
+    assert body["state"] == "starting"
+    assert "starting" in body["message"].lower()
+
+
+def test_a_server_that_died_the_moment_it_came_up_is_not_called_a_success(client, monkeypatch):
+    """The state property re-reads the child process, so RUNNING can go CRASHED.
+
+    ``start()`` returns once /health answers 200; a server that exits straight
+    afterwards leaves the next state read CRASHED. The reason the sidecar
+    recorded is what the player needs, not a success line.
+    """
+    from convsim_core.runtime.sidecar import SidecarState
+
+    sidecar = client.app.state.kokoro_sidecar
+    monkeypatch.setattr(
+        type(sidecar), "state", property(lambda self: SidecarState.CRASHED)
+    )
+    monkeypatch.setattr(
+        sidecar, "get_status", lambda: {"state": "crashed", "error": "exited with code 1"}
+    )
+
+    async def _start(**_kwargs):
+        return None
+
+    monkeypatch.setattr(sidecar, "start", _start)
+
+    body = client.post("/api/voice/setup/engine/kokoro-server/start").json()
+    assert body["started"] is False
+    assert body["state"] == "crashed"
+    assert body["message"] == "exited with code 1"
