@@ -303,12 +303,20 @@ async def process_volley(
         and shot_clock_expired(state, elapsed_since_prompt_s)
     ):
         extra_flags.append("shot_clock_expired")
-        prepared.gate = GateResult(
-            outcome=GateOutcome.DUD,
-            reason="shot_clock_expired",
-            flags=["shot_clock_expired"],
-            umpire_mock="Too slow. The crowd has moved on.",
-        )
+        # A gate that already fired keeps its verdict. Both outcomes zero the
+        # volley and count the whiff, so the clock has nothing left to add — and
+        # replacing a Stage 0 foul with a dud would discard it: the foul would
+        # not be recorded against the player, the second below-the-belt would
+        # never end the run, and the umpire would say "too slow" about a slur.
+        # Safety rules are not overridable, least of all by a clock reading the
+        # client supplied.
+        if not prepared.gate.scores_zero:
+            prepared.gate = GateResult(
+                outcome=GateOutcome.DUD,
+                reason="shot_clock_expired",
+                flags=["shot_clock_expired"],
+                umpire_mock="Too slow. The crowd has moved on.",
+            )
 
     judge_events: List[JudgeEvent] = []
     npc_last_line = _last_npc_line(conn, session_id) if is_bout else None

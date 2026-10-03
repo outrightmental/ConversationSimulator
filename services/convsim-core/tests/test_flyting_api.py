@@ -372,6 +372,26 @@ class TestSubmittingVolleys:
         assert body["player_volley"]["score"] == 0
         assert body["run"]["whiffs"] == 1
 
+    def test_a_late_volley_keeps_the_foul_the_gates_raised(self, client):
+        # The shot clock must not launder a Stage 0 foul into a plain dud. Both
+        # outcomes score zero, but only the foul is recorded against the player
+        # and counts toward the second below-the-belt that ends the run — and
+        # the umpire has something to say about a slur beyond "too slow".
+        session_id = start_run(client)
+        body = volley(
+            client,
+            session_id,
+            "You are a retard and a coward, sir, and these steps know it.",
+            elapsed_since_prompt_s=45,
+        )
+        gate = body["player_volley"]["gate"]
+        assert gate["foul"] == "below_the_belt"
+        assert gate["reason"] == "slur_or_protected_class"
+        assert body["player_volley"]["score"] == 0
+        assert "shot_clock_expired" in body["player_volley"]["flags"]
+        assert body["run"]["foul_counts"] == {"below_the_belt": 1}
+        assert body["run"]["whiffs"] == 1
+
     def test_a_volley_the_clock_refused_does_not_make_its_retry_stale(self, client):
         # A late volley scores nothing and is meant to be tried again. If its
         # text stayed in the novelty corpus the retry would come back at a tenth
