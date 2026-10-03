@@ -173,11 +173,24 @@ The demo attaches to the base app's store page as its demo; Valve renders the
 game side by side, and while they shared an icon the two entries were
 indistinguishable (issue #499). The demo's mark is the same speech bubble on a
 deep purple plate instead of the full game's teal, with a "DEMO" ribbon on the
-frames large enough to read it; colour, not the word, is what separates them in
-the 32 px the client actually draws. One generator,
-`publishing/assets/source/gen_icons.py`, produces both the Steamworks client
-icon and the icon the demo build installs, so the store entry and the app on
-the player's dock agree.
+frames large enough to read one.
+
+The entry in that screenshot is Steamworks' **App Icon**: 184 × 184 JPG, which
+Valve's [Community and Client Icons][steam-icons] spec describes as what the
+client draws "in the library list view, 'favorites' in chat, and notifications
+across the Steam client, mobile client, and Deck". There is no 32 px "client
+icon" field. At 184 px both cues are available — the purple plate and the
+ribbon — and the two are separated by colour alone only further down, on the
+16–32 px frames the OS draws in the taskbar and Finder's list view, where the
+lettering would be about three pixels tall.
+
+One generator, `publishing/assets/source/gen_icons.py`, produces the App Icon,
+the 256 × 256 **Shortcut Icon** Steam puts on the desktop, and the icon set the
+demo build installs, so the store entry and the app on the player's dock agree;
+Steamworks' **Mac Icon** field takes `icons-demo/icon.icns` from that same set.
+Upload destinations are in the runbook (§4.2).
+
+[steam-icons]: https://partner.steamgames.com/doc/store/assets/community
 
 The demo's capsule set is **still outstanding**: the intended treatment is the
 base capsules with a ribbon matching the icon's, but `gen_capsules.py` does not
@@ -213,7 +226,7 @@ own promise.
 | D-07 | Depot audit and signing | CI + manual | `steam-deploy.yml` with `edition: demo` passes the depot audit and artifact inspection for all three platforms; macOS notarised and Windows signed (G3-01) — a demo is under Valve review like any build. |
 | D-08 | Offline after install | Manual | With the network disconnected after the download, all five conversations play (G2-01 / F-07 for the demo depot). |
 | D-09 | No full-app claims | Manual, publishing owner | Demo store copy and the in-app upsell describe exactly what the demo has (five conversations, one model, text only) and what the full app adds; no "free" claims about the paid app. |
-| D-10 | Demo is distinguishable in the Steam client | CI + manual | `tests/acceptance/test_demo_branding.py` passes: `tauri.demo.conf.json` overrides every `bundle.icon` entry, the demo plate is far from the base plate in colour, and the "DEMO" ribbon is on the large frames only. Manual half: the demo's client icon is uploaded on App 5343430 and the two library entries read apart at a glance. |
+| D-10 | Demo is distinguishable in the Steam client | CI + manual | `tests/acceptance/test_demo_branding.py` passes: `tauri.demo.conf.json` overrides every `bundle.icon` entry, the demo plate is far from the base plate in colour, and the "DEMO" ribbon is on the large frames only. Manual half: the demo's App Icon (184 × 184 JPG), Shortcut Icon and Mac Icon are uploaded on App 5343430 under Store Presence → Graphical Assets → Community and Client Icons, and the two library entries read apart at a glance. |
 
 ---
 

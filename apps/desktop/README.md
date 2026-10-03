@@ -117,7 +117,7 @@ by `bundle.icon` in `tauri.demo.conf.json`: the same speech-bubble mark on a
 purple plate instead of the full app's teal, with a "DEMO" ribbon on the
 frames large enough to read one. Without it the demo and the full game are
 indistinguishable in the Steam client. Regenerate it — and the matching
-Steamworks client icon — with:
+Steamworks App Icon and Shortcut Icon under `publishing/assets/icons/` — with:
 
 ```bash
 python3 publishing/assets/source/gen_icons.py
