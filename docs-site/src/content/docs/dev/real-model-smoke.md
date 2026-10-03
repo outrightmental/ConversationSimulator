@@ -116,7 +116,7 @@ log, and a remedy printed next to it:
 | Exit | Class | Means | First thing to do |
 |---|---|---|---|
 | 1 | `budget` | Pipeline worked; latency regressed past the CI ceiling | Compare `measured_ms` in the report artifact against recent nightlies |
-| 2 | `download` | Model could not be fetched — network, HTTP, or an empty cache | `python scripts/validate-registry.py --url-check`, then re-run |
+| 2 | `download` | Model could not be fetched — network, HTTP, a transfer that stalled past its 5 min budget, or an empty cache | `python scripts/validate-registry.py --url-check`, then re-run |
 | 3 | `checksum` | **SHA-256 drift**: on-disk bytes ≠ `model-registry/registry.yaml` | See [Checksum drift](#checksum-drift) — never relax the check |
 | 4 | `runtime` | `llama-server` or `convsim-core` crashed, hung, or returned 5xx — or one of the two ports was already taken, so neither could be started | Read the child stderr tail printed above the banner. A port conflict started no child and so has no tail: the banner carries its own remedy instead, naming the port to free — see [Running it locally](#running-it-locally) |
 | 5 | `pipeline` | Servers healthy, but an end-to-end assertion failed | Inspect the per-turn `used_fallback` and `replayed_opening` flags in the report artifact — except for an unscored debrief, see [Unscored debrief](#unscored-debrief) |
@@ -269,7 +269,7 @@ On `ubuntu-latest` (CPU-only, 4B Q4\_K\_M):
 | Set up job + checkout + `setup-python` | ~10 s | ~10 s |
 | `pip install` ×3 (prompt-composer, convsim-core, llama-cpp-python wheel) | ~16 s | ~13 s |
 | Model cache restore (2.3 GiB) | — (miss: <1 s) | ~25 s |
-| Model download from Hugging Face + SHA-256 verify (2.3 GiB) | ~9 s | — |
+| Model download from Hugging Face + SHA-256 verify (2.3 GiB) ◊ | ~9 s | — |
 | Cache save (2.3 GiB, its own step before the smoke) | ~10 s | — |
 | SHA-256 re-verify before the weights are loaded ‡ | <10 s | <10 s |
 | `llama-server` model load + `convsim-core` start + session create | ~8 s | ~8 s |
@@ -287,6 +287,16 @@ the cache. Two things in them are worth knowing before tuning anything:
   clock, and abandoning a poisoned cache entry costs nothing.
 - **Everything before the conversation is noise.** All of it together is ~1 min
   of a 30 min job. The budget is inference, and only inference.
+
+◊ The download is the one pre-smoke step that could stretch without limit, and
+it runs where the harness's own deadline cannot see it, so it carries its own
+5 min budget (`DOWNLOAD_BUDGET_S`) with a 2 min cap on any single quiet stretch
+(`DOWNLOAD_READ_TIMEOUT_S`). `urlopen`'s timeout is per socket read, not per
+transfer, so a connection that goes quiet repeatedly — or merely crawls — would
+otherwise spend the whole margin above and then hand the smoke a job clock with
+no room in it, which is the one way left to reach an unattributable
+cancellation. Exceeding either bound is exit 2 with its own remedy. 5 min is
+~33× the measured 9 s, so a transfer has to be pathologically slow to hit it.
 
 ‡ The harness re-verifies the on-disk file at the start of every run, which the
 previous single-turn harness did not, so this row has no direct measurement.

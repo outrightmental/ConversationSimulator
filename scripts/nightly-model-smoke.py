@@ -42,7 +42,8 @@ distinct exit code:
 class        exit  meaning
 ===========  ====  =======================================================
 ``budget``      1  latency regression: the pipeline worked, just too slowly
-``download``    2  model could not be fetched (network / HTTP / missing cache)
+``download``    2  model could not be fetched (network / HTTP / stalled
+                   transfer / missing cache)
 ``checksum``    3  SHA-256 drift: on-disk bytes ≠ registry ``sha256``
 ``runtime``     4  llama-server or convsim-core crashed, hung, or 5xx'd
 ``pipeline``    5  servers healthy but an end-to-end assertion failed
@@ -154,6 +155,27 @@ CORE_PORT = 7399
 # is also roughly 2× headroom.
 # See docs/real-model-smoke.md for the measured breakdown.
 DEFAULT_WALL_CLOCK_BUDGET_S = 1200.0  # 20 min
+
+# Budget for the whole model transfer, in seconds, and for one quiet stretch of
+# it.  The download runs in its own `--download-only` step, *before* the smoke,
+# so it burns the job clock where the Deadline above cannot see it — which makes
+# an unbounded transfer the one remaining route to the unattributable "The
+# operation was canceled" that every other budget here exists to replace.
+#
+# urllib's timeout is per socket operation, not per transfer, so the 600 s it
+# used to be carried bounded nothing: a connection that went quiet repeatedly,
+# or merely crawled, could spend the entire ~9 min of margin between the
+# harness's 20 min and the job's 30 min and then hand the smoke a job clock with
+# no room left in it.  Both numbers are therefore sized against that margin
+# rather than against the transfer: 300 s is ~33× the 9 s the measured
+# nightlies take to fetch *and* hash 2.3 GiB, and leaves ~4 min of the margin
+# untouched, while 120 s of silence is already far past anything a live
+# Hugging Face connection does.
+#
+# Exceeding either is a `download` failure, whose remedy — the registry URL
+# check, then re-run — is the right advice for a transfer that stalled.
+DOWNLOAD_BUDGET_S = 300.0
+DOWNLOAD_READ_TIMEOUT_S = 120.0
 
 # Scripted player turns — deliberately the same script as the fake-runtime
 # playthrough in tests/e2e/test_scripted_playthrough.py (run at release time by
@@ -579,7 +601,9 @@ def _emit_github_output(values: Dict[str, Any]) -> None:
 # ── Download and checksum ─────────────────────────────────────────────────────
 
 
-def _download_with_progress(url: str, dest: Path) -> None:
+def _download_with_progress(
+    url: str, dest: Path, *, budget_s: float = DOWNLOAD_BUDGET_S
+) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     print(f"  Downloading {url[:80]}…")
     try:
@@ -612,8 +636,11 @@ def _download_with_progress(url: str, dest: Path) -> None:
                 "scripts/validate-registry.py --url-check."
             ),
         ) from exc
+    started = time.monotonic()
     try:
-        with urllib.request.urlopen(req, timeout=600) as resp, open(dest, "wb") as f:
+        with urllib.request.urlopen(
+            req, timeout=DOWNLOAD_READ_TIMEOUT_S
+        ) as resp, open(dest, "wb") as f:
             total = int(resp.headers.get("Content-Length", 0)) or None
             downloaded = 0
             chunk = 1 << 20  # 1 MB
@@ -624,6 +651,30 @@ def _download_with_progress(url: str, dest: Path) -> None:
                     break
                 f.write(buf)
                 downloaded += len(buf)
+                elapsed = time.monotonic() - started
+                if elapsed > budget_s:
+                    # Checked per chunk rather than left to urllib's per-read
+                    # timeout, which a transfer that merely crawls never trips.
+                    # See DOWNLOAD_BUDGET_S: past this the job clock, not the
+                    # transfer, is what runs out next.
+                    rate = downloaded / elapsed / 1_048_576 if elapsed else 0.0
+                    raise SmokeFailure(
+                        FailureClass.DOWNLOAD,
+                        f"Download exceeded its {budget_s:.0f} s budget after "
+                        f"{downloaded // 1_048_576} MB"
+                        + (f" of {total // 1_048_576} MB" if total else "")
+                        + f" ({rate:.1f} MB/s)",
+                        remedy=(
+                            "The transfer stalled or crawled rather than failing. "
+                            "It is bounded because it runs before the smoke and on "
+                            "the same job clock, which the harness's own deadline "
+                            "cannot see: letting it run on would get the job "
+                            "cancelled with no attributed verdict at all. Nothing "
+                            "about the app changed — check that Hugging Face is "
+                            "reachable (scripts/validate-registry.py --url-check) "
+                            "and re-run the job."
+                        ),
+                    )
                 if total:
                     pct = int(downloaded / total * 100)
                     if pct - last_logged_pct >= PROGRESS_LOG_STEP_PCT:
@@ -634,6 +685,13 @@ def _download_with_progress(url: str, dest: Path) -> None:
                             flush=True,
                         )
         print()
+    except SmokeFailure:
+        # The exhausted-budget failure above, which already carries its own
+        # message and remedy.  The partial file still has to go, but re-wrapping
+        # it in the generic verdict below would replace both with "Download
+        # failed for <url>: SmokeFailure(...)".
+        dest.unlink(missing_ok=True)
+        raise
     except Exception as exc:  # noqa: BLE001 — see below
         # Network failure, HTTP error, or a full disk — all "could not fetch the
         # model", none of which say anything about the app under test.  Remove the

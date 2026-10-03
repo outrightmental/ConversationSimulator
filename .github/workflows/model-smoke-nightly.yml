@@ -21,7 +21,7 @@
 # summary without reading logs:
 #
 #   1  budget    — pipeline worked, latency regressed
-#   2  download  — model could not be fetched (network/HTTP/empty cache)
+#   2  download  — model could not be fetched (network/HTTP/stall/empty cache)
 #   3  checksum  — SHA-256 drift against the registry
 #   4  runtime   — llama-server or convsim-core crashed, hung, or 5xx'd
 #   5  pipeline  — servers healthy, end-to-end assertion failed
@@ -40,12 +40,15 @@
 # the download plus the cache save) run against the same job clock and are
 # invisible to the script's own deadline, but they measure ~1 min in total.
 # The margin is sized for the network-bound part of that, which a slow
-# Hugging Face or Actions-cache night can stretch by minutes.
+# Hugging Face or Actions-cache night can stretch by minutes.  The download is
+# the one of those steps that could stretch without limit, so it carries its own
+# 5 min budget (DOWNLOAD_BUDGET_S in the script) and fails as `download` rather
+# than spending the margin the smoke still needs.
 #
 #   set up job + checkout + setup-python     ~10 s
 #   pip install ×3 (cached wheels)           ~16 s cold, ~13 s warm
 #   model cache restore (2.3 GiB)            ~25 s on a hit, <1 s on a miss
-#   download + SHA-256 verify (cache miss)   ~9 s
+#   download + SHA-256 verify (cache miss)   ~9 s     — bounded at 5 min
 #   cache save (cache miss only)             ~10 s
 #   SHA-256 re-verify before load            <10 s    — bounded, see below
 #   model load + core start + session        ~8 s

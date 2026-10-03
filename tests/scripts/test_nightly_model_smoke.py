@@ -249,6 +249,53 @@ class TestDownloadFailureClassification:
         assert "--model-url" in exc_info.value.remedy
         assert "registry" in exc_info.value.remedy
 
+    def test_a_crawling_transfer_is_bounded_and_classified(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # A transfer that keeps delivering bytes, just far too slowly, never
+        # trips urllib's per-read timeout. The download runs in its own step
+        # before the smoke, on a job clock the harness's Deadline cannot see, so
+        # without its own budget this is the one remaining way to reach the
+        # unattributable "The operation was canceled".
+        dest = tmp_path / "m.gguf"
+        clock = iter([0.0] + [1.0] * 8)  # started, then one read inside the budget
+
+        class _Resp:
+            headers = {"Content-Length": str(100 << 20)}
+
+            def read(self, _n: int) -> bytes:
+                return b"\0" * (1 << 20)  # never ends
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a: object) -> bool:
+                return False
+
+        monkeypatch.setattr(smoke.urllib.request, "urlopen", lambda *a, **k: _Resp())
+        monkeypatch.setattr(
+            smoke.time, "monotonic", lambda: next(clock, 10.0)
+        )
+        with pytest.raises(smoke.SmokeFailure) as exc_info:
+            smoke._download_with_progress(
+                "https://example.invalid/m.gguf", dest, budget_s=5.0
+            )
+        assert exc_info.value.failure_class == smoke.FailureClass.DOWNLOAD
+        assert exc_info.value.exit_code == 2
+        assert "budget" in str(exc_info.value)
+        # Its own remedy, naming why the bound exists at all — not the generic
+        # "download failed for <url>: SmokeFailure(...)" a re-wrap would give.
+        assert exc_info.value.remedy != smoke.REMEDIES[smoke.FailureClass.DOWNLOAD]
+        assert "job clock" in exc_info.value.remedy
+        # The partial file still goes, or the next run checksum-fails on it.
+        assert not dest.exists()
+
+    def test_one_quiet_stretch_cannot_outlast_the_whole_budget(self) -> None:
+        # urllib's timeout is per socket operation, so a read timeout at or
+        # above the transfer budget means a single silent connection decides how
+        # long the download runs, and the budget never gets to.
+        assert smoke.DOWNLOAD_READ_TIMEOUT_S < smoke.DOWNLOAD_BUDGET_S
+
     def test_progress_is_logged_sparsely_not_once_per_megabyte(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
     ) -> None:
@@ -1104,6 +1151,24 @@ class TestWorkflowBudgetAgreement:
 
     def test_the_default_matches_what_the_workflow_passes(self) -> None:
         assert _workflow_budget_s() == smoke.DEFAULT_WALL_CLOCK_BUDGET_S
+
+    def test_the_download_cannot_eat_the_margin_it_runs_in(self) -> None:
+        # The download is a separate step that runs before the smoke, so it
+        # spends the same margin the assertion above reserves for setup, and the
+        # harness's own Deadline never sees it. Its budget therefore has to fit
+        # inside that margin alongside the other pre-smoke steps, or a slow
+        # Hugging Face night hands the smoke a job clock with no room left and
+        # GitHub cancels the job mid-conversation — no class, no phase, no
+        # remedy, which is the one outcome this whole design rules out.
+        other_pre_smoke_steps_s = 120.0  # checkout, 3 pip installs, cache restore + save
+        assert (
+            smoke.DOWNLOAD_BUDGET_S + other_pre_smoke_steps_s
+            <= PRE_SMOKE_JOB_MINUTES * 60
+        ), (
+            f"a {smoke.DOWNLOAD_BUDGET_S:.0f} s download budget plus the other "
+            f"pre-smoke steps exceeds the ~{PRE_SMOKE_JOB_MINUTES} min margin between "
+            "the harness deadline and the job timeout"
+        )
 
 
 def _workflow_steps() -> list:
