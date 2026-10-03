@@ -313,6 +313,29 @@ describe('VoiceSetup — what is missing', () => {
     expect(await screen.findByTestId('vad-onnxruntime-row')).toHaveTextContent('pip install onnxruntime')
   })
 
+  it('tells Windows to restart after the ffmpeg command, and nobody else', async () => {
+    mockApi.getVoiceSetupPlan.mockResolvedValue({
+      ok: true,
+      data: makePlan({ ffmpeg_installed: false, platform: 'win32' }),
+    })
+    renderScreen()
+    expect(await screen.findByTestId('ffmpeg-restart-note')).toHaveTextContent('Restart the app')
+
+  })
+
+  it('does not ask for a restart where the command lands on the existing PATH', async () => {
+    // brew and apt land in a directory the running process already has on
+    // PATH, so asking for a restart there would be noise.
+    mockApi.getVoiceSetupPlan.mockResolvedValue({
+      ok: true,
+      data: makePlan({ ffmpeg_installed: false, platform: 'darwin' }),
+    })
+    renderScreen()
+
+    await screen.findByTestId('voice-setup-screen')
+    expect(screen.queryByTestId('ffmpeg-restart-note')).toBeNull()
+  })
+
   it('explains instead of printing a pip command a packaged build cannot run', async () => {
     mockApi.getVoiceSetupPlan.mockResolvedValue({
       ok: true,

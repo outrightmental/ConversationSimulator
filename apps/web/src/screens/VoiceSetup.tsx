@@ -792,6 +792,19 @@ export default function VoiceSetup() {
             }
             label="Copy the ffmpeg install command"
           />
+          {/* winget writes ffmpeg's folder into the user PATH, and PATH is a
+              snapshot taken when a process starts — so the running service
+              keeps reporting "not found" after a perfectly good install. The
+              other two commands land in a directory already on PATH. */}
+          {plan.platform === 'win32' && (
+            <p
+              data-testid="ffmpeg-restart-note"
+              style={{ margin: '0.4rem 0 0', fontSize: '0.8rem', color: '#fbbf24', lineHeight: 1.5 }}
+            >
+              Restart the app afterwards: winget puts ffmpeg on the PATH of new
+              processes only, so this row cannot see it until then.
+            </p>
+          )}
         </Card>
       )}
 

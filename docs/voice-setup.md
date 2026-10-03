@@ -54,6 +54,10 @@ The plan is re-read on window focus. The two native engines are installed
 *outside* the app, so a player who runs `brew install whisper.cpp` in a
 terminal and switches back sees the row tick over without a reload.
 
+`ffmpeg` is its own row for the same reason, with the same caveat on Windows:
+`winget` writes the install folder into the user `PATH`, which the already
+running service never re-reads, so that row asks for a restart too.
+
 ### Hands-free in a packaged build
 
 `onnxruntime` is the `vad` extra in `services/convsim-core/pyproject.toml`, and
