@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useRef, useState } from 'react'
-import { useParams, useNavigate, useLocation } from 'react-router-dom'
+import { useParams, useNavigate, useLocation, Link } from 'react-router-dom'
 import { api } from '../api/client'
 import type {
   InputMode,
@@ -137,7 +137,7 @@ function NpcAvatar() {
   )
 }
 
-function npcStatusLabel(sessionState: string, phase: Phase): string {
+function npcStatusLabel(sessionState: string, phase: Phase, isPlain: boolean): string {
   if (phase === 'submitting') return 'Thinking…'
   if (sessionState === 'NpcThinking') return 'Thinking…'
   if (sessionState === 'NpcSpeaking') return 'Speaking…'
@@ -1038,7 +1038,11 @@ export default function Conversation() {
   const isAwaitingNpc = phase === 'submitting' && !npcReplyOnScreen
   const isSlowResponse = isAwaitingNpc && waitElapsedMs >= SLOW_RESPONSE_MS
   const isVerySlowResponse = isAwaitingNpc && waitElapsedMs >= VERY_SLOW_RESPONSE_MS
-  const npcStatus = npcStatusLabel(sessionState, phase)
+  const npcStatus = npcStatusLabel(sessionState, phase, isPlain)
+  // The character's name when the pack provides one. "NPC" is the most
+  // technical word on this screen and the only reason it was here is that the
+  // name was never exposed over the API (issue #501 §2).
+  const npcLabel = scenario?.npc_name ?? 'NPC'
 
   return (
     <div
@@ -1391,9 +1395,26 @@ export default function Conversation() {
             fontSize: '0.8rem',
           }}
         >
-          {isDemo
-            ? 'NPC is taking longer than usual. The model may be slow on this hardware; closing other apps usually helps.'
-            : 'NPC is taking longer than usual. The model may be slow on this hardware. You can adjust settings or try a smaller model.'}
+          {isDemo ? (
+            `${npcLabel} is taking longer than usual. The model may be slow on this hardware; closing other apps usually helps.`
+          ) : (
+            <>
+              {npcLabel} is taking longer than usual. The model may be slow on
+              this hardware.{' '}
+              {/* The moment the player actually wants the speed setting is this
+                  one. Before #501 this sentence said "you can adjust settings"
+                  and left them to find out which — the detour that lost them
+                  their session. Resuming is one click back, via the banner in
+                  the app chrome. */}
+              <Link
+                to="/settings#reply-speed"
+                data-testid="slow-response-speed-link"
+                style={{ color: '#fcd34d', textDecoration: 'underline' }}
+              >
+                Make replies faster →
+              </Link>
+            </>
+          )}
           {isVerySlowResponse && (
             // Past half a minute, say outright that the turn has not been
             // thrown away — the panel above already reports the clock, so
@@ -1405,73 +1426,12 @@ export default function Conversation() {
         </div>
       )}
 
-      {/* State meters — shown only when enabled in setup and hydrated */}
-      {showStateMeters && Object.keys(stateVars).length > 0 && (
-        <details open>
-          <summary
-            style={{ cursor: 'pointer', fontSize: '0.8rem', color: '#71717a', userSelect: 'none' }}
-          >
-            NPC state variables
-          </summary>
-          <div
-            data-testid="state-vars"
-            style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '0.5rem',
-              marginTop: '0.5rem',
-              padding: '0.5rem',
-              borderRadius: 6,
-              border: '1px solid #27272a',
-            }}
-          >
-            {Object.entries(stateVars).map(([key, value]) => (
-              <div
-                key={key}
-                style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  minWidth: 80,
-                  padding: '0.4rem 0.5rem',
-                  borderRadius: 4,
-                  background: '#18181b',
-                  fontSize: '0.8rem',
-                }}
-              >
-                <span style={{ color: '#a1a1aa', marginBottom: 2 }}>{key}</span>
-                <span style={{ color: '#f4f4f5', fontWeight: 600 }}>{value}</span>
-                <div
-                  role="meter"
-                  aria-label={`${key.replace(/_/g, ' ')}: ${value} out of 100`}
-                  aria-valuenow={value}
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  style={{
-                    width: '100%',
-                    height: 4,
-                    borderRadius: 2,
-                    background: '#27272a',
-                    marginTop: 4,
-                  }}
-                >
-                  <div
-                    aria-hidden="true"
-                    style={{
-                      width: `${value}%`,
-                      height: '100%',
-                      borderRadius: 2,
-                      background: value >= 50 ? '#22c55e' : '#f97316',
-                    }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </details>
-      )}
-
-      {allEventFlags.length > 0 && (
+      {/* The running list of raw flag identifiers is a developer's view of the
+          session, not a player's — "Event flags: honesty_demonstrated,
+          player_demonstrates_knowledge" told the playtester nothing. The
+          per-turn "Something changed" banner already reports the ones that
+          matter in words (issue #501 §2). */}
+      {!isPlain && allEventFlags.length > 0 && (
         <div
           role="status"
           aria-live="polite"
