@@ -21,6 +21,7 @@ drifting model cannot put words in the opponent's mouth that break the rating.
 from __future__ import annotations
 
 import logging
+import re
 from typing import Optional, Sequence, Tuple
 
 from convsim_prompt import (
@@ -165,6 +166,27 @@ def compose_reaction_prompt(
     return "\n".join(system_lines), user
 
 
+# A speaker label is a name: up to five words, every one of them capitalised,
+# and no comma. "Lord Bellingham", "THE GUARD" and "Rival Skald" are labels;
+# "Mark me, sir", "Hear me, you fool" and "A word of advice" are the volley's
+# own opening clause, and the launch pack encourages exactly that shape.
+_SPEAKER_LABEL_RE = re.compile(
+    r"[A-Z][\w'’.\-]*(?: +[A-Z][\w'’.\-]*){0,4}"
+)
+
+
+def _is_speaker_label(head: str) -> bool:
+    """Whether the text before a colon is model scaffolding rather than words.
+
+    Matching on word count alone — as this used to — ate the first clause of
+    any taunt that opened with a short vocative. "Mark me, sir: you are plate,
+    not sterling." was scored and displayed as "you are plate, not sterling.",
+    which loses the opening, starts the opponent's line in lower case, and
+    changes the craft metrics of a volley the player has to beat.
+    """
+    return _SPEAKER_LABEL_RE.fullmatch(head.strip()) is not None
+
+
 def clean_opponent_line(raw: str, *, fallback: str, max_words: int = 60) -> str:
     """Strip model scaffolding from a taunt and refuse anything unsafe.
 
@@ -187,7 +209,7 @@ def clean_opponent_line(raw: str, *, fallback: str, max_words: int = 60) -> str:
     # Drop a leading speaker label ("Lord Bellingham:").
     if ":" in text[:40]:
         head, _, tail = text.partition(":")
-        if tail.strip() and len(head.split()) <= 5 and not head.endswith(("!", "?", ".")):
+        if tail.strip() and _is_speaker_label(head) and not head.endswith(("!", "?", ".")):
             text = tail.strip()
 
     text = text.strip().strip('"“”').strip()
