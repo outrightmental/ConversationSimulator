@@ -58,8 +58,9 @@
           },
           "expect": {
             "type": "object",
-            "description": "Assertions. Deterministic expectations (gate, flags, mechanics) are checked without a model; score bands and hooks additionally require a judge.",
+            "description": "Assertions. Deterministic expectations (gate, flags, mechanics) are checked without a model; score bands and hooks additionally require a judge. At least one assertion is required: an empty block would make the entry cost a judge call and check nothing, and the runner reports it as a pass.",
             "additionalProperties": false,
+            "minProperties": 1,
             "properties": {
               "gate": {
                 "type": "string",
@@ -88,7 +89,8 @@
                     "gibberish",
                     "no_aim",
                     "too_short",
-                    "judge_unavailable"
+                    "judge_unavailable",
+                    "judge_foul"
                   ]
                 },
                 "uniqueItems": true

@@ -15,7 +15,8 @@ Two tiers of expectation, because only one of them is deterministic:
     machine with no model present, so they run in CI on every commit (see
     ``services/convsim-core/tests/test_flyting_calibration.py``).
 *   **Judged** — ``band``, ``min_score``, ``max_score``, ``hooks``,
-    ``judge_fouls``. These need a
+    ``judge_fouls``, and the one flag that is not mechanical, ``judge_foul``.
+    These need a
     judge, so they are skipped unless ``--judge RUNTIME_ID`` names a runtime to
     score with; that is the nightly, recommended-model run. The exception is a
     ``band`` on a volley the gates zeroed: that volley scores 0 whatever a judge
@@ -61,6 +62,12 @@ from convsim_core.flyting.volley import VolleyInputError  # noqa: E402
 
 # Expectation keys that need a judge; everything else is deterministic.
 JUDGED_KEYS = frozenset({"band", "min_score", "max_score", "hooks", "judge_fouls"})
+
+# The one member of `expect.flags` that needs a judge. Every other flag is a pure
+# function of the volley and the pack; this one is added by the engine only when
+# it promotes a register foul out of a verdict, so there is no judge-free run on
+# which it could be present.
+_JUDGE_TIER_FLAG = "judge_foul"
 
 # Gate outcomes that zero a volley before the judge is ever invoked. A volley
 # expected to end in one of these costs no model call, so it cannot be part of a
@@ -186,6 +193,23 @@ def _check_volley(
         # present exactly when no judge scored it, which both tiers already know.
         if flag == "judge_unavailable":
             continue
+        # judge_foul is the flag the engine adds when it promotes a register foul
+        # out of the judge's verdict, so it exists only on a run that had a
+        # judge. Checking it in the deterministic tier, as every other flag is
+        # checked, would fail every CI run of a suite that asserted it — which is
+        # why the schema could not offer it until now. It belongs to the judged
+        # tier, beside judge_fouls.
+        if flag == _JUDGE_TIER_FLAG:
+            if not judged:
+                result.skipped += 1
+                continue
+            result.checked += 1
+            if flag not in score.flags:
+                result.failures.append(
+                    f"flag {flag!r} missing — no judge-raised foul was honored "
+                    f"(flags: {score.flags or 'none'})"
+                )
+            continue
         result.checked += 1
         if flag not in score.flags:
             result.failures.append(f"flag {flag!r} missing (flags: {score.flags or 'none'})")
@@ -289,6 +313,19 @@ def _reaches_the_judge(entry: Dict[str, Any]) -> bool:
     return str(expect.get("gate") or "ok") not in _GATED_OUTCOMES
 
 
+def _has_judged_expectation(expect: Dict[str, Any]) -> bool:
+    """Whether anything in this block needs a judge to check.
+
+    Not just the judged *keys*: ``flags`` is a mixed key, and a volley whose only
+    judged assertion is ``flags: [judge_foul]`` still has to reach the model.
+    Reading the keys alone would sort it last in a ``--limit`` sample, which is
+    the quiet kind of wrong this ordering exists to avoid.
+    """
+    if any(key in JUDGED_KEYS for key in expect):
+        return True
+    return _JUDGE_TIER_FLAG in (expect.get("flags") or [])
+
+
 def _sample_priority(entry: Dict[str, Any]) -> int:
     """Lower sorts earlier: the volleys a judged sample is actually for.
 
@@ -299,7 +336,7 @@ def _sample_priority(entry: Dict[str, Any]) -> int:
     2 — no judged expectation at all.
     """
     expect = entry.get("expect") or {}
-    if not any(key in JUDGED_KEYS for key in expect):
+    if not _has_judged_expectation(expect):
         return 2
     return 0 if _reaches_the_judge(entry) else 1
 
