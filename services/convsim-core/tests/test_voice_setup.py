@@ -174,10 +174,38 @@ def test_a_command_that_does_not_finish_the_job_carries_a_follow_up_note():
 
     # macOS needs none: brew puts whisper-cli on PATH itself.
     assert voice_registry.engine_command_note(whisper, "darwin") is None
-    # Engines that declare no notes at all must not blow up on the lookup.
+
+
+def test_a_command_that_needs_a_program_this_machine_lacks_says_so(monkeypatch):
+    """"docker: command not found" is the same dead end as a 404 package name.
+
+    Kokoro's command *runs* in Docker, so on a machine without Docker it cannot
+    start at all. Saying nothing would send the player to a terminal to find
+    that out, which is exactly what this screen exists to prevent.
+    """
     kokoro = voice_registry.get_engine("kokoro-server")
     assert kokoro is not None
+    assert "docker run" in kokoro.commands["win32"]
+
+    monkeypatch.setattr(voice_registry.shutil, "which", lambda _name: None)
+    note = voice_registry.engine_command_note(kokoro, "win32")
+    assert note is not None
+    assert "docker" in note.lower()
+    # It must name the way out, not just the obstacle.
+    assert "docker.com" in note, note
+
+    # Present on PATH: the command is self-contained, so the row stays quiet.
+    # This also covers the lookup for an engine that declares no platform notes.
+    monkeypatch.setattr(voice_registry.shutil, "which", lambda name: f"/usr/bin/{name}")
     assert voice_registry.engine_command_note(kokoro, "win32") is None
+
+    # A platform follow-up still wins over a prerequisite note.
+    whisper = voice_registry.get_engine("whisper-cli")
+    assert whisper is not None
+    monkeypatch.setattr(voice_registry.shutil, "which", lambda _name: None)
+    assert "CONVSIM_WHISPER_CPP_BINARY_PATH" in (
+        voice_registry.engine_command_note(whisper, "win32") or ""
+    )
 
 
 def test_plan_exposes_the_follow_up_note_for_this_platform(client):
@@ -190,8 +218,13 @@ def test_plan_exposes_the_follow_up_note_for_this_platform(client):
     assert engines["whisper-cli"]["command_note"] == voice_registry.engine_command_note(
         whisper, sys.platform
     )
-    # Kokoro's command is self-contained on every platform.
-    assert engines["kokoro-server"]["command_note"] is None
+    # Kokoro's note depends on whether this machine has docker, so compare it
+    # against the same resolver rather than pinning one of the two outcomes.
+    kokoro = voice_registry.get_engine("kokoro-server")
+    assert kokoro is not None
+    assert engines["kokoro-server"]["command_note"] == voice_registry.engine_command_note(
+        kokoro, sys.platform
+    )
 
 
 def test_a_pip_command_is_only_offered_where_pip_can_reach_this_server(monkeypatch):

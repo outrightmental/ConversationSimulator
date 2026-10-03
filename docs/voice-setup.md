@@ -135,7 +135,7 @@ restart.
 | Engine | Why manual |
 |--------|-----------|
 | `whisper-cli` | whisper.cpp publishes no checksummed binary for every platform. llama.cpp's release carries a `sha256sum.txt`; whisper.cpp's does not, and shipping an unverified binary is worse than handing over the install command. |
-| Kokoro TTS server | Steam depot builds bundle it (`CONVSIM_BUNDLED_RUNTIME_DIR`). Elsewhere the official container image is the shortest path. |
+| Kokoro TTS server | Steam depot builds bundle it (`CONVSIM_BUNDLED_RUNTIME_DIR`). Elsewhere the official container image is the shortest path — for anyone who has Docker, which the row checks for and names when it is absent. |
 
 Only Homebrew packages whisper.cpp. There is no winget package for it —
 winget-pkgs carries `ggml.llamacpp` and nothing else from that publisher — and
@@ -148,9 +148,24 @@ upstream `cmake` build instead of a package-manager one-liner.
 | Linux | `git clone` + `cmake --build`, then `sudo cp build/bin/whisper-cli /usr/local/bin/` | None — the command ends by copying onto `PATH`. |
 | Windows | `git clone` + `cmake --build` | Required: the binary stays in `build\bin\Release`, and the app must be restarted. |
 
-A command that cannot finish the job carries a `command_notes` entry for that
-platform, which the plan returns as `command_note` and the screen renders in
-amber under the command block. Windows is the only case today: the build leaves
+A command that cannot finish the job carries a note, which the plan returns as
+`command_note` and the screen renders in amber under the command block. Two
+kinds share that slot, and `engine_command_note` resolves them in this order:
+
+1. **A per-platform follow-up** (`command_notes[platform]`) the command cannot
+   perform for itself. Windows building `whisper-cli` is the only case today.
+2. **A missing prerequisite the command runs** (`requires_tool` +
+   `requires_tool_note`), reported only when `shutil.which` cannot find it, so
+   the row is silent for anyone who already has it. Kokoro's container command
+   is the only case today: without Docker it answers `docker: command not
+   found`, which is the same dead end the old winget whisper.cpp command was,
+   so the note names Docker and the non-container alternative rather than
+   leaving the player to discover it in a terminal.
+
+No engine declares both; if one ever does, the platform follow-up wins as the
+more specific of the two.
+
+For Windows whisper.cpp specifically: the build leaves
 `whisper-cli.exe` in the build tree, so the note names the two routes the worker
 honours — put that folder on `PATH`, or set
 `CONVSIM_WHISPER_CPP_BINARY_PATH` to the `.exe`. Without it the player runs a

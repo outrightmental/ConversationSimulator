@@ -119,6 +119,11 @@ screen gives you ready to copy:
 docker run --rm -p 7358:8880 ghcr.io/remsky/kokoro-fastapi-cpu:latest
 ```
 
+That command needs [Docker](https://www.docker.com/get-started/). If you do not
+have it, the setup screen says so under the command rather than letting you find
+out from `docker: command not found` — install Docker and run the command again,
+or follow **Other ways to install it** to run the server without a container.
+
 A container puts no `kokoro-server` program on your machine for the app to find,
 so once it answers the row reads **already running** rather than claiming the
 server is missing. The app did not start it and will not stop it — closing the

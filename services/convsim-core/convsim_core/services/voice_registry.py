@@ -17,8 +17,11 @@ the app can only automate one of them:
     TTS server.  Neither publishes a checksummed cross-platform release the way
     llama.cpp does, so onboarding *guides* the player through installing them
     (per-platform commands, a docs link, a re-check button) instead of
-    pretending to automate it.  Once the binary exists the app can take over
-    again: a present-but-stopped Kokoro server is started with one click.
+    pretending to automate it.  A command that cannot finish the job on its own
+    carries a note saying what is left — the platform step it cannot perform, or
+    a prerequisite it runs that this machine does not have.  Once the binary
+    exists the app can take over again: a present-but-stopped Kokoro server is
+    started with one click.
 
 The SHA-256 values are the Hugging Face / upstream LFS object ids for the exact
 pinned revision.  A file that does not match is deleted, never installed.
@@ -87,6 +90,11 @@ class VoiceEngine:
     # A package manager puts the binary on PATH; building from source does not,
     # so that platform has to be told where the binary landed.
     command_notes: dict[str, str] | None = None
+    # Program the install command itself runs. When it is absent the command
+    # cannot even start, so the plan says so rather than letting the player
+    # discover "command not found" in their own terminal.
+    requires_tool: str = ""
+    requires_tool_note: str = ""
 
 
 VOICE_ASSETS: tuple[VoiceAsset, ...] = (
@@ -229,6 +237,17 @@ VOICE_ENGINES: tuple[VoiceEngine, ...] = (
             "win32": "docker run --rm -p 7358:8880 ghcr.io/remsky/kokoro-fastapi-cpu:latest",
         },
         startable=True,
+        # The container route is the shortest path only for someone who already
+        # has Docker. Without it the command answers "docker: command not
+        # found" — the same dead end the winget whisper.cpp command was, in the
+        # screen that exists to remove dead ends.
+        requires_tool="docker",
+        requires_tool_note=(
+            "This command runs the server in Docker, and docker was not found on "
+            "this machine — until it is, the command cannot start. Install Docker "
+            "Desktop (docker.com/get-started) and run it again, or use "
+            '"Other ways to install it" below to run the server directly.'
+        ),
     ),
 )
 
@@ -273,10 +292,25 @@ def engine_command(engine: VoiceEngine, platform: str) -> str | None:
 
 
 def engine_command_note(engine: VoiceEngine, platform: str) -> str | None:
-    """Return the follow-up step after *platform*'s command, or None when it needs none."""
-    if engine.command_notes is None:
-        return None
-    return engine.command_notes.get(_normalise_platform(platform))
+    """Return the caveat to show under *platform*'s command, or None when it needs none.
+
+    Two kinds of caveat share this slot, in order of precedence:
+
+    1. a per-platform follow-up the command cannot do for itself (Windows
+       building ``whisper-cli`` into a directory nothing on PATH will search);
+    2. a missing prerequisite the command *runs* (``docker``), reported only
+       when it is actually absent, so the note is noise for nobody.
+
+    No engine declares both today. If one ever does, the platform follow-up
+    wins: it is the more specific of the two.
+    """
+    if engine.command_notes is not None:
+        note = engine.command_notes.get(_normalise_platform(platform))
+        if note is not None:
+            return note
+    if engine.requires_tool and shutil.which(engine.requires_tool) is None:
+        return engine.requires_tool_note or None
+    return None
 
 
 def find_whisper_binary() -> str | None:
