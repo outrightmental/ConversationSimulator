@@ -268,8 +268,8 @@ routing and SLA policy.
 
 Roll back to the previous beta build if **any** of the following are true:
 
-| Trigger | Severity |
-|---------|---------|
+| Trigger | Rollback urgency |
+|---------|------------------|
 | Confirmed privacy regression: conversation data leaving the machine | **Immediate — do not wait** |
 | App crashes on launch on any required platform for >10% of reported installs | Critical |
 | Steam Deck in Gaming Mode cannot reach the home screen | Critical |
@@ -310,8 +310,8 @@ the fix can be tracked and reviewed:
 1. Trigger [`.github/workflows/hotfix.yml`](../.github/workflows/hotfix.yml)
    with `release_tag` set to the version that was rolled back,
    `slug` set to a short description of the defect (e.g. `privacy-regression`),
-   `severity` set to the issue severity, and `defect_summary` as a one sentence
-   description.
+   `priority` set to **P0 — blocker** or **P1 — next**, and `defect_summary` as
+   a one sentence description.
 2. The workflow creates `hotfix/<tag>-<slug>` and prints the rollback record
    template. Copy the record block into
    [`publishing/ROLLBACK_AND_SUPPORT_MESSAGING.md`](ROLLBACK_AND_SUPPORT_MESSAGING.md).
@@ -338,7 +338,7 @@ with any new issues found during the 72-hour monitoring window.
 For accepted launch risks from the private beta, see
 [`publishing/BETA_FEEDBACK_AND_LAUNCH_RISKS.md`](BETA_FEEDBACK_AND_LAUNCH_RISKS.md).
 
-| # | Issue | Affected platform | Severity | Workaround | Tracking issue | Resolution target |
+| # | Issue | Affected platform | Priority | Workaround | Tracking issue | Resolution target |
 |---|-------|------------------|----------|-----------|---------------|------------------|
 | 1 | *(document known issues here before launch)* | | | | | |
 

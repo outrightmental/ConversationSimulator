@@ -93,7 +93,7 @@ launch build and are deferred to a post-launch milestone. Each deferred item
 must appear in the accepted risks table or the known-issues table in
 [`publishing/LAUNCH_DAY_RUNBOOK.md`](LAUNCH_DAY_RUNBOOK.md).
 
-| Issue | Description | Platform | Deferred to milestone | Severity |
+| Issue | Description | Platform | Deferred to milestone | Priority |
 |-------|-------------|----------|----------------------|---------|
 | *(#nnn)* | | | | |
 
