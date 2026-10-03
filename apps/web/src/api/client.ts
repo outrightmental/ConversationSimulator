@@ -165,6 +165,71 @@ function str(v: unknown): string | undefined {
   return typeof v === 'string' && v !== '' ? v : undefined
 }
 
+// Pydantic's per-field failures, as a single readable clause:
+// "tts_voice_id: Input should be a valid string; seed: Input should be a valid
+// integer". `loc` is a path like ["body", "tts_voice_id"]; the "body" head is
+// dropped because every request model lives there and it only adds noise.
+// Without this a 422 reads "VALIDATION_ERROR: Request validation failed" and
+// names nothing a user or maintainer can act on (issue #508).
+const MAX_REPORTED_FIELDS = 5
+// Mirrors _MAX_REASON_CHARS in convsim_core/errors.py: one field's reason can
+// be as long as whatever a @field_validator raised, and this lands in a compact
+// error card and in a copied bug report.
+const MAX_REASON_CHARS = 120
+
+function clip(reason: string): string {
+  return reason.length <= MAX_REASON_CHARS
+    ? reason
+    : reason.slice(0, MAX_REASON_CHARS - 1).trimEnd() + '\u2026'
+}
+
+// Pydantic wraps a message raised by one of the engine's own validators:
+// "Value error, <message>" for a ValueError, "Assertion failed, <message>" for
+// a failed assert. That prefix is Pydantic implementation detail and this
+// sentence is shown on an error card and pasted into an issue, so strip it.
+// Mirrors _reason() in convsim_core/errors.py (issue #508).
+const PYDANTIC_MSG_PREFIXES = ['Value error, ', 'Assertion failed, ']
+
+function reasonOf(msg: string): string {
+  for (const prefix of PYDANTIC_MSG_PREFIXES) {
+    if (msg.startsWith(prefix)) return msg.slice(prefix.length)
+  }
+  return msg
+}
+
+/** One `{ path, reason }` per readable Pydantic error, in body order. */
+function fieldFailures(details: unknown): { path: string; reason: string }[] {
+  if (!Array.isArray(details)) return []
+  const out: { path: string; reason: string }[] = []
+  for (const d of details) {
+    if (d === null || typeof d !== 'object') continue
+    const entry = d as { loc?: unknown; msg?: unknown }
+    const raw = str(entry.msg)
+    if (!raw) continue
+    // Stripped here rather than at the summary, so the `alreadyNamed` check
+    // below compares against the same wording the summary would produce. The
+    // `|| raw` guards a msg that is nothing but the prefix.
+    const reason = reasonOf(raw) || raw
+    const all = (Array.isArray(entry.loc) ? entry.loc : []).map((p) => String(p))
+    const parts = all[0] === 'body' ? all.slice(1) : all
+    // A body-wide failure (missing body, malformed JSON) locates an offset,
+    // not a field — "0: JSON decode error" names nothing. List indexes inside
+    // a path are kept, since there they do say which item.
+    const bodyWide = parts.length === 0 || parts.every((p) => /^\d+$/.test(p))
+    out.push({ path: bodyWide ? '' : parts.join('.'), reason })
+  }
+  return out
+}
+
+function fieldSummary(failures: { path: string; reason: string }[]): string | undefined {
+  if (failures.length === 0) return undefined
+  const named = failures.map((f) => (f.path ? `${f.path}: ${clip(f.reason)}` : clip(f.reason)))
+  const extra = named.length - MAX_REPORTED_FIELDS
+  return (
+    named.slice(0, MAX_REPORTED_FIELDS).join('; ') + (extra > 0 ? ` (and ${extra} more)` : '')
+  )
+}
+
 // Turn an already-read error body into a clean message. Never returns HTML,
 // parser internals, or a raw JSON body — an HTML body is handled upstream in
 // errorFromResponse and never reaches here.
@@ -186,13 +251,21 @@ function parseErrorText(text: string, res: Response): string {
   // convsim-core (Python) returns { error: { code, message } }; the interim
   // convsim-api (TypeScript) returns { code?, message } at the top level.
   // Accept either shape so error text is clean regardless of active backend.
-  const body = json as { message?: unknown; code?: unknown; detail?: unknown; error?: unknown }
+  const body = json as {
+    message?: unknown
+    code?: unknown
+    detail?: unknown
+    details?: unknown
+    error?: unknown
+  }
   let msg = str(body.message)
   let code = str(body.code)
+  let details = body.details
   if (!msg && body.error && typeof body.error === 'object') {
-    const err = body.error as { message?: unknown; code?: unknown }
+    const err = body.error as { message?: unknown; code?: unknown; details?: unknown }
     msg = str(err.message)
     code = str(err.code)
+    details = err.details
   }
   // A bare sentence on `error`, e.g. { error: "disk is full" }. Nothing in-tree
   // emits this today, but falling through to the status line would drop the only
@@ -213,16 +286,37 @@ function parseErrorText(text: string, res: Response): string {
     msg = detail
   }
   if (!msg && Array.isArray(detail)) {
-    const sentences = detail
-      .map((d) => (d && typeof d === 'object' ? str((d as { msg?: unknown }).msg) : undefined))
-      .filter((m): m is string => m !== undefined)
-    if (sentences.length > 0) msg = sentences.join('; ')
+    // FastAPI's default 422 body carries the same { loc, msg } entries as
+    // convsim-core's reshaped one, so name the fields here too. Joining the
+    // bare reasons produced "String should have at least 1 character" — a
+    // sentence that names nothing a user or maintainer can act on, which is
+    // the dead end issue #508 reported, just reached by the other shape.
+    msg = fieldSummary(fieldFailures(detail))
   }
   if (!msg && detail && typeof detail === 'object') {
     const d = detail as { message?: unknown; msg?: unknown; code?: unknown }
     msg = str(d.message) ?? str(d.msg)
     code = code ?? str(d.code)
   }
+
+  // convsim-core folds the field failures into `message` itself, but an engine
+  // bundled before issue #508 sends only the generic "Request validation
+  // failed" with the detail alongside. Summarise the details ourselves only
+  // when that sentence names no field at all, so a 422 never dead-ends at a
+  // message that names nothing.
+  //
+  // If it names even one, the sentence is already this change's own summary —
+  // capped at MAX_REPORTED_FIELDS and ending in "(and N more)". Appending the
+  // fields it deliberately left out would contradict its own count and blow
+  // past the length the compact card and the copied report are capped for.
+  const failures = fieldFailures(details)
+  const sentence = msg ?? ''
+  const alreadyNamed = failures.some((f) =>
+    f.path ? sentence.includes(`${f.path}:`) : sentence.includes(f.reason),
+  )
+  const fields = alreadyNamed ? undefined : fieldSummary(failures)
+  if (msg && fields) msg = `${msg} — ${fields}`
+  else if (fields) msg = fields
 
   if (msg) return code ? `${code}: ${msg}` : msg
   // The body was structured but carried no human sentence. Showing it verbatim is

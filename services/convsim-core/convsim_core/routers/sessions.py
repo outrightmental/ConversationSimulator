@@ -22,7 +22,7 @@ from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, model_validator
 
 from convsim_core.edition import (
     EDITION_RESTRICTED,
@@ -116,11 +116,35 @@ class SessionCreateRequest(BaseModel):
     # client can never point a session at a sidecar-backed runtime this way.
     runtime_id: Optional[Literal["scripted", "fake"]] = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def null_means_default(cls, data: Any) -> Any:
+        """Treat an explicit ``null`` as "field not provided" wherever a default exists.
+
+        A client that renders an unset option as ``null`` instead of omitting
+        the key gets a 422 no amount of retrying can clear, and the setup
+        screen has no way to recover — exactly the dead end in issue #508.
+        ``tts_voice_id`` is the live example: the web UI documents it as
+        "omitted when no voice is selected, in which case the backend applies
+        its default", so a null plainly means the default.
+
+        Only defaulted fields are forgiven. ``scenario_id`` and
+        ``player_role_name`` are required, so a missing or null value there
+        still fails loudly — and now says which field it was.
+        """
+        if not isinstance(data, dict):
+            return data
+        optional = {name for name, f in cls.model_fields.items() if not f.is_required()}
+        return {k: v for k, v in data.items() if not (v is None and k in optional)}
+
     @field_validator("player_role_name")
     @classmethod
     def player_role_name_not_blank(cls, v: str) -> str:
         if not v.strip():
-            raise ValueError("player_role_name cannot be blank")
+            # Just the constraint: the 422 summary already prefixes the field
+            # path, so repeating the name here read "player_role_name:
+            # player_role_name cannot be blank" on the error card (issue #508).
+            raise ValueError("cannot be blank")
         return v
 
     @field_validator("tts_voice_id")
@@ -131,7 +155,16 @@ class SessionCreateRequest(BaseModel):
         try:
             validate_voice_id(v)
         except TtsVoiceValidationError as exc:
-            raise ValueError(str(exc)) from exc
+            # validate_voice_id quotes the id it rejected and lists every
+            # approved one — fine in a log line, wrong here: this sentence
+            # becomes the 422's `message`, which the compact error card shows
+            # and "Copy diagnostics" copies into a public bug report (issue
+            # #508). Name the constraint, not the value — the same rule that
+            # drops Pydantic's "input" key. The approved ids are already
+            # discoverable at GET /api/tts/voices.
+            raise ValueError(
+                "not an approved built-in voice id (see GET /api/tts/voices)"
+            ) from exc
         return v
 
 
@@ -164,10 +197,14 @@ class TurnSubmitRequest(BaseModel):
     @field_validator("content")
     @classmethod
     def content_not_empty(cls, v: str) -> str:
+        # Just the constraint, for the same reason player_role_name's validator
+        # shed its field name: the 422 summary prefixes the field path itself,
+        # so "Turn content cannot be blank" rendered as "content: Turn content
+        # cannot be blank" on the error card and in a copied report (issue #508).
         if not v.strip():
-            raise ValueError("Turn content cannot be blank")
+            raise ValueError("cannot be blank")
         if len(v.strip()) > MAX_TURN_CONTENT_CHARS:
-            raise ValueError(f"Turn content exceeds {MAX_TURN_CONTENT_CHARS} characters")
+            raise ValueError(f"cannot exceed {MAX_TURN_CONTENT_CHARS} characters")
         return v
 
 

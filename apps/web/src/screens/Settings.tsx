@@ -12,6 +12,7 @@ import VoiceSettingsPanel from '../components/VoiceSettingsPanel'
 import { useTranslation, formatDate, SUPPORTED_LOCALES } from '../i18n'
 import { RemediationCard } from '../setup/RemediationCard'
 import { openExternal } from '../lib/openExternal'
+import { copyTextToClipboard } from '../lib/clipboard'
 import { clearTurnSamples } from '../lib/turnEstimate'
 import { useIsDemo } from '../edition'
 import type { PreflightResponse, PreflightFixAction } from '@convsim/shared'
@@ -165,13 +166,11 @@ export default function Settings() {
   }, [])
 
   async function handleCopyFolder(folderPath: string, key: string) {
-    try {
-      await navigator.clipboard.writeText(folderPath)
-      setCopiedFolder(key)
-      setTimeout(() => setCopiedFolder((v) => (v === key ? null : v)), 1500)
-    } catch {
-      // ignore — clipboard may be unavailable in non-secure contexts
-    }
+    // Via lib/clipboard: in the packaged macOS build navigator.clipboard does
+    // not exist at all, so reading .writeText off it threw (issue #508).
+    if (!(await copyTextToClipboard(folderPath))) return
+    setCopiedFolder(key)
+    setTimeout(() => setCopiedFolder((v) => (v === key ? null : v)), 1500)
   }
 
   async function handleOpenFolder(folderPath: string) {

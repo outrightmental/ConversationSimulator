@@ -93,7 +93,10 @@ describe('api.createSession — ApiResult return type', () => {
     }
   });
 
-  it('extracts messages from a FastAPI 422 validation detail list', async () => {
+  it('names the failing fields in a FastAPI 422 validation detail list', async () => {
+    // FastAPI's default 422 shape, which this client still has to read: a 422
+    // raised before convsim-core installs its handler, or an engine bundled
+    // before issue #508. The reasons alone name nothing to act on.
     mockFetch(422, {
       detail: [
         { type: 'string_too_short', loc: ['body', 'player_role_name'], msg: 'String should have at least 1 character' },
@@ -104,10 +107,255 @@ describe('api.createSession — ApiResult return type', () => {
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.message).toBe(
-        'String should have at least 1 character; Input should be greater than or equal to 0',
+        'player_role_name: String should have at least 1 character; ' +
+          'seed: Input should be greater than or equal to 0',
       );
       expect(result.error.message).not.toContain('{');
       expect(result.error.message).not.toContain('loc');
+    }
+  });
+
+  it('caps and clips a FastAPI 422 detail list the same way', async () => {
+    // Same card and same copied report, so the same two limits apply as to
+    // convsim-core's own sentence.
+    mockFetch(422, {
+      detail: [
+        { type: 'value_error', loc: ['body', 'scenario_id'], msg: 'Value error, ' + 'x'.repeat(500) },
+        ...Array.from({ length: 7 }, (_, i) => ({
+          type: 'missing',
+          loc: ['body', `field_${i}`],
+          msg: 'Field required',
+        })),
+      ],
+    });
+    const result = await api.createSession(BASE_SESSION);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toContain('scenario_id');
+      expect(result.error.message).toContain('and 3 more');
+      expect(result.error.message).not.toContain('field_4');
+      expect(result.error.message).toContain('\u2026');
+    }
+  });
+
+  it('falls back to the status line when a 422 detail list carries no reasons', async () => {
+    mockFetch(422, { detail: [{ type: 'missing', loc: ['body', 'scenario_id'] }] });
+    const result = await api.createSession(BASE_SESSION);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).not.toContain('loc');
+      expect(result.error.message).not.toContain('{');
+    }
+  });
+
+  it("names the failing fields from convsim-core's 422 error.details", async () => {
+    // The engine folds the fields into `message` itself, so this is belt and
+    // braces — but a UI paired with an engine bundled before issue #508 gets
+    // only the generic sentence, and "VALIDATION_ERROR: Request validation
+    // failed" tells a stranded player nothing at all.
+    mockFetch(422, {
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Request validation failed',
+        details: [
+          { type: 'string_type', loc: ['body', 'tts_voice_id'], msg: 'Input should be a valid string' },
+        ],
+      },
+    });
+    const result = await api.createSession(BASE_SESSION);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toBe(
+        'VALIDATION_ERROR: Request validation failed — tts_voice_id: Input should be a valid string',
+      );
+      expect(result.error.message).not.toContain('{');
+      expect(result.error.message).not.toContain('loc');
+    }
+  });
+
+  it('does not repeat the fields when the engine already named them', async () => {
+    mockFetch(422, {
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Request validation failed — seed: Input should be a valid integer',
+        details: [{ type: 'int_parsing', loc: ['body', 'seed'], msg: 'Input should be a valid integer' }],
+      },
+    });
+    const result = await api.createSession(BASE_SESSION);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toBe(
+        'VALIDATION_ERROR: Request validation failed — seed: Input should be a valid integer',
+      );
+    }
+  });
+
+  it('truncates a long field list instead of filling the card', async () => {
+    mockFetch(422, {
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Request validation failed',
+        details: Array.from({ length: 8 }, (_, i) => ({
+          type: 'missing',
+          loc: ['body', `field_${i}`],
+          msg: 'Field required',
+        })),
+      },
+    });
+    const result = await api.createSession(BASE_SESSION);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toContain('field_0');
+      expect(result.error.message).not.toContain('field_7');
+      expect(result.error.message).toContain('and 3 more');
+    }
+  });
+
+  it('does not name an offset as a field for a malformed body', async () => {
+    mockFetch(422, {
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Request validation failed',
+        details: [{ type: 'json_invalid', loc: ['body', 0], msg: 'JSON decode error' }],
+      },
+    });
+    const result = await api.createSession(BASE_SESSION);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toBe(
+        'VALIDATION_ERROR: Request validation failed \u2014 JSON decode error',
+      );
+    }
+  });
+
+  it('clips one long reason instead of filling the error card', async () => {
+    // ApiErrorView renders the message on one line, and CopyDiagnosticsButton
+    // copies it into a bug report — a validator free to raise any sentence must
+    // not be able to run away with either (issue #508).
+    mockFetch(422, {
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Request validation failed',
+        details: [
+          { type: 'value_error', loc: ['body', 'scenario_id'], msg: 'Value error, ' + 'x'.repeat(500) },
+        ],
+      },
+    });
+    const result = await api.createSession(BASE_SESSION);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toContain('scenario_id');
+      expect(result.error.message.length).toBeLessThan(200);
+      expect(result.error.message.endsWith('\u2026')).toBe(true);
+    }
+  });
+
+  it("strips Pydantic's wrapper prefix from a validator's own message", async () => {
+    // An engine bundled before issue #508 sends the generic sentence plus the
+    // details, so the client words the summary itself — and must not put
+    // framework jargon ("Value error, ") on the card or in the copied report.
+    mockFetch(422, {
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Request validation failed',
+        details: [
+          {
+            type: 'value_error',
+            loc: ['body', 'tts_voice_id'],
+            msg: 'Value error, not an approved built-in voice id (see GET /api/tts/voices)',
+          },
+          {
+            type: 'assertion_error',
+            loc: ['body', 'seed'],
+            msg: 'Assertion failed, seed must be positive',
+          },
+        ],
+      },
+    });
+    const result = await api.createSession(BASE_SESSION);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toContain(
+        'tts_voice_id: not an approved built-in voice id (see GET /api/tts/voices)',
+      );
+      expect(result.error.message).toContain('seed: seed must be positive');
+      expect(result.error.message).not.toContain('Value error');
+      expect(result.error.message).not.toContain('Assertion failed');
+    }
+  });
+
+  it('strips the prefix from a FastAPI-shaped 422 detail list too', async () => {
+    mockFetch(422, {
+      detail: [
+        { type: 'value_error', loc: ['body', 'player_role_name'], msg: 'Value error, cannot be blank' },
+      ],
+    });
+    const result = await api.createSession(BASE_SESSION);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toContain('player_role_name: cannot be blank');
+      expect(result.error.message).not.toContain('Value error');
+    }
+  });
+
+  it('does not repeat a field the engine named but worded differently', async () => {
+    // The engine clips a long reason too, so the two sentences need not match
+    // character for character; naming the field once is what matters.
+    mockFetch(422, {
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Request validation failed \u2014 tts_voice_id: Value error, not an approv\u2026',
+        details: [
+          {
+            type: 'value_error',
+            loc: ['body', 'tts_voice_id'],
+            msg: 'Value error, not an approved built-in voice id (see GET /api/tts/voices)',
+          },
+        ],
+      },
+    });
+    const result = await api.createSession(BASE_SESSION);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message.match(/tts_voice_id/g)).toHaveLength(1);
+    }
+  });
+
+  it('does not list the fields the engine truncated away behind its own "(and N more)"', async () => {
+    // The engine caps its sentence at five fields and says how many it left
+    // out. Spelling those out here would both contradict that count and undo
+    // the cap the compact card and the copied report rely on.
+    const names = Array.from({ length: 9 }, (_, i) => `field_${i}`);
+    mockFetch(422, {
+      error: {
+        code: 'VALIDATION_ERROR',
+        message:
+          'Request validation failed — ' +
+          names
+            .slice(0, 5)
+            .map((n) => `${n}: Field required`)
+            .join('; ') +
+          ' (and 4 more)',
+        details: names.map((n) => ({ type: 'missing', loc: ['body', n], msg: 'Field required' })),
+      },
+    });
+    const result = await api.createSession(BASE_SESSION);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toContain('(and 4 more)');
+      expect(result.error.message).not.toContain('field_5');
+      expect(result.error.message.endsWith('(and 4 more)')).toBe(true);
+    }
+  });
+
+  it('ignores an unreadable details payload rather than mangling the message', async () => {
+    mockFetch(422, {
+      error: { code: 'VALIDATION_ERROR', message: 'Request validation failed', details: 'nope' },
+    });
+    const result = await api.createSession(BASE_SESSION);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toBe('VALIDATION_ERROR: Request validation failed');
     }
   });
 

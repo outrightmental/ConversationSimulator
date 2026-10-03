@@ -14,36 +14,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { ApiError } from '../api/errors'
 import { buildDiagnosticsText } from '../api/errors'
 import { buildDiagnosticsReport } from '../api/diag'
-
-/**
- * Write text to the clipboard, preferring the async Clipboard API and
- * falling back to a hidden textarea + execCommand for webviews where
- * navigator.clipboard is unavailable. Resolves false when neither works.
- */
-export async function copyTextToClipboard(text: string): Promise<boolean> {
-  try {
-    if (typeof navigator !== 'undefined' && navigator.clipboard != null) {
-      await navigator.clipboard.writeText(text)
-      return true
-    }
-  } catch {
-    // fall through to the legacy path
-  }
-  try {
-    const textarea = document.createElement('textarea')
-    textarea.value = text
-    textarea.setAttribute('readonly', '')
-    textarea.style.position = 'fixed'
-    textarea.style.opacity = '0'
-    document.body.appendChild(textarea)
-    textarea.select()
-    const ok = document.execCommand('copy')
-    document.body.removeChild(textarea)
-    return ok
-  } catch {
-    return false
-  }
-}
+import { copyTextToClipboard } from '../lib/clipboard'
 
 export interface CopyDiagnosticsButtonProps {
   /** Error whose details lead the report (header built via buildDiagnosticsText). */
@@ -94,14 +65,29 @@ export function CopyDiagnosticsButton({
   function handleCopy() {
     void (async () => {
       setStatus('busy')
-      const head =
-        header != null && header !== ''
-          ? header
-          : error != null
-            ? buildDiagnosticsText(error, context)
-            : defaultHeader(context)
-      const report = await buildDiagnosticsReport(head, context)
-      const ok = await copyTextToClipboard(report)
+      // Every path out of here has to reach a verdict. The button is the
+      // escape hatch a user reaches for once something has already gone
+      // wrong, so a throw while assembling the report must not leave it
+      // sitting disabled on "busy" with nothing copied (issue #508) — the
+      // client-side header on its own is still worth more to a bug report
+      // than an unresponsive button.
+      let head = defaultHeader(context)
+      let ok = false
+      try {
+        head =
+          header != null && header !== ''
+            ? header
+            : error != null
+              ? buildDiagnosticsText(error, context)
+              : head
+        ok = await copyTextToClipboard(await buildDiagnosticsReport(head, context))
+      } catch {
+        try {
+          ok = await copyTextToClipboard(head)
+        } catch {
+          ok = false
+        }
+      }
       if (!mounted.current) return
       setStatus(ok ? 'copied' : 'failed')
       scheduleReset()
@@ -133,6 +119,12 @@ export function CopyDiagnosticsButton({
 
   return (
     <button
+      // Error surfaces render inside forms — ScenarioSetup puts this very
+      // button in the middle of the brief's launch form — and a <button>
+      // with no type submits. Pressing "Copy diagnostics" there re-fired the
+      // failed request, which tore the card (and this button) out of the DOM
+      // mid-copy, so it never reported "Copied!" (issue #508).
+      type="button"
       onClick={handleCopy}
       disabled={status === 'busy'}
       data-testid="copy-diagnostics"

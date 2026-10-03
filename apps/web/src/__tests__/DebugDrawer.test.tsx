@@ -221,6 +221,27 @@ describe('DebugDrawer', () => {
       await waitFor(() => expect(btn).toHaveTextContent('Copy failed'))
     })
 
+    it('copies through the desktop shell when navigator.clipboard is absent', async () => {
+      // The packaged macOS build has no navigator.clipboard at all, so reading
+      // .writeText off it used to throw right here (issue #508).
+      delete (navigator as unknown as { clipboard?: unknown }).clipboard
+      const invoke = vi.fn().mockResolvedValue(undefined)
+      const win = window as unknown as { __TAURI__?: unknown }
+      win.__TAURI__ = { core: { invoke } }
+      try {
+        render(<DebugDrawer entries={[makeEntry()]} />)
+        const btn = screen.getByRole('button', { name: /copy turn json/i })
+        fireEvent.click(btn)
+        await waitFor(() => expect(btn).toHaveTextContent('Copied!'))
+        expect(invoke).toHaveBeenCalledWith(
+          'plugin:clipboard-manager|write_text',
+          expect.objectContaining({ text: expect.stringContaining('Hello') }),
+        )
+      } finally {
+        delete win.__TAURI__
+      }
+    })
+
     it('does not include the plain audio field in copied text', async () => {
       const entry = makeEntry({
         rawPayload: {

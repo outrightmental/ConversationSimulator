@@ -36,7 +36,7 @@ The browser path (`apps/web`) continues to work independently via
 
 In addition to the base requirements from `./scripts/setup.sh` / `setup.ps1`:
 
-- **Rust** 1.80+ (install via [rustup](https://rustup.rs/)); CI and release builds use stable
+- **Rust** 1.90+ (install via [rustup](https://rustup.rs/)); CI and release builds use stable
 - **Tauri system dependencies** for your OS:
   - **macOS** — Xcode Command Line Tools (`xcode-select --install`)
   - **Linux** — `libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev`
@@ -302,8 +302,20 @@ The web UI displays a startup screen (rendered by `CoreStartupGuard` in
 | Open data folder | `tauri-plugin-shell` (`shell:allow-open`) |
 | Local asset playback | WebView `<audio>`/`<video>` — no extra permission needed |
 | Filesystem read/write | `tauri-plugin-fs` (`fs:allow-read-text-file`, `fs:allow-read-dir`, `fs:allow-write-text-file`) |
+| Copy diagnostics | `tauri-plugin-clipboard-manager` (`clipboard-manager:allow-write-text`) — write only; the app never reads the clipboard |
 
 Capability definitions live in `src-tauri/capabilities/default.json`.
+
+### Clipboard notes
+
+The web clipboard APIs are not usable in the packaged macOS and Linux builds:
+the webview is served from the custom `tauri://localhost` scheme, which
+WKWebView does not treat as a secure context, so `navigator.clipboard` is not
+defined — and WebKit only honours `document.execCommand('copy')` while the
+triggering user gesture is still live, which the diagnostics report's own
+log-excerpt fetch outlives. Every copy therefore goes through
+`src/lib/clipboard.ts`, which tries the plugin first and falls back to the two
+web APIs for dev mode and plain browsers (issue #508).
 
 ### Microphone notes
 
