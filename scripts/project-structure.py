@@ -8,6 +8,7 @@ three systems from drifting back into each other.
 
 Usage:
     python scripts/project-structure.py validate        # offline — the CI gate
+    python scripts/project-structure.py self-test       # offline — the CI gate
     python scripts/project-structure.py audit           # live tracker vs. manifest
     python scripts/project-structure.py apply           # converge the tracker
     python scripts/project-structure.py apply --dry-run # print the plan only
@@ -15,6 +16,10 @@ Usage:
 `validate` reads files only: the manifest is coherent, the issue forms use no
 label the manifest does not define, and CONTRIBUTING's label tables list exactly
 the labels that exist.  It needs no network and no credentials.
+
+`self-test` drives the planner and the rule checker against fixtures instead of
+the live tracker, so the behaviour this script's comments promise is checked on
+every pull request rather than only when a maintainer runs `apply`.
 
 `audit` and `apply` talk to GitHub through the gh CLI, which must be
 authenticated with the `project` scope as well as `repo`:
@@ -51,6 +56,9 @@ CONTRIBUTING_PATH = REPO_ROOT / "CONTRIBUTING.md"
 # worth knowing: anything backticked inside a table row is read as a label name,
 # so field values in those tables are deliberately left unquoted.
 CONTRIBUTING_SECTION = "## Labels, fields, and milestones"
+# How that section is named in error messages.  Derived, so renaming the heading
+# cannot leave a message pointing at a section that no longer exists.
+CONTRIBUTING_REF = f"CONTRIBUTING.md § {CONTRIBUTING_SECTION.lstrip('# ')}"
 
 
 # ── Manifest ─────────────────────────────────────────────────────────────────
@@ -224,10 +232,10 @@ def contributing_errors(manifest: dict[str, Any], text: str) -> list[str]:
     retired = set(retired_names(manifest))
     errors = []
     for name in sorted(live - documented):
-        errors.append(f"CONTRIBUTING.md § Labels does not list label {name!r}")
+        errors.append(f"{CONTRIBUTING_REF} does not list label {name!r}")
     for name in sorted(documented - live):
         what = "retired label" if name in retired else "unknown label"
-        errors.append(f"CONTRIBUTING.md § Labels table still lists {what} {name!r}")
+        errors.append(f"{CONTRIBUTING_REF} table still lists {what} {name!r}")
     return errors
 
 
@@ -799,6 +807,313 @@ class GitHub:
         )
 
 
+# ── Self-test ────────────────────────────────────────────────────────────────
+#
+# The planner and the rule checker are pure functions, so they can be driven
+# offline against fixtures — no gh CLI, no network, no live tracker.  `validate`
+# proves the real manifest is coherent; this proves the code that reads it does
+# what the comments above claim, including the three behaviours that are easy to
+# get wrong and expensive to get wrong: retired-label precedence, never
+# overwriting a field a human already set, and modelling a repo-wide label
+# delete or rename before the rules are checked.
+
+_FIXTURE = """
+project:
+  owner: acme
+  number: 1
+  priority_field: Priority
+  phase_field: Phase
+  issue_types: [Task, Bug, Feature, Epic]
+  priorities: [P0, P1]
+labels:
+  - name: area:engine
+    color: "1d76db"
+    description: The engine
+  - name: area:docs
+    color: "1d76db"
+    renamed_from: docs
+    description: The docs
+  - name: meta
+    color: "cfd3d7"
+    description: Housekeeping
+retired_labels:
+  - name: epic
+    type: Epic
+  - name: bug
+    type: Bug
+  - name: docs
+    type: Task
+    rename_to: area:docs
+  - name: "priority:P0"
+    priority: P0
+milestones:
+  - title: v1
+    due_on: 2026-01-31
+    state: open
+    description: The first train
+rules:
+  require_project_membership: true
+  meta_label: meta
+  require_milestone_when_open: true
+  require_type_when_open: true
+  require_priority_when_open: true
+  require_area_when_open: true
+  area_exempt_types: [Epic]
+  require_phase_or_milestone_when_closed: true
+backfill:
+  milestones:
+    v1: [3]
+  priorities:
+    P1: [3]
+  labels:
+    area:engine: [3]
+"""
+
+# As the repo looks before `apply` runs: the retired labels are all still there.
+_FIXTURE_LIVE_LABELS = [
+    {"name": "area:engine", "color": "1d76db", "description": "The engine"},
+    {"name": "docs", "color": "0075ca", "description": "Documentation"},
+    {"name": "bug", "color": "d73a4a", "description": "Something isn't working"},
+    {"name": "epic", "color": "5319e7", "description": "Umbrella issue"},
+    {"name": "priority:P0", "color": "b60205", "description": "Blocker"},
+]
+
+
+def _issue(number: int, **overrides: Any) -> dict[str, Any]:
+    issue = {
+        "number": number,
+        "state": "OPEN",
+        "url": f"https://example.invalid/{number}",
+        "labels": [],
+        "milestone": None,
+        "type": None,
+        "priority": None,
+        "phase": None,
+        "in_project": True,
+    }
+    issue.update(overrides)
+    return issue
+
+
+def _fixture_issues() -> list[dict[str, Any]]:
+    return [
+        # Two type labels at once: `epic` is listed first, so it wins.
+        _issue(1, state="CLOSED", labels=["bug", "docs"], phase="01"),
+        _issue(2, labels=["epic", "bug", "priority:P0"], milestone="v1"),
+        # Type already set by a human; the backfill fills only the gaps.
+        _issue(3, labels=[], type="Feature", in_project=False),
+        # Housekeeping: no milestone and no area, and that is correct.
+        _issue(4, labels=["meta"], type="Task", priority="P0"),
+    ]
+
+
+def _contributing(*rows: str) -> str:
+    body = "\n".join(f"| Axis | {row} | Question |" for row in rows)
+    return (
+        f"## Paths by role\n\nSome prose that mentions `bug` and `priority:P0`.\n\n"
+        f"{CONTRIBUTING_SECTION}\n\n"
+        f"| Axis | Labels | Question |\n| ---- | ------ | -------- |\n{body}\n\n"
+        f"Prose below the table may name the retired `enhancement` label freely.\n\n"
+        f"## Development setup\n\n`bug` again, out of section.\n"
+    )
+
+
+def _kinds(actions: list[Action]) -> list[tuple[str, str]]:
+    return [(action.kind, action.summary) for action in actions]
+
+
+def self_test() -> int:
+    manifest = yaml.safe_load(_FIXTURE)
+    labels, issues = _FIXTURE_LIVE_LABELS, _fixture_issues()
+    actions = plan(manifest, labels, [], issues)
+    after = simulate(issues, actions)
+    by_number = {issue["number"]: issue for issue in after}
+
+    broken = yaml.safe_load(_FIXTURE)
+    broken["labels"].append({"name": "area:engine", "color": "nothex"})
+    broken["labels"].append({"name": "bug", "color": "d73a4a", "description": "Dup"})
+    broken["retired_labels"].append({"name": "stale"})
+    broken["milestones"].append({"title": "v2", "state": "open"})
+    broken["rules"]["meta_label"] = "nope"
+    broken["backfill"]["milestones"]["v9"] = [7]
+    broken["backfill"]["priorities"]["P0"] = [3]
+
+    cases: list[tuple[str, Any, Any]] = [
+        # -- the manifest checks
+        ("fixture manifest is coherent", manifest_errors(manifest), []),
+        ("real manifest is coherent", manifest_errors(load_manifest()), []),
+        ("duplicate label is reported",
+         any("declared twice" in e for e in manifest_errors(broken)), True),
+        ("non-hex colour is reported",
+         any("non six-digit-hex" in e for e in manifest_errors(broken)), True),
+        ("missing description is reported",
+         any("has no description" in e for e in manifest_errors(broken)), True),
+        ("label that is both live and retired is reported",
+         any("both a declared label and a retired one" in e for e in manifest_errors(broken)),
+         True),
+        ("retired label with no replacement field is reported",
+         any("names no replacement field" in e for e in manifest_errors(broken)), True),
+        ("milestone with no due date is reported",
+         any("has no due date" in e for e in manifest_errors(broken)), True),
+        ("undeclared meta_label is reported",
+         any("rules.meta_label" in e for e in manifest_errors(broken)), True),
+        ("backfill naming an unknown milestone is reported",
+         any("unknown value 'v9'" in e for e in manifest_errors(broken)), True),
+        ("backfill assigning one issue twice is reported",
+         any("assigns issue #3 to both" in e for e in manifest_errors(broken)), True),
+        ("due_on normalises to YYYY-MM-DD",
+         [due_date(dt.date(2026, 1, 31)), due_date("2026-01-31T12:00:00Z"), due_date(None)],
+         ["2026-01-31", "2026-01-31", None]),
+
+        # -- the issue forms
+        ("clean issue form passes",
+         template_errors(manifest, {"a.yml": {"labels": ["area:docs"], "type": "Bug"}}), []),
+        ("issue form using a retired label is pointed at `type:`",
+         template_errors(manifest, {"a.yml": {"labels": ["bug"]}}),
+         ["a.yml: labels: includes retired label 'bug' — use the issue form's "
+          "`type:` key or an area label instead"]),
+        ("issue form using an undeclared label is reported",
+         template_errors(manifest, {"a.yml": {"labels": ["area:nope"]}}),
+         ["a.yml: labels: includes undeclared label 'area:nope'"]),
+        ("issue form with an unknown type is reported",
+         template_errors(manifest, {"a.yml": {"type": "Chore"}}),
+         ["a.yml: type: 'Chore' is not a known issue type"]),
+
+        # -- CONTRIBUTING
+        ("CONTRIBUTING table matching the manifest passes",
+         contributing_errors(manifest, _contributing("`area:engine` · `area:docs`", "`meta`")),
+         []),
+        ("prose outside the table may name retired labels",
+         any("'bug'" in e or "'enhancement'" in e
+             for e in contributing_errors(
+                 manifest, _contributing("`area:engine` · `area:docs`", "`meta`"))),
+         False),
+        ("CONTRIBUTING table listing a retired label is reported",
+         contributing_errors(
+             manifest, _contributing("`area:engine` · `area:docs`", "`meta` · `bug`")),
+         ["CONTRIBUTING.md § Labels, fields, and milestones table still lists "
+          "retired label 'bug'"]),
+        ("CONTRIBUTING table missing a label is reported",
+         contributing_errors(manifest, _contributing("`area:engine` · `area:docs`")),
+         ["CONTRIBUTING.md § Labels, fields, and milestones does not list label 'meta'"]),
+        ("a missing CONTRIBUTING section is reported",
+         contributing_errors(manifest, "# Nothing here\n"),
+         ["CONTRIBUTING.md has no table under '## Labels, fields, and milestones'"]),
+
+        # -- the plan
+        ("label with a renamed_from is renamed, not recreated",
+         _kinds(plan_labels(manifest, labels)),
+         [("label.rename", "docs -> area:docs"), ("label.create", "meta")]),
+        ("a matching label plans no action", plan_labels(manifest, [
+            {"name": "area:engine", "color": "1D76DB", "description": "The engine"},
+            {"name": "area:docs", "color": "1d76db", "description": "The docs"},
+            {"name": "meta", "color": "cfd3d7", "description": "Housekeeping"},
+         ]), []),
+        ("a recoloured label is updated in place", _kinds(plan_labels(manifest, [
+            {"name": "area:engine", "color": "ff0000", "description": "The engine"},
+            {"name": "area:docs", "color": "1d76db", "description": "The docs"},
+            {"name": "meta", "color": "cfd3d7", "description": "Housekeeping"},
+         ])), [("label.update", "area:engine")]),
+        ("retired labels are deleted, except the renamed one",
+         _kinds(plan_label_deletions(manifest, labels)),
+         [("label.delete", "epic"), ("label.delete", "bug"),
+          ("label.delete", "priority:P0")]),
+        ("a missing milestone is created",
+         _kinds(plan_milestones(manifest, [])), [("milestone.create", "v1")]),
+        ("a drifted milestone names the drifted keys",
+         _kinds(plan_milestones(manifest, [
+             {"number": 9, "title": "v1", "state": "open",
+              "due_on": "2026-02-28", "description": "The first train"}])),
+         [("milestone.update", "v1 (due_on)")]),
+        ("a matching milestone plans no action", plan_milestones(manifest, [
+            {"number": 9, "title": "v1", "state": "open",
+             "due_on": "2026-01-31", "description": "The first train"}]), []),
+        ("deletions are planned last, after the signal reaches its field",
+         [action.kind for action in actions].index("label.delete")
+         > max(i for i, a in enumerate(actions) if a.kind.startswith("issue.")), True),
+        ("milestones are created before an issue points at one",
+         [a.kind for a in actions].index("milestone.create")
+         < [a.kind for a in actions].index("issue.milestone"), True),
+
+        # -- field migration and backfill
+        ("the first retired label listed wins the type", by_number[1]["type"], "Bug"),
+        ("`epic` outranks `bug` for the type", by_number[2]["type"], "Epic"),
+        ("priority migrates out of its label", by_number[2]["priority"], "P0"),
+        ("a type a human set is never overwritten", by_number[3]["type"], "Feature"),
+        ("backfill fills the priority gap", by_number[3]["priority"], "P1"),
+        ("backfill fills the milestone gap", by_number[3]["milestone"], "v1"),
+        ("backfill adds the area label", by_number[3]["labels"], ["area:engine"]),
+        ("an issue off the board is added to it",
+         ("project.add", "#3") in _kinds(actions), True),
+        ("a meta issue is given no milestone", by_number[4]["milestone"], None),
+
+        # -- simulate: label renames and deletes are repo-wide
+        ("a deleted label leaves every issue that carried it",
+         [issue["number"] for issue in after if "bug" in issue["labels"]], []),
+        ("a renamed label carries its assignments over",
+         by_number[1]["labels"], ["area:docs"]),
+        ("labels_after reflects the whole plan",
+         [entry["name"] for entry in labels_after(labels, actions)],
+         ["area:docs", "area:engine", "meta"]),
+
+        # -- the rules, against the end state
+        ("the fixture plan leaves nothing for a human",
+         check_rules(manifest, after, labels_after(labels, actions)), []),
+        ("a repo label missing from the manifest needs a human",
+         check_rules(manifest, [], [{"name": "wildcat"}]),
+         ["label 'wildcat' exists on the repo but is not in the manifest — "
+          "declare it or delete it by hand"]),
+        ("a surviving retired label is reported",
+         check_rules(manifest, [_issue(5, labels=["bug", "area:engine"], type="Bug",
+                                       priority="P0", milestone="v1")], []),
+         ["#5 still carries retired label(s) bug"]),
+        ("an undeclared label is reported",
+         check_rules(manifest, [_issue(5, labels=["area:engine", "wildcat"], type="Bug",
+                                       priority="P0", milestone="v1")], []),
+         ["#5 carries undeclared label(s) wildcat"]),
+        ("an open issue with no milestone is reported",
+         check_rules(manifest, [_issue(5, labels=["area:engine"], type="Bug",
+                                       priority="P0")], []),
+         ["#5 is open with no milestone"]),
+        ("an open issue with no Type or Priority is reported",
+         check_rules(manifest, [_issue(5, labels=["area:engine"], milestone="v1")], []),
+         ["#5 is open with no Type", "#5 is open with no Priority"]),
+        ("an open issue with no area is reported",
+         check_rules(manifest, [_issue(5, type="Bug", priority="P0", milestone="v1")], []),
+         ["#5 is open with no area: label"]),
+        ("an Epic needs no area",
+         check_rules(manifest, [_issue(5, type="Epic", priority="P0", milestone="v1")], []),
+         []),
+        ("a meta issue needs neither milestone nor area",
+         check_rules(manifest, [_issue(5, labels=["meta"], type="Task", priority="P0")], []),
+         []),
+        ("a meta issue still needs a Type and a Priority",
+         check_rules(manifest, [_issue(5, labels=["meta"])], []),
+         ["#5 is open with no Type", "#5 is open with no Priority"]),
+        ("an issue off the board is reported",
+         check_rules(manifest, [_issue(5, labels=["meta"], type="Task", priority="P0",
+                                       in_project=False)], []),
+         ["#5 is not on the project board"]),
+        ("closed work attributed to neither Phase nor milestone is reported",
+         check_rules(manifest, [_issue(5, state="CLOSED")], []),
+         ["#5 is closed but belongs to no Phase or milestone"]),
+        ("closed work with a Phase is fine",
+         check_rules(manifest, [_issue(5, state="CLOSED", phase="01")], []), []),
+    ]
+
+    failed = False
+    for name, got, want in cases:
+        if got != want:
+            failed = True
+            print(f"FAIL self-test: {name}\n       got  {got!r}\n       want {want!r}")
+        else:
+            print(f"ok   self-test: {name}")
+    print("")
+    print(f"{len(cases)} case(s), {'FAILED' if failed else 'all passed'}.")
+    print("")
+    return 1 if failed else 0
+
+
 # ── Commands ─────────────────────────────────────────────────────────────────
 
 
@@ -913,6 +1228,9 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("validate", help="offline manifest and documentation checks").set_defaults(
         func=cmd_validate
     )
+    sub.add_parser(
+        "self-test", help="verify the planner and the rules against fixtures"
+    ).set_defaults(func=lambda _args: self_test())
     sub.add_parser("audit", help="compare the live tracker against the manifest").set_defaults(
         func=cmd_audit
     )
