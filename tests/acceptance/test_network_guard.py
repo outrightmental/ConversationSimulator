@@ -14,7 +14,7 @@ CI environment without model downloads:
   G-4  Pack import: zip import followed by scenario listing.
   G-5  Explicit-download always passes through LOCAL_MODE.
   G-6  The socket guard itself blocks + records a real outbound connection.
-  G-7  Flyting: a turn-scored run, its local board, and a draft preview.
+  G-7  Flyting: a turn-scored run (judge call included), its board, a preview.
 
 Enforcement model
 -----------------
@@ -800,10 +800,12 @@ class TestFlytingNetworkGuard:
     anywhere" is the premise of the whole mode, so each of those runs here
     under both guards.
 
-    Scoring falls back to mechanics, because the fake runtime is no judge —
-    which suits the test: every deterministic stage runs for real, and the
-    stage that would reach a model is the one the rest of this suite already
-    proves local.
+    The judge call is made for real: the fake runtime recognises the flyting
+    judge schema and answers it, so Stage 3 — the one stage of the mode that
+    reaches a runtime at all — is exercised here rather than skipped, verdict
+    parsing and hook verification included. That is the point of running the
+    mode through this gate: a volley is scored end to end, every stage of it,
+    with no outbound call recorded.
     """
 
     def test_volley_scores_without_network_call(self, _guard_client):
@@ -818,6 +820,36 @@ class TestFlytingNetworkGuard:
             f"the flyting pipeline. Response: {res.text}"
         )
         assert res.json()["player_volley"]["score"] >= 0
+
+    def test_the_judge_stage_itself_runs_under_the_guard(self, _guard_client):
+        """Stage 3 is the only stage of the mode that reaches a runtime.
+
+        The fake runtime answers the judge schema, so this volley carries a
+        real parsed verdict rather than the mechanical fallback. Asserting that
+        is what keeps this class honest: a judge outage is caught and degrades
+        to mechanics silently, so were the call to stop happening at all, this
+        suite would go on passing while no longer guarding the one stage of
+        flyting that talks to a model.
+        """
+        sid = _start_flyting_run(_guard_client)
+        res = _guard_client.post(
+            f"/api/flyting/sessions/{sid}/volley",
+            json={"content": _FLYTING_VOLLEY},
+        )
+        assert res.status_code == 200, f"[volley] {res.text}"
+        volley = res.json()["player_volley"]
+        assert volley["judge"] is not None, (
+            "The volley was scored with no verdict, so Stage 3 never ran and "
+            "this class is not guarding the judge call it claims to."
+        )
+        assert "judge_unavailable" not in volley["flags"], (
+            "The judge call degraded to the mechanical fallback under the "
+            f"guard: flags {volley['flags']}"
+        )
+        assert _guard_client.outbound_attempts == [], (
+            "Outbound network attempts recorded while judging a volley: "
+            f"{_guard_client.outbound_attempts}"
+        )
 
     def test_run_end_writes_the_local_board_without_network_call(self, _guard_client):
         """Ending a run records the board row, locally, under the guard."""
