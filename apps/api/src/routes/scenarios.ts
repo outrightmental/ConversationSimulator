@@ -83,7 +83,7 @@ function packScenarioToScenarioInfo(
     recommended_model: m.requirements?.recommended_llm ?? [],
     // The player's objective, which the Conversation Brief leads with. Only
     // the player-visible half: `goals.hidden` is the NPC's covert agenda and
-    // must never leave the server.
+    // has no place in a player-facing payload.
     player_visible_goals: s.goals?.player_visible ?? [],
   };
 }

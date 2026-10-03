@@ -1160,7 +1160,7 @@ being read, and it must carry three tiers of visual weight:
 | Element           | Requirement                                                                                                       |
 | ----------------- | ----------------------------------------------------------------------------------------------------------------- |
 | Brief hero        | Pack, title, summary, and the facts of the engagement: role, estimated length, turn limit, content rating, voice.  |
-| Mission objective | The scenario's `goals.player_visible`, numbered, in the brightest panel on the screen — a player who reads nothing else must still come away knowing what they are trying to do. A scenario that declares no goals falls back to the role brief, which is then not repeated elsewhere. `goals.hidden` is the NPC's covert agenda and must never reach the client. |
+| Mission objective | The scenario's `goals.player_visible`, numbered, in the brightest panel on the screen — a player who reads nothing else must still come away knowing what they are trying to do. A scenario that declares no goals falls back to the role brief, which is then not repeated elsewhere. `goals.hidden` is the NPC's covert agenda and is never part of the brief: the engine withholds it from the scenario response unless dev mode is active and the caller asks for it explicitly. |
 | Numbered sections | The settings read as a short labelled sequence, not an undifferentiated stack of fields.                          |
 | Difficulty traits | Patience, disclosure, volatility and time pressure drawn as meters; the fill always matches the number shown.     |
 | Purpose panel     | The rubric dimensions this scenario practises, when it declares any.                                              |

@@ -67,7 +67,9 @@ export interface ScenarioInfo {
    * not send the field at all.
    *
    * `goals.hidden` is the NPC's covert agenda and is deliberately absent from
-   * this contract — it must never reach the client.
+   * this contract — nothing here may be rendered from it. The engine withholds
+   * it from the scenario response altogether unless dev mode is active and the
+   * caller asks for it explicitly.
    */
   player_visible_goals?: string[];
 }
