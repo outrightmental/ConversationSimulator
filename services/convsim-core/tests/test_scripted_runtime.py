@@ -656,6 +656,63 @@ _FORBIDDEN_TUTORIAL_WORDS = (
 )
 
 
+def _tutorial_scenario_strings() -> list[tuple[str, str]]:
+    """Every player-facing string of the tutorial scenario, from BOTH copies.
+
+    The tutorial is defined twice: as a pack (packs/official/first-words) and
+    as a hardcoded catalog entry. resolve_scenario_info consults the catalog
+    first, so in the full edition — the playtester's "default settings" — the
+    catalog entry is the one that plays, and the pack only supplies the library
+    card, rubric and safety policy. A rewrite applied to one and not the other
+    is invisible to a reader and invisible to a player of the other edition.
+    """
+    import yaml
+    from pathlib import Path
+
+    from convsim_core.scenarios import SCENARIOS
+
+    out: list[tuple[str, str]] = []
+
+    info = SCENARIOS["first_words_tutorial"]
+    out.append(("catalog opening_npc_says", info.opening_npc_says or ""))
+    out += [
+        (f"catalog player_visible_goals[{i}]", g)
+        for i, g in enumerate(info.scenario_data.player_visible_goals)
+    ]
+    out += [
+        (f"catalog event {e.id} npc_instruction", e.npc_instruction)
+        for e in (info.events or [])
+    ]
+    out.append(("catalog player_role_brief", info.scenario_data.player_role_brief))
+    npc = info.scenario_data.npc
+    out.append(("catalog npc speaking_style", npc.public_persona.speaking_style))
+    out += [
+        (f"catalog npc hidden_agenda[{i}]", a)
+        for i, a in enumerate(npc.private_persona.hidden_agenda)
+    ]
+
+    pack_yaml = (
+        Path(__file__).resolve().parents[3]
+        / "packs"
+        / "official"
+        / "first-words"
+        / "scenarios"
+        / "first_words_tutorial.yaml"
+    )
+    data = yaml.safe_load(pack_yaml.read_text(encoding="utf-8"))
+    out.append(("pack summary", data.get("summary") or ""))
+    out.append(("pack opening.npc_says", (data.get("opening") or {}).get("npc_says") or ""))
+    out += [
+        (f"pack player_visible[{i}]", g)
+        for i, g in enumerate(((data.get("goals") or {}).get("player_visible")) or [])
+    ]
+    out += [
+        (f"pack event {e.get('id')} npc_instruction", e.get("npc_instruction") or "")
+        for e in (data.get("events") or [])
+    ]
+    return out
+
+
 def _all_tutorial_utterances() -> list[tuple[str, str]]:
     from convsim_core.runtime.scripted import (
         _FIRST_WORDS_SCRIPT,
@@ -671,7 +728,7 @@ def _all_tutorial_utterances() -> list[tuple[str, str]]:
         (f"ending branch {text!r}", _pick_ending_turn(text)["npc_utterance"])
         for text in ("I'm so excited!", "how does this work?", "ok")
     ]
-    return out
+    return out + _tutorial_scenario_strings()
 
 
 @pytest.mark.parametrize("forbidden", _FORBIDDEN_TUTORIAL_WORDS)
@@ -683,6 +740,50 @@ def test_tutorial_copy_avoids_simulator_jargon(forbidden):
         f"the tutorial must not teach the mechanics in the engine's own words; "
         f"{forbidden!r} appears in: {offenders}"
     )
+
+
+def test_tutorial_catalog_entry_matches_the_pack():
+    """The two definitions of the tutorial must agree on what the player gets.
+
+    The catalog entry is what plays in the full edition and the pack is what
+    plays in the demo, so a divergence means two editions run two different
+    tutorials — which is exactly what happened to the issue #501 rewrite until
+    this test existed.
+    """
+    import yaml
+    from pathlib import Path
+
+    from convsim_core.scenarios import SCENARIOS
+
+    info = SCENARIOS["first_words_tutorial"]
+    pack_yaml = (
+        Path(__file__).resolve().parents[3]
+        / "packs"
+        / "official"
+        / "first-words"
+        / "scenarios"
+        / "first_words_tutorial.yaml"
+    )
+    data = yaml.safe_load(pack_yaml.read_text(encoding="utf-8"))
+
+    def _collapse(text: str) -> str:
+        return " ".join((text or "").split())
+
+    assert info.max_turns == data["duration"]["max_turns"], (
+        "the played turn budget and the pack's must match"
+    )
+    assert (
+        info.ending_conditions["timeout"]["value"] == data["ending_conditions"]["timeout"]["value"]
+    ), "the played timeout and the pack's must match"
+    assert _collapse(info.opening_npc_says or "") == _collapse(
+        data["opening"]["npc_says"]
+    ), "the opening line the player reads differs between the two definitions"
+    assert info.scenario_data.player_visible_goals == data["goals"]["player_visible"], (
+        "the player-visible goals differ between the two definitions"
+    )
+    pack_events = {e["id"]: _collapse(e["npc_instruction"]) for e in data["events"]}
+    catalog_events = {e.id: _collapse(e.npc_instruction) for e in (info.events or [])}
+    assert catalog_events == pack_events, "the event instructions differ between the two definitions"
 
 
 def test_tutorial_copy_does_not_claim_the_player_said_something():

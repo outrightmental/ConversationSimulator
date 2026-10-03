@@ -313,6 +313,15 @@ SCENARIOS: Dict[str, ScenarioInfo] = {
     # session-create → turn pipeline, exactly like the other built-in scenarios.
     # The matching pack (packs/official/first-words) supplies the library entry,
     # rubric, and safety policy; this entry drives play.
+    #
+    # Because it drives play, every player-facing string here must match the
+    # pack's — and in the full edition only this copy is ever read, since
+    # resolve_scenario_info consults the catalog first (the demo edition passes
+    # prefer_installed_pack=True and gets the pack).  The jargon rewrite and the
+    # widened turn budget of issue #501 therefore have to be applied in both
+    # places; test_tutorial_copy_avoids_simulator_jargon and
+    # test_tutorial_catalog_entry_matches_the_pack sweep both so they cannot
+    # drift apart again.
     "first_words_tutorial": ScenarioInfo(
         scenario_data=ScenarioData(
             scenario_id="first_words_tutorial",
@@ -330,8 +339,8 @@ SCENARIOS: Dict[str, ScenarioInfo] = {
                 public_persona=NpcPublicPersona(
                     occupation="Tutorial guide for Conversation Simulator.",
                     speaking_style=(
-                        "Warm, clear, and direct. Uses short sentences. Names the "
-                        "mechanic being demonstrated before showing it."
+                        "Warm, clear, and direct. Uses short sentences. Says what "
+                        "is about to happen before showing it, in everyday words."
                     ),
                     demeanor=(
                         "Encouraging without being patronising. Celebrates small "
@@ -341,7 +350,7 @@ SCENARIOS: Dict[str, ScenarioInfo] = {
                 private_persona=NpcPrivatePersona(
                     hidden_agenda=[
                         "Ensure the player leaves feeling confident enough to try a real scenario",
-                        "Demonstrate every core mechanic — meters, events, endings, debrief — exactly once",
+                        "Show each of the four things once — the meters, the turning point, how a conversation ends, the debrief",
                     ],
                     biases_to_simulate=[],
                     boundaries=[
@@ -352,12 +361,15 @@ SCENARIOS: Dict[str, ScenarioInfo] = {
                 ),
             ),
             player_visible_goals=[
-                "Learn how state meters work by watching them change as you talk",
-                "Trigger a scenario event to see how events reshape a conversation",
-                "Complete the tutorial and unlock the scenario library",
+                "See how the two meters move as you talk",
+                "Reach the turning point where the conversation changes course",
+                "Finish the tutorial and open the scenario library",
             ],
         ),
-        max_turns=8,
+        # Whole turns — one player message plus Alex's reply.  Six are the tour;
+        # the rest are headroom for the questions the scripted runtime answers,
+        # each of which costs a turn (issue #501 §3).
+        max_turns=12,
         supported_languages=["en"],
         difficulty_options={
             "standard": DifficultySettings(patience=100, volatility=0, disclosure=100, time_pressure=0),
@@ -365,9 +377,11 @@ SCENARIOS: Dict[str, ScenarioInfo] = {
         opening_npc_says=(
             "Welcome! I'm Alex Chen, your tutorial guide. This is Conversation "
             "Simulator — a private, offline practice space for conversations that "
-            "matter. Notice the two meters at the top: Engagement and Confidence. "
-            "They update every turn based on what you say. Go ahead — say anything "
-            "to get us started."
+            "matter. Above this conversation you'll see two meters: Engagement, "
+            "which is how interested I am, and Confidence, which is how sure of "
+            "yourself you're coming across. They move every turn, based on what "
+            "you write. Go ahead — say anything to get us started, or ask me "
+            "about anything you see."
         ),
         state_variable_overrides={
             # The tutorial deliberately shows exactly two meters.  Add
@@ -388,10 +402,11 @@ SCENARIOS: Dict[str, ScenarioInfo] = {
                 npc_instruction=(
                     "The player has shown genuine engagement and Engagement has "
                     "crossed 60. Warmly acknowledge the moment and use it as a "
-                    "teaching point: explain that this is what a scenario event "
-                    "looks like — a threshold crossing that shifts your hidden "
-                    "instructions and changes how you behave for the rest of the "
-                    "session."
+                    "teaching point, in the player's words rather than the "
+                    "simulator's: a meter crossed a mark, your private "
+                    "instructions changed, and you will behave differently for "
+                    "the rest of the conversation. Do not use the words "
+                    '"event", "flag", "state" or "prompt".'
                 ),
                 repeat=False,
             ),
@@ -401,7 +416,7 @@ SCENARIOS: Dict[str, ScenarioInfo] = {
         # success threshold would trip before the warm_moment event (engagement>60)
         # could fire.  Timeout is the only scenario-level safety net.
         ending_conditions={
-            "timeout": {"type": "max_turns", "value": 8},
+            "timeout": {"type": "max_turns", "value": 12},
         },
     ),
 }

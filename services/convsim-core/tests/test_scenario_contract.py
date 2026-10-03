@@ -131,6 +131,22 @@ def test_tutorial_scenario_canonical_fields(seeded_client):
     assert s["npc_name"] == "Alex Chen", "the tutorial guide is named, not 'NPC'"
 
 
+def test_tutorial_turn_budget_is_the_one_that_actually_plays():
+    """The library card's budget must be the budget the session enforces.
+
+    The card comes from the installed pack; play comes from the hardcoded
+    catalog entry, which resolve_scenario_info consults first outside the demo
+    edition. They were 12 and 8 for a while, so the card promised headroom the
+    session did not give (issue #501).
+    """
+    from convsim_core.scenarios import resolve_scenario_info
+
+    info = resolve_scenario_info("first_words_tutorial")
+    assert info is not None
+    assert info.max_turns == 12
+    assert info.ending_conditions["timeout"]["value"] == 12
+
+
 def test_language_cafe_languages_come_from_pack_manifest(seeded_client):
     """Language Café's manifest declares en/es/fr/ja — cards must surface them.
 
