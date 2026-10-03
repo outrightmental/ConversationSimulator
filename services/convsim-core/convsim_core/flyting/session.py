@@ -104,6 +104,12 @@ class FlytingRunState:
     # k * (S_player - S_npc) / 100.
     npc_theme_uses: Dict[str, int] = field(default_factory=dict)
     recent_devices: List[List[str]] = field(default_factory=list)
+    # And the opponent's own device record, for the same reason: the rotation
+    # bonus asks "has this speaker used this device lately?". With no record of
+    # its own the opponent cleared that test every time and collected the bonus
+    # on every volley, while the player had to actually rotate — five points a
+    # round, straight into k * (S_player - S_npc) / 100.
+    npc_recent_devices: List[List[str]] = field(default_factory=list)
     discovered_traits: List[str] = field(default_factory=list)
     foul_counts: Dict[str, int] = field(default_factory=dict)
     # Stage 0 fouls only — the ones a deterministic pattern matched. This is the
@@ -140,6 +146,7 @@ class FlytingRunState:
             "theme_uses": dict(self.theme_uses),
             "npc_theme_uses": dict(self.npc_theme_uses),
             "recent_devices": [list(d) for d in self.recent_devices],
+            "npc_recent_devices": [list(d) for d in self.npc_recent_devices],
             "discovered_traits": list(self.discovered_traits),
             "foul_counts": dict(self.foul_counts),
             "gate_foul_counts": dict(self.gate_foul_counts),
@@ -181,6 +188,9 @@ class FlytingRunState:
                 str(k): int(v) for k, v in (raw.get("npc_theme_uses") or {}).items()
             },
             recent_devices=[list(d) for d in (raw.get("recent_devices") or []) if isinstance(d, list)],
+            npc_recent_devices=[
+                list(d) for d in (raw.get("npc_recent_devices") or []) if isinstance(d, list)
+            ],
             discovered_traits=[str(t) for t in (raw.get("discovered_traits") or [])],
             foul_counts={str(k): int(v) for k, v in (raw.get("foul_counts") or {}).items()},
             gate_foul_counts={
@@ -317,8 +327,10 @@ def record_npc_volley(state: FlytingRunState, score: VolleyScore) -> None:
     """
     state.npc_volleys += 1
     state.npc_total += score.score
-    if not score.gate.scores_zero:
+    if score.judgment is not None and not score.gate.scores_zero:
         _count_primary_theme(state.npc_theme_uses, score)
+        state.npc_recent_devices.append(list(score.judgment.devices))
+        del state.npc_recent_devices[:-6]
 
 
 # ---------------------------------------------------------------------------

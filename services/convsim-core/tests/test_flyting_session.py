@@ -159,6 +159,32 @@ class TestRecordingVolleys:
             record_player_volley(state, volley(100, devices=(f"device{i}",)))
         assert len(state.recent_devices) <= 6
 
+    def test_the_opponent_keeps_its_own_device_record(self):
+        """Each speaker's rotation is judged against its own recent devices.
+
+        The bonus asks "has this speaker used this device lately?". The
+        opponent had no record of its own, so it cleared the test on every
+        volley and banked five points a round the player had to earn by
+        actually rotating — and in a bout those points go into
+        ``k * (S_player - S_npc) / 100``.
+        """
+        state = FlytingRunState(play_format=PlayFormat.BOUT, batting_format=None)
+        record_player_volley(state, volley(100, devices=("metaphor",)))
+        record_npc_volley(state, volley(100, devices=("pun",)))
+
+        assert state.recent_devices == [["metaphor"]]
+        assert state.npc_recent_devices == [["pun"]]
+
+        record_npc_volley(state, volley(100, devices=("pun",)))
+        assert state.npc_recent_devices == [["pun"], ["pun"]]
+        assert state.recent_devices == [["metaphor"]]
+
+    def test_the_opponents_device_history_is_bounded_too(self):
+        state = FlytingRunState(play_format=PlayFormat.BOUT, batting_format=None)
+        for i in range(10):
+            record_npc_volley(state, volley(100, devices=(f"device{i}",)))
+        assert len(state.npc_recent_devices) <= 6
+
     def test_discovered_traits_are_remembered(self):
         state = FlytingRunState()
         verdict = judgment(hooks=[HookClaim("cowardice", "never stood anywhere near danger", True)])

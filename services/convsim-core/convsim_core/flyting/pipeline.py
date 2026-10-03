@@ -426,6 +426,10 @@ async def process_volley(
             volley_number=state.npc_volleys + 1,
             speaker="npc",
             theme_uses=state.npc_theme_uses,
+            # The opponent's own device record, for the same reason as its own
+            # theme record. Passing nothing let it clear the rotation test on
+            # every volley and bank five points a round the player had to earn.
+            recent_devices=state.npc_recent_devices,
             heat=1.0,
             riposte_bonus=config.bout.riposte_bonus,
         )
