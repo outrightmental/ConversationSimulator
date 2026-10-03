@@ -151,7 +151,8 @@ export default function Conversation() {
   const [banners, setBanners] = useState<Banner[]>([])
   // Milliseconds the current turn has been waiting on the NPC. Drives the
   // progress indicator and both stages of the slow-response notice, so one clock
-  // answers "how long has the player been staring at 'NPC is responding…'".
+  // answers "how long has the player been waiting on this turn" — and, once the
+  // turn lands, is the measurement the next turn's estimate is built from.
   const [waitElapsedMs, setWaitElapsedMs] = useState(0)
   // What a turn is expected to cost on this machine, from the turns it has
   // already finished (issue #488). Null until one has been timed.
