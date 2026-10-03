@@ -215,6 +215,19 @@ class TestBoutMomentum:
         assert result.momentum_delta == 2
         assert state.momentum == 52
 
+    def test_the_meter_ceiling_also_counts_as_clamped(self):
+        """The other clamp. A crowd already at 95 cannot move twenty more.
+
+        ``clamped`` is what the scorecard draws to tell a player the crowd only
+        moves so fast; reading ``max_delta_per_turn`` alone reported a free
+        swing on an exchange the 0-100 bound had cut from +10 to +5.
+        """
+        state = FlytingRunState(play_format=PlayFormat.BOUT, momentum=95)
+        result = resolve_exchange(state, 250, 0, BoutConfig(momentum_k=4))
+        assert result.momentum == 100
+        assert result.momentum_delta == 5
+        assert result.clamped is True
+
     def test_doubled_swings_are_a_scenario_knob(self):
         normal = FlytingRunState(play_format=PlayFormat.BOUT)
         pirate = FlytingRunState(play_format=PlayFormat.BOUT)

@@ -336,7 +336,11 @@ def resolve_exchange(
     )
     new_momentum = delta_result.new_state["momentum"]
     actual = delta_result.actual_changes.get("momentum", 0)
-    clamped = abs(proposed_int) > defn.max_delta_per_turn
+    # Whatever the state engine actually allowed, against what was asked for.
+    # Reading max_delta_per_turn directly missed the other clamp: a crowd
+    # already at 95 that is handed +10 moves 5, and the scorecard would have
+    # told the player the meter moved freely.
+    clamped = actual != proposed_int
 
     state.momentum = new_momentum
     state.round_number += 1
