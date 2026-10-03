@@ -275,8 +275,13 @@ The web UI displays a startup screen (rendered by `CoreStartupGuard` in
 - On a fast health check success (e.g. core already running in dev), the
   startup screen is bypassed entirely. That check applies the same test as the
   shell's probe — a 200 whose body is not a convsim-core health response does
-  not count, so a stranger on 7355 cannot bypass the startup screen either;
-  and it never overrules a phase the shell has already reported.
+  not count, so a stranger on 7355 cannot bypass the startup screen either.
+  It also never overrules a phase the shell has already reported: the request is
+  issued at once, but acted on only after `get_core_status` has answered, because
+  the shell reports its fast failures (missing binary, port conflict, the other
+  edition's engine) from `setup()` — before this webview exists, so they arrive
+  through that snapshot rather than as events, two IPC round-trips behind a
+  single local fetch.
 
 ---
 
