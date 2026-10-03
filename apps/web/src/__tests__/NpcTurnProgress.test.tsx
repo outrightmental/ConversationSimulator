@@ -54,6 +54,24 @@ describe('NpcTurnProgress', () => {
       expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '95')
     })
 
+    it('does not call a turn long until it passes the estimate it quoted', () => {
+      // A 43s median is quoted as "45s", so "longer than the usual 45s" under a
+      // clock reading 44s is the panel contradicting itself. The rounded figure
+      // is the only one the player can check, so it is the one that decides.
+      renderProgress(44_000, 43_000)
+      expect(screen.getByTestId('npc-turn-progress-clock')).toHaveTextContent('44s / ~45s')
+      // One second left of the 45s it quoted, and still counting down rather
+      // than declaring itself wrong.
+      expect(screen.getByTestId('npc-turn-progress-detail')).toHaveTextContent(/about 1s to go/i)
+      expect(screen.getByTestId('npc-turn-progress-detail')).not.toHaveTextContent(/longer than/i)
+
+      // And once it really is past the quoted figure, it says so.
+      renderProgress(46_000, 43_000)
+      expect(screen.getAllByTestId('npc-turn-progress-detail')[1]).toHaveTextContent(
+        /longer than the usual 45s/i,
+      )
+    })
+
     it('admits the estimate was wrong instead of sitting at the end of the bar', () => {
       renderProgress(90_000, 30_000)
       expect(screen.getByTestId('npc-turn-progress-detail')).toHaveTextContent(
@@ -144,6 +162,16 @@ describe('NpcTurnProgress', () => {
       renderProgress(70_000, 30_000)
       expect(screen.getByTestId('npc-turn-progress-announcement')).toHaveTextContent(
         'Still waiting on the NPC — 1m 00s, longer than the usual 30s. The reply is not lost.',
+      )
+    })
+
+    it('does not announce "30s, longer than the usual 30s"', () => {
+      // A 29s median is quoted as "30s", so the very first announcement — which
+      // fires at exactly 30s — read as its own contradiction when it was judged
+      // against the raw median.
+      renderProgress(30_000, 29_000)
+      expect(screen.getByTestId('npc-turn-progress-announcement')).toHaveTextContent(
+        'Still waiting on the NPC — 30s of about 30s. The reply is not lost.',
       )
     })
 

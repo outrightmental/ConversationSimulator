@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import type { CSSProperties } from 'react'
-import { formatApproxDuration, formatDuration } from '../lib/formatDuration'
+import { formatApproxDuration, formatDuration, roundApproxDuration } from '../lib/formatDuration'
 
 // The elapsed wait is read out on this coarser grid. The visible clock ticks
 // every second, but a polite live region re-announces on every text change, and
@@ -71,14 +71,21 @@ export default function NpcTurnProgress({
   streaming = false,
 }: NpcTurnProgressProps) {
   const hasEstimate = estimateMs !== null && estimateMs > 0
-  const overrun = hasEstimate && elapsedMs > estimateMs
+  // The panel compares against the estimate as *quoted*, not the raw median
+  // behind it. A median of 87 s is quoted as "1m 30s", and judged against the
+  // median the clock turns amber at 1m 28s under the caption "longer than the
+  // usual 1m 30s"; at 29 s the 30 s announcement reads "30s, longer than the
+  // usual 30s". The player can only check the figure they were given, so that
+  // is the figure every verdict here is made against.
+  const quotedEstimateMs = hasEstimate ? roundApproxDuration(estimateMs) : 0
+  const overrun = hasEstimate && elapsedMs > quotedEstimateMs
   const fillPercent = hasEstimate
-    ? Math.min(MAX_FILL_PERCENT, Math.round((elapsedMs / estimateMs) * 100))
+    ? Math.min(MAX_FILL_PERCENT, Math.round((elapsedMs / quotedEstimateMs) * 100))
     : 0
-  const remainingMs = hasEstimate ? Math.max(0, estimateMs - elapsedMs) : 0
+  const remainingMs = hasEstimate ? Math.max(0, quotedEstimateMs - elapsedMs) : 0
 
   const elapsedText = formatDuration(elapsedMs)
-  const estimateText = hasEstimate ? formatApproxDuration(estimateMs) : ''
+  const estimateText = hasEstimate ? formatDuration(quotedEstimateMs) : ''
   const phrase = streaming ? 'NPC is replying…' : 'NPC is thinking…'
 
   // What the player reads next to the clock: a countdown while the turn is
@@ -106,8 +113,10 @@ export default function NpcTurnProgress({
   // caption says outright. Decided on the announced figure rather than the live
   // one, so the wording still only changes on the grid: judged against the
   // ticking clock it would flip mid-interval and read "30s, longer than the
-  // usual 45s".
-  const announcedOverrun = hasEstimate && announcedElapsedMs > estimateMs
+  // usual 45s". Against the quoted estimate for the same reason as above: a
+  // median of 29 s is quoted as "30s", and the raw median makes the very first
+  // announcement read "30s, longer than the usual 30s".
+  const announcedOverrun = hasEstimate && announcedElapsedMs > quotedEstimateMs
   const announcementText =
     !active || streaming || elapsedMs < FIRST_ANNOUNCE_MS
       ? ''

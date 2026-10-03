@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, it, expect } from 'vitest'
-import { formatDuration, formatApproxDuration } from '../lib/formatDuration'
+import { formatDuration, formatApproxDuration, roundApproxDuration } from '../lib/formatDuration'
 
 describe('formatDuration', () => {
   it('reads as seconds under a minute', () => {
@@ -42,5 +42,17 @@ describe('formatApproxDuration', () => {
     // "about 0s" is not an estimate — the smallest grain is the floor.
     expect(formatApproxDuration(0)).toBe('1s')
     expect(formatApproxDuration(120)).toBe('1s')
+  })
+})
+
+describe('roundApproxDuration', () => {
+  it('is the number behind the text, so a caller can compare against it', () => {
+    // A panel that prints "~45s" has to decide "longer than usual" against 45s,
+    // not against the raw 43s median behind it.
+    expect(roundApproxDuration(43_000)).toBe(45_000)
+    expect(formatDuration(roundApproxDuration(43_000))).toBe(formatApproxDuration(43_000))
+    expect(roundApproxDuration(29_000)).toBe(30_000)
+    expect(roundApproxDuration(87_000)).toBe(90_000)
+    expect(roundApproxDuration(0)).toBe(1_000)
   })
 })
