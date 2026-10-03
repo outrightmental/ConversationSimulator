@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
 
 vi.mock('../hooks/useMicCapture', () => ({
@@ -936,5 +936,136 @@ describe('VoiceInput — text-only fallback (voice-to-text switch)', () => {
     fireEvent.keyDown(document, { code: 'Space' })
 
     expect(startRecording).not.toHaveBeenCalled()
+  })
+})
+
+// ── Steam achievement call sites (issue #494) ─────────────────────────────────
+//
+// VoiceInput owns the unlocks for the microphone pipeline: a spoken turn, the
+// hands-free variant, an edited transcript, and a typed turn. The real hook runs
+// here (no mock), with the Tauri bridge stubbed, so these assert the names that
+// actually reach `steam_unlock_achievement`.
+
+describe('VoiceInput — Steam achievement call sites', () => {
+  /** Achievement names passed to `steam_unlock_achievement`, in order. */
+  function unlockedNames(invoke: ReturnType<typeof vi.fn>): string[] {
+    return invoke.mock.calls
+      .filter(([cmd]) => cmd === 'steam_unlock_achievement')
+      .map(([, args]) => (args as { name: string }).name)
+  }
+
+  function stubSteam() {
+    const invoke = vi.fn((cmd: string) =>
+      cmd === 'steam_unlocked_achievements'
+        ? Promise.resolve([])
+        : Promise.resolve(true),
+    )
+    ;(window as { __TAURI__?: unknown }).__TAURI__ = { core: { invoke } }
+    return invoke
+  }
+
+  /** Drives a recording through STT so the review panel is showing. */
+  async function speak(transcript: string) {
+    let capturedOnAudioReady: ((blob: Blob) => void) | undefined
+    vi.mocked(useMicCapture).mockImplementation((cb) => {
+      capturedOnAudioReady = cb
+      return makeMicState()
+    })
+    vi.mocked(apiClient.uploadAudio).mockResolvedValueOnce({
+      ok: true,
+      data: { transcript, status: 'ok' },
+    })
+    render(<VoiceInput onSubmit={vi.fn()} />)
+    await act(async () => {
+      capturedOnAudioReady?.(new Blob(['audio'], { type: 'audio/webm' }))
+    })
+  }
+
+  beforeEach(() => {
+    // `unlock` keeps its confirmed-unlock ledger in localStorage, which
+    // setupTests backs with one in-memory store for the whole file.
+    localStorage.clear()
+  })
+
+  afterEach(() => {
+    delete (window as { __TAURI__?: unknown }).__TAURI__
+  })
+
+  it('unlocks the spoken-turn achievement and counts the turn on confirm', async () => {
+    const invoke = stubSteam()
+    await speak('hello world')
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /submit transcript/i }))
+    })
+
+    expect(unlockedNames(invoke)).toContain('ACH_VOICE_TURN')
+    expect(invoke).toHaveBeenCalledWith('steam_increment_stat', {
+      name: 'STAT_VOICE_TURNS',
+    })
+    // Push-to-talk is the default in makeVadState, so hands-free must not fire.
+    expect(unlockedNames(invoke)).not.toContain('ACH_HANDS_FREE')
+  })
+
+  it('unlocks the hands-free achievement when the turn was captured by VAD', async () => {
+    const invoke = stubSteam()
+    vi.mocked(useVad).mockReturnValue(
+      makeVadState({
+        settings: {
+          mode: 'hands-free',
+          threshold: 0.05,
+          silenceDurationMs: 1500,
+          calibratedAt: null,
+        },
+      }),
+    )
+    await speak('hello world')
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /submit transcript/i }))
+    })
+
+    expect(unlockedNames(invoke)).toContain('ACH_HANDS_FREE')
+  })
+
+  it('unlocks the edited-transcript achievement when the text really changed', async () => {
+    const invoke = stubSteam()
+    await speak('hello world')
+
+    const textarea = screen.getByRole('textbox', { name: /edit transcript/i })
+    fireEvent.change(textarea, { target: { value: 'hello there' } })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /submit transcript/i }))
+    })
+
+    expect(unlockedNames(invoke)).toContain('ACH_TRANSCRIPT_EDITED')
+  })
+
+  it('does not treat whitespace padding from STT as an edit', async () => {
+    const invoke = stubSteam()
+    // Whisper prefixes a space on some builds. The review panel confirms a
+    // trimmed string, so comparing it against the raw transcript would grant
+    // "Second Draft" on every spoken turn without the player touching it.
+    await speak('  hello world  ')
+
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /submit transcript/i }))
+    })
+
+    expect(unlockedNames(invoke)).toContain('ACH_VOICE_TURN')
+    expect(unlockedNames(invoke)).not.toContain('ACH_TRANSCRIPT_EDITED')
+  })
+
+  it('unlocks the typed-turn achievement from the text input', async () => {
+    const invoke = stubSteam()
+    render(<VoiceInput onSubmit={vi.fn()} inputMode="text-only" />)
+
+    const input = screen.getByRole('textbox', { name: /your response/i })
+    fireEvent.change(input, { target: { value: 'typed answer' } })
+    await act(async () => {
+      fireEvent.submit(input.closest('form')!)
+    })
+
+    expect(unlockedNames(invoke)).toContain('ACH_TEXT_TURN')
   })
 })

@@ -232,7 +232,11 @@ export default function VoiceInput({ onSubmit, onRawStt, onSttLatency, onRecordi
       void unlock(SteamAchievement.VOICE_TURN)
       void incrementStat(SteamStat.VOICE_TURNS)
       if (isHandsFree) void unlock(SteamAchievement.HANDS_FREE)
-      if (finalText !== raw.transcript) {
+      // The review panel confirms a trimmed string, so compare against the
+      // trimmed raw transcript: an STT provider that pads its output (Whisper
+      // prefixes a space on some builds) would otherwise look like an edit and
+      // grant "Second Draft" on every single spoken turn.
+      if (finalText !== raw.transcript.trim()) {
         void unlock(SteamAchievement.TRANSCRIPT_EDITED)
       }
     }
