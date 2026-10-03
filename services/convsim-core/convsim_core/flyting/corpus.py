@@ -59,15 +59,81 @@ def cliche_insults() -> Tuple[str, ...]:
     return _read_lines("cliche_insults.txt")
 
 
+# How much room a signature's keywords get beyond their own count. The taunts
+# these stand for are short phrases — "your mother was a hamster", "you fight
+# like a dairy farmer", "your mother is so fat" — so two tokens of slack absorbs
+# the articles, the auxiliary and the vocative a player adds ("your mother was a
+# hamster, sir") without reaching across a clause. It is the clause boundary
+# that matters: three tokens of slack still let ``mother, so, fat`` reach from a
+# subordinate clause into the main one, which is where the collisions were.
+#
+# Order is deliberately not required: the keyword lists are written as the words
+# a quotation is made of rather than as its word order, and the same joke is
+# told with the clauses either way round.
+KEYWORD_WINDOW_SLACK = 2
+
+
+def _shortest_window(positions: Tuple[Tuple[int, ...], ...]) -> int:
+    """Width of the smallest span of tokens holding one of every keyword.
+
+    ``positions[i]`` is where keyword *i* occurs, ascending. Returns a width in
+    tokens (1 for a single position), or 0 when some keyword never occurs.
+    """
+    if any(not group for group in positions):
+        return 0
+    merged = sorted(
+        (index, which) for which, group in enumerate(positions) for index in group
+    )
+    needed = len(positions)
+    seen: Dict[int, int] = {}
+    best = 0
+    left = 0
+    for right, (_, which) in enumerate(merged):
+        seen[which] = seen.get(which, 0) + 1
+        while len(seen) == needed:
+            width = merged[right][0] - merged[left][0] + 1
+            if best == 0 or width < best:
+                best = width
+            dropped = merged[left][1]
+            seen[dropped] -= 1
+            if seen[dropped] == 0:
+                del seen[dropped]
+            left += 1
+    return best
+
+
 @dataclass(frozen=True)
 class QuoteSignature:
-    """A famous taunt identified by a keyword conjunction rather than stored text."""
+    """A famous taunt identified by a keyword phrase rather than stored text."""
 
     label: str
     keywords: Tuple[str, ...]
 
-    def matches(self, words: frozenset[str]) -> bool:
-        return all(keyword in words for keyword in self.keywords)
+    @property
+    def window(self) -> int:
+        """How many tokens the keywords may span and still be the phrase."""
+        return len(self.keywords) + KEYWORD_WINDOW_SLACK
+
+    def matches(self, tokens: Tuple[str, ...]) -> bool:
+        """Whether the keywords occur together, inside one short span.
+
+        Proximity, not mere presence. Testing presence anywhere in the volley —
+        as this used to — made a signature of ordinary words fire on original
+        work: ``mother, so, fat`` caught "Your mother would be so ashamed of
+        that fat purse you call a conscience", ``fighting, left, hand`` caught
+        "I am fighting a man who cannot tell his left hand from his ledger", and
+        both lines were capped at ten points and told they were borrowed.
+        Lineage and duelling are the launch pack's own registers, so those
+        collisions are the common case rather than the contrived one, and the
+        file this reads from promises the opposite: specific enough not to fire
+        on original work.
+        """
+        positions = tuple(
+            tuple(i for i, token in enumerate(tokens) if token == keyword)
+            for keyword in self.keywords
+        )
+        width = _shortest_window(positions)
+        return 0 < width <= self.window
 
 
 @lru_cache(maxsize=1)

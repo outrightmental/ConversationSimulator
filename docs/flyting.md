@@ -151,6 +151,15 @@ Plagiarism detection is two-part and ships no copyrighted text: keyword
 corpus of stock forms and public-domain greatest hits. Quoting a famous taunt at
 the character it belongs to is detected and answered with mockery.
 
+A signature fires only when all of its keywords fall inside one short span of
+the volley — the phrase, not the bag of words — because the signatures made of
+ordinary vocabulary are exactly the ones that would otherwise collide with
+original work in the launch pack's own registers. "Your mother would be so
+ashamed of that fat purse you call a conscience" is lineage abuse of the kind
+The Scorned Rose is written for, and under a presence test it was capped at ten
+points and told it was borrowed. A missed quotation still scores on its own
+merits; a false one accuses a player of theft.
+
 A volley the gates zeroed is never sent to the judge.
 
 ### Stage 1 — Craft metrics (deterministic, no model)

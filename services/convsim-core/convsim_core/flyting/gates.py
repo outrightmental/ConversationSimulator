@@ -538,9 +538,9 @@ def detect_plagiarism(text: str) -> Optional[Tuple[str, str]]:
     does not ship, and lexical near-identity against the bundled cliché corpus
     (stock forms and public-domain greatest hits).
     """
-    words = frozenset(tokenize(text))
+    tokens = tokenize(text)
     for signature in quote_signatures():
-        if signature.matches(words):
+        if signature.matches(tokens):
             # Quoting a famous taunt at the character it belongs to is the
             # specific sin worth naming, and the labels encode which scene a
             # signature came from.

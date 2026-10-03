@@ -565,6 +565,40 @@ class TestPlagiarizedZinger:
     def test_original_work_is_not_plagiarism(self):
         assert detect_plagiarism(GOOD_VOLLEY) is None
 
+    # A signature is a phrase, not a bag of words. Testing presence anywhere in
+    # the volley made the signatures built from ordinary words fire on original
+    # lines in the launch pack's own registers — lineage and duelling — and a
+    # false hit costs the player the cap, the heat, and an accusation of theft.
+    @pytest.mark.parametrize("text", [
+        # mother, so, fat — the adjective is in the next clause.
+        "Your mother would be so ashamed of that fat purse you call a conscience.",
+        # mother, so, stupid — the pronoun's clause is four words away.
+        "You stand so straight for a man whose mother scrubbed steps, and so stupid about it.",
+        # fighting, left, hand — a duel, and none of it the quotation.
+        "I am fighting a man who cannot tell his left hand from his ledger.",
+        # fight, dairy, farmer, spread across a simile.
+        "You fight the way a farmer argues with the weather, and the dairy still goes sour.",
+    ])
+    def test_scattered_keywords_are_not_a_quotation(self, text):
+        assert detect_plagiarism(text) is None, (
+            "an original line was capped and called borrowed"
+        )
+
+    @pytest.mark.parametrize("text,label", [
+        ("Your mother is so fat that the omnibus charged her double, sir.", "stock_yo_mama_fat"),
+        ("I believe your father smelt of elderberries, by your own account.", "tower_taunt_berries"),
+        ("I fart in your general direction.", "tower_taunt_direction"),
+        ("You fight like a dairy farmer.", "pirate_duel_dairy"),
+        ("You are fighting with your left hand, and losing.", "pirate_duel_left_hand"),
+        ("You killed my father. Prepare to die.", "duel_prepare_to_die"),
+        ("Float like a butterfly, sting like a bee.", "boxer_butterfly"),
+    ])
+    def test_every_signature_still_catches_its_own_quotation(self, text, label):
+        """The tighter window must not quietly retire a detector."""
+        found = detect_plagiarism(text)
+        assert found is not None, f"{label} no longer catches its own quotation"
+        assert found[0] == label
+
 
 # ── Stage 2: novelty ─────────────────────────────────────────────────────────
 
