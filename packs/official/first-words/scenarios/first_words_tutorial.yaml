@@ -7,9 +7,10 @@ scenario_id: first_words_tutorial
 title: First Words
 summary: >-
   A 3–5 minute guided tour of Conversation Simulator with Alex Chen, a
-  friendly tutorial guide. Alex walks you through state meters, scenario
-  events, ending conditions, and the debrief rubric using scripted (not AI)
-  responses — so no model download is needed.
+  friendly tutorial guide. Alex shows you the two meters, the turning point
+  mid-conversation, the ways a conversation can end, and the debrief — and
+  answers your questions along the way. The replies are scripted, not AI, so
+  no model download is needed.
 player_role:
   label: New Player
   brief: >-
@@ -21,19 +22,25 @@ npc:
 rubric:
   ref: ../rubrics/tutorial_rubric.yaml
 duration:
-  max_turns: 8
-  soft_time_limit_minutes: 5
+  # One whole turn is the player's message plus Alex's reply — the unit
+  # turn_count increments in, and now the unit the transcript labels
+  # (issue #501 §4). Six of these are the tour; the rest are headroom for the
+  # questions the scripted runtime now answers, each of which costs a turn.
+  max_turns: 12
+  soft_time_limit_minutes: 6
 opening:
   npc_says: >-
     Welcome! I'm Alex Chen, your tutorial guide. This is Conversation Simulator
-    — a private, offline practice space for conversations that matter. Notice
-    the two meters at the top: Engagement and Confidence. They update every
-    turn based on what you say. Go ahead — say anything to get us started.
+    — a private, offline practice space for conversations that matter. Above
+    this conversation you'll see two meters: Engagement, which is how
+    interested I am, and Confidence, which is how sure of yourself you're
+    coming across. They move every turn, based on what you write. Go ahead —
+    say anything to get us started, or ask me about anything you see.
 goals:
   player_visible:
-    - "Learn how state meters work by watching them change as you talk"
-    - "Trigger a scenario event to see how events reshape a conversation"
-    - "Complete the tutorial and unlock the scenario library"
+    - "See how the two meters move as you talk"
+    - "Reach the turning point where the conversation changes course"
+    - "Finish the tutorial and open the scenario library"
   hidden:
     - "Alex is tracking whether the player seems curious about how the mechanics work"
     - "Alex wants the player to leave feeling ready to try a real scenario"
@@ -69,10 +76,11 @@ events:
       threshold: 60
     npc_instruction: >-
       The player has shown genuine engagement and Engagement has crossed 60.
-      Warmly acknowledge the moment and use it as a teaching point: explain
-      that this is what a scenario event looks like — a threshold crossing that
-      shifts your hidden instructions and changes how you behave for the rest
-      of the session.
+      Warmly acknowledge the moment and use it as a teaching point, in the
+      player's words rather than the simulator's: a meter crossed a mark, your
+      private instructions changed, and you will behave differently for the
+      rest of the conversation. Do not use the words "event", "flag", "state"
+      or "prompt".
     repeat: false
 ending_conditions:
   # The scripted runtime ends the session on its final turn via session_control
@@ -83,7 +91,7 @@ ending_conditions:
   # is the only scenario-level safety net.
   timeout:
     type: max_turns
-    value: 8
+    value: 12
 taught_dimensions:
   - engagement
   - comprehension

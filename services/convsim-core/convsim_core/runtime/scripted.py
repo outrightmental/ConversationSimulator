@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from datetime import datetime, timezone
 from typing import AsyncGenerator
 
@@ -32,16 +33,31 @@ from convsim_core.runtime.types import (
 # state_delta values are bounded by the scenario's max_delta_per_turn.
 # The final turn sets session_control.continue_session=False to end the session
 # and trigger the debrief.
+#
+# Two rules this script has to obey, both from the issue #501 playtest:
+#
+#  1. No simulator vocabulary. The previous version taught the mechanics in the
+#     engine's own words — "scenario event", "hidden prompt", "rubric
+#     dimensions" — which is exactly the jargon the report named. The mechanics
+#     are the same; only the words are the player's.
+#  2. Never presume the reply. Every line used to assume an engaged, positive
+#     answer ("Great! See how Engagement just ticked up?", "Did you see that?"),
+#     so a player who asked "what are the meters?" got the next canned line as
+#     if they had agreed with something — the behaviour the report attached a
+#     screenshot of and read as hallucination. Questions are answered by
+#     _pick_interjection below, and these lines no longer claim the player said
+#     anything in particular.
 
 _FIRST_WORDS_SCRIPT: list[dict] = [
     # turn 1 — respond to the player's first message (the scenario's opening line
     # already delivered the welcome, so this must NOT repeat it).
     {
         "npc_utterance": (
-            "There you go — you just took your very first turn! Look up at the two "
-            "meters: Engagement and Confidence both nudged the moment you hit send. "
-            "Every message you write moves them a little; that's the heartbeat of "
-            "every scenario. Keep going — tell me what brought you here today."
+            "There you go — you just took your first turn. Look at the two "
+            "meters above our conversation: Engagement and Confidence both "
+            "moved when you hit send, and each one shows how far it moved. "
+            "Every message you write nudges them. Tell me what brought you "
+            "here today — or ask me about anything you see on screen."
         ),
         "npc_emotion": "warm",
         "state_delta": {"engagement": 10, "confidence": 5},
@@ -50,15 +66,17 @@ _FIRST_WORDS_SCRIPT: list[dict] = [
         "safety": {"status": "ok"},
         "session_control": {"continue_session": True},
     },
-    # turn 2 — explain the meters
+    # turn 2 — what the meters are and what moves them
     {
         "npc_utterance": (
-            "Great! See how Engagement just ticked up? Every message you send shifts "
-            "the conversation state. In real AI-powered scenarios these meters respond "
-            "dynamically to how you phrase things, what you reveal, and whether you "
-            "ask follow-up questions. Right now I'm scripted — not AI-generated — "
-            "but the meter logic is identical. "
-            "Tell me: what kind of conversations are you hoping to practise?"
+            "Here is what those two meters mean. Engagement is how interested "
+            "I am in this conversation. Confidence is how sure of yourself you "
+            "are coming across. They are mine, not yours to set directly — "
+            "they answer to what you write. With a real AI character they "
+            "shift with how you phrase things, what you share, and whether you "
+            "ask anything back. I am following a script right now, not "
+            "thinking, but the meters work the same way. What kind of "
+            "conversations are you hoping to practise?"
         ),
         "npc_emotion": "curious",
         "state_delta": {"engagement": 15, "confidence": 10},
@@ -67,14 +85,14 @@ _FIRST_WORDS_SCRIPT: list[dict] = [
         "safety": {"status": "ok"},
         "session_control": {"continue_session": True},
     },
-    # turn 3 — introduce events, push engagement past the event threshold (>60)
+    # turn 3 — introduce the turning point, push engagement past the threshold (>60)
     {
         "npc_utterance": (
-            "That sounds like a great goal. Now watch closely — I'm about to trigger "
-            "a *scenario event*. Events fire automatically when a meter crosses a "
-            "threshold or a flag is set. They inject new instructions into the NPC's "
-            "hidden prompt, changing how I behave for the rest of the conversation. "
-            "You're about to see Engagement cross 60 for the first time..."
+            "Good to know. Now watch the Engagement meter on this next turn. "
+            "When a meter crosses a certain mark, the conversation can change "
+            "course: I get new private instructions, and I behave differently "
+            "from then on. Engagement is about to cross that mark for the "
+            "first time."
         ),
         "npc_emotion": "curious",
         "state_delta": {"engagement": 20, "confidence": 10},
@@ -83,17 +101,17 @@ _FIRST_WORDS_SCRIPT: list[dict] = [
         "safety": {"status": "ok"},
         "session_control": {"continue_session": True},
     },
-    # turn 4 — warm_moment event has fired; acknowledge it
+    # turn 4 — the turning point has fired; name it, then move to endings
     {
         "npc_utterance": (
-            "Did you see that? The warm_moment event just fired — Engagement crossed "
-            "60 and my hidden instructions shifted. In a live AI scenario that "
-            "would change how I respond to everything you say from here on. "
-            "Events are how pack authors shape narrative beats without scripting every line. "
-            "Now let's talk about how a session ends. There are three ways a "
-            "conversation can finish: success, failure, or timeout. "
-            "Which sounds most interesting to you — winning, recovering from a stumble, "
-            "or seeing what happens when time runs out?"
+            "That was it. Engagement crossed the mark and my instructions "
+            "changed — you would have seen a short note above the transcript "
+            "saying something changed. With a real AI character that shifts "
+            "how I answer everything you say from here. It is how the people "
+            "who write these conversations shape a story without writing out "
+            "every line. Now, endings: a conversation can finish well, finish "
+            "badly, or simply run out of turns. Which of those sounds most "
+            "interesting to you?"
         ),
         "npc_emotion": "warm",
         "state_delta": {"engagement": 10, "confidence": 10},
@@ -102,16 +120,16 @@ _FIRST_WORDS_SCRIPT: list[dict] = [
         "safety": {"status": "ok"},
         "session_control": {"continue_session": True},
     },
-    # turn 5 — explain endings and the debrief
+    # turn 5 — endings and the debrief
     {
         "npc_utterance": (
-            "After a session ends — however it ends — you get a debrief. "
-            "The debrief scores you against the scenario's rubric dimensions: "
-            "things like Clarity, Genuine Connection, or Assertiveness depending "
-            "on what the pack is testing. Each dimension has a low/medium/high "
-            "scoring guide so you know exactly what 'doing well' looks like. "
-            "We're almost at the end of this tutorial. One last question: "
-            "how are you feeling about trying a real conversation next?"
+            "However a conversation ends, you get a debrief afterwards. It "
+            "scores you on the handful of things that conversation was "
+            "actually about — clarity, say, or genuine connection, or standing "
+            "your ground — and for each one it spells out what doing it well "
+            "looks like, so the score is never a mystery. We are nearly done. "
+            "Last question: how are you feeling about trying a real "
+            "conversation next?"
         ),
         "npc_emotion": "warm",
         "state_delta": {"engagement": 10, "confidence": 15},
@@ -123,10 +141,11 @@ _FIRST_WORDS_SCRIPT: list[dict] = [
     # turn 6 — keyword-branched ending (override in _pick_ending_turn)
     {
         "npc_utterance": (
-            "That's the spirit! You've covered all the basics: meters, events, "
-            "ending conditions, and the debrief. You're ready for the real thing. "
-            "Head to the scenario library and pick whatever sounds interesting — "
-            "your first real conversation is waiting."
+            "That's the spirit. You have seen all of it: the meters, a turning "
+            "point mid-conversation, how a conversation ends, and the debrief. "
+            "You are ready for the real thing. Head to the scenario library "
+            "and pick whatever sounds interesting — your first real "
+            "conversation is waiting."
         ),
         "npc_emotion": "warm",
         "state_delta": {"engagement": 5, "confidence": 10},
@@ -136,6 +155,142 @@ _FIRST_WORDS_SCRIPT: list[dict] = [
         "session_control": {"continue_session": False, "ending_type": "success"},
     },
 ]
+
+# ── Answering the player's questions ─────────────────────────────────────────
+# From the issue: "The model in the Tutorial doesn't seem to be able to give an
+# explanation of what the meters are and hallucinates through the scenario, as
+# if it has given a coherent explanation and received positive feedback from
+# the user."
+#
+# It was not a model at all — the tutorial runs on this script, and the script
+# had no branch for a question, so "what are the meters?" got the next canned
+# line. These interjections give it one. A matched question is answered on the
+# spot and the player is handed back to wherever the tour was, which costs one
+# of the tutorial's turns; the scenario's turn budget was widened to cover a
+# few of them.
+#
+# Checked in order, so the most specific cluster comes first.
+
+_HANDOFF = "Ask me anything else, or just say the word and we'll carry on."
+
+
+def _interjection(utterance: str, *, emotion: str = "warm") -> dict:
+    """An answer to a question, in the shape of a scripted turn."""
+    return {
+        "npc_utterance": utterance,
+        "npc_emotion": emotion,
+        # Small and positive: asking is engaging, but a question is not the
+        # turn that was supposed to carry a threshold crossing.
+        "state_delta": {"engagement": 5, "confidence": 5},
+        "event_flags": [],
+        "rubric_observations": [],
+        "safety": {"status": "ok"},
+        "session_control": {"continue_session": True},
+    }
+
+
+#: (keywords, response). A turn matches a cluster when the player's message
+#: reads as a question — or asks to be told — AND mentions one of the keywords,
+#: so "the meters moved, nice" is not treated as a question about them.
+_INTERJECTIONS: list[tuple[frozenset[str], dict]] = [
+    (
+        frozenset(["meter", "meters", "engagement", "confidence", "bar", "bars",
+                   "number", "numbers", "gauge", "gauges"]),
+        _interjection(
+            "Good question — those two meters are the heart of it. Engagement "
+            "is how interested I am in this conversation. Confidence is how "
+            "sure of yourself you are coming across. They are mine: you do not "
+            "set them, you move them by what you write. Each one shows its "
+            "value out of 100 and how far it just moved, so you can see what a "
+            "single message did. " + _HANDOFF,
+            emotion="warm",
+        ),
+    ),
+    (
+        frozenset(["mood", "feeling", "feelings", "emotion", "emotions",
+                   "parentheses", "parenthesis", "brackets"]),
+        _interjection(
+            "That is my mood, not a meter — it is the one word under my name "
+            "for how I am taking this, and it changes turn to turn. The meters "
+            "are the two labelled bars above the conversation. " + _HANDOFF,
+            emotion="warm",
+        ),
+    ),
+    (
+        frozenset(["ai", "real", "bot", "robot", "model", "scripted", "script",
+                   "pretend", "pretending"]),
+        _interjection(
+            "Straight answer: I am scripted. Every line I say in this tutorial "
+            "was written ahead of time, which is why it works before you have "
+            "downloaded anything. Every other conversation here runs on an AI "
+            "model on your own computer — and either way, nothing you type "
+            "leaves this machine. " + _HANDOFF,
+            emotion="neutral",
+        ),
+    ),
+    (
+        frozenset(["end", "ends", "ending", "endings", "finish", "finishes",
+                   "over", "long", "quit", "stop", "turns"]),
+        _interjection(
+            "A conversation finishes in one of three ways: it goes well, it "
+            "goes badly, or it runs out of turns. You can also stop whenever "
+            "you like with End session — you still get the debrief. " + _HANDOFF,
+            emotion="warm",
+        ),
+    ),
+    (
+        frozenset(["debrief", "score", "scored", "scores", "scoring", "grade",
+                   "graded", "rubric", "feedback"]),
+        _interjection(
+            "The debrief comes after a conversation ends. It scores you on the "
+            "few things that conversation was about, says what it saw you do "
+            "well and what to try differently, and points at the turns it is "
+            "talking about. " + _HANDOFF,
+            emotion="warm",
+        ),
+    ),
+]
+
+#: Markers that a message is asking rather than answering. A question mark
+#: alone misses "tell me what the meters are", and these words alone would
+#: catch "what a good idea" — so a match needs one of these AND a topic word.
+_QUESTION_WORDS = (
+    "what", "whats", "which", "why", "how", "who", "when", "explain",
+    "mean", "means", "meant", "meaning", "confused", "clarify",
+    "tell me", "i don't understand", "i dont understand",
+    "not sure what", "no idea",
+)
+
+#: Matched on word boundaries, never as bare substrings: "explain" contains
+#: "ai" and "show" contains "how", and matching those inside other words is how
+#: a keyword table starts answering questions nobody asked.
+_QUESTION_RE = re.compile(
+    r"\?|\b(?:" + "|".join(re.escape(w) for w in _QUESTION_WORDS) + r")\b"
+)
+
+_INTERJECTION_RES: list[tuple[re.Pattern[str], dict]] = [
+    (
+        re.compile(r"\b(?:" + "|".join(re.escape(k) for k in sorted(keywords)) + r")\b"),
+        response,
+    )
+    for keywords, response in _INTERJECTIONS
+]
+
+
+def _looks_like_a_question(lower_text: str) -> bool:
+    return _QUESTION_RE.search(lower_text) is not None
+
+
+def _pick_interjection(player_text: str) -> dict | None:
+    """Return an answer to the player's question, or None to follow the script."""
+    lower = player_text.lower()
+    if not _looks_like_a_question(lower):
+        return None
+    for pattern, response in _INTERJECTION_RES:
+        if pattern.search(lower):
+            return response
+    return None
+
 
 # Keyword clusters for the three ending branches on turn 6.
 _ENDING_EXCITED_KEYWORDS = frozenset(
@@ -319,12 +474,22 @@ class ScriptedChatRuntime(ChatRuntime):
         """Select the scripted NPC turn for the current game turn."""
         turn_idx = (request.scripted_turn_index or 1) - 1  # 0-based index
         script = _FIRST_WORDS_SCRIPT
+        player_text = _extract_player_text(request)
 
-        # Last script entry: keyword-branch the ending
+        # Last script entry: keyword-branch the ending. Checked before the
+        # interjections because the session has to close here — a player who
+        # asks a question on the final turn gets the curious ending branch,
+        # which answers it and closes, rather than an answer that never does.
         last_idx = len(script) - 1
         if turn_idx >= last_idx:
-            player_text = _extract_player_text(request)
             return _pick_ending_turn(player_text)
+
+        # A question outranks the tour (issue #501 §3). Without this the script
+        # answered "what are the meters?" with the next canned line, which read
+        # as a reply to something the player never said.
+        interjection = _pick_interjection(player_text)
+        if interjection is not None:
+            return interjection
 
         # A turn index at or past last_idx already returned above, so here
         # turn_idx < last_idx; only guard against a non-positive index.

@@ -507,3 +507,195 @@ def test_session_without_runtime_id_stores_no_runtime_key(tmp_config):
         res = client.post("/api/sessions", json=_TUTORIAL_SESSION_SETUP)
         assert res.status_code == 201, res.text
         assert "runtime_id" not in res.json()["setup"]
+
+
+# ── Answering questions instead of talking past them (issue #501 §3) ─────────
+# "The model in the Tutorial doesn't seem to be able to give an explanation of
+# what the meters are and hallucinates through the scenario, as if it has given
+# a coherent explanation and received positive feedback from the user."
+#
+# It is not a model — it is this script, which had no branch for a question, so
+# "what are the meters?" got the next canned line.
+
+
+def _script_utterance(turn: int) -> str:
+    from convsim_core.runtime.scripted import _FIRST_WORDS_SCRIPT
+
+    return _FIRST_WORDS_SCRIPT[turn - 1]["npc_utterance"]
+
+
+def _structured_for(runtime: ScriptedChatRuntime, text: str, turn: int) -> dict:
+    import asyncio
+
+    async def run() -> dict:
+        request = ChatRequest(
+            messages=[ChatMessage(role="user", content=text)],
+            json_schema={
+                "type": "object",
+                "properties": {"npc_utterance": {}, "session_control": {}},
+            },
+            scripted_turn_index=turn,
+        )
+        async for chunk in runtime.chat_stream(request):
+            if isinstance(chunk, ChatFinal):
+                assert chunk.structured is not None
+                return chunk.structured
+        raise AssertionError("no ChatFinal received")
+
+    return asyncio.run(run())
+
+
+def _utterance_for(runtime: ScriptedChatRuntime, text: str, turn: int) -> str:
+    return _structured_for(runtime, text, turn)["npc_utterance"]
+
+
+@pytest.mark.parametrize(
+    "question",
+    [
+        "What are the meters?",
+        "what does engagement mean?",
+        "I'm confused about the two bars",
+        "tell me what confidence means",
+        "Wait — which meter is which?",
+    ],
+)
+def test_a_meter_question_is_answered(runtime, question):
+    text = _utterance_for(runtime, question, turn=2).lower()
+    assert "engagement is how interested" in text, (
+        f"a meter question must be answered, got: {text!r}"
+    )
+
+
+def test_a_meter_question_is_answered_on_any_tour_turn(runtime):
+    """The question can come at any point, not only where the tour explains them."""
+    for turn in (1, 2, 3, 4, 5):
+        text = _utterance_for(runtime, "what are the meters?", turn=turn).lower()
+        assert "engagement is how interested" in text, f"turn {turn} talked past the question"
+
+
+def test_a_mood_question_separates_mood_from_the_meters(runtime):
+    text = _utterance_for(runtime, "what is the mood in brackets?", turn=3).lower()
+    assert "not a meter" in text
+
+
+def test_an_is_this_ai_question_gets_a_straight_answer(runtime):
+    text = _utterance_for(runtime, "are you a real AI?", turn=2).lower()
+    assert "scripted" in text
+
+
+def test_an_ending_question_is_answered(runtime):
+    text = _utterance_for(runtime, "how does this conversation end?", turn=2).lower()
+    assert "three ways" in text
+
+
+def test_a_debrief_question_is_answered(runtime):
+    text = _utterance_for(runtime, "what is the debrief?", turn=2).lower()
+    assert "after a conversation ends" in text
+
+
+def test_a_statement_about_the_meters_follows_the_tour(runtime):
+    """Not every mention of a meter is a question about one."""
+    text = _utterance_for(runtime, "The engagement meter went up, nice.", turn=3)
+    assert text == _script_utterance(3), "a statement must not be interjected on"
+
+
+def test_an_unrelated_question_follows_the_tour(runtime):
+    """A question the script has no answer for must not derail the tour."""
+    text = _utterance_for(runtime, "What is the weather like?", turn=3)
+    assert text == _script_utterance(3)
+
+
+def test_question_keywords_are_matched_on_word_boundaries(runtime):
+    """'explain' contains 'ai' and 'show' contains 'how'.
+
+    Matching bare substrings would answer "can you explain that again?" with
+    the is-this-AI answer.
+    """
+    text = _utterance_for(runtime, "Can you explain that again?", turn=3)
+    assert "i am scripted" not in text.lower(), (
+        f"'ai' was matched inside another word: {text!r}"
+    )
+
+
+def test_an_answered_question_still_continues_the_session(runtime):
+    structured = _structured_for(runtime, "what are the meters?", turn=2)
+    assert structured["session_control"]["continue_session"] is True
+
+
+def test_a_question_on_the_final_turn_still_ends_the_session(runtime):
+    """The last turn has to close, so the ending branch outranks an answer."""
+    structured = _structured_for(runtime, "but what are the meters?", turn=6)
+    assert structured["session_control"]["continue_session"] is False
+
+
+def test_interjections_pass_npc_output_validation():
+    """The answers go through the same validators as the scripted turns."""
+    from convsim_prompt.turn_output import _validate as validate_turn_output
+    from convsim_core.runtime.scripted import _INTERJECTIONS
+
+    for keywords, response in _INTERJECTIONS:
+        validate_turn_output(response), f"interjection for {sorted(keywords)} failed validation"
+
+
+# ── Plain language in the tutorial copy (issue #501 §2) ──────────────────────
+# The report named the words that landed badly: 'runtime', 'event', 'state',
+# 'flag'. The tutorial itself used three of them plus "hidden prompt" and
+# "rubric dimensions" — while teaching a player who by definition does not know
+# them yet.
+
+_FORBIDDEN_TUTORIAL_WORDS = (
+    "scenario event",
+    "event flag",
+    "hidden prompt",
+    "hidden instructions",
+    "rubric dimension",
+    "state variable",
+    "state meter",
+    "runtime",
+    "threshold",
+)
+
+
+def _all_tutorial_utterances() -> list[tuple[str, str]]:
+    from convsim_core.runtime.scripted import (
+        _FIRST_WORDS_SCRIPT,
+        _INTERJECTIONS,
+        _pick_ending_turn,
+    )
+
+    out = [(f"script turn {i}", t["npc_utterance"]) for i, t in enumerate(_FIRST_WORDS_SCRIPT, 1)]
+    out += [
+        (f"interjection {sorted(k)[0]}", r["npc_utterance"]) for k, r in _INTERJECTIONS
+    ]
+    out += [
+        (f"ending branch {text!r}", _pick_ending_turn(text)["npc_utterance"])
+        for text in ("I'm so excited!", "how does this work?", "ok")
+    ]
+    return out
+
+
+@pytest.mark.parametrize("forbidden", _FORBIDDEN_TUTORIAL_WORDS)
+def test_tutorial_copy_avoids_simulator_jargon(forbidden):
+    offenders = [
+        where for where, text in _all_tutorial_utterances() if forbidden in text.lower()
+    ]
+    assert offenders == [], (
+        f"the tutorial must not teach the mechanics in the engine's own words; "
+        f"{forbidden!r} appears in: {offenders}"
+    )
+
+
+def test_tutorial_copy_does_not_claim_the_player_said_something():
+    """No line may presume an engaged, positive reply it never received.
+
+    The screenshot in the issue is the script congratulating a player who had
+    asked a question.
+    """
+    presumptive = ("great! see how", "did you see that?", "that sounds like a great goal")
+    offenders = [
+        (where, phrase)
+        for where, text in _all_tutorial_utterances()
+        for phrase in presumptive
+        if phrase in text.lower()
+    ]
+    assert offenders == [], f"presumptive copy survives in: {offenders}"

@@ -122,9 +122,13 @@ def test_tutorial_scenario_canonical_fields(seeded_client):
     s = resp.json()
     _assert_canonical(s)
     assert s["difficulty"]["default"]
-    assert s["duration"]["max_turns"] == 8
+    # Whole turns — one player message plus Alex's reply (issue #501 §4). Six
+    # are the tour; the rest are headroom for the questions the scripted
+    # runtime now answers, each of which costs a turn.
+    assert s["duration"]["max_turns"] == 12
     assert s["taught_dimensions"], "tutorial declares taught_dimensions"
     assert s["opening_npc_says"], "tutorial must carry its scripted opening"
+    assert s["npc_name"] == "Alex Chen", "the tutorial guide is named, not 'NPC'"
 
 
 def test_language_cafe_languages_come_from_pack_manifest(seeded_client):
