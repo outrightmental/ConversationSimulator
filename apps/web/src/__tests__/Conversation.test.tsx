@@ -1914,6 +1914,31 @@ describe('Conversation — Steam achievement call sites', () => {
     await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_DEEP_CONVERSATION'))
   })
 
+  it('does not count a turn that failed and was rolled back', async () => {
+    // A failed turn is removed from the transcript and gives its turn number
+    // back, so it must not count toward "12 of their own turns" either —
+    // otherwise the tally drifts one ahead per failure, and a scenario capped
+    // below the threshold (the 8-turn tutorial) could grant it on retries.
+    renderConversation({ input_mode: 'text-only' })
+    await screen.findByRole('textbox', { name: /your response/i })
+
+    await submitTurns(DEEP_CONVERSATION_TURNS - 1)
+    expect(mockUnlock).not.toHaveBeenCalledWith('ACH_DEEP_CONVERSATION')
+
+    mockApi.submitTurn.mockResolvedValue({
+      ok: false,
+      error: { kind: 'network', message: 'Turn failed' },
+    })
+    await submitTurns(1)
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+    expect(mockUnlock).not.toHaveBeenCalledWith('ACH_DEEP_CONVERSATION')
+
+    // The retry that actually lands is the twelfth turn the conversation holds.
+    mockApi.submitTurn.mockResolvedValue({ ok: true, data: turnResponse })
+    await submitTurns(1)
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_DEEP_CONVERSATION'))
+  })
+
   it('counts rehydrated player turns toward the threshold after a reload', async () => {
     // Progress must survive a mid-session reload: the tally is seeded from the
     // rehydrated transcript, so the player is not sent back to turn one.

@@ -163,6 +163,24 @@ export default function Conversation() {
   // counts NPC turns too, so it cannot stand in for this.
   const playerTurnsRef = useRef(0)
   const deepConversationGrantedRef = useRef(false)
+  // Counts one player turn the conversation is keeping, and grants
+  // ACH_DEEP_CONVERSATION at the threshold.
+  //
+  // Called once a turn has settled, never at submit time: a turn whose request
+  // fails is rolled back out of the transcript and gives its turn number back,
+  // so counting optimistically would both drift one ahead per failure and let a
+  // scenario capped below the threshold (the 8-turn tutorial) grant "Going
+  // Deep" on retries alone.
+  function notePlayerTurnKept() {
+    playerTurnsRef.current += 1
+    if (
+      !deepConversationGrantedRef.current &&
+      playerTurnsRef.current >= DEEP_CONVERSATION_TURNS
+    ) {
+      deepConversationGrantedRef.current = true
+      void unlock(SteamAchievement.DEEP_CONVERSATION)
+    }
+  }
   const bargeInGrantedRef = useRef(false)
   const modeStatCountedRef = useRef(false)
   // Read the input mode through a ref inside the start-session effect. Listing
@@ -725,14 +743,6 @@ export default function Conversation() {
     // regardless of whether the NPC turn is committed by WebSocket or REST.
     const playerTurnId = ++turnUidRef.current
     const playerTurnNum = ++turnNumRef.current
-    playerTurnsRef.current += 1
-    if (
-      !deepConversationGrantedRef.current &&
-      playerTurnsRef.current >= DEEP_CONVERSATION_TURNS
-    ) {
-      deepConversationGrantedRef.current = true
-      void unlock(SteamAchievement.DEEP_CONVERSATION)
-    }
     setTurns((prev) => [
       ...prev,
       {
@@ -825,10 +835,15 @@ export default function Conversation() {
       if (!npcTurnCommittedRef.current) {
         setTurns((prev) => prev.filter((t) => t.id !== playerTurnId))
         turnNumRef.current -= 1
+      } else {
+        // The NPC already answered over the WebSocket, so the player turn
+        // stays in the transcript even though the REST call reported an error.
+        notePlayerTurnKept()
       }
       setPhase('active')
       return
     }
+    notePlayerTurnKept()
     const turnData = result.data
 
     if (!firstTokenMarkedRef.current) {
