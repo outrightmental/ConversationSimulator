@@ -226,9 +226,25 @@ def build_plan(
 
 
 def default_asset_ids() -> list[str]:
-    """The asset ids the one-click path installs: recommended STT plus VAD."""
+    """The asset ids the one-click path installs: recommended STT, plus VAD when it can work.
+
+    Hands-free runs the VAD model through ``onnxruntime``, and a packaged build
+    has neither the extra nor a ``pip`` that could reach its interpreter — the
+    plan reports that as ``onnxruntime_installable: false`` and the screen
+    replaces the install command with the reason. Keeping the weights in the
+    one-click set anyway would have the same screen disclose, charge for and
+    fetch a file for the one capability it has just said is impossible here.
+    That is the dead end this flow exists to remove, in download form, so the
+    asset is dropped when hands-free can never come up on this machine.
+
+    A source checkout *without* the extra still gets it: there the command is
+    offered, so the model is a step on a route that goes somewhere.
+    """
+    hands_free_possible = onnxruntime_installed() or onnxruntime_installable()
     ids: list[str] = []
     for capability in ("stt", "vad"):
+        if capability == "vad" and not hands_free_possible:
+            continue
         asset = recommended_asset(capability)  # type: ignore[arg-type]
         if asset is not None:
             ids.append(asset.id)

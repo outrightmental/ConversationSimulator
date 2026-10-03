@@ -107,6 +107,15 @@ turn its row green is the dead end this flow exists to remove. Hands-free needs
 a source checkout with the extra installed; push-to-talk covers every scenario
 either way.
 
+`default_asset_ids()` drops the Silero model from the one-click set in the same
+case, for the same reason: disclosing, charging for and fetching 2.2 MB for the
+one capability the row above reports as impossible here is that dead end in
+download form. A source checkout *without* the extra still gets it, because
+there the `pip` command is offered and the model is a step on a route that goes
+somewhere. The asset keeps its own row either way — it genuinely is not
+installed — and a hand-written `POST` naming it is still honoured; only the
+recommendation changes.
+
 ### The microphone row
 
 The last row of the speech section is the one piece no download can satisfy.

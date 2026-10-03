@@ -51,10 +51,12 @@ unverified binary the app shows you the exact command to install it yourself.
 ## The model files (the app installs these)
 
 Press the download button and the app fetches the recommended set — about
-**143 MB** — from the original publishers, checks each file against a known
-SHA-256, and only then installs it. Nothing is transferred until you press the
-button, and the screen discloses the source URL, licence, exact size, checksum
-and destination of every file first.
+**141 MB**, or **143 MB** where hands-free turn-taking can run and the small
+voice-activity model joins it — from the original publishers, checks each file
+against a known SHA-256, and only then installs it. The button always names the
+total it is about to transfer. Nothing is transferred until you press it, and
+the screen discloses the source URL, licence, exact size, checksum and
+destination of every file first.
 
 You can pick a different speech model before downloading:
 
@@ -156,8 +158,10 @@ container is up to you.
 - **`onnxruntime`** — only needed for hands-free turn-taking. The packaged
   app does not include it and cannot have it added, so hands-free is a
   source-checkout feature (`pip install onnxruntime` there); the setup screen
-  says which case you are in rather than offering a command that cannot work.
-  Push-to-talk covers every scenario either way.
+  says which case you are in rather than offering a command that cannot work,
+  and it leaves the voice-activity model out of the recommended download in
+  that case rather than charging you for a file it has just told you cannot be
+  used. Push-to-talk covers every scenario either way.
 
 ---
 

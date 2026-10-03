@@ -138,8 +138,9 @@ script. **Settings → Voice readiness → Set up voice** now opens a guided scr
 that names every piece voice needs and gives each gap its own next action:
 
 - **Model files are downloaded for you** — a Whisper speech model (four to
-  choose from) and the voice-activity model, about 143 MB for the recommended
-  pair. Source, licence, exact size, SHA-256 and destination are disclosed
+  choose from) at about 141 MB for the recommended one, plus the small
+  voice-activity model on the builds where hands-free turn-taking can run.
+  Source, licence, exact size, SHA-256 and destination are disclosed
   before the button; every file is checksum-verified before it is installed;
   progress is per-file and cancellable, and a cancel leaves no half-written
   file behind (a file that had already finished and verified stays).

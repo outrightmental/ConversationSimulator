@@ -390,6 +390,29 @@ def test_a_pip_command_is_only_offered_where_pip_can_reach_this_server(monkeypat
     assert voice_registry.onnxruntime_installable() is False
 
 
+def test_the_one_click_set_drops_a_model_for_a_capability_that_cannot_work(monkeypatch):
+    """A packaged build must not be offered the VAD weights it can never use.
+
+    Hands-free needs ``onnxruntime``, which no shipped binary contains and no
+    ``pip`` can add to it — the same screen that would disclose this 2.2 MB
+    download says so in the row above. Charging the player for a file for the
+    one capability the page reports as impossible is the dead end this flow
+    exists to remove, in download form.
+    """
+    from convsim_core.services import voice_setup_service
+
+    monkeypatch.setattr(voice_setup_service, "onnxruntime_installed", lambda: False)
+    monkeypatch.setattr(voice_setup_service, "onnxruntime_installable", lambda: False)
+    ids = voice_setup_service.default_asset_ids()
+    assert "silero-vad" not in ids
+    assert "whisper-base-en" in ids, "Speech-to-text is unaffected by the VAD extra."
+
+    # A source checkout without the extra still gets it: the pip command is
+    # offered there, so the model is a step on a route that goes somewhere.
+    monkeypatch.setattr(voice_setup_service, "onnxruntime_installable", lambda: True)
+    assert "silero-vad" in voice_setup_service.default_asset_ids()
+
+
 def test_plan_reports_whether_onnxruntime_can_be_installed_here(client):
     """The flag has to survive the response model, or the UI cannot act on it."""
     body = client.get("/api/voice/setup/plan").json()
@@ -706,19 +729,24 @@ async def test_a_part_file_that_is_already_complete_is_promoted(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_a_part_file_with_the_wrong_bytes_still_resumes(tmp_path):
-    """Only a *verified* .part short-circuits; a genuine partial still resumes."""
+async def test_a_part_file_with_the_wrong_bytes_is_never_promoted(tmp_path):
+    """Only a *verified* .part short-circuits the request.
+
+    The promote-without-asking branch above is reached whenever a ``.part``
+    exists, so the hash is the only thing standing between a corrupt leftover
+    and an installed model. A ``.part`` of the full length whose bytes are
+    wrong must still go to the network, and must still fail verification rather
+    than being renamed into place.
+    """
     content = b"0123456789abcdef"
     dest = tmp_path / "stt" / "ggml-base.en.bin"
     dest.parent.mkdir(parents=True)
     part = dest.with_name(dest.name + ".part")
-    part.write_bytes(content[:6])
+    part.write_bytes(b"X" * len(content))
 
-    client = _mock_client(
-        content[6:],
-        status_code=206,
-        headers={"content-range": f"bytes 6-{len(content) - 1}/{len(content)}"},
-    )
+    # 200 rather than 206: the server ignored the Range, which is the
+    # clean-restart fallback.
+    client = _mock_client(content, status_code=200)
 
     written = await download_voice_asset(
         url="https://example.test/m.bin",
@@ -727,8 +755,14 @@ async def test_a_part_file_with_the_wrong_bytes_still_resumes(tmp_path):
         _client=client,
     )
 
+    # It asked rather than promoting, …
+    assert client.stream.call_args.kwargs["headers"] == {
+        "Range": f"bytes={len(content)}-"
+    }
+    # … and the restart truncated the bad bytes instead of appending to them.
     assert written == len(content)
-    assert client.stream.call_args.kwargs["headers"] == {"Range": "bytes=6-"}
+    assert dest.read_bytes() == content
+    assert not part.exists()
 
 
 @pytest.mark.asyncio
