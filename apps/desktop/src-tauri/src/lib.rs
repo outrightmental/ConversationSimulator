@@ -33,6 +33,17 @@ fn build_edition() -> Option<&'static str> {
     }
 }
 
+/// Registry id of the model a demo build installs, baked in from the
+/// CONVSIM_DEMO_MODEL_ID build-time variable (`build.rs` validates it). `None`
+/// means "whatever the registry's `role: starter` entry is", which is the
+/// engine's own default. Only read for a demo build: Steam launches a packaged
+/// app with none of our environment, so a run-time variable would never arrive.
+fn build_demo_model_id() -> Option<&'static str> {
+    option_env!("CONVSIM_DEMO_MODEL_ID")
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+}
+
 /// The per-user data root every edition shares: `<local data>/<DATA_ROOT_IDENTIFIER>`.
 ///
 /// Handed to convsim-core as `CONVSIM_DATA_ROOT` and used for the log directory
@@ -703,6 +714,14 @@ fn launch_or_verify_core(
         // is passed so the engine's own default applies.
         if let Some(edition) = build_edition() {
             cmd.env("CONVSIM_EDITION", edition);
+            // Which one model that demo offers. Unset = the registry's starter
+            // tier; set = the pinned registry id (e.g. the smaller
+            // `lightweight` tier). Passed only for a demo build because the
+            // full app ignores it, and an unexpected variable in the engine's
+            // environment is a worse diagnostic than no variable at all.
+            if let Some(model_id) = build_demo_model_id() {
+                cmd.env("CONVSIM_DEMO_MODEL_ID", model_id);
+            }
         }
 
         // The release version the player is running (issue #490). release.yml

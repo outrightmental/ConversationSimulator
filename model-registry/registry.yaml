@@ -7,6 +7,37 @@
 schema_version: "0.1"
 
 models:
+  # ── Lightweight tier ─────────────────────────────────────────────────────────
+  # The smallest and fastest tier: the shortest first download and the lowest
+  # VRAM floor, so the app runs on 2 GB-VRAM and integrated-graphics machines
+  # the starter tier locks out. A 1.7B model is less consistent than the 4B at
+  # the structured output an NPC turn and a scored debrief need, so this is an
+  # option, not the recommendation — `role: starter` is still what the first-run
+  # wizard installs. Qwen publishes this model as Q8_0 only (no Q4_K_M), which
+  # is the quantisation to want here anyway: near-lossless, so the trade is
+  # purely 1.7B-versus-4B and not compounded by aggressive quantisation.
+  - id: qwen3-1.7b-instruct-q8_0
+    name: "Qwen3 1.7B Instruct Q8_0"
+    family: qwen3
+    role: lightweight
+    format: gguf
+    license: Apache-2.0
+    license_url: "https://www.apache.org/licenses/LICENSE-2.0"
+    size_gb: 1.8
+    hardware:
+      min_vram_gb: 2
+      recommended_vram_gb: 4
+    download:
+      provider: huggingface
+      # Pinned to commit 90862c4 of Qwen/Qwen3-1.7B-GGUF
+      url: "https://huggingface.co/Qwen/Qwen3-1.7B-GGUF/resolve/90862c4b9d2787eaed51d12237eafdfe7c5f6077/Qwen3-1.7B-Q8_0.gguf"
+      sha256: "061b54daade076b5d3362dac252678d17da8c68f07560be70818cace6590cb1a"
+    runtime:
+      llama_cpp:
+        context_length: 8192
+        temperature_default: 0.75
+        top_p_default: 0.9
+
   # ── Starter tier ─────────────────────────────────────────────────────────────
   # Smallest recommended model; suitable for first-run demo on lower VRAM systems.
   - id: qwen3-4b-instruct-q4_k_m

@@ -131,11 +131,16 @@ def filter_demo_scenarios(
 def resolve_demo_model_id(conn: sqlite3.Connection, config: Any) -> Optional[str]:
     """The registry id of the one model the demo edition installs.
 
-    ``CONVSIM_DEMO_MODEL_ID`` pins it explicitly (the hook for swapping in a
-    smaller Qwen tier once one clears the quality bar); otherwise the registry's
-    ``role: starter`` entry is used. Returns ``None`` when neither resolves,
-    which the models endpoint reports as an empty registry rather than
-    guessing.
+    ``CONVSIM_DEMO_MODEL_ID`` pins it explicitly — that is how a demo build
+    ships on the registry's smaller ``role: lightweight`` tier
+    (``qwen3-1.7b-instruct-q8_0``) instead; a demo build carries the pin from
+    release.yml's ``demo_model_id`` input. Otherwise the registry's
+    ``role: starter`` entry is used, which is deliberately still the default:
+    the lightweight tier has not been played through the five demo
+    conversations, and an incoherent NPC is a worse demo than a longer
+    download (see ``docs/steam-next-fest-demo.md``). Returns ``None`` when
+    neither resolves, which the models endpoint reports as an empty registry
+    rather than guessing.
     """
     pinned = (getattr(config, "demo_model_id", None) or "").strip()
     if pinned:

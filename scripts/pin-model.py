@@ -8,21 +8,27 @@ Working those out by hand means downloading gigabytes just to hash them. This
 script asks the Hugging Face Hub API instead: the file's Git-LFS object id IS
 its SHA-256, and the repo's current commit SHA pins the URL.
 
-Usage::
+Usage (how the registry's lightweight tier was pinned)::
 
-    python scripts/pin-model.py Qwen/Qwen3-1.7B-GGUF Qwen3-1.7B-Q4_K_M.gguf \\
-        --id qwen3-1.7b-instruct-q4_k_m --role starter \\
-        --min-vram 3 --recommended-vram 4
+    python scripts/pin-model.py Qwen/Qwen3-1.7B-GGUF Qwen3-1.7B-Q8_0.gguf \\
+        --id qwen3-1.7b-instruct-q8_0 --role lightweight \\
+        --min-vram 2 --recommended-vram 4
 
 Prints a YAML block for model-registry/registry.yaml. Review the licence,
 hardware hints and runtime defaults before committing, then run
 ``python scripts/validate-registry.py --url-check``.
 
+Check what a repo actually publishes before picking a filename — Qwen's own
+GGUF repos for the small models ship a single Q8_0 quant, not the Q4_K_M you
+might expect from the larger ones::
+
+    curl -s https://huggingface.co/api/models/<org>/<repo>/tree/main
+
 The demo edition (docs/steam-next-fest-demo.md) installs the registry's
-``role: starter`` entry, or whatever CONVSIM_DEMO_MODEL_ID names — so the
-evaluation of a smaller/faster Qwen tier for the demo is: pin it with this
-script, add the entry, point CONVSIM_DEMO_MODEL_ID at it, and run the demo
-quality gate. No code change is needed to switch models.
+``role: starter`` entry, or whatever CONVSIM_DEMO_MODEL_ID names — so swapping
+the demo onto a smaller/faster tier is: pin it with this script, add the entry,
+and build the demo with release.yml's ``demo_model_id`` input. No code change
+is needed to switch models.
 
 Exit codes: 0 printed an entry; 1 the file or repo was not found or the file
 is not stored in LFS (no verifiable digest).
@@ -110,7 +116,11 @@ def main() -> int:
     parser.add_argument("--id", dest="model_id", required=True, help="registry id, e.g. qwen3-1.7b-instruct-q4_k_m")
     parser.add_argument("--name", help="display name (default: derived from the filename)")
     parser.add_argument("--family", default="qwen3")
-    parser.add_argument("--role", default="starter", choices=["starter", "standard", "high-quality"])
+    parser.add_argument(
+        "--role",
+        default="starter",
+        choices=["lightweight", "starter", "standard", "high-quality"],
+    )
     parser.add_argument("--license", default="Apache-2.0")
     parser.add_argument("--license-url", default="https://www.apache.org/licenses/LICENSE-2.0")
     parser.add_argument("--min-vram", type=float, required=True, help="minimum VRAM in GB")

@@ -7,6 +7,10 @@ interface SpeedClass { label: string; color: string; detail: string }
 
 function modelSpeedClass(role: string | null): SpeedClass {
   switch (role) {
+    // The sub-starter tier: smallest download, lowest VRAM floor, least
+    // consistent NPC. No measured TTFT range is quoted because it has not been
+    // through the latency smoke the other tiers' numbers come from.
+    case 'lightweight': return { label: 'Fastest', color: '#6ee7b7', detail: 'Smallest download; runs on 2 GB VRAM' }
     case 'starter': return { label: 'Fast', color: '#6ee7b7', detail: '~0.8–2.4 s TTFT on recommended tier' }
     case 'standard': return { label: 'Standard', color: '#93c5fd', detail: '~1.5–5 s TTFT on recommended tier' }
     case 'high-quality': return { label: 'Slower', color: '#fbbf24', detail: '~3–10 s TTFT; high-end GPU recommended' }

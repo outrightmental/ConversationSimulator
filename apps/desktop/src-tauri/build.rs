@@ -49,6 +49,45 @@ fn main() {
         }
     }
 
+    // Which model the demo installs (issue #495). The demo edition exposes
+    // exactly one registry model; by default that is the registry's
+    // `role: starter` entry, and CONVSIM_DEMO_MODEL_ID names another registry
+    // id instead — the hook for shipping the demo on the smaller `lightweight`
+    // tier once it clears the demo quality gate. A packaged app is launched by
+    // Steam with no environment of ours, so the value has to be baked in here
+    // for `lib.rs` to hand it to convsim-core.
+    println!("cargo:rerun-if-env-changed=CONVSIM_DEMO_MODEL_ID");
+    if let Ok(raw) = std::env::var("CONVSIM_DEMO_MODEL_ID") {
+        let id = raw.trim();
+        if !id.is_empty() {
+            // Only the demo reads it. Setting it on a full build would silently
+            // do nothing, which is exactly the kind of quiet no-op that ships a
+            // demo on the wrong model.
+            let edition = std::env::var("CONVSIM_EDITION").unwrap_or_default();
+            if edition != "demo" {
+                panic!(
+                    "CONVSIM_DEMO_MODEL_ID={id:?} is set but CONVSIM_EDITION is not \"demo\" \
+                     (got {edition:?}). Only a demo build installs a pinned model. \
+                     See docs/steam-next-fest-demo.md."
+                );
+            }
+            // Same shape the registry schema requires of an `id`. A value that
+            // cannot be a registry id can only ever log an error at runtime and
+            // fall back to the starter — catch the typo at build time instead.
+            let is_id_char =
+                |c: char| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '.' | '_' | '-');
+            let starts_alnum = id.starts_with(|c: char| c.is_ascii_lowercase() || c.is_ascii_digit());
+            if !(starts_alnum && id.chars().all(is_id_char)) {
+                panic!(
+                    "CONVSIM_DEMO_MODEL_ID={id:?} is not a model-registry id \
+                     (lowercase letters, digits, '.', '_' and '-'; must start with a letter \
+                     or digit). See model-registry/registry.yaml."
+                );
+            }
+            println!("cargo:rustc-env=CONVSIM_DEMO_MODEL_ID={id}");
+        }
+    }
+
     // Shared data-root key (issue #495). Every edition keys its per-user data
     // directory to the FULL app's bundle identifier so the demo and the full
     // app share models, sessions and the logbook. Read it from tauri.conf.json
