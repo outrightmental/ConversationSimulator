@@ -427,6 +427,20 @@ async def process_volley(
             runtime,
             speaker="npc",
             opponent_last_line=prepared.volley.text,
+            # The lines a callback may refer back to, for this speaker too.
+            # ``_verify_claim`` only honours a callback when the judge was handed
+            # a window, so passing none made the +10 structurally unearnable by
+            # the opponent while the player could take it every round — up to ten
+            # points an exchange of asymmetry, straight into
+            # k * (S_player - S_npc) / 100. The opponent is held to the player's
+            # rules everywhere else (its own theme record, its own device record,
+            # no hook on its own surface), and "the same scoring pipeline" has to
+            # mean the bonuses as well. The player's new line is excluded by
+            # construction: ``prior_texts`` predates it, and it goes up
+            # separately as ``opponent_last_line`` — the same separation the
+            # player's own window makes, so the judge is never asked to tell a
+            # riposte from a callback against one text.
+            earlier_exchanges=prior_texts[-_CALLBACK_WINDOW:],
             # The opponent's own theme record, not the player's: theme decay has
             # to read the wells this speaker has returned to. Sharing one counter
             # discounted each side for the other's repeats, and in a bout that

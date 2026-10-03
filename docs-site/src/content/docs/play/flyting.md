@@ -53,7 +53,8 @@ draw.
 The target's volleys go through the same scoring pipeline, and its numbers are
 shown. That is deliberate instruction: seeing why its line scored 140 teaches
 more than being told yours scored 60. Countering its last line earns a
-**riposte** bonus.
+**riposte** bonus — and every bonus below is open to the target on the same
+terms, because one only you could reach would be a thumb on the momentum scale.
 
 There is no shot clock in a bout. It is a contest of lines, not of reflexes.
 

@@ -266,6 +266,12 @@ scenario-configurable, 15 by default), **callback** +10, **device rotation** +5
 (a device unused in the last three volleys), **compound** +5 (two independent
 constructions that both land).
 
+In a bout every one of those bonuses is open to the opponent on the same terms,
+because a bonus only one side can reach is a thumb on `k · (S_you − S_npc) / 100`.
+Each is checked against that speaker's own record: its own device rotation, its
+own theme well, the player's line as the thing its riposte has to turn back, and
+the session's earlier lines as the thing its callback has to refer to.
+
 Two rules exist specifically to make padding worthless: past the soft cap the
 run-on decay applies *and* `T` collapses to 1, and a plagiarized zinger is capped
 *before* bonuses — a borrowed line with a riposte attached is still a borrowed
