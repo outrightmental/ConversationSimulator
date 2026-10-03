@@ -309,6 +309,30 @@ impl SteamRuntime {
         false
     }
 
+    /// Which of *api_names* Steam already reports as unlocked for this user.
+    ///
+    /// Best-effort evidence, never proof of absence: the answer is empty when
+    /// Steam is unavailable, and Steamworks also refuses the read until the
+    /// user's stats have arrived from Steam shortly after launch. A name
+    /// missing from the result therefore means "Steam did not confirm it", not
+    /// "the player has not earned it".
+    ///
+    /// Exists so the front end can reconcile its local `ACH_CERTIFIED_EXPERT`
+    /// ledger against the Steam account, which is the real authority on what a
+    /// player has earned — see docs/steam-achievements-stats-rich-presence.md.
+    pub fn unlocked_achievements(&self, api_names: &[String]) -> Vec<String> {
+        #[cfg(feature = "steam")]
+        if let Some(ref client) = self.client {
+            let us = client.user_stats();
+            return api_names
+                .iter()
+                .filter(|name| us.achievement(name).get().unwrap_or(false))
+                .cloned()
+                .collect();
+        }
+        Vec::new()
+    }
+
     /// Increment an integer stat by 1. Reads the current value first so the
     /// counter is always monotonically increasing. Stores stats immediately.
     /// Returns `false` when Steam is unavailable.
@@ -1019,6 +1043,21 @@ mod tests {
         without_steam_env_vars(|| {
             let (_status, runtime) = init();
             assert!(!runtime.unlock_achievement(achievements::FIRST_SCENARIO));
+        });
+    }
+
+    #[test]
+    fn unlocked_achievements_is_empty_without_steam() {
+        without_steam_env_vars(|| {
+            let (_status, runtime) = init();
+            let asked: Vec<String> = achievements::ALL
+                .iter()
+                .map(|n| (*n).to_string())
+                .collect();
+            assert!(runtime.unlocked_achievements(&asked).is_empty());
+            // An empty ask must not panic either — the front end sends exactly
+            // the names its ledger is missing, which can be none of them.
+            assert!(runtime.unlocked_achievements(&[]).is_empty());
         });
     }
 

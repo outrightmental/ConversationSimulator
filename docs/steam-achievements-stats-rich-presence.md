@@ -126,6 +126,21 @@ player with no Workshop subscription, no DLC, no controller, and no Ollama or
 `.gguf` model of their own. A microphone **is** required — voice practice is the
 product, and the store page already lists one as the requirement for voice mode.
 
+The ledger is a cache, not the authority. It lives in one device's
+`localStorage`, so it starts empty on a second machine, after a reinstall, and
+after the player clears app data, while the Steam account still holds every
+unlock. So whenever the ledger alone does not satisfy the requirement, `unlock()`
+asks Steam about exactly the names the ledger is missing, via the
+`steam_unlocked_achievements` command, and folds the confirmed ones back in.
+Without that read-back a player who earned the set across a desktop and a Steam
+Deck would sit at 42/43 forever, unable to finish without redoing the one-shot
+events (a barge-in, an export, a creator save) they had already done elsewhere.
+
+The read-back is best-effort in one direction only: Steamworks refuses the read
+until the user's stats arrive shortly after launch, so a name it does not
+confirm is treated as *unknown*, never as "not earned". The capstone simply does
+not fire on that pass and is re-evaluated on the next unlock.
+
 Adding an achievement adds it to the capstone requirement by default; a
 genuinely optional one must be declared in `OPTIONAL_ACHIEVEMENTS`.
 
@@ -133,8 +148,10 @@ genuinely optional one must be declared in `OPTIONAL_ACHIEVEMENTS`.
 
 The ledger holds achievement API names and played pack IDs, on this device only.
 Nothing in it is sent anywhere — Steam receives only the unlock calls it would
-have received anyway, and never a transcript, a session ID, or any conversation
-content.
+have received anyway, plus a read-back query naming the achievements the ledger
+is missing. Those names are this repository's own constants; the pack IDs never
+leave the device, and neither does a transcript, a session ID, or any
+conversation content.
 
 ### Retroactive unlocks
 
@@ -270,9 +287,12 @@ graceful no-ops when:
 The `SteamRuntime` struct always exists in managed state; its methods simply
 return `false` in all fallback cases without logging errors or throwing.
 
-The Tauri commands (`steam_unlock_achievement`, `steam_increment_stat`,
-`steam_set_rich_presence`) can be invoked freely on any build; callers do not
-need to check `SteamStatus.is_steam_enabled` first.
+The Tauri commands (`steam_unlock_achievement`, `steam_unlocked_achievements`,
+`steam_increment_stat`, `steam_set_rich_presence`) can be invoked freely on any
+build; callers do not need to check `SteamStatus.is_steam_enabled` first.
+`steam_unlocked_achievements` answers with an empty list in every fallback case,
+which the capstone check reads as "nothing confirmed" rather than "nothing
+earned".
 
 ---
 

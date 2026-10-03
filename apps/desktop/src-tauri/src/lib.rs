@@ -184,6 +184,23 @@ fn steam_unlock_achievement(
         .unwrap_or(false)
 }
 
+/// Which of `names` Steam already reports as unlocked for the signed-in user.
+///
+/// Best-effort: returns an empty list when not running under Steam, when the
+/// `steam` feature is off, or before the user's stats have arrived from Steam.
+/// A missing name means "unconfirmed", not "not unlocked".
+#[tauri::command]
+fn steam_unlocked_achievements(
+    names: Vec<String>,
+    state: tauri::State<'_, SteamRuntimeState>,
+) -> Vec<String> {
+    state
+        .0
+        .lock()
+        .map(|r| r.unlocked_achievements(&names))
+        .unwrap_or_default()
+}
+
 /// Increment an integer stat by 1 and persist it to Steam.
 /// Returns `false` when not running under Steam or the `steam` feature is off.
 #[tauri::command]
@@ -936,6 +953,7 @@ pub fn run() {
             check_for_update,
             install_update,
             steam_unlock_achievement,
+            steam_unlocked_achievements,
             steam_increment_stat,
             steam_set_rich_presence,
             steam_show_floating_keyboard,

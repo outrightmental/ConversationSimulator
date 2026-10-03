@@ -25,6 +25,34 @@ function stubTauriInvoke(invoke: InvokeFn) {
   win.__TAURI__ = { core: { invoke } }
 }
 
+/**
+ * Stubs the bridge with a mock that answers both commands sensibly: unlocks
+ * succeed, and `steam_unlocked_achievements` reports `unlockedOnSteam` (nothing
+ * by default). Needed because a single `mockResolvedValue` cannot answer a
+ * boolean command and a list command at the same time.
+ */
+function stubSteam(
+  opts: { unlock?: boolean; unlockedOnSteam?: readonly string[] } = {},
+) {
+  const { unlock = true, unlockedOnSteam = [] } = opts
+  const invoke = vi.fn((cmd: string, args?: unknown) => {
+    if (cmd === 'steam_unlocked_achievements') {
+      const asked = (args as { names: string[] }).names
+      return Promise.resolve(asked.filter((n) => unlockedOnSteam.includes(n)))
+    }
+    return Promise.resolve(unlock)
+  })
+  stubTauriInvoke(invoke)
+  return invoke
+}
+
+/** The achievement names passed to `steam_unlock_achievement`, in order. */
+function unlockedNames(invoke: ReturnType<typeof vi.fn>): string[] {
+  return invoke.mock.calls
+    .filter(([cmd]) => cmd === 'steam_unlock_achievement')
+    .map(([, args]) => (args as { name: string }).name)
+}
+
 function clearTauri() {
   const win = window as { __TAURI__?: unknown }
   delete win.__TAURI__
@@ -75,8 +103,7 @@ describe('useSteamAchievements — non-Tauri context', () => {
 
 describe('useSteamAchievements — unlock', () => {
   it('invokes steam_unlock_achievement with the correct name', async () => {
-    const invoke = vi.fn().mockResolvedValue(true)
-    stubTauriInvoke(invoke)
+    const invoke = stubSteam()
 
     const { result } = renderHook(() => useSteamAchievements())
 
@@ -86,10 +113,7 @@ describe('useSteamAchievements — unlock', () => {
     })
 
     expect(ok).toBe(true)
-    expect(invoke).toHaveBeenCalledOnce()
-    expect(invoke).toHaveBeenCalledWith('steam_unlock_achievement', {
-      name: SteamAchievement.FIRST_SCENARIO,
-    })
+    expect(unlockedNames(invoke)).toEqual([SteamAchievement.FIRST_SCENARIO])
   })
 
   it('returns false when invoke returns false (already unlocked or Steam absent)', async () => {
@@ -121,8 +145,7 @@ describe('useSteamAchievements — unlock', () => {
   })
 
   it('passes all achievement API names through to invoke', async () => {
-    const invoke = vi.fn().mockResolvedValue(true)
-    stubTauriInvoke(invoke)
+    const invoke = stubSteam()
     const { result } = renderHook(() => useSteamAchievements())
 
     const names = Object.values(SteamAchievement)
@@ -136,10 +159,7 @@ describe('useSteamAchievements — unlock', () => {
       })
     }
 
-    expect(invoke).toHaveBeenCalledTimes(names.length)
-    for (const name of names) {
-      expect(invoke).toHaveBeenCalledWith('steam_unlock_achievement', { name })
-    }
+    expect(unlockedNames(invoke)).toEqual([...names])
   })
 })
 
@@ -157,19 +177,25 @@ describe('useSteamAchievements — capstone', () => {
     const last = CAPSTONE_ACHIEVEMENTS[CAPSTONE_ACHIEVEMENTS.length - 1]
     seedAllRequiredExcept(last)
 
-    const invoke = vi.fn().mockResolvedValue(true)
-    stubTauriInvoke(invoke)
+    const invoke = stubSteam()
     const { result } = renderHook(() => useSteamAchievements())
 
     await act(async () => {
       await result.current.unlock(last)
     })
 
-    expect(invoke).toHaveBeenCalledWith('steam_unlock_achievement', {
-      name: SteamAchievement.CERTIFIED_EXPERT,
-    })
+    expect(unlockedNames(invoke)).toEqual([
+      last,
+      SteamAchievement.CERTIFIED_EXPERT,
+    ])
     expect(readUnlockedAchievements()).toContain(
       SteamAchievement.CERTIFIED_EXPERT,
+    )
+    // The ledger already vouched for everything else, so there was nothing to
+    // ask Steam about.
+    expect(invoke).not.toHaveBeenCalledWith(
+      'steam_unlocked_achievements',
+      expect.anything(),
     )
   })
 
@@ -180,15 +206,14 @@ describe('useSteamAchievements — capstone', () => {
       if (name !== last && name !== alsoMissing) recordUnlockedAchievement(name)
     }
 
-    const invoke = vi.fn().mockResolvedValue(true)
-    stubTauriInvoke(invoke)
+    const invoke = stubSteam()
     const { result } = renderHook(() => useSteamAchievements())
 
     await act(async () => {
       await result.current.unlock(last)
     })
 
-    expect(invoke).toHaveBeenCalledOnce()
+    expect(unlockedNames(invoke)).toEqual([last])
     expect(readUnlockedAchievements()).not.toContain(
       SteamAchievement.CERTIFIED_EXPERT,
     )
@@ -198,44 +223,124 @@ describe('useSteamAchievements — capstone', () => {
     for (const name of CAPSTONE_ACHIEVEMENTS) recordUnlockedAchievement(name)
     recordUnlockedAchievement(SteamAchievement.CERTIFIED_EXPERT)
 
-    const invoke = vi.fn().mockResolvedValue(true)
-    stubTauriInvoke(invoke)
+    const invoke = stubSteam()
     const { result } = renderHook(() => useSteamAchievements())
 
     await act(async () => {
       await result.current.unlock(SteamAchievement.DLC_LIBRARY)
     })
 
-    expect(invoke).toHaveBeenCalledOnce()
-    expect(invoke).toHaveBeenCalledWith('steam_unlock_achievement', {
-      name: SteamAchievement.DLC_LIBRARY,
-    })
+    expect(unlockedNames(invoke)).toEqual([SteamAchievement.DLC_LIBRARY])
   })
 
   it('does not recurse when the capstone itself is unlocked', async () => {
     for (const name of CAPSTONE_ACHIEVEMENTS) recordUnlockedAchievement(name)
 
-    const invoke = vi.fn().mockResolvedValue(true)
-    stubTauriInvoke(invoke)
+    const invoke = stubSteam()
     const { result } = renderHook(() => useSteamAchievements())
 
     await act(async () => {
       await result.current.unlock(SteamAchievement.CERTIFIED_EXPERT)
     })
 
-    expect(invoke).toHaveBeenCalledOnce()
+    expect(unlockedNames(invoke)).toEqual([SteamAchievement.CERTIFIED_EXPERT])
   })
 
   it('does not record an unlock Steam did not confirm', async () => {
-    const invoke = vi.fn().mockResolvedValue(false)
-    stubTauriInvoke(invoke)
+    const invoke = stubSteam({ unlock: false })
     const { result } = renderHook(() => useSteamAchievements())
 
     await act(async () => {
       await result.current.unlock(SteamAchievement.FIRST_SCENARIO)
     })
 
+    expect(invoke).toHaveBeenCalledOnce()
     expect(readUnlockedAchievements()).toEqual([])
+  })
+
+  // ── Reconciliation against the Steam account ───────────────────────────────
+  //
+  // The ledger is device-local, so it starts empty on a second machine, after a
+  // reinstall, and after the player clears app data. Steam is the authority on
+  // what the account has earned, so the capstone check must ask it rather than
+  // stranding such a player at 42/43.
+
+  it('earns the capstone from Steam when the local ledger is empty', async () => {
+    const earnedElsewhere = CAPSTONE_ACHIEVEMENTS.slice(0, -1)
+    const last = CAPSTONE_ACHIEVEMENTS[CAPSTONE_ACHIEVEMENTS.length - 1]
+    const invoke = stubSteam({ unlockedOnSteam: earnedElsewhere })
+
+    const { result } = renderHook(() => useSteamAchievements())
+    await act(async () => {
+      await result.current.unlock(last)
+    })
+
+    expect(invoke).toHaveBeenCalledWith('steam_unlocked_achievements', {
+      names: [...earnedElsewhere],
+    })
+    expect(unlockedNames(invoke)).toEqual([
+      last,
+      SteamAchievement.CERTIFIED_EXPERT,
+    ])
+  })
+
+  it('folds the names Steam confirms back into the ledger', async () => {
+    const earnedElsewhere = CAPSTONE_ACHIEVEMENTS.slice(0, 3)
+    const invoke = stubSteam({ unlockedOnSteam: earnedElsewhere })
+
+    const { result } = renderHook(() => useSteamAchievements())
+    await act(async () => {
+      await result.current.unlock(SteamAchievement.BARGE_IN)
+    })
+
+    // Not enough for the capstone, but the ledger must still have learned them
+    // so the next unlock does not have to ask again.
+    expect(unlockedNames(invoke)).toEqual([SteamAchievement.BARGE_IN])
+    for (const name of earnedElsewhere) {
+      expect(readUnlockedAchievements()).toContain(name)
+    }
+  })
+
+  it('does not fire the capstone when Steam confirms nothing', async () => {
+    const invoke = stubSteam({ unlockedOnSteam: [] })
+
+    const { result } = renderHook(() => useSteamAchievements())
+    await act(async () => {
+      await result.current.unlock(SteamAchievement.BARGE_IN)
+    })
+
+    expect(unlockedNames(invoke)).toEqual([SteamAchievement.BARGE_IN])
+  })
+
+  it('does not fire the capstone when the read-back command is unavailable', async () => {
+    // An older shell without `steam_unlocked_achievements` rejects the call.
+    const invoke = vi.fn((cmd: string) =>
+      cmd === 'steam_unlocked_achievements'
+        ? Promise.reject(new Error('command not found'))
+        : Promise.resolve(true),
+    )
+    stubTauriInvoke(invoke)
+
+    const { result } = renderHook(() => useSteamAchievements())
+    let ok = false
+    await act(async () => {
+      ok = await result.current.unlock(SteamAchievement.BARGE_IN)
+    })
+
+    expect(ok).toBe(true)
+    expect(unlockedNames(invoke)).toEqual([SteamAchievement.BARGE_IN])
+  })
+
+  it('ignores a non-array answer from the read-back command', async () => {
+    const invoke = vi.fn(() => Promise.resolve(true))
+    stubTauriInvoke(invoke)
+
+    const { result } = renderHook(() => useSteamAchievements())
+    await act(async () => {
+      await result.current.unlock(SteamAchievement.BARGE_IN)
+    })
+
+    expect(unlockedNames(invoke)).toEqual([SteamAchievement.BARGE_IN])
   })
 
   it('leaves the optional achievements out of the requirement', () => {

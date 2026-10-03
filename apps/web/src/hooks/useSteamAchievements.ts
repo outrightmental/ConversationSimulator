@@ -164,11 +164,16 @@ export const CAPSTONE_ACHIEVEMENTS: readonly SteamAchievementName[] =
 
 // ── Local progress ledger ─────────────────────────────────────────────────────
 //
-// Steamworks exposes no read-back command in this bridge, so the capstone needs
-// a local record of what has already been unlocked. Only achievement API names
-// and pack IDs are stored, on this device only — never transcript text, session
-// IDs, or anything else about a conversation. Nothing here is sent anywhere;
-// Steam only ever receives the unlock calls it would have received anyway.
+// A device-local record of what has already been unlocked, so the capstone can
+// be evaluated without re-asking Steam about all 36 required names on every
+// call. It is a cache, not the authority: `capstoneIsComplete` below reconciles
+// anything the ledger is missing against Steam itself, which is what keeps the
+// capstone earnable on a second machine or after a data wipe.
+//
+// Only achievement API names and pack IDs are stored, on this device only —
+// never transcript text, session IDs, or anything else about a conversation.
+// Nothing here is sent anywhere; Steam only ever receives the unlock calls it
+// would have received anyway.
 
 export const STEAM_PROGRESS_KEYS = {
   /** JSON array of achievement API names Steam has confirmed unlocked. */
@@ -247,13 +252,61 @@ function invokeSteam(cmd: string, name: string): Promise<boolean> {
 }
 
 /**
+ * Which of `names` Steam itself reports as already unlocked for this account.
+ *
+ * Best-effort evidence, never proof of absence: the answer is empty outside
+ * Steam, and Steamworks also refuses the read until the user's stats have
+ * arrived shortly after launch. A name missing from the result means "Steam did
+ * not confirm it", not "the player has not earned it".
+ */
+async function querySteamUnlocked(
+  names: readonly string[],
+): Promise<Set<string>> {
+  const tauri = (window as TauriWindow).__TAURI__
+  if (!tauri?.core || names.length === 0) return new Set()
+  const result = await tauri.core
+    .invoke<string[]>('steam_unlocked_achievements', { names })
+    .catch(() => [])
+  if (!Array.isArray(result)) return new Set()
+  return new Set(result.filter((v): v is string => typeof v === 'string'))
+}
+
+/**
+ * True when the capstone requirement is satisfied, consulting Steam for
+ * anything the local ledger cannot vouch for.
+ *
+ * The Steam account — not the ledger — is the authority on what a player has
+ * earned. The ledger lives in this device's `localStorage`, so it starts empty
+ * on a second machine, after a reinstall, and after the player clears app data,
+ * while the account still holds every unlock. Without this reconciliation such
+ * a player would sit at 42/43 forever, unable to finish without redoing the
+ * one-shot events (a barge-in, an export, a creator save) they already did
+ * elsewhere. Names Steam confirms are folded back in, so the ledger self-heals.
+ */
+async function capstoneIsComplete(
+  unlocked: readonly string[],
+): Promise<boolean> {
+  if (isCapstoneComplete(unlocked)) return true
+  const have = new Set(unlocked)
+  const missing = CAPSTONE_ACHIEVEMENTS.filter((name) => !have.has(name))
+  const confirmed = await querySteamUnlocked(missing)
+  if (confirmed.size === 0) return false
+  let ledger: readonly string[] = unlocked
+  for (const name of missing) {
+    if (confirmed.has(name)) ledger = recordUnlockedAchievement(name)
+  }
+  return isCapstoneComplete(ledger)
+}
+
+/**
  * Returns callbacks for unlocking Steam achievements and incrementing stats.
  *
  * - In a browser context (no `window.__TAURI__`) both callbacks return
  *   `false` immediately without throwing.
  * - In the Tauri shell, delegates to the `steam_unlock_achievement` and
  *   `steam_increment_stat` commands, which are no-ops when Steam is absent
- *   or the `steam` Cargo feature is disabled.
+ *   or the `steam` Cargo feature is disabled. `unlock` additionally reads back
+ *   from `steam_unlocked_achievements` while the capstone is outstanding.
  *
  * Unlocking is idempotent, so call sites are free to re-check a condition on
  * every visit to a screen. That is what makes the set retroactive wherever the
@@ -282,7 +335,7 @@ export function useSteamAchievements() {
       const unlocked = recordUnlockedAchievement(achievementName)
       if (
         !unlocked.includes(SteamAchievement.CERTIFIED_EXPERT) &&
-        isCapstoneComplete(unlocked)
+        (await capstoneIsComplete(unlocked))
       ) {
         const capstoneOk = await invokeSteam(
           'steam_unlock_achievement',
