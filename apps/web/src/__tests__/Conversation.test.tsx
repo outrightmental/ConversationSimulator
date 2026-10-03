@@ -1969,4 +1969,92 @@ describe('Conversation — Steam achievement call sites', () => {
     await submitTurns(1)
     await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_DEEP_CONVERSATION'))
   })
+
+  /** A server transcript whose player turns already meet the threshold. */
+  function deepTranscript() {
+    const turns: Array<{
+      turn_number: number
+      role: 'npc_opening' | 'player' | 'npc'
+      content: string
+      emotion?: string
+      flow_state_after: string
+    }> = [
+      { turn_number: 0, role: 'npc_opening', content: 'Thanks for coming in. Tell me about yourself.', flow_state_after: 'PlayerTurnListening' },
+    ]
+    for (let i = 1; i <= DEEP_CONVERSATION_TURNS; i++) {
+      turns.push({ turn_number: i, role: 'player', content: `earlier turn ${i}`, flow_state_after: 'PlayerTurnListening' })
+    }
+    return { session_id: SESSION_ID, scenario_id: SCENARIO_ID, transcript_saved: true, turns }
+  }
+
+  it('unlocks it from the resumed transcript alone when it already meets the threshold', async () => {
+    // The tally is replaced wholesale from the server's copy on resume, so the
+    // threshold has to be evaluated there too — a player resuming at turn 12 of
+    // a 14-turn scenario must not be made to play a thirteenth to be granted a
+    // condition they already satisfy.
+    mockApi.startSession.mockResolvedValue({
+      ok: false,
+      error: { kind: 'network', message: 'INVALID_TRANSITION' },
+    })
+    mockApi.getSessionTranscript.mockResolvedValue({ ok: true, data: deepTranscript() })
+    renderConversation({ input_mode: 'text-only' })
+    await waitFor(() =>
+      expect(mockUnlock).toHaveBeenCalledWith('ACH_DEEP_CONVERSATION'),
+    )
+  })
+
+  it('unlocks it for the threshold turn adopted from the server after the reply deadline', async () => {
+    // The issue #489 slow-reply path never reaches the per-turn counter: when
+    // the deadline expires the screen adopts the server's transcript and the
+    // submit handler returns early. A twelfth turn landing that way granted
+    // nothing until the threshold check moved to every tally write — and the
+    // unlock was lost outright when the adopted turn was the session's last,
+    // which is the likely case on the hardware that trips the deadline.
+    const adopted = deepTranscript()
+    adopted.turns.push({
+      turn_number: DEEP_CONVERSATION_TURNS + 1,
+      role: 'npc',
+      content: 'Committed by the server while the UI waited.',
+      emotion: 'neutral',
+      flow_state_after: 'PlayerTurnListening',
+    })
+    mockApi.getSessionTranscript.mockResolvedValue({ ok: true, data: adopted })
+    // The request never resolves, so the deadline is the only thing that
+    // reconciles this turn.
+    mockApi.submitTurn.mockReturnValue(new Promise(() => {}) as never)
+
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      renderConversation({ input_mode: 'text-only' })
+      const textarea = await screen.findByRole('textbox', { name: /your response/i })
+      fireEvent.change(textarea, { target: { value: 'my twelfth answer' } })
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+      await waitFor(() => expect(screen.getByText('my twelfth answer')).toBeInTheDocument())
+      expect(mockUnlock).not.toHaveBeenCalledWith('ACH_DEEP_CONVERSATION')
+
+      // 300_000 ms is the deadline at which the screen stops trusting the
+      // request and adopts the server's copy instead.
+      await vi.advanceTimersByTimeAsync(300_000)
+      await waitFor(() =>
+        expect(
+          screen.getByText('Committed by the server while the UI waited.'),
+        ).toBeInTheDocument(),
+      )
+      await waitFor(() =>
+        expect(mockUnlock).toHaveBeenCalledWith('ACH_DEEP_CONVERSATION'),
+      )
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('grants it only once however many more turns the player takes', async () => {
+    renderConversation({ input_mode: 'text-only' })
+    await screen.findByRole('textbox', { name: /your response/i })
+    await submitTurns(DEEP_CONVERSATION_TURNS + 2)
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_DEEP_CONVERSATION'))
+    expect(
+      mockUnlock.mock.calls.filter(([n]) => n === 'ACH_DEEP_CONVERSATION'),
+    ).toHaveLength(1)
+  })
 })
