@@ -56,8 +56,13 @@ export async function copyTextToClipboard(text: string): Promise<boolean> {
   } catch {
     // fall through to the legacy path
   }
-  const textarea = document.createElement('textarea')
+  let textarea: HTMLTextAreaElement | undefined
   try {
+    // Inside the try with everything else: this function's contract is that it
+    // resolves false rather than throwing — three of its callers do not catch —
+    // and `document` is absent outside a DOM altogether.
+    if (typeof document === 'undefined') return false
+    textarea = document.createElement('textarea')
     textarea.value = text
     textarea.setAttribute('readonly', '')
     textarea.style.position = 'fixed'
@@ -72,6 +77,6 @@ export async function copyTextToClipboard(text: string): Promise<boolean> {
     // some engines, where calling it throws — and the scratch textarea was
     // selected, so leaving it behind parks focus in an invisible element on
     // the very error surface the user is trying to report from.
-    textarea.remove()
+    textarea?.remove()
   }
 }
