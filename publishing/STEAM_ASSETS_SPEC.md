@@ -25,7 +25,7 @@
 | Main capsule (library hero) | Yes | 3840 × 1240 px, JPG or PNG | Not started |
 | Library capsule | Yes | 600 × 900 px, JPG or PNG | Not started |
 | App icon | Yes | 184 × 184 px, JPG | Demo done (`publishing/assets/icons/demo_app_icon.jpg`); base renders from the same generator, `gen_icons.py --edition base`, not committed. **Not** `gen_capsules.py`'s `community_icon` — see [Icons](#icons) |
-| Shortcut icon | Yes | 256 × 256 px, `.ico` or PNG | Demo done (`publishing/assets/icons/demo_shortcut_icon.png`); base not started |
+| Shortcut icon | Yes | 256 × 256 px or 512 × 512 px, `.ico` or PNG | Demo done (`publishing/assets/icons/demo_shortcut_icon.png`); base not started |
 | Mac icon | For macOS shortcuts | `.icns` | Demo done (`apps/desktop/src-tauri/icons-demo/icon.icns`); base is `apps/desktop/src-tauri/icons/icon.icns` |
 | Page background | Optional | 1438 × 810 px, JPG or PNG | Not started |
 | Screenshots (min 5, max 20) | Yes | 1920 × 1080 px (or 1280 × 720 px min), JPG or PNG | Source captures exist (see `docs/assets/screenshots/`); re-shoot at Steam dimensions |
@@ -95,7 +95,7 @@ There is no asset called a "client icon", and none of the three is 32 px:
 | Field | Spec | What draws it |
 |-------|------|---------------|
 | **App Icon** | 184 × 184 JPG, required | Valve: "the library list view, 'favorites' in chat, and notifications across the Steam client, mobile client, and Deck" — the sidebar row in issue #499's screenshot |
-| **Shortcut Icon** | 256 × 256 `.ico` or PNG, required | The desktop shortcut Steam creates. Valve generates the `.ico` from a PNG |
+| **Shortcut Icon** | 256 × 256 or 512 × 512 `.ico` or PNG, required | The desktop shortcut Steam creates. Valve generates the `.ico` from a PNG |
 | **Mac Icon** | `.icns` | macOS desktop shortcuts. Without it the shortcut gets a default Steam logo |
 
 The App Icon is the one that matters most and the one most easily got wrong:
@@ -161,7 +161,9 @@ python3 publishing/assets/source/gen_icons.py --edition base --out /tmp/base
 The Shortcut Icon is a plain PNG, not a hand-built `.ico`: Valve accepts a PNG
 in that field and generates the `.ico` itself, so the uploaded file is
 byte-identical to the 256 px frame the app installs and there is no container
-in between to go wrong. The bundle's own multi-size `icon.ico` is still
+in between to go wrong. Valve takes 512 × 512 in that field too; 256 is chosen
+because it is the frame the bundle already ships — one file, not two renders
+of the same mark that can drift apart. The bundle's own multi-size `icon.ico` is still
 assembled by the script, with PNG payloads — that is what `tauri icon`
 produced for the base app, and it is what stops the 256 px frame costing
 256 KB.

@@ -19,8 +19,9 @@ tests pin the fix from both ends:
     promises, and the ones that are not PNG decode back to the frame they were
     built from;
   * the two Steamworks icons exist at the sizes Valve's spec names — App Icon
-    184 x 184 JPG, Shortcut Icon 256 x 256 PNG — and the shortcut icon is the
-    same image the app itself installs.
+    184 x 184 JPG, Shortcut Icon 256 x 256 PNG (512 is the only other size
+    Valve takes there) — and the shortcut icon is the same image the app
+    itself installs.
 
 The App Icon is the one the issue's screenshot is about: Valve's spec says it
 is what the Steam client draws "in the library list view, 'favorites' in chat,
@@ -73,7 +74,10 @@ _RIBBON_U_INNER, _RIBBON_U_OUTER = 266.0, 308.0
 # restated here so a drift in gen_icons.py fails rather than ships an asset
 # Valve's uploader rejects.
 _APP_ICON_PX = 184       # App Icon: 184x184 JPG — the library-list row
-_SHORTCUT_ICON_PX = 256  # Shortcut Icon: 256x256 .ico or .png — desktop shortcut
+# Shortcut Icon: Valve takes 256x256 or 512x512, .ico or .png.  This pins the
+# 256 the generator emits, which is the frame the bundle already ships; a move
+# to 512 is a deliberate change to both sides, not a drift.
+_SHORTCUT_ICON_PX = 256
 
 # Below this the two icons would start to look alike in a library list.  The
 # teal/purple pair measures ~148, so there is room to retune either plate; the
@@ -620,11 +624,11 @@ class TestSteamworksIcons:
     """Valve's "Community and Client Icons" fields, and only those.
 
     There is no "client icon" asset: the fields are App Icon (184 x 184 JPG)
-    and Shortcut Icon (256 x 256 .ico or .png), plus Mac Icon, which takes the
-    bundle's own ``icon.icns`` unchanged. Getting the field wrong is not a
-    cosmetic slip — an asset at a size Valve does not accept is one the
-    uploader rejects, which is how the demo's library row stays identical to
-    the full game's.
+    and Shortcut Icon (256 x 256 or 512 x 512, .ico or .png), plus Mac Icon,
+    which takes the bundle's own ``icon.icns`` unchanged. Getting the field
+    wrong is not a cosmetic slip — an asset at a size Valve does not accept is
+    one the uploader rejects, which is how the demo's library row stays
+    identical to the full game's.
     """
 
     def test_app_icon_is_a_184px_jpeg(self):
@@ -704,7 +708,9 @@ class TestSteamworksIcons:
     def test_shortcut_icon_is_a_256px_png(self):
         width, height, _ = _read_png(_SHORTCUT_ICON)
         assert (width, height) == (_SHORTCUT_ICON_PX, _SHORTCUT_ICON_PX), (
-            f"Steamworks requires {_SHORTCUT_ICON_PX}x{_SHORTCUT_ICON_PX}"
+            f"the Shortcut Icon should be {_SHORTCUT_ICON_PX}x"
+            f"{_SHORTCUT_ICON_PX} — the frame the bundle ships; Valve's other "
+            "accepted size, 512, would break the byte-identity below"
         )
 
     def test_shortcut_icon_is_the_frame_the_app_installs(self):

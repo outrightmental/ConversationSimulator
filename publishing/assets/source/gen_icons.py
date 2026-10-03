@@ -20,9 +20,10 @@ Community and Client Icons, and they are two different fields:
     client, and Deck."  This is the one in the issue's screenshot: the sidebar
     row where the demo and the full game read as the same product.  JPG has no
     alpha, so the plate is flattened onto the capsule set's near-black.
-  * **Shortcut Icon** — 256x256 .ico or .png, for the desktop shortcut Steam
-    creates.  Valve generates the .ico from a PNG, so a PNG is what this emits:
-    it is byte-identical to the 256 px frame the app itself installs.
+  * **Shortcut Icon** — 256x256 (or 512x512) .ico or .png, for the desktop
+    shortcut Steam creates.  Valve generates the .ico from a PNG, so a PNG is
+    what this emits, at 256: that is byte-identical to the frame the app
+    itself installs, so the two cannot drift apart.
 
 macOS shortcuts additionally need an ICNS in Steamworks' **Mac Icon** field;
 that is ``icons-demo/icon.icns`` from the bundle set, uploaded as-is.
@@ -487,7 +488,7 @@ BUNDLE_PNGS = ((32, "32x32.png"), (128, "128x128.png"), (256, "128x128@2x.png"))
 # Steam client draws in the library list, where the demo and the full game
 # looked the same, and the Shortcut Icon is what lands on the desktop.
 APP_ICON_PX = 184       # App Icon: 184x184 JPG
-SHORTCUT_ICON_PX = 256  # Shortcut Icon: 256x256 .ico or .png
+SHORTCUT_ICON_PX = 256  # Shortcut Icon: 256x256 (512 also taken) .ico/.png
 
 
 def write_app_icon(png: Path, dest: Path) -> None:
