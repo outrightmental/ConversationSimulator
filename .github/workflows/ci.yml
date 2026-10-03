@@ -343,6 +343,25 @@ jobs:
           VITE_STEAM_DLC_APP_IDS: ${{ vars.STEAM_DLC_APP_IDS }}
         run: cargo test
 
+  project-structure:
+    name: Project structure
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Install PyYAML
+        run: pip install pyyaml
+      - name: Self-test the planner and the tracker rules
+        run: |
+          echo "Local: python scripts/project-structure.py self-test"
+          python scripts/project-structure.py self-test
+      - name: Validate the declared project structure
+        run: |
+          echo "Local: python scripts/project-structure.py validate"
+          python scripts/project-structure.py validate
+
   pack-validation:
     name: Pack validation
     runs-on: ubuntu-latest

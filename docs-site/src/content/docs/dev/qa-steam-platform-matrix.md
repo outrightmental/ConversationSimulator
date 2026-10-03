@@ -286,8 +286,8 @@ PASS.
 
 > **Note:** Machine and tester assignments will be updated in this table when
 > the Stage 3 beta programme launches. If you are an Outright Mental team member
-> with access to a listed platform, open a GitHub issue with the label
-> `beta-testing` to register.
+> with access to a listed platform, open a GitHub issue labelled `area:steam`,
+> naming the platform in the title, to register.
 
 ---
 

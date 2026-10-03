@@ -1101,12 +1101,15 @@ be on each required platform.
 ### J.2 Platform-specific blocker tracking
 
 Any session-ending bug, data-loss bug, or privacy regression found during Parts
-E, G, H, or I must be filed as a GitHub issue with the label `beta-testing`
-before the gate can be declared.
+E, G, H, or I must be filed as a GitHub issue before the gate can be declared:
+Type **Bug**, label `area:steam`, Priority **P0 — blocker**.
 
-Use the label `platform:windows`, `platform:macos`, `platform:linux`, or
-`platform:steam-deck` to identify the affected platform.  Child issues should
-reference this issue as a blocker.
+Name the affected platform — Windows, macOS, Linux, or Steam Deck — in the
+issue title and in the template's build-and-environment field.  There are no
+`platform:*` labels; the declared label set is in
+[`.github/project-structure.yml`](../.github/project-structure.yml) and adding
+to it is a change to that file, not a launch-day improvisation.  Child issues
+should reference this issue as a blocker.
 
 - [ ] All session-ending, data-loss, and privacy-regression bugs are filed
 - [ ] All filed blockers are either closed or have a documented maintainer waiver
@@ -1303,7 +1306,8 @@ CI artifacts for failed runs are uploaded to GitHub Actions under the job name
 `release-smoke-<platform>` and retained for 7 days.
 
 Steam beta verification failures (Parts E, G, H, I) must be filed as GitHub
-issues with the label `beta-testing` and the appropriate `platform:*` label
-before the Stage 3 gate (G3-06) can be declared PASS.  See Part J for the
+issues at Type Bug, Priority P0 — blocker, labelled `area:steam`, with the
+affected platform named in the title, before the Stage 3 gate (G3-06) can be
+declared PASS.  See Part J for the
 complete sign-off process and `docs/STEAM_BETA_VERIFICATION_REPORT.md` for the
 report template.
