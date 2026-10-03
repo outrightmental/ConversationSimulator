@@ -46,15 +46,7 @@ export const de: LocaleMessages = {
   },
   // Demo-Edition (Steam Next Fest Demo, Issue #495).
   demo: {
-    // "Gespräch läuft" (Issue #501 §1).
-  resume: {
-    label: 'Gespräch läuft.',
-    withTurns: '{{title}} — bisher {{count}} Züge.',
-    withoutTurns: '{{title}} — noch nicht begonnen.',
-    action: 'Fortsetzen',
-    dismiss: 'Beenden',
-  },
-  home: {
+    home: {
       title: 'Gesprächssimulator — Demo',
       tagline: 'Fünf echte Gespräche. Ein KI-Modell, das vollständig auf Ihrem Computer läuft.',
       noModel: {
@@ -95,7 +87,29 @@ export const de: LocaleMessages = {
     debrief: {
       backHome: '← Zurück zu den Gesprächen',
     },
-    familiarity: {
+    setup: {
+      setMeUpDescription:
+        'Lädt das KI-Modell der Demo herunter ({{size}} GB, {{license}}). Funktioniert danach offline.',
+      badge: 'Demo',
+    },
+    settings: {
+      clearData: {
+        description:
+          'Löscht dauerhaft alle Sitzungen, Transkripte und zwischengespeicherten Daten von Ihrem Gerät. Dieser Ordner wird mit der Vollversion des Gesprächssimulators auf diesem Computer geteilt; deren Sitzungen und Transkripte werden ebenfalls gelöscht. Installierte Modelle bleiben erhalten.',
+        confirmMessage:
+          'Alle Sitzungen und Transkripte auf diesem Gerät werden dauerhaft gelöscht — auch die der Vollversion des Gesprächssimulators, falls installiert. Dies kann nicht rückgängig gemacht werden.',
+      },
+    },
+  },
+  // "Gespräch läuft" (Issue #501 §1).
+  resume: {
+    label: 'Gespräch läuft.',
+    withTurns: '{{title}} — bisher {{count}} Züge.',
+    withoutTurns: '{{title}} — noch nicht begonnen.',
+    action: 'Fortsetzen',
+    dismiss: 'Beenden',
+  },
+  familiarity: {
     question: 'Wie gut kennen Sie KI-Sprachmodelle?',
     reaskQuestion: 'Jetzt, da Sie ein Gespräch gespielt haben — welche Wortwahl passt?',
     reaskHint: 'Sie können das jederzeit in den Einstellungen ändern.',
@@ -115,20 +129,6 @@ export const de: LocaleMessages = {
     },
     appliedPlain: 'Einfache Wortwahl ist aktiv.',
     appliedTechnical: 'Technische Details sind aktiv.',
-  },
-  setup: {
-      setMeUpDescription:
-        'Lädt das KI-Modell der Demo herunter ({{size}} GB, {{license}}). Funktioniert danach offline.',
-      badge: 'Demo',
-    },
-    settings: {
-      clearData: {
-        description:
-          'Löscht dauerhaft alle Sitzungen, Transkripte und zwischengespeicherten Daten von Ihrem Gerät. Dieser Ordner wird mit der Vollversion des Gesprächssimulators auf diesem Computer geteilt; deren Sitzungen und Transkripte werden ebenfalls gelöscht. Installierte Modelle bleiben erhalten.',
-        confirmMessage:
-          'Alle Sitzungen und Transkripte auf diesem Gerät werden dauerhaft gelöscht — auch die der Vollversion des Gesprächssimulators, falls installiert. Dies kann nicht rückgängig gemacht werden.',
-      },
-    },
   },
   home: {
     title: 'Gesprächssimulator',

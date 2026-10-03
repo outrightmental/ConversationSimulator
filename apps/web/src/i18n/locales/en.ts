@@ -41,15 +41,7 @@ export const en = {
   },
   // Demo edition (Steam Next Fest demo, issue #495).
   demo: {
-    // "You have a conversation in progress" (issue #501 §1).
-  resume: {
-    label: 'Conversation in progress.',
-    withTurns: '{{title}} — {{count}} turns so far.',
-    withoutTurns: '{{title}} — not started yet.',
-    action: 'Resume',
-    dismiss: 'End it',
-  },
-  home: {
+    home: {
       title: 'Conversation Simulator — Demo',
       tagline: 'Five real conversations. One AI model, running entirely on your computer.',
       noModel: {
@@ -90,7 +82,29 @@ export const en = {
     debrief: {
       backHome: '← Back to conversations',
     },
-    // The initial LLM-familiarity question and its post-tutorial re-ask
+    setup: {
+      setMeUpDescription:
+        'Downloads the demo\'s AI model ({{size}} GB, {{license}}). Works offline afterwards.',
+      badge: 'Demo',
+    },
+    settings: {
+      clearData: {
+        description:
+          'Permanently deletes all sessions, transcripts, and cached data from your device. This folder is shared with the full version of Conversation Simulator on this computer, so its sessions and transcripts are deleted too. Installed models are not removed.',
+        confirmMessage:
+          'This will permanently delete all sessions and transcripts from this device — including those of the full version of Conversation Simulator, if it is installed. This cannot be undone.',
+      },
+    },
+  },
+  // "You have a conversation in progress" (issue #501 §1).
+  resume: {
+    label: 'Conversation in progress.',
+    withTurns: '{{title}} — {{count}} turns so far.',
+    withoutTurns: '{{title}} — not started yet.',
+    action: 'Resume',
+    dismiss: 'End it',
+  },
+  // The initial LLM-familiarity question and its post-tutorial re-ask
   // (issue #501 §2). Three answers, two wording levels.
   familiarity: {
     question: 'How familiar are you with AI language models?',
@@ -112,20 +126,6 @@ export const en = {
     },
     appliedPlain: 'Plain wording it is.',
     appliedTechnical: 'Technical detail is on.',
-  },
-  setup: {
-      setMeUpDescription:
-        'Downloads the demo\'s AI model ({{size}} GB, {{license}}). Works offline afterwards.',
-      badge: 'Demo',
-    },
-    settings: {
-      clearData: {
-        description:
-          'Permanently deletes all sessions, transcripts, and cached data from your device. This folder is shared with the full version of Conversation Simulator on this computer, so its sessions and transcripts are deleted too. Installed models are not removed.',
-        confirmMessage:
-          'This will permanently delete all sessions and transcripts from this device — including those of the full version of Conversation Simulator, if it is installed. This cannot be undone.',
-      },
-    },
   },
   home: {
     title: 'Conversation Simulator',
