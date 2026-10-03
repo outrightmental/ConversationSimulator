@@ -926,6 +926,26 @@ def _excerpt(text: str) -> str:
     return collapsed[:EXCERPT_CHARS] + ("…" if len(collapsed) > EXCERPT_CHARS else "")
 
 
+def _excerpt_any(value: Any) -> str:
+    """Excerpt a server-supplied value that *should* be a string, whatever it is.
+
+    ``_excerpt`` calls ``str.split``, so handing it a non-string raises
+    ``AttributeError``.  Where that value came out of a convsim-core response —
+    the debrief summary is the one such field the harness both excerpts into the
+    report and asserts on — the raise escapes into ``run_smoke``'s catch-all and
+    reports a changed product response contract as "most likely a bug in the
+    smoke harness", which is the one thing it is certainly not.
+
+    ``repr`` rather than ``str``, so the artifact shows the shape that arrived
+    instead of a coerced empty string.  Telling the run it is *wrong* stays
+    ``evaluate_debrief``'s job: a dict's repr is easily long enough to satisfy
+    the summary length check, so nothing here may be mistaken for acceptance.
+    """
+    if value is None:
+        return ""
+    return _excerpt(value if isinstance(value, str) else repr(value))
+
+
 def _replays_opening(npc_text: str, opening_text: str) -> bool:
     """True when an NPC reply opens by reciting the authored opening verbatim.
 
@@ -1135,11 +1155,24 @@ def evaluate_debrief(
     elif not 0 <= overall <= 100:
         failures.append(f"Debrief overall_score {overall} is outside [0, 100]")
 
-    summary = debrief.get("summary") or ""
-    if len(summary.strip()) < MIN_SUMMARY_CHARS:
+    summary = debrief.get("summary")
+    if summary is not None and not isinstance(summary, str):
+        # Checked as a type before it is measured as a length, for the same
+        # reason _rubric_observation_count returns None rather than 0 for an
+        # unreadable list: len(summary.strip()) raises AttributeError here, and
+        # an AttributeError out of the assertion layer lands in run_smoke's
+        # catch-all as "most likely a bug in the smoke harness" — the one
+        # verdict that is certainly wrong when it is the product's own response
+        # contract that changed.  A debrief whose summary is not text is a
+        # `pipeline` failure like any other output the product rejects.
+        failures.append(
+            f"Debrief summary is not a string (got {type(summary).__name__}): "
+            f"{_excerpt_any(summary)}"
+        )
+    elif len((summary or "").strip()) < MIN_SUMMARY_CHARS:
         failures.append(
             f"Debrief summary is shorter than {MIN_SUMMARY_CHARS} characters "
-            f"({len(summary.strip())} chars)"
+            f"({len((summary or '').strip())} chars)"
         )
 
     if debrief.get("used_fallback"):
@@ -1693,7 +1726,11 @@ def run_smoke(
             "total_turns": debrief.get("total_turns"),
             "scores": debrief.get("scores"),
             "overall_score": debrief.get("overall_score"),
-            "summary_excerpt": _excerpt(debrief.get("summary") or ""),
+            # _excerpt_any, not _excerpt: this report is assembled *before*
+            # evaluate_debrief runs, so a summary that is not text would raise
+            # here and the classified verdict evaluate_debrief was about to
+            # reach would never be assembled.  See _excerpt_any.
+            "summary_excerpt": _excerpt_any(debrief.get("summary")),
             "strength_count": len(debrief.get("strengths") or []),
             "improvement_count": len(debrief.get("improvements") or []),
             "turning_point_count": len(debrief.get("turning_points") or []),

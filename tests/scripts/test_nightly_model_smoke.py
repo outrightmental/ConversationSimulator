@@ -748,6 +748,35 @@ class TestEvaluateDebrief:
         failures, _ = smoke.evaluate_debrief(_debrief(summary="   "))
         assert any("summary is shorter" in f for f in failures)
 
+    def test_an_absent_summary_is_still_measured_as_too_short(self) -> None:
+        failures, _ = smoke.evaluate_debrief(_debrief(summary=None))
+        assert any("summary is shorter" in f for f in failures)
+
+    @pytest.mark.parametrize(
+        "summary",
+        [
+            # Long enough that a repr would clear MIN_SUMMARY_CHARS, so the type
+            # check cannot be mistaken for the length check passing.
+            {"text": "You gave concrete examples but hedged on the trade-off."},
+            ["You gave concrete examples but hedged on the trade-off."],
+            42,
+        ],
+    )
+    def test_a_summary_that_is_not_text_is_a_product_failure_not_a_harness_bug(
+        self, summary: object
+    ) -> None:
+        # len(summary.strip()) raises AttributeError on all of these, and an
+        # AttributeError out of the assertion layer reaches run_smoke's catch-all,
+        # which reports "most likely a bug in the smoke harness" -- the one
+        # verdict that is certainly wrong for a changed response contract.
+        failures, _ = smoke.evaluate_debrief(_debrief(summary=summary))
+        assert any("summary is not a string" in f for f in failures)
+        # Named as a type, and the value shown, so triage does not have to go and
+        # fetch the artifact to find out what arrived.
+        assert any(type(summary).__name__ in f for f in failures)
+        # And never reported as a length problem: nothing here is about brevity.
+        assert not any("summary is shorter" in f for f in failures)
+
     def test_fallback_narrative_only_warns_because_scores_are_still_real(self) -> None:
         failures, warnings = smoke.evaluate_debrief(_debrief(used_fallback=True))
         assert failures == []
@@ -1304,6 +1333,18 @@ class TestEventExtraction:
         assert excerpt.startswith("a b")
         assert len(excerpt) <= smoke.EXCERPT_CHARS + 1  # + the ellipsis
         assert excerpt.endswith("…")
+
+    def test_excerpting_a_non_string_shows_its_shape_instead_of_raising(self) -> None:
+        # _excerpt alone raises AttributeError here (str.split), which is why the
+        # report assembly in run_smoke goes through _excerpt_any.
+        assert smoke._excerpt_any({"text": "hi"}) == "{'text': 'hi'}"
+        assert smoke._excerpt_any(42) == "42"
+
+    def test_excerpting_an_absent_value_is_empty_not_the_word_none(self) -> None:
+        assert smoke._excerpt_any(None) == ""
+
+    def test_excerpting_a_string_is_unchanged_by_the_tolerant_wrapper(self) -> None:
+        assert smoke._excerpt_any("a\n\n  b") == smoke._excerpt("a\n\n  b")
 
 
 # ---------------------------------------------------------------------------
@@ -1900,6 +1941,39 @@ class TestRunSmokeOrchestration:
         # than asking the reader to go and diff the previous nightly's artifact.
         assert results["rubric_observations_seen"] == 0
         assert any(smoke.UNSCORED_DEBRIEF_NOTE in f for f in results["failures"])
+
+    def test_a_debrief_summary_that_is_not_text_is_a_product_verdict(
+        self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """A changed response contract must not be reported as a harness bug.
+
+        The summary is read twice on the way to a verdict, and the *first* read is
+        the report assembly in run_smoke, which runs before evaluate_debrief: a
+        guard in the assertion layer alone leaves the raise reachable. Both go
+        through the tolerant excerpt, so the run reaches its classified verdict
+        and the artifact still shows what arrived.
+        """
+        models_dir, model_id, digest = staged_model
+        summary = {"text": "You gave concrete examples but hedged on the trade-off."}
+        monkeypatch.setattr(
+            smoke, "_request_json", _fake_core(_debrief(summary=summary))
+        )
+        report = tmp_path / "report.json"
+
+        exit_code = smoke.run_smoke(
+            model_id, 20.0, report, model_sha256=digest, models_dir=models_dir
+        )
+
+        assert exit_code == smoke.EXIT_CODES[smoke.FailureClass.PIPELINE]
+        results = json.loads(report.read_text(encoding="utf-8"))
+        assert results["failure_class"] == smoke.FailureClass.PIPELINE
+        assert results["failed_phase"] == "assertions"
+        assert any("summary is not a string" in f for f in results["failures"])
+        # The product's remedy, not the harness-bug one the catch-all prints.
+        assert results["remedy"] == smoke.REMEDIES[smoke.FailureClass.PIPELINE]
+        assert not any("bug in the smoke harness" in f for f in results["failures"])
+        # And the payload that caused it survives into the artifact.
+        assert "hedged on the trade-off" in results["debrief"]["summary_excerpt"]
 
     def test_a_conversation_of_fallbacks_does_not_blame_the_rubric_prompt(
         self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
