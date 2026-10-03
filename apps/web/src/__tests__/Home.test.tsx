@@ -58,7 +58,13 @@ function liText(expected: string) {
 
 // Stub fetch: routes by URL pattern to the appropriate response.
 // Includes text() because handleResponse now reads the body as text first.
-function stubFetches(healthResp: object, packsResp: object, logbookResp: object = makeLogbook(), scenariosResp: object[] = []) {
+function stubFetches(
+  healthResp: object,
+  packsResp: object,
+  logbookResp: object = makeLogbook(),
+  scenariosResp: object[] = [],
+  sessionsResp: object = { sessions: [] },
+) {
   vi.stubGlobal(
     'fetch',
     vi.fn((url: string) => {
@@ -66,10 +72,20 @@ function stubFetches(healthResp: object, packsResp: object, logbookResp: object 
       if (url.includes('/packs')) body = packsResp
       else if (url.includes('/logbook')) body = logbookResp
       else if (url.includes('/scenarios')) body = scenariosResp
+      else if (url.includes('/sessions')) body = sessionsResp
       const text = JSON.stringify(body)
       return Promise.resolve({ ok: true, json: () => Promise.resolve(body), text: () => Promise.resolve(text) })
     }),
   )
+}
+
+const IN_PROGRESS_SESSION = {
+  session_id: 'sess-resume01',
+  scenario_id: 'behavioral_interview',
+  state: 'PlayerTurnListening',
+  created_at: '2026-10-01T10:00:00.000Z',
+  turn_count: 2,
+  setup: {},
 }
 
 function renderHome() {
@@ -107,6 +123,29 @@ describe('Home — ready state', () => {
     stubFetches(makeHealth({ llm_ready: true, llm_model_name: 'x' }), makePacks(3))
     renderHome()
     expect(await screen.findByText('3 installed')).toBeInTheDocument()
+  })
+
+  // Issue #501 §1: "there is no 'resume in-progress session' entry point
+  // anywhere on Home or in the nav."
+  it('leads the primary actions with Resume when a conversation is in progress', async () => {
+    stubFetches(makeHealth(), makePacks(1), makeLogbook(), [], {
+      sessions: [IN_PROGRESS_SESSION],
+    })
+    renderHome()
+    const resume = await screen.findByTestId('home-resume-link')
+    expect(resume).toHaveAttribute('href', '/conversation/sess-resume01')
+    // Ahead of "Start a scenario": resuming beats starting over, which is what
+    // the playtester did instead.
+    const start = screen.getByRole('link', { name: /start a scenario/i })
+    // Node.DOCUMENT_POSITION_FOLLOWING === 4
+    expect(resume.compareDocumentPosition(start) & 4).toBeTruthy()
+  })
+
+  it('offers no Resume link when nothing is in progress', async () => {
+    stubFetches(makeHealth(), makePacks(1), makeLogbook(), [], { sessions: [] })
+    renderHome()
+    await screen.findByText(liText('Local runtime: Ready'))
+    expect(screen.queryByTestId('home-resume-link')).not.toBeInTheDocument()
   })
 
   it('links to the library for Start a scenario', () => {

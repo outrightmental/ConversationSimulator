@@ -340,6 +340,68 @@ describe('Debrief screen', () => {
     })
   })
 
+  // Issue #501 §4: one turn is the player's message plus the reply to it. The
+  // debrief's key-moment numbers were already whole turns, so labelling the
+  // transcript by position made "#3" and "Turn 3" different moments.
+  describe('whole-turn labelling', () => {
+    const threeTurnExport = {
+      session: exportData.session,
+      events: [
+        { event_id: 1, session_id: SESSION_ID, event_type: 'npc_opening', payload: { content: 'Thanks for coming in.' }, created_at: '2024-01-01T00:00:00Z' },
+        { event_id: 2, session_id: SESSION_ID, event_type: 'player_turn', payload: { content: 'Player one.' }, created_at: '2024-01-01T00:00:01Z' },
+        { event_id: 3, session_id: SESSION_ID, event_type: 'npc_turn', payload: { content: 'Npc one.', emotion: 'warm' }, created_at: '2024-01-01T00:00:02Z' },
+        { event_id: 4, session_id: SESSION_ID, event_type: 'player_turn', payload: { content: 'Player two.' }, created_at: '2024-01-01T00:00:03Z' },
+        { event_id: 5, session_id: SESSION_ID, event_type: 'npc_turn', payload: { content: 'Npc two.', emotion: 'neutral' }, created_at: '2024-01-01T00:00:04Z' },
+      ],
+    }
+
+    it('labels the opening and numbers each exchange once', async () => {
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
+      mockApi.exportSession.mockResolvedValue({ ok: true, data: threeTurnExport })
+      renderDebrief()
+      await waitFor(() =>
+        expect(screen.getByTestId('transcript-section')).toBeInTheDocument(),
+      )
+      const numbers = screen
+        .getAllByTestId('transcript-turn')
+        .map((el) => el.getAttribute('data-turn-number'))
+      expect(numbers).toEqual(['0', '1', '1', '2', '2'])
+      expect(screen.getByText('Opening')).toBeInTheDocument()
+      expect(screen.getAllByText('Turn 1')).toHaveLength(2)
+      expect(screen.getAllByText('Turn 2')).toHaveLength(2)
+    })
+
+    it('labels the NPC mood rather than bracketing it beside the turn number', async () => {
+      // Next to a turn number it read as one of the meters (issue #501 §3).
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
+      mockApi.exportSession.mockResolvedValue({ ok: true, data: threeTurnExport })
+      renderDebrief()
+      await waitFor(() =>
+        expect(screen.getByTestId('transcript-section')).toBeInTheDocument(),
+      )
+      expect(screen.getByText('warm')).toBeInTheDocument()
+      expect(screen.queryByText('(warm)')).not.toBeInTheDocument()
+    })
+
+    it('a key moment points at the start of the turn it names', async () => {
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
+      mockApi.exportSession.mockResolvedValue({ ok: true, data: threeTurnExport })
+      renderDebrief()
+      await waitFor(() =>
+        expect(screen.getByTestId('transcript-section')).toBeInTheDocument(),
+      )
+      const scrolled: Element[] = []
+      for (const el of screen.getAllByTestId('transcript-turn')) {
+        el.scrollIntoView = () => { scrolled.push(el) }
+      }
+      fireEvent.click(screen.getByRole('button', { name: /go to turn 2/i }))
+      expect(scrolled).toHaveLength(1)
+      // The player's message, which is where turn 2 begins — not the second
+      // row in the list, which is the player's message of turn 1.
+      expect(scrolled[0]).toHaveTextContent('Player two.')
+    })
+  })
+
   describe('transcript display', () => {
     it('shows transcript turns from export when available', async () => {
       mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })

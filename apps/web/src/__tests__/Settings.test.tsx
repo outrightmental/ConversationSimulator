@@ -620,7 +620,88 @@ describe('clear local data', () => {
 // Your sessions
 // ---------------------------------------------------------------------------
 
+// ── Issue #501 §1/§2: the two sections a lost first-time player needed ───────
+
+describe('reply speed and wording sections', () => {
+  it('names reply speed as its own section, anchored for a deep link', async () => {
+    await renderSettings()
+    await waitFor(() =>
+      expect(screen.getByTestId('settings-reply-speed-section')).toBeInTheDocument(),
+    )
+    // The conversation screen's slow-reply notice links to /settings#reply-speed.
+    expect(screen.getByTestId('settings-reply-speed-section')).toHaveAttribute(
+      'id',
+      'reply-speed',
+    )
+    expect(screen.getByRole('heading', { name: /reply speed/i })).toBeInTheDocument()
+  })
+
+  it('offers the wording levels', async () => {
+    await renderSettings()
+    await waitFor(() => expect(screen.getByTestId('wording-options')).toBeInTheDocument())
+    expect(screen.getByTestId('wording-plain')).toHaveAttribute('aria-checked', 'true')
+  })
+
+  it('calls the engine section what it is rather than "Runtime"', async () => {
+    await renderSettings()
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /^ai engine$/i })).toBeInTheDocument(),
+    )
+    expect(screen.queryByRole('heading', { name: /^runtime$/i })).not.toBeInTheDocument()
+  })
+})
+
 describe('your sessions', () => {
+  it('offers Resume for an unfinished session', async () => {
+    // Issue #501 §1: Settings is the screen the playtester got lost on, so
+    // every unfinished conversation is one click from here — not only the
+    // newest one the chrome banner offers.
+    mockApi.listSessions.mockResolvedValue({
+      ok: true,
+      data: { sessions: [{ ...SESSION_A, state: 'PlayerTurnListening' as const }] },
+    })
+    await renderSettings()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /resume session sess-aaa/i })).toBeInTheDocument(),
+    )
+  })
+
+  it('does not offer Resume for a finished session', async () => {
+    mockApi.listSessions.mockResolvedValue({ ok: true, data: { sessions: [SESSION_A] } })
+    await renderSettings()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /export session sess-aaa/i })).toBeInTheDocument(),
+    )
+    expect(screen.queryByRole('button', { name: /resume session/i })).not.toBeInTheDocument()
+  })
+
+  it('does not offer Resume for a session that never started', async () => {
+    // Nothing has been said yet, so there is no conversation to go back to.
+    mockApi.listSessions.mockResolvedValue({ ok: true, data: { sessions: [SESSION_B] } })
+    await renderSettings()
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /export session sess-bbb/i })).toBeInTheDocument(),
+    )
+    expect(screen.queryByRole('button', { name: /resume session/i })).not.toBeInTheDocument()
+  })
+
+  it('labels a session by its scenario title and plain state', async () => {
+    mockApi.listScenarios.mockResolvedValue({
+      ok: true,
+      data: [{ scenario_id: 'behavioral_interview', title: 'The Behavioral Interview' } as never],
+    })
+    mockApi.listSessions.mockResolvedValue({
+      ok: true,
+      data: { sessions: [{ ...SESSION_A, state: 'PlayerTurnListening' as const }] },
+    })
+    await renderSettings()
+    await waitFor(() =>
+      expect(screen.getByText('The Behavioral Interview')).toBeInTheDocument(),
+    )
+    expect(screen.getByText('Your turn')).toBeInTheDocument()
+    expect(screen.queryByText('PlayerTurnListening')).not.toBeInTheDocument()
+  })
+
   it('shows "No sessions yet." when the list is empty', async () => {
     mockApi.listSessions.mockResolvedValue({ ok: true, data: { sessions: [] } })
     await renderSettings()
@@ -978,7 +1059,10 @@ describe('demo edition', () => {
 
   it('hides model tiers, voice, Steam Cloud, packs, NPC memory, system health and advanced', async () => {
     await renderDemoSettings()
-    expect(screen.queryByRole('heading', { name: /^runtime$/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /^ai engine$/i })).not.toBeInTheDocument()
+    // Reply speed is a model setting, so it follows the engine section out of
+    // the demo; wording is readability and stays (issue #501).
+    expect(screen.queryByTestId('settings-reply-speed-section')).not.toBeInTheDocument()
     expect(screen.queryByRole('link', { name: /open model manager/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: /voice output/i })).not.toBeInTheDocument()
     expect(screen.queryByTestId('steam-cloud-section')).not.toBeInTheDocument()
@@ -993,6 +1077,11 @@ describe('demo edition', () => {
     expect(mockApi.listPacks).not.toHaveBeenCalled()
     expect(mockApi.getRuntimeSettings).not.toHaveBeenCalled()
     expect(mockApi.listVoices).not.toHaveBeenCalled()
+  })
+
+  it('keeps the wording control, which is readability rather than full-app depth', async () => {
+    await renderDemoSettings()
+    expect(screen.getByTestId('settings-wording-section')).toBeInTheDocument()
   })
 
   it('says that clearing local data also clears the full version, which shares the folder', async () => {
