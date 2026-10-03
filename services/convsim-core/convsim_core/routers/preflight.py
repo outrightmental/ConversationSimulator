@@ -341,11 +341,18 @@ async def _check_voice_ready(
         severity=severity,
         autofix=autofix,
         # The guided flow (issue #487) is the only route that actually installs
-        # the missing pieces, so that is where "fix it" goes. The demo build has
-        # no voice at all and refuses the flow server-side, so there it points at
-        # the readiness panel in Settings rather than bouncing off a guard.
+        # the missing pieces, so that is where "fix it" goes.
+        #
+        # The demo offers no remedy at all, because it has none. Voice is out of
+        # scope for the demo (issue #495): /voice-setup collapses to Home, the
+        # API refuses it, and Settings renders no voice section either — the
+        # whole block is behind `!isDemo` in apps/web/src/screens/Settings.tsx.
+        # A "Voice Settings" button on Support would therefore land the player
+        # on a page with nothing about voice on it, which is the dead end this
+        # issue was filed about. Saying that voice is unavailable and offering
+        # nothing is the honest answer here.
         fix_action=(
-            FixAction(kind="navigate", href="/settings", label="Voice Settings")
+            None
             if demo
             else FixAction(kind="navigate", href="/voice-setup", label="Set up voice")
         ),

@@ -379,8 +379,14 @@ def test_voice_check_fix_action_opens_the_guided_flow(client):
 
 
 @pytest.mark.asyncio
-async def test_voice_check_fix_action_avoids_the_flow_in_demo():
-    """The demo refuses /api/voice/setup/*, so its remedy must not route there."""
+async def test_voice_check_offers_no_remedy_in_demo():
+    """The demo has no route that resolves a voice gap, so it must offer none.
+
+    /voice-setup collapses to Home and the API refuses it, and Settings renders
+    no voice section in the demo either — a "Voice Settings" button would land
+    the player on a page with nothing about voice on it, which is the dead end
+    issue #487 was filed about.
+    """
     from convsim_core.routers.preflight import _check_voice_ready
 
     class _UnavailableHealth:
@@ -394,8 +400,7 @@ async def test_voice_check_fix_action_avoids_the_flow_in_demo():
         _UnavailableWorker(), _UnavailableWorker(), _UnavailableWorker(), demo=True
     )
     assert result.status == "warn"
-    assert result.fix_action is not None
-    assert result.fix_action.href == "/settings"
+    assert result.fix_action is None
 
 
 @pytest.mark.asyncio

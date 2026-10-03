@@ -341,7 +341,7 @@ from a real error.
 | Home → STT / TTS status badge | While that component is not installed |
 | The conversation brief's voice rows | While STT or TTS is unavailable — the moment the player is choosing an input mode and finds the spoken ones greyed out |
 | Debrief → "Next time, say it out loud" | After the first real conversation |
-| The `voice-ready` preflight warning's fix action | Whenever a voice component is unavailable (full edition; the demo refuses the flow, so its remedy stays on Settings) |
+| The `voice-ready` preflight warning's fix action | Whenever a voice component is unavailable. Full edition only: the demo carries no `fix_action` at all, because it has no route that resolves a voice gap — `/voice-setup` collapses to Home, the API refuses it, and the Settings voice section is itself behind `!isDemo`. A button onto a page with no voice on it would be the dead end this issue was filed about |
 
 ---
 
