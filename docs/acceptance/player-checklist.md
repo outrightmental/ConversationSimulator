@@ -89,17 +89,21 @@ Start the selected scenario.
 
 ### P-M6 — Conversation meters (optional)
 
-On the Conversation Brief, before starting, tick the toggle that shows the
-meters during the conversation. It is only offered for scenarios that permit
-them, so use a scenario that does.
+On the Conversation Brief, before starting, enable **Show the conversation
+meters**. It is only offered for scenarios that permit them; a scenario that
+does not says so instead ("The conversation meters are hidden in this scenario,
+to keep it realistic"), so pick one that does.
 
-- [ ] A panel headed **Conversation meters** is visible *above* the transcript
+- [ ] A panel headed **Conversation meters** is visible *above* the transcript —
+      the toggle and the panel use the same name
 - [ ] One bar per visible variable, each labelled in everyday words rather than
-      a raw key (`objective_progress` reads as "Objective progress")
+      a raw key (`objective_progress` reads as "Objective progress"), with its
+      value out of 100
 - [ ] Values change after turns that trigger state deltas, and the change is
       shown on the meter that moved (e.g. "▲ +10 this turn")
-- [ ] The NPC's mood appears under its own label, not as a bare parenthetical
-      next to the meters or the turn number
+- [ ] The NPC's mood is clearly **not** one of the meters: it reads "Mood: warm"
+      in the NPC panel and under each reply, never as a bare parenthetical
+      beside the bars or the turn number
 
 ### P-M6b — Leave and resume (issue #501)
 
