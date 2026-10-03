@@ -320,6 +320,19 @@ def _compute_overall_score(scores: Dict[str, float]) -> Optional[float]:
     return round(sum(scores.values()) / len(scores), 1)
 
 
+def whole_turn_of(row_turn_number: int) -> int:
+    """Map a transcript row number to the whole turn it belongs to.
+
+    Rows are stored as the opening at 0 and then player ``2n-1`` / NPC ``2n``
+    for whole turn ``n``. A whole turn is one player message plus the reply to
+    it (issue #501 §4), which is the unit ``turn_count`` counts, that
+    ``duration.max_turns`` is measured in, and that the transcript labels — so
+    it is the only number a debrief may quote at a player. The opening belongs
+    to no turn and maps to 0.
+    """
+    return (row_turn_number + 1) // 2
+
+
 def _identify_key_turns(
     npc_turns: List[sqlite3.Row],
 ) -> List[Dict[str, Any]]:
@@ -327,11 +340,15 @@ def _identify_key_turns(
 
     Returns a list of dicts ready for fallback narrative generation,
     each containing turn_number, description, and impact.
+
+    ``turn_number`` is a whole turn, not the NPC row's stored number: these
+    reach the player as "#3" next to a transcript labelled "Turn 3", and before
+    issue #501 the two counted differently.
     """
     key: List[Dict[str, Any]] = []
 
     for turn in npc_turns:
-        turn_number = turn["turn_number"]
+        turn_number = whole_turn_of(turn["turn_number"])
         state_delta: Dict[str, int] = {}
         if turn["state_delta_json"]:
             try:
@@ -386,7 +403,12 @@ def _identify_key_turns(
 def _build_debrief_turn_records(
     all_turns: List[sqlite3.Row],
 ) -> List[DebriefTurnRecord]:
-    """Convert DB rows into DebriefTurnRecord objects for the prompt composer."""
+    """Convert DB rows into DebriefTurnRecord objects for the prompt composer.
+
+    Numbered in whole turns, so both halves of an exchange are "[Turn 3]" in
+    the prompt and a turning point the model cites is a number the player can
+    find in the transcript (issue #501 §4).
+    """
     records: List[DebriefTurnRecord] = []
     for turn in all_turns:
         obs = _parse_rubric_observations(turn["raw_output_json"])
@@ -403,7 +425,7 @@ def _build_debrief_turn_records(
             except json.JSONDecodeError:
                 pass
         records.append(DebriefTurnRecord(
-            turn_number=turn["turn_number"],
+            turn_number=whole_turn_of(turn["turn_number"]),
             role=turn["role"],
             content=turn["content"],
             rubric_observations=obs,
@@ -552,8 +574,13 @@ async def generate_debrief(
         )
         raw_text = await _collect_runtime_output(runtime, request)
 
-        # Build set of turn numbers actually stored for this session.
-        stored_turn_numbers = {r["turn_number"] for r in all_turn_rows}
+        # Whole turns actually played in this session. The opening maps to 0 and
+        # is excluded: a turning point has to point at an exchange the player
+        # can be shown, and the transcript labels the opening rather than
+        # numbering it (issue #501 §4).
+        stored_turn_numbers = {
+            n for n in (whole_turn_of(r["turn_number"]) for r in all_turn_rows) if n > 0
+        }
 
         # Validate / repair / fallback.
         narrative: DebriefNarrative = parse_debrief_narrative(
