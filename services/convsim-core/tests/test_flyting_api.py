@@ -713,6 +713,42 @@ class TestTheBout:
         assert body["player_volley"]["score"] > 0
         assert body["run"]["whiffs"] == 0
 
+    def test_the_opponent_can_reach_the_callback_bonus_too(self, client, judge_returns):
+        """The opponent is scored by the player's pipeline, bonuses included.
+
+        ``_verify_claim`` honours a callback only when the judge was handed a
+        window of earlier lines, so an opponent judged with no window could
+        never earn the +10 however well it called back, while the player took it
+        every round. In a bout that asymmetry is not cosmetic: it is up to ten
+        points an exchange flowing into ``k * (S_player - S_npc) / 100``, the
+        same one-sided-bonus shape already corrected for device rotation and
+        theme decay.
+
+        The evidence quotes the opponent's own line and appears nowhere in the
+        player's, which is what makes this discriminating: the identical claim is
+        refused on the player's scorecard in the same exchange, so a pass cannot
+        come from the claim simply being honoured everywhere.
+        """
+        session_id = start_run(
+            client, scenario_id=BOUT_SCENARIO, play_format="bout", batting_format=None
+        )
+        first = volley(client, session_id, "Read us the charter, Captain. Slowly, and twice.")
+        npc_text = first["npc_volley"]["text"] if "text" in first["npc_volley"] else first["npc_line"]
+
+        # A fragment of the opponent's own line, so the claim can only be
+        # verified against the opponent's volley.
+        evidence = " ".join(npc_text.split()[-4:]).rstrip(".")
+        assert evidence, npc_text
+        judge_returns(callback={"is_callback": True, "evidence": evidence})
+
+        # Second exchange: the first one has been persisted, so there is now
+        # something earlier for a callback to point at.
+        second = volley(client, session_id, "Your charter is a rag, and your crew reads it to the gulls.")
+        npc_bonuses = {b["id"] for b in second["npc_volley"]["composition"]["bonuses"]}
+        player_bonuses = {b["id"] for b in second["player_volley"]["composition"]["bonuses"]}
+        assert "callback" in npc_bonuses, second["npc_volley"]["composition"]
+        assert "callback" not in player_bonuses, second["player_volley"]["composition"]
+
     def test_momentum_is_mirrored_into_the_ordinary_state_meters(self, client):
         session_id = start_run(client, scenario_id=BOUT_SCENARIO, play_format="bout",
                                batting_format=None)
