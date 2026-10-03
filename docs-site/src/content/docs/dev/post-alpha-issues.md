@@ -124,7 +124,19 @@ latency and output quality signals.
 cache-unfriendly in most CI environments. The fake runtime provides full
 structural coverage; real-model CI is a quality-of-life improvement.
 
-**Milestone:** 2 (CI hardening)
+**Milestone:** 2 (CI hardening)  
+**Status:** ✅ **Shipped,** pulled forward into the Milestone-1 polish set
+rather than waiting for Milestone 2.
+[`.github/workflows/model-smoke-nightly.yml`](https://github.com/outrightmental/ConversationSimulator/blob/main/.github/workflows/model-smoke-nightly.yml)
+runs nightly: it resolves the registry's `starter` model from one lookup,
+downloads it with SHA-256 verification (cached between runs and re-verified
+before the weights load, so a drifted cache hit fails loudly), starts
+`llama-server` and `convsim-core` on it, plays a scripted multi-turn
+conversation and asserts a *scored* debrief — inside a documented budget under
+30 min. Every failure is attributed to one of six classes with its own exit
+code, so a red nightly is triageable from the job summary; the harness's own
+decision logic is unit-tested per-PR. See
+[Real-model smoke test](/dev/real-model-smoke/).
 
 ---
 

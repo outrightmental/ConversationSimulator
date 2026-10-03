@@ -1,0 +1,496 @@
+---
+title: "Real-model smoke test (nightly)"
+description: "The nightly CI job that plays a scripted conversation on a real local model end-to-end — registry download, llama.cpp, convsim-core, scored debrief — with classified failures and a documented runtime budget."
+sidebar:
+  order: 13
+---
+
+Every other CI job validates Conversation Simulator against the **fake** and
+**scripted** runtimes — deterministic stand-ins that need no model download.
+That keeps pull requests fast, but it means a whole class of regression is
+invisible per-PR: a prompt a real model cannot satisfy, a JSON schema the
+adapter mis-serialises, a debrief that generates prose but never a score.
+
+The nightly real-model smoke closes that gap. It plays a scripted conversation
+on a **real local model** end-to-end — registry download → llama.cpp →
+`convsim-core` → scored debrief — and fails with a classified verdict.
+
+| | |
+|---|---|
+| Workflow | [`.github/workflows/model-smoke-nightly.yml`](https://github.com/outrightmental/ConversationSimulator/blob/main/.github/workflows/model-smoke-nightly.yml) |
+| Harness | [`scripts/nightly-model-smoke.py`](https://github.com/outrightmental/ConversationSimulator/blob/main/scripts/nightly-model-smoke.py) |
+| Unit tests (per-PR) | `tests/scripts/test_nightly_model_smoke.py` |
+| Schedule | 04:00 UTC daily, plus **Run workflow** (`workflow_dispatch`) |
+| Runner | GitHub-hosted `ubuntu-latest`, CPU-only inference |
+| Model | registry role `starter` — Qwen3 4B Instruct Q4\_K\_M, ~2.5 GB, Apache-2.0 |
+| Runtime budget | **< 30 min** (`timeout-minutes: 30`); the harness self-limits to 20 min |
+
+> Nightly, not per-PR, on purpose: a 2.5 GB download plus ~11 min of CPU-only
+> inference cannot sit in the PR path. The fake-runtime counterpart is the
+> playthrough in `tests/e2e/test_scripted_playthrough.py` — run at release time
+> by `scripts/release-smoke.sh`, not on pull requests — which uses the *same
+> scripted player turns*, so the two cover the same conversation shape against
+> different runtimes. What *does* run per-PR is this harness's own unit tests.
+
+---
+
+## What the nightly proves
+
+1. The pinned starter model downloads and its bytes match the registry SHA-256.
+2. `llama-server` loads the GGUF and `convsim-core` reports
+   `runtime_id == "llama_cpp"` — the smoke refuses to run on a fake runtime.
+3. A real model drives a multi-turn conversation on the built-in
+   `behavioral_interview` scenario, producing NPC turns that satisfy
+   `turn-output.schema.json`.
+4. The session ends and produces a **scored** debrief: at least one rubric
+   dimension scored, a numeric `overall_score` in `[0, 100]`, and a non-empty
+   summary. The scores come from the rubric observations the model volunteered
+   on each turn, so this asserts the scoring path; the debrief *narrative* is a
+   separate model call, and a run where it fell back to the deterministic
+   template still passes — with a warning that says so, because the scores are
+   unaffected and one unlucky generation must not red the nightly. Recurring
+   across nightlies is a regression in the debrief prompt or its schema.
+5. End-to-end turn latency stays within the documented budget, scaled for CI
+   hardware.
+
+The NPC *opening* line is authored scenario text, not a generation — so the
+scripted player turns, not the opening, are what prove the model is working.
+
+A turn that is real model output is not automatically a *reply*, and the
+per-turn parse flags cannot tell the difference. All twelve nightly runs of the
+previous single-turn harness whose logs GitHub still held on 2026-10-03 logged
+an NPC answer whose leading characters were byte-identical to the scenario's
+`opening_npc_says` — the model reciting the opening question back instead of
+answering it. `used_fallback` stays false for those turns (the utterance is
+neither empty nor the canned safe one), so the run went green on a conversation
+that never happened. The harness therefore records `replayed_opening` per turn
+and applies the same policy it applies to fallbacks: one such turn warns,
+*every* generated turn doing it fails, because then the model answered nothing
+and the run proves nothing.
+
+Read that twelve-for-twelve with its cause attached, because it is not evidence
+that the starter model always recites. The single player turn those runs
+submitted was `"Reply with exactly one sentence: Hello, I am ready."` — an instruction
+addressed to the model rather than something an interview candidate says — and
+this job replaces it with the three in-character turns in
+`SCRIPTED_PLAYER_TURNS`, which the real starter model answered properly in local
+verification. So the recital is a known failure mode of the *old* prompt, and
+the baseline rate under the new script is simply not yet known: expect zero, and
+treat the first recital warning as new information rather than as the documented
+status quo.
+
+The two policies also compose, because a conversation can be *split* between
+them — one turn recites the opening, the others fall back — and trip neither
+"all of them" check while still containing no reply at all. Each check warns
+rather than fails on its own only because a run that recovers from one bad turn
+is the product working; when nothing recovered there is nothing to credit, so a
+run with no turn that is both real model output *and* an answer fails as well.
+
+What counts as a recital is a *leading prefix* match, `REPLAY_PREFIX_CHARS`
+(40 collapsed characters) of the authored opening reproduced at the head of the
+reply — not the whole opening. Those nightly logs printed only `npc_text[:80]`
+against a 122-character opening, so what they establish is that the reply
+*began* as the opening; whether the copy ran to the end or veered into the
+model's own words after a sentence or two was never recorded, and a check that
+demanded the entire line would have gone unreachable on the second case. Forty
+characters of the scenario's own text at the head of an answer is not something
+a reply arrives at by chance — the transcript the turn prompt renders is the
+only place it can come from — and the threshold is capped at the opening's own
+length, so a scenario with a terser opening still has to have it recited in
+full.
+
+If the NPC closes the conversation before the script runs out
+(`session_control.continue_session`), the run still passes on the turns it did
+play — that is the product working as designed — but it records
+`scripted_turns_played` and warns in the step summary, so a green run on one
+turn is not mistaken for a green run on three.
+
+---
+
+## Failure classification
+
+A red nightly must be triageable from the job summary alone, so every failure is
+attributed to exactly one class, with its own exit code, its own banner in the
+log, and a remedy printed next to it:
+
+| Exit | Class | Means | First thing to do |
+|---|---|---|---|
+| 1 | `budget` | Pipeline worked; latency regressed past the CI ceiling | Compare `measured_ms` in the report artifact against recent nightlies |
+| 2 | `download` | Model could not be fetched — network, HTTP, a transfer that stalled past its 5 min budget, or an empty cache | `python scripts/validate-registry.py --url-check`, then re-run |
+| 3 | `checksum` | **SHA-256 drift**: on-disk bytes ≠ `model-registry/registry.yaml` | See [Checksum drift](#checksum-drift) — never relax the check |
+| 4 | `runtime` | `llama-server` or `convsim-core` crashed, hung, or returned 5xx — or one of the two ports was already taken, so neither could be started | Read the child stderr tail printed above the banner — but only if a child actually exited. The banner says which case it is and carries the matching remedy: a port conflict started no child (see [Running it locally](#running-it-locally)), and a 5xx from a server that is still running is usually [a cut-off generation](#a-5xx-from-a-live-server), not a crash |
+| 5 | `pipeline` | Servers healthy, but an end-to-end assertion failed | Inspect the per-turn `used_fallback` and `replayed_opening` flags in the report artifact — except for an unscored debrief, see [Unscored debrief](#unscored-debrief) |
+| 6 | `timeout` | Wall-clock budget exhausted; the failing phase is named | Check `phase_durations_s` before raising the budget |
+
+The distinction that matters most in practice is **2/3 vs 4 vs 5**: a download or
+checksum failure says nothing about the app, a runtime failure is a crash, and a
+pipeline failure means the model ran and produced output the product rejected.
+
+Anything the harness could not carry out — a `registry.yaml` that is malformed,
+names no usable `starter` model, or still carries the schema's `PENDING`
+placeholder instead of a pinned URL and checksum; a bad command line; a disk
+that fills up mid-run; a bug in the harness itself — is also reported as exit 5,
+with a message and a remedy that say so, so that **exit 1 only ever means a
+latency regression**. Nothing exits with an unclassified traceback, and nothing
+borrows a class's exit code without correcting the advice printed beneath it: a
+broken registry entry is *not* exit 2, because `download`'s remedy ends "re-run
+the job" and no re-run will repair a file in the repository.
+
+When more than one class could apply, the harness reports the strongest evidence
+rather than the symptom the client happened to see:
+
+1. **A crashed child wins.** A dead `convsim-core` reads as `runtime`, not as the
+   connection reset it caused downstream.
+2. **An exhausted wall clock beats a transport error.** Each request timeout is
+   capped to the budget that remains, so the last call before the deadline dies
+   client-side and *looks* like an unresponsive server. It is reported as
+   `timeout`, whose remedy points at `phase_durations_s`.
+
+Because `timeout` outranks `budget`, a *uniform* slowdown normally surfaces as
+exit 6 rather than exit 1: three turns at the 240 s CI ceiling plus a debrief
+allowed twice that very nearly fill the 20 min budget, so a ~2x regression
+exhausts the clock before the budget phase runs. The class stays `timeout` — the
+clock really did run out — but when the turns that *did* complete already have a
+median past the ceiling, the verdict says so and names the measurement, so exit 6
+is not mistaken for a hang. Exit 1 remains the verdict when the conversation
+finishes inside the budget but too slowly.
+
+Each run writes the verdict, failure class, remedy, measured latencies and
+per-phase durations to the GitHub **step summary**, and uploads the full JSON
+report as the `model-smoke-report` artifact (30-day retention).
+
+### A 5xx from a live server {#a-5xx-from-a-live-server}
+
+A 5xx is a `runtime` failure because the transport said so, but `runtime`'s
+stock advice — read the child stderr tail, suspect a runner OOM or a bad
+llama-cpp-python wheel — only fits a failure where a child actually died. Often
+none has, and then the tail above the banner shows a perfectly healthy server.
+The harness checks `poll()` on both children and, when neither has exited, prints
+a different remedy: *"Neither child process exited, so nothing crashed."*
+
+The cause worth knowing about is a generation the adapter cut off. `convsim-core`
+answers **504 `TURN_TIMEOUT`** when `CONVSIM_LLAMA_CPP_CHAT_TIMEOUT` runs out
+mid-reply. The harness deliberately sets that budget *above* the latency ceiling
+it is about to judge the turn on — `DEBRIEF_SLOWDOWN_FACTOR` × the ceiling, 540 s
+at `--ci-hardware-factor 20` — so that a slow turn is measured and reported as
+`budget` rather than killed and misreported as a crash. But that moves the cliff
+rather than removing it: a turn slower than 540 s is still cut off, and with
+1200 s of wall clock still unspent neither `timeout` nor `budget` takes the class
+over. So exit 4 with both children alive and a 504 in the message means inference
+roughly 5× slower than the nightlies have ever measured — a latency regression.
+Start from `measured_ms` and `phase_durations_s` in the report artifact, not from
+an OOM.
+
+The other way to land here with both children alive is a server that is up but
+wedged: `llama-server` still loading the GGUF when readiness ran out, or a
+request it refused. The stderr tails are the right place for that one.
+
+### Unscored debrief {#unscored-debrief}
+
+Exit 5 with *"Debrief has no rubric dimension scores"* is the one `pipeline`
+failure whose cause is ambiguous from the class alone, so the harness resolves it
+for you: each NPC turn's `rubric_observation_count` is recorded in the report
+artifact, totalled as `rubric_observations_seen`, and the failure message names
+which of the causes below applies.
+
+The debrief's dimension scores are accumulated entirely from
+`rubric_observations` that the model volunteers on each NPC turn. Nothing asks
+it for them: no prompt layer names any rubric dimensions, and the only hint the
+model gets is the bare `rubric_observations` array in the embedded output
+schema — whose empty list the schema accepts. Nor could a scenario supply one.
+`ScenarioData` (in `convsim_prompt.types`) has no rubric field at all, so the
+official `job-interview-basic` pack's `behavioral_interview` — which *does*
+define a rubric — would compose the identical turn prompt; and the full edition
+resolves the built-in catalogue before installed packs, so this job always plays
+the rubric-less built-in scenario regardless. The fake runtime always returns
+`[]`, which is why the release-time playthrough asserts only that `scores` *is*
+a dict.
+
+That thin prompt coverage is the standing weakness that makes an unscored
+debrief reachable at all. It is *not*, however, the expected outcome: in local
+verification against the real starter model — Qwen3 4B Q4\_K\_M, the same pin
+the nightly uses, under the turn-output schema — every one of six scripted turns
+across two runs volunteered at least one observation, and the debrief scored
+three to four dimensions with an `overall_score` near 50. Treat zero
+observations as a signal, not as the resting state.
+
+So an unscored debrief means one of four quite different things:
+
+- **`rubric_observations_seen` is 0 and every generated turn fell back.** Then
+  this failure is downstream of the fallback failure reported beside it and
+  carries no independent signal: a turn that fell back returns the canned safe
+  utterance and an empty `rubric_observations` list whatever the prompt asked
+  for, so the debrief would have had nothing to accumulate even with a rubric
+  layer in place. Start from the per-turn `parse_events` in the `/debug`
+  payload — they say why the model's output was rejected — and judge the
+  scoring path on the next run. The harness detects this case and says so
+  rather than printing the next bullet's note, which would be the wrong
+  investigation.
+- **`rubric_observations_seen` is 0 with turns that did not fall back — the
+  model volunteered nothing.** Only the prompt's bare schema hint was ever
+  asking, so this is reachable by design —
+  but since the starter model does normally answer that hint, first check what
+  changed about what reaches the model: the `OUTPUT_SCHEMA` prompt layer, the
+  registry's `starter` pin, the adapter's JSON-schema constraint, sampling
+  settings. Then fix the weakness itself in the product — the turn prompt needs
+  a rubric layer *and* a rubric to put in it, since `ScenarioData` carries none
+  — not by relaxing the assertion, and not by pointing the smoke at a
+  rubric-defining scenario, which would compose the same prompt.
+- **`rubric_observations_seen` is above 0 — a real regression.** The turns
+  returned observations and the debrief scored none of them, so the model did
+  its part. The debrief engine does not score the validated observations the
+  turn pipeline handed it: `_parse_rubric_observations` in
+  `services/convsim-core/.../debrief_engine.py` re-reads each NPC turn's *stored
+  raw model output* with a plain `json.loads`, so output that needed repair — or
+  that arrived pre-parsed from the runtime adapter — loses its observations on
+  the way to the debrief. Compare `raw_npc_output` from the `/debug` payload
+  against the per-turn `rubric_observation_count` in the artifact.
+- **`rubric_observations_seen` is `null` — the harness could not tell.** At
+  least one generated turn carried no readable `rubric_observations` list, and
+  the turns it *could* read carried nothing between them, so the total cannot be
+  trusted as a total and the message quotes the two causes it cannot tell
+  apart — volunteered nothing, or volunteered something the debrief lost —
+  rather than picking one. Check `rubric_observation_count` per turn in the report to see
+  which turns were unreadable (`null`) and which really were zero; `null` is not
+  "every turn was unreadable". `convsim-core` always sends that list today, so
+  any `null` is itself worth chasing: the turn response contract changed. The
+  harness deliberately does not round an unreadable payload down to zero — that
+  would have the verdict assert the model volunteered nothing when the turn it
+  could not read may have carried plenty.
+
+In every case the run is red: *"scored debrief"* is the acceptance criterion for
+[#457](https://github.com/outrightmental/ConversationSimulator/issues/457).
+No cause is a reason to weaken the check. The one that is *also* a standing
+product gap is **zero observations with turns that did not fall back**: that one
+is worth a tracking issue for the missing rubric prompt layer *and* an
+investigation of the run that hit it. The all-fell-back case is not — it says
+nothing about rubric prompting, and the harness says so rather than sending you
+after the prompt layer.
+
+---
+
+## Runtime budget
+
+Target: **under 30 minutes on a standard GitHub-hosted runner.** The job sets
+`timeout-minutes: 30` as a hard ceiling, and the harness runs with
+`--wall-clock-budget-s 1200` (20 min) so *it* fails first and names the phase
+that ran long — a GitHub-side timeout would only say "the operation was
+canceled".
+
+The 10-minute gap between the two is deliberate margin, not an accounting of
+known work. `timeout-minutes` covers the whole job, and the harness only starts
+after checkout, three `pip install` steps, the model cache restore and — on a
+cache miss — the download and the cache save that follows it, which together
+measure **31–51 s** on the nightlies run so far, not the several
+minutes a 2.5 GB transfer sounds like. The gap is sized for the part of that
+work that is network-bound rather than for its measured cost: a slow
+Hugging Face or Actions-cache night can cost minutes that the harness's own
+clock never sees, and the whole design exists so that a slow night still
+produces an attributed verdict rather than a job cancellation.
+
+On `ubuntu-latest` (CPU-only, 4B Q4\_K\_M):
+
+| Phase | Cold cache | Warm cache |
+|---|---|---|
+| Set up job + checkout + `setup-python` | ~5 s | ~5 s |
+| `pip install` ×3 (prompt-composer, convsim-core, llama-cpp-python wheel) | ~16 s | ~14 s |
+| Model cache restore (2.3 GiB) | — (miss: <1 s) | ~24 s |
+| Model download from Hugging Face + SHA-256 verify (2.3 GiB) ◊ | ~10 s | — |
+| Cache save (2.3 GiB, its own step before the smoke) | ~10 s | — |
+| SHA-256 re-verify before the weights are loaded ‡ | <10 s | <10 s |
+| `llama-server` model load + `convsim-core` start + session create | ~8 s | ~8 s |
+| 3 scripted turns † | ~6 min | ~6 min |
+| Debrief generation † | ~4 min | ~4 min |
+| **Total** | **~11 min** | **~11 min** |
+
+The non-inference rows are measured, from the job's own logs for the twelve
+nightlies whose logs GitHub still held on 2026-10-03 — the cold-cache rows from
+the one of those that missed the cache. Two things in them are worth knowing
+before tuning anything:
+
+- **A cache miss costs no more than a cache hit.** Fetching the GGUF from
+  Hugging Face and hashing it takes ~10 s, and saving it to the Actions cache
+  another ~10 s; restoring the same bytes on a hit takes 19–28 s. Caching the
+  model saves the *network*, not the clock, and abandoning a poisoned cache
+  entry costs nothing.
+- **Everything before the conversation is noise.** All of it together measured
+  31–51 s across those twelve runs, in a 30 min job. The budget is inference,
+  and only inference.
+
+◊ The download is the one pre-smoke step that could stretch without limit, and
+it runs where the harness's own deadline cannot see it, so it carries its own
+5 min budget (`DOWNLOAD_BUDGET_S`) with a 2 min cap on any single quiet stretch
+(`DOWNLOAD_READ_TIMEOUT_S`). `urlopen`'s timeout is per socket read, not per
+transfer, so a connection that goes quiet repeatedly — or merely crawls — would
+otherwise spend the whole margin above and then hand the smoke a job clock with
+no room in it, which is the one way left to reach an unattributable
+cancellation. Exceeding either bound is exit 2 with its own remedy. 5 min is
+~30× the measured 10 s, so a transfer has to be pathologically slow to hit it.
+
+‡ The harness re-verifies the on-disk file at the start of every run, which the
+previous single-turn harness did not, so this row has no direct measurement.
+The bound comes from the cold-cache row above: downloading 2.3 GiB *and*
+hashing it took 10 s in total, so the hash alone is a few seconds.
+
+† The two inference rows are *projected*, because the multi-turn conversation
+and the debrief have never run on a runner. The projection comes from the only
+latency this job has measured — one behavioral-interview turn, twelve
+nightlies: 66 / 71 / 93 / 94 / 98 / 103 / 104 / 111 / 112 / 114 / 115 / 115 s —
+rounded up to ~120 s per turn, since turns 2 and 3 render a longer transcript
+than turn 1, and a
+debrief allowed twice a turn (`DEBRIEF_SLOWDOWN_FACTOR`). Replace both rows with
+the real `phase_durations_s` from the first green nightly's report artifact.
+
+At ~11 min projected against a 20 min harness budget there is roughly 2×
+headroom, and the harness's clock covers only the rows from the re-verify
+downwards.
+
+The model is cached between runs under the key
+`model-gguf-v1-<registry-sha256>`, so the download only recurs when the registry
+pin changes. Cache *restore* and *save* are separate steps and the save is gated
+on `success()`, so a file that fails verification is never written to the cache.
+
+If the smoke step creeps past ~15 min — or the job past ~25 min — shorten
+`SCRIPTED_PLAYER_TURNS` rather than raising either ceiling: a nightly that
+routinely runs near its timeout flaps.
+
+### Latency budget on CI hardware
+
+CPU-only CI hardware is far slower than the mid-spec reference machine the
+product budgets target ([Performance and hardware tiers](/play/performance/)), so the harness
+scales the documented budget:
+
+```
+CI ceiling = documented budget × CI_HARDWARE_FACTOR × REGRESSION_TOLERANCE
+           = 10 000 ms        × 20                 × 1.20   = 240 000 ms
+```
+
+`CI_HARDWARE_FACTOR` (20) is calibrated empirically: a full behavioral-interview
+turn on this runner has measured 66–115 s across the twelve nightlies whose
+logs GitHub still held on 2026-10-03 (median ~104 s), i.e. ~11.5× the 10 s
+documented budget at the slow end. The factor is set from that slow end, not the
+median, and still leaves
+roughly 2× headroom — note the 66 s run against the 115 s one, which is the
+night-to-night spread a single-sample calibration would have missed. A genuine
+>2× regression still fails. The headline `full_response_ms` is the **median** of
+the scripted turns, so one unlucky turn cannot flap the job either.
+
+This factor models CI slowness only — the product's 10 s target-hardware budget
+is unchanged. Re-measure and re-tune it if the runner class or the starter model
+changes.
+
+`session_start_ms` and `debrief_ms` are measured and reported but **not**
+budget-checked: the NPC opening is authored text rather than inference, and
+debrief generation has no documented SLO.
+
+---
+
+## Checksum drift
+
+The checksum is verified in two places: right after a fresh download, and again
+at the start of every run (including cache hits) before the weights are loaded.
+A cache hit with drifted bytes therefore fails loudly instead of silently
+feeding a corrupt model to the smoke.
+
+Exit 3 means one of two things:
+
+- **The pinned upstream file was replaced.** All registry URLs are pinned to a
+  specific Hugging Face revision, so this should not happen silently — if it
+  did, review the new file and re-pin with `scripts/pin-model.py`.
+- **The cached download is corrupt or truncated.** The harness deletes the bad
+  local file, but Actions cache entries are immutable, so a poisoned entry would
+  be restored again on the next run. Delete it
+  (`gh cache delete model-gguf-v1-<sha>`) or bump `MODEL_CACHE_PREFIX` in the
+  workflow.
+
+Never "fix" a drift by updating the expected hash to whatever is on disk — that
+is exactly the check this job exists to perform.
+
+What exit 3 does *not* mean is that the digest it was handed is unusable. The
+expected digest is normalised (case, surrounding whitespace) and then checked to
+be 64 hex characters before anything is hashed; one that is not — a value copied
+one character short out of a terminal, the realistic mistake when running the
+repro below by hand — is exit 5 with its own remedy, and the model file is left
+exactly where it was. Nothing no file's hash could ever match is allowed to cost
+a 2.5 GB download or to be reported as upstream drift.
+
+---
+
+## Running it locally
+
+You need the starter model on disk and `llama-cpp-python[server]` installed.
+Nothing here touches the network except the one-time model download.
+
+```bash
+# 1. Install the harness dependencies
+pip install -e "packages/prompt-composer[dev]"
+pip install -e "services/convsim-core[dev]"
+pip install "llama-cpp-python[server]" \
+  --only-binary llama-cpp-python \
+  --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+
+# 2. Resolve the starter model's id / url / sha256 from the registry
+python scripts/nightly-model-smoke.py --print-registry-model starter
+
+# 3. Download it (~2.5 GB) into ~/.convsim/models/llm/, verifying the checksum
+python scripts/nightly-model-smoke.py --download-only \
+  --model-id qwen3-4b-instruct-q4_k_m \
+  --model-url "<model_url from step 2>" \
+  --model-sha256 "<model_sha256 from step 2>"
+
+# 4. Run the smoke. --ci-hardware-factor 1 holds your machine to the real
+#    product budget; use 20 to reproduce what CI accepts.
+python scripts/nightly-model-smoke.py \
+  --model-id qwen3-4b-instruct-q4_k_m \
+  --model-sha256 "<model_sha256 from step 2>" \
+  --ci-hardware-factor 1 \
+  --report-path /tmp/smoke-report.json
+```
+
+Useful extras:
+
+- `--verify-only` — re-verify an already-downloaded model and exit. Like every
+  other checksum check here, a mismatch **deletes** the file (exit 3), so a
+  re-run re-downloads rather than re-verifying the same bad bytes — do not
+  reach for it as a read-only inspection of a 2.5 GB download you want to keep.
+  A `--model-sha256` that is not 64 hex characters is rejected as exit 5 before
+  the file is touched, so a mistyped digest costs you nothing.
+- `--models-dir <dir>` — look for `<model-id>.gguf` somewhere other than
+  `~/.convsim/models/llm/`.
+- `--wall-clock-budget-s` — the self-imposed deadline (default 1200 s).
+
+The harness binds `llama-server` on port 7356 and `convsim-core` on port 7399,
+and refuses to start (exit 4) if either is already taken. That is deliberate
+rather than fussy: readiness is a URL poll, so a server the harness did not
+start would answer it, the child that lost the bind would die unnoticed, and the
+run would report a **pass** for a model it never checksum-verified. Stop whatever
+owns the port — do not work around it.
+
+To exercise the harness's own logic without a model:
+
+```bash
+python -m pytest tests/scripts/ -v
+```
+
+---
+
+## Privacy
+
+The conversation is 100 % scripted (`SCRIPTED_PLAYER_TURNS` in the harness) and
+contains no user data, so short NPC excerpts are printed to the log and recorded
+in the report artifact — they are the evidence that a real model, rather than a
+canned fallback, drove the conversation. Sessions are created with
+`save_transcript: false`, so no transcript file is written, and `convsim-core`
+runs against a throwaway data directory that is deleted when the run ends.
+
+---
+
+## Related
+
+- [Offline smoke tests](/dev/offline-smoke-tests/) — proves no cloud service is
+  contacted during play (fake runtime, per-PR).
+- [Voice smoke tests](/dev/voice-smoke-tests/) — STT/TTS sidecar checks.
+- [Performance and hardware tiers](/play/performance/) — where the latency budgets
+  come from.
+- [Release checklist](/dev/release-checklist/) — Part F covers manual real-model
+  verification of a packaged build.

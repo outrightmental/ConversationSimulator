@@ -2,7 +2,7 @@
 title: "ADR-0001: NPC relationship memory"
 description: "Spike go/no-go report on persistent NPC relationship memory, covering the prototype, evaluation results, safety and privacy reviews, and a conditional-go recommendation."
 sidebar:
-  order: 14
+  order: 15
 ---
 
 **Status:** Proposed (spike branch — not merged)  

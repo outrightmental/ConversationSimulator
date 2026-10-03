@@ -2,7 +2,7 @@
 title: "Screenshots & demo assets"
 description: "What each captured screenshot and the demo recording in docs/assets/ show, the machine they were captured on, their alt text and licence, and the command that remakes them."
 sidebar:
-  order: 13
+  order: 14
 ---
 
 Every image in `docs/assets/` is a capture of the app running a real session against a
