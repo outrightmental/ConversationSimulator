@@ -1548,7 +1548,32 @@ class _ClassifiedArgumentParser(argparse.ArgumentParser):
         sys.exit(EXIT_CODES[FailureClass.PIPELINE])
 
 
+def _use_line_buffered_output() -> None:
+    """Make stdout arrive in step with stderr, line by line.
+
+    CI captures this script's stdout through a pipe, so Python block-buffers it
+    (8 KB) while stderr stays unbuffered.  Two things break as a result, and
+    both are the log a triager actually reads:
+
+    * nothing streams.  A run spends ~11 min inside the conversation and
+      debrief phases, and the "Player turn 2/3…" lines that say where it got to
+      only reach the log when the buffer fills or the process exits.
+    * the failure banner arrives *before* the context it explains.  The banner
+      and the child stderr tails go to stderr; the phase progress, per-turn
+      latencies and budget arithmetic go to stdout, so the merged log shows the
+      verdict first and the evidence afterwards.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(line_buffering=True)  # type: ignore[union-attr]
+        except (AttributeError, ValueError):
+            # Not a TextIOWrapper (pytest's capture, a redirect_stdout buffer).
+            # Buffering is then the caller's concern, not ours.
+            pass
+
+
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    _use_line_buffered_output()
     parser = _ClassifiedArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )

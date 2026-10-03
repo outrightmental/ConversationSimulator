@@ -2008,3 +2008,66 @@ class TestMainEntryPoint:
             smoke.main(["--download-only", "--model-id", "x"])  # no url / sha256
         assert exc_info.value.code == smoke.EXIT_CODES[smoke.FailureClass.PIPELINE]
         assert exc_info.value.code != smoke.EXIT_CODES[smoke.FailureClass.DOWNLOAD]
+
+
+# ---------------------------------------------------------------------------
+# Log ordering
+# ---------------------------------------------------------------------------
+
+
+class TestLogOrdering:
+    """The CI log has to read in the order things happened.
+
+    CI captures the harness through a pipe, so Python block-buffers stdout
+    while stderr stays unbuffered. Unfixed, that means the phase progress and
+    per-turn latencies (stdout) arrive after the failure banner and child
+    stderr tails (stderr) — and during the ~11 min the conversation and
+    debrief phases take, nothing streams at all.
+    """
+
+    def test_progress_is_logged_before_the_banner_it_explains(
+        self, tmp_path: Path
+    ) -> None:
+        import subprocess
+        import sys
+
+        model = tmp_path / "drifted.gguf"
+        model.write_bytes(b"not the pinned bytes")
+
+        # Piped, merged, and run with the inherited environment so that only
+        # the harness's own buffering decides the order.
+        proc = subprocess.run(
+            [
+                # The interpreter running the tests, not whatever "python3"
+                # resolves to on PATH: the harness imports PyYAML, which is
+                # only guaranteed in this environment.
+                sys.executable, str(SCRIPT_PATH), "--verify-only",
+                "--model-id", "drifted", "--model-sha256", "0" * 64,
+                "--models-dir", str(tmp_path),
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            timeout=120,
+        )
+
+        assert proc.returncode == smoke.EXIT_CODES[smoke.FailureClass.CHECKSUM]
+        log = proc.stdout
+        progress_at = log.find("Verifying cached model")
+        banner_at = log.find("FAILED — class: CHECKSUM")
+        assert progress_at != -1, f"progress line missing from:\n{log}"
+        assert banner_at != -1, f"banner missing from:\n{log}"
+        assert progress_at < banner_at, (
+            "the stdout progress line arrived after the stderr banner, so the "
+            f"CI log reads out of order:\n{log}"
+        )
+
+    def test_reconfiguring_a_stream_that_cannot_be_reconfigured_is_survivable(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Under pytest's capture, and under contextlib.redirect_stdout, stdout
+        # is not a TextIOWrapper. Buffering is then the caller's business — but
+        # it must not take the harness down on the way past.
+        monkeypatch.setattr("sys.stdout", io.StringIO())
+        monkeypatch.setattr("sys.stderr", io.StringIO())
+        smoke._use_line_buffered_output()
