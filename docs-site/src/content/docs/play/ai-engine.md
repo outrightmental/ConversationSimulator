@@ -77,8 +77,10 @@ slower — expect anywhere from 30 seconds to a few minutes per turn instead of
 slow turn rather than failing it; see
 [Performance and hardware](/play/performance/#timeout-errors). The Qwen3 4B
 starter model is the most practical choice for CPU-only machines; the Qwen3 1.7B
-lightweight tier is quicker still, and the only option under 4 GB VRAM, but NPCs
-hold a conversation less consistently on it.
+lightweight tier is quicker still, and the only tier that fits inside 4 GB of
+VRAM — nothing stops you running the starter there, it just spills onto the CPU
+(see **Partial VRAM fit** below) — but NPCs hold a conversation less
+consistently on it.
 
 **Partial VRAM fit:** if you have less VRAM than the minimum, the model can
 still load with fewer GPU-offloaded layers. Inference will be slower but may

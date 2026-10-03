@@ -42,7 +42,7 @@ Downloaded models are stored in `~/.convsim/models/llm/`.
 
 **Apple Silicon:** Metal acceleration works out of the box through llama.cpp. Use the VRAM column as a guide for unified memory (M1/M2/M3/M4 chips share CPU and GPU memory).
 
-**CPU fallback:** any model can run on CPU without a GPU, but inference is significantly slower — expect anywhere from 30 seconds to a few minutes per turn instead of 1–5 seconds, most of it spent reading the prompt back in. The app waits for a slow turn rather than failing it; see [performance](performance.md#timeout-errors). The Qwen3 4B starter model is the smallest model with the NPC consistency the app is tuned for, and the practical default for CPU-only machines; the Qwen3 1.7B lightweight tier is quicker still and the only option under 4 GB VRAM, at a cost in how coherently NPCs hold a conversation.
+**CPU fallback:** any model can run on CPU without a GPU, but inference is significantly slower — expect anywhere from 30 seconds to a few minutes per turn instead of 1–5 seconds, most of it spent reading the prompt back in. The app waits for a slow turn rather than failing it; see [performance](performance.md#timeout-errors). The Qwen3 4B starter model is the smallest model with the NPC consistency the app is tuned for, and the practical default for CPU-only machines; the Qwen3 1.7B lightweight tier is quicker still and the only tier that fits inside 4 GB of VRAM — nothing stops you running the starter there, it just spills onto the CPU (see **Partial VRAM fit** below) — at a cost in how coherently NPCs hold a conversation.
 
 **Partial VRAM fit:** if you have less VRAM than the minimum, the model can still load with a reduced number of GPU-offloaded layers. Inference will be slower but may be acceptable. See [troubleshooting](troubleshooting.md#low-vram-or-slow-inference).
 
@@ -61,9 +61,9 @@ Downloaded models are stored in `~/.convsim/models/llm/`.
   that fits under 4 GB of VRAM. Q8_0 rather than a 4-bit quantisation on purpose:
   the quantisation is near-lossless, so what you give up is the smaller model
   itself. Expect NPCs to track the conversation less consistently and debrief
-  scoring to be rougher than on the starter tier. Start here if the starter
-  model will not load or the download is too long; move up if an NPC loses the
-  thread.
+  scoring to be rougher than on the starter tier. Start here if the starter tier
+  is too slow on your machine — below 4 GB of VRAM it loads, but spills onto the
+  CPU — or if its download is too long; move up if an NPC loses the thread.
 
 ### Qwen3 4B Instruct Q4_K_M — starter
 
