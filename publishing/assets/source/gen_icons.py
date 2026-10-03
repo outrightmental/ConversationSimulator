@@ -68,7 +68,13 @@ Usage:
 
 Only the demo set is committed.  The base set in apps/desktop/src-tauri/icons/
 is the original `tauri icon` output and is deliberately left alone; rendering
-it here is for side-by-side comparison when the mark changes.
+it here is for side-by-side comparison when the mark changes — and for the
+full game's own Steamworks icons, which come from `--edition base` and not
+from gen_capsules.py's `community_icon`.  That one is also 184 x 184, so it
+looks like the right file, but it draws a #6D28D9 bubble on the near-black
+with no plate: #6D28D9 is the demo's plate colour, and uploading it against
+the full game would hand the demo's distinguishing hue to the app it is meant
+to be told apart from.
 """
 from __future__ import annotations
 

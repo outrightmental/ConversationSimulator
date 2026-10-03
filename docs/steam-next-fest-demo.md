@@ -179,10 +179,12 @@ The entry in that screenshot is Steamworks' **App Icon**: 184 × 184 JPG, which
 Valve's [Community and Client Icons][steam-icons] spec describes as what the
 client draws "in the library list view, 'favorites' in chat, and notifications
 across the Steam client, mobile client, and Deck". There is no 32 px "client
-icon" field. At 184 px both cues are available — the purple plate and the
-ribbon — and the two are separated by colour alone only further down, on the
-16–32 px frames the OS draws in the taskbar and Finder's list view, where the
-lettering would be about three pixels tall.
+icon" field. The App Icon carries both cues — the purple plate and the ribbon
+— and Steam rescales it, so in that library row it is drawn at about 35 px,
+where the ribbon still reads as a dark corner tag even though its lettering
+does not. The bundle's own 16–32 px frames carry no ribbon at all and are
+separated by colour alone; the OS draws those at native size in the taskbar
+and Finder's list view, and a band there would only muddy the silhouette.
 
 One generator, `publishing/assets/source/gen_icons.py`, produces the App Icon,
 the 256 × 256 **Shortcut Icon** Steam puts on the desktop, and the icon set the
