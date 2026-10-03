@@ -119,11 +119,26 @@ scores zero and the run ends, but **no foul is recorded** and the outcome is
 for the same route. A crisis disclosure is not a rule of the contest being
 broken, and the crisis resource message is the only thing the player reads.
 
+**A refused volley is withheld from every model.** Those three outcomes — a
+deterministic Below the Belt match, a refused conduct category, and the crisis
+route — are the ones whose text no model is shown at all. Every other gate still
+draws the opponent's answer, because losing the exchange is what a dud or a
+register foul costs and a target that stopped reacting to a two-word attempt
+would read as broken. But the opponent's prompt is literally *"your opponent just
+said: …, answer it with one taunt"*, so for these three the opponent says
+nothing: no generation, no judge call on a counter, no volley row, no turn row,
+nothing in the transcript to be re-read later. A bout still resolves the
+exchange, because the round was spent — but against an opponent score of zero, so
+the crowd does not move for a line nobody said and `npc_total` is not credited
+with one. This is the line the conversation loop already draws, where a `refuse`
+is rejected at the input and a `stop` short-circuits to a synthetic response
+carrying the router's own message, with the model never called.
+
 On top of that:
 
 | Gate | Outcome |
 | --- | --- |
-| **Below the Belt** — slurs, protected-class attacks | foul, 0 points; a repeat ends the session (this deterministic gate only — see Stage 4) |
+| **Below the Belt** — slurs, protected-class attacks | foul, 0 points, text withheld from every model; a repeat ends the session (this deterministic gate only — see Stage 4) |
 | **Out of Fiction** — aimed at the machine or the author | foul, 0 points |
 | **Bribing the Ref** — addressed to the judge, or a prompt-injection pattern | foul, 0 points, and the umpire mocks the attempt |
 | **Gibberish** — no recognisable words | dud, 0 points, no foul |

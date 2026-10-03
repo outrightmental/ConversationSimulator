@@ -146,6 +146,12 @@ score.
 | **Overt Rudeness** | in scenarios where the sting has to wear gloves, or where the pack forbids profanity |
 | **Anachronism** | in scenarios whose policy forbids it — a smartphone in 1849 |
 
+A Below the Belt foul — and anything the safety policy refuses outright — also
+stops your opponent answering. That line is not shown to a model at all, so the
+exchange passes in silence rather than being handed to a character as material
+to riff on. In a bout the round is still spent, against an opponent score of
+zero. Every other foul draws the usual answer.
+
 Two more outcomes are not fouls but still cost you: **gibberish** scores as a
 dud, and a **plagiarized zinger** — a famous taunt, quoted or lightly
 paraphrased — is capped at 10 points and flagged, before any bonus is added. The
