@@ -516,6 +516,21 @@ _LABELS_PARAM_RE = re.compile(r"[?&]labels=([^&\s'\"`)\]<>]*)")
 # so `label: Something` (a YAML key, a TSX property) does not match at all.
 _LABEL_QUALIFIER_RE = re.compile(r'label:(?:"([^"\n]+)"|([A-Za-z0-9][\w:.-]*))')
 
+# Suffixes where `key:value` with *no* space is ordinary code rather than a
+# search: a TypeScript annotation (`label:string`), a compact object literal
+# (`label:"Retry"`), a Rust struct field.  `label` is one of the commonest
+# property names in this repo's UI code and nothing in CI enforces the
+# formatter, so scanning these files for a bare qualifier would one day fail an
+# unrelated frontend change with a message about GitHub searches.  In them a
+# real qualifier only ever appears in a comment, backticked the way
+# scripts/collect-marketplace-signals.py writes it, so only backticked spans
+# are read.  Prose, YAML and shell keep the whole-file scan: `label:` with no
+# space is not a key in any of them, and a runbook's fenced
+# `gh issue list --search label:…` has to stay covered.
+QUALIFIER_CODE_SUFFIXES = {
+    ".ts", ".tsx", ".js", ".jsx", ".json", ".py", ".rs", ".astro", ".html",
+}
+
 # Where a hand-written new-issue link can live: docs, app code, workflows.
 SCAN_SUFFIXES = (
     ".md", ".mdx", ".ts", ".tsx", ".js", ".jsx", ".py", ".yml", ".yaml",
@@ -595,12 +610,19 @@ def label_search_errors(manifest: dict[str, Any], sources: dict[str, str]) -> li
     the same rot the checks above catch on issue forms and new-issue links, from
     the one direction neither of them can see: a *search* costs nothing to write
     and fails silently.
+
+    In a source file (QUALIFIER_CODE_SUFFIXES) only backticked spans are read,
+    because there `label:x` is far more likely to be a property than a search.
     """
     live = set(label_names(manifest))
     retired = set(retired_names(manifest))
     errors: list[str] = []
     seen: set[tuple[str, str]] = set()
     for name, text in sorted(sources.items()):
+        if Path(name).suffix in QUALIFIER_CODE_SUFFIXES:
+            text = "\n".join(
+                token for line in text.splitlines() for token in _backticked(line)
+            )
         for quoted, bare in _LABEL_QUALIFIER_RE.findall(text):
             label = (quoted or bare).strip()
             if not label or label in live or (name, label) in seen:
@@ -1583,6 +1605,32 @@ def self_test() -> int:
          label_search_errors(
              manifest, {"a.yml": "- label: I checked the docs\n", "b.tsx": "{ label: 'Retry' }"}),
          []),
+        # Nothing enforces the formatter, so the space above cannot be relied
+        # on in code: `label` is everywhere in this repo's UI, and a property
+        # written tight must not fail CI with a message about GitHub searches.
+        ("a tight `label:` property in code is not a qualifier",
+         label_search_errors(manifest, {
+             "a.ts": "type Opt = { label:string }",
+             "b.tsx": '{label:"Retry"}',
+             "c.json": '{"items":[{"label":"Retry"}]}',
+         }),
+         []),
+        # The form a reporting script really uses — backticked, in a comment —
+        # still has to be read, or the check stops covering scripts entirely.
+        ("a backticked qualifier in a code comment is still read",
+         label_search_errors(manifest, {"a.py": '# counted by `label:pack-bug`'}),
+         ["a.py: searches for label:'pack-bug', which the manifest does not declare "
+          "— the search returns nothing, which reads as a signal that is not there"]),
+        # Prose, YAML and shell keep the whole-file scan: a runbook telling a
+        # maintainer to run a search is the case this check exists for.
+        ("an unbackticked qualifier in prose or a shell runbook is still read",
+         sorted(label_search_errors(manifest, {
+             "a.md": "filter by label:pack-bug to count them",
+             "b.sh": "gh issue list --search label:pack-bug",
+         })),
+         [f"{n}: searches for label:'pack-bug', which the manifest does not declare "
+          f"— the search returns nothing, which reads as a signal that is not there"
+          for n in ("a.md", "b.sh")]),
         ("the same undeclared label twice in one file is reported once",
          len(label_search_errors(
              manifest, {"a.md": "`label:wildcat` and again `label:wildcat`"})), 1),
