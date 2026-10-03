@@ -146,10 +146,9 @@ describe('useSteamAchievements — unlock', () => {
 
     const names = Object.values(SteamAchievement)
     for (const name of names) {
-      // Reset the ledger between names. Unlocking every achievement in one
-      // ledger would complete the capstone partway through the loop and add an
-      // ACH_CERTIFIED_EXPERT call, which is covered by its own tests below.
-      localStorage.clear()
+      // `stubSteam()` reports an empty Steam account, so no amount of unlocking
+      // here completes the capstone and adds an ACH_CERTIFIED_EXPERT call — the
+      // capstone has its own tests below. Nothing on this device is consulted.
       await act(async () => {
         await result.current.unlock(name)
       })

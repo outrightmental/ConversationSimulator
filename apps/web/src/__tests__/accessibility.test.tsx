@@ -175,8 +175,8 @@ function formatViolations(violations: axe.Result[]): string {
 
 beforeEach(() => {
   vi.clearAllMocks()
-  // Screens record played packs and unlocked achievements in localStorage; clear
-  // it so that state cannot leak between tests.
+  // Screens record the packs they have played in localStorage (unlocks are not
+  // persisted at all); clear it so that state cannot leak between tests.
   localStorage.clear()
 })
 

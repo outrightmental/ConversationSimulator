@@ -982,7 +982,7 @@ describe('VoiceInput — Steam achievement call sites', () => {
   }
 
   beforeEach(() => {
-    // `unlock` keeps its confirmed-unlock ledger in localStorage, which
+    // VoiceInput reads the voice-timing preferences from localStorage, which
     // setupTests backs with one in-memory store for the whole file.
     localStorage.clear()
   })
