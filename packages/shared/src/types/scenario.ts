@@ -59,6 +59,17 @@ export interface ScenarioInfo {
   ladder_position?: LadderPosition;
   taught_dimensions?: string[];
   tested_dimensions?: string[];
+  /**
+   * What the player is trying to achieve — the scenario's
+   * `goals.player_visible`, which the Conversation Brief shows as the mission
+   * objective (issue #500). Optional: the scenario list endpoint carries the
+   * card fields only, a pack need not declare goals, and an older engine may
+   * not send the field at all.
+   *
+   * `goals.hidden` is the NPC's covert agenda and is deliberately absent from
+   * this contract — it must never reach the client.
+   */
+  player_visible_goals?: string[];
 }
 
 export interface PackValidationError {

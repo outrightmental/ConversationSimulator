@@ -1,18 +1,26 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /*
  * Conversation Brief — the screen between picking a scenario and talking to the
- * character (issue #486).
+ * character (issues #486 and #500).
  *
- * It is laid out as a preflight panel, not a settings form: a hero that states
- * what this conversation is, numbered cards that read top-to-bottom, an
- * instrument panel on the right that stays put while you scroll, and a launch
- * bar pinned to the bottom of the viewport so the start control is never
+ * It is laid out as a preflight panel, not a settings form, and it is tiered by
+ * weight so the page can be grokked without being read (#500):
+ *
+ *   1. the mission — the hero, and inside it the objective panel, which is the
+ *      brightest, highest-contrast thing on the screen;
+ *   2. the two decisions that shape the conversation — difficulty and role —
+ *      as full cards with titles set in UI type;
+ *   3. the mechanical settings, grouped into one card whose sub-headings are
+ *      mono micro-labels: present and reachable, deliberately quiet;
+ *
+ * …plus an instrument panel on the right that stays put while you scroll, and a
+ * launch bar pinned to the bottom of the viewport so the start control is never
  * off-screen no matter how far down the page you are.
  *
  * Colour follows docs/brand.md — violet is the player (primary action,
- * selection), emerald is the character and "ready", amber is pressure and
- * anything that wants attention. Micro-labels are set in the mono "stage
- * directions" voice.
+ * selection, and the player's own objective), emerald is the character and
+ * "ready", amber is pressure and anything that wants attention. Micro-labels
+ * are set in the mono "stage directions" voice.
  */
 
 .brief {
@@ -34,7 +42,12 @@
 .brief-meter-label,
 .brief-meter-value,
 .brief-launch-summary,
-.brief-alert-title {
+.brief-alert-title,
+.brief-objective-title,
+.brief-objective-count,
+.brief-goal-mark,
+.brief-set-title,
+.brief-set-note {
   font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
   text-transform: uppercase;
   letter-spacing: 0.14em;

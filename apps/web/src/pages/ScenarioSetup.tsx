@@ -5,15 +5,26 @@
 // the page used to be a flat stack of unstyled fieldsets with the start button
 // stranded at the bottom, and players could not find it.
 //
-// The shape it takes instead (styles in ./ScenarioSetup.css):
-//   · a hero that answers "what am I about to do" — pack, title, summary, and
-//     the five facts of the engagement (role, length, turns, rating, voice);
-//   · numbered cards so the settings read as a short sequence rather than a
-//     wall of controls, with the character's difficulty traits drawn as meters
-//     so choosing a level is a readable decision;
-//   · an instrument panel that stays on screen with the runtime checks;
-//   · a launch bar pinned to the bottom of the viewport carrying the one
-//     primary action, what it is about to start, and whether it can.
+// Issue #500 took it the rest of the way to a preflight screen: the brief has
+// to say, without being read, "I am about to start a conversation, and this is
+// what I am trying to achieve". So the page is three tiers of weight, loudest
+// first (styles in ./ScenarioSetup.css):
+//
+//   1. THE MISSION — a hero carrying pack, title and situation beside the
+//      objective: the scenario's player-visible goals, numbered, in the
+//      brightest panel on the screen. Under them, the facts of the engagement
+//      (role, length, turns, rating, voice) read as instruments.
+//   2. THE CHOICES — two cards for the two decisions that change the
+//      conversation: the character's posture (difficulty, with its traits
+//      drawn as meters) and who the player is in it.
+//   3. THE SETUP — one quiet card grouping the five mechanical settings
+//      (input, audio, language, privacy, seed). They are grouped and demoted,
+//      never hidden: every control is still on the screen and still one Tab
+//      or one D-pad press away.
+//
+// Beside them an instrument panel keeps the runtime checks on screen, and a
+// launch bar pinned to the bottom of the viewport carries the one primary
+// action, what it is about to start, and whether it can.
 import { useState, useEffect, useCallback } from 'react';
 import type {
   ScenarioInfo,
@@ -305,6 +316,19 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
       ? scenario.tested_dimensions
       : scenario.taught_dimensions ?? [];
 
+  // The mission. A pack states it as `goals.player_visible` — every official
+  // pack does — and it is the one thing issue #500 asks the screen to make
+  // unmissable, so it leads the hero.
+  //
+  // When a scenario declares no goals (a third-party pack, or an engine too old
+  // to send the field) the role brief is the only statement of intent the
+  // scenario has, so it stands in for them. It is then dropped from the role
+  // card below rather than printed twice.
+  const objectives = scenario.player_visible_goals ?? [];
+  const roleBrief = scenario.player_role?.brief?.trim() ?? '';
+  const objectiveStandIn = objectives.length === 0 ? roleBrief : '';
+  const hasObjective = objectives.length > 0 || objectiveStandIn !== '';
+
   // The launch bar's two readouts: what is about to start, and whether it can.
   // The blocker count is deliberately a count, not the messages — each message
   // is already shown in place, next to the control that owns it.
@@ -341,11 +365,57 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
             <span aria-hidden="true">←</span> Back
           </button>
           <span className="brief-eyebrow">Conversation brief</span>
+          <span className="brief-eyebrow brief-preflight" aria-hidden="true">Preflight</span>
         </div>
 
-        <p className="brief-pack">{scenario.pack_name}</p>
-        <h1 className="brief-title">{scenario.title}</h1>
-        <p className="brief-summary">{scenario.summary}</p>
+        {/* The mission, in two columns on a wide screen: the situation on the
+            left, what success looks like on the right. The objective is the
+            brightest thing on the page by design (issue #500) — a player who
+            reads nothing else should still come away knowing what they are
+            trying to do. */}
+        <div className="brief-hero-grid">
+          <div className="brief-lede">
+            <p className="brief-pack">{scenario.pack_name}</p>
+            <h1 className="brief-title">{scenario.title}</h1>
+            <p className="brief-summary">{scenario.summary}</p>
+          </div>
+
+          {hasObjective && (
+            <section
+              className="brief-objective"
+              aria-labelledby="objective-heading"
+              data-testid="brief-objective"
+            >
+              <div className="brief-objective-head">
+                <h2 id="objective-heading" className="brief-objective-title">
+                  Your objective
+                </h2>
+                {objectives.length > 0 && (
+                  <span className="brief-objective-count" aria-hidden="true">
+                    {objectives.length === 1 ? '1 goal' : `${objectives.length} goals`}
+                  </span>
+                )}
+              </div>
+              {objectives.length > 0 ? (
+                <ol className="brief-goals">
+                  {objectives.map((goal, i) => (
+                    <li key={goal} className="brief-goal">
+                      {/* The marker is the list's own numbering drawn in the
+                          preflight voice, so it is decoration to a screen
+                          reader — the <ol> already numbers the items. */}
+                      <span className="brief-goal-mark" aria-hidden="true">
+                        {String(i + 1).padStart(2, '0')}
+                      </span>
+                      <span className="brief-goal-text">{goal}</span>
+                    </li>
+                  ))}
+                </ol>
+              ) : (
+                <p className="brief-goal-standin">{objectiveStandIn}</p>
+              )}
+            </section>
+          )}
+        </div>
 
         <ul className="brief-facts" data-testid="brief-facts">
           <li className="brief-fact">
@@ -406,7 +476,10 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
               </div>
             )}
 
-            <section className="brief-card" aria-labelledby="difficulty-heading">
+            {/* The two decisions that actually change the conversation carry the
+                weight on this tier: how the character behaves, and who the
+                player is in the room. */}
+            <section className="brief-card is-decision" aria-labelledby="difficulty-heading">
               <div className="brief-card-head">
                 <span className="brief-step" aria-hidden="true">01</span>
                 <h2 id="difficulty-heading" className="brief-card-title">Difficulty</h2>
@@ -456,13 +529,17 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
               </div>
             </section>
 
-            <section className="brief-card" aria-labelledby="player-heading">
+            <section className="brief-card is-decision" aria-labelledby="player-heading">
               <div className="brief-card-head">
                 <span className="brief-step" aria-hidden="true">02</span>
                 <h2 id="player-heading" className="brief-card-title">Your role</h2>
               </div>
               <div className="brief-card-body">
-                <p className="brief-role-brief">{scenario.player_role?.brief ?? ''}</p>
+                {/* Dropped when it is standing in for a missing objective in the
+                    hero, rather than printed twice on one screen. */}
+                {objectives.length > 0 && roleBrief !== '' && (
+                  <p className="brief-role-brief">{roleBrief}</p>
+                )}
                 <label className="brief-field">
                   <span className="brief-label">Name to use in this session</span>
                   <input
@@ -487,229 +564,230 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
               </div>
             </section>
 
-            <div className="brief-row">
-              <section className="brief-card" aria-labelledby="input-heading">
-                <div className="brief-card-head">
-                  <span className="brief-step" aria-hidden="true">03</span>
-                  <h2 id="input-heading" className="brief-card-title">Input mode</h2>
-                </div>
-                <div className="brief-options" role="radiogroup" aria-label="Input mode">
-                  {(
-                    [
-                      ['text-only', 'Text only', true],
-                      ['push-to-talk', 'Push-to-talk voice', runtime.stt_ready],
-                      ['hands-free', 'Hands-free voice (VAD)', runtime.stt_ready],
-                    ] as [InputMode, string, boolean][]
-                  ).map(([value, label, available]) => {
-                    const selected = form.input_mode === value;
-                    return (
-                      <div
-                        key={value}
-                        className={`brief-option${selected ? ' is-selected' : ''}${
-                          !available ? ' is-disabled' : ''
-                        }`}
-                      >
-                        <label className="brief-option-main">
-                          <input
-                            type="radio"
-                            name="input_mode"
-                            value={value}
-                            checked={selected}
-                            disabled={!available}
-                            onChange={() => setField('input_mode', value)}
-                          />
-                          <span className="brief-option-text">
-                            <span className="brief-option-name">
-                              {label}
-                              {!available && value !== 'text-only' && (
-                                <span className="brief-option-note">STT not loaded</span>
-                              )}
+            {/* ── 03 · Session setup ─────────────────────────────────────────
+                The five mechanical settings, grouped into one quiet card. Until
+                issue #500 each was a card of its own, identical in weight to the
+                difficulty choice above — seven interchangeable blocks, which is
+                what made the screen read as a wall of controls. They are demoted
+                here, not hidden: there is no disclosure to open, every control is
+                still on the screen, and each is still one Tab (or one D-pad
+                press) away. */}
+            <section className="brief-setup" aria-labelledby="setup-heading">
+              <div className="brief-card-head">
+                <span className="brief-step" aria-hidden="true">03</span>
+                <h2 id="setup-heading" className="brief-card-title">Session setup</h2>
+                <p className="brief-card-hint">How you talk, and what is kept</p>
+              </div>
+
+              <div className="brief-setup-grid">
+                <div className="brief-set">
+                  <h3 className="brief-set-title">Input mode</h3>
+                  <div className="brief-options" role="radiogroup" aria-label="Input mode">
+                    {(
+                      [
+                        ['text-only', 'Text only', true],
+                        ['push-to-talk', 'Push-to-talk voice', runtime.stt_ready],
+                        ['hands-free', 'Hands-free voice (VAD)', runtime.stt_ready],
+                      ] as [InputMode, string, boolean][]
+                    ).map(([value, label, available]) => {
+                      const selected = form.input_mode === value;
+                      return (
+                        <div
+                          key={value}
+                          className={`brief-option${selected ? ' is-selected' : ''}${
+                            !available ? ' is-disabled' : ''
+                          }`}
+                        >
+                          <label className="brief-option-main">
+                            <input
+                              type="radio"
+                              name="input_mode"
+                              value={value}
+                              checked={selected}
+                              disabled={!available}
+                              onChange={() => setField('input_mode', value)}
+                            />
+                            <span className="brief-option-text">
+                              <span className="brief-option-name">
+                                {label}
+                                {!available && value !== 'text-only' && (
+                                  <span className="brief-option-note">STT not loaded</span>
+                                )}
+                              </span>
                             </span>
-                          </span>
-                        </label>
-                      </div>
-                    );
-                  })}
-                </div>
-                {validationErrorMap['input_mode'] && (
-                  <span className="brief-field-error" role="alert">
-                    {validationErrorMap['input_mode']}
-                  </span>
-                )}
-              </section>
-
-              <section className="brief-card" aria-labelledby="audio-heading">
-                <div className="brief-card-head">
-                  <span className="brief-step" aria-hidden="true">04</span>
-                  <h2 id="audio-heading" className="brief-card-title">Audio output</h2>
-                </div>
-                <div className="brief-card-body">
-                  <label className="brief-toggle">
-                    <input
-                      type="checkbox"
-                      checked={form.tts_enabled}
-                      disabled={!runtime.tts_ready}
-                      onChange={(e) => setField('tts_enabled', e.target.checked)}
-                      aria-describedby={!runtime.tts_ready ? 'tts-status' : undefined}
-                    />
-                    <span className="brief-toggle-text">
-                      NPC voice (TTS)
-                      {runtime.tts_ready && runtime.tts_voice_name && (
-                        <span className="brief-badge-ready"> {runtime.tts_voice_name}</span>
-                      )}
-                      {!runtime.tts_ready && (
-                        <span className="brief-badge-off"> — not loaded</span>
-                      )}
-                    </span>
-                  </label>
-                  {validationErrorMap['tts_enabled'] && (
+                          </label>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {validationErrorMap['input_mode'] && (
                     <span className="brief-field-error" role="alert">
-                      {validationErrorMap['tts_enabled']}
+                      {validationErrorMap['input_mode']}
                     </span>
                   )}
-                  {!runtime.tts_ready && (
-                    <p className="brief-note" id="tts-status">
-                      Text-only is always available. Install a TTS model to enable voice output.
-                    </p>
-                  )}
-                  {runtime.tts_ready && !scenario.voice_supported && (
-                    <p className="brief-note">
-                      This scenario is designed for text — TTS can still be enabled but the script
-                      was not written with voice in mind.
-                    </p>
-                  )}
-                  {form.tts_enabled && voices.length > 0 && (
-                    <label className="brief-field">
-                      <span className="brief-label">NPC voice</span>
-                      <select
-                        className="brief-select"
-                        value={form.voice_id ?? ''}
-                        onChange={(e) => setField('voice_id', e.target.value || null)}
-                        aria-label="NPC voice selection"
-                      >
-                        {voices.map((v) => (
-                          <option key={v.voice_id} value={v.voice_id}>
-                            {v.display_name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  )}
                 </div>
-              </section>
-            </div>
 
-            <div className="brief-row">
-              <section className="brief-card" aria-labelledby="language-heading">
-                <div className="brief-card-head">
-                  <span className="brief-step" aria-hidden="true">05</span>
-                  <h2 id="language-heading" className="brief-card-title">Language</h2>
-                </div>
-                <label className="brief-field">
-                  <span className="brief-label">Conversation language</span>
-                  <select
-                    className="brief-select"
-                    value={form.language}
-                    onChange={(e) => setField('language', e.target.value)}
-                  >
-                    {(scenario.supported_languages ?? ['en']).map((code) => (
-                      <option key={code} value={code}>
-                        {languageLabel(code)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </section>
-
-              <section className="brief-card" aria-labelledby="privacy-heading">
-                <div className="brief-card-head">
-                  <span className="brief-step" aria-hidden="true">06</span>
-                  <h2 id="privacy-heading" className="brief-card-title">Privacy options</h2>
-                </div>
-                <div className="brief-card-body">
-                  <label className="brief-toggle">
-                    <input
-                      type="checkbox"
-                      checked={form.save_transcript}
-                      onChange={(e) => setField('save_transcript', e.target.checked)}
-                    />
-                    <span className="brief-toggle-text">
-                      Save transcript locally
-                      <span className="brief-toggle-note">
-                        {form.save_transcript
-                          ? ' — saved to your local data folder only'
-                          : ' — not saved'}
-                      </span>
-                    </span>
-                  </label>
-
-                  {scenario.state_meters_permitted && (
+                <div className="brief-set">
+                  <h3 className="brief-set-title">Audio output</h3>
+                  <div className="brief-card-body">
                     <label className="brief-toggle">
                       <input
                         type="checkbox"
-                        checked={form.show_state_meters}
-                        onChange={(e) => setField('show_state_meters', e.target.checked)}
+                        checked={form.tts_enabled}
+                        disabled={!runtime.tts_ready}
+                        onChange={(e) => setField('tts_enabled', e.target.checked)}
+                        aria-describedby={!runtime.tts_ready ? 'tts-status' : undefined}
                       />
                       <span className="brief-toggle-text">
-                        Show NPC state meters during conversation
+                        NPC voice (TTS)
+                        {runtime.tts_ready && runtime.tts_voice_name && (
+                          <span className="brief-badge-ready"> {runtime.tts_voice_name}</span>
+                        )}
+                        {!runtime.tts_ready && (
+                          <span className="brief-badge-off"> — not loaded</span>
+                        )}
                       </span>
                     </label>
-                  )}
-                  {!scenario.state_meters_permitted && (
-                    <p className="brief-note">
-                      State meters are hidden in this scenario to preserve realism.
-                    </p>
-                  )}
+                    {validationErrorMap['tts_enabled'] && (
+                      <span className="brief-field-error" role="alert">
+                        {validationErrorMap['tts_enabled']}
+                      </span>
+                    )}
+                    {!runtime.tts_ready && (
+                      <p className="brief-note" id="tts-status">
+                        Text-only is always available. Install a TTS model to enable voice output.
+                      </p>
+                    )}
+                    {runtime.tts_ready && !scenario.voice_supported && (
+                      <p className="brief-note">
+                        This scenario is designed for text — TTS can still be enabled but the script
+                        was not written with voice in mind.
+                      </p>
+                    )}
+                    {form.tts_enabled && voices.length > 0 && (
+                      <label className="brief-field">
+                        <span className="brief-label">NPC voice</span>
+                        <select
+                          className="brief-select"
+                          value={form.voice_id ?? ''}
+                          onChange={(e) => setField('voice_id', e.target.value || null)}
+                          aria-label="NPC voice selection"
+                        >
+                          {voices.map((v) => (
+                            <option key={v.voice_id} value={v.voice_id}>
+                              {v.display_name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    )}
+                  </div>
                 </div>
-              </section>
-            </div>
 
-            <section className="brief-card" aria-labelledby="seed-heading">
-              <div className="brief-card-head">
-                <span className="brief-step" aria-hidden="true">07</span>
-                <h2 id="seed-heading" className="brief-card-title">Variation seed</h2>
-                <p className="brief-card-hint">Optional</p>
-              </div>
-              <div className="brief-card-body">
-                <p className="brief-note">
-                  The seed controls scenario randomization. Use the same seed to replay an
-                  identical variation, or randomize for a new experience.
-                </p>
-                <div className="brief-seed-row">
-                  <label className="brief-field brief-seed-field">
-                    <span className="brief-label">Seed</span>
-                    <input
-                      type="number"
-                      className="brief-input"
-                      value={form.seed ?? ''}
-                      placeholder="Auto"
-                      min={0}
-                      max={2147483647}
-                      step={1}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        const parsed = Number(v);
-                        setField('seed', v === '' || isNaN(parsed) ? null : parsed);
-                      }}
-                      aria-label="Variation seed value"
-                      aria-invalid={!!validationErrorMap['seed']}
-                      aria-describedby={validationErrorMap['seed'] ? 'seed-error' : undefined}
-                    />
+                <div className="brief-set">
+                  <h3 className="brief-set-title">Language</h3>
+                  <label className="brief-field">
+                    <span className="brief-label">Conversation language</span>
+                    <select
+                      className="brief-select"
+                      value={form.language}
+                      onChange={(e) => setField('language', e.target.value)}
+                    >
+                      {(scenario.supported_languages ?? ['en']).map((code) => (
+                        <option key={code} value={code}>
+                          {languageLabel(code)}
+                        </option>
+                      ))}
+                    </select>
                   </label>
-                  <button type="button" className="brief-btn-secondary" onClick={handleRandomizeSeed}>
-                    Randomize
-                  </button>
-                  {form.seed !== null && (
-                    <button type="button" className="brief-btn-ghost" onClick={handleClearSeed}>
-                      Auto
-                    </button>
-                  )}
                 </div>
-                {validationErrorMap['seed'] && (
-                  <span id="seed-error" className="brief-field-error" role="alert">
-                    {validationErrorMap['seed']}
-                  </span>
-                )}
+
+                <div className="brief-set">
+                  <h3 className="brief-set-title">Privacy</h3>
+                  <div className="brief-card-body">
+                    <label className="brief-toggle">
+                      <input
+                        type="checkbox"
+                        checked={form.save_transcript}
+                        onChange={(e) => setField('save_transcript', e.target.checked)}
+                      />
+                      <span className="brief-toggle-text">
+                        Save transcript locally
+                        <span className="brief-toggle-note">
+                          {form.save_transcript
+                            ? ' — saved to your local data folder only'
+                            : ' — not saved'}
+                        </span>
+                      </span>
+                    </label>
+
+                    {scenario.state_meters_permitted && (
+                      <label className="brief-toggle">
+                        <input
+                          type="checkbox"
+                          checked={form.show_state_meters}
+                          onChange={(e) => setField('show_state_meters', e.target.checked)}
+                        />
+                        <span className="brief-toggle-text">
+                          Show NPC state meters during conversation
+                        </span>
+                      </label>
+                    )}
+                    {!scenario.state_meters_permitted && (
+                      <p className="brief-note">
+                        State meters are hidden in this scenario to preserve realism.
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="brief-set is-wide">
+                  <h3 className="brief-set-title">
+                    Variation seed
+                    <span className="brief-set-note">Optional</span>
+                  </h3>
+                  <div className="brief-card-body">
+                    <p className="brief-note">
+                      The seed controls scenario randomization. Use the same seed to replay an
+                      identical variation, or randomize for a new experience.
+                    </p>
+                    <div className="brief-seed-row">
+                      <label className="brief-field brief-seed-field">
+                        <span className="brief-label">Seed</span>
+                        <input
+                          type="number"
+                          className="brief-input"
+                          value={form.seed ?? ''}
+                          placeholder="Auto"
+                          min={0}
+                          max={2147483647}
+                          step={1}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            const parsed = Number(v);
+                            setField('seed', v === '' || isNaN(parsed) ? null : parsed);
+                          }}
+                          aria-label="Variation seed value"
+                          aria-invalid={!!validationErrorMap['seed']}
+                          aria-describedby={validationErrorMap['seed'] ? 'seed-error' : undefined}
+                        />
+                      </label>
+                      <button type="button" className="brief-btn-secondary" onClick={handleRandomizeSeed}>
+                        Randomize
+                      </button>
+                      {form.seed !== null && (
+                        <button type="button" className="brief-btn-ghost" onClick={handleClearSeed}>
+                          Auto
+                        </button>
+                      )}
+                    </div>
+                    {validationErrorMap['seed'] && (
+                      <span id="seed-error" className="brief-field-error" role="alert">
+                        {validationErrorMap['seed']}
+                      </span>
+                    )}
+                  </div>
+                </div>
               </div>
             </section>
 
