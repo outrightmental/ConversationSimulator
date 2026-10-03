@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, act } from '@testing-library/react'
+import { useEffect } from 'react'
 import { MemoryRouter } from 'react-router-dom'
 import CoreStartupGuard from '../screens/CoreStartup'
 
@@ -20,6 +21,16 @@ afterEach(() => {
 
 // ── Helper ────────────────────────────────────────────────────────────────────
 
+// The smallest body `checkHealth` accepts as proof that convsim-core — rather
+// than some other program holding 7355 — answered: the three fields it tests,
+// which are the same three `edition_from_health_body` requires in
+// apps/desktop/src-tauri/src/lib.rs.
+const HEALTH_BODY = {
+  status: 'ok',
+  version: '0.1.0',
+  database: { status: 'ok', path: '/tmp/convsim.db' },
+}
+
 type TauriListenHandler = (e: { payload: unknown }) => void
 
 function stubTauri(
@@ -31,6 +42,18 @@ function stubTauri(
     event: { listen: onListen },
     ...(invoke ? { core: { invoke } } : {}),
   }
+}
+
+// A child that reports every mount. The guard's own final state cannot tell a
+// transient pass-through apart from one that never happened: an app mounted for
+// a few microtasks and then unmounted leaves the screen looking identical. These
+// tests care about the difference, because mounting the app fires its API calls
+// at whatever is on port 7355.
+function MountSpy({ onMount }: { onMount: () => void }) {
+  useEffect(() => {
+    onMount()
+  }, [onMount])
+  return <div>App content loaded</div>
 }
 
 // CoreStartupGuard uses Link (for the "Get support bundle" action) so it needs
@@ -130,6 +153,146 @@ describe('CoreStartupGuard — core becomes ready via event', () => {
   })
 })
 
+describe('CoreStartupGuard — engine restart under a running window', () => {
+  it('hides the app and reports progress while the engine is restarting', async () => {
+    let handler: TauriListenHandler | undefined
+    stubTauri((_event, h) => {
+      handler = h
+      return Promise.resolve(() => {})
+    })
+
+    await act(async () => {
+      renderGuard()
+    })
+
+    await act(async () => {
+      handler?.({
+        payload: { phase: 'ready', message: 'Core service is ready.', error: null },
+      })
+    })
+    expect(screen.getByText('App content loaded')).toBeInTheDocument()
+
+    await act(async () => {
+      handler?.({
+        payload: {
+          phase: 'restarting',
+          message: 'The conversation engine stopped unexpectedly. Restarting… (attempt 1 of 3)',
+          error: null,
+        },
+      })
+    })
+
+    // Nothing is serving the port until the replacement binds, so the app must
+    // not stay mounted over it — and the player needs to be told what is
+    // happening.
+    expect(screen.queryByText('App content loaded')).not.toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent(/restarting/i)
+  })
+
+  it('remounts the app when the replacement engine reports ready', async () => {
+    let handler: TauriListenHandler | undefined
+    stubTauri((_event, h) => {
+      handler = h
+      return Promise.resolve(() => {})
+    })
+
+    await act(async () => {
+      renderGuard()
+    })
+
+    for (const payload of [
+      { phase: 'ready', message: 'Core service is ready.', error: null },
+      { phase: 'restarting', message: 'Restarting… (attempt 1 of 3)', error: null },
+      { phase: 'ready', message: 'Core service is ready.', error: null },
+    ]) {
+      await act(async () => {
+        handler?.({ payload })
+      })
+    }
+
+    expect(screen.getByText('App content loaded')).toBeInTheDocument()
+  })
+
+  it('shows the recovery card when the engine stops for good after ready', async () => {
+    let handler: TauriListenHandler | undefined
+    stubTauri((_event, h) => {
+      handler = h
+      return Promise.resolve(() => {})
+    })
+
+    await act(async () => {
+      renderGuard()
+    })
+
+    await act(async () => {
+      handler?.({
+        payload: { phase: 'ready', message: 'Core service is ready.', error: null },
+      })
+    })
+
+    await act(async () => {
+      handler?.({
+        payload: {
+          phase: 'error',
+          message: 'The conversation engine keeps stopping.',
+          error: 'It stopped 3 times in a row and will not be restarted again.',
+        },
+      })
+    })
+
+    expect(screen.queryByText('App content loaded')).not.toBeInTheDocument()
+    // Not "didn't start": this engine started and served before it died, and a
+    // card headed with the one thing that did not happen sends the player off
+    // looking for a bad install.
+    const card = screen.getByRole('alert')
+    expect(card).toHaveTextContent(/keeps stopping/i)
+    expect(card).not.toHaveTextContent(/didn't start/i)
+  })
+
+  it('does not let a stale health success overrule a reported restart', async () => {
+    // The health fast-path resolves on its own schedule; a success that lands
+    // after the shell reported a restart must not mount the app anyway.
+    //
+    // The stubbed body has to be a real convsim-core health response. With
+    // anything else (`{}`, say) `checkHealth` rejects it on the body test alone
+    // and never reaches the phase guard this test exists for — so the test would
+    // pass with that guard deleted, which is exactly the regression it is meant
+    // to catch. Here the body passes and only the reported phase holds the app
+    // back. It is a restarting engine on the port, which is a convsim-core: the
+    // old one draining its lifespan, or the replacement already answering while
+    // the shell is still a probe away from reporting `ready`.
+    let resolveHealth: ((value: unknown) => void) | undefined
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise((resolve) => {
+        resolveHealth = resolve
+      })),
+    )
+
+    let handler: TauriListenHandler | undefined
+    stubTauri((_event, h) => {
+      handler = h
+      return Promise.resolve(() => {})
+    })
+
+    await act(async () => {
+      renderGuard()
+    })
+
+    await act(async () => {
+      handler?.({
+        payload: { phase: 'restarting', message: 'Restarting… (attempt 2 of 3)', error: null },
+      })
+    })
+
+    await act(async () => {
+      resolveHealth?.({ ok: true, json: () => Promise.resolve(HEALTH_BODY) })
+    })
+
+    expect(screen.queryByText('App content loaded')).not.toBeInTheDocument()
+  })
+})
+
 describe('CoreStartupGuard — error state', () => {
   it('shows a recovery alert when core reports an error', async () => {
     let handler: TauriListenHandler | undefined
@@ -179,6 +342,81 @@ describe('CoreStartupGuard — error state', () => {
 
     const alert = screen.getByRole('alert')
     expect(alert).toHaveTextContent(/another app is using a required port/i)
+  })
+
+  it('names the other edition instead of blaming an unrelated program', async () => {
+    // The demo and the full app share port 7355 and one data directory, so the
+    // shell refuses to attach to the other edition's engine. That is a port
+    // conflict, but the port-conflict card tells the player to close whatever
+    // unrelated program is holding the port — and the engine holding it is
+    // Conversation Simulator. Falling through to 'crash' was worse: an engine
+    // is running perfectly well here, just the wrong one.
+    let handler: TauriListenHandler | undefined
+    stubTauri((_event, h) => {
+      handler = h
+      return Promise.resolve(() => {})
+    })
+
+    await act(async () => {
+      renderGuard()
+    })
+
+    await act(async () => {
+      handler?.({
+        payload: {
+          phase: 'error',
+          // Verbatim from `foreign_edition_error` in
+          // apps/desktop/src-tauri/src/lib.rs, which a Rust test pins.
+          message: 'Another edition of Conversation Simulator is already running.',
+          error:
+            'Conversation Simulator Demo is using the conversation engine on port 7355. ' +
+            'Close it, then start the full version again.',
+        },
+      })
+    })
+
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent(/another edition of conversation simulator is running/i)
+    expect(alert).not.toHaveTextContent(/didn't start/i)
+    expect(alert).not.toHaveTextContent(/another app is using a required port/i)
+    // The hint is still shown verbatim, so the player learns WHICH one to close.
+    expect(alert).toHaveTextContent(/conversation simulator demo is using/i)
+  })
+
+  it('tells the player another window has the engine, not that a program stole the port', async () => {
+    // A second copy of the app launched while the first was still starting: the
+    // engine this shell spawned lost the race to bind. The port-conflict card
+    // would send the player to close whatever is holding port 7355 — which is
+    // the engine the window that DID start is talking to.
+    let handler: TauriListenHandler | undefined
+    stubTauri((_event, h) => {
+      handler = h
+      return Promise.resolve(() => {})
+    })
+
+    await act(async () => {
+      renderGuard()
+    })
+
+    await act(async () => {
+      handler?.({
+        payload: {
+          phase: 'error',
+          // Verbatim from `ALREADY_RUNNING_MESSAGE` / `already_running_hint`
+          // in apps/desktop/src-tauri/src/lib.rs, which a Rust test pins.
+          message: 'Conversation Simulator is already running.',
+          error:
+            'Another window of Conversation Simulator is already using the conversation ' +
+            'engine on port 7355. Switch to that window — this one is not needed.',
+        },
+      })
+    })
+
+    const alert = screen.getByRole('alert')
+    expect(alert).toHaveTextContent(/conversation simulator is already running/i)
+    expect(alert).not.toHaveTextContent(/another app is using a required port/i)
+    expect(alert).not.toHaveTextContent(/another edition/i)
+    expect(alert).not.toHaveTextContent(/didn't start/i)
   })
 
   it('shows the error detail in the alert', async () => {
@@ -347,7 +585,9 @@ describe('CoreStartupGuard — health check fast-path', () => {
   it('passes through immediately when the health endpoint is already up', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve({}) })),
+      vi.fn(() =>
+        Promise.resolve({ ok: true, json: () => Promise.resolve(HEALTH_BODY) }),
+      ),
     )
     stubTauri(() => Promise.resolve(() => {}))
 
@@ -356,6 +596,166 @@ describe('CoreStartupGuard — health check fast-path', () => {
     })
 
     expect(screen.getByText('App content loaded')).toBeInTheDocument()
+  })
+
+  it('does not pass through when a stranger on port 7355 answers 200', async () => {
+    // The shell's probe requires the body to look like a convsim-core health
+    // response precisely because anything can be holding the port; the
+    // fast-path has to apply the same test or it mounts the app over a
+    // stranger's socket for the whole port-conflict grace period.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve({ ok: true, json: () => Promise.resolve({ hello: 'world' }) }),
+      ),
+    )
+    stubTauri(() => Promise.resolve(() => {}))
+
+    await act(async () => {
+      renderGuard()
+    })
+
+    expect(screen.queryByText('App content loaded')).not.toBeInTheDocument()
+  })
+
+  it('does not pass through on a generic health body that only has a status', async () => {
+    // `{"status":"ok"}` is the most common health-response shape there is, and
+    // `/api/health` is a common path, so that key on its own identifies
+    // nothing. The three fields checkHealth requires are the three
+    // `edition_from_health_body` requires on the Rust side.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve({ ok: true, json: () => Promise.resolve({ status: 'ok' }) }),
+      ),
+    )
+    stubTauri(() => Promise.resolve(() => {}))
+
+    await act(async () => {
+      renderGuard()
+    })
+
+    expect(screen.queryByText('App content loaded')).not.toBeInTheDocument()
+  })
+
+  it('does not pass through when the shell has reported a non-ready phase', async () => {
+    // 'starting' covers "Something is already using port 7355 — checking
+    // whether it is the engine…", and that occupant can be the other edition's
+    // engine: it answers with a real convsim-core health body, so the
+    // fast-path's own test passes and mounting on it shows the wrong library
+    // (issue #495). The shell decides readiness; this only beats its first event.
+    let resolveHealth: ((value: unknown) => void) | undefined
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise((resolve) => {
+        resolveHealth = resolve
+      })),
+    )
+
+    let handler: TauriListenHandler | undefined
+    stubTauri((_event, h) => {
+      handler = h
+      return Promise.resolve(() => {})
+    })
+
+    await act(async () => {
+      renderGuard()
+    })
+
+    await act(async () => {
+      handler?.({
+        payload: {
+          phase: 'starting',
+          message: 'Something is already using port 7355 — checking whether it is the engine…',
+          error: null,
+        },
+      })
+    })
+
+    await act(async () => {
+      resolveHealth?.({ ok: true, json: () => Promise.resolve(HEALTH_BODY) })
+    })
+
+    expect(screen.queryByText('App content loaded')).not.toBeInTheDocument()
+  })
+
+  it('waits for the shell\u2019s stored status before passing through', async () => {
+    // The shell emits its fast failures from setup(), BEFORE this webview has
+    // loaded, so they arrive through `get_core_status` rather than as events.
+    // Reaching that snapshot costs two IPC round-trips; one local fetch does
+    // not, so a fast-path that only read the last-reported phase would find
+    // nothing reported and mount the app anyway \u2014 over the other edition's
+    // engine, which answers /api/health with a real convsim-core body (issue
+    // #495). The snapshot would then unmount it again, leaving a final state
+    // indistinguishable from never having mounted, which is why this asserts on
+    // the mount itself.
+    const mounted = vi.fn()
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve(HEALTH_BODY) })),
+    )
+    let resolveSnapshot: ((value: unknown) => void) | undefined
+    const invoke = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          resolveSnapshot = resolve
+        }),
+    )
+    stubTauri(() => Promise.resolve(() => {}), invoke)
+
+    await act(async () => {
+      renderGuard(<MountSpy onMount={mounted} />)
+    })
+
+    // Health has already answered 200 with a convsim-core body by now.
+    expect(mounted).not.toHaveBeenCalled()
+
+    await act(async () => {
+      resolveSnapshot?.({
+        phase: 'error',
+        message: 'Another edition of Conversation Simulator is already running.',
+        error:
+          'Conversation Simulator Demo is using the conversation engine on port 7355. ' +
+          'Close it, then start the full version again.',
+      })
+    })
+
+    expect(mounted).not.toHaveBeenCalled()
+    expect(screen.getByRole('alert')).toHaveTextContent(/another edition/i)
+  })
+
+  it('still passes through once the shell confirms it has nothing to report', async () => {
+    // The other half of the wait: a snapshot of `null` (the shell has not
+    // emitted anything yet) must not block the shortcut, or a dev build with
+    // dev-desktop.sh's engine already serving would sit on the progress screen
+    // until the shell's own probe came back.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve({ ok: true, json: () => Promise.resolve(HEALTH_BODY) })),
+    )
+    stubTauri(() => Promise.resolve(() => {}), () => Promise.resolve(null))
+
+    await act(async () => {
+      renderGuard()
+    })
+
+    expect(screen.getByText('App content loaded')).toBeInTheDocument()
+  })
+
+  it('does not pass through when the health response is not JSON at all', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve({ ok: true, json: () => Promise.reject(new SyntaxError('not json')) }),
+      ),
+    )
+    stubTauri(() => Promise.resolve(() => {}))
+
+    await act(async () => {
+      renderGuard()
+    })
+
+    expect(screen.queryByText('App content loaded')).not.toBeInTheDocument()
   })
 })
 
@@ -393,6 +793,47 @@ describe('CoreStartupGuard — snapshot recovery of missed events', () => {
 
     await act(async () => {
       renderGuard()
+    })
+
+    expect(screen.getByText('App content loaded')).toBeInTheDocument()
+  })
+
+  it('does not let a stale snapshot unmount an app a live event already readied', async () => {
+    // The snapshot is read on the Rust side and resolved asynchronously, so it
+    // can describe an older phase than an event already delivered to the
+    // listener. Readiness follows the reported phase, so applying it anyway
+    // would unmount a running app back to the progress screen — and no further
+    // event is coming to put it back.
+    let handler: TauriListenHandler | undefined
+    let resolveSnapshot: ((value: unknown) => void) | undefined
+    const invoke = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          resolveSnapshot = resolve
+        }),
+    )
+    stubTauri((_event, h) => {
+      handler = h
+      return Promise.resolve(() => {})
+    }, invoke)
+
+    await act(async () => {
+      renderGuard()
+    })
+
+    await act(async () => {
+      handler?.({
+        payload: { phase: 'ready', message: 'Core service is ready.', error: null },
+      })
+    })
+    expect(screen.getByText('App content loaded')).toBeInTheDocument()
+
+    await act(async () => {
+      resolveSnapshot?.({
+        phase: 'starting',
+        message: 'Waiting for core service to be ready…',
+        error: null,
+      })
     })
 
     expect(screen.getByText('App content loaded')).toBeInTheDocument()
