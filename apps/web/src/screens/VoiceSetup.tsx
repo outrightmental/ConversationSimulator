@@ -10,7 +10,7 @@
  * on the player's behalf. Each row re-checks itself, so a terminal install in
  * another window shows up here on the next focus without a reload.
  */
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
   computeVoiceInstallPct,
@@ -20,7 +20,10 @@ import {
   type VoiceEngine,
 } from '@convsim/shared'
 import { ApiErrorView } from '../components/ApiErrorView'
+import { apiClient } from '../api/client'
 import { useVoiceSetup } from '../hooks/useVoiceSetup'
+import { useMicCapture, type MicPermission } from '../hooks/useMicCapture'
+import { VOICE_DOCS_URL } from '../setup/docsUrls'
 
 const RUNNING_STATES = new Set(['pending', 'running'])
 
@@ -265,6 +268,154 @@ function AssetRow({ asset }: { asset: VoiceAsset }) {
   )
 }
 
+/** Outcome of the one real round trip through microphone → decoder → speech model. */
+type MicTestResult =
+  | { kind: 'heard'; transcript: string }
+  | { kind: 'problem'; message: string }
+  | null
+
+const MIC_STATE_LABEL: Record<MicPermission, string> = {
+  unsupported: 'not available in this browser',
+  idle: 'not allowed yet',
+  requesting: 'waiting for your answer…',
+  granted: 'allowed',
+  denied: 'blocked',
+}
+
+/**
+ * The step no download can satisfy: the browser has to be allowed to use the
+ * microphone, and the whole chain has to come back with words. Installing the
+ * models proves neither, so this row asks for permission and then runs one real
+ * transcription — the player leaves the screen knowing rather than hoping.
+ */
+function MicCheckRow({ sttReady }: { sttReady: boolean }) {
+  const [result, setResult] = useState<MicTestResult>(null)
+  const [transcribing, setTranscribing] = useState(false)
+
+  const handleAudio = useCallback(async (blob: Blob) => {
+    setTranscribing(true)
+    try {
+      const r = await apiClient.uploadAudio(blob)
+      if (!r.ok) {
+        setResult({ kind: 'problem', message: r.error.message })
+      } else if (r.data.status === 'unavailable') {
+        setResult({
+          kind: 'problem',
+          message: 'Speech-to-text is not running yet — finish the steps above, then try again.',
+        })
+      } else if (r.data.status === 'error') {
+        setResult({
+          kind: 'problem',
+          message:
+            'The recording could not be transcribed. ffmpeg is the usual culprit — check its row below.',
+        })
+      } else if (r.data.transcript) {
+        setResult({ kind: 'heard', transcript: r.data.transcript })
+      } else {
+        setResult({
+          kind: 'problem',
+          message: 'No speech was detected. Move closer to the microphone and try again.',
+        })
+      }
+    } finally {
+      setTranscribing(false)
+    }
+  }, [])
+
+  const {
+    permission,
+    isRecording,
+    recordingSeconds,
+    error,
+    requestPermission,
+    startRecording,
+    stopRecording,
+  } = useMicCapture(handleAudio)
+
+  const granted = permission === 'granted'
+
+  return (
+    <li
+      data-testid="mic-check-row"
+      style={{ display: 'flex', gap: '0.6rem', padding: '0.6rem 0', borderTop: '1px solid rgba(255,255,255,0.06)' }}
+    >
+      <StatusDot ok={granted} muted={permission === 'unsupported'} />
+      <div style={{ flex: 1 }}>
+        <p style={{ margin: 0, fontSize: '0.875rem', fontWeight: 500 }}>
+          Microphone{' '}
+          <span style={{ fontWeight: 400, color: granted ? '#86efac' : '#fbbf24' }}>
+            — {MIC_STATE_LABEL[permission]}
+          </span>
+        </p>
+        <p style={{ margin: '0.2rem 0 0', fontSize: '0.82rem', color: '#a1a1aa', lineHeight: 1.5 }}>
+          {permission === 'unsupported'
+            ? 'This browser cannot record audio. The desktop app can, as can a recent Chrome, Edge or Safari.'
+            : permission === 'denied'
+            ? 'Your browser is blocking the microphone for this app. Allow it in the site permissions — or your system privacy settings — then try again.'
+            : permission === 'requesting'
+            ? 'Answer the prompt your browser just raised.'
+            : !granted
+            ? 'The browser asks once. Nothing is recorded until you hold the talk key during a scenario.'
+            : sttReady
+            ? 'Say a few words to check the whole chain — microphone, decoder and speech model — before you start a scenario.'
+            : 'Finish the speech-to-text steps above and you can test the whole chain from here.'}
+        </p>
+
+        {(permission === 'idle' || permission === 'denied' || permission === 'requesting') && (
+          <div style={{ marginTop: '0.5rem' }}>
+            <PrimaryButton
+              onClick={() => void requestPermission()}
+              disabled={permission === 'requesting'}
+              testId="mic-allow"
+            >
+              {permission === 'denied' ? 'Try the microphone again' : 'Allow the microphone'}
+            </PrimaryButton>
+          </div>
+        )}
+
+        {granted && sttReady && (
+          <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+            {isRecording ? (
+              <PrimaryButton onClick={stopRecording} testId="mic-test-stop">
+                {`Stop and transcribe · ${recordingSeconds}s`}
+              </PrimaryButton>
+            ) : (
+              <PrimaryButton
+                onClick={startRecording}
+                disabled={transcribing}
+                testId="mic-test-start"
+              >
+                {transcribing ? 'Transcribing…' : 'Record a test phrase'}
+              </PrimaryButton>
+            )}
+          </div>
+        )}
+
+        {error != null && (
+          <p style={{ margin: '0.4rem 0 0', fontSize: '0.82rem', color: '#f87171' }}>{error}</p>
+        )}
+
+        {result != null && (
+          <p
+            aria-live="polite"
+            data-testid="mic-test-result"
+            style={{
+              margin: '0.4rem 0 0',
+              fontSize: '0.82rem',
+              lineHeight: 1.5,
+              color: result.kind === 'heard' ? '#86efac' : '#fbbf24',
+            }}
+          >
+            {result.kind === 'heard'
+              ? `Heard: “${result.transcript}” — speaking your turns works.`
+              : result.message}
+          </p>
+        )}
+      </div>
+    </li>
+  )
+}
+
 export default function VoiceSetup() {
   const navigate = useNavigate()
   const {
@@ -369,7 +520,17 @@ export default function VoiceSetup() {
         <p style={{ margin: 0, color: '#a1a1aa', fontSize: '0.9rem', lineHeight: 1.6 }}>
           Speaking your side out loud is the part of practice that transfers. Everything
           below runs on this machine — no account, no audio leaves your computer — and
-          the app stays fully playable in text while you set it up.
+          the app stays fully playable in text while you set it up.{' '}
+          <a
+            href={VOICE_DOCS_URL}
+            target="_blank"
+            rel="noreferrer"
+            data-testid="voice-docs-link"
+            style={{ color: '#a5b4fc' }}
+          >
+            Read the voice guide
+          </a>
+          .
         </p>
       </div>
 
@@ -543,6 +704,7 @@ export default function VoiceSetup() {
                     </select>
                   </li>
                 )}
+                {capability.id === 'stt' && <MicCheckRow sttReady={capability.ready} />}
                 {capability.id === 'vad' && !plan.onnxruntime_installed && (
                   <li
                     data-testid="vad-onnxruntime-row"

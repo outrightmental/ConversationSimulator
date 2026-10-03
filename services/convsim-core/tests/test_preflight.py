@@ -367,6 +367,37 @@ def test_voice_check_warns_when_stt_unavailable(client):
     assert check["fix_action"] is not None
 
 
+def test_voice_check_fix_action_opens_the_guided_flow(client):
+    """The remedy must be the screen that installs voice, not the one that reports it.
+
+    Issue #487: pointing at /settings left the player on the panel that already
+    said "not installed" and offered no way forward.
+    """
+    check = _find_check(_get_preflight(client), "voice-ready")
+    assert check["fix_action"]["href"] == "/voice-setup"
+    assert check["fix_action"]["kind"] == "navigate"
+
+
+@pytest.mark.asyncio
+async def test_voice_check_fix_action_avoids_the_flow_in_demo():
+    """The demo refuses /api/voice/setup/*, so its remedy must not route there."""
+    from convsim_core.routers.preflight import _check_voice_ready
+
+    class _UnavailableHealth:
+        status = "unavailable"
+
+    class _UnavailableWorker:
+        async def health(self):
+            return _UnavailableHealth()
+
+    result = await _check_voice_ready(
+        _UnavailableWorker(), _UnavailableWorker(), _UnavailableWorker(), demo=True
+    )
+    assert result.status == "warn"
+    assert result.fix_action is not None
+    assert result.fix_action.href == "/settings"
+
+
 @pytest.mark.asyncio
 async def test_voice_check_passes_when_all_ready():
     from convsim_core.routers.preflight import _check_voice_ready

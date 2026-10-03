@@ -9,3 +9,5 @@ export const SETUP_DOCS_URL = 'https://docs.conversationsimulator.com/start/inst
 export const UPDATE_DOCS_URL = 'https://docs.conversationsimulator.com/start/install/#updates-and-rollback'
 export const TROUBLESHOOTING_DOCS_URL = 'https://docs.conversationsimulator.com/start/troubleshooting/'
 export const AI_ENGINE_DOCS_URL = 'https://docs.conversationsimulator.com/play/ai-engine/'
+// The player-facing walkthrough of the guided voice setup flow (issue #487).
+export const VOICE_DOCS_URL = 'https://docs.conversationsimulator.com/play/voice/'

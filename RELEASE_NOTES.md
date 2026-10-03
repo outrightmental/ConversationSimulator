@@ -130,6 +130,37 @@ Voice setup no longer blocks first-run. After the first real AI conversation
 ends in a debrief, the app shows a one-time voice invite. Users who never want
 voice are never asked about it during onboarding.
 
+#### Voice setup that actually installs voice (#487)
+
+The Voice readiness panel in Settings reported `STT: Not installed` and stopped
+there — the only way forward was to find `runtimes/*/README.md` and run a shell
+script. **Settings → Voice readiness → Set up voice** now opens a guided screen
+that names every piece voice needs and gives each gap its own next action:
+
+- **Model files are downloaded for you** — a Whisper speech model (four to
+  choose from) and the voice-activity model, about 145 MB for the recommended
+  pair. Source, licence, exact size, SHA-256 and destination are disclosed
+  before the button; every file is checksum-verified before it is installed;
+  progress is per-file and cancellable, and a cancel leaves nothing behind.
+- **Programs you install yourself get the exact one-line command** for your
+  platform, with a copy button and a **Check again** that re-reads the machine.
+  Neither whisper.cpp nor the Kokoro voice server publishes a checksummed
+  download for every platform, so the app will not fetch an unverified binary.
+  The screen also re-checks on window focus, so an install run in a terminal
+  ticks the row over on the way back.
+- **A voice server that is present but stopped** — the Steam depot default —
+  gets a **Start the voice server** button instead of a command.
+- **`ffmpeg`, `onnxruntime` and microphone permission** get their own rows
+  rather than silently degrading a session later, and once speech-to-text is in
+  place, **Record a test phrase** runs one real transcription and repeats back
+  what it heard.
+
+The three places that previously dead-ended now lead here: the Settings
+readiness cards, the Home STT/TTS badges, and the post-session "Next time, say
+it out loud" invite — as does the `voice-ready` system-health warning's fix
+button. Published walkthrough:
+[Speaking and listening](https://docs.conversationsimulator.com/play/voice/).
+
 #### Setup docs rewrite (#386)
 
 The published install and quickstart guides (`docs-site/.../start/`) describe the

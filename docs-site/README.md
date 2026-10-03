@@ -46,6 +46,8 @@ do not rename these slugs without updating the app:
   troubleshooting deep-link targets keyed to preflight check ids)
 - `/play/ai-engine/` (runtime and model options; Settings → Runtime links here.
   The old `/play/local-models/` slug 301-redirects to it via `astro.config.mjs`)
+- `/play/voice/` (the guided voice setup flow; the `/voice-setup` screen links
+  here — see `apps/web/src/setup/docsUrls.ts`)
 - `/create/scenario-authoring/`, `/create/pack-validation/`,
   `/create/quality-bar/`, `/create/sample-pack/`
 - `/project/beta-testing/`

@@ -323,8 +323,6 @@ any user-installed or PATH binary.
 
 ---
 
----
-
 ## 9. Voice asset download policy
 
 Speech-to-text and voice-activity weights follow the same rules as LLM weights,

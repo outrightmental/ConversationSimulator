@@ -509,7 +509,7 @@ describe('FirstRunWizard — issue-378: preflight fix actions never loop back to
             message: 'Some voice features are unavailable.',
             severity: 'informational' as const,
             autofix: false,
-            fix_action: { kind: 'navigate' as const, href: '/settings', label: 'Voice Settings' },
+            fix_action: { kind: 'navigate' as const, href: '/voice-setup', label: 'Set up voice' },
           },
         ],
       },

@@ -4,7 +4,7 @@
 // real download with progress and cancel, and honest guidance for the two
 // engines the app will not fetch.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import type { VoiceInstallJob, VoiceSetupPlan } from '@convsim/shared'
 import VoiceSetup from '../screens/VoiceSetup'
@@ -17,10 +17,47 @@ vi.mock('../api/client', () => ({
     cancelVoiceInstall: vi.fn(),
     startVoiceEngine: vi.fn(),
   },
+  apiClient: {
+    uploadAudio: vi.fn(),
+  },
 }))
 
-import { api } from '../api/client'
+// The real hook reports 'unsupported' under jsdom (no MediaRecorder), which
+// would hide the whole microphone step. Driving it from the test lets each
+// permission state be asserted.
+vi.mock('../hooks/useMicCapture', () => ({
+  useMicCapture: vi.fn(),
+  MAX_RECORDING_SECONDS: 60,
+}))
+
+import { api, apiClient } from '../api/client'
+import { useMicCapture } from '../hooks/useMicCapture'
+import type { MicPermission } from '../hooks/useMicCapture'
 const mockApi = vi.mocked(api)
+const mockApiClient = vi.mocked(apiClient)
+
+function makeMicState(overrides: Partial<ReturnType<typeof useMicCapture>> = {}) {
+  return {
+    permission: 'idle' as MicPermission,
+    isRecording: false,
+    recordingSeconds: 0,
+    error: null,
+    stream: null,
+    requestPermission: vi.fn(),
+    startRecording: vi.fn(),
+    stopRecording: vi.fn(),
+    releaseStream: vi.fn(),
+    ...overrides,
+  }
+}
+
+/** The blob callback VoiceSetup handed the mic hook, i.e. "recording finished". */
+async function finishRecording(blob = new Blob(['audio'])) {
+  const onAudioReady = vi.mocked(useMicCapture).mock.calls[0][0]
+  await act(async () => {
+    await onAudioReady?.(blob)
+  })
+}
 
 function makeAsset(overrides: Partial<VoiceSetupPlan['assets'][number]> = {}) {
   return {
@@ -140,6 +177,11 @@ beforeEach(() => {
     ok: true,
     data: { engine_id: 'kokoro-server', state: 'running', started: true, message: 'The voice server is running.' },
   })
+  mockApiClient.uploadAudio.mockResolvedValue({
+    ok: true,
+    data: { transcript: 'Thanks for seeing me today.', status: 'ok' },
+  })
+  vi.mocked(useMicCapture).mockReturnValue(makeMicState())
 })
 
 describe('VoiceSetup — what is missing', () => {
@@ -384,5 +426,122 @@ describe('VoiceSetup — finished', () => {
     renderScreen()
     await screen.findByTestId('voice-setup-screen')
     expect(screen.queryByTestId('voice-ready-panel')).toBeNull()
+  })
+})
+
+
+describe('VoiceSetup — the microphone', () => {
+  /** STT ready on the server: models installed, engine found. */
+  function readyPlan() {
+    const plan = makePlan()
+    plan.capabilities = plan.capabilities.map((c) => (c.id === 'stt' ? { ...c, ready: true } : c))
+    plan.assets = plan.assets.map((a) => ({ ...a, installed: true, selected: a.recommended }))
+    return plan
+  }
+
+  it('asks for permission, because no download can grant it', async () => {
+    const requestPermission = vi.fn()
+    vi.mocked(useMicCapture).mockReturnValue(makeMicState({ requestPermission }))
+
+    renderScreen()
+    await screen.findByTestId('voice-setup-screen')
+
+    expect(screen.getByTestId('mic-check-row')).toHaveTextContent('not allowed yet')
+    fireEvent.click(screen.getByTestId('mic-allow'))
+    expect(requestPermission).toHaveBeenCalledOnce()
+  })
+
+  it('says how to recover a microphone the browser has blocked', async () => {
+    vi.mocked(useMicCapture).mockReturnValue(makeMicState({ permission: 'denied' }))
+
+    renderScreen()
+    const row = await screen.findByTestId('mic-check-row')
+
+    expect(row).toHaveTextContent('blocked')
+    expect(row).toHaveTextContent('site permissions')
+    expect(screen.getByTestId('mic-allow')).toHaveTextContent('Try the microphone again')
+  })
+
+  it('explains that this browser cannot record at all', async () => {
+    vi.mocked(useMicCapture).mockReturnValue(makeMicState({ permission: 'unsupported' }))
+
+    renderScreen()
+    const row = await screen.findByTestId('mic-check-row')
+
+    expect(row).toHaveTextContent('not available in this browser')
+    // Nothing to ask for: the browser, not the player, is the blocker.
+    expect(screen.queryByTestId('mic-allow')).toBeNull()
+  })
+
+  it('withholds the test until speech-to-text is actually ready', async () => {
+    vi.mocked(useMicCapture).mockReturnValue(makeMicState({ permission: 'granted' }))
+
+    renderScreen()
+    const row = await screen.findByTestId('mic-check-row')
+
+    expect(row).toHaveTextContent('Finish the speech-to-text steps above')
+    expect(screen.queryByTestId('mic-test-start')).toBeNull()
+  })
+
+  it('runs one real round trip and repeats back what it heard', async () => {
+    const startRecording = vi.fn()
+    vi.mocked(useMicCapture).mockReturnValue(makeMicState({ permission: 'granted', startRecording }))
+    mockApi.getVoiceSetupPlan.mockResolvedValue({ ok: true, data: readyPlan() })
+
+    renderScreen()
+    fireEvent.click(await screen.findByTestId('mic-test-start'))
+    expect(startRecording).toHaveBeenCalledOnce()
+
+    await finishRecording()
+
+    expect(mockApiClient.uploadAudio).toHaveBeenCalledOnce()
+    expect(await screen.findByTestId('mic-test-result')).toHaveTextContent(
+      'Thanks for seeing me today.',
+    )
+  })
+
+  it('stops a recording that is in progress', async () => {
+    const stopRecording = vi.fn()
+    vi.mocked(useMicCapture).mockReturnValue(
+      makeMicState({ permission: 'granted', isRecording: true, recordingSeconds: 3, stopRecording }),
+    )
+    mockApi.getVoiceSetupPlan.mockResolvedValue({ ok: true, data: readyPlan() })
+
+    renderScreen()
+    const stop = await screen.findByTestId('mic-test-stop')
+    expect(stop).toHaveTextContent('3s')
+
+    fireEvent.click(stop)
+    expect(stopRecording).toHaveBeenCalledOnce()
+  })
+
+  it('reports a transcription that produced no words', async () => {
+    vi.mocked(useMicCapture).mockReturnValue(makeMicState({ permission: 'granted' }))
+    mockApi.getVoiceSetupPlan.mockResolvedValue({ ok: true, data: readyPlan() })
+    mockApiClient.uploadAudio.mockResolvedValue({
+      ok: true,
+      data: { transcript: null, status: 'ok' },
+    })
+
+    renderScreen()
+    fireEvent.click(await screen.findByTestId('mic-test-start'))
+    await finishRecording()
+
+    expect(await screen.findByTestId('mic-test-result')).toHaveTextContent('No speech was detected')
+  })
+
+  it('points at the right culprit when the worker refuses the audio', async () => {
+    vi.mocked(useMicCapture).mockReturnValue(makeMicState({ permission: 'granted' }))
+    mockApi.getVoiceSetupPlan.mockResolvedValue({ ok: true, data: readyPlan() })
+    mockApiClient.uploadAudio.mockResolvedValue({
+      ok: true,
+      data: { transcript: null, status: 'error' },
+    })
+
+    renderScreen()
+    fireEvent.click(await screen.findByTestId('mic-test-start'))
+    await finishRecording()
+
+    expect(await screen.findByTestId('mic-test-result')).toHaveTextContent('ffmpeg')
   })
 })

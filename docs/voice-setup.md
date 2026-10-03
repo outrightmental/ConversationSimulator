@@ -46,6 +46,22 @@ The plan is re-read on window focus. The two native engines are installed
 *outside* the app, so a player who runs `brew install whisper-cpp` in a
 terminal and switches back sees the row tick over without a reload.
 
+### The microphone row
+
+The last row of the speech section is the one piece no download can satisfy.
+The browser has to be granted microphone access, so the row asks for it
+(`useMicCapture.requestPermission`) and names the way back from a denial —
+`navigator.permissions` reporting `denied` is otherwise a silent dead end
+discovered mid-conversation.
+
+Once the plan reports `stt.ready`, the same row offers **Record a test
+phrase**: one real round trip through `POST /api/stt/upload` — microphone,
+`ffmpeg`, whisper model — with the transcript repeated back. Installing the
+pieces does not prove the chain works end to end, and the first turn of a
+scenario is the wrong place to find that out. A failure names the likely
+culprit rather than reporting "unavailable": an `error` status points at
+`ffmpeg`, an empty transcript at mic placement.
+
 ## 3. Downloadable assets
 
 The catalogue lives in
@@ -137,11 +153,13 @@ from a real error.
 | Settings → Voice readiness | Always (header CTA), plus an install link on each component that is not ready |
 | Home → STT / TTS status badge | While that component is not installed |
 | Debrief → "Next time, say it out loud" | After the first real conversation |
+| The `voice-ready` preflight warning's fix action | Whenever a voice component is unavailable (full edition; the demo refuses the flow, so its remedy stays on Settings) |
 
 ---
 
 ## Links
 
+- [Speaking and listening](https://docs.conversationsimulator.com/play/voice/) — the published player-facing walkthrough (`docs-site/src/content/docs/play/voice.md`)
 - [`docs/model-download-policy.md`](model-download-policy.md) — the rules voice assets inherit
 - [`runtimes/whisper_cpp/README.md`](../runtimes/whisper_cpp/README.md) — STT engine reference
 - [`runtimes/kokoro/README.md`](../runtimes/kokoro/README.md) — TTS server reference

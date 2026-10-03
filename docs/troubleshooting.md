@@ -180,8 +180,10 @@ screen falls back to text input and on-screen NPC dialogue automatically.
 
 **First stop: Settings → Voice readiness → Set up voice** (or go to
 `/voice-setup`). That screen names every missing piece, downloads the model
-files itself, and gives you the exact install command for anything it will not
-download. Full description: [`docs/voice-setup.md`](voice-setup.md).
+files itself, gives you the exact install command for anything it will not
+download, and — once speech-to-text is in place — runs one real transcription
+on demand so a broken chain is visible before a session depends on it. Full
+description: [`docs/voice-setup.md`](voice-setup.md).
 
 **"Speech input unavailable" on the conversation screen**
 
@@ -189,9 +191,10 @@ Speech-to-text needs both the `whisper-cli` binary and a GGML model. The setup
 screen reports which of the two is missing. If both show as present and the
 microphone button is still greyed out:
 
-1. Check that your browser has microphone permission for `127.0.0.1`.
+1. Check that your browser has microphone permission for `127.0.0.1`. The
+   setup screen asks for it directly and reports a denial.
 2. Install `ffmpeg` — the browser records WebM/Opus and whisper.cpp reads WAV.
-   The setup screen flags this too.
+   The setup screen flags this too, and a failed test phrase names it.
 3. Check the logs folder (see [Where are the logs?](#engine-startup-failure)
    for the platform-specific path) for errors from the STT worker.
 

@@ -250,7 +250,11 @@ and on-screen NPC dialogue automatically — nothing breaks.
 **To turn it on, open Settings → Voice readiness → Set up voice.** That screen
 lists every piece voice needs, downloads the model files for you (each one
 checksum-verified before it is installed), and shows the exact one-line command
-for the two engines it will not download on your behalf.
+for the two engines it will not download on your behalf. Once speech-to-text is
+in place it also offers **Record a test phrase**, which runs one real
+transcription and repeats back what it heard — the quickest way to tell a
+broken chain from a quiet microphone. Full walkthrough:
+[Speaking and listening](/play/voice/).
 
 **"Speech input unavailable"**
 
@@ -258,7 +262,8 @@ Speech-to-text needs both the whisper.cpp program and a speech model. The setup
 screen says which is missing. If both are present and the microphone button is
 still greyed out:
 
-1. Check that your device has microphone permission for the app.
+1. Check that your device has microphone permission for the app. The setup
+   screen asks for it directly and reports when the browser is blocking it.
 2. Install `ffmpeg` — some recordings cannot be decoded without it. The setup
    screen flags this as its own row.
 3. Check the logs folder for errors from the speech worker.

@@ -271,6 +271,35 @@ verified SHA-256 checksum; no entry ships a `PENDING` value.
 
 ---
 
+## 8. Voice model files
+
+Speech-to-text and voice-activity weights follow every rule above, with one
+difference worth naming: they are catalogued in the app's voice registry rather
+than `registry.yaml`, because each file's destination is resolved from the
+engine that reads it — a speech model can never land somewhere the engine does
+not look.
+
+| | AI model weights | Voice model files |
+|---|---|---|
+| Hosts | Hugging Face | Hugging Face (`ggerganov/whisper.cpp`) and GitHub (`snakers4/silero-vad`) |
+| Sizes | 2.5–14.3 GB | 2.2–465 MB |
+| Interrupted by a crash | The download resumes automatically on next launch | The setup screen shows what landed; one button fetches the rest |
+
+What does *not* differ: nothing transfers until you press the download button,
+all six disclosure fields (name, source, licence, size, SHA-256, destination)
+are shown above that button, a checksum mismatch deletes the file and fails the
+install, and partial files are removed on cancel or error.
+
+**Engine programs are never downloaded.** Neither whisper.cpp nor the Kokoro
+voice server publishes a checksummed release for every platform, so instead of
+fetching an unverified binary the app shows you the one command that installs
+it. The single exception is a voice server that is already on your machine but
+not running — Steam builds bundle it — which the app starts for you.
+
+See [Speaking and listening](/play/voice/) for the player-facing walkthrough.
+
+---
+
 ## Links
 
 - [`model-registry/registry.yaml`](https://github.com/outrightmental/ConversationSimulator/blob/main/model-registry/registry.yaml) — model metadata
@@ -279,4 +308,5 @@ verified SHA-256 checksum; no entry ships a `PENDING` value.
 - [`publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md`](https://github.com/outrightmental/ConversationSimulator/blob/main/publishing/STEAM_COMPLIANCE_AND_RISK_REGISTER.md) — risk register (MD-01–MD-04)
 - [`publishing/STEAM_DEPOT_CONTENTS.md`](https://github.com/outrightmental/ConversationSimulator/blob/main/publishing/STEAM_DEPOT_CONTENTS.md) — what ships in the depot
 - [Choosing how to run the AI](/play/ai-engine/) — player-facing model installation guide
+- [Speaking and listening](/play/voice/) — the guided speech-to-text and NPC voice setup
 - [Steam roadmap](/dev/steam-roadmap/) — model download transparency specification
