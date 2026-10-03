@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
 """Integration tests for the scenario library API."""
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -7,8 +9,28 @@ from convsim_core.app import create_app
 from convsim_core.config import ServiceConfig
 from tests.helpers import make_pack_zip, make_pack_dir
 
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_OFFICIAL_PACKS = _REPO_ROOT / "packs" / "official"
+
 
 # ── helpers ───────────────────────────────────────────────────────────────────
+
+
+@pytest.fixture()
+def seeded_client(tmp_path):
+    """A client whose profile has the official packs seeded from the repo."""
+    config = ServiceConfig(
+        host="127.0.0.1",
+        port=7355,
+        data_dir=str(tmp_path / "data"),
+        log_dir=str(tmp_path / "logs"),
+        db_dir=str(tmp_path / "db"),
+        packs_dir=str(tmp_path / "packs"),
+        official_packs_dir=str(_OFFICIAL_PACKS),
+    )
+    app = create_app(config)
+    with TestClient(app) as c:
+        yield c
 
 
 @pytest.fixture()
@@ -555,3 +577,28 @@ def test_validate_yaml_manifest_schema_violation_returns_schema_violation_rule(c
     errors = ["manifest.yaml [name]: 'Foo Bar' does not match '^[a-z]'"]
     rule_ids = errors_to_rule_ids(errors)
     assert "SCHEMA_VIOLATION" in rule_ids
+
+
+# ── NPC name (issue #501 §2) ─────────────────────────────────────────────────
+# "NPC" was the most technical word on the conversation screen, and the only
+# reason it was there is that the character's name was never exposed: it lives
+# in a separate pack file the scenario points at with `npc.ref`.
+
+
+def test_scenario_card_carries_the_npc_name(seeded_client):
+    cards = seeded_client.get("/api/scenarios").json()
+    by_id = {c["scenario_id"]: c for c in cards}
+    assert by_id["first_words_tutorial"]["npc_name"] == "Alex Chen"
+
+
+def test_scenario_detail_carries_the_npc_name(seeded_client):
+    detail = seeded_client.get("/api/scenarios/first_words_tutorial").json()
+    assert detail["npc_name"] == "Alex Chen"
+
+
+def test_every_seeded_scenario_resolves_an_npc_name(seeded_client):
+    """A scenario whose name does not resolve falls back to "NPC" in the UI."""
+    cards = seeded_client.get("/api/scenarios").json()
+    assert cards, "expected the official packs to be seeded"
+    missing = [c["scenario_id"] for c in cards if not c.get("npc_name")]
+    assert missing == [], f"scenarios with no resolvable NPC name: {missing}"

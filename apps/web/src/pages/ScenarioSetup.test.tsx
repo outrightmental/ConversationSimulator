@@ -439,7 +439,7 @@ describe('ScenarioSetupPage', () => {
           input_mode: 'push-to-talk',
           tts_enabled: true,
           tts_voice_id: 'af_heart',
-          show_state_meters: false,
+          show_state_meters: true,
           save_transcript: true,
           seed: null,
         },
@@ -461,7 +461,8 @@ describe('ScenarioSetupPage', () => {
           input_mode: 'push-to-talk',
           tts_enabled: true,
           tts_voice_id: 'af_heart',
-          show_state_meters: false,
+          // On by default wherever the scenario permits them (issue #501 §3).
+          show_state_meters: true,
           save_transcript: true,
           seed: null,
         });
@@ -620,15 +621,33 @@ describe('ScenarioSetupPage', () => {
       );
     });
 
-    it('shows state meters toggle when scenario permits it', async () => {
+    it('names the meters toggle the way the panel it switches on is named', async () => {
+      // Issue #501 §3 is a label/naming mismatch; "Show NPC state meters"
+      // against a panel headed "Conversation meters" is the same mismatch, and
+      // this is the label the player reads first.
       renderSetup();
       await waitFor(() => screen.getByText('Behavioral Interview'));
       expect(
-        screen.getByRole('checkbox', { name: /show npc state meters/i }),
+        screen.getByRole('checkbox', { name: /show the conversation meters/i }),
       ).toBeInTheDocument();
+      expect(
+        screen.queryByRole('checkbox', { name: /state meters/i }),
+      ).not.toBeInTheDocument();
     });
 
-    it('hides state meters toggle and shows note when scenario does not permit it', async () => {
+    it('starts the meters toggle on when the scenario permits them', async () => {
+      // Issue #501 §3. The First Words tutorial opens with "Above this
+      // conversation you'll see two meters" and spends three of its six turns
+      // on them; with the toggle defaulting off, a player on default settings
+      // played that whole tour against a screen with no meters on it.
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+      expect(
+        screen.getByRole('checkbox', { name: /show the conversation meters/i }),
+      ).toBeChecked();
+    });
+
+    it('hides the meters toggle and says so when the scenario does not permit them', async () => {
       mockApi.getScenario.mockResolvedValue({ ok: true as const, data: {
         ...mockScenario,
         state_meters_permitted: false,
@@ -636,10 +655,10 @@ describe('ScenarioSetupPage', () => {
       renderSetup();
       await waitFor(() => screen.getByText('Behavioral Interview'));
       expect(
-        screen.queryByRole('checkbox', { name: /show npc state meters/i }),
+        screen.queryByRole('checkbox', { name: /conversation meters/i }),
       ).not.toBeInTheDocument();
       expect(
-        screen.getByText(/state meters are hidden in this scenario/i),
+        screen.getByText(/the conversation meters are hidden in this scenario/i),
       ).toBeInTheDocument();
     });
   });

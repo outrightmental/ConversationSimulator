@@ -784,11 +784,12 @@ class TestDebriefWithRubricObservations:
     def test_debrief_turning_points_reference_real_turns(self, tmp_config):
         """Golden fixture: all turning_point turn_numbers must exist in the transcript.
 
-        _RubricRuntime always returns turn_number=3 in its debrief. With 1 player turn
-        the stored transcript is {1, 2} (player_turn=2n-1, npc_turn=2n), so turn 3 would
-        be filtered out and the assertion loop would trivially pass over an empty list.
-        Two player turns produce stored turns {1, 2, 3, 4}, so turn 3 survives the filter
-        and the non-empty assertion below ensures the loop actually runs.
+        Turning points are numbered in whole turns — one player message plus the
+        reply to it (issue #501 §4) — because that is what the transcript labels
+        and what the player is asked to click. _RubricRuntime always returns
+        turn_number=3, so the session has to play three whole turns for it to
+        survive the filter; the non-empty assertion below ensures the loop
+        actually runs.
         """
         app = create_app(tmp_config)
         with TestClient(app) as client:
@@ -799,10 +800,11 @@ class TestDebriefWithRubricObservations:
 
             app.state.runtime = _RubricRuntime()
 
-            # Two turns so stored turn numbers include 3 (second player turn = 2*2-1).
+            # Three whole turns so turn 3 is a turn the player actually played.
             for msg in [
                 "I led a cross-functional team at my last company.",
                 "The biggest challenge was keeping everyone aligned on priorities.",
+                "We shipped it a week early in the end.",
             ]:
                 client.post(
                     f"/api/sessions/{session_id}/turn",
@@ -812,10 +814,13 @@ class TestDebriefWithRubricObservations:
 
             debrief_res = client.post(f"/api/sessions/{session_id}/debrief")
 
-            # Collect all turn numbers stored in the transcript (must be inside with block).
+            # Collect the whole turns stored in the transcript (must be inside
+            # the with block). The opening is row 0 and belongs to no turn.
             transcript_res = client.get(f"/api/sessions/{session_id}/transcript")
             stored_turn_numbers = {
-                t["turn_number"] for t in transcript_res.json()["turns"]
+                (t["turn_number"] + 1) // 2
+                for t in transcript_res.json()["turns"]
+                if t["turn_number"] > 0
             }
 
         assert debrief_res.status_code == 200
@@ -1223,3 +1228,45 @@ class TestDebriefWritesRelationshipMemory:
             "turn pipeline read None — write/read pack_id keys diverged"
         )
         assert expected_obs in recap["key_observations"]
+
+
+# ── Whole-turn numbering of a debrief's turn references (issue #501 §4) ───────
+# One turn is the player's message plus the reply to it. The transcript labels
+# that number, so it is the only number a debrief may quote at a player: a
+# turning point reported as the NPC's row number sent "go to turn N" a whole
+# turn past the moment it named, and the badge disagreed with the label beside
+# the message it pointed at.
+
+
+class TestDebriefTurnReferencesAreWholeTurns:
+    def test_whole_turn_of_maps_both_halves_to_one_number(self):
+        from convsim_core.services.debrief_engine import whole_turn_of
+
+        # The opening belongs to no exchange.
+        assert whole_turn_of(0) == 0
+        # player 2n-1 and NPC 2n are both turn n.
+        assert [whole_turn_of(n) for n in (1, 2, 3, 4, 5, 6)] == [1, 1, 2, 2, 3, 3]
+
+    def test_key_turns_are_numbered_in_whole_turns(self):
+        from convsim_core.services.debrief_engine import _identify_key_turns
+
+        key = _identify_key_turns([
+            _make_turn_row(turn_number=2, role="npc", state_delta_json='{"trust": 12}'),
+            _make_turn_row(turn_number=4, role="npc", state_delta_json='{"trust": -9}'),
+        ])
+        assert [k["turn_number"] for k in key] == [1, 2]
+        # The description quotes the same number, so the prose and the badge
+        # cannot disagree.
+        assert "turn 1" in key[0]["description"]
+        assert "turn 2" in key[1]["description"]
+
+    def test_prompt_records_number_both_halves_the_same(self):
+        from convsim_core.services.debrief_engine import _build_debrief_turn_records
+
+        records = _build_debrief_turn_records(list(_GOLDEN_TURNS))
+        numbered = [(r.role, r.turn_number) for r in records]
+        assert numbered[0] == ("npc_opening", 0)
+        # The player's message and the reply to it are one turn to the model
+        # too, so a turning point it cites is a number the player can find.
+        assert numbered[1] == ("player", 1)
+        assert numbered[2] == ("npc", 1)

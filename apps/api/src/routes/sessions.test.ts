@@ -85,6 +85,62 @@ describe('GET /api/sessions', () => {
     const res = await app.inject({ method: 'GET', url: '/api/sessions' });
     expect(res.json<{ sessions: unknown[] }>().sessions).toHaveLength(0);
   });
+
+  // ── status / limit (issue #501 §1) ────────────────────────────────────────
+  // The resume affordances ask for `status=in_progress&limit=1` and offer
+  // whatever comes back as "Conversation in progress". A listing that ignored
+  // the filter would offer to resume a conversation that had already ended, so
+  // this proxy honours the same contract convsim-core serves.
+
+  async function createInState(state: string): Promise<string> {
+    const r = await app.inject({ method: 'POST', url: '/api/sessions', payload: validRequest });
+    const { session_id } = r.json<SessionCreateResponse>();
+    getDb().prepare('UPDATE sessions SET state = ? WHERE session_id = ?').run(state, session_id);
+    return session_id;
+  }
+
+  it('status=in_progress returns only sessions that can be resumed', async () => {
+    const live = await createInState('PlayerTurnListening');
+    await createInState('NotStarted');
+    await createInState('Ended');
+
+    const res = await app.inject({ method: 'GET', url: '/api/sessions?status=in_progress' });
+    const { sessions } = res.json<{ sessions: SessionCreateResponse[] }>();
+    expect(sessions.map((s) => s.session_id)).toEqual([live]);
+  });
+
+  it('status=ended covers the debrief states, not just Ended', async () => {
+    const ended = await createInState('Ended');
+    const generating = await createInState('DebriefGenerating');
+    const ready = await createInState('DebriefReady');
+    const errored = await createInState('Error');
+    await createInState('PlayerTurnListening');
+
+    const res = await app.inject({ method: 'GET', url: '/api/sessions?status=ended' });
+    const { sessions } = res.json<{ sessions: SessionCreateResponse[] }>();
+    expect(sessions.map((s) => s.session_id).sort()).toEqual(
+      [ended, generating, ready, errored].sort(),
+    );
+  });
+
+  it('limit caps the listing, newest first', async () => {
+    await createInState('PlayerTurnListening');
+    const newest = await createInState('PlayerTurnListening');
+
+    const res = await app.inject({ method: 'GET', url: '/api/sessions?limit=1' });
+    const { sessions } = res.json<{ sessions: SessionCreateResponse[] }>();
+    expect(sessions.map((s) => s.session_id)).toEqual([newest]);
+  });
+
+  it('rejects an out-of-range limit and an unknown status', async () => {
+    expect((await app.inject({ method: 'GET', url: '/api/sessions?limit=0' })).statusCode).toBe(400);
+    expect((await app.inject({ method: 'GET', url: '/api/sessions?limit=501' })).statusCode).toBe(
+      400,
+    );
+    expect((await app.inject({ method: 'GET', url: '/api/sessions?status=live' })).statusCode).toBe(
+      400,
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -271,6 +327,29 @@ describe('GET /api/sessions/:session_id', () => {
       url: '/api/sessions/sess-doesnotexist',
     });
     expect(res.statusCode).toBe(404);
+  });
+
+  it('reports the meter values a resuming screen has to redraw', async () => {
+    // Issue #501 §1: meter values otherwise only ever arrive with a turn, so a
+    // player who stepped out of a conversation and came back saw no meters at
+    // all until they sent another message.
+    const createRes = await app.inject({
+      method: 'POST',
+      url: '/api/sessions',
+      payload: validRequest,
+    });
+    const { session_id } = createRes.json<SessionCreateResponse>();
+    await app.inject({ method: 'POST', url: `/api/sessions/${session_id}/start` });
+    await app.inject({
+      method: 'POST',
+      url: `/api/sessions/${session_id}/turn`,
+      payload: { content: 'Hello there.' },
+    });
+
+    const getRes = await app.inject({ method: 'GET', url: `/api/sessions/${session_id}` });
+    const body = getRes.json<SessionCreateResponse>();
+    expect(body.visible_state).toBeTruthy();
+    expect(Object.keys(body.visible_state ?? {}).length).toBeGreaterThan(0);
   });
 });
 

@@ -4,8 +4,9 @@ fixture_id: smoke_first_words_tutorial
 scenario_id: first_words_tutorial
 description: >-
   Verifies that the First Words tutorial scenario loads correctly and that
-  three scripted turns advance the session state without triggering safety
-  stops.  No model is required — uses the scripted runtime.
+  scripted turns advance the session state without triggering safety stops,
+  and that a question about the meters is answered rather than met with the
+  next line of the tour.  No model is required — uses the scripted runtime.
 seed: 1
 input_mode: text
 difficulty: standard
@@ -27,6 +28,15 @@ turns:
       safety_status: ok
   - turn: 3
     player_input: "I see the engagement meter went up. That's interesting!"
+    expect:
+      state_delta_contains:
+        - engagement
+      session_control: continue_session
+      safety_status: ok
+  # A question must be answered, not met with the next line of the tour
+  # (issue #501 §3).
+  - turn: 4
+    player_input: "Wait, what are the meters?"
     expect:
       state_delta_contains:
         - engagement

@@ -207,7 +207,17 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
             ? prev.voice_id
             : defaultVoiceId,
           input_mode: rt.stt_ready ? 'push-to-talk' : 'text-only',
-          show_state_meters: scenarioData.state_meters_permitted ? prev.show_state_meters : false,
+          // On by default wherever the scenario permits them (issue #501 §3).
+          // Every other field here is derived from the scenario; this one sat
+          // at a hardcoded `false`, so a player on default settings started the
+          // First Words tutorial — whose opening line is "Above this
+          // conversation you'll see two meters" and three of whose six turns
+          // are about them — with no meters on screen at all. "Generally
+          // confused about meters and where they appear" is the report; a
+          // tutorial narrating a panel that was switched off is the sharpest
+          // version of it. A scenario that withholds them for realism still
+          // forces false, and the toggle is one click away either way.
+          show_state_meters: Boolean(scenarioData.state_meters_permitted),
         }
       })
     })();
@@ -650,14 +660,24 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
                         checked={form.show_state_meters}
                         onChange={(e) => setField('show_state_meters', e.target.checked)}
                       />
+                      {/* Named to match the panel it switches on — the
+                          conversation screen's "Conversation meters", above the
+                          transcript. It used to read "Show NPC state meters",
+                          so a player ticking it met a differently-named panel
+                          one screen later: the same label/naming mismatch
+                          issue #501 §3 reported, handed over in the other
+                          direction, and the first of the two they read. */}
                       <span className="brief-toggle-text">
-                        Show NPC state meters during conversation
+                        Show the conversation meters
+                        <span className="brief-toggle-note">
+                          {' '}— how engaged and open the other person is, updated every turn
+                        </span>
                       </span>
                     </label>
                   )}
                   {!scenario.state_meters_permitted && (
                     <p className="brief-note">
-                      State meters are hidden in this scenario to preserve realism.
+                      The conversation meters are hidden in this scenario, to keep it realistic.
                     </p>
                   )}
                 </div>

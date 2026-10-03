@@ -86,15 +86,15 @@ describe('PerformanceWarningBanner', () => {
     expect(screen.getByRole('status', { name: /performance warnings/i })).toBeInTheDocument()
   })
 
-  it('navigates to /settings when Runtime Settings button is clicked', () => {
+  it('navigates to /settings when the settings button is clicked', () => {
     renderBanner([
       { code: 'use_smaller_model', title: 'NPC is slow', detail: 'Token took 4s.' },
     ])
-    fireEvent.click(screen.getByRole('button', { name: /open runtime settings/i }))
+    fireEvent.click(screen.getByRole('button', { name: /open settings/i }))
     expect(mockNavigate).toHaveBeenCalledWith('/settings')
   })
 
-  it('shows the warning without the Runtime Settings button in the demo edition', () => {
+  it('shows the warning without the settings button in the demo edition', () => {
     // The demo hides the runtime section of Settings (issue #495); the button
     // would land the player on a page with nothing to adjust.
     vi.stubEnv('VITE_CONVSIM_EDITION', 'demo')
@@ -103,7 +103,7 @@ describe('PerformanceWarningBanner', () => {
         { code: 'use_smaller_model', title: 'NPC is slow', detail: 'Token took 4s.' },
       ])
       expect(screen.getByText(/npc is slow/i)).toBeInTheDocument()
-      expect(screen.queryByRole('button', { name: /open runtime settings/i })).not.toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: /open settings/i })).not.toBeInTheDocument()
     } finally {
       vi.unstubAllEnvs()
     }

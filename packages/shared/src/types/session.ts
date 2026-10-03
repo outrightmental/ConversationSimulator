@@ -19,6 +19,39 @@ export type SessionState =
 
 export type EndingType = 'player_exit' | 'success' | 'failure' | 'timeout' | 'safety_stop';
 
+/** States a session can be picked back up from — the resumable set (issue #501
+ *  §1). `NotStarted` is excluded on purpose: nothing has been said yet, so
+ *  there is no conversation to resume.
+ *
+ *  Mirrors `RESUMABLE_FLOW_STATES` in convsim-core's sessions router, which is
+ *  the one copy this cannot import — a pytest guard asserts the two agree.
+ *  Everything on the TypeScript side reads it from here: the proxy's
+ *  `status=in_progress` filter and Settings' per-session Resume button, which
+ *  picks unfinished conversations out of a full listing client-side. A list
+ *  that disagreed with the filter would offer to resume a conversation that
+ *  had already ended, or hide one that had not. */
+export const RESUMABLE_SESSION_STATES = [
+  'PlayerTurnListening',
+  'PlayerTurnReview',
+  'NpcThinking',
+  'NpcSpeaking',
+  'ScenarioEvent',
+] as const satisfies readonly SessionState[];
+
+/** States a session has finished in. `Ended` is only the first: generating the
+ *  debrief moves the row to `DebriefGenerating` and then `DebriefReady`, and a
+ *  failed debrief leaves `Error`. Mirrors `ENDED_FLOW_STATES` in convsim-core. */
+export const ENDED_SESSION_STATES = [
+  'Ended',
+  'DebriefGenerating',
+  'DebriefReady',
+  'Error',
+] as const satisfies readonly SessionState[];
+
+export function isResumableSessionState(state: string): boolean {
+  return (RESUMABLE_SESSION_STATES as readonly string[]).includes(state);
+}
+
 export interface SessionCreateRequest {
   scenario_id: string;
   difficulty: ScenarioDifficulty;
@@ -49,10 +82,22 @@ export interface SessionCreateResponse {
   state: SessionState;
   created_at: string;
   setup: SessionCreateRequest;
-  // Included in list responses (GET /api/sessions) but absent from creation responses
   ending_type?: EndingType | null;
+  /** Whole turns completed — one player message plus the NPC's reply. */
   turn_count?: number;
   ended_at?: string | null;
+  /** Current meter values, minus the variables the scenario keeps hidden.
+   *  Only GET /api/sessions/{id} reports it; a resuming conversation screen
+   *  reads its meters back from here. Absent means "not reported". */
+  visible_state?: Record<string, number> | null;
+}
+
+/** Filter for GET /api/sessions. 'in_progress' is the resumable set: started
+ *  and not ended, which is what the resume entry points offer (issue #501). */
+export type SessionListStatus = 'all' | 'in_progress' | 'ended';
+
+export interface SessionListResponse {
+  sessions: SessionCreateResponse[];
 }
 
 export interface SessionEvent {

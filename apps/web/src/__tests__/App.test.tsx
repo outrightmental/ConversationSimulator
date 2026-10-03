@@ -83,7 +83,9 @@ describe('App shell', () => {
   it('renders Conversation at /conversation/:id', () => {
     renderAt('/conversation/sess-001')
     expect(screen.getByRole('heading', { name: /conversation/i })).toBeInTheDocument()
-    expect(screen.getByText(/sess-001/)).toBeInTheDocument()
+    // The session id is a technical-wording detail now (issue #501 §2), so the
+    // route is identified by the screen it mounted, not by the id in its header.
+    expect(screen.getByTestId('conversation-page')).toBeInTheDocument()
   })
 
   it('renders Debrief at /debrief/:id', () => {
@@ -111,13 +113,13 @@ describe('App shell', () => {
   it('shows healthy status when backend returns ok', async () => {
     mockFetch({ status: 'ok' })
     renderAt('/')
-    expect(await screen.findByText('Local runtime: Ready')).toBeInTheDocument()
+    expect(await screen.findByText('AI engine: Ready')).toBeInTheDocument()
   })
 
   it('shows unavailable status when backend is unreachable', async () => {
     vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('Network error'))))
     renderAt('/')
-    expect(await screen.findByText('Local runtime: Unavailable')).toBeInTheDocument()
+    expect(await screen.findByText('AI engine: Unavailable')).toBeInTheDocument()
   })
 })
 

@@ -3,7 +3,7 @@
 import json
 import os
 import sqlite3
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Optional
 
 import yaml
@@ -234,6 +234,7 @@ def _row_to_card(row: sqlite3.Row) -> ScenarioCard:
     yaml_data = _load_scenario_yaml(row["pack_source_path"], row["rel_path"])
     return ScenarioCard(
         scenario_id=row["scenario_id"],
+        npc_name=_npc_display_name(row["pack_source_path"], row["rel_path"], yaml_data),
         pack_id=row["pack_id"],
         pack_name=row["pack_name"],
         title=row["title"] or row["scenario_id"],
@@ -267,6 +268,7 @@ def _row_to_detail(row: sqlite3.Row, *, include_hidden: bool) -> ScenarioDetail:
 
     return ScenarioDetail(
         scenario_id=row["scenario_id"],
+        npc_name=_npc_display_name(row["pack_source_path"], row["rel_path"], yaml_data),
         pack_id=row["pack_id"],
         pack_name=row["pack_name"],
         title=row["title"] or row["scenario_id"],
@@ -294,6 +296,11 @@ _YAML_CACHE: dict[str, tuple[float, dict]] = {}
 
 def _load_scenario_yaml(pack_source_path: Optional[str], rel_path: Optional[str]) -> dict:
     """Load scenario YAML from disk. Returns {} if path is unavailable or parse fails."""
+    return _load_pack_yaml(pack_source_path, rel_path)
+
+
+def _load_pack_yaml(pack_source_path: Optional[str], rel_path: Optional[str]) -> dict:
+    """Load any YAML file inside a pack. Returns {} when unavailable or unparseable."""
     if not pack_source_path or not rel_path:
         return {}
     try:
@@ -311,3 +318,41 @@ def _load_scenario_yaml(pack_source_path: Optional[str], rel_path: Optional[str]
         return data
     except Exception:
         return {}
+
+
+def _npc_display_name(
+    pack_source_path: Optional[str],
+    rel_path: Optional[str],
+    yaml_data: dict,
+) -> Optional[str]:
+    """Resolve the scenario's NPC `display_name` through its `npc.ref`.
+
+    The conversation screen labelled every NPC line "NPC" because the name was
+    never exposed over the API — it lives in a separate file the scenario only
+    points at. "NPC" is the most technical word on that screen, and issue #501
+    is about exactly that gap, so the name travels with the scenario now.
+
+    Best effort: a missing, malformed or nameless NPC file leaves this None and
+    the caller falls back to its generic label.
+    """
+    npc = yaml_data.get("npc")
+    if not isinstance(npc, dict):
+        return None
+    ref = npc.get("ref")
+    if not isinstance(ref, str) or not ref:
+        return None
+    if not rel_path:
+        return None
+    # `npc.ref` is relative to the scenario file, not to the pack root. Joining
+    # through the scenario's parent keeps `../npcs/alex_chen.yaml` resolving the
+    # way the pack author wrote it; _load_pack_yaml still refuses any result
+    # outside the pack directory.
+    scenario_dir = PurePosixPath(rel_path.replace("\\", "/")).parent
+    return _display_name_of(
+        _load_pack_yaml(pack_source_path, str(scenario_dir / ref))
+    )
+
+
+def _display_name_of(npc_data: dict) -> Optional[str]:
+    name = npc_data.get("display_name")
+    return name if isinstance(name, str) and name.strip() else None

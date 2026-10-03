@@ -59,7 +59,7 @@ export function ConfirmInstallStep({ flow, mode }: ConfirmInstallStepProps) {
               <span style={{ display: 'block', fontSize: '0.8rem', color: '#fbbf24', marginTop: '0.2rem' }}>
                 {mode === 'wizard'
                   ? 'Checksum not yet confirmed — the download will be rejected if verification fails.'
-                  : 'Checksum not yet confirmed — install may be rejected by the runtime.'}
+                  : 'Checksum not yet confirmed — install may be rejected by the AI engine.'}
               </span>
             ) : mode === 'wizard' ? (
               <span style={{ display: 'block', fontSize: '0.75rem', color: '#71717a', marginTop: '0.2rem' }}>
@@ -97,7 +97,7 @@ export function ConfirmInstallStep({ flow, mode }: ConfirmInstallStepProps) {
               <p style={{ fontSize: '0.875rem', color: '#a1a1aa', marginTop: '0.4rem' }}>
                 {needsMoreVram
                   ? `This model requires ${m.min_vram_gb} GB VRAM. If your hardware is limited, try a smaller model or `
-                  : 'If your hardware or runtime cannot install this model, try a smaller model or '}
+                  : 'If your hardware or AI engine cannot install this model, try a smaller model or '}
                 check the <a href={SETUP_DOCS_URL} target="_blank" rel="noreferrer">setup docs</a>.
               </p>
               <div style={{ marginTop: '0.5rem' }}>

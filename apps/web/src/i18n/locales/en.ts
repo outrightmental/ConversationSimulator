@@ -8,7 +8,7 @@ export const en = {
     scenarioNotFound: 'The requested scenario was not found.',
     sessionNotFound: 'Session not found.',
     modelNotLoaded: 'No AI model is loaded. Open Settings to install a model.',
-    runtimeUnavailable: 'The local runtime is unavailable. Check the logs for details.',
+    runtimeUnavailable: 'The AI engine is unavailable. Check the logs for details.',
     safetyViolation: 'The content was blocked by the safety policy.',
     turnLimitExceeded: 'The turn limit for this scenario has been reached.',
     turnTimeout: 'The turn timed out. Please try again.',
@@ -96,10 +96,65 @@ export const en = {
       },
     },
   },
+  // "You have a conversation in progress" (issue #501 §1).
+  resume: {
+    label: 'Conversation in progress.',
+    withTurns_one: '{{title}} — 1 turn so far.',
+    withTurns_other: '{{title}} — {{count}} turns so far.',
+    withoutTurns: '{{title}} — not started yet.',
+    action: 'Resume',
+    dismiss: 'End it',
+  },
+  // The initial LLM-familiarity question and its post-tutorial re-ask
+  // (issue #501 §2). Three answers, two wording levels.
+  familiarity: {
+    question: 'How familiar are you with AI language models?',
+    reaskQuestion: 'Now that you have played a conversation — how should we word things?',
+    reaskHint: 'You can change this any time in Settings.',
+    skip: 'Skip',
+    keep: 'Keep it as it is',
+    new: {
+      label: 'New to this',
+      detail: 'Plain wording',
+    },
+    some: {
+      label: 'I have used AI chat apps',
+      detail: 'Plain wording',
+    },
+    expert: {
+      label: 'I work with them',
+      detail: 'Show technical detail',
+    },
+    appliedPlain: 'Plain wording it is.',
+    appliedTechnical: 'Technical detail is on.',
+  },
+  // What a session is doing, in plain language rather than the flow-state
+  // identifier (issue #501 §2). Keyed by the identifier itself; `unknown`
+  // covers a state this build does not know about. Mirrors FLOW_STATE_LABELS
+  // in lib/plainLanguage.ts, which is the English copy the screens that are
+  // not on t() yet use.
+  sessionStates: {
+    NotStarted: 'Not started yet',
+    LoadingModel: 'Getting ready',
+    LoadingScenario: 'Getting ready',
+    Briefing: 'Briefing',
+    NpcOpening: 'Opening the conversation',
+    PlayerTurnListening: 'Your turn',
+    PlayerTurnReview: 'Check your message',
+    NpcThinking: 'Writing a reply',
+    NpcSpeaking: 'Speaking',
+    ScenarioEvent: 'Something is changing',
+    DebriefGenerating: 'Preparing your debrief',
+    DebriefReady: 'Debrief ready',
+    Ended: 'Finished',
+    Error: 'Something went wrong',
+    unknown: 'In progress',
+  },
   home: {
     title: 'Conversation Simulator',
     tagline: 'Practice interviews, negotiations, language, and difficult conversations.',
     primaryActions: 'Primary actions',
+    resumeScenario: 'Resume your conversation',
     yourTraining: 'Your training',
     training: {
       loading: 'Loading…',
@@ -131,10 +186,15 @@ export const en = {
     readDocs: 'Read docs',
     status: {
       heading: 'Status',
-      localRuntime: 'Local runtime',
-      llm: 'LLM',
-      stt: 'STT',
-      tts: 'TTS',
+      // Named in the player's words, not the engine's (issue #501 §2):
+      // 'runtime' is one of the four words the playtest called out, and
+      // 'LLM' / 'STT' / 'TTS' are three acronyms a first-time player has no
+      // way to read. These are the first labels anyone sees — they are on
+      // Home — so the plain names are the only names, at both wording levels.
+      localRuntime: 'AI engine',
+      llm: 'AI model',
+      stt: 'Voice input',
+      tts: 'Voice output',
       networkRequired: 'Network required to play',
       packs: 'Packs',
       checking: 'Checking…',
@@ -227,10 +287,50 @@ export const en = {
         "Transcripts will not be saved. This session's conversation cannot be exported or searched after it ends.",
       notSavedWarning: 'Not saved — transcript will be lost when this session ends.',
     },
-    runtime: {
-      heading: 'Runtime',
+    // Plain-language reply pacing (issue #501 §1): "make the model respond
+    // faster" was not an exposed concept anywhere in Settings.
+    replySpeed: {
+      heading: 'Reply speed',
       description:
-        'Select the active AI provider and model. Advanced knobs are hidden by default.',
+        'How much the other person writes each turn. Shorter replies arrive sooner, because your computer writes them one word at a time.',
+      label: 'Reply speed',
+      saving: 'Saving…',
+      saved: 'Saved. Your next message uses the new speed.',
+      noRestart: 'Takes effect on your next message — nothing to restart.',
+      biggerWin:
+        'Still slow? A smaller model is the biggest change you can make.',
+      biggerWinLink: 'Choose a model →',
+      fast: {
+        label: 'Quick replies',
+        detail: 'Shortest answers, least waiting',
+      },
+      balanced: {
+        label: 'Balanced',
+        detail: 'The scenario’s own pacing',
+      },
+      detailed: {
+        label: 'Fuller replies',
+        detail: 'Longer answers, more waiting',
+      },
+    },
+    // The buffer between player-facing and technical language (issue #501 §2).
+    wording: {
+      heading: 'Wording',
+      description:
+        'How much of the machinery the app shows you. Plain wording hides session ids, internal state names and event flags; technical wording puts them back.',
+      plain: {
+        label: 'Plain wording',
+        detail: 'Everyday language only',
+      },
+      technical: {
+        label: 'Technical wording',
+        detail: 'Show ids, states and flags',
+      },
+    },
+    runtime: {
+      heading: 'AI engine',
+      description:
+        'Which AI model answers as the other person. Technical knobs are hidden by default.',
       openModelManagerLink: 'Open model manager →',
       openModelManagerLabel: 'Open model manager',
     },
@@ -308,12 +408,15 @@ export const en = {
     },
     sessions: {
       heading: 'Your sessions',
-      description: 'Export a session as JSON or delete it permanently.',
+      description:
+        'Pick up an unfinished conversation, export a session as JSON, or delete one permanently.',
       loadError: 'Could not load sessions.',
       deleteError: 'Failed to delete session.',
       exportError: 'Failed to export session.',
       loading: 'Loading…',
       noSessions: 'No sessions yet.',
+      resume: 'Resume',
+      resumeLabel: 'Resume session {{id}}',
       export: 'Export',
       exportLabel: 'Export session {{id}}',
       delete: 'Delete',
@@ -463,6 +566,8 @@ export const en = {
       ariaLabel: 'Conversation transcript',
       transcriptOnlyNotice: 'Debrief generation failed. Showing transcript only.',
       turn: 'Turn {{number}}',
+      opening: 'Opening',
+      moodLabel: 'Mood:',
       you: 'You',
       npc: 'NPC',
       goToTurn: 'Go to turn {{number}}',

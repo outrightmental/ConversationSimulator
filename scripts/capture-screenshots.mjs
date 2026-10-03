@@ -436,13 +436,17 @@ async function main() {
     const startButton = page.getByRole('button', { name: 'Start conversation' })
     await startButton.waitFor({ timeout: 60_000 })
 
-    // The meters are opt-in per session and off by default; the conversation
-    // capture is required to show them (issue #455).
-    const metersToggle = page.getByLabel(/Show NPC state meters/i)
+    // The meters are opt-in per session and now on by default wherever the
+    // scenario permits them (issue #501 §3); the conversation capture is
+    // required to show them (issue #455), so check the toggle regardless —
+    // `check()` is a no-op when it is already on. The label is the Conversation
+    // Brief's, renamed with the panel it switches on, so a miss here means the
+    // name moved again rather than that the toggle is absent.
+    const metersToggle = page.getByLabel(/Show the conversation meters/i)
     if (await metersToggle.count()) {
       await metersToggle.check()
     } else {
-      log('WARNING: state-meter toggle not found — capture will have no meters')
+      log('WARNING: conversation-meters toggle not found — capture may have no meters')
     }
     // A fixed variation seed makes the playthrough re-runnable.
     const seedField = page.getByLabel('Variation seed value')

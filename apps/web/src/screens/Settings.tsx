@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { api, type ImportPackResponse, type PackSummary, type RelationshipRecapSummary } from '../api/client'
 import type { ApiError } from '../api/errors'
 import { errorHeadline } from '../api/errors'
@@ -8,13 +8,21 @@ import { ApiErrorView } from '../components/ApiErrorView'
 import { readPrivacyPref, writePrivacyPref, PRIVACY_KEYS, isDevModeEnabled } from '../privacyPrefs'
 import { useSteamStatus } from '../hooks/useSteamStatus'
 import RuntimeSettingsPanel from '../components/RuntimeSettingsPanel'
+import ReplySpeedPanel from '../components/ReplySpeedPanel'
+import WordingPanel from '../components/WordingPanel'
 import VoiceSettingsPanel from '../components/VoiceSettingsPanel'
 import { useTranslation, formatDate, SUPPORTED_LOCALES } from '../i18n'
+import { useScenarios } from '../api/useScenarios'
+import { useUiLanguageLevel } from '../hooks/useUiLanguageLevel'
+import { flowStateLabelKey } from '../lib/plainLanguage'
 import { RemediationCard } from '../setup/RemediationCard'
 import { openExternal } from '../lib/openExternal'
 import { clearTurnSamples } from '../lib/turnEstimate'
 import { useIsDemo } from '../edition'
 import type { PreflightResponse, PreflightFixAction } from '@convsim/shared'
+// The resumable set lives in @convsim/shared so this list and the
+// `status=in_progress` filter it mirrors cannot drift apart (issue #501 §1).
+import { isResumableSessionState } from '@convsim/shared'
 
 type ClearState = 'idle' | 'confirming' | 'clearing' | 'done' | 'error'
 type PackImportState = 'idle' | 'uploading' | 'success' | 'error'
@@ -91,6 +99,10 @@ const LOCALE_DISPLAY_NAMES: Record<string, string> = {
 export default function Settings() {
   const { t, locale, setLocale } = useTranslation()
   const navigate = useNavigate()
+  const { isPlain } = useUiLanguageLevel()
+  // Titles for the session list, so it does not have to print scenario slugs.
+  const scenariosResult = useScenarios()
+  const { hash } = useLocation()
   // Demo edition (issue #495): Settings keeps language, transcript saving,
   // local folders, sessions and clear-data — the privacy controls every
   // edition must have (gate F-06). Runtime/model tiers, voice, Steam Cloud,
@@ -129,6 +141,18 @@ export default function Settings() {
       navigate(href)
     }
   }
+
+  // A router navigation to /settings#reply-speed does not scroll on its own, so
+  // the slow-response notice's "Make replies faster" link would land the player
+  // at the top of a long settings page with nothing obviously changed
+  // (issue #501 §1).
+  useEffect(() => {
+    if (!hash) return
+    const target = document.getElementById(hash.slice(1))
+    if (target && typeof target.scrollIntoView === 'function') {
+      target.scrollIntoView({ block: 'start' })
+    }
+  }, [hash])
 
   function handleSaveTranscriptsChange(v: boolean) {
     setSaveTranscripts(v)
@@ -438,6 +462,32 @@ export default function Settings() {
           </p>
         )}
       </section>
+
+      {/* Wording level — the buffer between player-facing and technical
+          language (issue #501 §2). Above the engine settings on purpose: it
+          changes what the rest of this screen and the conversation screen
+          call things. */}
+      <section style={{ marginBottom: '2rem' }} data-testid="settings-wording-section">
+        <SectionHeading>{t('settings.wording.heading')}</SectionHeading>
+        <p style={{ fontSize: '0.875rem', color: '#a1a1aa', marginBottom: '0.75rem' }}>
+          {t('settings.wording.description')}
+        </p>
+        <WordingPanel />
+      </section>
+
+      {/* Reply speed — the plain-language answer to "make the model respond
+          faster" (issue #501 §1). Deliberately its own section above the
+          engine knobs, and anchored so the conversation screen's slow-response
+          notice can link straight here. */}
+      {!isDemo && (
+      <section id="reply-speed" style={{ marginBottom: '2rem' }} data-testid="settings-reply-speed-section">
+        <SectionHeading>{t('settings.replySpeed.heading')}</SectionHeading>
+        <p style={{ fontSize: '0.875rem', color: '#a1a1aa', marginBottom: '0.75rem' }}>
+          {t('settings.replySpeed.description')}
+        </p>
+        <ReplySpeedPanel />
+      </section>
+      )}
 
       {/* Runtime settings */}
       {!isDemo && (
@@ -829,7 +879,10 @@ export default function Settings() {
                 }}
               >
                 <span style={{ color: '#d4d4d8', flex: 1, minWidth: 0 }}>
-                  <span style={{ fontWeight: 500 }}>{s.scenario_id}</span>
+                  <span style={{ fontWeight: 500 }}>
+                    {scenariosResult.scenarios.find((sc) => sc.scenario_id === s.scenario_id)
+                      ?.title ?? s.scenario_id}
+                  </span>
                   <span style={{ color: '#71717a', marginLeft: '0.5rem' }}>
                     {formatDate(s.created_at, locale)}
                   </span>
@@ -840,10 +893,33 @@ export default function Settings() {
                       color: s.state === 'Ended' ? '#86efac' : '#fbbf24',
                     }}
                   >
-                    {s.state}
+                    {isPlain ? t(flowStateLabelKey(s.state)) : s.state}
                   </span>
                 </span>
                 <div style={{ display: 'flex', gap: '0.4rem', flexShrink: 0 }}>
+                  {/* The screen the lost player was already standing on
+                      (issue #501 §1): every unfinished conversation is one
+                      click from here, not just the newest one the banner
+                      offers. */}
+                  {isResumableSessionState(s.state) && (
+                    <button
+                      aria-label={t('settings.sessions.resumeLabel', { id: s.session_id })}
+                      data-testid={`settings-resume-${s.session_id}`}
+                      onClick={() => navigate(`/conversation/${s.session_id}`)}
+                      style={{
+                        padding: '0.2rem 0.6rem',
+                        borderRadius: '4px',
+                        border: 'none',
+                        cursor: 'pointer',
+                        background: '#4f46e5',
+                        color: '#fff',
+                        fontSize: '0.8rem',
+                        fontWeight: 600,
+                      }}
+                    >
+                      {t('settings.sessions.resume')}
+                    </button>
+                  )}
                   <button
                     aria-label={t('settings.sessions.exportLabel', { id: s.session_id })}
                     onClick={() => handleExportSession(s.session_id)}
