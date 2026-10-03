@@ -739,6 +739,50 @@ class TestPersistence:
 # ── Scenario library routing ─────────────────────────────────────────────────
 
 
+class TestDeletingARun:
+    """A run the player deleted must not keep a line on the board.
+
+    `flyting_volleys` cascades with the session row, but `flyting_high_scores`
+    holds no foreign key — so without an explicit delete the board outlives
+    both the session and the "clear all local data" wipe, as a standing record
+    of which scenarios were played, when, and how well.
+    """
+
+    def _board(self, client, scenario_id=SCENARIO):
+        return client.get(
+            f"/api/flyting/scenarios/{scenario_id}/high-scores"
+        ).json()["entries"]
+
+    def test_deleting_the_session_takes_its_board_row_with_it(self, client):
+        session_id = start_run(client)
+        volley(client, session_id, GOOD_VOLLEY)
+        client.post(f"/api/flyting/sessions/{session_id}/end")
+        assert [e["session_id"] for e in self._board(client)] == [session_id]
+
+        assert client.delete(f"/api/sessions/{session_id}").status_code == 204
+        assert self._board(client) == []
+
+    def test_clearing_local_data_clears_the_board(self, client):
+        session_id = start_run(client)
+        volley(client, session_id, GOOD_VOLLEY)
+        client.post(f"/api/flyting/sessions/{session_id}/end")
+        assert self._board(client)
+
+        assert client.post("/api/privacy/clear").status_code == 200
+        assert self._board(client) == []
+
+    def test_another_runs_board_row_survives_one_deletion(self, client):
+        kept = start_run(client)
+        volley(client, kept, GOOD_VOLLEY)
+        client.post(f"/api/flyting/sessions/{kept}/end")
+        doomed = start_run(client)
+        volley(client, doomed, SECOND_VOLLEY)
+        client.post(f"/api/flyting/sessions/{doomed}/end")
+
+        client.delete(f"/api/sessions/{doomed}")
+        assert [e["session_id"] for e in self._board(client)] == [kept]
+
+
 class TestLibraryRouting:
     def test_the_library_card_reports_the_turn_loop(self, client):
         """A flyting card must be distinguishable before the player clicks Launch.

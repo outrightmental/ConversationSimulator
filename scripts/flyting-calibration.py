@@ -14,7 +14,8 @@ Two tiers of expectation, because only one of them is deterministic:
     These are pure functions of the volley and the pack, identical on every
     machine with no model present, so they run in CI on every commit (see
     ``services/convsim-core/tests/test_flyting_calibration.py``).
-*   **Judged** — ``band``, ``min_score``, ``max_score``, ``hooks``. These need a
+*   **Judged** — ``band``, ``min_score``, ``max_score``, ``hooks``,
+    ``judge_fouls``. These need a
     judge, so they are skipped unless ``--judge RUNTIME_ID`` names a runtime to
     score with; that is the nightly, recommended-model run. The exception is a
     ``band`` on a volley the gates zeroed: that volley scores 0 whatever a judge
@@ -59,7 +60,7 @@ from convsim_core.flyting.service import VolleyScoringService  # noqa: E402
 from convsim_core.flyting.volley import VolleyInputError  # noqa: E402
 
 # Expectation keys that need a judge; everything else is deterministic.
-JUDGED_KEYS = frozenset({"band", "min_score", "max_score", "hooks"})
+JUDGED_KEYS = frozenset({"band", "min_score", "max_score", "hooks", "judge_fouls"})
 
 # Gate outcomes that zero a volley before the judge is ever invoked. A volley
 # expected to end in one of these costs no model call, so it cannot be part of a
@@ -237,6 +238,19 @@ def _check_volley(
         result.checked += 1
         if score.score > expected_max:
             result.failures.append(f"score {score.score} above max_score {expected_max}")
+    if "judge_fouls" in expect:
+        # A register foul is read from the scene by the model, so unlike the
+        # Stage 0 `foul` key it is only knowable on a judged run. Raising one
+        # zeroes the volley, which is why an entry asserting it reads
+        # `judge_fouls: [overt_rudeness]` with `band: dud` beside it.
+        result.checked += 1
+        raised = set(score.judgment.fouls if score.judgment else ())
+        absent = sorted(set(expect["judge_fouls"]) - raised)
+        if absent:
+            result.failures.append(
+                "judge fouls not raised: " + ", ".join(absent)
+                + (f" (raised: {', '.join(sorted(raised))})" if raised else " (none raised)")
+            )
     if "hooks" in expect:
         result.checked += 1
         landed = {h.trait for h in (score.judgment.hooks if score.judgment else [])}

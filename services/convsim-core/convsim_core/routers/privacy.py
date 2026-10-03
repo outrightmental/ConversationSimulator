@@ -69,5 +69,10 @@ async def clear_local_data(request: Request) -> _ClearResponse:
     # Relationship memory is derived from session data; clear it in the same
     # transaction as the session wipe so the two stores stay consistent.
     conn.execute("DELETE FROM relationship_state")
+    # Flyting volleys cascade with their session row, but the high-score board
+    # holds no foreign key, so it would survive a wipe as a standing record of
+    # which scenarios were played, when, and how well. "Clear all local data"
+    # has to mean the board too.
+    conn.execute("DELETE FROM flyting_high_scores")
     conn.commit()
     return _ClearResponse(deleted_sessions=count)

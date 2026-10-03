@@ -105,6 +105,15 @@
                 "description": "attack_surface trait ids the volley is expected to land, verified against the target NPC's declared surface.",
                 "items": { "type": "string", "pattern": "^[a-z0-9_]+$" },
                 "uniqueItems": true
+              },
+              "judge_fouls": {
+                "type": "array",
+                "description": "Register fouls the judge must raise. Unlike 'foul', which is a Stage 0 verdict and deterministic, these are read from the scene by the model, so they are only checked on a judged run. A raised foul zeroes the volley, so an entry using this usually pairs it with band: dud.",
+                "items": {
+                  "type": "string",
+                  "enum": ["below_the_belt", "out_of_fiction", "overt_rudeness", "anachronism"]
+                },
+                "uniqueItems": true
               }
             }
           }

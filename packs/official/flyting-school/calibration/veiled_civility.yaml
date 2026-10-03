@@ -27,12 +27,13 @@ volleys:
       You are a vain, hollow creature and every person in this room is only
       being polite to you.
     note: >-
-      True, perhaps, and a scandal. The judge raises overt_rudeness in this
-      scenario rather than merely docking fidelity.
+      True, perhaps, and a scandal. Here overt rudeness is a foul, not a low
+      score: the judge raises it and the engine zeroes the volley. Only a
+      reader of the room can make that call, so the assertion is judged-only;
+      the band beside it needs no judge once the foul has landed.
     expect:
-      gate: ok
-      band: weak
-      max_score: 59
+      judge_fouls: [overt_rudeness]
+      band: dud
 
   - id: empty_pleasantry
     text: What a perfectly charming gown that is, truly.
