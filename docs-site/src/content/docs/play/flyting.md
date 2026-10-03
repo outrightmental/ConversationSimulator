@@ -184,10 +184,12 @@ The debrief at the end of a run adds:
 
 High scores are stored per scenario and per format on your own machine, and
 nowhere else. Ticking **Use today's seed** labels the run with a seed derived
-from the date, the scenario and the format, so you and someone else playing the
-same scenario on the same day can compare runs filtered to today — without a
-server being involved. The seed labels and groups a run; it does not yet change
-what the run does.
+from the date, the scenario and the format, and marks it on the board with a ◆.
+Ticking **Today's seed only** above the board hides everything else, so you and
+someone else playing the same scenario on the same day are reading the same
+day's runs — with no server involved, because the seed is a function of the date
+and the names of the things you picked. The seed labels and groups a run; it does
+not yet change what the run does.
 
 ---
 
