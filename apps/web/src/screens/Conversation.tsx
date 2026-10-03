@@ -25,8 +25,9 @@ import { useIsDemo } from '../edition'
 // How long a wait is allowed to look normal before the UI says something.
 const SLOW_RESPONSE_MS = 5_000
 // Second stage: past this point the advisory adds that the turn has not been
-// thrown away. The clock itself is always on screen (NpcTurnProgress), so this
-// stage only changes what the notice says, not whether a wait is visible.
+// thrown away. The clock itself is on screen for the whole wait
+// (NpcTurnProgress), so this stage only changes what the notice says, not
+// whether a wait is visible.
 const VERY_SLOW_RESPONSE_MS = 30_000
 // When to stop trusting the in-flight request and start asking convsim-core what
 // it actually recorded. It is NOT a latency budget: a local model on CPU-only
