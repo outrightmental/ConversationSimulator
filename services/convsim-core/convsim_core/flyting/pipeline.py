@@ -318,18 +318,26 @@ async def process_volley(
         and shot_clock_expired(state, elapsed_since_prompt_s)
     ):
         extra_flags.append("shot_clock_expired")
-        # A gate that already fired keeps its verdict. Both outcomes zero the
-        # volley and count the whiff, so the clock has nothing left to add — and
-        # replacing a Stage 0 foul with a dud would discard it: the foul would
-        # not be recorded against the player, the second below-the-belt would
-        # never end the run, and the umpire would say "too slow" about a slur.
-        # Safety rules are not overridable, least of all by a clock reading the
-        # client supplied.
-        if not prepared.gate.scores_zero:
+        # A *foul* that already fired keeps its verdict. Replacing one with a dud
+        # would discard it: the foul would not be recorded against the player,
+        # the second below-the-belt would never end the run, and the umpire would
+        # say "too slow" about a slur. Safety rules are not overridable, least of
+        # all by a clock reading the client supplied.
+        #
+        # A dud is replaced, because the clock is the truer account of it and the
+        # umpire's line is the only explanation the player gets. The commonest
+        # expiry of all is the empty one: this engine's own client submits a
+        # placeholder when the clock runs out with nothing typed, so the Stage 0
+        # dud that fires is ``under_three_words`` — and "Three words is the
+        # floor, and you did not reach it" is the wrong thing to tell somebody
+        # who never got to type a word. The earlier dud's flags are carried over
+        # so nothing it observed (``gibberish``, ``too_short``) is lost from the
+        # scorecard.
+        if prepared.gate.foul is None:
             prepared.gate = GateResult(
                 outcome=GateOutcome.DUD,
                 reason="shot_clock_expired",
-                flags=["shot_clock_expired"],
+                flags=list(dict.fromkeys([*prepared.gate.flags, "shot_clock_expired"])),
                 umpire_mock="Too slow. The crowd has moved on.",
             )
 

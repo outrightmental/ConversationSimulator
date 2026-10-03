@@ -535,6 +535,29 @@ class TestSubmittingVolleys:
         assert body["player_volley"]["score"] == 0
         assert body["run"]["whiffs"] == 1
 
+    def test_an_expired_clock_with_nothing_typed_says_so(self, client):
+        """The commonest expiry of all, and it used to be explained wrongly.
+
+        When the clock runs out with an empty box the play screen submits a
+        placeholder, so Stage 0 fires ``under_three_words`` first. A dud that
+        already fired used to keep its verdict, which told a player who never
+        got to type a word that three words is the floor and they did not reach
+        it. A foul still keeps its verdict (below); a dud does not, because the
+        umpire's line is the only explanation the player gets. The earlier dud's
+        flags are kept so the scorecard loses nothing.
+        """
+        session_id = start_run(client)
+        body = volley(client, session_id, "…", elapsed_since_prompt_s=45)
+        gate = body["player_volley"]["gate"]
+        assert gate["foul"] is None
+        assert gate["reason"] == "shot_clock_expired"
+        assert "Too slow" in gate["umpire_mock"]
+        flags = body["player_volley"]["flags"]
+        assert "shot_clock_expired" in flags
+        assert "too_short" in flags
+        assert body["player_volley"]["score"] == 0
+        assert body["run"]["whiffs"] == 1
+
     def test_a_late_volley_keeps_the_foul_the_gates_raised(self, client):
         # The shot clock must not launder a Stage 0 foul into a plain dud. Both
         # outcomes score zero, but only the foul is recorded against the player
