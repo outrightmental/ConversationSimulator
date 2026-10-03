@@ -79,6 +79,13 @@ The shell is compiled as one of two editions (issue #495):
 | `full` (default) | `tauri build` as above | The complete app. |
 | `demo` | `VITE_CONVSIM_EDITION=demo` for the web build (Vite only exposes `VITE_`-prefixed variables), `CONVSIM_EDITION=demo` for `tauri build` (exactly that value — `build.rs` rejects anything else), plus `--config src-tauri/tauri.demo.conf.json` | The Steam Next Fest demo: product name "Conversation Simulator Demo", its own bundle identifier, and `CONVSIM_EDITION=demo` handed to `convsim-core` at launch so the engine narrows itself to one model and five conversations. |
 
+A demo build may also be compiled with `CONVSIM_DEMO_MODEL_ID=<registry id>`
+to install a tier other than the registry's `role: starter` entry — the shell
+bakes it in and hands it to `convsim-core` beside `CONVSIM_EDITION`, because
+Steam launches a packaged app with none of our environment. `build.rs` refuses
+it on a full build (where it would be a silent no-op) and refuses anything that
+is not shaped like a registry id.
+
 `build.rs` rejects any other value. Whatever the edition, the shell keys the
 per-user data directory (`CONVSIM_DATA_ROOT`) to the **full** app's bundle
 identifier, so a model downloaded in the demo is reused by the full app. The

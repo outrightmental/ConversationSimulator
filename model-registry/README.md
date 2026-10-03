@@ -25,19 +25,37 @@ refuses to start a download if either field is missing or equals `PENDING`.
 
 | Tier         | Model                              | Size    | Min VRAM |
 | ------------ | ---------------------------------- | ------- | -------- |
+| Lightweight  | Qwen3 1.7B Instruct Q8\_0          | 1.8 GB  | 2 GB     |
 | Starter      | Qwen3 4B Instruct Q4\_K\_M         | 2.5 GB  | 4 GB     |
 | Standard     | Qwen3 8B Instruct Q4\_K\_M         | 5.0 GB  | 6 GB     |
 | High-quality | Qwen3 14B Instruct Q4\_K\_M        | 9.0 GB  | 10 GB    |
 | High-quality | Mistral Small 3.1 24B Q4\_K\_M     | 14.3 GB | 16 GB    |
 | User-supplied | Any GGUF                          | varies  | varies   |
 
+**Starter** is the recommendation: it is what the first-run wizard installs and
+what the demo edition ships, and exactly one entry may carry `role: starter` —
+both of those resolve "the starter tier", so a second one would make the pick
+depend on file order (`test_exactly_one_starter_tier` enforces it).
+
+**Lightweight** is the tier below it: the shortest download, and the only entry
+a 2 GB-VRAM or integrated-graphics machine can run — at a cost in NPC coherence,
+because a 1.7B model is less consistent than the 4B at the structured output an
+NPC turn and a scored debrief need. It is an option a player can choose, never
+a recommendation. Qwen publishes the 1.7B as Q8_0 only, which is also the
+quantisation to want for a model this small: Q8_0 is near-lossless, so the
+trade is purely 1.7B-versus-4B.
+
 ### Demo edition
 
 The free Steam Next Fest demo installs exactly one model: the `role: starter`
-entry above, unless `CONVSIM_DEMO_MODEL_ID` names another registry id. That is
-the hook for evaluating a smaller/faster tier for the demo without a code
-change — see [`docs/steam-next-fest-demo.md`](../docs/steam-next-fest-demo.md)
-for the quality gate a candidate must clear.
+entry above, unless `CONVSIM_DEMO_MODEL_ID` names another registry id. A demo
+build takes that value from `release.yml`'s `demo_model_id` input, which checks
+it against this registry before anything is compiled.
+
+Pointing it at the lightweight tier is how the demo would ship on a smaller,
+faster model — no code change, but the candidate has to clear the play-test in
+[`docs/steam-next-fest-demo.md`](../docs/steam-next-fest-demo.md) first. Until
+it does, the demo ships the starter.
 
 ## Mirror and fallback policy
 
@@ -83,15 +101,19 @@ deleted, the URL will return 404.  In that case:
 
 ### Adding a new model
 
-1. Add the entry to `registry.yaml` with the real download URL (pinned to a
+1. Confirm which quantisations the repo actually publishes — Qwen's own GGUF
+   repos for the small models ship a single Q8_0 file, not the Q4_K_M the
+   larger ones carry:
+   `curl -s https://huggingface.co/api/models/<org>/<repo>/tree/main`.
+2. Add the entry to `registry.yaml` with the real download URL (pinned to a
    commit SHA), verified SHA-256, and accurate `size_gb`. For a Hugging Face
    GGUF, `python scripts/pin-model.py <org/repo> <file.gguf> --id … --role …
    --min-vram … --recommended-vram …` prints a policy-compliant entry: the
    Hub's Git-LFS object id is the file's SHA-256 and the repo's current commit
    pins the URL, so nothing has to be downloaded to hash it.
-2. Do **not** use `PENDING` — the per-PR CI (`test_actual_registry_no_pending_values`)
+3. Do **not** use `PENDING` — the per-PR CI (`test_actual_registry_no_pending_values`)
    will reject the PR until real values are present.
-3. Run `python scripts/validate-registry.py --url-check` locally to confirm
+4. Run `python scripts/validate-registry.py --url-check` locally to confirm
    the URL is reachable before opening a PR.
 
 ## Policy

@@ -29,6 +29,7 @@
 | Depots | Three, one per platform, mirroring the base app: **5343431** Windows (reshaped from Valve's auto-created all-OS depot), **5343432** macOS, **5343433** Linux/SteamOS — configured and published 2026-09-28 (step 1.2) |
 | Branches | `default` (what Next Fest players get), `beta` (internal verification) |
 | Build source | `release.yml` → **Run workflow** → `edition: demo`, from an existing release tag |
+| Demo model | The registry's `role: starter` entry (Qwen3 4B Instruct Q4_K_M, 2.5 GB) unless the `demo_model_id` input names another registry id — see [the model decision](../docs/steam-next-fest-demo.md#which-model) |
 | Upload | `steam-deploy.yml` with `edition: demo` (chained automatically from the demo build) |
 | Payload | Same depot layout as the base app; the binaries are compiled as the demo edition |
 | Store assets | Base capsules with a "DEMO" ribbon; demo-edition screenshots; base trailer |
@@ -166,10 +167,21 @@ validated source, version stamp and docs-freshness check.
    *Use workflow from*, pick **that tag**, not `main`: a dispatch builds the
    ref it was started from, and the Validate job refuses a demo run whose
    commit is not the tag's.
+   `demo_model_id`: leave **empty** — the demo installs the registry's starter
+   tier. Fill it in only to ship the demo on another tier (e.g.
+   `qwen3-1.7b-instruct-q8_0`, the smaller/faster `lightweight` tier) *after*
+   that candidate has cleared the play-test in
+   [`docs/steam-next-fest-demo.md`](../docs/steam-next-fest-demo.md#qualifying-the-lightweight-tier-for-the-demo);
+   the demo store copy's download size has to be updated with it. Validate
+   refuses an id that is not in `model-registry/registry.yaml`, and one given
+   for a full build.
 3. The run builds all three platforms with:
    - `VITE_CONVSIM_EDITION=demo` baked into the web bundle;
    - `CONVSIM_EDITION=demo` compiled into the Tauri shell (validated by
-     `build.rs`; passed to `convsim-core` at launch);
+     `build.rs`; passed to `convsim-core` at launch), and
+     `CONVSIM_DEMO_MODEL_ID` beside it when `demo_model_id` was set — Steam
+     starts a packaged app with none of our environment, so the model pin has
+     to be compiled in to arrive at all;
    - the `tauri.demo.conf.json` overlay (product name, bundle identifier,
      window title) on top of the Steam overlay;
    - the same signing, notarisation, malware scan, and depot packaging steps
@@ -185,6 +197,8 @@ open the web UI — it adopts the engine's edition from `/api/health`:
 
 ```sh
 CONVSIM_EDITION=demo ./scripts/dev.sh
+# …as it would ship on the lightweight tier:
+CONVSIM_EDITION=demo CONVSIM_DEMO_MODEL_ID=qwen3-1.7b-instruct-q8_0 ./scripts/dev.sh
 ```
 
 `services/convsim-core/tests/test_edition.py` and
@@ -236,7 +250,9 @@ Use the demo section of [`STEAM_STORE_PAGE.md`](STEAM_STORE_PAGE.md#demo-edition
 verbatim. The rules that matter most:
 
 - Say exactly what the demo contains: **five conversations, one AI model
-  download (~2.5 GB), text only, unlimited replay**.
+  download (~2.5 GB), text only, unlimited replay**. The size is the model the
+  build actually installs — re-check it against the demo's
+  `/api/health` → `demo.model_id` if `demo_model_id` was set.
 - Say what the full game adds, in the same words the in-app upsell uses.
 - No claim that the paid app is free; the open-source wording of the base page
   applies unchanged.
