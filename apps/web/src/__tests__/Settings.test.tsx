@@ -40,7 +40,20 @@ vi.mock('../api/client', () => ({
     putCloudSettings: vi.fn(),
     // NPC relationship memory
     listRelationshipMemory: vi.fn(),
+    deleteRelationshipMemory: vi.fn(),
+    clearAllRelationshipMemory: vi.fn(),
+    // System health self-test
+    preflight: vi.fn(),
   },
+}))
+
+const mockUnlock = vi.fn(() => Promise.resolve(false))
+const mockIncrementStat = vi.fn(() => Promise.resolve(false))
+// Only the hook is stubbed; importOriginal keeps the name maps and thresholds
+// real, so these tests assert the API names the screen will actually send.
+vi.mock('../hooks/useSteamAchievements', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useSteamAchievements')>()),
+  useSteamAchievements: () => ({ unlock: mockUnlock, incrementStat: mockIncrementStat }),
 }))
 
 import { api } from '../api/client'
@@ -176,6 +189,10 @@ beforeEach(() => {
   mockApi.health.mockResolvedValue({ ok: true, data: STUB_HEALTH })
   mockApi.vadHealth.mockResolvedValue({ ok: true, data: STUB_VAD })
   mockApi.listRelationshipMemory.mockResolvedValue({ ok: true, data: { recaps: [], total: 0 } })
+  mockApi.deleteRelationshipMemory.mockResolvedValue({ ok: true, data: undefined })
+  mockApi.clearAllRelationshipMemory.mockResolvedValue({ ok: true, data: undefined })
+  mockUnlock.mockClear()
+  mockIncrementStat.mockClear()
   // Stub navigator.permissions so tests don't hang on browser API
   Object.defineProperty(navigator, 'permissions', {
     value: { query: vi.fn().mockResolvedValue({ state: 'granted', addEventListener: vi.fn() }) },
@@ -997,5 +1014,104 @@ describe('demo edition', () => {
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent(/including those of the full version/i),
     )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Steam achievement call sites (issue #494)
+// ---------------------------------------------------------------------------
+//
+// Settings owns the privacy and personalisation achievements. Three of them
+// have a deliberate guard that the call-site registry test cannot see:
+// ACH_DEV_MODE is for turning developer mode ON (not off), ACH_POLYGLOT is for
+// an actual language change (not re-picking the active one), and
+// ACH_RELATIONSHIP_MEMORY needs a recap to exist.
+
+describe('Steam achievement call sites', () => {
+  afterEach(() => {
+    localStorage.removeItem('convsim.devMode')
+  })
+
+  const RECAP = {
+    npc_id: 'alex',
+    pack_id: 'official.interviews',
+    session_count: 2,
+    updated_at: '2026-01-01T00:00:00Z',
+    key_observations: [],
+    player_style_tags: [],
+    last_outcome: null,
+    last_session_at: null,
+  }
+
+  it('grants the privacy achievement when a privacy switch is flipped', async () => {
+    await renderSettings()
+    fireEvent.click(screen.getByRole('checkbox', { name: /save transcripts locally/i }))
+    expect(mockUnlock).toHaveBeenCalledWith('ACH_PRIVACY_TUNED')
+  })
+
+  it('grants the dev-mode achievement on enable, and not again on disable', async () => {
+    await renderSettings()
+    fireEvent.click(screen.getByRole('button', { name: /show advanced/i }))
+    await waitFor(() => screen.getByRole('checkbox', { name: /developer debug mode/i }))
+    const toggle = screen.getByRole('checkbox', { name: /developer debug mode/i })
+
+    fireEvent.click(toggle)
+    expect(mockUnlock).toHaveBeenCalledWith('ACH_DEV_MODE')
+
+    mockUnlock.mockClear()
+    fireEvent.click(toggle)
+    expect(mockUnlock).not.toHaveBeenCalledWith('ACH_DEV_MODE')
+  })
+
+  it('grants the polyglot achievement for a real language change', async () => {
+    await renderSettings()
+    fireEvent.change(screen.getByTestId('settings-locale-select'), { target: { value: 'de' } })
+    expect(mockUnlock).toHaveBeenCalledWith('ACH_POLYGLOT')
+  })
+
+  it('does not grant polyglot for re-selecting the active language', async () => {
+    await renderSettings()
+    const select = screen.getByTestId('settings-locale-select') as HTMLSelectElement
+    fireEvent.change(select, { target: { value: select.value } })
+    expect(mockUnlock).not.toHaveBeenCalledWith('ACH_POLYGLOT')
+  })
+
+  it('grants the relationship-memory achievement only when a recap exists', async () => {
+    await renderSettings()
+    expect(mockUnlock).not.toHaveBeenCalledWith('ACH_RELATIONSHIP_MEMORY')
+
+    mockUnlock.mockClear()
+    mockApi.listRelationshipMemory.mockResolvedValue({ ok: true, data: { recaps: [RECAP], total: 1 } })
+    await renderSettings()
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_RELATIONSHIP_MEMORY'))
+  })
+
+  it('grants the forget achievement when a single recap is deleted', async () => {
+    mockApi.listRelationshipMemory.mockResolvedValue({ ok: true, data: { recaps: [RECAP], total: 1 } })
+    await renderSettings()
+    fireEvent.click(await screen.findByRole('button', { name: /delete memory for alex/i }))
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_MEMORY_FORGOTTEN'))
+  })
+
+  it('grants the forget achievement when every recap is cleared', async () => {
+    mockApi.listRelationshipMemory.mockResolvedValue({ ok: true, data: { recaps: [RECAP], total: 1 } })
+    await renderSettings()
+    fireEvent.click(await screen.findByTestId('clear-all-recaps-button'))
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_MEMORY_FORGOTTEN'))
+  })
+
+  it('grants the self-test achievement only when the health check succeeds', async () => {
+    mockApi.preflight.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'network' } })
+    await renderSettings()
+    fireEvent.click(screen.getByTestId('settings-health-check-button'))
+    await waitFor(() => expect(mockApi.preflight).toHaveBeenCalled())
+    expect(mockUnlock).not.toHaveBeenCalledWith('ACH_SELF_TEST')
+
+    mockApi.preflight.mockResolvedValue({
+      ok: true,
+      data: { overall: 'pass' as const, checks: [], ran_at: '2026-01-01T00:00:00Z' },
+    })
+    fireEvent.click(screen.getByTestId('settings-health-check-button'))
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_SELF_TEST'))
   })
 })

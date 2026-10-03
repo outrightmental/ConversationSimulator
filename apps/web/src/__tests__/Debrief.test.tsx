@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import Debrief from '../screens/Debrief'
-import type { SessionDebriefResponse } from '@convsim/shared'
+import type { ScenarioInfo, SessionDebriefResponse } from '@convsim/shared'
 
 vi.mock('../api/client', () => ({
   api: {
@@ -41,6 +41,12 @@ vi.mock('../hooks/useSteamAchievements', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../hooks/useSteamAchievements')>()),
   useSteamAchievements: () => ({ unlock: mockUnlock, incrementStat: mockIncrementStat }),
 }))
+import {
+  readPacksPlayed,
+  recordPackPlayed,
+  PACK_EXPLORER_PACKS,
+  PACK_CONNOISSEUR_PACKS,
+} from '../hooks/useSteamAchievements'
 
 const SESSION_ID = 'sess-debrief01'
 
@@ -145,6 +151,10 @@ beforeEach(() => {
       filename: `session-${SESSION_ID}-transcript.md`,
     },
   })
+  // Reset to the default this file assumes (an empty library) so the
+  // pack-breadth block's populated index cannot leak into later tests —
+  // mockResolvedValue survives vi.clearAllMocks().
+  mockApi.listScenarios.mockResolvedValue({ ok: true, data: [] })
   mockIsDevModeEnabled.mockReturnValue(false)
   mockReadVoiceInviteState.mockReturnValue('pending')
   mockWriteVoiceInviteState.mockReset()
@@ -248,6 +258,78 @@ describe('Debrief screen', () => {
       expect(mockUnlock).toHaveBeenCalledWith('ACH_FIRST_SCENARIO')
       expect(mockIncrementStat).toHaveBeenCalledWith('STAT_DEBRIEFS_GENERATED')
       expect(mockIncrementStat).toHaveBeenCalledWith('STAT_SCENARIOS_COMPLETED')
+    })
+  })
+
+  // ── Pack breadth (issue #494) ───────────────────────────────────────────────
+  //
+  // ACH_PACK_EXPLORER / ACH_PACK_CONNOISSEUR are the only achievements driven by
+  // a device-local tally instead of server state, so both the thresholds and the
+  // "distinct packs, not debriefs" accounting are pinned here. The tally itself
+  // is the real implementation (the module mock above keeps every non-hook
+  // export), so these also prove the screen and the thresholds agree.
+  describe('steam pack-breadth achievements', () => {
+    /** A library entry carrying just the fields the pack tally reads. */
+    function indexed(scenarioId: string, packId: string): ScenarioInfo {
+      return { scenario_id: scenarioId, pack_id: packId } as unknown as ScenarioInfo
+    }
+
+    beforeEach(() => {
+      mockApi.listScenarios.mockResolvedValue({
+        ok: true,
+        data: [indexed('behavioral_interview', 'official.interviews')],
+      })
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
+    })
+
+    /** Renders and waits until the pack tally has had its chance to run. */
+    async function debriefAndSettle() {
+      renderDebrief()
+      await waitFor(() =>
+        expect(screen.getByTestId('summary-section')).toBeInTheDocument(),
+      )
+      await waitFor(() => expect(readPacksPlayed()).not.toHaveLength(0))
+    }
+
+    it('records the debriefed pack without unlocking below the threshold', async () => {
+      await debriefAndSettle()
+      expect(readPacksPlayed()).toEqual(['official.interviews'])
+      expect(mockUnlock).not.toHaveBeenCalledWith('ACH_PACK_EXPLORER')
+      expect(mockUnlock).not.toHaveBeenCalledWith('ACH_PACK_CONNOISSEUR')
+    })
+
+    it(`unlocks pack explorer on the ${PACK_EXPLORER_PACKS}th distinct pack`, async () => {
+      for (let i = 1; i < PACK_EXPLORER_PACKS; i++) recordPackPlayed(`official.pack${i}`)
+      await debriefAndSettle()
+      expect(mockUnlock).toHaveBeenCalledWith('ACH_PACK_EXPLORER')
+      expect(mockUnlock).not.toHaveBeenCalledWith('ACH_PACK_CONNOISSEUR')
+    })
+
+    it(`unlocks pack connoisseur on the ${PACK_CONNOISSEUR_PACKS}th distinct pack`, async () => {
+      for (let i = 1; i < PACK_CONNOISSEUR_PACKS; i++) recordPackPlayed(`official.pack${i}`)
+      await debriefAndSettle()
+      expect(mockUnlock).toHaveBeenCalledWith('ACH_PACK_CONNOISSEUR')
+      expect(mockUnlock).toHaveBeenCalledWith('ACH_PACK_EXPLORER')
+    })
+
+    it('does not count a replay of a pack already tallied', async () => {
+      // Breadth, not volume: four debriefs from one pack must stay at one pack,
+      // or a player who only ever replays their favourite would reach 5/5.
+      recordPackPlayed('official.interviews')
+      await debriefAndSettle()
+      expect(readPacksPlayed()).toEqual(['official.interviews'])
+      expect(mockUnlock).not.toHaveBeenCalledWith('ACH_PACK_EXPLORER')
+    })
+
+    it('tallies nothing when the scenario is missing from the library index', async () => {
+      // A Workshop pack that was unsubscribed, or a scenario deleted since the
+      // session ran: there is no pack to credit, and nothing must be invented.
+      mockApi.listScenarios.mockResolvedValue({ ok: true, data: [] })
+      renderDebrief()
+      await waitFor(() =>
+        expect(screen.getByTestId('summary-section')).toBeInTheDocument(),
+      )
+      expect(readPacksPlayed()).toEqual([])
     })
   })
 
