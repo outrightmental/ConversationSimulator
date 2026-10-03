@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import { MemoryRouter, useLocation } from 'react-router-dom'
 import App from '../App'
 
@@ -18,6 +18,21 @@ vi.mock('@convsim/ui', () => ({
   StatusBadge: ({ children, status }: { children: React.ReactNode; status: string }) => (
     <span data-status={status}>{children}</span>
   ),
+}))
+
+// Typed with an explicit signature (rather than letting the no-arg
+// implementation infer one) so `mock.calls` destructures the name argument
+// instead of inferring an empty tuple.
+const mockUnlock = vi.fn<(name: string) => Promise<boolean>>(() => Promise.resolve(false))
+const mockIncrementStat = vi.fn<(name: string) => Promise<boolean>>(() => Promise.resolve(false))
+// Only the hook itself is stubbed. This module also exports the achievement and
+// stat name maps, the unlock thresholds, and the local progress helpers that the
+// screens import directly; a hand-rolled mock of those silently drifts out of
+// date every time an achievement is added (and then the screen throws on an
+// undefined export), so importOriginal keeps them real.
+vi.mock('../hooks/useSteamAchievements', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useSteamAchievements')>()),
+  useSteamAchievements: () => ({ unlock: mockUnlock, incrementStat: mockIncrementStat }),
 }))
 
 function mockFetch(response: object) {
@@ -198,5 +213,55 @@ describe('First-run guard', () => {
     const location = screen.getByTestId('location-probe').textContent ?? ''
     expect(location).toMatch(/^\/first-run\b/)
     expect(decodeURIComponent(location)).toContain('next=/model-manager')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Steam achievement (issue #494)
+// ---------------------------------------------------------------------------
+
+describe('ACH_SETUP_COMPLETE', () => {
+  // This file's top-level beforeEach does not reset mocks, so clear the two
+  // achievement spies here — otherwise a grant from an earlier test leaks in and
+  // the negative case below passes (or fails) for the wrong reason.
+  beforeEach(() => {
+    mockUnlock.mockClear()
+    mockIncrementStat.mockClear()
+  })
+
+  // The setup guard, not the wizard, is the authoritative grant point. The
+  // wizard runs once per install, so granting only there would put the
+  // achievement — and the ACH_CERTIFIED_EXPERT capstone that requires it —
+  // permanently out of reach for every player who finished onboarding before
+  // this achievement set shipped. Granting from the server's "ready" answer on
+  // every launch is what makes it retroactive.
+  it('is granted when the server reports setup is ready', async () => {
+    mockSetupStatus({ kind: 'ready' })
+    renderAt('/')
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_SETUP_COMPLETE'))
+  })
+
+  it('is granted retroactively for a player whose localStorage mirror is gone', async () => {
+    // The returning-user mirror is what beforeEach sets; clearing it leaves the
+    // server's answer as the only evidence, which is exactly the upgrade case.
+    localStorage.removeItem('convsim.setup.complete')
+    mockSetupStatus({ kind: 'ready' })
+    renderAt('/settings')
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_SETUP_COMPLETE'))
+  })
+
+  it('is not granted while setup has never run', async () => {
+    localStorage.removeItem('convsim.setup.complete')
+    mockSetupStatus({ kind: 'never-run' })
+    renderAt('/')
+    await screen.findByRole('button', { name: /set me up/i })
+    expect(mockUnlock).not.toHaveBeenCalledWith('ACH_SETUP_COMPLETE')
+  })
+
+  it('increments no stat — finishing setup is not a counted event', async () => {
+    mockSetupStatus({ kind: 'ready' })
+    renderAt('/')
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_SETUP_COMPLETE'))
+    expect(mockIncrementStat).not.toHaveBeenCalled()
   })
 })

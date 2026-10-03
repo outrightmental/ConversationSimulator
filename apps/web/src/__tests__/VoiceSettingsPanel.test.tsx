@@ -13,6 +13,21 @@ vi.mock('../api/client', () => ({
   },
 }))
 
+// Typed with an explicit signature (rather than letting the no-arg
+// implementation infer one) so `mock.calls` destructures the name argument
+// instead of inferring an empty tuple.
+const mockUnlock = vi.fn<(name: string) => Promise<boolean>>(() => Promise.resolve(false))
+const mockIncrementStat = vi.fn<(name: string) => Promise<boolean>>(() => Promise.resolve(false))
+// Only the hook itself is stubbed. This module also exports the achievement and
+// stat name maps, the unlock thresholds, and the local progress helpers that the
+// panels import directly; a hand-rolled mock of those silently drifts out of
+// date every time an achievement is added (and then the panel throws on an
+// undefined export), so importOriginal keeps them real.
+vi.mock('../hooks/useSteamAchievements', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useSteamAchievements')>()),
+  useSteamAchievements: () => ({ unlock: mockUnlock, incrementStat: mockIncrementStat }),
+}))
+
 import { api } from '../api/client'
 const mockApi = vi.mocked(api)
 
@@ -286,5 +301,48 @@ describe('TTS cache', () => {
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent(/Connection failed/i),
     )
+  })
+})
+
+// ── Steam achievement (issue #494) ────────────────────────────────────────────
+//
+// ACH_VOICE_TUNED is required for the ACH_CERTIFIED_EXPERT capstone and unlocks
+// from any of the four voice settings. All four matter: a player who only ever
+// changes one of them has still tuned their voice experience, so the achievement
+// must not sit on a single control.
+
+describe('VoiceSettingsPanel — Steam achievement', () => {
+  it('does not grant it for merely opening the panel', async () => {
+    render(<VoiceSettingsPanel />)
+    await waitFor(() => screen.getByRole('combobox', { name: /default npc voice/i }))
+    expect(mockUnlock).not.toHaveBeenCalledWith('ACH_VOICE_TUNED')
+  })
+
+  it('grants it when the preferred voice is changed', async () => {
+    render(<VoiceSettingsPanel />)
+    await waitFor(() => screen.getByRole('combobox', { name: /default npc voice/i }))
+    fireEvent.change(screen.getByRole('combobox', { name: /default npc voice/i }), {
+      target: { value: 'bf_emma' },
+    })
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_VOICE_TUNED'))
+  })
+
+  it.each([
+    'toggle-thinking-pause',
+    'toggle-backchannel',
+    'toggle-barge-in',
+  ])('grants it from the %s timing toggle', async (testId) => {
+    render(<VoiceSettingsPanel />)
+    await waitFor(() => screen.getByTestId(testId))
+    fireEvent.click(screen.getByTestId(testId))
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_VOICE_TUNED'))
+  })
+
+  it('increments no stat — a voice setting change is not a counted event', async () => {
+    render(<VoiceSettingsPanel />)
+    await waitFor(() => screen.getByTestId('toggle-barge-in'))
+    fireEvent.click(screen.getByTestId('toggle-barge-in'))
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_VOICE_TUNED'))
+    expect(mockIncrementStat).not.toHaveBeenCalled()
   })
 })

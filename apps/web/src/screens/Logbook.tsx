@@ -4,7 +4,12 @@ import { Link } from 'react-router-dom'
 import { useLogbookProfile } from '../api/useLogbookProfile'
 import { api } from '../api/client'
 import { CopyDiagnosticsButton } from '../components/CopyDiagnosticsButton'
-import { useSteamAchievements, SteamAchievement } from '../hooks/useSteamAchievements'
+import {
+  useSteamAchievements,
+  SteamAchievement,
+  PRACTICE_STREAK_DAYS,
+  SEASONED_SCENARIOS,
+} from '../hooks/useSteamAchievements'
 import { useEffect, useRef } from 'react'
 
 function formatDuration(seconds: number): string {
@@ -79,8 +84,20 @@ export default function Logbook() {
     // ACH_PRACTICE_STREAK as "scenarios on three or more consecutive calendar
     // days". Unlocking at a higher value would leave the achievement's stated
     // condition met but ungranted.
-    if (profile.streak_days >= 3) {
+    if (profile.streak_days >= PRACTICE_STREAK_DAYS) {
       void unlock(SteamAchievement.PRACTICE_STREAK)
+    }
+    if (profile.total_sessions >= SEASONED_SCENARIOS) {
+      void unlock(SteamAchievement.TEN_SCENARIOS)
+    }
+    // "Beat your own score", not "have a score". `personal_records` holds the
+    // best result per scenario+difficulty, so it is non-empty after the very
+    // first scored debrief — granting on that would make ACH_PERSONAL_BEST a
+    // free duplicate of ACH_FIRST_DEBRIEF. `last_session_delta` is the logbook's
+    // own "Last session +N" figure: the most recent scored session minus the one
+    // before it, and `null` until there are two to compare.
+    if (profile.last_session_delta !== null && profile.last_session_delta > 0) {
+      void unlock(SteamAchievement.PERSONAL_BEST)
     }
   }, [state, profile, unlock])
 
@@ -96,6 +113,7 @@ export default function Logbook() {
       a.download = 'logbook-export.json'
       a.click()
       URL.revokeObjectURL(url)
+      void unlock(SteamAchievement.LOGBOOK_EXPORT)
     } else {
       setExportError('Export failed. Please try again.')
     }

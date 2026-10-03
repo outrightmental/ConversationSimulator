@@ -18,6 +18,21 @@ vi.mock('../api/client', () => ({
   },
 }))
 
+// Typed with an explicit signature (rather than letting the no-arg
+// implementation infer one) so `mock.calls` destructures the name argument
+// instead of inferring an empty tuple.
+const mockUnlock = vi.fn<(name: string) => Promise<boolean>>(() => Promise.resolve(false))
+const mockIncrementStat = vi.fn<(name: string) => Promise<boolean>>(() => Promise.resolve(false))
+// Only the hook itself is stubbed. This module also exports the achievement and
+// stat name maps, the unlock thresholds, and the local progress helpers that the
+// screens import directly; a hand-rolled mock of those silently drifts out of
+// date every time an achievement is added (and then the screen throws on an
+// undefined export), so importOriginal keeps them real.
+vi.mock('../hooks/useSteamAchievements', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useSteamAchievements')>()),
+  useSteamAchievements: () => ({ unlock: mockUnlock, incrementStat: mockIncrementStat }),
+}))
+
 import { api } from '../api/client'
 const mockApi = vi.mocked(api)
 
@@ -488,5 +503,89 @@ describe('self-test', () => {
     await waitFor(() =>
       expect(screen.getByTestId('self-test-error')).toBeInTheDocument(),
     )
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Steam achievements (issue #494)
+// ---------------------------------------------------------------------------
+//
+// ACH_SELF_TEST and ACH_DIAGNOSTICS are both required for the
+// ACH_CERTIFIED_EXPERT capstone, and both unlock only on a successful run. The
+// call-site guard in steamAchievementCallSites.test.ts proves the names are
+// referenced somewhere under apps/web/src and nothing about when.
+
+describe('steam achievements', () => {
+  it('grants the self-test achievement when the self-test succeeds', async () => {
+    mockApi.preflight.mockResolvedValue({ ok: true, data: PASS_PREFLIGHT })
+    await renderSupport()
+    fireEvent.click(screen.getByRole('button', { name: /run self-test/i }))
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_SELF_TEST'))
+  })
+
+  it('does not grant it when the self-test could not run', async () => {
+    mockApi.preflight.mockResolvedValue({
+      ok: false,
+      error: { kind: 'network', message: 'Core service unavailable' },
+    })
+    await renderSupport()
+    fireEvent.click(screen.getByRole('button', { name: /run self-test/i }))
+    await waitFor(() => expect(screen.getByTestId('self-test-error')).toBeInTheDocument())
+    expect(mockUnlock).not.toHaveBeenCalledWith('ACH_SELF_TEST')
+  })
+
+  it('grants the diagnostics achievement when a crash bundle is created', async () => {
+    mockApi.createCrashBundle.mockResolvedValue({
+      ok: true,
+      data: { bundle_path: '/tmp/crash.zip', notice: 'Local only.' },
+    })
+    await renderSupport()
+    fireEvent.click(screen.getByRole('button', { name: /create crash bundle/i }))
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_DIAGNOSTICS'))
+  })
+
+  it('does not grant it when the crash bundle fails', async () => {
+    mockApi.createCrashBundle.mockResolvedValue({
+      ok: false,
+      error: { kind: 'network', message: 'Core service unavailable' },
+    })
+    await renderSupport()
+    fireEvent.click(screen.getByRole('button', { name: /create crash bundle/i }))
+    await waitFor(() => expect(screen.getByTestId('crash-bundle-error')).toBeInTheDocument())
+    expect(mockUnlock).not.toHaveBeenCalledWith('ACH_DIAGNOSTICS')
+  })
+
+  it('grants the diagnostics achievement from the beta report bundle too', async () => {
+    // The beta report is the other half of the same affordance — a player who
+    // only ever files a beta report has still used diagnostics.
+    mockApi.createBetaReport.mockResolvedValue({
+      ok: true,
+      data: {
+        bundle_path: '/tmp/beta-report.zip',
+        manifest: BETA_MANIFEST,
+        notice: 'Beta report bundle created locally.',
+      },
+    })
+    await renderSupport()
+    fireEvent.click(screen.getByTestId('report-problem-button'))
+    fireEvent.click(screen.getByTestId('create-beta-report-button'))
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_DIAGNOSTICS'))
+  })
+
+  it('increments no stat — Support has no counted event', async () => {
+    // Guards against a stat creeping onto a diagnostics path: Steam stats are
+    // monotonic counters that appear on a player's public profile, and how often
+    // someone reaches for Support is not something to publish.
+    mockApi.preflight.mockResolvedValue({ ok: true, data: PASS_PREFLIGHT })
+    mockApi.createCrashBundle.mockResolvedValue({
+      ok: true,
+      data: { bundle_path: '/tmp/crash.zip', notice: 'Local only.' },
+    })
+    await renderSupport()
+    fireEvent.click(screen.getByRole('button', { name: /run self-test/i }))
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_SELF_TEST'))
+    fireEvent.click(screen.getByRole('button', { name: /create crash bundle/i }))
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_DIAGNOSTICS'))
+    expect(mockIncrementStat).not.toHaveBeenCalled()
   })
 })

@@ -5,6 +5,7 @@ import { api } from '../api/client'
 import { openExternal } from '../lib/openExternal'
 import type { ApiError } from '../api/errors'
 import { ApiErrorView } from '../components/ApiErrorView'
+import { useSteamAchievements, SteamAchievement } from '../hooks/useSteamAchievements'
 import type { PreflightResponse, PreflightCheck, PreflightFixAction } from '@convsim/shared'
 
 const ISSUES_URL = 'https://github.com/outrightmental/ConversationSimulator/issues/new/choose'
@@ -124,6 +125,7 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
 
 export default function Support() {
   const navigate = useNavigate()
+  const { unlock } = useSteamAchievements()
   const [crashState, setCrashState] = useState<CrashBundleState>('idle')
   const [bundlePath, setBundlePath] = useState<string | null>(null)
   const [bundleNotice, setBundleNotice] = useState<string | null>(null)
@@ -165,6 +167,7 @@ export default function Support() {
     if (r.ok) {
       setSelfTestResult(r.data)
       setSelfTestState('done')
+      void unlock(SteamAchievement.SELF_TEST)
     } else {
       setSelfTestError(r.error)
       setSelfTestState('error')
@@ -181,6 +184,7 @@ export default function Support() {
       setBundlePath(r.data.bundle_path)
       setBundleNotice(r.data.notice)
       setCrashState('done')
+      void unlock(SteamAchievement.DIAGNOSTICS)
     } else {
       setCrashError(r.error)
       setCrashState('error')
@@ -198,6 +202,7 @@ export default function Support() {
       setBetaBundlePath(r.data.bundle_path)
       setBetaManifest(r.data.manifest)
       setBetaStep('done')
+      void unlock(SteamAchievement.DIAGNOSTICS)
       const parentDir = r.data.bundle_path.replace(/[\\/][^\\/]+$/, '')
       try {
         await openFolderInShell(parentDir)

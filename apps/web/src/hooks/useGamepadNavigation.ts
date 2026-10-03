@@ -18,7 +18,8 @@
  * excluded from the focus ring.  The DebugDrawer carries this attribute so
  * dev tooling does not interrupt controller navigation.
  */
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
+import { useSteamAchievements, SteamAchievement } from './useSteamAchievements'
 
 const FOCUSABLE_SELECTOR =
   'a[href], button:not([disabled]), input:not([disabled]), ' +
@@ -102,8 +103,24 @@ function pressEscape(): void {
 }
 
 export function useGamepadNavigation(): void {
+  const { unlock } = useSteamAchievements()
+  // Read through refs so the rAF loop keeps its empty dependency list — it must
+  // be installed exactly once for the lifetime of the layout.
+  const unlockRef = useRef(unlock)
+  unlockRef.current = unlock
+  const controllerGrantedRef = useRef(false)
+
   useEffect(() => {
     if (typeof navigator === 'undefined' || !('getGamepads' in navigator)) return
+
+    // ACH_BIG_PICTURE — the UI is being driven by a controller (Steam Deck or
+    // Big Picture). Granted on the first real input, not on mere connection, so
+    // a plugged-in-but-unused pad does not award it.
+    function notePhysicalInput(): void {
+      if (controllerGrantedRef.current) return
+      controllerGrantedRef.current = true
+      void unlockRef.current(SteamAchievement.BIG_PICTURE)
+    }
 
     let rafId = 0
     // Previous-frame button pressed states, keyed by gamepad index.
@@ -142,6 +159,8 @@ export function useGamepadNavigation(): void {
           (buttons[BTN_DPAD_RIGHT]?.pressed ?? false) ||
           stickY > STICK_DEAD_ZONE
 
+        if (goBack || goForward) notePhysicalInput()
+
         if (goBack && now - lastNavBackward >= NAV_REPEAT_MS) {
           moveFocus('prev')
           lastNavBackward = now
@@ -154,11 +173,13 @@ export function useGamepadNavigation(): void {
 
         // ── A → activate focused element ──────────────────────────────────────
         if (newPress(BTN_A)) {
+          notePhysicalInput()
           activateFocused()
         }
 
         // ── B → Escape ────────────────────────────────────────────────────────
         if (newPress(BTN_B)) {
+          notePhysicalInput()
           pressEscape()
         }
 
@@ -166,6 +187,7 @@ export function useGamepadNavigation(): void {
         const r1Now = buttons[BTN_R1]?.pressed ?? false
         const r1Prev = prevPressed[gi]?.[BTN_R1] ?? false
         if (r1Now && !r1Prev) {
+          notePhysicalInput()
           document.dispatchEvent(new CustomEvent('gamepad-ptt-start'))
         } else if (!r1Now && r1Prev) {
           document.dispatchEvent(new CustomEvent('gamepad-ptt-stop'))

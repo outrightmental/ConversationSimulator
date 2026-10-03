@@ -19,6 +19,7 @@ import FirstRunWizard from './screens/FirstRunWizard'
 import CoreStartupGuard from './screens/CoreStartup'
 import Logbook from './screens/Logbook'
 import { SETUP_KEYS } from './privacyPrefs'
+import { useSteamAchievements, SteamAchievement } from './hooks/useSteamAchievements'
 import { api } from './api/client'
 import { deriveSetupStatus } from './setup'
 import type { SetupStatus } from './setup'
@@ -26,6 +27,7 @@ import type { SetupStatus } from './setup'
 type GuardStatus = SetupStatus | { kind: 'loading' }
 
 function useSetupStatus(): { status: GuardStatus; pendingInstallId: number | null } {
+  const { unlock } = useSteamAchievements()
   const localComplete = (() => {
     try { return localStorage.getItem(SETUP_KEYS.firstRunComplete) === 'true' } catch { return false }
   })()
@@ -57,6 +59,14 @@ function useSetupStatus(): { status: GuardStatus; pendingInstallId: number | nul
       setStatus(derived)
       if (derived.kind === 'ready') {
         try { localStorage.setItem(SETUP_KEYS.firstRunComplete, 'true') } catch { /* ignore */ }
+        // ACH_SETUP_COMPLETE is granted here, from the server-authoritative
+        // "setup is done" answer, rather than only at the end of the wizard.
+        // The wizard runs once per install, so granting it only there would
+        // leave the achievement — and with it the ACH_CERTIFIED_EXPERT capstone
+        // that requires it — permanently out of reach for everyone who finished
+        // onboarding before this achievement set shipped. Unlocking is
+        // idempotent, so re-checking on every launch and focus is free.
+        void unlock(SteamAchievement.SETUP_COMPLETE)
       } else if (derived.kind === 'never-run') {
         // The server (authoritative) has no recorded outcome, so a lingering
         // 'true' mirror is stale — e.g. the data dir was wiped but the webview
@@ -66,7 +76,7 @@ function useSetupStatus(): { status: GuardStatus; pendingInstallId: number | nul
         try { localStorage.removeItem(SETUP_KEYS.firstRunComplete) } catch { /* ignore */ }
       }
     })
-  }, [])
+  }, [unlock])
 
   useEffect(() => { revalidate() }, [revalidate])
 

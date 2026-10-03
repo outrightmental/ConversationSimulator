@@ -91,11 +91,13 @@ The bridge consists of:
 
 1. **`apps/desktop/src-tauri/src/steam.rs`** — Rust module that wraps the
    `steamworks` crate. Contains the `SteamRuntime` struct (with the
-   `unlock_achievement`, `increment_stat`, and `set_rich_presence` methods) and
+   `unlock_achievement`, `unlocked_achievements`, `increment_stat`, and
+   `set_rich_presence` methods) and
    the graceful-fallback logic. The `#[tauri::command]` handlers that expose
    these methods to the front end live in `apps/desktop/src-tauri/src/lib.rs`.
 2. **`useSteamAchievements`** React hook — front-end wrapper that invokes the
-   Tauri `steam_unlock_achievement` and `steam_increment_stat` commands.
+   Tauri `steam_unlock_achievement`, `steam_unlocked_achievements`, and
+   `steam_increment_stat` commands.
 3. **`useSteamRichPresence`** React hook — front-end wrapper that invokes the
    Tauri `steam_set_rich_presence` command.
 
@@ -104,6 +106,7 @@ The bridge consists of:
 | Command | Arguments | Effect when Steam active | Effect when Steam absent |
 |---------|-----------|--------------------------|--------------------------|
 | `steam_unlock_achievement` | `name: String` | Calls `steamworks::UserStats::achievement(name).set()` then `store_stats()` | Returns `false`, no-op |
+| `steam_unlocked_achievements` | `names: Vec<String>` | Returns the subset of `names` that `steamworks::UserStats::achievement(name).get()` reports as unlocked for the signed-in account. Drives the `ACH_CERTIFIED_EXPERT` capstone check | Returns `[]` — read as "nothing confirmed", never "nothing earned" |
 | `steam_increment_stat` | `name: String` | Reads current value, increments by 1, calls `store_stats()` | Returns `false`, no-op |
 | `steam_set_rich_presence` | `value: String` | Calls `steamworks::Friends::set_rich_presence("steam_display", Some(value))` — the key is fixed internally | Returns `false`, no-op |
 | `steam_activate_overlay` | — | Calls `steamworks::Friends::activate_game_overlay("")` to open the overlay (the Shift+Tab chord); returns `false` if the Steam client has the overlay disabled. See [Steam overlay (Windows WebView2 caveat)](#steam-overlay-windows-webview2-caveat) | Returns `false`, no-op |
@@ -218,13 +221,23 @@ This section covers the integration points.
 
 ### Defined achievements
 
-| Display name | Enum | API name | Unlock event |
-|---|---|---|---|
-| First Scenario | `SteamAchievement::FIRST_SCENARIO` | `ACH_FIRST_SCENARIO` | Session ends or is manually ended |
-| First Debrief | `SteamAchievement::FIRST_DEBRIEF` | `ACH_FIRST_DEBRIEF` | Debrief screen rendered |
-| Practice Streak | `SteamAchievement::PRACTICE_STREAK` | `ACH_PRACTICE_STREAK` | 3 consecutive calendar days with completed sessions |
-| Pack Explorer | `SteamAchievement::PACK_EXPLORER` | `ACH_PACK_EXPLORER` | Session completed from 3+ distinct packs |
-| Creator First Validate | `SteamAchievement::CREATOR_FIRST_VALIDATE` | `ACH_CREATOR_FIRST_VALIDATE` | Creator workbench validates first custom pack |
+The achievement set is a guided tour of every feature area of the app (issue
+#494) and ends in the `ACH_CERTIFIED_EXPERT` capstone. Display names, unlock
+conditions, and hidden flags for the whole set are tabulated in
+[`docs/steam-achievements-stats-rich-presence.md`](steam-achievements-stats-rich-presence.md) — that table is
+authoritative, so this page deliberately does not duplicate it.
+
+The same API names are spelled out in three places, and
+`apps/web/src/__tests__/useSteamAchievements.test.ts` fails if they drift apart:
+
+| Where | What |
+|---|---|
+| `apps/web/src/hooks/useSteamAchievements.ts` | `SteamAchievement` — the front-end names, and every `unlock()` call site |
+| `apps/desktop/src-tauri/src/steam.rs` | the `achievements` module constants and `achievements::ALL` |
+| the configuration table linked above | what gets entered in Steamworks App Admin |
+
+API names are a shipped contract: Steam keys a player's unlocked achievements by
+API name, so names are only ever added — never renamed or reused.
 
 ### Unlock call pattern
 
@@ -242,6 +255,33 @@ or when the Tauri command returns `false` (Steam not running).
 Achievement unlock is **idempotent** — calling `unlock` on an already-unlocked
 achievement is silently ignored by the Steamworks API.
 
+### Capstone unlock
+
+`ACH_CERTIFIED_EXPERT` is granted by the front end, not by Steamworks. After
+every confirmed unlock, `unlock()` asks Steam — via the
+`steam_unlocked_achievements` command — which of the required API names plus
+`ACH_CERTIFIED_EXPERT` the signed-in account already holds, and fires the
+capstone when every required name comes back. `OPTIONAL_ACHIEVEMENTS` in
+`useSteamAchievements.ts` lists what the capstone does not require, so the
+*capstone* stays reachable without Workshop, DLC, a controller, a
+player-supplied model, or a pack library that ever needed restoring. Those seven
+remain in the set as ordinary achievements, so a full 100% on the Steam profile
+still depends on that optional content and hardware — the capstone, not 100%, is
+what marks a player as having exercised the whole base game.
+
+Steam is the only authority here, deliberately: "has this player earned every
+required achievement?" is a fact about a Steam *account*, and a device-local
+cache of confirmed unlocks is shared by every account on one machine and OS
+login — do not reintroduce one. The read-back is empty before the user's stats
+arrive shortly after launch and outside Steam entirely, so an unconfirmed name
+is treated as *unknown*, never as "not earned"; the capstone just does not fire
+on that pass. Nothing device-local is involved except the played-pack tally
+behind `ACH_PACK_EXPLORER` / `ACH_PACK_CONNOISSEUR`, which holds pack IDs only —
+never transcript text, session IDs, or anything else about a conversation — and
+is never transmitted anywhere. Settings' **Clear all local data** forgets it, for
+the same reason it forgets the measured turn timings: the tally is derived from
+the sessions that button deletes.
+
 ---
 
 ## Stats
@@ -251,13 +291,11 @@ Full Steamworks portal configuration is in
 
 ### Defined stats
 
-| Display name | Enum | API name | Increment event |
-|---|---|---|---|
-| Scenarios Completed | `SteamStat::SCENARIOS_COMPLETED` | `STAT_SCENARIOS_COMPLETED` | Session ends |
-| Debriefs Generated | `SteamStat::DEBRIEFS_GENERATED` | `STAT_DEBRIEFS_GENERATED` | Debrief screen displayed |
-| Packs Validated | `SteamStat::PACKS_VALIDATED` | `STAT_PACKS_VALIDATED` | Creator workbench validates a pack |
-| Text Mode Sessions | `SteamStat::TEXT_MODE_SESSIONS` | `STAT_TEXT_MODE_SESSIONS` | Session starts in text mode |
-| Voice Mode Sessions | `SteamStat::VOICE_MODE_SESSIONS` | `STAT_VOICE_MODE_SESSIONS` | Session starts in voice mode |
+The stat API names and their increment events are tabulated in
+[`docs/steam-achievements-stats-rich-presence.md`](steam-achievements-stats-rich-presence.md).
+`SteamStat` in `apps/web/src/hooks/useSteamAchievements.ts` and the `stats`
+module in `apps/desktop/src-tauri/src/steam.rs` carry the same names, held in
+step by the same test as the achievements above.
 
 All stats are **INT** type, **monotonically increasing**, and **count-only**.
 A stat value reveals how many times an event occurred — nothing about the
@@ -533,9 +571,10 @@ above must complete without any error, console warning, or UI change.
 
 Use this checklist at the Stage 4 gate:
 
-- [ ] All five achievements created in App Admin with correct API names and icon pairs.
-- [ ] Hidden flag set on `ACH_PRACTICE_STREAK` and `ACH_PACK_EXPLORER`.
-- [ ] All five stats created as INT type.
+- [ ] Every achievement in the configuration table created in App Admin with
+      correct API names and icon pairs.
+- [ ] Hidden flag set for every achievement whose **Hidden** column says `Yes`.
+- [ ] Every stat in the configuration table created as INT type.
 - [ ] Rich presence localization file uploaded for English (at minimum).
 - [ ] End-to-end test above completed with Steam running: achievements, stats,
       and rich presence all fire correctly.

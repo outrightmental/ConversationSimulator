@@ -98,7 +98,7 @@ This table shows the current status at a glance.
 | Page background | 1438 × 810 px (optional) | Not started | Stage 4 |
 | Screenshots (minimum 5) | 1920 × 1080 px | Real captures exist in `docs/assets/screenshots/` | Stage 3 — re-shoot at 1920 × 1080 |
 | Gameplay trailer | MP4, H.264, 30–120 s | Not started | Stage 4 |
-| Achievement icons | 64 × 64 px and 32 × 32 px per achievement (×5) | Not started | Stage 4 |
+| Achievement icons | 64 × 64 px and 32 × 32 px per achievement (×43) | Not started | Stage 4 |
 
 All assets must be reviewed by Outright Mental before upload. See the sign-off
 table in [`publishing/STEAM_STORE_PAGE.md` — Sign-off](STEAM_STORE_PAGE.md#sign-off)

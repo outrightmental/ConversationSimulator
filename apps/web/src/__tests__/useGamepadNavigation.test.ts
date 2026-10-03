@@ -10,6 +10,18 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook } from '@testing-library/react'
 import { useGamepadNavigation } from '../hooks/useGamepadNavigation'
 
+// Typed with the achievement name so mock.calls can be filtered by it below.
+const mockUnlock = vi.fn<(name: string) => Promise<boolean>>(() =>
+  Promise.resolve(false),
+)
+vi.mock('../hooks/useSteamAchievements', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useSteamAchievements')>()),
+  useSteamAchievements: () => ({
+    unlock: mockUnlock,
+    incrementStat: vi.fn(() => Promise.resolve(false)),
+  }),
+}))
+
 // ── Gamepad mock helpers ──────────────────────────────────────────────────────
 
 type MockButton = { pressed: boolean; value: number; touched: boolean }
@@ -63,6 +75,7 @@ describe('useGamepadNavigation', () => {
   let getGamepadsMock: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
+    mockUnlock.mockClear()
     rafCallbacks = []
     vi.stubGlobal('requestAnimationFrame', rafMock)
     vi.stubGlobal('cancelAnimationFrame', cancelRafMock)
@@ -346,5 +359,95 @@ describe('useGamepadNavigation', () => {
     expect(seen).toContain('Escape')
 
     document.removeEventListener('keydown', listener)
+  })
+})
+
+// ── ACH_BIG_PICTURE (issue #494) ──────────────────────────────────────────────
+//
+// The achievement is "the player is driving the UI with a controller", so it
+// must come from a real input, not from a pad merely being plugged in — a Steam
+// Deck in desktop mode, or a controller left connected while playing with mouse
+// and keyboard, reports a gamepad on every frame.
+describe('useGamepadNavigation — controller achievement', () => {
+  const BTN_A = 0
+  const BTN_R1 = 5
+
+  beforeEach(() => {
+    mockUnlock.mockClear()
+    rafCallbacks = []
+    vi.stubGlobal('requestAnimationFrame', rafMock)
+    vi.stubGlobal('cancelAnimationFrame', cancelRafMock)
+    Object.defineProperty(navigator, 'getGamepads', {
+      value: vi.fn().mockReturnValue([null]),
+      configurable: true,
+      writable: true,
+    })
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+    vi.unstubAllGlobals()
+    document.documentElement.classList.remove('gamepad-active')
+  })
+
+  function withGamepads(frames: Gamepad[][]) {
+    const mock = vi.fn()
+    for (const frame of frames) mock.mockReturnValueOnce(frame)
+    mock.mockReturnValue(frames[frames.length - 1] ?? [null])
+    Object.defineProperty(navigator, 'getGamepads', {
+      value: mock,
+      configurable: true,
+      writable: true,
+    })
+  }
+
+  it('does not grant it for a connected but idle controller', () => {
+    withGamepads([[makeGamepad({ buttons: makeButtons([]) })]])
+    renderHook(() => useGamepadNavigation())
+    flushRaf()
+    flushRaf()
+    expect(mockUnlock).not.toHaveBeenCalled()
+  })
+
+  it('grants it on a real button press', () => {
+    withGamepads([
+      [makeGamepad({ buttons: makeButtons([]) })],
+      [makeGamepad({ buttons: makeButtons([BTN_A]) })],
+    ])
+    renderHook(() => useGamepadNavigation())
+    flushRaf()
+    flushRaf()
+    expect(mockUnlock).toHaveBeenCalledWith('ACH_BIG_PICTURE')
+  })
+
+  it('grants it on a d-pad navigation press', () => {
+    const BTN_DPAD_DOWN = 13
+    withGamepads([[makeGamepad({ buttons: makeButtons([BTN_DPAD_DOWN]) })]])
+    renderHook(() => useGamepadNavigation())
+    flushRaf()
+    expect(mockUnlock).toHaveBeenCalledWith('ACH_BIG_PICTURE')
+  })
+
+  it('ignores analog-stick drift inside the dead zone', () => {
+    // STICK_DEAD_ZONE is 0.5; a worn stick resting at 0.3 must not count.
+    withGamepads([[makeGamepad({ buttons: makeButtons([]), axes: [0, 0.3, 0, 0] })]])
+    renderHook(() => useGamepadNavigation())
+    flushRaf()
+    flushRaf()
+    expect(mockUnlock).not.toHaveBeenCalled()
+  })
+
+  it('grants it only once however long the player plays', () => {
+    withGamepads([
+      [makeGamepad({ buttons: makeButtons([]) })],
+      [makeGamepad({ buttons: makeButtons([BTN_R1]) })],
+      [makeGamepad({ buttons: makeButtons([]) })],
+      [makeGamepad({ buttons: makeButtons([BTN_A]) })],
+    ])
+    renderHook(() => useGamepadNavigation())
+    for (let i = 0; i < 6; i++) flushRaf()
+    expect(
+      mockUnlock.mock.calls.filter(([name]) => name === 'ACH_BIG_PICTURE'),
+    ).toHaveLength(1)
   })
 })

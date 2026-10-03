@@ -7,6 +7,12 @@ import { errorHeadline } from '../api/errors'
 import { ApiErrorView } from '../components/ApiErrorView'
 import { readPrivacyPref, writePrivacyPref, PRIVACY_KEYS, isDevModeEnabled } from '../privacyPrefs'
 import { useSteamStatus } from '../hooks/useSteamStatus'
+import {
+  useSteamAchievements,
+  SteamAchievement,
+  SteamStat,
+  clearPacksPlayed,
+} from '../hooks/useSteamAchievements'
 import RuntimeSettingsPanel from '../components/RuntimeSettingsPanel'
 import VoiceSettingsPanel from '../components/VoiceSettingsPanel'
 import { useTranslation, formatDate, SUPPORTED_LOCALES } from '../i18n'
@@ -105,6 +111,7 @@ export default function Settings() {
   const [devMode, setDevMode] = useState(() => isDevModeEnabled())
   const [isTauri] = useState(detectTauri)
   const steamStatus = useSteamStatus()
+  const { unlock, incrementStat } = useSteamAchievements()
 
   // ── System health ────────────────────────────────────────────────────────────
 
@@ -115,7 +122,10 @@ export default function Settings() {
     setHealthChecking(true)
     setHealthResult(null)
     const r = await api.preflight()
-    if (r.ok) setHealthResult(r.data)
+    if (r.ok) {
+      setHealthResult(r.data)
+      void unlock(SteamAchievement.SELF_TEST)
+    }
     setHealthChecking(false)
   }
 
@@ -133,21 +143,34 @@ export default function Settings() {
   function handleSaveTranscriptsChange(v: boolean) {
     setSaveTranscripts(v)
     writePrivacyPref(PRIVACY_KEYS.saveTranscripts, v)
+    void unlock(SteamAchievement.PRIVACY_TUNED)
   }
 
   function handleSaveTtsCacheChange(v: boolean) {
     setSaveTtsCache(v)
     writePrivacyPref(PRIVACY_KEYS.saveTtsCache, v)
+    void unlock(SteamAchievement.PRIVACY_TUNED)
   }
 
   function handleSaveRawAudioChange(v: boolean) {
     setSaveRawAudio(v)
     writePrivacyPref(PRIVACY_KEYS.saveRawAudio, v)
+    void unlock(SteamAchievement.PRIVACY_TUNED)
   }
 
   function handleDevModeChange(v: boolean) {
     setDevMode(v)
     writePrivacyPref(PRIVACY_KEYS.devMode, v)
+    // Only turning it on is the discovery (ACH_DEV_MODE); turning it back off
+    // must not be the thing that grants it.
+    if (v) void unlock(SteamAchievement.DEV_MODE)
+  }
+
+  // Switching the interface to another language (ACH_POLYGLOT). Re-selecting the
+  // active language is not a switch.
+  function handleLocaleChange(next: string) {
+    if (next !== locale) void unlock(SteamAchievement.POLYGLOT)
+    setLocale(next)
   }
 
   // ── Folders ─────────────────────────────────────────────────────────────────
@@ -211,6 +234,8 @@ export default function Settings() {
     if (r.ok) {
       setImportedPack(r.data)
       setPackImportState('success')
+      void unlock(SteamAchievement.PACK_IMPORTED)
+      void incrementStat(SteamStat.PACKS_IMPORTED)
       loadInstalledPacks()
     } else {
       setPackImportError(r.error)
@@ -260,6 +285,12 @@ export default function Settings() {
         // clears, so they have to be dropped here — the button promises "cached
         // data from your device" and a record of how slow this machine is counts.
         clearTurnSamples()
+        // Same reasoning, same place on disk: which packs the player has
+        // practised with is derived from the sessions just deleted, so it must
+        // not outlive them. Only progress toward ACH_PACK_EXPLORER /
+        // ACH_PACK_CONNOISSEUR is lost — either one already unlocked belongs to
+        // the Steam account, not to this tally.
+        clearPacksPlayed()
         setDeletedCount(r.data.deleted_sessions)
         setDeleteError(null)
         setExportError(null)
@@ -301,10 +332,17 @@ export default function Settings() {
 
   const loadRecaps = useCallback(() => {
     void api.listRelationshipMemory().then((r) => {
-      if (r.ok) { setRecaps(r.data.recaps); setRecapsError(null) }
+      if (r.ok) {
+        setRecaps(r.data.recaps)
+        setRecapsError(null)
+        // A recap exists, so an NPC has remembered the player across sessions
+        // (ACH_RELATIONSHIP_MEMORY). Only the existence of a recap is used —
+        // its contents are never read here.
+        if (r.data.recaps.length > 0) void unlock(SteamAchievement.RELATIONSHIP_MEMORY)
+      }
       else setRecapsError(r.error)
     })
-  }, [])
+  }, [unlock])
 
   useEffect(() => { loadRecaps() }, [loadRecaps])
 
@@ -314,6 +352,7 @@ export default function Settings() {
     const r = await api.deleteRelationshipMemory(npcId, packId)
     if (r.ok) {
       setRecaps((prev) => prev?.filter((x) => !(x.npc_id === npcId && x.pack_id === packId)) ?? null)
+      void unlock(SteamAchievement.MEMORY_FORGOTTEN)
     }
     setDeletingRecap(null)
   }
@@ -321,7 +360,10 @@ export default function Settings() {
   async function handleClearAllRecaps() {
     setClearingRecaps(true)
     const r = await api.clearAllRelationshipMemory()
-    if (r.ok) { setRecaps([]) }
+    if (r.ok) {
+      setRecaps([])
+      void unlock(SteamAchievement.MEMORY_FORGOTTEN)
+    }
     setClearingRecaps(false)
   }
 
@@ -338,6 +380,8 @@ export default function Settings() {
       a.click()
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
+      void unlock(SteamAchievement.TRANSCRIPT_EXPORT)
+      void incrementStat(SteamStat.TRANSCRIPTS_EXPORTED)
     } else {
       setExportError(r.error)
     }
@@ -393,7 +437,7 @@ export default function Settings() {
           <span>{t('settings.language.label')}:</span>
           <select
             value={locale}
-            onChange={(e) => setLocale(e.target.value)}
+            onChange={(e) => handleLocaleChange(e.target.value)}
             aria-label={t('settings.language.label')}
             data-testid="settings-locale-select"
             style={{

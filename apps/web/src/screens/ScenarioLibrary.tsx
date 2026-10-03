@@ -10,6 +10,8 @@ import { ApiErrorView } from '../components/ApiErrorView'
 import { CopyDiagnosticsButton } from '../components/CopyDiagnosticsButton'
 import { useSteamStatus } from '../hooks/useSteamStatus'
 import { useSteamWorkshop } from '../hooks/useSteamWorkshop'
+import { useSteamDlc } from '../hooks/useSteamDlc'
+import { useSteamAchievements, SteamAchievement, SteamStat } from '../hooks/useSteamAchievements'
 
 interface PackGroup {
   pack_id: string
@@ -76,6 +78,12 @@ export default function ScenarioLibrary() {
   const [workshopQuarantine, setWorkshopQuarantine] = useState<Array<{ item_id: string; reason: string }>>([])
 
   const isSteamEnabled = steamStatus?.is_steam_enabled ?? false
+
+  const { unlock, incrementStat } = useSteamAchievements()
+  const { isDlcInstalledForPack } = useSteamDlc()
+  const curatorGranted = useRef(false)
+  const subscriberGranted = useRef(false)
+  const dlcChecked = useRef(false)
 
   const searchId = useId()
   const ratingId = useId()
@@ -183,6 +191,52 @@ export default function ScenarioLibrary() {
     })
   }, [])
 
+  // ACH_WORKSHOP_SUBSCRIBER — a subscribed Workshop pack is present in the
+  // library, which means the subscribe-sync path worked at least once. Driven
+  // off the loaded items rather than the loader itself, so a subscription from
+  // before this release counts on the next launch too. Only the fact that at
+  // least one item exists is used; no pack metadata leaves the device.
+  useEffect(() => {
+    if (subscriberGranted.current || Object.keys(workshopItems).length === 0) return
+    subscriberGranted.current = true
+    void unlock(SteamAchievement.WORKSHOP_SUBSCRIBER)
+  }, [workshopItems, unlock])
+
+  // ACH_LIBRARY_CURATOR — the player has narrowed the library with search or
+  // any of the facet filters. Only the fact that a filter is active is used; no
+  // search text leaves the device.
+  useEffect(() => {
+    if (curatorGranted.current) return
+    const filtering =
+      search.trim() !== '' ||
+      filterRating !== '' ||
+      filterLanguage !== '' ||
+      filterDifficulty !== '' ||
+      filterTag !== '' ||
+      filterModel !== '' ||
+      voiceOnly
+    if (!filtering) return
+    curatorGranted.current = true
+    void unlock(SteamAchievement.LIBRARY_CURATOR)
+  }, [search, filterRating, filterLanguage, filterDifficulty, filterTag, filterModel, voiceOnly, unlock])
+
+  // ACH_DLC_LIBRARY — an installed DLC scenario pack is present in the library.
+  // DLC_REGISTRY is empty in open-source and browser builds, so every lookup
+  // misses there and the achievement simply never fires.
+  useEffect(() => {
+    const packIds = Object.keys(indexedPacks)
+    if (dlcChecked.current || packIds.length === 0) return
+    dlcChecked.current = true
+    void (async () => {
+      for (const packId of packIds) {
+        if (await isDlcInstalledForPack(packId)) {
+          void unlock(SteamAchievement.DLC_LIBRARY)
+          return
+        }
+      }
+    })()
+  }, [indexedPacks, isDlcInstalledForPack, unlock])
+
   const { allRatings, allLanguages, allDifficulties, allTags, allModels } = useMemo(() => {
     if (!scenarios) return { allRatings: [], allLanguages: [], allDifficulties: [], allTags: [], allModels: [] }
     const ratings = new Set<string>()
@@ -233,6 +287,7 @@ export default function ScenarioLibrary() {
     const r = await api.validatePack(packId)
     if (r.ok) {
       setValidations((prev) => ({ ...prev, [packId]: { status: 'done', result: r.data } }))
+      void incrementStat(SteamStat.PACKS_VALIDATED)
     } else {
       setValidations((prev) => ({ ...prev, [packId]: { status: 'error', error: r.error } }))
     }
@@ -246,6 +301,8 @@ export default function ScenarioLibrary() {
     if (r.ok) {
       setImportedPack(r.data)
       setImportState('success')
+      void unlock(SteamAchievement.PACK_IMPORTED)
+      void incrementStat(SteamStat.PACKS_IMPORTED)
       loadScenarios()
       loadIndexedPacks()
     } else {
@@ -259,6 +316,7 @@ export default function ScenarioLibrary() {
     const r = await apiClient.reseedOfficialPacks()
     if (r.ok) {
       setRestoreState('done')
+      void unlock(SteamAchievement.PACKS_RESTORED)
       loadScenarios()
       loadIndexedPacks()
     } else {

@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom'
 import Debrief from '../screens/Debrief'
-import type { SessionDebriefResponse } from '@convsim/shared'
+import type { ScenarioInfo, SessionDebriefResponse } from '@convsim/shared'
 
 vi.mock('../api/client', () => ({
   api: {
@@ -32,18 +32,21 @@ const mockIsDevModeEnabled = vi.mocked(isDevModeEnabled)
 
 const mockUnlock = vi.fn(() => Promise.resolve(false))
 const mockIncrementStat = vi.fn(() => Promise.resolve(false))
-vi.mock('../hooks/useSteamAchievements', () => ({
+// Only the hook itself is stubbed. This module also exports the achievement and
+// stat name maps, the unlock thresholds, and the local progress helpers that the
+// screens import directly; a hand-rolled mock of those silently drifts out of
+// date every time an achievement is added (and then the screen throws on an
+// undefined export), so importOriginal keeps them real.
+vi.mock('../hooks/useSteamAchievements', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useSteamAchievements')>()),
   useSteamAchievements: () => ({ unlock: mockUnlock, incrementStat: mockIncrementStat }),
-  SteamAchievement: {
-    FIRST_SCENARIO: 'ACH_FIRST_SCENARIO',
-    FIRST_DEBRIEF: 'ACH_FIRST_DEBRIEF',
-    PRACTICE_STREAK: 'ACH_PRACTICE_STREAK',
-  },
-  SteamStat: {
-    SCENARIOS_COMPLETED: 'STAT_SCENARIOS_COMPLETED',
-    DEBRIEFS_GENERATED: 'STAT_DEBRIEFS_GENERATED',
-  },
 }))
+import {
+  readPacksPlayed,
+  recordPackPlayed,
+  PACK_EXPLORER_PACKS,
+  PACK_CONNOISSEUR_PACKS,
+} from '../hooks/useSteamAchievements'
 
 const SESSION_ID = 'sess-debrief01'
 
@@ -136,6 +139,10 @@ function renderDebrief(routeState?: unknown) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // The screens record played packs in localStorage, which setupTests backs with
+  // a single in-memory store for the whole file. Clear it so one test's pack
+  // ledger cannot push a later test over an unlock threshold.
+  localStorage.clear()
   mockApi.exportSession.mockResolvedValue({ ok: true, data: exportData })
   mockApi.exportTranscriptText.mockResolvedValue({
     ok: true,
@@ -144,6 +151,10 @@ beforeEach(() => {
       filename: `session-${SESSION_ID}-transcript.md`,
     },
   })
+  // Reset to the default this file assumes (an empty library) so the
+  // pack-breadth block's populated index cannot leak into later tests —
+  // mockResolvedValue survives vi.clearAllMocks().
+  mockApi.listScenarios.mockResolvedValue({ ok: true, data: [] })
   mockIsDevModeEnabled.mockReturnValue(false)
   mockReadVoiceInviteState.mockReturnValue('pending')
   mockWriteVoiceInviteState.mockReset()
@@ -247,6 +258,78 @@ describe('Debrief screen', () => {
       expect(mockUnlock).toHaveBeenCalledWith('ACH_FIRST_SCENARIO')
       expect(mockIncrementStat).toHaveBeenCalledWith('STAT_DEBRIEFS_GENERATED')
       expect(mockIncrementStat).toHaveBeenCalledWith('STAT_SCENARIOS_COMPLETED')
+    })
+  })
+
+  // ── Pack breadth (issue #494) ───────────────────────────────────────────────
+  //
+  // ACH_PACK_EXPLORER / ACH_PACK_CONNOISSEUR are the only achievements driven by
+  // a device-local tally instead of server state, so both the thresholds and the
+  // "distinct packs, not debriefs" accounting are pinned here. The tally itself
+  // is the real implementation (the module mock above keeps every non-hook
+  // export), so these also prove the screen and the thresholds agree.
+  describe('steam pack-breadth achievements', () => {
+    /** A library entry carrying just the fields the pack tally reads. */
+    function indexed(scenarioId: string, packId: string): ScenarioInfo {
+      return { scenario_id: scenarioId, pack_id: packId } as unknown as ScenarioInfo
+    }
+
+    beforeEach(() => {
+      mockApi.listScenarios.mockResolvedValue({
+        ok: true,
+        data: [indexed('behavioral_interview', 'official.interviews')],
+      })
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
+    })
+
+    /** Renders and waits until the pack tally has had its chance to run. */
+    async function debriefAndSettle() {
+      renderDebrief()
+      await waitFor(() =>
+        expect(screen.getByTestId('summary-section')).toBeInTheDocument(),
+      )
+      await waitFor(() => expect(readPacksPlayed()).not.toHaveLength(0))
+    }
+
+    it('records the debriefed pack without unlocking below the threshold', async () => {
+      await debriefAndSettle()
+      expect(readPacksPlayed()).toEqual(['official.interviews'])
+      expect(mockUnlock).not.toHaveBeenCalledWith('ACH_PACK_EXPLORER')
+      expect(mockUnlock).not.toHaveBeenCalledWith('ACH_PACK_CONNOISSEUR')
+    })
+
+    it(`unlocks pack explorer on the ${PACK_EXPLORER_PACKS}th distinct pack`, async () => {
+      for (let i = 1; i < PACK_EXPLORER_PACKS; i++) recordPackPlayed(`official.pack${i}`)
+      await debriefAndSettle()
+      expect(mockUnlock).toHaveBeenCalledWith('ACH_PACK_EXPLORER')
+      expect(mockUnlock).not.toHaveBeenCalledWith('ACH_PACK_CONNOISSEUR')
+    })
+
+    it(`unlocks pack connoisseur on the ${PACK_CONNOISSEUR_PACKS}th distinct pack`, async () => {
+      for (let i = 1; i < PACK_CONNOISSEUR_PACKS; i++) recordPackPlayed(`official.pack${i}`)
+      await debriefAndSettle()
+      expect(mockUnlock).toHaveBeenCalledWith('ACH_PACK_CONNOISSEUR')
+      expect(mockUnlock).toHaveBeenCalledWith('ACH_PACK_EXPLORER')
+    })
+
+    it('does not count a replay of a pack already tallied', async () => {
+      // Breadth, not volume: four debriefs from one pack must stay at one pack,
+      // or a player who only ever replays their favourite would reach 5/5.
+      recordPackPlayed('official.interviews')
+      await debriefAndSettle()
+      expect(readPacksPlayed()).toEqual(['official.interviews'])
+      expect(mockUnlock).not.toHaveBeenCalledWith('ACH_PACK_EXPLORER')
+    })
+
+    it('tallies nothing when the scenario is missing from the library index', async () => {
+      // A Workshop pack that was unsubscribed, or a scenario deleted since the
+      // session ran: there is no pack to credit, and nothing must be invented.
+      mockApi.listScenarios.mockResolvedValue({ ok: true, data: [] })
+      renderDebrief()
+      await waitFor(() =>
+        expect(screen.getByTestId('summary-section')).toBeInTheDocument(),
+      )
+      expect(readPacksPlayed()).toEqual([])
     })
   })
 
@@ -445,6 +528,118 @@ describe('Debrief screen', () => {
       await waitFor(() =>
         expect(screen.getByText('Setup page')).toBeInTheDocument(),
       )
+    })
+  })
+
+  // The debrief owns three of the capstone's required achievements whose unlock
+  // is gated on something: a turning-point jump, a replay that really has a
+  // scenario to replay, and an export that actually succeeded. The call-site
+  // guard in steamAchievementCallSites.test.ts only proves the names are wired
+  // somewhere, so the gates themselves are pinned here.
+  describe('steam review and export achievements', () => {
+    it('grants the turning-point achievement when a card jumps into the transcript', async () => {
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
+      // jsdom does not implement scrollIntoView at all (so it cannot be spied
+      // on, only defined), and the handler calls it right after the unlock —
+      // without this the jump throws past the assertion.
+      const scrollIntoView = vi.fn()
+      Object.defineProperty(Element.prototype, 'scrollIntoView', {
+        configurable: true,
+        value: scrollIntoView,
+      })
+      renderDebrief()
+      // The jump button only renders once the transcript has loaded, which is
+      // the whole point of the achievement — it marks the debrief's deepest
+      // review affordance, not merely seeing the card.
+      const jump = await screen.findByRole('button', { name: /go to turn 1/i })
+      expect(mockUnlock).not.toHaveBeenCalledWith('ACH_TURNING_POINT')
+      fireEvent.click(jump)
+      await waitFor(() =>
+        expect(mockUnlock).toHaveBeenCalledWith('ACH_TURNING_POINT'),
+      )
+      expect(scrollIntoView).toHaveBeenCalled()
+      delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView
+    })
+
+    it('grants the replay achievement when the finished scenario is replayed', async () => {
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
+      renderDebrief()
+      await waitFor(() =>
+        expect(screen.getByTestId('replay-btn')).toBeInTheDocument(),
+      )
+      fireEvent.click(screen.getByTestId('replay-btn'))
+      await waitFor(() =>
+        expect(mockUnlock).toHaveBeenCalledWith('ACH_REPLAY_VARIATION'),
+      )
+    })
+
+    it('does not grant it when the button only lands the player back in the library', async () => {
+      // Debrief generation failed and the export carries no scenario id, so the
+      // same button has nothing to replay and falls back to /library. That is
+      // not the replay ACH_REPLAY_VARIATION is defined against.
+      mockApi.generateDebrief.mockResolvedValue({
+        ok: false,
+        error: { kind: 'network', message: 'Model error' },
+      })
+      mockApi.exportSession.mockResolvedValue({
+        ok: true,
+        data: { session: { ...exportData.session, scenario_id: undefined }, events: exportData.events },
+      })
+      renderDebrief()
+      fireEvent.click(await screen.findByTestId('transcript-only-btn'))
+      await waitFor(() =>
+        expect(screen.getByTestId('transcript-only-notice')).toBeInTheDocument(),
+      )
+      fireEvent.click(screen.getByTestId('replay-btn'))
+      await waitFor(() =>
+        expect(screen.getByText('Library page')).toBeInTheDocument(),
+      )
+      expect(mockUnlock).not.toHaveBeenCalledWith('ACH_REPLAY_VARIATION')
+    })
+
+    it.each(['export-btn', 'export-text-btn'] as const)('grants the export achievement and counts the export from %s', async (testId) => {
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
+
+      const originalCreateElement = document.createElement.bind(document)
+      const createElementSpy = vi.spyOn(document, 'createElement').mockImplementation((tag) => {
+        if (tag === 'a') return { href: '', download: '', click: vi.fn() } as unknown as HTMLElement
+        return originalCreateElement(tag)
+      })
+      vi.stubGlobal('URL', {
+        createObjectURL: vi.fn().mockReturnValue('blob:mock'),
+        revokeObjectURL: vi.fn(),
+      })
+
+      try {
+        renderDebrief()
+        fireEvent.click(await screen.findByTestId(testId))
+        await waitFor(() =>
+          expect(mockUnlock).toHaveBeenCalledWith('ACH_TRANSCRIPT_EXPORT'),
+        )
+        expect(mockIncrementStat).toHaveBeenCalledWith('STAT_TRANSCRIPTS_EXPORTED')
+      } finally {
+        createElementSpy.mockRestore()
+        vi.unstubAllGlobals()
+      }
+    })
+
+    it.each([
+      ['export-btn', 'exportSession'] as const,
+      ['export-text-btn', 'exportTranscriptText'] as const,
+    ])('grants nothing when the export from %s fails', async (testId, apiMethod) => {
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
+      renderDebrief()
+      const button = await screen.findByTestId(testId)
+      // Fail only the click's own call — the screen already fetched the
+      // transcript through exportSession on load.
+      mockApi[apiMethod].mockResolvedValue({
+        ok: false,
+        error: { kind: 'network', message: 'disk full' },
+      })
+      fireEvent.click(button)
+      await waitFor(() => expect(mockApi[apiMethod]).toHaveBeenCalled())
+      expect(mockUnlock).not.toHaveBeenCalledWith('ACH_TRANSCRIPT_EXPORT')
+      expect(mockIncrementStat).not.toHaveBeenCalledWith('STAT_TRANSCRIPTS_EXPORTED')
     })
   })
 

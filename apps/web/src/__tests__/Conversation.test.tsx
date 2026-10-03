@@ -33,6 +33,20 @@ vi.mock('../api/client', () => ({
   },
 }))
 
+const mockUnlock = vi.fn<(name: string) => Promise<boolean>>(() =>
+  Promise.resolve(false),
+)
+const mockIncrementStat = vi.fn<(name: string) => Promise<boolean>>(() =>
+  Promise.resolve(false),
+)
+// Only the hook is stubbed; importOriginal keeps DEEP_CONVERSATION_TURNS and the
+// name maps real, so these tests cannot drift from the shipped threshold.
+vi.mock('../hooks/useSteamAchievements', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useSteamAchievements')>()),
+  useSteamAchievements: () => ({ unlock: mockUnlock, incrementStat: mockIncrementStat }),
+}))
+import { DEEP_CONVERSATION_TURNS } from '../hooks/useSteamAchievements'
+
 import { api, apiClient } from '../api/client'
 import { clearTurnSamples, readTurnSamples, recordTurnSample } from '../lib/turnEstimate'
 const mockApi = vi.mocked(api)
@@ -2170,5 +2184,412 @@ describe('Conversation screen', () => {
       // No background-install polling is wired to the legacy key any more.
       expect(mockApi.getSetupInstallStatus).not.toHaveBeenCalled()
     })
+  })
+})
+
+// ── Steam achievement call sites (issue #494) ────────────────────────────────
+//
+// The conversation screen owns two counters that no other screen can stand in
+// for: the per-session player-turn tally behind ACH_DEEP_CONVERSATION (the
+// screen's own turnNumRef counts NPC turns too), and the one-per-session input
+// mode stat.
+describe('Conversation — Steam achievement call sites', () => {
+  /** Submits `n` player turns through the text input. */
+  async function submitTurns(n: number) {
+    for (let i = 0; i < n; i++) {
+      const textarea = await screen.findByRole('textbox', { name: /your response/i })
+      fireEvent.change(textarea, { target: { value: `turn ${i}` } })
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+      await waitFor(() =>
+        expect(
+          (screen.getByRole('textbox', { name: /your response/i }) as HTMLTextAreaElement).value,
+        ).toBe(''),
+      )
+    }
+  }
+
+  beforeEach(() => {
+    mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
+    mockApi.submitTurn.mockResolvedValue({ ok: true, data: turnResponse })
+  })
+
+  it('counts a text-mode session once at the start boundary', async () => {
+    renderConversation({ input_mode: 'text-only' })
+    await waitFor(() =>
+      expect(mockIncrementStat).toHaveBeenCalledWith('STAT_TEXT_MODE_SESSIONS'),
+    )
+    expect(mockIncrementStat).not.toHaveBeenCalledWith('STAT_VOICE_MODE_SESSIONS')
+    expect(
+      mockIncrementStat.mock.calls.filter(([n]) => n === 'STAT_TEXT_MODE_SESSIONS'),
+    ).toHaveLength(1)
+  })
+
+  it('counts a voice-mode session against the voice stat', async () => {
+    renderConversation({ input_mode: 'voice' })
+    await waitFor(() =>
+      expect(mockIncrementStat).toHaveBeenCalledWith('STAT_VOICE_MODE_SESSIONS'),
+    )
+    expect(mockIncrementStat).not.toHaveBeenCalledWith('STAT_TEXT_MODE_SESSIONS')
+  })
+
+  it('does not count the session again when a reload resumes it', async () => {
+    // A page reload (or a dev-mode double mount) re-POSTs /start, which answers
+    // INVALID_TRANSITION. That path must not add a second session to the stat.
+    mockApi.startSession.mockResolvedValue({
+      ok: false,
+      error: { kind: 'network', message: 'INVALID_TRANSITION' },
+    })
+    mockApi.getSessionTranscript.mockResolvedValue({
+      ok: true,
+      data: {
+        session_id: SESSION_ID,
+        scenario_id: 'behavioral_interview',
+        transcript_saved: true,
+        turns: [
+          { turn_number: 0, role: 'npc_opening', content: 'Thanks for coming in. Tell me about yourself.', flow_state_after: 'PlayerTurnListening' },
+        ],
+      },
+    })
+    renderConversation({ input_mode: 'text-only' })
+    await waitFor(() =>
+      expect(screen.getByText('Thanks for coming in. Tell me about yourself.')).toBeInTheDocument(),
+    )
+    expect(mockIncrementStat).not.toHaveBeenCalledWith('STAT_TEXT_MODE_SESSIONS')
+  })
+
+  it(`unlocks the deep-conversation achievement at ${DEEP_CONVERSATION_TURNS} player turns`, async () => {
+    renderConversation({ input_mode: 'text-only' })
+    await screen.findByRole('textbox', { name: /your response/i })
+
+    await submitTurns(DEEP_CONVERSATION_TURNS - 1)
+    expect(mockUnlock).not.toHaveBeenCalledWith('ACH_DEEP_CONVERSATION')
+
+    await submitTurns(1)
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_DEEP_CONVERSATION'))
+  })
+
+  it('does not count a turn that failed and was rolled back', async () => {
+    // A failed turn is removed from the transcript and gives its turn number
+    // back, so it must not count toward "12 of their own turns" either —
+    // otherwise the tally drifts one ahead per failure, and a scenario capped
+    // below the threshold (the 8-turn tutorial) could grant it on retries.
+    renderConversation({ input_mode: 'text-only' })
+    await screen.findByRole('textbox', { name: /your response/i })
+
+    await submitTurns(DEEP_CONVERSATION_TURNS - 1)
+    expect(mockUnlock).not.toHaveBeenCalledWith('ACH_DEEP_CONVERSATION')
+
+    mockApi.submitTurn.mockResolvedValue({
+      ok: false,
+      error: { kind: 'network', message: 'Turn failed' },
+    })
+    await submitTurns(1)
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+    expect(mockUnlock).not.toHaveBeenCalledWith('ACH_DEEP_CONVERSATION')
+
+    // The retry that actually lands is the twelfth turn the conversation holds.
+    mockApi.submitTurn.mockResolvedValue({ ok: true, data: turnResponse })
+    await submitTurns(1)
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_DEEP_CONVERSATION'))
+  })
+
+  it('counts rehydrated player turns toward the threshold after a reload', async () => {
+    // Progress must survive a mid-session reload: the tally is seeded from the
+    // rehydrated transcript, so the player is not sent back to turn one.
+    type RehydratedTurn = {
+      turn_number: number
+      role: 'npc_opening' | 'player' | 'npc'
+      content: string
+      flow_state_after: string
+    }
+    const turns: RehydratedTurn[] = [
+      { turn_number: 0, role: 'npc_opening', content: 'Thanks for coming in. Tell me about yourself.', flow_state_after: 'PlayerTurnListening' },
+    ]
+    for (let i = 1; i <= DEEP_CONVERSATION_TURNS - 1; i++) {
+      turns.push({ turn_number: i, role: 'player', content: `earlier turn ${i}`, flow_state_after: 'PlayerTurnListening' })
+    }
+    mockApi.startSession.mockResolvedValue({
+      ok: false,
+      error: { kind: 'network', message: 'INVALID_TRANSITION' },
+    })
+    mockApi.getSessionTranscript.mockResolvedValue({
+      ok: true,
+      data: { session_id: SESSION_ID, scenario_id: 'behavioral_interview', transcript_saved: true, turns },
+    })
+    renderConversation({ input_mode: 'text-only' })
+    await screen.findByRole('textbox', { name: /your response/i })
+    expect(mockUnlock).not.toHaveBeenCalledWith('ACH_DEEP_CONVERSATION')
+
+    await submitTurns(1)
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_DEEP_CONVERSATION'))
+  })
+
+  /** A server transcript whose player turns already meet the threshold. */
+  function deepTranscript() {
+    const turns: Array<{
+      turn_number: number
+      role: 'npc_opening' | 'player' | 'npc'
+      content: string
+      emotion?: string
+      flow_state_after: string
+    }> = [
+      { turn_number: 0, role: 'npc_opening', content: 'Thanks for coming in. Tell me about yourself.', flow_state_after: 'PlayerTurnListening' },
+    ]
+    for (let i = 1; i <= DEEP_CONVERSATION_TURNS; i++) {
+      turns.push({ turn_number: i, role: 'player', content: `earlier turn ${i}`, flow_state_after: 'PlayerTurnListening' })
+    }
+    return { session_id: SESSION_ID, scenario_id: SCENARIO_ID, transcript_saved: true, turns }
+  }
+
+  it('unlocks it from the resumed transcript alone when it already meets the threshold', async () => {
+    // The tally is replaced wholesale from the server's copy on resume, so the
+    // threshold has to be evaluated there too — a player resuming at turn 12 of
+    // a 14-turn scenario must not be made to play a thirteenth to be granted a
+    // condition they already satisfy.
+    mockApi.startSession.mockResolvedValue({
+      ok: false,
+      error: { kind: 'network', message: 'INVALID_TRANSITION' },
+    })
+    mockApi.getSessionTranscript.mockResolvedValue({ ok: true, data: deepTranscript() })
+    renderConversation({ input_mode: 'text-only' })
+    await waitFor(() =>
+      expect(mockUnlock).toHaveBeenCalledWith('ACH_DEEP_CONVERSATION'),
+    )
+  })
+
+  it('unlocks it for the threshold turn adopted from the server after the reply deadline', async () => {
+    // The issue #489 slow-reply path never reaches the per-turn counter: when
+    // the deadline expires the screen adopts the server's transcript and the
+    // submit handler returns early. A twelfth turn landing that way granted
+    // nothing until the threshold check moved to every tally write — and the
+    // unlock was lost outright when the adopted turn was the session's last,
+    // which is the likely case on the hardware that trips the deadline.
+    const adopted = deepTranscript()
+    adopted.turns.push({
+      turn_number: DEEP_CONVERSATION_TURNS + 1,
+      role: 'npc',
+      content: 'Committed by the server while the UI waited.',
+      emotion: 'neutral',
+      flow_state_after: 'PlayerTurnListening',
+    })
+    mockApi.getSessionTranscript.mockResolvedValue({ ok: true, data: adopted })
+    // The request never resolves, so the deadline is the only thing that
+    // reconciles this turn.
+    mockApi.submitTurn.mockReturnValue(new Promise(() => {}) as never)
+
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      renderConversation({ input_mode: 'text-only' })
+      const textarea = await screen.findByRole('textbox', { name: /your response/i })
+      fireEvent.change(textarea, { target: { value: 'my twelfth answer' } })
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+      await waitFor(() => expect(screen.getByText('my twelfth answer')).toBeInTheDocument())
+      expect(mockUnlock).not.toHaveBeenCalledWith('ACH_DEEP_CONVERSATION')
+
+      // 300_000 ms is the deadline at which the screen stops trusting the
+      // request and adopts the server's copy instead.
+      await vi.advanceTimersByTimeAsync(300_000)
+      await waitFor(() =>
+        expect(
+          screen.getByText('Committed by the server while the UI waited.'),
+        ).toBeInTheDocument(),
+      )
+      await waitFor(() =>
+        expect(mockUnlock).toHaveBeenCalledWith('ACH_DEEP_CONVERSATION'),
+      )
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('unlocks it for the threshold turn the stream delivered before the deadline', async () => {
+    // The second post-deadline exit, and the one neither tally writer covers: a
+    // WebSocket npc.final has already put the reply on screen, so the reconcile
+    // loop returns on `npcTurnCommittedRef` without ever asking the transcript
+    // — `_hydrateTurnsFromServer` is not reached — and the submit handler
+    // returns on `adopted` before `notePlayerTurnKept`. The turn is in the
+    // transcript the player is reading, so it has to be in the tally too.
+    let wsCallback: ((event: WsEvent) => void) | null = null
+    mockApi.connectSession.mockImplementation((_id, cb) => {
+      wsCallback = cb
+      return { close: vi.fn() }
+    })
+    // Resume at one turn short of the threshold, so the turn submitted below is
+    // the one that must grant it.
+    const seeded = deepTranscript()
+    seeded.turns = seeded.turns.slice(0, DEEP_CONVERSATION_TURNS)
+    mockApi.startSession.mockResolvedValue({
+      ok: false,
+      error: { kind: 'network', message: 'INVALID_TRANSITION' },
+    })
+    mockApi.getSessionTranscript.mockResolvedValue({ ok: true, data: seeded })
+    // The request never answers, so the deadline is the only thing that ends
+    // this turn — and by then the stream has already delivered the reply.
+    mockApi.submitTurn.mockReturnValue(new Promise(() => {}) as never)
+
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      renderConversation({ input_mode: 'text-only' })
+      const textarea = await screen.findByRole('textbox', { name: /your response/i })
+      fireEvent.change(textarea, { target: { value: 'my twelfth answer' } })
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+      await waitFor(() => expect(screen.getByText('my twelfth answer')).toBeInTheDocument())
+      expect(mockUnlock).not.toHaveBeenCalledWith('ACH_DEEP_CONVERSATION')
+
+      act(() => {
+        wsCallback?.({
+          type: 'npc.final',
+          seq: 1,
+          session_id: SESSION_ID,
+          ts: '2026-07-01T00:01:01Z',
+          payload: {
+            content: 'Delivered over the stream.',
+            emotion: 'neutral',
+            state_delta: {},
+            event_flags: [],
+          },
+        })
+      })
+      await waitFor(() =>
+        expect(screen.getByText('Delivered over the stream.')).toBeInTheDocument(),
+      )
+      // Still nothing: the turn is only settled once the handler stops waiting
+      // on the request it will never get an answer to.
+      expect(mockUnlock).not.toHaveBeenCalledWith('ACH_DEEP_CONVERSATION')
+
+      await vi.advanceTimersByTimeAsync(300_000)
+      await waitFor(() =>
+        expect(mockUnlock).toHaveBeenCalledWith('ACH_DEEP_CONVERSATION'),
+      )
+      // Exactly once — the tally must not be written by two paths for one turn.
+      expect(
+        mockUnlock.mock.calls.filter(([n]) => n === 'ACH_DEEP_CONVERSATION'),
+      ).toHaveLength(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  // ── ACH_BARGE_IN ───────────────────────────────────────────────────────────
+  //
+  // Talking over the NPC. The unlock sits after `handleBargeIn`'s own
+  // `if (!isTtsActive) return`, so it must fire only when NPC audio was really
+  // playing — "voice mode is on" is not a barge-in, and granting it there would
+  // hand a hidden achievement to every voice session's first turn.
+  describe('ACH_BARGE_IN', () => {
+    let wsCallback: ((event: WsEvent) => void) | null = null
+
+    class MockMediaRecorder {
+      state: 'inactive' | 'recording' = 'inactive'
+      mimeType = 'audio/webm'
+      ondataavailable: ((event: { data: Blob }) => void) | null = null
+      onstop: (() => void) | null = null
+      start() { this.state = 'recording' }
+      stop() {
+        this.state = 'inactive'
+        this.ondataavailable?.({ data: new Blob(['chunk']) })
+        this.onstop?.()
+      }
+      static isTypeSupported() { return true }
+    }
+
+    beforeEach(() => {
+      wsCallback = null
+      mockApi.connectSession.mockImplementation((_id, cb) => {
+        wsCallback = cb
+        return { close: vi.fn() }
+      })
+      // useMicCapture decides "supported" at hook init, so both of these have to
+      // be in place before the first render.
+      vi.stubGlobal('MediaRecorder', MockMediaRecorder)
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: {
+          getUserMedia: vi.fn().mockResolvedValue({
+            getTracks: () => [{ stop: vi.fn() }],
+          } as unknown as MediaStream),
+        },
+      })
+    })
+
+    afterEach(() => {
+      vi.unstubAllGlobals()
+      delete (navigator as { mediaDevices?: unknown }).mediaDevices
+    })
+
+    /** Renders a voice session with TTS on and the microphone enabled. */
+    async function renderVoiceSessionWithMic() {
+      renderConversation({ input_mode: 'voice', tts_enabled: true })
+      await waitFor(() => expect(screen.getByRole('log')).toBeInTheDocument())
+      await act(async () => {
+        fireEvent.click(
+          screen.getByRole('button', { name: /enable microphone access/i }),
+        )
+      })
+      await screen.findByRole('button', { name: /hold to talk|push to talk|record/i })
+    }
+
+    /** Presses the global Space push-to-talk hotkey. */
+    function pressSpace() {
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+      act(() => {
+        fireEvent.keyDown(document, { code: 'Space' })
+      })
+    }
+
+    function startNpcAudio() {
+      act(() => {
+        wsCallback?.({
+          type: 'tts.audio_chunk',
+          seq: 1,
+          session_id: SESSION_ID,
+          ts: '2026-07-01T00:00:00Z',
+          payload: {
+            chunk_index: 0,
+            total_chunks: 1,
+            text: 'Hello there.',
+            voice_id: 'af_heart',
+            cache_path: '/home/user/.convsim/tts_cache/abc123.wav',
+            error: null,
+          },
+        })
+      })
+    }
+
+    it('grants it when the player starts talking over NPC audio', async () => {
+      const AudioSpy = vi.spyOn(window, 'Audio').mockReturnValue({
+        play: vi.fn().mockResolvedValue(undefined),
+        pause: vi.fn(),
+        volume: 1,
+        onended: null,
+        onerror: null,
+      } as unknown as HTMLAudioElement)
+      try {
+        await renderVoiceSessionWithMic()
+        startNpcAudio()
+        pressSpace()
+        await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_BARGE_IN'))
+      } finally {
+        AudioSpy.mockRestore()
+      }
+    })
+
+    it('does not grant it for a turn started while the NPC is silent', async () => {
+      await renderVoiceSessionWithMic()
+      pressSpace()
+      // Give the unlock a chance to land before asserting it did not.
+      await act(async () => { await Promise.resolve() })
+      expect(mockUnlock).not.toHaveBeenCalledWith('ACH_BARGE_IN')
+    })
+  })
+
+  it('grants it only once however many more turns the player takes', async () => {
+    renderConversation({ input_mode: 'text-only' })
+    await screen.findByRole('textbox', { name: /your response/i })
+    await submitTurns(DEEP_CONVERSATION_TURNS + 2)
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_DEEP_CONVERSATION'))
+    expect(
+      mockUnlock.mock.calls.filter(([n]) => n === 'ACH_DEEP_CONVERSATION'),
+    ).toHaveLength(1)
   })
 })

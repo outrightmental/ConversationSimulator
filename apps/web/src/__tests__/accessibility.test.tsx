@@ -105,25 +105,17 @@ vi.mock('../api/useLogbookProfile', () => ({
   useLogbookProfile: vi.fn().mockReturnValue({ state: 'loading', profile: null }),
 }))
 
-vi.mock('../hooks/useSteamAchievements', () => ({
+// Only the hook itself is stubbed. This module also exports the achievement and
+// stat name maps, the unlock thresholds, and the local progress helpers that the
+// screens import directly; a hand-rolled mock of those silently drifts out of
+// date every time an achievement is added (and then the screen throws on an
+// undefined export), so importOriginal keeps them real.
+vi.mock('../hooks/useSteamAchievements', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useSteamAchievements')>()),
   useSteamAchievements: () => ({
     unlock: vi.fn(() => Promise.resolve(false)),
     incrementStat: vi.fn(() => Promise.resolve(false)),
   }),
-  SteamAchievement: {
-    FIRST_SCENARIO: 'ACH_FIRST_SCENARIO',
-    FIRST_DEBRIEF: 'ACH_FIRST_DEBRIEF',
-    PRACTICE_STREAK: 'ACH_PRACTICE_STREAK',
-    PACK_EXPLORER: 'ACH_PACK_EXPLORER',
-    CREATOR_FIRST_VALIDATE: 'ACH_CREATOR_FIRST_VALIDATE',
-  },
-  SteamStat: {
-    SCENARIOS_COMPLETED: 'STAT_SCENARIOS_COMPLETED',
-    DEBRIEFS_GENERATED: 'STAT_DEBRIEFS_GENERATED',
-    PACKS_VALIDATED: 'STAT_PACKS_VALIDATED',
-    TEXT_MODE_SESSIONS: 'STAT_TEXT_MODE_SESSIONS',
-    VOICE_MODE_SESSIONS: 'STAT_VOICE_MODE_SESSIONS',
-  },
 }))
 
 // ── Screen imports ────────────────────────────────────────────────────────────
@@ -184,6 +176,9 @@ function formatViolations(violations: axe.Result[]): string {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // Screens record the packs they have played in localStorage (unlocks are not
+  // persisted at all); clear it so that state cannot leak between tests.
+  localStorage.clear()
 })
 
 describe('Accessibility: AppLayout', () => {

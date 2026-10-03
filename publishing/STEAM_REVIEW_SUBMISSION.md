@@ -154,7 +154,7 @@ Specifications for each asset are in
 ### 2.5 Achievement icons
 
 - [ ] Achievement icons (64 × 64 px and 32 × 32 px, one pair per achievement)
-      uploaded for all five achievements defined in
+      uploaded for all 43 achievements defined in
       [`docs/steam-achievements-stats-rich-presence.md`](../docs/steam-achievements-stats-rich-presence.md).
 
 ---
@@ -290,7 +290,7 @@ Navigate to **Steamworks App Admin → Store Page → Basic Info**.
 
 Navigate to **Steamworks App Admin → Stats & Achievements**.
 
-- [ ] Five achievements defined as specified in
+- [ ] All 43 achievements defined as specified in
       [`docs/steam-achievements-stats-rich-presence.md`](../docs/steam-achievements-stats-rich-presence.md).
 - [ ] Achievement icons uploaded (64 × 64 px and 32 × 32 px for each).
 - [ ] Achievement names and descriptions match approved copy.

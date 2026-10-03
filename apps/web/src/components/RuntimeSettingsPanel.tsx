@@ -6,6 +6,7 @@ import type { ApiError } from '../api/errors'
 import { ApiErrorView } from './ApiErrorView'
 import { CopyDiagnosticsButton } from './CopyDiagnosticsButton'
 import { AI_ENGINE_DOCS_URL as DOCS_URL, UPDATE_DOCS_URL } from '../setup/docsUrls'
+import { useSteamAchievements, SteamAchievement } from '../hooks/useSteamAchievements'
 
 const PROVIDER_NAMES: Record<string, string> = {
   llama_cpp: 'llama.cpp',
@@ -194,6 +195,7 @@ function FieldRow({
 }
 
 export default function RuntimeSettingsPanel() {
+  const { unlock } = useSteamAchievements()
   const [modelsData, setModelsData] = useState<ModelsResponse | null>(null)
   const [loadError, setLoadError] = useState<ApiError | null>(null)
   const [settingsUnavailable, setSettingsUnavailable] = useState(false)
@@ -268,6 +270,7 @@ export default function RuntimeSettingsPanel() {
     if (!r.ok) { setBasicApplyError(r.error); setBasicApplying(false); return }
     setBasicApplySuccess(true)
     setBasicApplying(false)
+    void unlock(SteamAchievement.RUNTIME_TUNED)
     loadData()
   }
 
@@ -297,6 +300,7 @@ export default function RuntimeSettingsPanel() {
     setRequiresRestart(r.data.requires_restart)
     setForm(settingsToForm(r.data.settings))
     setAdvApplying(false)
+    void unlock(SteamAchievement.RUNTIME_TUNED)
   }
 
   async function handleReset() {

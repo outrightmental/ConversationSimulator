@@ -8,7 +8,14 @@ import type { ApiError } from '../api/errors'
 import { ApiErrorView } from '../components/ApiErrorView'
 import { isDevModeEnabled, readVoiceInviteState, writeVoiceInviteState } from '../privacyPrefs'
 import { useTranslation, formatNumber } from '../i18n'
-import { useSteamAchievements, SteamAchievement, SteamStat } from '../hooks/useSteamAchievements'
+import {
+  useSteamAchievements,
+  SteamAchievement,
+  SteamStat,
+  recordPackPlayed,
+  PACK_EXPLORER_PACKS,
+  PACK_CONNOISSEUR_PACKS,
+} from '../hooks/useSteamAchievements'
 import { useScenarios } from '../api/useScenarios'
 import { useIsDemo } from '../edition'
 import DemoUpsellCard from '../components/DemoUpsellCard'
@@ -53,6 +60,8 @@ export default function Debrief() {
   const turnRefs = useRef<Map<number, HTMLElement>>(new Map())
   const { unlock, incrementStat } = useSteamAchievements()
   const achievementsGranted = useRef(false)
+  const packsGranted = useRef(false)
+  const turningPointGranted = useRef(false)
   const scenariosResult = useScenarios()
 
   // Build a synthetic profile from the session scores so the recommender can
@@ -170,10 +179,40 @@ export default function Debrief() {
     }
   }, [phase, voiceInviteVisible, isDemo])
 
+  // Pack breadth (ACH_PACK_EXPLORER / ACH_PACK_CONNOISSEUR). The completed
+  // scenario's pack is resolved from the library index and folded into a local
+  // tally of distinct pack IDs — pack IDs only, on this device, never a
+  // transcript or a session ID. Reaching a debrief is the "played it" boundary;
+  // the tally starts empty on this release, so it counts packs played from here
+  // forward rather than reconstructing history.
+  useEffect(() => {
+    if (packsGranted.current) return
+    const scenarioId = debrief?.scenario_id ?? exportedScenarioId
+    if (!scenarioId || scenariosResult.state !== 'ready') return
+    const packId = scenariosResult.scenarios.find(
+      (sc) => sc.scenario_id === scenarioId,
+    )?.pack_id
+    if (!packId) return
+    packsGranted.current = true
+    const packs = recordPackPlayed(packId)
+    if (packs.length >= PACK_EXPLORER_PACKS) {
+      void unlock(SteamAchievement.PACK_EXPLORER)
+    }
+    if (packs.length >= PACK_CONNOISSEUR_PACKS) {
+      void unlock(SteamAchievement.PACK_CONNOISSEUR)
+    }
+  }, [debrief, exportedScenarioId, scenariosResult, unlock])
+
   const scrollToTurn = useCallback((turnNumber: number) => {
+    // Jumping from a turning point card into the transcript is the debrief's
+    // deepest review affordance (ACH_TURNING_POINT).
+    if (!turningPointGranted.current) {
+      turningPointGranted.current = true
+      void unlock(SteamAchievement.TURNING_POINT)
+    }
     const el = turnRefs.current.get(turnNumber)
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }, [])
+  }, [unlock])
 
   function handleRetry() {
     setPhase('loading')
@@ -246,6 +285,8 @@ export default function Debrief() {
       a.download = `session-${sessionId}.json`
       a.click()
       URL.revokeObjectURL(url)
+      void unlock(SteamAchievement.TRANSCRIPT_EXPORT)
+      void incrementStat(SteamStat.TRANSCRIPTS_EXPORTED)
     }
     // silently ignore error (export is best-effort)
     setExporting(false)
@@ -263,6 +304,8 @@ export default function Debrief() {
       a.download = r.data.filename
       a.click()
       URL.revokeObjectURL(url)
+      void unlock(SteamAchievement.TRANSCRIPT_EXPORT)
+      void incrementStat(SteamStat.TRANSCRIPTS_EXPORTED)
     }
     // silently ignore error (export is best-effort)
     setExportingText(false)
@@ -271,9 +314,15 @@ export default function Debrief() {
   function handleReplayVariation() {
     const scenarioId = debrief?.scenario_id ?? exportedScenarioId
     if (!scenarioId) {
+      // No scenario to replay, so this lands the player back in the library
+      // instead — not the replay ACH_REPLAY_VARIATION is defined against.
       navigate(isDemo ? '/' : '/library')
       return
     }
+    // Re-running the same scenario from the setup screen is how a player
+    // branches a conversation: same situation, different difficulty, language,
+    // or input mode (ACH_REPLAY_VARIATION).
+    void unlock(SteamAchievement.REPLAY_VARIATION)
     navigate(`/setup/${scenarioId}`)
   }
 

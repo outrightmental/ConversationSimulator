@@ -8,6 +8,12 @@ import DebugDrawer, { type DebugTurnEntry } from '../components/DebugDrawer'
 import PerformanceWarningBanner from '../components/PerformanceWarning'
 import NpcTurnProgress from '../components/NpcTurnProgress'
 import { useLatencyMetrics } from '../hooks/useLatencyMetrics'
+import {
+  useSteamAchievements,
+  SteamAchievement,
+  SteamStat,
+  DEEP_CONVERSATION_TURNS,
+} from '../hooks/useSteamAchievements'
 import { useApiHealth } from '../api/useApiHealth'
 import {
   estimateTurnMs,
@@ -135,6 +141,51 @@ export default function Conversation() {
   // Voice timing preferences (issue #308) — read once at mount from localStorage.
   const voiceTimingPrefs = getVoiceTimingPrefs()
 
+  const { unlock, incrementStat } = useSteamAchievements()
+  // Player turns in THIS session, for ACH_DEEP_CONVERSATION. turnNumRef below
+  // counts NPC turns too, so it cannot stand in for this.
+  const playerTurnsRef = useRef(0)
+  const deepConversationGrantedRef = useRef(false)
+  // Read `unlock` through a ref so the tally code below touches nothing
+  // reactive. It is called from inside the start-session effect, and that
+  // effect must not gain a dependency that re-runs it for a live session — it
+  // re-POSTs /start and rehydrates the transcript from the server.
+  const unlockRef = useRef(unlock)
+  unlockRef.current = unlock
+  // Grants ACH_DEEP_CONVERSATION once this session's player-turn tally has
+  // reached the threshold. Separate from the counter below because the tally
+  // has two writers and both have to evaluate it: turns counted one at a time
+  // as they settle, and `_hydrateTurnsFromServer`, which replaces the tally
+  // outright from the server's copy. A turn adopted from the server after the
+  // reply deadline (issue #489) arrives only through that second path, so
+  // checking in the counter alone would delay the unlock by a turn — or lose it
+  // entirely when the adopted turn was the session's last.
+  function _checkDeepConversation() {
+    if (deepConversationGrantedRef.current) return
+    if (playerTurnsRef.current < DEEP_CONVERSATION_TURNS) return
+    deepConversationGrantedRef.current = true
+    void unlockRef.current(SteamAchievement.DEEP_CONVERSATION)
+  }
+  // Counts one player turn the conversation is keeping.
+  //
+  // Called once a turn has settled, never at submit time: a turn whose request
+  // fails is rolled back out of the transcript and gives its turn number back,
+  // so counting optimistically would both drift one ahead per failure and let a
+  // scenario capped below the threshold (the 8-turn tutorial) grant "Going
+  // Deep" on retries alone.
+  function notePlayerTurnKept() {
+    playerTurnsRef.current += 1
+    _checkDeepConversation()
+  }
+  const bargeInGrantedRef = useRef(false)
+  const modeStatCountedRef = useRef(false)
+  // Read the input mode through a ref inside the start-session effect. Listing
+  // it as a dependency would let a change to the route state re-run that
+  // effect for a live session, which re-POSTs /start and rehydrates the
+  // transcript from the server — far too much to risk for a stat increment.
+  const inputModeRef = useRef(inputMode)
+  inputModeRef.current = inputMode
+
   const [phase, setPhase] = useState<Phase>('starting')
   const [sessionState, setSessionState] = useState('NotStarted')
   const [endingType, setEndingType] = useState<string | null>(null)
@@ -253,11 +304,23 @@ export default function Conversation() {
     setWaitElapsedMs(0)
   }
 
-  /** Replace the transcript with the server's copy, renumbering from the top. */
+  /**
+   * Replace the transcript with the server's copy, renumbering from the top.
+   *
+   * Also resets the player-turn tally to the server's count, which is the
+   * authoritative one: a resumed session keeps its progress toward
+   * ACH_DEEP_CONVERSATION, and a turn adopted after the reply deadline
+   * (issue #489) is counted here rather than by `notePlayerTurnKept`, which
+   * that path returns before reaching. Every caller must follow this with
+   * `_checkDeepConversation()` — it is called at the call site rather than
+   * from here only because doing it here would make this function a dependency
+   * of the start-session effect.
+   */
   function _hydrateTurnsFromServer(
     serverTurns: Array<{ role: TurnEntry['role']; content: string; emotion?: string | null }>,
   ) {
     turnNumRef.current = 0
+    playerTurnsRef.current = serverTurns.filter((t) => t.role === 'player').length
     setTurns(
       serverTurns.map((t) => ({
         id: ++turnUidRef.current,
@@ -367,6 +430,12 @@ export default function Conversation() {
     // interruption_count in the debrief.
     bargedInRef.current = isTtsActive
     if (!isTtsActive) return
+    // Talking over the NPC is the real barge-in — reaching this line means TTS
+    // was actually playing, not merely that voice mode is on.
+    if (!bargeInGrantedRef.current) {
+      bargeInGrantedRef.current = true
+      void unlock(SteamAchievement.BARGE_IN)
+    }
     _fadeTtsOut(180, () => {
       ttsQueueRef.current = []
     })
@@ -406,6 +475,7 @@ export default function Conversation() {
           if (cancelled) return
           if (tr.ok && tr.data.turns.length > 0) {
             _hydrateTurnsFromServer(tr.data.turns)
+            _checkDeepConversation()
           }
           const lastState = tr.ok
             ? tr.data.turns[tr.data.turns.length - 1]?.flow_state_after
@@ -443,6 +513,17 @@ export default function Conversation() {
           ])
         }
       }
+      // Count the session against its input mode exactly once, at the start
+      // boundary the Steam framework documents. A count only — which scenario,
+      // language, or NPC is involved never leaves the device.
+      if (!modeStatCountedRef.current) {
+        modeStatCountedRef.current = true
+        void incrementStat(
+          inputModeRef.current === 'text-only'
+            ? SteamStat.TEXT_MODE_SESSIONS
+            : SteamStat.VOICE_MODE_SESSIONS,
+        )
+      }
       setSessionState(startData.state)
       const openingVisible = opening?.payload['visible_state']
       if (openingVisible && typeof openingVisible === 'object') {
@@ -454,7 +535,7 @@ export default function Conversation() {
     return () => {
       cancelled = true
     }
-  }, [sessionId, devMode, mark, recordInterval])
+  }, [sessionId, devMode, mark, recordInterval, incrementStat])
 
   // WebSocket connection — best effort; REST fallback continues to work
   useEffect(() => {
@@ -604,6 +685,7 @@ export default function Conversation() {
     if (!last || last.role !== 'npc' || serverTurns.length <= turnNumRef.current) return 'pending'
 
     _hydrateTurnsFromServer(serverTurns)
+    _checkDeepConversation()
     setNpcEmotion(last.emotion ?? null)
     npcTurnCommittedRef.current = true
     streamingRef.current = ''
@@ -655,6 +737,15 @@ export default function Conversation() {
       // reply the player is looking at.
       if (npcTurnCommittedRef.current) {
         setPhase(sessionStateRef.current === 'Ended' ? 'ended' : 'active')
+        // The one post-deadline exit where neither writer of the
+        // ACH_DEEP_CONVERSATION tally runs: the stream put the turn on screen,
+        // so `_hydrateTurnsFromServer` was never reached, and the caller
+        // returns on `adopted` before `notePlayerTurnKept`. Counting it here
+        // keeps the tally equal to the player turns actually in the transcript
+        // — otherwise a session that loses turns down this path needs more than
+        // DEEP_CONVERSATION_TURNS of them to earn it, and a scenario capped
+        // near the threshold could never grant it at all.
+        notePlayerTurnKept()
         return true
       }
       if (askTheTranscript) {
@@ -789,10 +880,15 @@ export default function Conversation() {
       if (!npcTurnCommittedRef.current) {
         setTurns((prev) => prev.filter((t) => t.id !== playerTurnId))
         turnNumRef.current -= 1
+      } else {
+        // The NPC already answered over the WebSocket, so the player turn
+        // stays in the transcript even though the REST call reported an error.
+        notePlayerTurnKept()
       }
       setPhase('active')
       return
     }
+    notePlayerTurnKept()
     const turnData = result.data
     _learnTurnDuration(waitedMs)
 

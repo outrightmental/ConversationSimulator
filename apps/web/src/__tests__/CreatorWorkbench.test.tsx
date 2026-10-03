@@ -40,6 +40,31 @@ vi.mock('../api/client', () => ({
   },
 }))
 
+// Steam status and the Workshop bridge, held in a box so a single test can turn
+// them on without changing what every other test in this file sees: outside
+// Steam `useSteamStatus` resolves to null, which is what keeps the Workshop
+// affordances out of the rest of the suite.
+import type { SteamStatus } from '../hooks/useSteamStatus'
+const steamStatus: { current: SteamStatus | null } = { current: null }
+vi.mock('../hooks/useSteamStatus', () => ({
+  useSteamStatus: () => steamStatus.current,
+}))
+const mockPublishPack = vi.fn<(packRoot: string) => Promise<boolean>>(() =>
+  Promise.resolve(true),
+)
+vi.mock('../hooks/useSteamWorkshop', () => ({
+  useSteamWorkshop: () => ({ publishPack: mockPublishPack }),
+}))
+
+const mockUnlock = vi.fn(() => Promise.resolve(false))
+const mockIncrementStat = vi.fn(() => Promise.resolve(false))
+// Only the hook is stubbed; importOriginal keeps the name maps and thresholds
+// real, so these tests assert the API names the screen will actually send.
+vi.mock('../hooks/useSteamAchievements', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useSteamAchievements')>()),
+  useSteamAchievements: () => ({ unlock: mockUnlock, incrementStat: mockIncrementStat }),
+}))
+
 const OFFICIAL_PACK: WorkbenchPack = {
   kind: 'official',
   slug: 'job-interview',
@@ -119,6 +144,9 @@ beforeEach(() => {
   // runs after the describe-level afterEach, so a prior test's teardown call
   // would otherwise leak into the next test's assertions.
   vi.clearAllMocks()
+  // Back to "not running under Steam" — the default every other test assumes.
+  steamStatus.current = null
+  mockPublishPack.mockResolvedValue(true)
   vi.mocked(api.workbench.listPacks).mockResolvedValue({ ok: true, data: [OFFICIAL_PACK, LOCAL_PACK] })
   vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: [] } })
   vi.mocked(api.workbench.readFile).mockResolvedValue({ ok: true, data: { content: '', editable: false } })
@@ -1019,5 +1047,194 @@ describe('CreatorWorkbench — Test Chat', () => {
       expect(screen.getByTestId('file-editor')).toBeInTheDocument()
       expect(screen.queryByTestId('form-editor')).not.toBeInTheDocument()
     })
+  })
+})
+
+// ── Steam achievement call sites (issue #494) ────────────────────────────────
+//
+// The workbench owns five of the achievements and three of the stats. The one
+// with real logic behind it is ACH_CREATOR_FIRST_VALIDATE: it is about the
+// player's OWN pack passing, so a read-only official pack validating cleanly
+// on selection must not grant it.
+describe('CreatorWorkbench — Steam achievement call sites', () => {
+  function stubObjectUrl() {
+    // jsdom has no URL.createObjectURL, and triggerDownload needs one.
+    Object.defineProperty(URL, 'createObjectURL', {
+      configurable: true,
+      value: vi.fn().mockReturnValue('blob:test'),
+    })
+    Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() })
+  }
+
+  beforeEach(() => {
+    vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: MOCK_TREE } })
+  })
+
+  it('grants the first-validate achievement for the player\'s own pack', async () => {
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_CREATOR_FIRST_VALIDATE'))
+  })
+
+  it('does not grant it for a read-only official pack that validates cleanly', async () => {
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /job interview/i }))
+    await waitFor(() =>
+      expect(screen.getByTestId('validation-panel')).toHaveTextContent(/valid/i),
+    )
+    expect(mockUnlock).not.toHaveBeenCalledWith('ACH_CREATOR_FIRST_VALIDATE')
+  })
+
+  it('does not grant it when the player\'s pack fails validation', async () => {
+    vi.mocked(api.workbench.validate).mockResolvedValue({
+      ok: true,
+      data: {
+        valid: false,
+        errors: [
+          {
+            severity: 'error' as const,
+            rule_id: 'manifest',
+            file: 'manifest.yaml',
+            pointer: '/pack_id',
+            message: 'bad manifest',
+            suggested_fix: 'Set a pack_id.',
+          },
+        ],
+        warnings: [],
+      },
+    })
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+    await waitFor(() => expect(vi.mocked(api.workbench.validate)).toHaveBeenCalled())
+    expect(mockUnlock).not.toHaveBeenCalledWith('ACH_CREATOR_FIRST_VALIDATE')
+  })
+
+  it('grants the save achievement and counts the validation run on save', async () => {
+    vi.mocked(api.workbench.readFile).mockResolvedValue({
+      ok: true,
+      data: { content: 'name: My Pack\n', editable: true },
+    })
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /open manifest\.yaml/i }))
+    await waitFor(() => expect(screen.getByTestId('file-editor')).toBeInTheDocument())
+    fireEvent.change(screen.getByTestId('file-editor'), { target: { value: 'name: Changed\n' } })
+    fireEvent.click(screen.getByTestId('save-button'))
+
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_CREATOR_SAVE'))
+    expect(mockIncrementStat).toHaveBeenCalledWith('STAT_PACKS_VALIDATED')
+  })
+
+  it('counts the validation run behind the Revalidate button, but not the one on select', async () => {
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+    // Selecting a pack validates it automatically — that run is not the
+    // player asking for one, so it must not reach the stat.
+    await waitFor(() => expect(vi.mocked(api.workbench.validate)).toHaveBeenCalled())
+    expect(mockIncrementStat).not.toHaveBeenCalledWith('STAT_PACKS_VALIDATED')
+
+    fireEvent.click(await screen.findByRole('button', { name: /revalidate pack/i }))
+    await waitFor(() =>
+      expect(mockIncrementStat).toHaveBeenCalledWith('STAT_PACKS_VALIDATED'),
+    )
+  })
+
+  it('grants the fork achievement when an official pack is copied to local-dev', async () => {
+    vi.mocked(api.workbench.readFile).mockResolvedValue({
+      ok: true,
+      data: { content: MANIFEST_CONTENT, editable: false },
+    })
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /job interview/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /open manifest\.yaml/i }))
+    fireEvent.click(await screen.findByTestId('copy-to-local-button'))
+
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_CREATOR_FORK'))
+  })
+
+  it('grants the export achievement and counts the export', async () => {
+    stubObjectUrl()
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+    fireEvent.click(await screen.findByTestId('export-pack-button'))
+
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_CREATOR_EXPORT'))
+    expect(mockIncrementStat).toHaveBeenCalledWith('STAT_PACKS_EXPORTED')
+  })
+
+  it('grants the import achievement and counts the import', async () => {
+    renderWorkbench()
+    const fileInput = await screen.findByTestId('import-file-input')
+    Object.defineProperty(fileInput, 'files', {
+      value: [new File(['PK\x03\x04'], 'my-pack.zip', { type: 'application/zip' })],
+      writable: false,
+    })
+    fireEvent.change(fileInput)
+
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_PACK_IMPORTED'))
+    expect(mockIncrementStat).toHaveBeenCalledWith('STAT_PACKS_IMPORTED')
+  })
+
+  it('grants the restore achievement when official packs are reseeded', async () => {
+    vi.mocked(api.workbench.listPacks).mockResolvedValue({ ok: true, data: [] })
+    renderWorkbench()
+    fireEvent.click(await screen.findByTestId('restore-official-packs-button'))
+
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_PACKS_RESTORED'))
+  })
+
+  it('grants the test-chat achievement when a test session starts', async () => {
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+    fireEvent.click(await screen.findByRole('tab', { name: /test chat/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /start test/i }))
+
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_CREATOR_TEST'))
+  })
+})
+
+// ── ACH_WORKSHOP_PUBLISHER ────────────────────────────────────────────────────
+//
+// Excluded from the ACH_CERTIFIED_EXPERT capstone (it needs a Workshop upload),
+// so nothing else notices if it stops firing. It is also the one unlock in this
+// screen gated on something other than an API result: Steam has to accept the
+// publish, which means the overlay actually opened.
+
+describe('CreatorWorkbench — Workshop publishing achievement', () => {
+  const STEAM_ON: SteamStatus = {
+    is_steam_enabled: true,
+    launched_by_steam: true,
+    app_id: 480,
+    persona_name: 'tester',
+  }
+
+  it('grants it when Steam accepts the publish', async () => {
+    steamStatus.current = STEAM_ON
+    renderWorkbench()
+    // Only an editable local-dev pack can be published.
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+    fireEvent.click(await screen.findByTestId('publish-workshop-button'))
+
+    await waitFor(() => expect(mockPublishPack).toHaveBeenCalled())
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_WORKSHOP_PUBLISHER'))
+  })
+
+  it('does not grant it when the Steam overlay could not be opened', async () => {
+    steamStatus.current = STEAM_ON
+    mockPublishPack.mockResolvedValue(false)
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+    fireEvent.click(await screen.findByTestId('publish-workshop-button'))
+
+    await waitFor(() => expect(screen.getByTestId('publish-workshop-error')).toBeInTheDocument())
+    expect(mockUnlock).not.toHaveBeenCalledWith('ACH_WORKSHOP_PUBLISHER')
+  })
+
+  it('offers no publish button outside Steam, so it can never fire there', async () => {
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+    await screen.findByTestId('export-pack-button')
+    expect(screen.queryByTestId('publish-workshop-button')).not.toBeInTheDocument()
+    expect(mockUnlock).not.toHaveBeenCalledWith('ACH_WORKSHOP_PUBLISHER')
   })
 })
