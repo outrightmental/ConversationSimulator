@@ -81,6 +81,7 @@ def _apply_reply_speed(scenario_data: ScenarioData, speed: str) -> ScenarioData:
         response_style=dataclass_replace(authored, max_words=target),
     )
 
+
 MAX_TURN_CONTENT_CHARS = 2000
 
 # Default safety policy used when no scenario-specific policy is configured.
