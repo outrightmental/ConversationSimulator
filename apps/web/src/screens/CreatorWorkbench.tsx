@@ -1506,7 +1506,13 @@ function TestVolleyPanel({ pack }: { pack: WorkbenchPack }) {
           <>
             <Tag label={`Difficulty ×${scenario.difficulty_multiplier.toFixed(2)}`} color="#f59e0b" />
             {scenario.verse_required && <Tag label="Verse scored" color="#38bdf8" />}
-            {scenario.requires_surface_politeness && <Tag label="Overt rudeness is a foul" color="#ef4444" />}
+            {/* Two knobs, two tags. `require_surface_politeness` caps fidelity;
+                `overt_rudeness_is_foul` zeroes the volley — and a pack may set
+                either without the other, so one tag standing in for both told
+                an author their scenario fouled rudeness when it only docked
+                points for it. */}
+            {scenario.requires_surface_politeness && <Tag label="Courtesy required — fidelity capped without it" color="#f59e0b" />}
+            {scenario.overt_rudeness_is_foul && <Tag label="Overt rudeness is a foul" color="#ef4444" />}
             {scenario.anachronism_policy !== 'off' && (
               <Tag label={`Anachronism: ${scenario.anachronism_policy}`} color="#a1a1aa" />
             )}

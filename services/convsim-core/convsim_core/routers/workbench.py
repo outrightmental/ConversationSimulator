@@ -668,7 +668,13 @@ class WorkbenchFlytingScenario(BaseModel):
     attack_surface: List[WorkbenchAttackSurfaceTrait]
     difficulty_multiplier: float
     verse_required: bool
+    # Two separate register knobs, reported separately. Surface politeness caps
+    # fidelity at 3; whether dropping the gloves is also a *foul* that zeroes
+    # the volley is `overt_rudeness_is_foul`, and a pack may set either without
+    # the other — so an authoring screen that showed one and labelled it as the
+    # other would describe rules the author did not write.
     requires_surface_politeness: bool
+    overt_rudeness_is_foul: bool
     anachronism_policy: str
     judge_flavor: str
     lexicon_encouraged: List[str]
@@ -778,6 +784,7 @@ async def list_pack_flyting_scenarios(
                     requires_surface_politeness=(
                         flyting.register.require_surface_politeness
                     ),
+                    overt_rudeness_is_foul=flyting.register.overt_rudeness_is_foul,
                     anachronism_policy=flyting.lexicon.anachronism_policy,
                     judge_flavor=flyting.judge_flavor,
                     lexicon_encouraged=list(flyting.lexicon.encouraged),

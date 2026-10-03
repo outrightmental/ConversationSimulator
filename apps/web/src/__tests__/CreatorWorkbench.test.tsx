@@ -119,6 +119,7 @@ const FLYTING_SCENARIO = {
   difficulty_multiplier: 1.2,
   verse_required: false,
   requires_surface_politeness: false,
+  overt_rudeness_is_foul: false,
   anachronism_policy: 'penalize',
   judge_flavor: 'A retired music-hall chairman.',
   lexicon_encouraged: ['blackguard'],
@@ -1093,6 +1094,48 @@ describe('CreatorWorkbench — Test Volley', () => {
     // withholds them so finding one can be worth double.
     expect(screen.getByTestId('volley-attack-surface')).toHaveTextContent('new money')
     expect(screen.getByText(/difficulty ×1\.20/i)).toBeInTheDocument()
+  })
+
+  it('keeps the two register knobs apart', async () => {
+    // `require_surface_politeness` caps fidelity at 3; `overt_rudeness_is_foul`
+    // zeroes the volley. A pack may set either without the other, so the panel
+    // reporting one of them under the other's label told an author their
+    // scenario fouled rudeness when it only docked points for it.
+    vi.mocked(api.workbench.listFlytingScenarios).mockResolvedValue({
+      ok: true,
+      data: {
+        scenarios: [
+          {
+            ...FLYTING_SCENARIO,
+            requires_surface_politeness: true,
+            overt_rudeness_is_foul: false,
+          },
+        ],
+      },
+    })
+    await openVolleyTab()
+    await waitFor(() => expect(screen.getByTestId('volley-scenario-select')).toBeInTheDocument())
+    expect(screen.getByText(/courtesy required/i)).toBeInTheDocument()
+    expect(screen.queryByText(/overt rudeness is a foul/i)).not.toBeInTheDocument()
+  })
+
+  it('names the foul when the pack actually declares one', async () => {
+    vi.mocked(api.workbench.listFlytingScenarios).mockResolvedValue({
+      ok: true,
+      data: {
+        scenarios: [
+          {
+            ...FLYTING_SCENARIO,
+            requires_surface_politeness: true,
+            overt_rudeness_is_foul: true,
+          },
+        ],
+      },
+    })
+    await openVolleyTab()
+    await waitFor(() => expect(screen.getByTestId('volley-scenario-select')).toBeInTheDocument())
+    expect(screen.getByText(/courtesy required/i)).toBeInTheDocument()
+    expect(screen.getByText(/overt rudeness is a foul/i)).toBeInTheDocument()
   })
 
   it('scores a draft volley against the draft scenario', async () => {

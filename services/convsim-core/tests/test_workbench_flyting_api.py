@@ -81,6 +81,29 @@ def test_lists_the_packs_flyting_scenarios(client):
     assert rose["difficulty_multiplier"] > 0
 
 
+def test_reports_the_two_register_knobs_separately(client):
+    """Surface politeness and the rudeness foul are different settings.
+
+    ``require_surface_politeness`` caps fidelity at 3; ``overt_rudeness_is_foul``
+    zeroes the volley. A pack may set either without the other, so the authoring
+    payload has to carry both — reporting one and labelling it as the other told
+    an author their scenario fouled rudeness when it only docked points for it.
+    """
+    scenarios = client.get(
+        "/api/workbench/packs/local-dev/flyting-school/flyting"
+    ).json()["scenarios"]
+    by_id = {s["scenario_id"]: s for s in scenarios}
+
+    veiled = by_id["veiled_civility"]
+    assert veiled["requires_surface_politeness"] is True
+    assert veiled["overt_rudeness_is_foul"] is True
+
+    # Whitechapel asks for neither: its register is the opposite of a ballroom.
+    rose = by_id["whitechapel_rose"]
+    assert rose["requires_surface_politeness"] is False
+    assert rose["overt_rudeness_is_foul"] is False
+
+
 def test_lists_the_whole_attack_surface_including_discoverables(client):
     """The play payload hides discoverables; the author must see all of them."""
     resp = client.get("/api/workbench/packs/local-dev/flyting-school/flyting")

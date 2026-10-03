@@ -410,7 +410,10 @@ export interface WorkbenchFlytingScenario {
   }[]
   difficulty_multiplier: number
   verse_required: boolean
+  /** Surface politeness caps fidelity at 3. */
   requires_surface_politeness: boolean
+  /** Whether dropping the gloves is also a foul that zeroes the volley. */
+  overt_rudeness_is_foul: boolean
   anachronism_policy: string
   judge_flavor: string
   lexicon_encouraged: string[]
