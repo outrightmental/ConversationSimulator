@@ -11,8 +11,10 @@
 ## Setup
 
 **In the app:** open **Settings → Voice readiness → Set up hands-free** (or go
-to `/voice-setup`). It downloads the checksummed ONNX model and flags a missing
-`onnxruntime` with the command to install it. See
+to `/voice-setup`). It downloads the checksummed ONNX model and gives
+`onnxruntime` its own row — with the command below when the server is running
+from a source checkout, and an explanation when it is a packaged build, which
+ships without the extra and cannot have it added. See
 [`docs/voice-setup.md`](../../docs/voice-setup.md).
 
 **1. Download the ONNX model:**

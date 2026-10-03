@@ -141,7 +141,8 @@ that names every piece voice needs and gives each gap its own next action:
   choose from) and the voice-activity model, about 145 MB for the recommended
   pair. Source, licence, exact size, SHA-256 and destination are disclosed
   before the button; every file is checksum-verified before it is installed;
-  progress is per-file and cancellable, and a cancel leaves nothing behind.
+  progress is per-file and cancellable, and a cancel leaves no half-written
+  file behind (a file that had already finished and verified stays).
 - **Programs you install yourself get the exact one-line command** for your
   platform, with a copy button and a **Check again** that re-reads the machine.
   Neither whisper.cpp nor the Kokoro voice server publishes a checksummed
