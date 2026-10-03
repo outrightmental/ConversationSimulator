@@ -671,6 +671,14 @@ def check_rules(
     declared = set(label_names(manifest))
     meta_label = rules.get("meta_label")
     area_exempt = set(rules.get("area_exempt_types") or [])
+    # The trains open work may burn down on. Closed ones are excluded: a shipped
+    # train has no burndown left, which is the same reason `manifest_errors`
+    # refuses to let `backfill` park issues on one.
+    open_trains = {
+        entry["title"]
+        for entry in manifest.get("milestones", [])
+        if entry.get("state", "open") == "open"
+    }
     findings: list[str] = []
 
     for entry in live_labels or []:
@@ -710,6 +718,23 @@ def check_rules(
                 and not is_meta
             ):
                 findings.append(f"{ref} is open with no milestone")
+            # Having *a* milestone is not enough. A closed train, or one somebody
+            # created by hand, satisfies the rule above while contributing
+            # nothing to the velocity chart the milestones exist to produce — so
+            # the issue reads as triaged and is in fact parked. `meta` is not
+            # exempt here: the exemption is from needing a train, not a licence
+            # to sit on a dead one. Closed issues are, since they belong to the
+            # train that shipped them.
+            if (
+                rules.get("require_milestone_when_open")
+                and issue.get("milestone")
+                and issue["milestone"] not in open_trains
+            ):
+                findings.append(
+                    f"{ref} is open on milestone {issue['milestone']!r}, which is not a "
+                    f"declared open release train — move it to one, or declare that "
+                    f"milestone in the manifest"
+                )
             if rules.get("require_type_when_open") and not issue.get("type"):
                 findings.append(f"{ref} is open with no Type")
             if rules.get("require_priority_when_open") and not issue.get("priority"):
@@ -1187,6 +1212,13 @@ def self_test() -> int:
     orphan_rename = yaml.safe_load(_FIXTURE)
     del orphan_rename["labels"][1]["renamed_from"]  # but `docs` still says rename_to
 
+    # A train that has already shipped, still declared so closed work can point
+    # at it. Open work parked there is the state the milestone rule has to catch.
+    shipped_train = yaml.safe_load(_FIXTURE)
+    shipped_train["milestones"].append(
+        {"title": "v0", "due_on": "2025-01-01", "state": "closed", "description": "Shipped"}
+    )
+
     cases: list[tuple[str, Any, Any]] = [
         # -- the manifest checks
         ("fixture manifest is coherent", manifest_errors(manifest), []),
@@ -1409,6 +1441,30 @@ def self_test() -> int:
          check_rules(manifest, [_issue(5, labels=["area:engine"], type="Bug",
                                        priority="P0")], []),
          ["#5 is open with no milestone"]),
+        # Having *a* milestone is not having a burndown: both of these pass
+        # `require_milestone_when_open` and show up on no velocity chart.
+        ("the fixture manifest is coherent with a shipped train on it",
+         manifest_errors(shipped_train), []),
+        ("an open issue parked on a shipped train is reported",
+         check_rules(shipped_train, [_issue(5, labels=["area:engine"], type="Bug",
+                                           priority="P0", milestone="v0")], []),
+         ["#5 is open on milestone 'v0', which is not a declared open release train "
+          "— move it to one, or declare that milestone in the manifest"]),
+        ("an open issue on a milestone the manifest never declares is reported",
+         check_rules(manifest, [_issue(5, labels=["area:engine"], type="Bug",
+                                       priority="P0", milestone="v9")], []),
+         ["#5 is open on milestone 'v9', which is not a declared open release train "
+          "— move it to one, or declare that milestone in the manifest"]),
+        ("`meta` exempts an issue from needing a train, not from a dead one",
+         check_rules(shipped_train, [_issue(5, labels=["meta"], type="Task",
+                                           priority="P0", milestone="v0")], []),
+         ["#5 is open on milestone 'v0', which is not a declared open release train "
+          "— move it to one, or declare that milestone in the manifest"]),
+        ("closed work on the train that shipped it is fine",
+         check_rules(shipped_train, [_issue(5, state="CLOSED", milestone="v0")], []), []),
+        ("an open issue on a declared open train is fine",
+         check_rules(manifest, [_issue(5, labels=["area:engine"], type="Bug",
+                                       priority="P0", milestone="v1")], []), []),
         ("an open issue with no Type or Priority is reported",
          check_rules(manifest, [_issue(5, labels=["area:engine"], milestone="v1")], []),
          ["#5 is open with no Type", "#5 is open with no Priority"]),

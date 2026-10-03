@@ -163,7 +163,10 @@ rules:
   # burns down nowhere and lands in no slice of the pie chart — it is exempt
   # from the milestone and area rules both, and from nothing else.
   meta_label: meta
-  # Every open issue burns down somewhere.
+  # Every open issue burns down somewhere — and somewhere that still burns: the
+  # audit also rejects an open issue parked on a closed train, or on a milestone
+  # created by hand that this file does not declare. Either one satisfies "has a
+  # milestone" while contributing nothing to the velocity chart.
   require_milestone_when_open: true
   # Type and Priority replaced labels, so they have to be filled in for
   # anything still in flight.

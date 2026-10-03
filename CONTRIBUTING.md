@@ -172,7 +172,9 @@ takes Bugs first — and Phase is append-only history, not a planning field.
 ### Milestones — *when* it ships
 
 Milestones are release trains with deadlines, which is what makes velocity readable.
-Every open issue belongs to exactly one, unless it is `meta`. The next three:
+Every open issue belongs to exactly one of the trains below, unless it is `meta` —
+and only to one of these, because open work parked on a train that already shipped
+looks triaged while burning down nowhere. The next three:
 
 | Milestone | Due | What it delivers |
 | --------- | --- | ---------------- |

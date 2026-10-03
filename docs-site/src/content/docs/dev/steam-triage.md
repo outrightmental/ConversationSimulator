@@ -35,9 +35,10 @@ The complete label set is declared in
 and tabulated in
 [CONTRIBUTING.md → Labels, fields, and milestones](https://github.com/outrightmental/ConversationSimulator/blob/main/CONTRIBUTING.md#labels-fields-and-milestones).
 There are no severity or priority labels: urgency is the board's **Priority**
-field, which is what the steps below set. Any other label name used in this
-document is a proposal, not an existing label — adding one is a change to the
-manifest, so propose it in an issue first.
+field, which is what the steps below set. Nothing below asks for a label
+outside that declared set either — triage records its decisions in Type,
+Priority, the milestone, and comments, because a new label is a change to the
+manifest and has to be proposed in an issue first.
 
 ---
 
@@ -55,8 +56,10 @@ volume is expected to be low and the signal-to-noise ratio high.
 ### Triage steps
 
 1. **Confirm the template was used.** Issues filed without a Steam template
-   and lacking the required fields (OS, hardware, app version) should be
-   labelled `needs-info` and a comment should request the missing data.
+   and lacking the required fields (OS, hardware, app version) get a maintainer
+   comment requesting the missing data. There is no `needs-info` label — the
+   comment is the record, and the issue waits in the queue until the data
+   arrives.
 
 2. **Set the Priority.** Severity is the board's **Priority** field, not a
    label:
@@ -111,19 +114,19 @@ Apply the following adjustments to the private beta flow.
 - **Every 48 hours:** A maintainer reviews new `area:steam` issues to set a
   Priority and request missing data.
 - **Weekly:** A triage sync reviews all open `area:steam` issues without a
-  milestone or assignee and closes stale `needs-info` issues that have
-  received no response in 14 days.
+  milestone or assignee and closes issues where a maintainer asked for missing
+  data and none arrived within 14 days.
 
 ### Additional routing rules
 
 | Condition | Action |
 |-----------|--------|
-| Duplicate of an existing open issue | Label `duplicate`, close with a link to the canonical issue. |
-| Reproducible only on a non-required platform | Label `platform:unsupported`, note in a comment, defer to post-launch milestone. |
-| `model-install` failure on a model not in the registry | Route to the model registry maintainer; label `triage:registry`. |
-| `pack-bug` in a community pack (not an official Outright Mental pack) | Confirm the pack source; if community-distributed, close with a pointer to the pack's own repository. |
-| `performance` report with no hardware details | Label `needs-info`, request CPU/GPU/RAM and model name/quantisation. |
-| `performance` report on hardware below minimum spec | Label `platform:below-spec`, close with a note about minimum requirements and the recommended lower-quantisation model option. |
+| Duplicate of an existing open issue | Close as a duplicate with a link to the canonical issue. |
+| Reproducible only on a non-required platform | Name the platform in a comment and defer to a later release train. |
+| Model-install failure on a model not in the registry | Route to the model registry maintainer and link the registry issue. |
+| Pack bug in a community pack (not an official Outright Mental pack) | Confirm the pack source; if community-distributed, close with a pointer to the pack's own repository. |
+| Performance report with no hardware details | Comment asking for CPU/GPU/RAM and the model name and quantisation. |
+| Performance report on hardware below minimum spec | Close with a note about minimum requirements and the recommended lower-quantisation model option. |
 | `area:safety` escalation | Same fast-path as private beta — immediate escalation regardless of Priority. |
 | Reporter discloses session transcripts or audio in the issue | Add a maintainer comment reminding the reporter that session data is private, advise them to edit the issue or close and re-file without the content, and do not quote the disclosed content in any response. |
 
