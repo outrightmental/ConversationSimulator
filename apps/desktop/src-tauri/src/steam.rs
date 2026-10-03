@@ -23,6 +23,11 @@ pub const SPACEWAR_APP_ID: u32 = 480;
 // unlock call sites. API names are a shipped contract — Steam keys a player's
 // unlocked achievements by API name, so add names, never rename them.
 
+// Nothing in the Rust half unlocks an achievement — the front end owns every
+// call site — so these constants are a canonical mirror the tests assert
+// against, not live code. Hence the blanket allow: without it every one of the
+// 43 names is a `never used` warning that drowns out the real ones.
+#[allow(dead_code)]
 pub mod achievements {
     // Onboarding, models, runtime, and support.
     pub const SETUP_COMPLETE: &str = "ACH_SETUP_COMPLETE";
@@ -140,6 +145,9 @@ pub mod achievements {
 // identifiable information is ever stored in Steam stats — only aggregate
 // counts safe to appear on a player's Steam profile.
 
+// A mirror of the front-end `SteamStat` object, for the same reason as
+// `achievements` above.
+#[allow(dead_code)]
 pub mod stats {
     pub const SCENARIOS_COMPLETED: &str = "STAT_SCENARIOS_COMPLETED";
     pub const DEBRIEFS_GENERATED: &str = "STAT_DEBRIEFS_GENERATED";
