@@ -595,7 +595,17 @@ def check_rules(
 
     for entry in live_labels or []:
         name = entry["name"]
-        if name not in declared and name not in retired:
+        if name in retired:
+            # `plan_label_deletions` clears a retired label on its own, except
+            # one carrying `rename_to` whose target already exists — then the
+            # rename is a no-op, the delete is skipped, and the retired label
+            # sits on the repo unnoticed until somebody puts it on an issue.
+            # That is exactly the state #491 forbids, so say so here.
+            findings.append(
+                f"retired label {name!r} still exists on the repo — it duplicates a "
+                f"field, so carry any remaining assignments over and delete it by hand"
+            )
+        elif name not in declared:
             findings.append(
                 f"label {name!r} exists on the repo but is not in the manifest — "
                 f"declare it or delete it by hand"
@@ -982,6 +992,16 @@ _FIXTURE_LIVE_LABELS = [
     {"name": "priority:P0", "color": "b60205", "description": "Blocker"},
 ]
 
+# The one state `apply` cannot converge on its own: somebody recreated `docs`
+# after the rename already landed, so there is nothing to rename and nothing the
+# planner will delete.
+_FIXTURE_RESURRECTED_LABELS = [
+    {"name": "area:engine", "color": "1d76db", "description": "The engine"},
+    {"name": "area:docs", "color": "1d76db", "description": "The docs"},
+    {"name": "meta", "color": "cfd3d7", "description": "Housekeeping"},
+    {"name": "docs", "color": "0075ca", "description": "Documentation"},
+]
+
 
 def _issue(number: int, **overrides: Any) -> dict[str, Any]:
     issue = {
@@ -1218,6 +1238,19 @@ def self_test() -> int:
          check_rules(manifest, [], [{"name": "wildcat"}]),
          ["label 'wildcat' exists on the repo but is not in the manifest — "
           "declare it or delete it by hand"]),
+        # A retired label back on the repo is the taxonomy rotting, whether or
+        # not any issue carries it yet.
+        ("a retired label recreated after its rename needs a human",
+         check_rules(
+             manifest,
+             [],
+             labels_after(
+                 _FIXTURE_RESURRECTED_LABELS,
+                 plan(manifest, _FIXTURE_RESURRECTED_LABELS, [], []),
+             ),
+         ),
+         ["retired label 'docs' still exists on the repo — it duplicates a field, "
+          "so carry any remaining assignments over and delete it by hand"]),
         ("a surviving retired label is reported",
          check_rules(manifest, [_issue(5, labels=["bug", "area:engine"], type="Bug",
                                        priority="P0", milestone="v1")], []),
