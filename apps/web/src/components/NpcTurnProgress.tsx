@@ -27,6 +27,9 @@ const srOnly: CSSProperties = {
 }
 
 export interface NpcTurnProgressProps {
+  /** True while the NPC is out. False between turns: the panel draws nothing,
+   *  but its live regions stay mounted — see the accessibility note below. */
+  active: boolean
   /** How long the current turn has been out. */
   elapsedMs: number
   /** Expected turn length for this machine, or null before any turn was timed. */
@@ -50,14 +53,23 @@ export interface NpcTurnProgressProps {
  * thinking: the estimate still covers the whole round trip, but a panel claiming
  * the NPC is thinking under a reply being typed out is simply wrong.
  *
- * Accessibility: the status phrase is announced — this panel is the only thing
- * on screen saying the NPC is working — and it carries the estimate with it,
- * because the clock and caption that show the estimate visually both tick every
- * second and are therefore hidden. Elapsed time is announced separately by a
- * polite live region on a 30 s grid. The bar keeps its progressbar role and
- * value for anyone who navigates to it deliberately.
+ * Accessibility: everything the panel draws changes every second, so all of it
+ * is hidden from assistive tech and two sr-only live regions carry the news
+ * instead — one with the status phrase and the estimate (this panel is the only
+ * thing on screen saying the NPC is working, and the estimate is what issue #488
+ * asked for), one with the elapsed time on a 30 s grid. Both are rendered
+ * whether or not a turn is out, with empty text between turns: a live region
+ * created in the same breath as its text is not reliably announced, and the line
+ * this panel replaced was announced by the transcript's own always-present
+ * region. MicButton's recording status works the same way. The bar keeps its
+ * progressbar role and value for anyone who navigates to it deliberately.
  */
-export default function NpcTurnProgress({ elapsedMs, estimateMs, streaming = false }: NpcTurnProgressProps) {
+export default function NpcTurnProgress({
+  active,
+  elapsedMs,
+  estimateMs,
+  streaming = false,
+}: NpcTurnProgressProps) {
   const hasEstimate = estimateMs !== null && estimateMs > 0
   const overrun = hasEstimate && elapsedMs > estimateMs
   const fillPercent = hasEstimate
@@ -67,6 +79,7 @@ export default function NpcTurnProgress({ elapsedMs, estimateMs, streaming = fal
 
   const elapsedText = formatDuration(elapsedMs)
   const estimateText = hasEstimate ? formatApproxDuration(estimateMs) : ''
+  const phrase = streaming ? 'NPC is replying…' : 'NPC is thinking…'
 
   // What the player reads next to the clock: a countdown while the turn is
   // tracking the estimate, and plain honesty once it is not.
@@ -76,126 +89,137 @@ export default function NpcTurnProgress({ elapsedMs, estimateMs, streaming = fal
       ? `Longer than the usual ${estimateText} on this machine — the reply is not lost.`
       : `About ${formatApproxDuration(remainingMs)} to go, based on recent turns (usually ${estimateText}).`
 
+  // The announced status. It changes at most once per turn (thinking → replying),
+  // unlike the clock, and carries the estimate because the clock and caption
+  // that show it visually are both hidden.
+  const statusText = !active
+    ? ''
+    : hasEstimate
+      ? `${phrase} Usually about ${estimateText} on this machine.`
+      : `${phrase} No turn has been timed on this machine yet.`
+
+  // Nothing to announce once the words are arriving: the transcript is a polite
+  // live region, so it is already reading the reply out, and "still waiting"
+  // over the top of it contradicts what the player is hearing.
   const announcedElapsedMs = Math.floor(elapsedMs / ANNOUNCE_INTERVAL_MS) * ANNOUNCE_INTERVAL_MS
+  const announcementText =
+    !active || streaming || elapsedMs < FIRST_ANNOUNCE_MS
+      ? ''
+      : hasEstimate
+        ? `Still waiting on the NPC — ${formatDuration(announcedElapsedMs)} of about ${estimateText}. The reply is not lost.`
+        : `Still waiting on the NPC — ${formatDuration(announcedElapsedMs)} so far. The reply is not lost.`
 
   return (
-    <div
-      data-testid="npc-turn-progress"
-      style={{
-        padding: '0.6rem 0.75rem',
-        borderRadius: 8,
-        border: '1px solid var(--cs-border, #27272a)',
-        background: 'var(--cs-raise, #18181b)',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '0.4rem',
-      }}
-    >
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'space-between',
-          alignItems: 'baseline',
-          gap: '0.75rem',
-          fontSize: '0.8rem',
-          color: 'var(--cs-text-muted, #a1a1aa)',
-        }}
+    <>
+      {/* Mounted for the whole screen, not just the turn: see the note above. */}
+      <span data-testid="npc-turn-progress-status" role="status" style={srOnly}>
+        {statusText}
+      </span>
+      <span
+        data-testid="npc-turn-progress-announcement"
+        role="status"
+        aria-live="polite"
+        style={srOnly}
       >
-        {/* This panel is the whole screen's "the NPC is working" status while a
-            turn is out, so the phrase is announced rather than hidden. It changes
-            at most once per turn (thinking → replying), unlike the clock. */}
-        <span data-testid="npc-turn-progress-status" role="status">
-          {streaming ? 'NPC is replying…' : 'NPC is thinking…'}
-          {/* How long the turn will take, for assistive tech. The clock and the
-              caption below both carry it visually but are hidden because they
-              change every second, and the sr-only status at the foot of the
-              panel does not fire until 30 s — so without this a screen-reader
-              user hears no estimate at all during the wait that issue #488 is
-              about. Safe to put here: the estimate is fixed for the duration of
-              a turn, so this suffix changes only when the phrase before it
-              does, and it costs no extra announcements. */}
-          <span data-testid="npc-turn-progress-status-estimate" style={srOnly}>
-            {hasEstimate
-              ? ` Usually about ${estimateText} on this machine.`
-              : ' No turn has been timed on this machine yet.'}
-          </span>
-        </span>
-        <span
-          data-testid="npc-turn-progress-clock"
-          aria-hidden="true"
+        {announcementText}
+      </span>
+
+      {active && (
+        <div
+          data-testid="npc-turn-progress"
           style={{
-            fontVariantNumeric: 'tabular-nums',
-            color: overrun ? 'var(--cs-event, #fbbf24)' : 'var(--cs-text, #e8e8ea)',
+            padding: '0.6rem 0.75rem',
+            borderRadius: 8,
+            border: '1px solid var(--cs-border, #27272a)',
+            background: 'var(--cs-raise, #18181b)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.4rem',
           }}
         >
-          {hasEstimate ? `${elapsedText} / ~${estimateText}` : elapsedText}
-        </span>
-      </div>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'baseline',
+              gap: '0.75rem',
+              fontSize: '0.8rem',
+              color: 'var(--cs-text-muted, #a1a1aa)',
+            }}
+          >
+            {/* Hidden like the rest of the panel: the sr-only status above says
+                the same thing, and says it without waiting for a mutation to a
+                region that did not exist a moment ago. */}
+            <span data-testid="npc-turn-progress-heading" aria-hidden="true">
+              {phrase}
+            </span>
+            <span
+              data-testid="npc-turn-progress-clock"
+              aria-hidden="true"
+              style={{
+                fontVariantNumeric: 'tabular-nums',
+                color: overrun ? 'var(--cs-event, #fbbf24)' : 'var(--cs-text, #e8e8ea)',
+              }}
+            >
+              {hasEstimate ? `${elapsedText} / ~${estimateText}` : elapsedText}
+            </span>
+          </div>
 
-      <div
-        role="progressbar"
-        aria-label="NPC response progress"
-        // An indeterminate bar (no turn timed yet) deliberately reports no value:
-        // claiming 0% of an unknown total would be a guess dressed as a fact.
-        {...(hasEstimate
-          ? {
-              'aria-valuemin': 0,
-              'aria-valuemax': 100,
-              'aria-valuenow': fillPercent,
-              'aria-valuetext': overrun
-                ? `${elapsedText} elapsed, longer than the usual ${estimateText}`
-                : `${elapsedText} elapsed of about ${estimateText}`,
-            }
-          : {})}
-        style={{
-          height: 6,
-          borderRadius: 3,
-          background: 'var(--cs-border, #27272a)',
-          overflow: 'hidden',
-        }}
-      >
-        <div
-          data-testid="npc-turn-progress-fill"
-          aria-hidden="true"
-          style={{
-            width: hasEstimate ? `${fillPercent}%` : '100%',
-            height: '100%',
-            borderRadius: 3,
-            ...(hasEstimate
-              ? { background: overrun ? 'var(--cs-event, #fbbf24)' : 'var(--cs-them-deep, #10b981)' }
-              : {
-                  // Indeterminate: there is no fraction to draw, so the track is
-                  // hatched rather than filled. An empty bar would read as "no
-                  // progress" and a full one as "done"; neither is true, and the
-                  // app animates nothing (nothing else here does either).
-                  background:
-                    'repeating-linear-gradient(135deg, var(--cs-border, #27272a) 0 6px, var(--cs-raise, #18181b) 6px 12px)',
-                }),
-          }}
-        />
-      </div>
+          <div
+            role="progressbar"
+            aria-label="NPC response progress"
+            // An indeterminate bar (no turn timed yet) deliberately reports no value:
+            // claiming 0% of an unknown total would be a guess dressed as a fact.
+            {...(hasEstimate
+              ? {
+                  'aria-valuemin': 0,
+                  'aria-valuemax': 100,
+                  'aria-valuenow': fillPercent,
+                  'aria-valuetext': overrun
+                    ? `${elapsedText} elapsed, longer than the usual ${estimateText}`
+                    : `${elapsedText} elapsed of about ${estimateText}`,
+                }
+              : {})}
+            style={{
+              height: 6,
+              borderRadius: 3,
+              background: 'var(--cs-border, #27272a)',
+              overflow: 'hidden',
+            }}
+          >
+            <div
+              data-testid="npc-turn-progress-fill"
+              aria-hidden="true"
+              style={{
+                width: hasEstimate ? `${fillPercent}%` : '100%',
+                height: '100%',
+                borderRadius: 3,
+                ...(hasEstimate
+                  ? { background: overrun ? 'var(--cs-event, #fbbf24)' : 'var(--cs-them-deep, #10b981)' }
+                  : {
+                      // Indeterminate: there is no fraction to draw, so the track is
+                      // hatched rather than filled. An empty bar would read as "no
+                      // progress" and a full one as "done"; neither is true, and the
+                      // app animates nothing (nothing else here does either).
+                      background:
+                        'repeating-linear-gradient(135deg, var(--cs-border, #27272a) 0 6px, var(--cs-raise, #18181b) 6px 12px)',
+                    }),
+              }}
+            />
+          </div>
 
-      <div
-        data-testid="npc-turn-progress-detail"
-        aria-hidden="true"
-        // Muted, not faint: this caption is the answer to "how long?", and
-        // --cs-text-faint at 12px lands at 3.7:1 on --cs-raise (see the AA note
-        // in ScenarioSetup.css), short of the 4.5:1 body text needs.
-        style={{ fontSize: '0.75rem', color: 'var(--cs-text-muted, #a1a1aa)' }}
-      >
-        {detail}
-      </div>
-
-      {/* Nothing to announce once the words are arriving: the transcript is a
-          polite live region, so it is already reading the reply out, and "still
-          waiting" over the top of it contradicts what the player is hearing. */}
-      {!streaming && elapsedMs >= FIRST_ANNOUNCE_MS && (
-        <span data-testid="npc-turn-progress-announcement" role="status" aria-live="polite" style={srOnly}>
-          {hasEstimate
-            ? `Still waiting on the NPC — ${formatDuration(announcedElapsedMs)} of about ${estimateText}. The reply is not lost.`
-            : `Still waiting on the NPC — ${formatDuration(announcedElapsedMs)} so far. The reply is not lost.`}
-        </span>
+          <div
+            data-testid="npc-turn-progress-detail"
+            aria-hidden="true"
+            // Muted, not faint: this caption is the answer to "how long?", and
+            // --cs-text-faint at 12px lands at 3.7:1 on --cs-raise (see the AA note
+            // in ScenarioSetup.css), short of the 4.5:1 body text needs.
+            style={{ fontSize: '0.75rem', color: 'var(--cs-text-muted, #a1a1aa)' }}
+          >
+            {detail}
+          </div>
+        </div>
       )}
-    </div>
+    </>
   )
 }

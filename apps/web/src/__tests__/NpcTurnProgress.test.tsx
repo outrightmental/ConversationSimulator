@@ -5,7 +5,12 @@ import NpcTurnProgress from '../components/NpcTurnProgress'
 
 function renderProgress(elapsedMs: number, estimateMs: number | null, streaming = false) {
   return render(
-    <NpcTurnProgress elapsedMs={elapsedMs} estimateMs={estimateMs} streaming={streaming} />,
+    <NpcTurnProgress
+      active
+      elapsedMs={elapsedMs}
+      estimateMs={estimateMs}
+      streaming={streaming}
+    />,
   )
 }
 
@@ -77,6 +82,11 @@ describe('NpcTurnProgress', () => {
       expect(status).toHaveAttribute('role', 'status')
       expect(status).not.toHaveAttribute('aria-hidden')
       expect(status).toHaveTextContent('NPC is thinking…')
+      // The visible copy of the phrase is hidden, so it is not read twice.
+      expect(screen.getByTestId('npc-turn-progress-heading')).toHaveAttribute(
+        'aria-hidden',
+        'true',
+      )
     })
 
     it('carries the estimate in the announced phrase, not only in the hidden clock', () => {
@@ -100,7 +110,7 @@ describe('NpcTurnProgress', () => {
 
     it('says nothing about a wait that is still ordinary', () => {
       renderProgress(20_000, 30_000)
-      expect(screen.queryByTestId('npc-turn-progress-announcement')).not.toBeInTheDocument()
+      expect(screen.getByTestId('npc-turn-progress-announcement')).toHaveTextContent('')
     })
 
     it('announces on a coarse grid once the wait is long', () => {
@@ -132,7 +142,31 @@ describe('NpcTurnProgress', () => {
       // The transcript is a polite live region already reading the reply out;
       // "still waiting" over the top of it contradicts what the player hears.
       renderProgress(45_000, 30_000, true)
-      expect(screen.queryByTestId('npc-turn-progress-announcement')).not.toBeInTheDocument()
+      expect(screen.getByTestId('npc-turn-progress-announcement')).toHaveTextContent('')
+    })
+  })
+
+  describe('between turns', () => {
+    it('draws nothing but keeps its live regions mounted', () => {
+      // A live region created in the same breath as its text is not reliably
+      // announced, so the region that carries the estimate has to exist before
+      // the turn does — the line this panel replaced was announced by the
+      // transcript's own always-present region.
+      render(<NpcTurnProgress active={false} elapsedMs={0} estimateMs={30_000} />)
+      expect(screen.queryByTestId('npc-turn-progress')).not.toBeInTheDocument()
+      expect(screen.getByTestId('npc-turn-progress-status')).toHaveTextContent('')
+      expect(screen.getByTestId('npc-turn-progress-announcement')).toHaveTextContent('')
+    })
+
+    it('starts announcing the moment a turn goes out', () => {
+      const { rerender } = render(
+        <NpcTurnProgress active={false} elapsedMs={0} estimateMs={40_000} />,
+      )
+      const status = screen.getByTestId('npc-turn-progress-status')
+      rerender(<NpcTurnProgress active elapsedMs={0} estimateMs={40_000} />)
+      // Same node, new text: that is the mutation a screen reader reads out.
+      expect(screen.getByTestId('npc-turn-progress-status')).toBe(status)
+      expect(status).toHaveTextContent('NPC is thinking… Usually about 40s on this machine.')
     })
   })
 

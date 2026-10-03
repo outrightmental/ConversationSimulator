@@ -402,10 +402,11 @@ describe('Accessibility: NpcTurnProgress', () => {
   // aria-valuenow is deliberate, and must not read as an incomplete ARIA
   // contract.
   const states = [
-    { name: 'indeterminate (no turn timed yet)', props: { elapsedMs: 7_000, estimateMs: null } },
-    { name: 'tracking an estimate', props: { elapsedMs: 10_000, estimateMs: 30_000 } },
-    { name: 'past the estimate', props: { elapsedMs: 90_000, estimateMs: 30_000 } },
-    { name: 'streaming the reply', props: { elapsedMs: 20_000, estimateMs: 30_000, streaming: true } },
+    { name: 'idle between turns', props: { active: false, elapsedMs: 0, estimateMs: 30_000 } },
+    { name: 'indeterminate (no turn timed yet)', props: { active: true, elapsedMs: 7_000, estimateMs: null } },
+    { name: 'tracking an estimate', props: { active: true, elapsedMs: 10_000, estimateMs: 30_000 } },
+    { name: 'past the estimate', props: { active: true, elapsedMs: 90_000, estimateMs: 30_000 } },
+    { name: 'streaming the reply', props: { active: true, elapsedMs: 20_000, estimateMs: 30_000, streaming: true } },
   ]
 
   for (const { name, props } of states) {
@@ -417,7 +418,7 @@ describe('Accessibility: NpcTurnProgress', () => {
   }
 
   it('labels the progress bar', () => {
-    const { container } = render(<NpcTurnProgress elapsedMs={10_000} estimateMs={30_000} />)
+    const { container } = render(<NpcTurnProgress active elapsedMs={10_000} estimateMs={30_000} />)
     const bar = container.querySelector('[role="progressbar"]')
     expect(bar?.getAttribute('aria-label')).toBeTruthy()
   })

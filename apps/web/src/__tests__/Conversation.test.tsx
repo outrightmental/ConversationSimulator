@@ -2042,6 +2042,26 @@ describe('Conversation screen', () => {
       }
     })
 
+    it('has its live region on screen before the first turn goes out', async () => {
+      // A region created in the same breath as its text is not reliably
+      // announced, and this one carries the estimate — the whole of issue #488
+      // for a screen-reader user. The line it replaced was announced by the
+      // transcript's own always-present region, so it has to be mounted and
+      // silent between turns rather than conjured with the panel.
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      renderConversation()
+      await waitFor(() =>
+        expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument(),
+      )
+      const status = screen.getByTestId('npc-turn-progress-status')
+      expect(status).toHaveTextContent('')
+      expect(screen.queryByTestId('npc-turn-progress')).not.toBeInTheDocument()
+
+      await submit()
+      expect(screen.getByTestId('npc-turn-progress-status')).toBe(status)
+      expect(status).toHaveTextContent('NPC is thinking…')
+    })
+
     it('does not learn a duration from a turn that failed', async () => {
       // A turn that errored out at 30s says nothing about how long a reply takes.
       let failTurn: (r: { ok: false; error: ApiError }) => void = () => {}

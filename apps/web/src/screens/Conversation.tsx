@@ -1188,40 +1188,43 @@ export default function Conversation() {
 
       {/* How long this turn is taking, and how long it usually takes (issue #488).
           Deliberately outside the transcript: that region is a polite live region,
-          and a clock ticking inside it would be re-announced every second. */}
-      {isAwaitingNpc && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-          <NpcTurnProgress
-            elapsedMs={waitElapsedMs}
-            estimateMs={turnEstimateMs}
-            streaming={streamingText.length > 0}
-          />
+          and a clock ticking inside it would be re-announced every second.
+          Rendered on every pass rather than only while a turn is out: the panel
+          itself draws nothing between turns, but its live regions have to be
+          mounted before they have anything to say, or the announcement carrying
+          the estimate is one a screen reader may never make. They are absolutely
+          positioned, so an idle panel costs no layout. */}
+      <NpcTurnProgress
+        active={isAwaitingNpc}
+        elapsedMs={waitElapsedMs}
+        estimateMs={turnEstimateMs}
+        streaming={streamingText.length > 0}
+      />
 
-          {isSlowResponse && (
-            <div
-              data-testid="slow-response-indicator"
-              role="status"
-              aria-live="polite"
-              style={{
-                padding: '0.5rem 0.75rem',
-                borderRadius: 6,
-                border: '1px solid #713f12',
-                background: '#1c1000',
-                color: '#fde68a',
-                fontSize: '0.8rem',
-              }}
-            >
-              {isDemo
-                ? 'NPC is taking longer than usual. The model may be slow on this hardware; closing other apps usually helps.'
-                : 'NPC is taking longer than usual. The model may be slow on this hardware. You can adjust settings or try a smaller model.'}
-              {isVerySlowResponse && (
-                // Past half a minute, say outright that the turn has not been
-                // thrown away — the panel above already reports the clock, so
-                // this stage adds the reassurance rather than a second timer.
-                <div data-testid="slow-response-reassurance" style={{ marginTop: 4, color: '#fbbf24' }}>
-                  The reply is not lost; slow hardware can take a few minutes per turn.
-                </div>
-              )}
+      {/* isSlowResponse already implies a turn is out. */}
+      {isSlowResponse && (
+        <div
+          data-testid="slow-response-indicator"
+          role="status"
+          aria-live="polite"
+          style={{
+            padding: '0.5rem 0.75rem',
+            borderRadius: 6,
+            border: '1px solid #713f12',
+            background: '#1c1000',
+            color: '#fde68a',
+            fontSize: '0.8rem',
+          }}
+        >
+          {isDemo
+            ? 'NPC is taking longer than usual. The model may be slow on this hardware; closing other apps usually helps.'
+            : 'NPC is taking longer than usual. The model may be slow on this hardware. You can adjust settings or try a smaller model.'}
+          {isVerySlowResponse && (
+            // Past half a minute, say outright that the turn has not been
+            // thrown away — the panel above already reports the clock, so
+            // this stage adds the reassurance rather than a second timer.
+            <div data-testid="slow-response-reassurance" style={{ marginTop: 4, color: '#fbbf24' }}>
+              The reply is not lost; slow hardware can take a few minutes per turn.
             </div>
           )}
         </div>
