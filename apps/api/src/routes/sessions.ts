@@ -11,6 +11,9 @@ import type {
   SessionTranscriptResponse,
   EndingType,
 } from '@convsim/shared';
+// The resumable / ended partition lives in @convsim/shared so this listing and
+// the Settings screen that reads it cannot drift apart (issue #501 §1).
+import { ENDED_SESSION_STATES, RESUMABLE_SESSION_STATES } from '@convsim/shared';
 import { findScenarioInfo } from './scenarios.js';
 import { getDb, WORKBENCH_TEST_SCENARIO_ID } from '../db.js';
 import { broadcast, closeSessionSockets } from '../ws/session-events.js';
@@ -161,28 +164,6 @@ function rejectTransition(reply: { status: (code: number) => void }, state: Sess
   throw err;
 }
 
-/** States a session can be picked back up from — the resumable set
- *  (issue #501 §1). Mirrors RESUMABLE_FLOW_STATES in convsim-core's sessions
- *  router. `NotStarted` is excluded on purpose: nothing has been said yet, so
- *  there is no conversation to resume. */
-const RESUMABLE_STATES: SessionState[] = [
-  'PlayerTurnListening',
-  'PlayerTurnReview',
-  'NpcThinking',
-  'NpcSpeaking',
-  'ScenarioEvent',
-];
-
-/** States a session has finished in. `Ended` is only the first: generating the
- *  debrief moves the row to `DebriefGenerating` and then `DebriefReady`, and a
- *  failed debrief leaves `Error`. Mirrors ENDED_FLOW_STATES in convsim-core. */
-const ENDED_STATES: SessionState[] = [
-  'Ended',
-  'DebriefGenerating',
-  'DebriefReady',
-  'Error',
-];
-
 export async function sessionRoutes(app: FastifyInstance) {
   // GET /api/sessions
   app.get<{ Querystring: { status?: string; limit?: string } }>(
@@ -209,7 +190,11 @@ export async function sessionRoutes(app: FastifyInstance) {
     // player's session history (they are cleaned up on discard/reset/unmount,
     // but a lingering row must not surface here either).
     const states =
-      status === 'in_progress' ? RESUMABLE_STATES : status === 'ended' ? ENDED_STATES : null;
+      status === 'in_progress'
+        ? RESUMABLE_SESSION_STATES
+        : status === 'ended'
+          ? ENDED_SESSION_STATES
+          : null;
     const clauses = ['scenario_id != ?'];
     const params: (string | number)[] = [WORKBENCH_TEST_SCENARIO_ID];
     if (states !== null) {

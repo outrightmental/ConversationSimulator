@@ -199,3 +199,41 @@ def test_workbench_preview_is_never_offered_for_resume(ts_client):
         "/api/sessions", params={"status": "in_progress"}
     ).json()["sessions"] == []
     assert ts_client.get("/api/sessions").json()["sessions"] == []
+
+
+# ── The copy in TypeScript must agree with this one ──────────────────────────
+# `status=in_progress` is the filter, but it is not the only place the resumable
+# set is decided: Settings lists every unfinished conversation with its own
+# Resume button and picks them out client-side. That copy lives in
+# packages/shared so the web app and the TypeScript proxy share one list — but
+# nothing can make it import this one, and a flow state added here without being
+# added there silently loses its Resume button on the screen the lost player of
+# issue #501 was standing on.
+
+
+def _typescript_state_list(name: str) -> list[str]:
+    """The string literals in a `const <name> = [...]` block in shared's types."""
+    import re
+    from pathlib import Path
+
+    source = (
+        Path(__file__).resolve().parents[3]
+        / "packages" / "shared" / "src" / "types" / "session.ts"
+    ).read_text(encoding="utf-8")
+    match = re.search(rf"export const {name} = \[(.*?)\]", source, re.DOTALL)
+    assert match is not None, f"{name} not found in packages/shared/src/types/session.ts"
+    return re.findall(r"'([^']+)'", match.group(1))
+
+
+def test_resumable_states_match_the_typescript_copy():
+    from convsim_core.routers.sessions import RESUMABLE_FLOW_STATES
+
+    assert _typescript_state_list("RESUMABLE_SESSION_STATES") == list(
+        RESUMABLE_FLOW_STATES
+    )
+
+
+def test_ended_states_match_the_typescript_copy():
+    from convsim_core.routers.sessions import ENDED_FLOW_STATES
+
+    assert _typescript_state_list("ENDED_SESSION_STATES") == list(ENDED_FLOW_STATES)

@@ -254,6 +254,13 @@ been said yet, so there is no conversation to pick back up.
 `in_progress` and `NotStarted` that accounts for every state, so the two
 filters partition the sessions that were ever started.
 
+The two state lists are also needed client-side — Settings lists every
+unfinished conversation with its own Resume button, picking them out of a full
+listing — so they live in `packages/shared` (`RESUMABLE_SESSION_STATES`,
+`ENDED_SESSION_STATES`) for every TypeScript consumer, with a pytest guard
+asserting they still match convsim-core's `RESUMABLE_FLOW_STATES` and
+`ENDED_FLOW_STATES`.
+
 Creator Workbench preview sessions are excluded from every `status`, including
 `all`. They are written straight into `turn_sessions` under a dynamic
 `__wbtest__<hex>` scenario id and nothing ever ends them, so one preview would

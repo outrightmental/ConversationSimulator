@@ -20,6 +20,9 @@ import { openExternal } from '../lib/openExternal'
 import { clearTurnSamples } from '../lib/turnEstimate'
 import { useIsDemo } from '../edition'
 import type { PreflightResponse, PreflightFixAction } from '@convsim/shared'
+// The resumable set lives in @convsim/shared so this list and the
+// `status=in_progress` filter it mirrors cannot drift apart (issue #501 §1).
+import { isResumableSessionState } from '@convsim/shared'
 
 type ClearState = 'idle' | 'confirming' | 'clearing' | 'done' | 'error'
 type PackImportState = 'idle' | 'uploading' | 'success' | 'error'
@@ -30,16 +33,6 @@ interface SessionSummary {
   state: string
   created_at: string
 }
-
-/** Flow states a session can be picked back up from (mirrors
- *  RESUMABLE_FLOW_STATES in convsim-core's sessions router). */
-const RESUMABLE_STATES = new Set([
-  'PlayerTurnListening',
-  'PlayerTurnReview',
-  'NpcThinking',
-  'NpcSpeaking',
-  'ScenarioEvent',
-])
 
 interface PrivacyToggleProps {
   id: string
@@ -908,7 +901,7 @@ export default function Settings() {
                       (issue #501 §1): every unfinished conversation is one
                       click from here, not just the newest one the banner
                       offers. */}
-                  {RESUMABLE_STATES.has(s.state) && (
+                  {isResumableSessionState(s.state) && (
                     <button
                       aria-label={t('settings.sessions.resumeLabel', { id: s.session_id })}
                       data-testid={`settings-resume-${s.session_id}`}
