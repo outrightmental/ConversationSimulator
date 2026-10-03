@@ -1,0 +1,867 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/*
+ * Conversation Brief — the screen between picking a scenario and talking to the
+ * character (issue #486).
+ *
+ * It is laid out as a preflight panel, not a settings form: a hero that states
+ * what this conversation is, numbered cards that read top-to-bottom, an
+ * instrument panel on the right that stays put while you scroll, and a launch
+ * bar pinned to the bottom of the viewport so the start control is never
+ * off-screen no matter how far down the page you are.
+ *
+ * Colour follows docs/brand.md — violet is the player (primary action,
+ * selection), emerald is the character and "ready", amber is pressure and
+ * anything that wants attention. Micro-labels are set in the mono "stage
+ * directions" voice.
+ */
+
+.brief {
+  max-width: 72rem;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* The mono, letter-spaced micro-label — the identity's signature texture.
+   These run 9–11px, so they are held at --cs-text-muted or brighter for AA;
+   --cs-text-faint is reserved for decoration. */
+.brief-eyebrow,
+.brief-label,
+.brief-fact-label,
+.brief-step,
+.brief-panel-title,
+.brief-meter-label,
+.brief-meter-value,
+.brief-launch-summary,
+.brief-alert-title {
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+
+/* ── Hero ──────────────────────────────────────────────────────────────── */
+
+.brief-hero {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--cs-border);
+  border-radius: 14px;
+  padding: 1.25rem 1.75rem 1.5rem;
+  background:
+    radial-gradient(120% 150% at 0% 0%, rgba(167, 139, 250, 0.2), transparent 58%),
+    radial-gradient(110% 140% at 100% 0%, rgba(110, 231, 183, 0.11), transparent 55%),
+    linear-gradient(180deg, var(--cs-raise), var(--cs-stage-deep));
+}
+
+.brief-hero-top {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.1rem;
+}
+
+.brief-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--cs-border);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--cs-text-muted);
+  font: inherit;
+  font-size: 0.8rem;
+}
+
+.brief-back:hover {
+  border-color: var(--cs-you);
+  color: var(--cs-text-strong);
+}
+
+.brief-eyebrow {
+  font-size: 0.66rem;
+  color: var(--cs-you);
+}
+
+.brief-pack {
+  margin: 0 0 0.3rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--cs-them);
+}
+
+.brief-title {
+  margin: 0;
+  font-size: clamp(1.75rem, 3.6vw, 2.5rem);
+  line-height: 1.1;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--cs-text-strong);
+}
+
+.brief-summary {
+  margin: 0.6rem 0 0;
+  max-width: 46rem;
+  font-size: 1rem;
+  line-height: 1.5;
+  color: var(--cs-text-muted);
+}
+
+.brief-facts {
+  list-style: none;
+  margin: 1.25rem 0 0;
+  padding: 1rem 0 0;
+  border-top: 1px solid var(--cs-border);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  gap: 0.85rem 1.25rem;
+}
+
+.brief-fact {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.brief-fact-label {
+  font-size: 0.6rem;
+  color: var(--cs-text-muted);
+}
+
+.brief-fact-value {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--cs-text);
+}
+
+/* Steam Deck and other short screens: the brief still has to leave room for
+   the first choice below it, so the hero gives up some of its height. */
+@media (max-height: 850px) {
+  .brief-hero {
+    padding: 1rem 1.5rem 1.25rem;
+  }
+
+  .brief-hero-top {
+    margin-bottom: 0.85rem;
+  }
+
+  .brief-title {
+    font-size: clamp(1.5rem, 2.8vw, 1.9rem);
+  }
+
+  .brief-summary {
+    font-size: 0.92rem;
+  }
+
+  .brief-facts {
+    margin-top: 0.9rem;
+    padding-top: 0.8rem;
+  }
+}
+
+/* ── Layout ────────────────────────────────────────────────────────────── */
+
+.brief-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.brief-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 19rem;
+  gap: 1.25rem;
+  align-items: start;
+}
+
+.brief-main {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+
+.brief-aside {
+  position: sticky;
+  top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+@media (max-width: 60rem) {
+  .brief-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .brief-aside {
+    position: static;
+  }
+}
+
+/* ── Cards ─────────────────────────────────────────────────────────────── */
+
+.brief-card {
+  border: 1px solid var(--cs-border);
+  border-radius: 12px;
+  background: var(--cs-raise);
+  padding: 1rem 1.15rem 1.15rem;
+}
+
+.brief-card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 0.9rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--cs-border);
+}
+
+.brief-step {
+  flex: none;
+  padding: 0.1rem 0.4rem;
+  border: 1px solid rgba(167, 139, 250, 0.4);
+  border-radius: 5px;
+  font-size: 0.64rem;
+  color: var(--cs-you);
+  background: rgba(167, 139, 250, 0.08);
+}
+
+.brief-card-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--cs-text-strong);
+}
+
+.brief-card-hint {
+  margin: 0;
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: var(--cs-text-muted);
+}
+
+.brief-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.brief-note {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--cs-text-muted);
+}
+
+/* The role brief reads as a quoted stage direction, not a form hint. */
+.brief-role-brief {
+  margin: 0;
+  padding: 0.2rem 0 0.2rem 0.85rem;
+  border-left: 2px solid var(--cs-you-deep);
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: var(--cs-text);
+}
+
+/* Short cards pair up on a wide screen so the page stays scannable. */
+.brief-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  align-items: start;
+}
+
+@media (max-width: 52rem) {
+  .brief-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ── Choice cards (difficulty, input mode) ─────────────────────────────── */
+
+.brief-options {
+  display: grid;
+  gap: 0.6rem;
+}
+
+/* A difficulty level reads as one wide row: the choice on the left, the
+   character's traits as meters on the right, like a preflight readout. The
+   whole row selects (the wrapper carries the click), so the whole row gets the
+   pointer — not just the <label> half. */
+.brief-option.is-level {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 14rem;
+  align-items: center;
+  gap: 0.5rem 1.5rem;
+  padding: 0.8rem 0.9rem;
+  cursor: pointer;
+}
+
+/* A pack need not declare traits. When it doesn't there are no meters, so give
+   the column back rather than leaving a 14rem gutter beside every level. */
+.brief-option.is-level:not(:has(.brief-meters)) {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (max-width: 52rem) {
+  .brief-option.is-level {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* Stacked, the meters line up under the option text rather than running the
+     full width of the card. */
+  .brief-option.is-level .brief-meters {
+    max-width: 24rem;
+    margin-left: 1.6rem;
+  }
+}
+
+.brief-option {
+  border: 1px solid var(--cs-border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.018);
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+/* The clickable part. The meters sit outside it: a <ul> is not phrasing
+   content and so cannot live inside a <label>. */
+.brief-option-main {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 0.6rem;
+  cursor: pointer;
+}
+
+/* A row shows its hover and selected styling over its whole box, so its whole
+   box has to be clickable — the same reason the level rows select as a whole.
+   A level row's wrapper carries the click, so it carries the padding too
+   (above); everywhere else the <label> is the only click target, so the padding
+   is the label's. Left on the wrapper it would be a band that lights up under
+   the pointer and does nothing. */
+.brief-option:not(.is-level) .brief-option-main {
+  padding: 0.8rem 0.9rem;
+}
+
+.brief-option.is-disabled .brief-option-main {
+  cursor: not-allowed;
+}
+
+.brief-option:hover:not(.is-disabled) {
+  border-color: var(--cs-you-deep);
+  background: rgba(167, 139, 250, 0.05);
+}
+
+.brief-option.is-selected {
+  border-color: var(--cs-you);
+  background: linear-gradient(180deg, rgba(167, 139, 250, 0.12), rgba(167, 139, 250, 0.03));
+  box-shadow: 0 10px 28px -20px rgba(167, 139, 250, 0.9);
+}
+
+.brief-option.is-disabled {
+  opacity: 0.55;
+}
+
+.brief-option:focus-within {
+  border-color: var(--cs-you);
+}
+
+.brief-option input {
+  margin: 0.2rem 0 0;
+  accent-color: var(--cs-you);
+}
+
+.brief-option-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+.brief-option-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--cs-text-strong);
+}
+
+.brief-option-badge,
+.brief-option-note {
+  margin-left: 0.45rem;
+  padding: 0.05rem 0.35rem;
+  border-radius: 4px;
+  font-size: 0.64rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+}
+
+.brief-option-badge {
+  color: var(--cs-them);
+  background: rgba(110, 231, 183, 0.12);
+}
+
+.brief-option-note {
+  color: var(--cs-event);
+  background: rgba(251, 191, 36, 0.12);
+}
+
+.brief-option-desc {
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--cs-text-muted);
+}
+
+/* ── Trait meters ──────────────────────────────────────────────────────── */
+
+.brief-meters {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.brief-meter {
+  display: grid;
+  /* The label column holds the longest trait name ("Time pressure") on one
+     line at the micro-label size below, across every stack in the font list. */
+  grid-template-columns: 6.25rem minmax(2rem, 1fr) 1.5rem;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+/* The trait names are content, not decoration — they say which bar is which —
+   so they sit at the same 9.6px floor as every other micro-label in the app
+   and on this screen. The release checklist requires all text to be readable
+   at 1280x800 from couch distance; nothing here goes below that floor. */
+.brief-meter-label {
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+  color: var(--cs-text-muted);
+}
+
+.brief-meter-track {
+  display: block;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.brief-meter-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--cs-them-deep);
+}
+
+/* Volatility and time pressure are what the scenario pushes at you. */
+.brief-meter.is-pressure .brief-meter-fill {
+  background: var(--cs-event);
+}
+
+.brief-meter-value {
+  font-size: 0.62rem;
+  text-align: right;
+  color: var(--cs-text-muted);
+}
+
+/* ── Fields ────────────────────────────────────────────────────────────── */
+
+.brief-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.brief-label {
+  font-size: 0.6rem;
+  color: var(--cs-text-muted);
+}
+
+.brief-input,
+.brief-select {
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--cs-border);
+  border-radius: 8px;
+  background: var(--cs-stage-deep);
+  color: var(--cs-text);
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+.brief-input:hover,
+.brief-select:hover {
+  border-color: var(--cs-you-deep);
+}
+
+.brief-field-error {
+  font-size: 0.75rem;
+}
+
+.brief-field-error,
+.brief-alert-message {
+  color: #fca5a5;
+}
+
+.brief-toggle {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.6rem;
+  align-items: start;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--cs-border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.018);
+  cursor: pointer;
+}
+
+.brief-toggle:hover {
+  border-color: var(--cs-you-deep);
+}
+
+.brief-toggle input {
+  margin: 0.15rem 0 0;
+  accent-color: var(--cs-you);
+}
+
+.brief-toggle-text {
+  font-size: 0.88rem;
+  color: var(--cs-text);
+}
+
+.brief-toggle-note {
+  color: var(--cs-text-muted);
+  font-size: 0.78rem;
+}
+
+.brief-badge-ready {
+  color: var(--cs-them);
+  font-size: 0.78rem;
+}
+
+.brief-badge-off {
+  color: var(--cs-text-muted);
+  font-size: 0.78rem;
+}
+
+.brief-seed-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.brief-seed-field {
+  flex: 0 1 11rem;
+}
+
+.brief-btn-secondary,
+.brief-btn-ghost {
+  padding: 0.55rem 0.9rem;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 0.82rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--cs-border);
+  color: var(--cs-text);
+}
+
+.brief-btn-ghost {
+  background: none;
+  border-color: transparent;
+  color: var(--cs-text-muted);
+}
+
+.brief-btn-secondary:hover,
+.brief-btn-ghost:hover {
+  border-color: var(--cs-you);
+  color: var(--cs-text-strong);
+}
+
+/* ── Alerts ────────────────────────────────────────────────────────────── */
+
+.brief-alert {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.95rem 1.1rem;
+  border: 1px solid rgba(251, 191, 36, 0.38);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(251, 191, 36, 0.1), rgba(251, 191, 36, 0.02));
+}
+
+.brief-alert-title {
+  font-size: 0.64rem;
+  color: var(--cs-event);
+}
+
+.brief-alert-message,
+.brief-alert-hint {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.brief-alert-hint {
+  color: var(--cs-text-muted);
+}
+
+.brief-alert-link {
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: var(--cs-you);
+  text-decoration: underline;
+}
+
+/* A failed start is reported inside the launch bar, so it takes a row of its
+   own above the controls rather than sharing one with them. */
+.brief-submit-error {
+  flex: 1 0 100%;
+  border: 1px solid rgba(248, 113, 113, 0.35);
+  border-radius: 10px;
+  background: rgba(248, 113, 113, 0.06);
+  padding: 0.5rem 0.7rem;
+}
+
+/* ── Instrument panel ──────────────────────────────────────────────────── */
+
+.brief-panel {
+  border: 1px solid var(--cs-border);
+  border-radius: 12px;
+  background: var(--cs-raise);
+  padding: 0.9rem 1rem 1rem;
+}
+
+.brief-panel-title {
+  margin: 0 0 0.65rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--cs-border);
+  font-size: 0.62rem;
+  color: var(--cs-text-muted);
+}
+
+.brief-checks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.brief-checks li {
+  display: grid;
+  grid-template-columns: 0.5rem minmax(0, 1fr);
+  gap: 0.55rem;
+  align-items: start;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--cs-text-muted);
+}
+
+.brief-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-top: 0.35rem;
+  border-radius: 50%;
+  background: var(--cs-text-faint);
+}
+
+.brief-dot.ready {
+  background: var(--cs-them);
+  box-shadow: 0 0 0 3px rgba(110, 231, 183, 0.14);
+}
+
+.brief-dot.not-ready {
+  background: var(--cs-event);
+  box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.12);
+}
+
+.brief-chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.brief-chip {
+  padding: 0.2rem 0.5rem;
+  border: 1px solid rgba(167, 139, 250, 0.3);
+  border-radius: 999px;
+  background: rgba(167, 139, 250, 0.08);
+  font-size: 0.72rem;
+  text-transform: capitalize;
+  color: var(--cs-you);
+}
+
+.brief-safety {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: var(--cs-text-muted);
+}
+
+/* ── Launch bar ────────────────────────────────────────────────────────── */
+
+.brief-launch {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem 1.25rem;
+  flex-wrap: wrap;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--cs-border);
+  border-radius: 12px;
+  background: rgba(15, 15, 17, 0.93);
+  /* Prefixed first: the desktop build is a WebView, and WebKit (macOS
+     WKWebView, and the WebKitGTK the Steam Deck build runs on) only took the
+     unprefixed property recently. Without it the bar loses its blur on the
+     platform the brief is designed for. */
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 -12px 34px -22px #000, 0 0 0 1px rgba(255, 255, 255, 0.02);
+}
+
+/* The bar is pinned over the bottom of the viewport, which is exactly where the
+   browser parks a control it has just scrolled into view: sequential focus —
+   Tab, and the Steam Deck D-pad, which moves focus with `element.focus()` in
+   useGamepadNavigation — aligns a control that was below the fold flush with
+   the viewport's bottom edge, leaving it behind the bar. Reserve the bar's
+   height (plus the 3px focus ring and its offset) so a newly focused control
+   lands above the bar instead of under it.
+   The reserve has to clear the bar's tallest state, which is a failed start:
+   27.6px of the bar's own padding and border, a 47.8px Start button, a 12px row
+   gap and an error row of 18px chrome around each line of message. The compact
+   error carries the service's own message, so the line count rises as the
+   window narrows — measured at 122px on one line, 146px on two, 169px on three.
+   What makes 11rem (176px) safe is the window floor: `minWidth` in
+   apps/desktop/src-tauri/tauri.conf.json is 900px, and at 900px the bar is the
+   two-line 146px, clearing the reserve with 30px to spare after the focus ring.
+   It still holds for the three-line bar a browser can reach at ~780px, but a
+   fourth line (below ~700px) would not. Re-measure if that floor ever drops.
+   The reserve goes on the scrollport, not on the controls. `scroll-margin-bottom`
+   on each control is not enough: focus scrolls with scrollIntoView's `nearest`
+   alignment, and Chromium decides a control is "already visible" from its own
+   border box before the margin is added — so a control that is on screen but
+   standing in the band the bar covers is never scrolled at all. (`block: 'end'`
+   does honour the margin; `nearest`, which is what focus uses, does not.)
+   Measured on a Tab/D-pad walk at 1280x800, that left three controls behind the
+   bar: the last difficulty radio, the language select and a privacy toggle.
+   `scroll-padding-bottom` shrinks the scrollport itself, which is what `nearest`
+   compares against, so the same 11rem now moves every one of them clear.
+   The scrollport here is the viewport, so the padding belongs on the root; it is
+   held to the brief with :has() so no other screen inherits it.
+   The bar's own controls are the one thing the reserve does not need to cover —
+   they ride the viewport's bottom edge and are always on screen — and they are
+   the one thing it cannot be taken off. Scoping it away is what `scroll-margin`
+   would do, but the bar is sticky, and Chromium scrolls a sticky element from
+   where it would have laid out, not from where it is stuck: a negative margin
+   there saturates at 22px however far it is pushed, so there is nothing to scope
+   with. The cost is bounded and it is not the focus ring: Start is reached last
+   in document order, by which point the page is already at its scroll end and
+   focusing it moves nothing (measured). Only the D-pad's wrap from the first
+   element back to the last reaches it from the top, and that scrolls the page
+   under a Start button that stays on screen and focused throughout. */
+:root:has(.brief) {
+  scroll-padding-bottom: 11rem;
+}
+
+.brief-launch-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--cs-text);
+}
+
+.brief-launch-status .brief-dot {
+  margin-top: 0;
+}
+
+.brief-launch-summary {
+  flex: 1 1 12rem;
+  min-width: 0;
+  font-size: 0.62rem;
+  color: var(--cs-text-muted);
+}
+
+.brief-start {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.8rem 1.6rem;
+  border: 1px solid var(--cs-you);
+  border-radius: 10px;
+  background: linear-gradient(180deg, var(--cs-you), var(--cs-you-deep));
+  color: #0b0b10;
+  font: inherit;
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  box-shadow: 0 12px 30px -14px rgba(167, 139, 250, 0.7);
+  transition: filter 0.15s ease, box-shadow 0.15s ease;
+}
+
+.brief-start:hover:not(:disabled) {
+  filter: brightness(1.08);
+  box-shadow: 0 14px 34px -12px rgba(167, 139, 250, 0.8);
+}
+
+.brief-start:disabled {
+  background: #2a2a31;
+  border-color: #3a3a44;
+  color: var(--cs-text-muted);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.brief-start-arrow {
+  font-size: 1.05rem;
+  line-height: 1;
+}
+
+/* ── Load and error states ─────────────────────────────────────────────── */
+
+.brief-loading,
+.brief-error {
+  max-width: 40rem;
+  margin: 3rem auto;
+  padding: 1.5rem 1.75rem;
+  border: 1px solid var(--cs-border);
+  border-radius: 12px;
+}
+
+.brief-loading {
+  color: var(--cs-text-muted);
+  text-align: center;
+}
+
+.brief-error h2 {
+  margin: 0 0 0.75rem;
+  font-size: 1.1rem;
+  color: var(--cs-text-strong);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brief-option,
+  .brief-start {
+    transition: none;
+  }
+}
