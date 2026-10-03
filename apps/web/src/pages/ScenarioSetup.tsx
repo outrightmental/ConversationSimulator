@@ -1,3 +1,19 @@
+// SPDX-License-Identifier: Apache-2.0
+//
+// The Conversation Brief: the screen between choosing a scenario and talking to
+// the character. Redesigned in issue #486 as a briefing, not a settings form —
+// the page used to be a flat stack of unstyled fieldsets with the start button
+// stranded at the bottom, and players could not find it.
+//
+// The shape it takes instead (styles in ./ScenarioSetup.css):
+//   · a hero that answers "what am I about to do" — pack, title, summary, and
+//     the five facts of the engagement (role, length, turns, rating, voice);
+//   · numbered cards so the settings read as a short sequence rather than a
+//     wall of controls, with the character's difficulty traits drawn as meters
+//     so choosing a level is a readable decision;
+//   · an instrument panel that stays on screen with the runtime checks;
+//   · a launch bar pinned to the bottom of the viewport carrying the one
+//     primary action, what it is about to start, and whether it can.
 import { useState, useEffect, useCallback } from 'react';
 import type {
   ScenarioInfo,
@@ -15,6 +31,7 @@ import type { ApiError } from '../api/errors';
 import { ApiErrorView } from '../components/ApiErrorView';
 import { readPrivacyPref, PRIVACY_KEYS } from '../privacyPrefs';
 import { languageLabel } from '../lib/languageLabel';
+import './ScenarioSetup.css';
 
 const DIFFICULTY_LABELS: Record<ScenarioDifficulty, string> = {
   warm:        'Warm-up',
@@ -30,12 +47,77 @@ const DIFFICULTY_DESCRIPTIONS: Record<ScenarioDifficulty, string> = {
   adversarial: 'Maximum challenge: very low patience, high state volatility, almost no disclosure, strong time pressure.',
 };
 
+/**
+ * The difficulty traits, drawn as meters on each level card. Emerald traits
+ * describe how the character gives; amber traits are what the scenario pushes
+ * at the player (docs/brand.md: emerald is "them", amber is "the moment").
+ */
+type TraitKey = 'patience' | 'disclosure' | 'volatility' | 'time_pressure';
+
+const TRAIT_METERS: ReadonlyArray<{ key: TraitKey; label: string; pressure: boolean }> = [
+  { key: 'patience',      label: 'Patience',      pressure: false },
+  { key: 'disclosure',    label: 'Disclosure',    pressure: false },
+  { key: 'volatility',    label: 'Volatility',    pressure: true },
+  { key: 'time_pressure', label: 'Time pressure', pressure: true },
+];
+
+/** Short forms for the launch bar, where the full radio labels are too long. */
+const INPUT_MODE_SUMMARY: Record<InputMode, string> = {
+  'text-only':    'Text',
+  'push-to-talk': 'Push-to-talk',
+  'hands-free':   'Hands-free',
+};
+
 function difficultyDescription(level: ScenarioDifficulty, option: DifficultyOption | undefined): string {
   return option?.description ?? DIFFICULTY_DESCRIPTIONS[level] ?? level;
 }
 
 function difficultyLabel(level: ScenarioDifficulty, option: DifficultyOption | undefined): string {
   return option?.label ?? DIFFICULTY_LABELS[level] ?? level.charAt(0).toUpperCase() + level.slice(1);
+}
+
+/**
+ * Trait meters for one difficulty level. Rendered as a sibling of the option's
+ * <label> rather than inside it: a list is not phrasing content, and keeping
+ * the numbers out of the radio's accessible name keeps that name short.
+ *
+ * Each bar is a `role="meter"` carrying the 0–100 scale, as the state meters on
+ * the conversation, debrief and workbench screens already are. The bar is what
+ * tells a sighted player that 80 is high; without the scale on the meter, a
+ * screen reader would read a bare "Patience 80" and lose that. The visible
+ * label and number are the meter's own rendering, so they are hidden from the
+ * tree to keep each row from being read twice.
+ */
+function TraitMeters({ option }: { option: DifficultyOption | undefined }) {
+  const rows = TRAIT_METERS.filter(({ key }) => typeof option?.[key] === 'number');
+  if (option == null || rows.length === 0) return null;
+  return (
+    <ul className="brief-meters">
+      {rows.map(({ key, label, pressure }) => {
+        const value = option[key] as number;
+        return (
+          <li key={key} className={`brief-meter${pressure ? ' is-pressure' : ''}`}>
+            <span className="brief-meter-label" aria-hidden="true">{label}</span>
+            <span
+              className="brief-meter-track"
+              role="meter"
+              aria-label={`${label}: ${value} out of 100`}
+              aria-valuenow={value}
+              aria-valuemin={0}
+              aria-valuemax={100}
+            >
+              <span
+                aria-hidden="true"
+                className="brief-meter-fill"
+                style={{ width: `${Math.max(0, Math.min(100, value))}%` }}
+              />
+            </span>
+            <span className="brief-meter-value" aria-hidden="true">{value}</span>
+          </li>
+        );
+      })}
+    </ul>
+  );
 }
 
 interface Props {
@@ -183,11 +265,13 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
 
   if (loadError) {
     return (
-      <div className="setup-page" data-testid="setup-page">
-        <div className="setup-error">
+      <div className="brief" data-testid="setup-page">
+        <div className="brief-error">
           <h2>Failed to load scenario</h2>
           <ApiErrorView error={loadError} context="ScenarioSetup" />
-          <button onClick={onBack} style={{ marginTop: '0.75rem' }}>Go back</button>
+          <button type="button" className="brief-btn-secondary" onClick={onBack} style={{ marginTop: '0.75rem' }}>
+            Go back
+          </button>
         </div>
       </div>
     );
@@ -195,8 +279,8 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
 
   if (scenario == null) {
     return (
-      <div className="setup-page" data-testid="setup-page">
-        <div className="setup-loading" aria-live="polite" aria-busy="true">
+      <div className="brief" data-testid="setup-page">
+        <div className="brief-loading" aria-live="polite" aria-busy="true">
           Loading scenario {scenarioId}…
         </div>
       </div>
@@ -213,397 +297,519 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
 
   const formLevelErrors = validationResult.errors.filter((e) => e.field === '_form');
 
+  // The rubric dimensions this scenario scores — the "why am I here" of the
+  // brief. Tested is what the debrief will grade; taught is the fallback for a
+  // teaching scenario that grades nothing.
+  const practisedDimensions =
+    scenario.tested_dimensions?.length
+      ? scenario.tested_dimensions
+      : scenario.taught_dimensions ?? [];
+
+  // The launch bar's two readouts: what is about to start, and whether it can.
+  // The blocker count is deliberately a count, not the messages — each message
+  // is already shown in place, next to the control that owns it.
+  const launchSummary = [
+    difficultyLabel(form.difficulty, scenario.difficulty?.options?.[form.difficulty]),
+    languageLabel(form.language),
+    INPUT_MODE_SUMMARY[form.input_mode],
+    form.tts_enabled ? 'Voice on' : 'Voice off',
+  ].join(' · ');
+
+  const blockerCount = validationResult.errors.length;
+  // A failed attempt outranks readiness: the setup may still be valid, but the
+  // bar must not read "Ready to start" in green directly above the report that
+  // starting just failed.
+  const launchReady = validationResult.valid && submitError == null;
+  const launchStatus = submitError
+    ? 'Could not start'
+    : validationResult.valid
+    ? 'Ready to start'
+    : blockerCount === 1
+    ? '1 item needs attention'
+    : `${blockerCount} items need attention`;
+
   return (
-    <div className="setup-page" data-testid="setup-page">
-      <header className="setup-header">
-        <button className="setup-back-btn" onClick={onBack} aria-label="Back to library">
-          ← Back
-        </button>
-        <div className="setup-title-group">
-          <span className="setup-pack-name">{scenario.pack_name}</span>
-          <h1 className="setup-scenario-title">{scenario.title}</h1>
-          <p className="setup-scenario-summary">{scenario.summary}</p>
+    <div className="brief" data-testid="setup-page">
+      <header className="brief-hero">
+        <div className="brief-hero-top">
+          <button
+            type="button"
+            className="brief-back"
+            onClick={onBack}
+            aria-label="Back to library"
+          >
+            <span aria-hidden="true">←</span> Back
+          </button>
+          <span className="brief-eyebrow">Conversation brief</span>
         </div>
+
+        <p className="brief-pack">{scenario.pack_name}</p>
+        <h1 className="brief-title">{scenario.title}</h1>
+        <p className="brief-summary">{scenario.summary}</p>
+
+        <ul className="brief-facts" data-testid="brief-facts">
+          <li className="brief-fact">
+            <span className="brief-fact-label">You play</span>
+            <span className="brief-fact-value">{scenario.player_role?.label ?? '—'}</span>
+          </li>
+          <li className="brief-fact">
+            <span className="brief-fact-label">Estimated length</span>
+            <span className="brief-fact-value">{scenario.estimated_length_label}</span>
+          </li>
+          <li className="brief-fact">
+            <span className="brief-fact-label">Turn limit</span>
+            <span className="brief-fact-value">
+              {scenario.duration?.max_turns != null ? `${scenario.duration.max_turns} turns` : '—'}
+            </span>
+          </li>
+          <li className="brief-fact">
+            <span className="brief-fact-label">Content rating</span>
+            <span className="brief-fact-value">{scenario.content_rating}</span>
+          </li>
+          <li className="brief-fact">
+            <span className="brief-fact-label">Voice</span>
+            <span className="brief-fact-value">
+              {scenario.voice_supported ? 'Supported' : 'Text only'}
+            </span>
+          </li>
+        </ul>
       </header>
 
-      <div className="setup-layout">
-        <form className="setup-form" onSubmit={handleSubmit} noValidate>
-          {formLevelErrors.length > 0 && (
-            <div
-              className="setup-missing-runtime"
-              role="alert"
-              data-testid="missing-runtime-block"
-            >
-              {formLevelErrors.map((e, i) => (
-                <p key={i} className="setup-missing-runtime-message">{e.message}</p>
-              ))}
-              {/* A button into the Model Manager, not prose about Settings: the
-                  demo edition hides the model section of Settings, and
-                  /model-manager is the one repair path every edition has
-                  (issue #495). */}
-              <p className="setup-missing-runtime-hint">
-                {onInstallModel ? (
-                  <button
-                    type="button"
-                    onClick={onInstallModel}
-                    data-testid="open-model-manager"
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      padding: 0,
-                      font: 'inherit',
-                      color: '#a5b4fc',
-                      textDecoration: 'underline',
-                      cursor: 'pointer',
-                    }}
-                  >
-                    Open the Model Manager
-                  </button>
-                ) : (
-                  <strong>Open the Model Manager</strong>
-                )}{' '}
-                to install a model, then return here to launch your scenario.
-              </p>
-            </div>
-          )}
+      <form className="brief-body" onSubmit={handleSubmit} noValidate>
+        <div className="brief-layout">
+          <div className="brief-main">
+            {formLevelErrors.length > 0 && (
+              <div className="brief-alert" role="alert" data-testid="missing-runtime-block">
+                <span className="brief-alert-title">Cannot start yet</span>
+                {formLevelErrors.map((e, i) => (
+                  <p key={i} className="brief-alert-message">{e.message}</p>
+                ))}
+                {/* A button into the Model Manager, not prose about Settings: the
+                    demo edition hides the model section of Settings, and
+                    /model-manager is the one repair path every edition has
+                    (issue #495). */}
+                <p className="brief-alert-hint">
+                  {onInstallModel ? (
+                    <button
+                      type="button"
+                      className="brief-alert-link"
+                      onClick={onInstallModel}
+                      data-testid="open-model-manager"
+                    >
+                      Open the Model Manager
+                    </button>
+                  ) : (
+                    <strong>Open the Model Manager</strong>
+                  )}{' '}
+                  to install a model, then return here to start the conversation.
+                </p>
+              </div>
+            )}
 
-          <section className="setup-section" aria-labelledby="difficulty-heading">
-            <h2 id="difficulty-heading" className="setup-section-title">
-              Difficulty
-            </h2>
-            <div className="setup-radio-group" role="radiogroup" aria-label="Difficulty">
-              {availableDifficulties.map((level) => {
-                const option = scenario.difficulty?.options?.[level];
-                return (
-                  <label key={level} className="setup-radio-label">
+            <section className="brief-card" aria-labelledby="difficulty-heading">
+              <div className="brief-card-head">
+                <span className="brief-step" aria-hidden="true">01</span>
+                <h2 id="difficulty-heading" className="brief-card-title">Difficulty</h2>
+                <p className="brief-card-hint">How the character will behave</p>
+              </div>
+              <div className="brief-options" role="radiogroup" aria-label="Difficulty">
+                {availableDifficulties.map((level) => {
+                  const option = scenario.difficulty?.options?.[level];
+                  const selected = form.difficulty === level;
+                  return (
+                    <div
+                      key={level}
+                      className={`brief-option is-level${selected ? ' is-selected' : ''}`}
+                      data-level={level}
+                      // The meters sit outside the <label> (see TraitMeters), so
+                      // the column they occupy would show the row's hover and
+                      // selected styling without being clickable. Select on the
+                      // whole row so the pointer target matches what the row
+                      // looks like; the radio is still the real control, and a
+                      // click that reaches it simply sets the same level twice.
+                      onClick={() => setField('difficulty', level)}
+                    >
+                      <label className="brief-option-main">
+                        <input
+                          type="radio"
+                          name="difficulty"
+                          value={level}
+                          checked={selected}
+                          onChange={() => setField('difficulty', level)}
+                        />
+                        <span className="brief-option-text">
+                          <span className="brief-option-name">
+                            {difficultyLabel(level, option)}
+                            {level === scenario.difficulty?.default && (
+                              <span className="brief-option-badge">recommended</span>
+                            )}
+                          </span>
+                          <span className="brief-option-desc">
+                            {difficultyDescription(level, option)}
+                          </span>
+                        </span>
+                      </label>
+                      <TraitMeters option={option} />
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+
+            <section className="brief-card" aria-labelledby="player-heading">
+              <div className="brief-card-head">
+                <span className="brief-step" aria-hidden="true">02</span>
+                <h2 id="player-heading" className="brief-card-title">Your role</h2>
+              </div>
+              <div className="brief-card-body">
+                <p className="brief-role-brief">{scenario.player_role?.brief ?? ''}</p>
+                <label className="brief-field">
+                  <span className="brief-label">Name to use in this session</span>
+                  <input
+                    type="text"
+                    className="brief-input"
+                    value={form.player_role_name}
+                    onChange={(e) => setField('player_role_name', e.target.value)}
+                    aria-required="true"
+                    aria-invalid={!!validationErrorMap['player_role_name']}
+                    aria-describedby={
+                      validationErrorMap['player_role_name']
+                        ? 'player-role-error'
+                        : undefined
+                    }
+                  />
+                  {validationErrorMap['player_role_name'] && (
+                    <span id="player-role-error" className="brief-field-error" role="alert">
+                      {validationErrorMap['player_role_name']}
+                    </span>
+                  )}
+                </label>
+              </div>
+            </section>
+
+            <div className="brief-row">
+              <section className="brief-card" aria-labelledby="input-heading">
+                <div className="brief-card-head">
+                  <span className="brief-step" aria-hidden="true">03</span>
+                  <h2 id="input-heading" className="brief-card-title">Input mode</h2>
+                </div>
+                <div className="brief-options" role="radiogroup" aria-label="Input mode">
+                  {(
+                    [
+                      ['text-only', 'Text only', true],
+                      ['push-to-talk', 'Push-to-talk voice', runtime.stt_ready],
+                      ['hands-free', 'Hands-free voice (VAD)', runtime.stt_ready],
+                    ] as [InputMode, string, boolean][]
+                  ).map(([value, label, available]) => {
+                    const selected = form.input_mode === value;
+                    return (
+                      <div
+                        key={value}
+                        className={`brief-option${selected ? ' is-selected' : ''}${
+                          !available ? ' is-disabled' : ''
+                        }`}
+                      >
+                        <label className="brief-option-main">
+                          <input
+                            type="radio"
+                            name="input_mode"
+                            value={value}
+                            checked={selected}
+                            disabled={!available}
+                            onChange={() => setField('input_mode', value)}
+                          />
+                          <span className="brief-option-text">
+                            <span className="brief-option-name">
+                              {label}
+                              {!available && value !== 'text-only' && (
+                                <span className="brief-option-note">STT not loaded</span>
+                              )}
+                            </span>
+                          </span>
+                        </label>
+                      </div>
+                    );
+                  })}
+                </div>
+                {validationErrorMap['input_mode'] && (
+                  <span className="brief-field-error" role="alert">
+                    {validationErrorMap['input_mode']}
+                  </span>
+                )}
+              </section>
+
+              <section className="brief-card" aria-labelledby="audio-heading">
+                <div className="brief-card-head">
+                  <span className="brief-step" aria-hidden="true">04</span>
+                  <h2 id="audio-heading" className="brief-card-title">Audio output</h2>
+                </div>
+                <div className="brief-card-body">
+                  <label className="brief-toggle">
                     <input
-                      type="radio"
-                      name="difficulty"
-                      value={level}
-                      checked={form.difficulty === level}
-                      onChange={() => setField('difficulty', level)}
+                      type="checkbox"
+                      checked={form.tts_enabled}
+                      disabled={!runtime.tts_ready}
+                      onChange={(e) => setField('tts_enabled', e.target.checked)}
+                      aria-describedby={!runtime.tts_ready ? 'tts-status' : undefined}
                     />
-                    <span className="setup-radio-text">
-                      <span className="setup-difficulty-name">
-                        {difficultyLabel(level, option)}
-                        {level === scenario.difficulty?.default && (
-                          <span className="setup-difficulty-recommended"> (recommended)</span>
-                        )}
-                      </span>
-                      <span className="setup-difficulty-description">
-                        {difficultyDescription(level, option)}
+                    <span className="brief-toggle-text">
+                      NPC voice (TTS)
+                      {runtime.tts_ready && runtime.tts_voice_name && (
+                        <span className="brief-badge-ready"> {runtime.tts_voice_name}</span>
+                      )}
+                      {!runtime.tts_ready && (
+                        <span className="brief-badge-off"> — not loaded</span>
+                      )}
+                    </span>
+                  </label>
+                  {validationErrorMap['tts_enabled'] && (
+                    <span className="brief-field-error" role="alert">
+                      {validationErrorMap['tts_enabled']}
+                    </span>
+                  )}
+                  {!runtime.tts_ready && (
+                    <p className="brief-note" id="tts-status">
+                      Text-only is always available. Install a TTS model to enable voice output.
+                    </p>
+                  )}
+                  {runtime.tts_ready && !scenario.voice_supported && (
+                    <p className="brief-note">
+                      This scenario is designed for text — TTS can still be enabled but the script
+                      was not written with voice in mind.
+                    </p>
+                  )}
+                  {form.tts_enabled && voices.length > 0 && (
+                    <label className="brief-field">
+                      <span className="brief-label">NPC voice</span>
+                      <select
+                        className="brief-select"
+                        value={form.voice_id ?? ''}
+                        onChange={(e) => setField('voice_id', e.target.value || null)}
+                        aria-label="NPC voice selection"
+                      >
+                        {voices.map((v) => (
+                          <option key={v.voice_id} value={v.voice_id}>
+                            {v.display_name}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                </div>
+              </section>
+            </div>
+
+            <div className="brief-row">
+              <section className="brief-card" aria-labelledby="language-heading">
+                <div className="brief-card-head">
+                  <span className="brief-step" aria-hidden="true">05</span>
+                  <h2 id="language-heading" className="brief-card-title">Language</h2>
+                </div>
+                <label className="brief-field">
+                  <span className="brief-label">Conversation language</span>
+                  <select
+                    className="brief-select"
+                    value={form.language}
+                    onChange={(e) => setField('language', e.target.value)}
+                  >
+                    {(scenario.supported_languages ?? ['en']).map((code) => (
+                      <option key={code} value={code}>
+                        {languageLabel(code)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </section>
+
+              <section className="brief-card" aria-labelledby="privacy-heading">
+                <div className="brief-card-head">
+                  <span className="brief-step" aria-hidden="true">06</span>
+                  <h2 id="privacy-heading" className="brief-card-title">Privacy options</h2>
+                </div>
+                <div className="brief-card-body">
+                  <label className="brief-toggle">
+                    <input
+                      type="checkbox"
+                      checked={form.save_transcript}
+                      onChange={(e) => setField('save_transcript', e.target.checked)}
+                    />
+                    <span className="brief-toggle-text">
+                      Save transcript locally
+                      <span className="brief-toggle-note">
+                        {form.save_transcript
+                          ? ' — saved to your local data folder only'
+                          : ' — not saved'}
                       </span>
                     </span>
                   </label>
-                );
-              })}
+
+                  {scenario.state_meters_permitted && (
+                    <label className="brief-toggle">
+                      <input
+                        type="checkbox"
+                        checked={form.show_state_meters}
+                        onChange={(e) => setField('show_state_meters', e.target.checked)}
+                      />
+                      <span className="brief-toggle-text">
+                        Show NPC state meters during conversation
+                      </span>
+                    </label>
+                  )}
+                  {!scenario.state_meters_permitted && (
+                    <p className="brief-note">
+                      State meters are hidden in this scenario to preserve realism.
+                    </p>
+                  )}
+                </div>
+              </section>
             </div>
-          </section>
 
-          <section className="setup-section" aria-labelledby="player-heading">
-            <h2 id="player-heading" className="setup-section-title">
-              Your role
-            </h2>
-            <p className="setup-role-brief">{scenario.player_role?.brief ?? ''}</p>
-            <label className="setup-field">
-              <span className="setup-label">Name to use in this session</span>
-              <input
-                type="text"
-                className="setup-input"
-                value={form.player_role_name}
-                onChange={(e) => setField('player_role_name', e.target.value)}
-                aria-required="true"
-                aria-invalid={!!validationErrorMap['player_role_name']}
-                aria-describedby={
-                  validationErrorMap['player_role_name']
-                    ? 'player-role-error'
-                    : undefined
-                }
-              />
-              {validationErrorMap['player_role_name'] && (
-                <span id="player-role-error" className="setup-field-error" role="alert">
-                  {validationErrorMap['player_role_name']}
-                </span>
-              )}
-            </label>
-          </section>
-
-          <section className="setup-section" aria-labelledby="language-heading">
-            <h2 id="language-heading" className="setup-section-title">
-              Language
-            </h2>
-            <label className="setup-field">
-              <span className="setup-label">Conversation language</span>
-              <select
-                className="setup-select"
-                value={form.language}
-                onChange={(e) => setField('language', e.target.value)}
-              >
-                {(scenario.supported_languages ?? ['en']).map((code) => (
-                  <option key={code} value={code}>
-                    {languageLabel(code)}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </section>
-
-          <section className="setup-section" aria-labelledby="input-heading">
-            <h2 id="input-heading" className="setup-section-title">
-              Input mode
-            </h2>
-            <div className="setup-radio-group" role="radiogroup" aria-label="Input mode">
-              {(
-                [
-                  ['text-only', 'Text only', true],
-                  ['push-to-talk', 'Push-to-talk voice', runtime.stt_ready],
-                  ['hands-free', 'Hands-free voice (VAD)', runtime.stt_ready],
-                ] as [InputMode, string, boolean][]
-              ).map(([value, label, available]) => (
-                <label
-                  key={value}
-                  className={`setup-radio-label ${!available ? 'setup-radio-disabled' : ''}`}
-                >
-                  <input
-                    type="radio"
-                    name="input_mode"
-                    value={value}
-                    checked={form.input_mode === value}
-                    disabled={!available}
-                    onChange={() => setField('input_mode', value)}
-                  />
-                  <span className="setup-radio-text">
-                    {label}
-                    {!available && value !== 'text-only' && (
-                      <span className="setup-unavailable-badge"> (STT not loaded)</span>
-                    )}
+            <section className="brief-card" aria-labelledby="seed-heading">
+              <div className="brief-card-head">
+                <span className="brief-step" aria-hidden="true">07</span>
+                <h2 id="seed-heading" className="brief-card-title">Variation seed</h2>
+                <p className="brief-card-hint">Optional</p>
+              </div>
+              <div className="brief-card-body">
+                <p className="brief-note">
+                  The seed controls scenario randomization. Use the same seed to replay an
+                  identical variation, or randomize for a new experience.
+                </p>
+                <div className="brief-seed-row">
+                  <label className="brief-field brief-seed-field">
+                    <span className="brief-label">Seed</span>
+                    <input
+                      type="number"
+                      className="brief-input"
+                      value={form.seed ?? ''}
+                      placeholder="Auto"
+                      min={0}
+                      max={2147483647}
+                      step={1}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        const parsed = Number(v);
+                        setField('seed', v === '' || isNaN(parsed) ? null : parsed);
+                      }}
+                      aria-label="Variation seed value"
+                      aria-invalid={!!validationErrorMap['seed']}
+                      aria-describedby={validationErrorMap['seed'] ? 'seed-error' : undefined}
+                    />
+                  </label>
+                  <button type="button" className="brief-btn-secondary" onClick={handleRandomizeSeed}>
+                    Randomize
+                  </button>
+                  {form.seed !== null && (
+                    <button type="button" className="brief-btn-ghost" onClick={handleClearSeed}>
+                      Auto
+                    </button>
+                  )}
+                </div>
+                {validationErrorMap['seed'] && (
+                  <span id="seed-error" className="brief-field-error" role="alert">
+                    {validationErrorMap['seed']}
                   </span>
-                </label>
-              ))}
-            </div>
-            {validationErrorMap['input_mode'] && (
-              <span className="setup-field-error" role="alert">
-                {validationErrorMap['input_mode']}
-              </span>
-            )}
-          </section>
+                )}
+              </div>
+            </section>
 
-          <section className="setup-section" aria-labelledby="audio-heading">
-            <h2 id="audio-heading" className="setup-section-title">
-              Audio output
-            </h2>
-            <label className="setup-toggle-label">
-              <input
-                type="checkbox"
-                checked={form.tts_enabled}
-                disabled={!runtime.tts_ready}
-                onChange={(e) => setField('tts_enabled', e.target.checked)}
-                aria-describedby={!runtime.tts_ready ? 'tts-status' : undefined}
-              />
-              <span className="setup-toggle-text">
-                NPC voice (TTS)
-                {runtime.tts_ready && runtime.tts_voice_name && (
-                  <span className="setup-badge-ready"> {runtime.tts_voice_name}</span>
-                )}
-                {!runtime.tts_ready && (
-                  <span className="setup-badge-unavailable"> — not loaded</span>
-                )}
-              </span>
-            </label>
-            {validationErrorMap['tts_enabled'] && (
-              <span className="setup-field-error" role="alert">
-                {validationErrorMap['tts_enabled']}
-              </span>
-            )}
-            {!runtime.tts_ready && (
-              <p className="setup-fallback-note" id="tts-status">
-                Text-only is always available. Install a TTS model to enable voice output.
-              </p>
-            )}
-            {runtime.tts_ready && scenario != null && !scenario.voice_supported && (
-              <p className="setup-fallback-note">
-                This scenario is designed for text — TTS can still be enabled but the script
-                was not written with voice in mind.
-              </p>
-            )}
-            {form.tts_enabled && voices.length > 0 && (
-              <label className="setup-field" style={{ marginTop: '0.75rem' }}>
-                <span className="setup-label">NPC voice</span>
-                <select
-                  className="setup-select"
-                  value={form.voice_id ?? ''}
-                  onChange={(e) => setField('voice_id', e.target.value || null)}
-                  aria-label="NPC voice selection"
-                >
-                  {voices.map((v) => (
-                    <option key={v.voice_id} value={v.voice_id}>
-                      {v.display_name}
-                    </option>
+          </div>
+
+          <aside className="brief-aside" aria-label="Scenario information">
+            <div className="brief-panel" data-testid="runtime-readiness">
+              <h3 className="brief-panel-title">Runtime readiness</h3>
+              <ul className="brief-checks">
+                <li>
+                  <span aria-hidden="true" className={`brief-dot ${runtime.llm_ready ? 'ready' : 'not-ready'}`} />
+                  <span>
+                    LLM:{' '}
+                    {runtime.llm_ready
+                      ? runtime.llm_model_name ?? 'ready'
+                      : 'not loaded'}
+                  </span>
+                </li>
+                <li>
+                  <span aria-hidden="true" className={`brief-dot ${runtime.stt_ready ? 'ready' : 'not-ready'}`} />
+                  <span>
+                    STT: {runtime.stt_ready ? 'ready' : 'not loaded — voice input unavailable'}
+                  </span>
+                </li>
+                <li>
+                  <span aria-hidden="true" className={`brief-dot ${runtime.tts_ready ? 'ready' : 'not-ready'}`} />
+                  <span>
+                    TTS:{' '}
+                    {runtime.tts_ready
+                      ? runtime.tts_voice_name ?? 'ready'
+                      : 'not loaded — text-only available'}
+                  </span>
+                </li>
+                <li>
+                  <span aria-hidden="true" className={`brief-dot ${runtime.stt_ready ? 'ready' : 'not-ready'}`} />
+                  <span>
+                    VAD: {runtime.stt_ready ? 'available' : 'requires STT'}
+                  </span>
+                </li>
+                <li>
+                  <span aria-hidden="true" className={`brief-dot ${runtime.network_required ? 'not-ready' : 'ready'}`} />
+                  <span>Network required to play: {runtime.network_required ? 'Yes' : 'No'}</span>
+                </li>
+              </ul>
+            </div>
+
+            {practisedDimensions.length > 0 && (
+              <div className="brief-panel" data-testid="brief-practises">
+                <h3 className="brief-panel-title">What this practises</h3>
+                <ul className="brief-chips">
+                  {practisedDimensions.map((dimension) => (
+                    <li key={dimension} className="brief-chip">
+                      {dimension.replace(/_/g, ' ')}
+                    </li>
                   ))}
-                </select>
-              </label>
+                </ul>
+              </div>
             )}
-          </section>
 
-          <section className="setup-section" aria-labelledby="privacy-heading">
-            <h2 id="privacy-heading" className="setup-section-title">
-              Privacy options
-            </h2>
-            <label className="setup-toggle-label">
-              <input
-                type="checkbox"
-                checked={form.save_transcript}
-                onChange={(e) => setField('save_transcript', e.target.checked)}
-              />
-              <span className="setup-toggle-text">
-                Save transcript locally
-                <span className="setup-privacy-note">
-                  {form.save_transcript
-                    ? ' — saved to your local data folder only'
-                    : ' — not saved'}
-                </span>
-              </span>
-            </label>
-
-            {scenario.state_meters_permitted && (
-              <label className="setup-toggle-label">
-                <input
-                  type="checkbox"
-                  checked={form.show_state_meters}
-                  onChange={(e) => setField('show_state_meters', e.target.checked)}
-                />
-                <span className="setup-toggle-text">Show NPC state meters during conversation</span>
-              </label>
-            )}
-            {!scenario.state_meters_permitted && (
-              <p className="setup-note">
-                State meters are hidden in this scenario to preserve realism.
-              </p>
-            )}
-          </section>
-
-          <section className="setup-section" aria-labelledby="seed-heading">
-            <h2 id="seed-heading" className="setup-section-title">
-              Variation seed
-            </h2>
-            <p className="setup-note">
-              The seed controls scenario randomization. Use the same seed to replay an
-              identical variation, or randomize for a new experience.
-            </p>
-            <div className="setup-seed-row">
-              <label className="setup-field setup-seed-field">
-                <span className="setup-label">Seed</span>
-                <input
-                  type="number"
-                  className="setup-input setup-seed-input"
-                  value={form.seed ?? ''}
-                  placeholder="Auto"
-                  min={0}
-                  max={2147483647}
-                  step={1}
-                  onChange={(e) => {
-                    const v = e.target.value;
-                    const parsed = Number(v);
-                    setField('seed', v === '' || isNaN(parsed) ? null : parsed);
-                  }}
-                  aria-label="Variation seed value"
-                  aria-invalid={!!validationErrorMap['seed']}
-                  aria-describedby={validationErrorMap['seed'] ? 'seed-error' : undefined}
-                />
-              </label>
-              <button type="button" className="setup-btn-secondary" onClick={handleRandomizeSeed}>
-                Randomize
-              </button>
-              {form.seed !== null && (
-                <button type="button" className="setup-btn-ghost" onClick={handleClearSeed}>
-                  Auto
-                </button>
-              )}
+            <div className="brief-panel">
+              <h3 className="brief-panel-title">Safety summary</h3>
+              <p className="brief-safety">{scenario.safety_summary}</p>
             </div>
-            {validationErrorMap['seed'] && (
-              <span id="seed-error" className="setup-field-error" role="alert">
-                {validationErrorMap['seed']}
-              </span>
-            )}
-          </section>
+          </aside>
+        </div>
 
+        {/* The launch bar. Sticky to the bottom of the viewport so the primary
+            action is on screen at every scroll position — issue #486 started
+            with a player who could not find the start button at all. */}
+        <div className="brief-launch" data-testid="brief-launch">
+          {/* A failed start belongs to the button that failed. The bar is
+              pinned, so the player can press Start from any scroll position —
+              an error rendered at the end of the page would be off-screen and
+              the press would look like it did nothing at all. */}
           {submitError && (
-            <div className="setup-submit-error">
+            <div className="brief-submit-error">
               <ApiErrorView error={submitError} compact context="ScenarioSetup-Submit" />
             </div>
           )}
-
-          <div className="setup-actions">
-            <button
-              type="submit"
-              className="setup-btn-primary"
-              disabled={!validationResult.valid || submitting}
-              aria-busy={submitting}
-            >
-              {submitting ? 'Starting…' : 'Start scenario'}
-            </button>
-          </div>
-        </form>
-
-        <aside className="setup-sidebar" aria-label="Scenario information">
-          <div className="setup-info-card" data-testid="runtime-readiness">
-            <h3 className="setup-info-title">Runtime readiness</h3>
-            <ul className="setup-info-list">
-              <li>
-                <span aria-hidden="true" className={`setup-status-dot ${runtime.llm_ready ? 'ready' : 'not-ready'}`} />
-                <span>
-                  LLM:{' '}
-                  {runtime.llm_ready
-                    ? runtime.llm_model_name ?? 'ready'
-                    : 'not loaded'}
-                </span>
-              </li>
-              <li>
-                <span aria-hidden="true" className={`setup-status-dot ${runtime.stt_ready ? 'ready' : 'not-ready'}`} />
-                <span>
-                  STT: {runtime.stt_ready ? 'ready' : 'not loaded — voice input unavailable'}
-                </span>
-              </li>
-              <li>
-                <span aria-hidden="true" className={`setup-status-dot ${runtime.tts_ready ? 'ready' : 'not-ready'}`} />
-                <span>
-                  TTS:{' '}
-                  {runtime.tts_ready
-                    ? runtime.tts_voice_name ?? 'ready'
-                    : 'not loaded — text-only available'}
-                </span>
-              </li>
-              <li>
-                <span aria-hidden="true" className={`setup-status-dot ${runtime.stt_ready ? 'ready' : 'not-ready'}`} />
-                <span>
-                  VAD: {runtime.stt_ready ? 'available' : 'requires STT'}
-                </span>
-              </li>
-              <li>
-                <span aria-hidden="true" className={`setup-status-dot ${runtime.network_required ? 'not-ready' : 'ready'}`} />
-                <span>Network required to play: {runtime.network_required ? 'Yes' : 'No'}</span>
-              </li>
-            </ul>
-          </div>
-
-          <div className="setup-info-card">
-            <h3 className="setup-info-title">Scenario details</h3>
-            <dl className="setup-info-dl">
-              <dt>Content rating</dt>
-              <dd>{scenario.content_rating}</dd>
-              <dt>Estimated length</dt>
-              <dd>{scenario.estimated_length_label}</dd>
-              <dt>Voice support</dt>
-              <dd>{scenario.voice_supported ? 'Yes' : 'Text only'}</dd>
-            </dl>
-          </div>
-
-          <div className="setup-info-card">
-            <h3 className="setup-info-title">Safety summary</h3>
-            <p className="setup-safety-text">{scenario.safety_summary}</p>
-          </div>
-        </aside>
-      </div>
+          <span className="brief-launch-status" role="status">
+            <span
+              aria-hidden="true"
+              className={`brief-dot ${launchReady ? 'ready' : 'not-ready'}`}
+            />
+            {launchStatus}
+          </span>
+          <span className="brief-launch-summary" data-testid="brief-launch-summary">
+            {launchSummary}
+          </span>
+          <button
+            type="submit"
+            className="brief-start"
+            disabled={!validationResult.valid || submitting}
+            aria-busy={submitting}
+          >
+            {submitting ? 'Starting…' : 'Start conversation'}
+            <span className="brief-start-arrow" aria-hidden="true">→</span>
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
