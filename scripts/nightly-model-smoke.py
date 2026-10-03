@@ -1579,7 +1579,11 @@ def run_smoke(
 
         # Sanity-check that the real runtime is wired (not the fake default).
         health = _request_json(f"{base}/health", timeout=clock.cap(30.0))
-        runtime_id = health.get("llm_runtime", {}).get("runtime_id")
+        # `or {}`, not a `{}` default: an absent llm_runtime already falls
+        # through to the clean "core reports None" verdict below, but an explicit
+        # JSON null would make .get() raise AttributeError and report a changed
+        # /health contract as a bug in this harness.  Same reason as _excerpt_any.
+        runtime_id = (health.get("llm_runtime") or {}).get("runtime_id")
         results["runtime_id"] = runtime_id
         print(f"[smoke] convsim-core ready (runtime_id={runtime_id}).")
         if runtime_id != "llama_cpp":

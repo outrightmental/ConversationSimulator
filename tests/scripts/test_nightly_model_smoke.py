@@ -2240,6 +2240,36 @@ class TestRunSmokeOrchestration:
         results = json.loads(report.read_text(encoding="utf-8"))
         assert "runtime_id" in results["failures"][0]
 
+    @pytest.mark.parametrize("health", [{}, {"llm_runtime": None}])
+    def test_an_unreadable_runtime_report_is_refused_not_called_a_harness_bug(
+        self, health: dict, staged_model, fake_servers,
+        monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    ) -> None:
+        """An absent *or null* llm_runtime must still reach the refusal verdict.
+
+        The smoke must never play a turn without having confirmed the real
+        runtime, so an unreadable /health is a refusal like any other -- and a
+        `{}` default would have let an explicit null raise AttributeError and
+        report a changed /health contract as a bug in the harness instead.
+        """
+        models_dir, model_id, digest = staged_model
+
+        def _unreadable(url: str, *, payload=None, timeout=None, expect=(200, 201)) -> dict:
+            assert url.endswith("/health"), "must not play a turn on an unknown runtime"
+            return health
+
+        monkeypatch.setattr(smoke, "_request_json", _unreadable)
+        report = tmp_path / "report.json"
+
+        exit_code = smoke.run_smoke(
+            model_id, 20.0, report, model_sha256=digest, models_dir=models_dir
+        )
+
+        assert exit_code == smoke.EXIT_CODES[smoke.FailureClass.PIPELINE]
+        results = json.loads(report.read_text(encoding="utf-8"))
+        assert "runtime_id" in results["failures"][0]
+        assert not any("bug in the smoke harness" in f for f in results["failures"])
+
     def test_checksum_drift_stops_the_run_before_any_server_starts(
         self, staged_model, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
