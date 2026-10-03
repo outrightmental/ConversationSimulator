@@ -44,7 +44,12 @@ on a **real local model** end-to-end — registry download → llama.cpp →
    `turn-output.schema.json`.
 4. The session ends and produces a **scored** debrief: at least one rubric
    dimension scored, a numeric `overall_score` in `[0, 100]`, and a non-empty
-   summary.
+   summary. The scores come from the rubric observations the model volunteered
+   on each turn, so this asserts the scoring path; the debrief *narrative* is a
+   separate model call, and a run where it fell back to the deterministic
+   template still passes — with a warning that says so, because the scores are
+   unaffected and one unlucky generation must not red the nightly. Recurring
+   across nightlies is a regression in the debrief prompt or its schema.
 5. End-to-end turn latency stays within the documented budget, scaled for CI
    hardware.
 

@@ -481,7 +481,14 @@ class TestEvaluateDebrief:
     def test_fallback_narrative_only_warns_because_scores_are_still_real(self) -> None:
         failures, warnings = smoke.evaluate_debrief(_debrief(used_fallback=True))
         assert failures == []
-        assert any("fallback" in w for w in warnings)
+        fallback = next(w for w in warnings if "fallback" in w)
+        # The debrief is generated once, so a fallback means no model-written
+        # debrief prose was produced at all and this is the only job that would
+        # notice. The run still passes -- the scores do not come from this
+        # generation -- so the warning has to say what the green verdict did not
+        # prove, or the limitation is invisible.
+        assert "proves nothing about real-model debrief generation" in fallback
+        assert "Recurring across nightlies" in fallback
 
     def test_absent_turning_points_only_warn(self) -> None:
         failures, warnings = smoke.evaluate_debrief(_debrief(turning_points=[]))

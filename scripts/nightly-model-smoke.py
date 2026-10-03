@@ -923,9 +923,23 @@ def evaluate_debrief(
         )
 
     if debrief.get("used_fallback"):
-        # The scores are still real (they come from per-turn rubric observations),
-        # so this degrades the debrief narrative rather than invalidating the run.
-        warnings.append("Debrief narrative used the deterministic fallback, not model prose")
+        # Not a failure: the scores — the thing #457 asks this job to assert —
+        # come from the per-turn rubric observations, not from this generation,
+        # so a template narrative degrades the debrief rather than invalidating
+        # the run, and one unlucky generation must not red the nightly.
+        #
+        # But the debrief is generated exactly once, so a fallback means *no*
+        # model-written debrief prose was produced at all, and this is the only
+        # job that would ever notice.  Say what the otherwise-green verdict
+        # therefore does not prove, rather than just naming the flag.
+        warnings.append(
+            "Debrief narrative used the deterministic fallback, not model prose: "
+            "the model's debrief output failed validation and the repair pass, so "
+            "this run exercised the scoring path but proves nothing about "
+            "real-model debrief generation. Recurring across nightlies means a "
+            "regression in the debrief prompt or DEBRIEF_NARRATIVE_SCHEMA rather "
+            "than one unlucky generation"
+        )
     if not debrief.get("turning_points"):
         warnings.append("Debrief contains no turning points")
     return (failures, warnings)
