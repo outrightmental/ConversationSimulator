@@ -87,9 +87,10 @@ volleys:
       Sir Aldric, turn the map. No — turn it. Your quest has been pointing at
       your own boots since Tuesday, and your boots have been honest about it.
     note: >-
-      Strikes a discoverable trait, worth double the first time a real run
-      finds it. The band is the isolated measurement, without that x2, and
-      lands on the strong line almost exactly even so.
+      Strikes a discoverable trait, worth double the first time it is found.
+      An isolated measurement starts from an empty discovery ledger, so this
+      band is the first-strike number with that x2 in it, and it lands on the
+      strong line almost exactly.
     expect:
       gate: ok
       min_score: 100
@@ -303,8 +304,9 @@ volleys:
       That is your uncle's armour, knight, two sizes large, and the whole
       garrison can hear you coming like a bucket down a well.
     note: >-
-      Strikes a discoverable trait, worth double the first time a real run
-      finds it. The band is the isolated measurement, without that x2.
+      Strikes a discoverable trait, worth double the first time it is found.
+      An isolated measurement starts from an empty discovery ledger, so this
+      band is the first-strike number with that x2 in it.
     expect:
       gate: ok
       min_score: 94

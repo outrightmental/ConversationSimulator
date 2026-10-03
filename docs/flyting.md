@@ -523,17 +523,22 @@ is the counter-example that makes capping sting on it the wrong fix.
 
 **A reference volley is measured in isolation**, which is what makes a recorded
 band reproducible: a suite is a set of independent measurements, not a replay of
-a session. So no run-dependent input is present — no prior volleys (freshness is
-measured against the cliché corpus alone), no session theme record (theme decay
-never applies), no device-rotation window, and no discovery ledger. The last of
-those has a visible consequence: eight reference volleys across four suites exist
-to strike a *discoverable* trait, and their bands are the **undoubled** numbers,
-because `HookClaim.discovered` is false with no ledger to consult. The judged
-tier therefore cannot catch a regression in the ×2 discovery bonus —
-`test_flyting_scoring.py` covers that directly instead — and each of the eight
-notes says so where the band is recorded. Supplying an empty ledger would
-exercise it and would raise all eight bands by roughly the first hook's bonus
-again, which is a re-measurement against a real model rather than an edit.
+a session. So every run-dependent input sits at its start-of-run value — no
+prior volleys (freshness is measured against the cliché corpus alone), no
+session theme record (theme decay never applies), no device-rotation window,
+and an **empty** discovery ledger. That last one is a start-of-run value rather
+than an absence: `judge_volley` normalises its `discovered_traits` argument with
+`set(discovered_traits or ())`, so passing none supplies an empty ledger and
+every `visibility: discoverable` trait reads as freshly found. The eight
+reference volleys across four suites that exist to strike a discoverable trait
+are therefore measured **with** the ×2 — the value a real run pays on the first
+strike — and the judged tier does guard that bonus. What it cannot reach is the
+*second* strike, where the ledger already holds the trait and the bonus is
+undoubled; that depends on the run rather than on the volley, and
+`test_flyting_scoring.test_a_second_strike_on_the_discoverable_trait_is_not_doubled`
+covers it directly. Threading a real `None` through to `parse_volley_judgment`
+would switch the doubling off and lower all eight bands, which is a
+re-measurement against a real model rather than an edit.
 
 Two further limitations the measurement exposed are worth knowing before reading
 a scorecard, because neither is a bug:

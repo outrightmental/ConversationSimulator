@@ -297,32 +297,43 @@ async def _score_with_judge(
 
     **Each reference volley is scored in isolation**, which is what makes a
     recorded band reproducible: a suite is a set of independent measurements, not
-    a replay of a session, and every run-dependent input is therefore absent.
-    Four of them matter, and all four pull a measured score *down* relative to
-    what the same line would earn mid-run:
+    a replay of a session. Every run-dependent input is therefore at its
+    start-of-run value, which is not the same thing as absent:
 
     * no ``prior_volleys``, so freshness is measured against the cliché corpus
       alone and never against the session;
     * no session theme record, so theme decay is never applied;
     * no device-rotation window, so the +5 is earned by any volley with a
       device the judge named;
-    * no discovery ledger — ``judge_volley`` is passed no ``discovered_traits``,
-      so ``HookClaim.discovered`` is always false and a hook on a discoverable
-      trait is measured **without** the ×2 it is worth the first time a real run
-      strikes it.
+    * an **empty** discovery ledger. ``judge_volley`` normalises its
+      ``discovered_traits`` argument with ``set(discovered_traits or ())``, so
+      passing none supplies an empty ledger rather than no ledger, and every
+      ``visibility: discoverable`` trait reads as freshly found. A hook on one is
+      therefore measured **with** the ×2 — exactly the value a real run pays the
+      first time that trait is struck.
 
     The last of those is the one worth stating out loud, because eight reference
     volleys across four suites exist to strike a discoverable trait. Their
-    recorded bands are the undoubled numbers, so the judged tier cannot catch a
-    regression in the discovery bonus; ``test_flyting_scoring.py`` covers the
-    doubling directly instead. Passing an empty set here would exercise it — and
-    would also raise every one of those eight bands by roughly the first hook's
-    bonus again, which is a re-measurement against a real model, not an edit.
+    recorded bands include the doubling, so the judged tier does guard the
+    discovery bonus on a first strike. What it cannot reach is the *second*
+    strike, where the ledger already holds the trait and the bonus is undoubled;
+    that case depends on the run rather than on the volley, and
+    ``test_flyting_scoring.test_a_second_strike_on_the_discoverable_trait_is_not_doubled``
+    covers it directly. Threading a real ``None`` through to
+    ``parse_volley_judgment`` would switch the doubling off and lower all eight
+    of those bands, which is a re-measurement against a real model, not an edit.
     """
     from convsim_core.flyting.pipeline import judge_volley
 
     prepared = service.prepare(text)
-    judgment = await judge_volley(prepared, service, runtime, speaker="player")
+    # The empty ledger is passed explicitly rather than left to default. It is
+    # what the eight discoverable-trait bands were measured against, and the
+    # default only happens to mean the same thing because ``judge_volley``
+    # normalises ``None`` to a set — one refactor away from silently lowering
+    # all eight.
+    judgment = await judge_volley(
+        prepared, service, runtime, speaker="player", discovered_traits=()
+    )
     return service.compose(prepared, judgment, volley_number=1)
 
 

@@ -246,3 +246,104 @@ class TestNoOpExpectations:
 
     def test_a_real_assertion_list_still_validates(self):
         assert self._errors({"flags": ["too_short"], "hooks": ["vanity"]}) == []
+
+
+class TestMeasurementConditions:
+    """What a judged measurement is taken under, pinned.
+
+    A recorded band is only reproducible if the run-dependent inputs are the
+    same every time, and the subtlest of them is the discovery ledger. Eight
+    reference volleys across four suites exist to strike a ``discoverable``
+    trait, and their bands were measured with the x2 that the first strike on
+    one is worth — because ``_score_with_judge`` hands the judge an *empty*
+    ledger, in which every discoverable trait reads as freshly found.
+
+    "Empty" and "absent" are one refactor apart: ``judge_volley`` normalises
+    ``discovered_traits`` with ``set(discovered_traits or ())``, so dropping
+    that normalisation (or threading a real ``None`` through to
+    ``parse_volley_judgment``) would turn ``HookClaim.discovered`` off and lower
+    all eight bands with nothing failing to say so. This is the test that says
+    so.
+    """
+
+    _VERDICT = {
+        "sting": 8,
+        "wit": 8,
+        "craft": 9,
+        "fidelity": 9,
+        # ``new_money`` is visibility: discoverable on Lord Bellingham.
+        "hooks": [{"trait": "new_money", "evidence": "plate, not sterling"}],
+        "themes": ["wealth"],
+        "devices": ["metaphor"],
+        "riposte": {"is_riposte": False, "evidence": None},
+        "callback": {"is_callback": False, "evidence": None},
+        "fouls": [],
+        "umpire_line": "Borrowed brass, and he knows it.",
+    }
+
+    _TEXT = (
+        "Lord B—, you polish your virtue like your carriage brass, and both are "
+        "plate, not sterling, worn thin where the public grips them."
+    )
+
+    class _StubJudge:
+        """A runtime that answers the judge schema and nothing else."""
+
+        def __init__(self, verdict):
+            self._verdict = verdict
+
+        async def chat_stream(self, request):
+            import json
+
+            from convsim_core.runtime.types import ChatFinal
+
+            yield ChatFinal(
+                text=json.dumps(self._verdict),
+                structured=self._verdict,
+                model_id="stub-judge",
+                input_tokens=1,
+                output_tokens=1,
+            )
+
+    def _score(self, runner):
+        import asyncio
+
+        from convsim_core.flyting.service import VolleyScoringService
+
+        pack_dir = _OFFICIAL_PACKS / "flyting-school"
+        scenario = runner._flyting_scenarios(pack_dir)["whitechapel_rose"]
+        service = VolleyScoringService(scenario.scoring_context())
+        return asyncio.run(
+            runner._score_with_judge(
+                service, scenario, self._TEXT, self._StubJudge(self._VERDICT)
+            )
+        )
+
+    def test_a_hook_on_a_discoverable_trait_counts_as_a_discovery(self, runner):
+        score = self._score(runner)
+        assert score.judgment is not None, "the stub judge was not consulted"
+        assert [(h.trait, h.discovered) for h in score.judgment.hooks] == [
+            ("new_money", True)
+        ], (
+            "A judged measurement must start from an empty discovery ledger, so "
+            "the first strike on a discoverable trait is a discovery. Without "
+            "it the eight discoverable-trait bands in the launch pack are "
+            "measured against different arithmetic than they record."
+        )
+
+    def test_the_discovery_doubling_is_in_the_measured_topicality(self, runner):
+        score = self._score(runner)
+        # One verified hook at the default 0.15, doubled for the discovery.
+        assert score.topicality == pytest.approx(1.30)
+
+    def test_nothing_run_dependent_other_than_the_ledger_is_supplied(self, runner):
+        """The other three isolation conditions, so the docstring cannot drift.
+
+        Freshness is measured against the cliché corpus alone, theme decay never
+        applies, and the device-rotation window is empty — so a volley with any
+        named device takes the +5.
+        """
+        score = self._score(runner)
+        assert score.freshness.nearest_source in ("cliche", "none")
+        assert score.freshness.theme_decay == pytest.approx(1.0)
+        assert [b.id for b in score.bonuses] == ["device_rotation"]

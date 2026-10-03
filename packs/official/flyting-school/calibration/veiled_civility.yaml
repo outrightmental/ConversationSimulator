@@ -110,8 +110,8 @@ volleys:
     note: >-
       Strikes the discoverable counting trait while staying entirely polite,
       which on top of a 1.5 multiplier makes it the highest-scoring reference
-      volley in the pack. The trait is worth double the first time a real run
-      finds it; the band is the isolated measurement, without that x2.
+      volley in the pack. An isolated measurement starts from an empty
+      discovery ledger, so this band is a first strike with its x2 in it.
     expect:
       gate: ok
       min_score: 150

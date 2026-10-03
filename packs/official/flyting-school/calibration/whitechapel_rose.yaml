@@ -119,8 +119,9 @@ volleys:
       You bought your way out of the Crimea, sir, and now you flinch at the
       fireworks on the river like a man who can hear the bill arriving.
     note: >-
-      Strikes a discoverable trait, which is worth double the first time a real
-      run finds it. The band is the isolated measurement, without that x2.
+      Strikes a discoverable trait, which is worth double the first time it is
+      found. An isolated measurement starts from an empty discovery ledger, so
+      this band is the first-strike number with that x2 in it.
     expect:
       gate: ok
       band: strong
@@ -486,8 +487,9 @@ volleys:
       still send you indoors.
     note: >-
       The discoverable Crimea trait stated plainly. It is worth double the
-      first time a real run finds it; the band is the isolated measurement,
-      without that x2, and reaches strong without it.
+      first time it is found, and an isolated measurement starts from an empty
+      discovery ledger, so this band is the first-strike number with that x2
+      in it.
     expect:
       gate: ok
       band: strong
@@ -517,8 +519,8 @@ volleys:
       in Smithfield to a better class of customer than you keep.
     note: >-
       Strikes the discoverable tripe-seller grandfather, worth double the first
-      time a real run finds it. The band is the isolated measurement, without
-      that x2.
+      time it is found. An isolated measurement starts from an empty discovery
+      ledger, so this band is the first-strike number with that x2 in it.
     expect:
       gate: ok
       band: strong
