@@ -164,7 +164,9 @@ default). The third hygiene joke is visibly near-worthless — variety is the me
 
 Only a volley's *primary* theme counts as a use of that well — the judge tags
 three or four themes for one line, and counting all of them would decay a well
-the player never actually returned to. The
+the player never actually returned to. Only the player's own volleys count, too:
+parroting the opponent is already redundancy by the freshness rule above, and a
+well the opponent reached for first is not one the player returned to. The
 debrief's redundancy report counts the same way, so the percentage it prints is
 the factor the engine applied.
 

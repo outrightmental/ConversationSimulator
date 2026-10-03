@@ -116,11 +116,21 @@ class TestRecordingVolleys:
         record_player_volley(state, volley(100, themes=("vanity", "lineage")))
         assert state.theme_uses == {"lineage": 1, "vanity": 1}
 
-    def test_the_opponents_themes_count_too(self):
+    def test_the_opponents_themes_do_not_decay_the_players_wells(self):
+        """Only the player's own returns decay the player's topicality bonus.
+
+        Parroting the opponent is caught by Stage 2 freshness, which compares
+        against both speakers' text. Theme decay is the player's variety meta,
+        and the debrief's redundancy report is computed from the player's own
+        volley log — so counting the opponent's themes here would both punish a
+        well the player had not returned to and make the report print a factor
+        the engine never applied.
+        """
         state = FlytingRunState()
         record_npc_volley(state, volley(100, themes=("lineage", "vanity")))
-        assert state.theme_uses == {"lineage": 1}
+        assert state.theme_uses == {}
         assert state.npc_total == 100
+        assert state.npc_volleys == 1
 
     def test_device_history_is_bounded(self):
         state = FlytingRunState()

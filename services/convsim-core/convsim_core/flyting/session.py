@@ -264,14 +264,16 @@ def record_player_volley(state: FlytingRunState, score: VolleyScore) -> None:
 def record_npc_volley(state: FlytingRunState, score: VolleyScore) -> None:
     """Fold a scored opponent volley into the run state.
 
-    The opponent's themes count toward theme usage and its text joins the
-    novelty corpus (handled by the caller), so parroting the opponent is
-    redundancy rather than cleverness.
+    The opponent's *text* joins the novelty corpus (handled by the caller), so
+    parroting the opponent is redundancy rather than cleverness. Its *themes*
+    deliberately do not count toward ``theme_uses``: that counter is what decays
+    the player's topicality bonus, and a player who opens a well the opponent
+    happened to reach for first has not returned to anything. Counting them also
+    made the debrief's redundancy report disagree with the decay the engine
+    applied, because the report is computed from the player's own volley log.
     """
     state.npc_volleys += 1
     state.npc_total += score.score
-    if score.judgment is not None:
-        _count_primary_theme(state, score)
 
 
 # ---------------------------------------------------------------------------
