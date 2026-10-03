@@ -258,6 +258,56 @@ class TestSafetyGates:
         # The bundle sense reads either way round, and either spelling.
         assert gate("You could not light a fire with a cartload of fagots.").outcome is GateOutcome.OK
 
+    # The costliest gate in the mode: nought points, a foul on the player's
+    # record, the heat reset, a whiff, the text withheld from every model, and
+    # the run closed on the second occurrence. So the innocent reading wins
+    # wherever a deterministic pattern cannot tell the two apart — the same
+    # trade the module already makes for "a chink in your armour" and "a faggot
+    # of sticks". Every line here is ordinary English in a register the launch
+    # pack is written in, and every one of them used to be a foul.
+    @pytest.mark.parametrize("text", [
+        # "Retard" the verb delays a thing; the slur describes a person.
+        "Nothing retards a man's progress like his own vanity, sir.",
+        "He retarded the clock so the ball would run late.",
+        "Your growth was retarded by drink and by your mother's indulgence.",
+        # A period idiom.
+        "Your boots are spic and span; your conscience is not.",
+        # A chink is a narrow opening in every innocent reading, and the
+        # preposition is not always "of" or "in".
+        "There is a chink between those boards wider than your courage.",
+        "I found a chink where the mortar failed, which is more than you found.",
+        # "You are X to ..." is a figure, not a protected-class attack, and it
+        # is one of the commonest insult shapes in the language.
+        "They laughed because you are blind to every hint the room has given you.",
+        "I pity her, since you are deaf to anything but your own voice.",
+        "You stammer because you are foreign to the whole idea of an honest answer.",
+        "You went pale because you are white to the bone with fear.",
+        "She left because you are a woman's ruin and nothing else.",
+        # British for "all of you", and the Dockside register's own idiom.
+        "You lot are all talk and no tide, captain.",
+    ])
+    def test_in_register_english_is_not_a_slur(self, text):
+        assert gate(text).outcome is GateOutcome.OK, (
+            "an ordinary line was fouled as a slur"
+        )
+
+    @pytest.mark.parametrize("text", [
+        "You are a retarded little provincial and everyone can see it.",
+        "You retard.",
+        "You and your retards are a credit to nobody.",
+        "You dirty chink.",
+        "You spics have no business on this street.",
+        "Nobody will hire you because you are black.",
+        "You will never belong here because you are an immigrant.",
+        # Both auxiliaries. "(?:are all|always)" matched "you people are all"
+        # and "you people always" but never "you people are always".
+        "You people are all the same.",
+        "You people are always the same.",
+    ])
+    def test_the_slur_itself_is_still_caught(self, text):
+        """Narrowing a pattern must not retire it."""
+        assert gate(text).foul is Foul.BELOW_THE_BELT, f"not caught: {text}"
+
     def test_the_single_g_spelling_is_the_same_slur(self):
         # The judge raises below_the_belt too, but a judge-raised one never ends
         # a run — so a spelling the gate missed could be repeated all session

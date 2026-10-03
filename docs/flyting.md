@@ -146,6 +146,18 @@ On top of that:
 | **Anachronism** where the scenario's `anachronism_policy` is `forbid` | foul |
 | **Plagiarized Zinger** — famous material, verbatim or near | capped at 10 points and flagged |
 
+Below the Belt is the costliest of these — nought points, a foul on the
+player's record, the heat reset, a whiff, the text withheld from every model,
+and the run closed on the second occurrence — so wherever a deterministic
+pattern cannot separate the slur from an ordinary English sense, the ordinary
+sense wins and the judgement is left to the safety router and to the judge's
+always-honored verdict. A chink is also a narrow opening, a faggot is also a
+bundle of sticks, "retard" is also a verb for delaying a thing, "spic and span"
+is an idiom, "you are blind to every hint" is a figure rather than a disability
+slur, and "you lot are all talk" is British for "all of you". Every one of
+those belongs to a register the launch pack is written in; a missed slur is
+still caught by the judge, and a false one takes somebody's session away.
+
 Plagiarism detection is two-part and ships no copyrighted text: keyword
 *signatures* for modern taunts, plus lexical near-identity against a bundled
 corpus of stock forms and public-domain greatest hits. Quoting a famous taunt at

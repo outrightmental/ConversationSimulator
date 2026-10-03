@@ -104,12 +104,20 @@ def _compile(*patterns: str) -> re.Pattern[str]:
 _SLUR_PATTERN = _compile(
     r"\bn[i1]gg(?:er|a|uh)s?\b",
     r"\bk[i1]kes?\b",
-    r"\bsp[i1]cs?\b",
     r"\bg[o0]oks?\b",
     r"\bw[e3]tb[a@]cks?\b",
     r"\btr[a@]nn(?:y|ies)\b",
-    r"\bret[a@]rd(?:s|ed)?\b",
-    r"\bchinks?\b(?!\s+(?:of|in)\b)",
+    # The slur describes a person. The identically spelled verb delays a thing,
+    # and it is ordinary period English: "nothing retards a man's progress like
+    # his own vanity", "he retarded the clock so the ball would run late",
+    # "your growth was retarded by drink". The verb takes an object or an agent,
+    # so what follows is the giveaway; the slur is a predicate or a modifier and
+    # takes neither. Matching the bare word, as this used to, made all three of
+    # those a foul — and the second one ended the run.
+    r"\bret[a@]rd(?:s|ed)?\b"
+    r"(?!\s+(?:the|a|an|his|her|its|their|my|your|our|this|that|these|those|by)\b)",
+    # "Spic and span" is the idiom, and a period one.
+    r"\bsp[i1]cs?\b(?!\s+and\s+span\b)",
     # Both spellings of the slur. Requiring the double g, as this used to, left
     # the commonest single-g spelling to the judge alone — and a judge-raised
     # below_the_belt deliberately never ends a run (see judge_foul_result), so
@@ -118,12 +126,31 @@ _SLUR_PATTERN = _compile(
     # innocent sense is a bundle of sticks, so it is excluded on both sides:
     # "a faggot of kindling" and "a cartload of fagots" both pass.
     r"(?<!\bof\s)\bf[a@]gg?[o0]ts?\b(?!\s+of\b)",
+    # A chink is also a narrow opening, which is what it is in every innocent
+    # reading: "a chink in your armour", "a chink of light", "a chink between
+    # those boards", "a chink where the mortar failed", "a chink wide enough to
+    # see your conscience through". The aperture takes a preposition or a
+    # relative; the slur is a person and takes neither. Allowing only "of" and
+    # "in", as this used to, left every other shape a foul.
+    r"\bchinks?\b(?!\s+(?:of|in|between|under|underneath|beneath|behind|"
+    r"through|at|near|above|below|along|around|where|wide|wider|big|bigger|"
+    r"narrow|narrower)\b)",
     r"\bsubhumans?\b",
 )
 
 _PROTECTED_CLASS_PATTERN = _compile(
+    # The bare predicate is the attack: "nobody will hire you because you are
+    # black". The same words continued into a complement are a figure, and some
+    # of the commonest insult shapes in English are exactly that — "you are
+    # blind to every hint the room has given you", "you are deaf to anything but
+    # your own voice", "you are foreign to the whole idea of an honest answer",
+    # "you are white to the bone with fear", "you are a woman's ruin and nothing
+    # else". Matching the bare attribute, as this used to, made every one of
+    # them a foul, and the second one ended the run. Same technique as the meta
+    # patterns below: the complement is what separates the two readings.
     r"\b(?:because|since)\s+you(?:'re|\s+are)\s+(?:a\s+|an\s+)?(?:woman|black|white|asian|"
-    r"jew(?:ish)?|muslim|hindu|gay|lesbian|trans(?:gender)?|disabled|blind|deaf|crippled|immigrant|foreign)\b",
+    r"jew(?:ish)?|muslim|hindu|gay|lesbian|trans(?:gender)?|disabled|blind|deaf|crippled|immigrant|foreign)\b"
+    r"(?!\s*'s\b|\s+(?:to|as|of|about|for)\b)",
     r"\bgo\s+back\s+to\s+(?:your\s+)?(?:own\s+)?(?:country|where\s+you\s+came\s+from)\b",
     # "race" and "tribe" have no innocent reading in this construction.
     # "your people" and "your kind" do, and it is the central one of two
@@ -137,7 +164,14 @@ _PROTECTED_CLASS_PATTERN = _compile(
     # the judge will catch.
     r"\byour\s+(?:race|tribe)\s+(?:are|is|always|all)\b",
     r"\b(?:all|every)\s+(?:jews?|muslims?|blacks?|asians?|gays?|women|immigrants?)\s+(?:are|is|should)\b",
-    r"\byou\s+(?:people|lot)\s+(?:are\s+all|always)\b",
+    # "You people are all the same" and "you people always ..." are the
+    # construction. "You lot are all talk and no tide" is British for "all of
+    # you" and the Dockside register's own idiom, so it goes the way "your
+    # people" and "your kind" did above — to the safety router and to the judge.
+    # The auxiliary was asymmetric too: ``(?:are\s+all|always)`` meant "you
+    # people are all" or "you people always", so the commonest form of the
+    # lot — "you people are always ..." — was never caught at all.
+    r"\byou\s+people\s+(?:are\s+all|are\s+always|always)\b",
 )
 
 # The object of a meta accusation: the machine, the screen, or the performer
