@@ -53,6 +53,10 @@ export interface SessionCreateResponse {
   /** Whole turns completed — one player message plus the NPC's reply. */
   turn_count?: number;
   ended_at?: string | null;
+  /** Current meter values, minus the variables the scenario keeps hidden.
+   *  Only GET /api/sessions/{id} reports it; a resuming conversation screen
+   *  reads its meters back from here. Absent means "not reported". */
+  visible_state?: Record<string, number> | null;
 }
 
 /** Filter for GET /api/sessions. 'in_progress' is the resumable set: started

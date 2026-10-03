@@ -8,6 +8,10 @@ request answered 405, so Settings' "Your sessions" list only ever showed an
 error and nothing in the app could find a conversation to resume.
 """
 
+# The Creator Workbench fixtures build a profile with a loadable local pack,
+# which is what makes a preview session possible at all.
+from tests.test_workbench_api import ts_client  # noqa: F401
+
 _SETUP = {
     "scenario_id": "behavioral_interview",
     "difficulty": "standard",
@@ -121,3 +125,77 @@ def test_get_single_session_still_carries_setup(client):
     body = client.get(f"/api/sessions/{session_id}").json()
     assert body["setup"]["show_state_meters"] is True
     assert body["setup"]["language"] == "en"
+
+
+def test_ended_includes_a_session_whose_debrief_was_generated(client):
+    """`Ended` is only the first state a finished session passes through.
+
+    Generating the debrief moves the row to DebriefReady, so a session the
+    player actually played to the end is almost never still `Ended` by the time
+    anything lists it. Matching only `Ended` left those sessions in neither
+    filter.
+    """
+    session_id = _create(client)
+    client.post(f"/api/sessions/{session_id}/start")
+    client.post(f"/api/sessions/{session_id}/turn", json={"content": "Hello there."})
+    client.post(f"/api/sessions/{session_id}/end")
+    assert client.post(f"/api/sessions/{session_id}/debrief").status_code == 200
+    assert client.get(f"/api/sessions/{session_id}").json()["state"] == "DebriefReady"
+
+    ended = client.get("/api/sessions", params={"status": "ended"}).json()["sessions"]
+    assert [s["session_id"] for s in ended] == [session_id]
+    # And it is still not offered as something to pick back up.
+    in_progress = client.get("/api/sessions", params={"status": "in_progress"}).json()
+    assert in_progress["sessions"] == []
+
+
+def test_single_session_reports_the_visible_meters(client):
+    """A resuming conversation screen reads its meters back from here.
+
+    Meter values only ever arrived with a turn, so without this a player who
+    stepped out to Settings came back to a conversation with no meters at all
+    until they sent another message (issue #501 §1 and §3).
+    """
+    session_id = _create(client)
+    client.post(f"/api/sessions/{session_id}/start")
+    client.post(f"/api/sessions/{session_id}/turn", json={"content": "Hello there."})
+
+    body = client.get(f"/api/sessions/{session_id}").json()
+    assert body["visible_state"], "expected the scenario's meter values"
+    assert all(isinstance(v, int) for v in body["visible_state"].values())
+
+
+def test_visible_meters_exclude_hidden_variables(client):
+    """Hidden state variables are hidden from the player, resume included."""
+    from convsim_core.scenario_state import build_variable_defs
+    from convsim_core.scenario_state import VariableVisibility
+
+    session_id = _create(client)
+    client.post(f"/api/sessions/{session_id}/start")
+    client.post(f"/api/sessions/{session_id}/turn", json={"content": "Hello there."})
+
+    hidden = {
+        name
+        for name, defn in build_variable_defs().items()
+        if defn.visibility == VariableVisibility.HIDDEN
+    }
+    reported = set(client.get(f"/api/sessions/{session_id}").json()["visible_state"])
+    assert reported.isdisjoint(hidden)
+
+
+def test_workbench_preview_is_never_offered_for_resume(ts_client):
+    """A pack author's preview session is not the player's conversation.
+
+    Workbench previews are written straight into `turn_sessions` under a
+    dynamic `__wbtest__<hex>` scenario id and nothing ever ends them, so left
+    in this listing one would sit at the top of the resumable set forever and
+    offer to resume a scenario that only ever existed in memory.
+    """
+    assert ts_client.post(
+        "/api/workbench/packs/local-dev/ts-pack/test-session"
+    ).status_code == 200
+
+    assert ts_client.get(
+        "/api/sessions", params={"status": "in_progress"}
+    ).json()["sessions"] == []
+    assert ts_client.get("/api/sessions").json()["sessions"] == []

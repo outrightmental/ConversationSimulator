@@ -235,8 +235,14 @@ export default function Conversation() {
   const reconcileWakeRef = useRef<(() => void) | null>(null)
   // False once the screen unmounts, so the reconcile loop stops touching state.
   const mountedRef = useRef(true)
-  // Last meter snapshot, for computing what the latest turn moved.
-  const prevStateVarsRef = useRef<Record<string, number> | null>(null)
+  // What the meters read at the start of the current exchange. The movement
+  // shown on each meter is measured against THIS, not against the previous
+  // snapshot, because one turn produces two snapshots: the WebSocket npc.final
+  // applies the delta optimistically, and then session.state (and, without a
+  // socket, the REST reply) delivers the authoritative numbers. Diffing
+  // consecutive snapshots makes the second one a move of zero, which wiped the
+  // arrow the first one had just earned.
+  const turnBaselineRef = useRef<Record<string, number> | null>(null)
 
   // TTS audio queue — plays synthesized sentence chunks in order.
   const ttsQueueRef = useRef<string[]>([])
@@ -671,15 +677,17 @@ export default function Conversation() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, recordInterval])
 
-  // Recompute the per-turn meter movement whenever the meters change.
+  // Recompute this turn's meter movement whenever the meters change.
   useEffect(() => {
-    const previous = prevStateVarsRef.current
-    prevStateVarsRef.current = stateVars
+    const baseline = turnBaselineRef.current
     // The first snapshot is where the meters start, not a change from anything.
-    if (previous === null) return
+    if (baseline === null) {
+      turnBaselineRef.current = stateVars
+      return
+    }
     const moved: Record<string, number> = {}
     for (const [key, value] of Object.entries(stateVars)) {
-      const was = previous[key]
+      const was = baseline[key]
       if (was !== undefined && was !== value) moved[key] = value - was
     }
     setStateDeltas(moved)
@@ -817,6 +825,10 @@ export default function Conversation() {
     // The player's message opens a new whole turn; the NPC's reply will close
     // it under the same number (issue #501 §4).
     const playerTurnNum = ++gameTurnRef.current
+    // Every meter movement from here belongs to this turn, however many
+    // snapshots arrive to report it.
+    turnBaselineRef.current = stateVars
+    setStateDeltas({})
     rowCountRef.current += 1
     setTurns((prev) => [
       ...prev,

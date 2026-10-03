@@ -147,6 +147,13 @@ class SessionResponse(BaseModel):
     ending_type: Optional[str] = None
     turn_count: int = 0
     ended_at: Optional[str] = None
+    #: The meter values a resuming player should see, filtered to the ones this
+    #: scenario shows them (issue #501). Only the single-session endpoint fills
+    #: this in: the list endpoint would have to resolve every row's scenario to
+    #: know which variables are hidden, and nothing listing sessions draws
+    #: meters. None means "not reported", which the UI treats as "wait for the
+    #: next turn" rather than "no meters".
+    visible_state: Optional[Dict[str, int]] = None
 
 
 class SessionListResponse(BaseModel):
@@ -392,6 +399,28 @@ RESUMABLE_FLOW_STATES = (
     "ScenarioEvent",
 )
 
+#: Flow states a session has finished in. ``Ended`` is only the first of them:
+#: generating the debrief moves the row to ``DebriefGenerating`` and then
+#: ``DebriefReady``, and a debrief that fails leaves ``Error`` — so a session
+#: the player actually played to the end is almost never still ``Ended`` by the
+#: time anything lists it. Together with RESUMABLE_FLOW_STATES and
+#: ``NotStarted`` this covers every state a row can hold, so the three status
+#: filters partition the table.
+ENDED_FLOW_STATES = (
+    "Ended",
+    "DebriefGenerating",
+    "DebriefReady",
+    "Error",
+)
+
+#: Creator Workbench preview sessions are written straight into
+#: ``turn_sessions`` under a dynamic ``__wbtest__<hex>`` scenario id, and
+#: nothing ever ends or deletes them. Left in this listing they would sit at
+#: the top of the resumable set forever and offer to resume a scenario that was
+#: only ever registered in memory. apps/api's sibling listing has always
+#: excluded them; so does this one.
+_WORKBENCH_SCENARIO_PREFIX = "__wbtest__"
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -539,20 +568,27 @@ async def list_sessions(
     ``status=in_progress`` answers the one question the UI could not ask before
     (issue #501): "is there a conversation I walked away from?". Without it the
     player who opened Settings mid-scenario had no way back to a live session
-    and started a new one instead.
+    and started a new one instead. ``status=ended`` is its complement over the
+    sessions that were started at all, which is why it covers the debrief states
+    and not just ``Ended``.
     """
     if limit < 1 or limit > 500:
         raise HTTPException(status_code=400, detail="limit must be between 1 and 500")
 
     conn = request.app.state.db.connection()
-    sql = "SELECT * FROM turn_sessions"
-    params: List[Any] = []
+    # Workbench previews are excluded from every status, including "all": they
+    # are a pack author's scratch session, not part of the player's history.
+    clauses = ["substr(scenario_id, 1, ?) != ?"]
+    params: List[Any] = [len(_WORKBENCH_SCENARIO_PREFIX), _WORKBENCH_SCENARIO_PREFIX]
     if status == "in_progress":
         placeholders = ", ".join("?" for _ in RESUMABLE_FLOW_STATES)
-        sql += f" WHERE flow_state IN ({placeholders})"
+        clauses.append(f"flow_state IN ({placeholders})")
         params.extend(RESUMABLE_FLOW_STATES)
     elif status == "ended":
-        sql += " WHERE flow_state = 'Ended'"
+        placeholders = ", ".join("?" for _ in ENDED_FLOW_STATES)
+        clauses.append(f"flow_state IN ({placeholders})")
+        params.extend(ENDED_FLOW_STATES)
+    sql = "SELECT * FROM turn_sessions WHERE " + " AND ".join(clauses)
     # created_at is ISO-8601/`datetime('now')` text, so lexical order is
     # chronological order. session_id breaks ties for sessions created inside the
     # same second, which the second-resolution SQLite default makes common.
@@ -572,7 +608,25 @@ async def get_session(session_id: str, request: Request) -> SessionResponse:
     ).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail=f"Session {session_id!r} not found")
-    return _row_to_response(row)
+    response = _row_to_response(row)
+    # A resuming conversation screen rebuilds itself from this row (issue #501).
+    # Meter values only ever arrived with a turn, so without them here a player
+    # who stepped out to Settings came back to a conversation with no meters at
+    # all — the one thing the tutorial tells them to watch — until they sent
+    # another message.
+    response.visible_state = _visible_state_for(request, row)
+    return response
+
+
+def _visible_state_for(request: Request, row: Any) -> Dict[str, int]:
+    """The session's meter values, minus the variables it keeps hidden."""
+    state_vars: Dict[str, int] = json.loads(row["state_vars_json"] or "{}")
+    info = _resolve_scenario(request, row["scenario_id"])
+    overrides = info.state_variable_overrides if info is not None else None
+    visible, _ = partition_state_by_visibility(
+        state_vars, build_variable_defs(overrides)
+    )
+    return visible
 
 
 @router.post("/{session_id}/start", response_model=SessionStartResponse)
