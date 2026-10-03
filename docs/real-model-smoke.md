@@ -204,9 +204,12 @@ So an unscored debrief means one of four quite different things:
 
 In every case the run is red: *"scored debrief"* is the acceptance criterion for
 [#457](https://github.com/outrightmental/ConversationSimulator/issues/457).
-No cause is a reason to weaken the check — the first is worth a tracking
-issue for the missing rubric prompt layer *and* an investigation of the run that
-hit it.
+No cause is a reason to weaken the check. The one that is *also* a standing
+product gap is **zero observations with turns that did not fall back**: that one
+is worth a tracking issue for the missing rubric prompt layer *and* an
+investigation of the run that hit it. The all-fell-back case is not — it says
+nothing about rubric prompting, and the harness says so rather than sending you
+after the prompt layer.
 
 ---
 
