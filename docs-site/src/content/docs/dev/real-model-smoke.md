@@ -307,6 +307,7 @@ Nothing here touches the network except the one-time model download.
 pip install -e "packages/prompt-composer[dev]"
 pip install -e "services/convsim-core[dev]"
 pip install "llama-cpp-python[server]" \
+  --only-binary llama-cpp-python \
   --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
 
 # 2. Resolve the starter model's id / url / sha256 from the registry

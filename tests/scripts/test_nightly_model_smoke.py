@@ -907,6 +907,45 @@ class TestWorkflowChecksumInvariants:
         assert restore["with"]["path"] == save["with"]["path"]
 
 
+_REAL_MODEL_SMOKE_DOCS = (
+    REPO_ROOT / "docs" / "real-model-smoke.md",
+    REPO_ROOT / "docs-site" / "src" / "content" / "docs" / "dev" / "real-model-smoke.md",
+)
+
+
+class TestWheelInstallInvariants:
+    """llama-cpp-python must arrive as a prebuilt wheel, never as a source build.
+
+    PyPI ships llama-cpp-python as an sdist only — the CPU wheels live on the
+    extra index — and ``--extra-index-url`` does not *prefer* them: pip resolves
+    the newest version across both indexes, so on any night the wheel index lags
+    PyPI, pip compiles llama.cpp on the runner.  That is the ~2 min install row
+    of the runtime budget turning into 15+, which the 30 min job timeout has no
+    room for: the job dies with exactly the unattributable "operation was
+    canceled" that the harness's phase-attributed deadline exists to replace, on
+    a night when nothing about the product changed.
+
+    Like the checksum promises above, this lives in the YAML and nowhere else,
+    and it reads as a redundant flag next to the extra index that is "obviously"
+    already doing the job.
+    """
+
+    def test_the_llama_wheel_is_never_built_from_source(self) -> None:
+        run = _step_running("llama-cpp-python[server]")["run"]
+        assert "--only-binary llama-cpp-python" in run, (
+            "--extra-index-url alone does not stop pip from picking a PyPI "
+            "sdist and compiling llama.cpp on the runner, which costs more "
+            "than the whole job budget allows"
+        )
+
+    @pytest.mark.parametrize("doc", _REAL_MODEL_SMOKE_DOCS, ids=lambda p: p.parts[0])
+    def test_the_documented_local_repro_installs_the_same_wheel(self, doc: Path) -> None:
+        # The repro block is a hand-made copy of the install step, so it drifts
+        # silently. A reader who follows it and gets a 15 min source build
+        # concludes the harness is the problem.
+        assert "--only-binary llama-cpp-python" in doc.read_text(encoding="utf-8")
+
+
 class TestDeadline:
     def test_phase_durations_are_recorded(self) -> None:
         clock = smoke.Deadline(60.0)
