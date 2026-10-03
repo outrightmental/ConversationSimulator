@@ -1,0 +1,101 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scenario_id: dockside_parley
+title: The Dockside Parley
+summary: >-
+  Two crews, one contested cargo, and a crowd that decides everything. The
+  crowd swings twice as hard here: momentum moves at double the usual rate, so
+  a run of three good volleys can carry the dock — and three bad ones can lose
+  it just as fast.
+mode: flyting
+player_role:
+  label: The Quartermaster
+  brief: >-
+    Quartermaster of a ship whose captain is ashore and whose crew is watching.
+    The cargo on the stones belongs to whoever the dock decides it belongs to,
+    and the dock decides with its hands. Two hours to the tide.
+npc:
+  ref: ../npcs/rival_captain.yaml
+scene:
+  ref: ../scenes/dockside_berth.yaml
+rubric:
+  ref: ../rubrics/flyting_rubric.yaml
+duration:
+  max_turns: 20
+  soft_time_limit_minutes: 10
+opening:
+  npc_says: >-
+    Quartermaster. I had heard your captain was ashore, and here you are doing
+    his talking for him. Shall we settle this the slow way, with the clerk, or
+    the quick way, in front of everybody?
+goals:
+  player_visible:
+    - "The crowd swings double here — a run of good volleys carries the dock fast"
+    - "Counter her last line when you can: a verified riposte is worth fifteen"
+    - "Her forged charter and her half-sold ship are both fair game"
+  hidden:
+    - "She concedes a good line openly, which costs her nothing and wins the dock"
+    - "Two of her crew left at Tortuga, and she learned the trade at a customs desk"
+state:
+  variables:
+    momentum:
+      min: 0
+      max: 100
+      default: 50
+      visibility: visible
+      max_delta_per_turn: 20
+difficulty:
+  default: standard
+  options:
+    warm:
+      patience: 70
+      volatility: 40
+      disclosure: 65
+      time_pressure: 25
+      label: Slack Water
+      description: An unhurried dock and a captain in a good mood.
+    standard:
+      patience: 50
+      volatility: 55
+      disclosure: 50
+      time_pressure: 50
+      label: Two Hours to the Tide
+      description: Both crews on the rails and the clerk conveniently missing.
+    hard:
+      patience: 25
+      volatility: 80
+      disclosure: 30
+      time_pressure: 75
+      label: Her Dock
+      description: Her crew, her harbour, and her bosun counting your mistakes.
+flyting:
+  formats: [bout, batting_practice]
+  bout:
+    rounds: 8
+    momentum_win: 85
+    # Double the usual swing: this dock changes its mind fast.
+    momentum_k: 8
+    riposte_bonus: 15
+    npc_tier: wildean
+  batting_practice:
+    shot_clock_s: 20
+    formats: [timed_90, set_10, endless]
+  difficulty_multiplier: 1.0
+  lexicon:
+    encouraged:
+      - bilge
+      - ballast
+      - salvage
+      - charter
+      - scupper
+      - landward
+    anachronism_policy: "off"
+  register:
+    notes: >-
+      Dockside: plain, economical, and pitched for the rails to hear. Piratical
+      in register, never graphically violent.
+  verse:
+    required: false
+  judge_flavor: >-
+    The harbour's oldest bosun, deaf in one ear, who scores by how hard the
+    rails get hit and has been wrong about nothing in thirty years.

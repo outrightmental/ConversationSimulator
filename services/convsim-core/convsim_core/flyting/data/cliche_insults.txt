@@ -1,0 +1,86 @@
+# Cliché insult corpus — Stage 2 novelty and the Stage 0 Plagiarized Zinger gate.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Two kinds of entry, both one per line:
+#   * stock forms and worn-out constructions, used as the "redundancy" half of
+#     the freshness comparison (a volley close to one of these is not new);
+#   * public-domain greatest hits (Shakespeare and the Elizabethan stage) whose
+#     near-verbatim reuse is a Plagiarized Zinger rather than a joke.
+#
+# No copyrighted dialogue is reproduced here. Modern pop-culture taunts are
+# detected by keyword signature instead — see pop_culture_signatures.txt.
+#
+# Lines beginning with # are comments; blank lines are ignored.
+
+# ── Stock forms ────────────────────────────────────────────────────────────
+your mother is so fat
+your mother wears army boots
+your father smells
+you are as useful as a chocolate teapot
+you are not the sharpest tool in the shed
+you are a few sandwiches short of a picnic
+the lights are on but nobody is home
+you are one taco short of a combination plate
+you have the face of a bulldog chewing a wasp
+you were dropped on your head as a baby
+you fell out of the ugly tree and hit every branch
+when you were born the doctor slapped your mother
+you look like something the cat dragged in
+your face could stop a clock
+you are a waste of space
+you are a complete idiot and everyone knows it
+nobody likes you and nobody ever will
+you smell like you have never seen a bath
+i have met bricks with more conversation
+you could not pour water out of a boot with instructions on the heel
+you are about as sharp as a bowling ball
+if brains were dynamite you could not blow your nose
+you are living proof that evolution can go backwards
+you bring everyone so much joy when you leave the room
+i would agree with you but then we would both be wrong
+you have an entire life to be an idiot please do not spend it all today
+somewhere out there a tree is working hard to produce oxygen for you
+i would call you a tool but tools are useful
+you are the reason the gene pool needs a lifeguard
+your secrets are safe with me because i never listen when you talk
+i am jealous of everyone who has never met you
+you have something on your chin no the third one down
+there is no cure for what you have
+you are proof that god has a sense of humour
+you talk like a man with a paper nose
+you have a face like a wet weekend
+you are all mouth and no trousers
+you could not organise a drink in a brewery
+you are as much use as a one legged man at a kicking contest
+you have the brains of a rocking horse
+you are a sheep in sheep's clothing
+your family tree is a stump
+your mother dresses you funny
+go and boil your head
+go and take a long walk off a short pier
+why do not you go and play in the traffic
+nobody asked for your opinion
+cry me a river and then drown in it
+you are a legend in your own lunchtime
+
+# ── Public-domain greatest hits ────────────────────────────────────────────
+thou art a boil a plague sore
+more of your conversation would infect my brain
+thou clay brained guts thou knotty pated fool
+i do desire that we may be better strangers
+thou art as loathsome as a toad
+away you three inch fool
+you starveling you elf skin you dried neat's tongue
+thine face is not worth sunburning
+he has not so much brain as ear wax
+there is no more faith in thee than in a stewed prune
+thou whoreson zed thou unnecessary letter
+thou art unfit for any place but hell
+methinks thou art a general offence and every man should beat thee
+i scorn you scurvy companion
+would thou wert clean enough to spit upon
+thou sodden witted lord thou hast no more brain than i have in mine elbows
+the tartness of his face sours ripe grapes
+his wit is as thick as tewkesbury mustard
+you are not worth another word else i would call you knave
+i had rather hear my dog bark at a crow than a man swear he loves me

@@ -43,6 +43,17 @@ import type {
   LogbookExport,
   PreflightResponse,
   SetupInstallJob,
+  FlytingScenarioSetup,
+  FlytingRunCreateRequest,
+  FlytingRunCreateResponse,
+  FlytingRunDetail,
+  FlytingVolleyResponse,
+  FlytingRunSummaryResponse,
+  FlytingHighScoresResponse,
+  FlytingPreviewResponse,
+  VolleyScorecard,
+  PlayFormat,
+  BattingFormat,
 } from '@convsim/shared';
 
 export type { HealthResponse };
@@ -383,6 +394,38 @@ export interface WorkbenchPack {
   editable: boolean
 }
 
+/** One `mode: flyting` scenario in a workbench pack, read from its own files. */
+export interface WorkbenchFlytingScenario {
+  scenario_id: string
+  /** Pack-relative path, which is also the handle the preview takes. */
+  path: string
+  title: string
+  target_name: string
+  /** The whole surface — unlike the play payload, which hides discoverables. */
+  attack_surface: {
+    id: string
+    brief: string
+    visibility: 'visible' | 'discoverable'
+    themes: string[]
+  }[]
+  difficulty_multiplier: number
+  verse_required: boolean
+  /** Surface politeness caps fidelity at 3. */
+  requires_surface_politeness: boolean
+  /** Whether dropping the gloves is also a foul that zeroes the volley. */
+  overt_rudeness_is_foul: boolean
+  anachronism_policy: string
+  judge_flavor: string
+  lexicon_encouraged: string[]
+}
+
+export interface WorkbenchVolleyPreview {
+  scenario_id: string
+  volley: VolleyScorecard
+  /** The judge's rubric header this scenario produces, readable with no model. */
+  judge_system_prompt: string
+}
+
 export interface FileNode {
   name: string
   path: string
@@ -648,6 +691,89 @@ export const api = {
     return { close: () => ws.close() }
   },
 
+  // The turn-scored game mode (issue #454). Every call is local: the judge runs
+  // on the player's own model and the high-score board is a SQLite table on
+  // their own disk, so there is deliberately no remote-board method here.
+  flyting: {
+    listScenarios(): Promise<ApiResult<FlytingScenarioSetup[]>> {
+      return get<FlytingScenarioSetup[]>('/flyting/scenarios')
+    },
+    getScenario(scenarioId: string): Promise<ApiResult<FlytingScenarioSetup>> {
+      return get<FlytingScenarioSetup>(`/flyting/scenarios/${encodeURIComponent(scenarioId)}`)
+    },
+    /** The local board. `today` narrows it to the runs played under today's
+     *  seed for this scenario and format — the comparison the seed exists to
+     *  make. The seed is derived from the date and the ids on the server's own
+     *  machine, so narrowing to it still involves no network. */
+    highScores(
+      scenarioId: string,
+      playFormat?: PlayFormat,
+      battingFormat?: BattingFormat | null,
+      today = false,
+    ): Promise<ApiResult<FlytingHighScoresResponse>> {
+      const params = new URLSearchParams()
+      if (playFormat) params.set('play_format', playFormat)
+      if (battingFormat) params.set('batting_format', battingFormat)
+      // The engine derives the seed itself; asking for it without a play format
+      // would have nothing to derive it from, so it is only sent with one.
+      if (today && playFormat) params.set('today', 'true')
+      const qs = params.toString()
+      return get<FlytingHighScoresResponse>(
+        `/flyting/scenarios/${encodeURIComponent(scenarioId)}/high-scores${qs ? `?${qs}` : ''}`,
+      )
+    },
+    startRun(request: FlytingRunCreateRequest): Promise<ApiResult<FlytingRunCreateResponse>> {
+      return post<FlytingRunCreateResponse>('/flyting/sessions', request)
+    },
+    getRun(sessionId: string): Promise<ApiResult<FlytingRunDetail>> {
+      return get<FlytingRunDetail>(`/flyting/sessions/${encodeURIComponent(sessionId)}`)
+    },
+    /** Submit one volley. The elapsed times are the client's shot clock — the
+     *  server cannot see when the player was prompted, so it trusts these for
+     *  the clock and recomputes everything that affects the score itself. */
+    submitVolley(
+      sessionId: string,
+      content: string,
+      elapsedSincePromptS?: number,
+      elapsedTotalS?: number,
+    ): Promise<ApiResult<FlytingVolleyResponse>> {
+      return post<FlytingVolleyResponse>(
+        `/flyting/sessions/${encodeURIComponent(sessionId)}/volley`,
+        {
+          content,
+          elapsed_since_prompt_s: elapsedSincePromptS,
+          elapsed_total_s: elapsedTotalS,
+        },
+      )
+    },
+    /** Finish a run and read its debrief. Idempotent, so reopening a debrief
+     *  re-reads rather than re-records. `elapsedTotalS` is the run clock the
+     *  caller was watching: the timed drill finishes when ninety seconds pass
+     *  with nobody typing, and only the client sees that happen. Omit it when
+     *  there is no clock to report — a debrief opened a week later. */
+    endRun(
+      sessionId: string,
+      elapsedTotalS?: number,
+    ): Promise<ApiResult<FlytingRunSummaryResponse>> {
+      return post<FlytingRunSummaryResponse>(
+        `/flyting/sessions/${encodeURIComponent(sessionId)}/end`,
+        elapsedTotalS != null ? { elapsed_total_s: elapsedTotalS } : undefined,
+      )
+    },
+    /** Score a draft volley with no run attached — the Workbench test box. */
+    preview(
+      scenarioId: string,
+      content: string,
+      priorVolleys: string[] = [],
+    ): Promise<ApiResult<FlytingPreviewResponse>> {
+      return post<FlytingPreviewResponse>('/flyting/preview', {
+        scenario_id: scenarioId,
+        content,
+        prior_volleys: priorVolleys,
+      })
+    },
+  },
+
   workbench: {
     listPacks(): Promise<ApiResult<WorkbenchPack[]>> {
       return get<WorkbenchPack[]>('/workbench/packs')
@@ -674,6 +800,29 @@ export const api = {
     },
     startTestSession(kind: PackKind, slug: string): Promise<ApiResult<WorkbenchTestSession>> {
       return post<WorkbenchTestSession>(`/workbench/packs/${kind}/${slug}/test-session`)
+    },
+    /** The pack's flyting scenarios, read from its files rather than the index —
+     *  a local-dev pack is never installed, so the index does not know it. */
+    listFlytingScenarios(
+      kind: PackKind,
+      slug: string,
+    ): Promise<ApiResult<{ scenarios: WorkbenchFlytingScenario[] }>> {
+      return get<{ scenarios: WorkbenchFlytingScenario[] }>(
+        `/workbench/packs/${kind}/${slug}/flyting`,
+      )
+    },
+    /** Score a draft volley against a draft scenario, before export. */
+    previewVolley(
+      kind: PackKind,
+      slug: string,
+      scenarioPath: string,
+      content: string,
+      priorVolleys: string[] = [],
+    ): Promise<ApiResult<WorkbenchVolleyPreview>> {
+      return post<WorkbenchVolleyPreview>(
+        `/workbench/packs/${kind}/${slug}/volley-preview`,
+        { scenario_path: scenarioPath, content, prior_volleys: priorVolleys },
+      )
     },
     async importPack(
       file: File,

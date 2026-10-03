@@ -17,6 +17,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type {
   ScenarioInfo,
+  ScenarioMode,
   ScenarioDifficulty,
   DifficultyOption,
   SetupFormValues,
@@ -130,9 +131,18 @@ interface Props {
    * this page router-agnostic (it is rendered and tested without one).
    */
   onInstallModel?: () => void;
+  /**
+   * Fired when the scenario turns out to run a different turn loop — today only
+   * `mode: flyting`, which has its own setup screen. A conversation session on a
+   * flyting scenario would score nothing per volley and read the wrong rubric,
+   * so this form hands the scenario over rather than offering to start one. The
+   * mode is only knowable after the fetch, which is why this is a callback and
+   * not a guard at the call site.
+   */
+  onOtherMode?: (mode: Exclude<ScenarioMode, 'conversation'>) => void;
 }
 
-export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInstallModel }: Props) {
+export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInstallModel, onOtherMode }: Props) {
   const [scenario, setScenario] = useState<ScenarioInfo | null>(null);
   const [runtime, setRuntime] = useState<RuntimeReadiness>({
     llm_ready: false,
@@ -187,6 +197,10 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
         tts_voice_name: null,
         network_required: false,
       }
+      if (scenarioData.mode === 'flyting') {
+        onOtherMode?.(scenarioData.mode)
+        return
+      }
       setScenario(scenarioData)
       setVoices(voiceList)
       setRuntime(rt)
@@ -215,7 +229,7 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
     return () => {
       cancelled = true;
     };
-  }, [scenarioId]);
+  }, [scenarioId, onOtherMode]);
 
   const setField = useCallback(
     <K extends keyof SetupFormValues>(key: K, value: SetupFormValues[K]) => {

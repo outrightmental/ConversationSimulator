@@ -1,0 +1,39 @@
+# Pop-culture taunt signatures — Stage 0 Plagiarized Zinger gate.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Famous modern taunts are detected by keyword signature rather than stored
+# verbatim, so no copyrighted dialogue ships in the application or in any pack.
+# A signature fires when all of its keywords fall inside one short span of the
+# volley — the phrase, not the bag of words (``corpus.KEYWORD_WINDOW_SLACK``).
+# Order does not matter; distance does. That is enough to catch a quotation or a
+# light paraphrase of a line everyone in the room already knows, and specific
+# enough not to fire on original work that happens to reuse the same ordinary
+# words elsewhere in the sentence.
+#
+# Keywords should be words the quotation itself is made of rather than words its
+# scene is made of, and ordinary ones need a third to pin them down. Two common
+# nouns are not a signature: a `handkerchief, blood` entry for a duelling line
+# fired on "You dab at your lip with a handkerchief as though blood were a
+# scandal", which is original, in register for both the Whitechapel and Dockside
+# scenarios, and was capped at ten points and told it was borrowed. A missed
+# quotation scores on its own merits; a false one accuses a player of theft.
+#
+# Keep the list short for the same reason the window is tight: every keyword
+# widens the span the signature is allowed to cover. Three words that pin the
+# quotation down beat four that merely belong to it.
+#
+# Format:  label | keyword, keyword, ...
+# Lines beginning with # are comments; blank lines are ignored.
+
+tower_taunt_rodent        | mother, hamster
+tower_taunt_berries       | father, elderberries
+tower_taunt_direction     | fart, general, direction
+pirate_duel_dairy         | fight, dairy, farmer
+pirate_duel_left_hand     | fighting, left, hand
+stock_yo_mama_fat         | mother, so, fat
+stock_yo_mama_ugly        | mother, so, ugly
+stock_yo_mama_stupid      | mother, so, stupid
+duel_prepare_to_die       | prepare, die, father
+cantina_scum              | wretched, hive, scum
+drill_sergeant_maggot     | maggot, worthless, pukes
+boxer_butterfly           | butterfly, sting, bee

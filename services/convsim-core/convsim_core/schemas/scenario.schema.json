@@ -17,6 +17,23 @@
     "goals"
   ],
   "additionalProperties": false,
+  "allOf": [
+    {
+      "$comment": "A flyting scenario must carry its flyting block, and a flyting block must declare the mode. Either half alone is an authoring mistake the loader cannot repair.",
+      "if": {
+        "properties": { "mode": { "const": "flyting" } },
+        "required": ["mode"]
+      },
+      "then": { "required": ["flyting"] }
+    },
+    {
+      "if": { "required": ["flyting"] },
+      "then": {
+        "properties": { "mode": { "const": "flyting" } },
+        "required": ["mode"]
+      }
+    }
+  ],
   "properties": {
     "schema_version": {
       "type": "string",
@@ -36,6 +53,171 @@
       "type": "string",
       "minLength": 1,
       "maxLength": 500
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["conversation", "flyting"],
+      "default": "conversation",
+      "description": "Turn loop the engine runs for this scenario. 'conversation' (the default, and the only mode before schema 0.1 gained this field) scores once at the debrief. 'flyting' scores every player turn as a volley and requires the 'flyting' block.",
+      "$comment": "Omitting mode is equivalent to mode: conversation, so every pack authored before this field existed keeps its meaning."
+    },
+    "flyting": {
+      "type": "object",
+      "description": "Turn-scored insult-practice configuration. Required when mode is 'flyting' and forbidden otherwise.",
+      "required": ["formats"],
+      "additionalProperties": false,
+      "properties": {
+        "formats": {
+          "type": "array",
+          "description": "Play formats this scenario offers. 'bout' is the two-way exchange; 'batting_practice' is the solo drill against a target who never counters.",
+          "items": { "type": "string", "enum": ["bout", "batting_practice"] },
+          "minItems": 1,
+          "uniqueItems": true
+        },
+        "bout": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "rounds": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 30,
+              "default": 8,
+              "description": "Exchanges before the higher cumulative score wins (a tie forces a sudden-death volley)."
+            },
+            "momentum_win": {
+              "type": "integer",
+              "minimum": 51,
+              "maximum": 100,
+              "default": 85,
+              "description": "Momentum value at which the crowd carries the player out on their shoulders — an immediate win."
+            },
+            "momentum_k": {
+              "type": "number",
+              "minimum": 0.1,
+              "maximum": 10,
+              "default": 4,
+              "description": "Multiplier k in the per-exchange momentum shift k * (S_player - S_npc) / 100. At the default 4 a player who outscores the opponent by 100 every exchange gains 4 momentum per exchange, so the momentum win is reserved for a genuinely dominant run. Raise it for a crowd that swings hard."
+            },
+            "riposte_bonus": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 50,
+              "default": 15,
+              "description": "Flat bonus for a judge-verified counter to the opponent's last line."
+            },
+            "npc_tier": {
+              "type": "string",
+              "enum": ["milquetoast", "wildean", "unhinged_taunter"],
+              "default": "wildean",
+              "description": "Difficulty tier of the opponent: maps to persona notes plus sampling configuration."
+            }
+          }
+        },
+        "batting_practice": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "shot_clock_s": {
+              "type": "integer",
+              "minimum": 5,
+              "maximum": 120,
+              "default": 20,
+              "description": "Per-volley shot clock in seconds. Keeps the drill a reflex exercise rather than an essay contest."
+            },
+            "formats": {
+              "type": "array",
+              "items": { "type": "string", "enum": ["timed_90", "set_10", "endless"] },
+              "minItems": 1,
+              "uniqueItems": true,
+              "default": ["timed_90", "set_10", "endless"]
+            }
+          }
+        },
+        "difficulty_multiplier": {
+          "type": "number",
+          "minimum": 0.8,
+          "maximum": 1.5,
+          "default": 1,
+          "description": "Scenario difficulty multiplier P applied to every composed volley score."
+        },
+        "lexicon": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "encouraged": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1, "maxLength": 40 },
+              "maxItems": 60,
+              "uniqueItems": true,
+              "description": "Period or register diction surfaced as hints at low difficulty."
+            },
+            "discouraged": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1, "maxLength": 40 },
+              "maxItems": 60,
+              "uniqueItems": true,
+              "description": "Words that break the register — anachronisms, brand names, modern slang."
+            },
+            "anachronism_policy": {
+              "type": "string",
+              "enum": ["off", "penalize", "forbid"],
+              "default": "off",
+              "description": "off = ignored; penalize = fidelity cost; forbid = a foul worth zero."
+            }
+          }
+        },
+        "register": {
+          "type": "object",
+          "description": "Register constraints the judge scores fidelity against.",
+          "additionalProperties": false,
+          "properties": {
+            "require_surface_politeness": {
+              "type": "boolean",
+              "default": false,
+              "description": "True when the sting must arrive wrapped in a compliment (a Regency ballroom, a diplomatic reception)."
+            },
+            "overt_rudeness_is_foul": {
+              "type": "boolean",
+              "default": false,
+              "description": "True when naked rudeness scores zero rather than merely losing fidelity points."
+            },
+            "notes": { "type": "string", "maxLength": 300 }
+          }
+        },
+        "verse": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "required": {
+              "type": "boolean",
+              "default": false,
+              "description": "True for mead-hall flyting: alliteration and rough scansion are scored as craft."
+            },
+            "min_alliteration_run": {
+              "type": "integer",
+              "minimum": 2,
+              "maximum": 6,
+              "default": 3,
+              "description": "Alliterating content words needed in a run before it counts toward sound play."
+            }
+          }
+        },
+        "judge_flavor": {
+          "type": "string",
+          "maxLength": 300,
+          "description": "One or two sentences establishing the umpire's voice for the per-volley commentary line."
+        },
+        "judge_rubric": {
+          "type": "object",
+          "description": "Optional rubric whose volley_judge block rebalances dimension weights and supplies calibration anchors. Defaults to the scenario's main rubric.",
+          "required": ["ref"],
+          "additionalProperties": false,
+          "properties": {
+            "ref": { "type": "string" }
+          }
+        }
+      }
     },
     "supported_languages": {
       "type": "array",

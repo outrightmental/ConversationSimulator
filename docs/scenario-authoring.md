@@ -68,7 +68,7 @@ The screen has three areas:
 │  ─────────────────────────────────────────────────────────────────────  │
 │  ✓ Pack is valid                                            [Revalidate] │
 │                                                                          │
-│  ┌─ Packs ──────────┐  ┌─ Edit │ Test Chat ─────────── ⬇ Export .zip ─┐│
+│  ┌─ Packs ──────────┐  ┌─ Edit │ Test Chat │ Test Volley ─ ⬇ Export ─┐│
 │  │  OFFICIAL        │  │                                               ││
 │  │  · job-interview │  │  Select a YAML or Markdown file from          ││
 │  │  LOCAL DEV       │  │  the tree.                                    ││
@@ -91,6 +91,7 @@ The screen has three areas:
 | **Files** (bottom-left) | File tree for the selected pack. Click a `.yaml` or `.md` file to open it in the editor. |
 | **Edit** tab (right) | Plain YAML / Markdown editor. Saves trigger automatic revalidation. |
 | **Test Chat** tab (right) | Run a live text-only test session against the current pack without leaving the workbench. |
+| **Test Volley** tab (right) | Score a draft volley against a `mode: flyting` scenario in the pack, with no model and no export. Empty for packs with no flyting scenario. |
 | Validation banner (above panels) | Shows `✓ Pack is valid` or lists errors and warnings. Updates after every save. |
 | **⬇ Export .zip** (top-right) | Downloads the selected pack as a zip archive you can share or import elsewhere. |
 | **⬆ Import Pack (.zip)** (bottom of Packs panel) | Imports a `.zip` pack archive into Local Dev. |
@@ -622,6 +623,79 @@ structural checks.
 
 If the pack has validation errors, the **▶ Start Test Session** button is
 disabled and the error count is shown. Fix the errors first.
+
+---
+
+## Step 10b: Authoring a flyting scenario (optional)
+
+A scenario that declares `mode: flyting` runs the turn-scored loop instead of
+the conversation loop: every player turn is a *volley* with its own score. The
+mode, its YAML and its scoring pipeline are documented in
+[`docs/flyting.md`](flyting.md); this section is only about the two places the
+workbench helps you author one.
+
+**Write it in English.** The deterministic stages are English-only today — the
+frequency table, the second-person aim check, the alliteration and rhyme
+approximations, and the recognisable-word test behind the gibberish gate all
+read English spelling. A Latin-script scenario in another language scores with
+no craft metrics and flags every volley `no_aim`; a non-Latin-script one is
+unplayable, because the gibberish gate duds every volley before the judge is
+called. The validator warns about either with `FLYTING_NON_ENGLISH_SCENARIO`.
+Conversation-mode scenarios are unaffected.
+
+**The attack surface.** The target NPC declares `attack_surface` — the traits
+that are fair game. It is the one thing the judge is allowed to claim a hit on:
+a hook must name a trait id from this list *and* quote the player's own words,
+or the engine drops it. The NPC form editor has an **Attack surface** fieldset
+for it, so you do not have to hand-write the YAML:
+
+```yaml
+attack_surface:
+  - id: hypocrisy
+    brief: "Preaches temperance at chapel; owns two gin palaces through a cousin."
+    visibility: visible        # named in the player's brief from the start
+  - id: new_money
+    brief: "Grandfather sold tripe; the family crest is eleven years old."
+    visibility: discoverable   # revealed when first struck, and worth double
+```
+
+Write briefs specific enough to aim at. "Is vain" gives a player nothing;
+"powdered, corseted, and fifty, and convinced he is Adonis" gives them three
+openings. Two to five traits, with one or two `discoverable`, is the shape the
+validator recommends — a thin surface earns `FLYTING_THIN_ATTACK_SURFACE`, and
+no surface at all is the error `FLYTING_NO_ATTACK_SURFACE`.
+
+**The Test Volley tab.** The third tab in the right panel scores a draft volley
+against the scenario as your files currently define it — no export, no import,
+no model:
+
+1. Click **Test Volley** and pick a scenario from the dropdown. Only scenarios
+   declaring `mode: flyting` appear; a pack with none says so.
+2. Read the target's attack surface above the input. Both visibilities are shown
+   here, unlike the player's brief, which withholds the discoverable ones.
+3. Type a volley and click **Score this volley**.
+4. Optionally paste earlier volleys (one per line) under *Earlier volleys* to
+   see freshness and theme decay apply — the same comparison a real run makes
+   against everything already said.
+
+The scorecard shows the arithmetic: the gates that fired, freshness, the
+difficulty multiplier, and the composed score. The dimension bars stay blank
+because no judge was called — these are the deterministic stages, which is
+also the half of the score your pack actually controls. **Show the judge prompt
+this scenario produces** reveals the rubric header your `flyting:` block,
+rubric weights and `judge_flavor` assemble, so you can read it rather than
+guess at it.
+
+**Read the score as a comparison, not as a band.** Every volley with no judge
+behind it is held inside `weak`, here as in a run (see
+[the engine documentation](https://github.com/outrightmental/ConversationSimulator/blob/main/docs/flyting.md)
+§ Stage 3) — the engine will not certify a hit no model read. The number still
+moves with your pack, so use it for the things it can answer: that a line aimed
+at a declared trait outscores generic abuse, that your `anachronism_policy` and
+register rules fire where you expect, that a gate you meant to catch something
+catches it, and that freshness falls away when a volley repeats an earlier one.
+Which band a good volley lands in is a judged question, and
+`scripts/flyting-calibration.py --judge` is what answers it.
 
 ---
 

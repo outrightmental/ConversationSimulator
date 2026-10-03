@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+policy_id: flyting_safety
+description: >-
+  Safety policy for Flyting School. The situations are adult; the content need
+  not be. Profanity is forbidden outright — not out of squeamishness, but
+  because the scoring engine is itself a content policy: swearing is the
+  admission that you could not find the word, and it earns nothing on any
+  judged dimension. Slurs and attacks on who someone is rather than what they
+  do are a Below the Belt foul worth zero, and a repeat ends the session.
+content_categories:
+  nsfw_sexual_content: stop
+  minors_romantic_or_sexual: stop
+  real_person_impersonation: refuse
+  voice_cloning_request: refuse
+  medical_or_therapy_claim: redirect
+  legal_claim: redirect
+  criminal_instruction: refuse
+  harassment_extreme: refuse
+  self_harm_crisis: stop_with_resource_message
+redirect_message: >-
+  That is outside the rules of this contest. Aim at the character in front of
+  you, in the register of the scene, and try again.
+allow_profanity: false
+content_rating_cap: PG-13

@@ -22,6 +22,8 @@ Every entity that crosses a package boundary must have a stable, unique identifi
 | NPC         | `npc_id`      | Snake-case slug, unique within a pack           | `hiring_manager`                |
 | Rubric      | `rubric_id`   | Snake-case slug, unique within a pack           | `interview_rubric`              |
 | Safety policy | `policy_id` | Snake-case slug, unique within a pack           | `default_safe_conversation`     |
+| Attack-surface trait | `id`    | Snake-case slug, unique within an NPC           | `hypocrisy`                     |
+| Calibration suite | `calibration_id` | Snake-case slug, unique within a pack      | `whitechapel_calibration`       |
 | Session     | `session_id`  | UUID v4, assigned at runtime                    | `550e8400-e29b-41d4-a716-...`  |
 
 IDs must match the pattern `^[a-z0-9_]+(\.[a-z0-9_]+)*$` (lowercase letters, digits, underscores; dots only for namespaced pack IDs).
@@ -45,6 +47,8 @@ Once published in a released pack, IDs must not be renamed. If an entity is supe
 The validator must reject files whose `schema_version` it does not recognise. Supported versions are listed in the schema `enum`.
 
 **Exception: `turn-output.schema.json`** — Turn output is a runtime LLM response format, not a pack-authored file. Pack authors never write turn output documents directly; the model generates them during a session. `turn-output.schema.json` therefore does not define a `schema_version` field. Changes to the turn output format are tracked by the overall project version (see `$id`) and require corresponding backend changes.
+
+**Exception: `volley-score.schema.json`** — The per-volley flyting scorecard is likewise a runtime output. Pack authors never write scorecards; the scoring service emits them. It therefore defines no `schema_version` field, and changes to it are tracked by the project version.
 
 ### Breaking vs non-breaking changes
 

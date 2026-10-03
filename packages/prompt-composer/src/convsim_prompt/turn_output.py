@@ -231,6 +231,12 @@ def _extract_json(raw: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+# Public alias: the flyting judge parser needs the same tolerant extraction
+# (fenced blocks, leading prose) and there must be exactly one implementation of
+# it, or the two parsers would disagree about what counts as JSON.
+extract_json_object = _extract_json
+
+
 def _validate(data: Dict[str, Any]) -> TurnOutput:
     """Validate a parsed dict and convert it to a TurnOutput.
 

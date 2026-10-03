@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+pack_id: official.flyting_school
+name: Flyting School
+version: 0.1.0
+description: >-
+  Five turn-scored insult-practice scenarios. Flyting is the historical name for
+  ritualised poetic insult exchange — Norse sagas, sixteenth-century Scottish
+  court flytings, the ancestor of the dozens and battle rap. Every volley is
+  scored as a move: aim, invention, construction, and register, with the
+  arithmetic shown. Clean-but-cutting wins; crudeness scores nothing.
+author: Outright Mental
+license: CC-BY-4.0
+content_rating: PG-13
+tags:
+  - flyting
+  - wit
+  - improvisation
+  - register
+  - composure
+  - arcade
+supported_languages:
+  - en
+entry_scenarios:
+  - scenarios/whitechapel_rose.yaml
+  - scenarios/tower_guard.yaml
+  - scenarios/mead_hall_flyting.yaml
+  - scenarios/veiled_civility.yaml
+  - scenarios/dockside_parley.yaml
+assets:
+  allow_external_urls: false
+safety:
+  policy: safety/flyting_safety.yaml

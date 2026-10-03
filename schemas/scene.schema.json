@@ -41,6 +41,48 @@
       "type": "string",
       "description": "Ambient audio identifier. Must be a slug defined in the runtime audio registry.",
       "pattern": "^[a-z0-9_]+$"
+    },
+    "audience": {
+      "type": "object",
+      "description": "Optional crowd watching the exchange. Score-band reactions are emitted through the existing scenario event system, one per volley at most (the highest band whose threshold the volley cleared).",
+      "required": ["reactions"],
+      "additionalProperties": false,
+      "properties": {
+        "label": {
+          "type": "string",
+          "description": "Who is watching — 'the fishwives', 'the questing knights', 'the benches'.",
+          "maxLength": 80
+        },
+        "reactions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "required": ["min_score", "line"],
+            "additionalProperties": false,
+            "properties": {
+              "min_score": {
+                "type": "integer",
+                "description": "Lowest volley score that triggers this reaction.",
+                "minimum": 0,
+                "maximum": 400
+              },
+              "line": {
+                "type": "string",
+                "description": "What the crowd does, in the scene's voice.",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "event_id": {
+                "type": "string",
+                "description": "Optional stable id for this reaction, so a transcript or debrief can group them.",
+                "pattern": "^[a-z0-9_]+$"
+              }
+            }
+          }
+        }
+      }
     }
   }
 }

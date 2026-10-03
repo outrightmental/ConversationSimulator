@@ -54,6 +54,11 @@ a = Analysis(
     datas=[
         # JSON schemas bundled for offline pack validation (no network needed).
         ('convsim_core/schemas', 'convsim_core/schemas'),
+        # Flyting corpora: the word-frequency table, the cliche corpus, and the
+        # pop-culture taunt signatures. Stage 1 and Stage 2 of volley scoring
+        # read these, and they are the reason novelty and plagiarism detection
+        # work with no model and no network.
+        ('convsim_core/flyting/data', 'convsim_core/flyting/data'),
         # Read-only official scenario packs shipped with the app.
         # These land at sys._MEIPASS/packs/official/ and are found by config.py
         # when it detects the frozen (PyInstaller) environment.

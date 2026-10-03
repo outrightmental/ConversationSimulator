@@ -38,7 +38,10 @@ from convsim_core.tts.voices import APPROVED_VOICES
 # ---------------------------------------------------------------------------
 _VALIDATORS: dict[str, jsonschema.Draft202012Validator] = {
     name: jsonschema.Draft202012Validator(get_schema(f"{name}.schema.json"))
-    for name in ("pack", "scenario", "npc", "rubric", "safety", "scene", "pack-test")
+    for name in (
+        "pack", "scenario", "npc", "rubric", "safety", "scene", "pack-test",
+        "flyting-calibration",
+    )
 }
 
 CONTENT_RATINGS = frozenset({"G", "PG", "PG-13"})
@@ -253,6 +256,7 @@ class _PackValidator:
         if is_yaml_pack:
             self._validate_yaml_pack_scenarios()
             self._validate_smoke_tests(manifest_raw, manifest_file)
+            self._validate_flyting(manifest_raw, manifest_file)
 
         self._scan_for_forbidden_files()
         self._scan_for_prompt_injection()
@@ -564,6 +568,7 @@ class _PackValidator:
         self._check_scenario_ref(scenario_data, scenario_path, "npc", "npc")
         self._check_scenario_ref(scenario_data, scenario_path, "rubric", "rubric")
         self._check_scenario_ref(scenario_data, scenario_path, "scene", "scene")
+        self._check_flyting_scenario(scenario_data, scenario_path)
 
     def _check_scenario_ref(
         self,
@@ -627,6 +632,339 @@ class _PackValidator:
                 "Add 'fictional: true' to this NPC file. "
                 "Impersonating real people is not permitted.",
             )
+
+    # ------------------------------------------------------------------
+    # Flyting (mode: flyting) consistency
+    #
+    # These are the checks JSON Schema cannot express: that a target has
+    # something to aim at, that judge weights sum to one, that a calibration
+    # suite names a scenario and traits that actually exist, and that the
+    # scenario is in the one language the deterministic stages can read.
+    # ------------------------------------------------------------------
+
+    # A target with one trait makes hooks almost meaningless; the topicality
+    # multiplier pays for up to four, and variety is the whole meta.
+    _MIN_RECOMMENDED_ATTACK_SURFACE = 2
+
+    _JUDGE_DIMENSIONS = ("sting", "wit", "craft", "fidelity")
+
+    # A low, a middle and a high: what the judge prompt needs to read a
+    # dimension as a scale rather than as a single example of one end of it.
+    _ANCHORS_PER_DIMENSION = 3
+
+    # The language Stages 0-2 are written for. The bundled frequency table, the
+    # second-person aim check, the orthographic alliteration and rhyme
+    # approximations, and the recognisable-word test behind the gibberish gate
+    # all read English spelling.
+    _FLYTING_LANGUAGE = "en"
+
+    def _flyting_scenarios(self) -> dict[str, dict]:
+        """scenario_id → parsed YAML, for every mode: flyting scenario."""
+        found: dict[str, dict] = {}
+        scenarios_dir = self._pack_dir / "scenarios"
+        if not scenarios_dir.is_dir():
+            return found
+        for path in sorted(scenarios_dir.glob("*.yaml")):
+            data = self._load_yaml(path)
+            if isinstance(data, dict) and data.get("mode") == "flyting":
+                found[str(data.get("scenario_id") or path.stem)] = data
+        return found
+
+    def _attack_surface_of(self, scenario_data: dict, scenario_path: Path) -> list[dict]:
+        section = scenario_data.get("npc")
+        if not isinstance(section, dict) or not section.get("ref"):
+            return []
+        npc_path = (scenario_path.parent / str(section["ref"])).resolve()
+        if not npc_path.is_file():
+            return []
+        npc_data = self._load_yaml(npc_path)
+        if not isinstance(npc_data, dict):
+            return []
+        surface = npc_data.get("attack_surface")
+        return [t for t in surface if isinstance(t, dict)] if isinstance(surface, list) else []
+
+    def _manifest_languages(self) -> list[str]:
+        """The manifest's ``supported_languages``, read without re-reporting it.
+
+        ``_load_yaml`` is deliberately not used: the manifest has already been
+        loaded and validated by the time any scenario check runs, and reading it
+        again through that helper would emit a second copy of every error it
+        found. A manifest that cannot be read at all is somebody else's error.
+        """
+        path = self._pack_dir / "manifest.yaml"
+        try:
+            raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except (OSError, yaml.YAMLError):
+            return []
+        if not isinstance(raw, dict):
+            return []
+        langs = raw.get("supported_languages")
+        return [str(x) for x in langs] if isinstance(langs, list) else []
+
+    def _check_flyting_language(self, scenario_data: dict, rel: str) -> None:
+        """Warn when a flyting scenario is authored in a language the stages cannot read.
+
+        Stages 0-2 are English-only, and nothing in the schema says so: the
+        frequency table, the aim check, the sound-play approximations and the
+        recognisable-word test behind the gibberish gate all read English
+        spelling. In a Latin script the cost is silent degradation — every
+        content word is unknown to the frequency table, and no volley ever
+        passes the second-person check, so each one carries ``no_aim`` and the
+        mechanical fallback scores it as unaimed. In a non-Latin script it is
+        total: no token survives the stage's ``[a-z']+`` filter, so the
+        gibberish gate duds every volley at zero before the judge is reached,
+        and the scenario cannot be played at all. Only Stage 3 reads the
+        language, and it never runs.
+        """
+        declared = scenario_data.get("supported_languages")
+        pointer = "/supported_languages"
+        if not (isinstance(declared, list) and declared):
+            # Omitted means "inherit the manifest's list" (scenario.schema.json).
+            declared = self._manifest_languages()
+            pointer = "(root)"
+        languages = [str(x).strip().lower() for x in declared if str(x).strip()]
+        if not languages or self._FLYTING_LANGUAGE in languages:
+            return
+        self._warning(
+            "FLYTING_NON_ENGLISH_SCENARIO",
+            rel,
+            pointer,
+            "This flyting scenario declares no English support ("
+            + ", ".join(languages)
+            + "), but the deterministic scoring stages read English only: the "
+            "bundled frequency table, the second-person aim check, the "
+            "alliteration and rhyme approximations, and the recognisable-word "
+            "test behind the gibberish gate. A volley in a Latin-script "
+            "language scores with no craft metrics and a permanent 'no_aim' "
+            "flag; one in a non-Latin script is dudded as gibberish before the "
+            "judge is ever called, so the scenario cannot be played.",
+            "Keep mode: flyting scenarios in English for now (see "
+            "docs/flyting.md § Stage 1), or author this one as a conversation "
+            "scenario until the craft stages are language-aware.",
+        )
+
+    def _check_flyting_scenario(self, scenario_data: dict, scenario_path: Path) -> None:
+        if scenario_data.get("mode") != "flyting":
+            return
+        rel = self._rel(scenario_path)
+        self._check_flyting_language(scenario_data, rel)
+        surface = self._attack_surface_of(scenario_data, scenario_path)
+
+        if not surface:
+            self._error(
+                "FLYTING_NO_ATTACK_SURFACE",
+                rel,
+                "/npc/ref",
+                "A flyting scenario's target declares no attack_surface, so no hook "
+                "can ever be verified and no volley can earn a topicality bonus.",
+                "Add an attack_surface list to the target NPC: two to five traits, "
+                "each with an id and a one-sentence brief.",
+            )
+        elif len(surface) < self._MIN_RECOMMENDED_ATTACK_SURFACE:
+            self._warning(
+                "FLYTING_THIN_ATTACK_SURFACE",
+                rel,
+                "/npc/ref",
+                f"The target declares only {len(surface)} attack_surface trait(s). "
+                "Variety is the scoring meta, and theme decay punishes returning "
+                "to the same trait.",
+                "Declare at least two traits, ideally with one or two marked "
+                "visibility: discoverable so the player has something to find.",
+            )
+
+        if not any(t.get("visibility") == "discoverable" for t in surface):
+            self._warning(
+                "FLYTING_NO_DISCOVERABLE_TRAIT",
+                rel,
+                "/npc/ref",
+                "No attack_surface trait is marked discoverable, so the player's "
+                "brief gives away everything and no hook can be worth double.",
+                "Mark one or two traits 'visibility: discoverable'.",
+            )
+
+        self._check_flyting_rubric(scenario_data, scenario_path)
+
+    def _check_flyting_rubric(self, scenario_data: dict, scenario_path: Path) -> None:
+        """Check the volley_judge block of whichever rubric this scenario judges with."""
+        flyting = scenario_data.get("flyting")
+        flyting = flyting if isinstance(flyting, dict) else {}
+        judge_rubric = flyting.get("judge_rubric")
+        ref = (
+            judge_rubric.get("ref")
+            if isinstance(judge_rubric, dict) and judge_rubric.get("ref")
+            else (scenario_data.get("rubric") or {}).get("ref")
+        )
+        if not ref:
+            return
+        rubric_path = (scenario_path.parent / str(ref)).resolve()
+        if not rubric_path.is_file():
+            return
+        rubric_data = self._load_yaml(rubric_path)
+        if not isinstance(rubric_data, dict):
+            return
+        block = rubric_data.get("volley_judge")
+        if not isinstance(block, dict):
+            return
+        rel = self._rel(rubric_path)
+
+        weights = block.get("weights")
+        if isinstance(weights, dict):
+            total = sum(
+                float(weights[dim])
+                for dim in self._JUDGE_DIMENSIONS
+                if isinstance(weights.get(dim), (int, float))
+            )
+            if abs(total - 1.0) > 0.001:
+                self._warning(
+                    "FLYTING_JUDGE_WEIGHTS_SUM",
+                    rel,
+                    "/volley_judge/weights",
+                    f"volley_judge weights sum to {total:.3f}, not 1.0. The engine "
+                    "normalises them so scores stay in range, but the numbers in "
+                    "the rubric will not match the numbers on the scorecard.",
+                    "Adjust the four weights so they sum to exactly 1.0.",
+                )
+
+        anchors = block.get("anchors")
+        if isinstance(anchors, list) and anchors:
+            per_dimension = {dim: 0 for dim in self._JUDGE_DIMENSIONS}
+            for anchor in anchors:
+                if isinstance(anchor, dict) and anchor.get("dimension") in per_dimension:
+                    per_dimension[anchor["dimension"]] += 1
+            bare = [dim for dim, count in per_dimension.items() if count == 0]
+            if bare:
+                self._warning(
+                    "FLYTING_ANCHOR_COVERAGE",
+                    rel,
+                    "/volley_judge/anchors",
+                    "These judged dimensions have no calibration anchor: "
+                    + ", ".join(sorted(bare))
+                    + ". A dimension with no anchor is scored on the model's taste.",
+                    "Give every dimension three anchors — a low, a middle, and a high.",
+                )
+            # Fewer than three is the gap this check could not see, and the one
+            # the launch pack itself fell into: a pack that supplies `anchors`
+            # replaces the engine defaults wholesale rather than merging with
+            # them, so a dimension given one anchor is left with one — and the
+            # judge is told "the calibration anchors are the scale; a volley no
+            # better than the 6 anchor is a 6" with no 6 to read. On a 4B local
+            # model that is the instability the decomposed rubric exists to
+            # remove, so the shortfall is named rather than only the absence.
+            thin = sorted(
+                dim
+                for dim, count in per_dimension.items()
+                if 0 < count < self._ANCHORS_PER_DIMENSION
+            )
+            if thin:
+                self._warning(
+                    "FLYTING_ANCHOR_DEPTH",
+                    rel,
+                    "/volley_judge/anchors",
+                    "These judged dimensions carry fewer than "
+                    f"{self._ANCHORS_PER_DIMENSION} calibration anchors: "
+                    + ", ".join(
+                        f"{dim} ({per_dimension[dim]})" for dim in thin
+                    )
+                    + ". Supplying 'anchors' replaces the engine's defaults "
+                    "rather than adding to them, so the missing ends of the "
+                    "scale are simply absent from the judge prompt.",
+                    "Give every dimension a low, a middle and a high anchor, or "
+                    "omit the anchors block entirely to keep the engine's.",
+                )
+
+    def _validate_flyting(self, raw: dict, manifest_file: str) -> None:
+        """Pack-level flyting checks: calibration suites and their references."""
+        flyting_scenarios = self._flyting_scenarios()
+        calibration_dir = self._pack_dir / "calibration"
+        covered: set[str] = set()
+
+        if calibration_dir.is_dir():
+            for path in sorted(calibration_dir.glob("*.yaml")):
+                data = self._load_yaml(path)
+                if not isinstance(data, dict):
+                    continue
+                rel = self._rel(path)
+                self._schema_errors(data, "flyting-calibration", rel)
+                scenario_id = str(data.get("scenario_id") or "")
+                covered.add(scenario_id)
+
+                scenario_data = flyting_scenarios.get(scenario_id)
+                if scenario_data is None:
+                    self._error(
+                        "FLYTING_CALIBRATION_UNKNOWN_SCENARIO",
+                        rel,
+                        "/scenario_id",
+                        f"Calibration suite targets scenario '{scenario_id}', which is "
+                        "not a flyting scenario in this pack.",
+                        "Point scenario_id at a scenario in scenarios/ that declares "
+                        "mode: flyting.",
+                    )
+                    continue
+
+                scenario_path = self._pack_dir / "scenarios" / f"{scenario_id}.yaml"
+                if not scenario_path.is_file():
+                    scenario_path = next(
+                        (
+                            candidate
+                            for candidate in (self._pack_dir / "scenarios").glob("*.yaml")
+                            if (self._load_yaml(candidate) or {}).get("scenario_id") == scenario_id
+                        ),
+                        scenario_path,
+                    )
+                trait_ids = {
+                    str(t.get("id"))
+                    for t in self._attack_surface_of(scenario_data, scenario_path)
+                    if t.get("id")
+                }
+                self._check_calibration_volleys(data, rel, trait_ids)
+
+        for scenario_id in sorted(flyting_scenarios):
+            if scenario_id not in covered and str(raw.get("pack_id", "")).startswith("official."):
+                self._warning(
+                    "FLYTING_CALIBRATION_MISSING",
+                    manifest_file,
+                    "/entry_scenarios",
+                    f"Flyting scenario '{scenario_id}' has no calibration suite, so "
+                    "model or prompt drift in its scoring would reach players first.",
+                    f"Add calibration/{scenario_id}.yaml with reference volleys and "
+                    "their expected bands.",
+                )
+
+    def _check_calibration_volleys(
+        self, data: dict, rel: str, trait_ids: set[str]
+    ) -> None:
+        volleys = data.get("volleys")
+        if not isinstance(volleys, list):
+            return
+        for index, volley in enumerate(volleys):
+            if not isinstance(volley, dict):
+                continue
+            pointer = f"/volleys/{index}"
+            expect = volley.get("expect")
+            if not isinstance(expect, dict):
+                continue
+
+            low, high = expect.get("min_score"), expect.get("max_score")
+            if isinstance(low, int) and isinstance(high, int) and low > high:
+                self._error(
+                    "FLYTING_CALIBRATION_IMPOSSIBLE_BAND",
+                    rel,
+                    pointer,
+                    f"min_score {low} is above max_score {high}, so no score can pass.",
+                    "Correct the bounds, or drop one of them.",
+                )
+
+            for hook in expect.get("hooks") or []:
+                if str(hook) not in trait_ids:
+                    self._error(
+                        "FLYTING_CALIBRATION_UNKNOWN_HOOK",
+                        rel,
+                        f"{pointer}/expect/hooks",
+                        f"Expected hook '{hook}' is not an attack_surface trait id on "
+                        "this scenario's target, so the engine would always drop it.",
+                        "Use a trait id declared in the target NPC's attack_surface: "
+                        + (", ".join(sorted(trait_ids)) if trait_ids else "(none declared)"),
+                    )
 
     # ------------------------------------------------------------------
     # Smoke-test presence (official packs only)

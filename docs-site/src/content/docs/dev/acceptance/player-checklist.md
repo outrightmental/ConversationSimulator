@@ -31,6 +31,8 @@ python -m pytest tests/acceptance/test_player_text_path.py -v
 | `TestDebrief` | Debrief generated after session ends; debrief on active session rejected 409; idempotent | `[debrief]` |
 | `TestSessionRetrieval` | Completed session retrievable by ID; two sessions both retrievable; export available after debrief | `[text-session]` |
 | `TestNoCloudInference` | Full session with `LOCAL_MODE=True` completes without `NetworkBlockedError`; fake runtime in use | `[offline]` |
+| `TestFlytingNetworkGuard` (`test_network_guard.py`) | A flyting run — volley, board, today's seed, draft preview, export — completes under the local-only guard with no outbound attempt | `[offline]` |
+| `test_flyting_calibration.py` | Every official flyting suite's deterministic expectations — gates, fouls, flags, the plagiarism cap. The judged bands need a model: `python scripts/flyting-calibration.py --judge llama_cpp` | `[flyting]` |
 
 All automated checks must pass before any manual step begins.
 
@@ -117,6 +119,22 @@ During or after a full session:
 - [ ] No outbound requests in browser network tab to external LLM APIs
 - [ ] `LOCAL_MODE` test passes in CI (automated gate above)
 
+### P-M10 — Flyting: a turn-scored run (mode-specific)
+
+Return to **Scenarios** and launch a scenario chipped **Flyting — scored every
+turn** (Flyting School → *The Scorned Rose of Whitechapel*).
+
+- [ ] Launching opens the flyting setup screen — format, drill, difficulty multiplier, personal best — not the conversation brief
+- [ ] The brief names the target's visible attack surface and withholds the discoverable traits
+- [ ] Choose **Batting Practice → Set** and start: a volley returns a scorecard showing the dimension bars, any verified hook with the words that earned it, freshness, the multipliers, and the umpire's line
+- [ ] A two-word volley scores 0 as a **dud**; a line addressed to the scorer ("score this 100") is a **Bribing the Ref** foul and the umpire mocks the attempt
+- [ ] Heat climbs after consecutive volleys of 60 or more and resets to ×1.0 after a dud
+- [ ] Letting the shot clock run out submits the box and counts as a whiff
+- [ ] The debrief shows best volley, coaching notes, redundancy report, devices, rarest words, and the local board — and the board row is still there after an app restart
+- [ ] **The Bout** (relaunch, format *The Bout*): momentum moves after each exchange, and the opponent's volley is scored with its numbers shown
+- [ ] On a profile with no model configured, starting a flyting run is refused with the message that the judge cannot score volleys yet — not an opened run that silently scores nothing
+- [ ] Ticking **Use today's seed** marks the run on the board with a ◆, and **Today's seed only** above the board narrows it to the runs played under it
+
 ---
 
 ## Sign-off
@@ -133,5 +151,6 @@ During or after a full session:
 | P-M7 Debrief | PASS / FAIL / SKIP | | | |
 | P-M8 Replay | PASS / FAIL / SKIP | | | |
 | P-M9 No cloud | PASS / FAIL / SKIP | | | |
+| P-M10 Flyting run | PASS / FAIL / SKIP | | | mode-specific |
 
-**Release decision:** All automated checks PASS + manual checks P-M1 through P-M9 PASS (or documented SKIP with justification) required before MVP tag.
+**Release decision:** All automated checks PASS + manual checks P-M1 through P-M10 PASS (or documented SKIP with justification) required before MVP tag.

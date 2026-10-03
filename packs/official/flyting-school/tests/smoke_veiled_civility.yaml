@@ -1,0 +1,66 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+fixture_id: smoke_veiled_civility
+scenario_id: veiled_civility
+description: >-
+  Smoke fixture for Veiled Civility: three volleys that must each be accepted by the
+  Stage 0 gates, move the momentum meter, and leave the run in progress. The
+  scored expectations for this scenario live in calibration/veiled_civility.yaml, which
+  the flyting calibration runner executes.
+
+seed: 7
+input_mode: text
+difficulty: standard
+turns:
+  - turn: 1
+    player_input: >-
+      How brave of you to wear that again; one does admire a woman ungoverned by dates.
+    expect:
+      state_delta_contains:
+        - momentum
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 2
+    player_input: >-
+      You must tell me the name of your aunt's solicitor; one hears he writes so faithfully.
+    expect:
+      state_delta_contains:
+        - momentum
+      session_control: continue_session
+      safety_status: ok
+
+  - turn: 3
+    player_input: >-
+      Your laugh is the loveliest thing in this room, and so beautifully kept.
+    expect:
+      state_delta_contains:
+        - momentum
+      session_control: continue_session
+      safety_status: ok
+
+static_assertions:
+  - description: The scenario declares the flyting turn loop
+    path: mode
+    check: equals flyting
+  - description: The flyting block offers at least one play format
+    path: flyting.formats
+    check: min_length_1
+  - description: The bout runs 6 rounds with the wildean opponent tier
+    path: flyting.bout
+    check: "rounds=6 AND npc_tier=wildean"
+  - description: The scenario difficulty multiplier is 1.5
+    path: flyting.difficulty_multiplier
+    check: equals 1.5
+  - description: Verse scoring is false for this scenario
+    path: flyting.verse.required
+    check: equals false
+  - description: Momentum is an ordinary state variable with a per-turn clamp
+    path: state.variables.momentum
+    check: "max_delta_per_turn=10 AND default=50"
+  - description: The target declares an attack surface for hooks to verify against
+    path: npc.attack_surface
+    check: min_length_1
+  - description: The umpire has a voice
+    path: flyting.judge_flavor
+    check: non_empty_string

@@ -140,7 +140,17 @@ export function mergeScenarioToYaml(
 
 export function mergeNpcToYaml(formValues: Partial<NpcFile>, originalYaml: string): string {
   const original = safeParseObject(originalYaml);
-  return toYamlString(deepMerge(original, formValues as Record<string, unknown>));
+  const merged = deepMerge(original, formValues as Record<string, unknown>);
+  // An attack surface emptied by the form means "this character is not a flyting
+  // target", which the file spells as no key at all: schemas/npc.schema.json
+  // requires at least one trait whenever `attack_surface` is present, so writing
+  // `attack_surface: []` would turn a neutral edit into an invalid pack.
+  // Removal cannot be expressed by passing undefined — deepMerge skips undefined
+  // so that a partial form never wipes a field it does not render.
+  if (Array.isArray(merged['attack_surface']) && merged['attack_surface'].length === 0) {
+    delete merged['attack_surface'];
+  }
+  return toYamlString(merged);
 }
 
 export function mergeRubricToYaml(formValues: Partial<RubricFile>, originalYaml: string): string {

@@ -156,6 +156,61 @@ describe('parseNpcYaml', () => {
     expect(result.errors.some((e) => e.path === 'voice.pace')).toBe(true);
   });
 
+  it('accepts an attack surface', () => {
+    const yaml = `${VALID_NPC_YAML}attack_surface:
+  - id: vanity
+    brief: "Powdered, corseted, and fifty; convinced he is Adonis."
+    visibility: visible
+  - id: new_money
+    brief: "Grandfather sold tripe; the family crest is eleven years old."
+    visibility: discoverable
+    themes: [lineage]
+`;
+    const result = parseNpcYaml(yaml);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.attack_surface).toHaveLength(2);
+    expect(result.data.attack_surface?.[1]?.visibility).toBe('discoverable');
+  });
+
+  it('rejects an attack-surface trait id that is not a slug', () => {
+    const yaml = `${VALID_NPC_YAML}attack_surface:
+  - id: "New Money"
+    brief: "The crest is eleven years old."
+`;
+    const result = parseNpcYaml(yaml);
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.path === 'attack_surface.0.id')).toBe(true);
+  });
+
+  it('rejects an attack-surface trait with no brief', () => {
+    const yaml = `${VALID_NPC_YAML}attack_surface:
+  - id: vanity
+    brief: ""
+`;
+    const result = parseNpcYaml(yaml);
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.path === 'attack_surface.0.brief')).toBe(true);
+  });
+
+  it('rejects an unknown visibility', () => {
+    const yaml = `${VALID_NPC_YAML}attack_surface:
+  - id: vanity
+    brief: "Convinced he is Adonis."
+    visibility: secret
+`;
+    const result = parseNpcYaml(yaml);
+    expect(result.ok).toBe(false);
+    expect(result.errors.some((e) => e.path === 'attack_surface.0.visibility')).toBe(true);
+  });
+
+  it('allows an NPC with no attack surface — the conversation case', () => {
+    const result = parseNpcYaml(VALID_NPC_YAML);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.attack_surface).toBeUndefined();
+  });
+
   it('allows optional hidden_agenda to be absent', () => {
     const yaml = VALID_NPC_YAML.replace(
       /^hidden_agenda:.*$/m,

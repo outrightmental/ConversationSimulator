@@ -395,6 +395,80 @@ CREATE TABLE setup_install_jobs (
 );
 """
 
+# Flyting (issue #454): the volley log and the local high-score table.
+#
+# Volleys live beside the transcript rather than inside it. A turn row already
+# holds what was said; a volley row holds what it was worth, with the whole
+# scorecard kept as JSON so the debrief can expose the arithmetic — including
+# the raw judge verdict — for any volley, months later, with no model involved.
+# Both the player's and the opponent's volleys are recorded, because a bout
+# shows the opponent's numbers too.
+#
+# High scores are per (scenario, format) and purely local. daily_seed is the
+# optional seed that makes two runs on the same day comparable without a server.
+_FLYTING_SQL = """
+CREATE TABLE flyting_volleys (
+    id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id     TEXT    NOT NULL REFERENCES turn_sessions(session_id) ON DELETE CASCADE,
+    volley_number  INTEGER NOT NULL,
+    speaker        TEXT    NOT NULL,
+    text           TEXT    NOT NULL,
+    score          INTEGER NOT NULL,
+    band           TEXT    NOT NULL,
+    heat           REAL    NOT NULL DEFAULT 1.0,
+    banked_score   INTEGER NOT NULL DEFAULT 0,
+    momentum       INTEGER,
+    scorecard_json TEXT    NOT NULL,
+    created_at     TEXT    NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(session_id, speaker, volley_number)
+);
+
+CREATE INDEX flyting_volleys_session_idx ON flyting_volleys(session_id, id);
+
+CREATE TABLE flyting_high_scores (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    scenario_id       TEXT    NOT NULL,
+    pack_id           TEXT,
+    play_format       TEXT    NOT NULL,
+    batting_format    TEXT,
+    session_id        TEXT,
+    outcome           TEXT,
+    total_score       INTEGER NOT NULL,
+    volley_count      INTEGER NOT NULL DEFAULT 0,
+    best_volley_score INTEGER NOT NULL DEFAULT 0,
+    peak_heat         REAL    NOT NULL DEFAULT 1.0,
+    daily_seed        INTEGER,
+    achieved_at       TEXT    NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX flyting_high_scores_board_idx
+    ON flyting_high_scores(scenario_id, play_format, batting_format, total_score DESC);
+
+-- One run, one board row. Ending a run is idempotent from the client's side (a
+-- retried request, a reopened debrief), and a board that listed the same run
+-- twice would both lie about how often it was played and inflate every later
+-- run's rank.
+CREATE UNIQUE INDEX flyting_high_scores_session_idx
+    ON flyting_high_scores(session_id) WHERE session_id IS NOT NULL;
+
+-- Run state for a flyting session: format, momentum, heat, whiffs, theme usage,
+-- discovered traits. It does not fit state_vars_json, which holds integers for
+-- the meter UI, and it must not go in setup_json, which records the immutable
+-- creation request.
+ALTER TABLE turn_sessions ADD COLUMN flyting_state_json TEXT;
+"""
+
+# The scenario's game mode (issue #454), indexed so the mode is queryable and
+# so a card has an answer even when its YAML cannot be read. NULL means the
+# pre-#454 default, 'conversation': the column is read through a fallback rather
+# than backfilled, so an existing install needs no rewrite.
+_SCENARIO_MODE_SQL = """
+ALTER TABLE scenarios ADD COLUMN mode TEXT;
+
+CREATE INDEX scenarios_mode_idx ON scenarios(mode);
+"""
+
+
 MIGRATIONS: list[tuple[str, str]] = [
     ("0001_initial_schema", _INITIAL_SCHEMA_SQL),
     ("0002_model_registry_v2", _MODEL_REGISTRY_V2_SQL),
@@ -414,6 +488,8 @@ MIGRATIONS: list[tuple[str, str]] = [
     ("0016_relationship_memory", _RELATIONSHIP_MEMORY_SQL),
     ("0017_onboarding_outcome", _ONBOARDING_OUTCOME_SQL),
     ("0018_setup_install_jobs", _SETUP_INSTALL_JOBS_SQL),
+    ("0019_flyting_volleys", _FLYTING_SQL),
+    ("0020_scenario_mode", _SCENARIO_MODE_SQL),
 ]
 
 

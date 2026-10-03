@@ -20,9 +20,11 @@ const SCHEMA_NAMES = [
   "safety.schema.json",
   "scene.schema.json",
   "pack-test.schema.json",
+  "flyting-calibration.schema.json",
   "asset.schema.json",
   "turn-output.schema.json",
   "debrief.schema.json",
+  "volley-score.schema.json",
 ];
 
 for (const name of SCHEMA_NAMES) {

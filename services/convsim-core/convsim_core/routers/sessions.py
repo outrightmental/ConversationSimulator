@@ -968,6 +968,11 @@ async def delete_session(session_id: str, request: Request) -> None:
     with conn:
         # FTS shadow tables have no foreign-key cascade, so delete entries explicitly.
         conn.execute("DELETE FROM session_transcript_fts WHERE session_id = ?", (session_id,))
+        # Nor does the flyting board, which references a session without a
+        # foreign key so that a row survives schema churn. A deleted run must
+        # not keep a line on the high-score table pointing at a session the
+        # player asked us to forget; its volleys cascade with the session row.
+        conn.execute("DELETE FROM flyting_high_scores WHERE session_id = ?", (session_id,))
         conn.execute("DELETE FROM turn_sessions WHERE session_id = ?", (session_id,))
 
 

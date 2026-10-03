@@ -38,6 +38,11 @@ on:
   schedule:
     - cron: "0 4 * * *"  # 04:00 UTC daily (after registry-nightly at 03:00)
   workflow_dispatch:
+    inputs:
+      flyting_judged:
+        description: "Also run a bounded flyting judged-calibration sample"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -122,4 +127,43 @@ jobs:
         with:
           name: model-smoke-report
           path: /tmp/smoke-report.json
+          retention-days: 30
+
+      # Flyting's judged scoring tier, on request only.
+      #
+      # The deterministic tier (gates, flags, caps) runs in CI on every commit.
+      # The judged tier costs one judge call per volley that clears the gates —
+      # 147 of the launch pack's 178 reference volleys, ~7 s each against a warm
+      # starter model on a developer machine, and this runner measures a
+      # grammar-constrained turn in minutes rather than seconds — so a full
+      # judged run is far outside any nightly budget. --limit keeps a sample
+      # bounded, and spends it on the volleys that actually reach the judge
+      # rather than on gated ones CI already checks every commit: three judged
+      # volleys per suite, fifteen calls in total.
+      #
+      # Dispatch with flyting_judged=true after a judge-prompt or model change;
+      # the report artifact holds every score, so a band that moved is visible
+      # even when nothing failed.
+      - name: Flyting judged calibration sample
+        if: inputs.flyting_judged
+        run: |
+          echo "Local: python scripts/flyting-calibration.py --judge llama_cpp --limit 3"
+          python -m llama_cpp.server \
+            --model "$HOME/.convsim/models/llm/${{ steps.registry.outputs.model_id }}.gguf" \
+            --host 127.0.0.1 --port 7356 --n_ctx 8192 &
+          for _ in $(seq 1 120); do
+            curl -sf http://127.0.0.1:7356/v1/models > /dev/null && break
+            sleep 5
+          done
+          python scripts/flyting-calibration.py \
+            --pack packs/official/flyting-school \
+            --judge llama_cpp --limit 3 \
+            --json /tmp/flyting-calibration.json
+
+      - name: Upload flyting calibration report
+        if: always() && inputs.flyting_judged
+        uses: actions/upload-artifact@v6
+        with:
+          name: flyting-calibration-report
+          path: /tmp/flyting-calibration.json
           retention-days: 30

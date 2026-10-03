@@ -1,0 +1,106 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scenario_id: mead_hall_flyting
+title: The Mead-Hall Flyting
+summary: >-
+  Verse mode. You are a skald and the bench opposite has been telling the same
+  whale story for nine winters. Alliteration and a steady beat are scored as
+  craft here: a volley with neither cannot reach the top of the dimension, no
+  matter how well it lands.
+mode: flyting
+player_role:
+  label: The Skald
+  brief: >-
+    A poet of the lower benches with a better ear than your rival and a worse
+    seat. The hall keeps time by hitting the tables, and it will keep time for
+    whoever gives it something to hit for. Hammer your stresses. Alliterate.
+npc:
+  ref: ../npcs/rival_skald.yaml
+scene:
+  ref: ../scenes/mead_hall_benches.yaml
+rubric:
+  ref: ../rubrics/flyting_rubric.yaml
+duration:
+  max_turns: 20
+  soft_time_limit_minutes: 12
+opening:
+  npc_says: >-
+    Thorvald speaks! Thorvald, whale-breaker, boat-steerer, bench-shaker — and
+    beside him some small singer with a thin tongue and a thinner cup. Sing,
+    then, sparrow. The hall is waiting and the mead is warm.
+goals:
+  player_visible:
+    - "Alliterate: three content words on one sound in a run is the floor"
+    - "Keep a beat. Rough scansion is scored in verse mode"
+    - "Aim at the whale, the verse, or the appetite — not at everything at once"
+  hidden:
+    - "He escalates when the voyage is doubted and reaches for genealogy when his verse is called thin"
+    - "The voyage never left the fjord, and three names in his line are invented"
+state:
+  variables:
+    momentum:
+      min: 0
+      max: 100
+      default: 50
+      visibility: visible
+      max_delta_per_turn: 15
+difficulty:
+  default: standard
+  options:
+    standard:
+      patience: 50
+      volatility: 55
+      disclosure: 50
+      time_pressure: 45
+      label: Midwinter
+      description: A packed hall and a rival in good voice.
+    hard:
+      patience: 25
+      volatility: 75
+      disclosure: 25
+      time_pressure: 70
+      label: The Jarl Is Watching
+      description: He is fast, metrical, and the jarl has stopped eating.
+    adversarial:
+      patience: 10
+      volatility: 90
+      disclosure: 15
+      time_pressure: 85
+      label: Ale-Tongue Unbound
+      description: Relentless, inventive, and entirely without proportion.
+flyting:
+  formats: [bout, batting_practice]
+  bout:
+    rounds: 8
+    momentum_win: 85
+    momentum_k: 4
+    riposte_bonus: 15
+    npc_tier: unhinged_taunter
+  batting_practice:
+    shot_clock_s: 25
+    formats: [set_10, endless]
+  difficulty_multiplier: 1.4
+  lexicon:
+    encouraged:
+      - bench-shaker
+      - whale-road
+      - oath-breaker
+      - mead-bench
+      - word-hoard
+      - kinless
+      - ale-tongue
+    discouraged:
+      - podcast
+      - algorithm
+      - email
+    anachronism_policy: penalize
+  register:
+    notes: >-
+      Saga register: boast, kenning, and genealogy. Violence stays in the
+      language of the boast and never becomes description.
+  verse:
+    required: true
+    min_alliteration_run: 3
+  judge_flavor: >-
+    The hall's oldest skald, long past singing, who keeps the metre on the
+    table edge with two fingers and has never once been generous.

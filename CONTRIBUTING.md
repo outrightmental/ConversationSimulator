@@ -93,6 +93,9 @@ generation.
 
 - **Full specification:** [docs/SPEC.md](docs/SPEC.md) — sections on NPC state
   modelling, scenario events, scoring, and debrief.
+- **Turn-scored mode:** [docs/flyting.md](docs/flyting.md) — the per-volley
+  scoring pipeline (gates, craft metrics, novelty, judged rubric, composition)
+  and how to author a `mode: flyting` scenario.
 - **Schema reference:** `schemas/` — JSON Schema definitions for scenarios,
   NPCs, rubrics, safety policies, and pack tests.
 - **Example packs:** `packs/official/` — four fully worked packs covering

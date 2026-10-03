@@ -72,8 +72,8 @@ def insert_scenario(
         INSERT INTO scenarios
             (pack_id, slug, name, title, summary, content_rating, difficulty_default,
              max_turns, soft_time_limit_minutes, tags_json, voice_support,
-             model_recommendation, rel_path)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             model_recommendation, rel_path, mode)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             pack_db_id,
@@ -89,6 +89,7 @@ def insert_scenario(
             1 if data.voice_support else 0,
             data.model_recommendation,
             data.rel_path,
+            data.mode,
         ),
     )
     scenario_db_id: int = cursor.lastrowid  # type: ignore[assignment]

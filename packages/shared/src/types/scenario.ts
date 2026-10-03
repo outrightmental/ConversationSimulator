@@ -39,11 +39,20 @@ export interface ScenarioStateConfig {
   visible_to_player?: string[];
 }
 
+/**
+ * The turn loop a scenario runs. 'conversation' scores once at the debrief;
+ * 'flyting' scores every player turn as a volley and is played on its own
+ * screens. Absent on a card served by a pre-#454 backend, which only ever
+ * served conversation scenarios — so treat the absence as 'conversation'.
+ */
+export type ScenarioMode = 'conversation' | 'flyting';
+
 export interface ScenarioInfo {
   scenario_id: string;
   title: string;
   summary: string;
   content_rating: string;
+  mode?: ScenarioMode;
   pack_id: string;
   pack_name: string;
   player_role: PlayerRole;

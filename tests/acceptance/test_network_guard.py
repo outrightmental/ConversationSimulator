@@ -2,8 +2,8 @@
 """Acceptance tests — Local-only network guard (issue #218).
 
 Verifies that every player-facing path (gameplay, STT, TTS, debrief,
-transcript export, pack import) completes without making outbound network
-calls while a local-only guard is active.
+transcript export, pack import, flyting) completes without making outbound
+network calls while a local-only guard is active.
 
 All session states are exercised using fake workers so the suite runs in any
 CI environment without model downloads:
@@ -14,6 +14,7 @@ CI environment without model downloads:
   G-4  Pack import: zip import followed by scenario listing.
   G-5  Explicit-download always passes through LOCAL_MODE.
   G-6  The socket guard itself blocks + records a real outbound connection.
+  G-7  Flyting: a turn-scored run (judge call included), its board, a preview.
 
 Enforcement model
 -----------------
@@ -756,3 +757,177 @@ class TestSocketGuardBlocksOutbound:
         assert socket.socket.connect is not original
         guard.restore()
         assert socket.socket.connect is original
+
+
+# ---------------------------------------------------------------------------
+# G-7: Flyting path — the turn-scored mode scores, boards, and previews locally
+# ---------------------------------------------------------------------------
+
+
+_FLYTING_SCENARIO = "whitechapel_rose"
+_FLYTING_VOLLEY = (
+    "You polish your virtue like your carriage brass, sir, and both are plate, "
+    "not sterling, worn thin where the public grips them."
+)
+
+
+def _start_flyting_run(client: TestClient) -> str:
+    """Start a batting-practice run on the shipping Flyting School pack."""
+    res = client.post(
+        "/api/flyting/sessions",
+        json={
+            "scenario_id": _FLYTING_SCENARIO,
+            "play_format": "batting_practice",
+            "batting_format": "set_10",
+            # Explicit fake-runtime pin, as every model-free session does.
+            "runtime_id": "fake",
+        },
+    )
+    assert res.status_code == 201, (
+        "Starting a flyting run failed under LOCAL_MODE — a play-mode network "
+        f"call may have been blocked. Response: {res.text}"
+    )
+    return res.json()["session_id"]
+
+
+class TestFlytingNetworkGuard:
+    """G-7: A flyting run — volley scoring, board write, and draft preview.
+
+    The turn-scored mode is a second player-facing loop, and it reaches for
+    things the conversation loop never does: three bundled corpora read from
+    package data (word frequency, clichés, quote signatures), a judge call per
+    volley, and a local high-score table written when a run ends. "No network
+    anywhere" is the premise of the whole mode, so each of those runs here
+    under both guards.
+
+    The judge call is made for real: the fake runtime recognises the flyting
+    judge schema and answers it, so Stage 3 — the one stage of the mode that
+    reaches a runtime at all — is exercised here rather than skipped, verdict
+    parsing and hook verification included. That is the point of running the
+    mode through this gate: a volley is scored end to end, every stage of it,
+    with no outbound call recorded.
+    """
+
+    def test_volley_scores_without_network_call(self, _guard_client):
+        """Submitting a volley must not trigger a LOCAL_MODE network block."""
+        sid = _start_flyting_run(_guard_client)
+        res = _guard_client.post(
+            f"/api/flyting/sessions/{sid}/volley",
+            json={"content": _FLYTING_VOLLEY},
+        )
+        assert res.status_code == 200, (
+            "Scoring a volley failed — check for an unexpected network call in "
+            f"the flyting pipeline. Response: {res.text}"
+        )
+        assert res.json()["player_volley"]["score"] >= 0
+
+    def test_the_judge_stage_itself_runs_under_the_guard(self, _guard_client):
+        """Stage 3 is the only stage of the mode that reaches a runtime.
+
+        The fake runtime answers the judge schema, so this volley carries a
+        real parsed verdict rather than the mechanical fallback. Asserting that
+        is what keeps this class honest: a judge outage is caught and degrades
+        to mechanics silently, so were the call to stop happening at all, this
+        suite would go on passing while no longer guarding the one stage of
+        flyting that talks to a model.
+        """
+        sid = _start_flyting_run(_guard_client)
+        res = _guard_client.post(
+            f"/api/flyting/sessions/{sid}/volley",
+            json={"content": _FLYTING_VOLLEY},
+        )
+        assert res.status_code == 200, f"[volley] {res.text}"
+        volley = res.json()["player_volley"]
+        assert volley["judge"] is not None, (
+            "The volley was scored with no verdict, so Stage 3 never ran and "
+            "this class is not guarding the judge call it claims to."
+        )
+        assert "judge_unavailable" not in volley["flags"], (
+            "The judge call degraded to the mechanical fallback under the "
+            f"guard: flags {volley['flags']}"
+        )
+        assert _guard_client.outbound_attempts == [], (
+            "Outbound network attempts recorded while judging a volley: "
+            f"{_guard_client.outbound_attempts}"
+        )
+
+    def test_run_end_writes_the_local_board_without_network_call(self, _guard_client):
+        """Ending a run records the board row, locally, under the guard."""
+        sid = _start_flyting_run(_guard_client)
+        _guard_client.post(
+            f"/api/flyting/sessions/{sid}/volley", json={"content": _FLYTING_VOLLEY}
+        )
+        end = _guard_client.post(f"/api/flyting/sessions/{sid}/end")
+        assert end.status_code == 200, (
+            f"Ending a flyting run failed under LOCAL_MODE. Response: {end.text}"
+        )
+        board = _guard_client.get(
+            f"/api/flyting/scenarios/{_FLYTING_SCENARIO}/high-scores",
+            params={"play_format": "batting_practice"},
+        )
+        assert board.status_code == 200, f"[high-scores] {board.text}"
+        assert board.json()["entries"], (
+            "The run left no row on the local board — the board is the one "
+            "piece of flyting state a player expects to persist."
+        )
+
+    def test_daily_seed_board_is_computed_locally(self, _guard_client):
+        """``today=true`` derives the seed from the date and ids, with no call out."""
+        res = _guard_client.get(
+            f"/api/flyting/scenarios/{_FLYTING_SCENARIO}/high-scores",
+            params={"play_format": "batting_practice", "today": "true"},
+        )
+        assert res.status_code == 200, f"[today's board] {res.text}"
+        assert res.json()["daily_seed"] is not None, (
+            "today=true returned no seed — the seed must be a local function of "
+            "the date and the ids."
+        )
+
+    def test_draft_volley_preview_completes_without_network_call(self, _guard_client):
+        """The Workbench test-volley box scores a draft with no run and no model."""
+        res = _guard_client.post(
+            "/api/flyting/preview",
+            json={"scenario_id": _FLYTING_SCENARIO, "content": _FLYTING_VOLLEY},
+        )
+        assert res.status_code == 200, (
+            f"Previewing a draft volley failed under LOCAL_MODE. Response: {res.text}"
+        )
+        assert res.json()["volley"]["band"]
+
+    def test_full_flyting_path(self, _guard_client):
+        """Combined gate: list → setup → run → volley → end → board, guard clean."""
+        listing = _guard_client.get("/api/flyting/scenarios")
+        assert listing.status_code == 200, f"[flyting scenarios] {listing.text}"
+        assert any(
+            s["scenario_id"] == _FLYTING_SCENARIO for s in listing.json()
+        ), f"[flyting scenarios] {_FLYTING_SCENARIO} not listed under LOCAL_MODE"
+
+        setup = _guard_client.get(f"/api/flyting/scenarios/{_FLYTING_SCENARIO}")
+        assert setup.status_code == 200, f"[setup] {setup.text}"
+        assert setup.json()["target"]["attack_surface"], (
+            "[setup] the brief named no attack surface — it is the one thing a "
+            "verified hook can aim at"
+        )
+
+        sid = _start_flyting_run(_guard_client)
+        scored = _guard_client.post(
+            f"/api/flyting/sessions/{sid}/volley", json={"content": _FLYTING_VOLLEY}
+        )
+        assert scored.status_code == 200, f"[volley] {scored.text}"
+
+        run = _guard_client.get(f"/api/flyting/sessions/{sid}")
+        assert run.status_code == 200, f"[run] {run.text}"
+
+        end = _guard_client.post(f"/api/flyting/sessions/{sid}/end")
+        assert end.status_code == 200, f"[end] {end.text}"
+
+        export = _guard_client.get(f"/api/sessions/{sid}/export")
+        assert export.status_code == 200, (
+            "[export] a flyting run is an ordinary session row and must export "
+            f"like one: {export.text}"
+        )
+
+        assert _guard_client.outbound_attempts == [], (
+            "Outbound network attempts recorded during a flyting run: "
+            f"{_guard_client.outbound_attempts}"
+        )

@@ -33,6 +33,7 @@ const validators = {
   safety: ajv.compile(loadSchema('safety.schema.json')),
   scene: ajv.compile(loadSchema('scene.schema.json')),
   'pack-test': ajv.compile(loadSchema('pack-test.schema.json')),
+  'flyting-calibration': ajv.compile(loadSchema('flyting-calibration.schema.json')),
 };
 
 export type SchemaKey = keyof typeof validators;

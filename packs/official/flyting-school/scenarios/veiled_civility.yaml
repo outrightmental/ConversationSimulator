@@ -1,0 +1,100 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scenario_id: veiled_civility
+title: Veiled Civility
+summary: >-
+  The hardest format in the pack. Overt rudeness is a foul, not a low score: the
+  sting must arrive wrapped in a compliment. Fidelity is weighted above sting
+  here, because in this room how a thing is said is most of what is being
+  judged.
+mode: flyting
+player_role:
+  label: The Rival
+  brief: >-
+    Second-most admired woman in the room, which in this room is a wound. You
+    have ninety seconds of orchestra tuning and thirty people pretending not to
+    listen. Nothing you say may be impolite. Everything you say may be fatal.
+npc:
+  ref: ../npcs/season_darling.yaml
+scene:
+  ref: ../scenes/ballroom_anteroom.yaml
+rubric:
+  ref: ../rubrics/veiled_civility_rubric.yaml
+duration:
+  max_turns: 16
+  soft_time_limit_minutes: 12
+opening:
+  npc_says: >-
+    There you are. I did so hope you would come tonight — I said to my aunt
+    that the evening would be quite flat without you, and she agreed at once.
+    What a very sensible gown.
+goals:
+  player_visible:
+    - "Wrap every sting in courtesy. Naked rudeness is a foul worth zero"
+    - "Two meanings in one sentence; let the room decide which you intended"
+    - "Fidelity outweighs sting in this rubric — the gloves are the game"
+  hidden:
+    - "She answers rudeness with pity, which costs you the room"
+    - "The aunt's contested will and the counting under her breath are not in your brief"
+state:
+  variables:
+    momentum:
+      min: 0
+      max: 100
+      default: 50
+      visibility: visible
+      max_delta_per_turn: 10
+difficulty:
+  default: standard
+  options:
+    standard:
+      patience: 60
+      volatility: 45
+      disclosure: 45
+      time_pressure: 50
+      label: Between Dances
+      description: Courteous, serene, and entirely unbothered.
+    hard:
+      patience: 35
+      volatility: 65
+      disclosure: 30
+      time_pressure: 70
+      label: Her Aunt Is Watching
+      description: Faster, warmer, and crueller — and the matrons are listening.
+flyting:
+  formats: [bout, batting_practice]
+  bout:
+    rounds: 6
+    momentum_win: 80
+    momentum_k: 4
+    riposte_bonus: 15
+    npc_tier: wildean
+  batting_practice:
+    shot_clock_s: 30
+    formats: [set_10]
+  difficulty_multiplier: 1.5
+  lexicon:
+    encouraged:
+      - modiste
+      - obliged
+      - charming
+      - how brave
+      - one does admire
+      - so sensible
+    discouraged:
+      - podcast
+      - algorithm
+      - email
+      - awesome
+    anachronism_policy: penalize
+  register:
+    require_surface_politeness: true
+    overt_rudeness_is_foul: true
+    notes: >-
+      Every volley must be sayable, in that tone, to a duchess. The insult
+      lives in the implication; if it is on the surface, it is a scandal.
+  verse:
+    required: false
+  judge_flavor: >-
+    A dowager by the window who has watched forty seasons, missed nothing, and
+    forgiven very little.

@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: CC-BY-4.0
+schema_version: "0.1"
+scene_id: ballroom_anteroom
+display_name: "The Anteroom, Between Dances"
+description: >-
+  Candle heat, chalk dust from the ballroom floor, and the particular quiet of
+  thirty people pretending not to listen. A card table nobody is playing at. Two
+  matrons by the window with a view of everything. The orchestra is tuning, which
+  gives you roughly ninety seconds before the room has to pretend to disperse.
+ambient: quiet_ballroom
+audience:
+  label: the anteroom
+  reactions:
+    - min_score: 0
+      line: A fan opens somewhere. The conversation resumes elsewhere.
+      event_id: anteroom_indifference
+    - min_score: 60
+      line: One of the matrons by the window turns her head very slightly.
+      event_id: anteroom_notice
+    - min_score: 120
+      line: >-
+        A sound that is not quite a laugh travels the length of the room and is
+        immediately disowned by everyone in it.
+      event_id: anteroom_ripple
+    - min_score: 180
+      line: >-
+        Two separate people commit it to memory for later use. It will be at
+        supper before you are.
+      event_id: anteroom_immortality

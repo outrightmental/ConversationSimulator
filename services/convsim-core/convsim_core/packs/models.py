@@ -131,6 +131,10 @@ class ScenarioCard(BaseModel):
     summary: str = ""
     tags: list[str] = []
     content_rating: Optional[str] = None
+    # The turn loop this scenario runs. 'conversation' scores once at the
+    # debrief; 'flyting' scores every player turn and is played on its own
+    # screens, so the library must know the mode to route a card correctly.
+    mode: str = "conversation"
 
     # ── Canonical ScenarioInfo contract fields ────────────────────────────────
     player_role: PlayerRoleInfo = PlayerRoleInfo(label="")
@@ -184,6 +188,7 @@ class ScenarioInsertData:
     voice_support: bool = False
     model_recommendation: Optional[str] = None
     rel_path: Optional[str] = None
+    mode: Optional[str] = None
     pack_name: str = ""
     pack_description: Optional[str] = None
     pack_tags: list[str] = field(default_factory=list)
