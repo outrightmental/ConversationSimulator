@@ -91,11 +91,13 @@ The bridge consists of:
 
 1. **`apps/desktop/src-tauri/src/steam.rs`** — Rust module that wraps the
    `steamworks` crate. Contains the `SteamRuntime` struct (with the
-   `unlock_achievement`, `increment_stat`, and `set_rich_presence` methods) and
+   `unlock_achievement`, `unlocked_achievements`, `increment_stat`, and
+   `set_rich_presence` methods) and
    the graceful-fallback logic. The `#[tauri::command]` handlers that expose
    these methods to the front end live in `apps/desktop/src-tauri/src/lib.rs`.
 2. **`useSteamAchievements`** React hook — front-end wrapper that invokes the
-   Tauri `steam_unlock_achievement` and `steam_increment_stat` commands.
+   Tauri `steam_unlock_achievement`, `steam_unlocked_achievements`, and
+   `steam_increment_stat` commands.
 3. **`useSteamRichPresence`** React hook — front-end wrapper that invokes the
    Tauri `steam_set_rich_presence` command.
 
@@ -104,6 +106,7 @@ The bridge consists of:
 | Command | Arguments | Effect when Steam active | Effect when Steam absent |
 |---------|-----------|--------------------------|--------------------------|
 | `steam_unlock_achievement` | `name: String` | Calls `steamworks::UserStats::achievement(name).set()` then `store_stats()` | Returns `false`, no-op |
+| `steam_unlocked_achievements` | `names: Vec<String>` | Returns the subset of `names` that `steamworks::UserStats::achievement(name).get()` reports as unlocked for the signed-in account. Drives the `ACH_CERTIFIED_EXPERT` capstone check | Returns `[]` — read as "nothing confirmed", never "nothing earned" |
 | `steam_increment_stat` | `name: String` | Reads current value, increments by 1, calls `store_stats()` | Returns `false`, no-op |
 | `steam_set_rich_presence` | `value: String` | Calls `steamworks::Friends::set_rich_presence("steam_display", Some(value))` — the key is fixed internally | Returns `false`, no-op |
 | `steam_activate_overlay` | — | Calls `steamworks::Friends::activate_game_overlay("")` to open the overlay (the Shift+Tab chord); returns `false` if the Steam client has the overlay disabled. See [Steam overlay (Windows WebView2 caveat)](#steam-overlay-windows-webview2-caveat) | Returns `false`, no-op |
@@ -260,7 +263,8 @@ every confirmed unlock, `unlock()` asks Steam — via the
 `ACH_CERTIFIED_EXPERT` the signed-in account already holds, and fires the
 capstone when every required name comes back. `OPTIONAL_ACHIEVEMENTS` in
 `useSteamAchievements.ts` lists what the capstone does not require, so 100%
-stays reachable without Workshop, DLC, a controller, or a player-supplied model.
+stays reachable without Workshop, DLC, a controller, a player-supplied model, or
+a pack library that ever needed restoring.
 
 Steam is the only authority here, deliberately: "has this player earned every
 required achievement?" is a fact about a Steam *account*, and a device-local
