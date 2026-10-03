@@ -112,7 +112,7 @@ Exit 5 with *"Debrief has no rubric dimension scores"* is the one `pipeline`
 failure whose cause is ambiguous from the class alone, so the harness resolves it
 for you: each NPC turn's `rubric_observation_count` is recorded in the report
 artifact, totalled as `rubric_observations_seen`, and the failure message names
-whichever of the two causes below applies.
+which of the causes below applies.
 
 The debrief's dimension scores are accumulated entirely from
 `rubric_observations` that the model volunteers on each NPC turn. Nothing asks
@@ -130,7 +130,7 @@ across two runs volunteered at least one observation, and the debrief scored
 three to four dimensions with an `overall_score` near 50. Treat zero
 observations as a signal, not as the resting state.
 
-So an unscored debrief means one of two quite different things:
+So an unscored debrief means one of three quite different things:
 
 - **`rubric_observations_seen` is 0 — the model volunteered nothing.** Only the
   prompt's bare schema hint was ever asking, so this is reachable by design —
@@ -149,10 +149,17 @@ So an unscored debrief means one of two quite different things:
   that arrived pre-parsed from the runtime adapter — loses its observations on
   the way to the debrief. Compare `raw_npc_output` from the `/debug` payload
   against the per-turn `rubric_observation_count` in the artifact.
+- **`rubric_observations_seen` is `null` — the harness could not tell.** The NPC
+  turn payloads carried no readable `rubric_observations` list, so the per-turn
+  `rubric_observation_count` is `null` too and the message quotes both causes
+  above rather than picking one. `convsim-core` always sends that list today, so
+  this is itself worth chasing: the turn response contract changed. The harness
+  deliberately does not score an unreadable payload as zero — that would have
+  the verdict name the one cause it has no evidence for.
 
-Either way the run is red: *"scored debrief"* is the acceptance criterion for
+In every case the run is red: *"scored debrief"* is the acceptance criterion for
 [#457](https://github.com/outrightmental/ConversationSimulator/issues/457).
-Neither cause is a reason to weaken the check — the first is worth a tracking
+No cause is a reason to weaken the check — the first is worth a tracking
 issue for the missing rubric prompt layer *and* an investigation of the run that
 hit it.
 

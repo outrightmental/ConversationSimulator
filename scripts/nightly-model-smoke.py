@@ -741,7 +741,7 @@ def _npc_turn_content(events: Sequence[dict]) -> str:
     return content if isinstance(content, str) else ""
 
 
-def _rubric_observation_count(events: Sequence[dict]) -> int:
+def _rubric_observation_count(events: Sequence[dict]) -> Optional[int]:
     """Count the rubric observations the model volunteered on this NPC turn.
 
     The turn response carries the *validated* observations, which is the only
@@ -751,9 +751,37 @@ def _rubric_observation_count(events: Sequence[dict]) -> int:
     were accepted on the turn but never scored mean the debrief engine lost
     them, while no observations anywhere means the model simply never
     volunteered any.  See ``evaluate_debrief``.
+
+    Returns ``None`` — not 0 — when the payload carries no readable
+    ``rubric_observations`` list, the same way the per-turn parse flags warn
+    rather than pass when the debug endpoint gives us nothing: "the model
+    volunteered none" and "we could not read what it volunteered" lead to
+    opposite triage, and the whole point of recording this is that the
+    unscored-debrief verdict names a cause it has actually established.  An
+    empty list is a real observation of zero and still counts as 0.
     """
     observations = _npc_turn_payload(events).get("rubric_observations")
-    return len(observations) if isinstance(observations, list) else 0
+    return len(observations) if isinstance(observations, list) else None
+
+
+def _total_rubric_observations(turns: Sequence[Dict[str, Any]]) -> Optional[int]:
+    """Total the per-turn rubric observation counts, or ``None`` if unknowable.
+
+    ``None`` only when *nothing* readable was found — an unreadable payload, or
+    no generated turn to read at all.  A total above zero already settles which
+    cause of an unscored debrief applies (the turns did carry observations), so
+    an unreadable turn alongside readable ones does not make the verdict
+    ambiguous.  Only the authored opening is skipped: it is not a generation and
+    so has no count to miss.
+    """
+    counts = [
+        t.get("rubric_observation_count") for t in turns if t.get("model_generated")
+    ]
+    total = sum(c for c in counts if isinstance(c, int))
+    if total > 0:
+        return total
+    nothing_readable = not counts or any(not isinstance(c, int) for c in counts)
+    return None if nothing_readable else 0
 
 
 def _excerpt(text: str) -> str:
@@ -832,7 +860,8 @@ def evaluate_debrief(
     failure — but on its own that failure does not say which of two very
     different things happened, and the remedy differs completely.
     ``rubric_observations_seen`` (how many rubric observations the NPC turns
-    actually returned, ``None`` when the run could not tell) resolves it:
+    actually returned, ``None`` when the run could not read any — see
+    ``_total_rubric_observations``) resolves it:
 
     * **0** — the model volunteered nothing to score, which nothing asked it
       to. Reachable because of the thin prompt coverage, but not the normal
@@ -869,10 +898,12 @@ def evaluate_debrief(
             # that just said it could not tell, is the triage this harness is
             # supposed to have done, done wrongly.
             cause = (
-                "the run did not record how many rubric observations the NPC "
+                "the run could not read how many rubric observations the NPC "
                 "turns carried, so the two causes below cannot be told apart "
                 "from this message — read rubric_observation_count per turn in "
-                "the report artifact. " + UNSCORED_DEBRIEF_NOTE
+                "the report artifact (null means the turn payload carried no "
+                "readable rubric_observations list, which is itself worth a "
+                "look at the turn response contract). " + UNSCORED_DEBRIEF_NOTE
                 + " If the turns did carry observations, it is the other cause "
                 "instead: " + UNSCORED_WITH_OBSERVATIONS_NOTE
             )
@@ -1389,15 +1420,19 @@ def run_smoke(
             "latency_ms": round(debrief_ms),
         }
         # Everything the NPC turns offered the debrief to score.  An unscored
-        # debrief means something different depending on whether this is zero.
-        observations_seen = sum(
-            t.get("rubric_observation_count", 0) for t in results["turns"]
-        )
+        # debrief means something different depending on whether this is zero —
+        # and something different again when we could not read it, so an
+        # unreadable turn payload yields None rather than a confident zero.
+        # A positive total is still conclusive even with an unreadable turn
+        # among the others: observations *were* seen, so the debrief losing
+        # them is the cause whatever the missing turn carried.
+        observations_seen = _total_rubric_observations(results["turns"])
         results["rubric_observations_seen"] = observations_seen
         print(f"[smoke] Debrief in {debrief_ms:.0f} ms | "
               f"overall_score={debrief.get('overall_score')} "
               f"scores={debrief.get('scores')} "
-              f"rubric_observations_from_turns={observations_seen}")
+              f"rubric_observations_from_turns="
+              f"{'unknown' if observations_seen is None else observations_seen}")
 
         # ── assertions ────────────────────────────────────────────────────────
         clock.enter("assertions")

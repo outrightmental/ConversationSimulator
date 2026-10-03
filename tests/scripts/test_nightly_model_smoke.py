@@ -915,15 +915,50 @@ class TestEventExtraction:
         }}]
         assert smoke._rubric_observation_count(events) == 2
 
+    def test_an_empty_observation_list_counts_zero(self) -> None:
+        # An empty list is a real observation of zero: the model was asked (by
+        # the schema's bare hint) and volunteered nothing.
+        assert smoke._rubric_observation_count(
+            [{"event_type": "npc_turn", "payload": {
+                "content": "x", "rubric_observations": []}}]
+        ) == 0
+
     @pytest.mark.parametrize("payload", [
-        {"content": "x"},                      # key absent entirely
-        {"content": "x", "rubric_observations": []},
-        {"content": "x", "rubric_observations": None},
+        {"content": "x"},                                  # key absent entirely
+        {"content": "x", "rubric_observations": None},     # present but unusable
+        {"content": "x", "rubric_observations": "two"},
     ])
-    def test_absent_or_empty_rubric_observations_count_zero(self, payload: dict) -> None:
+    def test_an_unreadable_observation_list_is_unknown_not_zero(
+        self, payload: dict
+    ) -> None:
+        # Counting an unreadable payload as zero would let the unscored-debrief
+        # verdict assert "no NPC turn carried a rubric_observation" — sending
+        # triage after the prompt layer and the model pin — when what actually
+        # happened is that the turn response no longer exposes the list.
         assert smoke._rubric_observation_count(
             [{"event_type": "npc_turn", "payload": payload}]
-        ) == 0
+        ) is None
+
+    @pytest.mark.parametrize(("counts", "expected"), [
+        ([0, 0, 0], 0),
+        ([1, 0, 2], 3),
+        ([None, None, None], None),      # nothing readable anywhere
+        ([None, 0, 0], None),            # a gap with no positive evidence
+        ([None, 2, 0], 2),               # observations were seen regardless
+    ])
+    def test_the_total_is_unknown_only_when_nothing_was_readable(
+        self, counts: list, expected: int | None
+    ) -> None:
+        turns = [{"model_generated": False, "label": "npc_opening"}] + [
+            {"model_generated": True, "rubric_observation_count": c} for c in counts
+        ]
+        assert smoke._total_rubric_observations(turns) == expected
+
+    def test_a_run_with_no_generated_turns_reports_an_unknown_total(self) -> None:
+        # Nothing was observed, which is not the same as observing nothing.
+        assert smoke._total_rubric_observations(
+            [{"model_generated": False, "label": "npc_opening"}]
+        ) is None
 
     def test_excerpt_is_bounded_and_collapsed(self) -> None:
         excerpt = smoke._excerpt("a\n\n  b" + "x" * 500)
@@ -1294,8 +1329,14 @@ class _FakeProc:
 
 _OPENING = {"events": [{"event_type": "npc_opening",
                         "payload": {"content": "Thanks for coming in today."}}]}
+# convsim-core always puts a rubric_observations list in the npc_turn payload
+# (see the npc_event payload in routers/sessions.py), empty or not, so the
+# baseline fake carries one too. A payload *without* the key is a different
+# situation the harness must not read as "the model volunteered none" — see
+# test_a_turn_payload_without_observations_is_not_read_as_zero.
 _NPC_TURN = {"events": [{"event_type": "npc_turn",
-                         "payload": {"content": "Walk me through that trade-off."}}],
+                         "payload": {"content": "Walk me through that trade-off.",
+                                     "rubric_observations": []}}],
              "ending_type": None}
 
 
@@ -1507,6 +1548,47 @@ class TestRunSmokeOrchestration:
         ), "the per-turn count belongs in the artifact, not just the total"
         assert any(smoke.UNSCORED_WITH_OBSERVATIONS_NOTE in f for f in results["failures"])
         assert not any(smoke.UNSCORED_DEBRIEF_NOTE in f for f in results["failures"])
+
+    def test_a_turn_payload_without_observations_is_not_read_as_zero(
+        self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """A third case: the harness could not read what the turns volunteered.
+
+        convsim-core always sends a rubric_observations list today, so a payload
+        without one means the turn response contract changed. Scoring that as
+        "the model volunteered nothing" would have the verdict confidently name
+        the one cause the run has no evidence for, and send triage to the prompt
+        layer and the model pin. Say both causes are open instead.
+        """
+        models_dir, model_id, digest = staged_model
+        no_observations_key = {
+            "events": [{"event_type": "npc_turn",
+                        "payload": {"content": "Walk me through that trade-off."}}],
+            "ending_type": None,
+        }
+        monkeypatch.setattr(
+            smoke, "_request_json",
+            _fake_core(
+                _debrief(scores={}, overall_score=None),
+                turn=no_observations_key,
+            ),
+        )
+        report = tmp_path / "report.json"
+
+        exit_code = smoke.run_smoke(
+            model_id, 20.0, report, model_sha256=digest, models_dir=models_dir
+        )
+
+        assert exit_code == smoke.EXIT_CODES[smoke.FailureClass.PIPELINE]
+        results = json.loads(report.read_text(encoding="utf-8"))
+        assert results["rubric_observations_seen"] is None
+        assert all(
+            t["rubric_observation_count"] is None for t in results["turns"][1:]
+        ), "a null per-turn count is what tells the reader the list was unreadable"
+        no_scores = next(f for f in results["failures"] if "rubric dimension" in f)
+        assert "could not read" in no_scores
+        assert smoke.UNSCORED_DEBRIEF_NOTE in no_scores
+        assert smoke.UNSCORED_WITH_OBSERVATIONS_NOTE in no_scores
 
     def test_latency_regression_is_a_budget_failure_not_a_pipeline_one(
         self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
