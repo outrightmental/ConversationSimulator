@@ -71,6 +71,8 @@ While the NPC is thinking, the screen shows a clock and a bar:
 | `22s / ~40s` over a filling bar | A turn is expected to cost about 40 s on this machine, and the caption says roughly how much of it is left. |
 | `1m 20s / ~40s` in amber | The turn has outrun its estimate. The bar stops pretending to know, and says the reply is not lost. |
 
+The heading switches from "NPC is thinking" to "NPC is replying" once the reply starts arriving word by word, and the whole panel disappears the moment the reply is on screen — the quoted estimate covers the full round trip, so the clock keeps running until the turn is actually over.
+
 Worth knowing about the number it quotes:
 
 - **It is the median of up to eight recent turns**, not the mean. One turn that stalled because the system paged the model back in should not inflate the next five.
