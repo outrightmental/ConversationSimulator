@@ -175,11 +175,23 @@ async def judge_volley(
             max_tokens=JUDGE_MAX_TOKENS,
         )
 
+    # A hook names a trait of the volley's *target*, and the only attack surface
+    # a pack declares is the NPC's — which is the player's target. The
+    # opponent's own volleys are aimed back at the player, who declares none, so
+    # no hook can be verified for one: a claim checked against the NPC's own
+    # surface would pay the opponent a topicality bonus of up to x1.4 for naming
+    # traits of itself, and in a bout that multiplier is fed straight into
+    # k * (S_player - S_npc) / 100. The prompt still carries the surface,
+    # because the system prompt has to stay identical between the two speakers
+    # for a caching runtime to reuse it; a claim arriving for the wrong target
+    # is recorded in dropped_hooks like any other unverifiable one.
+    hook_surface = service.context.attack_surface if speaker == "player" else ()
+
     def _parse(raw: str) -> Optional[VolleyJudgment]:
         return parse_volley_judgment(
             raw,
             volley_text=prepared.volley.text,
-            attack_surface=service.context.attack_surface,
+            attack_surface=hook_surface,
             riposte_allowed=bool(opponent_last_line),
             callback_allowed=bool(earlier_exchanges),
             discovered_traits=set(discovered_traits or ()),

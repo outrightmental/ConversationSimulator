@@ -589,3 +589,69 @@ class TestServiceJudgeFoulPolicy:
         assert fouled.audience_reaction is None
         clean = service.compose(prepared, judgment(), volley_number=2)
         assert clean.audience_reaction == "A fan snaps shut."
+
+
+# ── Whose traits a hook may name ─────────────────────────────────────────────
+
+
+class TestOpponentVolleyHooks:
+    """A hook names a trait of the volley's target, and only the NPC has any.
+
+    The pack declares an attack surface for the NPC — the player's target. The
+    opponent's own volleys in a bout come back at the player, who declares
+    none, so nothing it claims can be verified. Checking its claims against the
+    NPC's own surface paid the opponent up to x1.4 topicality for naming traits
+    of itself, and in a bout that multiplier goes straight into
+    ``k * (S_player - S_npc) / 100``.
+    """
+
+    VERDICT = {
+        "sting": 8, "wit": 8, "craft": 8, "fidelity": 8,
+        "hooks": [{"trait": "vanity", "evidence": "powdered and corseted"}],
+        "themes": ["vanity"], "devices": ["metaphor"],
+        "riposte": {"is_riposte": False, "evidence": None},
+        "callback": {"is_callback": False, "evidence": None},
+        "fouls": [], "umpire_line": "Returned with interest.",
+    }
+    # Quotes the hook evidence verbatim, so only the trait lookup can refuse it.
+    VOLLEY = "You are powdered and corseted yourself, madam, and fooling nobody."
+
+    class _Runtime:
+        def __init__(self, reply):
+            self.reply = reply
+
+        async def chat_stream(self, request):
+            from convsim_core.runtime.types import ChatFinal
+
+            yield ChatFinal(
+                text=self.reply, structured=None,
+                model_id="test", input_tokens=0, output_tokens=0,
+            )
+
+    def _judge(self, speaker):
+        import asyncio
+
+        from convsim_core.flyting.pipeline import judge_volley
+
+        service = make_service()
+        prepared = service.prepare(self.VOLLEY)
+        runtime = self._Runtime(json.dumps(self.VERDICT))
+        return service, asyncio.run(
+            judge_volley(prepared, service, runtime, speaker=speaker)
+        )
+
+    def test_the_players_claim_is_verified_against_the_target(self):
+        _, verdict = self._judge("player")
+        assert [h.trait for h in verdict.hooks] == ["vanity"]
+
+    def test_the_opponents_claim_cannot_be_verified_at_all(self):
+        _, verdict = self._judge("npc")
+        assert verdict.hooks == []
+        assert [d.reason for d in verdict.dropped_hooks] == ["unknown_trait"]
+
+    def test_so_the_opponent_earns_no_topicality(self):
+        service = make_service()
+        prepared = service.prepare(self.VOLLEY)
+        _, verdict = self._judge("npc")
+        composed = service.compose(prepared, verdict, volley_number=1, speaker="npc")
+        assert composed.topicality == pytest.approx(1.0)
