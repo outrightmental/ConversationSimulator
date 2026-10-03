@@ -51,7 +51,7 @@ _CHAT_TIMEOUT = 180.0
 #: The generation budget must not also be the connect budget. Opening a socket is
 #: quick or hopeless — a default Ollama is on loopback, and a remote endpoint set
 #: via CONVSIM_OLLAMA_BASE_URL should report "not reachable" in seconds rather
-#: than hold the player at "NPC is responding…" for three minutes first. Keeping
+#: than hold the player at "NPC is thinking…" for three minutes first. Keeping
 #: them separate is also what makes a ConnectTimeout mean "absent" rather than
 #: "slow" below.
 _CONNECT_TIMEOUT = 5.0
