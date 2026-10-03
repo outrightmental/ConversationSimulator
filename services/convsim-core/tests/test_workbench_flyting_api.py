@@ -184,6 +184,24 @@ def test_preview_counts_prior_volleys_against_freshness(client):
     assert repeated["freshness"]["value"] < first["freshness"]["value"]
 
 
+def test_preview_bounds_the_prior_volley_list(client):
+    """The same cap the play route's preview carries.
+
+    Novelty compares the draft against every prior volley given, so an
+    unbounded list is an unbounded amount of lexical comparison asked of the
+    author's own machine from one request.
+    """
+    resp = client.post(
+        "/api/workbench/packs/local-dev/flyting-school/volley-preview",
+        json={
+            "scenario_path": SCENARIO_FILE,
+            "content": GOOD_VOLLEY,
+            "prior_volleys": [f"a prior volley number {i}" for i in range(21)],
+        },
+    )
+    assert resp.status_code == 422, resp.text
+
+
 def test_preview_refuses_a_conversation_scenario(client, roots):
     plain = roots[1] / "flyting-school" / "scenarios" / "plain.yaml"
     plain.write_text(

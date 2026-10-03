@@ -23,7 +23,7 @@ from typing import Any, Dict, List, Literal, Optional
 
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from convsim_core.config import ServiceConfig
 from convsim_core.errors import ConvsimError
@@ -684,8 +684,11 @@ class WorkbenchVolleyPreviewBody(BaseModel):
     scenario_path: str
     content: str
     # Earlier volleys, so freshness and theme decay can be exercised from the
-    # authoring screen the same way a run exercises them.
-    prior_volleys: List[str] = []
+    # authoring screen the same way a run exercises them. Bounded like the play
+    # route's preview: the novelty stage compares the draft against every one of
+    # these, so an unbounded list is an unbounded amount of work asked of the
+    # author's own machine.
+    prior_volleys: List[str] = Field(default_factory=list, max_length=20)
 
 
 class WorkbenchVolleyPreviewResponse(BaseModel):
