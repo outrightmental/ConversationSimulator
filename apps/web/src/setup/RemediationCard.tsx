@@ -14,7 +14,7 @@
 import { useState } from 'react'
 import type { PreflightCheck, PreflightFixAction } from '@convsim/shared'
 import { buildDiagnosticsReport } from '../api/diag'
-import { copyTextToClipboard } from '../components/CopyDiagnosticsButton'
+import { copyTextToClipboard } from '../lib/clipboard'
 import { useTranslation } from '../i18n'
 
 export interface RemediationCardProps {
