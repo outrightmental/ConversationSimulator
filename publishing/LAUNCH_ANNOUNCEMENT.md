@@ -91,10 +91,12 @@ before the bytes land on your machine. Here is how to get one:
 
 1. Launch the app. The **Model Manager** opens on first run.
 2. Choose a model from the built-in registry. We recommend starting with
-   **Qwen3 4B Instruct Q4\_K\_M** (~2.5 GB) — it is the lightest model in the
-   registry and the only practical choice for CPU-only machines. Larger models
-   (Qwen3 8B and up) are available if your hardware has the RAM/VRAM headroom
-   for them.
+   **Qwen3 4B Instruct Q4\_K\_M** (~2.5 GB) — the starter tier, and the
+   practical default for CPU-only machines. The registry also carries a smaller
+   **Qwen3 1.7B Instruct Q8\_0** (~1.8 GB, 3 GB VRAM minimum) for machines that
+   cannot fit the starter in VRAM: quicker, but NPCs hold a conversation less
+   consistently on it. Larger models (Qwen3 8B and up) are available if your
+   hardware has the RAM/VRAM headroom for them.
 3. Review the model name, licence, download size, SHA-256 checksum, and
    destination path shown in the Model Manager.
 4. Confirm the download. The app verifies the checksum automatically and
