@@ -290,7 +290,7 @@ Navigate to **Steamworks App Admin → Store Page → Basic Info**.
 
 Navigate to **Steamworks App Admin → Stats & Achievements**.
 
-- [ ] Five achievements defined as specified in
+- [ ] All 43 achievements defined as specified in
       [`docs/steam-achievements-stats-rich-presence.md`](../docs/steam-achievements-stats-rich-presence.md).
 - [ ] Achievement icons uploaded (64 × 64 px and 32 × 32 px for each).
 - [ ] Achievement names and descriptions match approved copy.
