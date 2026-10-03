@@ -1378,9 +1378,17 @@ def cmd_audit(_args: argparse.Namespace) -> int:
     print("")
     _, actions, findings = _collect(manifest, dry_run=True)
     _report(actions, findings)
-    if actions or findings:
+    if actions:
         print(f"FAIL: tracker drifts from {MANIFEST_PATH.name}.")
         print("      Run: python scripts/project-structure.py apply")
+        print("")
+        return 1
+    if findings:
+        # Only point at `apply` when there is something for it to converge. A
+        # Priority nobody has decided yet is a triage queue, not drift: `apply`
+        # would change nothing and exit 1 again.
+        print(f"FAIL: {len(findings)} item(s) need a human decision — the declared")
+        print("      structure itself is converged, so `apply` has nothing to do.")
         print("")
         return 1
     print("All checks passed.")
