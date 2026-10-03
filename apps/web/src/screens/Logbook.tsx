@@ -90,7 +90,13 @@ export default function Logbook() {
     if (profile.total_sessions >= SEASONED_SCENARIOS) {
       void unlock(SteamAchievement.TEN_SCENARIOS)
     }
-    if (profile.personal_records.length > 0) {
+    // "Beat your own score", not "have a score". `personal_records` holds the
+    // best result per scenario+difficulty, so it is non-empty after the very
+    // first scored debrief — granting on that would make ACH_PERSONAL_BEST a
+    // free duplicate of ACH_FIRST_DEBRIEF. `last_session_delta` is the logbook's
+    // own "Last session +N" figure: the most recent scored session minus the one
+    // before it, and `null` until there are two to compare.
+    if (profile.last_session_delta !== null && profile.last_session_delta > 0) {
       void unlock(SteamAchievement.PERSONAL_BEST)
     }
   }, [state, profile, unlock])

@@ -66,7 +66,7 @@ names; never rename or reuse one. The five marked **v1** shipped first (issue
 | Take Two | `ACH_REPLAY_VARIATION` | Player replays the scenario they just finished from the debrief, to run it with a different difficulty, language, or input mode. | No |
 | Practice Streak **(v1)** | `ACH_PRACTICE_STREAK` | Player completes scenarios on three or more consecutive calendar days. | Yes |
 | Seasoned | `ACH_TEN_SCENARIOS` | Player's logbook records ten or more completed sessions. | No |
-| Personal Best | `ACH_PERSONAL_BEST` | Player's logbook records at least one personal best score. | Yes |
+| Personal Best | `ACH_PERSONAL_BEST` | Player's most recent scored session beats the one before it — the logbook's "Last session" delta is positive. Having *a* score is not enough; the player has to improve on their own. | Yes |
 | Take It With You | `ACH_LOGBOOK_EXPORT` | Player exports their logbook. | No |
 | They Remember You | `ACH_RELATIONSHIP_MEMORY` | An NPC relationship recap exists — an NPC has remembered the player across sessions. | Yes |
 

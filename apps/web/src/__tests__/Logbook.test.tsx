@@ -201,8 +201,8 @@ describe('Logbook — single session delta', () => {
 //
 // The logbook grants the three "durable history" achievements, and it grants
 // them from whatever the profile already says. That is what makes them
-// retroactive: a player who built the streak, the ten sessions, or the personal
-// record before this release earns them the next time they open this screen.
+// retroactive: a player who built the streak, the ten sessions, or an improved
+// score before this release earns them the next time they open this screen.
 describe('Logbook — Steam achievement call sites', () => {
   it('grants nothing from an empty profile', async () => {
     renderLogbook()
@@ -237,11 +237,25 @@ describe('Logbook — Steam achievement call sites', () => {
     expect(mockUnlock).not.toHaveBeenCalledWith('ACH_TEN_SCENARIOS')
   })
 
-  it('grants the personal-best achievement once a record exists', async () => {
+  it('grants the personal-best achievement when the last session improved', async () => {
+    vi.mocked(api.getLogbookProfile).mockResolvedValue({
+      ok: true,
+      data: makeProfile({ total_sessions: 2, last_session_delta: 4.5 }),
+    })
+    renderLogbook()
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_PERSONAL_BEST'))
+  })
+
+  it('does not grant the personal-best achievement for merely having a score', async () => {
+    // `personal_records` is non-empty after the very first scored debrief, so
+    // granting on it would make ACH_PERSONAL_BEST a free duplicate of
+    // ACH_FIRST_DEBRIEF. With one session there is nothing to compare against
+    // and `last_session_delta` is null.
     vi.mocked(api.getLogbookProfile).mockResolvedValue({
       ok: true,
       data: makeProfile({
         total_sessions: 1,
+        last_session_delta: null,
         personal_records: [
           {
             scenario_id: 'behavioral_interview',
@@ -253,7 +267,18 @@ describe('Logbook — Steam achievement call sites', () => {
       }),
     })
     renderLogbook()
-    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_PERSONAL_BEST'))
+    await screen.findByRole('button', { name: /export logbook as json/i })
+    expect(mockUnlock).not.toHaveBeenCalledWith('ACH_PERSONAL_BEST')
+  })
+
+  it('does not grant the personal-best achievement when the last session got worse', async () => {
+    vi.mocked(api.getLogbookProfile).mockResolvedValue({
+      ok: true,
+      data: makeProfile({ total_sessions: 3, last_session_delta: -2 }),
+    })
+    renderLogbook()
+    await screen.findByRole('button', { name: /export logbook as json/i })
+    expect(mockUnlock).not.toHaveBeenCalledWith('ACH_PERSONAL_BEST')
   })
 
   it('grants the export achievement only after a successful export', async () => {
