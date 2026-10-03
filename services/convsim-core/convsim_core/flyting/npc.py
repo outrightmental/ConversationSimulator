@@ -17,6 +17,11 @@ rubric observation to make, and no session control to decide. What it needs is a
 persona, a register, a tier, and the line it is answering. Output is plain text,
 validated through the shared NPC output validator with a safe fallback, so a
 drifting model cannot put words in the opponent's mouth that break the rating.
+
+Every interpolated string here goes through ``defuse_fences``, including the
+content rating, which is the one pack value printed above the untrusted region
+rather than inside it: ``load_flyting_scenario`` reads it from the manifest
+verbatim, and a pack can be sideloaded or edited after import.
 """
 from __future__ import annotations
 
@@ -113,7 +118,7 @@ def compose_counter_volley_prompt(
 ) -> Tuple[str, str]:
     """Build (system, user) prompts for the opponent's counter-volley in a bout."""
     system_lines: list[str] = list(_COUNTER_RULES)
-    system_lines.append(f"Content rating ceiling: {content_rating}.")
+    system_lines.append(f"Content rating ceiling: {defuse_fences(content_rating)}.")
     system_lines.append(f"Tier: {tier.label}. {tier.persona_note}")
     system_lines.append(f"Keep it under {tier.max_words} words.")
     system_lines.append(UNTRUSTED_CONTENT_BEGIN)
@@ -156,7 +161,7 @@ def compose_reaction_prompt(
 ) -> Tuple[str, str]:
     """Build (system, user) prompts for a batting-practice reaction."""
     system_lines: list[str] = list(_REACTION_RULES)
-    system_lines.append(f"Content rating ceiling: {content_rating}.")
+    system_lines.append(f"Content rating ceiling: {defuse_fences(content_rating)}.")
     system_lines.append(UNTRUSTED_CONTENT_BEGIN)
     system_lines.append(f"Scene: {defuse_fences(scenario_title)}")
     system_lines.extend(_persona_lines(npc))
