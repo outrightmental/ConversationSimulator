@@ -155,7 +155,7 @@ Not enough VRAM, or insufficient system RAM for CPU mode. Recommended model by a
 
 | Available VRAM / RAM | Recommendation |
 |---|---|
-| < 3 GB VRAM, ≥ 8 GB RAM | Qwen3 1.7B on CPU (GPU layers = 0) |
+| < 3 GB VRAM, ≥ 8 GB RAM | Qwen3 4B on CPU (GPU layers = 0), or Qwen3 1.7B for quicker turns |
 | 3–4 GB VRAM | Qwen3 1.7B (lightweight) |
 | 4–6 GB VRAM | Qwen3 4B (starter) |
 | 6–8 GB VRAM | Qwen3 8B (standard) |
