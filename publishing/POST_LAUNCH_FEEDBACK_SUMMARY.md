@@ -114,7 +114,7 @@ status, and whether a hotfix or rollback was triggered.
 Rollbacks triggered: ___ (list GitHub issue numbers)
 Hotfix branches created: ___ (list branch names)
 
-### Model setup (model-install)
+### Model setup (local model install failures)
 
 Summarise the most common model download / setup failure modes.
 
@@ -122,15 +122,15 @@ Summarise the most common model download / setup failure modes.
 |---------|-------|--------------------------|-----------|
 | | | | |
 
-### Pack / content (pack-bug)
+### Pack / content (pack validation and content bugs)
 
-| Issue # | Pack | Description | Severity | Status |
+| Issue # | Pack | Description | Priority | Status |
 |---------|------|-------------|----------|--------|
 | | | | | |
 
 ### Performance
 
-| Issue # | Platform | Model | Description | Severity | Status |
+| Issue # | Platform | Model | Description | Priority | Status |
 |---------|----------|-------|-------------|----------|--------|
 | | | | | | |
 
@@ -153,9 +153,9 @@ Common performance patterns observed:
 | Local-first guarantee maintained throughout window | yes / no |
 | Any rollback triggered by a privacy concern | yes / no |
 
-### Creator workflow (creator-workbench)
+### Creator workflow (Creator Workbench bugs)
 
-| Issue # | Description | Severity | Status |
+| Issue # | Description | Priority | Status |
 |---------|-------------|----------|--------|
 | | | | |
 

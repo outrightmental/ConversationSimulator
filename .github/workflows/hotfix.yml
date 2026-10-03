@@ -46,13 +46,15 @@ on:
           crash-on-launch-windows). Used as the branch name suffix.
         required: true
         type: string
-      severity:
-        description: Severity of the defect triggering this hotfix.
+      priority:
+        description: >
+          Priority of the defect triggering this hotfix — the delivery board's
+          Priority field, the axis that replaced the severity labels.
         required: true
         type: choice
         options:
-          - critical
-          - high
+          - P0 — blocker
+          - P1 — next
       defect_summary:
         description: >
           One-sentence plain-language description of the defect. Included in
@@ -139,7 +141,7 @@ jobs:
         env:
           TAG:      ${{ inputs.release_tag }}
           SLUG:     ${{ inputs.slug }}
-          SEVERITY: ${{ inputs.severity }}
+          PRIORITY: ${{ inputs.priority }}
           SUMMARY:  ${{ inputs.defect_summary }}
           ROLLED_BACK: ${{ inputs.rollback_initiated }}
           BRANCH:   hotfix/${{ inputs.release_tag }}-${{ inputs.slug }}
@@ -152,7 +154,7 @@ jobs:
           echo "  Date (UTC)          : $(date -u '+%Y-%m-%d %H:%M UTC')"
           echo "  Defective release   : $TAG"
           echo "  Hotfix branch       : $BRANCH"
-          echo "  Defect severity     : $SEVERITY"
+          echo "  Defect priority     : $PRIORITY"
           echo "  Defect summary      : $SUMMARY"
           echo "  Rollback performed  : $ROLLED_BACK"
           echo "  Initiated by        : $ACTOR"
