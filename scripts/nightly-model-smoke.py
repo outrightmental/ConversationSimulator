@@ -100,6 +100,7 @@ import hashlib
 import json
 import os
 import shutil
+import socket
 import statistics
 import subprocess
 import sys
@@ -556,6 +557,41 @@ def download_model(url: str, sha256: str, model_id: str, models_dir: Path = MODE
 
 
 # ── Server helpers ────────────────────────────────────────────────────────────
+
+
+def _assert_port_free(port: int, label: str) -> None:
+    """Refuse to run when something already listens on ``port``.
+
+    Readiness is a URL poll, and a squatter answers it.  The child we spawned
+    loses the bind and exits, but it is still starting up when the first poll
+    runs — ``llama_cpp.server`` loads the whole GGUF before it binds — so the
+    poll succeeds against the *foreign* server and ``_wait_for_http`` returns
+    happy.  Nothing downstream catches it either: ``_crashed_child`` is only
+    consulted once a ``SmokeFailure`` has been raised, so a run that otherwise
+    goes green never notices that the process it started is dead.
+
+    The result is the one verdict this job must never return: a pass earned by
+    a model whose bytes it never checksum-verified, on a runtime it did not
+    choose.  CI runners are clean, so this is about the local repro in
+    docs/real-model-smoke.md — which is also how the real-model path gets
+    verified by hand, since no PR job can exercise it.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.settimeout(1.0)
+        if sock.connect_ex(("127.0.0.1", port)) != 0:
+            return
+    raise SmokeFailure(
+        FailureClass.RUNTIME,
+        f"Port {port} is already in use, so {label} cannot be started on it",
+        # Not the class remedy: it says to read the child's stderr tail, and no
+        # child has been started yet.
+        remedy=(
+            f"Stop whatever is listening on 127.0.0.1:{port}, then re-run. The smoke "
+            f"has to own {label}: readiness is a URL poll, so a server it did not "
+            "start answers it and the run would pass on a model these bytes were "
+            "never verified against."
+        ),
+    )
 
 
 def _start_llama_server(model_path: Path, port: int) -> subprocess.Popen:
@@ -1156,6 +1192,11 @@ def run_smoke(
 
         # ── runtime ───────────────────────────────────────────────────────────
         clock.enter("runtime_start")
+        # Both ports before anything is spawned: the smoke has to serve itself,
+        # or its proof that a real pinned model drove the conversation is worth
+        # nothing.
+        _assert_port_free(LLAMA_SERVER_PORT, "llama-server")
+        _assert_port_free(CORE_PORT, "convsim-core")
         print(f"\n[smoke] Starting llama-server on port {LLAMA_SERVER_PORT} "
               f"with model: {model_path.name}")
         llama_proc = _start_llama_server(model_path, LLAMA_SERVER_PORT)

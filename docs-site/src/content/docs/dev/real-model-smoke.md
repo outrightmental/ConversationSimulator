@@ -294,8 +294,12 @@ Useful extras:
   `~/.convsim/models/llm/`.
 - `--wall-clock-budget-s` — the self-imposed deadline (default 1200 s).
 
-The harness binds `llama-server` on port 7356 and `convsim-core` on port 7399;
-stop anything already listening there first.
+The harness binds `llama-server` on port 7356 and `convsim-core` on port 7399,
+and refuses to start (exit 4) if either is already taken. That is deliberate
+rather than fussy: readiness is a URL poll, so a server the harness did not
+start would answer it, the child that lost the bind would die unnoticed, and the
+run would report a **pass** for a model it never checksum-verified. Stop whatever
+owns the port — do not work around it.
 
 To exercise the harness's own logic without a model:
 

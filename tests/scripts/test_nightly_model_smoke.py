@@ -16,6 +16,7 @@ import http.client
 import importlib.util
 import io
 import json
+import socket
 import statistics
 import urllib.error
 from pathlib import Path
@@ -1070,6 +1071,97 @@ class TestWaitForHttp:
 
 
 # ---------------------------------------------------------------------------
+# Port ownership
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def occupied_port():
+    """A loopback port with a live listener on it, released after the test."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.bind(("127.0.0.1", 0))
+    sock.listen(1)
+    try:
+        yield sock.getsockname()[1]
+    finally:
+        sock.close()
+
+
+@pytest.fixture()
+def free_port() -> int:
+    """A loopback port nothing is listening on."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
+class TestPortOwnership:
+    """The smoke must own its ports, or its proof of a real model is worthless.
+
+    Readiness is a URL poll, so a server the harness did not start answers it
+    and the run proceeds against a model whose bytes were never verified. The
+    child that lost the bind dies, but ``_crashed_child`` is only consulted
+    once a failure has been raised, so a run that otherwise passes never
+    notices -- it just reports a green verdict for the wrong model.
+    """
+
+    def test_a_free_port_is_accepted(self, free_port: int) -> None:
+        assert smoke._assert_port_free(free_port, "llama-server") is None
+
+    def test_an_occupied_port_is_a_runtime_failure(self, occupied_port: int) -> None:
+        with pytest.raises(smoke.SmokeFailure) as exc_info:
+            smoke._assert_port_free(occupied_port, "llama-server")
+        assert exc_info.value.failure_class == smoke.FailureClass.RUNTIME
+        assert exc_info.value.exit_code == 4
+        assert str(occupied_port) in str(exc_info.value)
+
+    def test_the_remedy_does_not_send_triage_to_an_unstarted_child(
+        self, occupied_port: int
+    ) -> None:
+        # `runtime`'s stock advice is "read the child stderr tail"; here no
+        # child has been started, so the class remedy would mislead.
+        with pytest.raises(smoke.SmokeFailure) as exc_info:
+            smoke._assert_port_free(occupied_port, "convsim-core")
+        remedy = exc_info.value.remedy
+        assert "Stop whatever is listening" in remedy
+        assert remedy != smoke.REMEDIES[smoke.FailureClass.RUNTIME]
+
+    def test_a_squatter_stops_the_run_before_any_server_is_started(
+        self,
+        staged_model,
+        occupied_port: int,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        models_dir, model_id, digest = staged_model
+        started: list[str] = []
+
+        def _record(label: str):
+            def _start(*args: object, **kwargs: object) -> "_FakeProc":
+                started.append(label)
+                return _FakeProc()
+            return _start
+
+        monkeypatch.setattr(smoke, "LLAMA_SERVER_PORT", occupied_port)
+        monkeypatch.setattr(smoke, "_start_llama_server", _record("llama"))
+        monkeypatch.setattr(smoke, "_start_core", _record("core"))
+        monkeypatch.setattr(smoke, "_wait_for_http", lambda *a, **k: None)
+        monkeypatch.setattr(smoke, "_request_json", _fake_core(_debrief()))
+        report = tmp_path / "report.json"
+
+        exit_code = smoke.run_smoke(
+            model_id, 20.0, report, model_sha256=digest, models_dir=models_dir
+        )
+
+        assert exit_code == 4
+        assert started == [], "the squatter must be caught before anything is spawned"
+        results = json.loads(report.read_text(encoding="utf-8"))
+        assert results["failure_class"] == smoke.FailureClass.RUNTIME
+        assert results["failed_phase"] == "runtime_start"
+        assert "Stop whatever is listening" in results["remedy"]
+
+
+# ---------------------------------------------------------------------------
 # Full-run orchestration, with llama-server and convsim-core faked out
 # ---------------------------------------------------------------------------
 
@@ -1165,6 +1257,11 @@ def fake_servers(monkeypatch: pytest.MonkeyPatch) -> dict[str, _FakeProc]:
     monkeypatch.setattr(smoke, "_start_llama_server", lambda *a, **k: procs["llama"])
     monkeypatch.setattr(smoke, "_start_core", lambda *a, **k: procs["core"])
     monkeypatch.setattr(smoke, "_wait_for_http", lambda *a, **k: None)
+    # No child is really spawned, so no port is really needed. Left live, the
+    # port check would make every test below depend on whether the developer
+    # happens to have a llama-server on 7356 -- which, on the machine this was
+    # written on, they did. TestPortOwnership covers the check itself.
+    monkeypatch.setattr(smoke, "_assert_port_free", lambda *a, **k: None)
     return procs
 
 
@@ -1239,6 +1336,9 @@ class TestRunSmokeOrchestration:
         monkeypatch.setattr(smoke, "_start_llama_server", lambda *a, **k: _FakeProc())
         monkeypatch.setattr(smoke, "_start_core", _start_core)
         monkeypatch.setattr(smoke, "_wait_for_http", lambda *a, **k: None)
+        # Builds its own children rather than using fake_servers, so it has to
+        # neutralise the port check the same way that fixture does.
+        monkeypatch.setattr(smoke, "_assert_port_free", lambda *a, **k: None)
 
         exit_code = smoke.run_smoke(
             model_id, 20.0, None, model_sha256=digest, models_dir=models_dir
