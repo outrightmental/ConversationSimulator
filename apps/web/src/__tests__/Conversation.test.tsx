@@ -32,6 +32,20 @@ vi.mock('../api/client', () => ({
   },
 }))
 
+const mockUnlock = vi.fn<(name: string) => Promise<boolean>>(() =>
+  Promise.resolve(false),
+)
+const mockIncrementStat = vi.fn<(name: string) => Promise<boolean>>(() =>
+  Promise.resolve(false),
+)
+// Only the hook is stubbed; importOriginal keeps DEEP_CONVERSATION_TURNS and the
+// name maps real, so these tests cannot drift from the shipped threshold.
+vi.mock('../hooks/useSteamAchievements', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useSteamAchievements')>()),
+  useSteamAchievements: () => ({ unlock: mockUnlock, incrementStat: mockIncrementStat }),
+}))
+import { DEEP_CONVERSATION_TURNS } from '../hooks/useSteamAchievements'
+
 import { api, apiClient } from '../api/client'
 const mockApi = vi.mocked(api)
 const mockApiClient = vi.mocked(apiClient)
@@ -1816,5 +1830,118 @@ describe('Conversation screen', () => {
       // No background-install polling is wired to the legacy key any more.
       expect(mockApi.getSetupInstallStatus).not.toHaveBeenCalled()
     })
+  })
+})
+
+// ── Steam achievement call sites (issue #494) ────────────────────────────────
+//
+// The conversation screen owns two counters that no other screen can stand in
+// for: the per-session player-turn tally behind ACH_DEEP_CONVERSATION (the
+// screen's own turnNumRef counts NPC turns too), and the one-per-session input
+// mode stat.
+describe('Conversation — Steam achievement call sites', () => {
+  /** Submits `n` player turns through the text input. */
+  async function submitTurns(n: number) {
+    for (let i = 0; i < n; i++) {
+      const textarea = await screen.findByRole('textbox', { name: /your response/i })
+      fireEvent.change(textarea, { target: { value: `turn ${i}` } })
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+      await waitFor(() =>
+        expect(
+          (screen.getByRole('textbox', { name: /your response/i }) as HTMLTextAreaElement).value,
+        ).toBe(''),
+      )
+    }
+  }
+
+  beforeEach(() => {
+    mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
+    mockApi.submitTurn.mockResolvedValue({ ok: true, data: turnResponse })
+  })
+
+  it('counts a text-mode session once at the start boundary', async () => {
+    renderConversation({ input_mode: 'text-only' })
+    await waitFor(() =>
+      expect(mockIncrementStat).toHaveBeenCalledWith('STAT_TEXT_MODE_SESSIONS'),
+    )
+    expect(mockIncrementStat).not.toHaveBeenCalledWith('STAT_VOICE_MODE_SESSIONS')
+    expect(
+      mockIncrementStat.mock.calls.filter(([n]) => n === 'STAT_TEXT_MODE_SESSIONS'),
+    ).toHaveLength(1)
+  })
+
+  it('counts a voice-mode session against the voice stat', async () => {
+    renderConversation({ input_mode: 'voice' })
+    await waitFor(() =>
+      expect(mockIncrementStat).toHaveBeenCalledWith('STAT_VOICE_MODE_SESSIONS'),
+    )
+    expect(mockIncrementStat).not.toHaveBeenCalledWith('STAT_TEXT_MODE_SESSIONS')
+  })
+
+  it('does not count the session again when a reload resumes it', async () => {
+    // A page reload (or a dev-mode double mount) re-POSTs /start, which answers
+    // INVALID_TRANSITION. That path must not add a second session to the stat.
+    mockApi.startSession.mockResolvedValue({
+      ok: false,
+      error: { kind: 'network', message: 'INVALID_TRANSITION' },
+    })
+    mockApi.getSessionTranscript.mockResolvedValue({
+      ok: true,
+      data: {
+        session_id: SESSION_ID,
+        scenario_id: 'behavioral_interview',
+        transcript_saved: true,
+        turns: [
+          { turn_number: 0, role: 'npc_opening', content: 'Thanks for coming in. Tell me about yourself.', flow_state_after: 'PlayerTurnListening' },
+        ],
+      },
+    })
+    renderConversation({ input_mode: 'text-only' })
+    await waitFor(() =>
+      expect(screen.getByText('Thanks for coming in. Tell me about yourself.')).toBeInTheDocument(),
+    )
+    expect(mockIncrementStat).not.toHaveBeenCalledWith('STAT_TEXT_MODE_SESSIONS')
+  })
+
+  it(`unlocks the deep-conversation achievement at ${DEEP_CONVERSATION_TURNS} player turns`, async () => {
+    renderConversation({ input_mode: 'text-only' })
+    await screen.findByRole('textbox', { name: /your response/i })
+
+    await submitTurns(DEEP_CONVERSATION_TURNS - 1)
+    expect(mockUnlock).not.toHaveBeenCalledWith('ACH_DEEP_CONVERSATION')
+
+    await submitTurns(1)
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_DEEP_CONVERSATION'))
+  })
+
+  it('counts rehydrated player turns toward the threshold after a reload', async () => {
+    // Progress must survive a mid-session reload: the tally is seeded from the
+    // rehydrated transcript, so the player is not sent back to turn one.
+    type RehydratedTurn = {
+      turn_number: number
+      role: 'npc_opening' | 'player' | 'npc'
+      content: string
+      flow_state_after: string
+    }
+    const turns: RehydratedTurn[] = [
+      { turn_number: 0, role: 'npc_opening', content: 'Thanks for coming in. Tell me about yourself.', flow_state_after: 'PlayerTurnListening' },
+    ]
+    for (let i = 1; i <= DEEP_CONVERSATION_TURNS - 1; i++) {
+      turns.push({ turn_number: i, role: 'player', content: `earlier turn ${i}`, flow_state_after: 'PlayerTurnListening' })
+    }
+    mockApi.startSession.mockResolvedValue({
+      ok: false,
+      error: { kind: 'network', message: 'INVALID_TRANSITION' },
+    })
+    mockApi.getSessionTranscript.mockResolvedValue({
+      ok: true,
+      data: { session_id: SESSION_ID, scenario_id: 'behavioral_interview', transcript_saved: true, turns },
+    })
+    renderConversation({ input_mode: 'text-only' })
+    await screen.findByRole('textbox', { name: /your response/i })
+    expect(mockUnlock).not.toHaveBeenCalledWith('ACH_DEEP_CONVERSATION')
+
+    await submitTurns(1)
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_DEEP_CONVERSATION'))
   })
 })
