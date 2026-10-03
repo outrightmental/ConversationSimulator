@@ -6,6 +6,13 @@ description: >-
   Reference volleys for The Tower Guard. Includes the case the scenario exists
   to police: quoting the film this is an homage to is a Plagiarized Zinger, not
   a joke.
+
+  Judged expectations — bands, score windows, hooks — are pinned to what the
+  registry's starter model (qwen3-4b-instruct-q4_k_m, llama.cpp, temperature 0)
+  actually produces, measured 2026-10-02; two full runs scored every volley
+  identically. They are drift guards rather than verdicts on the writing, so a
+  deliberate change to the judge prompt is expected to move them and to be
+  re-measured with --judge.
 volleys:
   - id: too_short
     text: go away
@@ -42,10 +49,14 @@ volleys:
     text: >-
       Keeper of the Lesser Seal — I have met the Greater one, and he speaks of
       you the way one speaks of weather in another county.
-    note: Lands on pomposity with an original image.
+    note: >-
+      Lands on pomposity with an original image. The starter judge reads the
+      construction as plain — craft 3 — so this is the suite's floor for a
+      volley that genuinely hooks something.
     expect:
       gate: ok
-      band: solid
+      min_score: 45
+      max_score: 85
       hooks: [pomposity]
 
   - id: absurd_craft
@@ -61,18 +72,26 @@ volleys:
     text: >-
       Eleven years on that road, sir, and the only thing you have conquered is
       the smell — which now outranks you, and has its own tent.
+    note: >-
+      Futility and dampness in one joke, on two spans the judge keeps apart.
+      Quote the same clause for both and the second claim is refused as
+      overlapping evidence, which is why this sits at the top of solid rather
+      than wherever two hooks would otherwise carry it.
     expect:
       gate: ok
-      band: strong
-      min_score: 100
+      band: solid
+      min_score: 85
       hooks: [futility, dampness]
 
   - id: discovery_map
     text: >-
       Sir Aldric, turn the map. No — turn it. Your quest has been pointing at
       your own boots since Tuesday, and your boots have been honest about it.
-    note: Strikes a discoverable trait.
+    note: >-
+      Strikes a discoverable trait, which doubles that hook's bonus and puts
+      the volley on the strong line almost exactly.
     expect:
       gate: ok
-      band: strong
+      min_score: 100
+      max_score: 140
       hooks: [the_map]

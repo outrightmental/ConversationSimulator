@@ -54,8 +54,15 @@ umpire will tell you exactly where he has heard them before.
 `calibration/*.yaml` holds reference volleys with their expected score bands and
 gate outcomes. `scripts/flyting-calibration.py` runs them: the deterministic
 expectations (gates, flags, caps) need no model and run in CI, and the band and
-hook expectations run against a recommended model to catch prompt or model drift
-before players see it.
+hook expectations run against a model to catch prompt or model drift before
+players see it.
+
+The judged expectations are pinned to what the registry's starter model
+(`qwen3-4b-instruct-q4_k_m`, temperature 0) actually produces — measured, not
+estimated — so they are drift guards rather than judgements about the writing.
+Each suite's `description` records the model and the date. A deliberate change
+to the judge prompt is expected to move them and to be re-measured with
+`--judge llama_cpp`.
 
 ## Licence
 

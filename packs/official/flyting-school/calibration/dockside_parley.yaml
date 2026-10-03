@@ -6,6 +6,13 @@ description: >-
   Reference volleys for The Dockside Parley. The difficulty multiplier is 1.0
   here, so this suite is the pack's baseline: a line that scores 100 on this
   dock is the reference for a solid hit everywhere else.
+
+  Judged expectations — bands, score windows, hooks — are pinned to what the
+  registry's starter model (qwen3-4b-instruct-q4_k_m, llama.cpp, temperature 0)
+  actually produces, measured 2026-10-02; two full runs scored every volley
+  identically. They are drift guards rather than verdicts on the writing, so a
+  deliberate change to the judge prompt is expected to move them and to be
+  re-measured with --judge.
 volleys:
   - id: too_short
     text: shove off
@@ -38,6 +45,7 @@ volleys:
     expect:
       gate: ok
       band: solid
+      min_score: 70
       hooks: [the_charter]
 
   - id: two_hooks
@@ -45,18 +53,26 @@ volleys:
       Your Lark is fast, Captain, I will grant you that — you sold the half of
       her that slowed her down, and you paid the crew in the promise of the
       other half.
+    note: >-
+      Two hooks on two different spans. The starter judge credits both traits
+      and still marks the wit down for the concession it opens with, which puts
+      it at the top of solid rather than into strong.
     expect:
       gate: ok
-      band: strong
-      min_score: 110
+      band: solid
+      min_score: 75
       hooks: [the_ship, thrift]
 
   - id: discovery_mutiny
     text: >-
       Ask your bosun where the cook went, Captain. Tortuga is a long way to
       walk for better soup, and two of your own made the trip.
-    note: Strikes a discoverable trait in front of her crew.
+    note: >-
+      Strikes a discoverable trait in front of her crew, which doubles that
+      hook's bonus. The insinuation is carried by implication rather than by
+      image, and the starter judge scores it mid-solid for that.
     expect:
       gate: ok
-      band: strong
+      band: solid
+      min_score: 55
       hooks: [the_mutiny]

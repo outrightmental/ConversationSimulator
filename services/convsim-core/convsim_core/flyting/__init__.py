@@ -15,9 +15,10 @@ model:
 ``convsim_prompt.flyting_judge`` with the rest of the prompt machinery, and the
 single model call is made by ``pipeline.process_volley``.
 
-Nothing here reaches the network. With no embedding model installed, novelty
-falls back to a deterministic lexical comparison; with no judge available, a
-volley is scored from its mechanics and flagged.
+Nothing here reaches the network. Novelty compares volleys lexically — the
+embedding path is a seam (``novelty.EmbeddingProvider``) that nothing
+implements yet — and with no judge available a volley is scored from its
+mechanics and flagged.
 """
 from convsim_core.flyting.config import (
     BAND_THRESHOLDS,

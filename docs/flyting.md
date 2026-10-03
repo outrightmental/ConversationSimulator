@@ -153,10 +153,17 @@ F = clamp(1 − s_max², 0.1, 1.0)
 Squaring forgives family resemblance and hammers near-duplicates: sharing a
 subject (0.4) keeps 84 % of value, a rephrasing (0.9) keeps 19 %.
 
-Similarity is cosine over embeddings when a small local embedding model is
-available, and otherwise lemma Jaccard plus character-trigram cosine:
-deterministic, offline, no download. The method used is reported on the
-scorecard, so a player is never confused about why two runs scored differently.
+Similarity is lemma Jaccard plus character-trigram cosine — deterministic,
+offline, no download — and the method is reported on the scorecard, so a player
+is never confused about why two runs scored differently.
+
+Embeddings are a seam, not yet a feature: `novelty.EmbeddingProvider` is the
+interface the scoring service accepts, and when one is supplied `s_max` becomes
+cosine similarity over embeddings and the scorecard reads `embedding` instead of
+`lexical`. Nothing implements it today — no runtime adapter reports embedding
+support and the registry ships no embedding model — so every run uses the
+lexical comparison. Adding the provider is a change in one place, which is why
+the seam exists.
 
 **Theme decay** lives here too: the *n*th volley whose primary theme has already
 been used has its topicality bonus scaled by `theme_decay^(n−1)` (0.75 by
@@ -332,8 +339,9 @@ calibration suite that names a scenario or trait that does not exist.
 receive. `scripts/flyting-calibration.py` runs them:
 
 ```sh
-python scripts/flyting-calibration.py                   # every official pack
-python scripts/flyting-calibration.py --judge llama_cpp # include judged tiers
+python scripts/flyting-calibration.py                             # every official pack
+python scripts/flyting-calibration.py --judge llama_cpp           # include judged tiers
+python scripts/flyting-calibration.py --judge llama_cpp --limit 3 # a bounded sample
 ```
 
 The **deterministic** expectations — `gate`, `foul`, `flags`, the plagiarism cap
@@ -342,6 +350,39 @@ commit (`services/convsim-core/tests/test_flyting_calibration.py`). The
 **judged** expectations — `band`, `min_score`, `max_score`, `hooks` — need a
 model and are skipped unless `--judge` names a runtime; that is the run that
 catches prompt or model drift before players see it.
+
+A judged run costs one model call per volley that clears the gates: 39
+reference volleys in the launch pack, 29 of which reach the judge, and roughly
+25-30 s each against the starter model on a developer machine — about a quarter
+of an hour for the pack, and far longer on a CPU CI runner, which measures a
+grammar-constrained turn in minutes rather than seconds. So the judged tier is
+not in the nightly by default — `--limit N` takes a bounded sample (judged
+volleys first), and `model-smoke-nightly.yml` accepts `flyting_judged=true` on
+a manual dispatch to run that sample against the same cached starter model and
+upload the report. The report carries every volley's dimensions, verified hooks,
+dropped hooks and flags, so a band that moved is readable without a re-run.
+
+**What the judged bands are pinned to.** The launch pack's judged expectations
+record what the registry's `starter` model (`qwen3-4b-instruct-q4_k_m`,
+llama.cpp, temperature 0) actually produces, measured against a live server.
+Two full runs of the pack produced *identical* results for all 39 volleys —
+same score, same dimension scores, same verified hooks — which is the
+determinism the mode claims — temperature 0 plus a
+schema-constrained decode, in practice and not just in principle. The
+expectations are drift guards, not verdicts on the writing: a deliberate change
+to the judge prompt moves them and is expected to come with a re-measurement.
+
+Two limitations the measurement exposed are worth knowing before reading a
+scorecard, because neither is a bug:
+
+- A small judge rewards a **well-made line aimed at nobody**. The engine flags
+  `no_aim`, the debrief says "*n* volleys never pointed at anyone", and the
+  judge is told that sting requires aim — but sting stays the judge's to award,
+  so an unaimed aphorism can still score like a hit on a 4B model.
+- The scenario **difficulty multiplier lifts everything**, non-hits included.
+  In Veiled Civility (`P = 1.5`, fidelity weighted up) a courteous line with
+  nothing inside it reaches the bottom of `solid`. The bands are absolute
+  across scenarios; the multiplier is not.
 
 ---
 

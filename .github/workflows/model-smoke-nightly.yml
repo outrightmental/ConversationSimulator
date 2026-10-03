@@ -132,11 +132,12 @@ jobs:
       # Flyting's judged scoring tier, on request only.
       #
       # The deterministic tier (gates, flags, caps) runs in CI on every commit.
-      # The judged tier costs one judge call per volley — ~6.5 s each against a
-      # 4B model on a developer machine, and this runner measures a
-      # grammar-constrained turn at ~115 s — so the launch pack's 123 reference
-      # volleys are far outside any nightly budget. --limit keeps a sample
-      # bounded: three judged volleys per suite, fifteen calls in total.
+      # The judged tier costs one judge call per volley that clears the gates —
+      # 29 of the launch pack's 39 reference volleys, ~25-30 s each against a 4B
+      # model on a developer machine, and this runner measures a
+      # grammar-constrained turn at ~115 s — so a full judged run is far outside
+      # any nightly budget. --limit keeps a sample bounded: three judged volleys
+      # per suite, fifteen calls in total.
       #
       # Dispatch with flyting_judged=true after a judge-prompt or model change;
       # the report artifact holds every score, so a band that moved is visible

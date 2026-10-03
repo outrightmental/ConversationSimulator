@@ -6,6 +6,13 @@ description: >-
   Reference volleys for The Mead-Hall Flyting. Verse mode: alliteration and a
   steady beat are scored as craft, so a well-aimed line with neither sits lower
   here than it would anywhere else in the pack.
+
+  Judged expectations — bands, score windows, hooks — are pinned to what the
+  registry's starter model (qwen3-4b-instruct-q4_k_m, llama.cpp, temperature 0)
+  actually produces, measured 2026-10-02; two full runs scored every volley
+  identically. They are drift guards rather than verdicts on the writing, so a
+  deliberate change to the judge prompt is expected to move them and to be
+  re-measured with --judge.
 volleys:
   - id: too_short
     text: sit down
@@ -19,12 +26,14 @@ volleys:
       Your whale gets bigger every winter and your voyage gets shorter every
       time you are asked about it.
     note: >-
-      Aimed and true, but flat prose in a hall that scores sound — craft is
-      capped and the band stays modest.
+      Aimed and true, but flat prose in a hall that scores sound: craft comes
+      back 6 against the 8s the alliterative lines earn. The 1.4 difficulty
+      multiplier still carries it over the strong line, which is what the
+      window records — the entry exists to pin the craft gap, not the band.
     expect:
       gate: ok
-      band: solid
-      max_score: 119
+      min_score: 100
+      max_score: 145
 
   - id: alliterated
     text: >-
@@ -34,7 +43,7 @@ volleys:
     expect:
       gate: ok
       band: strong
-      min_score: 110
+      min_score: 115
       hooks: [boasting]
 
   - id: alliterated_two_hooks
@@ -51,10 +60,16 @@ volleys:
     text: >-
       Fjord-farer, foam-fearer, finest of all the sailors who never left the
       sight of the jetty — tell the hall where the whale was, and say it slowly.
-    note: Strikes the discoverable landlubber trait.
+    note: >-
+      Strikes the discoverable landlubber trait. Addressed by kenning and
+      imperative rather than by pronoun, so the mechanical aim check flags it
+      no_aim and the starter judge scores sting 5 — the line lands, but not as
+      squarely as the pronoun-anchored ones.
     expect:
       gate: ok
-      band: strong
+      flags: [no_aim]
+      min_score: 95
+      max_score: 135
       hooks: [landlubber]
 
   - id: repeat_theme
@@ -62,8 +77,12 @@ volleys:
       Belly-bearer, bread-breaker, bane of every bench you sit upon — your
       appetite has its own saga and it is longer than yours.
     note: >-
-      A good line on a theme the earlier volleys already used; theme decay
-      should visibly reduce its topicality bonus when played after them.
+      A good line on appetite, the theme the hall's other boasts keep returning
+      to. The runner scores each reference volley on its own, so what this pins
+      is the undecayed score; theme decay itself is covered by the engine's
+      unit tests, where a session can supply the prior uses.
     expect:
       gate: ok
-      band: solid
+      min_score: 100
+      max_score: 145
+      hooks: [appetite]

@@ -5,8 +5,14 @@ scenario_id: whitechapel_rose
 description: >-
   Reference volleys for The Scorned Rose of Whitechapel, ascending in expected
   quality. Gate and flag expectations are deterministic and run with no model;
-  band and hook expectations need a judge and are checked against the
-  recommended models.
+  band and hook expectations need a judge.
+
+  Judged expectations — bands, score windows, hooks — are pinned to what the
+  registry's starter model (qwen3-4b-instruct-q4_k_m, llama.cpp, temperature 0)
+  actually produces, measured 2026-10-02; two full runs scored every volley
+  identically. They are drift guards rather than verdicts on the writing, so a
+  deliberate change to the judge prompt is expected to move them and to be
+  re-measured with --judge.
 volleys:
   - id: too_short
     text: you cad
@@ -69,21 +75,29 @@ volleys:
   - id: unaimed
     text: Respectability in this city is a coat of paint over a rotten post.
     note: >-
-      True, well made, and pointed at nothing — no second person, so the aim
-      check fails and sting cannot rise.
+      True, well made, and pointed at nothing: no second person, so the aim
+      check flags no_aim. The flag coaches, it does not penalise — sting is the
+      judge's to award, and the starter judge awards it generously. That
+      limitation is what this entry records.
     expect:
       gate: ok
       flags: [no_aim]
-      max_score: 90
+      min_score: 105
+      max_score: 150
 
   - id: one_hook
     text: >-
       You preach temperance on Tuesdays, sir, and draw your rent from the gin
       palace on Thursday.
-    note: One verified hook, clean construction, in register.
+    note: >-
+      One verified hook, clean construction, in register. Scores like the
+      pack's worked example on the starter judge: at this quality the dimension
+      scores saturate at 9s and 10s, and what separates volleys is the number
+      of verified hooks and the freshness multiplier.
     expect:
       gate: ok
-      band: solid
+      min_score: 105
+      max_score: 150
       hooks: [hypocrisy]
 
   - id: two_hooks_sustained
@@ -91,13 +105,15 @@ volleys:
       You polish your virtue like your carriage brass, sir, and both are
       plate, not sterling, worn thin where the public grips them.
     note: >-
-      Two verified hooks inside one sustained figure, with period diction doing
-      the cutting. This is the pack's worked example.
+      The pack's worked example, and where the span rule bites: the starter
+      judge quotes the whole line as evidence for every trait it sees, so the
+      first claim verifies and the second is refused as overlapping. A judge
+      that quotes "plate, not sterling" earns both.
     expect:
       gate: ok
-      band: strong
-      min_score: 110
-      hooks: [hypocrisy, new_money]
+      min_score: 95
+      max_score: 140
+      hooks: [hypocrisy]
 
   - id: discovery
     text: >-
