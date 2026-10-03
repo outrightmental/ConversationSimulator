@@ -590,6 +590,22 @@ def _build_target_layer(data: VolleyJudgeInput) -> str:
 
 def _build_session_context_layer(data: VolleyJudgeInput) -> str:
     lines = [_tag("SESSION_CONTEXT"), f"Speaker of this volley: {data.speaker}"]
+    if data.speaker != "player":
+        # Without this the judge is asked a confused question: the TARGET layer
+        # describes the NPC, and this layer then says the NPC is the one
+        # speaking. The answer is that a hook names a trait of whoever the
+        # volley is *aimed at*, and the only surface a pack declares is the
+        # NPC's — so an opponent's counter-volley, which comes back at the
+        # player, can claim none. The engine already verifies it that way
+        # (``judge_volley`` passes an empty surface for a non-player speaker);
+        # saying so here stops every opponent scorecard filling with refused
+        # claims. It lives in the user turn, so the cacheable system prompt
+        # stays byte-identical between the two speakers.
+        lines.append(
+            "This volley is the opponent's, aimed at the player rather than at the "
+            "target described above. No hook may be claimed for it: return an empty "
+            "hooks array."
+        )
     if data.opponent_last_line:
         lines.append(
             "Opponent's last line (a riposte must turn THIS back on them): "

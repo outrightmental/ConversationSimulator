@@ -151,6 +151,21 @@ class TestJudgePromptComposition:
         assert "Your gown is a decade old." in bundle.user_prompt
         assert "is_riposte must be false" not in bundle.user_prompt
 
+    def test_an_opponent_volley_is_told_it_can_claim_no_hook(self):
+        """The surface belongs to the NPC, and an opponent volley aims away from it."""
+        bundle = compose_volley_judge_prompt(judge_input(speaker="npc"))
+        assert "No hook may be claimed for it" in bundle.user_prompt
+
+    def test_a_player_volley_is_not_told_that(self):
+        bundle = compose_volley_judge_prompt(judge_input(speaker="player"))
+        assert "No hook may be claimed for it" not in bundle.user_prompt
+
+    def test_the_speaker_note_stays_out_of_the_cacheable_header(self):
+        """A per-speaker line in the system prompt would cost a bout its cache."""
+        player = compose_volley_judge_prompt(judge_input(speaker="player"))
+        npc = compose_volley_judge_prompt(judge_input(speaker="npc"))
+        assert player.system_prompt == npc.system_prompt
+
     def test_theme_usage_is_reported_only_for_used_themes(self):
         bundle = compose_volley_judge_prompt(
             judge_input(theme_uses={"hygiene": 3, "vanity": 0})
