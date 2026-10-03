@@ -425,6 +425,28 @@ jobs:
             exit 1
           fi
 
+      # ── Run the packaged core (issue #456) ───────────────────────────────────
+      # "Present in resources/bin" was the only thing CI checked about the
+      # sidecar. This actually launches it: health readiness on 127.0.0.1:7355,
+      # loopback-only binding, the official packs it seeded from its own payload,
+      # `convsim offline-smoke-test` against one of those packs, then both of the
+      # shell's teardown requests — closing the engine's stdin pipe, and the
+      # SIGTERM it falls back to — draining the FastAPI lifespan and releasing
+      # the port.
+      #
+      # The PyInstaller one-file binary unpacks itself on first launch and the
+      # engine then migrates the database and seeds its bundled packs, so this
+      # takes tens of seconds — it is still the cheapest place to find out that the
+      # bundled engine cannot start, instead of hearing it from a player.
+      #
+      # Non-Windows only: the script is bash, and the claim it proves (the engine
+      # starts, serves, and drains) is platform-independent. The Windows payload
+      # is covered by the depot audit and installer-payload steps below.
+      - name: Smoke-test the packaged core
+        if: runner.os != 'Windows'
+        shell: bash
+        run: bash scripts/packaged-core-smoke.sh
+
       # ── Bundle llama-server binary (Steam builds only) ────────────────────────
       # Downloads and bundles the llama-server binary alongside convsim-core so
       # Steam players get zero-setup inference with no first-run download.
