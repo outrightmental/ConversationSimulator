@@ -138,28 +138,47 @@ def resolve_demo_model_id(conn: sqlite3.Connection, config: Any) -> Optional[str
     ``role: starter`` entry is used, which is deliberately still the default:
     the lightweight tier has not been played through the five demo
     conversations, and an incoherent NPC is a worse demo than a longer
-    download (see ``docs/steam-next-fest-demo.md``). Returns ``None`` when
-    neither resolves, which the models endpoint reports as an empty registry
-    rather than guessing.
+    download (see ``docs/steam-next-fest-demo.md``). A pin that names nothing
+    in the registry, or an entry with no download URL, falls back to the
+    starter with a logged error rather than dead-ending first-run setup on a
+    model that cannot be installed. Returns ``None`` when neither resolves,
+    which the models endpoint reports as an empty registry rather than
+    guessing.
     """
     pinned = (getattr(config, "demo_model_id", None) or "").strip()
     if pinned:
         try:
             hit = conn.execute(
-                "SELECT id FROM model_registry WHERE id = ? LIMIT 1", (pinned,)
+                "SELECT id, download_url FROM model_registry WHERE id = ? LIMIT 1",
+                (pinned,),
             ).fetchone()
         except sqlite3.Error:
             hit = None
-        if hit is not None:
+        if hit is not None and hit["download_url"]:
             return pinned
-        # A pin that names nothing in the registry (a typo, or an entry not yet
-        # seeded) would advertise a model the wizard can never install — a
-        # first-run dead end. Fall back to the starter and say so loudly.
-        logger.error(
-            "CONVSIM_DEMO_MODEL_ID=%r is not in the model registry; "
-            "falling back to the registry's starter model",
-            pinned,
-        )
+        if hit is not None:
+            # In the registry, but not downloadable: `user-supplied-gguf` stands
+            # for a file the player brings, so it carries no URL and no
+            # checksum. The demo offers no second model, so every install would
+            # fail at the download stage with nothing to fall back to. The build
+            # gates (build.rs, release.yml) refuse this too, but they only cover
+            # a packaged build and a CI dispatch — this is the one place every
+            # way of setting the variable passes through.
+            logger.error(
+                "CONVSIM_DEMO_MODEL_ID=%r has no download URL in the model registry "
+                "(it is the user-supplied placeholder, not a downloadable tier); "
+                "falling back to the registry's starter model",
+                pinned,
+            )
+        else:
+            # A pin that names nothing in the registry (a typo, or an entry not
+            # yet seeded) would advertise a model the wizard can never install —
+            # a first-run dead end. Fall back to the starter and say so loudly.
+            logger.error(
+                "CONVSIM_DEMO_MODEL_ID=%r is not in the model registry; "
+                "falling back to the registry's starter model",
+                pinned,
+            )
     try:
         row = conn.execute(
             "SELECT id FROM model_registry WHERE role = 'starter' ORDER BY id LIMIT 1"

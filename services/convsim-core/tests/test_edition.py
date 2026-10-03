@@ -9,7 +9,9 @@ API surface the demo hides in the UI is also refused server-side.
 """
 from __future__ import annotations
 
+import logging
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -373,6 +375,26 @@ def test_registry_starter_role_backs_the_demo_model(demo_client):
     conn = app.state.db.connection()
     load_and_persist_registry(conn, _REGISTRY_PATH)
     assert edition.resolve_demo_model_id(conn, app.state.service_config) == _STARTER_MODEL_ID
+
+
+def test_a_pin_with_no_download_url_falls_back_to_the_starter(demo_client, caplog):
+    """A pin the demo could never download must not become the demo's model.
+
+    ``user-supplied-gguf`` is a real registry id, so the membership check alone
+    lets it through — but it stands for a file the player brings and carries no
+    URL and no checksum. The demo offers no second model, so every install
+    would fail at the download stage with nothing to fall back to: first-run
+    setup dead-ends with no way out. ``build.rs`` and release.yml's Validate
+    refuse it too, but they only cover a packaged build and a CI dispatch;
+    this is the one place every way of setting the variable passes through.
+    """
+    _, app = demo_client
+    conn = app.state.db.connection()
+    load_and_persist_registry(conn, _REGISTRY_PATH)
+    config = SimpleNamespace(edition="demo", demo_model_id="user-supplied-gguf")
+    with caplog.at_level(logging.ERROR, logger="convsim_core.edition"):
+        assert edition.resolve_demo_model_id(conn, config) == _STARTER_MODEL_ID
+    assert "no download URL" in caplog.text
 
 
 def test_demo_can_be_pinned_to_the_lightweight_tier(tmp_path, monkeypatch):
