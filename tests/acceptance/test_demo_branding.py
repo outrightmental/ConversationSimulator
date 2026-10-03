@@ -805,8 +805,16 @@ class TestGeneratedArtworkIsCurrent:
     """
 
     def test_committed_svg_is_what_the_generator_draws(self):
+        """Compared stripped: the drawing must match, the trailing byte need not.
+
+        The generator writes the file with a final newline, as the repo's
+        .editorconfig asks. Pinning that exactly would make the one artefact
+        here anyone is invited to *open* fail the suite the moment an editor
+        normalised its last line — and re-running the generator would take the
+        newline straight back out again.
+        """
         gen = _load_generator()
-        assert _DEMO_SVG.read_text() == gen.icon_svg("demo", ribbon=True), (
+        assert _DEMO_SVG.read_text().strip() == gen.icon_svg("demo", ribbon=True), (
             "publishing/assets/icons/demo_icon.svg is out of date — it is "
             "generated output: re-run publishing/assets/source/gen_icons.py "
             "(which also rewrites the bundle icon set and the Steam uploads)"
@@ -815,4 +823,4 @@ class TestGeneratedArtworkIsCurrent:
     def test_the_vector_carries_the_ribbon(self):
         """It is billed as the >= 128 px drawing, so it must be the ribboned one."""
         gen = _load_generator()
-        assert _DEMO_SVG.read_text() != gen.icon_svg("demo", ribbon=False)
+        assert _DEMO_SVG.read_text().strip() != gen.icon_svg("demo", ribbon=False)

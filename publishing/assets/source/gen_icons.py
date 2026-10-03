@@ -588,8 +588,15 @@ def build(edition: str, bundle_dir: Path, steam_dir: Path) -> list[Path]:
     # render_png emits (or icon_svg(edition, ribbon=False)).  It is generated
     # output, overwritten on every run — the mark's source of truth is the
     # geometry above, so edits belong there and not in the .svg.
+    #
+    # Written with a trailing newline, per the repo's .editorconfig
+    # (insert_final_newline).  It is the one generated artefact here that is
+    # plain text, so it is the one an editor will open — and the acceptance
+    # suite compares it to icon_svg() to catch a half-applied regeneration.
+    # Without the newline an EditorConfig-aware editor adds one on save, the
+    # comparison fails, and re-running this script takes it straight back out.
     svg = steam_dir / f"{edition}_icon.svg"
-    svg.write_text(icon_svg(edition, ribbon=edition == "demo"))
+    svg.write_text(icon_svg(edition, ribbon=edition == "demo") + "\n")
     written.append(svg)
     return written
 
