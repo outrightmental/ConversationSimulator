@@ -185,6 +185,9 @@ export interface FlytingRunState {
   best_volley_score: number;
   sudden_death: boolean;
   theme_uses: Record<string, number>;
+  /** The opponent's own theme record, kept apart so each side's repeats decay
+   *  only that side's topicality. */
+  npc_theme_uses: Record<string, number>;
   recent_devices: string[][];
   discovered_traits: string[];
   foul_counts: Record<string, number>;

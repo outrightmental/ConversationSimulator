@@ -92,6 +92,7 @@ const RUN: FlytingRunState = {
   best_volley_score: 129,
   sudden_death: false,
   theme_uses: { hypocrisy: 1 },
+  npc_theme_uses: {},
   recent_devices: [['metaphor']],
   discovered_traits: [],
   foul_counts: {},
