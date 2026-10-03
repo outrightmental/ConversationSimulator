@@ -381,6 +381,17 @@ describe('useSteamAchievements — capstone', () => {
       SteamAchievement.CERTIFIED_EXPERT,
     )
   })
+
+  it('does not require an achievement whose only affordance is a broken install', () => {
+    // Every "Restore official packs" button — Home's missing-pack banner, the
+    // library's empty state, the workbench's empty pack list — renders only
+    // when the pack library is missing or empty. A player with a healthy
+    // install has nothing to press, so requiring ACH_PACKS_RESTORED would make
+    // the capstone unreachable for almost everyone.
+    expect(CAPSTONE_ACHIEVEMENTS).not.toContain(
+      SteamAchievement.PACKS_RESTORED,
+    )
+  })
 })
 
 // ── Pack ledger ───────────────────────────────────────────────────────────────

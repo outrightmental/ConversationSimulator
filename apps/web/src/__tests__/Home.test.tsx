@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter } from 'react-router-dom'
 import Home from '../screens/Home'
@@ -669,5 +669,41 @@ describe('Home — training plan section', () => {
     stubFetches(makeHealth(), makePacks(1), profile, scenarios)
     renderHome()
     expect(await screen.findByText('Listening drill')).toBeInTheDocument()
+  })
+})
+
+// ── ACH_PACKS_RESTORED (issue #494) ───────────────────────────────────────────
+//
+// Home's missing-pack banner is the restore affordance a player is most likely
+// to reach, so it has to grant the achievement just like the library's empty
+// state and the workbench's empty pack list do. The real hook runs here (no
+// mock) with the Tauri bridge stubbed, so this asserts the name that actually
+// reaches `steam_unlock_achievement`.
+
+describe('Home — restore official packs achievement', () => {
+  afterEach(() => {
+    delete (window as { __TAURI__?: unknown }).__TAURI__
+  })
+
+  it('unlocks ACH_PACKS_RESTORED when the missing-pack banner restores them', async () => {
+    const invoke = vi.fn((cmd: string) =>
+      cmd === 'steam_unlocked_achievements'
+        ? Promise.resolve([])
+        : Promise.resolve(true),
+    )
+    ;(window as { __TAURI__?: unknown }).__TAURI__ = { core: { invoke } }
+
+    // The banner needs a healthy runtime, a loaded model, and no packs.
+    stubFetches(makeHealth({ llm_ready: true, llm_model_name: 'x' }), makePacks(0))
+    renderHome()
+
+    const button = await screen.findByTestId('restore-official-packs-btn')
+    fireEvent.click(button)
+
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith('steam_unlock_achievement', {
+        name: 'ACH_PACKS_RESTORED',
+      }),
+    )
   })
 })

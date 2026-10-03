@@ -132,9 +132,11 @@ export const DEEP_CONVERSATION_TURNS = 12
 
 /**
  * Achievements deliberately left out of the `ACH_CERTIFIED_EXPERT` requirement
- * because they depend on content or hardware a player may legitimately not
- * have. Excluding them keeps the capstone — and therefore "every feature of the
- * base game" — reachable for every player.
+ * because a player may legitimately have no way to earn them: they depend on
+ * content or hardware that is not part of the base game, or on a UI affordance
+ * that only appears when something is broken. Excluding them keeps the capstone
+ * — and therefore "every feature of the base game" — reachable for every
+ * player.
  */
 export const OPTIONAL_ACHIEVEMENTS: readonly SteamAchievementName[] = [
   SteamAchievement.BYO_MODEL, // needs an Ollama install or a .gguf on disk
@@ -143,6 +145,13 @@ export const OPTIONAL_ACHIEVEMENTS: readonly SteamAchievementName[] = [
   SteamAchievement.WORKSHOP_PUBLISHER, // needs a Workshop upload
   SteamAchievement.DLC_LIBRARY, // needs a DLC purchase
   SteamAchievement.BIG_PICTURE, // needs a game controller
+  // Every "Restore official packs" affordance — Home's missing-pack banner, the
+  // library's empty state, the workbench's empty pack list — only renders when
+  // the pack library is actually missing or empty. A player with a healthy
+  // install has no button to press, so requiring this would make the capstone
+  // unreachable for almost everyone. It stays in the set as a rare recovery
+  // achievement instead.
+  SteamAchievement.PACKS_RESTORED,
 ]
 
 /**

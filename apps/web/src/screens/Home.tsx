@@ -14,6 +14,7 @@ import RuntimeRecoveryCard from '../components/RuntimeRecoveryCard'
 import UpdateBanner from '../components/UpdateBanner'
 import { useAppUpdate } from '../hooks/useAppUpdate'
 import { useIsDemo } from '../edition'
+import { useSteamAchievements, SteamAchievement } from '../hooks/useSteamAchievements'
 import DemoConversations from '../components/DemoConversations'
 import DemoUpsellCard from '../components/DemoUpsellCard'
 import type { BadgeStatus } from '@convsim/ui'
@@ -37,6 +38,7 @@ export default function Home() {
   // engine status, and one upsell. Library, workbench, logbook and the pack
   // and model surfaces are not part of the demo.
   const isDemo = useIsDemo()
+  const { unlock } = useSteamAchievements()
 
   const [isRestartingSidecar, setIsRestartingSidecar] = useState(false)
   const [reseeding, setReseeding] = useState(false)
@@ -564,6 +566,10 @@ export default function Home() {
                   setReseeding(false)
                   if (r.ok) {
                     setReseedDone(true)
+                    // ACH_PACKS_RESTORED. This banner is the restore path a
+                    // player is most likely to hit, so it has to grant the
+                    // achievement alongside the library and workbench buttons.
+                    void unlock(SteamAchievement.PACKS_RESTORED)
                     // Refresh the pack count so the "None installed" badge and
                     // this missing-pack notice clear once packs are restored.
                     refetchPackCount()

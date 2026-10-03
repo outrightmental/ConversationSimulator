@@ -78,7 +78,7 @@ names; never rename or reuse one. The five marked **v1** shipped first (issue
 | Pack Connoisseur | `ACH_PACK_CONNOISSEUR` | Player plays a scenario from at least five different packs. Reachable on the base game alone — it ships six packs. | Yes |
 | Curator | `ACH_LIBRARY_CURATOR` | Player narrows the scenario library with the search box or any facet filter. | No |
 | Custom Content | `ACH_PACK_IMPORTED` | Player imports a scenario pack archive, from the library, Settings, or the workbench. | No |
-| Factory Reset | `ACH_PACKS_RESTORED` | Player restores the official packs from the library or the workbench. | Yes |
+| Factory Reset | `ACH_PACKS_RESTORED` | Player restores the official packs — from Home's missing-pack banner, the library's empty state, or the workbench's empty pack list. Every one of those affordances only appears when the pack library is missing or empty, so this is a recovery achievement and is **not** required for the capstone. | Yes |
 
 ### Privacy controls and personalisation
 
@@ -115,7 +115,7 @@ required for the capstone (see below).
 
 | Display name | API name | Unlock condition | Hidden |
 |---|---|---|---|
-| Certified Expert | `ACH_CERTIFIED_EXPERT` | Every achievement above unlocks, except the four Steam platform surfaces and the two advanced-model ones (`ACH_BYO_MODEL`, `ACH_BENCHMARKED`). | No |
+| Certified Expert | `ACH_CERTIFIED_EXPERT` | Every achievement above unlocks, except the four Steam platform surfaces, the two advanced-model ones (`ACH_BYO_MODEL`, `ACH_BENCHMARKED`), and `ACH_PACKS_RESTORED`. | No |
 
 The capstone is unlocked by the front end, not by Steamworks. After every
 confirmed unlock, `unlock()` asks Steam — via the `steam_unlocked_achievements`
@@ -123,9 +123,10 @@ command — which of the required names plus `ACH_CERTIFIED_EXPERT` the signed-i
 account already holds, and fires the capstone when every required name comes
 back. `OPTIONAL_ACHIEVEMENTS` in `useSteamAchievements.ts` is the list left out
 of the requirement, so that 100% of the base game stays reachable for a player
-with no Workshop subscription, no DLC, no controller, and no Ollama or `.gguf`
-model of their own. A microphone **is** required — voice practice is the
-product, and the store page already lists one as the requirement for voice mode.
+with no Workshop subscription, no DLC, no controller, no Ollama or `.gguf`
+model of their own, and a pack library that has never needed repairing. A
+microphone **is** required — voice practice is the product, and the store page
+already lists one as the requirement for voice mode.
 
 **Steam is the only authority here, deliberately.** "Has this player earned
 every required achievement?" is a fact about a Steam *account*, so a device-local
@@ -339,7 +340,8 @@ Use this checklist before the Stage 4 gate (public Steam release):
 - [ ] All nine stats created in App Admin as INT type.
 - [ ] `ACH_CERTIFIED_EXPERT` reviewed against `OPTIONAL_ACHIEVEMENTS` in
       `apps/web/src/hooks/useSteamAchievements.ts` — nothing that needs Workshop,
-      DLC, a controller, or a player-supplied model may be required for it.
+      DLC, a controller, a player-supplied model, or a UI affordance that only
+      appears when something is broken may be required for it.
 - [ ] Rich presence localization file uploaded for English.
 - [ ] Rich presence localization files uploaded for any additional launch
       languages.
