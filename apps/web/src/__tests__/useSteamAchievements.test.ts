@@ -9,9 +9,7 @@ import {
   SteamStat,
   CAPSTONE_ACHIEVEMENTS,
   OPTIONAL_ACHIEVEMENTS,
-  isCapstoneComplete,
-  readUnlockedAchievements,
-  recordUnlockedAchievement,
+  STEAM_PROGRESS_KEYS,
   readPacksPlayed,
   recordPackPlayed,
 } from '../hooks/useSteamAchievements'
@@ -62,10 +60,8 @@ function clearTauri() {
 
 beforeEach(() => {
   clearTauri()
-  // `unlock` keeps a local ledger of confirmed unlocks in localStorage to drive
-  // the capstone, and setupTests backs localStorage with one in-memory store for
-  // the whole file. Clear it so a ledger left by an earlier test cannot change
-  // whether the capstone fires in a later one.
+  // setupTests backs localStorage with one in-memory store for the whole file,
+  // so clear it between tests.
   localStorage.clear()
 })
 
@@ -164,20 +160,16 @@ describe('useSteamAchievements — unlock', () => {
 })
 
 // ── Capstone ──────────────────────────────────────────────────────────────────
+//
+// What a player has earned is a property of their Steam account, so the capstone
+// decision comes from Steam's own read-back and never from a device-local
+// record. `stubSteam({ unlockedOnSteam })` therefore sets up each case by saying
+// what the signed-in Steam ACCOUNT holds, not what this device remembers.
 
 describe('useSteamAchievements — capstone', () => {
-  /** Seeds the ledger with every required achievement except `omit`. */
-  function seedAllRequiredExcept(omit: string) {
-    for (const name of CAPSTONE_ACHIEVEMENTS) {
-      if (name !== omit) recordUnlockedAchievement(name)
-    }
-  }
-
   it('unlocks ACH_CERTIFIED_EXPERT once the last required achievement lands', async () => {
     const last = CAPSTONE_ACHIEVEMENTS[CAPSTONE_ACHIEVEMENTS.length - 1]
-    seedAllRequiredExcept(last)
-
-    const invoke = stubSteam()
+    const invoke = stubSteam({ unlockedOnSteam: CAPSTONE_ACHIEVEMENTS })
     const { result } = renderHook(() => useSteamAchievements())
 
     await act(async () => {
@@ -188,25 +180,27 @@ describe('useSteamAchievements — capstone', () => {
       last,
       SteamAchievement.CERTIFIED_EXPERT,
     ])
-    expect(readUnlockedAchievements()).toContain(
-      SteamAchievement.CERTIFIED_EXPERT,
-    )
-    // The ledger already vouched for everything else, so there was nothing to
-    // ask Steam about.
-    expect(invoke).not.toHaveBeenCalledWith(
-      'steam_unlocked_achievements',
-      expect.anything(),
-    )
+  })
+
+  it('asks Steam about the required set plus the capstone itself', async () => {
+    const invoke = stubSteam()
+    const { result } = renderHook(() => useSteamAchievements())
+
+    await act(async () => {
+      await result.current.unlock(SteamAchievement.BARGE_IN)
+    })
+
+    expect(invoke).toHaveBeenCalledWith('steam_unlocked_achievements', {
+      names: [...CAPSTONE_ACHIEVEMENTS, SteamAchievement.CERTIFIED_EXPERT],
+    })
   })
 
   it('does not unlock the capstone while a required achievement is missing', async () => {
     const last = CAPSTONE_ACHIEVEMENTS[CAPSTONE_ACHIEVEMENTS.length - 1]
-    const alsoMissing = CAPSTONE_ACHIEVEMENTS[0]
-    for (const name of CAPSTONE_ACHIEVEMENTS) {
-      if (name !== last && name !== alsoMissing) recordUnlockedAchievement(name)
-    }
-
-    const invoke = stubSteam()
+    const missing = CAPSTONE_ACHIEVEMENTS[0]
+    const invoke = stubSteam({
+      unlockedOnSteam: CAPSTONE_ACHIEVEMENTS.filter((n) => n !== missing),
+    })
     const { result } = renderHook(() => useSteamAchievements())
 
     await act(async () => {
@@ -214,16 +208,15 @@ describe('useSteamAchievements — capstone', () => {
     })
 
     expect(unlockedNames(invoke)).toEqual([last])
-    expect(readUnlockedAchievements()).not.toContain(
-      SteamAchievement.CERTIFIED_EXPERT,
-    )
   })
 
-  it('does not re-unlock the capstone once it is recorded', async () => {
-    for (const name of CAPSTONE_ACHIEVEMENTS) recordUnlockedAchievement(name)
-    recordUnlockedAchievement(SteamAchievement.CERTIFIED_EXPERT)
-
-    const invoke = stubSteam()
+  it('does not re-unlock the capstone once Steam already holds it', async () => {
+    const invoke = stubSteam({
+      unlockedOnSteam: [
+        ...CAPSTONE_ACHIEVEMENTS,
+        SteamAchievement.CERTIFIED_EXPERT,
+      ],
+    })
     const { result } = renderHook(() => useSteamAchievements())
 
     await act(async () => {
@@ -234,19 +227,23 @@ describe('useSteamAchievements — capstone', () => {
   })
 
   it('does not recurse when the capstone itself is unlocked', async () => {
-    for (const name of CAPSTONE_ACHIEVEMENTS) recordUnlockedAchievement(name)
-
-    const invoke = stubSteam()
+    const invoke = stubSteam({ unlockedOnSteam: CAPSTONE_ACHIEVEMENTS })
     const { result } = renderHook(() => useSteamAchievements())
 
     await act(async () => {
       await result.current.unlock(SteamAchievement.CERTIFIED_EXPERT)
     })
 
+    // No capstone re-fire, and no read-back either: unlocking the capstone is
+    // the one case that needs no evaluation.
     expect(unlockedNames(invoke)).toEqual([SteamAchievement.CERTIFIED_EXPERT])
+    expect(invoke).not.toHaveBeenCalledWith(
+      'steam_unlocked_achievements',
+      expect.anything(),
+    )
   })
 
-  it('does not record an unlock Steam did not confirm', async () => {
+  it('does not evaluate the capstone for an unlock Steam did not confirm', async () => {
     const invoke = stubSteam({ unlock: false })
     const { result } = renderHook(() => useSteamAchievements())
 
@@ -255,53 +252,86 @@ describe('useSteamAchievements — capstone', () => {
     })
 
     expect(invoke).toHaveBeenCalledOnce()
-    expect(readUnlockedAchievements()).toEqual([])
   })
 
-  // ── Reconciliation against the Steam account ───────────────────────────────
-  //
-  // The ledger is device-local, so it starts empty on a second machine, after a
-  // reinstall, and after the player clears app data. Steam is the authority on
-  // what the account has earned, so the capstone check must ask it rather than
-  // stranding such a player at 42/43.
-
-  it('earns the capstone from Steam when the local ledger is empty', async () => {
-    const earnedElsewhere = CAPSTONE_ACHIEVEMENTS.slice(0, -1)
+  it('earns the capstone for a player who finished the set on another machine', async () => {
+    // Nothing local to go on: this device has never seen any of these unlock,
+    // but the account holds them, so the capstone must still be collectable.
     const last = CAPSTONE_ACHIEVEMENTS[CAPSTONE_ACHIEVEMENTS.length - 1]
-    const invoke = stubSteam({ unlockedOnSteam: earnedElsewhere })
-
+    const invoke = stubSteam({ unlockedOnSteam: CAPSTONE_ACHIEVEMENTS })
     const { result } = renderHook(() => useSteamAchievements())
+
     await act(async () => {
       await result.current.unlock(last)
     })
 
-    expect(invoke).toHaveBeenCalledWith('steam_unlocked_achievements', {
-      names: [...earnedElsewhere],
-    })
     expect(unlockedNames(invoke)).toEqual([
       last,
       SteamAchievement.CERTIFIED_EXPERT,
     ])
   })
 
-  it('folds the names Steam confirms back into the ledger', async () => {
-    const earnedElsewhere = CAPSTONE_ACHIEVEMENTS.slice(0, 3)
-    const invoke = stubSteam({ unlockedOnSteam: earnedElsewhere })
+  // ── No device-local unlock record ──────────────────────────────────────────
+  //
+  // An earlier revision of this hook cached confirmed unlocks under
+  // `convsim.steam.unlocked` and decided the capstone from that cache. The key
+  // may still be sitting in localStorage after an update, and it is shared by
+  // every Steam account that plays on this machine and OS login — so trusting it
+  // both hands one account another player's capstone and denies the capstone to
+  // an account that genuinely finished the set. These tests pin that the hook
+  // ignores any such record outright.
 
+  const STALE_LEDGER_KEY = 'convsim.steam.unlocked'
+
+  it('does not grant the capstone from a stale local unlock record', async () => {
+    // The record claims the whole required set; Steam says this account has one.
+    localStorage.setItem(
+      STALE_LEDGER_KEY,
+      JSON.stringify([...CAPSTONE_ACHIEVEMENTS]),
+    )
+    const first = CAPSTONE_ACHIEVEMENTS[0]
+    const invoke = stubSteam({ unlockedOnSteam: [first] })
     const { result } = renderHook(() => useSteamAchievements())
+
     await act(async () => {
-      await result.current.unlock(SteamAchievement.BARGE_IN)
+      await result.current.unlock(first)
     })
 
-    // Not enough for the capstone, but the ledger must still have learned them
-    // so the next unlock does not have to ask again.
-    expect(unlockedNames(invoke)).toEqual([SteamAchievement.BARGE_IN])
-    for (const name of earnedElsewhere) {
-      expect(readUnlockedAchievements()).toContain(name)
-    }
+    expect(unlockedNames(invoke)).toEqual([first])
+  })
+
+  it('grants the capstone even when a stale local record already claims it', async () => {
+    // The mirror image: another account finished the set on this machine, so the
+    // record says the capstone is done — but THIS account has earned it too and
+    // must still collect it.
+    localStorage.setItem(
+      STALE_LEDGER_KEY,
+      JSON.stringify([
+        ...CAPSTONE_ACHIEVEMENTS,
+        SteamAchievement.CERTIFIED_EXPERT,
+      ]),
+    )
+    const first = CAPSTONE_ACHIEVEMENTS[0]
+    const invoke = stubSteam({ unlockedOnSteam: CAPSTONE_ACHIEVEMENTS })
+    const { result } = renderHook(() => useSteamAchievements())
+
+    await act(async () => {
+      await result.current.unlock(first)
+    })
+
+    expect(unlockedNames(invoke)).toEqual([
+      first,
+      SteamAchievement.CERTIFIED_EXPERT,
+    ])
+  })
+
+  it('persists nothing about unlocks, only the pack tally', () => {
+    expect(Object.keys(STEAM_PROGRESS_KEYS)).toEqual(['packsPlayed'])
   })
 
   it('does not fire the capstone when Steam confirms nothing', async () => {
+    // Steamworks refuses the read until the user's stats arrive shortly after
+    // launch. An empty answer is "unknown", never "nothing earned".
     const invoke = stubSteam({ unlockedOnSteam: [] })
 
     const { result } = renderHook(() => useSteamAchievements())
@@ -351,12 +381,6 @@ describe('useSteamAchievements — capstone', () => {
     expect(CAPSTONE_ACHIEVEMENTS).not.toContain(
       SteamAchievement.CERTIFIED_EXPERT,
     )
-  })
-
-  it('treats the required set as complete and a short set as incomplete', () => {
-    expect(isCapstoneComplete(CAPSTONE_ACHIEVEMENTS)).toBe(true)
-    expect(isCapstoneComplete(CAPSTONE_ACHIEVEMENTS.slice(1))).toBe(false)
-    expect(isCapstoneComplete([])).toBe(false)
   })
 })
 

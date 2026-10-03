@@ -162,22 +162,30 @@ export const CAPSTONE_ACHIEVEMENTS: readonly SteamAchievementName[] =
       !OPTIONAL_ACHIEVEMENTS.includes(name),
   )
 
+/**
+ * Every name the capstone check asks Steam about: the required set plus the
+ * capstone itself, so one read-back answers both "is the set complete?" and
+ * "has this account already got the capstone?".
+ */
+const CAPSTONE_READ_BACK: readonly SteamAchievementName[] = [
+  ...CAPSTONE_ACHIEVEMENTS,
+  SteamAchievement.CERTIFIED_EXPERT,
+]
+
 // ── Local progress ledger ─────────────────────────────────────────────────────
 //
-// A device-local record of what has already been unlocked, so the capstone can
-// be evaluated without re-asking Steam about all 36 required names on every
-// call. It is a cache, not the authority: `capstoneIsComplete` below reconciles
-// anything the ledger is missing against Steam itself, which is what keeps the
-// capstone earnable on a second machine or after a data wipe.
+// A device-local tally of the packs the player has practised with, which drives
+// the pack-breadth achievements without a server round-trip.
 //
-// Only achievement API names and pack IDs are stored, on this device only —
-// never transcript text, session IDs, or anything else about a conversation.
-// Nothing here is sent anywhere; Steam only ever receives the unlock calls it
-// would have received anyway.
+// Pack IDs only, on this device only — never transcript text, session IDs, or
+// anything else about a conversation. Nothing here is sent anywhere; Steam only
+// ever receives the unlock calls it would have received anyway.
+//
+// Deliberately NOT used for the capstone: what a player has earned is a
+// property of their Steam *account*, not of this device, so `shouldGrantCapstone`
+// below asks Steam instead.
 
 export const STEAM_PROGRESS_KEYS = {
-  /** JSON array of achievement API names Steam has confirmed unlocked. */
-  unlocked: 'convsim.steam.unlocked',
   /** JSON array of pack IDs the player has completed a scenario from. */
   packsPlayed: 'convsim.steam.packsPlayed',
 } as const
@@ -209,16 +217,6 @@ function appendUnique(key: string, value: string): string[] {
   return next
 }
 
-/** Achievement API names this device has seen Steam confirm. */
-export function readUnlockedAchievements(): string[] {
-  return readStringArray(STEAM_PROGRESS_KEYS.unlocked)
-}
-
-/** Records a confirmed unlock and returns the full ledger. */
-export function recordUnlockedAchievement(name: string): string[] {
-  return appendUnique(STEAM_PROGRESS_KEYS.unlocked, name)
-}
-
 /** Pack IDs the player has completed a scenario from. */
 export function readPacksPlayed(): string[] {
   return readStringArray(STEAM_PROGRESS_KEYS.packsPlayed)
@@ -235,12 +233,6 @@ export function readPacksPlayed(): string[] {
 export function recordPackPlayed(packId: string): string[] {
   if (!packId) return readPacksPlayed()
   return appendUnique(STEAM_PROGRESS_KEYS.packsPlayed, packId)
-}
-
-/** True when every capstone-required achievement is present in `unlocked`. */
-export function isCapstoneComplete(unlocked: readonly string[]): boolean {
-  const have = new Set(unlocked)
-  return CAPSTONE_ACHIEVEMENTS.every((name) => have.has(name))
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
@@ -272,30 +264,31 @@ async function querySteamUnlocked(
 }
 
 /**
- * True when the capstone requirement is satisfied, consulting Steam for
- * anything the local ledger cannot vouch for.
+ * True when `ACH_CERTIFIED_EXPERT` should be granted right now, decided from
+ * what Steam reports for the *signed-in account*.
  *
- * The Steam account — not the ledger — is the authority on what a player has
- * earned. The ledger lives in this device's `localStorage`, so it starts empty
- * on a second machine, after a reinstall, and after the player clears app data,
- * while the account still holds every unlock. Without this reconciliation such
- * a player would sit at 42/43 forever, unable to finish without redoing the
- * one-shot events (a barge-in, an export, a creator save) they already did
- * elsewhere. Names Steam confirms are folded back in, so the ledger self-heals.
+ * "Has this player earned every required achievement?" is a fact about a Steam
+ * account, so only Steam can answer it. A device-local record cannot:
+ * `localStorage` is shared by every Steam account that plays on this machine
+ * and OS login, so trusting one both hands an account the capstone another
+ * player earned here and — once a stale capstone entry is in it — denies the
+ * capstone to an account that genuinely finished the set. It also starts empty
+ * after a reinstall or an app-data wipe, which would strand a finished player
+ * one achievement short of 43 with only one-shot events (a barge-in, an export,
+ * a creator save) left to redo.
+ *
+ * Asking Steam costs one IPC hop and a handful of in-memory lookups per unlock,
+ * which is cheaper than being wrong in either direction.
  */
-async function capstoneIsComplete(
-  unlocked: readonly string[],
-): Promise<boolean> {
-  if (isCapstoneComplete(unlocked)) return true
-  const have = new Set(unlocked)
-  const missing = CAPSTONE_ACHIEVEMENTS.filter((name) => !have.has(name))
-  const confirmed = await querySteamUnlocked(missing)
+async function shouldGrantCapstone(): Promise<boolean> {
+  const confirmed = await querySteamUnlocked(CAPSTONE_READ_BACK)
+  // Nothing confirmed means the read itself was unavailable — outside Steam, or
+  // before the user's stats arrive shortly after launch. That is "unknown", not
+  // "nothing earned", so hold off; the next unlock re-evaluates.
   if (confirmed.size === 0) return false
-  let ledger: readonly string[] = unlocked
-  for (const name of missing) {
-    if (confirmed.has(name)) ledger = recordUnlockedAchievement(name)
-  }
-  return isCapstoneComplete(ledger)
+  // Already on the account: granting it again would re-store stats for nothing.
+  if (confirmed.has(SteamAchievement.CERTIFIED_EXPERT)) return false
+  return CAPSTONE_ACHIEVEMENTS.every((name) => confirmed.has(name))
 }
 
 /**
@@ -306,7 +299,8 @@ async function capstoneIsComplete(
  * - In the Tauri shell, delegates to the `steam_unlock_achievement` and
  *   `steam_increment_stat` commands, which are no-ops when Steam is absent
  *   or the `steam` Cargo feature is disabled. `unlock` additionally reads back
- *   from `steam_unlocked_achievements` while the capstone is outstanding.
+ *   from `steam_unlocked_achievements` on each confirmed unlock, until Steam
+ *   reports the `ACH_CERTIFIED_EXPERT` capstone as already granted.
  *
  * Unlocking is idempotent, so call sites are free to re-check a condition on
  * every visit to a screen. That is what makes the set retroactive wherever the
@@ -315,7 +309,7 @@ async function capstoneIsComplete(
  * recap, a subscribed Workshop pack, or a completed setup earns those
  * achievements the next time they open the relevant screen. Conditions that can
  * only be observed as they happen — a spoken turn, a barge-in, an export, and
- * the pack tally in `recordPackPlayed` below, whose ledger starts empty — count
+ * the pack tally in `recordPackPlayed` above, whose tally starts empty — count
  * from this release forward only. Stats are NOT idempotent and must only be
  * incremented at the moment the counted event happens.
  */
@@ -325,25 +319,15 @@ export function useSteamAchievements() {
       const ok = await invokeSteam('steam_unlock_achievement', achievementName)
       if (!ok) return false
 
-      // Steam confirmed it, so fold it into the local ledger and check whether
-      // that completed the capstone. Guarded against recursing on the capstone
-      // itself, and skipped once the capstone is already recorded.
-      if (achievementName === SteamAchievement.CERTIFIED_EXPERT) {
-        recordUnlockedAchievement(achievementName)
-        return true
-      }
-      const unlocked = recordUnlockedAchievement(achievementName)
-      if (
-        !unlocked.includes(SteamAchievement.CERTIFIED_EXPERT) &&
-        (await capstoneIsComplete(unlocked))
-      ) {
-        const capstoneOk = await invokeSteam(
+      // Steam confirmed it, so this may have been the one that completed the
+      // set. The capstone is only ever fired from here, so unlocking it is the
+      // one case that must not re-enter the check.
+      if (achievementName === SteamAchievement.CERTIFIED_EXPERT) return true
+      if (await shouldGrantCapstone()) {
+        await invokeSteam(
           'steam_unlock_achievement',
           SteamAchievement.CERTIFIED_EXPERT,
         )
-        if (capstoneOk) {
-          recordUnlockedAchievement(SteamAchievement.CERTIFIED_EXPERT)
-        }
       }
       return true
     },
