@@ -549,6 +549,14 @@ def verify_model_checksum(path: Path, expected: str, *, delete_on_mismatch: bool
     A mismatch deletes the file by default: leaving a known-bad GGUF in the CI
     cache would make every subsequent run fail on the same corrupt bytes, since
     the cache key is the expected hash and a cache hit skips the download.
+
+    ``expected`` is compared as a hex *value*, not as a string: a digest that
+    differs only in case or surrounding whitespace is the same digest, and
+    string equality would call it drift.  That matters because of what a
+    mismatch does — it deletes a 2.5 GB file and reports "the pinned upstream
+    file was replaced … do NOT relax this check", which is an expensive and
+    thoroughly misleading verdict to hand someone who pasted an upper-case
+    hash into the local repro in docs/real-model-smoke.md.
     """
     if not path.exists():
         raise SmokeFailure(
@@ -556,6 +564,7 @@ def verify_model_checksum(path: Path, expected: str, *, delete_on_mismatch: bool
             f"Model file not found: {path}. The cache restore produced no model and no "
             "download ran — check the cache key and the download step.",
         )
+    expected = expected.strip().lower()
     actual = sha256_file(path)
     if actual != expected:
         size_mb = path.stat().st_size // 1_048_576

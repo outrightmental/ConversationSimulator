@@ -102,6 +102,21 @@ class TestChecksumVerification:
         assert smoke.verify_model_checksum(path, digest) == digest
         assert path.exists()
 
+    def test_the_same_digest_in_a_different_case_is_not_drift(self, tmp_path: Path) -> None:
+        # The registry pins lower-case hex, but --model-sha256 is typed by hand
+        # in the local repro. An upper-case paste is the same digest, and
+        # string equality would call it drift -- deleting a 2.5 GB file and
+        # reporting "the pinned upstream file was replaced", which is both
+        # expensive and wrong.
+        path, digest = self._write(tmp_path)
+        assert smoke.verify_model_checksum(path, digest.upper()) == digest
+        assert path.exists()
+
+    def test_a_digest_pasted_with_stray_whitespace_is_not_drift(self, tmp_path: Path) -> None:
+        path, digest = self._write(tmp_path)
+        assert smoke.verify_model_checksum(path, f"  {digest}\n") == digest
+        assert path.exists()
+
     def test_drift_raises_checksum_class(self, tmp_path: Path) -> None:
         path, _ = self._write(tmp_path)
         with pytest.raises(smoke.SmokeFailure) as exc_info:
