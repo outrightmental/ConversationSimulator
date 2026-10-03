@@ -561,7 +561,36 @@ def _emit_github_output(values: Dict[str, Any]) -> None:
 def _download_with_progress(url: str, dest: Path) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     print(f"  Downloading {url[:80]}…")
-    req = urllib.request.Request(url, headers={"User-Agent": "convsim-smoke/1.0"})
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "convsim-smoke/1.0"})
+    except ValueError as exc:
+        # urllib raises out of the *constructor* for a string it cannot read as
+        # a URL ("unknown url type"), i.e. before the handler below exists. That
+        # escaped to main's catch-all and was reported as "most likely a bug in
+        # the smoke harness", with a remedy telling the reader to re-run with
+        # the same arguments — when the argument is the whole problem.
+        #
+        # Not `download` either: nothing was fetched and no re-run or registry
+        # URL check changes the outcome. This is the harness being handed an
+        # input it cannot act on, which is what `pipeline` covers for everything
+        # else of that kind, with a remedy naming both places the string can
+        # come from. The realistic source is the local repro in
+        # docs/real-model-smoke.md, whose --model-url is a placeholder the
+        # reader is meant to substitute.
+        raise SmokeFailure(
+            FailureClass.PIPELINE,
+            f"Not a usable download URL: {url[:120]!r} ({exc})",
+            remedy=(
+                "Nothing was fetched — the string is not a URL urllib can "
+                "request. If it came from --model-url on the command line, "
+                "substitute the real URL printed by "
+                "`--print-registry-model starter` (the repro block in "
+                "docs/real-model-smoke.md shows a placeholder, not a value). "
+                "If it came from the registry, repair download.url in "
+                "model-registry/registry.yaml and validate with "
+                "scripts/validate-registry.py --url-check."
+            ),
+        ) from exc
     try:
         with urllib.request.urlopen(req, timeout=600) as resp, open(dest, "wb") as f:
             total = int(resp.headers.get("Content-Length", 0)) or None

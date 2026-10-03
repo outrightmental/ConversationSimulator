@@ -223,6 +223,32 @@ class TestDownloadFailureClassification:
             smoke._download_with_progress("https://example.invalid/m.gguf", dest)
         assert not dest.exists()
 
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "<model_url from step 2>",  # the repro block's placeholder, pasted verbatim
+            "example.invalid/m.gguf",  # scheme omitted
+        ],
+    )
+    def test_an_unrequestable_url_is_not_reported_as_a_harness_bug(
+        self, url: str, tmp_path: Path
+    ) -> None:
+        # urllib raises ValueError out of Request's *constructor* for a string
+        # it cannot read as a URL, which used to sit above the handler — so it
+        # escaped to main's catch-all as "most likely a bug in the smoke
+        # harness", advising a re-run with the same arguments. The arguments are
+        # the problem, and the local repro in docs/real-model-smoke.md hands the
+        # reader a --model-url placeholder to substitute.
+        with pytest.raises(smoke.SmokeFailure) as exc_info:
+            smoke._download_with_progress(url, tmp_path / "m.gguf")
+        assert exc_info.value.failure_class == smoke.FailureClass.PIPELINE
+        assert "not a usable download url" in str(exc_info.value).lower()
+        # Its own remedy, not the class default: "inspect the per-turn
+        # used_fallback flags" is useless when no turn was ever played.
+        assert exc_info.value.remedy != smoke.REMEDIES[smoke.FailureClass.PIPELINE]
+        assert "--model-url" in exc_info.value.remedy
+        assert "registry" in exc_info.value.remedy
+
 
 # ---------------------------------------------------------------------------
 # Registry resolution
