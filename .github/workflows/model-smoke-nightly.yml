@@ -120,9 +120,21 @@ jobs:
       - name: Install convsim-core
         run: pip install -e "services/convsim-core[dev]"
 
+      # --only-binary enforces what the step name already promises.  PyPI ships
+      # llama-cpp-python as an sdist only — the prebuilt wheels live on the
+      # extra index — and --extra-index-url does not prefer them: pip resolves
+      # the newest version across both indexes, so a release the wheel index has
+      # not caught up with yet is installed by compiling llama.cpp on the
+      # runner.  That build is the ~2 min row in the runtime budget turning into
+      # 15+, which the 30 min job timeout now has no room for: the job would die
+      # with the unattributable cancellation this whole design exists to avoid,
+      # on a night when nothing about the product changed.  Refusing the sdist
+      # makes pip fall back to the newest version that does have a wheel, and if
+      # there is none it fails in seconds against this step's own name.
       - name: Install llama-cpp-python with server extra (CPU-only prebuilt wheel)
         run: |
           pip install "llama-cpp-python[server]" \
+            --only-binary llama-cpp-python \
             --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
 
       # Single source of truth: the cache key, the download URL and the
