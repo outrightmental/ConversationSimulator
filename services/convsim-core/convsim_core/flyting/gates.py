@@ -113,7 +113,17 @@ _PROTECTED_CLASS_PATTERN = _compile(
     r"\b(?:because|since)\s+you(?:'re|\s+are)\s+(?:a\s+|an\s+)?(?:woman|black|white|asian|"
     r"jew(?:ish)?|muslim|hindu|gay|lesbian|trans(?:gender)?|disabled|blind|deaf|crippled|immigrant|foreign)\b",
     r"\bgo\s+back\s+to\s+(?:your\s+)?(?:own\s+)?(?:country|where\s+you\s+came\s+from)\b",
-    r"\byour\s+(?:people|kind|race|tribe)\s+(?:are|is|always|all)\b",
+    # "race" and "tribe" have no innocent reading in this construction.
+    # "your people" and "your kind" do, and it is the central one of two
+    # launch-pack scenarios: a ruined woman telling a club-step gentleman that
+    # his kind is always welcome at the tradesman's entrance is a class insult,
+    # PG-13, and exactly what The Scorned Rose of Whitechapel is for. Fouling it
+    # costs the volley, the heat, and a whiff — and the second one ends the run.
+    # Left to the safety router and to the judge, which raises below_the_belt on
+    # the ethnic reading and is always honored. Same trade as "chink in your
+    # armour" above: a false foul that ends a session is worse than a missed one
+    # the judge will catch.
+    r"\byour\s+(?:race|tribe)\s+(?:are|is|always|all)\b",
     r"\b(?:all|every)\s+(?:jews?|muslims?|blacks?|asians?|gays?|women|immigrants?)\s+(?:are|is|should)\b",
     r"\byou\s+(?:people|lot)\s+(?:are\s+all|always)\b",
 )
@@ -122,7 +132,12 @@ _OUT_OF_FICTION_PATTERN = _compile(
     r"\bas\s+an?\s+(?:ai|a\.i\.|language\s+model|chatbot|llm)\b",
     r"\byou(?:'re|\s+are)\s+(?:just\s+)?(?:an?\s+)?(?:ai|a\.i\.|bot|chatbot|llm|program|algorithm|language\s+model)\b",
     r"\b(?:break|breaking)\s+character\b",
-    r"\bout\s+of\s+character\b",
+    # "You are out of character" is addressed to a performer; "that was out of
+    # character for you, sir" is an observation about the man, and one of the
+    # oldest shapes there is for accusing someone of a rare honesty. The
+    # trailing "for X" separates them, and "break character" above still
+    # catches the unambiguous meta form.
+    r"\bout\s+of\s+character\b(?!\s+for\b)",
     r"\bthe\s+(?:person|human|man|woman|developer|dev|programmer)\s+(?:typing|behind|who\s+wrote|who\s+made)\b",
     r"\bwho(?:ever)?\s+(?:wrote|coded|made|programmed|designed)\s+(?:this|you)\b",
     # "This is just a game to you" is an accusation against a cad, not a remark
@@ -142,8 +157,16 @@ _BRIBE_PATTERN = _compile(
     r"\bmark\s+(?:this|that|it|me|my\s+\w+)\b"
     r"(?=[^.!?]{0,24}(?:\b(?:\d{1,3}|hundred)\b|\b(?:full|top|maximum|perfect)\s+(?:marks?|score|points?)\b))",
     r"\b(?:give|award)\s+(?:me|this|it|him|her)\s+(?:a\s+)?(?:\d{1,3}|full|maximum|perfect|top)\b",
-    r"\b(?:full|top|maximum|perfect)\s+(?:marks|score|points)\b",
-    r"\b(?:100|ten)\s*(?:out\s*of\s*|/)\s*(?:100|ten)\b",
+    # A top mark named is not a top mark demanded. "Full marks for effort, and
+    # none whatever for result" and "ten out of ten for brass, nought for sense"
+    # are stock English sarcasm aimed squarely at the target — the register the
+    # launch pack is written in — and the giveaway is the "for X" that follows,
+    # which makes the phrase an assessment of somebody rather than a request.
+    # The demand shapes are kept below and by the give/award rule above.
+    r"\b(?:full|top|maximum|perfect)\s+(?:marks?|score|points?)\b(?!\s+for\b)",
+    r"\b(?:100|ten)\s*(?:out\s*of\s*|/)\s*(?:100|ten)\b(?!\s+for\b)",
+    r"\b(?:deserves?|earns?|merits?|is\s+worth)\s+(?:a\s+)?"
+    r"(?:full|top|maximum|perfect)\s+(?:marks?|score|points?)\b",
     r"\b(?:dear\s+|hey\s+|ok(?:ay)?\s+|listen\s+)?(?:judge|umpire|referee|ref)\s*[,:!]",
     r"\bignore\s+the\s+(?:rubric|rules|scoring|anchors|anchor\s+examples)\b",
     r"\b(?:sting|wit|craft|fidelity|umpire_line)\s*[\"']?\s*[:=]\s*\d",
