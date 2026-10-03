@@ -61,7 +61,9 @@ baked in at compile time (`build.rs` validates it, `lib.rs` hands it to
 `convsim-core` at launch): Steam starts the app with none of our environment, so
 nothing set at run time would ever arrive. The demo build leg of `release.yml`
 takes it as the `demo_model_id` workflow input and refuses, in Validate, an id
-that is not in `model-registry/registry.yaml`.
+that is not in `model-registry/registry.yaml` — before three platform builds
+spin up. `build.rs` runs the same check itself, so a demo compiled outside the
+workflow cannot silently fall back to the starter either.
 
 #### The smaller/faster Qwen question
 
