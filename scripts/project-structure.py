@@ -118,7 +118,14 @@ def manifest_errors(manifest: dict[str, Any]) -> list[str]:
     """Internal coherence of the manifest itself."""
     errors: list[str] = []
     project = manifest.get("project") or {}
-    for key in ("owner", "number", "issue_types", "priorities", "phases"):
+    # `priority_field` and `phase_field` are indexed, not `.get()`, by the
+    # collector that builds the issue list, so a missing one is a KeyError
+    # traceback partway into `audit` rather than a finding. Same reason the
+    # phases are declared: fail here, offline, with a sentence a human can read.
+    for key in (
+        "owner", "number", "priority_field", "phase_field",
+        "issue_types", "priorities", "phases",
+    ):
         if not project.get(key):
             errors.append(f"project.{key} is missing")
     types = set(project.get("issue_types") or [])
@@ -126,6 +133,7 @@ def manifest_errors(manifest: dict[str, Any]) -> list[str]:
     phases = set(project.get("phases") or [])
 
     names = label_names(manifest)
+    live = set(names)
     for name in sorted({n for n in names if names.count(n) > 1}):
         errors.append(f"label {name!r} is declared twice")
     for entry in manifest["labels"]:
@@ -134,8 +142,18 @@ def manifest_errors(manifest: dict[str, Any]) -> list[str]:
             errors.append(f"label {entry['name']!r} has a non six-digit-hex color {color!r}")
         if not entry.get("description"):
             errors.append(f"label {entry['name']!r} has no description")
-
-    live = set(names)
+        # A `renamed_from` runs as `gh label edit <source> --name <this>`, which
+        # consumes the source. If the manifest still declares that source, the
+        # rename carries its assignments onto the wrong label and the planner
+        # then recreates the source empty — every issue it marked is silently
+        # unmarked. One typo, and a slice of the pie chart disappears.
+        source = entry.get("renamed_from")
+        if source and source in live:
+            errors.append(
+                f"label {entry['name']!r} renames from {source!r}, which the manifest "
+                f"still declares — the rename would consume it and discard its "
+                f"assignments"
+            )
     for entry in manifest.get("retired_labels", []):
         name = entry["name"]
         if name in live:
@@ -179,6 +197,19 @@ def manifest_errors(manifest: dict[str, Any]) -> list[str]:
     # kind of typo: `apply` reports success and changes nothing.
     for section in sorted(set(backfill) - set(known)):
         errors.append(f"backfill.{section!r} is not a section this script applies")
+    # A closed milestone satisfies `require_milestone_when_open` while having no
+    # burndown left to show, so parking open work on one looks converged and
+    # quietly empties the velocity chart this whole scheme exists to produce.
+    closed_titles = {
+        entry["title"]
+        for entry in manifest.get("milestones", [])
+        if entry.get("state", "open") != "open"
+    }
+    for title in sorted(set(backfill.get("milestones") or {}) & closed_titles):
+        errors.append(
+            f"backfill.milestones parks issues on {title!r}, which is closed — "
+            f"a shipped train has no burndown left"
+        )
     for section, allowed in known.items():
         seen: dict[int, str] = {}
         for value, numbers in (backfill.get(section) or {}).items():
@@ -1111,6 +1142,12 @@ def self_test() -> int:
     broken["backfill"]["priorities"]["P0"] = [3]
     broken["backfill"]["phases"] = {"99 · Never": [7]}
     broken["backfill"]["labelz"] = {"area:engine": [7]}
+    del broken["project"]["phase_field"]
+    broken["labels"][0]["renamed_from"] = "meta"
+    broken["milestones"].append(
+        {"title": "v0", "due_on": "2025-01-01", "state": "closed", "description": "Shipped"}
+    )
+    broken["backfill"]["milestones"]["v0"] = [8]
 
     cases: list[tuple[str, Any, Any]] = [
         # -- the manifest checks
@@ -1140,6 +1177,12 @@ def self_test() -> int:
         ("a backfill section the planner never reads is reported",
          any("'labelz' is not a section this script applies" in e
              for e in manifest_errors(broken)), True),
+        ("a missing project field name is reported",  # else: KeyError mid-`audit`
+         any("project.phase_field is missing" in e for e in manifest_errors(broken)), True),
+        ("a rename that would consume a declared label is reported",
+         any("still declares" in e for e in manifest_errors(broken)), True),
+        ("backfill parking issues on a closed milestone is reported",
+         any("parks issues on 'v0'" in e for e in manifest_errors(broken)), True),
         ("due_on normalises to YYYY-MM-DD",
          [due_date(dt.date(2026, 1, 31)), due_date("2026-01-31T12:00:00Z"), due_date(None)],
          ["2026-01-31", "2026-01-31", None]),
