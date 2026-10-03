@@ -220,8 +220,9 @@ Notes:
 ## Part 5 — Platform-specific blocker log
 
 List every session-ending bug, data-loss bug, or privacy regression found during
-Parts E, G, H, and I.  Each entry must have a corresponding GitHub issue with
-the labels `beta-testing` and the appropriate `platform:*` label.
+Parts E, G, H, and I.  Each entry must have a corresponding GitHub issue at
+Type Bug, Priority P0 — blocker, labelled `area:steam`, with the affected
+platform named in the title.
 
 | # | Platform | Description | GitHub issue | Status |
 |---|----------|-------------|-------------|--------|

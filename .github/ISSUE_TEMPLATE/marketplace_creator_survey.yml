@@ -5,6 +5,7 @@ description: >
   Responses are anonymised before use; please do not include personally
   identifying information.
 labels: ["area:packs"]
+type: Task
 body:
   - type: markdown
     attributes:

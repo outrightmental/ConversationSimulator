@@ -126,25 +126,85 @@ existing packs.
 
 ---
 
-## Labels
+## Labels, fields, and milestones
 
-The tracker runs on a deliberately small labeling system — four axes, one question each:
+Three systems run the tracker. Each answers exactly one question, and none of them
+duplicates another — that non-overlap is the point, and it is enforced:
+[.github/project-structure.yml](.github/project-structure.yml) declares the whole
+shape of the tracker, and `scripts/project-structure.py validate` fails CI if this
+section, the issue forms, the manifest, or anything in the tree that names a label —
+a pre-filled new-issue link, a `label:` search — fall out of step.
+
+### Labels — *where* the work lands
+
+Labels exist for one reason: so the board shows the pie chart of development effort
+by product area. There are no type labels and no priority labels, because those are
+fields.
 
 | Axis | Labels | Question it answers |
 | ---- | ------ | ------------------- |
-| Type | `bug` · `enhancement` · `docs` · `chore` · `epic` | What kind of change is this? |
-| Priority | `priority:P0` · `priority:P1` · `priority:P2` | P0 blocks the next release; P1 is next up; P2 is opportunistic |
-| Area | `area:engine` · `area:ui` · `area:models` · `area:packs` · `area:steam` · `area:safety` | Which product surface does it touch? |
+| Area | `area:engine` · `area:ui` · `area:models` · `area:packs` · `area:safety` · `area:steam` · `area:docs` · `area:infra` | Which product surface does it touch? |
 | Workflow | `manual` · `review` · `good first issue` · `help wanted` | Who picks it up, and how |
+| Housekeeping | `meta` | Tracker or repo chore that ships no product change |
 
-Conventions:
+- Every open issue carries **one or two** area labels — the pie chart has no
+  *unknown* slice, so an area is required, not optional. The two exceptions are
+  epics, which span areas by design and carry none, and `meta`.
+- `manual` and `review` are contracts with the
+  [yoke](https://github.com/outrightmental/yoke) orchestrator: `manual` keeps an
+  issue or PR out of automated work entirely; `review` lets yoke implement but
+  leaves the final PR to a human.
+- `good first issue` and `help wanted` mark the community on-ramps — scenario packs
+  are the friendliest entry point.
+- `meta` is the only escape hatch from the milestone and area rules below. Use it
+  for tracker and repository housekeeping, nothing else.
 
-- Every issue gets **one type** label. Add **one or two** `area:*` labels when the surface is clear; epics that span areas carry none.
-- `manual` and `review` are contracts with the [yoke](https://github.com/outrightmental/yoke) orchestrator: `manual` keeps an issue or PR out of automated work entirely; `review` lets yoke implement but leaves the final PR to a human.
-- `good first issue` and `help wanted` mark the community on-ramps — scenario packs are the friendliest entry point.
-- Milestones track *when*; the [delivery board](https://github.com/orgs/outrightmental/projects/12) tracks *status*. Labels only say what, where, and how urgent.
+Please do not invent new labels ad hoc. A new label is a change to the manifest, so
+propose it in an issue first.
 
-Please do not invent new labels ad hoc — propose additions in an issue first.
+### Fields — *what kind* of work, and *how urgent*
+
+| Field | Where | Values | Question it answers |
+| ----- | ----- | ------ | ------------------- |
+| Type | Native GitHub issue type | Bug · Feature · Task · Epic | What kind of change is this? |
+| Priority | Delivery board single-select | P0 — blocker · P1 — next · P2 — later | P0 blocks the next release; P1 is next up; P2 is opportunistic |
+| Phase | Delivery board single-select | 01 · Alpha build … 07 · Future | Which era of the project shipped it? |
+
+These values are the complete set, exactly as labels are: the manifest declares them,
+`validate` fails CI if the table above drifts from it, and `audit` reports any issue
+carrying a value it does not. A new Type or Priority is a change to the manifest and to
+the board, not a one-off.
+
+Set Type and Priority on every open issue at triage. The factory reads Type — it
+takes Bugs first — and Phase is append-only history, not a planning field.
+
+### Milestones — *when* it ships
+
+Milestones are release trains with deadlines, which is what makes velocity readable.
+Every open issue belongs to exactly one of the trains below, unless it is `meta` —
+and only to one of these, because open work parked on a train that already shipped
+looks triaged while burning down nowhere. The next three:
+
+| Milestone | Due | What it delivers |
+| --------- | --- | ---------------- |
+| v0.4 — Demo and Next Fest | Oct 31, 2026 | A free demo build in front of players: Next Fest submission, its own client identity, a self-explaining first session |
+| v1.0 — Paid launch | Nov 28, 2026 | The $9.99 Steam edition goes live — bundled desktop engine, real-model CI gate, store and DLC registration |
+| v1.1 — Post-launch | Jan 16, 2027 | The groomed backlog released to the factory: auto-update, accessibility, performance targets, the UGC on-ramp |
+
+Closed work is attributed to the Phase that shipped it instead — a milestone invented
+after the fact has no burndown to show.
+
+### Checking the tracker
+
+```sh
+python scripts/project-structure.py validate   # offline — the CI gate
+python scripts/project-structure.py audit      # live tracker vs. the manifest
+python scripts/project-structure.py apply      # converge the live tracker
+```
+
+`audit` and `apply` need the gh CLI authenticated with the `project` scope
+(`gh auth refresh -s project`), so they are maintainer commands; `validate` needs
+neither network nor credentials and runs in CI on every pull request.
 
 ---
 
@@ -221,6 +281,14 @@ node packages/scenario-schema/tests/validate-packs.js packs/official
 # Full policy check (requires convsim-core installed)
 pip install -e "services/convsim-core[dev]"
 for d in packs/official/*/; do convsim-validate-pack "$d"; done
+```
+
+### Project structure
+
+```sh
+pip install pyyaml
+python scripts/project-structure.py self-test
+python scripts/project-structure.py validate
 ```
 
 ### Onboarding e2e suite

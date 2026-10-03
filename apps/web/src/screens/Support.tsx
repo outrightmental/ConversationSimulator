@@ -10,7 +10,7 @@ import type { PreflightResponse, PreflightCheck, PreflightFixAction } from '@con
 const ISSUES_URL = 'https://github.com/outrightmental/ConversationSimulator/issues/new/choose'
 const TEMPLATE_BASE = 'https://github.com/outrightmental/ConversationSimulator/issues/new?template='
 const BETA_REPORT_TEMPLATE_URL =
-  'https://github.com/outrightmental/ConversationSimulator/issues/new?template=beta-report.yml&labels=beta-feedback'
+  'https://github.com/outrightmental/ConversationSimulator/issues/new?template=beta-report.yml'
 const BETA_GUIDE_URL =
   'https://docs.conversationsimulator.com/project/beta-testing/'
 
