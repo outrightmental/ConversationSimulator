@@ -188,6 +188,29 @@ async def _run_install(
 
     newest_stt_path: str | None = None
 
+    def _persist_stt_choice() -> None:
+        """Point the worker at the newest STT model this job landed.
+
+        An STT model is only useful once the worker is reading that exact file,
+        and the file is no less installed because a *later* asset failed: the
+        player picks small.en, it downloads and verifies, then the 2 MB VAD
+        model fails (its host is raw.githubusercontent.com, which some networks
+        block while Hugging Face answers fine) — and the worker was left
+        pointed at ggml-base.en.bin, a file they may never have installed. The
+        screen then read "Speak your turns — Not yet" with every row beneath it
+        green and nothing naming the gap.
+
+        Called on success and on failure, never on cancel: a failure is the
+        app's, and the model it fetched is still the one the player asked for,
+        whereas a cancel is the player saying "stop, change nothing".
+
+        Persist before applying, so a crash between the two still restores the
+        choice on the next boot.
+        """
+        if newest_stt_path is not None:
+            set_stt_model_path(conn, newest_stt_path)
+            apply_stt_model_path(stt_worker, newest_stt_path)
+
     for index, asset in enumerate(assets):
         # Cancel between assets, not only mid-transfer. download_voice_asset
         # sees the event on its first chunk, so an asset that actually downloads
@@ -247,6 +270,7 @@ async def _run_install(
             stage.state = "failed"
             stage.error = str(exc)
             _save()
+            _persist_stt_choice()
             update_job_status(conn, job_id, "failed", str(exc))
             return
         except Exception as exc:  # noqa: BLE001 - surfaced verbatim to the player
@@ -254,6 +278,7 @@ async def _run_install(
             stage.state = "failed"
             stage.error = message
             _save()
+            _persist_stt_choice()
             update_job_status(conn, job_id, "failed", message)
             return
 
@@ -263,13 +288,7 @@ async def _run_install(
             newest_stt_path = str(dest)
         _save()
 
-    # An STT model is only useful once the worker is reading that exact file.
-    # Persist before applying so a crash between the two still restores the
-    # choice on the next boot.
-    if newest_stt_path is not None:
-        set_stt_model_path(conn, newest_stt_path)
-        apply_stt_model_path(stt_worker, newest_stt_path)
-
+    _persist_stt_choice()
     update_job_status(conn, job_id, "complete")
     logger.info("voice-install(%d): complete", job_id)
 

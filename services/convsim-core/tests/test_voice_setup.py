@@ -1052,3 +1052,48 @@ def test_starting_kokoro_runs_the_sidecar(client, monkeypatch):
     assert started["called"] is True
     assert body["started"] is True
     assert body["state"] == "running"
+
+
+def test_a_model_that_landed_is_still_used_when_a_later_asset_fails(
+    client, monkeypatch, voice_paths
+):
+    """A speech model that downloaded must be the one in use, even if the job fails.
+
+    The player picks small.en and it verifies; then the 2 MB VAD model fails —
+    its host is ``raw.githubusercontent.com``, which some networks block while
+    Hugging Face answers fine. Persisting only at the end of the job left
+    small.en on disk with the worker still pointed at ``ggml-base.en.bin``, a
+    file that may never have been installed: the screen then read "Speak your
+    turns — Not yet" with every row beneath it green and nothing naming the
+    gap. A failure is not a request to leave the setup unchanged.
+    """
+    small = voice_paths["stt_dir"] / "ggml-small.en.bin"
+
+    async def _download(*, dest_path, **_):
+        if dest_path == voice_paths["vad_model"]:
+            raise RuntimeError("connection reset by peer")
+        dest_path.parent.mkdir(parents=True, exist_ok=True)
+        dest_path.write_bytes(b"ggml")
+        return 4
+
+    monkeypatch.setattr(
+        "convsim_core.routers.voice_setup.download_voice_asset", _download
+    )
+
+    job_id = client.post(
+        "/api/voice/setup/install",
+        json={"asset_ids": ["whisper-small-en", "silero-vad"]},
+    ).json()["id"]
+    job = _await_terminal(client, job_id)
+
+    assert job["status"] == "failed"
+    assert job["stages"][0]["state"] == "complete"
+    assert job["stages"][1]["state"] == "failed"
+
+    conn = client.app.state.db.connection()
+    assert get_stt_model_path(conn) == str(small)
+    assert client.app.state.stt_worker.model_path == str(small)
+    # The plan has to agree, or the picker would offer a download for a model
+    # the player has already waited for.
+    assets = {a["id"]: a for a in client.get("/api/voice/setup/plan").json()["assets"]}
+    assert assets["whisper-small-en"]["selected"] is True
