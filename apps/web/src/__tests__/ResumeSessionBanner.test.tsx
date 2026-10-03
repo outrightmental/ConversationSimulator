@@ -83,6 +83,20 @@ describe('ResumeSessionBanner', () => {
     expect(banner).toHaveTextContent('3 turns')
   })
 
+  it('says "1 turn" after a single exchange', async () => {
+    mockApi.listSessions.mockResolvedValue({
+      ok: true,
+      data: { sessions: [{ ...SESSION, turn_count: 1 }] },
+    })
+    renderAt('/settings')
+    await waitFor(() =>
+      expect(screen.getByTestId('resume-session-banner')).toBeInTheDocument(),
+    )
+    const banner = screen.getByTestId('resume-session-banner')
+    expect(banner).toHaveTextContent('1 turn so far')
+    expect(banner).not.toHaveTextContent('1 turns')
+  })
+
   it('resumes into the conversation it names', async () => {
     mockApi.listSessions.mockResolvedValue({ ok: true, data: { sessions: [SESSION] } })
     render(

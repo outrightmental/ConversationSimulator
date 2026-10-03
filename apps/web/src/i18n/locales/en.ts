@@ -99,7 +99,8 @@ export const en = {
   // "You have a conversation in progress" (issue #501 §1).
   resume: {
     label: 'Conversation in progress.',
-    withTurns: '{{title}} — {{count}} turns so far.',
+    withTurns_one: '{{title}} — 1 turn so far.',
+    withTurns_other: '{{title}} — {{count}} turns so far.',
     withoutTurns: '{{title}} — not started yet.',
     action: 'Resume',
     dismiss: 'End it',

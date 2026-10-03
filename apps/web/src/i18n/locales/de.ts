@@ -104,7 +104,8 @@ export const de: LocaleMessages = {
   // "Gespräch läuft" (Issue #501 §1).
   resume: {
     label: 'Gespräch läuft.',
-    withTurns: '{{title}} — bisher {{count}} Züge.',
+    withTurns_one: '{{title}} — bisher 1 Zug.',
+    withTurns_other: '{{title}} — bisher {{count}} Züge.',
     withoutTurns: '{{title}} — noch nicht begonnen.',
     action: 'Fortsetzen',
     dismiss: 'Beenden',

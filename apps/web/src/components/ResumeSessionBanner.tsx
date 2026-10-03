@@ -66,9 +66,11 @@ export default function ResumeSessionBanner() {
     >
       <span style={{ color: '#c7d2fe', flex: 1, minWidth: '12rem' }}>
         <strong style={{ fontWeight: 600 }}>{t('resume.label')}</strong>{' '}
-        {turns > 0
-          ? t('resume.withTurns', { title, count: turns })
-          : t('resume.withoutTurns', { title })}
+        {turns === 0
+          ? t('resume.withoutTurns', { title })
+          : turns === 1
+          ? t('resume.withTurns_one', { title })
+          : t('resume.withTurns_other', { title, count: turns })}
       </span>
       <button
         onClick={handleResume}
