@@ -1,6 +1,6 @@
 ---
 title: "Speaking and listening"
-description: "Turn on speech-to-text and the NPC voice in Conversation Simulator — what the app installs for you, the one command it does not, and how to test the result."
+description: "Turn on speech-to-text and the NPC voice in Conversation Simulator — what the app installs for you, what it hands you the command for instead, and how to test the result."
 sidebar:
   order: 5
 verified_against: v0.3.0
@@ -44,7 +44,7 @@ reload.
 The split that matters is between **model files**, which the app downloads and
 verifies for you, and **programs**, which it does not. No speech engine
 publishes a checksummed download for every platform, so rather than fetch an
-unverified binary the app shows you the one command that installs it.
+unverified binary the app shows you the exact command to install it yourself.
 
 ---
 

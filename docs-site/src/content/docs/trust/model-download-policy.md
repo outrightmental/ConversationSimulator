@@ -292,8 +292,8 @@ install, and partial files are removed on cancel or error.
 
 **Engine programs are never downloaded.** Neither whisper.cpp nor the Kokoro
 voice server publishes a checksummed release for every platform, so instead of
-fetching an unverified binary the app shows you the one command that installs
-it. The single exception is a voice server that is already on your machine but
+fetching an unverified binary the app shows you the exact command to install it
+yourself. The single exception is a voice server that is already on your machine but
 not running — Steam builds bundle it — which the app starts for you.
 
 See [Speaking and listening](/play/voice/) for the player-facing walkthrough.

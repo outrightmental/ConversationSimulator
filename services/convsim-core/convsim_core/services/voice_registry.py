@@ -174,7 +174,7 @@ VOICE_ENGINES: tuple[VoiceEngine, ...] = (
         name="whisper.cpp",
         why_manual=(
             "whisper.cpp publishes no checksummed binary for every platform, so the "
-            "app will not download one for you. One command installs it."
+            "app will not download one for you. Install it with the command below."
         ),
         docs_url=_WHISPER_DOCS,
         # Homebrew is the only package manager of the three that ships it. The

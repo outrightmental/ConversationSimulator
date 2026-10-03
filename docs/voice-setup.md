@@ -110,7 +110,7 @@ restart.
 
 | Engine | Why manual |
 |--------|-----------|
-| `whisper-cli` | whisper.cpp publishes no checksummed binary for every platform. llama.cpp's release carries a `sha256sum.txt`; whisper.cpp's does not, and shipping an unverified binary is worse than one command. |
+| `whisper-cli` | whisper.cpp publishes no checksummed binary for every platform. llama.cpp's release carries a `sha256sum.txt`; whisper.cpp's does not, and shipping an unverified binary is worse than handing over the install command. |
 | Kokoro TTS server | Steam depot builds bundle it (`CONVSIM_BUNDLED_RUNTIME_DIR`). Elsewhere the official container image is the shortest path. |
 
 Only Homebrew packages whisper.cpp. There is no winget package for it —
