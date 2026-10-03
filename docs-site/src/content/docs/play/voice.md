@@ -92,7 +92,9 @@ Run it in a terminal, switch back to the app, and the row turns green. If it
 does not, press **Check again**.
 
 Homebrew is the only package manager that ships whisper.cpp, so Linux and
-Windows build it. On Windows the build leaves `whisper-cli.exe` inside
+Windows build it. The command builds a self-contained program, so once it has
+been copied into place you can delete the cloned source folder. On Windows the
+build leaves `whisper-cli.exe` inside
 `build\bin\Release` rather than anywhere on your `PATH`, and the setup screen
 says so under the command: add that folder to your `PATH`, or set
 `CONVSIM_WHISPER_CPP_BINARY_PATH` to the full path of the `.exe`. Then **restart

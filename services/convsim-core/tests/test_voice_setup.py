@@ -35,6 +35,7 @@ from convsim_core.services.voice_download import (
 from convsim_core.services.voice_setup_service import (
     get_stt_model_path,
     retire_orphaned_jobs,
+    set_stt_model_path,
 )
 from convsim_core.storage.database import Database
 
@@ -154,6 +155,25 @@ def test_whisper_commands_name_packages_that_exist():
         command = whisper.commands[platform]
         assert "winget" not in command, platform
         assert "cmake --build" in command, platform
+
+
+def test_a_source_build_produces_a_self_contained_binary():
+    """A binary that needs its build tree is not installed, however much PATH says so.
+
+    Upstream defaults BUILD_SHARED_LIBS ON everywhere but MinGW, which drops
+    libwhisper/libggml beside the executable in ``build/bin`` and links against
+    them through a build-tree rpath. The Linux command copies *only*
+    ``whisper-cli`` onto PATH, so deleting the clone — the obvious tidy-up once
+    the binary is "installed" — leaves something ``shutil.which`` still finds
+    and ``whisper-cli`` can no longer load. ``find_whisper_binary`` would report
+    the engine present, the plan would show the row green, and the player would
+    find out mid-conversation: precisely the dead end this flow removes.
+    """
+    whisper = voice_registry.get_engine("whisper-cli")
+    assert whisper is not None
+
+    for platform in ("linux", "win32"):
+        assert "-DBUILD_SHARED_LIBS=OFF" in whisper.commands[platform], platform
 
 
 def test_a_command_that_does_not_finish_the_job_carries_a_follow_up_note():
@@ -624,6 +644,27 @@ def test_installing_an_already_present_stt_model_switches_the_worker(
     assert job["stages"][0]["state"] == "skipped"
     assert written == []
     assert client.app.state.stt_worker.model_path == str(small)
+
+
+def test_a_restart_re_applies_the_model_the_player_chose(tmp_config, voice_paths):
+    """A choice that does not survive a restart is not a choice.
+
+    The install endpoint re-points the live worker, but that lives in memory.
+    Startup has to read the recorded path back, or the first utterance after a
+    restart transcribes with the configured default — a model the player may
+    never have installed. ``apply_stt_model_path`` finds ``set_model_path`` by
+    ``getattr``, so a rename on either side would no-op in silence; only an
+    end-to-end restart catches it.
+    """
+    chosen = str(voice_paths["stt_dir"] / "ggml-small.en.bin")
+
+    with TestClient(create_app(tmp_config)) as first:
+        # Nothing has re-pointed this worker yet: it reads the configured default.
+        assert first.app.state.stt_worker.model_path == str(voice_paths["stt_model"])
+        set_stt_model_path(first.app.state.db.connection(), chosen)
+
+    with TestClient(create_app(tmp_config)) as restarted:
+        assert restarted.app.state.stt_worker.model_path == chosen
 
 
 def test_install_surfaces_a_checksum_mismatch_as_a_failed_job(client, monkeypatch):

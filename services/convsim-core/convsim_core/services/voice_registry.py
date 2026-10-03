@@ -192,16 +192,29 @@ VOICE_ENGINES: tuple[VoiceEngine, ...] = (
         # nor the common apt repos have a whisper.cpp package at all (winget
         # ships ggml.llamacpp and nothing else from that publisher), so those
         # platforms get the upstream build, which is three commands.
+        #
+        # BUILD_SHARED_LIBS=OFF is load-bearing on both build platforms.
+        # Upstream defaults it ON everywhere except MinGW, which puts
+        # libwhisper/libggml next to the executable in build/bin and leaves the
+        # binary depending on them through a build-tree rpath. The Linux
+        # command then copies *only* whisper-cli onto PATH, so deleting the
+        # clone — the obvious tidy-up after "installing" — leaves a binary that
+        # `shutil.which` still finds and every transcription fails to load. The
+        # plan would report the engine installed and the player would discover
+        # otherwise mid-conversation, which is the dead end this flow exists to
+        # remove. A static link makes the one file the whole install.
         commands={
             "darwin": "brew install whisper.cpp",
             "linux": (
                 "git clone https://github.com/ggml-org/whisper.cpp && "
-                "cmake -B build -S whisper.cpp && cmake --build build --config Release && "
+                "cmake -B build -S whisper.cpp -DBUILD_SHARED_LIBS=OFF && "
+                "cmake --build build --config Release && "
                 "sudo cp build/bin/whisper-cli /usr/local/bin/"
             ),
             "win32": (
                 "git clone https://github.com/ggml-org/whisper.cpp && "
-                "cmake -B build -S whisper.cpp && cmake --build build --config Release"
+                "cmake -B build -S whisper.cpp -DBUILD_SHARED_LIBS=OFF && "
+                "cmake --build build --config Release"
             ),
         },
         command_notes={

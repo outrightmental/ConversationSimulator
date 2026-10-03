@@ -145,8 +145,20 @@ upstream `cmake` build instead of a package-manager one-liner.
 | Platform | Command | Follow-up |
 |----------|---------|-----------|
 | macOS | `brew install whisper.cpp` | None — brew puts `whisper-cli` on `PATH`. (`whisper-cpp` is a deprecated oldname that still resolves but warns.) |
-| Linux | `git clone` + `cmake --build`, then `sudo cp build/bin/whisper-cli /usr/local/bin/` | None — the command ends by copying onto `PATH`. |
-| Windows | `git clone` + `cmake --build` | Required: the binary stays in `build\bin\Release`, and the app must be restarted. |
+| Linux | `git clone` + `cmake --build -DBUILD_SHARED_LIBS=OFF`, then `sudo cp build/bin/whisper-cli /usr/local/bin/` | None — the command ends by copying onto `PATH`. |
+| Windows | `git clone` + `cmake --build -DBUILD_SHARED_LIBS=OFF` | Required: the binary stays in `build\bin\Release`, and the app must be restarted. |
+
+Both source builds pass `-DBUILD_SHARED_LIBS=OFF`, which is load-bearing
+rather than tidy. Upstream defaults it ON everywhere but MinGW, and that build
+drops `libwhisper`/`libggml` beside the executable in `build/bin` and links
+against them through a build-tree rpath. The Linux command copies *only*
+`whisper-cli` onto `PATH`, so deleting the clone — the obvious tidy-up once the
+binary is "installed" — would leave something `shutil.which` still finds and
+`whisper-cli` can no longer load. `find_whisper_binary` would report the engine
+present, the row would be green, and the failure would surface mid-conversation.
+A static link makes the one file the whole install, and lets the player delete
+the source tree. On Windows the same flag means the `.exe` keeps working if it
+is moved out of the build tree rather than left there and added to `PATH`.
 
 A command that cannot finish the job carries a note, which the plan returns as
 `command_note` and the screen renders in amber under the command block. Two
