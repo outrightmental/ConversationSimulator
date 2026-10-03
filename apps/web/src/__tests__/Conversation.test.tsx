@@ -1855,6 +1855,26 @@ describe('Conversation screen', () => {
       }
     })
 
+    // Issue #501 §1: the playtester hit a slow turn, went to Settings to speed
+    // the model up, "was a little unclear on how to do that", and lost the
+    // session. This notice is where that detour starts, so it names the setting
+    // and links straight at it instead of saying "you can adjust settings".
+    it('points the player at the reply-speed setting by name', async () => {
+      mockApi.submitTurn.mockReturnValue(new Promise(() => {}))
+      vi.useFakeTimers({ shouldAdvanceTime: true })
+      try {
+        await submitAndWait(6_000)
+        const link = screen.getByTestId('slow-response-speed-link')
+        expect(link).toHaveTextContent(/make replies faster/i)
+        // The anchor matters: /settings alone lands the player at the top of a
+        // long page with nothing obviously changed.
+        expect(link).toHaveAttribute('href', '/settings#reply-speed')
+        expect(screen.queryByText(/you can adjust settings/i)).not.toBeInTheDocument()
+      } finally {
+        vi.useRealTimers()
+      }
+    })
+
     it('announces the elapsed wait on a coarse grid so the live region is not spammed', async () => {
       // The visible clock ticks every second; left audible that is ~270
       // announcements over a five-minute turn. It is aria-hidden, and a separate
