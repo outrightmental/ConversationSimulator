@@ -2402,6 +2402,74 @@ describe('Conversation — Steam achievement call sites', () => {
     }
   })
 
+  it('unlocks it for the threshold turn the stream delivered before the deadline', async () => {
+    // The second post-deadline exit, and the one neither tally writer covers: a
+    // WebSocket npc.final has already put the reply on screen, so the reconcile
+    // loop returns on `npcTurnCommittedRef` without ever asking the transcript
+    // — `_hydrateTurnsFromServer` is not reached — and the submit handler
+    // returns on `adopted` before `notePlayerTurnKept`. The turn is in the
+    // transcript the player is reading, so it has to be in the tally too.
+    let wsCallback: ((event: WsEvent) => void) | null = null
+    mockApi.connectSession.mockImplementation((_id, cb) => {
+      wsCallback = cb
+      return { close: vi.fn() }
+    })
+    // Resume at one turn short of the threshold, so the turn submitted below is
+    // the one that must grant it.
+    const seeded = deepTranscript()
+    seeded.turns = seeded.turns.slice(0, DEEP_CONVERSATION_TURNS)
+    mockApi.startSession.mockResolvedValue({
+      ok: false,
+      error: { kind: 'network', message: 'INVALID_TRANSITION' },
+    })
+    mockApi.getSessionTranscript.mockResolvedValue({ ok: true, data: seeded })
+    // The request never answers, so the deadline is the only thing that ends
+    // this turn — and by then the stream has already delivered the reply.
+    mockApi.submitTurn.mockReturnValue(new Promise(() => {}) as never)
+
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      renderConversation({ input_mode: 'text-only' })
+      const textarea = await screen.findByRole('textbox', { name: /your response/i })
+      fireEvent.change(textarea, { target: { value: 'my twelfth answer' } })
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+      await waitFor(() => expect(screen.getByText('my twelfth answer')).toBeInTheDocument())
+      expect(mockUnlock).not.toHaveBeenCalledWith('ACH_DEEP_CONVERSATION')
+
+      act(() => {
+        wsCallback?.({
+          type: 'npc.final',
+          seq: 1,
+          session_id: SESSION_ID,
+          ts: '2026-07-01T00:01:01Z',
+          payload: {
+            content: 'Delivered over the stream.',
+            emotion: 'neutral',
+            state_delta: {},
+            event_flags: [],
+          },
+        })
+      })
+      await waitFor(() =>
+        expect(screen.getByText('Delivered over the stream.')).toBeInTheDocument(),
+      )
+      // Still nothing: the turn is only settled once the handler stops waiting
+      // on the request it will never get an answer to.
+      expect(mockUnlock).not.toHaveBeenCalledWith('ACH_DEEP_CONVERSATION')
+
+      await vi.advanceTimersByTimeAsync(300_000)
+      await waitFor(() =>
+        expect(mockUnlock).toHaveBeenCalledWith('ACH_DEEP_CONVERSATION'),
+      )
+      // Exactly once — the tally must not be written by two paths for one turn.
+      expect(
+        mockUnlock.mock.calls.filter(([n]) => n === 'ACH_DEEP_CONVERSATION'),
+      ).toHaveLength(1)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   // ── ACH_BARGE_IN ───────────────────────────────────────────────────────────
   //
   // Talking over the NPC. The unlock sits after `handleBargeIn`'s own

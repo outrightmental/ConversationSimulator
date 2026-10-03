@@ -737,6 +737,15 @@ export default function Conversation() {
       // reply the player is looking at.
       if (npcTurnCommittedRef.current) {
         setPhase(sessionStateRef.current === 'Ended' ? 'ended' : 'active')
+        // The one post-deadline exit where neither writer of the
+        // ACH_DEEP_CONVERSATION tally runs: the stream put the turn on screen,
+        // so `_hydrateTurnsFromServer` was never reached, and the caller
+        // returns on `adopted` before `notePlayerTurnKept`. Counting it here
+        // keeps the tally equal to the player turns actually in the transcript
+        // — otherwise a session that loses turns down this path needs more than
+        // DEEP_CONVERSATION_TURNS of them to earn it, and a scenario capped
+        // near the threshold could never grant it at all.
+        notePlayerTurnKept()
         return true
       }
       if (askTheTranscript) {
