@@ -105,7 +105,7 @@ vi.mock('../api/client', () => ({
           },
         ],
         platform: 'darwin', kokoro_state: 'stopped', onnxruntime_installed: false,
-        ffmpeg_installed: false, active_job_id: null,
+        onnxruntime_installable: true, ffmpeg_installed: false, active_job_id: null,
         default_asset_ids: ['whisper-base-en'], default_download_bytes: 147964211,
       },
     }),

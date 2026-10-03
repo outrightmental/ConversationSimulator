@@ -109,6 +109,9 @@ class VoiceSetupPlanResponse(BaseModel):
     platform: str
     kokoro_state: Optional[str] = None
     onnxruntime_installed: bool
+    # False in a packaged build, where `pip install onnxruntime` has no
+    # interpreter to install into — the UI explains instead of printing it.
+    onnxruntime_installable: bool
     ffmpeg_installed: bool
     active_job_id: Optional[int] = None
     default_asset_ids: list[str]

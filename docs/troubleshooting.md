@@ -208,8 +208,10 @@ confirm it answers `curl http://127.0.0.1:7358/health`.
 **Hands-free mode is unavailable**
 
 Hands-free turn-taking additionally needs the Silero VAD model and
-`onnxruntime`. Both appear as their own rows on the setup screen. Push-to-talk
-works without either.
+`onnxruntime`. Both appear as their own rows on the setup screen. `onnxruntime`
+is the `vad` extra and is not in any packaged build, which also has no `pip` to
+install it with, so the row explains that rather than offering a command — see
+[`docs/voice-setup.md`](voice-setup.md). Push-to-talk works without either.
 
 ---
 

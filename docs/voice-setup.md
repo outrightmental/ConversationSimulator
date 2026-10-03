@@ -19,7 +19,7 @@ are not all of the same kind:
 |------|----------|-------------------------|
 | **Weight file** | whisper.cpp GGML model, Silero VAD ONNX model | **Yes** — downloaded and SHA-256 verified |
 | **Native engine** | `whisper-cli`, the Kokoro TTS server | **No** — neither publishes a checksummed cross-platform release |
-| **Python extra** | `onnxruntime` | No — guidance only |
+| **Python extra** | `onnxruntime` | No — guidance, and only in a source checkout |
 | **System tool** | `ffmpeg` | No — guidance only |
 
 Settings used to report `STT: Not installed` and stop, which left the only
@@ -53,6 +53,18 @@ would only collide on the port.
 The plan is re-read on window focus. The two native engines are installed
 *outside* the app, so a player who runs `brew install whisper.cpp` in a
 terminal and switches back sees the row tick over without a reload.
+
+### Hands-free in a packaged build
+
+`onnxruntime` is the `vad` extra in `services/convsim-core/pyproject.toml`, and
+the release PyInstaller build installs only `[build]` — so no shipped binary
+contains it, and `pip` is in the spec's `excludes`. `pip install onnxruntime`
+therefore cannot reach a packaged server: there is no interpreter for it to
+install into. The plan reports this as `onnxruntime_installable: false` and the
+screen replaces the command with the reason, because a command that can never
+turn its row green is the dead end this flow exists to remove. Hands-free needs
+a source checkout with the extra installed; push-to-talk covers every scenario
+either way.
 
 ### The microphone row
 

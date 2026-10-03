@@ -39,6 +39,7 @@ from convsim_core.services.voice_registry import (
     ffmpeg_installed,
     find_whisper_binary,
     install_path,
+    onnxruntime_installable,
     onnxruntime_installed,
     recommended_asset,
 )
@@ -215,6 +216,10 @@ def build_plan(
         "platform": sys.platform,
         "kokoro_state": kokoro_state,
         "onnxruntime_installed": onnxruntime_installed(),
+        # Whether the one command that would close that gap can reach this
+        # server at all. False in every packaged build, where the UI must say
+        # so rather than print a pip command into a frozen interpreter.
+        "onnxruntime_installable": onnxruntime_installable(),
         "ffmpeg_installed": ffmpeg_installed(),
         "active_job_id": _active_job_id(conn),
     }

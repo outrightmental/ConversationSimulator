@@ -747,7 +747,23 @@ export default function VoiceSetup() {
                         Hands-free turn-taking runs the voice-activity model through onnxruntime.
                         Push-to-talk works without it.
                       </p>
-                      <CommandBlock command="pip install onnxruntime" label="Copy the onnxruntime install command" />
+                      {/* The command only reaches a source checkout. This build
+                          ships no interpreter to install into, so printing it
+                          here would be the dead end this screen exists to
+                          remove — say what is true instead. */}
+                      {plan.onnxruntime_installable ? (
+                        <CommandBlock command="pip install onnxruntime" label="Copy the onnxruntime install command" />
+                      ) : (
+                        <p
+                          data-testid="vad-onnxruntime-packaged"
+                          style={{ margin: '0.4rem 0 0', fontSize: '0.82rem', color: '#fbbf24', lineHeight: 1.5 }}
+                        >
+                          This build does not include onnxruntime, and nothing you install
+                          alongside it will be picked up — so hands-free is unavailable here.
+                          Push-to-talk covers every scenario; hands-free needs a source
+                          checkout with the <code>vad</code> extra installed.
+                        </p>
+                      )}
                     </div>
                   </li>
                 )}

@@ -135,6 +135,7 @@ function makePlan(overrides: Partial<VoiceSetupPlan> = {}): VoiceSetupPlan {
     platform: 'darwin',
     kokoro_state: 'stopped',
     onnxruntime_installed: true,
+    onnxruntime_installable: true,
     ffmpeg_installed: true,
     active_job_id: null,
     default_asset_ids: ['whisper-base-en', 'silero-vad'],
@@ -310,6 +311,20 @@ describe('VoiceSetup — what is missing', () => {
     })
     renderScreen()
     expect(await screen.findByTestId('vad-onnxruntime-row')).toHaveTextContent('pip install onnxruntime')
+  })
+
+  it('explains instead of printing a pip command a packaged build cannot run', async () => {
+    mockApi.getVoiceSetupPlan.mockResolvedValue({
+      ok: true,
+      data: makePlan({ onnxruntime_installed: false, onnxruntime_installable: false }),
+    })
+    renderScreen()
+
+    const row = await screen.findByTestId('vad-onnxruntime-row')
+    // A command with no interpreter to install into is the dead end this
+    // screen exists to remove, so it must not appear at all.
+    expect(row).not.toHaveTextContent('pip install onnxruntime')
+    expect(screen.getByTestId('vad-onnxruntime-packaged')).toHaveTextContent('Push-to-talk')
   })
 })
 

@@ -194,6 +194,31 @@ def test_plan_exposes_the_follow_up_note_for_this_platform(client):
     assert engines["kokoro-server"]["command_note"] is None
 
 
+def test_a_pip_command_is_only_offered_where_pip_can_reach_this_server(monkeypatch):
+    """onnxruntime is the `vad` extra; no shipped binary contains it or a pip.
+
+    The release PyInstaller build installs only ``[build]`` and excludes ``pip``
+    outright, so "pip install onnxruntime" cannot close the gap it is offered
+    to close in a packaged app — there is no interpreter for it to install
+    into. The plan says so, and the UI swaps the command for an explanation.
+    """
+    monkeypatch.delattr(sys, "frozen", raising=False)
+    assert voice_registry.onnxruntime_installable() is True
+
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    assert voice_registry.onnxruntime_installable() is False
+
+
+def test_plan_reports_whether_onnxruntime_can_be_installed_here(client):
+    """The flag has to survive the response model, or the UI cannot act on it."""
+    body = client.get("/api/voice/setup/plan").json()
+
+    assert body["onnxruntime_installable"] is voice_registry.onnxruntime_installable()
+    # Separate from whether it is already there: a packaged build answers
+    # "not installed, and not installable" and must not print a command.
+    assert "onnxruntime_installed" in body
+
+
 def test_install_paths_follow_the_engines(voice_paths):
     """A model installed where the engine does not look is not installed at all."""
     base_en = voice_registry.get_asset("whisper-base-en")

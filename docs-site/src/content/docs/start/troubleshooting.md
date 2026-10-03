@@ -276,8 +276,10 @@ the setup screen offers a **Start the voice server** button.
 **Hands-free mode unavailable**
 
 Hands-free turn-taking also needs the voice-activity model and `onnxruntime`;
-both appear as their own rows on the setup screen. Push-to-talk works without
-them.
+both appear as their own rows on the setup screen. The packaged app ships
+without `onnxruntime` and cannot have it added, so hands-free is available only
+when you run from a source checkout — the setup screen says which case you are
+in. Push-to-talk works without any of it.
 
 ---
 

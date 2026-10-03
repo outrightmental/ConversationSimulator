@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -300,6 +301,19 @@ def onnxruntime_installed() -> bool:
         return find_spec("onnxruntime") is not None
     except (ImportError, ValueError):  # pragma: no cover - broken import machinery
         return False
+
+
+def onnxruntime_installable() -> bool:
+    """Return True when ``pip install onnxruntime`` could reach *this* server.
+
+    ``onnxruntime`` is the ``vad`` extra in ``pyproject.toml``, and the release
+    PyInstaller build installs only ``[build]`` — so no shipped binary contains
+    it, and ``pip`` itself is in the spec's excludes. Telling a packaged player
+    to run ``pip install onnxruntime`` would hand them a command that cannot
+    possibly close the gap it is offered to close: there is no interpreter for
+    it to install into. A source checkout is the only place the command works.
+    """
+    return not getattr(sys, "frozen", False)
 
 
 def ffmpeg_installed() -> bool:

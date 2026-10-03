@@ -71,6 +71,12 @@ export interface VoiceSetupPlan {
   platform: string;
   kokoro_state: string | null;
   onnxruntime_installed: boolean;
+  /**
+   * Whether `pip install onnxruntime` could reach this server. False in a
+   * packaged build, which bundles no `pip` and no interpreter to install into,
+   * so the row must explain rather than hand out a command that cannot work.
+   */
+  onnxruntime_installable: boolean;
   ffmpeg_installed: boolean;
   active_job_id: number | null;
   default_asset_ids: string[];

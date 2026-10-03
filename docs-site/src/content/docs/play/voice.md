@@ -129,8 +129,11 @@ container is up to you.
 - **`ffmpeg`** — your browser records WebM/Opus and whisper.cpp reads WAV.
   Without `ffmpeg` on your `PATH`, some recordings are rejected. The setup
   screen flags this as its own row with the right command for your platform.
-- **`onnxruntime`** — only needed for hands-free turn-taking
-  (`pip install onnxruntime`). Push-to-talk works without it.
+- **`onnxruntime`** — only needed for hands-free turn-taking. The packaged
+  app does not include it and cannot have it added, so hands-free is a
+  source-checkout feature (`pip install onnxruntime` there); the setup screen
+  says which case you are in rather than offering a command that cannot work.
+  Push-to-talk covers every scenario either way.
 
 ---
 
