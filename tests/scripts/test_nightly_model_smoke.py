@@ -1469,6 +1469,20 @@ class TestStepSummary:
         assert "240000 ms" in text  # 10 000 × 20 × 1.2
         assert "| `debrief_ms` | 200000 ms | — |" in text
 
+    def test_a_green_run_still_surfaces_what_it_did_not_prove(self) -> None:
+        # Every warning the harness raises says what an otherwise-green verdict
+        # does not establish -- a fallback narrative, a recited opening, a
+        # conversation the NPC cut short, parse flags it could not read. The step
+        # summary is where they are read, so a pass that drops them reports more
+        # confidence than the run earned.
+        text = smoke.render_step_summary({
+            "verdict": "pass",
+            "model_id": "qwen3-4b",
+            "warnings": ["Debrief narrative used the deterministic fallback"],
+        })
+        assert "### Warnings" in text
+        assert "- Debrief narrative used the deterministic fallback" in text
+
     def test_a_pre_run_failure_does_not_claim_a_zero_second_run(self) -> None:
         # --download-only / --verify-only and the registry lookup write a summary
         # without ever starting a clock; reporting "Wall clock: 0 s (budget 0 s)"
@@ -3033,6 +3047,200 @@ class TestMainEntryPoint:
             smoke.main(["--download-only", "--model-id", "x"])  # no url / sha256
         assert exc_info.value.code == smoke.EXIT_CODES[smoke.FailureClass.PIPELINE]
         assert exc_info.value.code != smoke.EXIT_CODES[smoke.FailureClass.DOWNLOAD]
+
+    def test_a_missing_model_id_is_a_classified_usage_error(self) -> None:
+        with pytest.raises(SystemExit) as exc_info:
+            smoke.main([])
+        assert exc_info.value.code == smoke.EXIT_CODES[smoke.FailureClass.PIPELINE]
+
+    def test_verify_only_without_a_digest_is_a_classified_usage_error(self) -> None:
+        with pytest.raises(SystemExit) as exc_info:
+            smoke.main(["--verify-only", "--model-id", "m"])
+        assert exc_info.value.code == smoke.EXIT_CODES[smoke.FailureClass.PIPELINE]
+
+    def test_download_only_verifies_what_it_fetched_and_exits_zero(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The workflow's own download step, and step 3 of the documented local
+        # repro. Only its failure modes were covered above, so a typo in the
+        # success path would break the nightly before the smoke ever ran.
+        models_dir = tmp_path / "models"
+        payload = b"\x00gguf stand-in"
+
+        def _fake_fetch(url: str, dest: Path, *, budget_s: float = 0.0) -> None:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(payload)
+
+        monkeypatch.setattr(smoke, "_download_with_progress", _fake_fetch)
+
+        exit_code = smoke.main([
+            "--download-only", "--model-id", "m",
+            "--model-url", "https://example.invalid/m.gguf",
+            "--model-sha256", hashlib.sha256(payload).hexdigest(),
+            "--models-dir", str(models_dir),
+        ])
+
+        assert exit_code == 0
+        assert (models_dir / "m.gguf").read_bytes() == payload
+
+    def test_verify_only_accepts_a_matching_file_and_exits_zero(
+        self, staged_model
+    ) -> None:
+        models_dir, model_id, digest = staged_model
+        exit_code = smoke.main([
+            "--verify-only", "--model-id", model_id,
+            "--model-sha256", digest, "--models-dir", str(models_dir),
+        ])
+        assert exit_code == 0
+        assert (models_dir / f"{model_id}.gguf").exists()
+
+    def test_verify_only_on_drift_exits_three_and_deletes_the_file(
+        self, staged_model, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The documented warning about --verify-only: a mismatch deletes the
+        # file so a re-run re-downloads instead of re-verifying the same bytes.
+        models_dir, model_id, _ = staged_model
+        summary = tmp_path / "summary.md"
+        monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+
+        exit_code = smoke.main([
+            "--verify-only", "--model-id", model_id,
+            "--model-sha256", "a" * 64, "--models-dir", str(models_dir),
+        ])
+
+        assert exit_code == smoke.EXIT_CODES[smoke.FailureClass.CHECKSUM]
+        assert not (models_dir / f"{model_id}.gguf").exists()
+        assert "`checksum`" in summary.read_text(encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# Child process wiring
+# ---------------------------------------------------------------------------
+
+
+def _annotated_settings_fields(path: Path, class_name: str) -> set:
+    """Field names declared on a pydantic-settings class in ``path``."""
+    import re
+
+    src = path.read_text(encoding="utf-8")
+    body = src[src.index(f"class {class_name}("):]
+    end = re.search(r"\n(?:@|class |def )", body[1:])
+    if end:
+        body = body[: end.start() + 1]
+    return set(re.findall(r"^    ([a-z_][a-z0-9_]*)\s*:", body, re.M))
+
+
+class TestChildProcessWiring:
+    """The argv and the env that make the smoke a *real-model* smoke.
+
+    Every orchestration test above fakes both children out, so the code that
+    builds this argv and this env is the one part of the harness no test runs —
+    and two of the values in it fail silently:
+
+    * ``CONVSIM_RUNTIME_ID`` is the only thing selecting the real runtime over
+      the deterministic fake default. The run does check ``/health`` afterwards,
+      so this one at least fails loudly.
+    * ``CONVSIM_LLAMA_CPP_CHAT_TIMEOUT`` does not. Misspell it and the adapter
+      silently keeps its 180 s default, so the first turn slower than that is
+      killed adapter-side and convsim-core answers 500 — class ``runtime``, "the
+      server crashed" — which is precisely the misclassification the override
+      exists to prevent, on a night when the only thing wrong was slow
+      inference.
+
+    Pydantic reads these from a prefix plus a field name, so a name that is not
+    a declared setting is silently ignored rather than rejected. The last test
+    therefore checks every override the harness sets against the product's own
+    settings classes.
+    """
+
+    _CORE_SRC = REPO_ROOT / "services" / "convsim-core" / "convsim_core"
+
+    @pytest.fixture()
+    def spawned(self, monkeypatch: pytest.MonkeyPatch) -> dict:
+        captured: dict = {}
+
+        def _popen(argv, **kwargs):
+            captured["argv"] = argv
+            captured["env"] = kwargs.get("env")
+            return _FakeProc()
+
+        monkeypatch.setattr(smoke.subprocess, "Popen", _popen)
+        return captured
+
+    def test_llama_server_is_started_on_the_verified_model_and_port(
+        self, spawned: dict, tmp_path: Path
+    ) -> None:
+        model = tmp_path / "m.gguf"
+        smoke._start_llama_server(model, 7356)
+        argv = spawned["argv"]
+        assert argv[1:3] == ["-m", "llama_cpp.server"]
+        assert argv[argv.index("--model") + 1] == str(model)
+        assert argv[argv.index("--port") + 1] == "7356"
+        assert argv[argv.index("--host") + 1] == "127.0.0.1"
+
+    def test_core_is_wired_to_the_real_runtime_not_the_fake_default(
+        self, spawned: dict, tmp_path: Path
+    ) -> None:
+        smoke._start_core(tmp_path / "data", 7399, 7356, 540.0)
+        env = spawned["env"]
+        assert env["CONVSIM_RUNTIME_ID"] == "llama_cpp"
+        assert env["CONVSIM_LLAMA_CPP_BASE_URL"] == "http://127.0.0.1:7356"
+
+    def test_the_adapter_outlasts_the_latency_the_run_means_to_measure(
+        self, spawned: dict, tmp_path: Path
+    ) -> None:
+        smoke._start_core(tmp_path / "data", 7399, 7356, 540.0)
+        env = spawned["env"]
+        # Both, not just the chat budget: TIMEOUT covers the model listing a
+        # cold runner does first, and a listing cut short is also a 500.
+        assert env["CONVSIM_LLAMA_CPP_CHAT_TIMEOUT"] == "540"
+        assert env["CONVSIM_LLAMA_CPP_TIMEOUT"] == "540"
+
+    def test_core_is_confined_to_the_throwaway_data_directory(
+        self, spawned: dict, tmp_path: Path
+    ) -> None:
+        # docs/real-model-smoke.md's privacy claim: the run leaves no database,
+        # log or pack behind outside a directory the finally block deletes.
+        data_dir = tmp_path / "data"
+        smoke._start_core(data_dir, 7399, 7356, 540.0)
+        env = spawned["env"]
+        for key in ("CONVSIM_DATA_DIR", "CONVSIM_LOG_DIR",
+                    "CONVSIM_DB_DIR", "CONVSIM_PACKS_DIR"):
+            assert env[key].startswith(str(data_dir)), key
+
+    def test_every_override_names_a_setting_the_product_actually_reads(
+        self, spawned: dict, tmp_path: Path
+    ) -> None:
+        import os
+
+        smoke._start_core(tmp_path / "data", 7399, 7356, 540.0)
+        env = spawned["env"]
+        overrides = sorted(
+            k for k, v in env.items()
+            if k.startswith("CONVSIM_") and os.environ.get(k) != v
+        )
+        assert overrides, "the env the harness builds sets no CONVSIM_* override"
+
+        pools = {
+            "CONVSIM_LLAMA_CPP_": (
+                "LlamaCppConfig",
+                _annotated_settings_fields(
+                    self._CORE_SRC / "runtime" / "llama_cpp.py", "LlamaCppConfig"
+                ),
+            ),
+            "CONVSIM_": (
+                "ServiceConfig",
+                _annotated_settings_fields(self._CORE_SRC / "config.py", "ServiceConfig"),
+            ),
+        }
+        for name in overrides:
+            prefix = "CONVSIM_LLAMA_CPP_" if name.startswith("CONVSIM_LLAMA_CPP_") else "CONVSIM_"
+            class_name, fields = pools[prefix]
+            field = name[len(prefix):].lower()
+            assert field in fields, (
+                f"{name} is not a {class_name} setting, so pydantic ignores it "
+                "and the harness silently runs on the product's default"
+            )
 
 
 # ---------------------------------------------------------------------------
