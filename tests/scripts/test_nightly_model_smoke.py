@@ -82,6 +82,18 @@ class TestFailureClassification:
         assert exc.exit_code == smoke.EXIT_CODES[smoke.FailureClass.PIPELINE]
         assert exc.remedy == "Do this instead."
 
+    def test_the_pipeline_remedy_carves_out_the_unscored_debrief(self) -> None:
+        # All pipeline assertions are raised together, so this one remedy is
+        # printed under every one of them and cannot be swapped per failure.
+        # Three of the four unscored-debrief causes are nothing to do with the
+        # per-turn flags it otherwise sends the reader to -- the docs failure
+        # table says so, and the advice beside the banner is what triage
+        # actually reads, so it has to say so too.
+        remedy = smoke.REMEDIES[smoke.FailureClass.PIPELINE]
+        assert "unscored debrief" in remedy.lower()
+        doc = (REPO_ROOT / "docs" / "real-model-smoke.md").read_text(encoding="utf-8")
+        assert "## Unscored debrief" in doc, "the remedy names a section that must exist"
+
 
 # ---------------------------------------------------------------------------
 # Checksum verification

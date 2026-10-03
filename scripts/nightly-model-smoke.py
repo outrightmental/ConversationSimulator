@@ -334,7 +334,10 @@ REMEDIES = {
         "Both servers were healthy but an end-to-end assertion failed: the model "
         "ran and produced output the product rejects. Inspect the per-turn "
         "used_fallback, native-structured-output and replayed_opening flags in "
-        "the report artifact."
+        "the report artifact — except for an unscored debrief, where the flags "
+        "are not where to start: the failure text above has already attributed "
+        "it, so read that and follow it. See the 'Unscored debrief' section of "
+        "docs/real-model-smoke.md."
     ),
     FailureClass.TIMEOUT: (
         "The run exhausted its wall-clock budget in the phase named above. "
