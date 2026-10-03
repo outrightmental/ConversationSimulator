@@ -12,7 +12,8 @@ tests pin the fix from both ends:
     distance the eye cannot miss at 32 px, with the silhouette left alone so
     the demo still reads as the same product;
   * the "DEMO" ribbon is on the large frames and off the small ones, because
-    the Steam client icon is 32 px and the word is unreadable there;
+    the Steam client icon is 32 px and the word is unreadable there — and
+    where it is drawn, the band really does spell the word;
   * the hand-written ICO and ICNS containers carry every representation the
     base app's do, each one holds the size its directory entry or chunk type
     promises, and the ones that are not PNG decode back to the frame they were
@@ -43,6 +44,14 @@ _CLIENT_ICON = _REPO_ROOT / "publishing" / "assets" / "icons" / "demo_client_ico
 _BASE_PLATE = (0x14, 0x7A, 0x84)
 _DEMO_PLATE = (0x6D, 0x28, 0xD9)
 _RIBBON_BG = (0x0D, 0x0D, 0x15)
+_RIBBON_FG = (0xF4, 0xF4, 0xF5)
+
+# The ribbon band, as gen_icons.py places it: distance along the lower-right
+# diagonal, u(x, y) = (x + y) / sqrt(2), in the 256-unit viewBox the mark is
+# drawn in.  Restated here rather than imported so that moving the band in the
+# generator without meaning to is a failure, not a silently relocated ribbon.
+_VIEW = 256.0
+_RIBBON_U_INNER, _RIBBON_U_OUTER = 266.0, 308.0
 
 # Below this the two icons would start to look alike in a library list.  The
 # teal/purple pair measures ~148, so there is room to retune either plate; the
@@ -142,6 +151,30 @@ def _count_near(path: Path, colour: tuple[int, int, int], tolerance: int = 24) -
         1 for r, g, b, a in pixels
         if a > 200 and _distance((r, g, b), colour) <= tolerance
     )
+
+
+def _ribbon_band(path: Path) -> tuple[int, int, int]:
+    """(covered, band colour, lettering) pixel counts inside the ribbon band.
+
+    The band is the strip of the plate between ``_RIBBON_U_INNER`` and
+    ``_RIBBON_U_OUTER`` along the lower-right diagonal, scaled from the
+    256-unit viewBox to the frame.  Looking only inside it is what separates
+    the ribbon's own white lettering from the speech bubble's white body.
+    """
+    width, _, pixels = _read_png(path)
+    scale = width / _VIEW
+    inner, outer = _RIBBON_U_INNER * 2 ** 0.5 * scale, _RIBBON_U_OUTER * 2 ** 0.5 * scale
+    covered = band = word = 0
+    for index, (r, g, b, a) in enumerate(pixels):
+        y, x = divmod(index, width)
+        if not inner <= (x + 0.5) + (y + 0.5) <= outer or a <= 200:
+            continue
+        covered += 1
+        if _distance((r, g, b), _RIBBON_BG) <= 24:
+            band += 1
+        elif _distance((r, g, b), _RIBBON_FG) <= 24:
+            word += 1
+    return covered, band, word
 
 
 # ---------------------------------------------------------------------------
@@ -365,6 +398,29 @@ class TestDemoRibbon:
         """At 32 px the word is ~3 px tall; it reads as dirt, not as a word."""
         path = _SRC_TAURI / "icons-demo" / "32x32.png"
         assert _count_near(path, _RIBBON_BG) == 0
+
+    @pytest.mark.parametrize("name", ["128x128.png", "128x128@2x.png"])
+    def test_the_ribbon_actually_spells_demo(self, name):
+        """The band is dark and the word is light, both inside the band.
+
+        Without this the ribbon tests pass on an empty black stripe: the
+        letterforms in ``gen_icons.py`` are hand-built polygons laid out in an
+        upright frame and then rotated onto the diagonal, so a tracking or
+        glyph-height slip can push "DEMO" off the band — or collapse it —
+        while the band itself is still drawn exactly where it belongs.
+        """
+        covered, band, word = _ribbon_band(_SRC_TAURI / "icons-demo" / name)
+        assert covered, f"{name}: the ribbon band falls outside the plate"
+        assert band > covered * 0.5, (
+            f"{name}: only {band}/{covered} band pixels are the ribbon colour"
+        )
+        # "DEMO" measures ~17-22% of the band; the window is wide enough to
+        # survive a re-render and narrow enough to catch a missing or
+        # overflowing word.
+        assert 0.05 <= word / covered <= 0.45, (
+            f"{name}: lettering is {word}/{covered} of the ribbon band — "
+            '"DEMO" is missing, mispositioned or the wrong size'
+        )
 
     def test_base_icon_never_carries_a_ribbon(self):
         for name in ("32x32.png", "128x128.png", "128x128@2x.png"):
