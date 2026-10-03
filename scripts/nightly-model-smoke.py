@@ -190,11 +190,15 @@ MIN_SUMMARY_CHARS = 20
 # standing weakness that makes this reachable at all, and a run that actually
 # hits it is a signal.
 #
-# Used only when the run observed no rubric observations at all; when the turns
-# *did* carry some, the cause is not ambiguous and UNSCORED_WITH_OBSERVATIONS_NOTE
-# applies instead.
+# Used when the run observed no rubric observations at all, and again when it
+# could not tell; when the turns *did* carry some, the cause is not ambiguous
+# and UNSCORED_WITH_OBSERVATIONS_NOTE applies instead.  The note therefore
+# explains the weakness without itself asserting that the array was empty —
+# the caller's own prefix says what the run actually observed, and a note that
+# announced "No NPC turn volunteered a single rubric observation" contradicted
+# the prefix on the branch that had just said it could not tell.
 UNSCORED_DEBRIEF_NOTE = (
-    "No NPC turn volunteered a single rubric observation. Nothing asks it to — "
+    "Nothing asks the NPC for rubric observations — "
     "no prompt layer names the rubric dimensions, so an empty array satisfies "
     "the turn schema — which is the standing product weakness that makes this "
     "failure reachable. But an empty array is not the normal outcome: the real "
@@ -860,9 +864,17 @@ def evaluate_debrief(
                 "had nothing to accumulate. "
             ) + UNSCORED_DEBRIEF_NOTE
         else:
+            # Neither cause can be ruled out, so quote both rather than pick
+            # one: asserting the model volunteered nothing, on the one branch
+            # that just said it could not tell, is the triage this harness is
+            # supposed to have done, done wrongly.
             cause = (
-                "the run could not tell whether any NPC turn carried a "
-                "rubric_observation. " + UNSCORED_DEBRIEF_NOTE
+                "the run did not record how many rubric observations the NPC "
+                "turns carried, so the two causes below cannot be told apart "
+                "from this message — read rubric_observation_count per turn in "
+                "the report artifact. " + UNSCORED_DEBRIEF_NOTE
+                + " If the turns did carry observations, it is the other cause "
+                "instead: " + UNSCORED_WITH_OBSERVATIONS_NOTE
             )
         failures.append(f"Debrief has no rubric dimension scores: {cause}")
 

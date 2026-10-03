@@ -428,6 +428,19 @@ class TestEvaluateDebrief:
         assert "not the normal outcome" in no_scores
         assert "before writing this off" in no_scores
 
+    def test_an_unknown_observation_count_claims_neither_cause(self) -> None:
+        # The count is what tells the two causes apart, so without it the
+        # failure has to quote both. It must not state one as fact: a message
+        # that said "could not tell" and then "No NPC turn volunteered a single
+        # rubric observation" sends triage after the product weakness when the
+        # debrief engine dropping validated observations is just as open.
+        failures, _ = smoke.evaluate_debrief(_debrief(scores={}))
+        no_scores = next(f for f in failures if "no rubric dimension scores" in f)
+        assert "cannot be told apart" in no_scores
+        assert smoke.UNSCORED_DEBRIEF_NOTE in no_scores
+        assert smoke.UNSCORED_WITH_OBSERVATIONS_NOTE in no_scores
+        assert "No NPC turn volunteered" not in no_scores
+
     def test_observations_that_never_reached_the_debrief_are_a_regression(self) -> None:
         # The opposite case, and the one the harness exists to catch: the turns
         # returned observations and the debrief scored nothing, so the model did
