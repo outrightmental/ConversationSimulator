@@ -1148,6 +1148,24 @@ class TestStepSummary:
         assert "Wall clock" not in text
         assert "`download`" in text
         assert smoke.REMEDIES[smoke.FailureClass.DOWNLOAD] in text
+        assert "**Model:** `qwen3-4b`" in text
+
+    def test_a_registry_failure_does_not_name_a_model_it_never_resolved(self) -> None:
+        # --print-registry-model runs before any --model-id exists, and it is
+        # the mode that fails on a registry with no usable (or not yet pinned)
+        # `starter` entry. Rendering `model_id` unconditionally put
+        # "**Model:** `None`" at the very top of that verdict.
+        text = smoke.render_step_summary({
+            "verdict": "fail",
+            "model_id": None,
+            "failure_class": smoke.FailureClass.PIPELINE,
+            "exit_code": 5,
+            "failures": ["No model with role 'starter' in model-registry/registry.yaml"],
+            "remedy": smoke.REGISTRY_REMEDY,
+        })
+        assert "Model:" not in text
+        assert "None" not in text
+        assert smoke.REGISTRY_REMEDY in text
 
     def test_summary_is_not_written_without_the_github_env_var(
         self, monkeypatch: pytest.MonkeyPatch

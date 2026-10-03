@@ -1212,8 +1212,14 @@ def render_step_summary(results: Dict[str, Any]) -> str:
     lines = [
         f"## {icon} Real-model smoke: {verdict.upper()}",
         "",
-        f"- **Model:** `{results.get('model_id')}`",
     ]
+    # Same reasoning as the wall clock below: `--print-registry-model` runs
+    # before any --model-id exists, and it is the mode that fails when the
+    # registry names no usable `starter` entry or has not pinned one yet. Its
+    # summary led with "**Model:** `None`" — a field the run never resolved,
+    # presented as the model it ran on, directly above the verdict.
+    if results.get("model_id"):
+        lines.append(f"- **Model:** `{results['model_id']}`")
     # Only the smoke run keeps a clock.  The pre-run modes (registry lookup,
     # download, verify) write a summary too, and defaulting their missing
     # timings to zero printed "Wall clock: 0 s (budget 0 s)" at the top of a
