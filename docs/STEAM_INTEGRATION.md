@@ -278,7 +278,9 @@ is treated as *unknown*, never as "not earned"; the capstone just does not fire
 on that pass. Nothing device-local is involved except the played-pack tally
 behind `ACH_PACK_EXPLORER` / `ACH_PACK_CONNOISSEUR`, which holds pack IDs only —
 never transcript text, session IDs, or anything else about a conversation — and
-is never transmitted anywhere.
+is never transmitted anywhere. Settings' **Clear all local data** forgets it, for
+the same reason it forgets the measured turn timings: the tally is derived from
+the sessions that button deletes.
 
 ---
 

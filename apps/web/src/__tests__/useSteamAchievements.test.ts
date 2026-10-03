@@ -12,6 +12,7 @@ import {
   STEAM_PROGRESS_KEYS,
   readPacksPlayed,
   recordPackPlayed,
+  clearPacksPlayed,
 } from '../hooks/useSteamAchievements'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -415,6 +416,37 @@ describe('recordPackPlayed', () => {
 
   it('starts empty', () => {
     expect(readPacksPlayed()).toEqual([])
+  })
+
+  it('is forgotten by clearPacksPlayed', () => {
+    // Settings' "Clear all local data" calls this. The tally is a record of the
+    // sessions that button deletes, so it must not outlive them.
+    recordPackPlayed('official.workplace')
+    recordPackPlayed('official.dating')
+    clearPacksPlayed()
+    expect(readPacksPlayed()).toEqual([])
+    expect(localStorage.getItem(STEAM_PROGRESS_KEYS.packsPlayed)).toBeNull()
+  })
+
+  it('counts from scratch again after being cleared', () => {
+    // Only progress is lost. An achievement already unlocked is held by the
+    // Steam account, so nothing the player earned is taken away — but the next
+    // pack starts a fresh count rather than reviving the old one.
+    recordPackPlayed('official.workplace')
+    clearPacksPlayed()
+    expect(recordPackPlayed('official.workplace')).toEqual(['official.workplace'])
+  })
+
+  it('does not throw when clearing is not permitted', () => {
+    // Private-mode or quota-restricted storage must never break the
+    // clear-data flow it is called from.
+    const removeItem = vi
+      .spyOn(Storage.prototype, 'removeItem')
+      .mockImplementation(() => {
+        throw new Error('denied')
+      })
+    expect(() => clearPacksPlayed()).not.toThrow()
+    removeItem.mockRestore()
   })
 })
 

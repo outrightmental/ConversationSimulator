@@ -244,6 +244,29 @@ export function recordPackPlayed(packId: string): string[] {
   return appendUnique(STEAM_PROGRESS_KEYS.packsPlayed, packId)
 }
 
+/**
+ * Forget which packs have been played. Settings' "Clear all local data" calls
+ * this: the button promises to delete the player's sessions, transcripts and
+ * cached data from the device, and a list of the packs they have practised with
+ * is derived from exactly those sessions. It lives in `localStorage` rather than
+ * in the data folder the API clears, so it has to be dropped here or it is the
+ * one trace of a deleted session's content that survives.
+ *
+ * Costs the player only *progress*: `ACH_PACK_EXPLORER` and
+ * `ACH_PACK_CONNOISSEUR` already unlocked are held by their Steam account, not
+ * by this tally, so clearing it cannot take an earned achievement away — it only
+ * restarts the count toward one not yet reached. That is the right way round:
+ * the player asked for the record to be gone.
+ */
+export function clearPacksPlayed(): void {
+  if (typeof localStorage === 'undefined') return
+  try {
+    localStorage.removeItem(STEAM_PROGRESS_KEYS.packsPlayed)
+  } catch {
+    /* private-mode failures must never break the clear-data flow */
+  }
+}
+
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
 function invokeSteam(cmd: string, name: string): Promise<boolean> {

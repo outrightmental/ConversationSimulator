@@ -6,6 +6,7 @@ import type { SessionCreateRequest } from '@convsim/shared'
 import type { ImportPackResponse } from '../api/client'
 import Settings from '../screens/Settings'
 import { readTurnSamples, recordTurnSample } from '../lib/turnEstimate'
+import { readPacksPlayed, recordPackPlayed } from '../hooks/useSteamAchievements'
 
 vi.mock('../hooks/useSteamStatus', () => ({
   useSteamStatus: vi.fn().mockReturnValue(null),
@@ -580,6 +581,37 @@ describe('clear local data', () => {
     await waitFor(() => screen.getByText(/1 session deleted/i))
 
     expect(readTurnSamples('some-model-7b')).toEqual([])
+  })
+
+  it('forgets which packs have been played (issue #494)', async () => {
+    // The Steam pack-breadth tally is a record of the player's sessions kept in
+    // this browser, not in the data folder the API clears, so the same promise
+    // covers it — otherwise it is the one trace of a deleted session that
+    // survives "delete everything".
+    recordPackPlayed('official.job_interview_basic')
+    expect(readPacksPlayed()).toEqual(['official.job_interview_basic'])
+
+    mockApi.clearLocalData.mockResolvedValue({ ok: true, data: { deleted_sessions: 1 } })
+    await renderSettings()
+    fireEvent.click(screen.getByRole('button', { name: /clear all local data/i }))
+    await waitFor(() => screen.getByRole('button', { name: /confirm.*delete everything/i }))
+    fireEvent.click(screen.getByRole('button', { name: /confirm.*delete everything/i }))
+    await waitFor(() => screen.getByText(/1 session deleted/i))
+
+    expect(readPacksPlayed()).toEqual([])
+  })
+
+  it('keeps the played packs when clearing fails', async () => {
+    // Nothing was deleted, so the player keeps the progress they had.
+    recordPackPlayed('official.job_interview_basic')
+    mockApi.clearLocalData.mockResolvedValue({ ok: false, error: { kind: 'http-error', message: 'disk full' } })
+    await renderSettings()
+    fireEvent.click(screen.getByRole('button', { name: /clear all local data/i }))
+    await waitFor(() => screen.getByRole('button', { name: /confirm.*delete everything/i }))
+    fireEvent.click(screen.getByRole('button', { name: /confirm.*delete everything/i }))
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+
+    expect(readPacksPlayed()).toEqual(['official.job_interview_basic'])
   })
 
   it('keeps the turn timings when clearing fails', async () => {

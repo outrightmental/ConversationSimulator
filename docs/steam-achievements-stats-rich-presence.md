@@ -165,6 +165,15 @@ read-back query naming the capstone achievements, which are this repository's ow
 constants. The pack IDs never leave the device, and neither does a transcript, a
 session ID, or any conversation content.
 
+Settings' **Clear all local data** forgets it, alongside the measured turn
+timings. That button promises to delete the player's sessions, transcripts and
+cached data from the device, and the tally is derived from exactly those
+sessions — leaving it behind would make it the one trace of a deleted session
+that survives. Only *progress* is lost: `ACH_PACK_EXPLORER` and
+`ACH_PACK_CONNOISSEUR` already unlocked belong to the player's Steam account, so
+clearing the tally cannot take an earned achievement away, it only restarts the
+count toward one not yet reached.
+
 ### Retroactive unlocks
 
 Unlocking is idempotent, so call sites re-check their condition on every visit to

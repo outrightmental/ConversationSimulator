@@ -7,7 +7,12 @@ import { errorHeadline } from '../api/errors'
 import { ApiErrorView } from '../components/ApiErrorView'
 import { readPrivacyPref, writePrivacyPref, PRIVACY_KEYS, isDevModeEnabled } from '../privacyPrefs'
 import { useSteamStatus } from '../hooks/useSteamStatus'
-import { useSteamAchievements, SteamAchievement, SteamStat } from '../hooks/useSteamAchievements'
+import {
+  useSteamAchievements,
+  SteamAchievement,
+  SteamStat,
+  clearPacksPlayed,
+} from '../hooks/useSteamAchievements'
 import RuntimeSettingsPanel from '../components/RuntimeSettingsPanel'
 import VoiceSettingsPanel from '../components/VoiceSettingsPanel'
 import { useTranslation, formatDate, SUPPORTED_LOCALES } from '../i18n'
@@ -280,6 +285,12 @@ export default function Settings() {
         // clears, so they have to be dropped here — the button promises "cached
         // data from your device" and a record of how slow this machine is counts.
         clearTurnSamples()
+        // Same reasoning, same place on disk: which packs the player has
+        // practised with is derived from the sessions just deleted, so it must
+        // not outlive them. Only progress toward ACH_PACK_EXPLORER /
+        // ACH_PACK_CONNOISSEUR is lost — either one already unlocked belongs to
+        // the Steam account, not to this tally.
+        clearPacksPlayed()
         setDeletedCount(r.data.deleted_sessions)
         setDeleteError(null)
         setExportError(null)
