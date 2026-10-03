@@ -250,6 +250,28 @@ UNSCORED_WITH_OBSERVATIONS_NOTE = (
     "report artifact."
 )
 
+# The third cause, and the one where the zero says nothing about rubrics at all.
+# A turn that fell back carries the canned safe utterance and an empty
+# rubric_observations list by construction, so a conversation in which *every*
+# generated turn fell back reaches the debrief with nothing to score no matter
+# how well the rubric were prompted.  UNSCORED_DEBRIEF_NOTE would send triage
+# after "the OUTPUT_SCHEMA layer, the starter model pin, sampling" — a different
+# investigation from the one the fallback failure in the same verdict is already
+# pointing at — and its "an empty array is not the normal outcome" is beside the
+# point when no array was ever produced.  evaluate_turns has already failed the
+# run for the fallbacks; this note says the unscored debrief is downstream of
+# that and carries no independent signal.
+UNSCORED_AFTER_FALLBACK_NOTE = (
+    "This is a consequence of the fallback failure above, not a second finding: "
+    "a turn that fell back to the canned safe utterance carries an empty "
+    "rubric_observations list whatever the prompt asked for, so with every "
+    "generated turn falling back the debrief had nothing to accumulate and would "
+    "have had nothing to accumulate even with a rubric layer in place. Fix the "
+    "fallbacks first — the per-turn parse_events in the /debug payload say why "
+    "the model's output was rejected — and judge the scoring path on the next "
+    "run. Do not start from the rubric prompting; this run says nothing about it."
+)
+
 # How much slower the debrief generation is allowed to be than one NPC turn
 # before we stop calling it slow and start calling it hung.  Only used to size
 # request timeouts (see run_smoke) — debrief latency itself is not budget-checked.
@@ -863,6 +885,24 @@ def _replays_opening(npc_text: str, opening_text: str) -> bool:
 # ── Assertions (pure, unit-tested) ────────────────────────────────────────────
 
 
+def _all_generated_turns_fell_back(turns: Sequence[Dict[str, Any]]) -> bool:
+    """True when every model-generated turn returned the canned safe utterance.
+
+    Two verdicts turn on this and they must agree: ``evaluate_turns`` fails the
+    run for it, and ``evaluate_debrief`` uses it to say that an unscored debrief
+    is downstream of those fallbacks rather than evidence about rubric
+    prompting.  One of them deciding "all of them" while the other decides "not
+    quite all" would put both notes in the same verdict, each telling the reader
+    the other is the wrong place to start.
+
+    False when there are no generated turns (``evaluate_turns`` reports that
+    separately) and when the parse flags were unavailable, since an absent
+    ``used_fallback`` is not a fallback.
+    """
+    generated = [t for t in turns if t.get("model_generated")]
+    return bool(generated) and all(t.get("used_fallback") for t in generated)
+
+
 def evaluate_turns(turns: List[Dict[str, Any]]) -> tuple[List[str], List[str]]:
     """Check the conversation really came from the model.  Returns (failures, warnings).
 
@@ -913,7 +953,7 @@ def evaluate_turns(turns: List[Dict[str, Any]]) -> tuple[List[str], List[str]]:
         )
 
     fallbacks = [t for t in generated if t.get("used_fallback")]
-    if len(fallbacks) == len(generated):
+    if _all_generated_turns_fell_back(turns):
         failures.append(
             f"All {len(generated)} model-generated NPC turns fell back to the canned "
             "safe utterance; the real model produced no usable turn output"
@@ -950,20 +990,26 @@ def evaluate_debrief(
     debrief: Optional[Dict[str, Any]],
     *,
     rubric_observations_seen: Optional[int] = None,
+    turns_all_fell_back: bool = False,
 ) -> tuple[List[str], List[str]]:
     """Check that a *scored* debrief was produced.  Returns (failures, warnings).
 
     "Scored" is the #457 acceptance criterion, so an unscored debrief is a
-    failure — but on its own that failure does not say which of two very
+    failure — but on its own that failure does not say which of several very
     different things happened, and the remedy differs completely.
     ``rubric_observations_seen`` (how many rubric observations the NPC turns
     actually returned, ``None`` when the run could not read any — see
-    ``_total_rubric_observations``) resolves it:
+    ``_total_rubric_observations``) and ``turns_all_fell_back`` resolve it:
 
-    * **0** — the model volunteered nothing to score, which nothing asked it
-      to. Reachable because of the thin prompt coverage, but not the normal
-      outcome (the real starter model volunteers observations on every turn),
-      so still worth chasing: ``UNSCORED_DEBRIEF_NOTE``.
+    * **0, every generated turn fell back** — the turns carried no observations
+      because they carried no model output at all. Not evidence about rubric
+      prompting; a consequence of the fallback failure ``evaluate_turns``
+      already reported: ``UNSCORED_AFTER_FALLBACK_NOTE``.
+    * **0, turns that did not fall back** — the model volunteered nothing to
+      score, which nothing asked it to. Reachable because of the thin prompt
+      coverage, but not the normal outcome (the real starter model volunteers
+      observations on every turn), so still worth chasing:
+      ``UNSCORED_DEBRIEF_NOTE``.
     * **> 0** — the turns carried observations and the debrief lost them. A real
       regression with a named starting point: ``UNSCORED_WITH_OBSERVATIONS_NOTE``.
 
@@ -984,6 +1030,12 @@ def evaluate_debrief(
                 "observation(s), so the debrief engine had something to accumulate "
                 "and did not. "
             ) + UNSCORED_WITH_OBSERVATIONS_NOTE
+        elif rubric_observations_seen == 0 and turns_all_fell_back:
+            cause = (
+                "no NPC turn carried a rubric_observation, so the debrief engine "
+                "had nothing to accumulate — but none of them carried any model "
+                "output either. "
+            ) + UNSCORED_AFTER_FALLBACK_NOTE
         elif rubric_observations_seen == 0:
             cause = (
                 "no NPC turn carried a rubric_observation, so the debrief engine "
@@ -1591,7 +1643,12 @@ def run_smoke(
         clock.enter("assertions")
         turn_failures, turn_warnings = evaluate_turns(results["turns"])
         debrief_failures, debrief_warnings = evaluate_debrief(
-            debrief, rubric_observations_seen=observations_seen
+            debrief,
+            rubric_observations_seen=observations_seen,
+            # A conversation that fell back on every generated turn reaches the
+            # debrief with nothing to score for a reason that has nothing to do
+            # with rubric prompting — see UNSCORED_AFTER_FALLBACK_NOTE.
+            turns_all_fell_back=_all_generated_turns_fell_back(results["turns"]),
         )
         results["warnings"] += turn_warnings + debrief_warnings
         pipeline_failures = turn_failures + debrief_failures

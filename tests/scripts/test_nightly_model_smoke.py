@@ -341,6 +341,29 @@ class TestEvaluateTurns:
         failures, _ = smoke.evaluate_turns(turns)
         assert any("fell back" in f for f in failures)
 
+    @pytest.mark.parametrize(
+        "turns, expected",
+        [
+            ([], False),
+            ([{"label": "npc_opening", "turn_number": 0, "model_generated": False,
+               "npc_excerpt": "Thanks for coming in."}], False),
+            ([_turn(used_fallback=True), _turn(turn_number=2, used_fallback=True)], True),
+            ([_turn(used_fallback=True), _turn(turn_number=2)], False),
+            # Flags unavailable: an absent used_fallback is not a fallback.
+            ([_turn(), _turn(turn_number=2)], False),
+        ],
+    )
+    def test_the_two_verdicts_agree_on_what_all_fell_back_means(
+        self, turns: list, expected: bool
+    ) -> None:
+        # evaluate_turns fails the run for it and evaluate_debrief uses it to
+        # say the unscored debrief is downstream of it. If the two disagreed,
+        # one verdict would carry both notes, each naming the other as the
+        # wrong place to start.
+        assert smoke._all_generated_turns_fell_back(turns) is expected
+        failures, _ = smoke.evaluate_turns(list(turns))
+        assert any("fell back to the canned" in f for f in failures) is expected
+
     def test_one_fallback_among_several_only_warns(self) -> None:
         turns = [_turn(used_fallback=True), _turn(turn_number=2), _turn(turn_number=3)]
         failures, warnings = smoke.evaluate_turns(turns)
@@ -565,6 +588,33 @@ class TestEvaluateDebrief:
         assert smoke.UNSCORED_WITH_OBSERVATIONS_NOTE not in no_scores
         assert "not the normal outcome" in no_scores
         assert "before writing this off" in no_scores
+
+    def test_a_zero_caused_by_fallbacks_is_not_blamed_on_rubric_prompting(self) -> None:
+        # A turn that fell back carries the canned safe utterance and an empty
+        # rubric_observations list whatever the prompt asked for, so this zero
+        # says nothing about rubric coverage. UNSCORED_DEBRIEF_NOTE would send
+        # triage after "the OUTPUT_SCHEMA layer, the starter model pin,
+        # sampling" while the fallback failure in the same verdict points
+        # somewhere else entirely.
+        failures, _ = smoke.evaluate_debrief(
+            _debrief(scores={}), rubric_observations_seen=0, turns_all_fell_back=True
+        )
+        no_scores = next(f for f in failures if "no rubric dimension scores" in f)
+        assert smoke.UNSCORED_AFTER_FALLBACK_NOTE in no_scores
+        assert smoke.UNSCORED_DEBRIEF_NOTE not in no_scores
+        assert smoke.UNSCORED_WITH_OBSERVATIONS_NOTE not in no_scores
+        assert "consequence of the fallback failure above" in no_scores
+
+    def test_observations_despite_fallbacks_still_blame_the_debrief_engine(self) -> None:
+        # Some turns fell back but the rest carried observations: the debrief
+        # still had something to accumulate, so the fallbacks are not the
+        # explanation and the regression note is the right one.
+        failures, _ = smoke.evaluate_debrief(
+            _debrief(scores={}), rubric_observations_seen=2, turns_all_fell_back=True
+        )
+        no_scores = next(f for f in failures if "no rubric dimension scores" in f)
+        assert smoke.UNSCORED_WITH_OBSERVATIONS_NOTE in no_scores
+        assert smoke.UNSCORED_AFTER_FALLBACK_NOTE not in no_scores
 
     def test_an_unknown_observation_count_claims_neither_cause(self) -> None:
         # The count is what tells the two causes apart, so without it the
@@ -1750,6 +1800,44 @@ class TestRunSmokeOrchestration:
         # than asking the reader to go and diff the previous nightly's artifact.
         assert results["rubric_observations_seen"] == 0
         assert any(smoke.UNSCORED_DEBRIEF_NOTE in f for f in results["failures"])
+
+    def test_a_conversation_of_fallbacks_does_not_blame_the_rubric_prompt(
+        self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """The failure mode a 4 B model on CPU actually produces.
+
+        Every turn's output fails validation, so every turn returns the canned
+        safe utterance with an empty rubric_observations list and the debrief
+        scores nothing. Both failures land in one verdict, and the unscored one
+        must not send triage after the OUTPUT_SCHEMA layer, the model pin and
+        sampling settings when the fallback failure beside it already names the
+        thing to read.
+        """
+        models_dir, model_id, digest = staged_model
+        monkeypatch.setattr(
+            smoke, "_request_json",
+            _fake_core(
+                _debrief(scores={}, overall_score=None),
+                debug_turns=[
+                    {"turn_number": n, "used_fallback": True,
+                     "used_native_structured_output": False}
+                    for n in range(1, len(smoke.SCRIPTED_PLAYER_TURNS) + 1)
+                ],
+            ),
+        )
+        report = tmp_path / "report.json"
+
+        exit_code = smoke.run_smoke(
+            model_id, 20.0, report, model_sha256=digest, models_dir=models_dir
+        )
+
+        assert exit_code == smoke.EXIT_CODES[smoke.FailureClass.PIPELINE]
+        results = json.loads(report.read_text(encoding="utf-8"))
+        assert results["rubric_observations_seen"] == 0
+        assert any("fell back to the canned" in f for f in results["failures"])
+        no_scores = next(f for f in results["failures"] if "rubric dimension scores" in f)
+        assert smoke.UNSCORED_AFTER_FALLBACK_NOTE in no_scores
+        assert smoke.UNSCORED_DEBRIEF_NOTE not in no_scores
 
     def test_unscored_debrief_with_scorable_turns_is_named_a_regression(
         self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch, tmp_path: Path

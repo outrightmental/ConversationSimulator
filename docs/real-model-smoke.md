@@ -159,10 +159,21 @@ across two runs volunteered at least one observation, and the debrief scored
 three to four dimensions with an `overall_score` near 50. Treat zero
 observations as a signal, not as the resting state.
 
-So an unscored debrief means one of three quite different things:
+So an unscored debrief means one of four quite different things:
 
-- **`rubric_observations_seen` is 0 — the model volunteered nothing.** Only the
-  prompt's bare schema hint was ever asking, so this is reachable by design —
+- **`rubric_observations_seen` is 0 and every generated turn fell back.** Then
+  this failure is downstream of the fallback failure reported beside it and
+  carries no independent signal: a turn that fell back returns the canned safe
+  utterance and an empty `rubric_observations` list whatever the prompt asked
+  for, so the debrief would have had nothing to accumulate even with a rubric
+  layer in place. Start from the per-turn `parse_events` in the `/debug`
+  payload — they say why the model's output was rejected — and judge the
+  scoring path on the next run. The harness detects this case and says so
+  rather than printing the next bullet's note, which would be the wrong
+  investigation.
+- **`rubric_observations_seen` is 0 with turns that did not fall back — the
+  model volunteered nothing.** Only the prompt's bare schema hint was ever
+  asking, so this is reachable by design —
   but since the starter model does normally answer that hint, first check what
   changed about what reaches the model: the `OUTPUT_SCHEMA` prompt layer, the
   registry's `starter` pin, the adapter's JSON-schema constraint, sampling
@@ -181,8 +192,9 @@ So an unscored debrief means one of three quite different things:
 - **`rubric_observations_seen` is `null` — the harness could not tell.** At
   least one generated turn carried no readable `rubric_observations` list, and
   the turns it *could* read carried nothing between them, so the total cannot be
-  trusted as a total and the message quotes both causes above rather than
-  picking one. Check `rubric_observation_count` per turn in the report to see
+  trusted as a total and the message quotes the two causes it cannot tell
+  apart — volunteered nothing, or volunteered something the debrief lost —
+  rather than picking one. Check `rubric_observation_count` per turn in the report to see
   which turns were unreadable (`null`) and which really were zero; `null` is not
   "every turn was unreadable". `convsim-core` always sends that list today, so
   any `null` is itself worth chasing: the turn response contract changed. The
