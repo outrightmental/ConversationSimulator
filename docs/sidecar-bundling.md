@@ -266,6 +266,65 @@ When implementing a new sidecar (e.g. `WhisperCppSidecar`):
 
 ---
 
+## The core itself is a sidecar of the desktop shell
+
+Everything above is about sidecars that `convsim-core` manages. One level up,
+`convsim-core` is itself a managed child of the Tauri desktop shell, built by
+`scripts/build-core.sh` into a single PyInstaller executable at
+`apps/desktop/src-tauri/resources/bin/convsim-core[.exe]` and packaged into the
+installer by `bundle.resources` (`resources/**/*`) — which is what lets a player
+install one artifact and reach the Welcome screen with no terminal involved
+(issue #456).
+
+The shell resolves it in the same four-step order the Python resolver uses:
+`CONVSIM_CORE_EXECUTABLE`, then `CONVSIM_BUNDLED_RUNTIME_DIR`, then the Tauri
+resource directory, then PATH. It hands the engine `CONVSIM_HOST`,
+`CONVSIM_PORT`, `CONVSIM_DATA_ROOT`, `CONVSIM_APP_VERSION`, the edition, and
+`CONVSIM_BUNDLED_RUNTIME_DIR` — the last of which is how the sidecars above are
+found in a packaged build.
+
+Two parts of that lifecycle matter to the sidecars in this document:
+
+- **Readiness** is `GET /api/health`, not an open TCP port. An open port only
+  says *something* is on 7355; the health body is what proves it is a
+  convsim-core — and therefore that the sidecar supervisor this document
+  describes exists at all.
+- **Shutdown** is a request the engine can honour, not a hard kill — see
+  [Shutting the whole tree down](#shutdown) above. Only a graceful stop lets
+  uvicorn run the lifespan shutdown, and the lifespan shutdown is where
+  `ProcessSupervisor.stop_all()` stops every sidecar in the table above. A hard
+  kill of the engine orphans all of them — llama-server keeps a model resident
+  in RAM and keeps port 7356 — so the shell waits out `GRACE` before
+  insisting.
+
+A crash is the same event without the choice: an engine that died never reached
+its lifespan shutdown either, so every sidecar in the table above survives it.
+The desktop shell restarts the engine (see "Crash restart" in
+[apps/desktop/README.md](../apps/desktop/README.md)), and the replacement's
+`ensure_llama_sidecar_running` then fails `_is_port_in_use` against the orphan
+still holding 7356. Inference usually keeps working anyway — `LlamaCppRuntime`
+reaches llama-server over HTTP at its configured `base_url` and does not care
+which process started it, so `runtime.health()` and `/v1/chat/completions` both
+land on the orphan — but the engine no longer *owns* that process:
+`sidecar_diagnostics` reports `port_conflict`, and anything that has to restart
+it (`/api/models/use`, a model switch) fails until the orphan is gone.
+
+Nothing in the product removes it. Relaunching does not: `stop_all()` stops the
+sidecars a *registered* sidecar object holds a `self._process` for, and the
+replacement engine's llama-server sidecar never started one. Neither does the
+shell's teardown: it reaches the *replacement* engine's process group (Unix) or
+process tree (Windows), and the orphan is in neither — it belongs to the group
+of the engine that died, whose pid is also its parent. It has to be ended by
+hand.
+
+`scripts/packaged-core-smoke.sh` runs the packaged engine and asserts all of
+it against the real PyInstaller binary: health readiness, loopback-only binding,
+and both teardown paths — stdin EOF and the SIGTERM fallback — reaching the
+lifespan shutdown. See [apps/desktop/README.md](../apps/desktop/README.md), "Core sidecar
+lifecycle", for the full state machine.
+
+---
+
 ## Environment variable reference
 
 | Variable | Purpose |
@@ -284,3 +343,4 @@ When implementing a new sidecar (e.g. `WhisperCppSidecar`):
 - [runtime-adapters.md](runtime-adapters.md) — ChatRuntime interface and built-in adapters
 - [architecture.md](architecture.md) — service topology and port assignments
 - [runtimes/llama_cpp/README.md](../runtimes/llama_cpp/README.md) — llama.cpp setup
+- [apps/desktop/README.md](../apps/desktop/README.md) — the desktop shell's core sidecar lifecycle

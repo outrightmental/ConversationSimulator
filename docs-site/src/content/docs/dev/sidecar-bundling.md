@@ -159,6 +159,56 @@ When implementing a new sidecar (e.g. `WhisperCppSidecar`):
 
 ---
 
+## The core itself is a sidecar of the desktop shell
+
+Everything above is about sidecars that `convsim-core` manages. One level up,
+`convsim-core` is itself a managed child of the Tauri desktop shell: a single
+PyInstaller executable packaged into the installer, which is what lets a player
+install one artifact and reach the Welcome screen with no terminal involved.
+
+The shell resolves it in the same four-step order used above
+(`CONVSIM_CORE_EXECUTABLE` → `CONVSIM_BUNDLED_RUNTIME_DIR` → the Tauri resource
+directory → PATH), and hands it `CONVSIM_HOST`, `CONVSIM_PORT`,
+`CONVSIM_DATA_ROOT`, `CONVSIM_APP_VERSION`, the edition, and
+`CONVSIM_BUNDLED_RUNTIME_DIR` — the last being how the sidecars in the table
+above are found in a packaged build.
+
+Two parts of that lifecycle matter to those sidecars:
+
+- **Readiness** is `GET /api/health`, not an open TCP port. An open port only
+  says *something* is on 7355; the health body is what proves it is a
+  convsim-core — and therefore that the sidecar supervisor this document
+  describes exists at all.
+- **Shutdown** is a request the engine can honour, not a hard kill: the shell
+  closes the stdin pipe it holds, `parent_watch` turns the EOF into a graceful
+  uvicorn stop, and only a tree kill follows if the engine outstays its grace.
+  Only a graceful stop runs the lifespan shutdown, and that shutdown is where
+  `ProcessSupervisor.stop_all()` stops every sidecar in the table. A hard kill
+  of the engine orphans all of them — llama-server keeps a model resident in RAM
+  and keeps port 7356.
+
+A crash is the same event without the choice: an engine that died never reached
+its lifespan shutdown either, so every sidecar in the table above survives it.
+The desktop shell restarts the engine (see "Crash restart" in
+`apps/desktop/README.md`), and the replacement's `ensure_llama_sidecar_running`
+then fails `_is_port_in_use` against the orphan still holding 7356. Inference
+usually keeps working anyway — `LlamaCppRuntime` reaches llama-server over HTTP
+at its configured `base_url` and does not care which process started it, so
+`runtime.health()` and `/v1/chat/completions` both land on the orphan — but the
+engine no longer *owns* that process: `sidecar_diagnostics` reports
+`port_conflict`, and anything that has to restart it (`/api/models/use`, a model
+switch) fails until the orphan is gone.
+
+Nothing in the product removes it. Relaunching does not: `stop_all()` stops the
+sidecars a *registered* sidecar object holds a `self._process` for, and the
+replacement engine's llama-server sidecar never started one. Neither does the
+shell's teardown: it reaches the *replacement* engine's process group (Unix) or
+process tree (Windows), and the orphan is in neither — it belongs to the group
+of the engine that died, whose pid is also its parent. It has to be ended by
+hand.
+
+---
+
 ## Environment variable reference
 
 | Variable | Purpose |
@@ -167,6 +217,7 @@ When implementing a new sidecar (e.g. `WhisperCppSidecar`):
 | `CONVSIM_LLAMA_CPP_EXECUTABLE` | Override path to `llama-server` |
 | `CONVSIM_WHISPER_CPP_BINARY_PATH` | Override path to `whisper-cli` |
 | `CONVSIM_KOKORO_EXECUTABLE` | Override path to `sherpa-onnx-offline-tts` |
+| `CONVSIM_CORE_EXECUTABLE` | Override path to the `convsim-core` binary the desktop shell starts |
 
 ---
 

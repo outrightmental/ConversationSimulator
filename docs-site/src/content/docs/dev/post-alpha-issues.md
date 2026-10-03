@@ -52,8 +52,24 @@ keep the initial surface area small. The source install path is fully
 functional.
 
 **Milestone:** 1 (desktop packaging)  
-**Tracking:** [`apps/desktop/`](https://github.com/outrightmental/ConversationSimulator/tree/main/apps/desktop) contains the Tauri skeleton; sidecar config
-is the remaining work.
+**Status:** ✅ **Shipped.** `convsim-core` is built by
+[`scripts/build-core.sh`](https://github.com/outrightmental/ConversationSimulator/blob/main/scripts/build-core.sh)
+into a single PyInstaller executable and packaged into the installer as a Tauri
+bundle resource; the shell starts it, waits for `GET /api/health` on
+127.0.0.1:7355 before showing the app, restarts it if it crashes, and drains it
+rather than killing it on exit — see
+[`apps/desktop/README.md`](https://github.com/outrightmental/ConversationSimulator/blob/main/apps/desktop/README.md),
+"Core sidecar lifecycle".
+[`scripts/packaged-core-smoke.sh`](https://github.com/outrightmental/ConversationSimulator/blob/main/scripts/packaged-core-smoke.sh)
+runs the packaged engine in CI and asserts health readiness, loopback-only
+binding, official-pack seeding, an offline `convsim offline-smoke-test`, and a
+clean shutdown.
+
+One part of the original acceptance list was deliberately not implemented: "CI
+produces the bundled artifact … as a release asset". Conversation Simulator
+ships prebuilt binaries through **Steam only** — a GitHub release is a changelog
+and a tag. CI does produce the bundled installer for all three platforms as
+build artifacts, and the Steam depot takes its payload from them.
 
 ---
 
