@@ -99,7 +99,11 @@
 
 /* The screen's call sign, parked on the hero's right edge opposite the Back
    control. Emerald, not violet: it is a readout about the system, not an
-   action belonging to the player. */
+   action belonging to the player — and it names the genre of the screen, so it
+   must not read as a second title either. Full --cs-them rather than a faint
+   wash: the span is aria-hidden, but aria-hidden only takes text out of the
+   accessibility tree, and WCAG 1.4.3 still covers anything a sighted player
+   can read — --cs-text-faint lands at ~3.2:1 on the hero wash. */
 .brief-preflight {
   margin-left: auto;
   padding: 0.2rem 0.55rem;
@@ -139,8 +143,8 @@
    reads as a panel beside the title rather than one more paragraph under it. */
 .brief-hero-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 23rem);
-  gap: 1.1rem 2rem;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 22rem);
+  gap: 1.25rem 1.75rem;
   align-items: start;
 }
 
@@ -148,30 +152,40 @@
   min-width: 0;
 }
 
-/* Stacked, the objective goes first in the reading order it already has: it
+/* One column below ~64rem: side by side, the objective would be narrower than
+   its own goal lines. Stacked, it keeps the reading order it already has — it
    follows the summary, and it is still the brightest thing above the fold. */
-@media (max-width: 60rem) {
+@media (max-width: 64rem) {
   .brief-hero-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  /* Nothing sits beside it any more, so the summary stops holding a column
+     open for the objective. */
   .brief-summary {
     max-width: none;
   }
 }
 
-/* The objective is the brightest, highest-contrast box on the screen, and the
-   only lit one — issue #500 asks that a player who reads nothing else still
-   comes away knowing what they are trying to do. Violet because the objective
-   belongs to the player (docs/brand.md). */
+/* ── Objective ─────────────────────────────────────────────────────────────
+   The brightest, highest-contrast box on the screen, and the only lit one:
+   issue #500 asks that a player who reads nothing else still comes away
+   knowing what they are trying to do. Violet because the objective belongs to
+   the player (docs/brand.md), and it sits on top of the hero's own violet
+   wash, so it carries a solid base colour rather than a translucent tint —
+   otherwise the hero's gradient shows through and the panel stops reading as
+   a panel. */
 .brief-objective {
+  min-width: 0;
+  padding: 0.9rem 1.1rem 1rem;
   border: 1px solid var(--cs-you);
   border-radius: 12px;
-  padding: 0.85rem 1.1rem 0.95rem;
-  background: linear-gradient(180deg, rgba(167, 139, 250, 0.2), rgba(167, 139, 250, 0.05));
+  background:
+    linear-gradient(180deg, rgba(167, 139, 250, 0.18), rgba(167, 139, 250, 0.06)),
+    var(--cs-stage-deep);
   box-shadow:
-    0 18px 38px -26px rgba(167, 139, 250, 0.95),
-    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+    0 18px 40px -26px rgba(167, 139, 250, 0.85),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .brief-objective-head {
@@ -179,59 +193,66 @@
   align-items: baseline;
   gap: 0.6rem;
   margin-bottom: 0.7rem;
-  padding-bottom: 0.5rem;
+  padding-bottom: 0.55rem;
   border-bottom: 1px solid rgba(167, 139, 250, 0.3);
 }
 
 .brief-objective-title {
   margin: 0;
   font-size: 0.68rem;
+  font-weight: 700;
   color: var(--cs-you);
 }
 
 .brief-objective-count {
   margin-left: auto;
+  flex: none;
   font-size: 0.6rem;
   color: var(--cs-text-muted);
 }
 
+/* The numbering is drawn by .brief-goal-mark in the preflight voice, so the
+   list's own marker is turned off — left on, every goal would be numbered
+   twice ("1. 01 Order a drink in Spanish"). */
 .brief-goals {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+  display: grid;
+  gap: 0.55rem;
 }
 
 .brief-goal {
   display: grid;
   grid-template-columns: 1.5rem minmax(0, 1fr);
-  gap: 0.5rem;
+  gap: 0.55rem;
   align-items: baseline;
 }
 
-/* The checklist numbering, drawn in the instrument voice — 01, 02, 03. */
+/* The checklist numbering, drawn in the instrument voice — 01, 02, 03. Bold,
+   and a shade larger than a label: it is small violet-on-violet text, and for
+   a sighted player it is the only thing carrying the count. */
 .brief-goal-mark {
   font-size: 0.68rem;
   font-weight: 700;
   color: var(--cs-you);
 }
 
-/* Goal text carries more weight than the summary beside it: on this screen the
-   objective outranks the premise. */
+/* The goal lines are the payload of the screen: full-strength text, heavier
+   than the summary beside them — on this screen the objective outranks the
+   premise. */
 .brief-goal-text {
-  font-size: 0.94rem;
+  font-size: 0.95rem;
   font-weight: 600;
   line-height: 1.4;
   color: var(--cs-text-strong);
 }
 
-/* A scenario that declares no goals falls back to its role brief, which is
-   prose and is set as prose — the numbered checklist would be a lie. */
+/* Stand-in for a scenario that declares no goals — its role brief, which is
+   prose and is set as prose: the numbered checklist would be a lie. */
 .brief-goal-standin {
   margin: 0;
-  font-size: 0.94rem;
+  font-size: 0.92rem;
   line-height: 1.5;
   color: var(--cs-text-strong);
 }
@@ -288,17 +309,25 @@
     padding-top: 0.8rem;
   }
 
+  /* The objective keeps its weight — it is the one thing on this screen that
+     must survive a short viewport — but gives up the padding and leading it
+     can spare. */
   .brief-objective {
-    padding: 0.7rem 0.95rem 0.8rem;
+    padding: 0.75rem 0.9rem 0.85rem;
+  }
+
+  .brief-objective-head {
+    margin-bottom: 0.55rem;
+    padding-bottom: 0.45rem;
   }
 
   .brief-goals {
-    gap: 0.4rem;
+    gap: 0.45rem;
   }
 
   .brief-goal-text,
   .brief-goal-standin {
-    font-size: 0.88rem;
+    font-size: 0.9rem;
   }
 }
 
@@ -391,51 +420,50 @@
   gap: 0.75rem;
 }
 
-/* Tier 2 — the two decisions that change the conversation. A raised surface
-   and a lit top edge put them above the setup card below without letting them
-   compete with the objective above. */
-.brief-card.is-decision {
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.01)),
-    var(--cs-raise);
-  box-shadow: inset 0 1px 0 rgba(167, 139, 250, 0.22);
-}
-
-/* Tier 3 — the mechanical settings, in one quiet card. Flatter and dimmer than
-   a decision card: before issue #500 each of these was a card in its own
-   right, identical in weight to the difficulty choice, and seven
-   interchangeable blocks is what made the screen read as a wall of controls.
-   Nothing is hidden — there is no disclosure to open, and every control is
-   still one Tab or one D-pad press away. */
+/* ── Tier 3: session setup ─────────────────────────────────────────────────
+   The five mechanical settings in one quiet card. Flatter and dimmer than a
+   decision card — flatter background, no lift — because before issue #500 each
+   of these was a card in its own right, identical in weight to the difficulty
+   choice, and seven interchangeable blocks is what made the screen read as a
+   wall of controls. Its sub-headings are mono micro-labels rather than UI
+   titles, so the group reads as instrumentation. Quiet, not hidden: there is no
+   disclosure to open, and every control is still one Tab or one D-pad press
+   away. */
 .brief-setup {
   border: 1px solid var(--cs-border);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.012);
-  padding: 0.9rem 1.15rem 1.1rem;
+  padding: 1rem 1.15rem 1.15rem;
 }
 
 .brief-setup .brief-card-title {
   color: var(--cs-text);
 }
 
-/* Two settings to a row on a wide screen, so the group reads as one block of
-   instruments rather than a column as long as everything above it. */
+/* The tier mark comes down with the tier: inside the setup card it is a label,
+   not the lit "01"/"02" of a decision above. */
+.brief-setup .brief-step {
+  border-color: var(--cs-border);
+  color: var(--cs-text-muted);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/* Two settings to a row where they fit, so the group reads as one block of
+   instruments rather than a column as long as everything above it. auto-fit
+   rather than a fixed pair plus a breakpoint: the column count then follows
+   the space the card actually has, which is what a Steam Deck window and a
+   maximised desktop one disagree about. */
 .brief-setup-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
   gap: 1rem 1.5rem;
   align-items: start;
 }
 
-/* The seed takes the full width: its row is a field plus two buttons. */
+/* The seed takes the full row: its label, field and two buttons do not fit a
+   15rem column without wrapping into a column of their own. */
 .brief-set.is-wide {
   grid-column: 1 / -1;
-}
-
-@media (max-width: 52rem) {
-  .brief-setup-grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
 }
 
 .brief-set {
@@ -447,22 +475,31 @@
 
 /* Each setting is headed by a micro-label in the stage-direction voice rather
    than a card title — the demotion is typographic, which is why the control
-   underneath loses nothing. */
+   underneath loses nothing. A micro-label, not a heading-sized one: tier 3
+   must not out-shout the decision titles above it, and <h3> defaults to
+   1.17em, which uppercased and letter-spaced would be the loudest type on the
+   page. The rule under it is what still separates a set from its neighbour
+   once the type has gone this quiet. */
 .brief-set-title {
   display: flex;
   align-items: baseline;
-  gap: 0.45rem;
+  gap: 0.5rem;
   margin: 0;
   padding-bottom: 0.3rem;
   border-bottom: 1px solid var(--cs-border);
-  font-size: 0.62rem;
+  font-size: 0.6rem;
   font-weight: 600;
   color: var(--cs-text-muted);
 }
 
+/* "Optional" is content — it tells the player they can skip the seed — so it
+   stays at the 9.6px micro-label floor and at --cs-text-muted, like every
+   other readable micro-label here. Only decoration gets --cs-text-faint. It
+   rides the right end of the title row, away from the set's own name. */
 .brief-set-note {
   margin-left: auto;
-  font-size: 0.58rem;
+  font-size: 0.6rem;
+  font-weight: 400;
   color: var(--cs-text-muted);
 }
 
@@ -483,18 +520,30 @@
   color: var(--cs-text);
 }
 
-/* Short cards pair up on a wide screen so the page stays scannable. */
-.brief-row {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 1rem;
-  align-items: start;
+/* ── Tier 2: the decisions ─────────────────────────────────────────────────
+   Difficulty and role are the two choices that change the conversation, so
+   they sit above the mechanical settings in weight as well as in order: a
+   raised surface, a lit violet top edge on the step side, and a lift off the
+   page that the quiet setup card below does not get. That puts them over the
+   setup card without letting them compete with the objective above. Both
+   shadows ride one declaration — a second box-shadow rule would replace this
+   one rather than add to it, which is how the lit edge got lost. */
+.brief-card.is-decision {
+  border-color: #32323a;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.01)),
+    var(--cs-raise);
+  box-shadow:
+    inset 0 1px 0 rgba(167, 139, 250, 0.22),
+    0 12px 30px -26px #000;
 }
 
-@media (max-width: 52rem) {
-  .brief-row {
-    grid-template-columns: minmax(0, 1fr);
-  }
+.brief-card.is-decision .brief-card-head {
+  border-bottom-color: rgba(167, 139, 250, 0.26);
+}
+
+.brief-card.is-decision .brief-card-title {
+  font-size: 1.02rem;
 }
 
 /* ── Choice cards (difficulty, input mode) ─────────────────────────────── */
