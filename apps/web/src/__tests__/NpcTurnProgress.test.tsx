@@ -138,6 +138,24 @@ describe('NpcTurnProgress', () => {
       )
     })
 
+    it('says the turn is running long rather than leaving it to arithmetic', () => {
+      // The amber caption says so outright and is aria-hidden; "1m 00s of about
+      // 30s" is the same news in a form the player has to work out.
+      renderProgress(70_000, 30_000)
+      expect(screen.getByTestId('npc-turn-progress-announcement')).toHaveTextContent(
+        'Still waiting on the NPC — 1m 00s, longer than the usual 30s. The reply is not lost.',
+      )
+    })
+
+    it('waits for the announced figure to pass the estimate, not the clock', () => {
+      // Judged against the ticking clock this would flip at 45s and announce
+      // "30s, longer than the usual 45s" — off the grid and self-contradictory.
+      renderProgress(50_000, 45_000)
+      expect(screen.getByTestId('npc-turn-progress-announcement')).toHaveTextContent(
+        'Still waiting on the NPC — 30s of about 45s. The reply is not lost.',
+      )
+    })
+
     it('stops announcing a wait once the words are arriving', () => {
       // The transcript is a polite live region already reading the reply out;
       // "still waiting" over the top of it contradicts what the player hears.

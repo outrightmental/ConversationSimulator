@@ -102,12 +102,20 @@ export default function NpcTurnProgress({
   // live region, so it is already reading the reply out, and "still waiting"
   // over the top of it contradicts what the player is hearing.
   const announcedElapsedMs = Math.floor(elapsedMs / ANNOUNCE_INTERVAL_MS) * ANNOUNCE_INTERVAL_MS
+  // "1m 00s of about 30s" would be left to arithmetic to notice what the amber
+  // caption says outright. Decided on the announced figure rather than the live
+  // one, so the wording still only changes on the grid: judged against the
+  // ticking clock it would flip mid-interval and read "30s, longer than the
+  // usual 45s".
+  const announcedOverrun = hasEstimate && announcedElapsedMs > estimateMs
   const announcementText =
     !active || streaming || elapsedMs < FIRST_ANNOUNCE_MS
       ? ''
-      : hasEstimate
-        ? `Still waiting on the NPC — ${formatDuration(announcedElapsedMs)} of about ${estimateText}. The reply is not lost.`
-        : `Still waiting on the NPC — ${formatDuration(announcedElapsedMs)} so far. The reply is not lost.`
+      : announcedOverrun
+        ? `Still waiting on the NPC — ${formatDuration(announcedElapsedMs)}, longer than the usual ${estimateText}. The reply is not lost.`
+        : hasEstimate
+          ? `Still waiting on the NPC — ${formatDuration(announcedElapsedMs)} of about ${estimateText}. The reply is not lost.`
+          : `Still waiting on the NPC — ${formatDuration(announcedElapsedMs)} so far. The reply is not lost.`
 
   return (
     <>
