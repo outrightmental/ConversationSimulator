@@ -15,6 +15,21 @@ vi.mock('../api/client', () => ({
   },
 }))
 
+// Typed with an explicit signature (rather than letting the no-arg
+// implementation infer one) so `mock.calls` destructures the name argument
+// instead of inferring an empty tuple.
+const mockUnlock = vi.fn<(name: string) => Promise<boolean>>(() => Promise.resolve(false))
+const mockIncrementStat = vi.fn<(name: string) => Promise<boolean>>(() => Promise.resolve(false))
+// Only the hook itself is stubbed. This module also exports the achievement and
+// stat name maps, the unlock thresholds, and the local progress helpers that the
+// panels import directly; a hand-rolled mock of those silently drifts out of
+// date every time an achievement is added (and then the panel throws on an
+// undefined export), so importOriginal keeps them real.
+vi.mock('../hooks/useSteamAchievements', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useSteamAchievements')>()),
+  useSteamAchievements: () => ({ unlock: mockUnlock, incrementStat: mockIncrementStat }),
+}))
+
 import { api } from '../api/client'
 const mockApi = vi.mocked(api)
 
@@ -619,5 +634,55 @@ describe('RuntimeSettingsPanel — apply advanced and reset', () => {
     await waitFor(() =>
       expect(screen.getByRole('alert')).toHaveTextContent(/Connection failed/i),
     )
+  })
+})
+
+// ── Steam achievement (issue #494) ────────────────────────────────────────────
+
+describe('RuntimeSettingsPanel — Steam achievement', () => {
+  async function openAdvanced() {
+    await renderPanel()
+    fireEvent.click(screen.getByRole('button', { name: /show runtime advanced settings/i }))
+    await waitFor(() => screen.getByRole('spinbutton', { name: /context length/i }))
+  }
+
+  // ACH_RUNTIME_TUNED is required for the ACH_CERTIFIED_EXPERT capstone and
+  // unlocks from either Apply button, only once the backend accepted the change
+  // — "the player tuned the runtime", not "the player pressed a button".
+
+  it('grants it when basic provider/model settings are applied', async () => {
+    await renderPanel()
+    fireEvent.click(screen.getByRole('button', { name: /apply provider and model/i }))
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_RUNTIME_TUNED'))
+  })
+
+  it('does not grant it when applying the provider/model fails', async () => {
+    mockApi.useModel.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'runtime not available' } })
+    await renderPanel()
+    fireEvent.click(screen.getByRole('button', { name: /apply provider and model/i }))
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+    expect(mockUnlock).not.toHaveBeenCalledWith('ACH_RUNTIME_TUNED')
+  })
+
+  it('grants it when advanced settings are applied', async () => {
+    mockApi.updateRuntimeSettings.mockResolvedValue({ ok: true, data: makeSettings() })
+    await openAdvanced()
+    fireEvent.click(screen.getByRole('button', { name: /apply advanced settings/i }))
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_RUNTIME_TUNED'))
+  })
+
+  it('does not grant it when applying advanced settings fails', async () => {
+    mockApi.updateRuntimeSettings.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'server error' } })
+    await openAdvanced()
+    fireEvent.click(screen.getByRole('button', { name: /apply advanced settings/i }))
+    await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+    expect(mockUnlock).not.toHaveBeenCalledWith('ACH_RUNTIME_TUNED')
+  })
+
+  it('increments no stat — runtime tuning is not a counted event', async () => {
+    await renderPanel()
+    fireEvent.click(screen.getByRole('button', { name: /apply provider and model/i }))
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_RUNTIME_TUNED'))
+    expect(mockIncrementStat).not.toHaveBeenCalled()
   })
 })
