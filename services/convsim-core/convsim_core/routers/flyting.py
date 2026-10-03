@@ -147,6 +147,10 @@ class VolleyResponse(BaseModel):
     volleys_remaining: Optional[int] = None
     seconds_remaining: Optional[float] = None
     whiffs_remaining: Optional[int] = None
+    # The surface as the run knows it *after* this volley: a discoverable trait
+    # struck just now is revealed here, which is what "revealed when first
+    # struck" has to mean on the screen the player is looking at.
+    target_surface: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class RunSummaryResponse(BaseModel):
@@ -244,6 +248,27 @@ def _momentum_def(scenario: FlytingScenario) -> ScenarioVariableDef:
     return defs.get("momentum", FLYTING_VARIABLE_DEFAULTS["momentum"])
 
 
+def _revealed_surface(
+    scenario: Optional[FlytingScenario], state: FlytingRunState
+) -> List[Dict[str, Any]]:
+    """The target's traits this run is allowed to show, briefs included.
+
+    The visible ones from the start, plus every discoverable one the player has
+    already struck. ``npc.schema.json`` promises a discoverable trait is
+    "revealed when first struck, and worth double on discovery"; the doubling
+    was there from the first commit, and this is the revealing. Nothing hidden
+    is sent, so the brief of a trait still to be found never reaches the client
+    to be read out of the payload.
+    """
+    if scenario is None:
+        return []
+    found = set(state.discovered_traits)
+    return [
+        {"id": trait.id, "brief": trait.brief, "discovered": trait.id in found}
+        for trait in visible_attack_surface(scenario.attack_surface, found)
+    ]
+
+
 def _scenario_payload(scenario: FlytingScenario, conn: Any) -> Dict[str, Any]:
     flyting = scenario.flyting
     formats = [f.value for f in flyting.formats]
@@ -264,6 +289,10 @@ def _scenario_payload(scenario: FlytingScenario, conn: Any) -> Dict[str, Any]:
             "label": scenario.player_role_label,
             "brief": scenario.player_role_brief,
         },
+        # The provocation the run opens on. Every scenario declares one and in a
+        # bout it is what the first volley answers, so it has to reach the
+        # player rather than stopping at the YAML.
+        "opening": scenario.opening_npc_says,
         "target": {
             "npc_id": scenario.npc.npc_id,
             "display_name": scenario.npc.display_name,
@@ -437,6 +466,29 @@ async def create_run(body: RunCreateRequest, request: Request) -> RunResponse:
             now,
         ),
     )
+    # The scenario's opening line, as turn zero, exactly where the conversation
+    # loop puts it — same role, so the transcript export labels it "NPC
+    # (Opening)" without knowing about flyting. The volley pipeline numbers its
+    # own turns from 1 (player odd, opponent even), so turn zero is free.
+    #
+    # It is a line, not a volley: nothing scores it, it never enters the volley
+    # log, and it does not count toward the opponent's total. In a bout it is
+    # the opponent's last line when the first volley arrives, which is what
+    # makes a riposte possible on the opening exchange rather than only from
+    # the second one on.
+    if scenario.opening_npc_says:
+        conn.execute(
+            "INSERT INTO turn_session_turns "
+            "(session_id, turn_number, role, content, flow_state_after, created_at) "
+            "VALUES (?, 0, 'npc_opening', ?, 'PlayerTurnListening', ?)",
+            (session_id, scenario.opening_npc_says, now),
+        )
+        if body.save_transcript:
+            conn.execute(
+                "INSERT INTO session_transcript_fts(session_id, turn_number, role, content) "
+                "VALUES (?, 0, 'npc_opening', ?)",
+                (session_id, scenario.opening_npc_says),
+            )
     conn.commit()
 
     return RunResponse(
@@ -454,6 +506,7 @@ async def get_run(session_id: str, request: Request) -> Dict[str, Any]:
     row = _session_or_404(request, session_id)
     conn = request.app.state.db.connection()
     state = FlytingRunState.from_dict(_run_state_of(row))
+    scenario = resolve_flyting_scenario(row["scenario_id"], conn)
     return {
         "session_id": session_id,
         "scenario_id": row["scenario_id"],
@@ -463,6 +516,10 @@ async def get_run(session_id: str, request: Request) -> Dict[str, Any]:
         "volleys_remaining": state.volleys_remaining,
         "seconds_remaining": state.seconds_remaining,
         "whiffs_remaining": state.whiffs_remaining,
+        # The line the run opened on, so a reloaded screen still shows what is
+        # being answered, and the surface as this run currently knows it.
+        "opening": scenario.opening_npc_says if scenario else "",
+        "target_surface": _revealed_surface(scenario, state),
     }
 
 
@@ -512,6 +569,7 @@ async def submit_volley(
         volleys_remaining=result.state.volleys_remaining,
         seconds_remaining=result.state.seconds_remaining,
         whiffs_remaining=result.state.whiffs_remaining,
+        target_surface=_revealed_surface(scenario, result.state),
     )
 
 

@@ -8,6 +8,11 @@ from the same files: the ``flyting`` block from the scenario, the target's
 the ``audience`` block from the scene. This module reads all of it in one pass
 and hands back a single resolved object.
 
+``opening.npc_says`` is read too, even though a flyting run scores the player's
+turns rather than the opponent's opening. Every scenario is required to declare
+one, and in a bout it is the provocation the first volley answers — a run that
+dropped it would open on silence and leave the authored line unread.
+
 Resolution is forgiving by design — a missing rubric block means engine
 defaults, a missing audience means no crowd — but a scenario that does not
 declare ``mode: flyting`` is *not* loaded as a flyting run. Guessing a game mode
@@ -68,6 +73,7 @@ class FlytingScenario:
     player_role_label: str = "Player"
     player_role_brief: str = ""
     setting_brief: str = ""
+    opening_npc_says: str = ""
     player_visible_goals: Tuple[str, ...] = ()
     state_variables: Optional[Dict[str, Any]] = None
     supported_languages: Tuple[str, ...] = ("en",)
@@ -210,6 +216,7 @@ def load_flyting_scenario(
                 )
 
     player_role = raw.get("player_role") or {}
+    opening = raw.get("opening") or {}
     goals = raw.get("goals") or {}
     state = raw.get("state") or {}
     langs = raw.get("supported_languages")
@@ -229,6 +236,7 @@ def load_flyting_scenario(
         player_role_label=str(player_role.get("label") or "Player"),
         player_role_brief=str(player_role.get("brief") or ""),
         setting_brief=setting_brief,
+        opening_npc_says=str(opening.get("npc_says") or "").strip(),
         player_visible_goals=tuple(str(g) for g in (goals.get("player_visible") or [])),
         state_variables=state.get("variables") if isinstance(state, dict) else None,
         supported_languages=tuple(str(x) for x in langs) if isinstance(langs, list) and langs else ("en",),

@@ -522,9 +522,17 @@ def _load_run_state(session_row: sqlite3.Row) -> Optional[Dict[str, Any]]:
 
 
 def _last_npc_line(conn: sqlite3.Connection, session_id: str) -> Optional[str]:
+    """The opponent's most recent line — the thing a riposte has to turn back.
+
+    ``npc_opening`` counts. The scenario's opening is stored at turn zero under
+    the same role the conversation loop uses, and in a bout it is a real taunt
+    aimed at the player: reading only ``npc`` rows would make the first
+    exchange the one round where a riposte is impossible, for no reason a
+    player could see.
+    """
     row = conn.execute(
-        "SELECT content FROM turn_session_turns WHERE session_id = ? AND role = 'npc' "
-        "ORDER BY turn_number DESC LIMIT 1",
+        "SELECT content FROM turn_session_turns WHERE session_id = ? "
+        "AND role IN ('npc', 'npc_opening') ORDER BY turn_number DESC LIMIT 1",
         (session_id,),
     ).fetchone()
     return row["content"] if row is not None else None

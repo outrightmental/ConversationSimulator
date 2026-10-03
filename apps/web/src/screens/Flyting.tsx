@@ -16,6 +16,7 @@ import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import type {
   FlytingRunState,
   FlytingVolleyLogEntry,
+  RevealedAttackSurfaceTrait,
   VolleyScorecard as Scorecard,
 } from '@convsim/shared'
 import { api } from '../api/client'
@@ -99,6 +100,12 @@ export default function Flyting() {
   // hardcoding 90 here would put a second copy of a format rule in the UI, free
   // to drift from the one being enforced.
   const [timedSeconds, setTimedSeconds] = useState<number | null>(null)
+  // The line the run opened on, and the target's surface as this run knows it.
+  // The surface comes back with every volley rather than being read once at
+  // mount: a discoverable trait is revealed the moment it is struck, and the
+  // screen the player is looking at is where that has to show.
+  const [opening, setOpening] = useState('')
+  const [surface, setSurface] = useState<RevealedAttackSurfaceTrait[]>([])
 
   // The shot clock. `promptedAt` is when the player became free to type; it
   // resets after every scored volley. `startedAt` is the whole run's clock,
@@ -145,6 +152,8 @@ export default function Flyting() {
         })
       }
       setLog(logFromHistory(r.data.volleys))
+      setOpening(r.data.opening)
+      setSurface(r.data.target_surface)
       setSecondsRemaining(r.data.seconds_remaining)
       setWhiffsRemaining(r.data.whiffs_remaining)
       setVolleysRemaining(r.data.volleys_remaining)
@@ -217,6 +226,7 @@ export default function Flyting() {
       const data = r.data
       setText('')
       setRun(data.run)
+      setSurface(data.target_surface)
       setVolleysRemaining(data.volleys_remaining)
       setWhiffsRemaining(data.whiffs_remaining)
       if (!isTimed || timedSeconds == null) setSecondsRemaining(data.seconds_remaining)
@@ -359,6 +369,44 @@ export default function Flyting() {
         <Tag label={formatLabel(run.play_format, run.batting_format)} color="#a855f7" />
         {run.daily_seed != null && <Tag label="Daily seed" color="#38bdf8" />}
       </header>
+
+      {/* What is fair game, as this run knows it. A discoverable trait appears
+          here the volley after it is struck — the engine sends only what the
+          run has revealed, so nothing hidden is in the page to be read. */}
+      {surface.length > 0 && (
+        <details data-testid="target-surface" style={{ fontSize: '0.8rem' }}>
+          <summary style={{ cursor: 'pointer', color: '#a1a1aa' }}>
+            What is fair game ({surface.length})
+            {surface.some((t) => t.discovered) && (
+              <span style={{ color: '#a855f7' }}> · one discovered</span>
+            )}
+          </summary>
+          <ul
+            style={{
+              listStyle: 'none',
+              margin: '0.4rem 0 0',
+              padding: 0,
+              display: 'grid',
+              gap: '0.3rem',
+            }}
+          >
+            {surface.map((trait) => (
+              <li
+                key={trait.id}
+                data-testid={`surface-${trait.id}`}
+                style={{ display: 'flex', gap: '0.5rem', alignItems: 'baseline' }}
+              >
+                <Tag
+                  label={trait.id.replace(/_/g, ' ')}
+                  color={trait.discovered ? '#a855f7' : '#22c55e'}
+                  title={trait.discovered ? 'You found this one' : undefined}
+                />
+                <span style={{ color: '#d4d4d8', lineHeight: 1.5 }}>{trait.brief}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
 
       {run.sudden_death && phase === 'ready' && (
         <p role="status" style={{ margin: 0, color: '#fcd34d', fontSize: '0.85rem', fontWeight: 600 }}>
@@ -514,6 +562,23 @@ export default function Flyting() {
         {log.length === 0 && (
           <p style={{ color: '#71717a', fontSize: '0.85rem', margin: 0 }}>
             No volleys yet. The clock is running.
+          </p>
+        )}
+        {/* The scenario's opening line, at the foot of a newest-first log —
+            the oldest thing said in the room, and in a bout the line the first
+            volley answers. */}
+        {opening && (
+          <p
+            data-testid="run-opening"
+            style={{
+              margin: 0,
+              fontSize: '0.85rem',
+              fontStyle: 'italic',
+              color: '#a1a1aa',
+              lineHeight: 1.6,
+            }}
+          >
+            {opening}
           </p>
         )}
       </div>

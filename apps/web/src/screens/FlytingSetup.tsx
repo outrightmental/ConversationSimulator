@@ -258,6 +258,35 @@ export default function FlytingSetup() {
           <p style={{ margin: 0, fontSize: '0.85rem', color: '#e4e4e7' }}>
             Your target: <strong>{scenario.target.display_name}</strong>
           </p>
+          {/* The scenario's own opening line. It is what the first volley
+              answers, so it belongs in the brief rather than only in the
+              transcript. */}
+          {scenario.opening && (
+            <blockquote
+              data-testid="scenario-opening"
+              style={{
+                margin: 0,
+                paddingLeft: '0.7rem',
+                borderLeft: '3px solid #3f3f46',
+                color: '#d4d4d8',
+                fontSize: '0.85rem',
+                fontStyle: 'italic',
+                lineHeight: 1.6,
+              }}
+            >
+              {scenario.opening}
+              <footer
+                style={{
+                  marginTop: '0.25rem',
+                  fontStyle: 'normal',
+                  fontSize: '0.72rem',
+                  color: '#71717a',
+                }}
+              >
+                — {scenario.target.display_name}, as you arrive
+              </footer>
+            </blockquote>
+          )}
           {scenario.goals.length > 0 && (
             <ul style={{ margin: 0, paddingLeft: '1.1rem', color: '#a1a1aa', fontSize: '0.8rem' }}>
               {scenario.goals.map((goal) => (

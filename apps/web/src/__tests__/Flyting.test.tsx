@@ -46,6 +46,7 @@ const SETUP: FlytingScenarioSetup = {
   mode: 'flyting',
   content_rating: 'PG-13',
   player_role: { label: 'the Scorned Rose', brief: 'Ruined and discarded.' },
+  opening: 'I do not know this woman. Doorman — I do not know this woman.',
   target: {
     npc_id: 'lord_bellingham',
     display_name: 'Lord Bellingham',
@@ -94,8 +95,10 @@ const RUN: FlytingRunState = {
   theme_uses: { hypocrisy: 1 },
   npc_theme_uses: {},
   recent_devices: [['metaphor']],
+  npc_recent_devices: [],
   discovered_traits: [],
   foul_counts: {},
+  gate_foul_counts: {},
   elapsed_s: 12,
   daily_seed: null,
   outcome: null,
@@ -156,6 +159,10 @@ const VOLLEY_RESPONSE: FlytingVolleyResponse = {
   volleys_remaining: 9,
   seconds_remaining: null,
   whiffs_remaining: null,
+  target_surface: [
+    { id: 'vanity', brief: 'Powdered, corseted, and fifty.', discovered: false },
+    { id: 'hypocrisy', brief: 'Preaches temperance; owns two gin palaces.', discovered: false },
+  ],
 }
 
 const RUN_DETAIL: FlytingRunDetail = {
@@ -167,6 +174,11 @@ const RUN_DETAIL: FlytingRunDetail = {
   volleys_remaining: 10,
   seconds_remaining: null,
   whiffs_remaining: null,
+  opening: 'I do not know this woman. Doorman — I do not know this woman.',
+  target_surface: [
+    { id: 'vanity', brief: 'Powdered, corseted, and fifty.', discovered: false },
+    { id: 'hypocrisy', brief: 'Preaches temperance; owns two gin palaces.', discovered: false },
+  ],
 }
 
 const SUMMARY: FlytingRunSummaryResponse = {
@@ -268,6 +280,17 @@ describe('FlytingSetup', () => {
     // cannot make finding it worth double.
     expect(screen.getByTestId('discoverable-count')).toHaveTextContent('2 more')
     expect(screen.queryByText(/gin palaces.*cousin/i)).not.toBeInTheDocument()
+  })
+
+  it("quotes the scenario's own opening line in the brief", async () => {
+    // The line the first volley answers. It is a required field of every
+    // scenario, so a brief that omitted it would be reading past the content
+    // the pack actually ships.
+    renderSetup()
+    await waitFor(() => screen.getByTestId('scenario-opening'))
+    expect(screen.getByTestId('scenario-opening')).toHaveTextContent(
+      /I do not know this woman/i,
+    )
   })
 
   it('shows the personal best for the chosen format', async () => {
@@ -415,6 +438,45 @@ describe('Flyting play screen', () => {
     expect(screen.getByTestId('volley-arithmetic')).toHaveTextContent('1.27 T')
     expect(screen.getByTestId('run-total')).toHaveTextContent('129')
     expect(screen.getByTestId('volleys-left')).toHaveTextContent('9')
+  })
+
+  it('shows the line the run opened on', async () => {
+    renderPlay()
+    await waitFor(() => screen.getByTestId('run-opening'))
+    expect(screen.getByTestId('run-opening')).toHaveTextContent(/I do not know this woman/i)
+  })
+
+  it('lists what is fair game, as the run currently knows it', async () => {
+    renderPlay()
+    await waitFor(() => screen.getByTestId('target-surface'))
+    expect(screen.getByTestId('surface-hypocrisy')).toHaveTextContent(/gin palaces/i)
+  })
+
+  it('reveals a discoverable trait the volley that struck it', async () => {
+    // npc.schema.json promises a discoverable trait is "revealed when first
+    // struck". The engine sends the surface back with every volley, so the
+    // reveal has to land on the screen the player is already looking at —
+    // without a reload, and without the brief having given it away first.
+    mockApi.flyting.submitVolley.mockResolvedValue({
+      ok: true,
+      data: {
+        ...VOLLEY_RESPONSE,
+        target_surface: [
+          ...VOLLEY_RESPONSE.target_surface,
+          { id: 'cowardice', brief: 'Bought his way out of the Crimea.', discovered: true },
+        ],
+      },
+    })
+    renderPlay()
+    await waitFor(() => screen.getByTestId('volley-input'))
+    expect(screen.queryByTestId('surface-cowardice')).not.toBeInTheDocument()
+
+    fireEvent.change(screen.getByTestId('volley-input'), { target: { value: VOLLEY_TEXT } })
+    fireEvent.click(screen.getByTestId('submit-volley'))
+
+    await waitFor(() => screen.getByTestId('surface-cowardice'))
+    expect(screen.getByTestId('surface-cowardice')).toHaveTextContent(/out of the Crimea/i)
+    expect(screen.getByTestId('target-surface')).toHaveTextContent(/one discovered/i)
   })
 
   it('restores a bout log in the same order it was played in', async () => {

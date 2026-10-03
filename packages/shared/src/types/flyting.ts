@@ -189,8 +189,14 @@ export interface FlytingRunState {
    *  only that side's topicality. */
   npc_theme_uses: Record<string, number>;
   recent_devices: string[][];
+  /** The opponent's own device window, so the rotation bonus asks the same of
+   *  both sides. */
+  npc_recent_devices: string[][];
   discovered_traits: string[];
   foul_counts: Record<string, number>;
+  /** Stage 0 fouls only — the tally the deterministic gate reads, and the only
+   *  one that can end a run. A judge-raised foul is in `foul_counts` alone. */
+  gate_foul_counts: Record<string, number>;
   elapsed_s: number;
   daily_seed: number | null;
   outcome: string | null;
@@ -199,6 +205,16 @@ export interface FlytingRunState {
 export interface AttackSurfaceTraitBrief {
   id: string;
   brief: string;
+}
+
+/**
+ * A trait a run is allowed to show, with its brief. The visible ones from the
+ * start plus every discoverable one already struck — `discovered` marks which.
+ * A trait still to be found is absent rather than masked, so its brief never
+ * reaches the client to be read out of the payload.
+ */
+export interface RevealedAttackSurfaceTrait extends AttackSurfaceTraitBrief {
+  discovered: boolean;
 }
 
 /** The setup payload: everything the format picker and the brief need. */
@@ -210,6 +226,8 @@ export interface FlytingScenarioSetup {
   mode: 'flyting';
   content_rating: string;
   player_role: { label: string; brief: string };
+  /** The scenario's `opening.npc_says` — the provocation the run opens on. */
+  opening: string;
   target: {
     npc_id: string;
     display_name: string;
@@ -278,6 +296,9 @@ export interface FlytingVolleyResponse {
   volleys_remaining: number | null;
   seconds_remaining: number | null;
   whiffs_remaining: number | null;
+  /** The surface as the run knows it after this volley, so a trait struck just
+   *  now is revealed on the screen the player is already looking at. */
+  target_surface: RevealedAttackSurfaceTrait[];
 }
 
 export interface FlytingRunDetail {
@@ -289,6 +310,9 @@ export interface FlytingRunDetail {
   volleys_remaining: number | null;
   seconds_remaining: number | null;
   whiffs_remaining: number | null;
+  /** The line the run opened on, so a reload still shows what is being answered. */
+  opening: string;
+  target_surface: RevealedAttackSurfaceTrait[];
 }
 
 export interface FlytingThemeReportEntry {

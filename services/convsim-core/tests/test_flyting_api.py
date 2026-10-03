@@ -101,6 +101,23 @@ def judge_raises(monkeypatch):
     return _raise
 
 
+@pytest.fixture()
+def judge_returns(monkeypatch):
+    """Override fields of the fake runtime's umpire verdict for one test.
+
+    ``judge_raises`` is the same mechanism narrowed to fouls; this is the
+    general form, for the tests that need a specific hook claim or dimension.
+    """
+    from convsim_core.runtime import fake
+
+    def _set(**fields) -> None:
+        verdict = dict(fake._FLYTING_JUDGE_RESPONSE)
+        verdict.update(fields)
+        monkeypatch.setattr(fake, "_FLYTING_JUDGE_RESPONSE", verdict)
+
+    return _set
+
+
 def start_run(client, scenario_id=SCENARIO, **overrides):
     body = {"scenario_id": scenario_id, "play_format": "batting_practice",
             "batting_format": "set_10", "runtime_id": "fake"}
@@ -280,6 +297,110 @@ class TestStartingARun:
     def test_a_run_without_the_daily_seed_has_none(self, client):
         session_id = start_run(client)
         assert client.get(f"/api/flyting/sessions/{session_id}").json()["run"]["daily_seed"] is None
+
+
+# ── The scenario's opening line ──────────────────────────────────────────────
+
+
+class TestTheOpeningLine:
+    """Every scenario declares ``opening.npc_says``, and a run has to use it.
+
+    It is required by scenario.schema.json, all five launch scenarios write a
+    real provocation into it, and in a bout it is the line the first volley
+    answers — so a flyting run that dropped it would open on silence and leave
+    the authored content unread.
+    """
+
+    def test_the_setup_payload_carries_the_opening(self, client):
+        payload = client.get(f"/api/flyting/scenarios/{SCENARIO}").json()
+        assert payload["opening"].startswith("I do not know this woman")
+
+    def test_the_run_opens_on_the_scenarios_own_line(self, client):
+        session_id = start_run(client)
+        run = client.get(f"/api/flyting/sessions/{session_id}").json()
+        setup = client.get(f"/api/flyting/scenarios/{SCENARIO}").json()
+        assert run["opening"] == setup["opening"]
+
+    def test_the_opening_is_turn_zero_in_the_transcript(self, client):
+        session_id = start_run(client)
+        turns = client.get(f"/api/sessions/{session_id}/transcript").json()["turns"]
+        assert turns[0]["role"] == "npc_opening"
+        assert turns[0]["turn_number"] == 0
+
+    def test_the_opening_is_not_a_volley(self, client):
+        """It is a line, not a move: nothing scores it and nothing banks it."""
+        session_id = start_run(client)
+        state = client.get(f"/api/flyting/sessions/{session_id}").json()
+        assert state["volleys"] == []
+        assert state["run"]["npc_volleys"] == 0
+        assert state["run"]["npc_total"] == 0
+
+    def test_a_riposte_is_possible_on_the_first_exchange_of_a_bout(self, client):
+        """The opening is the opponent's last line when volley one arrives."""
+        from convsim_core.flyting import pipeline
+
+        session_id = start_run(
+            client, scenario_id=BOUT_SCENARIO, play_format="bout", batting_format=None
+        )
+        conn = client.app.state.db.connection()
+        assert pipeline._last_npc_line(conn, session_id)
+
+    def test_a_run_that_saves_no_transcript_still_opens_on_the_line(self, client):
+        session_id = start_run(client, save_transcript=False)
+        assert client.get(f"/api/flyting/sessions/{session_id}").json()["opening"]
+
+
+# ── The target's attack surface, as a run reveals it ─────────────────────────
+
+
+class TestRevealedAttackSurface:
+    """``visibility: discoverable`` promises a trait is revealed when struck."""
+
+    def test_a_fresh_run_shows_only_the_visible_traits(self, client):
+        session_id = start_run(client)
+        setup = client.get(f"/api/flyting/scenarios/{SCENARIO}").json()
+        surface = client.get(f"/api/flyting/sessions/{session_id}").json()["target_surface"]
+        assert [t["id"] for t in surface] == [
+            t["id"] for t in setup["target"]["attack_surface"]
+        ]
+        assert all(t["discovered"] is False for t in surface)
+        assert all(t["brief"] for t in surface)
+
+    def test_no_hidden_brief_is_ever_sent_before_it_is_struck(self, client):
+        """A discoverable trait's brief must not ride along to be read off the wire."""
+        session_id = start_run(client)
+        payload = client.get(f"/api/flyting/sessions/{session_id}").json()
+        shown = {t["id"] for t in payload["target_surface"]}
+        assert _a_discoverable_trait(client) not in shown
+
+    def test_a_struck_trait_is_revealed_with_its_brief(self, client, judge_returns):
+        session_id = start_run(client)
+        hidden = _a_discoverable_trait(client)
+        judge_returns(hooks=[{"trait": hidden, "evidence": "carriage brass"}])
+        body = volley(client, session_id, GOOD_VOLLEY)
+        revealed = {t["id"]: t for t in body["target_surface"]}
+        assert hidden in revealed
+        assert revealed[hidden]["discovered"] is True
+        assert revealed[hidden]["brief"]
+
+    def test_the_reveal_survives_a_reload(self, client, judge_returns):
+        session_id = start_run(client)
+        hidden = _a_discoverable_trait(client)
+        judge_returns(hooks=[{"trait": hidden, "evidence": "carriage brass"}])
+        volley(client, session_id, GOOD_VOLLEY)
+        surface = client.get(f"/api/flyting/sessions/{session_id}").json()["target_surface"]
+        assert hidden in {t["id"] for t in surface if t["discovered"]}
+
+
+def _a_discoverable_trait(client) -> str:
+    """A trait the brief has not already named, read from the pack's own NPC."""
+    from convsim_core.flyting.loader import resolve_flyting_scenario
+
+    scenario = resolve_flyting_scenario(SCENARIO, client.app.state.db.connection())
+    assert scenario is not None
+    hidden = [t.id for t in scenario.attack_surface if t.discoverable]
+    assert hidden, "whitechapel_rose declares no discoverable trait"
+    return hidden[0]
 
 
 # ── Submitting volleys ───────────────────────────────────────────────────────
@@ -685,7 +806,9 @@ class TestPersistence:
 
         transcript = client.get(f"/api/sessions/{session_id}/transcript").json()
         roles = [t["role"] for t in transcript["turns"]]
-        assert roles[:2] == ["player", "npc"]
+        # Turn zero is the scenario's own opening, under the same role the
+        # conversation loop uses, then the exchange the volley produced.
+        assert roles[:3] == ["npc_opening", "player", "npc"]
 
     def test_the_run_survives_a_reload_of_the_session(self, client):
         session_id = start_run(client)
