@@ -1304,11 +1304,15 @@ function TelemetryPanel({ metrics }: { metrics: DebriefMetrics }) {
         )}
       </div>
 
-      {/* State arc sparklines */}
+      {/* Meter arc sparklines. Named after the panel the player watched during
+          the conversation — "Conversation meters" — rather than after the state
+          variables behind it: a panel that changes name between the screen it
+          moves on and the screen that reviews it is the label/naming mismatch
+          of issue #501 §3, one screen later. */}
       {stateVarNames.length > 0 && (
         <div>
           <p style={{ margin: '0 0 0.5rem', fontSize: '0.75rem', color: '#71717a' }}>
-            State meters across turns
+            Conversation meters across turns
           </p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
             {stateVarNames.map((varName) => (

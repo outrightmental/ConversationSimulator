@@ -402,6 +402,55 @@ describe('Debrief screen', () => {
     })
   })
 
+  // Issue #501 §3: the panel the player watches during a conversation is
+  // called "Conversation meters". The debrief reviews the same bars, so it has
+  // to use the same name — a panel that is renamed between the screen it moves
+  // on and the screen that reviews it is the label/naming mismatch the report
+  // described, one screen later.
+  describe('conversation meters panel', () => {
+    const withMetrics: SessionDebriefResponse = {
+      ...fullDebriefResponse,
+      metrics: {
+        metrics_version: '1',
+        talk_ratio: 0.5,
+        words_per_turn_player: 12,
+        words_per_turn_npc: 18,
+        open_questions: 1,
+        closed_questions: 1,
+        filler_word_count: 0,
+        interruption_count: 0,
+        response_latency_p50_ms: null,
+        response_latency_p95_ms: null,
+        state_arc: [
+          { turn_number: 1, state: { engagement: 40, objective_progress: 20 } },
+          { turn_number: 2, state: { engagement: 55, objective_progress: 35 } },
+        ],
+      },
+    }
+
+    it('calls the meters what the conversation screen called them', async () => {
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: withMetrics })
+      mockApi.exportSession.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'x' } })
+      renderDebrief()
+      await waitFor(() =>
+        expect(screen.getByTestId('telemetry-panel')).toBeInTheDocument(),
+      )
+      expect(screen.getByText('Conversation meters across turns')).toBeInTheDocument()
+      expect(screen.queryByText(/state meters/i)).not.toBeInTheDocument()
+    })
+
+    it('names each meter in words rather than as a raw key', async () => {
+      mockApi.generateDebrief.mockResolvedValue({ ok: true, data: withMetrics })
+      mockApi.exportSession.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'x' } })
+      renderDebrief()
+      await waitFor(() =>
+        expect(screen.getByTestId('telemetry-panel')).toBeInTheDocument(),
+      )
+      expect(screen.getByText('objective progress')).toBeInTheDocument()
+      expect(screen.queryByText('objective_progress')).not.toBeInTheDocument()
+    })
+  })
+
   describe('transcript display', () => {
     it('shows transcript turns from export when available', async () => {
       mockApi.generateDebrief.mockResolvedValue({ ok: true, data: fullDebriefResponse })
