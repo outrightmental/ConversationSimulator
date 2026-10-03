@@ -58,7 +58,7 @@
           },
           "expect": {
             "type": "object",
-            "description": "Assertions. Deterministic expectations (gate, flags, mechanics) are checked without a model; score bands and hooks additionally require a judge. At least one assertion is required: an empty block would make the entry cost a judge call and check nothing, and the runner reports it as a pass.",
+            "description": "Assertions. Deterministic expectations (gate, flags, mechanics) are checked without a model; score bands and hooks additionally require a judge. At least one assertion is required, and every list-valued one must be non-empty: a block that asserts nothing would still cost a judge call, and the runner would report it as a pass.",
             "additionalProperties": false,
             "minProperties": 1,
             "properties": {
@@ -80,7 +80,7 @@
               },
               "flags": {
                 "type": "array",
-                "description": "Mechanical flags the volley must carry.",
+                "description": "Mechanical flags the volley must carry. 'judge_unavailable' is deliberately not offered: it is a property of the run rather than of the volley — present on every ungated volley of a judge-free run and on none of a judged one — so the runner skips it, and an entry whose only assertion was that flag would check nothing and report a pass.",
                 "items": {
                   "type": "string",
                   "enum": [
@@ -89,10 +89,10 @@
                     "gibberish",
                     "no_aim",
                     "too_short",
-                    "judge_unavailable",
                     "judge_foul"
                   ]
                 },
+                "minItems": 1,
                 "uniqueItems": true
               },
               "band": {
@@ -106,6 +106,7 @@
                 "type": "array",
                 "description": "attack_surface trait ids the volley is expected to land, verified against the target NPC's declared surface.",
                 "items": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+                "minItems": 1,
                 "uniqueItems": true
               },
               "judge_fouls": {
@@ -115,6 +116,7 @@
                   "type": "string",
                   "enum": ["below_the_belt", "out_of_fiction", "overt_rudeness", "anachronism"]
                 },
+                "minItems": 1,
                 "uniqueItems": true
               }
             }

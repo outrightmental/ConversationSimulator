@@ -177,3 +177,72 @@ class TestDeterministicBands:
         result = self._result(runner, {"gate": "dud", "band": "dud"}, judged=True)
         assert result.failures == []
         assert result.checked == 2
+
+
+class TestNoOpExpectations:
+    """An expectation block has to actually assert something.
+
+    ``expect`` carries ``minProperties: 1`` so that an empty block cannot ship:
+    it would cost a judge call, check nothing, and be reported as a pass. An
+    empty *list* under one of the three list-valued keys slipped through that
+    guard and did exactly the same thing, and ``judge_unavailable`` did it while
+    looking like a real assertion — the runner skips that flag outright, because
+    it is a property of the run rather than of the volley (present on every
+    ungated volley of a judge-free run and on none of a judged one).
+
+    Both are now schema errors, so an author hears about it from
+    ``convsim-validate-pack`` rather than from a green run that proved nothing.
+    """
+
+    @staticmethod
+    def _errors(expect: dict) -> list[str]:
+        import json
+
+        import jsonschema
+
+        schema = json.loads(
+            (_REPO_ROOT / "schemas" / "flyting-calibration.schema.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        document = {
+            "schema_version": "0.1",
+            "calibration_id": "probe",
+            "scenario_id": "whitechapel_rose",
+            "description": "A probe suite.",
+            "volleys": [
+                {"id": "probe", "text": "You are plate, not sterling.", "expect": expect}
+            ],
+        }
+        validator = jsonschema.Draft202012Validator(schema)
+        return [error.message for error in validator.iter_errors(document)]
+
+    @pytest.mark.parametrize("key", ["flags", "hooks", "judge_fouls"])
+    def test_an_empty_assertion_list_is_a_schema_error(self, key):
+        assert self._errors({key: []}), (
+            f"{key}: [] asserts nothing, so it must not validate — it would cost "
+            "a judge call and be reported as a pass"
+        )
+
+    def test_judge_unavailable_is_not_an_assertable_flag(self):
+        assert self._errors({"flags": ["judge_unavailable"]}), (
+            "judge_unavailable must not validate: the runner skips it, so an "
+            "entry asserting only that flag checks nothing and passes"
+        )
+
+    def test_the_runner_still_ignores_judge_unavailable_if_it_reaches_it(self, runner):
+        """The schema is the gate; the runner stays defensive behind it.
+
+        A pack can be hand-edited after validation, and a flag the runner cannot
+        check must not be counted as checked — which would report a pass on an
+        assertion nobody made.
+        """
+        result = TestDeterministicBands()._result(
+            runner, {"gate": "dud", "flags": ["judge_unavailable"]}
+        )
+        assert result.failures == []
+        assert result.checked == 1  # the gate only
+        assert result.skipped == 0
+
+    def test_a_real_assertion_list_still_validates(self):
+        assert self._errors({"flags": ["too_short"], "hooks": ["vanity"]}) == []
