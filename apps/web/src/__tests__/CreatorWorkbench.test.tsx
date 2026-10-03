@@ -40,6 +40,22 @@ vi.mock('../api/client', () => ({
   },
 }))
 
+// Steam status and the Workshop bridge, held in a box so a single test can turn
+// them on without changing what every other test in this file sees: outside
+// Steam `useSteamStatus` resolves to null, which is what keeps the Workshop
+// affordances out of the rest of the suite.
+import type { SteamStatus } from '../hooks/useSteamStatus'
+const steamStatus: { current: SteamStatus | null } = { current: null }
+vi.mock('../hooks/useSteamStatus', () => ({
+  useSteamStatus: () => steamStatus.current,
+}))
+const mockPublishPack = vi.fn<(packRoot: string) => Promise<boolean>>(() =>
+  Promise.resolve(true),
+)
+vi.mock('../hooks/useSteamWorkshop', () => ({
+  useSteamWorkshop: () => ({ publishPack: mockPublishPack }),
+}))
+
 const mockUnlock = vi.fn(() => Promise.resolve(false))
 const mockIncrementStat = vi.fn(() => Promise.resolve(false))
 // Only the hook is stubbed; importOriginal keeps the name maps and thresholds
@@ -128,6 +144,9 @@ beforeEach(() => {
   // runs after the describe-level afterEach, so a prior test's teardown call
   // would otherwise leak into the next test's assertions.
   vi.clearAllMocks()
+  // Back to "not running under Steam" — the default every other test assumes.
+  steamStatus.current = null
+  mockPublishPack.mockResolvedValue(true)
   vi.mocked(api.workbench.listPacks).mockResolvedValue({ ok: true, data: [OFFICIAL_PACK, LOCAL_PACK] })
   vi.mocked(api.workbench.listFiles).mockResolvedValue({ ok: true, data: { tree: [] } })
   vi.mocked(api.workbench.readFile).mockResolvedValue({ ok: true, data: { content: '', editable: false } })
@@ -1171,5 +1190,51 @@ describe('CreatorWorkbench — Steam achievement call sites', () => {
     fireEvent.click(await screen.findByRole('button', { name: /start test/i }))
 
     await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_CREATOR_TEST'))
+  })
+})
+
+// ── ACH_WORKSHOP_PUBLISHER ────────────────────────────────────────────────────
+//
+// Excluded from the ACH_CERTIFIED_EXPERT capstone (it needs a Workshop upload),
+// so nothing else notices if it stops firing. It is also the one unlock in this
+// screen gated on something other than an API result: Steam has to accept the
+// publish, which means the overlay actually opened.
+
+describe('CreatorWorkbench — Workshop publishing achievement', () => {
+  const STEAM_ON: SteamStatus = {
+    is_steam_enabled: true,
+    launched_by_steam: true,
+    app_id: 480,
+    persona_name: 'tester',
+  }
+
+  it('grants it when Steam accepts the publish', async () => {
+    steamStatus.current = STEAM_ON
+    renderWorkbench()
+    // Only an editable local-dev pack can be published.
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+    fireEvent.click(await screen.findByTestId('publish-workshop-button'))
+
+    await waitFor(() => expect(mockPublishPack).toHaveBeenCalled())
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_WORKSHOP_PUBLISHER'))
+  })
+
+  it('does not grant it when the Steam overlay could not be opened', async () => {
+    steamStatus.current = STEAM_ON
+    mockPublishPack.mockResolvedValue(false)
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+    fireEvent.click(await screen.findByTestId('publish-workshop-button'))
+
+    await waitFor(() => expect(screen.getByTestId('publish-workshop-error')).toBeInTheDocument())
+    expect(mockUnlock).not.toHaveBeenCalledWith('ACH_WORKSHOP_PUBLISHER')
+  })
+
+  it('offers no publish button outside Steam, so it can never fire there', async () => {
+    renderWorkbench()
+    fireEvent.click(await screen.findByRole('button', { name: /my pack/i }))
+    await screen.findByTestId('export-pack-button')
+    expect(screen.queryByTestId('publish-workshop-button')).not.toBeInTheDocument()
+    expect(mockUnlock).not.toHaveBeenCalledWith('ACH_WORKSHOP_PUBLISHER')
   })
 })
