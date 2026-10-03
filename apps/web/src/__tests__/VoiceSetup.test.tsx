@@ -373,6 +373,48 @@ describe('VoiceSetup — what is missing', () => {
     expect(message).toHaveAttribute('role', 'status')
   })
 
+  it('offers a Check again the start message can actually point at', async () => {
+    // "press Check again shortly" is the commonest answer a Steam player gets,
+    // and the per-engine button it names is only rendered for an engine that is
+    // *not* installed — which this one is. Without a re-check on the page the
+    // instruction leads nowhere, which is the dead end the whole screen exists
+    // to remove.
+    mockApi.startVoiceEngine.mockResolvedValue({
+      ok: true,
+      data: {
+        engine_id: 'kokoro-server',
+        state: 'starting',
+        started: false,
+        message: 'The voice server is already starting — press Check again shortly.',
+      },
+    })
+    // Both engines installed: no row renders its own "Check again" at all.
+    const starting = makePlan()
+    starting.engines[0] = { ...starting.engines[0], installed: true, found_at: '/opt/homebrew/bin/whisper-cli' }
+    starting.engines[1] = { ...starting.engines[1], installed: true, found_at: '/usr/local/bin/kokoro-server' }
+    mockApi.getVoiceSetupPlan.mockResolvedValue({ ok: true, data: starting })
+
+    renderScreen()
+    await screen.findByTestId('voice-setup-screen')
+    fireEvent.click(await screen.findByTestId('engine-start-kokoro-server'))
+    await screen.findByTestId('engine-message')
+
+    expect(screen.queryByTestId('engine-recheck-whisper-cli')).toBeNull()
+    expect(screen.queryByTestId('engine-recheck-kokoro-server')).toBeNull()
+
+    const running = makePlan()
+    running.engines[0] = { ...running.engines[0], installed: true, found_at: '/opt/homebrew/bin/whisper-cli' }
+    running.engines[1] = { ...running.engines[1], installed: true, found_at: '/usr/local/bin/kokoro-server' }
+    running.kokoro_state = 'running'
+    running.capabilities[1] = { ...running.capabilities[1], ready: true }
+    mockApi.getVoiceSetupPlan.mockResolvedValue({ ok: true, data: running })
+
+    fireEvent.click(screen.getByTestId('voice-recheck'))
+
+    await waitFor(() => expect(screen.queryByTestId('engine-message')).toBeNull())
+    expect(screen.getByTestId('capability-tts-state')).toHaveTextContent('Ready')
+  })
+
   it('drops the last start attempt when the player asks where things stand now', async () => {
     // "it can take a minute to load its voices — press Check again shortly" is
     // the answer a Steam player gets most often, and the whole point of it is
@@ -494,6 +536,31 @@ describe('VoiceSetup — what is missing', () => {
     renderScreen()
     expect(await screen.findByTestId('ffmpeg-restart-note')).toHaveTextContent('Restart the app')
 
+  })
+
+  it('says the apt command is only one distribution\'s, and only on Linux', async () => {
+    // `sudo apt install ffmpeg` is "command not found" on Fedora, on Arch and on
+    // the Steam Deck's SteamOS — the same dead end as a winget package that does
+    // not exist, which is exactly what this screen is for.
+    mockApi.getVoiceSetupPlan.mockResolvedValue({
+      ok: true,
+      data: makePlan({ ffmpeg_installed: false, platform: 'linux' }),
+    })
+    renderScreen()
+    const note = await screen.findByTestId('ffmpeg-apt-note')
+    expect(note).toHaveTextContent('Debian and Ubuntu')
+    expect(note).toHaveTextContent('pacman')
+
+  })
+
+  it('keeps the apt caveat off the platforms whose command is not apt', async () => {
+    mockApi.getVoiceSetupPlan.mockResolvedValue({
+      ok: true,
+      data: makePlan({ ffmpeg_installed: false, platform: 'darwin' }),
+    })
+    renderScreen()
+    await screen.findByTestId('ffmpeg-row')
+    expect(screen.queryByTestId('ffmpeg-apt-note')).toBeNull()
   })
 
   it('does not ask for a restart where the command lands on the existing PATH', async () => {

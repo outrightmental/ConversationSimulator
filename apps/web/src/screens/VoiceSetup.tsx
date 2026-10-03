@@ -356,6 +356,22 @@ function FfmpegRow({ platform }: { platform: string }) {
             processes only, so this row cannot see it until then.
           </p>
         )}
+        {/* `apt` is the command for Debian and Ubuntu and a "command not found"
+            everywhere else — on Fedora, on Arch, and on the Steam Deck's
+            Arch-based SteamOS. Handing one distribution's command to all of them
+            is the same dead end as the winget whisper.cpp package that does not
+            exist, in the screen that exists to remove dead ends. */}
+        {platform !== 'darwin' && platform !== 'win32' && (
+          <p
+            data-testid="ffmpeg-apt-note"
+            style={{ margin: '0.4rem 0 0', fontSize: '0.8rem', color: '#fbbf24', lineHeight: 1.5 }}
+          >
+            That command is for Debian and Ubuntu. On another distribution use its own
+            package manager — <code>sudo dnf install ffmpeg</code> on Fedora,{' '}
+            <code>sudo pacman -S ffmpeg</code> on Arch and SteamOS. Any of them works:
+            this row searches PATH and /usr/local/bin on every check.
+          </p>
+        )}
       </div>
     </li>
   )
@@ -697,9 +713,23 @@ export default function VoiceSetup() {
         </div>
       )}
 
-      <p aria-live="polite" style={{ margin: 0, fontSize: '0.82rem', color: '#a1a1aa' }}>
-        {readyCount} of {capabilities.length} voice features ready
-      </p>
+      {/* The one re-check that is always on screen.
+          The per-engine "Check again" only renders for an engine that is *not*
+          installed, which leaves the commonest answer the start endpoint gives
+          — "it can take a minute to load its voices. Press Check again shortly."
+          — naming a button that is nowhere on the page: the Kokoro binary has
+          resolved by then, and whisper.cpp's copy is gone too once speech-to-text
+          is in place. The rows that resolve outside the app and never had one
+          (ffmpeg, onnxruntime, a model dropped in by hand) need it just as much,
+          and the focus re-read only helps a player who actually left the window. */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem' }}>
+        <p aria-live="polite" style={{ margin: 0, fontSize: '0.82rem', color: '#a1a1aa' }}>
+          {readyCount} of {capabilities.length} voice features ready
+        </p>
+        <SecondaryButton onClick={recheck} testId="voice-recheck">
+          Check again
+        </SecondaryButton>
+      </div>
 
       {engineResult != null && (
         <p

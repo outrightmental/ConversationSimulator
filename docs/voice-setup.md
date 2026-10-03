@@ -54,6 +54,14 @@ The plan is re-read on window focus. The two native engines are installed
 *outside* the app, so a player who runs `brew install whisper.cpp` in a
 terminal and switches back sees the row tick over without a reload.
 
+There is also a **Check again** button beside the "N of M voice features ready"
+line, always on the page. A row's own **Check again** is offered only while its
+engine is *missing*, which is the wrong half of the cases: the commonest reply
+from the start endpoint is "already starting — press Check again shortly", and
+by then the Kokoro binary has resolved and that row's button is gone. The rows
+that never had one (`ffmpeg`, `onnxruntime`, a model dropped in by hand) need it
+too, and a focus re-read only reaches a player who actually left the window.
+
 A re-read — **Check again**, or that return to the window — also clears the last
 engine-start message (`useVoiceSetup.recheck`). Asking where things stand now
 must not leave *where they stood then* above the answer: the commonest reply from
@@ -299,7 +307,11 @@ Downloads stream to `<dest>.part`, verify SHA-256, then promote. Cancel, a
 transport error and a checksum mismatch all remove the partial file, so an
 unverified byte is never visible to an engine. Only a *killed process* leaves a
 `.part` behind, and the next attempt resumes it with an HTTP `Range` request
-(falling back to a clean restart if the server answers `200`). A job left
+(falling back to a clean restart if the server answers `200`). A `.part` that
+already hashes to the expected value is promoted without a request at all: the
+kill can land after the last byte and before the rename — the hashing of a
+150 MB model is seconds of that window — and `bytes=<size>-` would then draw a
+`416` and fail a download that had in fact finished. A job left
 non-terminal by a kill is retired at startup rather than re-driven — the plan
 already reflects whatever landed, and one button fetches the rest.
 
