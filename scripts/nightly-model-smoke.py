@@ -1015,6 +1015,11 @@ def evaluate_turns(turns: List[Dict[str, Any]]) -> tuple[List[str], List[str]]:
     the player (see ``_replays_opening``).  Unlike the parse flags this is
     computed from the response the harness already holds, so it is never
     missing.
+
+    The two policies also have to compose: a conversation split between them —
+    one turn recites, the rest fall back — trips neither "all of them" check
+    while still containing no reply, so a run with no turn that is both real
+    output *and* an answer fails as well.
     """
     failures: List[str] = []
     warnings: List[str] = []
@@ -1043,7 +1048,8 @@ def evaluate_turns(turns: List[Dict[str, Any]]) -> tuple[List[str], List[str]]:
         )
 
     fallbacks = [t for t in generated if t.get("used_fallback")]
-    if _all_generated_turns_fell_back(turns):
+    all_fell_back = _all_generated_turns_fell_back(turns)
+    if all_fell_back:
         failures.append(
             f"All {len(generated)} model-generated NPC turns fell back to the canned "
             "safe utterance; the real model produced no usable turn output"
@@ -1072,6 +1078,30 @@ def evaluate_turns(turns: List[Dict[str, Any]]) -> tuple[List[str], List[str]]:
             "reciting the authored opening line back at the player instead of "
             "answering them: real output, but not a reply. Recurring in the same turn "
             "position every night is a turn-prompt problem, not an unlucky sample"
+        )
+
+    # Neither check above fires when the generated turns are *split* between the
+    # two anomalies — one recites the authored opening, the others fall back —
+    # and that conversation contains no NPC reply at all.  Each check warns
+    # rather than fails on its own because a run that recovers from one bad turn
+    # is the product working; the union of them leaves nothing that recovered,
+    # which is the failure both checks exist to catch, so it has to fail too.
+    # Reachable in practice: the previous harness logged a recited opening on
+    # the first player turn every night, and a 4 B model does occasionally emit
+    # output the validator rejects on the rest.
+    mixed = not all_fell_back and len(echoes) != len(generated)
+    if mixed and not [
+        t
+        for t in generated
+        if not t.get("used_fallback") and not t.get("replayed_opening")
+    ]:
+        failures.append(
+            f"Not one of the {len(generated)} model-generated NPC turns was a reply: "
+            f"{len(fallbacks)} fell back to the canned safe utterance and "
+            f"{len(echoes)} began by reciting the authored opening line. Neither "
+            "count alone would fail the run, but between them they account for "
+            "every generated turn, so no player turn was answered and this run "
+            "proves nothing about real NPC replies"
         )
     return (failures, warnings)
 

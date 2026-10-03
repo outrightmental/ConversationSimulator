@@ -507,6 +507,58 @@ class TestEvaluateTurns:
         assert failures == []
         assert any("reciting the authored opening" in w for w in warnings)
 
+    def test_a_conversation_split_between_the_two_anomalies_still_fails(self) -> None:
+        # Neither "all fell back" nor "all recited" fires, and yet not one turn
+        # was a reply. Each check warns on its own because recovering from a bad
+        # turn is the product working; together they leave nothing recovered.
+        turns = [
+            _turn(replayed_opening=True),
+            _turn(turn_number=2, used_fallback=True),
+            _turn(turn_number=3, used_fallback=True),
+        ]
+        failures, _ = smoke.evaluate_turns(turns)
+        assert any("Not one of the 3" in f and "was a reply" in f for f in failures)
+        # The two single-cause failures stay off: each is false here, and
+        # printing them would misdescribe the run.
+        assert not any("All 3" in f for f in failures)
+
+    def test_a_single_good_turn_keeps_a_mixed_conversation_green(self) -> None:
+        # One real reply among a fallback and a recital is the "the product
+        # recovered" case both warnings exist for, not a failure.
+        turns = [
+            _turn(replayed_opening=True),
+            _turn(turn_number=2, used_fallback=True),
+            _turn(turn_number=3),
+        ]
+        failures, warnings = smoke.evaluate_turns(turns)
+        assert failures == []
+        assert len(warnings) == 2
+
+    def test_the_composed_check_does_not_double_report_all_fallbacks(self) -> None:
+        turns = [_turn(used_fallback=True), _turn(turn_number=2, used_fallback=True)]
+        failures, _ = smoke.evaluate_turns(turns)
+        assert len(failures) == 1
+        assert "fell back to the canned" in failures[0]
+
+    def test_the_composed_check_does_not_double_report_all_recitals(self) -> None:
+        turns = [_turn(replayed_opening=True), _turn(turn_number=2, replayed_opening=True)]
+        failures, _ = smoke.evaluate_turns(turns)
+        assert len(failures) == 1
+        assert "reciting the authored opening" in failures[0]
+
+    def test_absent_parse_flags_cannot_produce_the_composed_failure(self) -> None:
+        # Without the debug endpoint no turn is known to have fallen back, so
+        # the only turns left are judged on replayed_opening alone — the
+        # composed check must not convict a run it has no evidence about.
+        turns = [
+            {"label": "player_turn_1", "turn_number": 1, "model_generated": True,
+             "npc_excerpt": "Go on.", "replayed_opening": True},
+            {"label": "player_turn_2", "turn_number": 2, "model_generated": True,
+             "npc_excerpt": "Go on.", "replayed_opening": False},
+        ]
+        failures, _ = smoke.evaluate_turns(turns)
+        assert not any("was a reply" in f for f in failures)
+
     def test_a_recited_opening_is_not_mistaken_for_a_fallback(self) -> None:
         # The two have different causes and different fixes, so the verdict
         # must not describe one as the other.

@@ -63,6 +63,13 @@ went green on a conversation that never happened. The harness therefore records
 fallbacks: one such turn warns, *every* generated turn doing it fails, because
 then the model answered nothing and the run proves nothing.
 
+The two policies also compose, because a conversation can be *split* between
+them — one turn recites the opening, the others fall back — and trip neither
+"all of them" check while still containing no reply at all. Each check warns
+rather than fails on its own only because a run that recovers from one bad turn
+is the product working; when nothing recovered there is nothing to credit, so a
+run with no turn that is both real model output *and* an answer fails as well.
+
 What counts as a recital is a *leading prefix* match, `REPLAY_PREFIX_CHARS`
 (40 collapsed characters) of the authored opening reproduced at the head of the
 reply — not the whole opening. Those nightly logs printed only `npc_text[:80]`
