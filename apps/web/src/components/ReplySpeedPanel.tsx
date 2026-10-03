@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { api } from '../api/client'
+import { REPLY_SPEEDS } from '@convsim/shared'
 import type { ReplySpeed } from '@convsim/shared'
 import type { ApiError } from '../api/errors'
 import { ApiErrorView } from './ApiErrorView'
@@ -22,8 +23,6 @@ import { useTranslation } from '../i18n'
  * advanced reasoning"). What they do lives in convsim-core's reply_speed
  * setting; this only has to name them honestly and say what the trade is.
  */
-const OPTIONS: ReplySpeed[] = ['fast', 'balanced', 'detailed']
-
 export default function ReplySpeedPanel() {
   const { t } = useTranslation()
   const [speed, setSpeed] = useState<ReplySpeed>('balanced')
@@ -86,7 +85,7 @@ export default function ReplySpeedPanel() {
         data-testid="reply-speed-options"
         style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', marginBottom: '0.6rem' }}
       >
-        {OPTIONS.map((option) => {
+        {REPLY_SPEEDS.map((option) => {
           const selected = option === speed
           return (
             <button
