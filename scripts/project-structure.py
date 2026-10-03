@@ -13,9 +13,10 @@ Usage:
     python scripts/project-structure.py apply           # converge the tracker
     python scripts/project-structure.py apply --dry-run # print the plan only
 
-`validate` reads files only: the manifest is coherent, the issue forms use no
-label the manifest does not define, and CONTRIBUTING's label tables list exactly
-the labels that exist.  It needs no network and no credentials.
+`validate` reads files only: the manifest is coherent, every issue form sets a
+`type:` and uses no label the manifest does not define, and CONTRIBUTING's
+tables list exactly the labels and the open milestones that exist — due dates
+included.  It needs no network and no credentials.
 
 `self-test` drives the planner and the rule checker against fixtures instead of
 the live tracker, so the behaviour this script's comments promise is checked on
@@ -59,6 +60,13 @@ CONTRIBUTING_SECTION = "## Labels, fields, and milestones"
 # How that section is named in error messages.  Derived, so renaming the heading
 # cannot leave a message pointing at a section that no longer exists.
 CONTRIBUTING_REF = f"CONTRIBUTING.md § {CONTRIBUTING_SECTION.lstrip('# ')}"
+# The subsection that restates the milestones in prose.  Checked separately from
+# the label table because its cells are plain text, not backticked: a milestone
+# title is already punctuated (em dashes), and quoting it would make the label
+# checker above read it as a label name.
+CONTRIBUTING_MILESTONES = "### Milestones — *when* it ships"
+# How the Due column is written for humans, e.g. "Oct 31, 2026".
+MILESTONE_DUE_FORMAT = "%b %d, %Y"
 
 
 # ── Manifest ─────────────────────────────────────────────────────────────────
@@ -234,8 +242,13 @@ def _contributing_section(text: str, heading: str = CONTRIBUTING_SECTION) -> lis
         if line.strip() == heading:
             inside = True
             continue
-        if inside and line.startswith(depth + " "):
-            break
+        # Stop at the next heading that is no deeper than this one: `##` runs
+        # through its `###` subsections, while `###` stops at the next `###`
+        # *or* at the `##` that ends the section it lives in.
+        if inside and line.startswith("#"):
+            hashes = len(line) - len(line.lstrip("#"))
+            if hashes <= len(depth) and line[hashes : hashes + 1] == " ":
+                break
         if inside and line.lstrip().startswith("|"):
             rows.append(line)
     return rows
@@ -256,6 +269,58 @@ def contributing_errors(manifest: dict[str, Any], text: str) -> list[str]:
     for name in sorted(documented - live):
         what = "retired label" if name in retired else "unknown label"
         errors.append(f"{CONTRIBUTING_REF} table still lists {what} {name!r}")
+    return errors + milestone_table_errors(manifest, text)
+
+
+def _table_cells(rows: list[str]) -> list[list[str]]:
+    """Body rows of a markdown table, as stripped cells — header and the
+    `| --- |` separator dropped."""
+    out = []
+    for row in rows:
+        cells = [cell.strip() for cell in row.strip().strip("|").split("|")]
+        if not cells or all(set(cell) <= set("- :") for cell in cells):
+            continue
+        out.append(cells)
+    return out[1:]  # the first surviving row is the header
+
+
+def milestone_table_errors(manifest: dict[str, Any], text: str) -> list[str]:
+    """The milestone table has to name the open milestones and their real due
+    dates.
+
+    Velocity is the whole reason these milestones exist, so a due date that is
+    right in the manifest and stale in the doc is the one drift nobody notices
+    until a train is missed.
+    """
+    rows = _contributing_section(text, CONTRIBUTING_MILESTONES)
+    ref = f"CONTRIBUTING.md § {CONTRIBUTING_MILESTONES.lstrip('# ')}"
+    if not rows:
+        return [f"CONTRIBUTING.md has no table under {CONTRIBUTING_MILESTONES!r}"]
+    want = {
+        entry["title"]: due_date(entry.get("due_on"))
+        for entry in manifest.get("milestones", [])
+        if entry.get("state", "open") == "open"
+    }
+    documented = {cells[0]: cells[1] for cells in _table_cells(rows) if len(cells) >= 2}
+    errors = []
+    for title in sorted(want.keys() - documented.keys()):
+        errors.append(f"{ref} does not list open milestone {title!r}")
+    for title in sorted(documented.keys() - want.keys()):
+        errors.append(f"{ref} lists {title!r}, which is not an open milestone")
+    for title in sorted(want.keys() & documented.keys()):
+        try:
+            shown = dt.datetime.strptime(documented[title], MILESTONE_DUE_FORMAT).date()
+        except ValueError:
+            errors.append(
+                f"{ref} gives milestone {title!r} the due date {documented[title]!r}, "
+                f"which is not in {MILESTONE_DUE_FORMAT!r} form"
+            )
+            continue
+        if shown.isoformat() != want[title]:
+            errors.append(
+                f"{ref} says milestone {title!r} is due {documented[title]!r}, "
+                f"but the manifest says {want[title]}"
+            )
     return errors
 
 
@@ -946,14 +1011,19 @@ def _fixture_issues() -> list[dict[str, Any]]:
     ]
 
 
-def _contributing(*rows: str) -> str:
+def _contributing(*rows: str, milestones: str = "| v1 | Jan 31, 2026 | The first train |") -> str:
     body = "\n".join(f"| Axis | {row} | Question |" for row in rows)
     return (
         f"## Paths by role\n\nSome prose that mentions `bug` and `priority:P0`.\n\n"
         f"{CONTRIBUTING_SECTION}\n\n"
         f"| Axis | Labels | Question |\n| ---- | ------ | -------- |\n{body}\n\n"
         f"Prose below the table may name the retired `enhancement` label freely.\n\n"
-        f"## Development setup\n\n`bug` again, out of section.\n"
+        f"{CONTRIBUTING_MILESTONES}\n\n"
+        f"| Milestone | Due | What it delivers |\n| --- | --- | --- |\n{milestones}\n\n"
+        f"## Development setup\n\n"
+        f"| Milestone | Due | What it delivers |\n| --- | --- | --- |\n"
+        f"| v9 | Jan 1, 1999 | A table in a later section, which is not ours |\n\n"
+        f"`bug` again, out of section.\n"
     )
 
 
@@ -1051,6 +1121,35 @@ def self_test() -> int:
         ("a missing CONTRIBUTING section is reported",
          contributing_errors(manifest, "# Nothing here\n"),
          ["CONTRIBUTING.md has no table under '## Labels, fields, and milestones'"]),
+
+        # -- CONTRIBUTING: the milestone table
+        ("a milestone table matching the manifest passes",
+         milestone_table_errors(manifest, _contributing("`area:engine`")), []),
+        ("the milestone table stops at the next `##`, so a later table is not ours",
+         any("v9" in e for e in milestone_table_errors(manifest, _contributing("`x`"))), False),
+        ("a stale due date in the milestone table is reported",
+         milestone_table_errors(
+             manifest, _contributing("`x`", milestones="| v1 | Feb 28, 2026 | Train |")),
+         ["CONTRIBUTING.md § Milestones — *when* it ships says milestone 'v1' is "
+          "due 'Feb 28, 2026', but the manifest says 2026-01-31"]),
+        ("an unparseable due date in the milestone table is reported",
+         milestone_table_errors(
+             manifest, _contributing("`x`", milestones="| v1 | soon | Train |")),
+         ["CONTRIBUTING.md § Milestones — *when* it ships gives milestone 'v1' the "
+          "due date 'soon', which is not in '%b %d, %Y' form"]),
+        ("an open milestone missing from the table is reported",
+         milestone_table_errors(
+             manifest, _contributing("`x`", milestones="| v2 | Jan 31, 2026 | Train |")),
+         ["CONTRIBUTING.md § Milestones — *when* it ships does not list open "
+          "milestone 'v1'",
+          "CONTRIBUTING.md § Milestones — *when* it ships lists 'v2', which is not "
+          "an open milestone"]),
+        ("a missing milestone subsection is reported",
+         milestone_table_errors(manifest, "# Nothing here\n"),
+         ["CONTRIBUTING.md has no table under '### Milestones — *when* it ships'"]),
+        ("the real CONTRIBUTING milestone table matches the real manifest",
+         milestone_table_errors(
+             load_manifest(), CONTRIBUTING_PATH.read_text(encoding="utf-8")), []),
 
         # -- the plan
         ("label with a renamed_from is renamed, not recreated",
@@ -1193,7 +1292,7 @@ def cmd_validate(_args: argparse.Namespace) -> int:
     print(f"  OK  {len(manifest_labels)} labels declared, {len(retired_names(manifest))} retired")
     print(f"  OK  {len(manifest.get('milestones', []))} milestones declared")
     print("  OK  issue forms all set a type: and use declared labels only")
-    print("  OK  CONTRIBUTING.md documents exactly the declared labels")
+    print("  OK  CONTRIBUTING.md documents exactly the declared labels and milestones")
     print("")
     return 0
 
