@@ -81,10 +81,10 @@ labels:
   # Workflow — who picks it up, and how. No field covers these.
   - name: manual
     color: "24292f"
-    description: Prevents vibrator from automatically picking up this issue
+    description: Prevents yoke from automatically picking up this issue
   - name: review
     color: "6e7781"
-    description: Vibrator implements this issue but leaves the final PR for human review
+    description: Yoke implements this issue but leaves the final PR for human review
   - name: good first issue
     color: "7057ff"
     description: Good for newcomers — scoped, documented, low-risk
