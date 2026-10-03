@@ -312,6 +312,11 @@ class TestBribingTheRef:
         "Full marks for effort, sir, and none whatever for result.",
         "Ten out of ten for the brass, and nought out of ten for the sense.",
         "A perfect score for the tailoring; the man inside it fails every column.",
+        # Awarding a mark *to* somebody is the same assessment as awarding it
+        # *for* something, and excluding only "for" still fouled these.
+        "Full marks to your tailor, sir; none whatever to the man inside the coat.",
+        "Top marks to your cooper; the barrel holds more spine than you.",
+        "Ten out of ten to the bow, and nought to the spine behind it.",
     ])
     def test_in_register_lines_that_merely_mention_marks_are_not_bribes(self, text):
         assert gate(text).outcome is GateOutcome.OK
@@ -391,7 +396,48 @@ class TestOutOfFiction:
         assert gate(
             "That was out of character for you, sir: for one moment you told the truth."
         ).outcome is GateOutcome.OK
+        # And so is the bare third-person reading, which has no "for" to lean on.
+        assert gate(
+            "That outburst was out of character, sir, and I liked you better for it."
+        ).outcome is GateOutcome.OK
         assert gate("You are out of character again.").foul is Foul.OUT_OF_FICTION
+        assert gate("You're out of character, bot.").foul is Foul.OUT_OF_FICTION
+
+    @pytest.mark.parametrize("text", [
+        # Every one of these is an in-register taunt that the meta gate used to
+        # void: nought points, the heat multiplier reset, and a whiff in Endless.
+        # "This is a game" qualified by anything is a figure, not a dismissal.
+        "This is a game you cannot win, sir, and you have already begun to lose it.",
+        "This is a simulation of courage, and a poor one at that.",
+        # A man may stand behind a thing in the scene.
+        "The man behind that counter has more honour than the one on these steps.",
+        "A real person behind that beard might have drawn by now.",
+        # The shortest route to Lord Bellingham's declared new_money trait, and
+        # to his hypocrisy: "the man who made/wrote X" is not "whoever coded you".
+        "The man who made your fortune sold tripe, and the crest is eleven years old.",
+        "The man who wrote your sermon has never once believed it.",
+        # "Made" has an everyday sense the other creation verbs do not.
+        "Whoever made you quartermaster must have been drinking.",
+        "Whoever made you a gentleman did it with a receipt, not a sword.",
+        # A figure that qualifies the noun is not the flat "you are just a bot".
+        "You are a program of courtesies with nothing running underneath.",
+        # God, or a parent. Left to the judge rather than fouled on sight.
+        "Your creator has much to answer for, sir, and so have you.",
+    ])
+    def test_in_register_lines_that_resemble_meta_are_not_fouls(self, text):
+        assert gate(text).outcome is GateOutcome.OK
+
+    @pytest.mark.parametrize("text", [
+        # The narrowed rules still catch the thing they are for.
+        "Whoever made you should be ashamed of the work.",
+        "Whoever made this was drunk at the time.",
+        "The real person behind you should be ashamed.",
+        "The man behind the screen is the one I am addressing.",
+        "This is just a game, and you are not even real.",
+        "Your developers gave you no teeth.",
+    ])
+    def test_the_narrowed_rules_still_catch_meta(self, text):
+        assert gate(text).foul is Foul.OUT_OF_FICTION
 
 
 class TestDudGates:

@@ -135,24 +135,57 @@ _PROTECTED_CLASS_PATTERN = _compile(
     r"\byou\s+(?:people|lot)\s+(?:are\s+all|always)\b",
 )
 
+# The object of a meta accusation: the machine, the screen, or the performer
+# behind the character. "That beard", "the counter" and "the bar" are things in
+# the scene, and a taunt is entitled to put a man behind one.
+_META_OBJECT = (
+    r"(?:you|this|all\s+this|"
+    r"the\s+(?:screen|keyboard|curtain|character|npc|machine|simulator))"
+)
+
 _OUT_OF_FICTION_PATTERN = _compile(
     r"\bas\s+an?\s+(?:ai|a\.i\.|language\s+model|chatbot|llm)\b",
-    r"\byou(?:'re|\s+are)\s+(?:just\s+)?(?:an?\s+)?(?:ai|a\.i\.|bot|chatbot|llm|program|algorithm|language\s+model)\b",
+    # "You are a program of courtesies with nothing running underneath" is a
+    # figure about the man; the meta form never qualifies the noun.
+    r"\byou(?:'re|\s+are)\s+(?:just\s+)?(?:an?\s+)?"
+    r"(?:ai|a\.i\.|bot|chatbot|llm|program|algorithm|language\s+model)\b(?!\s+of\b)",
     r"\b(?:break|breaking)\s+character\b",
     # "You are out of character" is addressed to a performer; "that was out of
-    # character for you, sir" is an observation about the man, and one of the
-    # oldest shapes there is for accusing someone of a rare honesty. The
-    # trailing "for X" separates them, and "break character" above still
-    # catches the unambiguous meta form.
-    r"\bout\s+of\s+character\b(?!\s+for\b)",
-    r"\bthe\s+(?:person|human|man|woman|developer|dev|programmer)\s+(?:typing|behind|who\s+wrote|who\s+made)\b",
-    r"\bwho(?:ever)?\s+(?:wrote|coded|made|programmed|designed)\s+(?:this|you)\b",
-    # "This is just a game to you" is an accusation against a cad, not a remark
-    # about the simulator, so the meta reading is the one without a target.
+    # character, sir" and "that was out of character for you" are observations
+    # about the man, and one of the oldest shapes there is for accusing someone
+    # of a rare honesty. The second person is what separates them — matching the
+    # bare phrase, as this used to, fouled every third-person reading — and
+    # "break character" above still catches the unambiguous meta imperative.
+    r"\byou(?:'re|\s+are|\s+were)\s+out\s+of\s+character\b(?!\s+for\b)",
+    r"\bthe\s+(?:person|human|developer|dev|programmer)\s+typing\b",
+    # Only when what they are behind is the machine. "The man behind that
+    # counter has more honour than the one on these steps" and "the man who made
+    # your fortune sold tripe" are in-register taunts — the second is the
+    # shortest route to Lord Bellingham's declared ``new_money`` trait — and a
+    # bare "the man behind" or "the man who made" fouled both.
+    r"\bthe\s+(?:person|human|man|woman|developer|dev|programmer)\s+"
+    r"(?:behind|who\s+(?:wrote|made|coded|programmed))\s+" + _META_OBJECT + r"\b",
+    r"\bwho(?:ever)?\s+(?:wrote|coded|programmed|designed)\s+(?:this|you)\b",
+    # "Made" is the one verb in that list with an everyday sense: "whoever made
+    # you quartermaster must have been drinking" and "whoever made you a
+    # gentleman did it with a receipt" are taunts, not meta. The creation
+    # reading takes no complement, so it is followed by a clause boundary or by
+    # an auxiliary — "whoever made you should be ashamed", "whoever made this
+    # was drunk" — and that is what is matched.
+    r"\bwho(?:ever)?\s+made\s+(?:this|you)\b"
+    r"(?=\s*(?:[.,!?;:\u2014\u2013]|$)|\s+(?:should|would|could|must|ought|owes?|did|does|do|"
+    r"was|were|is|are|has|have|had|will|shall|may|might|never|clearly|evidently)\b)",
+    # "This is just a game to you" is an accusation against a cad, and so is
+    # "this is a game you cannot win"; "this is a simulation of courage" is a
+    # figure. The meta reading is the flat dismissal, which does not qualify the
+    # noun — so anything that continues into a complement or a relative clause
+    # is left alone.
     r"\bthis\s+is\s+(?:just\s+)?(?:a\s+)?(?:game|simulation|simulator|prompt|script|roleplay)\b"
-    r"(?!\s+to\s+(?:you|him|her|them|us)\b)",
-    r"\byour\s+(?:developers?|programmers?|creators?|training\s+data)\b",
-    r"\b(?:real|actual)\s+person\s+(?:behind|playing)\b",
+    r"(?!\s+(?:of|to|for|that|which|in|about|with|where|when|you|he|she|they|we|i)\b)",
+    # "Your creator has much to answer for" reads as God or a parent, so it is
+    # left to the judge; these three have no in-fiction sense.
+    r"\byour\s+(?:developers?|programmers?|coders?|training\s+data)\b",
+    r"\b(?:real|actual)\s+person\s+(?:behind|playing)\s+" + _META_OBJECT + r"\b",
 )
 
 _BRIBE_PATTERN = _compile(
@@ -188,13 +221,16 @@ _BRIBE_PATTERN = _compile(
     r"\b(?:give|award)\s+(?:me|this|it|him|her)\s+\d{1,3}"
     r"(?:\s*%|\s*/\s*\d{1,3}|\s+(?:points?|marks?|out\s+of)\b|\s*(?=[,.;:!?]|$))",
     # A top mark named is not a top mark demanded. "Full marks for effort, and
-    # none whatever for result" and "ten out of ten for brass, nought for sense"
-    # are stock English sarcasm aimed squarely at the target — the register the
-    # launch pack is written in — and the giveaway is the "for X" that follows,
-    # which makes the phrase an assessment of somebody rather than a request.
-    # The demand shapes are kept below and by the give/award rule above.
-    r"\b(?:full|top|maximum|perfect)\s+(?:marks?|score|points?)\b(?!\s+for\b)",
-    r"\b(?:100|ten)\s*(?:out\s*of\s*|/)\s*(?:100|ten)\b(?!\s+for\b)",
+    # none whatever for result", "full marks to your tailor, none to the man
+    # inside the coat" and "ten out of ten for brass, nought for sense" are
+    # stock English sarcasm aimed squarely at the target — the register the
+    # launch pack is written in — and the giveaway is the "for X" or "to X" that
+    # follows, which makes the phrase an assessment of somebody rather than a
+    # request. Excluding only "for", as this used to, still fouled every
+    # award-it-to-someone reading. The demand shapes are kept below and by the
+    # give/award rule above.
+    r"\b(?:full|top|maximum|perfect)\s+(?:marks?|score|points?)\b(?!\s+(?:for|to)\b)",
+    r"\b(?:100|ten)\s*(?:out\s*of\s*|/)\s*(?:100|ten)\b(?!\s+(?:for|to)\b)",
     r"\b(?:deserves?|earns?|merits?|is\s+worth)\s+(?:a\s+)?"
     r"(?:full|top|maximum|perfect)\s+(?:marks?|score|points?)\b",
     r"\b(?:dear\s+|hey\s+|ok(?:ay)?\s+|listen\s+)?(?:judge|umpire|referee|ref)\s*[,:!]",
