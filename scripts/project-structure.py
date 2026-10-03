@@ -15,10 +15,10 @@ Usage:
 
 `validate` reads files only: the manifest is coherent, every issue form sets a
 `type:` and uses no label the manifest does not define, CONTRIBUTING's tables
-list exactly the labels and the open milestones that exist — due dates
-included — and nothing in the tree names an undeclared label, neither a
-hand-written `issues/new` link that pre-applies one nor a `label:` search
-qualifier that counts one.  It needs no network and no credentials.
+list exactly the labels, the field vocabularies, and the open milestones that
+exist — due dates included — and nothing in the tree names an undeclared label,
+neither a hand-written `issues/new` link that pre-applies one nor a `label:`
+search qualifier that counts one.  It needs no network and no credentials.
 
 `self-test` drives the planner and the rule checker against fixtures instead of
 the live tracker, so the behaviour this script's comments promise is checked on
@@ -70,8 +70,26 @@ CONTRIBUTING_REF = f"CONTRIBUTING.md § {CONTRIBUTING_SECTION.lstrip('# ')}"
 # title is already punctuated (em dashes), and quoting it would make the label
 # checker above read it as a label name.
 CONTRIBUTING_MILESTONES = "### Milestones — *when* it ships"
+# The subsection that publishes the field vocabularies.  Same reason its cells
+# are unbackticked as the milestone table's: a backticked cell in this section
+# is read as a label name.
+CONTRIBUTING_FIELDS = "### Fields — *what kind* of work, and *how urgent*"
 # How the Due column is written for humans, e.g. "Oct 31, 2026".
 MILESTONE_DUE_FORMAT = "%b %d, %Y"
+# How the Values column separates one option from the next, and how a row elides
+# a vocabulary too long to spell out.
+FIELD_VALUE_SEPARATOR = " \u00b7 "
+FIELD_VALUE_ELLIPSIS = "\u2026"
+
+# The three fields, in one place because both halves of the check need them:
+# `check_rules` holds the live tracker to these vocabularies, and
+# `field_table_errors` holds CONTRIBUTING's table to the same declaration.
+# {field as a human says it: (key on the issue, key in the manifest)}
+FIELD_VOCABULARIES = {
+    "Type": ("type", "issue_types"),
+    "Priority": ("priority", "priorities"),
+    "Phase": ("phase", "phases"),
+}
 
 
 # ── Manifest ─────────────────────────────────────────────────────────────────
@@ -346,7 +364,7 @@ def contributing_errors(manifest: dict[str, Any], text: str) -> list[str]:
     for name in sorted(documented - live):
         what = "retired label" if name in retired else "unknown label"
         errors.append(f"{CONTRIBUTING_REF} table still lists {what} {name!r}")
-    return errors + milestone_table_errors(manifest, text)
+    return errors + field_table_errors(manifest, text) + milestone_table_errors(manifest, text)
 
 
 def _table_cells(rows: list[str]) -> list[list[str]]:
@@ -359,6 +377,63 @@ def _table_cells(rows: list[str]) -> list[list[str]]:
             continue
         out.append(cells)
     return out[1:]  # the first surviving row is the header
+
+
+def field_table_errors(manifest: dict[str, Any], text: str) -> list[str]:
+    """The Fields table has to publish exactly the vocabularies the manifest
+    declares.
+
+    #491 moved the type and priority axes off labels and onto fields, which
+    makes the fields the authoritative vocabulary — and this table is where a
+    contributor reads it before triaging.  The label table two subsections up
+    is held to the manifest in both directions; without this, the axis the
+    issue moved the signal *onto* is the one the doc may lie about.  A fourth
+    priority added to the manifest would leave the table quietly short, and the
+    sentence under it still promising "the complete set".
+
+    A row may elide a vocabulary with an ellipsis — the Phase list is
+    append-only history nobody picks from at triage — and then only its two
+    ends are checked, which still catches an era appended or renamed.
+    """
+    rows = _contributing_section(text, CONTRIBUTING_FIELDS)
+    ref = f"CONTRIBUTING.md § {CONTRIBUTING_FIELDS.lstrip('# ')}"
+    if not rows:
+        return [f"CONTRIBUTING.md has no table under {CONTRIBUTING_FIELDS!r}"]
+    project = manifest.get("project") or {}
+    documented = {cells[0]: cells[2] for cells in _table_cells(rows) if len(cells) >= 3}
+    errors: list[str] = []
+    for name in sorted(set(documented) - set(FIELD_VOCABULARIES)):
+        errors.append(f"{ref} lists a field {name!r} that this script does not check")
+    for name, (_, manifest_key) in FIELD_VOCABULARIES.items():
+        if name not in documented:
+            errors.append(f"{ref} does not list the {name} field")
+            continue
+        declared = list(project.get(manifest_key) or [])
+        # An empty vocabulary is `manifest_errors`' finding, not one per row here.
+        if not declared:
+            continue
+        cell = documented[name]
+        if FIELD_VALUE_ELLIPSIS in cell:
+            first, _, last = cell.partition(FIELD_VALUE_ELLIPSIS)
+            shown_ends = (first.strip(), last.strip())
+            if shown_ends != (declared[0], declared[-1]):
+                errors.append(
+                    f"{ref} elides the {name} values as {shown_ends[0]!r} to "
+                    f"{shown_ends[1]!r}, but the manifest runs {declared[0]!r} to "
+                    f"{declared[-1]!r}"
+                )
+            continue
+        # Order is the doc's to choose — the manifest lists the types in factory
+        # order, the table in the order a human reads them — so only membership
+        # is compared, the way the label table is.
+        shown = {value.strip() for value in cell.split(FIELD_VALUE_SEPARATOR) if value.strip()}
+        for value in sorted(set(declared) - shown):
+            errors.append(f"{ref} does not list {name} value {value!r}")
+        for value in sorted(shown - set(declared)):
+            errors.append(
+                f"{ref} lists {name} value {value!r}, which the manifest does not declare"
+            )
+    return errors
 
 
 def milestone_table_errors(manifest: dict[str, Any], text: str) -> list[str]:
@@ -797,12 +872,7 @@ def check_rules(
     # `area_exempt_types`); this is the other half, against the live tracker.
     # Each is skipped when the manifest declares none, because `manifest_errors`
     # reports that as its own error rather than flagging every issue here.
-    # {field as a human says it: (key on the issue, key in the manifest)}
-    vocabularies = {
-        "Type": ("type", "issue_types"),
-        "Priority": ("priority", "priorities"),
-        "Phase": ("phase", "phases"),
-    }
+    vocabularies = FIELD_VOCABULARIES
     meta_label = rules.get("meta_label")
     area_exempt = set(rules.get("area_exempt_types") or [])
     # The trains open work may burn down on. Closed ones are excluded: a shipped
@@ -1195,7 +1265,7 @@ project:
   phase_field: Phase
   issue_types: [Task, Bug, Feature, Epic]
   priorities: [P0, P1]
-  phases: ["01"]
+  phases: ["01", "02"]
 labels:
   - name: area:engine
     color: "1d76db"
@@ -1288,13 +1358,29 @@ def _fixture_issues() -> list[dict[str, Any]]:
     ]
 
 
-def _contributing(*rows: str, milestones: str = "| v1 | Jan 31, 2026 | The first train |") -> str:
+# The Fields table as it looks when it agrees with `_FIXTURE`: two rows spelled
+# out in full, and one elided the way the real Phase row is.  Deliberately in a
+# different order from the manifest, because the order is the doc's to choose.
+_FIELDS_TABLE = (
+    "| Type | Native issue type | Bug \u00b7 Feature \u00b7 Task \u00b7 Epic | What kind |\n"
+    "| Priority | Board single-select | P0 \u00b7 P1 | How urgent |\n"
+    "| Phase | Board single-select | 01 \u2026 02 | Which era |"
+)
+
+
+def _contributing(
+    *rows: str,
+    fields: str = _FIELDS_TABLE,
+    milestones: str = "| v1 | Jan 31, 2026 | The first train |",
+) -> str:
     body = "\n".join(f"| Axis | {row} | Question |" for row in rows)
     return (
         f"## Paths by role\n\nSome prose that mentions `bug` and `priority:P0`.\n\n"
         f"{CONTRIBUTING_SECTION}\n\n"
         f"| Axis | Labels | Question |\n| ---- | ------ | -------- |\n{body}\n\n"
         f"Prose below the table may name the retired `enhancement` label freely.\n\n"
+        f"{CONTRIBUTING_FIELDS}\n\n"
+        f"| Field | Where | Values | Question |\n| --- | --- | --- | --- |\n{fields}\n\n"
         # A shell snippet between the two tables, the way the real section ends:
         # its `#` comment must not be mistaken for the heading that ends the
         # section, and its `| …` line must not be mistaken for a table row.
@@ -1328,6 +1414,9 @@ def _loaded_template_names() -> list[str]:
 
 def _kinds(actions: list[Action]) -> list[tuple[str, str]]:
     return [(action.kind, action.summary) for action in actions]
+
+
+_FIELDS_REF = f"CONTRIBUTING.md \u00a7 {CONTRIBUTING_FIELDS.lstrip('# ')}"
 
 
 def self_test() -> int:
@@ -1524,8 +1613,47 @@ def self_test() -> int:
          _contributing_section(_contributing("`area:engine`")),
          ["| Axis | Labels | Question |", "| ---- | ------ | -------- |",
           "| Axis | `area:engine` | Question |",
+          "| Field | Where | Values | Question |", "| --- | --- | --- | --- |",
+          *_FIELDS_TABLE.splitlines(),
           "| Milestone | Due | What it delivers |", "| --- | --- | --- |",
           "| v1 | Jan 31, 2026 | The first train |"]),
+
+        # -- CONTRIBUTING: the field table
+        # The table that publishes the vocabularies #491 moved the type and
+        # priority signal onto. Held to the manifest exactly as the labels are.
+        ("a field table matching the manifest passes",
+         field_table_errors(manifest, _contributing("`x`")), []),
+        ("a field value the manifest does not declare is reported",
+         field_table_errors(manifest, _contributing("`x`", fields=_FIELDS_TABLE.replace(
+             "P0 \u00b7 P1", "P0 \u00b7 P1 \u00b7 P3"))),
+         [f"{_FIELDS_REF} lists Priority value 'P3', which the manifest does not declare"]),
+        ("a declared field value missing from the table is reported",
+         field_table_errors(manifest, _contributing("`x`", fields=_FIELDS_TABLE.replace(
+             "Bug \u00b7 Feature \u00b7 Task \u00b7 Epic", "Bug \u00b7 Feature \u00b7 Task"))),
+         [f"{_FIELDS_REF} does not list Type value 'Epic'"]),
+        # An appended era moves the far end of the elided row, which is the
+        # whole reason the ellipsis is checked at its ends rather than skipped.
+        ("an elided row whose ends drifted from the manifest is reported",
+         field_table_errors(
+             {**manifest, "project": {**manifest["project"], "phases": ["01", "02", "03"]}},
+             _contributing("`x`")),
+         [f"{_FIELDS_REF} elides the Phase values as '01' to '02', but the manifest "
+          f"runs '01' to '03'"]),
+        ("a whole field row missing from the table is reported",
+         field_table_errors(manifest, _contributing("`x`", fields=_FIELDS_TABLE.replace(
+             "| Phase | Board single-select | 01 \u2026 02 | Which era |", "").strip()),
+         ), [f"{_FIELDS_REF} does not list the Phase field"]),
+        ("a field row this script cannot check is reported",
+         field_table_errors(manifest, _contributing(
+             "`x`", fields=_FIELDS_TABLE + "\n| Status | Board | Todo \u00b7 Done | Where |")),
+         [f"{_FIELDS_REF} lists a field 'Status' that this script does not check"]),
+        ("a missing field subsection is reported",
+         field_table_errors(manifest, "# Nothing here\n"),
+         [f"CONTRIBUTING.md has no table under {CONTRIBUTING_FIELDS!r}"]),
+        ("an undeclared vocabulary flags no field row",
+         field_table_errors({**manifest, "project": {}}, _contributing("`x`")), []),
+        ("the real CONTRIBUTING field table matches the real manifest",
+         field_table_errors(load_manifest(), CONTRIBUTING_PATH.read_text(encoding="utf-8")), []),
 
         # -- CONTRIBUTING: the milestone table
         ("a milestone table matching the manifest passes",
@@ -1768,7 +1896,7 @@ def cmd_validate(_args: argparse.Namespace) -> int:
     print(f"  OK  {len(manifest_labels)} labels declared, {len(retired_names(manifest))} retired")
     print(f"  OK  {len(manifest.get('milestones', []))} milestones declared")
     print("  OK  issue forms all set a type: and use declared labels only")
-    print("  OK  CONTRIBUTING.md documents exactly the declared labels and milestones")
+    print("  OK  CONTRIBUTING.md documents exactly the declared labels, fields, and milestones")
     print("  OK  new-issue links pre-apply declared labels only")
     print("  OK  every label: search qualifier names a declared label")
     print("")
