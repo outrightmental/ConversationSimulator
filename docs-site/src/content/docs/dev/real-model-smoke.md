@@ -70,7 +70,7 @@ log, and a remedy printed next to it:
 | 1 | `budget` | Pipeline worked; latency regressed past the CI ceiling | Compare `measured_ms` in the report artifact against recent nightlies |
 | 2 | `download` | Model could not be fetched — network, HTTP, or an empty cache | `python scripts/validate-registry.py --url-check`, then re-run |
 | 3 | `checksum` | **SHA-256 drift**: on-disk bytes ≠ `model-registry/registry.yaml` | See [Checksum drift](#checksum-drift) — never relax the check |
-| 4 | `runtime` | `llama-server` or `convsim-core` crashed, hung, or returned 5xx | Read the child stderr tail printed above the banner |
+| 4 | `runtime` | `llama-server` or `convsim-core` crashed, hung, or returned 5xx — or one of the two ports was already taken, so neither could be started | Read the child stderr tail printed above the banner. A port conflict started no child and so has no tail: the banner carries its own remedy instead, naming the port to free — see [Running it locally](#running-it-locally) |
 | 5 | `pipeline` | Servers healthy, but an end-to-end assertion failed | Inspect per-turn `used_fallback` flags in the report artifact — except for an unscored debrief, see [Unscored debrief](#unscored-debrief) |
 | 6 | `timeout` | Wall-clock budget exhausted; the failing phase is named | Check `phase_durations_s` before raising the budget |
 
