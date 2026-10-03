@@ -1464,6 +1464,44 @@ def timeout_latency_evidence(
     )
 
 
+def runtime_without_crash_remedy(llama_timeout_s: float) -> str:
+    """The ``runtime`` advice for a failure where neither child actually died.
+
+    ``runtime``'s class remedy opens with "The child stderr tail is printed above
+    the banner" and lists crash causes — runner OOM on model load, an
+    incompatible wheel, an unhandled exception.  All of that assumes a child
+    exited.  Often none has: every transport-level failure is a ``runtime``
+    failure, so a *live* convsim-core that answered 5xx, or a live llama-server
+    still loading when readiness ran out, lands in this class with both children
+    running and a stderr tail that shows a healthy server.
+
+    The 5xx is the one worth naming, because the cause behind it is usually not
+    a crash at all.  ``_start_core`` raises the adapter's generation budget
+    above the latency ceiling precisely so a slow turn is *measured* rather than
+    killed — but that moves the cliff, it does not remove it.  A turn slower
+    than that budget is still cut off adapter-side and convsim-core answers
+    504 ``TURN_TIMEOUT``, and since the budget is well inside the wall clock
+    (540 s against 1200 s at ``--ci-hardware-factor 20``) the run still has time
+    left, so neither ``timeout`` nor ``budget`` takes the class over.  The
+    verdict is then honest about the transport and wrong about the cause, with a
+    remedy sending triage after an OOM that did not happen — which is the same
+    misclassification ``_start_core``'s raised timeout exists to prevent, one
+    cliff further out.
+    """
+    return (
+        "Neither child process exited, so nothing crashed: the stderr tails above are "
+        "from servers that were still running when the run gave up. A live server "
+        "either never became ready or did not answer one request. If convsim-core "
+        "answered 504 TURN_TIMEOUT, that is the adapter's own generation budget "
+        f"({llama_timeout_s:.0f} s, CONVSIM_LLAMA_CPP_CHAT_TIMEOUT, which this harness "
+        "sets above the latency ceiling for exactly this reason) running out: "
+        "inference slower than that is a latency regression, not a crash, so compare "
+        "measured_ms and phase_durations_s in the report artifact against recent "
+        "nightlies instead of looking for an OOM. Otherwise read the tails for a "
+        "server that is alive but wedged — a model still loading, a request refused."
+    )
+
+
 # ── Reporting ─────────────────────────────────────────────────────────────────
 
 
@@ -2024,6 +2062,19 @@ def run_smoke(
         results["remedy"] = (
             exc.remedy if failure_class == exc.failure_class else REMEDIES[failure_class]
         )
+        # A `runtime` verdict with both children still alive did not come from a
+        # crash, and the class remedy's first instruction — read the child stderr
+        # tail — is advice about a tail that shows a healthy server.  The common
+        # cause is a generation the adapter cut off, i.e. a latency regression.
+        # See runtime_without_crash_remedy.  Only when the failure was using the
+        # class default: the port-conflict failure already carries a remedy of
+        # its own, and it is right about a run where no child was ever started.
+        if (
+            failure_class == FailureClass.RUNTIME
+            and not crashed
+            and results["remedy"] == REMEDIES[FailureClass.RUNTIME]
+        ):
+            results["remedy"] = runtime_without_crash_remedy(llama_timeout_s)
         if not results["failures"]:
             results["failures"] = [str(exc)]
         if crashed:

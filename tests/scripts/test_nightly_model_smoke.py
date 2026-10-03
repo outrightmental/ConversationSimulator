@@ -1354,6 +1354,39 @@ _REAL_MODEL_SMOKE_DOCS = (
 )
 
 
+class TestLiveServerRemedyIsDocumented:
+    """The runtime row of the doc's failure table sends the reader somewhere real.
+
+    The remedy printed for a `runtime` failure with both children alive is three
+    sentences in a banner; the reasoning behind it — why a 504 is a latency
+    regression rather than a crash, and what the adapter budget has to do with it
+    — lives in the doc. The row links to that section, so the section has to
+    exist in both copies.
+    """
+
+    @pytest.mark.parametrize("doc", _REAL_MODEL_SMOKE_DOCS, ids=lambda p: p.parts[0])
+    def test_the_failure_table_links_a_section_that_exists(self, doc: Path) -> None:
+        text = doc.read_text(encoding="utf-8")
+        assert "(#a-5xx-from-a-live-server)" in text, (
+            "the runtime row no longer links the live-server section"
+        )
+        assert "### A 5xx from a live server" in text
+
+    @pytest.mark.parametrize("doc", _REAL_MODEL_SMOKE_DOCS, ids=lambda p: p.parts[0])
+    def test_the_documented_adapter_budget_is_the_one_the_harness_sets(
+        self, doc: Path
+    ) -> None:
+        # Both the doc and the remedy quote a number the harness computes, so
+        # either can drift from it silently. 540 s is the budget at the factor
+        # the workflow passes.
+        ceiling_s = (
+            smoke.BUDGETS_MS["full_response_ms"] * 20 * smoke.REGRESSION_TOLERANCE
+        ) / 1000
+        expected = max(300.0, ceiling_s * smoke.DEBRIEF_SLOWDOWN_FACTOR + 60.0)
+        assert f"{expected:.0f} s" in doc.read_text(encoding="utf-8")
+        assert f"{expected:.0f} s" in smoke.runtime_without_crash_remedy(expected)
+
+
 class TestWheelInstallInvariants:
     """llama-cpp-python must arrive as a prebuilt wheel, never as a source build.
 
@@ -2514,6 +2547,87 @@ class TestRunSmokeOrchestration:
         results = json.loads(report.read_text(encoding="utf-8"))
         assert results["failure_class"] == smoke.FailureClass.RUNTIME
         assert "convsim-core exited with code 1" in results["failures"][0]
+        # A child really did die, so the class remedy's "read the stderr tail"
+        # is the right advice and must not be swapped for the live-server one.
+        assert results["remedy"] == smoke.REMEDIES[smoke.FailureClass.RUNTIME]
+
+    def test_a_live_server_answering_5xx_is_not_blamed_on_a_crash(
+        self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """A `runtime` verdict with both children alive must not send triage after an OOM.
+
+        Every transport-level failure is a `runtime` failure, so a *live*
+        convsim-core that answered 504 TURN_TIMEOUT lands in the same class as a
+        crash — and the class remedy opens by telling the reader to read a child
+        stderr tail that shows a healthy server, then lists runner OOM and a bad
+        wheel as the likely causes.
+
+        The realistic cause is neither. `_start_core` raises the adapter's
+        generation budget above the latency ceiling so a slow turn is measured
+        rather than killed, but that only moves the cliff: a turn slower than
+        540 s (the budget at --ci-hardware-factor 20) is still cut off
+        adapter-side, and with 1200 s of wall clock the run still has time left,
+        so neither `timeout` nor `budget` takes the class over.
+        """
+        models_dir, model_id, digest = staged_model
+
+        def _timed_out(url: str, *, payload=None, timeout=None, expect=(200, 201)) -> dict:
+            if url.endswith("/health"):
+                return {"llm_runtime": {"runtime_id": "llama_cpp"}}
+            if url.endswith("/api/sessions"):
+                return {"session_id": "sess-1"}
+            if url.endswith("/start"):
+                return _OPENING
+            raise smoke.SmokeFailure(
+                smoke.FailureClass.RUNTIME,
+                f"{url} returned HTTP 504: TURN_TIMEOUT",
+            )
+
+        monkeypatch.setattr(smoke, "_request_json", _timed_out)
+        report = tmp_path / "report.json"
+
+        exit_code = smoke.run_smoke(
+            model_id, 20.0, report, model_sha256=digest, models_dir=models_dir
+        )
+
+        assert exit_code == smoke.EXIT_CODES[smoke.FailureClass.RUNTIME]
+        results = json.loads(report.read_text(encoding="utf-8"))
+        assert results["failure_class"] == smoke.FailureClass.RUNTIME
+        remedy = results["remedy"]
+        assert remedy != smoke.REMEDIES[smoke.FailureClass.RUNTIME]
+        assert "Neither child process exited" in remedy
+        assert "CONVSIM_LLAMA_CPP_CHAT_TIMEOUT" in remedy
+        # The number in the advice has to be the budget the harness actually set
+        # on the adapter, or the reader cannot tell a cut-off turn from a crash.
+        assert "540 s" in remedy
+        # And it has to send the reader at the latency measurements, which is
+        # where the cause actually shows up.
+        assert "measured_ms" in remedy and "phase_durations_s" in remedy
+
+    def test_a_port_conflict_keeps_its_own_remedy(
+        self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        # The live-server remedy above must not displace this one: a port
+        # conflict starts no child at all, so "neither child process exited" is
+        # true but useless, and the advice the reader needs is the port to free.
+        models_dir, model_id, digest = staged_model
+        monkeypatch.setattr(
+            smoke, "_assert_port_free",
+            lambda port, label: (_ for _ in ()).throw(smoke.SmokeFailure(
+                smoke.FailureClass.RUNTIME,
+                f"Port {port} is already in use, so {label} cannot be started on it",
+                remedy="Stop whatever is listening on it, then re-run.",
+            )),
+        )
+        report = tmp_path / "report.json"
+
+        exit_code = smoke.run_smoke(
+            model_id, 20.0, report, model_sha256=digest, models_dir=models_dir
+        )
+
+        assert exit_code == smoke.EXIT_CODES[smoke.FailureClass.RUNTIME]
+        results = json.loads(report.read_text(encoding="utf-8"))
+        assert results["remedy"] == "Stop whatever is listening on it, then re-run."
 
     def test_a_fake_runtime_is_refused(
         self, staged_model, fake_servers, monkeypatch: pytest.MonkeyPatch, tmp_path: Path

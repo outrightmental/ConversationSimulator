@@ -114,7 +114,7 @@ log, and a remedy printed next to it:
 | 1 | `budget` | Pipeline worked; latency regressed past the CI ceiling | Compare `measured_ms` in the report artifact against recent nightlies |
 | 2 | `download` | Model could not be fetched — network, HTTP, a transfer that stalled past its 5 min budget, or an empty cache | `python scripts/validate-registry.py --url-check`, then re-run |
 | 3 | `checksum` | **SHA-256 drift**: on-disk bytes ≠ `model-registry/registry.yaml` | See [Checksum drift](#checksum-drift) — never relax the check |
-| 4 | `runtime` | `llama-server` or `convsim-core` crashed, hung, or returned 5xx — or one of the two ports was already taken, so neither could be started | Read the child stderr tail printed above the banner. A port conflict started no child and so has no tail: the banner carries its own remedy instead, naming the port to free — see [Running it locally](#running-it-locally) |
+| 4 | `runtime` | `llama-server` or `convsim-core` crashed, hung, or returned 5xx — or one of the two ports was already taken, so neither could be started | Read the child stderr tail printed above the banner — but only if a child actually exited. The banner says which case it is and carries the matching remedy: a port conflict started no child (see [Running it locally](#running-it-locally)), and a 5xx from a server that is still running is usually [a cut-off generation](#a-5xx-from-a-live-server), not a crash |
 | 5 | `pipeline` | Servers healthy, but an end-to-end assertion failed | Inspect the per-turn `used_fallback` and `replayed_opening` flags in the report artifact — except for an unscored debrief, see [Unscored debrief](#unscored-debrief) |
 | 6 | `timeout` | Wall-clock budget exhausted; the failing phase is named | Check `phase_durations_s` before raising the budget |
 
@@ -154,6 +154,32 @@ finishes inside the budget but too slowly.
 Each run writes the verdict, failure class, remedy, measured latencies and
 per-phase durations to the GitHub **step summary**, and uploads the full JSON
 report as the `model-smoke-report` artifact (30-day retention).
+
+### A 5xx from a live server
+
+A 5xx is a `runtime` failure because the transport said so, but `runtime`'s
+stock advice — read the child stderr tail, suspect a runner OOM or a bad
+llama-cpp-python wheel — only fits a failure where a child actually died. Often
+none has, and then the tail above the banner shows a perfectly healthy server.
+The harness checks `poll()` on both children and, when neither has exited, prints
+a different remedy: *"Neither child process exited, so nothing crashed."*
+
+The cause worth knowing about is a generation the adapter cut off. `convsim-core`
+answers **504 `TURN_TIMEOUT`** when `CONVSIM_LLAMA_CPP_CHAT_TIMEOUT` runs out
+mid-reply. The harness deliberately sets that budget *above* the latency ceiling
+it is about to judge the turn on — `DEBRIEF_SLOWDOWN_FACTOR` × the ceiling, 540 s
+at `--ci-hardware-factor 20` — so that a slow turn is measured and reported as
+`budget` rather than killed and misreported as a crash. But that moves the cliff
+rather than removing it: a turn slower than 540 s is still cut off, and with
+1200 s of wall clock still unspent neither `timeout` nor `budget` takes the class
+over. So exit 4 with both children alive and a 504 in the message means inference
+roughly 5× slower than the nightlies have ever measured — a latency regression.
+Start from `measured_ms` and `phase_durations_s` in the report artifact, not from
+an OOM.
+
+The other way to land here with both children alive is a server that is up but
+wedged: `llama-server` still loading the GGUF when readiness ran out, or a
+request it refused. The stderr tails are the right place for that one.
 
 ### Unscored debrief
 
