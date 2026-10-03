@@ -82,6 +82,7 @@ export default function ScenarioLibrary() {
   const { unlock, incrementStat } = useSteamAchievements()
   const { isDlcInstalledForPack } = useSteamDlc()
   const curatorGranted = useRef(false)
+  const subscriberGranted = useRef(false)
   const dlcChecked = useRef(false)
 
   const searchId = useId()
@@ -116,12 +117,6 @@ export default function ScenarioLibrary() {
           map[item.pack_id] = { author_name: item.author_name, workshop_updated_at: item.workshop_updated_at }
         }
         setWorkshopItems(map)
-        // Any Workshop pack present in the library means the subscribe-sync
-        // path worked at least once (ACH_WORKSHOP_SUBSCRIBER). Checked on every
-        // load, so a subscription from before this release counts too.
-        if (r.data.items.length > 0) {
-          void unlock(SteamAchievement.WORKSHOP_SUBSCRIBER)
-        }
       }
     })
   }
@@ -195,6 +190,17 @@ export default function ScenarioLibrary() {
       }
     })
   }, [])
+
+  // ACH_WORKSHOP_SUBSCRIBER — a subscribed Workshop pack is present in the
+  // library, which means the subscribe-sync path worked at least once. Driven
+  // off the loaded items rather than the loader itself, so a subscription from
+  // before this release counts on the next launch too. Only the fact that at
+  // least one item exists is used; no pack metadata leaves the device.
+  useEffect(() => {
+    if (subscriberGranted.current || Object.keys(workshopItems).length === 0) return
+    subscriberGranted.current = true
+    void unlock(SteamAchievement.WORKSHOP_SUBSCRIBER)
+  }, [workshopItems, unlock])
 
   // ACH_LIBRARY_CURATOR — the player has narrowed the library with search or
   // any of the facet filters. Only the fact that a filter is active is used; no

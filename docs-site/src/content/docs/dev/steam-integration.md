@@ -258,14 +258,24 @@ achievement is silently ignored by the Steamworks API.
 
 ### Capstone unlock
 
-`ACH_CERTIFIED_EXPERT` is granted by the front end, not by Steamworks:
-`unlock()` tracks which of the required API names are already unlocked and fires
-the capstone once none is left. `OPTIONAL_ACHIEVEMENTS` in
+`ACH_CERTIFIED_EXPERT` is granted by the front end, not by Steamworks. After
+every confirmed unlock, `unlock()` asks Steam — via the
+`steam_unlocked_achievements` command — which of the required API names plus
+`ACH_CERTIFIED_EXPERT` the signed-in account already holds, and fires the
+capstone when every required name comes back. `OPTIONAL_ACHIEVEMENTS` in
 `useSteamAchievements.ts` lists what the capstone does not require, so 100%
 stays reachable without Workshop, DLC, a controller, or a player-supplied model.
-The device-local progress record behind it holds achievement API names and
-played pack IDs only — never transcript text, session IDs, or anything else
-about a conversation — and is never transmitted anywhere.
+
+Steam is the only authority here, deliberately: "has this player earned every
+required achievement?" is a fact about a Steam *account*, and a device-local
+cache of confirmed unlocks is shared by every account on one machine and OS
+login — do not reintroduce one. The read-back is empty before the user's stats
+arrive shortly after launch and outside Steam entirely, so an unconfirmed name
+is treated as *unknown*, never as "not earned"; the capstone just does not fire
+on that pass. Nothing device-local is involved except the played-pack tally
+behind `ACH_PACK_EXPLORER` / `ACH_PACK_CONNOISSEUR`, which holds pack IDs only —
+never transcript text, session IDs, or anything else about a conversation — and
+is never transmitted anywhere.
 
 ---
 

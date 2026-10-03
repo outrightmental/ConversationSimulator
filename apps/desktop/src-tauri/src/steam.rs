@@ -317,9 +317,9 @@ impl SteamRuntime {
     /// missing from the result therefore means "Steam did not confirm it", not
     /// "the player has not earned it".
     ///
-    /// Exists so the front end can reconcile its local `ACH_CERTIFIED_EXPERT`
-    /// ledger against the Steam account, which is the real authority on what a
-    /// player has earned — see docs/steam-achievements-stats-rich-presence.md.
+    /// Exists so the front end can decide `ACH_CERTIFIED_EXPERT` from the Steam
+    /// account itself, which is the only authority on what a player has earned
+    /// — see docs/steam-achievements-stats-rich-presence.md.
     pub fn unlocked_achievements(&self, api_names: &[String]) -> Vec<String> {
         #[cfg(feature = "steam")]
         if let Some(ref client) = self.client {
