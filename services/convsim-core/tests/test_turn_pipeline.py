@@ -289,6 +289,12 @@ class TestTurnInputValidation:
             json={"content": "   "},
         )
         assert res.status_code == 422
+        # The 422 summary prefixes the field path, so the validator must not
+        # repeat it — "content: Turn content cannot be blank" is what the error
+        # card showed and what "Copy diagnostics" pasted (issue #508).
+        message = res.json()["error"]["message"]
+        assert message == "Request validation failed \u2014 content: cannot be blank"
+        assert message.count("content") == 1
 
     def test_oversized_content_returns_422(self, client):
         session_id = _create_and_start(client)
@@ -298,6 +304,13 @@ class TestTurnInputValidation:
             json={"content": oversized},
         )
         assert res.status_code == 422
+        message = res.json()["error"]["message"]
+        assert message == (
+            f"Request validation failed \u2014 content: cannot exceed {MAX_TURN_CONTENT_CHARS} characters"
+        )
+        # The rejected turn is the player's own words; it must not ride along
+        # into a clipboard report.
+        assert oversized not in res.text
 
     def test_max_length_content_accepted(self, client):
         session_id = _create_and_start(client)
