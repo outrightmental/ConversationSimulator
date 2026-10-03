@@ -249,8 +249,9 @@ canceled".
 
 The 10-minute gap between the two is deliberate margin, not an accounting of
 known work. `timeout-minutes` covers the whole job, and the harness only starts
-after checkout, three `pip install` steps and the model cache restore — which
-together measure **~1 min** on the nightlies run so far, not the several
+after checkout, three `pip install` steps, the model cache restore and — on a
+cache miss — the download and the cache save that follows it, which together
+measure **~1 min** on the nightlies run so far, not the several
 minutes a 2.5 GB transfer sounds like. The gap is sized for the part of that
 work that is network-bound rather than for its measured cost: a slow
 Hugging Face or Actions-cache night can cost minutes that the harness's own
@@ -265,7 +266,7 @@ On `ubuntu-latest` (CPU-only, 4B Q4\_K\_M):
 | `pip install` ×3 (prompt-composer, convsim-core, llama-cpp-python wheel) | ~16 s | ~13 s |
 | Model cache restore (2.3 GiB) | — (miss: <1 s) | ~25 s |
 | Model download from Hugging Face + SHA-256 verify (2.3 GiB) | ~9 s | — |
-| Cache save (2.3 GiB, post-step) | ~10 s | — |
+| Cache save (2.3 GiB, its own step before the smoke) | ~10 s | — |
 | SHA-256 re-verify before the weights are loaded ‡ | <10 s | <10 s |
 | `llama-server` model load + `convsim-core` start + session create | ~8 s | ~8 s |
 | 3 scripted turns † | ~6 min | ~6 min |
