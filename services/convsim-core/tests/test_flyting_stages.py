@@ -360,6 +360,23 @@ class TestPackPolicyGates:
         result = gate("Your opinions belong on a podcast, sir, not in this club.", lexicon=lexicon)
         assert result.outcome is GateOutcome.OK
 
+    def test_a_forbidden_phrase_is_a_foul_too(self):
+        """A lexicon entry is a word or a phrase, and nothing says otherwise.
+
+        Membership in the volley's token set could only match a single word, so
+        a ``forbid`` policy passed every phrase an author had forbidden — while
+        the judge, which is handed the same list as prose, read it correctly.
+        """
+        lexicon = LexiconConfig(discouraged=("no cap",), anachronism_policy="forbid")
+        result = gate("Your pedigree is a forgery, no cap, and the ink is wet.", lexicon=lexicon)
+        assert result.foul is Foul.ANACHRONISM
+        assert result.reason == "anachronism:no cap"
+
+    def test_the_words_of_a_forbidden_phrase_apart_are_not_a_foul(self):
+        lexicon = LexiconConfig(discouraged=("no cap",), anachronism_policy="forbid")
+        result = gate("No, sir, your cap is as false as the head beneath it.", lexicon=lexicon)
+        assert result.outcome is GateOutcome.OK
+
 
 class TestPlagiarizedZinger:
     def test_a_stock_form_is_capped_and_flagged(self):

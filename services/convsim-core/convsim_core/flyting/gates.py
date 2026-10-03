@@ -214,6 +214,27 @@ _OUT_OF_FICTION_MOCKERY = (
 )
 
 
+def _term_in(term: str, tokens: Tuple[str, ...]) -> bool:
+    """Whether a discouraged term appears in the volley, phrases included.
+
+    A lexicon entry is a word or a phrase: nothing in the schema says otherwise,
+    the judge is handed the list as prose and reads "no cap" as two words, and a
+    period pack's most obvious anachronisms are phrases. Testing membership in
+    the volley's token *set*, as this used to, could only ever match a
+    single-word entry, so a ``forbid`` policy silently passed every phrase an
+    author had forbidden.
+    """
+    parts = tokenize(term)
+    if not parts:
+        return False
+    if len(parts) == 1:
+        return parts[0] in tokens
+    return any(
+        tokens[index : index + len(parts)] == parts
+        for index in range(len(tokens) - len(parts) + 1)
+    )
+
+
 def _pick(options: Sequence[str], seed_text: str) -> str:
     digest = hashlib.sha256(seed_text.encode("utf-8")).digest()
     return options[digest[0] % len(options)]
@@ -351,8 +372,8 @@ def evaluate_gates(
 
     # 6. Anachronism, where the scenario forbids rather than merely penalises it.
     if lexicon and lexicon.anachronism_policy == "forbid" and lexicon.discouraged:
-        words = set(tokenize(text))
-        hit = next((term for term in lexicon.discouraged if term.lower() in words), None)
+        tokens = tokenize(text)
+        hit = next((term for term in lexicon.discouraged if _term_in(term, tokens)), None)
         if hit:
             return GateResult(
                 outcome=GateOutcome.FOUL,
