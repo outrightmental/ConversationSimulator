@@ -165,6 +165,12 @@ export default function Conversation() {
   const deepConversationGrantedRef = useRef(false)
   const bargeInGrantedRef = useRef(false)
   const modeStatCountedRef = useRef(false)
+  // Read the input mode through a ref inside the start-session effect. Listing
+  // it as a dependency would let a change to the route state re-run that
+  // effect for a live session, which re-POSTs /start and rehydrates the
+  // transcript from the server — far too much to risk for a stat increment.
+  const inputModeRef = useRef(inputMode)
+  inputModeRef.current = inputMode
 
   const [phase, setPhase] = useState<Phase>('starting')
   const [sessionState, setSessionState] = useState('NotStarted')
@@ -467,7 +473,7 @@ export default function Conversation() {
       if (!modeStatCountedRef.current) {
         modeStatCountedRef.current = true
         void incrementStat(
-          inputMode === 'text-only'
+          inputModeRef.current === 'text-only'
             ? SteamStat.TEXT_MODE_SESSIONS
             : SteamStat.VOICE_MODE_SESSIONS,
         )
@@ -483,7 +489,7 @@ export default function Conversation() {
     return () => {
       cancelled = true
     }
-  }, [sessionId, devMode, mark, recordInterval, inputMode, incrementStat])
+  }, [sessionId, devMode, mark, recordInterval, incrementStat])
 
   // WebSocket connection — best effort; REST fallback continues to work
   useEffect(() => {

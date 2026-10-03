@@ -169,6 +169,16 @@ a pack whenever it is selected). The rest observe an event as it happens and
 count from this release forward — including `ACH_PACK_EXPLORER` and
 `ACH_PACK_CONNOISSEUR`, whose pack tally starts empty.
 
+### Feature areas with no achievement
+
+Session branching (`POST /sessions/{id}/branch`, `services/branch_service.py`)
+is implemented in convsim-core but has no front-end surface at all, so there is
+nowhere to put an unlock call. `ACH_REPLAY_VARIATION` covers the player-visible
+neighbour — re-running the finished scenario from the debrief with a different
+difficulty, language, or input mode — not a true mid-conversation fork. If a
+branching UI ships, it earns its own achievement and joins the capstone
+requirement by default.
+
 ### Steamworks settings for each achievement
 
 - **Hidden:** set per the **Hidden** column in the tables above. Hidden
