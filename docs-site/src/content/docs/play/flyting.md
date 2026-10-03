@@ -216,10 +216,13 @@ hardware a volley therefore takes noticeably longer than a conversation turn;
 see [Performance & hardware](/play/performance/) for what to expect from your
 machine, and consider the Set drill over the Timed one on slower setups.
 
-If no model is available, a run is degraded rather than broken: the volley is
-scored from its deterministic measurements alone and every scorecard says
-**Scored from mechanics only — the judge did not answer**. The engine never
-invents numbers no model produced.
+A flyting run needs a model configured before it will start — without one
+there is no judge, and the app says so rather than opening a run it cannot
+score. If the judge then fails to answer, or answers with something unusable,
+the volley is repaired once and otherwise scored from its deterministic
+measurements alone, with every such scorecard reading **Scored from mechanics
+only — the judge did not answer**. The engine never invents numbers no model
+produced.
 
 ---
 
