@@ -2048,6 +2048,119 @@ describe('Conversation — Steam achievement call sites', () => {
     }
   })
 
+  // ── ACH_BARGE_IN ───────────────────────────────────────────────────────────
+  //
+  // Talking over the NPC. The unlock sits after `handleBargeIn`'s own
+  // `if (!isTtsActive) return`, so it must fire only when NPC audio was really
+  // playing — "voice mode is on" is not a barge-in, and granting it there would
+  // hand a hidden achievement to every voice session's first turn.
+  describe('ACH_BARGE_IN', () => {
+    let wsCallback: ((event: WsEvent) => void) | null = null
+
+    class MockMediaRecorder {
+      state: 'inactive' | 'recording' = 'inactive'
+      mimeType = 'audio/webm'
+      ondataavailable: ((event: { data: Blob }) => void) | null = null
+      onstop: (() => void) | null = null
+      start() { this.state = 'recording' }
+      stop() {
+        this.state = 'inactive'
+        this.ondataavailable?.({ data: new Blob(['chunk']) })
+        this.onstop?.()
+      }
+      static isTypeSupported() { return true }
+    }
+
+    beforeEach(() => {
+      wsCallback = null
+      mockApi.connectSession.mockImplementation((_id, cb) => {
+        wsCallback = cb
+        return { close: vi.fn() }
+      })
+      // useMicCapture decides "supported" at hook init, so both of these have to
+      // be in place before the first render.
+      vi.stubGlobal('MediaRecorder', MockMediaRecorder)
+      Object.defineProperty(navigator, 'mediaDevices', {
+        configurable: true,
+        value: {
+          getUserMedia: vi.fn().mockResolvedValue({
+            getTracks: () => [{ stop: vi.fn() }],
+          } as unknown as MediaStream),
+        },
+      })
+    })
+
+    afterEach(() => {
+      vi.unstubAllGlobals()
+      delete (navigator as { mediaDevices?: unknown }).mediaDevices
+    })
+
+    /** Renders a voice session with TTS on and the microphone enabled. */
+    async function renderVoiceSessionWithMic() {
+      renderConversation({ input_mode: 'voice', tts_enabled: true })
+      await waitFor(() => expect(screen.getByRole('log')).toBeInTheDocument())
+      await act(async () => {
+        fireEvent.click(
+          screen.getByRole('button', { name: /enable microphone access/i }),
+        )
+      })
+      await screen.findByRole('button', { name: /hold to talk|push to talk|record/i })
+    }
+
+    /** Presses the global Space push-to-talk hotkey. */
+    function pressSpace() {
+      if (document.activeElement instanceof HTMLElement) document.activeElement.blur()
+      act(() => {
+        fireEvent.keyDown(document, { code: 'Space' })
+      })
+    }
+
+    function startNpcAudio() {
+      act(() => {
+        wsCallback?.({
+          type: 'tts.audio_chunk',
+          seq: 1,
+          session_id: SESSION_ID,
+          ts: '2026-07-01T00:00:00Z',
+          payload: {
+            chunk_index: 0,
+            total_chunks: 1,
+            text: 'Hello there.',
+            voice_id: 'af_heart',
+            cache_path: '/home/user/.convsim/tts_cache/abc123.wav',
+            error: null,
+          },
+        })
+      })
+    }
+
+    it('grants it when the player starts talking over NPC audio', async () => {
+      const AudioSpy = vi.spyOn(window, 'Audio').mockReturnValue({
+        play: vi.fn().mockResolvedValue(undefined),
+        pause: vi.fn(),
+        volume: 1,
+        onended: null,
+        onerror: null,
+      } as unknown as HTMLAudioElement)
+      try {
+        await renderVoiceSessionWithMic()
+        startNpcAudio()
+        pressSpace()
+        await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_BARGE_IN'))
+      } finally {
+        AudioSpy.mockRestore()
+      }
+    })
+
+    it('does not grant it for a turn started while the NPC is silent', async () => {
+      await renderVoiceSessionWithMic()
+      pressSpace()
+      // Give the unlock a chance to land before asserting it did not.
+      await act(async () => { await Promise.resolve() })
+      expect(mockUnlock).not.toHaveBeenCalledWith('ACH_BARGE_IN')
+    })
+  })
+
   it('grants it only once however many more turns the player takes', async () => {
     renderConversation({ input_mode: 'text-only' })
     await screen.findByRole('textbox', { name: /your response/i })
