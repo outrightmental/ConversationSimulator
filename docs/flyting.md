@@ -395,10 +395,10 @@ a volley the gates zeroed is deterministic too — that volley scores 0 whatever
 a judge would have said, and never reaches a model — so `band: dud` beside a
 `gate: foul` is checked on every commit along with the gate it asserts.
 
-A judged run costs one model call per volley that clears the gates: 39
-reference volleys in the launch pack, 29 of which reach the judge, and roughly
-25-30 s each against the starter model on a developer machine — about a quarter
-of an hour for the pack, and far longer on a CPU CI runner, which measures a
+A judged run costs one model call per volley that clears the gates: 178
+reference volleys in the launch pack, 147 of which reach the judge, at around
+7 s each against a warm starter model on a developer machine — a few minutes
+for the pack, and far longer on a CPU CI runner, which measures a
 grammar-constrained turn in minutes rather than seconds. So the judged tier is
 not in the nightly by default — `--limit N` takes a bounded sample, spending it
 on the volleys that actually reach the judge rather than on gated ones CI
@@ -411,12 +411,27 @@ dropped hooks and flags, so a band that moved is readable without a re-run.
 **What the judged bands are pinned to.** The launch pack's judged expectations
 record what the registry's `starter` model (`qwen3-4b-instruct-q4_k_m`,
 llama.cpp, temperature 0) actually produces, measured against a live server.
-Two full runs of the pack produced *identical* results for all 39 volleys —
-same score, same dimension scores, same verified hooks — which is the
-determinism the mode claims — temperature 0 plus a
-schema-constrained decode, in practice and not just in principle. The
+Repeated runs produce identical results — same score, same dimension scores,
+same verified hooks — which is the determinism the mode claims: temperature 0
+plus a schema-constrained decode, in practice and not just in principle. The
 expectations are drift guards, not verdicts on the writing: a deliberate change
 to the judge prompt moves them and is expected to come with a re-measurement.
+
+**Coverage, honestly.** Four of the five suites carry around forty reference
+volleys. Veiled Civility carries twelve, and the five most recent of those are
+Stage 0 outcomes only. Its judged half is written but unmeasured, and an
+unmeasured band is worse than a missing one — it would make the file claim
+something about the model that nobody has checked. Deepening it is a matter of
+running `--judge` against the starter model and pasting what comes back.
+
+Some entries deliberately pin behaviour that is wrong rather than behaviour
+that is wanted, because that is what a drift guard is for. The clearest are the
+volleys with no second person, no vocative and no imperative, which the judge
+is told cannot score above 3 on sting and which the starter model scores 9;
+`whitechapel_rose/aimed_at_nobody` is the starkest. The engine does not
+reconcile the two, because `craft.second_person` reads pronouns and so cannot
+tell "aimed at nobody" from "addressed by name" — `whitechapel_rose/vocative_no_pronoun`
+is the counter-example that makes capping sting on it the wrong fix.
 
 Two limitations the measurement exposed are worth knowing before reading a
 scorecard, because neither is a bug:
