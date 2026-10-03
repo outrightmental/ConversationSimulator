@@ -433,7 +433,22 @@ def _packbits(data: bytes) -> bytes:
 
 
 def _argb_chunk(png: Path, size: int) -> bytes:
-    """An ``ic04``/``ic05`` payload: the "ARGB" magic, then A, R, G and B."""
+    """An ``ic04``/``ic05`` payload: the "ARGB" magic, then A, R, G and B.
+
+    The samples are straight-alpha, not premultiplied — the same thing
+    ``iconutil`` itself writes.
+
+    Do not check these two chunks with ``iconutil -c iconset``. It un-
+    premultiplies on the way out, so every partly transparent pixel comes back
+    blown out toward white — a 16 px edge pixel of this icon reads
+    (255, 159, 255) instead of (109, 40, 217). That is an artefact of the
+    export path, not of the file: build an ICNS from these same frames with
+    ``iconutil -c icns`` and extract it again and Apple's own output is damaged
+    identically. Check with the renderer macOS actually draws icons through
+    instead — ``NSImage(contentsOfFile:)``, then ``colorAt`` on the
+    representation of the size you care about — which reads these chunks back
+    exactly, and reads Apple's own within a level or two.
+    """
     rgba = _rgba_bytes(png)
     assert len(rgba) == size * size * 4, f"{png}: expected {size}x{size} RGBA"
     channels = (rgba[3::4], rgba[0::4], rgba[1::4], rgba[2::4])
