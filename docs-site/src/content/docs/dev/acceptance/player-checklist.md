@@ -133,6 +133,7 @@ turn** (Flyting School → *The Scorned Rose of Whitechapel*).
 - [ ] The debrief shows best volley, coaching notes, redundancy report, devices, rarest words, and the local board — and the board row is still there after an app restart
 - [ ] **The Bout** (relaunch, format *The Bout*): momentum moves after each exchange, and the opponent's volley is scored with its numbers shown
 - [ ] On a profile with no model configured, starting a flyting run is refused with the message that the judge cannot score volleys yet — not an opened run that silently scores nothing
+- [ ] Ticking **Use today's seed** marks the run on the board with a ◆, and **Today's seed only** above the board narrows it to the runs played under it
 
 ---
 
