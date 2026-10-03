@@ -63,9 +63,10 @@ board field and the only place priority is recorded — there are no priority la
 Three orthogonal systems, each answering exactly one question. A label that duplicates a
 field is a bug in the tracker, not a convenience:
 
-- **Labels** — *where* the work lands. Thirteen labels: eight `area:*`, four workflow
-  contracts, and `meta`. Their one job is the pie chart of development effort by product
-  area, which is why there are no type labels and no priority labels.
+- **Labels** — *where* the work lands. One `area:*` axis across the product surfaces, a
+  small set of workflow contracts, and `meta`. Their one job is the pie chart of
+  development effort by product area, which is why there are no type labels and no
+  priority labels.
 - **Fields** — *what kind* of work it is and *how urgent*. Native issue **Type**
   (Bug / Feature / Task / Epic — the factory takes Bugs first) and the board's
   **Priority** (P0 → P2). Both are required on every open issue.
