@@ -353,7 +353,10 @@ python scripts/nightly-model-smoke.py \
 
 Useful extras:
 
-- `--verify-only` — re-verify an already-downloaded model and exit.
+- `--verify-only` — re-verify an already-downloaded model and exit. Like every
+  other checksum check here, a mismatch **deletes** the file (exit 3), so a
+  re-run re-downloads rather than re-verifying the same bad bytes — do not
+  reach for it as a read-only inspection of a 2.5 GB download you want to keep.
 - `--models-dir <dir>` — look for `<model-id>.gguf` somewhere other than
   `~/.convsim/models/llm/`.
 - `--wall-clock-budget-s` — the self-imposed deadline (default 1200 s).

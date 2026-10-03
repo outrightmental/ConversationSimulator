@@ -78,7 +78,8 @@ Download only (cache miss)::
     python scripts/nightly-model-smoke.py --download-only \\
         --model-id <id> --model-url <url> --model-sha256 <hex>
 
-Verify an already-cached file without running the smoke::
+Verify an already-cached file without running the smoke (a mismatch *deletes*
+the file — see ``verify_model_checksum``)::
 
     python scripts/nightly-model-smoke.py --verify-only \\
         --model-id <id> --model-sha256 <hex>
@@ -1987,7 +1988,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument("--download-only", action="store_true",
                         help="Download and verify the model file, then exit.")
     parser.add_argument("--verify-only", action="store_true",
-                        help="Verify the on-disk model against --model-sha256, then exit.")
+                        help="Verify the on-disk model against --model-sha256, then exit. "
+                             "A mismatch deletes the file, so a re-run re-downloads it "
+                             "instead of re-verifying the same bad bytes.")
     parser.add_argument("--model-url", default=None,
                         help="Download URL (required for --download-only).")
     parser.add_argument("--model-sha256", default=None,
