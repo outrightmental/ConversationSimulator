@@ -78,9 +78,12 @@ field is a bug in the tracker, not a convenience:
 The whole shape is declared in one file —
 [.github/project-structure.yml](../.github/project-structure.yml) — and
 `scripts/project-structure.py` holds the tracker to it: `validate` gates every pull
-request offline, `audit` reports live drift, `apply` converges it. The taxonomy cannot
-quietly rot back into overlapping systems without CI noticing. Full tables and
-conventions: [CONTRIBUTING.md → Labels, fields, and
+request offline, `audit` reports live drift, `apply` converges it. So no *commit* can
+quietly reintroduce an overlapping system — CI fails if the manifest, the issue forms,
+and the documented tables stop agreeing. Drift made straight on GitHub instead (a label
+added by hand, an issue left untriaged) is outside what CI can see and is what `audit`
+is for; it needs a maintainer's `project` scope. Full tables and conventions:
+[CONTRIBUTING.md → Labels, fields, and
 milestones](../CONTRIBUTING.md#labels-fields-and-milestones).
 
 ---
