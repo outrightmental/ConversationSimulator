@@ -148,6 +148,44 @@ class TestChecksumVerification:
             smoke.verify_model_checksum(path, "0" * 64, delete_on_mismatch=False)
         assert path.exists()
 
+    def test_a_malformed_digest_is_not_drift_and_keeps_the_file(self, tmp_path: Path) -> None:
+        # A digest short by one character is the ordinary outcome of copying 64
+        # hex characters out of a terminal by hand, and it can never match any
+        # file's hash -- so comparing against it is not a check. Treating it as
+        # drift deleted a 2.5 GB download and reported that the pinned upstream
+        # file had been replaced, which is the expensive, misleading verdict the
+        # case/whitespace normalisation above exists to avoid.
+        path, digest = self._write(tmp_path)
+        for malformed in (digest[:-1], digest + "0", "not-a-digest", "", digest[:-1] + "g"):
+            with pytest.raises(smoke.SmokeFailure) as exc_info:
+                smoke.verify_model_checksum(path, malformed)
+            assert exc_info.value.failure_class == smoke.FailureClass.PIPELINE, malformed
+            assert path.exists(), f"{malformed!r} must not delete the model"
+            # The checksum remedy ("the pinned upstream file was replaced ...
+            # do NOT relax this check") is the wrong advice here.
+            assert exc_info.value.remedy != smoke.REMEDIES[smoke.FailureClass.CHECKSUM]
+
+    def test_a_malformed_digest_is_caught_before_the_file_is_hashed(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Hashing 2.5 GB to compare it against something that cannot match is
+        # pure waste, and a missing file would otherwise be reported as
+        # `download` while the real problem is the argument.
+        def _never(*args: object, **kwargs: object) -> str:
+            raise AssertionError("must not hash the file for a malformed digest")
+
+        monkeypatch.setattr(smoke, "sha256_file", _never)
+        with pytest.raises(smoke.SmokeFailure) as exc_info:
+            smoke.verify_model_checksum(tmp_path / "absent.gguf", "deadbeef")
+        assert exc_info.value.failure_class == smoke.FailureClass.PIPELINE
+
+    def test_the_registry_pin_is_a_well_formed_digest(self) -> None:
+        # The one digest the nightly actually runs on has to pass the guard
+        # above, or the job fails before it fetches anything.
+        model = smoke.resolve_registry_model("starter")
+        assert len(model["sha256"]) == smoke.SHA256_HEX_CHARS
+        assert set(model["sha256"].lower()) <= smoke._HEX_DIGITS
+
     def test_missing_file_is_a_download_failure_not_a_checksum_failure(self, tmp_path: Path) -> None:
         with pytest.raises(smoke.SmokeFailure) as exc_info:
             smoke.verify_model_checksum(tmp_path / "absent.gguf", "0" * 64)

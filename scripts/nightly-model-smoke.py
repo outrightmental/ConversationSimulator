@@ -202,6 +202,12 @@ EXCERPT_CHARS = 160
 # still show a stalled transfer; 2381 hide the verdict they precede.
 PROGRESS_LOG_STEP_PCT = 10
 
+# A SHA-256 digest is 64 hex characters.  Anything else is not a digest the
+# on-disk bytes could ever match, so comparing against it is not a check — see
+# verify_model_checksum for why that distinction is worth 2.5 GB.
+SHA256_HEX_CHARS = 64
+_HEX_DIGITS = frozenset("0123456789abcdef")
+
 # A debrief summary shorter than this is not a usable coaching summary.
 MIN_SUMMARY_CHARS = 20
 
@@ -731,14 +737,41 @@ def verify_model_checksum(path: Path, expected: str, *, delete_on_mismatch: bool
     file was replaced … do NOT relax this check", which is an expensive and
     thoroughly misleading verdict to hand someone who pasted an upper-case
     hash into the local repro in docs/real-model-smoke.md.
+
+    For the same reason, ``expected`` has to *be* a SHA-256 digest before it is
+    compared to one.  A digest short by a character — the ordinary outcome of
+    copying 64 hex characters out of a terminal by hand — can never match any
+    file's hash, so the comparison is not a check at all; but it fails exactly
+    like drift does, which is to say it deletes the 2.5 GB file and reports
+    that the pinned upstream file was replaced and must not be re-pinned
+    lightly.  A malformed digest is the harness being handed an input it cannot
+    act on, which is ``pipeline``, and the file is left alone.
     """
+    expected = expected.strip().lower()
+    if len(expected) != SHA256_HEX_CHARS or not set(expected) <= _HEX_DIGITS:
+        raise SmokeFailure(
+            FailureClass.PIPELINE,
+            f"Not a SHA-256 digest: {expected!r} ({len(expected)} characters, "
+            f"expected {SHA256_HEX_CHARS} hex). Nothing was verified and nothing "
+            "was deleted — no file's hash could match this.",
+            remedy=(
+                "The expected digest itself is malformed, so this says nothing "
+                "about the bytes on disk and the model file has been left in "
+                "place. If it came from --model-sha256 on the command line, "
+                "re-copy all 64 characters printed by "
+                "`--print-registry-model starter` (the repro block in "
+                "docs/real-model-smoke.md shows a placeholder, not a value). If "
+                "it came from the registry, repair download.sha256 in "
+                "model-registry/registry.yaml (re-pin with scripts/pin-model.py) "
+                "and validate with scripts/validate-registry.py."
+            ),
+        )
     if not path.exists():
         raise SmokeFailure(
             FailureClass.DOWNLOAD,
             f"Model file not found: {path}. The cache restore produced no model and no "
             "download ran — check the cache key and the download step.",
         )
-    expected = expected.strip().lower()
     actual = sha256_file(path)
     if actual != expected:
         size_mb = path.stat().st_size // 1_048_576

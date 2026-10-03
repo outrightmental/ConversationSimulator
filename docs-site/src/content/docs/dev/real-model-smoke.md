@@ -375,6 +375,14 @@ Exit 3 means one of two things:
 Never "fix" a drift by updating the expected hash to whatever is on disk — that
 is exactly the check this job exists to perform.
 
+What exit 3 does *not* mean is that the digest it was handed is unusable. The
+expected digest is normalised (case, surrounding whitespace) and then checked to
+be 64 hex characters before anything is hashed; one that is not — a value copied
+one character short out of a terminal, the realistic mistake when running the
+repro below by hand — is exit 5 with its own remedy, and the model file is left
+exactly where it was. Nothing no file's hash could ever match is allowed to cost
+a 2.5 GB download or to be reported as upstream drift.
+
 ---
 
 ## Running it locally
@@ -414,6 +422,8 @@ Useful extras:
   other checksum check here, a mismatch **deletes** the file (exit 3), so a
   re-run re-downloads rather than re-verifying the same bad bytes — do not
   reach for it as a read-only inspection of a 2.5 GB download you want to keep.
+  A `--model-sha256` that is not 64 hex characters is rejected as exit 5 before
+  the file is touched, so a mistyped digest costs you nothing.
 - `--models-dir <dir>` — look for `<model-id>.gguf` somewhere other than
   `~/.convsim/models/llm/`.
 - `--wall-clock-budget-s` — the self-imposed deadline (default 1200 s).
