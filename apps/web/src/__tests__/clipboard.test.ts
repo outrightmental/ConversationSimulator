@@ -110,6 +110,21 @@ describe('copyTextToClipboard', () => {
     expect(document.querySelector('textarea')).toBeNull()
   })
 
+  it('resolves false rather than throwing when the DOM fallback cannot be built', async () => {
+    // Callers in Settings, CreatorWorkbench and ScenarioLibrary do not catch,
+    // so the last resort failing has to be a `false`, not a rejected promise.
+    const createElement = vi
+      .spyOn(document, 'createElement')
+      .mockImplementation(() => {
+        throw new TypeError('no DOM here')
+      })
+    try {
+      await expect(copyTextToClipboard('report')).resolves.toBe(false)
+    } finally {
+      createElement.mockRestore()
+    }
+  })
+
   it('reports failure when execCommand declines the copy', async () => {
     ;(document as unknown as { execCommand: unknown }).execCommand = vi.fn().mockReturnValue(false)
     expect(await copyTextToClipboard('report')).toBe(false)
