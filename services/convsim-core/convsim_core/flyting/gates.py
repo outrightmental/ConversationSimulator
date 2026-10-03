@@ -24,6 +24,11 @@ On top of that, five flyting-specific gates:
 Plus two pack-policy gates: profanity where the pack forbids it, and
 anachronisms where the scenario's lexicon policy is ``forbid``.
 
+Three of those outcomes also set ``withheld_from_model``: the shared router's
+three refusing actions and the Below the Belt pattern. That volley's text never
+reaches a model — not the judge, which skips any zeroed volley anyway, and not
+the opponent, which otherwise answers every volley in character.
+
 ``judge_foul_result`` at the bottom of this module is the same machinery for the
 fouls only a reader of the scene can raise — the register judgements that arrive
 with the Stage 3 verdict. They are applied at composition rather than here, but
@@ -321,6 +326,13 @@ class GateResult:
     # with ``ending_type = "safety_stop"`` — and the flyting run has to end the
     # same way, so a crisis disclosure is not recorded as a foul.
     safety_stop: bool = False
+    # True when this volley's text must not be shown to a model at all — the
+    # shared safety router refused it, or the Below the Belt pattern matched a
+    # slur. The conversation loop never calls the LLM for any of those: a
+    # REFUSE is rejected at the input and a STOP short-circuits to a synthetic
+    # response. The flyting loop has an opponent to answer with, and answering
+    # is the thing that must not happen. See pipeline.process_volley.
+    withheld_from_model: bool = False
     score_cap: Optional[int] = None
     flags: List[str] = field(default_factory=list)
     matched_source: Optional[str] = None
@@ -385,6 +397,7 @@ def evaluate_gates(
                 "Nought points." + (" We are done here." if ends else " One more and we are done.")
             ),
             ends_session=ends,
+            withheld_from_model=True,
         )
 
     # 2. The shared input safety router — global non-overridable rules first,
@@ -424,6 +437,7 @@ def evaluate_gates(
                 umpire_mock=decision.message,
                 ends_session=True,
                 safety_stop=True,
+                withheld_from_model=True,
             )
         return GateResult(
             outcome=GateOutcome.FOUL,
@@ -431,6 +445,7 @@ def evaluate_gates(
             reason=decision.category,
             umpire_mock=decision.message or "That one is outside the rules of this contest. Nought points.",
             ends_session=ends,
+            withheld_from_model=True,
         )
 
     # 3. Bribing the ref — talking to the scorer instead of the target.

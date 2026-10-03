@@ -412,7 +412,27 @@ async def process_volley(
     npc_score: Optional[VolleyScore] = None
     exchange: Optional[ExchangeResult] = None
 
-    if is_bout:
+    # Unless the volley is one the engine will not show a model. A gate that
+    # merely zeroes a volley still gets an answer — losing the exchange is what
+    # a dud or a register foul costs, and the target scoffing at a two-word
+    # attempt is the drill working. But a slur, a threat, or a crisis
+    # disclosure is content the safety layer refused, and the opponent's prompt
+    # is "Your opponent just said: <text>. Answer it with one taunt."
+    #
+    # The conversation loop never hands any of those to a model: REFUSE is
+    # rejected at the input and STOP short-circuits to a synthetic response
+    # with the router's own message. Here the crisis route was the worst of it
+    # — the player read the crisis resource message and, underneath it, a taunt
+    # the opponent had been asked to aim at the disclosure, scored in a bout
+    # and swinging the momentum of a run that was already ending.
+    #
+    # So the opponent says nothing: no generation, no judge call on a counter,
+    # no volley row, no turn row, nothing in the transcript. A bout still
+    # resolves the exchange, because the round was spent — against an opponent
+    # score of zero, so the crowd does not move for a line nobody said.
+    opponent_answers = not prepared.gate.withheld_from_model
+
+    if is_bout and opponent_answers:
         tier = config.bout.tier_profile
         system, user = compose_counter_volley_prompt(
             npc=npc,
@@ -483,7 +503,7 @@ async def process_volley(
             heat=1.0,
             riposte_bonus=config.bout.riposte_bonus,
         )
-    else:
+    elif opponent_answers:
         system, user = compose_reaction_prompt(
             npc=npc,
             config=config,
@@ -494,6 +514,12 @@ async def process_volley(
         npc_line = await _opponent_line(
             runtime, system=system, user=user, fallback=OPPONENT_FALLBACK_REACTION,
             max_words=20, temperature=0.8,
+        )
+    else:
+        logger.warning(
+            "Flyting: opponent withheld — the gate refused this volley's text "
+            "(reason=%s), so no model is shown it",
+            prepared.gate.reason,
         )
 
     # ── Fold into the run ───────────────────────────────────────────────────
