@@ -101,8 +101,9 @@ volleys:
       arithmetic. Mr Fenwick said he could almost hear it.
     note: >-
       Strikes the discoverable counting trait while staying entirely polite,
-      and the doubled discovery bonus on top of a 1.5 multiplier makes it the
-      highest-scoring reference volley in the pack.
+      which on top of a 1.5 multiplier makes it the highest-scoring reference
+      volley in the pack. The trait is worth double the first time a real run
+      finds it; the band is the isolated measurement, without that x2.
     expect:
       gate: ok
       min_score: 150

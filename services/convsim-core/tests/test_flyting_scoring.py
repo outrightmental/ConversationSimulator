@@ -106,9 +106,14 @@ class TestWorkedExample:
 
     The freshness here is the proposal's figure, supplied to Stage 4 rather than
     measured: these are composition tests, and 0.97 is a round number to do
-    arithmetic with. ``test_the_documented_end_to_end_score`` is the one that
-    runs the same line through the real scenario and the real novelty stage,
-    where F is 0.94 and the score is 125 — which is what docs/flyting.md quotes.
+    arithmetic with. The hooks are hand-built and undiscovered for the same
+    reason — T=1.27 is the formula's answer for two ordinary hooks.
+
+    ``test_the_documented_end_to_end_score`` is the one that runs the same line
+    through the real scenario, the real novelty stage and the real hook
+    verification. There F is 0.94 and ``new_money`` is a discovery on this
+    target, so T is 1.39 and the score is 136 — which is what docs/flyting.md
+    quotes.
     """
 
     def test_quality_is_the_weighted_dimensions(self):
@@ -139,12 +144,22 @@ class TestWorkedExample:
         """The worked example through the real pack, with nothing hand-fed.
 
         docs/flyting.md §3 prints this volley's whole arithmetic and says the
-        scorecard shows it. The only figure a reader cannot derive from the
-        volley and the verdict is F, because it is measured against the shipped
-        cliché corpus — so it is the one that can quietly drift away from the
-        documentation. This pins it, and the score it produces, against the
-        scenario the example is set in.
+        scorecard shows it. Two of those figures are not derivable from the
+        volley and the verdict alone, so both are the kind that can quietly
+        drift away from the documentation:
+
+        * ``F`` is measured against the shipped cliché corpus and the session.
+        * ``T`` depends on the target's own YAML. ``new_money`` is
+          ``visibility: discoverable`` on Lord Bellingham, so the first strike
+          on it is a discovery and its hook bonus doubles — which is why the
+          verdict here goes through ``parse_volley_judgment`` against the pack's
+          declared surface rather than being hand-built. Composing a hand-built
+          judgment, as this test used to, bypassed the one step that sets
+          ``discovered`` and pinned 125: a number no run of this volley against
+          this target has ever produced.
         """
+        from convsim_prompt import parse_volley_judgment
+
         from convsim_core.flyting.loader import load_flyting_scenario
 
         if not _FLYTING_PACK.is_dir():
@@ -162,13 +177,80 @@ class TestWorkedExample:
         assert prepared.freshness.s_max == pytest.approx(0.25, abs=0.01)
         assert prepared.freshness.value == pytest.approx(0.94, abs=0.005)
 
-        result = service.compose(prepared, judgment(), volley_number=1)
+        # The verdict as the documentation states it, verified against the
+        # target's real attack surface with nothing discovered yet.
+        verdict = parse_volley_judgment(
+            json.dumps({
+                "sting": 8, "wit": 8, "craft": 9, "fidelity": 9,
+                "hooks": [
+                    {"trait": "hypocrisy", "evidence": "polish your virtue"},
+                    {"trait": "new_money", "evidence": "plate, not sterling"},
+                ],
+                "themes": ["hypocrisy", "wealth"],
+                "devices": ["metaphor", "triple"],
+                "riposte": {"is_riposte": False, "evidence": None},
+                "callback": {"is_callback": False, "evidence": None},
+                "fouls": [],
+                "umpire_line": "That one went in sideways.",
+            }),
+            volley_text=prepared.volley.text,
+            attack_surface=scenario.attack_surface,
+            discovered_traits=set(),
+        )
+        assert verdict is not None
+        assert [(h.trait, h.discovered) for h in verdict.hooks] == [
+            ("hypocrisy", False), ("new_money", True)
+        ]
+
+        result = service.compose(prepared, verdict, volley_number=1)
         assert result.quality == pytest.approx(0.84)
-        assert result.topicality == pytest.approx(1.27)
+        # 1 + 0.15 + (0.12 x 2 for the discovery).
+        assert result.topicality == pytest.approx(1.39)
         assert [b.id for b in result.bonuses] == ["device_rotation"]
-        assert result.base == 120
-        assert result.score == 125
+        assert result.base == 131
+        assert result.score == 136
         assert result.band == "strong"
+
+    def test_a_second_strike_on_the_discoverable_trait_is_not_doubled(self):
+        """The doubling is the run's, not the volley's.
+
+        docs/flyting.md says so beside the worked example: the same words after
+        the trait has been found are worth T=1.27. Pinning both halves is what
+        makes the claim checkable.
+        """
+        from convsim_prompt import parse_volley_judgment
+
+        from convsim_core.flyting.loader import load_flyting_scenario
+
+        if not _FLYTING_PACK.is_dir():
+            pytest.skip(f"Launch pack not found: {_FLYTING_PACK}")
+        scenario = load_flyting_scenario(_FLYTING_PACK, "scenarios/whitechapel_rose.yaml")
+        assert scenario is not None
+        service = VolleyScoringService(scenario.scoring_context())
+        prepared = service.prepare(WORKED_EXAMPLE_TEXT)
+
+        verdict = parse_volley_judgment(
+            json.dumps({
+                "sting": 8, "wit": 8, "craft": 9, "fidelity": 9,
+                "hooks": [
+                    {"trait": "hypocrisy", "evidence": "polish your virtue"},
+                    {"trait": "new_money", "evidence": "plate, not sterling"},
+                ],
+                "themes": ["hypocrisy", "wealth"],
+                "devices": ["metaphor", "triple"],
+                "riposte": {"is_riposte": False, "evidence": None},
+                "callback": {"is_callback": False, "evidence": None},
+                "fouls": [],
+                "umpire_line": "Again, and cheaper.",
+            }),
+            volley_text=prepared.volley.text,
+            attack_surface=scenario.attack_surface,
+            discovered_traits={"new_money"},
+        )
+        assert verdict is not None
+        assert all(not h.discovered for h in verdict.hooks)
+        result = service.compose(prepared, verdict, volley_number=2)
+        assert result.topicality == pytest.approx(1.27)
 
 
 # ── Bands ────────────────────────────────────────────────────────────────────

@@ -293,7 +293,32 @@ async def _score_with_judge(
     text: str,
     runtime: Any,
 ) -> Any:
-    """Score one volley through the full pipeline, judge call included."""
+    """Score one volley through the full pipeline, judge call included.
+
+    **Each reference volley is scored in isolation**, which is what makes a
+    recorded band reproducible: a suite is a set of independent measurements, not
+    a replay of a session, and every run-dependent input is therefore absent.
+    Four of them matter, and all four pull a measured score *down* relative to
+    what the same line would earn mid-run:
+
+    * no ``prior_volleys``, so freshness is measured against the cliché corpus
+      alone and never against the session;
+    * no session theme record, so theme decay is never applied;
+    * no device-rotation window, so the +5 is earned by any volley with a
+      device the judge named;
+    * no discovery ledger — ``judge_volley`` is passed no ``discovered_traits``,
+      so ``HookClaim.discovered`` is always false and a hook on a discoverable
+      trait is measured **without** the ×2 it is worth the first time a real run
+      strikes it.
+
+    The last of those is the one worth stating out loud, because eight reference
+    volleys across four suites exist to strike a discoverable trait. Their
+    recorded bands are the undoubled numbers, so the judged tier cannot catch a
+    regression in the discovery bonus; ``test_flyting_scoring.py`` covers the
+    doubling directly instead. Passing an empty set here would exercise it — and
+    would also raise every one of those eight bands by roughly the first hook's
+    bonus again, which is a re-measurement against a real model, not an edit.
+    """
     from convsim_core.flyting.pipeline import judge_volley
 
     prepared = service.prepare(text)

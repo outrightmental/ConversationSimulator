@@ -67,9 +67,11 @@ volleys:
       Ask your bosun where the cook went, Captain. Tortuga is a long way to
       walk for better soup, and two of your own made the trip.
     note: >-
-      Strikes a discoverable trait in front of her crew, which doubles that
-      hook's bonus. The insinuation is carried by implication rather than by
-      image, and the starter judge scores it mid-solid for that.
+      Strikes a discoverable trait in front of her crew, which is worth double
+      the first time a real run finds it. The insinuation is carried by
+      implication rather than by image, and the starter judge scores it
+      mid-solid for that. The band is the isolated measurement, so the x2 is
+      not in it.
     expect:
       gate: ok
       band: solid
@@ -487,8 +489,9 @@ volleys:
       You write like a customs clerk, Captain, because you were one — the
       dock can hear the ledger in every sentence.
     note: >-
-      Strikes the discoverable customs-desk trait, which doubles that hook's
-      bonus and is the baseline dock's highest single-hook score.
+      Strikes the discoverable customs-desk trait, worth double the first time
+      a real run finds it. The band is the isolated measurement, without that
+      x2: the baseline dock's highest single-hook score as measured.
     expect:
       gate: ok
       band: solid

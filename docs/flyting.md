@@ -362,23 +362,31 @@ Victorian scenario; target's surface includes `vanity`, `hypocrisy`,
 > plate, not sterling, worn thin where the public grips them."
 
 Judge: sting 8, wit 8, craft 9, fidelity 9 → **Q = 0.84**. Verified hooks:
-`hypocrisy` ("polish your virtue") and `new_money` ("plate, not sterling") →
-**T = 1.27**. Nothing in the session resembles it and its nearest match in the
-shipped cliché corpus sits at `s_max = 0.25` → **F = 0.94**. Period-diction
-scenario → **P = 1.2**. Device rotation +5.
+`hypocrisy` ("polish your virtue") and `new_money` ("plate, not sterling").
+`hypocrisy` is visible in the brief and pays its ordinary 0.15; `new_money` is
+`visibility: discoverable` on this target and has not been struck before, so
+this is the discovery and its 0.12 is doubled → **T = 1 + 0.15 + 0.24 = 1.39**.
+Nothing in the session resembles the line and its nearest match in the shipped
+cliché corpus sits at `s_max = 0.25` → **F = 0.94**. Period-diction scenario →
+**P = 1.2**. Device rotation +5.
 
 ```
-S = round(100 × 0.84 × 1.27 × 0.94 × 1.2) + 5 = 125
+S = round(100 × 0.84 × 1.39 × 0.94 × 1.2) + 5 = 136
 ```
 
-`F` is the only figure here a reader cannot derive from the volley and the
-verdict alone, because it is measured against the corpus and the session. This
-one is the lexical tier's answer, which is every run's answer today (§2); the
-embedding tier would put the same line's novelty somewhere else. The proposal
-this example comes from quoted `F = 0.97` and therefore 129 — the numbers above
-are what the engine actually produces, and
-`test_flyting_scoring.TestWorkedExample` pins them end to end so this paragraph
-cannot drift away from the scorecard.
+Two figures here a reader cannot derive from the volley and the verdict alone.
+`F` is measured against the corpus and the session; this is the lexical tier's
+answer, which is every run's answer today (§2), and the embedding tier would
+put the same line's novelty somewhere else. And the doubling of the second hook
+depends on the *run* rather than on the volley: strike `new_money` a second time
+later in the same session and the same words are worth `T = 1.27` instead, which
+is what the scorecard will then show.
+
+The proposal this example comes from quoted `F = 0.97`, counted neither hook as
+a discovery, and therefore arrived at 129. The numbers above are what the engine
+actually produces: `test_flyting_scoring.TestWorkedExample` runs this volley and
+this verdict through the real scenario, the real novelty stage and the real hook
+verification, so this paragraph cannot drift away from the scorecard.
 
 The scorecard shows this arithmetic. That is what makes it a practice tool rather
 than a slot machine, and the full judge verdict is kept in SQLite so any volley

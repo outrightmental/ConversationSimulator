@@ -119,7 +119,8 @@ volleys:
       You bought your way out of the Crimea, sir, and now you flinch at the
       fireworks on the river like a man who can hear the bill arriving.
     note: >-
-      Strikes a discoverable trait, which is worth double on discovery.
+      Strikes a discoverable trait, which is worth double the first time a real
+      run finds it. The band is the isolated measurement, without that x2.
     expect:
       gate: ok
       band: strong
@@ -484,8 +485,9 @@ volleys:
       You bought a substitute for the Crimea, sir, and the Thames fireworks
       still send you indoors.
     note: >-
-      The discoverable Crimea trait stated plainly, and the doubled bonus
-      carries it into strong.
+      The discoverable Crimea trait stated plainly. It is worth double the
+      first time a real run finds it; the band is the isolated measurement,
+      without that x2, and reaches strong without it.
     expect:
       gate: ok
       band: strong
@@ -514,8 +516,9 @@ volleys:
       Your crest is eleven years old, sir, and your grandfather sold tripe
       in Smithfield to a better class of customer than you keep.
     note: >-
-      Strikes the discoverable tripe-seller grandfather, which doubles that
-      hook's bonus.
+      Strikes the discoverable tripe-seller grandfather, worth double the first
+      time a real run finds it. The band is the isolated measurement, without
+      that x2.
     expect:
       gate: ok
       band: strong
