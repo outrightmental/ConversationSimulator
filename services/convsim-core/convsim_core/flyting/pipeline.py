@@ -321,6 +321,9 @@ async def process_volley(
         heat=1.0 if is_bout else state.heat,
         riposte_bonus=config.bout.riposte_bonus if is_bout else 0,
         extra_flags=extra_flags,
+        # The judge can raise below_the_belt on what no pattern catches, and the
+        # second one ends the run exactly as the Stage 0 gate's does.
+        prior_below_the_belt=state.foul_counts.get("below_the_belt", 0),
     )
 
     # The scene's own id for the reaction that fired. scene.schema.json offers
@@ -374,7 +377,11 @@ async def process_volley(
             runtime,
             speaker="npc",
             opponent_last_line=prepared.volley.text,
-            theme_uses=state.theme_uses,
+            # The opponent's own theme record, not the player's: theme decay has
+            # to read the wells this speaker has returned to. Sharing one counter
+            # discounted each side for the other's repeats, and in a bout that
+            # discount is fed straight into k * (S_player - S_npc) / 100.
+            theme_uses=state.npc_theme_uses,
             events=judge_events,
         )
         npc_score = service.compose(
@@ -382,7 +389,7 @@ async def process_volley(
             npc_judgment,
             volley_number=state.npc_volleys + 1,
             speaker="npc",
-            theme_uses=state.theme_uses,
+            theme_uses=state.npc_theme_uses,
             heat=1.0,
             riposte_bonus=config.bout.riposte_bonus,
         )

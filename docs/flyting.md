@@ -173,11 +173,16 @@ default). The third hygiene joke is visibly near-worthless — variety is the me
 
 Only a volley's *primary* theme counts as a use of that well — the judge tags
 three or four themes for one line, and counting all of them would decay a well
-the player never actually returned to. Only the player's own volleys count, too:
-parroting the opponent is already redundancy by the freshness rule above, and a
-well the opponent reached for first is not one the player returned to. The
-debrief's redundancy report counts the same way, so the percentage it prints is
-the factor the engine applied.
+the player never actually returned to.
+
+Each speaker is also decayed by its *own* record. The player's counter holds the
+player's volleys and the opponent's holds the opponent's: parroting the opponent
+is already redundancy by the freshness rule above, and a well the opponent
+reached for first is not one the player returned to — nor the other way round. A
+single shared counter discounted each side for the other's repeats, and in a bout
+that discount lands directly on `k · (S_you − S_npc) / 100`. The debrief's
+redundancy report is computed from the player's counter, so the percentage it
+prints is the factor the engine applied.
 
 ### Stage 3 — The judge
 
@@ -255,6 +260,21 @@ line.
 
 Bands: `dud` 0 · `weak` 1–59 · `solid` 60–119 · `strong` 120–179 ·
 `highlight` 180+.
+
+A foul is resolved here too, not only in Stage 0. The register fouls only a
+reader of the scene can raise arrive with the judge's verdict, and composition
+promotes them to the same outcome a Stage 0 foul produces: 0 points, no bonuses,
+the foul recorded, the heat reset, the whiff counted, and a foul tag on the
+scorecard. A second judge-raised `below_the_belt` ends the run, exactly as the
+deterministic gate's does.
+
+Which judge fouls count is the scenario's business, because that is what the
+judge was asked for. `below_the_belt` and `out_of_fiction` are never a pack's
+choice. `overt_rudeness` counts only where `register.overt_rudeness_is_foul` is
+true — otherwise the judge was told it costs fidelity points, not the volley —
+and `anachronism` only where `anachronism_policy` is `forbid` rather than
+`penalize`. A foul outside that set stays on the stored verdict as a note and
+does not void the line.
 
 #### Worked example
 

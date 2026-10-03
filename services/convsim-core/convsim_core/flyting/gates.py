@@ -23,6 +23,12 @@ On top of that, five flyting-specific gates:
 
 Plus two pack-policy gates: profanity where the pack forbids it, and
 anachronisms where the scenario's lexicon policy is ``forbid``.
+
+``judge_foul_result`` at the bottom of this module is the same machinery for the
+fouls only a reader of the scene can raise — the register judgements that arrive
+with the Stage 3 verdict. They are applied at composition rather than here, but
+they produce the same ``GateResult``, so one code path records the foul, zeroes
+the volley, resets the heat, and counts the whiff.
 """
 from __future__ import annotations
 
@@ -395,4 +401,89 @@ def detect_plagiarism(text: str) -> Optional[Tuple[str, str]]:
 
     if best_line is not None and best_score >= PLAGIARISM_SIMILARITY:
         return f"cliche:{best_line[:60]}", _pick(_PLAGIARISM_MOCKERY, text)
+    return None
+
+
+# ---------------------------------------------------------------------------
+# Stage 3 fouls
+#
+# The judge raises the register judgements no deterministic pattern can make:
+# whether a volley dropped the surface politeness a Regency ballroom requires,
+# whether it reached past the character at the machine, whether its diction
+# belongs to another century. Those verdicts arrive with the judgment, after
+# Stage 0 has already run, so they are applied at composition — but they are
+# the same kind of outcome, and they produce the same GateResult so that one
+# code path records the foul, zeroes the volley, resets the heat, counts the
+# whiff, and shows the player a foul tag.
+#
+# Which of them *count* is the scenario's business, because that is what the
+# judge was asked for. A scenario whose anachronism_policy is "penalize" was
+# told anachronisms cost fidelity points, so an anachronism foul from a drifting
+# model must not void the volley; one that says "forbid" was told to raise the
+# foul. Safety and out-of-fiction are never a pack's choice.
+# ---------------------------------------------------------------------------
+
+ALWAYS_HONORED_JUDGE_FOULS: Tuple[str, ...] = ("below_the_belt", "out_of_fiction")
+
+# Order of precedence when a verdict names more than one. below_the_belt first:
+# it is the only one that can end a run.
+_JUDGE_FOUL_PRECEDENCE: Tuple[str, ...] = (
+    "below_the_belt", "out_of_fiction", "overt_rudeness", "anachronism",
+)
+
+_JUDGE_FOUL_MOCKERY: dict[str, str] = {
+    Foul.OUT_OF_FICTION.value: _OUT_OF_FICTION_MOCKERY,
+    Foul.OVERT_RUDENESS.value: (
+        "The sting was there and the gloves were not. In this room that is a "
+        "scandal, not a score. Nought points."
+    ),
+    Foul.ANACHRONISM.value: (
+        "Whatever century that word came from, it was not this one. Nought points."
+    ),
+}
+
+
+def judge_foul_result(
+    fouls: Sequence[str],
+    *,
+    honored: Sequence[str] = ALWAYS_HONORED_JUDGE_FOULS,
+    prior_below_the_belt: int = 0,
+) -> Optional[GateResult]:
+    """A GateResult for the highest-precedence foul the judge raised, or None.
+
+    ``honored`` is the set of fouls this scenario actually asked the judge to
+    raise; anything outside it stays on the stored verdict as a note and does
+    not void the volley.
+    """
+    raised = {f for f in fouls if f in set(honored)}
+    if not raised:
+        return None
+    for name in _JUDGE_FOUL_PRECEDENCE:
+        if name not in raised:
+            continue
+        try:
+            foul = Foul(name)
+        except ValueError:  # pragma: no cover — JUDGE_FOULS and Foul agree
+            continue
+        if foul is Foul.BELOW_THE_BELT:
+            ends = prior_below_the_belt >= 1
+            return GateResult(
+                outcome=GateOutcome.FOUL,
+                foul=foul,
+                reason="judge:below_the_belt",
+                umpire_mock=(
+                    "That is not flyting, it is just cruelty wearing its own face. "
+                    "Nought points."
+                    + (" We are done here." if ends else " One more and we are done.")
+                ),
+                ends_session=ends,
+                flags=["judge_foul"],
+            )
+        return GateResult(
+            outcome=GateOutcome.FOUL,
+            foul=foul,
+            reason=f"judge:{name}",
+            umpire_mock=_JUDGE_FOUL_MOCKERY.get(name),
+            flags=["judge_foul"],
+        )
     return None

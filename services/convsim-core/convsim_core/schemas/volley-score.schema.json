@@ -37,7 +37,7 @@
     },
     "gate": {
       "type": "object",
-      "description": "Stage 0 result. A dud scores zero without a foul; a foul scores zero and is recorded against the session.",
+      "description": "Gate result. A dud scores zero without a foul; a foul scores zero and is recorded against the session. Most gates are Stage 0, before any model call; the register fouls only a reader of the scene can call (overt_rudeness, anachronism) arrive with the Stage 3 verdict and are promoted to the same result at composition.",
       "required": ["outcome"],
       "additionalProperties": false,
       "properties": {
@@ -238,6 +238,7 @@
           "no_aim",
           "too_short",
           "judge_unavailable",
+          "judge_foul",
           "shot_clock_expired",
           "whiff"
         ]

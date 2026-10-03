@@ -96,6 +96,12 @@ class FlytingRunState:
     best_volley_score: int = 0
     sudden_death: bool = False
     theme_uses: Dict[str, int] = field(default_factory=dict)
+    # The opponent's own theme counter, kept separate from the player's. Theme
+    # decay must read the wells its own speaker has returned to: one shared
+    # counter made the player's repeats decay the opponent's topicality and vice
+    # versa, and in a bout that asymmetry feeds straight into
+    # k * (S_player - S_npc) / 100.
+    npc_theme_uses: Dict[str, int] = field(default_factory=dict)
     recent_devices: List[List[str]] = field(default_factory=list)
     discovered_traits: List[str] = field(default_factory=list)
     foul_counts: Dict[str, int] = field(default_factory=dict)
@@ -122,6 +128,7 @@ class FlytingRunState:
             "best_volley_score": self.best_volley_score,
             "sudden_death": self.sudden_death,
             "theme_uses": dict(self.theme_uses),
+            "npc_theme_uses": dict(self.npc_theme_uses),
             "recent_devices": [list(d) for d in self.recent_devices],
             "discovered_traits": list(self.discovered_traits),
             "foul_counts": dict(self.foul_counts),
@@ -159,6 +166,9 @@ class FlytingRunState:
             best_volley_score=int(raw.get("best_volley_score", 0)),
             sudden_death=bool(raw.get("sudden_death", False)),
             theme_uses={str(k): int(v) for k, v in (raw.get("theme_uses") or {}).items()},
+            npc_theme_uses={
+                str(k): int(v) for k, v in (raw.get("npc_theme_uses") or {}).items()
+            },
             recent_devices=[list(d) for d in (raw.get("recent_devices") or []) if isinstance(d, list)],
             discovered_traits=[str(t) for t in (raw.get("discovered_traits") or [])],
             foul_counts={str(k): int(v) for k, v in (raw.get("foul_counts") or {}).items()},
@@ -210,20 +220,20 @@ def next_heat(current: float, score: int, *, whiffed: bool) -> float:
 # ---------------------------------------------------------------------------
 
 
-def _count_primary_theme(state: FlytingRunState, score: VolleyScore) -> None:
-    """Count the volley's primary theme as one use of that well.
+def _count_primary_theme(counter: Dict[str, int], score: VolleyScore) -> None:
+    """Count the volley's primary theme as one use of that well, for its speaker.
 
     Only the primary theme counts, because that is the only theme decay reads
     (``novelty.theme_decay_factor``). A judge routinely tags three or four
     themes for one line, and counting all of them would have the third volley of
-    a run decayed for a well the player never actually returned to — the rule is
+    a run decayed for a well the speaker never actually returned to — the rule is
     meant to punish going back to the same well, not acknowledging that the well
     exists.
     """
     if score.judgment is None or not score.judgment.themes:
         return
     primary = score.judgment.themes[0]
-    state.theme_uses[primary] = state.theme_uses.get(primary, 0) + 1
+    counter[primary] = counter.get(primary, 0) + 1
 
 
 def record_player_volley(state: FlytingRunState, score: VolleyScore) -> None:
@@ -253,7 +263,7 @@ def record_player_volley(state: FlytingRunState, score: VolleyScore) -> None:
         state.heat = next_heat(state.heat, score.score, whiffed=whiffed)
 
     if score.judgment is not None:
-        _count_primary_theme(state, score)
+        _count_primary_theme(state.theme_uses, score)
         state.recent_devices.append(list(score.judgment.devices))
         del state.recent_devices[:-6]
         for hook in score.judgment.hooks:
@@ -271,9 +281,15 @@ def record_npc_volley(state: FlytingRunState, score: VolleyScore) -> None:
     happened to reach for first has not returned to anything. Counting them also
     made the debrief's redundancy report disagree with the decay the engine
     applied, because the report is computed from the player's own volley log.
+
+    They count toward ``npc_theme_uses`` instead, so the opponent is held to the
+    same variety rule by its own record. Scoring the opponent against the
+    *player's* counter would decay its topicality for wells it never returned to,
+    and in a bout that discount lands directly on momentum.
     """
     state.npc_volleys += 1
     state.npc_total += score.score
+    _count_primary_theme(state.npc_theme_uses, score)
 
 
 # ---------------------------------------------------------------------------

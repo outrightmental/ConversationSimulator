@@ -19,6 +19,13 @@ soft cap the run-on decay applies *and* the topicality bonus stops accruing
 plagiarized zinger is capped before bonuses, so a borrowed line plus a riposte
 is still a borrowed line.
 
+A foul is also resolved here, not only in Stage 0: the register fouls only a
+reader of the scene can raise — overt rudeness in a ballroom, an anachronism
+where the scenario forbids one — arrive with the judge's verdict. They are
+promoted to a ``GateResult`` and zero the volley exactly as a Stage 0 foul
+does, so the dimensions a drifting judge reported alongside a foul it raised
+itself can never pay out.
+
 Every number that went into the score is kept on the result, because the
 scorecard showing its own arithmetic is what makes this a practice tool rather
 than a slot machine.
@@ -32,7 +39,11 @@ from convsim_prompt import JUDGE_DIMENSIONS, JudgeRubric, VolleyJudgment
 
 from convsim_core.flyting.config import band_for_score
 from convsim_core.flyting.craft import CraftMetrics
-from convsim_core.flyting.gates import GateResult
+from convsim_core.flyting.gates import (
+    ALWAYS_HONORED_JUDGE_FOULS,
+    GateResult,
+    judge_foul_result,
+)
 from convsim_core.flyting.novelty import FreshnessResult
 from convsim_core.flyting.volley import NormalizedVolley
 
@@ -230,6 +241,8 @@ def compose_volley_score(
     momentum: Optional[int] = None,
     audience_reaction: Optional[str] = None,
     extra_flags: Sequence[str] = (),
+    honored_judge_fouls: Sequence[str] = ALWAYS_HONORED_JUDGE_FOULS,
+    prior_below_the_belt: int = 0,
 ) -> VolleyScore:
     """Compose one volley's final score from the four stages' outputs."""
     # Flags come from three places: the volley's own bounds (too_short, run_on),
@@ -239,6 +252,21 @@ def compose_volley_score(
         flags.append("judge_unavailable")
     if not craft.second_person and not gate.scores_zero and "no_aim" not in flags:
         flags.append("no_aim")
+
+    # A foul the judge raised is a verdict, not a scoring opinion: the dimensions
+    # it also reported are beside the point. Promote it to a gate result so the
+    # volley is zeroed, the foul is recorded, the heat resets, and the player
+    # sees a foul tag — the same treatment a Stage 0 foul gets. Only the fouls
+    # this scenario asked for count; see gates.judge_foul_result.
+    if not gate.scores_zero and judgment is not None and judgment.fouls:
+        judged_gate = judge_foul_result(
+            judgment.fouls,
+            honored=honored_judge_fouls,
+            prior_below_the_belt=prior_below_the_belt,
+        )
+        if judged_gate is not None:
+            gate = judged_gate
+            flags.extend(f for f in judged_gate.flags if f not in flags)
 
     # A gate that fired scores zero: no quality, no topicality, no bonuses.
     if gate.scores_zero:

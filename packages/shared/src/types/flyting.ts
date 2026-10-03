@@ -32,6 +32,7 @@ export type VolleyFlag =
   | 'no_aim'
   | 'too_short'
   | 'judge_unavailable'
+  | 'judge_foul'
   | 'shot_clock_expired'
   | 'whiff';
 

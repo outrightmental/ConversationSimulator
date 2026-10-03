@@ -43,6 +43,7 @@ export const FLAG_LABELS: Record<VolleyFlag, string> = {
   no_aim: 'Not aimed at the target — no second person anywhere',
   too_short: 'Under three words',
   judge_unavailable: 'Scored from mechanics only — the judge did not answer',
+  judge_foul: 'The umpire called a foul on the register, not on the words',
   shot_clock_expired: 'Shot clock expired',
   whiff: 'Whiff',
 }
@@ -65,6 +66,19 @@ export const GATE_REASON_LABELS: Record<string, string> = {
   shot_clock_expired: 'The shot clock ran out.',
 }
 
+/**
+ * The register fouls the umpire calls rather than a pattern. These arrive as
+ * `judge:<foul>`, because the engine resolves them from the judge's verdict
+ * rather than from Stage 0, and the player needs to be told what the line broke
+ * — not that a model disliked it.
+ */
+export const JUDGE_FOUL_REASON_LABELS: Record<string, string> = {
+  below_the_belt: 'That was an attack on who someone is, not on what they do.',
+  out_of_fiction: 'That was aimed past the character at the machine.',
+  overt_rudeness: 'The sting was there; the courtesy it had to arrive in was not.',
+  anachronism: 'That diction belongs to another century.',
+}
+
 export function gateReasonLabel(reason: string): string {
   const known = GATE_REASON_LABELS[reason]
   if (known) return known
@@ -79,6 +93,12 @@ export function gateReasonLabel(reason: string): string {
   }
   if (head === 'plagiarized') {
     return 'That line is famous enough that the room has already heard it.'
+  }
+  if (head === 'judge') {
+    return (
+      JUDGE_FOUL_REASON_LABELS[detail] ??
+      'The umpire called that one outside the rules of this contest.'
+    )
   }
   return reason.replace(/[_:]/g, ' ')
 }

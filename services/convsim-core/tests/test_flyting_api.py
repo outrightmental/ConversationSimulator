@@ -34,6 +34,10 @@ SECOND_VOLLEY = (
     "You preach temperance at chapel on Tuesday and draw the rent of a gin "
     "palace on Thursday."
 )
+CIVIL_VOLLEY = (
+    "How brave of you to wear that shade again, my dear; one does admire a "
+    "woman who refuses to be told twice."
+)
 
 
 @pytest.fixture(scope="module")
@@ -75,6 +79,26 @@ def client(tmp_path, monkeypatch, official_packs_dir):
     with TestClient(app) as c:
         yield c
     clear_scenario_cache()
+
+
+@pytest.fixture()
+def judge_raises(monkeypatch):
+    """Make the fake runtime's umpire return a verdict that raises a foul.
+
+    The fake judge ships a clean mid-range verdict, which is what every other
+    test wants. The register fouls are the ones no deterministic pattern can
+    call, so the only way to exercise them end to end is to have the judge
+    actually raise one.
+    """
+    from convsim_core.runtime import fake
+
+    def _raise(*fouls: str, **dimensions: int) -> None:
+        verdict = dict(fake._FLYTING_JUDGE_RESPONSE)
+        verdict.update(dimensions)
+        verdict["fouls"] = list(fouls)
+        monkeypatch.setattr(fake, "_FLYTING_JUDGE_RESPONSE", verdict)
+
+    return _raise
 
 
 def start_run(client, scenario_id=SCENARIO, **overrides):
@@ -371,6 +395,67 @@ class TestSubmittingVolleys:
 
         rewrite = volley(client, session_id, GOOD_VOLLEY)["player_volley"]
         assert rewrite["freshness"]["nearest_source"] != "session"
+
+    def test_a_register_foul_the_judge_raised_costs_the_volley(
+        self, client, judge_raises
+    ):
+        """Veiled Civility's premise: the sting must arrive wrapped in a compliment.
+
+        The foul is one only a reader of the scene can call, so it arrives with
+        the Stage 3 verdict rather than from a Stage 0 pattern — and the judge
+        reports its dimensions alongside it. The whole scenario rests on the
+        engine acting on the foul rather than the numbers.
+        """
+        judge_raises("overt_rudeness", sting=9, wit=9, craft=9, fidelity=9)
+        session_id = start_run(client, scenario_id="veiled_civility")
+        body = volley(client, session_id, CIVIL_VOLLEY)
+
+        card = body["player_volley"]
+        assert card["score"] == 0
+        assert card["band"] == "dud"
+        assert card["gate"]["outcome"] == "foul"
+        assert card["gate"]["foul"] == "overt_rudeness"
+        assert card["composition"]["bonuses"] == []
+        assert "judge_foul" in card["flags"]
+        # A fouled volley draws no cheer, resets the heat, and costs a whiff.
+        assert card["audience_reaction"] is None
+        assert body["run"]["heat"] == 1.0
+        assert body["run"]["whiffs"] == 1
+        assert body["run"]["foul_counts"]["overt_rudeness"] == 1
+
+        export = client.get(f"/api/sessions/{session_id}/export").json()
+        fouls = [e for e in export["events"] if e["event_type"] == "flyting_foul"]
+        assert fouls and fouls[-1]["payload"]["foul"] == "overt_rudeness"
+
+    def test_a_foul_the_scenario_never_asked_for_does_not_void_the_volley(
+        self, client, judge_raises
+    ):
+        """Whitechapel's register penalises rudeness rather than fouling it.
+
+        ``overt_rudeness_is_foul`` is false there, so the judge was told overt
+        rudeness costs fidelity points. Acting on the foul anyway would void
+        volleys in every scenario whose author chose a penalty.
+        """
+        judge_raises("overt_rudeness", sting=8, wit=8, craft=8, fidelity=8)
+        session_id = start_run(client)
+        card = volley(client, session_id, GOOD_VOLLEY)["player_volley"]
+        assert card["score"] > 0
+        assert card["gate"]["foul"] is None
+        # Still visible on the stored verdict, as a note rather than a penalty.
+        assert "overt_rudeness" in card["judge"]["fouls"]
+
+    def test_a_second_below_the_belt_from_the_judge_ends_the_run(
+        self, client, judge_raises
+    ):
+        judge_raises("below_the_belt")
+        session_id = start_run(client)
+        first = volley(client, session_id, GOOD_VOLLEY)
+        assert first["player_volley"]["gate"]["foul"] == "below_the_belt"
+        assert first["run_outcome"] is None
+
+        second = volley(client, session_id, SECOND_VOLLEY)
+        assert second["player_volley"]["gate"]["ends_session"] is True
+        assert second["run_outcome"] == "fouled_out"
 
     def test_a_set_ends_after_ten_volleys_and_refuses_an_eleventh(self, client):
         session_id = start_run(client)
