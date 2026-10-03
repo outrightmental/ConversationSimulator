@@ -53,16 +53,20 @@ Notable review themes (summarise in bullet points — do not quote player-privat
 -
 -
 
-### GitHub Issues (label: steam)
+### GitHub Issues (label `area:steam`)
 
-| Bucket | Issues filed (72 h) | Issues filed (2 wk) | Critical open | High open |
-|--------|--------------------|--------------------|--------------|----------|
-| `platform-bug` (crash / blocker) | | | | |
-| `model-install` (model setup) | | | | |
-| `pack-bug` (pack / content) | | | | |
-| `performance` | | | | |
-| `privacy` / `safety` | | | | |
-| `creator-workbench` | | | | |
+Buckets are the Steam issue templates, not labels — the declared label set is in
+[`.github/project-structure.yml`](../.github/project-structure.yml). "P0 open"
+and "P1 open" read the board's Priority field.
+
+| Bucket | Issues filed (72 h) | Issues filed (2 wk) | P0 open | P1 open |
+|--------|--------------------|--------------------|---------|---------|
+| Platform bug (crash / blocker) | | | | |
+| Local model install failure | | | | |
+| Pack validation or content bug | | | | |
+| Performance or frame-rate | | | | |
+| Privacy or safety (`area:safety`) | | | | |
+| Creator Workbench bug | | | | |
 | Other / unclassified | | | | |
 | **Total** | | | | |
 
@@ -98,12 +102,12 @@ Notable discussion themes:
 
 ## Triage summary
 
-### Crash / blocker (platform-bug)
+### Crash / blocker (platform bugs)
 
-List every `severity:critical` or `severity:high` platform bug, its status, and
-whether a hotfix or rollback was triggered.
+List every platform bug at Priority **P0 — blocker** or **P1 — next**, its
+status, and whether a hotfix or rollback was triggered.
 
-| Issue # | Platform | Description | Severity | Status | Action taken |
+| Issue # | Platform | Description | Priority | Status | Action taken |
 |---------|----------|-------------|----------|--------|-------------|
 | | | | | | |
 

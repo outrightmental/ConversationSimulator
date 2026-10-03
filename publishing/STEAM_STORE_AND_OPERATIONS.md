@@ -239,7 +239,7 @@ During the first 72 hours after public launch, monitor the following:
 | Signal | Where to check | Escalation threshold |
 |--------|---------------|---------------------|
 | Steam review sentiment | Steamworks App Admin → Reviews | Any review mentioning unexpected network activity or privacy concern — escalate immediately |
-| GitHub Steam issue queue | GitHub → Issues, filter `label:area:steam` | Any issue at Priority **P0 — blocker** — 24-hour response SLA |
+| GitHub Steam issue queue | GitHub → Issues, filter `label:"area:steam"` | Any issue at Priority **P0 — blocker** — 24-hour response SLA |
 | Crash rate | Steamworks App Admin → Stats (if crash reporting is configured in future) | Baseline comparison against private beta |
 | Store refund rate | Steamworks App Admin → Financials | Steam standard refund policy applies (2 weeks / 2 hours) — monitor the base app and DLC refund rate and investigate any spike above baseline |
 

@@ -236,10 +236,10 @@ schedule below. All findings are logged in the [Launch log](#launch-log).
 | Signal | Where to check | Escalation threshold |
 |--------|---------------|---------------------|
 | Steam review sentiment | Steamworks App Admin → Reviews | Any review mentioning unexpected network activity, "sent my data", "privacy", "recording", or similar — **escalate to privacy fast-path owner immediately** |
-| GitHub Steam issue queue | GitHub Issues, filter `label:area:steam` | Any issue at Priority **P0 — blocker** — 24-hour response SLA; privacy fast-path if content matches the privacy keywords |
+| GitHub Steam issue queue | GitHub Issues, filter `label:"area:steam"` | Any issue at Priority **P0 — blocker** — 24-hour response SLA; privacy fast-path if content matches the privacy keywords |
 | Steam discussion board | Community Hub → Discussions | Any thread with more than 5 upvotes or a privacy/data concern — respond within 4 hours |
 | Steamworks stats | App Admin → Stats | Abnormal install failure rate or any stat that implies connection errors during play |
-| Known issue reports | GitHub Issues | Compare against the [Known issues](#known-issues) table — triage as `wont-fix` / `tracked` / `escalate` accordingly |
+| Known issue reports | GitHub Issues | Compare against the [Known issues](#known-issues) table — triage as won't fix, tracked, or escalate accordingly |
 
 ### Privacy fast-path (mandatory)
 
