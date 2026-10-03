@@ -362,19 +362,8 @@
   box-shadow: 0 10px 28px -20px rgba(167, 139, 250, 0.9);
 }
 
-/* A disabled row is dimmed by colour, not by `opacity`. Opacity dims the whole
-   subtree, and that includes the "STT not loaded" note — the one thing on a
-   disabled row the player actually has to read, because it is the reason the
-   option is off. Measured against the card at `opacity: 0.55`, the note's amber
-   painted out at 3.97:1 on 10px text, under AA and under the floor docs/brand.md
-   sets for small informative text; at full strength it clears both. Dimming the
-   name and the radio instead reads the same and leaves the note alone. */
-.brief-option.is-disabled .brief-option-name {
-  color: var(--cs-text-muted);
-}
-
-.brief-option.is-disabled input {
-  opacity: 0.5;
+.brief-option.is-disabled {
+  opacity: 0.55;
 }
 
 .brief-option:focus-within {
