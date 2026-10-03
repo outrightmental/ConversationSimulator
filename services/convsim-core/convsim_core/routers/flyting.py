@@ -49,6 +49,7 @@ from convsim_core.flyting.session import (
     ENDLESS_MAX_WHIFFS,
     FlytingRunState,
     RunOutcome,
+    resolve_batting_practice,
     summarize_run,
 )
 from convsim_core.flyting.volley import MAX_VOLLEY_CHARS, VolleyInputError
@@ -91,6 +92,19 @@ class VolleySubmitRequest(BaseModel):
         if len(value.strip()) > MAX_VOLLEY_CHARS:
             raise ValueError(f"A volley cannot exceed {MAX_VOLLEY_CHARS} characters")
         return value
+
+
+class RunEndRequest(BaseModel):
+    """The closing clock reading from whoever owned the run's clock.
+
+    Optional, because ending a run is also how a reopened debrief re-reads one,
+    and a debrief opened a week later has no clock to report. It matters for the
+    timed drill: that drill finishes when ninety seconds pass, which only the
+    client watching the clock can observe, so without this the drill would be
+    recorded as a retirement.
+    """
+
+    elapsed_total_s: Optional[float] = Field(default=None, ge=0)
 
 
 class PreviewRequest(BaseModel):
@@ -502,7 +516,9 @@ async def submit_volley(
 
 
 @router.post("/sessions/{session_id}/end", response_model=RunSummaryResponse)
-async def end_run(session_id: str, request: Request) -> RunSummaryResponse:
+async def end_run(
+    session_id: str, request: Request, body: Optional[RunEndRequest] = None
+) -> RunSummaryResponse:
     """Finish a run and return its debrief, recording the score on the board."""
     _require_full_app(request)
     row = _session_or_404(request, session_id)
@@ -510,6 +526,17 @@ async def end_run(session_id: str, request: Request) -> RunSummaryResponse:
     scenario = resolve_flyting_scenario(row["scenario_id"], conn)
 
     state = FlytingRunState.from_dict(_run_state_of(row))
+    if body is not None and body.elapsed_total_s is not None:
+        # Monotonic: the clock only ever advances, so a stale or missing reading
+        # cannot shorten a run that already recorded a longer one.
+        state.elapsed_s = max(state.elapsed_s, body.elapsed_total_s)
+    if not state.is_over:
+        # A drill the format itself finished is not a retirement. The volley
+        # route resolves the set and endless drills, because those end on a
+        # volley; the timed drill ends when ninety seconds pass with nobody
+        # typing, which only the clock-watching client sees — so resolve the
+        # format here before falling back to RETIRED.
+        resolve_batting_practice(state)
     if not state.is_over:
         state.outcome = RunOutcome.RETIRED.value
 

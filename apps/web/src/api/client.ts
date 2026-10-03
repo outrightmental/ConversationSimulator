@@ -735,9 +735,18 @@ export const api = {
         },
       )
     },
-    endRun(sessionId: string): Promise<ApiResult<FlytingRunSummaryResponse>> {
+    /** Finish a run and read its debrief. Idempotent, so reopening a debrief
+     *  re-reads rather than re-records. `elapsedTotalS` is the run clock the
+     *  caller was watching: the timed drill finishes when ninety seconds pass
+     *  with nobody typing, and only the client sees that happen. Omit it when
+     *  there is no clock to report — a debrief opened a week later. */
+    endRun(
+      sessionId: string,
+      elapsedTotalS?: number,
+    ): Promise<ApiResult<FlytingRunSummaryResponse>> {
       return post<FlytingRunSummaryResponse>(
         `/flyting/sessions/${encodeURIComponent(sessionId)}/end`,
+        elapsedTotalS != null ? { elapsed_total_s: elapsedTotalS } : undefined,
       )
     },
     /** Score a draft volley with no run attached — the Workbench test box. */

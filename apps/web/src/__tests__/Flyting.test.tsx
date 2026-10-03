@@ -333,6 +333,26 @@ describe('Flyting play screen', () => {
     expect(screen.getByTestId('volley-hooks')).toHaveTextContent('polish your virtue')
   })
 
+  it('does not resubmit on a loop when the clock expires and the volley is refused', async () => {
+    // A refused volley deliberately leaves the shot clock expired, so the
+    // auto-submit has to be armed once per prompt window. Without the latch
+    // it fires again on the very next render and keeps firing: a retry loop
+    // against the same rejection. `shot_clock_s: 0` expires on the first tick.
+    mockApi.flyting.getRun.mockResolvedValue({
+      ok: true,
+      data: { ...RUN_DETAIL, run: { ...RUN_DETAIL.run, shot_clock_s: 0 }, volleys: [] },
+    })
+    mockApi.flyting.submitVolley.mockResolvedValue({
+      ok: false,
+      error: { kind: 'http-error', message: 'This run already ended.', status: 409 },
+    })
+    renderPlay()
+    await waitFor(() => expect(mockApi.flyting.submitVolley).toHaveBeenCalledTimes(1))
+    // Several clock ticks (200ms each) pass with the clock still at zero.
+    await new Promise((resolve) => setTimeout(resolve, 700))
+    expect(mockApi.flyting.submitVolley).toHaveBeenCalledTimes(1)
+  })
+
   it('retiring ends the run and goes to the debrief', async () => {
     renderPlay()
     await waitFor(() => screen.getByText('Retire'))
@@ -340,7 +360,9 @@ describe('Flyting play screen', () => {
     await waitFor(() => {
       expect(screen.getByTestId('location')).toHaveTextContent(`/flyting/debrief/${SESSION_ID}`)
     })
-    expect(mockApi.flyting.endRun).toHaveBeenCalledWith(SESSION_ID)
+    // The closing clock reading rides along: a timed drill finishes when its
+    // ninety seconds pass, and this screen is the only thing that saw them.
+    expect(mockApi.flyting.endRun).toHaveBeenCalledWith(SESSION_ID, expect.any(Number))
   })
 })
 

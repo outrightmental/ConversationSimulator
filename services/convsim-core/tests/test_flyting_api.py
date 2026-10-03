@@ -409,6 +409,43 @@ class TestEndingARun:
         assert summary["outcome"] == "retired"
         assert len(body["volleys"]) >= 2
 
+    def test_a_timed_drill_whose_clock_ran_out_is_not_a_retirement(self, client):
+        """The timed drill ends on its own clock, which only the client watches.
+
+        The set and endless drills end on a volley, so the volley route resolves
+        them. Ninety seconds passing with nobody typing produces no volley at
+        all, so without the closing clock reading a drill played to the whistle
+        would be recorded — and headlined on the debrief — as "Retired".
+        """
+        session_id = start_run(client, batting_format="timed_90")
+        volley(client, session_id, GOOD_VOLLEY, elapsed_total_s=40.0)
+        end = client.post(
+            f"/api/flyting/sessions/{session_id}/end",
+            json={"elapsed_total_s": 90.5},
+        )
+        assert end.status_code == 200, end.text
+        assert end.json()["summary"]["outcome"] == "time_up"
+
+    def test_a_timed_drill_abandoned_early_is_still_a_retirement(self, client):
+        session_id = start_run(client, batting_format="timed_90")
+        volley(client, session_id, GOOD_VOLLEY, elapsed_total_s=12.0)
+        end = client.post(
+            f"/api/flyting/sessions/{session_id}/end",
+            json={"elapsed_total_s": 31.0},
+        )
+        assert end.json()["summary"]["outcome"] == "retired"
+
+    def test_a_reopened_debrief_reports_no_clock_and_keeps_the_outcome(self, client):
+        """A debrief opened later has no clock, and must not rewrite the outcome."""
+        session_id = start_run(client, batting_format="timed_90")
+        volley(client, session_id, GOOD_VOLLEY, elapsed_total_s=40.0)
+        client.post(
+            f"/api/flyting/sessions/{session_id}/end",
+            json={"elapsed_total_s": 91.0},
+        )
+        reopened = client.post(f"/api/flyting/sessions/{session_id}/end").json()
+        assert reopened["summary"]["outcome"] == "time_up"
+
     def test_the_run_is_recorded_on_the_local_board(self, client):
         session_id = start_run(client)
         volley(client, session_id, GOOD_VOLLEY)

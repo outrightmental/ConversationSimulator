@@ -84,6 +84,11 @@ export default function Flyting() {
   const promptedAt = useRef<number>(Date.now())
   const startedAt = useRef<number>(Date.now())
   const [clockLeft, setClockLeft] = useState<number | null>(null)
+  // Which prompt window the shot clock has already auto-submitted for. A
+  // refused volley deliberately leaves the clock expired, so without this latch
+  // the auto-submit below would fire again on the very next render — a retry
+  // loop against the same rejection, not a shot clock.
+  const autoSubmittedFor = useRef<number>(0)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
   const shotClockS = run?.shot_clock_s ?? 20
@@ -208,8 +213,12 @@ export default function Flyting() {
   // The shot clock expiring is itself a submission: in Endless it is a whiff,
   // and the engine is the thing that decides that. Submitting the box as it
   // stands (even empty, which scores as a dud) keeps the rule in one place.
+  // Once per prompt window only — `promptedAt` is what re-arms it, and it moves
+  // only when a volley actually scored.
   useEffect(() => {
     if (phase !== 'ready' || clockLeft == null || clockLeft > 0) return
+    if (autoSubmittedFor.current === promptedAt.current) return
+    autoSubmittedFor.current = promptedAt.current
     void submit(text.trim() || '…')
   }, [clockLeft, phase, submit, text])
 
@@ -222,7 +231,10 @@ export default function Flyting() {
   async function handleEnd() {
     if (!sessionId || ending) return
     setEnding(true)
-    const r = await api.flyting.endRun(sessionId)
+    // The run clock goes up with the request: a timed drill finishes when its
+    // ninety seconds pass with nobody typing, and this screen is the only thing
+    // that watched them pass.
+    const r = await api.flyting.endRun(sessionId, (Date.now() - startedAt.current) / 1000)
     if (!r.ok) {
       setVolleyError(r.error)
       setEnding(false)
