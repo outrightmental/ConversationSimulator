@@ -70,7 +70,11 @@ Check again it asks for may well find the server up.
 
 `ffmpeg` is its own row for the same reason, with the same caveat on Windows:
 `winget` writes the install folder into the user `PATH`, which the already
-running service never re-reads, so that row asks for a restart too.
+running service never re-reads, so that row asks for a restart too. The Linux
+command is `sudo apt install ffmpeg`, which is Debian's and Ubuntu's and nobody
+else's, so a note under it names `dnf` and `pacman` — the Steam Deck runs
+Arch-based SteamOS, and a command that answers "command not found" there is the
+same dead end as a winget package that does not exist.
 
 That row is not a nice-to-have. `whisper-cli` decodes its input with miniaudio
 (WAV, FLAC, MP3, Ogg Vorbis) and reaches for `ffmpeg` only when it was compiled
