@@ -125,7 +125,7 @@ python3 publishing/assets/source/gen_icons.py --edition base --out /tmp/base
 | Output | Path | Used by |
 |--------|------|---------|
 | Client icon | `publishing/assets/icons/demo_client_icon.ico` | Steamworks → Store Presence → Graphical Assets → Client Icon, on the demo app (5343430) |
-| Vector render | `publishing/assets/icons/demo_icon.svg` | Reading the mark and re-rendering it at other sizes. Generated output, rewritten on every run: change `gen_icons.py`, not this file |
+| Vector render | `publishing/assets/icons/demo_icon.svg` | Reading the mark and re-rendering it **at 128 px and up** — it is the ribboned drawing, so a smaller render from it would carry the three-pixel lettering the brief above rules out; for anything smaller, re-run the script. Generated output, rewritten on every run: change `gen_icons.py`, not this file |
 | Bundle icon set | `apps/desktop/src-tauri/icons-demo/` | `bundle.icon` in `tauri.demo.conf.json` |
 
 The client icon is written as a single uncompressed 32-bit DIB frame rather

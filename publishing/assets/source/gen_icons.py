@@ -527,8 +527,12 @@ def build(edition: str, bundle_dir: Path, steam_dir: Path) -> list[Path]:
 
     # The large-frame artwork as vector, next to the client icon: for reading
     # the mark and re-rendering it at sizes this script does not emit.  It is
-    # generated output, overwritten on every run — the mark's source of truth
-    # is the geometry above, so edits belong there and not in the .svg.
+    # the >= RIBBON_MIN_PX drawing — the demo render always carries the ribbon,
+    # so re-render from here only at 128 px and up; below that the word is the
+    # mush RIBBON_MIN_PX exists to avoid, and the frame to use is the one
+    # render_png emits (or icon_svg(edition, ribbon=False)).  It is generated
+    # output, overwritten on every run — the mark's source of truth is the
+    # geometry above, so edits belong there and not in the .svg.
     svg = steam_dir / f"{edition}_icon.svg"
     svg.write_text(icon_svg(edition, ribbon=edition == "demo"))
     written.append(svg)
