@@ -179,7 +179,14 @@ FLYTING_JUDGE_OUTPUT_SCHEMA: Dict[str, Any] = {
             "description": "True only when the volley turns the opponent's own last line back on them.",
             "properties": {
                 "is_riposte": {"type": "boolean"},
-                "evidence": {"type": ["string", "null"]},
+                "evidence": {
+                    "type": ["string", "null"],
+                    "description": (
+                        "The words of THIS volley that do the turning back, quoted "
+                        "verbatim — not the opponent's line. Verified against the "
+                        "volley; an unverifiable claim is discarded."
+                    ),
+                },
             },
         },
         "callback": {
@@ -188,7 +195,14 @@ FLYTING_JUDGE_OUTPUT_SCHEMA: Dict[str, Any] = {
             "description": "True only when the volley refers back to an earlier exchange in this session.",
             "properties": {
                 "is_callback": {"type": "boolean"},
-                "evidence": {"type": ["string", "null"]},
+                "evidence": {
+                    "type": ["string", "null"],
+                    "description": (
+                        "The words of THIS volley that do the referring back, quoted "
+                        "verbatim — not the earlier exchange. Verified against the "
+                        "volley; an unverifiable claim is discarded."
+                    ),
+                },
             },
         },
         "fouls": {
@@ -528,6 +542,10 @@ _JUDGE_RULES = (
     "Invented or paraphrased evidence is discarded by the engine, so it earns the player nothing and costs you credibility.",
     "Quote only the words that do the exploiting, not the whole volley, and quote different words for each hook. "
     "Two traits claimed on the same span are one hook: the engine keeps the first and discards the rest.",
+    "The same rule governs riposte and callback evidence: quote the words of THIS volley that do the turning back "
+    "or the referring back — never the opponent's line, and never the earlier exchange, however much the claim is "
+    "about them. The engine verifies every evidence quotation against the volley in front of you and silently "
+    "discards a claim it cannot find there, so a riposte evidenced by somebody else's words earns the player nothing.",
     "Respond with a single valid JSON object matching the output schema. No markdown fences, no commentary outside the JSON.",
 )
 
@@ -629,14 +647,23 @@ def _build_session_context_layer(data: VolleyJudgeInput) -> str:
             "hooks array."
         )
     if data.opponent_last_line:
+        # The provenance reminder is not decoration. This line names the text a
+        # riposte has to answer, which is exactly the text a model reaches for
+        # when asked to evidence the claim — and riposte evidence is verified
+        # against the volley, so quoting here costs the player the bonus with
+        # nothing on the scorecard to say why.
         lines.append(
-            "Opponent's last line (a riposte must turn THIS back on them): "
+            "Opponent's last line (a riposte must turn THIS back on them, but quote "
+            "the volley's own words as riposte evidence, never this line): "
             f"\"{defuse_fences(data.opponent_last_line)}\""
         )
     else:
         lines.append("No opponent line precedes this volley, so is_riposte must be false.")
     if data.earlier_exchanges:
-        lines.append("Earlier in this session (a callback must refer to one of these):")
+        lines.append(
+            "Earlier in this session (a callback must refer to one of these, but quote "
+            "the volley's own words as callback evidence, never these lines):"
+        )
         for line in data.earlier_exchanges:
             lines.append(f"  - \"{defuse_fences(line)}\"")
     else:

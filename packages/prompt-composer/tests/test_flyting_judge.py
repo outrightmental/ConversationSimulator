@@ -152,6 +152,38 @@ class TestJudgePromptComposition:
         assert "Your gown is a decade old." in bundle.user_prompt
         assert "is_riposte must be false" not in bundle.user_prompt
 
+    def test_riposte_and_callback_evidence_provenance_is_stated(self):
+        """Riposte and callback evidence is verified against the volley.
+
+        The engine checks every evidence quotation against the player's own
+        words and silently discards what it cannot find, so a judge that
+        evidences a riposte with the opponent's line costs the player the bonus
+        with nothing on the scorecard to explain it. The rule has to be in the
+        prompt, and beside the two lines that most invite the mistake.
+        """
+        bundle = compose_volley_judge_prompt(
+            judge_input(
+                opponent_last_line="Your gown is a decade old.",
+                earlier_exchanges=["You arrived in a sedan chair."],
+            )
+        )
+        rules = bundle.layer_map["JUDGE_RULES"]
+        assert "riposte and callback evidence" in rules
+        assert "never the opponent's line" in rules
+
+        context = bundle.layer_map["SESSION_CONTEXT"]
+        assert "quote the volley's own words as riposte evidence" in context
+        assert "quote the volley's own words as callback evidence" in context
+
+    def test_the_output_schema_describes_what_evidence_must_quote(self):
+        """The schema is interpolated into the prompt, so its text instructs too."""
+        for claim in ("riposte", "callback"):
+            description = FLYTING_JUDGE_OUTPUT_SCHEMA["properties"][claim][
+                "properties"
+            ]["evidence"]["description"]
+            assert "THIS volley" in description
+            assert "discarded" in description
+
     def test_an_opponent_volley_is_told_it_can_claim_no_hook(self):
         """The surface belongs to the NPC, and an opponent volley aims away from it."""
         bundle = compose_volley_judge_prompt(judge_input(speaker="npc"))
