@@ -157,6 +157,71 @@ def test_whisper_commands_name_packages_that_exist():
         assert "cmake --build" in command, platform
 
 
+def test_the_windows_command_runs_in_the_shell_windows_actually_opens():
+    """``&&`` is a parse error in Windows PowerShell 5.1, the stock default shell.
+
+    PowerShell gained ``&&`` in version 7; 5.1 answers "The token '&&' is not a
+    valid statement separator in this version" and runs none of the line. A
+    command that cannot be pasted into the shell the player has open is the same
+    dead end as a package name that does not exist, so the Windows build is
+    handed over newline-separated — a statement separator both PowerShell and
+    cmd.exe accept.
+    """
+    whisper = voice_registry.get_engine("whisper-cli")
+    assert whisper is not None
+
+    windows = whisper.commands["win32"]
+    assert "&&" not in windows, windows
+    assert windows.count("\n") >= 2, "the three build steps must be separate lines"
+    # Nothing in it may depend on a shell-specific variable syntax: %VAR% is
+    # cmd.exe only and $env:VAR is PowerShell only, so neither can appear in a
+    # string handed to whichever one the player opened.
+    assert "%" not in windows, windows
+    assert "$env:" not in windows, windows
+
+    # bash has `&&` and expands `~`, so Linux keeps the fail-fast chain.
+    assert "&&" in whisper.commands["linux"]
+
+
+def test_a_source_build_lands_where_the_lookup_will_find_it():
+    """The install step must put the binary somewhere ``_find_binary`` resolves.
+
+    ``/usr/local/bin`` needs sudo and is read-only on an immutable SteamOS
+    root, and a binary left in the build tree is not installed at all.
+    ``~/.convsim/bin`` is resolved on every plan read, so it needs neither sudo
+    nor a restart and "Check again" can turn the row green.
+    """
+    whisper = voice_registry.get_engine("whisper-cli")
+    assert whisper is not None
+
+    linux = whisper.commands["linux"]
+    assert "sudo" not in linux, linux
+    assert "~/.convsim/bin" in linux, linux
+
+    from convsim_core.stt.whisper_cpp import _USER_BIN_SUBPATH
+
+    assert _USER_BIN_SUBPATH == (".convsim", "bin"), (
+        "the command copies into ~/.convsim/bin; the lookup must search there"
+    )
+
+
+def test_a_build_command_names_the_toolchain_it_needs(monkeypatch):
+    """"git: command not found" is the same dead end as a 404 package name.
+
+    Neither Linux nor Windows ships git, cmake and a C++ compiler by default,
+    and the app bundles none of them, so the note has to say so — the Docker
+    note for Kokoro exists for exactly this reason.
+    """
+    whisper = voice_registry.get_engine("whisper-cli")
+    assert whisper is not None
+
+    for platform in ("linux", "win32"):
+        note = voice_registry.engine_command_note(whisper, platform)
+        assert note is not None, platform
+        for tool in ("git", "cmake", "compiler"):
+            assert tool in note.lower(), (platform, tool)
+
+
 def test_a_source_build_produces_a_self_contained_binary():
     """A binary that needs its build tree is not installed, however much PATH says so.
 
@@ -177,20 +242,24 @@ def test_a_source_build_produces_a_self_contained_binary():
 
 
 def test_a_command_that_does_not_finish_the_job_carries_a_follow_up_note():
-    """Building from source leaves the binary where nothing on PATH will find it."""
+    """Building on Windows leaves the binary in the build tree, so the note must place it.
+
+    The route it names must be one the running service can observe. A PATH edit
+    or a new environment variable is not: both are a snapshot taken when a
+    process starts, so "Check again" could never turn green and the note would
+    have to ask for a restart. ``~/.convsim/bin`` is re-resolved on every plan
+    read, so the note names that instead and the re-check works.
+    """
     whisper = voice_registry.get_engine("whisper-cli")
     assert whisper is not None
 
     note = voice_registry.engine_command_note(whisper, "win32")
     assert note is not None
-    # The two ways out of the build tree the worker actually honours.
-    assert "PATH" in note
-    assert "CONVSIM_WHISPER_CPP_BINARY_PATH" in note
-    # Both of those are environment changes, which a running process cannot
-    # observe — so the note must ask for a restart rather than sending Windows
-    # back to a "Check again" button that could never turn green.
-    assert "restart" in note.lower(), note
-    assert "check again" not in note.lower(), note
+    # Where the build leaves it, and where to put it so the lookup finds it.
+    assert "build\\bin\\Release" in note, note
+    assert ".convsim\\bin" in note, note
+    assert "check again" in note.lower(), note
+    assert "no restart" in note.lower(), note
 
     # macOS needs none: brew puts whisper-cli on PATH itself.
     assert voice_registry.engine_command_note(whisper, "darwin") is None
@@ -223,9 +292,7 @@ def test_a_command_that_needs_a_program_this_machine_lacks_says_so(monkeypatch):
     whisper = voice_registry.get_engine("whisper-cli")
     assert whisper is not None
     monkeypatch.setattr(voice_registry.shutil, "which", lambda _name: None)
-    assert "CONVSIM_WHISPER_CPP_BINARY_PATH" in (
-        voice_registry.engine_command_note(whisper, "win32") or ""
-    )
+    assert ".convsim\\bin" in (voice_registry.engine_command_note(whisper, "win32") or "")
 
 
 def test_plan_exposes_the_follow_up_note_for_this_platform(client):
@@ -284,6 +351,79 @@ def test_install_paths_follow_the_engines(voice_paths):
     assert voice_registry.install_path(small_en) == voice_paths["stt_dir"] / "ggml-small.en.bin"
     # There is only one VAD model, so it must land on the exact configured path.
     assert voice_registry.install_path(silero) == voice_paths["vad_model"]
+
+
+def _make_executable(path: Path) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("#!/bin/sh\n")
+    path.chmod(0o755)
+    return path
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="chmod +x is a no-op on Windows")
+def test_a_bundled_whisper_binary_is_reported_as_installed(tmp_path, monkeypatch):
+    """A Steam depot ships whisper-cli in runtimes/ and never touches PATH.
+
+    The shell hands the backend CONVSIM_BUNDLED_RUNTIME_DIR instead
+    (publishing/STEAM_DEPOT_CONTENTS.md, docs/sidecar-bundling.md), which is
+    how llama-server and the Kokoro server are found. A PATH-only lookup would
+    report speech-to-text missing on the one platform that bundles it, and this
+    flow would then hand those players a from-source cmake build for a binary
+    already installed one directory away.
+    """
+    monkeypatch.delenv("CONVSIM_WHISPER_CPP_BINARY_PATH", raising=False)
+    monkeypatch.setattr(voice_registry.shutil, "which", lambda _name: None)
+    import convsim_core.stt.whisper_cpp as whisper_cpp
+
+    monkeypatch.setattr(whisper_cpp.shutil, "which", lambda _name: None)
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+
+    runtimes = tmp_path / "runtimes"
+    monkeypatch.setenv("CONVSIM_BUNDLED_RUNTIME_DIR", str(runtimes))
+    assert voice_registry.find_whisper_binary() is None
+
+    bundled = _make_executable(runtimes / "whisper-cli")
+    assert voice_registry.find_whisper_binary() == str(bundled)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="chmod +x is a no-op on Windows")
+def test_a_binary_dropped_in_the_user_bin_dir_needs_no_restart(tmp_path, monkeypatch):
+    """The destination both build commands name must be resolved per check.
+
+    The Windows note tells the player to copy whisper-cli.exe into
+    ~/.convsim/bin and press Check again; the Linux command copies it there
+    itself. Either way the lookup has to search that directory on every call,
+    or the note is asking for a button press that can never turn the row green.
+    """
+    monkeypatch.delenv("CONVSIM_WHISPER_CPP_BINARY_PATH", raising=False)
+    monkeypatch.delenv("CONVSIM_BUNDLED_RUNTIME_DIR", raising=False)
+    monkeypatch.setattr(voice_registry.shutil, "which", lambda _name: None)
+    import convsim_core.stt.whisper_cpp as whisper_cpp
+
+    monkeypatch.setattr(whisper_cpp.shutil, "which", lambda _name: None)
+    home = tmp_path / "home"
+    monkeypatch.setenv("HOME", str(home))
+
+    assert voice_registry.find_whisper_binary() is None
+    installed = _make_executable(home / ".convsim" / "bin" / "whisper-cli")
+    assert voice_registry.find_whisper_binary() == str(installed)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="chmod +x is a no-op on Windows")
+def test_an_explicit_override_still_wins_over_a_bundled_binary(tmp_path, monkeypatch):
+    """CONVSIM_WHISPER_CPP_BINARY_PATH is the escape hatch; nothing may outrank it."""
+    runtimes = tmp_path / "runtimes"
+    _make_executable(runtimes / "whisper-cli")
+    monkeypatch.setenv("CONVSIM_BUNDLED_RUNTIME_DIR", str(runtimes))
+
+    override = _make_executable(tmp_path / "elsewhere" / "whisper-cli")
+    monkeypatch.setenv("CONVSIM_WHISPER_CPP_BINARY_PATH", str(override))
+    assert voice_registry.find_whisper_binary() == str(override)
+
+    # An override pointing at nothing reports missing rather than silently
+    # falling back to the bundled copy the player chose to override.
+    monkeypatch.setenv("CONVSIM_WHISPER_CPP_BINARY_PATH", str(tmp_path / "gone"))
+    assert voice_registry.find_whisper_binary() is None
 
 
 # ── Downloader ────────────────────────────────────────────────────────────────

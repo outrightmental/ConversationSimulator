@@ -134,68 +134,102 @@ restart.
 
 | Engine | Why manual |
 |--------|-----------|
-| `whisper-cli` | whisper.cpp publishes no checksummed binary for every platform. llama.cpp's release carries a `sha256sum.txt`; whisper.cpp's does not, and shipping an unverified binary is worse than handing over the install command. |
+| `whisper-cli` | whisper.cpp publishes no checksummed binary for every platform. llama.cpp's release carries a `sha256sum.txt`; whisper.cpp's does not, and shipping an unverified binary is worse than handing over the install command. Steam depot builds do bundle it (`CONVSIM_BUNDLED_RUNTIME_DIR`), so there the row resolves with nothing to install. |
 | Kokoro TTS server | Steam depot builds bundle it (`CONVSIM_BUNDLED_RUNTIME_DIR`). Elsewhere the official container image is the shortest path — for anyone who has Docker, which the row checks for and names when it is absent. |
+
+### Where `whisper-cli` is looked for
+
+`find_whisper_binary` delegates to `convsim_core.stt.whisper_cpp._find_binary`,
+so the plan can never report an engine the worker would then fail to find. That
+lookup follows the same sidecar resolution convention as `llama-server` and
+the Kokoro server (`docs/sidecar-bundling.md`):
+
+1. `CONVSIM_WHISPER_CPP_BINARY_PATH` — explicit override. The plan is stricter
+   than the worker here: an override pointing at nothing reports *missing*
+   rather than present, so onboarding never shows a green row for a path that
+   cannot be executed.
+2. `<CONVSIM_BUNDLED_RUNTIME_DIR>/whisper-cli[.exe]` — Steam depot builds ship
+   the binary in `runtimes/` and hand the backend that variable instead of
+   editing `PATH` (`publishing/STEAM_DEPOT_CONTENTS.md`). A `PATH`-only lookup
+   reported speech-to-text missing on the one platform that bundles it, and
+   this flow would then have handed those players a from-source `cmake` build
+   for a program already installed one directory away — on an immutable SteamOS
+   root, no less.
+3. `~/.convsim/bin/whisper-cli[.exe]` — the per-user install directory, the
+   same one `llama-server` resolves from. This is the destination both build
+   commands below aim at.
+4. `PATH` — package managers and developer builds.
+
+Steps 2–4 are re-resolved on **every** plan read and every health check, so
+dropping the binary into either directory turns the row green on the next
+**Check again** with no restart. Only step 1 — a new environment variable — is
+a process-start snapshot, which is why no note asks the player to set one.
 
 Only Homebrew packages whisper.cpp. There is no winget package for it —
 winget-pkgs carries `ggml.llamacpp` and nothing else from that publisher — and
 the common apt repositories do not ship it either, so Linux and Windows get the
 upstream `cmake` build instead of a package-manager one-liner.
 
-| Platform | Command | Follow-up |
-|----------|---------|-----------|
+| Platform | Command | Note under it |
+|----------|---------|---------------|
 | macOS | `brew install whisper.cpp` | None — brew puts `whisper-cli` on `PATH`. (`whisper-cpp` is a deprecated oldname that still resolves but warns.) |
-| Linux | `git clone` + `cmake --build -DBUILD_SHARED_LIBS=OFF`, then `sudo cp build/bin/whisper-cli /usr/local/bin/` | None — the command ends by copying onto `PATH`. |
-| Windows | `git clone` + `cmake --build -DBUILD_SHARED_LIBS=OFF` | Required: the binary stays in `build\bin\Release`, and the app must be restarted. |
+| Linux | `git clone` + `cmake --build -DBUILD_SHARED_LIBS=OFF`, then `cp build/bin/whisper-cli ~/.convsim/bin/` | Toolchain: `git`, `cmake`, a C++ compiler. Then **Check again**; no restart. |
+| Windows | `git clone` + `cmake --build -DBUILD_SHARED_LIBS=OFF`, as three separate lines | Toolchain as above, plus: copy `whisper-cli.exe` out of `build\bin\Release` into `.convsim\bin`. Then **Check again**; no restart. |
 
-Both source builds pass `-DBUILD_SHARED_LIBS=OFF`, which is load-bearing
-rather than tidy. Upstream defaults it ON everywhere but MinGW, and that build
-drops `libwhisper`/`libggml` beside the executable in `build/bin` and links
-against them through a build-tree rpath. The Linux command copies *only*
-`whisper-cli` onto `PATH`, so deleting the clone — the obvious tidy-up once the
-binary is "installed" — would leave something `shutil.which` still finds and
-`whisper-cli` can no longer load. `find_whisper_binary` would report the engine
-present, the row would be green, and the failure would surface mid-conversation.
-A static link makes the one file the whole install, and lets the player delete
-the source tree. On Windows the same flag means the `.exe` keeps working if it
-is moved out of the build tree rather than left there and added to `PATH`.
+Three details in that table are load-bearing.
 
-A command that cannot finish the job carries a note, which the plan returns as
-`command_note` and the screen renders in amber under the command block. Two
-kinds share that slot, and `engine_command_note` resolves them in this order:
+**`-DBUILD_SHARED_LIBS=OFF`.** Upstream defaults it ON everywhere but MinGW,
+and that build drops `libwhisper`/`libggml` beside the executable in
+`build/bin` and links against them through a build-tree rpath. The install step
+copies *only* `whisper-cli` out of the tree, so deleting the clone — the
+obvious tidy-up once the binary is "installed" — would leave something the
+lookup still finds and `whisper-cli` can no longer load. The plan would report
+the engine present, the row would be green, and the failure would surface
+mid-conversation. A static link makes the one file the whole install, and lets
+the player delete the source tree.
 
-1. **A per-platform follow-up** (`command_notes[platform]`) the command cannot
-   perform for itself. Windows building `whisper-cli` is the only case today.
+**`~/.convsim/bin` rather than `/usr/local/bin`.** It needs no `sudo`, an
+immutable SteamOS root offers no route into `/usr/local` at all, and because it
+is step 3 of the lookup above, **Check again** works there. A `PATH` edit would
+have needed a restart instead.
+
+**Newlines instead of `&&` on Windows.** PowerShell gained `&&` in version 7;
+Windows PowerShell 5.1, the shell a stock Windows install opens, answers the
+chained line with "The token '&&' is not a valid statement separator in this
+version" and runs none of it — the same dead end as a package name that 404s.
+A newline is a statement separator in both PowerShell and `cmd.exe`, so the
+three build steps are handed over on three lines and the screen renders the
+command block `pre-wrap`. For the same reason the Windows copy step is prose in
+the note rather than a fourth line: the destination is under the user's home
+directory, which `cmd.exe` spells `%USERPROFILE%` and PowerShell spells
+`$env:USERPROFILE`, so no single command string is right in both.
+
+A command that cannot finish the job on its own carries a note, which the plan
+returns as `command_note` and the screen renders in amber under the command
+block. Two kinds share that slot, and `engine_command_note` resolves them in
+this order:
+
+1. **A per-platform caveat** (`command_notes[platform]`): a prerequisite the
+   command needs, or a step it cannot perform for itself. Both whisper.cpp
+   source builds declare one — `git`, `cmake` and a C++ compiler, none of which
+   the app bundles, plus the copy step on Windows. Saying nothing would send
+   the player to a terminal to meet `git: command not found`, which is the dead
+   end this screen exists to remove.
 2. **A missing prerequisite the command runs** (`requires_tool` +
    `requires_tool_note`), reported only when `shutil.which` cannot find it, so
    the row is silent for anyone who already has it. Kokoro's container command
    is the only case today: without Docker it answers `docker: command not
-   found`, which is the same dead end the old winget whisper.cpp command was,
-   so the note names Docker and the non-container alternative rather than
-   leaving the player to discover it in a terminal.
+   found`, so the note names Docker and the non-container alternative rather
+   than leaving the player to discover it in a terminal.
 
-No engine declares both; if one ever does, the platform follow-up wins as the
-more specific of the two.
-
-For Windows whisper.cpp specifically: the build leaves
-`whisper-cli.exe` in the build tree, so the note names the two routes the worker
-honours — put that folder on `PATH`, or set
-`CONVSIM_WHISPER_CPP_BINARY_PATH` to the `.exe`. Without it the player runs a
-command, nothing changes, and they are back at the dead end this flow exists to
-remove.
-
-Both of those routes need an app restart, and the note says so. `PATH` and the
-environment are a snapshot taken when a process starts, so **Check again** —
-which re-runs the same `shutil.which` lookup inside the already-running service
-— cannot see either change. `brew install` needs no restart because it installs
-onto a `PATH` entry the running process already has; building from source does
-not.
+No engine declares both; if one ever does, the platform caveat wins as the more
+specific of the two.
 
 Windows players who would rather not build can take `whisper-bin-x64.zip` from
 a `bNNNN` tag on the [whisper.cpp releases
-page](https://github.com/ggml-org/whisper.cpp/releases) and put `whisper-cli.exe`
-on `PATH`; those zips carry no published checksum, which is exactly why the app
-will not fetch them for you.
+page](https://github.com/ggml-org/whisper.cpp/releases) and drop
+`whisper-cli.exe` into the same `.convsim\bin` folder; those zips carry no
+published checksum, which is exactly why the app will not fetch them for you.
 
 The plan returns the command for the caller's platform (`sys.platform`,
 normalised so `linux2`-style values still resolve). Kokoro is the only

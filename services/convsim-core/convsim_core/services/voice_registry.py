@@ -86,9 +86,10 @@ class VoiceEngine:
     commands: dict[str, str]
     # True when the app can start it once the binary exists (Kokoro's server).
     startable: bool = False
-    # Per-platform step the command cannot do for itself, keyed the same way.
-    # A package manager puts the binary on PATH; building from source does not,
-    # so that platform has to be told where the binary landed.
+    # Per-platform caveat shown under the command, keyed the same way: a
+    # prerequisite the command needs, or a step it cannot do for itself. A
+    # package manager leaves nothing to do; building from source needs a
+    # toolchain first and has to be told where the binary landed afterwards.
     command_notes: dict[str, str] | None = None
     # Program the install command itself runs. When it is absent the command
     # cannot even start, so the plan says so rather than letting the player
@@ -196,42 +197,64 @@ VOICE_ENGINES: tuple[VoiceEngine, ...] = (
         # BUILD_SHARED_LIBS=OFF is load-bearing on both build platforms.
         # Upstream defaults it ON everywhere except MinGW, which puts
         # libwhisper/libggml next to the executable in build/bin and leaves the
-        # binary depending on them through a build-tree rpath. The Linux
-        # command then copies *only* whisper-cli onto PATH, so deleting the
-        # clone — the obvious tidy-up after "installing" — leaves a binary that
-        # `shutil.which` still finds and every transcription fails to load. The
-        # plan would report the engine installed and the player would discover
-        # otherwise mid-conversation, which is the dead end this flow exists to
-        # remove. A static link makes the one file the whole install.
+        # binary depending on them through a build-tree rpath. The install step
+        # then copies *only* whisper-cli out of the tree, so deleting the clone
+        # — the obvious tidy-up after "installing" — leaves a binary the lookup
+        # still finds and every transcription fails to load. The plan would
+        # report the engine installed and the player would discover otherwise
+        # mid-conversation, which is the dead end this flow exists to remove.
+        # A static link makes the one file the whole install.
+        #
+        # Both builds end up in ~/.convsim/bin, the directory `_find_binary`
+        # resolves after the bundled runtime dir. That is a deliberate choice
+        # over /usr/local/bin: it needs no sudo (and an immutable SteamOS root
+        # offers no sudo route at all), and because the lookup re-runs on every
+        # plan read, "Check again" turns the row green without a PATH edit or an
+        # app restart — which is why neither note asks for one.
+        #
+        # The Windows command is newline-separated rather than `&&`-joined:
+        # Windows PowerShell 5.1 — still the default shell on a stock Windows
+        # install — has no `&&` operator and answers the whole line with a
+        # parse error, which is the same dead end as a package name that 404s.
+        # Newlines are a statement separator in both PowerShell and cmd.exe.
         commands={
             "darwin": "brew install whisper.cpp",
             "linux": (
                 "git clone https://github.com/ggml-org/whisper.cpp && "
                 "cmake -B build -S whisper.cpp -DBUILD_SHARED_LIBS=OFF && "
                 "cmake --build build --config Release && "
-                "sudo cp build/bin/whisper-cli /usr/local/bin/"
+                "mkdir -p ~/.convsim/bin && cp build/bin/whisper-cli ~/.convsim/bin/"
             ),
+            # No copy step here, unlike Linux: the destination is under the
+            # user's home directory, and cmd.exe spells that %USERPROFILE%
+            # while PowerShell spells it $env:USERPROFILE. One command string
+            # cannot be right in both shells, so the last step is prose in the
+            # note instead of a line that silently creates a folder called
+            # "%USERPROFILE%".
             "win32": (
-                "git clone https://github.com/ggml-org/whisper.cpp && "
-                "cmake -B build -S whisper.cpp -DBUILD_SHARED_LIBS=OFF && "
+                "git clone https://github.com/ggml-org/whisper.cpp\n"
+                "cmake -B build -S whisper.cpp -DBUILD_SHARED_LIBS=OFF\n"
                 "cmake --build build --config Release"
             ),
         },
         command_notes={
-            # The Linux command ends with a copy into /usr/local/bin, so PATH is
-            # already handled there; on Windows the build leaves the binary in
-            # the build tree and there is no conventional bin dir to copy into.
-            # "Check again" is enough for brew (it installs onto a PATH entry the
-            # running process already has), but not here: PATH and environment
-            # changes are a snapshot taken when a process starts, so neither
-            # route reaches the service that is already running. Saying "press
-            # Check again" would leave Windows pressing a button that can never
-            # turn green — the dead end this flow exists to remove.
+            # Both commands build from source, so neither can start without a
+            # toolchain this app does not ship. Saying nothing would send the
+            # player to a terminal to discover "git: command not found", which
+            # is exactly what this screen exists to prevent.
+            "linux": (
+                "Building needs git, cmake and a C++ compiler (on Debian or Ubuntu: "
+                "sudo apt install git cmake build-essential). The command ends by "
+                "copying whisper-cli into ~/.convsim/bin, so press Check again when "
+                "it finishes — no restart needed."
+            ),
             "win32": (
-                "The build leaves whisper-cli.exe in build\\bin\\Release. Add that "
-                "folder to your PATH, or set CONVSIM_WHISPER_CPP_BINARY_PATH to the "
-                "full path of the .exe — then restart the app, because neither "
-                "change reaches a program that is already running."
+                "Building needs git, cmake and a C++ compiler (Visual Studio Build "
+                "Tools with the C++ workload). The build leaves whisper-cli.exe in "
+                "build\\bin\\Release — copy it into the .convsim\\bin folder inside "
+                "your user folder, creating that folder if it is not there, then "
+                "press Check again. That folder is re-checked every time, so no "
+                "restart is needed."
             ),
         },
     ),

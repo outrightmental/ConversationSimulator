@@ -80,7 +80,11 @@ download in the app follows.
 
 ### whisper.cpp — transcribes what you say
 
-The setup screen shows the command for your platform and a **Copy** button:
+Steam builds ship this one, so there is usually nothing to do: the setup screen
+finds the bundled copy and the row is already green.
+
+Everywhere else the screen shows the command for your platform and a **Copy**
+button:
 
 | Platform | Command |
 |----------|---------|
@@ -92,21 +96,29 @@ Run it in a terminal, switch back to the app, and the row turns green. If it
 does not, press **Check again**.
 
 Homebrew is the only package manager that ships whisper.cpp, so Linux and
-Windows build it. The command builds a self-contained program, so once it has
-been copied into place you can delete the cloned source folder. On Windows the
-build leaves `whisper-cli.exe` inside
-`build\bin\Release` rather than anywhere on your `PATH`, and the setup screen
-says so under the command: add that folder to your `PATH`, or set
-`CONVSIM_WHISPER_CPP_BINARY_PATH` to the full path of the `.exe`. Then **restart
-the app** — a `PATH` or environment change does not reach a program that is
-already running, so **Check again** on its own cannot see it. (After `brew
-install` it can, which is why macOS needs no restart.)
+Windows build it. Building needs `git`, `cmake` and a C++ compiler, which the
+app does not bundle — the setup screen names them under the command so the
+first thing you meet is not `git: command not found`. The build produces a
+self-contained program, so once it has been copied into place you can delete
+the cloned source folder.
+
+Both builds put the finished program in the `.convsim/bin` folder inside your
+user folder, which the app checks every time it re-reads the plan. On Linux the
+command does that copy itself; on Windows the build leaves `whisper-cli.exe` in
+`build\bin\Release` and the setup screen asks you to copy it across, because no
+single command line can name your user folder in both Command Prompt and
+PowerShell. Either way, press **Check again** when the build finishes —
+no restart needed.
+
+The Windows command arrives as three separate lines rather than one chained
+line, because Windows PowerShell 5.1 — the shell a stock Windows install opens
+— has no `&&` operator and would reject the whole thing.
 
 If you would rather not build it, the
 [whisper.cpp releases page](https://github.com/ggml-org/whisper.cpp/releases)
 has prebuilt `whisper-bin-x64.zip` archives on the `bNNNN` tags — unzip one and
-put `whisper-cli.exe` on your `PATH`. The app does not download these for you
-because they ship without a published checksum.
+drop `whisper-cli.exe` into the same `.convsim\bin` folder. The app does not
+download these for you because they ship without a published checksum.
 
 ### The Kokoro voice server — reads the NPC's replies
 

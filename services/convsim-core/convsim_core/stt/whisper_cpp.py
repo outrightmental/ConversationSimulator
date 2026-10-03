@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import shutil
+import sys
 import tempfile
 import time
 from datetime import datetime, timezone
@@ -34,6 +35,13 @@ _DEFAULT_MODEL_PATH = str(Path.home() / ".convsim" / "models" / "stt" / "ggml-ba
 # "main" is intentionally excluded: it is a common name for compiled C/Go programs
 # and would cause shutil.which to pick up an unrelated binary on developer machines.
 _DEFAULT_BINARY_NAMES = ("whisper-cli", "whisper")
+# Steam depot builds ship whisper-cli inside the bundled runtimes/ directory and
+# tell the backend where it is through this variable rather than touching PATH
+# (publishing/STEAM_DEPOT_CONTENTS.md, docs/sidecar-bundling.md).
+_BUNDLED_RUNTIME_DIR_ENV_VAR = "CONVSIM_BUNDLED_RUNTIME_DIR"
+# Per-user install directory, the same one llama-server resolves from. Resolved
+# per lookup rather than at import so a redirected HOME is honoured.
+_USER_BIN_SUBPATH = (".convsim", "bin")
 
 
 class WhisperCppConfig(BaseSettings):
@@ -55,10 +63,44 @@ class WhisperCppConfig(BaseSettings):
     timeout: float = 60.0
 
 
+def _executable(candidate: Path) -> str | None:
+    """Return *candidate* as a string when it is an executable file, else None."""
+    return str(candidate) if candidate.is_file() and os.access(candidate, os.X_OK) else None
+
+
 def _find_binary(explicit_path: str | None) -> str | None:
-    """Return the whisper-cli binary path, or None if not found."""
+    """Return the whisper-cli binary path, or None if not found.
+
+    Resolution order (first hit wins), matching the three-step sidecar
+    convention in docs/sidecar-bundling.md that llama-server and the Kokoro
+    server already follow:
+
+    1. ``CONVSIM_WHISPER_CPP_BINARY_PATH`` — explicit override.
+    2. ``<CONVSIM_BUNDLED_RUNTIME_DIR>/whisper-cli[.exe]`` — Steam depot
+       builds. The depot ships the binary and hands the backend that variable
+       instead of editing PATH, so a PATH-only lookup reports speech-to-text
+       missing on the one platform that bundles it — and the guided setup flow
+       then tells those players to build whisper.cpp from source.
+    3. ``~/.convsim/bin/whisper-cli[.exe]`` — the per-user install directory.
+       Re-resolved on every health check, so dropping the binary there takes
+       effect without a PATH edit or an app restart.
+    4. PATH lookup — package managers and developer builds.
+    """
     if explicit_path:
         return explicit_path if os.path.isfile(explicit_path) and os.access(explicit_path, os.X_OK) else None
+
+    suffix = ".exe" if sys.platform == "win32" else ""
+    search_dirs: list[Path] = []
+    bundled_dir = os.environ.get(_BUNDLED_RUNTIME_DIR_ENV_VAR)
+    if bundled_dir:
+        search_dirs.append(Path(bundled_dir))
+    search_dirs.append(Path.home().joinpath(*_USER_BIN_SUBPATH))
+    for directory in search_dirs:
+        for name in _DEFAULT_BINARY_NAMES:
+            found = _executable(directory / f"{name}{suffix}")
+            if found:
+                return found
+
     for name in _DEFAULT_BINARY_NAMES:
         found = shutil.which(name)
         if found:

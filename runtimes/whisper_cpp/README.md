@@ -63,10 +63,17 @@ All settings are read from `CONVSIM_WHISPER_CPP_*` environment variables or a `.
 
 | Variable | Default | Description |
 |---|---|---|
-| `CONVSIM_WHISPER_CPP_BINARY_PATH` | auto-detect from PATH | Explicit path to `whisper-cli` binary |
+| `CONVSIM_WHISPER_CPP_BINARY_PATH` | auto-detect (see below) | Explicit path to `whisper-cli` binary |
 | `CONVSIM_WHISPER_CPP_MODEL_PATH` | `~/.convsim/models/stt/ggml-base.en.bin` | Path to GGML model file |
 | `CONVSIM_WHISPER_CPP_N_THREADS` | (auto) | CPU threads for inference |
 | `CONVSIM_WHISPER_CPP_TIMEOUT` | `60.0` | Max seconds to wait for transcription |
+
+Without an explicit `BINARY_PATH`, `whisper-cli` is auto-detected in the same
+order the other sidecars use (`docs/sidecar-bundling.md`):
+`<CONVSIM_BUNDLED_RUNTIME_DIR>/whisper-cli[.exe]` (Steam depot builds), then
+`~/.convsim/bin/whisper-cli[.exe]`, then `PATH`. The first two are re-checked
+on every health call, so copying the binary into `~/.convsim/bin` takes effect
+without editing `PATH` or restarting the app.
 
 The STT worker is also selected via:
 
