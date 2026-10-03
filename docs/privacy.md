@@ -261,6 +261,6 @@ the `convsim.privacy.*` namespace. They are never transmitted.
 ## Questions and concerns
 
 If you have a privacy question or believe a data boundary has been violated,
-open a GitHub issue with the `privacy` label. If you believe you have found
+open a GitHub issue with the `area:safety` label. If you believe you have found
 a security vulnerability, follow the responsible disclosure process described
 in [`SECURITY.md`](../SECURITY.md).
