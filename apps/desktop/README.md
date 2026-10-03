@@ -227,9 +227,9 @@ blank until the next reply restates `visible_state`.
 
 *Known limitation of the restart path:* a crash is by definition not a
 lifespan shutdown, so the engine that died never ran `supervisor.stop_all()`
-and its own sidecars survive it — llama-server keeps port 7356, the TTS
-sidecar 7357-7358. The replacement engine starts and serves, and its
-`llama-server` autostart then fails with `Port 7356 … is already in use`
+and its own sidecars survive it — llama-server keeps port 7356, the STT
+worker 7357 and the TTS worker 7358. The replacement engine starts and serves,
+and its `llama-server` autostart then fails with `Port 7356 … is already in use`
 (`ensure_llama_sidecar_running`) — reported through `sidecar_diagnostics` in
 `/api/health` and surfaced by the UI as "another application is using the
 required port".
@@ -254,7 +254,7 @@ EOF and turns into a graceful uvicorn stop, and only kills the whole process
 group (Unix) or tree (`taskkill /T`, Windows) if the engine is still up after
 `GRACE`. The ask matters: a graceful stop is what lets uvicorn run the lifespan
 shutdown, and that shutdown is where `supervisor.stop_all()` stops the engine's
-*own* children. A bare `kill()` left llama-server and the TTS sidecar running
+*own* children. A bare `kill()` left llama-server and the voice workers running
 after the window closed, holding ports 7356-7358 and several GB of RAM. See
 [docs/sidecar-bundling.md](../../docs/sidecar-bundling.md#shutdown) for the full
 process tree and why the handle the shell holds is only the bootloader.
