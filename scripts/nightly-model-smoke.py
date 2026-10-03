@@ -723,6 +723,35 @@ def sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
+def _require_sha256_digest(expected: str) -> str:
+    """Normalise ``expected`` and reject anything that is not a SHA-256 digest.
+
+    Separate from ``verify_model_checksum`` so it can also run *before* a
+    transfer: the digest is an argument, and nothing about the 2.5 GB that
+    would be fetched can make a malformed one match.  See ``download_model``.
+    """
+    expected = expected.strip().lower()
+    if len(expected) != SHA256_HEX_CHARS or not set(expected) <= _HEX_DIGITS:
+        raise SmokeFailure(
+            FailureClass.PIPELINE,
+            f"Not a SHA-256 digest: {expected!r} ({len(expected)} characters, "
+            f"expected {SHA256_HEX_CHARS} hex). Nothing was fetched, nothing was "
+            "verified and nothing was deleted — no file's hash could match this.",
+            remedy=(
+                "The expected digest itself is malformed, so this says nothing "
+                "about the bytes on disk and the model file has been left in "
+                "place. If it came from --model-sha256 on the command line, "
+                "re-copy all 64 characters printed by "
+                "`--print-registry-model starter` (the repro block in "
+                "docs/real-model-smoke.md shows a placeholder, not a value). If "
+                "it came from the registry, repair download.sha256 in "
+                "model-registry/registry.yaml (re-pin with scripts/pin-model.py) "
+                "and validate with scripts/validate-registry.py."
+            ),
+        )
+    return expected
+
+
 def verify_model_checksum(path: Path, expected: str, *, delete_on_mismatch: bool = True) -> str:
     """Hash ``path`` and compare to ``expected``; raise on drift.
 
@@ -745,27 +774,11 @@ def verify_model_checksum(path: Path, expected: str, *, delete_on_mismatch: bool
     like drift does, which is to say it deletes the 2.5 GB file and reports
     that the pinned upstream file was replaced and must not be re-pinned
     lightly.  A malformed digest is the harness being handed an input it cannot
-    act on, which is ``pipeline``, and the file is left alone.
+    act on, which is ``pipeline``, and the file is left alone.  ``download_model``
+    applies the same guard before it fetches anything, so the verdict does not
+    cost a transfer either.
     """
-    expected = expected.strip().lower()
-    if len(expected) != SHA256_HEX_CHARS or not set(expected) <= _HEX_DIGITS:
-        raise SmokeFailure(
-            FailureClass.PIPELINE,
-            f"Not a SHA-256 digest: {expected!r} ({len(expected)} characters, "
-            f"expected {SHA256_HEX_CHARS} hex). Nothing was verified and nothing "
-            "was deleted — no file's hash could match this.",
-            remedy=(
-                "The expected digest itself is malformed, so this says nothing "
-                "about the bytes on disk and the model file has been left in "
-                "place. If it came from --model-sha256 on the command line, "
-                "re-copy all 64 characters printed by "
-                "`--print-registry-model starter` (the repro block in "
-                "docs/real-model-smoke.md shows a placeholder, not a value). If "
-                "it came from the registry, repair download.sha256 in "
-                "model-registry/registry.yaml (re-pin with scripts/pin-model.py) "
-                "and validate with scripts/validate-registry.py."
-            ),
-        )
+    expected = _require_sha256_digest(expected)
     if not path.exists():
         raise SmokeFailure(
             FailureClass.DOWNLOAD,
@@ -788,6 +801,14 @@ def verify_model_checksum(path: Path, expected: str, *, delete_on_mismatch: bool
 
 
 def download_model(url: str, sha256: str, model_id: str, models_dir: Path = MODELS_DIR) -> Path:
+    # The digest is checked for *shape* before the transfer, not after it.
+    # verify_model_checksum below rejects a malformed digest without hashing
+    # anything, but reaching it means 2.5 GB has already been fetched to be
+    # compared against a value no file could ever match — and on the realistic
+    # route here, the local repro's hand-pasted --model-sha256, the reader waits
+    # out the whole download to be told the argument was wrong. There is no
+    # verdict the bytes could have changed, so spend nothing to reach it.
+    sha256 = _require_sha256_digest(sha256)
     dest = models_dir / f"{model_id}.gguf"
     if dest.exists():
         print(f"  Model already on disk: {dest}")

@@ -179,6 +179,24 @@ class TestChecksumVerification:
             smoke.verify_model_checksum(tmp_path / "absent.gguf", "deadbeef")
         assert exc_info.value.failure_class == smoke.FailureClass.PIPELINE
 
+    def test_a_malformed_digest_is_rejected_before_anything_is_fetched(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Rejecting it only at verification time means the reader waits out a
+        # 2.5 GB download to be told the argument was wrong -- and the realistic
+        # source of a malformed digest is exactly the hand-pasted --model-sha256
+        # of the local repro, which runs --download-only. No bytes could have
+        # changed the verdict, and docs/real-model-smoke.md promises the download
+        # is not spent on one.
+        def _never(*args: object, **kwargs: object) -> None:
+            raise AssertionError("must not fetch 2.5 GB to compare it to a non-digest")
+
+        monkeypatch.setattr(smoke, "_download_with_progress", _never)
+        with pytest.raises(smoke.SmokeFailure) as exc_info:
+            smoke.download_model("https://example.invalid/m.gguf", "deadbeef", "m", tmp_path)
+        assert exc_info.value.failure_class == smoke.FailureClass.PIPELINE
+        assert not (tmp_path / "m.gguf").exists()
+
     def test_the_registry_pin_is_a_well_formed_digest(self) -> None:
         # The one digest the nightly actually runs on has to pass the guard
         # above, or the job fails before it fetches anything.
