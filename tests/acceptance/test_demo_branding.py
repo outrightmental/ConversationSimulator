@@ -26,6 +26,7 @@ the ICNS are parsed directly. Owner: platform team.
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import struct
 import zlib
@@ -38,7 +39,10 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 _SRC_TAURI = _REPO_ROOT / "apps" / "desktop" / "src-tauri"
 _BASE_CONF = _SRC_TAURI / "tauri.conf.json"
 _DEMO_CONF = _SRC_TAURI / "tauri.demo.conf.json"
-_CLIENT_ICON = _REPO_ROOT / "publishing" / "assets" / "icons" / "demo_client_icon.ico"
+_ICON_DIR = _REPO_ROOT / "publishing" / "assets" / "icons"
+_CLIENT_ICON = _ICON_DIR / "demo_client_icon.ico"
+_DEMO_SVG = _ICON_DIR / "demo_icon.svg"
+_GEN_ICONS = _REPO_ROOT / "publishing" / "assets" / "source" / "gen_icons.py"
 
 # Plate colours from publishing/assets/source/gen_icons.py.
 _BASE_PLATE = (0x14, 0x7A, 0x84)
@@ -587,3 +591,46 @@ class TestIconContainers:
         (_, _, payload), = _read_ico(_CLIENT_ICON)
         _, _, installed = _read_png(_SRC_TAURI / "icons-demo" / "32x32.png")
         assert _decode_ico_dib(payload, 32) == installed
+
+
+# ---------------------------------------------------------------------------
+# D-10e  The committed output still matches the generator
+# ---------------------------------------------------------------------------
+def _load_generator():
+    """Import ``gen_icons.py`` by path — it is a script, not a package module.
+
+    Only the geometry is touched. ``_magick()`` is looked up lazily inside the
+    render functions, so importing costs nothing and needs no ImageMagick.
+    """
+    spec = importlib.util.spec_from_file_location("convsim_gen_icons", _GEN_ICONS)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+class TestGeneratedArtworkIsCurrent:
+    """The one artefact here that is checked against its generator rather than
+    against a property of itself.
+
+    Everything above pins what the rasterised set *looks like*; none of it can
+    tell a tree where the mark was edited in ``gen_icons.py`` and the script
+    never re-run — rasterising to find out would need ImageMagick, which this
+    suite deliberately does not have. The committed ``demo_icon.svg`` is drawn
+    from the same geometry constants as the PNG, ICO and ICNS frames, and
+    unlike them it is plain text, so comparing it to ``icon_svg()`` catches a
+    half-applied regeneration for free — and keeps the vector the docs hand to
+    anyone re-rendering the mark from drifting out of hand-edits.
+    """
+
+    def test_committed_svg_is_what_the_generator_draws(self):
+        gen = _load_generator()
+        assert _DEMO_SVG.read_text() == gen.icon_svg("demo", ribbon=True), (
+            "publishing/assets/icons/demo_icon.svg is out of date — it is "
+            "generated output: re-run publishing/assets/source/gen_icons.py "
+            "(which also rewrites the bundle icon set and the client icon)"
+        )
+
+    def test_the_vector_carries_the_ribbon(self):
+        """It is billed as the >= 128 px drawing, so it must be the ribboned one."""
+        gen = _load_generator()
+        assert _DEMO_SVG.read_text() != gen.icon_svg("demo", ribbon=False)
