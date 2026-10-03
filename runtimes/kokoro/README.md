@@ -31,7 +31,7 @@ bind it to port `7358`:
 
 ```bash
 # Example: containerized Kokoro-FastAPI on the port ConversationSimulator expects
-docker run --rm -p 7358:8880 ghcr.io/remsky/kokoro-fastapi-cpu:latest
+docker run --rm -p 127.0.0.1:7358:8880 ghcr.io/remsky/kokoro-fastapi-cpu:latest
 ```
 
 The worker expects the server to answer:

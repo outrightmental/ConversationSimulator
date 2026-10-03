@@ -133,7 +133,7 @@ Everywhere else, the quickest route is the official container image, which the
 screen gives you ready to copy:
 
 ```sh
-docker run --rm -p 7358:8880 ghcr.io/remsky/kokoro-fastapi-cpu:latest
+docker run --rm -p 127.0.0.1:7358:8880 ghcr.io/remsky/kokoro-fastapi-cpu:latest
 ```
 
 That command needs [Docker](https://www.docker.com/get-started/). If you do not

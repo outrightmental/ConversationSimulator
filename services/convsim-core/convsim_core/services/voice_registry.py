@@ -284,10 +284,20 @@ VOICE_ENGINES: tuple[VoiceEngine, ...] = (
             "elsewhere the quickest route is the official container image."
         ),
         docs_url=_KOKORO_DOCS,
+        # The host side of the published port is pinned to 127.0.0.1, not left
+        # bare. A bare `-p 7358:8880` publishes on 0.0.0.0 — Docker writes the
+        # NAT rule itself, so a host firewall is not consulted — and the Kokoro server
+        # has no authentication: anyone on the same café or office network could
+        # then drive the synthesis API on the player's machine. The app rejects
+        # a wildcard bind for its own services at startup (docs/network-security.md),
+        # so the one command this screen hands out must not quietly undo that
+        # guarantee on the player's behalf. `-p 127.0.0.1:7358:8880` is accepted
+        # by Docker Engine and Docker Desktop alike, and `CONVSIM_KOKORO_BASE_URL`
+        # already points the TTS worker at 127.0.0.1.
         commands={
-            "darwin": "docker run --rm -p 7358:8880 ghcr.io/remsky/kokoro-fastapi-cpu:latest",
-            "linux": "docker run --rm -p 7358:8880 ghcr.io/remsky/kokoro-fastapi-cpu:latest",
-            "win32": "docker run --rm -p 7358:8880 ghcr.io/remsky/kokoro-fastapi-cpu:latest",
+            "darwin": "docker run --rm -p 127.0.0.1:7358:8880 ghcr.io/remsky/kokoro-fastapi-cpu:latest",
+            "linux": "docker run --rm -p 127.0.0.1:7358:8880 ghcr.io/remsky/kokoro-fastapi-cpu:latest",
+            "win32": "docker run --rm -p 127.0.0.1:7358:8880 ghcr.io/remsky/kokoro-fastapi-cpu:latest",
         },
         startable=True,
         # The container route is the shortest path only for someone who already

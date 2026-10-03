@@ -99,7 +99,7 @@ vi.mock('../api/client', () => ({
             id: 'kokoro-server', capability: 'tts', name: 'Kokoro TTS server',
             why_manual: 'The NPC voice runs in a small local server.',
             docs_url: 'https://github.com/remsky/Kokoro-FastAPI#readme',
-            command: 'docker run --rm -p 7358:8880 ghcr.io/remsky/kokoro-fastapi-cpu:latest',
+            command: 'docker run --rm -p 127.0.0.1:7358:8880 ghcr.io/remsky/kokoro-fastapi-cpu:latest',
             command_note: null,
             startable: true, installed: false, found_at: null, serving: false,
           },

@@ -241,6 +241,30 @@ def test_a_source_build_produces_a_self_contained_binary():
         assert "-DBUILD_SHARED_LIBS=OFF" in whisper.commands[platform], platform
 
 
+def test_the_kokoro_command_keeps_the_server_off_the_network():
+    """A command this screen hands out must not undo the app's local-only binding.
+
+    ``docs/network-security.md`` is explicit: every service binds to 127.0.0.1
+    so that no port is reachable from another machine, and ``convsim-core``
+    rejects a wildcard bind at startup rather than trusting the operator. The
+    Kokoro container has to honour the same rule, because ``-p 7358:8880``
+    publishes on 0.0.0.0 — and Docker installs that NAT rule itself, so a host
+    firewall never sees the traffic. The server has no authentication, so
+    anyone on the same café or office network could drive the synthesis API on
+    the player's machine. Pin the host side of every mapping to loopback.
+    """
+    for engine in voice_registry.VOICE_ENGINES:
+        for platform, command in engine.commands.items():
+            if "docker run" not in command:
+                continue
+            for flag in ("-p", "--publish"):
+                for token in re.findall(rf"(?:^|\s){re.escape(flag)}\s+(\S+)", command):
+                    assert token.startswith("127.0.0.1:"), (
+                        f"{engine.id} on {platform} publishes {token!r}, which Docker "
+                        "binds to 0.0.0.0 and exposes to the local network"
+                    )
+
+
 def test_a_command_that_does_not_finish_the_job_carries_a_follow_up_note(monkeypatch):
     """Building on Windows leaves the binary in the build tree, so the note must place it.
 
