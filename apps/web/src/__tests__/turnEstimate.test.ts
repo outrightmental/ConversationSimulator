@@ -76,7 +76,19 @@ describe('recordTurnSample', () => {
 
   it('still accumulates when the runtime has not named its model', () => {
     expect(recordTurnSample(UNKNOWN_MODEL_KEY, 7_000)).toEqual([7_000])
-    expect(readTurnSamples(UNKNOWN_MODEL_KEY)).toEqual([7_000])
+    expect(recordTurnSample(UNKNOWN_MODEL_KEY, 9_000)).toEqual([7_000, 9_000])
+    expect(readTurnSamples(UNKNOWN_MODEL_KEY)).toEqual([7_000, 9_000])
+  })
+
+  it('will not spend a named model\'s samples on a turn it cannot name', () => {
+    // /health answers after the screen mounts, so a turn can finish while the
+    // model is still unnamed. There is one bucket, so filing that turn would
+    // empty the named model's — and the estimate the player had built up over a
+    // session would read as "nothing measured yet" the moment the name arrived.
+    recordTurnSample(MODEL, 12_000)
+    recordTurnSample(MODEL, 18_000)
+    expect(recordTurnSample(UNKNOWN_MODEL_KEY, 9_000)).toEqual([])
+    expect(readTurnSamples(MODEL)).toEqual([12_000, 18_000])
   })
 })
 

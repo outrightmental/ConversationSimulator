@@ -19,7 +19,8 @@ const STORAGE_KEY = 'convsim.turnTiming'
 
 /** Identifies the samples when the runtime has not named its model (health not
  *  back yet, or a runtime that reports none). Estimates still accumulate — they
- *  are just not protected against a model swap. */
+ *  are just not protected against a model swap — but a turn filed under this key
+ *  will not displace samples that do have a model's name on them. */
 export const UNKNOWN_MODEL_KEY = 'unknown'
 
 /** Enough samples for a median that one odd turn cannot move, few enough that
@@ -90,11 +91,21 @@ export function readTurnSamples(model: string): number[] {
  *
  * Samples measured on another model are discarded rather than averaged in. A
  * duration outside the usable range is ignored, but the existing samples are
- * still returned so one odd turn never costs the player their estimate.
+ * still returned so one odd turn never costs the player their estimate — and
+ * neither does a turn that finished before the runtime named its model.
  */
 export function recordTurnSample(model: string, ms: number): number[] {
-  const existing = readTurnSamples(model)
+  const store = readStore()
+  const existing = store && store.model === model ? store.samples : []
   if (!Number.isFinite(ms) || !isUsableSample(ms)) return existing
+  // A turn finished while the model is still unnamed cannot be filed against
+  // one, and there is only the single bucket to file it in: writing it would
+  // throw away everything a named model had accumulated, and the estimate would
+  // drop back to "nothing measured yet" the moment /health answered with the
+  // real name. Losing the one sample is much the cheaper loss.
+  if (model === UNKNOWN_MODEL_KEY && store !== null && store.model !== UNKNOWN_MODEL_KEY) {
+    return existing
+  }
   const samples = [...existing, Math.round(ms)].slice(-MAX_TURN_SAMPLES)
   writeStore({ model, samples })
   return samples
