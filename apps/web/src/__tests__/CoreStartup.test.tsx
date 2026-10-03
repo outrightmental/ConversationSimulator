@@ -229,6 +229,15 @@ describe('CoreStartupGuard — engine restart under a running window', () => {
   it('does not let a stale health success overrule a reported restart', async () => {
     // The health fast-path resolves on its own schedule; a success that lands
     // after the shell reported a restart must not mount the app anyway.
+    //
+    // The stubbed body has to be a real convsim-core health response. With
+    // anything else (`{}`, say) `checkHealth` rejects it on the body test alone
+    // and never reaches the phase guard this test exists for — so the test would
+    // pass with that guard deleted, which is exactly the regression it is meant
+    // to catch. Here the body passes and only the reported phase holds the app
+    // back. It is a restarting engine on the port, which is a convsim-core: the
+    // old one draining its lifespan, or the replacement already answering while
+    // the shell is still a probe away from reporting `ready`.
     let resolveHealth: ((value: unknown) => void) | undefined
     vi.stubGlobal(
       'fetch',
@@ -254,7 +263,7 @@ describe('CoreStartupGuard — engine restart under a running window', () => {
     })
 
     await act(async () => {
-      resolveHealth?.({ ok: true, json: () => Promise.resolve({}) })
+      resolveHealth?.({ ok: true, json: () => Promise.resolve({ status: 'ok' }) })
     })
 
     expect(screen.queryByText('App content loaded')).not.toBeInTheDocument()
