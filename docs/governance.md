@@ -82,8 +82,9 @@ request offline, `audit` reports live drift, `apply` converges it. So no *commit
 quietly reintroduce an overlapping system — CI fails if the manifest, the issue forms,
 the documented tables, the new-issue links the app and the docs hand out, or the
 `label:` searches the runbooks and the reporting scripts tell a maintainer to run stop
-agreeing. Drift made straight on GitHub instead (a label
-added by hand, an issue left untriaged) is outside what CI can see and is what `audit`
+agreeing. Drift made straight on GitHub instead (a label added by hand, a Type or
+Priority set to a value the manifest never declared, an issue left untriaged) is
+outside what CI can see and is what `audit`
 is for; it needs a maintainer's `project` scope. Full tables and conventions:
 [CONTRIBUTING.md → Labels, fields, and
 milestones](../CONTRIBUTING.md#labels-fields-and-milestones).

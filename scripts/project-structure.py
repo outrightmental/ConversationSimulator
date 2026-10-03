@@ -786,8 +786,23 @@ def check_rules(
 ) -> list[str]:
     """What is still wrong once the plan has run — the part needing a human."""
     rules = manifest.get("rules") or {}
+    project = manifest.get("project") or {}
     retired = set(retired_names(manifest))
     declared = set(label_names(manifest))
+    # The field vocabularies, held to the manifest exactly the way the labels
+    # are. #491 moved the type and priority axes off labels and onto fields,
+    # which makes the fields authoritative — and an authority nothing checks
+    # drifts. `manifest_errors` already keeps the manifest honest about its own
+    # references (a retired label's `type:`, a `backfill` priority,
+    # `area_exempt_types`); this is the other half, against the live tracker.
+    # Each is skipped when the manifest declares none, because `manifest_errors`
+    # reports that as its own error rather than flagging every issue here.
+    # {field as a human says it: (key on the issue, key in the manifest)}
+    vocabularies = {
+        "Type": ("type", "issue_types"),
+        "Priority": ("priority", "priorities"),
+        "Phase": ("phase", "phases"),
+    }
     meta_label = rules.get("meta_label")
     area_exempt = set(rules.get("area_exempt_types") or [])
     # The trains open work may burn down on. Closed ones are excluded: a shipped
@@ -827,6 +842,14 @@ def check_rules(
         unknown = sorted(labels - declared - retired)
         if unknown:
             findings.append(f"{ref} carries undeclared label(s) {', '.join(unknown)}")
+        for field_name, (key, manifest_key) in vocabularies.items():
+            value, allowed = issue.get(key), project.get(manifest_key) or []
+            if value and allowed and value not in allowed:
+                findings.append(
+                    f"{ref} has {field_name} {value!r}, which the manifest does not "
+                    f"declare — declare it in project.{manifest_key} or move the issue "
+                    f"to a declared value"
+                )
         if rules.get("require_project_membership") and not issue.get("in_project"):
             findings.append(f"{ref} is not on the project board")
         is_meta = bool(meta_label) and meta_label in labels
@@ -1621,6 +1644,37 @@ def self_test() -> int:
          check_rules(manifest, [_issue(5, labels=["area:engine", "wildcat"], type="Bug",
                                        priority="P0", milestone="v1")], []),
          ["#5 carries undeclared label(s) wildcat"]),
+        # The fields are what the type and priority labels became, so the
+        # manifest has to be the complete declaration of their values too —
+        # otherwise the axis #491 moved the signal onto is the one axis nothing
+        # checks, and it grows a fifth kind of work or a renamed option in
+        # silence while every issue still reads as triaged.
+        ("an issue typed outside the declared vocabulary is reported",
+         check_rules(manifest, [_issue(5, labels=["area:engine"], type="Chore",
+                                       priority="P0", milestone="v1")], []),
+         ["#5 has Type 'Chore', which the manifest does not declare — declare it "
+          "in project.issue_types or move the issue to a declared value"]),
+        ("a priority outside the declared vocabulary is reported",
+         check_rules(manifest, [_issue(5, labels=["area:engine"], type="Bug",
+                                       priority="P9", milestone="v1")], []),
+         ["#5 has Priority 'P9', which the manifest does not declare — declare it "
+          "in project.priorities or move the issue to a declared value"]),
+        # A board option renamed by hand — an en dash for an em dash — reads as
+        # a perfectly good value until `apply` next tries to write it.
+        ("a phase outside the declared vocabulary is reported",
+         check_rules(manifest, [_issue(5, state="CLOSED", phase="99 · Never")], []),
+         ["#5 has Phase '99 · Never', which the manifest does not declare — declare "
+          "it in project.phases or move the issue to a declared value"]),
+        ("an issue with no Type is not also reported as mis-typed",
+         check_rules(manifest, [_issue(5, labels=["area:engine"], priority="P0",
+                                       milestone="v1")], []),
+         ["#5 is open with no Type"]),
+        # Else a manifest missing `issue_types` — already its own error from
+        # `manifest_errors` — would bury it under one finding per issue.
+        ("an undeclared vocabulary flags nothing here",
+         check_rules({**manifest, "project": {}, "rules": {}},
+                     [_issue(5, type="Chore", priority="P9", phase="99")], []),
+         []),
         ("an open issue with no milestone is reported",
          check_rules(manifest, [_issue(5, labels=["area:engine"], type="Bug",
                                        priority="P0")], []),

@@ -167,6 +167,10 @@ propose it in an issue first.
 | Priority | Delivery board single-select | P0 — blocker · P1 — next · P2 — later | P0 blocks the next release; P1 is next up; P2 is opportunistic |
 | Phase | Delivery board single-select | 01 · Alpha build … 07 · Future | Which era of the project shipped it? |
 
+These values are the complete set, exactly as labels are: the manifest declares them
+and `audit` reports any issue carrying one it does not. A new Type or Priority is a
+change to the manifest and to the board, not a one-off.
+
 Set Type and Priority on every open issue at triage. The factory reads Type — it
 takes Bugs first — and Phase is append-only history, not a planning field.
 
