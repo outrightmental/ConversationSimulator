@@ -177,6 +177,40 @@ def _ribbon_band(path: Path) -> tuple[int, int, int]:
     return covered, band, word
 
 
+def _ribbon_letterforms(path: Path) -> list[int]:
+    """Lettering pixel counts, one entry per letterform, reading along the band.
+
+    The ribbon runs down the lower-right diagonal, so the word is laid out
+    along ``x - y`` — bucket the band's light pixels by that and the gaps
+    ``WORD_TRACKING`` leaves between glyphs show up as empty buckets.  Summing
+    a glyph into a single bucket range rather than walking connected pixels is
+    what makes this survive a re-render: a counter (the hole in D and O) and a
+    hairline stroke the anti-aliasing happens to break in two still read as one
+    letterform, while a missing or overlapping glyph does not.
+    """
+    width, _, pixels = _read_png(path)
+    scale = width / _VIEW
+    inner, outer = _RIBBON_U_INNER * 2 ** 0.5 * scale, _RIBBON_U_OUTER * 2 ** 0.5 * scale
+    columns: dict[int, int] = {}
+    for index, (r, g, b, a) in enumerate(pixels):
+        y, x = divmod(index, width)
+        if not inner <= (x + 0.5) + (y + 0.5) <= outer or a <= 200:
+            continue
+        if _distance((r, g, b), _RIBBON_FG) <= 24:
+            columns[x - y] = columns.get(x - y, 0) + 1
+    if not columns:
+        return []
+    runs, current = [], [min(columns)]
+    for key in sorted(columns)[1:]:
+        if key == current[-1] + 1:
+            current.append(key)
+        else:
+            runs.append(current)
+            current = [key]
+    runs.append(current)
+    return [sum(columns[k] for k in run) for run in runs]
+
+
 # ---------------------------------------------------------------------------
 # Minimal ICO reader.
 # ---------------------------------------------------------------------------
@@ -421,6 +455,26 @@ class TestDemoRibbon:
             f"{name}: lettering is {word}/{covered} of the ribbon band — "
             '"DEMO" is missing, mispositioned or the wrong size'
         )
+
+    @pytest.mark.parametrize("name", ["128x128.png", "128x128@2x.png"])
+    def test_the_ribbon_carries_four_separated_letterforms(self, name):
+        """Four glyphs, not four glyphs' worth of ink.
+
+        The area check above is blind to *which* letters are there: drop the E
+        from ``_GLYPHS``' layout and the remaining three still land inside its
+        window.  Counting the gaps ``WORD_TRACKING`` leaves along the band is
+        what pins the word to "DEMO" — a dropped glyph gives three runs, and a
+        tracking or glyph-width slip that lets two letters touch gives fewer
+        than four as well.
+        """
+        runs = _ribbon_letterforms(_SRC_TAURI / "icons-demo" / name)
+        assert len(runs) == 4, (
+            f'{name}: the ribbon has {len(runs)} letterform(s), not the four of '
+            f'"DEMO" — pixel counts {runs}'
+        )
+        # D, E, M and O differ in width, but not by anything like 4x; a run
+        # that small is a fragment, not a letter.
+        assert min(runs) * 4 >= max(runs), f"{name}: lopsided letterforms {runs}"
 
     def test_base_icon_never_carries_a_ribbon(self):
         for name in ("32x32.png", "128x128.png", "128x128@2x.png"):
