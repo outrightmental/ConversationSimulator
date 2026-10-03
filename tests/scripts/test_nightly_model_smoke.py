@@ -2431,6 +2431,79 @@ class TestMainEntryPoint:
 
 
 # ---------------------------------------------------------------------------
+# Child stderr tails
+# ---------------------------------------------------------------------------
+
+
+class _LiveTail:
+    """A tail that raises when iterated, the way a deque does mid-append.
+
+    ``_dump_stderr_tails`` runs from ``run_smoke``'s except handler, before the
+    finally block stops either child, so the draining thread is still appending.
+    Iterating the live buffer therefore has to be impossible, not merely
+    unlikely -- a ``RuntimeError`` from there escapes the handler and discards
+    the classified verdict.
+    """
+
+    def __init__(self, *lines: str) -> None:
+        self._lines = list(lines)
+
+    def __iter__(self):
+        raise RuntimeError("deque mutated during iteration")
+
+    def __len__(self) -> int:
+        raise RuntimeError("deque mutated during iteration")
+
+    def snapshot(self) -> list:
+        return list(self._lines)
+
+
+class TestStderrTails:
+    """The dump must not iterate a buffer another thread is writing to."""
+
+    def test_the_dump_reads_a_snapshot_not_the_live_buffer(
+        self, capsys: pytest.CaptureFixture
+    ) -> None:
+        smoke._dump_stderr_tails((("convsim-core", _LiveTail("boom", "trace")),))
+        err = capsys.readouterr().err
+        assert "last 2 lines" in err
+        assert "boom" in err and "trace" in err
+
+    def test_an_empty_tail_prints_no_header(self, capsys: pytest.CaptureFixture) -> None:
+        smoke._dump_stderr_tails((("llama-server", smoke.StderrTail()),))
+        assert capsys.readouterr().err == ""
+
+    def test_the_tail_keeps_only_the_most_recent_lines(self) -> None:
+        tail = smoke.StderrTail(maxlen=3)
+        for i in range(10):
+            tail.append(f"line {i}")
+        assert tail.snapshot() == ["line 7", "line 8", "line 9"]
+
+    def test_a_snapshot_does_not_alias_the_buffer(self) -> None:
+        tail = smoke.StderrTail()
+        tail.append("first")
+        snapshot = tail.snapshot()
+        tail.append("second")
+        assert snapshot == ["first"]
+
+    def test_draining_a_byte_stream_decodes_and_strips(self) -> None:
+        tail = smoke.StderrTail()
+        smoke._drain(iter([b"warning: slow\n", b"\xff bad utf-8\n"]), tail)
+        assert tail.snapshot() == ["warning: slow", "� bad utf-8"]
+
+    def test_a_stream_that_breaks_mid_read_does_not_kill_the_drain_thread(self) -> None:
+        # The drain runs in a daemon thread with nothing to catch for it, and a
+        # pipe closed under it while the child is being terminated is routine.
+        def _broken():
+            yield b"last words\n"
+            raise ValueError("pipe closed")
+
+        tail = smoke.StderrTail()
+        smoke._drain(_broken(), tail)
+        assert tail.snapshot() == ["last words"]
+
+
+# ---------------------------------------------------------------------------
 # Log ordering
 # ---------------------------------------------------------------------------
 

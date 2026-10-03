@@ -1203,13 +1203,45 @@ def _write_report(report_path: Optional[Path], results: Dict[str, Any]) -> None:
 # ── Smoke run ─────────────────────────────────────────────────────────────────
 
 
-def _drain(stream: object, sink: Optional[deque] = None) -> None:
+class StderrTail:
+    """The most recent lines of a child's stderr, safe to read while it writes.
+
+    A bare ``deque`` is the obvious container and the wrong one.  The draining
+    thread keeps appending for as long as the child is alive, and the tails are
+    dumped from ``run_smoke``'s *except* handler — before the ``finally`` block
+    stops either child — so the reader and the writer genuinely overlap.
+    Iterating a deque another thread is appending to raises
+    ``RuntimeError: deque mutated during iteration``, which would escape the
+    handler and throw away the classified verdict it had just assembled: the
+    same way an already-exhausted ``Deadline.finish()`` once turned a
+    reportable timeout into a bare traceback.  And it would do it on exactly
+    the failures where the child is still talking — a timeout whose abandoned
+    generation is still running, a 5xx being logged.
+
+    So appends and reads take a lock, and readers get a snapshot rather than a
+    live view of the buffer.
+    """
+
+    def __init__(self, maxlen: int = 200) -> None:
+        self._lines: deque = deque(maxlen=maxlen)
+        self._lock = threading.Lock()
+
+    def append(self, line: str) -> None:
+        with self._lock:
+            self._lines.append(line)
+
+    def snapshot(self) -> List[str]:
+        with self._lock:
+            return list(self._lines)
+
+
+def _drain(stream: object, sink: Optional[StderrTail] = None) -> None:
     """Consume a subprocess pipe in the background to avoid a full-buffer deadlock.
 
-    When ``sink`` (a bounded deque) is given, the most recent lines are retained
-    so they can be surfaced if the smoke fails.  The child's stderr is otherwise
-    discarded, which makes a server-side 500 undiagnosable from the CI logs — the
-    client only ever sees ``HTTPError: 500`` with no server traceback.
+    When ``sink`` is given, the most recent lines are retained so they can be
+    surfaced if the smoke fails.  The child's stderr is otherwise discarded,
+    which makes a server-side 500 undiagnosable from the CI logs — the client
+    only ever sees ``HTTPError: 500`` with no server traceback.
     """
     try:
         for raw in stream:  # type: ignore[attr-defined]
@@ -1220,11 +1252,15 @@ def _drain(stream: object, sink: Optional[deque] = None) -> None:
         pass
 
 
-def _dump_stderr_tails(tails: Sequence[tuple[str, deque]]) -> None:
+def _dump_stderr_tails(tails: Sequence[tuple[str, StderrTail]]) -> None:
     for label, tail in tails:
-        if tail:
-            print(f"\n[smoke] ── {label} stderr (last {len(tail)} lines) ──", file=sys.stderr)
-            for line in tail:
+        # One snapshot, used for both the count and the lines: reading the
+        # length separately would let the header promise more lines than the
+        # dump prints while the child is still writing.
+        lines = tail.snapshot()
+        if lines:
+            print(f"\n[smoke] ── {label} stderr (last {len(lines)} lines) ──", file=sys.stderr)
+            for line in lines:
                 print(f"  {label[:4]}| {line}", file=sys.stderr)
 
 
@@ -1316,8 +1352,8 @@ def run_smoke(
     model_path = models_dir / f"{model_id}.gguf"
     llama_proc: Optional[subprocess.Popen] = None
     core_proc: Optional[subprocess.Popen] = None
-    llama_stderr_tail: deque = deque(maxlen=200)
-    core_stderr_tail: deque = deque(maxlen=200)
+    llama_stderr_tail = StderrTail()
+    core_stderr_tail = StderrTail()
 
     # convsim-core's throwaway data directory (SQLite db, WAL, logs).  Created
     # and removed by hand rather than with a `with TemporaryDirectory(...)`
