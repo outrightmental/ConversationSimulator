@@ -107,14 +107,15 @@ The distinction that matters most in practice is **2/3 vs 4 vs 5**: a download o
 checksum failure says nothing about the app, a runtime failure is a crash, and a
 pipeline failure means the model ran and produced output the product rejected.
 
-Anything the harness could not carry out — a `registry.yaml` that is malformed
-or names no usable `starter` model, a bad command line, a disk that fills up
-mid-run, a bug in the harness itself — is also reported as exit 5, with a
-message and a remedy that say so, so that **exit 1 only ever means a latency
-regression**. Nothing exits with an unclassified traceback, and nothing borrows
-a class's exit code without correcting the advice printed beneath it: a broken
-registry entry is *not* exit 2, because `download`'s remedy ends "re-run the
-job" and no re-run will repair a file in the repository.
+Anything the harness could not carry out — a `registry.yaml` that is malformed,
+names no usable `starter` model, or still carries the schema's `PENDING`
+placeholder instead of a pinned URL and checksum; a bad command line; a disk
+that fills up mid-run; a bug in the harness itself — is also reported as exit 5,
+with a message and a remedy that say so, so that **exit 1 only ever means a
+latency regression**. Nothing exits with an unclassified traceback, and nothing
+borrows a class's exit code without correcting the advice printed beneath it: a
+broken registry entry is *not* exit 2, because `download`'s remedy ends "re-run
+the job" and no re-run will repair a file in the repository.
 
 When more than one class could apply, the harness reports the strongest evidence
 rather than the symptom the client happened to see:

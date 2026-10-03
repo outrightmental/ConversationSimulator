@@ -464,6 +464,30 @@ REGISTRY_REMEDY = (
     "scripts/validate-registry.py) and merge."
 )
 
+# The placeholder the registry schema allows in `download.url` and
+# `download.sha256` for an entry that has been added but not yet pinned
+# (model-registry.schema.json documents both: "or 'PENDING' for pre-release
+# entries").  `scripts/validate-registry.py` fails on it — but only in
+# registry-nightly.yml, which does not run per-PR, so a `role: starter` entry
+# can reach main un-pinned.
+#
+# It has to be rejected here rather than passed along as a value, because both
+# fields carry it into a verdict that blames the wrong thing:
+#
+#   * sha256 "PENDING" makes the cache key `…-PENDING`, downloads 2.5 GB, and
+#     then fails `checksum` (exit 3) — whose remedy says the pinned upstream
+#     file was replaced and "do NOT relax this check" — while deleting the
+#     file it just fetched;
+#   * url "PENDING" raises out of urllib's Request constructor, which sits
+#     outside _download_with_progress's handler, so it lands in main's
+#     catch-all as "most likely a bug in the smoke harness" (exit 5).
+#
+# An un-pinned entry is neither. It is precisely the "registry does not
+# describe a usable model" case REGISTRY_REMEDY exists for, and catching it at
+# the one lookup means the `--print-registry-model` step fails first, before
+# any cache key is built or any byte is fetched.
+REGISTRY_PENDING = "PENDING"
+
 
 def resolve_registry_model(role: str, registry_path: Path = REGISTRY_PATH) -> Dict[str, Any]:
     """Return ``{id, url, sha256, size_gb}`` for the registry model with ``role``.
@@ -496,6 +520,20 @@ def resolve_registry_model(role: str, registry_path: Path = REGISTRY_PATH) -> Di
         raise SmokeFailure(
             FailureClass.PIPELINE,
             f"Registry model {model.get('id')!r} is missing download.url or download.sha256",
+            remedy=REGISTRY_REMEDY,
+        )
+    unpinned = [
+        field
+        for field, value in (("url", url), ("sha256", sha256))
+        if value == REGISTRY_PENDING
+    ]
+    if unpinned:
+        raise SmokeFailure(
+            FailureClass.PIPELINE,
+            f"Registry model {model.get('id')!r} is not pinned yet: "
+            f"{', '.join('download.' + f for f in unpinned)} "
+            f"still reads {REGISTRY_PENDING!r}. There is nothing to download or "
+            "verify against, so the smoke cannot run on this model.",
             remedy=REGISTRY_REMEDY,
         )
     return {

@@ -305,6 +305,50 @@ class TestRegistryResolution:
         assert "sha256" in str(exc_info.value)
         assert exc_info.value.failure_class == smoke.FailureClass.PIPELINE
 
+    @pytest.mark.parametrize(
+        ("url", "sha256", "expected_field"),
+        [
+            ("PENDING", "ab" * 32, "download.url"),
+            ("https://example.invalid/x.gguf", "PENDING", "download.sha256"),
+            ("PENDING", "PENDING", "download.url"),
+        ],
+    )
+    def test_an_unpinned_entry_is_a_registry_problem_not_a_download_one(
+        self, tmp_path: Path, url: str, sha256: str, expected_field: str
+    ) -> None:
+        # "PENDING" is the placeholder model-registry.schema.json allows for an
+        # entry that has been added but not pinned, and the no-PENDING check in
+        # scripts/validate-registry.py only runs in registry-nightly.yml — not
+        # per-PR — so an un-pinned `role: starter` can reach main.  Passed along
+        # as a value it produces two confidently wrong verdicts: a "PENDING"
+        # sha256 downloads 2.5 GB and then fails `checksum` with "the pinned
+        # upstream file was replaced … do NOT relax this check", and a "PENDING"
+        # url raises out of urllib's Request constructor into main's catch-all
+        # as a suspected harness bug.  It is neither: it is the registry failing
+        # to describe a usable model, which must stop the run at the lookup.
+        registry = tmp_path / "registry.yaml"
+        registry.write_text(
+            "models:\n"
+            "  - id: next-starter\n"
+            "    role: starter\n"
+            f"    download: {{url: {url!r}, sha256: {sha256!r}}}\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(smoke.SmokeFailure) as exc_info:
+            smoke.resolve_registry_model("starter", registry)
+        assert exc_info.value.failure_class == smoke.FailureClass.PIPELINE
+        assert exc_info.value.exit_code == 5
+        assert expected_field in str(exc_info.value)
+        assert "not pinned" in str(exc_info.value)
+        assert exc_info.value.remedy == smoke.REGISTRY_REMEDY
+
+    def test_the_real_starter_entry_is_pinned(self) -> None:
+        # The flip side: the guard above must not be able to red the nightly on
+        # the registry as it actually stands.
+        model = smoke.resolve_registry_model("starter")
+        assert model["url"] != smoke.REGISTRY_PENDING
+        assert model["sha256"] != smoke.REGISTRY_PENDING
+
     def test_github_output_is_appended(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         out = tmp_path / "gh-output"
         monkeypatch.setenv("GITHUB_OUTPUT", str(out))
