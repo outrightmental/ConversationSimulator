@@ -444,18 +444,30 @@ class TestSubmittingVolleys:
         # Still visible on the stored verdict, as a note rather than a penalty.
         assert "overt_rudeness" in card["judge"]["fouls"]
 
-    def test_a_second_below_the_belt_from_the_judge_ends_the_run(
+    def test_a_repeated_below_the_belt_from_the_judge_does_not_end_the_run(
         self, client, judge_raises
     ):
+        """Zeroed, recorded, whiffed — but the run goes on.
+
+        Only the deterministic slur gate can close a session. The starter
+        model calls plain abuse below_the_belt (see the Tower Guard
+        calibration suite), so two of its mislabels must not be able to end
+        somebody's drill.
+        """
         judge_raises("below_the_belt")
-        session_id = start_run(client)
+        session_id = start_run(client, batting_format="endless")
         first = volley(client, session_id, GOOD_VOLLEY)
         assert first["player_volley"]["gate"]["foul"] == "below_the_belt"
+        assert first["player_volley"]["score"] == 0
         assert first["run_outcome"] is None
 
         second = volley(client, session_id, SECOND_VOLLEY)
-        assert second["player_volley"]["gate"]["ends_session"] is True
-        assert second["run_outcome"] == "fouled_out"
+        assert second["player_volley"]["gate"]["foul"] == "below_the_belt"
+        assert second["player_volley"]["gate"]["ends_session"] is False
+        assert second["run_outcome"] is None
+        # Still a whiff each time, so Endless still runs out of patience.
+        assert second["run"]["whiffs"] == 2
+        assert second["whiffs_remaining"] == 1
 
     def test_a_set_ends_after_ten_volleys_and_refuses_an_eleventh(self, client):
         session_id = start_run(client)
