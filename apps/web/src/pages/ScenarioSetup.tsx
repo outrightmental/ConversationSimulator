@@ -334,7 +334,15 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
   // to send the field) the role brief is the only statement of intent the
   // scenario has, so it stands in for them. It is then dropped from the role
   // card below rather than printed twice.
-  const objectives = scenario.player_visible_goals ?? [];
+  //
+  // Trimmed, and blanks dropped: `goals.player_visible` is hand-written YAML and
+  // the scenario schema constrains nothing about the strings, so a stray empty
+  // entry would otherwise draw a numbered row with nothing beside the number. A
+  // list left with no goal at all then falls back to the role brief, as a
+  // scenario that declared none does.
+  const objectives = (scenario.player_visible_goals ?? [])
+    .map((goal) => goal.trim())
+    .filter((goal) => goal !== '');
   const roleBrief = scenario.player_role?.brief?.trim() ?? '';
   const objectiveStandIn = objectives.length === 0 ? roleBrief : '';
   const hasObjective = objectives.length > 0 || objectiveStandIn !== '';
@@ -419,8 +427,12 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
                   // the list is supposed to be supplying them.
                   role="list"
                 >
+                  {/* Keyed by position, not by the goal text: a pack may repeat
+                      a line, and this list re-renders on every keystroke in the
+                      form below, where duplicate keys would collide. The order
+                      is the pack's and never changes while the screen is open. */}
                   {objectives.map((goal, i) => (
-                    <li key={goal} className="brief-goal" role="listitem">
+                    <li key={i} className="brief-goal" role="listitem">
                       {/* The marker is the list's own numbering drawn in the
                           preflight voice, so it is decoration to a screen
                           reader — the <ol> already numbers the items. */}

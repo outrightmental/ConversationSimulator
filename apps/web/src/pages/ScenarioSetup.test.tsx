@@ -837,6 +837,50 @@ describe('ScenarioSetupPage', () => {
       expect(objective.compareDocumentPosition(facts) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
 
+    // `goals.player_visible` is hand-written YAML and the scenario schema
+    // constrains nothing about the strings, so a third-party pack can leave a
+    // blank entry in the list. Drawn, it would be a numbered row with nothing
+    // beside the number — in the one panel that must read cleanly.
+    it('drops blank goals a pack leaves in the list, and counts what is left', async () => {
+      mockApi.getScenario.mockResolvedValue({
+        ok: true as const,
+        data: {
+          ...mockScenario,
+          player_visible_goals: [
+            '  Get the car for under $11,000  ',
+            '   ',
+            'Include at least one free extra in the deal',
+          ],
+        },
+      });
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+
+      const objective = screen.getByTestId('brief-objective');
+      expect(within(objective).getAllByRole('listitem').map((li) => li.textContent)).toEqual([
+        '01Get the car for under $11,000',
+        '02Include at least one free extra in the deal',
+      ]);
+      expect(within(objective).getByText('2 goals')).toBeInTheDocument();
+    });
+
+    // Nothing but blanks is a scenario that states no objective, so it takes
+    // the same path as one that declares no goals at all.
+    it('falls back to the role brief when every goal is blank', async () => {
+      mockApi.getScenario.mockResolvedValue({
+        ok: true as const,
+        data: { ...mockScenario, player_visible_goals: ['', '   '] },
+      });
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+
+      const objective = screen.getByTestId('brief-objective');
+      expect(within(objective).queryAllByRole('listitem')).toHaveLength(0);
+      expect(
+        within(objective).getByText('You are interviewing for a product manager role.'),
+      ).toBeInTheDocument();
+    });
+
     it('counts a single goal in the singular', async () => {
       mockApi.getScenario.mockResolvedValue({
         ok: true as const,
