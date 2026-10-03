@@ -2,7 +2,12 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import axe from 'axe-core';
 import { ScenarioSetupPage } from './ScenarioSetup';
-import type { ScenarioInfo, HealthResponse, SessionCreateResponse } from '@convsim/shared';
+import type {
+  ScenarioInfo,
+  ScenarioDifficulty,
+  HealthResponse,
+  SessionCreateResponse,
+} from '@convsim/shared';
 import type { ApiResult } from '../api/errors';
 
 const mockScenario: ScenarioInfo = {
@@ -222,6 +227,35 @@ describe('ScenarioSetupPage', () => {
       expect(screen.getByRole('radio', { name: /warm-up/i })).toBeInTheDocument();
       expect(screen.getByRole('radio', { name: /standard/i })).toBeInTheDocument();
       expect(screen.getByRole('radio', { name: /hard/i })).toBeInTheDocument();
+    });
+
+    // A pack on the older difficulty schema names its levels easy/normal/hard
+    // and describes none of them. The row must then show the level alone — not
+    // the level key dressed up as a sentence.
+    it('says nothing rather than echoing the level when a pack describes none', async () => {
+      mockApi.getScenario.mockResolvedValue({ ok: true as const, data: {
+        ...mockScenario,
+        difficulty: {
+          default: 'normal' as ScenarioDifficulty,
+          options: {
+            easy:   {},
+            normal: {},
+            hard:   {},
+          },
+        } as ScenarioInfo['difficulty'],
+      } });
+      renderSetup();
+      await waitFor(() => screen.getByText('Behavioral Interview'));
+
+      const easy = document.querySelector('[data-level="easy"]') as HTMLElement;
+      expect(within(easy).getByRole('radio', { name: /easy/i })).toBeInTheDocument();
+      expect(easy.querySelector('.brief-option-desc')).toBeNull();
+      // The standard presets still carry their built-in wording.
+      expect(
+        (document.querySelector('[data-level="hard"]') as HTMLElement).querySelector(
+          '.brief-option-desc',
+        )?.textContent,
+      ).toMatch(/terse, reactive/i);
     });
 
     it('changes difficulty when a different option is selected', async () => {

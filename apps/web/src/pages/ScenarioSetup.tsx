@@ -79,8 +79,18 @@ const INPUT_MODE_SUMMARY: Record<InputMode, string> = {
   'hands-free':   'Hands-free',
 };
 
+/**
+ * What a level does to the character, in one sentence: the pack's own wording
+ * first, then the wording for the standard preset it is named after.
+ *
+ * A pack on the older difficulty schema names its levels `easy`/`normal`/`hard`
+ * and describes none of them, so there is nothing to say — and saying the level
+ * key back ("Easy — easy") made the loudest card below the mission read as
+ * broken. The empty string is a level with no description, and the row then
+ * renders its name alone.
+ */
 function difficultyDescription(level: ScenarioDifficulty, option: DifficultyOption | undefined): string {
-  return option?.description ?? DIFFICULTY_DESCRIPTIONS[level] ?? level;
+  return option?.description ?? DIFFICULTY_DESCRIPTIONS[level] ?? '';
 }
 
 function difficultyLabel(level: ScenarioDifficulty, option: DifficultyOption | undefined): string {
@@ -517,9 +527,11 @@ export function ScenarioSetupPage({ scenarioId, onSessionCreated, onBack, onInst
                               <span className="brief-option-badge">recommended</span>
                             )}
                           </span>
-                          <span className="brief-option-desc">
-                            {difficultyDescription(level, option)}
-                          </span>
+                          {difficultyDescription(level, option) !== '' && (
+                            <span className="brief-option-desc">
+                              {difficultyDescription(level, option)}
+                            </span>
+                          )}
                         </span>
                       </label>
                       <TraitMeters option={option} />
