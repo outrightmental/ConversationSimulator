@@ -259,12 +259,27 @@ def _revealed_surface(
     was there from the first commit, and this is the revealing. Nothing hidden
     is sent, so the brief of a trait still to be found never reaches the client
     to be read out of the payload.
+
+    ``discovered`` carries the engine's own meaning of the word — a
+    *discoverable* trait the player has now found — and not "struck at some
+    point". ``state.discovered_traits`` is every trait any verified hook has
+    ever named, visible ones included, because that is the ledger
+    ``HookClaim.discovered`` consults to pay the x2 once. Reporting membership
+    in it directly tagged a trait the brief had named from the first screen as a
+    discovery: the play screen coloured it as found, titled it "You found this
+    one", and counted it in "one discovered" — which both says something untrue
+    and spends the signal that is supposed to mark the two traits actually worth
+    double.
     """
     if scenario is None:
         return []
     found = set(state.discovered_traits)
     return [
-        {"id": trait.id, "brief": trait.brief, "discovered": trait.id in found}
+        {
+            "id": trait.id,
+            "brief": trait.brief,
+            "discovered": trait.discoverable and trait.id in found,
+        }
         for trait in visible_attack_surface(scenario.attack_surface, found)
     ]
 
