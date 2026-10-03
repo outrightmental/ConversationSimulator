@@ -115,7 +115,9 @@ export function estimateTurnMs(samples: number[]): number | null {
   return Math.round(median)
 }
 
-/** Forget every sample — used by tests and by anything that resets the device. */
+/** Forget every sample. Settings' "Clear all local data" calls this: the
+ *  samples sit in this browser rather than in the data folder the API clears,
+ *  and a record of how slow this machine is counts as cached data. */
 export function clearTurnSamples(): void {
   if (typeof localStorage === 'undefined') return
   try {

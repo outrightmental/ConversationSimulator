@@ -82,7 +82,7 @@ Worth knowing about the number it quotes:
 
 - **It is the median of up to eight recent turns**, not the mean. One turn that stalled because the system paged the model back in should not inflate the next five.
 - **Timings are kept per model.** Switching to a smaller model — the app's own advice when turns are slow — starts the estimate over instead of quoting the old model's minutes at the new one.
-- **They never leave the machine.** The samples are bare durations in milliseconds, held in browser local storage under `convsim.turnTiming`, for one model at a time.
+- **They never leave the machine.** The samples are bare durations in milliseconds, held in browser local storage under `convsim.turnTiming`, for one model at a time. **Clear all local data** in Settings forgets them along with everything else.
 - **A turn recovered by polling is not timed.** Past the five-minute deadline the app finds the reply by asking the session what it recorded (see [Timeout errors](#timeout-errors)), which measures when the screen noticed the turn rather than what the model spent on it.
 - **The bar never fills completely** while a reply is still out. A full bar with nothing on screen reads as a turn the app lost.
 
