@@ -165,6 +165,31 @@ landed" therefore order that tie longest-first, which is a proxy and says so:
 it will surface *sterling* ahead of *worn*, and it has no way to know that
 *public* is commoner than either.
 
+**What language these stages read: English, and only English.** Nothing in the
+schema says so, so it is said here. The frequency table is an English word
+list; the aim check tests for English second-person pronouns (plus the archaic
+*thou*/*thee*/*ye*); the onset and rime rewrites that stand in for a real
+grapheme-to-phoneme pass are English spelling rules; and the
+recognisable-word test behind the gibberish gate reduces every token to
+`[a-z']+` before it looks at it. The consequences differ by script:
+
+- **A Latin-script language other than English** degrades silently. Every
+  content word is unknown to the frequency table, so the rarity reward is a
+  flat band value rather than a measurement, and no volley ever passes the
+  second-person check — so each one carries `no_aim`, the mechanical fallback
+  scores it as unaimed, and the debrief reports every volley as pointed at
+  nobody. The judge, which does read the language, still scores it.
+- **A non-Latin script cannot be played at all.** No token survives the
+  `[a-z']+` filter, so `recognizable_ratio` is zero, the gibberish gate duds
+  every volley at zero, and the judge is never called — a gated volley never
+  reaches a model.
+
+`craft._zipf_for_word`, `_measurable_parts`, `_onset` and `_rime` are the four
+seams a language-aware version would go through. Until then, the pack validator
+warns (`FLYTING_NON_ENGLISH_SCENARIO`) when a `mode: flyting` scenario declares
+no English support, rather than letting an author discover it one dudded volley
+at a time.
+
 ### Stage 2 — Novelty
 
 `s_max` is the highest similarity between this volley and (a) every prior volley
@@ -387,8 +412,10 @@ outright.
 
 The pack validator reports the mistakes JSON Schema cannot express: a target with
 no attack surface (`FLYTING_NO_ATTACK_SURFACE`), a thin or fully visible surface,
-judge weights that do not sum to 1.0, a dimension with no anchor, and a
-calibration suite that names a scenario or trait that does not exist.
+judge weights that do not sum to 1.0, a dimension with no anchor, a calibration
+suite that names a scenario or trait that does not exist, and a scenario
+declaring no English support (`FLYTING_NON_ENGLISH_SCENARIO` — see Stage 1 for
+what the deterministic stages can and cannot read).
 
 ---
 

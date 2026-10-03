@@ -637,8 +637,9 @@ class _PackValidator:
     # Flyting (mode: flyting) consistency
     #
     # These are the checks JSON Schema cannot express: that a target has
-    # something to aim at, that judge weights sum to one, and that a
-    # calibration suite names a scenario and traits that actually exist.
+    # something to aim at, that judge weights sum to one, that a calibration
+    # suite names a scenario and traits that actually exist, and that the
+    # scenario is in the one language the deterministic stages can read.
     # ------------------------------------------------------------------
 
     # A target with one trait makes hooks almost meaningless; the topicality
@@ -646,6 +647,12 @@ class _PackValidator:
     _MIN_RECOMMENDED_ATTACK_SURFACE = 2
 
     _JUDGE_DIMENSIONS = ("sting", "wit", "craft", "fidelity")
+
+    # The language Stages 0-2 are written for. The bundled frequency table, the
+    # second-person aim check, the orthographic alliteration and rhyme
+    # approximations, and the recognisable-word test behind the gibberish gate
+    # all read English spelling.
+    _FLYTING_LANGUAGE = "en"
 
     def _flyting_scenarios(self) -> dict[str, dict]:
         """scenario_id → parsed YAML, for every mode: flyting scenario."""
@@ -672,10 +679,71 @@ class _PackValidator:
         surface = npc_data.get("attack_surface")
         return [t for t in surface if isinstance(t, dict)] if isinstance(surface, list) else []
 
+    def _manifest_languages(self) -> list[str]:
+        """The manifest's ``supported_languages``, read without re-reporting it.
+
+        ``_load_yaml`` is deliberately not used: the manifest has already been
+        loaded and validated by the time any scenario check runs, and reading it
+        again through that helper would emit a second copy of every error it
+        found. A manifest that cannot be read at all is somebody else's error.
+        """
+        path = self._pack_dir / "manifest.yaml"
+        try:
+            raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except (OSError, yaml.YAMLError):
+            return []
+        if not isinstance(raw, dict):
+            return []
+        langs = raw.get("supported_languages")
+        return [str(x) for x in langs] if isinstance(langs, list) else []
+
+    def _check_flyting_language(self, scenario_data: dict, rel: str) -> None:
+        """Warn when a flyting scenario is authored in a language the stages cannot read.
+
+        Stages 0-2 are English-only, and nothing in the schema says so: the
+        frequency table, the aim check, the sound-play approximations and the
+        recognisable-word test behind the gibberish gate all read English
+        spelling. In a Latin script the cost is silent degradation — every
+        content word is unknown to the frequency table, and no volley ever
+        passes the second-person check, so each one carries ``no_aim`` and the
+        mechanical fallback scores it as unaimed. In a non-Latin script it is
+        total: no token survives the stage's ``[a-z']+`` filter, so the
+        gibberish gate duds every volley at zero before the judge is reached,
+        and the scenario cannot be played at all. Only Stage 3 reads the
+        language, and it never runs.
+        """
+        declared = scenario_data.get("supported_languages")
+        pointer = "/supported_languages"
+        if not (isinstance(declared, list) and declared):
+            # Omitted means "inherit the manifest's list" (scenario.schema.json).
+            declared = self._manifest_languages()
+            pointer = "(root)"
+        languages = [str(x).strip().lower() for x in declared if str(x).strip()]
+        if not languages or self._FLYTING_LANGUAGE in languages:
+            return
+        self._warning(
+            "FLYTING_NON_ENGLISH_SCENARIO",
+            rel,
+            pointer,
+            "This flyting scenario declares no English support ("
+            + ", ".join(languages)
+            + "), but the deterministic scoring stages read English only: the "
+            "bundled frequency table, the second-person aim check, the "
+            "alliteration and rhyme approximations, and the recognisable-word "
+            "test behind the gibberish gate. A volley in a Latin-script "
+            "language scores with no craft metrics and a permanent 'no_aim' "
+            "flag; one in a non-Latin script is dudded as gibberish before the "
+            "judge is ever called, so the scenario cannot be played.",
+            "Keep mode: flyting scenarios in English for now (see "
+            "docs/flyting.md § Stage 1), or author this one as a conversation "
+            "scenario until the craft stages are language-aware.",
+        )
+
     def _check_flyting_scenario(self, scenario_data: dict, scenario_path: Path) -> None:
         if scenario_data.get("mode") != "flyting":
             return
         rel = self._rel(scenario_path)
+        self._check_flyting_language(scenario_data, rel)
         surface = self._attack_surface_of(scenario_data, scenario_path)
 
         if not surface:

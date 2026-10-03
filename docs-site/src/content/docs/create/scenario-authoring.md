@@ -639,6 +639,15 @@ pipeline, YAML and calibration suites are documented in
 [`docs/flyting.md`](https://github.com/outrightmental/ConversationSimulator/blob/main/docs/flyting.md).
 This section is only about the two places the workbench helps you author one.
 
+**Write it in English.** The deterministic stages are English-only today — the
+frequency table, the second-person aim check, the alliteration and rhyme
+approximations, and the recognisable-word test behind the gibberish gate all
+read English spelling. A Latin-script scenario in another language scores with
+no craft metrics and flags every volley `no_aim`; a non-Latin-script one is
+unplayable, because the gibberish gate duds every volley before the judge is
+called. The validator warns about either with `FLYTING_NON_ENGLISH_SCENARIO`.
+Conversation-mode scenarios are unaffected.
+
 **The attack surface.** The target NPC declares `attack_surface` — the traits
 that are fair game. It is the one thing the judge is allowed to claim a hit on:
 a hook must name a trait id from this list *and* quote the player's own words,

@@ -21,7 +21,6 @@ plays.
 """
 from __future__ import annotations
 
-import json
 import logging
 import threading
 from dataclasses import dataclass, field
@@ -352,8 +351,3 @@ def list_flyting_scenarios(conn: Any) -> list[FlytingScenario]:
         if scenario is not None:
             out.append(scenario)
     return out
-
-
-def state_variable_json(scenario: FlytingScenario) -> str:
-    """The scenario's declared state variables, serialised for the session row."""
-    return json.dumps(scenario.state_variables or {})
