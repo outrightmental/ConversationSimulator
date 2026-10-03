@@ -554,6 +554,7 @@ class GitHub:
         self.name = repo["name"]
         self._item_ids: dict[int, str] = {}
         self._project_id: str | None = None
+        self._fields: dict[str, dict[str, Any]] | None = None
 
     # -- reads
 
@@ -749,15 +750,52 @@ class GitHub:
         else:  # pragma: no cover - guard against a planner/executor mismatch
             raise SystemExit(f"no executor for action kind {action.kind!r}")
 
+    def fields(self) -> dict[str, dict[str, Any]]:
+        """{field name: {"id", "options": {option name: option id}}} for the board."""
+        if self._fields is None:
+            raw = self._json(
+                [
+                    "gh", "project", "field-list", str(self.project["number"]),
+                    "--owner", self.project["owner"], "--limit", "100", "--format", "json",
+                ]
+            )
+            self._fields = {
+                entry["name"]: {
+                    "id": entry["id"],
+                    "options": {
+                        option["name"]: option["id"] for option in entry.get("options") or []
+                    },
+                }
+                for entry in raw["fields"]
+            }
+        return self._fields
+
     def _set_field(self, number: int, field_name: str, value: str) -> None:
+        """Set a single-select field on an issue's board item.
+
+        Addressed entirely by node id: `gh project item-edit` refuses `--field`
+        together with `--id`, and resolving the option id ourselves also turns a
+        mis-spelled option — an en dash where the board has an em dash — into a
+        legible error instead of a silent no-op.
+        """
         if not self._item_ids:
             self._item_ids = {n: d["item_id"] for n, d in self.project_items().items()}
         item_id = self._item_ids.get(number)
         if item_id is None:
             raise SystemExit(f"issue #{number} is not on the project board; cannot set {field_name}")
+        meta = self.fields().get(field_name)
+        if meta is None:
+            raise SystemExit(f"the board has no field named {field_name!r}")
+        option_id = meta["options"].get(value)
+        if option_id is None:
+            known = ", ".join(sorted(meta["options"])) or "none"
+            raise SystemExit(
+                f"field {field_name!r} has no option {value!r}; the board offers: {known}"
+            )
         self._run(
             ["gh", "project", "item-edit", "--id", item_id,
-             "--project-id", self.project_id(), "--field", field_name, "--value", value]
+             "--project-id", self.project_id(),
+             "--field-id", meta["id"], "--single-select-option-id", option_id]
         )
 
 
