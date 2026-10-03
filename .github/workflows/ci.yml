@@ -241,9 +241,13 @@ jobs:
   desktop-check:
     name: Desktop Rust check
     runs-on: ubuntu-latest
-    # 45, not 30: desktop-smoke.sh now also runs `cargo test`, which links the
-    # crate (the two `cargo check` passes do not) and costs a full codegen pass
-    # of the Tauri dependency tree on a cold cache.
+    # 45, not 30. The 30 was set when desktop-smoke.sh ran two `cargo check`
+    # passes; it then gained a `cargo test` step (issue #485) without a raise,
+    # which is a third compile AND the only one that links — `cargo check` emits
+    # metadata only, so none of its artifacts are reusable for a build that
+    # produces a binary. On a cold cache that is a full codegen pass of the Tauri
+    # dependency tree inside a budget sized for none. The headroom is claimed
+    # here because this branch grows the crate's test module substantially.
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
@@ -292,12 +296,13 @@ jobs:
   desktop-rust-steam-windows:
     name: Desktop Rust check and test (Windows)
     runs-on: windows-latest
-    # 60, not the 45 this job used when it only ran `cargo check --features
-    # steam`. The `cargo test` step below is a second compile of the whole
-    # dependency tree, not an increment on the first: `cargo check` emits
+    # 60, not 45. The 45 predates the `cargo test` step below, which arrived
+    # with issue #485 and kept it: that step is a second compile of the whole
+    # dependency tree, not an increment on the first — `cargo check` emits
     # metadata only, so none of its artifacts are reusable for a build that
-    # links, and the two steps also differ in feature resolution. The Linux
-    # job went 30 → 45 for adding the same step on the faster platform.
+    # links, and the two steps also differ in feature resolution. This is the
+    # slower platform and the only one that compiles `kill_tree`'s `taskkill`
+    # branch, so it gets more headroom than the Linux job's 45, not less.
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v5
