@@ -176,11 +176,19 @@ decides what the player is told, and the three cases need different advice:
 |---|---|
 | The *other* edition's engine | Close the other one (same message as the attach path above). The demo and the full app are separate Steam apps and may be launched together. |
 | A convsim-core of *this* edition | `Conversation Simulator is already running.` — a second copy of the app was launched while this one was starting. There is no single-instance plugin; Steam and macOS LaunchServices refuse a second launch themselves, but the installer `.exe` and the AppImage can both be run twice. |
-| Anything else | `Port 7355 is already in use by another program.` |
+| Anything else, for 30 s | `Port 7355 is already in use by another program.` |
 
 The middle row is why it is not all one message: the port-conflict hint tells the
 player to close whatever holds 7355, and there that is the engine serving the
 window which *did* start.
+
+The last row carries the same 30 s grace as the attach table above, and needs it
+more. Reaching this point means the port was free when the attach loop asked and
+our own child then died for failing to bind it, so whatever won the race is
+almost certainly a convsim-core; taking one unidentified answer as proof of a
+stranger would give the middle row's case the bottom row's advice.
+`identify_port_occupant` is that grace, factored out of the attach loop for the
+callers that cannot interleave their own progress messages.
 
 The losing engine usually takes *longer* to exit than the winner takes to answer
 `/api/health`, so the shell often meets the winner before its own child is gone.
@@ -345,7 +353,11 @@ In production, `apps/web/src/api/client.ts` detects the `tauri://localhost` (or
 The crate's unit tests cover the sidecar state machine: HTTP/health parsing, the
 port-conflict and foreign-edition guards, the executable resolution order, and
 the restart backoff. The readiness probe is exercised against real loopback
-sockets — a silent squatter, a 503, and a stub engine.
+sockets — a silent squatter, a 503, a stub engine, and an occupant that only
+identifies itself on the second ask. The crash watcher is exercised against real
+child processes: one that exits on its own (restart), one running under a
+teardown already in progress (no restart), and a handle teardown has already
+taken (no restart).
 
 CI runs them on **both** Linux and Windows, because `core_process`'s teardown
 has two separate implementations (`killpg` and `taskkill /T`) and the Linux job
