@@ -235,7 +235,13 @@ beforeEach(() => {
   mockApi.flyting.getScenario.mockResolvedValue({ ok: true, data: SETUP })
   mockApi.flyting.highScores.mockResolvedValue({
     ok: true,
-    data: { scenario_id: SCENARIO_ID, play_format: 'batting_practice', batting_format: 'set_10', entries: [] },
+    data: {
+      scenario_id: SCENARIO_ID,
+      play_format: 'batting_practice',
+      batting_format: 'set_10',
+      daily_seed: null,
+      entries: [],
+    },
   })
   mockApi.flyting.startRun.mockResolvedValue({
     ok: true,
@@ -309,6 +315,7 @@ describe('FlytingSetup', () => {
         scenario_id: SCENARIO_ID,
         play_format: 'batting_practice',
         batting_format: 'set_10',
+        daily_seed: null,
         entries: [
           {
             scenario_id: SCENARIO_ID,
@@ -371,6 +378,7 @@ describe('FlytingSetup', () => {
           scenario_id: SCENARIO_ID,
           play_format: playFormat ?? null,
           batting_format: battingFormat ?? null,
+          daily_seed: today ? 42 : null,
           entries: today ? [] : [row],
         },
       }),

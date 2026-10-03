@@ -370,6 +370,13 @@ export interface FlytingHighScoresResponse {
   scenario_id: string;
   play_format: PlayFormat | null;
   batting_format: BattingFormat | null;
+  /**
+   * The seed this board is narrowed to, echoed back. Non-null when the request
+   * named one or asked for `today`, in which case the engine derived it locally
+   * from the date and the ids — so a client can show *which* day's conditions
+   * it is listing without recomputing the seed itself.
+   */
+  daily_seed: number | null;
   entries: FlytingHighScore[];
 }
 
