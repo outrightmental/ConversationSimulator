@@ -85,8 +85,9 @@ pub mod achievements {
     pub const DLC_LIBRARY: &str = "ACH_DLC_LIBRARY";
     pub const BIG_PICTURE: &str = "ACH_BIG_PICTURE";
 
-    /// Capstone: unlocked by the front end once every non-optional achievement
-    /// above has been confirmed unlocked on this device.
+    /// Capstone: unlocked by the front end once Steam confirms every
+    /// non-optional achievement above for the signed-in account. Deliberately
+    /// not decided from anything device-local — see `unlocked_achievements`.
     pub const CERTIFIED_EXPERT: &str = "ACH_CERTIFIED_EXPERT";
 
     /// Every achievement API name, in the same order as the front-end
@@ -1063,8 +1064,8 @@ mod tests {
                 .map(|n| (*n).to_string())
                 .collect();
             assert!(runtime.unlocked_achievements(&asked).is_empty());
-            // An empty ask must not panic either — the front end sends exactly
-            // the names its ledger is missing, which can be none of them.
+            // An empty ask must not panic either, even though the front end
+            // always asks for the whole required set plus the capstone.
             assert!(runtime.unlocked_achievements(&[]).is_empty());
         });
     }

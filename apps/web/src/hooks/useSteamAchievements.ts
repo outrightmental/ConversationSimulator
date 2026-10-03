@@ -299,8 +299,10 @@ async function shouldGrantCapstone(): Promise<boolean> {
  * - In the Tauri shell, delegates to the `steam_unlock_achievement` and
  *   `steam_increment_stat` commands, which are no-ops when Steam is absent
  *   or the `steam` Cargo feature is disabled. `unlock` additionally reads back
- *   from `steam_unlocked_achievements` on each confirmed unlock, until Steam
- *   reports the `ACH_CERTIFIED_EXPERT` capstone as already granted.
+ *   from `steam_unlocked_achievements` on every confirmed unlock, and grants
+ *   the `ACH_CERTIFIED_EXPERT` capstone from that answer. The read-back keeps
+ *   happening once the capstone is held — it is what detects that it is held,
+ *   so there is nothing to cache — but the grant then stops.
  *
  * Unlocking is idempotent, so call sites are free to re-check a condition on
  * every visit to a screen. That is what makes the set retroactive wherever the
