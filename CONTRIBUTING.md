@@ -271,6 +271,14 @@ pip install -e "services/convsim-core[dev]"
 for d in packs/official/*/; do convsim-validate-pack "$d"; done
 ```
 
+### Project structure
+
+```sh
+pip install pyyaml
+python scripts/project-structure.py self-test
+python scripts/project-structure.py validate
+```
+
 ### Onboarding e2e suite
 
 The onboarding e2e suite (issue #387) covers the first-run journeys P1–P8
