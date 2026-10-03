@@ -24,6 +24,21 @@ vi.mock('../api/client', () => ({
   },
 }))
 
+// Typed with an explicit signature (rather than letting the no-arg
+// implementation infer one) so `mockUnlock.mock.calls` destructures its
+// achievement-name argument instead of inferring an empty tuple.
+const mockUnlock = vi.fn<(name: string) => Promise<boolean>>(() => Promise.resolve(false))
+const mockIncrementStat = vi.fn<(name: string) => Promise<boolean>>(() => Promise.resolve(false))
+// Only the hook itself is stubbed. This module also exports the achievement and
+// stat name maps, the unlock thresholds, and the local progress helpers that the
+// screens import directly; a hand-rolled mock of those silently drifts out of
+// date every time an achievement is added (and then the screen throws on an
+// undefined export), so importOriginal keeps them real.
+vi.mock('../hooks/useSteamAchievements', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useSteamAchievements')>()),
+  useSteamAchievements: () => ({ unlock: mockUnlock, incrementStat: mockIncrementStat }),
+}))
+
 import { api, apiClient } from '../api/client'
 import type { ModelsResponse } from '@convsim/shared'
 const mockApi = vi.mocked(api, true)
@@ -677,6 +692,127 @@ describe('pack validation', () => {
       ),
     )
     await act(async () => { resolve!({ ok: true, data: VALID_RESULT }) })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Steam achievements (issue #494)
+// ---------------------------------------------------------------------------
+
+describe('steam achievements', () => {
+  const SEARCHBOX = { name: /search scenarios/i }
+
+  it('does not grant the curator achievement for merely opening the library', async () => {
+    renderLibrary()
+    await waitFor(() => screen.getByText('Behavioral Interview'))
+    expect(mockUnlock).not.toHaveBeenCalledWith('ACH_LIBRARY_CURATOR')
+  })
+
+  it('grants the curator achievement once the library is narrowed by search', async () => {
+    renderLibrary()
+    await waitFor(() => screen.getByText('Behavioral Interview'))
+    fireEvent.change(screen.getByRole('searchbox', SEARCHBOX), {
+      target: { value: 'Spanish' },
+    })
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_LIBRARY_CURATOR'))
+  })
+
+  it('grants it from a facet filter as well as the search box', async () => {
+    // Every facet counts, not just search — a player who only ever uses the
+    // rating dropdown has still curated the library.
+    renderLibrary()
+    await waitFor(() => screen.getByText('Behavioral Interview'))
+    fireEvent.change(screen.getByRole('combobox', { name: /filter by content rating/i }), {
+      target: { value: 'G' },
+    })
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_LIBRARY_CURATOR'))
+  })
+
+  it('grants it only once however much the player refilters', async () => {
+    renderLibrary()
+    await waitFor(() => screen.getByText('Behavioral Interview'))
+    const input = screen.getByRole('searchbox', SEARCHBOX)
+    fireEvent.change(input, { target: { value: 'Spanish' } })
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_LIBRARY_CURATOR'))
+    fireEvent.change(input, { target: { value: '' } })
+    fireEvent.change(input, { target: { value: 'Interview' } })
+    await waitFor(() => screen.getByText('Behavioral Interview'))
+    expect(
+      mockUnlock.mock.calls.filter(([name]) => name === 'ACH_LIBRARY_CURATOR'),
+    ).toHaveLength(1)
+  })
+
+  it('counts a validation run from the library\'s own validate button', async () => {
+    renderLibrary()
+    await waitFor(() => screen.getByTestId('validate-official.job_interview_basic'))
+    fireEvent.click(screen.getByTestId('validate-official.job_interview_basic'))
+    await waitFor(() =>
+      expect(mockIncrementStat).toHaveBeenCalledWith('STAT_PACKS_VALIDATED'),
+    )
+  })
+
+  it('does not count a validation run the validator never answered', async () => {
+    mockApi.validatePack.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'network' } })
+    renderLibrary()
+    await waitFor(() => screen.getByTestId('validate-official.job_interview_basic'))
+    fireEvent.click(screen.getByTestId('validate-official.job_interview_basic'))
+    await waitFor(() => expect(mockApi.validatePack).toHaveBeenCalled())
+    expect(mockIncrementStat).not.toHaveBeenCalledWith('STAT_PACKS_VALIDATED')
+  })
+
+  it('grants the import achievement and counts the import', async () => {
+    renderLibrary()
+    await waitFor(() => screen.getByText('Behavioral Interview'))
+    fireEvent.change(screen.getByTestId('import-file-input'), {
+      target: { files: [new File(['PK'], 'mypack.zip', { type: 'application/zip' })] },
+    })
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_PACK_IMPORTED'))
+    expect(mockIncrementStat).toHaveBeenCalledWith('STAT_PACKS_IMPORTED')
+  })
+
+  it('grants nothing when the import fails', async () => {
+    mockApi.importPack.mockResolvedValue({ ok: false, error: { kind: 'network', message: 'network' } })
+    renderLibrary()
+    await waitFor(() => screen.getByText('Behavioral Interview'))
+    fireEvent.change(screen.getByTestId('import-file-input'), {
+      target: { files: [new File(['bad'], 'bad.zip', { type: 'application/zip' })] },
+    })
+    await waitFor(() => screen.getByTestId('import-error'))
+    expect(mockUnlock).not.toHaveBeenCalledWith('ACH_PACK_IMPORTED')
+    expect(mockIncrementStat).not.toHaveBeenCalledWith('STAT_PACKS_IMPORTED')
+  })
+
+  it('grants the restore achievement from the empty state', async () => {
+    mockApi.listScenarios.mockResolvedValue({ ok: true, data: [] })
+    mockApiClient.reseedOfficialPacks.mockResolvedValue({ ok: true, data: { seeded: 4 } })
+    renderLibrary()
+    await waitFor(() => screen.getByTestId('empty-state'))
+    fireEvent.click(screen.getByTestId('restore-official-packs-button'))
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_PACKS_RESTORED'))
+  })
+
+  it('does not grant it when the restore fails', async () => {
+    mockApi.listScenarios.mockResolvedValue({ ok: true, data: [] })
+    mockApiClient.reseedOfficialPacks.mockResolvedValue({
+      ok: false,
+      error: { kind: 'network', message: 'network' },
+    })
+    renderLibrary()
+    await waitFor(() => screen.getByTestId('empty-state'))
+    fireEvent.click(screen.getByTestId('restore-official-packs-button'))
+    await waitFor(() =>
+      expect(screen.getByTestId('restore-official-packs-button')).toHaveTextContent(/retry/i),
+    )
+    expect(mockUnlock).not.toHaveBeenCalledWith('ACH_PACKS_RESTORED')
+  })
+
+  it('does not grant the Workshop or DLC achievements with neither present', async () => {
+    // No subscribed Workshop items and an empty DLC registry (open-source and
+    // browser builds), so both optional-content achievements stay silent.
+    renderLibrary()
+    await waitFor(() => screen.getByText('Behavioral Interview'))
+    expect(mockUnlock).not.toHaveBeenCalledWith('ACH_WORKSHOP_SUBSCRIBER')
+    expect(mockUnlock).not.toHaveBeenCalledWith('ACH_DLC_LIBRARY')
   })
 })
 
