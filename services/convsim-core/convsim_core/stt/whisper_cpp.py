@@ -7,7 +7,6 @@ from convsim_core.runtime.procflags import CREATE_NO_WINDOW
 import json
 import logging
 import os
-import shutil
 import sys
 import tempfile
 import time
@@ -16,6 +15,7 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from convsim_core.runtime.toolpath import find_tool
 from convsim_core.runtime.types import RuntimeStatus
 from convsim_core.stt.base import SttWorker
 from convsim_core.stt.registry import register_stt
@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 _DEFAULT_MODEL_PATH = str(Path.home() / ".convsim" / "models" / "stt" / "ggml-base.en.bin")
 # Binary name search order — newer releases use "whisper-cli"; older use "whisper".
 # "main" is intentionally excluded: it is a common name for compiled C/Go programs
-# and would cause shutil.which to pick up an unrelated binary on developer machines.
+# and would cause the PATH lookup to pick up an unrelated binary on developer machines.
 _DEFAULT_BINARY_NAMES = ("whisper-cli", "whisper")
 # Steam depot builds ship whisper-cli inside the bundled runtimes/ directory and
 # tell the backend where it is through this variable rather than touching PATH
@@ -86,8 +86,27 @@ _WHISPER_SAMPLE_RATE = 16_000
 # path rather than one that works for some recordings.
 _PASSTHROUGH_AUDIO_FORMATS = frozenset({"wav"})
 
+
+def _ffmpeg_path() -> str | None:
+    """Return the resolved ffmpeg path, or None when it cannot be found.
+
+    One hook for all three callers below, so ``health`` can never report a
+    state ``transcribe`` would then contradict — and so tests can pin either
+    answer instead of inheriting whatever the machine happens to have
+    installed. Resolution goes through ``find_tool`` rather than ``PATH``
+    alone: a Finder- or Steam-launched macOS build inherits launchd's minimal
+    ``PATH``, which omits Homebrew's bin directory, and ``brew install ffmpeg``
+    is the command this very worker's health message sends the player to run.
+
+    The *path* rather than a bool, because ``_transcode_to_wav`` has to spawn
+    it, and spawning the bare name would go straight back to the ``PATH`` this
+    lookup exists to work around.
+    """
+    return find_tool("ffmpeg")
+
+
 _FFMPEG_MISSING_MESSAGE = (
-    "ffmpeg was not found on PATH, and it is needed to decode the "
+    "ffmpeg was not found, and it is needed to decode the "
     "{fmt} audio your browser records into the WAV whisper.cpp reads. "
     "Install ffmpeg (the voice setup screen shows the command for this "
     "platform) and try again."
@@ -106,7 +125,8 @@ async def _transcode_to_wav(source_path: str, audio_format: str, timeout: float)
     leave that field unset, and the decoder on the other side is then reading a
     length it cannot trust.
     """
-    if shutil.which("ffmpeg") is None:
+    ffmpeg = _ffmpeg_path()
+    if ffmpeg is None:
         raise SttUnavailableError(_FFMPEG_MISSING_MESSAGE.format(fmt=audio_format or "recorded"))
 
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
@@ -114,7 +134,7 @@ async def _transcode_to_wav(source_path: str, audio_format: str, timeout: float)
 
     try:
         proc = await asyncio.create_subprocess_exec(
-            "ffmpeg", "-y",
+            ffmpeg, "-y",
             "-i", source_path,
             "-ar", str(_WHISPER_SAMPLE_RATE),
             "-ac", "1",
@@ -189,7 +209,7 @@ def _find_binary(explicit_path: str | None) -> str | None:
                 return found
 
     for name in _DEFAULT_BINARY_NAMES:
-        found = shutil.which(name)
+        found = find_tool(name)
         if found:
             return found
     return None
@@ -392,6 +412,39 @@ class WhisperCppWorker(SttWorker):
                     f"STT model not found at {self._model_path!r}. "
                     "Download a GGML model to ~/.convsim/models/stt/ or set "
                     "CONVSIM_WHISPER_CPP_MODEL_PATH."
+                ),
+                checked_at=checked_at,
+            )
+
+        # Reported last, because the binary and the model are the more
+        # fundamental gaps — but reported, because without ffmpeg this worker
+        # cannot serve a single request the app actually makes. Every caller
+        # (`POST /api/stt/upload`, from the conversation screen and from voice
+        # setup's own test) sends what the browser recorded: WebM/Opus, or
+        # MP4/AAC on Safari. `transcribe` transcodes all of it through ffmpeg
+        # before whisper-cli sees it and raises SttUnavailableError when ffmpeg
+        # is absent, so a READY here would be health contradicting transcribe.
+        #
+        # It is not a cosmetic contradiction. READY has Home print "STT: ready",
+        # Settings print "model loaded" and the brief pre-select push-to-talk —
+        # and then the player holds the talk key and gets "Speech-to-text is not
+        # installed. Please type your response.", which names nothing and leads
+        # nowhere. UNAVAILABLE instead routes all three to /voice-setup, where
+        # the ffmpeg row carries the command for the platform (issue #487).
+        #
+        # Re-checked on every health call, like the binary above, so installing
+        # ffmpeg and pressing "Check again" turns the row green without a restart.
+        if _ffmpeg_path() is None:
+            return SttHealth(
+                worker_id=self.id,
+                worker_name=self.display_name,
+                status=RuntimeStatus.UNAVAILABLE,
+                model_path=self._model_path,
+                message=(
+                    "ffmpeg was not found. whisper.cpp reads WAV and the "
+                    "browser records WebM/Opus, so without ffmpeg no recording can "
+                    "be transcribed. Set up voice shows the install command for "
+                    "this platform."
                 ),
                 checked_at=checked_at,
             )

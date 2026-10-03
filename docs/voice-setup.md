@@ -63,10 +63,19 @@ That row is not a nice-to-have. `whisper-cli` decodes its input with miniaudio
 with `WHISPER_FFMPEG` — which neither Homebrew's formula nor the source builds
 above enable. The browser records WebM/Opus, which miniaudio cannot read, so
 `WhisperCppWorker` transcodes every non-WAV upload to 16 kHz mono 16-bit WAV
-with `ffmpeg` before `whisper-cli` is invoked. Without `ffmpeg` on `PATH` no
-browser recording can be transcribed, whatever else is installed, so the worker
-raises `SttUnavailableError` naming it rather than letting `whisper-cli` answer
+with `ffmpeg` before `whisper-cli` is invoked. Without `ffmpeg` no browser
+recording can be transcribed, whatever else is installed, so the worker raises
+`SttUnavailableError` naming it rather than letting `whisper-cli` answer
 "failed to read audio data".
+
+`ffmpeg` is located with the same `find_tool` lookup as `whisper-cli` — `PATH`
+first, then the package-manager prefixes — and the worker spawns the *resolved
+path*, not the bare name. Both halves matter on macOS: `brew install ffmpeg` is
+what the ffmpeg card hands out there, and a lookup that found Homebrew's copy
+only to spawn `"ffmpeg"` out of launchd's `PATH` would report the row green and
+then fail every utterance. The same resolution is used by the Silero VAD
+worker, so hands-free cannot fail on a recording the screen has just reported
+`ffmpeg` as present for.
 
 ### Hands-free in a packaged build
 
@@ -169,7 +178,16 @@ the Kokoro server (`docs/sidecar-bundling.md`):
 3. `~/.convsim/bin/whisper-cli[.exe]` — the per-user install directory, the
    same one `llama-server` resolves from. This is the destination both build
    commands below aim at.
-4. `PATH` — package managers and developer builds.
+4. `PATH`, then the package-manager bin directories a GUI-launched process
+   does not inherit — `/opt/homebrew/bin`, `/usr/local/bin`, `/opt/local/bin`
+   on macOS; `/usr/local/bin` and `/home/linuxbrew/.linuxbrew/bin` on Linux
+   (`convsim_core/runtime/toolpath.py`). macOS needs this step and Windows does
+   not: launchd hands every GUI app `/usr/bin:/bin:/usr/sbin:/sbin` and the
+   Tauri shell passes its environment through untouched, so a Finder- or
+   Steam-launched build cannot see anything `brew install` put on disk —
+   including the `whisper-cli` that `brew install whisper.cpp`, the command
+   *this flow hands out*, has just installed. Windows keeps the machine `PATH`
+   in every process environment, GUI ones included.
 
 Steps 2–4 are re-resolved on **every** plan read and every health check, so
 dropping the binary into either directory turns the row green on the next
@@ -183,7 +201,7 @@ upstream `cmake` build instead of a package-manager one-liner.
 
 | Platform | Command | Note under it |
 |----------|---------|---------------|
-| macOS | `brew install whisper.cpp` | None once it runs — brew puts `whisper-cli` on `PATH` itself. When `brew` is *not* on this machine: how to get Homebrew, and that the source build is the alternative. (`whisper-cpp` is a deprecated oldname that still resolves but warns.) |
+| macOS | `brew install whisper.cpp` | None once it runs — step 4 of the lookup above searches Homebrew's bin directory, so the row clears without a `PATH` edit. When `brew` is *not* on this machine: how to get Homebrew, and that the source build is the alternative. (`whisper-cpp` is a deprecated oldname that still resolves but warns.) |
 | Linux | `git clone` + `cmake --build -DBUILD_SHARED_LIBS=OFF`, then `cp build/bin/whisper-cli ~/.convsim/bin/` | Toolchain: `git`, `cmake`, a C++ compiler. Then **Check again**; no restart. |
 | Windows | `git clone` + `cmake --build -DBUILD_SHARED_LIBS=OFF`, as three separate lines | Toolchain as above, plus: copy `whisper-cli.exe` out of `build\bin\Release` into `.convsim\bin`. Then **Check again**; no restart. |
 

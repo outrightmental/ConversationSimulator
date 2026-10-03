@@ -9,6 +9,7 @@ import struct
 import subprocess
 
 from convsim_core.runtime.procflags import CREATE_NO_WINDOW
+from convsim_core.runtime.toolpath import find_tool
 import tempfile
 import wave
 from datetime import datetime, timezone
@@ -55,7 +56,17 @@ def _try_ffmpeg_to_pcm(audio: bytes, audio_format: str) -> list[float] | None:
     """Convert audio bytes to 16 kHz mono float32 PCM using ffmpeg.
 
     Returns None if ffmpeg is unavailable or conversion fails.
+
+    ffmpeg is resolved through ``find_tool`` and spawned by path, the same way
+    ``WhisperCppWorker`` and the voice setup plan's ffmpeg row do it. Spawning
+    the bare name would search a ``PATH`` that, in a Finder- or Steam-launched
+    macOS build, holds no Homebrew directory — so hands-free would fail on a
+    recording the setup screen had just reported ffmpeg as present for.
     """
+    ffmpeg = find_tool("ffmpeg")
+    if ffmpeg is None:
+        return None
+
     tmp_path: str | None = None
     try:
         with tempfile.NamedTemporaryFile(suffix=f".{audio_format}", delete=False) as tmp:
@@ -64,7 +75,7 @@ def _try_ffmpeg_to_pcm(audio: bytes, audio_format: str) -> list[float] | None:
 
         result = subprocess.run(
             [
-                "ffmpeg", "-y",
+                ffmpeg, "-y",
                 "-i", tmp_path,
                 "-ar", str(_SILERO_SAMPLE_RATE),
                 "-ac", "1",

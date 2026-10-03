@@ -229,7 +229,7 @@ def test_a_source_build_produces_a_self_contained_binary():
     libwhisper/libggml beside the executable in ``build/bin`` and links against
     them through a build-tree rpath. The Linux command copies *only*
     ``whisper-cli`` onto PATH, so deleting the clone — the obvious tidy-up once
-    the binary is "installed" — leaves something ``shutil.which`` still finds
+    the binary is "installed" — leaves something the PATH lookup still finds
     and ``whisper-cli`` can no longer load. ``find_whisper_binary`` would report
     the engine present, the plan would show the row green, and the player would
     find out mid-conversation: precisely the dead end this flow removes.
@@ -264,7 +264,7 @@ def test_a_command_that_does_not_finish_the_job_carries_a_follow_up_note(monkeyp
     # macOS needs no follow-up once the command has run: brew puts whisper-cli
     # on PATH itself. Pin which program is consulted, so a machine without
     # Homebrew does not quietly turn this into the brew note below.
-    monkeypatch.setattr(voice_registry.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(voice_registry, "find_tool", lambda name: f"/usr/bin/{name}")
     assert voice_registry.engine_command_note(whisper, "darwin") is None
 
 
@@ -283,7 +283,7 @@ def test_the_mac_command_says_so_when_homebrew_is_not_there(monkeypatch):
     whisper = voice_registry.get_engine("whisper-cli")
     assert whisper is not None
 
-    monkeypatch.setattr(voice_registry.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(voice_registry, "find_tool", lambda _name: None)
     note = voice_registry.engine_command_note(whisper, "darwin")
     assert note is not None, "a brew command on a Mac without brew cannot even start"
     assert "brew" in note.lower(), note
@@ -298,7 +298,7 @@ def test_the_mac_command_says_so_when_homebrew_is_not_there(monkeypatch):
         assert other is not None and "brew" not in other.lower(), (platform, other)
 
     # With Homebrew present the command is self-contained, so the row is quiet.
-    monkeypatch.setattr(voice_registry.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(voice_registry, "find_tool", lambda name: f"/usr/bin/{name}")
     assert voice_registry.engine_command_note(whisper, "darwin") is None
 
 
@@ -313,7 +313,7 @@ def test_a_command_that_needs_a_program_this_machine_lacks_says_so(monkeypatch):
     assert kokoro is not None
     assert "docker run" in kokoro.commands["win32"]
 
-    monkeypatch.setattr(voice_registry.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(voice_registry, "find_tool", lambda _name: None)
     note = voice_registry.engine_command_note(kokoro, "win32")
     assert note is not None
     assert "docker" in note.lower()
@@ -322,13 +322,13 @@ def test_a_command_that_needs_a_program_this_machine_lacks_says_so(monkeypatch):
 
     # Present on PATH: the command is self-contained, so the row stays quiet.
     # This also covers the lookup for an engine that declares no platform notes.
-    monkeypatch.setattr(voice_registry.shutil, "which", lambda name: f"/usr/bin/{name}")
+    monkeypatch.setattr(voice_registry, "find_tool", lambda name: f"/usr/bin/{name}")
     assert voice_registry.engine_command_note(kokoro, "win32") is None
 
     # A platform follow-up still wins over a prerequisite note.
     whisper = voice_registry.get_engine("whisper-cli")
     assert whisper is not None
-    monkeypatch.setattr(voice_registry.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(voice_registry, "find_tool", lambda _name: None)
     assert ".convsim\\bin" in (voice_registry.engine_command_note(whisper, "win32") or "")
 
 
@@ -409,10 +409,10 @@ def test_a_bundled_whisper_binary_is_reported_as_installed(tmp_path, monkeypatch
     already installed one directory away.
     """
     monkeypatch.delenv("CONVSIM_WHISPER_CPP_BINARY_PATH", raising=False)
-    monkeypatch.setattr(voice_registry.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(voice_registry, "find_tool", lambda _name: None)
     import convsim_core.stt.whisper_cpp as whisper_cpp
 
-    monkeypatch.setattr(whisper_cpp.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(whisper_cpp, "find_tool", lambda _name: None)
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
 
     runtimes = tmp_path / "runtimes"
@@ -434,10 +434,10 @@ def test_a_binary_dropped_in_the_user_bin_dir_needs_no_restart(tmp_path, monkeyp
     """
     monkeypatch.delenv("CONVSIM_WHISPER_CPP_BINARY_PATH", raising=False)
     monkeypatch.delenv("CONVSIM_BUNDLED_RUNTIME_DIR", raising=False)
-    monkeypatch.setattr(voice_registry.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(voice_registry, "find_tool", lambda _name: None)
     import convsim_core.stt.whisper_cpp as whisper_cpp
 
-    monkeypatch.setattr(whisper_cpp.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(whisper_cpp, "find_tool", lambda _name: None)
     home = tmp_path / "home"
     monkeypatch.setenv("HOME", str(home))
 
@@ -461,6 +461,84 @@ def test_an_explicit_override_still_wins_over_a_bundled_binary(tmp_path, monkeyp
     # falling back to the bundled copy the player chose to override.
     monkeypatch.setenv("CONVSIM_WHISPER_CPP_BINARY_PATH", str(tmp_path / "gone"))
     assert voice_registry.find_whisper_binary() is None
+
+
+# ── Programs the player installed, found where their shell would find them ────
+
+
+def test_a_homebrew_install_is_found_without_a_path_entry(tmp_path, monkeypatch):
+    """The macOS commands this flow hands out install into Homebrew's bin dir.
+
+    A Finder- or Steam-launched build never has that directory on PATH:
+    launchd gives GUI apps /usr/bin:/bin:/usr/sbin:/sbin, and the Tauri shell
+    passes its environment through to convsim-core untouched. Looking only at
+    PATH would have the ffmpeg card quote `brew install ffmpeg` at someone who
+    already ran it, with no way to ever clear the row — the dead end the whole
+    flow exists to remove.
+    """
+    brew_bin = tmp_path / "opt" / "homebrew" / "bin"
+    brew_bin.mkdir(parents=True)
+    monkeypatch.setattr(
+        "convsim_core.runtime.toolpath.supplementary_bin_dirs",
+        lambda platform=None: (str(brew_bin),),
+    )
+    monkeypatch.setattr("shutil.which", lambda _name, **_kw: None)
+
+    assert voice_registry.ffmpeg_installed() is False
+    _make_executable(brew_bin / "ffmpeg")
+    assert voice_registry.ffmpeg_installed() is True, (
+        "ffmpeg installed by Homebrew must register, or every recording the "
+        "browser makes is undecodable with no row the player can clear"
+    )
+
+
+def test_a_prerequisite_note_is_not_raised_against_a_tool_that_is_installed(
+    tmp_path, monkeypatch
+):
+    """"brew was not found on this machine" must not be said of a machine with brew.
+
+    The note steers the player to brew.sh and to building from source instead.
+    Shown to a Homebrew user because the backend inherited launchd's PATH, it
+    is simply false — and it talks them out of the one-line install that would
+    have worked.
+    """
+    whisper = voice_registry.get_engine("whisper-cli")
+    assert whisper is not None
+
+    brew_bin = tmp_path / "opt" / "homebrew" / "bin"
+    brew_bin.mkdir(parents=True)
+    monkeypatch.setattr(
+        "convsim_core.runtime.toolpath.supplementary_bin_dirs",
+        lambda platform=None: (str(brew_bin),),
+    )
+    monkeypatch.setattr("shutil.which", lambda _name, **_kw: None)
+
+    assert voice_registry.engine_command_note(whisper, "darwin") is not None
+    _make_executable(brew_bin / "brew")
+    assert voice_registry.engine_command_note(whisper, "darwin") is None
+
+
+def test_path_still_wins_over_the_supplementary_directories(tmp_path, monkeypatch):
+    """An explicit PATH entry is the player's choice and must not be second-guessed."""
+    from convsim_core.runtime import toolpath
+
+    brew_bin = tmp_path / "homebrew" / "bin"
+    brew_bin.mkdir(parents=True)
+    _make_executable(brew_bin / "ffmpeg")
+    monkeypatch.setattr(toolpath, "supplementary_bin_dirs", lambda platform=None: (str(brew_bin),))
+    monkeypatch.setattr("shutil.which", lambda _name, **_kw: "/somewhere/else/ffmpeg")
+
+    assert toolpath.find_tool("ffmpeg") == "/somewhere/else/ffmpeg"
+
+
+def test_only_the_platforms_that_need_a_supplement_get_one():
+    """Windows puts the machine PATH in every process environment, GUI ones included."""
+    from convsim_core.runtime.toolpath import supplementary_bin_dirs
+
+    assert "/opt/homebrew/bin" in supplementary_bin_dirs("darwin")
+    # linux2-style legacy values must fold onto the same key.
+    assert supplementary_bin_dirs("linux") == supplementary_bin_dirs("linux2")
+    assert supplementary_bin_dirs("win32") == ()
 
 
 # ── Downloader ────────────────────────────────────────────────────────────────

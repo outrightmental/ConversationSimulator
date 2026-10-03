@@ -71,9 +71,14 @@ All settings are read from `CONVSIM_WHISPER_CPP_*` environment variables or a `.
 Without an explicit `BINARY_PATH`, `whisper-cli` is auto-detected in the same
 order the other sidecars use (`docs/sidecar-bundling.md`):
 `<CONVSIM_BUNDLED_RUNTIME_DIR>/whisper-cli[.exe]` (Steam depot builds), then
-`~/.convsim/bin/whisper-cli[.exe]`, then `PATH`. The first two are re-checked
-on every health call, so copying the binary into `~/.convsim/bin` takes effect
-without editing `PATH` or restarting the app.
+`~/.convsim/bin/whisper-cli[.exe]`, then `PATH`, and finally the
+package-manager bin directories a GUI-launched process does not inherit
+(`/opt/homebrew/bin` and friends — see `convsim_core/runtime/toolpath.py`).
+That last step is what makes `brew install whisper.cpp` work in a Finder- or
+Steam-launched build, which runs on launchd's minimal `PATH`. Every step but
+the explicit override is re-checked on every health call, so copying the binary
+into `~/.convsim/bin` takes effect without editing `PATH` or restarting the
+app.
 
 The STT worker is also selected via:
 

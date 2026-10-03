@@ -29,11 +29,12 @@ pinned revision.  A file that does not match is deleted, never installed.
 from __future__ import annotations
 
 import os
-import shutil
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
+
+from convsim_core.runtime.toolpath import find_tool
 
 Capability = Literal["stt", "tts", "vad"]
 
@@ -364,7 +365,7 @@ def engine_command_note(engine: VoiceEngine, platform: str) -> str | None:
         note = engine.command_notes.get(_normalise_platform(platform))
         if note is not None:
             return note
-    if engine.requires_tool and shutil.which(engine.requires_tool) is None:
+    if engine.requires_tool and find_tool(engine.requires_tool) is None:
         return engine.requires_tool_note or None
     return None
 
@@ -407,8 +408,16 @@ def onnxruntime_installable() -> bool:
 
 
 def ffmpeg_installed() -> bool:
-    """Return True when ffmpeg is on PATH (needed to decode browser audio)."""
-    return shutil.which("ffmpeg") is not None
+    """Return True when ffmpeg can be found (needed to decode browser audio).
+
+    Resolved with ``find_tool``, not ``PATH`` alone, and for the same reason
+    the engine prerequisites above are: a Finder- or Steam-launched macOS build
+    runs on launchd's minimal ``PATH``, so ``brew install ffmpeg`` — the very
+    command the ffmpeg card hands out on that platform — would leave this
+    answering False forever. ``WhisperCppWorker`` resolves it the same way, so
+    the row and the worker cannot disagree.
+    """
+    return find_tool("ffmpeg") is not None
 
 
 def stt_model_dir() -> Path:

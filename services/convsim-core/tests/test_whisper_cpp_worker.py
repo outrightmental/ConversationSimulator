@@ -85,21 +85,51 @@ def test_find_binary_returns_none_for_non_executable_explicit_path(tmp_path):
 
 
 def test_find_binary_returns_none_when_not_on_path():
-    with patch("shutil.which", return_value=None):
+    with patch("convsim_core.stt.whisper_cpp.find_tool", return_value=None):
         assert _find_binary(None) is None
 
 
 def test_find_binary_searches_path_when_no_explicit_path():
-    with patch("shutil.which", side_effect=lambda name: f"/usr/bin/{name}" if name == "whisper-cli" else None):
+    with patch(
+        "convsim_core.stt.whisper_cpp.find_tool",
+        side_effect=lambda name: f"/usr/bin/{name}" if name == "whisper-cli" else None,
+    ):
         result = _find_binary(None)
     assert result == "/usr/bin/whisper-cli"
 
 
 def test_find_binary_falls_back_to_whisper_when_cli_absent():
     # "whisper" is the legacy binary name used by pre-1.7 builds.
-    with patch("shutil.which", side_effect=lambda name: f"/usr/bin/{name}" if name == "whisper" else None):
+    with patch(
+        "convsim_core.stt.whisper_cpp.find_tool",
+        side_effect=lambda name: f"/usr/bin/{name}" if name == "whisper" else None,
+    ):
         result = _find_binary(None)
     assert result == "/usr/bin/whisper"
+
+
+def test_find_binary_looks_where_homebrew_puts_it(tmp_path, monkeypatch):
+    """`brew install whisper.cpp` is the macOS command the setup flow hands out.
+
+    It lands whisper-cli in Homebrew's bin directory, which a Finder- or
+    Steam-launched build does not have on PATH — launchd gives GUI apps
+    /usr/bin:/bin:/usr/sbin:/sbin and the Tauri shell passes its environment
+    through untouched. A PATH-only lookup would leave "Check again" amber
+    forever after the flow's own happy path, which is the dead end issue #487
+    was filed about.
+    """
+    brew_bin = tmp_path / "opt" / "homebrew" / "bin"
+    brew_bin.mkdir(parents=True)
+    binary = brew_bin / "whisper-cli"
+    binary.write_bytes(b"")
+    binary.chmod(0o755)
+
+    monkeypatch.setattr(
+        "convsim_core.runtime.toolpath.supplementary_bin_dirs",
+        lambda platform=None: (str(brew_bin),),
+    )
+    with patch("shutil.which", return_value=None):
+        assert _find_binary(None) == str(binary)
 
 
 # ---------------------------------------------------------------------------
@@ -231,6 +261,19 @@ def test_parse_json_output_detected_language_top_level_fallback():
 # ---------------------------------------------------------------------------
 
 
+def _with_ffmpeg(present: bool):
+    """Pin whether ffmpeg is on PATH for the duration of a health call.
+
+    health() reports UNAVAILABLE without ffmpeg, because transcribe() routes
+    every browser recording through it. Left unpinned, "ready" would depend on
+    whether the machine running the suite happens to have ffmpeg installed.
+    """
+    return patch(
+        "convsim_core.stt.whisper_cpp._ffmpeg_path",
+        return_value="/usr/bin/ffmpeg" if present else None,
+    )
+
+
 @pytest.mark.asyncio
 async def test_health_unavailable_when_binary_missing():
     worker = _make_worker(binary=None)
@@ -247,7 +290,7 @@ async def test_health_detects_binary_installed_after_startup():
     worker = _make_worker(binary=None)
     assert worker._binary is None
     with patch("convsim_core.stt.whisper_cpp._find_binary", return_value=_FAKE_BINARY), \
-         patch("os.path.isfile", return_value=True):
+         patch("os.path.isfile", return_value=True), _with_ffmpeg(True):
         h = await worker.health()
     assert h.status == RuntimeStatus.READY
     assert worker._binary == _FAKE_BINARY
@@ -267,10 +310,45 @@ async def test_health_ready_when_binary_and_model_exist(tmp_path):
     model_file = tmp_path / "ggml-base.en.bin"
     model_file.write_bytes(b"\x00" * 64)
     worker = _make_worker(binary=_FAKE_BINARY, model=str(model_file))
-    with patch("convsim_core.stt.whisper_cpp._find_binary", return_value=_FAKE_BINARY):
+    with patch("convsim_core.stt.whisper_cpp._find_binary", return_value=_FAKE_BINARY), \
+         _with_ffmpeg(True):
         h = await worker.health()
     assert h.status == RuntimeStatus.READY
     assert h.checked_at
+
+
+@pytest.mark.asyncio
+async def test_health_unavailable_when_ffmpeg_missing(tmp_path):
+    """A binary and a model are not enough: without ffmpeg nothing can be decoded.
+
+    transcribe() transcodes every non-WAV upload through ffmpeg, and every
+    caller in the app sends what the browser recorded (WebM/Opus, MP4 on
+    Safari), so READY here would be health contradicting transcribe — and it
+    would have Home print "STT: ready", the brief pre-select push-to-talk, and
+    the player discover "Speech-to-text is not installed" mid-conversation with
+    nothing naming the gap (issue #487).
+    """
+    model_file = tmp_path / "ggml-base.en.bin"
+    model_file.write_bytes(b"\x00" * 64)
+    worker = _make_worker(binary=_FAKE_BINARY, model=str(model_file))
+    with patch("convsim_core.stt.whisper_cpp._find_binary", return_value=_FAKE_BINARY), \
+         _with_ffmpeg(False):
+        h = await worker.health()
+    assert h.status == RuntimeStatus.UNAVAILABLE
+    assert "ffmpeg" in (h.message or "")
+    # The model is installed and the path still worth reporting; ffmpeg is the gap.
+    assert h.model_path == str(model_file)
+
+
+@pytest.mark.asyncio
+async def test_health_reports_the_binary_before_ffmpeg(tmp_path):
+    """The more fundamental gap wins, so the row names what to install first."""
+    worker = _make_worker(binary=None)
+    with patch("convsim_core.stt.whisper_cpp._find_binary", return_value=None), \
+         _with_ffmpeg(False):
+        h = await worker.health()
+    assert h.status == RuntimeStatus.UNAVAILABLE
+    assert "whisper-cli" in (h.message or "")
 
 
 @pytest.mark.asyncio
@@ -503,7 +581,7 @@ async def test_transcribe_hands_whisper_a_wav_when_the_browser_sent_webm(tmp_pat
     seen: dict[str, str] = {}
 
     async def _fake_exec(*args, stdout=None, stderr=None, **kwargs):
-        if args[0] == "ffmpeg":
+        if os.path.basename(args[0]) == "ffmpeg":
             # Stand in for the transcode: ffmpeg's last argument is the output.
             seen["ffmpeg_args"] = " ".join(args)
             with open(args[-1], "wb") as f:
@@ -517,7 +595,7 @@ async def test_transcribe_hands_whisper_a_wav_when_the_browser_sent_webm(tmp_pat
         return _FakeProcess(b"", b"", 0)
 
     with patch("os.path.isfile", return_value=True), \
-         patch("shutil.which", return_value="/usr/bin/ffmpeg"), \
+         patch("convsim_core.stt.whisper_cpp._ffmpeg_path", return_value="/usr/bin/ffmpeg"), \
          patch("asyncio.create_subprocess_exec", side_effect=_fake_exec):
         result = await worker.transcribe(
             SttRequest(audio=b"\x00" * 100, audio_format="webm")
@@ -554,14 +632,14 @@ async def test_transcribe_leaves_a_wav_upload_alone(tmp_path):
 
     # ffmpeg absent on purpose: the WAV path must not touch it.
     with patch("os.path.isfile", return_value=True), \
-         patch("shutil.which", return_value=None), \
+         patch("convsim_core.stt.whisper_cpp._ffmpeg_path", return_value=None), \
          patch("asyncio.create_subprocess_exec", side_effect=_fake_exec):
         result = await worker.transcribe(
             SttRequest(audio=b"\x00" * 100, audio_format="wav")
         )
 
     assert "Hello, world." in result.transcript
-    assert "ffmpeg" not in calls
+    assert not any(os.path.basename(c) == "ffmpeg" for c in calls)
 
 
 @pytest.mark.asyncio
@@ -579,7 +657,7 @@ async def test_transcribe_says_ffmpeg_is_missing_rather_than_failing_obscurely(t
     worker = _make_worker(binary=_FAKE_BINARY, model=str(model_file))
 
     with patch("os.path.isfile", return_value=True), \
-         patch("shutil.which", return_value=None):
+         patch("convsim_core.stt.whisper_cpp._ffmpeg_path", return_value=None):
         with pytest.raises(SttUnavailableError) as exc_info:
             await worker.transcribe(
                 SttRequest(audio=b"\x00" * 100, audio_format="webm")
@@ -597,11 +675,13 @@ async def test_transcribe_reports_a_recording_ffmpeg_cannot_read(tmp_path):
     worker = _make_worker(binary=_FAKE_BINARY, model=str(model_file))
 
     async def _failing_ffmpeg(*args, stdout=None, stderr=None, **kwargs):
-        assert args[0] == "ffmpeg", "whisper-cli must not run on an undecodable file"
+        assert os.path.basename(args[0]) == "ffmpeg", (
+            "whisper-cli must not run on an undecodable file"
+        )
         return _FakeProcess(b"", b"moov atom not found", 1)
 
     with patch("os.path.isfile", return_value=True), \
-         patch("shutil.which", return_value="/usr/bin/ffmpeg"), \
+         patch("convsim_core.stt.whisper_cpp._ffmpeg_path", return_value="/usr/bin/ffmpeg"), \
          patch("asyncio.create_subprocess_exec", side_effect=_failing_ffmpeg):
         with pytest.raises(SttError) as exc_info:
             await worker.transcribe(
@@ -622,7 +702,7 @@ async def test_transcribe_leaves_no_temp_files_behind_after_a_transcode(tmp_path
     created: list[str] = []
 
     async def _fake_exec(*args, stdout=None, stderr=None, **kwargs):
-        if args[0] == "ffmpeg":
+        if os.path.basename(args[0]) == "ffmpeg":
             created.append(args[args.index("-i") + 1])
             created.append(args[-1])
             with open(args[-1], "wb") as f:
@@ -634,7 +714,7 @@ async def test_transcribe_leaves_no_temp_files_behind_after_a_transcode(tmp_path
         return _FakeProcess(b"", b"", 0)
 
     with patch("os.path.isfile", return_value=True), \
-         patch("shutil.which", return_value="/usr/bin/ffmpeg"), \
+         patch("convsim_core.stt.whisper_cpp._ffmpeg_path", return_value="/usr/bin/ffmpeg"), \
          patch("asyncio.create_subprocess_exec", side_effect=_fake_exec):
         await worker.transcribe(SttRequest(audio=b"\x00" * 100, audio_format="webm"))
 
