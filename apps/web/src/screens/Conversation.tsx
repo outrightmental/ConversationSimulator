@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 import { useEffect, useRef, useState } from 'react'
-import type { CSSProperties } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import { api } from '../api/client'
 import type { InputMode, ScenarioInfo, TurnResponse, WsEvent } from '@convsim/shared'
 import VoiceInput, { type SttReviewMeta } from '../components/VoiceInput'
 import DebugDrawer, { type DebugTurnEntry } from '../components/DebugDrawer'
 import PerformanceWarningBanner from '../components/PerformanceWarning'
+import NpcTurnProgress from '../components/NpcTurnProgress'
 import { useLatencyMetrics } from '../hooks/useLatencyMetrics'
 import {
   useSteamAchievements,
@@ -14,6 +14,13 @@ import {
   SteamStat,
   DEEP_CONVERSATION_TURNS,
 } from '../hooks/useSteamAchievements'
+import { useApiHealth } from '../api/useApiHealth'
+import {
+  estimateTurnMs,
+  readTurnSamples,
+  recordTurnSample,
+  UNKNOWN_MODEL_KEY,
+} from '../lib/turnEstimate'
 import { isDevModeEnabled } from '../privacyPrefs'
 import { getVoiceTimingPrefs } from '../components/VoiceSettingsPanel'
 import type { ApiError } from '../api/errors'
@@ -23,14 +30,11 @@ import { useIsDemo } from '../edition'
 
 // How long a wait is allowed to look normal before the UI says something.
 const SLOW_RESPONSE_MS = 5_000
-// Second stage: past this point a static "taking longer than usual" line reads
-// as a frozen app, so the notice starts reporting the elapsed time instead.
+// Second stage: past this point the advisory adds that the turn has not been
+// thrown away. The clock itself is on screen for the whole wait
+// (NpcTurnProgress), so this stage only changes what the notice says, not
+// whether a wait is visible.
 const VERY_SLOW_RESPONSE_MS = 30_000
-// The elapsed time is read out on this coarser grid. The visible clock ticks
-// every second, but a polite live region re-announces on every text change, and
-// 270 announcements over a five-minute turn drowns out everything else — so the
-// screen-reader copy only changes once per interval.
-const ELAPSED_ANNOUNCE_INTERVAL_MS = 30_000
 // When to stop trusting the in-flight request and start asking convsim-core what
 // it actually recorded. It is NOT a latency budget: a local model on CPU-only
 // hardware spends real minutes on one turn — the Windows machine in issue #489
@@ -103,27 +107,6 @@ function NpcAvatar() {
       </svg>
     </div>
   )
-}
-
-const srOnly: CSSProperties = {
-  position: 'absolute',
-  width: 1,
-  height: 1,
-  padding: 0,
-  margin: -1,
-  overflow: 'hidden',
-  clip: 'rect(0,0,0,0)',
-  whiteSpace: 'nowrap',
-  border: 0,
-}
-
-/** "45s" / "2m 05s" — a wait long enough to show is long enough to read. */
-function formatElapsed(ms: number): string {
-  const totalSeconds = Math.floor(ms / 1000)
-  const minutes = Math.floor(totalSeconds / 60)
-  const seconds = totalSeconds % 60
-  if (minutes === 0) return `${seconds}s`
-  return `${minutes}m ${String(seconds).padStart(2, '0')}s`
 }
 
 function npcStatusLabel(sessionState: string, phase: Phase): string {
@@ -217,12 +200,22 @@ export default function Conversation() {
   const [npcEmotion, setNpcEmotion] = useState<string | null>(null)
   const [streamingText, setStreamingText] = useState('')
   const [banners, setBanners] = useState<Banner[]>([])
-  // Milliseconds the current turn has been waiting on the NPC. Drives both
-  // stages of the slow-response notice, so one clock answers "how long has the
-  // player been staring at 'NPC is responding…'".
+  // Milliseconds the current turn has been waiting on the NPC. Drives the
+  // progress indicator and both stages of the slow-response notice, so one clock
+  // answers "how long has the player been waiting on this turn" — and, once the
+  // turn lands, is the measurement the next turn's estimate is built from.
   const [waitElapsedMs, setWaitElapsedMs] = useState(0)
+  // What a turn is expected to cost on this machine, from the turns it has
+  // already finished (issue #488). Null until one has been timed.
+  const [turnEstimateMs, setTurnEstimateMs] = useState<number | null>(null)
 
   const { snapshot: latencySnapshot, mark, recordInterval, recordValue, warnings: perfWarnings } = useLatencyMetrics()
+  // Turn timings are only comparable within one model, so the estimate is filed
+  // under the loaded model's name — swapping in a smaller model (the app's own
+  // advice when turns are slow) must not keep quoting the old one's minutes.
+  const { runtime } = useApiHealth()
+  const modelKey = runtime?.llm_model_name ?? UNKNOWN_MODEL_KEY
+  const modelKeyRef = useRef(modelKey)
   const firstTokenMarkedRef = useRef(false)
   const turnTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Ticks once a second while a turn is in flight to advance waitElapsedMs.
@@ -280,6 +273,18 @@ export default function Conversation() {
       ttsQueueRef.current = []
     }
   }, [])
+
+  // Load the estimate for whichever model is loaded, and re-load it if the name
+  // arrives late (health answers after mount) or changes mid-session.
+  useEffect(() => {
+    modelKeyRef.current = modelKey
+    setTurnEstimateMs(estimateTurnMs(readTurnSamples(modelKey)))
+  }, [modelKey])
+
+  /** Fold a finished turn's duration into the estimate shown on the next one. */
+  function _learnTurnDuration(ms: number) {
+    setTurnEstimateMs(estimateTurnMs(recordTurnSample(modelKeyRef.current, ms)))
+  }
 
   function _startWaitClock() {
     if (waitClockRef.current) clearInterval(waitClockRef.current)
@@ -837,6 +842,10 @@ export default function Conversation() {
       // waiting" notice rather than a screen that goes quiet.
       const adopted = await _awaitServerTurnAfterDeadline(request, () => late.result !== null)
       if (adopted) {
+        // Deliberately not timed: the reply was found by polling, so the wait
+        // measures when the screen *noticed* the turn (and, if the request was
+        // wedged, nothing about the model at all). Feeding that to the estimate
+        // would quote minutes for turns that take seconds.
         _stopWaitClock()
         return
       }
@@ -846,6 +855,9 @@ export default function Conversation() {
       // reports its own cause now instead of a vague timeout at the ceiling.
       if (late.result !== null) result = late.result
     }
+    // Read the clock before stopping it: a finished turn is the one measurement
+    // the next turn's estimate can be built from.
+    const waitedMs = Date.now() - waitStartedAtRef.current
     _stopWaitClock()
 
     if (!result.ok) {
@@ -869,6 +881,7 @@ export default function Conversation() {
     }
     notePlayerTurnKept()
     const turnData = result.data
+    _learnTurnDuration(waitedMs)
 
     if (!firstTokenMarkedRef.current) {
       recordInterval('first_token_ms', 'turn_submit')
@@ -972,10 +985,15 @@ export default function Conversation() {
   const isIdle = phase === 'active'
   const isBusy = phase === 'submitting' || phase === 'ending'
   const isEnded = phase === 'ended'
-  const isSlowResponse = phase === 'submitting' && waitElapsedMs >= SLOW_RESPONSE_MS
-  const isVerySlowResponse = phase === 'submitting' && waitElapsedMs >= VERY_SLOW_RESPONSE_MS
-  const announcedElapsedMs =
-    Math.floor(waitElapsedMs / ELAPSED_ANNOUNCE_INTERVAL_MS) * ELAPSED_ANNOUNCE_INTERVAL_MS
+  // The NPC row the stream committed, while the REST request that carries the
+  // state delta is still out. There is nothing left to wait for on screen, so
+  // the turn panel must not go on asking the player to wait for a reply they
+  // are already reading — and after the turn deadline that gap is up to one
+  // reconcile interval long.
+  const npcReplyOnScreen = turns[turns.length - 1]?.role === 'npc'
+  const isAwaitingNpc = phase === 'submitting' && !npcReplyOnScreen
+  const isSlowResponse = isAwaitingNpc && waitElapsedMs >= SLOW_RESPONSE_MS
+  const isVerySlowResponse = isAwaitingNpc && waitElapsedMs >= VERY_SLOW_RESPONSE_MS
   const npcStatus = npcStatusLabel(sessionState, phase)
 
   return (
@@ -1238,58 +1256,67 @@ export default function Conversation() {
           </div>
         )}
 
-        {isBusy && !streamingText && (
+        {/* The two waits the turn panel below does not cover. While the NPC is
+            actually out, that panel is the status — a second "NPC is responding…"
+            here would only repeat it in different words. What is left is the gap
+            after the stream has delivered the reply but before the request
+            carrying the state delta answers, and ending the session. Both leave
+            the composer disabled, so both need saying. */}
+        {isBusy && !streamingText && !isAwaitingNpc && (
           <div
+            data-testid="turn-finishing-indicator"
             aria-live="polite"
             aria-busy="true"
             style={{ color: '#71717a', fontSize: '0.875rem', fontStyle: 'italic' }}
           >
-            {phase === 'submitting' ? 'NPC is responding…' : 'Ending session…'}
+            {phase === 'submitting' ? 'Finishing the turn…' : 'Ending session…'}
           </div>
-        )}
-
-        {isSlowResponse && phase === 'submitting' && (
-          <div
-            data-testid="slow-response-indicator"
-            role="status"
-            aria-live="polite"
-            style={{
-              padding: '0.5rem 0.75rem',
-              borderRadius: 6,
-              border: '1px solid #713f12',
-              background: '#1c1000',
-              color: '#fde68a',
-              fontSize: '0.8rem',
-            }}
-          >
-            {isDemo
-              ? 'NPC is taking longer than usual. The model may be slow on this hardware; closing other apps usually helps.'
-              : 'NPC is taking longer than usual. The model may be slow on this hardware. You can adjust settings or try a smaller model.'}
-            {isVerySlowResponse && (
-              // Past half a minute a static line reads as a hung app. Naming the
-              // elapsed time shows the app is still waiting on the model rather
-              // than stuck, and that the turn has not been thrown away.
-              // Hidden from assistive tech: this ticks every second, and the
-              // enclosing polite live region would re-announce each tick. The
-              // sr-only sibling below carries the same news on a 30 s grid.
-              <div
-                data-testid="slow-response-elapsed"
-                aria-hidden="true"
-                style={{ marginTop: 4, color: '#fbbf24' }}
-              >
-                Still waiting — {formatElapsed(waitElapsedMs)} so far. The reply is
-                not lost; slow hardware can take a few minutes per turn.
-              </div>
-            )}
-          </div>
-        )}
-
-        {isVerySlowResponse && (
-          <span data-testid="slow-response-elapsed-announcement" role="status" aria-live="polite" style={srOnly}>
-            Still waiting on the NPC — {formatElapsed(announcedElapsedMs)} so far. The reply is not lost.
-          </span>
         )}
       </div>
+
+      {/* How long this turn is taking, and how long it usually takes (issue #488).
+          Deliberately outside the transcript: that region is a polite live region,
+          and a clock ticking inside it would be re-announced every second.
+          Rendered on every pass rather than only while a turn is out: the panel
+          itself draws nothing between turns, but its live regions have to be
+          mounted before they have anything to say, or the announcement carrying
+          the estimate is one a screen reader may never make. They are absolutely
+          positioned, so an idle panel costs no layout. */}
+      <NpcTurnProgress
+        active={isAwaitingNpc}
+        elapsedMs={waitElapsedMs}
+        estimateMs={turnEstimateMs}
+        streaming={streamingText.length > 0}
+      />
+
+      {/* isSlowResponse already implies a turn is out. */}
+      {isSlowResponse && (
+        <div
+          data-testid="slow-response-indicator"
+          role="status"
+          aria-live="polite"
+          style={{
+            padding: '0.5rem 0.75rem',
+            borderRadius: 6,
+            border: '1px solid #713f12',
+            background: '#1c1000',
+            color: '#fde68a',
+            fontSize: '0.8rem',
+          }}
+        >
+          {isDemo
+            ? 'NPC is taking longer than usual. The model may be slow on this hardware; closing other apps usually helps.'
+            : 'NPC is taking longer than usual. The model may be slow on this hardware. You can adjust settings or try a smaller model.'}
+          {isVerySlowResponse && (
+            // Past half a minute, say outright that the turn has not been
+            // thrown away — the panel above already reports the clock, so
+            // this stage adds the reassurance rather than a second timer.
+            <div data-testid="slow-response-reassurance" style={{ marginTop: 4, color: '#fbbf24' }}>
+              The reply is not lost; slow hardware can take a few minutes per turn.
+            </div>
+          )}
+        </div>
+      )}
 
       {/* State meters — shown only when enabled in setup and hydrated */}
       {showStateMeters && Object.keys(stateVars).length > 0 && (
