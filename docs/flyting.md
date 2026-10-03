@@ -40,6 +40,11 @@ teaches more than being told yours scored 60. Countering the opponent's last lin
 earns the **riposte** bonus. Three difficulty tiers (`milquetoast`, `wildean`,
 `unhinged_taunter`) map to a persona note plus sampling configuration.
 
+There is no shot clock in a bout. The clock is a batting-practice mechanic (see
+below), and the engine ignores a reported `elapsed_since_prompt_s` here whatever
+a client sends: a bout is a contest of lines, and zeroing a considered volley
+would hand the round, and the momentum swing with it, to the opponent.
+
 ### Batting Practice (solo)
 
 A fixed target who reacts — flinches, scoffs, mutters — but never counters.
@@ -159,8 +164,9 @@ default). The third hygiene joke is visibly near-worthless — variety is the me
 
 Only a volley's *primary* theme counts as a use of that well — the judge tags
 three or four themes for one line, and counting all of them would decay a well
-the player never actually returned to. The debrief's redundancy report counts
-the same way, so the percentage it prints is the factor the engine applied.
+the player never actually returned to. The
+debrief's redundancy report counts the same way, so the percentage it prints is
+the factor the engine applied.
 
 ### Stage 3 — The judge
 

@@ -274,8 +274,18 @@ async def process_volley(
 
     # The shot clock is a reflex constraint, so a late volley is a whiff whatever
     # it says — and there is no point paying for a judge call on it.
+    #
+    # It is a batting-practice mechanic only (see docs/flyting.md): a bout is a
+    # contest of lines, not of reflexes, and zeroing a late volley there would
+    # cost the player the exchange, hand the round to the opponent, and swing
+    # momentum for the crime of thinking. The engine is the authority on that,
+    # whatever elapsed time a client chooses to report.
     extra_flags: List[str] = []
-    if elapsed_since_prompt_s is not None and shot_clock_expired(state, elapsed_since_prompt_s):
+    if (
+        not is_bout
+        and elapsed_since_prompt_s is not None
+        and shot_clock_expired(state, elapsed_since_prompt_s)
+    ):
         extra_flags.append("shot_clock_expired")
         prepared.gate = GateResult(
             outcome=GateOutcome.DUD,

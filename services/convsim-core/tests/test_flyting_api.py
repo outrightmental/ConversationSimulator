@@ -380,6 +380,22 @@ class TestTheBout:
         assert body["exchange"]["momentum"] == body["run"]["momentum"]
         assert body["player_volley"]["momentum"] == body["run"]["momentum"]
 
+    def test_the_shot_clock_does_not_apply_to_a_bout(self, client):
+        # The shot clock is a batting-practice mechanic. A bout is a contest of
+        # lines, so a volley that took a minute still scores: zeroing it would
+        # hand the round and the momentum swing to the opponent for thinking.
+        session_id = start_run(client, scenario_id=BOUT_SCENARIO, play_format="bout",
+                               batting_format=None)
+        body = volley(
+            client,
+            session_id,
+            "Read us the charter, Captain. Slowly, and twice.",
+            elapsed_since_prompt_s=90,
+        )
+        assert "shot_clock_expired" not in body["player_volley"]["flags"]
+        assert body["player_volley"]["score"] > 0
+        assert body["run"]["whiffs"] == 0
+
     def test_momentum_is_mirrored_into_the_ordinary_state_meters(self, client):
         session_id = start_run(client, scenario_id=BOUT_SCENARIO, play_format="bout",
                                batting_format=None)
