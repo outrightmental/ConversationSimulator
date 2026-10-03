@@ -2,11 +2,13 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import {
   DEFAULT_UI_LANGUAGE_LEVEL,
+  FLOW_STATE_LABELS,
   UI_LANGUAGE_KEYS,
   hasSeenFamiliarityReask,
   humanizeEndingType,
   humanizeFlags,
   humanizeIdentifier,
+  flowStateLabelKey,
   levelForFamiliarity,
   markFamiliarityReaskShown,
   plainFlowState,
@@ -15,6 +17,8 @@ import {
   writeLlmFamiliarity,
   writeUiLanguageLevel,
 } from '../lib/plainLanguage'
+import { en } from '../i18n/locales/en'
+import { de } from '../i18n/locales/de'
 
 /** Issue #501 §2: the buffer between player-facing and technical language. */
 beforeEach(() => {
@@ -112,5 +116,37 @@ describe('humanizers', () => {
   it('reads an ending type as words', () => {
     expect(humanizeEndingType('player_exit')).toBe('player exit')
     expect(humanizeEndingType('safety_stop')).toBe('safety stop')
+  })
+})
+
+describe('flow-state labels reach a translated screen', () => {
+  // Settings is an i18n-migrated screen, so the session list must render these
+  // through t() — printing the English table there would show a German player
+  // "Your turn" in an otherwise German UI.
+  it('maps a known state to its own locale key', () => {
+    expect(flowStateLabelKey('PlayerTurnListening')).toBe('sessionStates.PlayerTurnListening')
+  })
+
+  it('maps a state this build does not know to the unknown key', () => {
+    expect(flowStateLabelKey('SomeFutureState')).toBe('sessionStates.unknown')
+    // `unknown` is the fallback, never a state identifier a caller can ask for.
+    expect(flowStateLabelKey('unknown')).toBe('sessionStates.unknown')
+  })
+
+  it('every label in the English table has a key in every catalog', () => {
+    const states = Object.keys(FLOW_STATE_LABELS)
+    expect(states).toContain('unknown')
+    for (const catalog of [en, de]) {
+      const entries = (catalog as unknown as { sessionStates: Record<string, string> })
+        .sessionStates
+      expect(Object.keys(entries).sort()).toEqual(states.sort())
+      for (const state of states) expect(entries[state]).toBeTruthy()
+    }
+  })
+
+  it('the English catalog says exactly what the English table says', () => {
+    expect((en as unknown as { sessionStates: Record<string, string> }).sessionStates).toEqual(
+      FLOW_STATE_LABELS,
+    )
   })
 })

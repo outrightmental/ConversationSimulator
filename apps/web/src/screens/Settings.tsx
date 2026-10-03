@@ -14,7 +14,7 @@ import VoiceSettingsPanel from '../components/VoiceSettingsPanel'
 import { useTranslation, formatDate, SUPPORTED_LOCALES } from '../i18n'
 import { useScenarios } from '../api/useScenarios'
 import { useUiLanguageLevel } from '../hooks/useUiLanguageLevel'
-import { plainFlowState } from '../lib/plainLanguage'
+import { flowStateLabelKey } from '../lib/plainLanguage'
 import { RemediationCard } from '../setup/RemediationCard'
 import { openExternal } from '../lib/openExternal'
 import { clearTurnSamples } from '../lib/turnEstimate'
@@ -900,7 +900,7 @@ export default function Settings() {
                       color: s.state === 'Ended' ? '#86efac' : '#fbbf24',
                     }}
                   >
-                    {isPlain ? plainFlowState(s.state) : s.state}
+                    {isPlain ? t(flowStateLabelKey(s.state)) : s.state}
                   </span>
                 </span>
                 <div style={{ display: 'flex', gap: '0.4rem', flexShrink: 0 }}>

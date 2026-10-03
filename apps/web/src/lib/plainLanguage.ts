@@ -133,44 +133,55 @@ export function humanizeFlags(flags: readonly string[]): string {
 }
 
 /**
+ * Plain-language label per flow state, in English.
+ *
+ * The keys double as locale keys under `sessionStates.` in the i18n catalogs,
+ * so a screen that has been migrated to `t()` can translate the same label this
+ * table spells in English — see `flowStateLabelKey`. `unknown` is the label for
+ * a state this build does not know; an unmapped state is a bug, not a thing to
+ * print raw at a player.
+ */
+export const FLOW_STATE_LABELS: Record<string, string> = {
+  NotStarted: 'Not started yet',
+  LoadingModel: 'Getting ready',
+  LoadingScenario: 'Getting ready',
+  Briefing: 'Briefing',
+  NpcOpening: 'Opening the conversation',
+  PlayerTurnListening: 'Your turn',
+  PlayerTurnReview: 'Check your message',
+  NpcThinking: 'Writing a reply',
+  NpcSpeaking: 'Speaking',
+  ScenarioEvent: 'Something is changing',
+  DebriefGenerating: 'Preparing your debrief',
+  DebriefReady: 'Debrief ready',
+  Ended: 'Finished',
+  Error: 'Something went wrong',
+  unknown: 'In progress',
+}
+
+const UNKNOWN_FLOW_STATE = 'unknown'
+
+/**
  * What the NPC is doing, in words rather than flow-state identifiers.
  *
  * The header used to print the raw identifier (`State: PlayerTurnListening`).
  * At `technical` the caller still shows the identifier alongside this.
+ *
+ * English only — for the screens that have not been migrated to `t()` yet.
+ * A migrated screen must use `flowStateLabelKey` instead, or a German player
+ * reads "Your turn" in an otherwise German UI.
  */
 export function plainFlowState(state: string): string {
-  switch (state) {
-    case 'NotStarted':
-      return 'Not started yet'
-    case 'LoadingModel':
-    case 'LoadingScenario':
-      return 'Getting ready'
-    case 'Briefing':
-      return 'Briefing'
-    case 'NpcOpening':
-      return 'Opening the conversation'
-    case 'PlayerTurnListening':
-      return 'Your turn'
-    case 'PlayerTurnReview':
-      return 'Check your message'
-    case 'NpcThinking':
-      return 'Writing a reply'
-    case 'NpcSpeaking':
-      return 'Speaking'
-    case 'ScenarioEvent':
-      return 'Something is changing'
-    case 'DebriefGenerating':
-      return 'Preparing your debrief'
-    case 'DebriefReady':
-      return 'Debrief ready'
-    case 'Ended':
-      return 'Finished'
-    case 'Error':
-      return 'Something went wrong'
-    default:
-      // An unmapped state is a bug, not a thing to print raw at a player.
-      return 'In progress'
-  }
+  return (
+    (state === UNKNOWN_FLOW_STATE ? undefined : FLOW_STATE_LABELS[state]) ??
+    FLOW_STATE_LABELS[UNKNOWN_FLOW_STATE]
+  )
+}
+
+/** The locale key for a flow state's plain-language label. */
+export function flowStateLabelKey(state: string): string {
+  const known = state !== UNKNOWN_FLOW_STATE && state in FLOW_STATE_LABELS
+  return `sessionStates.${known ? state : UNKNOWN_FLOW_STATE}`
 }
 
 /** "player_exit" → "player exit"; used in the "Outcome: …" lines. */

@@ -131,6 +131,23 @@ export const de: LocaleMessages = {
     appliedPlain: 'Einfache Wortwahl ist aktiv.',
     appliedTechnical: 'Technische Details sind aktiv.',
   },
+  sessionStates: {
+    NotStarted: 'Noch nicht begonnen',
+    LoadingModel: 'Wird vorbereitet',
+    LoadingScenario: 'Wird vorbereitet',
+    Briefing: 'Einweisung',
+    NpcOpening: 'Eröffnet das Gespräch',
+    PlayerTurnListening: 'Sie sind dran',
+    PlayerTurnReview: 'Nachricht prüfen',
+    NpcThinking: 'Schreibt eine Antwort',
+    NpcSpeaking: 'Spricht',
+    ScenarioEvent: 'Etwas verändert sich',
+    DebriefGenerating: 'Nachbesprechung wird erstellt',
+    DebriefReady: 'Nachbesprechung bereit',
+    Ended: 'Beendet',
+    Error: 'Etwas ist schiefgelaufen',
+    unknown: 'Läuft',
+  },
   home: {
     title: 'Gesprächssimulator',
     tagline:

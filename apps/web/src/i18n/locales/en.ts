@@ -128,6 +128,28 @@ export const en = {
     appliedPlain: 'Plain wording it is.',
     appliedTechnical: 'Technical detail is on.',
   },
+  // What a session is doing, in plain language rather than the flow-state
+  // identifier (issue #501 §2). Keyed by the identifier itself; `unknown`
+  // covers a state this build does not know about. Mirrors FLOW_STATE_LABELS
+  // in lib/plainLanguage.ts, which is the English copy the screens that are
+  // not on t() yet use.
+  sessionStates: {
+    NotStarted: 'Not started yet',
+    LoadingModel: 'Getting ready',
+    LoadingScenario: 'Getting ready',
+    Briefing: 'Briefing',
+    NpcOpening: 'Opening the conversation',
+    PlayerTurnListening: 'Your turn',
+    PlayerTurnReview: 'Check your message',
+    NpcThinking: 'Writing a reply',
+    NpcSpeaking: 'Speaking',
+    ScenarioEvent: 'Something is changing',
+    DebriefGenerating: 'Preparing your debrief',
+    DebriefReady: 'Debrief ready',
+    Ended: 'Finished',
+    Error: 'Something went wrong',
+    unknown: 'In progress',
+  },
   home: {
     title: 'Conversation Simulator',
     tagline: 'Practice interviews, negotiations, language, and difficult conversations.',
