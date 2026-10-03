@@ -420,6 +420,36 @@ describe('VoiceSetup — what is missing', () => {
     expect(await screen.findByTestId('vad-onnxruntime-row')).toHaveTextContent('pip install onnxruntime')
   })
 
+  it('puts the ffmpeg gap inside the section whose badge it explains', async () => {
+    // WhisperCppWorker.health reports speech-to-text unavailable without
+    // ffmpeg, so this is the state where the badge reads "Not yet" while the
+    // engine and the model rows above it are both green. As a card below all
+    // three capability sections, the one row that explained the badge was off
+    // the bottom of the page.
+    mockApi.getVoiceSetupPlan.mockResolvedValue({
+      ok: true,
+      data: makePlan({ ffmpeg_installed: false }),
+    })
+
+    renderScreen()
+    const row = await screen.findByTestId('ffmpeg-row')
+
+    expect(screen.getByTestId('capability-stt')).toContainElement(row)
+    expect(row).toHaveTextContent('not found')
+    expect(screen.getByLabelText('Copy the ffmpeg install command')).toBeInTheDocument()
+  })
+
+  it('drops the ffmpeg row once ffmpeg is there', async () => {
+    mockApi.getVoiceSetupPlan.mockResolvedValue({
+      ok: true,
+      data: makePlan({ ffmpeg_installed: true }),
+    })
+
+    renderScreen()
+    await screen.findByTestId('voice-setup-screen')
+    expect(screen.queryByTestId('ffmpeg-row')).toBeNull()
+  })
+
   it('tells Windows to restart after the ffmpeg command, and nobody else', async () => {
     mockApi.getVoiceSetupPlan.mockResolvedValue({
       ok: true,
@@ -810,9 +840,9 @@ describe('VoiceSetup — the microphone', () => {
 
   it('names ffmpeg rather than "finish the steps above" when ffmpeg is the gap', async () => {
     // A missing ffmpeg reports 'unavailable', the same status as a missing
-    // binary or model, because it is the same kind of gap. But ffmpeg has its
-    // own card below the capability sections, so "finish the steps above"
-    // would point at the wrong half of the screen.
+    // binary or model, because it is the same kind of gap. Naming it is still
+    // worth its own sentence: it is the one piece whose absence fails every
+    // utterance however green the rest of the list is.
     vi.mocked(useMicCapture).mockReturnValue(makeMicState({ permission: 'granted' }))
     const plan = readyPlan()
     plan.ffmpeg_installed = false
@@ -891,7 +921,7 @@ describe('VoiceSetup — the microphone', () => {
     await finishRecording()
 
     const result = await screen.findByTestId('mic-test-result')
-    expect(result).not.toHaveTextContent('check its row below')
+    expect(result).not.toHaveTextContent('check its row above')
     expect(result).toHaveTextContent('speech model is the likely culprit')
   })
 })

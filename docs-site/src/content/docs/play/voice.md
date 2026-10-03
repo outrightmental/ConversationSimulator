@@ -150,8 +150,9 @@ container is up to you.
 
 - **`ffmpeg`** — your browser records WebM/Opus and whisper.cpp reads WAV,
   and `ffmpeg` is what converts one into the other. Nothing can be transcribed
-  without it, however complete the rest of the list is, so the setup screen
-  gives it its own card with the command for your platform.
+  without it, however complete the rest of the list is, so it is a row of
+  **Speak your turns** — beside the program and the model — with the command
+  for your platform, and that section stays **Not yet** until it is there.
 - **`onnxruntime`** — only needed for hands-free turn-taking. The packaged
   app does not include it and cannot have it added, so hands-free is a
   source-checkout feature (`pip install onnxruntime` there); the setup screen

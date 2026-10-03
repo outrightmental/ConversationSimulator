@@ -303,6 +303,64 @@ function AssetRow({ asset }: { asset: VoiceAsset }) {
   )
 }
 
+/**
+ * ffmpeg is a step of speech-to-text, not a footnote to it.
+ *
+ * whisper.cpp reads WAV and the browser records WebM/Opus, so the worker
+ * transcodes every recording before the model ever sees it — without ffmpeg no
+ * utterance can be transcribed, which is why `WhisperCppWorker.health` reports
+ * the capability unavailable until it is there.
+ *
+ * So it belongs in this section, beside the engine and the model, the way
+ * onnxruntime sits inside hands-free. As a card below all three sections it
+ * left "Speak your turns — Not yet" sitting above nothing but green rows, with
+ * the one row that explained the badge out of sight further down the page.
+ */
+function FfmpegRow({ platform }: { platform: string }) {
+  return (
+    <li
+      data-testid="ffmpeg-row"
+      style={{ display: 'flex', gap: '0.6rem', padding: '0.6rem 0', borderTop: '1px solid rgba(255,255,255,0.06)' }}
+    >
+      <StatusDot ok={false} />
+      <div style={{ flex: 1 }}>
+        <p style={{ margin: 0, fontSize: '0.875rem', fontWeight: 500 }}>
+          ffmpeg <span style={{ fontWeight: 400, color: '#fbbf24' }}>— not found</span>
+        </p>
+        <p style={{ margin: '0.2rem 0 0', fontSize: '0.82rem', color: '#a1a1aa', lineHeight: 1.5 }}>
+          The browser records WebM/Opus audio and whisper.cpp reads WAV, so ffmpeg is what
+          converts one into the other. Without it no recording can be transcribed at all,
+          however complete the rest of this list is — speaking your turns needs it just as
+          much as the model does.
+        </p>
+        <CommandBlock
+          command={
+            platform === 'darwin'
+              ? 'brew install ffmpeg'
+              : platform === 'win32'
+              ? 'winget install --id Gyan.FFmpeg'
+              : 'sudo apt install ffmpeg'
+          }
+          label="Copy the ffmpeg install command"
+        />
+        {/* winget writes ffmpeg's folder into the user PATH, and PATH is a
+            snapshot taken when a process starts — so the running service keeps
+            reporting "not found" after a perfectly good install. The other two
+            land where find_tool already looks. */}
+        {platform === 'win32' && (
+          <p
+            data-testid="ffmpeg-restart-note"
+            style={{ margin: '0.4rem 0 0', fontSize: '0.8rem', color: '#fbbf24', lineHeight: 1.5 }}
+          >
+            Restart the app afterwards: winget puts ffmpeg on the PATH of new
+            processes only, so this row cannot see it until then.
+          </p>
+        )}
+      </div>
+    </li>
+  )
+}
+
 /** Outcome of the one real round trip through microphone → decoder → speech model. */
 type MicTestResult =
   | { kind: 'heard'; transcript: string }
@@ -344,11 +402,12 @@ function MicCheckRow({
           kind: 'problem',
           // A missing ffmpeg reports 'unavailable' the same way a missing
           // binary or model does, because it is the same kind of gap: a piece
-          // the player can install. "Finish the steps above" would be the
-          // wrong instruction, since ffmpeg has its own card further down.
+          // the player can install. Naming it is still worth a sentence of its
+          // own — it is the one row in this list whose absence fails every
+          // utterance no matter what else is green.
           message: ffmpegInstalled
             ? 'Speech-to-text is not running yet — finish the steps above, then try again.'
-            : 'ffmpeg is missing, and nothing your browser records can be decoded without it. Install it from the ffmpeg card below, then try again.',
+            : 'ffmpeg is missing, and nothing your browser records can be decoded without it. Install it with the command in the ffmpeg row above, then try again.',
         })
       } else if (r.data.status === 'error') {
         setResult({
@@ -358,7 +417,7 @@ function MicCheckRow({
           // that is not on the screen.
           message: ffmpegInstalled
             ? 'The recording could not be transcribed. ffmpeg accepted it, so the speech model is the likely culprit — the log folder has the detail.'
-            : 'The recording could not be transcribed. ffmpeg is the usual culprit — check its row below.',
+            : 'The recording could not be transcribed. ffmpeg is the usual culprit — check its row above.',
         })
       } else if (r.data.transcript) {
         setResult({ kind: 'heard', transcript: r.data.transcript })
@@ -797,6 +856,9 @@ export default function VoiceSetup() {
                     </select>
                   </li>
                 )}
+                {capability.id === 'stt' && !plan.ffmpeg_installed && (
+                  <FfmpegRow platform={plan.platform} />
+                )}
                 {capability.id === 'stt' && (
                   <MicCheckRow
                     sttReady={capability.ready}
@@ -843,42 +905,6 @@ export default function VoiceSetup() {
         )
       })}
 
-      {!plan.ffmpeg_installed && (
-        <Card>
-          <p style={{ margin: 0, fontSize: '0.875rem', fontWeight: 500 }}>
-            ffmpeg <span style={{ fontWeight: 400, color: '#fbbf24' }}>— not found</span>
-          </p>
-          <p style={{ margin: '0.2rem 0 0', fontSize: '0.82rem', color: '#a1a1aa', lineHeight: 1.5 }}>
-            The browser records WebM/Opus audio and whisper.cpp reads WAV, so ffmpeg is what
-            converts one into the other. Without it on your PATH no recording can be
-            transcribed at all, however complete the rest of this list is — speaking your
-            turns needs it just as much as the model does.
-          </p>
-          <CommandBlock
-            command={
-              plan.platform === 'darwin'
-                ? 'brew install ffmpeg'
-                : plan.platform === 'win32'
-                ? 'winget install --id Gyan.FFmpeg'
-                : 'sudo apt install ffmpeg'
-            }
-            label="Copy the ffmpeg install command"
-          />
-          {/* winget writes ffmpeg's folder into the user PATH, and PATH is a
-              snapshot taken when a process starts — so the running service
-              keeps reporting "not found" after a perfectly good install. The
-              other two commands land in a directory already on PATH. */}
-          {plan.platform === 'win32' && (
-            <p
-              data-testid="ffmpeg-restart-note"
-              style={{ margin: '0.4rem 0 0', fontSize: '0.8rem', color: '#fbbf24', lineHeight: 1.5 }}
-            >
-              Restart the app afterwards: winget puts ffmpeg on the PATH of new
-              processes only, so this row cannot see it until then.
-            </p>
-          )}
-        </Card>
-      )}
 
       {(pendingAssets.length > 0 || switchTo != null) && !installing && (
         <section aria-label="Download the voice models">
