@@ -105,10 +105,24 @@ out of the question for this product.
 
 Everything but the play-testing is done. The remaining gate is:
 
-1. Run the nightly smoke against it on the reference hardware:
-   `python scripts/nightly-model-smoke.py --model-id qwen3-1.7b-instruct-q8_0`.
-2. Play all five demo conversations to the debrief at `standard` difficulty,
-   twice each; zero incoherent turns, zero template-fallback debriefs.
+1. Measure it on the reference hardware — the nightly smoke checks latency
+   budgets, nothing about coherence, so this step only rules out a model that
+   is somehow *slower*:
+
+   ```sh
+   # --model-url and --model-sha256 are the entry's own `download` fields
+   python scripts/nightly-model-smoke.py --download-only \
+       --model-id qwen3-1.7b-instruct-q8_0 \
+       --model-url '<download.url from model-registry/registry.yaml>' \
+       --model-sha256 '<download.sha256 from the same entry>'
+   python scripts/nightly-model-smoke.py --model-id qwen3-1.7b-instruct-q8_0
+   ```
+
+2. The actual gate: play all five demo conversations to the debrief at
+   `standard` difficulty, twice each; zero incoherent turns, zero
+   template-fallback debriefs. Run the engine as the demo on the candidate so
+   you are playing what a player would get:
+   `CONVSIM_EDITION=demo CONVSIM_DEMO_MODEL_ID=qwen3-1.7b-instruct-q8_0 ./scripts/dev.sh`.
 3. Build the demo with `demo_model_id: qwen3-1.7b-instruct-q8_0` (Actions →
    Release → Run workflow) and re-run the [demo gate](#demo-gate). Update the
    download size in the demo store copy
