@@ -73,7 +73,9 @@ it a reflex drill rather than an essay contest. When it expires, whatever is in
 the box is submitted for you, and that counts as a whiff.
 
 Consecutive volleys scoring 60 or more build a **heat** multiplier from ×1.0 to
-×2.0 in steps of 0.1; a dud or a foul resets it to ×1.0. Your session score is
+×2.0 in steps of 0.1. Anything scoring less than 60 drops it straight back to
+×1.0 — a dud and a foul do that, and so does a legal volley that merely did not
+land. Your session score is
 the sum of each volley's score times the heat in force when it landed — heat is
 never applied retroactively. Heat is a batting-practice mechanic only; a bout is
 decided on raw points.

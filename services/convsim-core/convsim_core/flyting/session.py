@@ -11,7 +11,8 @@ instruction.
 
 **Batting Practice.** A fixed target who reacts but never counters. Consecutive
 volleys scoring at or above 60 build a heat multiplier from x1.0 to x2.0 in
-steps of 0.1; duds and fouls reset it. Session score is the sum of
+steps of 0.1. Anything less than that drops it straight back to x1.0 — a
+dud, a foul, or simply a volley that did not land. Session score is the sum of
 ``volley score × heat at the moment of scoring``. Three formats: timed (90s),
 set (10 volleys), and endless (three whiffs and you are out).
 
@@ -233,7 +234,13 @@ class FlytingRunState:
 
 
 def next_heat(current: float, score: int, *, whiffed: bool) -> float:
-    """Heat after a volley: +0.1 for a hit, reset to 1.0 for a dud or foul."""
+    """Heat after a volley: +0.1 for a hit, otherwise back to 1.0.
+
+    A hit is a volley at or above ``HEAT_THRESHOLD``. Everything else breaks the
+    chain, not only a dud or a foul: a volley that scored 45 is a legal volley
+    that did not land, and "consecutive volleys scoring 60 or above" is what the
+    multiplier pays for.
+    """
     if whiffed or score < HEAT_THRESHOLD:
         return HEAT_MIN
     return min(HEAT_MAX, round(current + HEAT_STEP, 2))

@@ -65,7 +65,9 @@ reported by the client that owns them (`elapsed_since_prompt_s`,
 own timer, so a client that omits them is playing untimed.
 
 Consecutive volleys scoring 60 or above build a **heat** multiplier from ×1.0 to
-×2.0 in steps of 0.1; a dud or a foul resets it. Session score is the sum of
+×2.0 in steps of 0.1. Anything that scores less breaks the chain and the
+multiplier drops straight back to ×1.0 — a dud and a foul do that, and so does a
+legal volley that merely did not land. Session score is the sum of
 `volley score × heat at the moment of scoring` — the multiplier in force when the
 volley arrives is the one that pays, so heat is never retroactive.
 
