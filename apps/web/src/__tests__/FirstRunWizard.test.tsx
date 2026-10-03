@@ -27,6 +27,19 @@ vi.mock('../api/client', () => ({
   },
 }))
 
+// Typed with an explicit signature (rather than letting the no-arg
+// implementation infer one) so `mock.calls` destructures the name argument
+// instead of inferring an empty tuple.
+const mockUnlock = vi.fn<(name: string) => Promise<boolean>>(() => Promise.resolve(false))
+const mockIncrementStat = vi.fn<(name: string) => Promise<boolean>>(() => Promise.resolve(false))
+// Only the hook itself is stubbed. This module also exports the achievement and
+// stat name maps and the unlock thresholds that the wizard imports directly, so
+// importOriginal keeps those real.
+vi.mock('../hooks/useSteamAchievements', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useSteamAchievements')>()),
+  useSteamAchievements: () => ({ unlock: mockUnlock, incrementStat: mockIncrementStat }),
+}))
+
 import { api } from '../api/client'
 const mockApi = vi.mocked(api)
 
@@ -1290,5 +1303,75 @@ describe('FirstRunWizard — demo edition', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+// ── Steam achievements (issue #494) ───────────────────────────────────────────
+//
+// The wizard owns ACH_BYO_MODEL, ACH_BENCHMARKED, and the wizard-side half of
+// ACH_SETUP_COMPLETE. All three are success-gated on an API answer, and the
+// first two are deliberately excluded from the ACH_CERTIFIED_EXPERT capstone
+// because they need a model the player supplies themselves — which is exactly
+// why nothing else can notice if they stop firing.
+
+describe('FirstRunWizard — Steam achievements', () => {
+  /** Advanced → Browse Ollama models → Use this model. */
+  async function pickOwnOllamaModel() {
+    renderWizard()
+    fireEvent.click(screen.getByRole('button', { name: /advanced/i }))
+    fireEvent.click(await screen.findByRole('button', { name: /browse ollama models/i }))
+    await screen.findByRole('heading', { name: /use ollama model/i })
+    fireEvent.click(screen.getAllByRole('button', { name: /use this model/i })[0])
+  }
+
+  it('grants the bring-your-own-model achievement for an Ollama model', async () => {
+    await pickOwnOllamaModel()
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_BYO_MODEL'))
+  })
+
+  it('does not grant it when the runtime refuses the model', async () => {
+    mockApi.useModel.mockResolvedValue({
+      ok: false,
+      error: { kind: 'network', message: 'ollama not reachable' },
+    })
+    await pickOwnOllamaModel()
+    await waitFor(() => expect(mockApi.useModel).toHaveBeenCalled())
+    expect(mockUnlock).not.toHaveBeenCalledWith('ACH_BYO_MODEL')
+    // And the wizard never reaches the benchmark step, so nothing downstream
+    // fires either.
+    expect(mockUnlock).not.toHaveBeenCalledWith('ACH_BENCHMARKED')
+  })
+
+  it('grants the benchmark achievement when the auto-run benchmark completes', async () => {
+    // Selecting your own model lands on the benchmark step, which runs once on
+    // entry — the only path that reaches ACH_BENCHMARKED.
+    await pickOwnOllamaModel()
+    await screen.findByRole('heading', { name: /model benchmark/i })
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_BENCHMARKED'))
+  })
+
+  it('does not grant it when the benchmark fails', async () => {
+    mockApi.benchmarkModel.mockResolvedValue({
+      ok: false,
+      error: { kind: 'network', message: 'engine crashed' },
+    })
+    await pickOwnOllamaModel()
+    await screen.findByRole('heading', { name: /model benchmark/i })
+    await waitFor(() => expect(mockApi.benchmarkModel).toHaveBeenCalled())
+    expect(mockUnlock).not.toHaveBeenCalledWith('ACH_BENCHMARKED')
+  })
+
+  it('grants the setup achievement when the player finishes the wizard', async () => {
+    await pickOwnOllamaModel()
+    await screen.findByRole('heading', { name: /model benchmark/i })
+    fireEvent.click(await screen.findByRole('button', { name: /continue to home/i }))
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_SETUP_COMPLETE'))
+  })
+
+  it('increments no stat — onboarding has no counted event', async () => {
+    await pickOwnOllamaModel()
+    await screen.findByRole('heading', { name: /model benchmark/i })
+    await waitFor(() => expect(mockUnlock).toHaveBeenCalledWith('ACH_BENCHMARKED'))
+    expect(mockIncrementStat).not.toHaveBeenCalled()
   })
 })
