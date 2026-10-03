@@ -207,6 +207,9 @@ export default function Conversation() {
   const [npcEmotion, setNpcEmotion] = useState<string | null>(null)
   const [streamingText, setStreamingText] = useState('')
   const [banners, setBanners] = useState<Banner[]>([])
+  // Scenario events already announced, so one cannot be banner'd twice if it
+  // arrives over both the socket and the REST reply.
+  const announcedEventsRef = useRef<Set<string>>(new Set())
   // Milliseconds the current turn has been waiting on the NPC. Drives the
   // progress indicator and both stages of the slow-response notice, so one clock
   // answers "how long has the player been waiting on this turn" — and, once the
@@ -954,6 +957,12 @@ export default function Conversation() {
 
     const npcEvent = turnData.events.find((e) => e.event_type === 'npc_turn')
 
+    // Outside the commit guard below: the reply itself may already be on screen
+    // from the socket, but the scenario events it fired only ever travel on
+    // this payload.
+    const firedEvents = npcEvent?.payload['triggered_scenario_events']
+    if (Array.isArray(firedEvents)) announceScenarioEvents(firedEvents as string[])
+
     // Only commit the NPC turn from REST if the WebSocket npc.final handler
     // has not already done so (to avoid duplicate transcript entries).
     if (npcEvent && !npcTurnCommittedRef.current) {
@@ -1041,6 +1050,27 @@ export default function Conversation() {
       setError(endResult.error)
       setPhase('active')
     }
+  }
+
+  /** Raise the "Something changed" note for scenario events that just fired.
+   *
+   *  The engine's own events — a meter crossing a threshold, a flag being set
+   *  — arrive on the npc_turn payload as `triggered_scenario_events`, and
+   *  nothing read them: the banner was fed only by the WebSocket
+   *  `scenario.event` frame, which carries the NPC's self-declared
+   *  `event_flags` and which convsim-core never sends at all. So the First
+   *  Words tutorial crossed Engagement 60, fired `warm_moment`, and then told
+   *  the player "you would have seen a short note above the transcript saying
+   *  something changed" about a note that never appeared — the tutorial
+   *  claiming something happened that did not, which is issue #501 §3. */
+  function announceScenarioEvents(ids: string[]) {
+    const fresh = ids.filter((id) => !announcedEventsRef.current.has(id))
+    if (fresh.length === 0) return
+    for (const id of fresh) announcedEventsRef.current.add(id)
+    setBanners((prev) => [
+      ...prev,
+      { id: ++bannerUidRef.current, kind: 'event', flags: fresh },
+    ])
   }
 
   function dismissBanner(id: number) {

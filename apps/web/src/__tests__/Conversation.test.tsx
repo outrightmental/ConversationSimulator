@@ -809,6 +809,46 @@ describe('Conversation screen', () => {
       )
     })
 
+    it('announces a scenario event the engine fired on the turn', async () => {
+      // Engine-fired events (a meter crossing a threshold) arrive only on the
+      // npc_turn payload as triggered_scenario_events, and nothing read them:
+      // the banner was fed solely by the WebSocket scenario.event frame, which
+      // carries the NPC's self-declared flags and which convsim-core does not
+      // send. So the tutorial fired warm_moment and then told the player they
+      // "would have seen a short note above the transcript" (issue #501 §3).
+      mockApi.startSession.mockResolvedValue({ ok: true, data: startResponse })
+      mockApi.submitTurn.mockResolvedValue({
+        ok: true,
+        data: {
+          ...turnResponse,
+          events: [
+            turnResponse.events[0],
+            {
+              ...turnResponse.events[1],
+              payload: {
+                ...turnResponse.events[1].payload,
+                triggered_scenario_events: ['warm_moment'],
+              },
+            },
+          ],
+        },
+      })
+      renderConversation()
+      await waitFor(() =>
+        expect(screen.getByRole('textbox', { name: /your response/i })).toBeInTheDocument(),
+      )
+      fireEvent.change(screen.getByRole('textbox', { name: /your response/i }), {
+        target: { value: 'Something encouraging.' },
+      })
+      fireEvent.click(screen.getByRole('button', { name: /submit/i }))
+
+      await waitFor(() =>
+        expect(screen.getByTestId('banner-event')).toHaveTextContent(
+          'Something changed: Warm moment',
+        ),
+      )
+    })
+
     it('keeps the raw event flags in the banner at the technical level', async () => {
       localStorage.setItem('convsim.ui.languageLevel', 'technical')
       let wsCallback: ((event: WsEvent) => void) | null = null
