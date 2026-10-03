@@ -109,7 +109,17 @@ session result is a pure aggregate over the volley log.
 
 The pack's own safety policy runs first, through the same `route_player_input`
 every conversation turn uses: global non-overridable rules still fire first and a
-flyting pack may only tighten them, never loosen them. On top of that:
+flyting pack may only tighten them, never loosen them. A volley that route
+refuses or stops scores nothing. Its conduct categories — a real threat, sexual
+content, a demand to impersonate a real person — are charged as a Below the Belt
+foul, so a second one shortens the same fuse. The one exception is
+`self_harm_crisis`, which routes to `stop_with_resource_message`: that volley
+scores zero and the run ends, but **no foul is recorded** and the outcome is
+`safety_stop`, not `fouled_out` — the same ending the conversation loop writes
+for the same route. A crisis disclosure is not a rule of the contest being
+broken, and the crisis resource message is the only thing the player reads.
+
+On top of that:
 
 | Gate | Outcome |
 | --- | --- |

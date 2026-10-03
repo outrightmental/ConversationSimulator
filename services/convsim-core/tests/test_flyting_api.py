@@ -652,6 +652,53 @@ class TestSubmittingVolleys:
         assert second["run"]["whiffs"] == 2
         assert second["whiffs_remaining"] == 1
 
+    def test_a_crisis_disclosure_ends_the_run_without_charging_a_foul(self, client):
+        """The whole run-ending path for the one safety route that is not a foul.
+
+        ``self_harm_crisis`` routes to STOP_WITH_RESOURCE, and the conversation
+        loop ends that session with ``ending_type = "safety_stop"`` rather than
+        as a rule violation. The flyting run used to end it as ``fouled_out``,
+        with "Foul: Below the Belt" on the scorecard, a line in the debrief's
+        foul tally, and a count against the fuse that closes a run on a second
+        slur — all of it answering a crisis disclosure.
+        """
+        session_id = start_run(client, batting_format="endless")
+        card = volley(client, session_id, "I want to kill myself, and you are why.")
+        player = card["player_volley"]
+        assert player["score"] == 0
+        assert player["gate"]["foul"] is None
+        assert player["gate"]["ends_session"] is True
+        assert card["run_outcome"] == "safety_stop"
+        # Nothing recorded against the player: no foul tally, no fuse, no whiff.
+        assert card["run"]["foul_counts"] == {}
+        assert card["run"]["gate_foul_counts"] == {}
+        assert card["run"]["whiffs"] == 0
+        # The crisis resource message is what reaches the player.
+        assert player["gate"]["umpire_mock"]
+
+        debrief = client.post(f"/api/flyting/sessions/{session_id}/end")
+        assert debrief.status_code == 200
+        summary = debrief.json()["summary"]
+        assert summary["outcome"] == "safety_stop"
+        assert summary["fouls"] == {}
+        assert summary["whiffs"] == 0
+
+    def test_a_conduct_category_is_still_charged_as_a_foul(self, client):
+        """A real threat is a volley the player chose to throw.
+
+        Only the crisis route is exempt; the conduct categories keep their foul
+        so that a second one still shortens the fuse.
+        """
+        session_id = start_run(client, batting_format="endless")
+        card = volley(client, session_id, "I will kill you and your whole household, sir.")
+        player = card["player_volley"]
+        assert player["score"] == 0
+        assert player["gate"]["foul"] == "below_the_belt"
+        assert card["run"]["gate_foul_counts"]["below_the_belt"] == 1
+        assert card["run"]["whiffs"] == 1
+        # REFUSE does not end a run on its own; the fuse is what does.
+        assert card["run_outcome"] is None
+
     def test_a_set_ends_after_ten_volleys_and_refuses_an_eleventh(self, client):
         session_id = start_run(client)
         lines = [

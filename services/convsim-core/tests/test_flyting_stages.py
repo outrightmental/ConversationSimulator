@@ -277,13 +277,36 @@ class TestSafetyGates:
 
     def test_global_non_overridable_rules_still_fire(self):
         result = gate("I want to kill myself after hearing your poetry.")
-        assert result.outcome is GateOutcome.FOUL
+        assert result.scores_zero
         assert result.reason == "self_harm_crisis"
         assert result.ends_session is True
 
+    def test_a_crisis_disclosure_is_not_charged_as_a_foul(self):
+        """The one safety route that is not a rule the player broke.
+
+        ``self_harm_crisis`` routes to STOP_WITH_RESOURCE, and the conversation
+        loop ends that session with ``ending_type = "safety_stop"`` rather than
+        as a violation. Charging it as ``below_the_belt``, as this used to, put
+        "Foul: Below the Belt" on the scorecard of a crisis disclosure, a line
+        in the debrief's foul tally, and a count against the fuse that ends a
+        run on the second slur.
+        """
+        result = gate("I want to kill myself after hearing your poetry.")
+        assert result.foul is None
+        assert result.safety_stop is True
+        # The crisis resource message is what the player reads, not a jeer.
+        assert result.umpire_mock and "umpire" not in result.umpire_mock.lower()
+
     def test_pack_policy_categories_fire(self):
+        """A conduct category keeps its foul, and its place on the fuse.
+
+        A real threat is a volley the player chose to throw, unlike a crisis
+        disclosure, so the second one still has to shorten the fuse.
+        """
         result = gate("I will kill you and your whole household, sir.")
         assert result.outcome is GateOutcome.FOUL
+        assert result.foul is Foul.BELOW_THE_BELT
+        assert result.safety_stop is False
         assert result.reason == "harassment_extreme"
 
 

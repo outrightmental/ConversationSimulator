@@ -315,6 +315,12 @@ class GateResult:
     reason: Optional[str] = None
     umpire_mock: Optional[str] = None
     ends_session: bool = False
+    # True when the run ends because the shared safety router stopped it, not
+    # because the player broke a rule of the contest. The conversation loop
+    # already draws this line — ``_persist_input_safety_stop`` ends a session
+    # with ``ending_type = "safety_stop"`` — and the flyting run has to end the
+    # same way, so a crisis disclosure is not recorded as a foul.
+    safety_stop: bool = False
     score_cap: Optional[int] = None
     flags: List[str] = field(default_factory=list)
     matched_source: Optional[str] = None
@@ -391,6 +397,34 @@ def evaluate_gates(
             "Flyting gate: safety policy category=%s action=%s",
             decision.category, decision.action.value,
         )
+        # A crisis is not a foul. ``self_harm_crisis`` is the one category that
+        # routes to STOP_WITH_RESOURCE, and a player who disclosed one was
+        # answered with the crisis resource message *and* charged with a foul:
+        # "Foul: Below the Belt" on the scorecard, a line in the debrief's foul
+        # tally, a count against the gate's own below-the-belt fuse, and a run
+        # that ended as ``fouled_out``. The conversation loop has never done
+        # that — ``turn_pipeline._persist_input_safety_stop`` ends the session
+        # with ``ending_type = "safety_stop"``, not as a rule violation — and
+        # this is the same route reaching the same person.
+        #
+        # So that one route is a dud: zero, no foul recorded anywhere, the
+        # router's own message is what the player reads, and ``safety_stop``
+        # tells the caller to end the run under the matching outcome.
+        #
+        # The conduct categories keep their foul. A real threat, sexual content,
+        # or a demand to impersonate a real person is a volley the player chose
+        # to throw, and the second one should still shorten the fuse. Below the
+        # Belt is the closest of the five fouls to what they are — cruelty
+        # outside the rules of the contest — and it is the one the umpire's line
+        # is written for.
+        if decision.action is RouteAction.STOP_WITH_RESOURCE:
+            return GateResult(
+                outcome=GateOutcome.DUD,
+                reason=decision.category,
+                umpire_mock=decision.message,
+                ends_session=True,
+                safety_stop=True,
+            )
         return GateResult(
             outcome=GateOutcome.FOUL,
             foul=Foul.BELOW_THE_BELT,

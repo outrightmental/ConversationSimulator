@@ -76,6 +76,11 @@ class RunOutcome(str, Enum):
     TIME_UP = "time_up"
     THREE_WHIFFS = "three_whiffs"
     FOULED_OUT = "fouled_out"
+    # The shared input safety router stopped the run. Distinct from FOULED_OUT
+    # because it is not a rule of the contest that was broken, and the name
+    # matches the ``ending_type`` the conversation loop writes for the same
+    # route (``turn_pipeline._persist_input_safety_stop``).
+    SAFETY_STOP = "safety_stop"
     RETIRED = "retired"
 
 
@@ -290,7 +295,11 @@ def record_player_volley(state: FlytingRunState, score: VolleyScore) -> None:
         if "judge_foul" not in score.gate.flags:
             state.gate_foul_counts[key] = state.gate_foul_counts.get(key, 0) + 1
 
-    whiffed = score.is_whiff
+    # A whiff is a swing that missed. A volley the shared safety router stopped
+    # is not one: the player attempted no taunt to miss with, the run is ending
+    # under ``safety_stop`` rather than on whiffs, and "Whiffs 1" on the debrief
+    # beside a crisis exit is a scoreline nobody needs to read.
+    whiffed = score.is_whiff and not score.gate.safety_stop
     if whiffed:
         state.whiffs += 1
     # Heat is a batting-practice mechanic. A bout is decided on raw cumulative

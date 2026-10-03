@@ -497,7 +497,15 @@ async def process_volley(
         resolve_batting_practice(state, foul_ended=player_score.gate.ends_session)
 
     if player_score.gate.ends_session:
-        state.outcome = RunOutcome.FOULED_OUT.value
+        # A safety stop is not a fouling-out: the player broke no rule of the
+        # contest, and labelling a crisis disclosure "fouled out" on the
+        # debrief and the local board would be the wrong word at the worst
+        # moment. Same ending the conversation loop writes for the same route.
+        state.outcome = (
+            RunOutcome.SAFETY_STOP.value
+            if player_score.gate.safety_stop
+            else RunOutcome.FOULED_OUT.value
+        )
 
     run_outcome = state.outcome if state.is_over else None
     turn_number = int(session_row["turn_count"]) + 1
