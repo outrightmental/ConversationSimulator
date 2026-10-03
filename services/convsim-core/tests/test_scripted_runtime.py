@@ -708,7 +708,7 @@ _FORBIDDEN_TUTORIAL_WORDS = (
     "event flag",
     "hidden prompt",
     "hidden instructions",
-    "rubric dimension",
+    "rubric",
     "state variable",
     "state meter",
     "runtime",
@@ -773,6 +773,28 @@ def _tutorial_scenario_strings() -> list[tuple[str, str]]:
     return out
 
 
+def _tutorial_debrief_strings() -> list[tuple[str, str]]:
+    """Every player-facing string of the tutorial's scripted debrief.
+
+    The debrief is the last screen of the first session, and it reaches the
+    player as prose — so it is tutorial copy exactly as much as the spoken
+    lines are. Left out of this sweep it kept the whole vocabulary the script
+    had dropped ("state meters", "scenario events fire at threshold
+    crossings", "the debrief rubric ... each dimension", and the raw event id
+    `warm_moment`).
+    """
+    from convsim_core.runtime.scripted import _DEBRIEF_RESPONSE as d
+
+    out = [("debrief summary", d["summary"])]
+    for field in ("strengths", "improvements", "missed_opportunities", "replay_suggestions"):
+        out += [(f"debrief {field}[{i}]", s) for i, s in enumerate(d[field])]
+    out += [
+        (f"debrief turning_points[{i}] description", tp["description"])
+        for i, tp in enumerate(d["turning_points"])
+    ]
+    return out
+
+
 def _all_tutorial_utterances() -> list[tuple[str, str]]:
     from convsim_core.runtime.scripted import (
         _FIRST_WORDS_SCRIPT,
@@ -786,7 +808,17 @@ def _all_tutorial_utterances() -> list[tuple[str, str]]:
         (f"ending branch {text!r}", _pick_ending_turn(text)["npc_utterance"])
         for text in ("I'm so excited!", "how does this work?", "ok")
     ]
-    return out + _tutorial_scenario_strings()
+    return out + _tutorial_debrief_strings() + _tutorial_scenario_strings()
+
+
+def test_the_tutorial_debrief_does_not_name_a_raw_event_id():
+    """`warm_moment` is a pack author's identifier, not a thing to show a player."""
+    offenders = [
+        where
+        for where, text in _tutorial_debrief_strings()
+        if "warm_moment" in text
+    ]
+    assert offenders == [], f"a raw identifier reaches the player in: {offenders}"
 
 
 @pytest.mark.parametrize("forbidden", _FORBIDDEN_TUTORIAL_WORDS)

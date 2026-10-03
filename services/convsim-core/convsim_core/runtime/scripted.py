@@ -311,11 +311,12 @@ def _pick_ending_turn(player_text: str) -> dict:
     if any(kw in lower for kw in _ENDING_CURIOUS_KEYWORDS):
         return {
             "npc_utterance": (
-                "Curiosity is the best starting point. Every scenario has a rubric "
-                "that spells out exactly what's being measured — you can read it "
-                "before you start. And if something surprises you mid-conversation, "
-                "the debrief will explain it. Head to the library and explore — "
-                "the scenarios will answer your questions better than I can."
+                "Curiosity is the best starting point. Every scenario spells out "
+                "what it is looking for before you start, so you always know "
+                "what you are being judged on. And if something surprises you "
+                "mid-conversation, the debrief will explain it. Head to the "
+                "library and explore — the scenarios will answer your questions "
+                "better than I can."
             ),
             "npc_emotion": "curious",
             "state_delta": {"engagement": 5, "confidence": 10},
@@ -342,26 +343,35 @@ def _pick_ending_turn(player_text: str) -> dict:
     }
 
 
+# The debrief the tutorial hands the player at the end of their first session.
+# Written to the same two rules as the script above: no simulator vocabulary,
+# and no claim about what the player said. It is swept by
+# test_tutorial_copy_avoids_simulator_jargon alongside the spoken lines — the
+# last screen of the first session is no place to introduce the words the
+# tutorial just spent six turns avoiding.
 _DEBRIEF_RESPONSE: dict = {
     "summary": (
-        "You completed the First Words tutorial. You learned how state meters track "
-        "conversation dynamics, how scenario events fire at threshold crossings, and "
-        "how the debrief rubric scores your performance on each dimension."
+        "You finished the First Words tutorial. You saw the two meters move with "
+        "what you wrote, watched the conversation change course partway through, "
+        "reached an ending, and you are reading the kind of summary that follows "
+        "every conversation here."
     ),
     "strengths": [
-        "You engaged with the tutorial prompts and advanced through all the concepts.",
-        "You saw a live scenario event fire — a key mechanic in every pack.",
+        "You kept the conversation going all the way to the end of the tour.",
+        "You saw the conversation change course mid-way — that happens in every "
+        "scenario, not just this one.",
     ],
     "improvements": [
-        "In real scenarios, try varying how you phrase things to see how the meters respond differently.",
+        "In a real conversation, try saying the same thing in different ways and "
+        "watch how differently the meters answer.",
     ],
     "missed_opportunities": [],
     "turning_points": [
         {
             "turn_number": 3,
             "description": (
-                "The warm_moment event fired — this is where Engagement crossed 60 "
-                "and the NPC instructions shifted."
+                "Engagement passed the mark that changes a conversation, and "
+                "Alex's private instructions changed from there on."
             ),
             "impact": "positive",
         },
