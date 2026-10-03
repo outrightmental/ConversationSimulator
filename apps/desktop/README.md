@@ -96,7 +96,7 @@ The shell is compiled as one of two editions (issue #495):
 | Edition | How it is built | What differs |
 |---------|-----------------|--------------|
 | `full` (default) | `tauri build` as above | The complete app. |
-| `demo` | `VITE_CONVSIM_EDITION=demo` for the web build (Vite only exposes `VITE_`-prefixed variables), `CONVSIM_EDITION=demo` for `tauri build` (exactly that value — `build.rs` rejects anything else), plus `--config src-tauri/tauri.demo.conf.json` | The Steam Next Fest demo: product name "Conversation Simulator Demo", its own bundle identifier, and `CONVSIM_EDITION=demo` handed to `convsim-core` at launch so the engine narrows itself to one model and five conversations. |
+| `demo` | `VITE_CONVSIM_EDITION=demo` for the web build (Vite only exposes `VITE_`-prefixed variables), `CONVSIM_EDITION=demo` for `tauri build` (exactly that value — `build.rs` rejects anything else), plus `--config src-tauri/tauri.demo.conf.json` | The Steam Next Fest demo: product name "Conversation Simulator Demo", its own bundle identifier, its own icon set (below), and `CONVSIM_EDITION=demo` handed to `convsim-core` at launch so the engine narrows itself to one model and five conversations. |
 
 `build.rs` rejects any other value. Whatever the edition, the shell keys the
 per-user data directory (`CONVSIM_DATA_ROOT`) to the **full** app's bundle
@@ -111,6 +111,26 @@ compiles out of the box. Replace them before shipping a distributable:
 # Regenerate the full icon set from a 1024×1024 source PNG:
 pnpm --filter @convsim/desktop tauri icon assets/icon.png
 ```
+
+The demo edition has its **own** icon set in `src-tauri/icons-demo/`, selected
+by `bundle.icon` in `tauri.demo.conf.json`: the same speech-bubble mark on a
+purple plate instead of the full app's teal, with a "DEMO" ribbon on the
+frames large enough to read one. Without it the demo and the full game are
+indistinguishable in the Steam client. Regenerate it — and the matching
+Steamworks App Icon and Shortcut Icon under `publishing/assets/icons/` — with:
+
+```bash
+python3 publishing/assets/source/gen_icons.py
+```
+
+The demo set is **not** derived from `src-tauri/icons/` at build time: it is
+redrawn from the geometry and the `PLATE` colours in `gen_icons.py`, which
+were measured off the icons above. Replacing the base set therefore means
+updating that geometry and `PLATE["base"]` to match and re-running the script
+— otherwise the two editions stop being the same mark, and
+`tests/acceptance/test_demo_branding.py` fails on the silhouette and
+plate-colour comparisons. `--edition base --out <dir>` renders the base mark
+from the same geometry for a side-by-side check.
 
 ---
 
@@ -328,6 +348,7 @@ apps/desktop/
     ├── capabilities/
     │   └── default.json         # Window permission grants
     ├── icons/                   # Placeholder app icons (replace with `tauri icon`)
+    ├── icons-demo/              # Demo-edition app icons (gen_icons.py)
     └── src/
         ├── main.rs              # OS entry point
         └── lib.rs               # Tauri Builder, core process management

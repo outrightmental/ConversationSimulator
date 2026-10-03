@@ -24,6 +24,9 @@
 | Small capsule | Yes | 231 × 87 px, JPG or PNG | Not started |
 | Main capsule (library hero) | Yes | 3840 × 1240 px, JPG or PNG | Not started |
 | Library capsule | Yes | 600 × 900 px, JPG or PNG | Not started |
+| App icon | Yes | 184 × 184 px, JPG | Demo done (`publishing/assets/icons/demo_app_icon.jpg`); base renders from the same generator, `gen_icons.py --edition base`, not committed. **Not** `gen_capsules.py`'s `community_icon` — see [Icons](#icons) |
+| Shortcut icon | Yes | 256 × 256 px or 512 × 512 px, `.ico` or PNG | Demo done (`publishing/assets/icons/demo_shortcut_icon.png`); base not started |
+| Mac icon | For macOS shortcuts | `.icns` | Demo done (`apps/desktop/src-tauri/icons-demo/icon.icns`); base is `apps/desktop/src-tauri/icons/icon.icns` |
 | Page background | Optional | 1438 × 810 px, JPG or PNG | Not started |
 | Screenshots (min 5, max 20) | Yes | 1920 × 1080 px (or 1280 × 720 px min), JPG or PNG | Source captures exist (see `docs/assets/screenshots/`); re-shoot at Steam dimensions |
 | Gameplay trailer | Yes | MP4, H.264, 1920 × 1080 px, 30–120 seconds | Not started |
@@ -80,6 +83,108 @@ capsule is 460 × 215 px and will be viewed at 1× in a search result list.
 
 Provide source files (Figma, Illustrator, or equivalent) alongside exported
 assets so that future updates can be made without re-commissioning from scratch.
+
+---
+
+## Icons
+
+Steamworks groups these under **Store Presence → Graphical Assets → Community
+and Client Icons** ([spec](https://partner.steamgames.com/doc/store/assets/community)).
+There is no asset called a "client icon", and none of the three is 32 px:
+
+| Field | Spec | What draws it |
+|-------|------|---------------|
+| **App Icon** | 184 × 184 JPG, required | Valve: "the library list view, 'favorites' in chat, and notifications across the Steam client, mobile client, and Deck" — the sidebar row in issue #499's screenshot |
+| **Shortcut Icon** | 256 × 256 or 512 × 512 `.ico` or PNG, required | The desktop shortcut Steam creates. Valve generates the `.ico` from a PNG |
+| **Mac Icon** | `.icns` | macOS desktop shortcuts. Without it the shortcut gets a default Steam logo |
+
+The App Icon is the one that matters most and the one most easily got wrong:
+it is the smallest asset on the page, a player sees it every time they open
+their library, and it carries one job — telling two entries apart at a glance.
+
+### Design brief
+
+- The mark is the app's own icon — the white speech bubble with three dots on
+  a rounded square — not a crop of a capsule. Capsule art is composed for
+  920 px and reads as mud in a library row.
+- **Editions are separated first by plate colour.** The full game is teal
+  (`#147A84`); the Steam Next Fest demo is deep purple (`#6D28D9`) — the
+  player-voice purple the capsule set already uses, not the lighter UI token
+  `--cs-you` (`#A78BFA`), which is a tint for text on a dark stage and
+  disappears behind a white speech bubble. Hue is the only cue that survives
+  everywhere: the ribbon's lettering is a tenth of the frame tall, which is
+  three pixels on a 32 px taskbar button.
+- **Do not upload `gen_capsules.py`'s `community_icon` as the base App Icon.**
+  It is also 184 × 184, which makes it look like the right file, but it is a
+  different mark — a `#6D28D9` bubble on the near-black, with no plate — and
+  `#6D28D9` is the hue the bullet above reserves for the demo. Uploading it
+  would put the demo's colour on the full game and undo the only cue that
+  survives a library row. The base App Icon comes from the same generator as
+  the demo's: `gen_icons.py --edition base --out <dir>`, then
+  `base_app_icon.jpg`.
+- A **"DEMO"** ribbon across the lower-right corner reinforces it at 128 px
+  and above, which both Steamworks icons clear at their native size — the App
+  Icon at 184, the Shortcut Icon at 256. Steam rescales the App Icon: in the
+  library list of issue #499's screenshot it is drawn at about 35 px, where
+  the ribbon survives as a legible dark corner tag rather than as four
+  readable letters. That is the floor's intent, not an exception to it — the
+  word is a second cue behind the colour wherever it lands. It is deliberately
+  absent on the smaller bundle frames, which the OS draws at their native 16
+  to 64 px and where the band would only muddy the silhouette.
+- Same silhouette in both editions. The demo is the same product; only its
+  colour and its ribbon say otherwise.
+- The App Icon is a JPG, which has no alpha, so the plate's rounded corners
+  are flattened onto the capsule set's near-black (`#0D0D15`) rather than
+  left for Valve to fill with solid black.
+
+### Production
+
+`publishing/assets/source/gen_icons.py` is the source of truth. It draws the
+mark as plain polygons and circles — no fonts, no `clip-path`, no group
+transforms — and pins ImageMagick's own SVG rasteriser, so it reproduces
+byte-for-byte on any machine with the same ImageMagick build, and emits both
+the Steamworks icons and the Tauri `bundle.icon` set:
+
+```bash
+python3 publishing/assets/source/gen_icons.py                     # demo, into the repo
+python3 publishing/assets/source/gen_icons.py --edition base --out /tmp/base
+```
+
+| Output | Path | Used by |
+|--------|------|---------|
+| App Icon | `publishing/assets/icons/demo_app_icon.jpg` | Steamworks → Community and Client Icons → **App Icon**, on the demo app (5343430) |
+| Shortcut Icon | `publishing/assets/icons/demo_shortcut_icon.png` | Steamworks → Community and Client Icons → **Shortcut Icon**, same app |
+| Mac Icon | `apps/desktop/src-tauri/icons-demo/icon.icns` | Steamworks → Community and Client Icons → **Mac Icon**, uploaded from the bundle set as-is |
+| Bundle icon set | `apps/desktop/src-tauri/icons-demo/` | `bundle.icon` in `tauri.demo.conf.json` |
+| Vector render | `publishing/assets/icons/demo_icon.svg` | Reading the mark and re-rendering it **at 128 px and up** — it is the ribboned drawing, so a smaller render from it would carry the three-pixel lettering the brief above rules out; for anything smaller, re-run the script. Generated output, rewritten on every run: change `gen_icons.py`, not this file |
+
+The Shortcut Icon is a plain PNG, not a hand-built `.ico`: Valve accepts a PNG
+in that field and generates the `.ico` itself, so the uploaded file is
+byte-identical to the 256 px frame the app installs and there is no container
+in between to go wrong. Valve takes 512 × 512 in that field too; 256 is chosen
+because it is the frame the bundle already ships — one file, not two renders
+of the same mark that can drift apart. The bundle's own multi-size `icon.ico` is still
+assembled by the script, with PNG payloads — that is what `tauri icon`
+produced for the base app, and it is what stops the 256 px frame costing
+256 KB.
+
+The App Icon is the one output that is **not** byte-reproducible: it is a JPG,
+and quantisation and Huffman tables differ between libjpeg builds. The encoder
+settings are pinned (quality 95, 4:4:4, stripped, optimised coding), but judge
+a regenerated `.jpg` by looking at it rather than by `git diff`.
+
+The base app's set in `apps/desktop/src-tauri/icons/` is the original
+`tauri icon` output; the script never writes there. Rendering `--edition base`
+into a scratch directory is how you check the two editions still line up after
+changing the mark.
+
+`tests/acceptance/test_demo_branding.py` enforces the result: the overlay
+overrides every icon, the plates stay far apart in colour, the silhouettes
+match, the ribbon is on the large frames only, the two Steamworks icons are at
+the sizes Valve's spec names, the Shortcut Icon is byte-identical to the frame
+the app installs, the App Icon is opaque and carries the ribbon, and the
+`.icns` carries every representation the full app's does — including the
+1× 16 pt and 32 pt ones macOS draws in Finder's list view.
 
 ---
 

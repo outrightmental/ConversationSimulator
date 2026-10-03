@@ -28,7 +28,7 @@ so the full app is unaffected apart from a new `edition` field in
 |-------|--------|--------------|
 | `convsim-core` | `CONVSIM_EDITION=demo` (`ServiceConfig.edition`) | Serves exactly the five curated scenarios (and only the packs they come from), exposes exactly one registry model, refuses session creation for any other scenario, refuses model install for any other model, and refuses pack import and the Creator Workbench API with `EDITION_RESTRICTED` (HTTP 403). Reports `edition: "demo"` plus the curated `scenario_ids` and `model_id` on `/api/health`. |
 | Web UI | `VITE_CONVSIM_EDITION=demo` at build time, or the engine's `/api/health` answer at run time | Home becomes the five-conversation picker plus one upsell card. Library, Logbook and Workbench are not in the navigation and their routes collapse to Home. The first-run wizard offers only "Set me up" (no Ollama, no GGUF). Settings keeps only the privacy controls. The debrief ends with the upsell instead of the voice invite. |
-| Tauri shell | `CONVSIM_EDITION=demo` at compile time (`build.rs` validates it; `lib.rs` passes it to the sidecar) and the `tauri.demo.conf.json` overlay | Product name "Conversation Simulator Demo", its own bundle identifier, and the same per-user data directory as the full app (see [Save data](#does-demo-save-data-carry-over)). |
+| Tauri shell | `CONVSIM_EDITION=demo` at compile time (`build.rs` validates it; `lib.rs` passes it to the sidecar) and the `tauri.demo.conf.json` overlay | Product name "Conversation Simulator Demo", its own bundle identifier, its own icon set (see [Store assets](#store-assets)), and the same per-user data directory as the full app (see [Save data](#does-demo-save-data-carry-over)). |
 | CI | `release.yml` → `edition: demo` (workflow_dispatch) | Builds all three platforms as the demo edition, uploads `demo-desktop-*` artifacts, publishes **no** GitHub release, and hands off to `steam-deploy.yml` with `edition: demo`, which targets `STEAM_DEMO_APP_ID` and the demo depots. |
 
 The curated list lives in **one place**: `services/convsim-core/convsim_core/edition.py`.
@@ -167,12 +167,39 @@ directory, and its copy says so.
 ### Store assets
 
 The demo attaches to the base app's store page as its demo; Valve renders the
-"Download Demo" button there. The demo's own capsule set reuses the base
-capsules with a "DEMO" ribbon, produced by the same
-`publishing/assets/source/gen_capsules.py` pipeline; screenshots are
-demo-edition screenshots of the five conversations (the Home picker, one
-conversation, one debrief) so nothing shown is unreachable in the demo. No
-separate trailer: the base trailer is used. Details in the runbook.
+"Download Demo" button there.
+
+**The demo has its own icon.** The Steam client lists the demo and the full
+game side by side, and while they shared an icon the two entries were
+indistinguishable (issue #499). The demo's mark is the same speech bubble on a
+deep purple plate instead of the full game's teal, with a "DEMO" ribbon on the
+frames large enough to read one.
+
+The entry in that screenshot is Steamworks' **App Icon**: 184 × 184 JPG, which
+Valve's [Community and Client Icons][steam-icons] spec describes as what the
+client draws "in the library list view, 'favorites' in chat, and notifications
+across the Steam client, mobile client, and Deck". There is no 32 px "client
+icon" field. The App Icon carries both cues — the purple plate and the ribbon
+— and Steam rescales it, so in that library row it is drawn at about 35 px,
+where the ribbon still reads as a dark corner tag even though its lettering
+does not. The bundle's own 16–32 px frames carry no ribbon at all and are
+separated by colour alone; the OS draws those at native size in the taskbar
+and Finder's list view, and a band there would only muddy the silhouette.
+
+One generator, `publishing/assets/source/gen_icons.py`, produces the App Icon,
+the 256 × 256 **Shortcut Icon** Steam puts on the desktop, and the icon set the
+demo build installs, so the store entry and the app on the player's dock agree;
+Steamworks' **Mac Icon** field takes `icons-demo/icon.icns` from that same set.
+Upload destinations are in the runbook (§4.2).
+
+[steam-icons]: https://partner.steamgames.com/doc/store/assets/community
+
+The demo's capsule set is **still outstanding**: the intended treatment is the
+base capsules with a ribbon matching the icon's, but `gen_capsules.py` does not
+draw one yet. Screenshots are demo-edition screenshots of the five
+conversations (the Home picker, one conversation, one debrief) so nothing shown
+is unreachable in the demo. No separate trailer: the base trailer is used.
+Details in the runbook.
 
 ### Turn / session / time cap
 
@@ -201,6 +228,7 @@ own promise.
 | D-07 | Depot audit and signing | CI + manual | `steam-deploy.yml` with `edition: demo` passes the depot audit and artifact inspection for all three platforms; macOS notarised and Windows signed (G3-01) — a demo is under Valve review like any build. |
 | D-08 | Offline after install | Manual | With the network disconnected after the download, all five conversations play (G2-01 / F-07 for the demo depot). |
 | D-09 | No full-app claims | Manual, publishing owner | Demo store copy and the in-app upsell describe exactly what the demo has (five conversations, one model, text only) and what the full app adds; no "free" claims about the paid app. |
+| D-10 | Demo is distinguishable in the Steam client | CI + manual | `tests/acceptance/test_demo_branding.py` passes: `tauri.demo.conf.json` overrides every `bundle.icon` entry, the demo plate is far from the base plate in colour, and the "DEMO" ribbon is on the large frames only. Manual half: the demo's App Icon (184 × 184 JPG), Shortcut Icon and Mac Icon are uploaded on App 5343430 under Store Presence → Graphical Assets → Community and Client Icons, and the two library entries read apart at a glance. |
 
 ---
 
