@@ -45,8 +45,13 @@ export default function ResumeSessionBanner() {
     const r = await api.endSession(session.session_id)
     // Either way the banner has to re-ask: on success the session is no longer
     // resumable, and on failure the row may have been ended by another window.
-    void r
     refetch()
+    // Ending a conversation produces a debrief, here exactly as it does from
+    // the conversation screen's End session button. Without this the player
+    // who ends from the strip is left where they were and the debrief they
+    // just earned is reachable only by typing its URL — the same kind of
+    // dead end issue #501 is about, in the other direction.
+    if (r.ok) navigate(`/debrief/${session.session_id}`)
   }
 
   return (

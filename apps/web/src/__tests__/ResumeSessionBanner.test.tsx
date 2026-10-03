@@ -175,6 +175,53 @@ describe('ResumeSessionBanner', () => {
     expect(mockApi.endSession).toHaveBeenCalledWith('sess-abc123')
   })
 
+  it('ending the session shows the debrief it just produced', async () => {
+    // Ending a conversation always produces a debrief. Left on Settings, the
+    // player would have no way to the one they just earned.
+    mockApi.listSessions
+      .mockResolvedValueOnce({ ok: true, data: { sessions: [SESSION] } })
+      .mockResolvedValue({ ok: true, data: { sessions: [] } })
+    render(
+      <I18nProvider>
+        <MemoryRouter initialEntries={['/settings']}>
+          <Routes>
+            <Route path="/settings" element={<ResumeSessionBanner />} />
+            <Route path="/debrief/:id" element={<div data-testid="debrief" />} />
+          </Routes>
+        </MemoryRouter>
+      </I18nProvider>,
+    )
+    await waitFor(() =>
+      expect(screen.getByTestId('resume-session-end-button')).toBeInTheDocument(),
+    )
+    fireEvent.click(screen.getByTestId('resume-session-end-button'))
+    await waitFor(() => expect(screen.getByTestId('debrief')).toBeInTheDocument())
+  })
+
+  it('stays put when ending fails, so nothing claims a debrief exists', async () => {
+    mockApi.listSessions.mockResolvedValue({ ok: true, data: { sessions: [SESSION] } })
+    mockApi.endSession.mockResolvedValue({
+      ok: false,
+      error: { kind: 'network', message: 'unreachable' },
+    })
+    render(
+      <I18nProvider>
+        <MemoryRouter initialEntries={['/settings']}>
+          <Routes>
+            <Route path="/settings" element={<ResumeSessionBanner />} />
+            <Route path="/debrief/:id" element={<div data-testid="debrief" />} />
+          </Routes>
+        </MemoryRouter>
+      </I18nProvider>,
+    )
+    await waitFor(() =>
+      expect(screen.getByTestId('resume-session-end-button')).toBeInTheDocument(),
+    )
+    fireEvent.click(screen.getByTestId('resume-session-end-button'))
+    await waitFor(() => expect(mockApi.endSession).toHaveBeenCalled())
+    expect(screen.queryByTestId('debrief')).not.toBeInTheDocument()
+  })
+
   it('re-asks when the window regains focus, so it cannot go stale', async () => {
     // The session can be ended on another screen, or by another window.
     mockApi.listSessions.mockResolvedValue({ ok: true, data: { sessions: [SESSION] } })
