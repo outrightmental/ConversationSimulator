@@ -324,8 +324,9 @@ calibration suite that names a scenario or trait that does not exist.
 receive. `scripts/flyting-calibration.py` runs them:
 
 ```sh
-python scripts/flyting-calibration.py                   # every official pack
-python scripts/flyting-calibration.py --judge llama_cpp # include judged tiers
+python scripts/flyting-calibration.py                             # every official pack
+python scripts/flyting-calibration.py --judge llama_cpp           # include judged tiers
+python scripts/flyting-calibration.py --judge llama_cpp --limit 3 # a bounded sample
 ```
 
 The **deterministic** expectations — `gate`, `foul`, `flags`, the plagiarism cap
@@ -334,6 +335,39 @@ commit (`services/convsim-core/tests/test_flyting_calibration.py`). The
 **judged** expectations — `band`, `min_score`, `max_score`, `hooks` — need a
 model and are skipped unless `--judge` names a runtime; that is the run that
 catches prompt or model drift before players see it.
+
+A judged run costs one model call per volley that clears the gates: 39
+reference volleys in the launch pack, 29 of which reach the judge, and roughly
+25-30 s each against the starter model on a developer machine — about a quarter
+of an hour for the pack, and far longer on a CPU CI runner, which measures a
+grammar-constrained turn in minutes rather than seconds. So the judged tier is
+not in the nightly by default — `--limit N` takes a bounded sample (judged
+volleys first), and `model-smoke-nightly.yml` accepts `flyting_judged=true` on
+a manual dispatch to run that sample against the same cached starter model and
+upload the report. The report carries every volley's dimensions, verified hooks,
+dropped hooks and flags, so a band that moved is readable without a re-run.
+
+**What the judged bands are pinned to.** The launch pack's judged expectations
+record what the registry's `starter` model (`qwen3-4b-instruct-q4_k_m`,
+llama.cpp, temperature 0) actually produces, measured against a live server.
+Two full runs of the pack produced *identical* results for all 39 volleys —
+same score, same dimension scores, same verified hooks — which is the
+determinism the mode claims — temperature 0 plus a
+schema-constrained decode, in practice and not just in principle. The
+expectations are drift guards, not verdicts on the writing: a deliberate change
+to the judge prompt moves them and is expected to come with a re-measurement.
+
+Two limitations the measurement exposed are worth knowing before reading a
+scorecard, because neither is a bug:
+
+- A small judge rewards a **well-made line aimed at nobody**. The engine flags
+  `no_aim`, the debrief says "*n* volleys never pointed at anyone", and the
+  judge is told that sting requires aim — but sting stays the judge's to award,
+  so an unaimed aphorism can still score like a hit on a 4B model.
+- The scenario **difficulty multiplier lifts everything**, non-hits included.
+  In Veiled Civility (`P = 1.5`, fidelity weighted up) a courteous line with
+  nothing inside it reaches the bottom of `solid`. The bands are absolute
+  across scenarios; the multiplier is not.
 
 ---
 

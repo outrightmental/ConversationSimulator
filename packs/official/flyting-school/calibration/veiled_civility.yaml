@@ -7,6 +7,13 @@ description: >-
   rudeness is a foul rather than a low score, and fidelity is weighted above
   sting — a courteous line that lands beats a sharp line that does not wear
   gloves.
+
+  Judged expectations — bands, score windows, hooks — are pinned to what the
+  registry's starter model (qwen3-4b-instruct-q4_k_m, llama.cpp, temperature 0)
+  actually produces, measured 2026-10-02; two full runs scored every volley
+  identically. They are drift guards rather than verdicts on the writing, so a
+  deliberate change to the judge prompt is expected to move them and to be
+  re-measured with --judge.
 volleys:
   - id: too_short
     text: how dreadful
@@ -29,19 +36,29 @@ volleys:
 
   - id: empty_pleasantry
     text: What a perfectly charming gown that is, truly.
-    note: "Courteous with nothing inside it: no sting, no hook."
+    note: >-
+      Courteous with nothing inside it: no sting, no hook, no second person.
+      The floor of this suite rather than a weak score — fidelity is weighted
+      up here and the scenario multiplies by 1.5, so a line that only keeps
+      the register still reaches the bottom of solid.
     expect:
       gate: ok
-      band: weak
-      max_score: 59
+      flags: [no_aim]
+      band: solid
+      max_score: 95
 
   - id: gloved_sting
     text: >-
       How brave of you to wear that again — one does so admire a woman who
       refuses to be governed by the dates on things.
+    note: >-
+      The register done right: fidelity 10, and the knife entirely inside the
+      compliment. This is what the pack is teaching, and in the scenario that
+      weights fidelity highest it scores like it.
     expect:
       gate: ok
-      band: solid
+      band: strong
+      min_score: 130
 
   - id: gloved_two_hooks
     text: >-
@@ -61,17 +78,26 @@ volleys:
     text: >-
       Your laugh is quite the loveliest thing in this room, and so beautifully
       kept — one can hear how carefully it has been looked after.
+    note: >-
+      Aimed at rehearsed charm by implication only — nothing in the line names
+      the trait, so the starter judge claims no hook at all and the volley
+      scores on register and wit alone. The entry pins that: an implied hook
+      is not a verified one.
     expect:
       gate: ok
-      band: strong
-      hooks: [rehearsed_charm]
+      min_score: 95
+      max_score: 140
 
   - id: discovery_counting
     text: >-
       You dance so very correctly, my dear — and one does admire the
       arithmetic. Mr Fenwick said he could almost hear it.
-    note: Strikes the discoverable counting trait while staying entirely polite.
+    note: >-
+      Strikes the discoverable counting trait while staying entirely polite,
+      and the doubled discovery bonus on top of a 1.5 multiplier makes it the
+      highest-scoring reference volley in the pack.
     expect:
       gate: ok
-      band: strong
+      min_score: 150
+      max_score: 195
       hooks: [the_counting]
